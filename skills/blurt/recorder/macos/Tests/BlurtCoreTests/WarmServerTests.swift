@@ -73,13 +73,13 @@ final class WarmServerTests: XCTestCase {
     }
 
     func testAHangIsToldByTheServersBehaviour() {
-        // a 3 s piece: not before 3 s, and only with the server's CPU still for 2 s
-        XCTAssertFalse(DictationASRFailure.hung(waited: 2.5, audioSeconds: 3, cpuIdle: 2.5))
-        XCTAssertTrue(DictationASRFailure.hung(waited: 3.1, audioSeconds: 3, cpuIdle: 2.1))
-        XCTAssertFalse(DictationASRFailure.hung(waited: 12, audioSeconds: 3, cpuIdle: 0))      // busy: waited for
-        // a 20 s piece gets 10 s
-        XCTAssertFalse(DictationASRFailure.hung(waited: 8, audioSeconds: 20, cpuIdle: 8))
-        XCTAssertTrue(DictationASRFailure.hung(waited: 10, audioSeconds: 20, cpuIdle: 8))
+        // not before 3 s, and only with the server's CPU still for 2 s — whatever the audio's length
+        XCTAssertFalse(DictationASRFailure.hung(waited: 2.5, cpuIdle: 2.5))
+        XCTAssertTrue(DictationASRFailure.hung(waited: 3.1, cpuIdle: 2.1))
+        XCTAssertFalse(DictationASRFailure.hung(waited: 12, cpuIdle: 0))      // busy: waited for
+        // a 20 s take is given up on at 3 s too (review: waiting half the audio held a stopped server's take 9.5 s)
+        XCTAssertTrue(DictationASRFailure.hung(waited: 3.0, cpuIdle: 3.0))
+        XCTAssertFalse(DictationASRFailure.hung(waited: 30, cpuIdle: 0.4))    // a long decode keeps its CPU moving
         // the old limit stays the ceiling
         XCTAssertEqual(DictationASRFailure.serverTimeout(audioSeconds: 20), 45)
     }

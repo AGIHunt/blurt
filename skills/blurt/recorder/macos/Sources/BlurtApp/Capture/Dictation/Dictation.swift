@@ -92,7 +92,11 @@ final class Dictation {
     private var voice: NoteVoice?
     private var wav: URL?
     /// a take is listening (the mic is this take's)
-    private(set) var listening = false
+    private(set) var listening = false {
+        didSet { if oldValue && !listening && fnClashPending { fnClashPending = false; fnClashNotice(via: "after_take") } }
+    }
+    /// the Fn-clash notice waits for the take listening now to end (`fnClashNotice`)
+    private var fnClashPending = false
     private(set) var entryID = ""
     private var startedAt = Date()
     private var heardSpeech = false
@@ -359,6 +363,7 @@ final class Dictation {
 
     /// Re-reads the settings: the tap on or off, the key and the mode.
     func apply() {
+        let keyBefore = trigger.key
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
         trigger.doubleTap = Dictation.doubleTapSend
@@ -382,6 +387,14 @@ final class Dictation {
             // their way finish and paste — they belong to the app they started in, whoever has the key now (v0.9
             // dogfood: another Blurt quitting threw a finished take away, its audio deleted under the CLI)
             if listening { trigger.reset(active: false); stop() }
+        }
+        // the key changed while a take listens (Settings, the Fn-clash notice's "Use Right Option"): the key it started
+        // with no longer stops it, so it ends here as if that key came up — what was said goes in (v0.9 review: a Fn
+        // take left listening with no key to stop it)
+        if DictationFnClash.keyChangeEndsTake(listening: listening, from: keyBefore, to: trigger.key) {
+            emit(["event": "dictation_key_changed_mid_take", "id": entryID, "from": keyBefore.rawValue, "to": trigger.key.rawValue])
+            trigger.reset(active: false)
+            stop()
         }
         lastAccess = access
         NotificationCenter.default.post(name: Dictation.settingsChanged, object: nil)
@@ -515,12 +528,18 @@ final class Dictation {
 
     /// Typeless or Wispr Flow running while Fn is the key (DictationFnClash): both react to Fn and the text can go in
     /// twice. Said on the island when it matters — a Fn take starts (`take`), or one of them launches — once a day per
-    /// app, with "Use Right Option" (the key changes now) and Settings.
+    /// app, with "Use Right Option" (the key changes now) and Settings. Never over a take that is listening: it is said
+    /// once that take ends, after what the island says about it (a passive line) — a click on "Use Right Option" while
+    /// the Fn take listened left it with no key to stop it.
     func fnClashNotice(via: String) {
         guard Dictation.enabled, deferredTo == nil else { return }
         let apps = DictationFnClash.toMention(key: trigger.key, running: SystemAccess.fnClashApps,
                                              saidToday: { Dictation.saidToday("fn_clash_\($0)") })
-        guard !apps.isEmpty else { return }
+        switch DictationFnClash.moment(apps: apps, listening: listening) {
+        case .none: return
+        case .afterTake: fnClashPending = true; return
+        case .now: break
+        }
         for a in apps { _ = Dictation.onceADay("fn_clash_\(a)") }
         emit(["event": "dictation_fn_clash", "apps": apps, "via": via])
         var t = Island.Toast(text: Loc.t("dictation.toast.fn_clash", table: "Dictation", apps.joined(separator: T("settings.perm.list_sep"))),
@@ -533,6 +552,7 @@ final class Dictation {
         t.second = { AppEnvironment.settings?.show(pane: "dictation") }
         t.seconds = 8
         t.key = "dictation.fn_clash"
+        t.passive = via == "after_take"     // behind the take's own line ("Sent", "Copied, not sent")
         island.toast(t)
     }
 
@@ -716,16 +736,22 @@ final class Dictation {
                     _ = WarmServer.call("polish-serve", ["cmd": "load"], timeout: 30)
                 case .gone, .notAServer, .stuck:
                     var result = "forgot"
+                    var oursStuck = false
                     if case .stuck = h, let p = pid {
-                        if let s = self?.polishServer { WarmSpawn.retire(s.processIdentifier) }
+                        // our `uv` only when the stuck process is its child (VoiceInput.replaceIfStuck); read on main
+                        let ours = VoiceInput.onMain { self?.polishServer?.isRunning == true ? self?.polishServer?.processIdentifier : nil }
+                        oursStuck = ours.map { VoiceInput.descends(p, from: $0) } ?? false
+                        if oursStuck, let u = ours { WarmSpawn.retire(u) }
                         result = WarmServer.end("polish-serve", pid: p) ? "ended" : "not_ended"
                     } else {
                         WarmServer.forget("polish-serve", pid: pid)
                     }
-                    emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result])
+                    emit(["event": "polish_server_replaced", "health": "\(h)", "pid": pid ?? NSNull(), "result": result, "ours": oursStuck])
                     DispatchQueue.main.async {
                         guard let self = self else { return }
-                        if case .stuck = h, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+                        if oursStuck, let s = self.polishServer, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+                        // a server of ours still starting stays (it writes the run file in a moment)
+                        guard oursStuck || self.polishServer?.isRunning != true else { return }
                         self.polishServer = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
                     }
                 }
@@ -1163,7 +1189,7 @@ final class Dictation {
             // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit
             let watch = WarmServer.pid("asr-serve").map { CPUWatch(pid: $0) }
             let (answer, hung) = WarmServer.call("asr-serve", req, timeout: limit) { waited in
-                watch.map { DictationASRFailure.hung(waited: waited, audioSeconds: audioSeconds, cpuIdle: $0.idle()) } ?? false
+                watch.map { DictationASRFailure.hung(waited: waited, cpuIdle: $0.idle()) } ?? false
             }
             if let r = answer {
                 if r["ok"] as? Bool == true { return r }
@@ -1246,7 +1272,18 @@ final class Dictation {
                        variant: String? = nil) -> [String: Any]? {
         // nothing to tidy: polish.py would answer "short" without its model — no wait for a server or a load
         if DictationStitch.nothingToPolish(raw) {
-            return ["ok": true, "raw": raw, "text": raw, "fell_back": false, "reason": "short", "ms": 0, "load_ms": 0]
+            var r: [String: Any] = ["ok": true, "raw": raw, "text": raw, "fell_back": false, "reason": "short", "ms": 0, "load_ms": 0]
+            // …but one that continues the field's sentence ("I think ▮" + "Fine.") asks a model already loaded whether
+            // its capital is only a sentence start's (polish.py `case`: answered at once, never a load)
+            let so = (context?["dictated"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? context?["before"] as? String ?? ""
+            if let ctx = context, DictationStitch.midSentence(so),
+               WarmServer.running("polish-serve"),
+               let c = WarmServer.call("polish-serve", ["cmd": "case", "text": raw, "context": ctx, "vocab": vocab], timeout: 0.6),
+               c["ok"] as? Bool == true, let t = c["text"] as? String, !t.isEmpty {
+                r["text"] = t
+                if let info = c["case"] { r["case"] = info }
+            }
+            return r
         }
         let t0 = Date()
         let until = t0.addingTimeInterval(loadBudget)

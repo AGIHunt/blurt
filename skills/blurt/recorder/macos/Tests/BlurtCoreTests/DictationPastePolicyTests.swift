@@ -28,6 +28,14 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertTrue(L.landed(before: "a", selection: NSRange(location: 1, length: 0), now: "a there.", inserted: "there."))
         XCTAssertLessThan(L.restoreMargin, L.unconfirmedRestore)
         XCTAssertGreaterThan(L.unconfirmedRestore, L.unconfirmedReturn)          // the clipboard never before Return
+        // Return: when seen, at 0.6 s at the latest — a field that never shows the text exactly (it converts quotes
+        // or emoji) no longer holds a send 1.5 s (review)
+        XCTAssertEqual(L.returnAfter(seen: 0.09), 0.09)
+        XCTAssertEqual(L.returnAfter(seen: nil), 0.6)
+        XCTAssertEqual(L.returnAfter(seen: 1.2), 0.6)
+        XCTAssertEqual(L.restoreAfter(seen: 0.09), 0.24, accuracy: 1e-9)
+        XCTAssertEqual(L.restoreAfter(seen: nil), 1.5)
+        XCTAssertLessThanOrEqual(L.restoreAfter(seen: nil), L.confirmTimeout)
     }
 
     func testPastesIntoATextField() {

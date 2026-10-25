@@ -1,8 +1,8 @@
 // Typing the dictated text where the cursor is: save the user's pasteboard (every item, every type), put the text
 // on it, ⌘V into the frontmost app, and put the old pasteboard back (unless something else changed it) once the paste
-// has landed — the field shows the text (BlurtCore DictationPasteLanding; a double tap's Return goes then), or, for a
-// field that can't be read, Return after 0.6 s and the clipboard after 1.5 s: a slow app never pastes the old
-// clipboard because it was put back too early.
+// has landed — the field shows the text (BlurtCore DictationPasteLanding; a double tap's Return goes then, 0.6 s at
+// the latest), or, for a field that can't be read or never shows the text exactly, the clipboard after 1.5 s: a slow
+// app never pastes the old clipboard because it was put back too early.
 // BlurtCore's DictationPastePolicy decides, like Typeless: ⌘V into any other app in front, whatever its focused
 // element looks like to Accessibility (WeChat's input box isn't a text role) —
 //   • no app in front, secure input on / a password field, or no Accessibility (a posted ⌘V wouldn't arrive) →
@@ -139,31 +139,38 @@ enum DictationInsert {
         }
     }
 
-    /// After ⌘V: `done(.pasted)` once the field shows the text (read every 30 ms, off the main thread), the user's
-    /// clipboard back a moment later; a field that can't be read: Return after 0.6 s as before, the clipboard after
-    /// 1.5 s (DictationPasteLanding).
+    /// After ⌘V: `done(.pasted)` (a double tap's Return) once the field shows the text — read every 30 ms, off the main
+    /// thread — or after 0.6 s at the latest; the user's clipboard back 0.15 s after the text was seen, else after
+    /// 1.5 s (DictationPasteLanding.returnAfter / restoreAfter).
     private static func land(_ text: String, field: DictationField?, before: (text: String, selection: NSRange)?, ours: Int,
                              done: @escaping (Result) -> Void) {
         let t0 = CACurrentMediaTime()
-        let finish = { (how: String) in
-            let ms = Int((CACurrentMediaTime() - t0) * 1000)
-            emit(["event": "dictation_landed", "how": how, "ms": ms])
+        var returned = false, released = false
+        let giveReturn = { (how: String) in
+            guard !returned else { return }
+            returned = true
+            emit(["event": "dictation_landed", "how": how, "ms": Int((CACurrentMediaTime() - t0) * 1000)])
             done(.pasted)
-            let margin = how == "seen" ? DictationPasteLanding.restoreMargin
-                : max(0, DictationPasteLanding.unconfirmedRestore - Double(ms) / 1000)
-            DispatchQueue.main.asyncAfter(deadline: .now() + margin) { release(ours: ours) }
         }
-        guard let f = field, let b = before else {
-            return DispatchQueue.main.asyncAfter(deadline: .now() + DictationPasteLanding.unconfirmedReturn) { finish("unread") }
+        let releaseAt = { (seen: Double?) in
+            guard !released else { return }
+            released = true
+            let after = DictationPasteLanding.restoreAfter(seen: seen)
+            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, t0 + after - CACurrentMediaTime())) { release(ours: ours) }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + DictationPasteLanding.returnAfter(seen: nil)) {
+            giveReturn(field == nil || before == nil ? "unread" : "not_yet")
+        }
+        guard let f = field, let b = before else { return releaseAt(nil) }
         func check() {
             let read = { f.read()?.text }
             let seen = { (now: String?) -> Bool in
                 now.map { DictationPasteLanding.landed(before: b.text, selection: b.selection, now: $0, inserted: text) } ?? false
             }
             let wait = { (now: String?) in
-                if seen(now) { return finish("seen") }
-                if CACurrentMediaTime() - t0 >= DictationPasteLanding.confirmTimeout { return finish("timeout") }
+                let t = CACurrentMediaTime() - t0
+                if seen(now) { giveReturn("seen"); return releaseAt(t) }
+                if t >= DictationPasteLanding.confirmTimeout { return releaseAt(nil) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + DictationPasteLanding.poll) { check() }
             }
             // our own text view on the main thread; another app's field through Accessibility off it

@@ -416,7 +416,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   run as well (*Keep Fn for dictation*, on by default). If that macOS setting would react to Fn too, Settings →
   Dictation says so, and **Fix…** opens Keyboard settings with a note saying what to change. Blurt never changes it
   for you. If Typeless or Wispr Flow is running, Settings says so: both apps would react to Fn, so quit one or give one
-  of them another key. The notch says it too, once a day, when you start a Fn dictation or one of them opens — with
+  of them another key. The notch says it too, once a day, after a Fn dictation or when one of them opens — with
   **Use Right Option**, which switches Blurt's key at once.
 - **Style** (*Settings → Dictation*) is one choice: **Verbatim** (exactly what the speech model heard, no polish),
   **Light** (the default), **Structured** or **Auto**. The polish model they use, and the speech model, are chosen in
@@ -803,7 +803,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
   按两下稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时按两下，会等文字填进去再发送——输入框里出现文字就马上回车，之后才还原你的剪贴板。刘海右侧会显示一个对勾和「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了），刘海上会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「按两下 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「按两下 Fn 发送（回车）」。
 - **没听到？** 刘海上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单独按一下），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
-- **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。开始用 Fn 听写、或者它们刚打开时，刘海上也会提示一次（每天一次），点**改用右 Option** 就马上换键。
+- **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。用 Fn 听写完一段、或者它们刚打开时，刘海上也会提示一次（每天一次），点**改用右 Option** 就马上换键。
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 语音 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
 - **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），这次就不润色，直接输入识别原文。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 语音」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：

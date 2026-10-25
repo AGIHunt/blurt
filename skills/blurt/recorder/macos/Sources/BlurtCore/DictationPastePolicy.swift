@@ -21,6 +21,8 @@ import Foundation
 /// clipboard, and every send waited 0.6 s more than it needed. Now, where the field can be read, the text in it says
 /// when the paste landed: Return goes at once and the clipboard comes back a moment later; where it can't (WeChat,
 /// Electron), Return keeps the old 0.6 s (keys reach the app in order: Return after ⌘V) and the clipboard waits 1.5 s.
+/// Return never waits longer than those 0.6 s: a readable field that never shows the text exactly (a rich-text or
+/// Electron field that turns quotes or emoji into its own, or trims a space) only delays the clipboard (review).
 public enum DictationPasteLanding {
     /// how often the field is read while waiting
     public static let poll = 0.03
@@ -32,6 +34,12 @@ public enum DictationPasteLanding {
     public static let unconfirmedReturn = 0.6
     /// … and the clipboard back after this
     public static let unconfirmedRestore = 1.5
+
+    /// When a double tap's Return goes, `seen` s after ⌘V the field showed the text (nil: not seen, or unreadable):
+    /// then, or after `unconfirmedReturn` at the latest.
+    public static func returnAfter(seen: Double?) -> Double { min(seen ?? .infinity, unconfirmedReturn) }
+    /// When the user's clipboard comes back: `restoreMargin` after the text was seen, else `unconfirmedRestore`.
+    public static func restoreAfter(seen: Double?) -> Double { seen.map { $0 + restoreMargin } ?? unconfirmedRestore }
 
     /// The field's text shows the inserted text where the cursor was (`before` with `selection` replaced by it), or
     /// at least it grew by it and has it — a field may tidy spacing around it.

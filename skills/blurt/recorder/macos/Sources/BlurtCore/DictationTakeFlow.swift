@@ -161,13 +161,15 @@ public enum DictationASRFailure: Equatable {
     /// the audio — a piece of 20 s gets 45 s. A hung server is told well before that (`hung`).
     public static func serverTimeout(audioSeconds: Double) -> Double { 15 + 1.5 * max(0, audioSeconds) }
 
-    /// A request in flight is given up on as hung: no answer after max(3 s, half the audio) — a decode takes ~5 % of
-    /// the audio (p50 ~130 ms for 3 s), a cold load seconds of busy CPU — while the server's CPU time hasn't moved for
-    /// `stalledFor` s (v0.9 dogfood: a stopped server held a 3 s take 21.6 s, only dots on the island). A server that
-    /// works (loading, decoding, another request first) keeps its CPU moving and is waited for, up to serverTimeout.
+    /// A request in flight is given up on as hung: no answer after `minWait` s while the server's CPU time hasn't
+    /// moved for `stalledFor` s (v0.9 dogfood: a stopped server held a 3 s take 21.6 s, only dots on the island). The
+    /// idle CPU decides, whatever the audio's length: a server that works (loading, decoding a long take, another
+    /// request first) keeps its CPU moving — ~0.5 s of CPU per 0.5 s while decoding a 4-minute file — and is waited
+    /// for, up to serverTimeout. (Waiting half the audio as well held a stopped server's 20 s take 9.5 s; review.)
     public static let stalledFor = 2.0
-    public static func hung(waited: Double, audioSeconds: Double, cpuIdle: Double) -> Bool {
-        waited >= max(3, 0.5 * max(0, audioSeconds)) && cpuIdle >= stalledFor
+    public static let minWait = 3.0
+    public static func hung(waited: Double, cpuIdle: Double) -> Bool {
+        waited >= minWait && cpuIdle >= stalledFor
     }
 }
 

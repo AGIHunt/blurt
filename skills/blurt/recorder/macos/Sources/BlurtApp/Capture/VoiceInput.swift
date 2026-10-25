@@ -245,22 +245,27 @@ final class VoiceInput {
         let pid = WarmServer.pid("asr-serve")
         let h = WarmServer.health("asr-serve", script: "transcribe.py")
         var result: String
+        var oursStuck = false
         switch h {
         case .answers, .working: return false
         case .gone, .notAServer:
             WarmServer.forget("asr-serve", pid: pid)
             result = "forgot"
         case .stuck:
-            if let s = server { WarmSpawn.retire(s.processIdentifier) }      // its `uv` exits with it: not a failed start
+            // our `uv run` goes with it only when the stuck process is its child (told before it ends): a stuck file of
+            // someone else's next to our own server, still starting, leaves ours alone (review)
+            let ours = onMain { server?.isRunning == true ? server?.processIdentifier : nil }
+            oursStuck = ours.map { u in pid.map { descends($0, from: u) } ?? false } ?? false
+            if oursStuck, let u = ours { WarmSpawn.retire(u) }      // its exit is no failed start
             result = pid.map { WarmServer.end("asr-serve", pid: $0) } == true ? "ended" : "not_ended"
         }
-        emit(["event": "asr_server_replaced", "why": why, "health": "\(h)", "pid": pid ?? NSNull(), "result": result])
+        emit(["event": "asr_server_replaced", "why": why, "health": "\(h)", "pid": pid ?? NSNull(), "result": result,
+              "ours": oursStuck])
         let sem = DispatchSemaphore(value: 0)
-        let stuck: Bool = { if case .stuck = h { return true }; return false }()
         DispatchQueue.main.async {
-            // ours was the stuck one: its `uv` goes with it (retired above: its exit starts nothing)
-            if stuck, let s = server, s.isRunning { kill(s.processIdentifier, SIGKILL) }
-            server = nil
+            if oursStuck, let s = server, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+            // a server of ours still starting stays: it writes the run file in a moment (warmSpeechModel waits for it)
+            if oursStuck || server?.isRunning != true { server = nil }
             warmSpeechModel(dictation: true)
             sem.signal()
         }
@@ -289,8 +294,11 @@ final class VoiceInput {
         return true
     }
 
+    /// `body` on the main thread (`server` is the main thread's), from any thread.
+    static func onMain<T>(_ body: () -> T) -> T { Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body) }
+
     /// `pid`'s parent, grandparent … (up to 4) include `ancestor`.
-    private static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
+    static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
         var p = pid
         for _ in 0..<4 {
             var info = proc_bsdinfo()

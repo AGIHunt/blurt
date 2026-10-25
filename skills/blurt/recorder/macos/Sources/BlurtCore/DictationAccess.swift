@@ -81,4 +81,17 @@ public enum DictationFnClash {
         guard key == .fn else { return [] }
         return running.filter { !saidToday($0) }
     }
+
+    public enum Moment: Equatable { case none, now, afterTake }
+    /// When the notice is said: never over a take that is listening — its "Use Right Option" would change the key the
+    /// take must be stopped with (v0.9 review) — but once that take ends, after the island's line about it.
+    public static func moment(apps: [String], listening: Bool) -> Moment {
+        apps.isEmpty ? .none : listening ? .afterTake : .now
+    }
+
+    /// The key changed (Settings, the notice's button) while a take listens: the key it started with no longer stops
+    /// it, so it ends as if that key came up.
+    public static func keyChangeEndsTake(listening: Bool, from: DictationTrigger.Key, to: DictationTrigger.Key) -> Bool {
+        listening && from != to
+    }
 }

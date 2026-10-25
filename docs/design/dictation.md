@@ -154,7 +154,11 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   running are named in Settings → Dictation and the assistant: both apps would react to Fn. They are also said where
   it matters (v0.9 dogfood: a user who never reopens Settings saw the text typed twice and blamed Blurt): when a Fn
   take starts, or one of them launches, once a day per app — "Typeless 也在听 Fn，文字可能输入两次" with **改用右
-  Option** (the key changes at once) and **设置…** (`DictationFnClash`, `Dictation.fnClashNotice`).
+  Option** (the key changes at once) and **设置…** (`DictationFnClash`, `Dictation.fnClashNotice`). Never over a take
+  that is listening: it waits for that take to end and comes after the island's line about it (`moment` →
+  `.afterTake`, a passive line). Any key change while a take listens (Settings, this button) ends the take as if its
+  key came up (`keyChangeEndsTake`; review: a click on the button mid-take left a Fn take listening 135 s with no key
+  to stop it).
 - **Which listener** (BlurtCore `DictationListener`, `DictationListenerTests`). The bug it fixes: a listen-only tap
   made at launch **before** Input Monitoring was granted is accepted by macOS, but it only gets the events aimed at
   Blurt itself, and macOS never upgrades it. `start()` returned early because the tap existed, and the status said
@@ -590,7 +594,9 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    - Accessibility isn't granted (a posted ⌘V wouldn't arrive).
 4. Restore the old pasteboard once the paste has landed — 0.15 s after the field shows the text, or 1.5 s after
    ⌘V when the field can't be read (WeChat, Electron) — unless something else has changed it since (before: a fixed
-   0.6 s that a slow app could beat, then paste — and send — the user's old clipboard). While pastes overlap (a
+   0.6 s that a slow app could beat, then paste — and send — the user's old clipboard). A double tap's Return goes
+   when the field shows the text, or after 0.6 s at the latest (a field that never shows it exactly — it turns
+   quotes or emoji into its own — only delays the clipboard). While pastes overlap (a
    reformat right after a dictation) one snapshot is held: the last paste to finish puts it back, so the user's
    clipboard is never replaced by dictated text (v0.9 dogfood #27).
 5. Only into the app the take started in: when the app in front isn't the one at the key-down (compared by pid), the
@@ -610,9 +616,18 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
   least 2 units, or 1 when both end the same way right after it (「的。」 before 「的。」);
 - **punctuation**: the text after starts with punctuation → no punctuation at the insertion's end; it continues the
   sentence (a CJK character, a lower-case word, a digit) while the text before ends mid-sentence → no closing
-  。.!?！？ (between two whole sentences it stays). The text before ends mid-sentence → no leading 「，」 and no capital
-  the speech model gave (ordinary words only, as at the seams); it ends in punctuation → no second mark at the start
-  (seen: polish repeated the field's 「今天的安排：」 — the overlap and its 「：」 went);
+  。.!?！？ (between two whole sentences it stays). The text before ends mid-sentence → no leading 「，」; it ends in
+  punctuation → no second mark at the start (seen: polish repeated the field's 「今天的安排：」 — the overlap and its
+  「：」 went);
+- **the first word's capital** when the text before stops mid-sentence ("I think ▮"): polish's model decides, as a
+  language model — is " the" or " The" the likelier next word after the text before (`polish.py sentence_case`, on the
+  model's thread, ~20 ms warm)? A capital that only started a sentence goes (margin > 2 nats: a sentence word scored
+  5–11 after "I think"; "Thursday", "John", "Python", "GitHub" keep theirs). Only a word written like a sentence start
+  is asked ("The", not "iOS", "API" or "I"); a word of the user's own list keeps its spelling unasked. A reply too
+  short to polish is asked too (`cmd: "case"`), by a model already loaded only — never a wait. Without polish the words
+  go in as heard (only a transcript heard in lower case keeps it: `keepCase`). The v0.9 dogfood's "I think The new
+  layout is fine." came from the speech model capitalising every piece; the prompt's note alone didn't move the 2B
+  model (`tests/test_polish_case_model.py` with the model: `BLURT_TEST_POLISH_MODEL=…`);
 - **spacing**: a space between Latin words at either seam; between CJK and Latin the field's own way (else the
   dictation's, else spaced, as polish writes);
 - never: anything in the field is deleted or moved; a fit that would leave nothing to insert; a field whose text can't
@@ -697,9 +712,10 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   app's server stopped (SIGSTOP): 25 s from the stop to the text for a 6 s take (before: 243 s).
 - **A hang is told by the server's behaviour** (v0.9 dogfood: 21.6 s of dots for a 3 s take with the server
   stopped; most users would dictate again). The call is asked every ¼ s (`WarmServer.call(giveUp:)`) and given up on
-  as soon as there is no answer after max(3 s, half the audio) **and** the server's CPU time hasn't moved for 2 s
-  (`DictationASRFailure.hung`, `CPUWatch`) — a decode takes ~5 % of the audio, and a server that is loading or busy
-  keeps its CPU moving and is waited for, up to `serverTimeout`. 3 s after the stop a take still on its way says so,
+  as soon as there is no answer after 3 s **and** the server's CPU time hasn't moved for 2 s, whatever the audio's
+  length (`DictationASRFailure.hung`, `CPUWatch`) — a server that is loading or decoding keeps its CPU moving (~0.5 s
+  of CPU per 0.5 s on a 4-minute file) and is waited for, up to `serverTimeout`; waiting half the audio as well held a
+  stopped server's 20 s take 9.5 s. 3 s after the stop a take still on its way says so,
   with the way out: "还在识别… Esc 取消" / "还在润色… Esc 取消" (`Dictation.slowToastKey`; gone when it lands or is
   cancelled).
 - **A stuck server is replaced, also one an earlier app left behind.** Servers end with `os._exit` after removing
@@ -1215,8 +1231,9 @@ probabilities of " English" and of the user's language are read, and the tag is
   by relevance, source and use, and orders them by name; the app sends the file's source and hits with each word,
   so the app and the Dictation Lab send the same words in the same order (`StableOrder` tests).
 - What decided is kept: the server's `tag` (`p_en` / `p_<lang>` without the Words, `p_en_words` with them, `margin` =
-  English share − threshold, `redone`) goes into the history entry (`asr_tags`, one per piece) and the Lab's runs;
-  the Lab flags a tag within 0.02 of the line as a close call (`fragile_tag`, the CLI's "fragile language tag", the
+  logit(English share) − logit(threshold): log-odds, so a clear English piece (0.9999) is +3.9 rather than the 0.005 a
+  linear difference allows on that side of a 0.995 line, `redone`) goes into the history entry (`asr_tags`, one per
+  piece) and the Lab's runs; the Lab flags a tag within 1.0 of the line (a share of about 0.987–0.998) as a close call (`fragile_tag`, the CLI's "fragile language tag", the
   stage view's line). The app-captured wav is a regression test
   (`tests/test_dictation_codeswitch_model.py`, with the model: `BLURT_TEST_QWEN_MODEL=…`), the decode path a model-free
   one (`tests/test_transcribe_language_tag.py`), and the built-in reading script has the sentence (b031).

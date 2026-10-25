@@ -396,7 +396,7 @@
 "dictation.style.reformatted" = "Reformatted as %@";
 "dictation.style.copied" = "Copied as %@ — the text in the field was left alone";
 "dictation.style.copied.edited" = "Copied your edited text as %@ — the field was left alone";
-"dictation.style.copied.original" = "You edited it — copied the dictation as said, as %@";
+"dictation.style.copied.original" = "You edited it — copied the original dictation as %@";
 "dictation.style.undone" = "Back to %@";
 "dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
 "dictation.style.learn.structured" = "Format spoken lists in %@ from now on?";
@@ -513,7 +513,7 @@
 "dictation.toast.not_sent.copied" = "Copied, not sent";
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
-"dictation.toast.tap_mode" = "Tap %@ to start talking (Settings can make it a hold)";
+"dictation.toast.tap_mode" = "Tap %@ to start talking (you can switch to hold in Settings)";
 "dictation.toast.no_polish" = "No polish model yet — typed as you said it";
 "dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may come out wrong";
 "dictation.tip.send" = "Double-tap %@ to send";

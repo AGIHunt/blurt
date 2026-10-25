@@ -71,4 +71,15 @@ final class DictationAccessTests: XCTestCase {
         XCTAssertEqual(DictationFnClash.toMention(key: .rightOption, running: ["Wispr Flow"], saidToday: { _ in false }), [])
         XCTAssertEqual(DictationFnClash.toMention(key: .fn, running: [], saidToday: { _ in false }), [])
     }
+
+    /// v0.9 review: the notice came up over a listening Fn take; its "Use Right Option" changed the key and the take
+    /// listened on (135 s) with no key to stop it.
+    func testTheFnClashNoticeWaitsForTheTakeAndAKeyChangeEndsOne() {
+        XCTAssertEqual(DictationFnClash.moment(apps: ["Typeless"], listening: true), .afterTake)
+        XCTAssertEqual(DictationFnClash.moment(apps: ["Typeless"], listening: false), .now)
+        XCTAssertEqual(DictationFnClash.moment(apps: [], listening: true), .none)
+        XCTAssertTrue(DictationFnClash.keyChangeEndsTake(listening: true, from: .fn, to: .rightOption))
+        XCTAssertFalse(DictationFnClash.keyChangeEndsTake(listening: true, from: .fn, to: .fn))
+        XCTAssertFalse(DictationFnClash.keyChangeEndsTake(listening: false, from: .fn, to: .rightOption))
+    }
 }
