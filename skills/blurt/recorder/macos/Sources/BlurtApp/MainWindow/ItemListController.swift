@@ -1,12 +1,14 @@
-// The middle column: the running jobs (K4) above a view-based NSTableView with fixed row heights. Dense one-line rows
-// everywhere (the Inbox and In Progress grouped by project, a header above each run); All Items shows the same table
-// with a header and every column. The kind / state filter lives in the toolbar's Filter menu (and View ▸ Filter); a
-// quiet line above the list says which filter is on, with Clear, only while one is. Keyboard-first:
-// J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick Look), ⌘C
-// (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen / restore), W won't
-// do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a project in the sidebar
-// (move). In Unassigned, a row an organizing run suggested a project for ends in "Looks like X · Move", and the groups
-// of them sit above the list with Move All (ProjectPicking.swift). Empty states for first run, no matches, nothing yet.
+// The middle column: the place's heading, the running jobs (K4) and the notices above one view-based NSTableView with
+// fixed row heights. One dense row grammar in every place (kind, id, title, the state only where the list doesn't say
+// it, a short date), grouped where it helps (ListSections: the Inbox by project in the one project order, Unassigned
+// last; In Progress, All Items and a project by state). The kind / state filter and the sort live in the toolbar's
+// Filter menu (and the View menu); a quiet line above the list says which filter is on, with Clear, only while one is.
+// Keyboard-first: J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick
+// Look), ⌘C (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen /
+// restore), W won't do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a
+// project in the sidebar (move). In Unassigned, a row an organizing run suggested a project for ends in "Looks like X ·
+// Move", and the groups of them sit above the list with Move All (ProjectPicking.swift). The empty states
+// (EmptyStateView) own the window when a place has nothing: first run, inbox zero, nothing listed yet, a missing folder.
 import AppKit
 import BlurtCore
 import Quartz
