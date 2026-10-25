@@ -79,8 +79,8 @@
 "dictation.history.open" = "打开听写历史…";
 "dictation.history.clear" = "清空历史…";
 "dictation.history.clear.title" = "清空听写历史？";
-"dictation.history.clear.message" = "全部 %ld 条听写和录音都会删除，无法撤销。";
-"dictation.history.clear.confirm" = "清空";
+"dictation.history.clear.undo" = "此操作无法撤销。";
+"dictation.history.clear.confirm" = "清空历史";
 
 /* 听写历史窗口 */
 "dictation.history.title" = "听写历史";

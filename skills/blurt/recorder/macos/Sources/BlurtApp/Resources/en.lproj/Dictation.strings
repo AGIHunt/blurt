@@ -78,9 +78,9 @@
 "dictation.history.keep_audio.detail" = "Off: the recording is deleted as soon as the text is in.";
 "dictation.history.open" = "Open History…";
 "dictation.history.clear" = "Clear History…";
-"dictation.history.clear.title" = "Clear the dictation history?";
-"dictation.history.clear.message" = "All %ld dictations and their audio are deleted. This can’t be undone.";
-"dictation.history.clear.confirm" = "Clear";
+"dictation.history.clear.title" = "Clear dictation history?";
+"dictation.history.clear.undo" = "You can’t undo this.";
+"dictation.history.clear.confirm" = "Clear History";
 
 /* the history window */
 "dictation.history.title" = "Dictation History";

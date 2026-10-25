@@ -162,6 +162,58 @@ final class DictationSettings: ObservableObject {
         DictationHistoryWindow.shared.reloadIfOpen()
         refresh()
     }
+
+    /// Saved dictations whose recording is still on disk (Keep the audio, a failed take kept for Retry, the Lab's
+    /// "keep the next N"): the clear question names recordings only when there are some.
+    func savedRecordings() -> Int {
+        let h = DictationHistory.shared, fm = FileManager.default
+        return h.load().filter { e in e.audio.map { fm.fileExists(atPath: h.resolve($0).path) } ?? false }.count
+    }
+
+    /// The clear question while it shows: one at a time.
+    private(set) var asking: NSAlert?
+
+    /// Clear History…: an alert sheet on the Settings window, like System Settings' own — the app icon, the question,
+    /// what goes (the count; the recordings only when some are kept) and that it can't be undone, on its own line.
+    /// Cancel is the default (↩ and Esc both keep the history); Clear History is the red one and has to be clicked.
+    func askClear() {
+        refresh()
+        let n = historyCount
+        guard n > 0, asking == nil else { return }
+        let audio = savedRecordings()
+        let a = NSAlert()
+        a.alertStyle = .warning
+        a.icon = NSApp.applicationIconImage
+        a.messageText = T("dictation.history.clear.title")
+        a.informativeText = TP(audio > 0 ? "dictation.history.clear.message_audio" : "dictation.history.clear.message", n)
+            + "\n" + T("dictation.history.clear.undo")
+        let cancel = a.addButton(withTitle: T("dictation.cancel"))       // first: the default (↩, drawn filled)
+        cancel.keyEquivalent = "\r"
+        let clear = a.addButton(withTitle: T("dictation.history.clear.confirm"))
+        clear.keyEquivalent = ""
+        // the system's quiet red (its own capsule; macOS 26 ignores a title colour or tint on alert buttons): next to
+        // the filled Cancel it never stands out (system.md: a destructive button is never the one that does)
+        clear.hasDestructiveAction = true
+        asking = a
+        emit(["event": "dictation_clear_ask", "count": n, "recordings": audio])
+        // Esc answers Cancel as well: NSAlert gives Esc only to a Cancel that isn't also the ↩ default
+        let esc = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak a] e in
+            guard e.keyCode == 53, let a = a, e.window === a.window else { return e }
+            a.buttons.first?.performClick(nil)
+            return nil
+        }
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            if let m = esc { NSEvent.removeMonitor(m) }
+            guard let self = self else { return }
+            self.asking = nil
+            let yes = r == .alertSecondButtonReturn
+            emit(["event": "dictation_clear", "cleared": yes])
+            if yes { self.clearHistory() }
+        }
+        if let w = NSApp.windows.first(where: { $0 is SettingsWindow && $0.isVisible }) {
+            a.beginSheetModal(for: w, completionHandler: done)
+        } else { done(a.runModal()) }
+    }
 }
 
 struct DictationPane: View {
@@ -171,7 +223,6 @@ struct DictationPane: View {
     @StateObject var perms = Permissions()
     @ObservedObject var models = DictationModels.shared
     @ObservedObject var guide = PermissionGuide.shared
-    @State var confirmClear = false
     @State var showByApp = false
     /// Advanced (the Dictation Lab): folded unless the Lab is on
     @State var showAdvanced = DictationLabModel.enabled
@@ -198,6 +249,11 @@ struct DictationPane: View {
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             guard let id = n.object as? String else { return }
             if id == "style" { showByApp = true }
+            if id == "clear" {      // tests: `dictation clear ask` — the History section in view, then the question
+                nav.reveal("dictation.history_saved")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { m.askClear() }
+                return
+            }
             let rows = ["style": "dictation.text", "words": "dictation.word_list", "history": "dictation.history_saved"]
             nav.reveal(rows[id] ?? "dictation.\(id)")
         }
@@ -209,10 +265,6 @@ struct DictationPane: View {
         }
         .onAppear { m.start(); perms.start() }
         .onDisappear { m.stop(); perms.stop() }
-        .alert(T("dictation.history.clear.title"), isPresented: $confirmClear) {
-            Button(T("dictation.history.clear.confirm"), role: .destructive) { m.clearHistory() }
-            Button(T("dictation.cancel"), role: .cancel) {}
-        } message: { Text(T("dictation.history.clear.message", m.historyCount)) }
     }
 
     // MARK: how dictating works
@@ -404,7 +456,7 @@ struct DictationPane: View {
                 }
                 SettingMenuToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }))
                 Divider()
-                Button(T("dictation.history.clear"), role: .destructive) { confirmClear = true }
+                Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }
                     .disabled(m.historyCount == 0)
             } label: {
                 Text(T("dictation.history.open"))

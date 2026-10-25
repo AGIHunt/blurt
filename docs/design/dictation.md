@@ -757,7 +757,9 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   history, so the page shows the text as it stands, the first version under it.
 - **Clear History** (Settings) never deletes the audio of a take still listening or on its way
   (`DictationHistory.liveIDs`), and posts `DictationHistory.changed`: reformat-last and the after-typing watch forget
-  the cleared (or deleted) takes.
+  the cleared (or deleted) takes. It asks first in an alert sheet with the app icon (`DictationSettings.askClear`):
+  *Clear dictation history?*, how many go (a plural) and their recordings only when some are still on disk, then *You
+  can't undo this.* on its own line; Cancel is the default (↩ and Esc), *Clear History* the quiet red one.
 
 ## Polish
 
