@@ -559,7 +559,7 @@ final class Dictation {
         t.secondTitle = Loc.t("dictation.toast.fn_clash.settings", table: "Dictation")
         t.second = { AppEnvironment.settings?.show(pane: "dictation") }
         t.seconds = 8
-        t.key = "dictation.fn_clash"
+        t.key = DictationToastKeys.fnClash
         t.passive = via == "after_take"     // behind the take's own line ("Sent", "Copied, not sent")
         island.toast(t)
     }

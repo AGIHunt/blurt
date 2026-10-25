@@ -35,6 +35,8 @@ public enum DictationToastKeys {
     public static let cancel = "dictation.cancel"
     /// "no speech model · Download…" / "the model is ready · Retry"
     public static let model = "dictation.model"
+    /// "Typeless also uses Fn · Use Right Option" (once a day per app; said after a listening take, never over it)
+    public static let fnClash = "dictation.fn_clash"
     /// "Dictation deleted · Undo" (the Dictation page's Delete, said at the notch too)
     public static let historyDeleted = "dictation.history_deleted"
 
