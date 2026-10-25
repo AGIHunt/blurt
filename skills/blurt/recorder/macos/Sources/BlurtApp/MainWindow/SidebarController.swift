@@ -150,9 +150,9 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             node.accessibility = ax
             return node
         }
-        // not items: what was dictated into other apps — a page of its own (DictationPage.swift); the mic, as macOS
-        // marks Dictation (the same mark as Settings → Dictation, the menu and ⌘K)
-        let dictation = place(T("dictation.history.sidebar"), .dictation, "mic", nil, ax: T("main.sidebar.dictation.ax"))
+        // not items: what was dictated into other apps — a page of its own (DictationPage.swift); text typed at a cursor, as
+        // Settings → Dictation, the menu bar and ⌘K mark it (the mic is a voice note's)
+        let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),

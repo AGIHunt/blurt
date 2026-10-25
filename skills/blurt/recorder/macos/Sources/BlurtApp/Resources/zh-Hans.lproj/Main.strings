@@ -302,7 +302,7 @@
 "main.open.prompt" = "打开";
 
 "main.palette.field" = "命令";
-"main.palette.move_to" = "把选中的移到「%@」";
+"main.palette.move_to" = "移到「%@」";
 "main.palette.only_kind" = "只看%@";
 "main.palette.placeholder" = "输入命令、项目或条目…";
 "main.palette.project" = "项目 · %@";
@@ -575,3 +575,18 @@
 "main.toolbar.filter.tip" = "只看某些种类或状态";
 "main.toolbar.title" = "标题";
 "main.sidebar.project_tip" = "%@ · 编号以 %@ 开头";
+"main.palette.section.selected" = "选中的条目";
+"main.palette.section.selected_n" = "选中的条目";
+"main.palette.section.capture" = "录制与截图";
+"main.palette.section.go" = "前往";
+"main.palette.section.items" = "条目";
+"main.palette.section.commands" = "命令";
+"main.palette.chip.n" = "%@ 个条目";
+"main.palette.chip.clear" = "移除";
+"main.palette.chip.help" = "「选中的条目」下的命令作用于这里。在空的输入框里按删除键可以移除。";
+"main.palette.footer.open" = "打开";
+"main.palette.footer.run" = "执行";
+"main.palette.footer.close" = "关闭";
+"main.palette.no_results" = "没有匹配“%@”的命令或条目";
+"main.palette.hint.copy_instruction" = "复制一段指令，粘贴给你自己的 Agent";
+"main.palette.hint.copy_full" = "把整个条目复制为文本";

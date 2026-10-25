@@ -390,11 +390,21 @@ enum SelfTests {
             case "close": pal.close()
             default:
                 if !pal.isOpen { pal.open() }
-                pal.field.stringValue = arg
-                pal.refresh()
+                pal.setQuery(arg)
             }
-            out(["open": pal.isOpen, "selected": pal.table.selectedRow,
-                 "rows": pal.entries.prefix(12).map { "\($0.title)\($0.enabled ? "" : " (off)")" }, "count": pal.entries.count])
+            // rows as shown: "# Section" for a header; selected = the chosen row's title
+            let shown: [String] = pal.rows.prefix(16).map {
+                switch $0 {
+                case .header(let s, _): return "# \(s)"
+                case .note(let s): return "~ \(s)"
+                case .entry(let e): return e.kind == .item ? "\(e.itemID) \(e.title)" : e.title
+                }
+            }
+            let k = pal.table.selectedRow
+            var chosen = ""
+            if k >= 0, k < pal.rows.count, case .entry(let e) = pal.rows[k] { chosen = e.title }
+            out(["open": pal.isOpen, "selected": k, "chosen": chosen, "scope": pal.scope.map(\.itemID),
+                 "rows": shown, "count": pal.entries.count])
         case "maindrag":                // maindrag ROW: what dragging that row out carries (Finder, Terminal, a project)
             let c = MainWindowController.shared
             let w = Int(arg).flatMap { c.list.tableView(c.list.table, pasteboardWriterForRow: $0) } as? NSPasteboardItem

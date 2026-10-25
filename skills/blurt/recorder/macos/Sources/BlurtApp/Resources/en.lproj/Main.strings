@@ -302,7 +302,7 @@
 "main.open.prompt" = "Open";
 
 "main.palette.field" = "Command";
-"main.palette.move_to" = "Move Selection to %@";
+"main.palette.move_to" = "Move to %@";
 "main.palette.only_kind" = "Show Only %@";
 "main.palette.placeholder" = "Type a command, a project or an item…";
 "main.palette.project" = "Project · %@";
@@ -575,3 +575,18 @@
 "main.toolbar.filter.tip" = "Show only some kinds or states";
 "main.toolbar.title" = "Title";
 "main.sidebar.project_tip" = "%@ · its ids start with %@";
+"main.palette.section.selected" = "Selected Item";
+"main.palette.section.selected_n" = "Selected Items";
+"main.palette.section.capture" = "Capture";
+"main.palette.section.go" = "Go To";
+"main.palette.section.items" = "Items";
+"main.palette.section.commands" = "Commands";
+"main.palette.chip.n" = "%@ items";
+"main.palette.chip.clear" = "Clear";
+"main.palette.chip.help" = "The commands under Selected Item act on this. Press Delete in the empty field to clear it.";
+"main.palette.footer.open" = "Open";
+"main.palette.footer.run" = "Run";
+"main.palette.footer.close" = "Close";
+"main.palette.no_results" = "No commands or items match “%@”";
+"main.palette.hint.copy_instruction" = "Copy an instruction to paste into your own agent";
+"main.palette.hint.copy_full" = "Copy the whole item as text";
