@@ -121,13 +121,12 @@ public enum SettingsCatalog {
         sec("dictation.text", "dictation.text.section", "Dictation"),
         sec("dictation.advanced", "settings.general.section.developer"),
 
-        sec("speech.machine", "speech.section.machine", "Speech"),
-        sec("speech.dictation", "speech.section.dictation", "Speech"),
+        // Speech: which model does each job (and is the recommended set in), the languages, a folded Advanced; the
+        // model library is a sheet ("Manage Models…") that a search or a link opens
+        sec("speech.use", "speech.section.use", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
-        sec("speech.models", "speech.section.models", "Speech"),
-        sec("speech.resources", "speech.section.resources", "Speech"),
-        sec("speech.cloud", "speech.section.cloud", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
+        sec("speech.models", "speech.section.models", "Speech"),
 
         sec("shortcuts.anytime", "capture.keys.anytime", "Capture"),
         sec("shortcuts.recording", "capture.keys.while_recording", "Capture"),
@@ -211,22 +210,27 @@ public enum SettingsCatalog {
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech
-            row("speech.auto", "speech.machine", P("speech.auto.title"), detail: P("speech.auto.detail")),
+            row("speech.auto", "speech.use", P("speech.auto.title"), detail: P("speech.auto.detail")),
         ]
         for p in speechPurposes {
-            e.append(row("speech.\(p)", "speech.machine", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
+            e.append(row("speech.\(p)", "speech.use", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
         }
+        // dictation's two models are two more jobs; "speech.dictation" stays the id links use (speech/dictation)
+        let adv = "speech.more"
         e += [
-            whole("speech.dictation", detail: P("speech.dictation.footer")),
+            row("speech.dictation", "speech.use", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
+            row("speech.polish", "speech.use", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
             whole("speech.languages", detail: P("speech.languages.footer")),
+            row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
+            row(adv, "speech.advanced", P("speech.more.title"), detail: P("speech.more.detail")),
+            row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),
+                more: P("speech.limits.footer"), fold: adv),
+            row("speech.concurrent", "speech.advanced", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail"), fold: adv),
+            row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail"), fold: adv),
+            row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail"), fold: adv),
+            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail"), fold: adv),
+            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.cloud.keys"), fold: adv),
             whole("speech.models", detail: P("speech.models.footer")),
-            row("speech.threads", "speech.resources", P("speech.limits.threads"), detail: P("speech.limits.threads.detail")),
-            row("speech.concurrent", "speech.resources", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail")),
-            row("speech.memory", "speech.resources", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
-            row("speech.battery", "speech.resources", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
-            whole("speech.cloud", detail: P("speech.cloud.keys")),
-            row("speech.language", "speech.advanced", P("speech.advanced.language")),
-            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror")),
         ]
 
         // Shortcuts: one row per action (HotkeyCenter.Action), in the page's order, the dictation key among them, then

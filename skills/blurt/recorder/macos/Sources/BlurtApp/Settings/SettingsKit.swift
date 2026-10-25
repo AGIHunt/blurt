@@ -104,6 +104,10 @@ enum SettingsMetrics {
     /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge
     /// (RowPicker, ChoicePopup).
     static let controlWidth: CGFloat = 200
+    /// A row's icon (SettingRow(icon:), SettingsIcon): an 18 pt slot, the text 10 pt after it — every row of a pane
+    /// that uses icons starts its text at the same x (28).
+    static let iconSlot: CGFloat = 18
+    static let iconGap: CGFloat = 10
     static let ground = Color(nsColor: .controlBackgroundColor)
     /// the box on the page's ground: a few percent of ink, so it holds in light, dark and Increase Contrast alike
     static let boxFill = Color.primary.opacity(0.035)
@@ -146,7 +150,6 @@ struct SettingsPage<Content: View>: View {
     /// types: never a page that jumps back under the user.
     @State private var hold: Hold?
     private struct Hold { let id: String; let anchor: UnitPoint; let since: Date; var until: Date }
-
     init(_ pane: SettingsPane, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.pane = pane
         self.subtitle = subtitle
@@ -298,7 +301,8 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
         self.accessory = accessory()
         self.content = content()
     }
-    /// Untitled: rows that close the page (Restore defaults).
+    /// Untitled: rows that close the page (Restore defaults). (`title: ""` on the catalogue init: a section without a
+    /// heading whose first row keeps its hairline — a disclosure row that ends a page.)
     init(footer: String? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.footer = footer
         self.accessory = accessory()
@@ -309,7 +313,7 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let t = title {
+            if let t = title, !t.isEmpty {
                 HStack(spacing: 8) {
                     if let d = disclosure {
                         Button {
@@ -447,10 +451,8 @@ struct SettingRow<Control: View>: View {
         SettingsLine(flashID: id, hosts: hosts) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .center, spacing: 14) {
-                    if let i = icon {
-                        Image(systemName: i).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                            .frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
-                    }
+                    HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    if let i = icon { SettingsIcon(i) }
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(alignment: .firstTextBaseline, spacing: 5) {
                             Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
@@ -462,10 +464,13 @@ struct SettingRow<Control: View>: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         } else if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
                     }
+                    }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     control
                 }
-                if detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
+                if detailBelow, let d = detailText, !d.isEmpty {
+                    detailView(d).padding(.leading, icon == nil ? 0 : SettingsMetrics.iconSlot + SettingsMetrics.iconGap)
+                }
             }
         }
         .id(id)
@@ -511,20 +516,32 @@ struct SettingToggle: View {
     var title: String?
     var detail: String?
     var help: String?
+    var icon: String?
 
-    init(_ id: String, isOn: Binding<Bool>, title: String? = nil, detail: String? = nil, help: String? = nil) {
+    init(_ id: String, isOn: Binding<Bool>, title: String? = nil, detail: String? = nil, help: String? = nil, icon: String? = nil) {
         self.id = id
         self.isOn = isOn
         self.title = title
         self.detail = detail
         self.help = help
+        self.icon = icon
     }
 
     var body: some View {
-        SettingRow(id, title: title, detail: detail, help: help) {
+        SettingRow(id, title: title, detail: detail, help: help, icon: icon) {
             Toggle(title ?? SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id, isOn: isOn)
                 .labelsHidden().toggleStyle(.switch).controlSize(.small)
         }
+    }
+}
+
+/// A row's leading icon: an SF Symbol in the 18 pt slot, secondary (what the row is about, not a state).
+struct SettingsIcon: View {
+    let name: String
+    init(_ name: String) { self.name = name }
+    var body: some View {
+        Image(systemName: name).font(.system(size: 15, weight: .regular)).foregroundStyle(.secondary)
+            .frame(width: SettingsMetrics.iconSlot).accessibilityHidden(true)
     }
 }
 

@@ -280,9 +280,11 @@
 "settings.kw.dictation.mic" = "麦克风, 蓝牙, AirPods, 耳机, 输入设备";
 "settings.kw.dictation.models" = "识别模型, 语音模型, 润色模型, 大模型, ASR, Qwen, Gemma, 下载";
 "settings.kw.speech.auto" = "自动, 推荐, 选择模型";
-"settings.kw.speech.dictation" = "听写模型, 润色模型, 下载, Qwen, Gemma";
+"settings.kw.speech.dictation" = "听写模型, 识别模型, 下载, Qwen";
+"settings.kw.speech.polish" = "润色模型, 整理, 标点, Gemma";
 "settings.kw.speech.languages" = "语言, 多语言, 方言";
-"settings.kw.speech.models" = "测速, 准确率, 速度, 内存, 下载, Whisper, SenseVoice";
+"settings.kw.speech.models" = "管理模型, 测速, 准确率, 速度, 内存, 下载, 移除, Whisper, SenseVoice";
+"settings.kw.speech.more" = "资源, 性能, 云端";
 "settings.kw.speech.threads" = "CPU, 核心, 线程, 性能";
 "settings.kw.speech.concurrent" = "并行, 同时, 排队";
 "settings.kw.speech.memory" = "GPU, 显存, 内存";

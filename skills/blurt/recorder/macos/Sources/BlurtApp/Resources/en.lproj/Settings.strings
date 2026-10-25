@@ -281,9 +281,11 @@
 "settings.kw.dictation.mic" = "microphone, mic, bluetooth, AirPods, headset, input";
 "settings.kw.dictation.models" = "speech model, polish model, recognition, ASR, LLM, Qwen, Gemma, download";
 "settings.kw.speech.auto" = "automatic, recommended, choose model";
-"settings.kw.speech.dictation" = "dictation model, polish model, download, Qwen, Gemma";
+"settings.kw.speech.dictation" = "dictation model, speech model, download, Qwen";
+"settings.kw.speech.polish" = "polish model, tidy, punctuation, Gemma";
 "settings.kw.speech.languages" = "language, languages, multilingual";
-"settings.kw.speech.models" = "benchmark, measure, accuracy, speed, memory, download, Whisper, SenseVoice";
+"settings.kw.speech.models" = "manage models, benchmark, measure, accuracy, speed, memory, download, remove, Whisper, SenseVoice";
+"settings.kw.speech.more" = "resources, performance, cloud";
 "settings.kw.speech.threads" = "CPU, cores, threads, performance";
 "settings.kw.speech.concurrent" = "parallel, at a time, queue";
 "settings.kw.speech.memory" = "GPU, memory, RAM, VRAM";
