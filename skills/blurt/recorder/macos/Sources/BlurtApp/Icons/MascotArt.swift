@@ -9,7 +9,9 @@
 // sample it at any rate (`mascotframes`). The chick is posed part by part about its foot: a hop with squash and stretch,
 // a tilt, the wings flapping (drawn whole behind the body, so the body hides all but the nub, as on the icon), the eyes
 // blinking, looking or smiling (^ ^), the beak opening, the sound arcs pulsing; props: the egg it hatches from (cracks,
-// the cap flies off, it hops out of the cup), thought dots, sparkles, the bug it pounces on.
+// the cap flies off and shrinks away, it hops out of the cup, which sinks), thought dots, sparkles, the bug it pounces
+// on. Shell pieces stay opaque (a fading shell reads as a grey ghost). On a dark backdrop the chick and egg get a thin
+// white rim (MascotStyle.rim), the logo's sticker edge made thinner, so the black line reads on the island's black.
 //
 //   idle       breathes, blinks, glances aside (loop)
 //   listening  head tilted, the sound arcs pulse outward, inner then outer (loop; the menu-bar glyph does the same)
@@ -65,10 +67,11 @@ struct MascotPose {
     var egg = false                    // the whole egg (the chick inside, not drawn)
     var eggTilt: CGFloat = 0
     var crack: CGFloat = 0             // how much of the crack is drawn
-    var cup: CGFloat = 0               // the bottom shell's opacity (the chick drawn inside it)
+    var cup: CGFloat = 0               // the bottom shell's size (0 gone … 1 whole; opaque, it shrinks into the ground)
     var inCup = false                  // the chick is still in the cup: nothing of it shows below the shell
     var cupDrop: CGFloat = 0
-    var cap: (alpha: CGFloat, dx: CGFloat, dy: CGFloat, turn: CGFloat) = (0, 0, 0, 0)
+    /// the flying top shell: shown (0/1, it stays opaque), where it has flown, its turn, its size (it shrinks away)
+    var cap: (alpha: CGFloat, dx: CGFloat, dy: CGFloat, turn: CGFloat, size: CGFloat) = (0, 0, 0, 0, 1)
     // the bug and the sparkles
     var bug: CGFloat = 0               // opacity
     var bugSquish: CGFloat = 0
@@ -77,7 +80,8 @@ struct MascotPose {
 
 /// How a mascot is drawn besides its pose: what it sits on and how small it is.
 struct MascotStyle {
-    /// Sits on a dark backdrop (the island, dark mode): the free marks (arcs, dots) turn light and the ground shadow goes.
+    /// Sits on a dark backdrop (the island, dark mode): the free marks (arcs, dots) turn light, the ground shadow goes
+    /// (and `forSize` turns on `rim`).
     var dark = false
     /// 32 pt and less: the small icon's drawing (heavier line, one arc, filled beak, no glints).
     var small = false
@@ -85,9 +89,12 @@ struct MascotStyle {
     var minLine: CGFloat = 0
     /// A white sticker edge round the art, as on the logo: for pictures shown on any backdrop (notifications).
     var sticker = false
+    /// A thin light edge round the chick and the egg on a dark backdrop, so the black line (the logo's tuft, the wing
+    /// nubs, the shell) still reads on the island's black; the free marks are light already and get none.
+    var rim = false
 
     static func forSize(_ points: CGFloat, dark: Bool, scale: CGFloat = 2) -> MascotStyle {
-        MascotStyle(dark: dark, small: points <= 32, minLine: 1.3 * scale)
+        MascotStyle(dark: dark, small: points <= 32, minLine: 1.3 * scale, rim: dark)
     }
 }
 
@@ -170,11 +177,13 @@ enum MascotArt {
             } else {
                 // the cap flies off up and to the right, turning; the chick pops up in the cup, then hops out of it
                 let f = span(t, 0.95, 1.5)
-                p.cap = (alpha: 1 - span(t, 1.12, 1.32), dx: 300 * f, dy: -560 * f + 380 * f * f, turn: 1.2 * f)
+                // it stays a solid piece of shell and shrinks away (a fade showed the chick through a grey ghost)
+                let gone = smooth(span(t, 1.18, 1.5))
+                p.cap = (alpha: gone < 1 ? 1 : 0, dx: 380 * f, dy: -620 * f + 400 * f * f, turn: 1.2 * f, size: 1 - gone)
                 let rise = Ease.outBack(span(t, 0.95, 1.3), 1.3)
                 p.inCup = t < 1.5
-                p.cup = 1 - span(t, 1.5, 1.62)
-                p.cupDrop = 30 * span(t, 1.5, 1.62)
+                p.cup = 1 - smooth(span(t, 1.5, 1.66))
+                p.cupDrop = 20 * span(t, 1.5, 1.66)
                 p.scale = 0.82 + 0.18 * smooth(span(t, 1.5, 1.8))
                 let h = hop(t, at: 1.5, air: 0.3, height: 150)
                 p.lift = h.lift - 330 * (1 - rise)
@@ -223,7 +232,8 @@ enum MascotArt {
     }
 
     /// What should hold of every clip (the `mascotcheck` self-test): one-shots end on the chick at rest, where `idle`
-    /// (onboarding's `then`) begins, so nothing jumps; loops join up; every still moment draws something. Problems, or [].
+    /// (onboarding's `then`) begins, so nothing jumps; loops join up; every still moment draws something;
+    /// shell pieces are never half-transparent; on black the chick's edge is the light rim. Problems, or [].
     static func check() -> [String] {
         var bad: [String] = []
         func near(_ a: CGFloat, _ b: CGFloat, _ eps: CGFloat = 0.01) -> Bool { abs(a - b) <= eps }
@@ -242,6 +252,28 @@ enum MascotArt {
                 }
             }
             if t.still < 0 || t.still > t.duration { bad.append("\(c.rawValue): still moment outside the clip") }
+            // shell pieces are solid or gone, never a half-transparent ghost
+            for i in 0...60 where ![0, 1].contains(pose(c, at: t.duration * Double(i) / 60).cap.alpha) {
+                bad.append("\(c.rawValue): the cap is half-transparent"); break
+            }
+        }
+        // on black the chick's outer edge is the light rim, not its black line lost in the backdrop (ear and toast sizes)
+        for points: CGFloat in [24, 56] {
+            let px = Int(points * 2)
+            guard let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: px * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { continue }
+            ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: px, height: px))
+            draw(ctx, in: CGRect(x: 0, y: 0, width: px, height: px), pose: pose(.idle, at: 0), style: .forSize(points, dark: true))
+            let bytes = data.bindMemory(to: UInt8.self, capacity: px * px * 4)
+            // the first lit pixel from the left, along the row through the body's middle (the wing nub's side)
+            let row = px / 2
+            let rgb = (0..<px).map { x in (0..<3).map { Int(bytes[(row * px + x) * 4 + $0]) } }
+            // past the anti-aliased first pixel: the whitest of the next few (its weakest channel, so the yellow
+            // wing does not pass for the rim), before the black line begins
+            let edge = rgb.firstIndex { $0.max()! > 40 }.map { i in rgb[i..<min(px, i + 3)].map { $0.min()! }.max()! }
+            if (edge ?? 0) < 200 { bad.append("on dark at \(Int(points)) pt the chick's edge is not light") }
         }
         return bad
     }
@@ -310,8 +342,8 @@ enum MascotArt {
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         let ink = Painter(g: g, style: style, line: max(g.line, style.minLine / k))
-        if style.sticker {
-            // the logo's sticker edge: the same drawing in white, a wide line, under everything
+        if style.sticker || style.rim {
+            // the logo's sticker edge (or the thinner rim on dark): the same drawing in white, a wide line, under everything
             ink.sticker = true
             ink.paint(ctx, pose)
             ink.sticker = false
@@ -320,7 +352,8 @@ enum MascotArt {
         ctx.restoreGState()
     }
 
-    /// Paints the parts in order. `sticker`: everything in white with a wide line (the edge under the art).
+    /// Paints the parts in order. `sticker`: the edge pass, everything in white with a wide line (under the art); with
+    /// only `style.rim` the line is thinner and the free marks (arcs, sparkles) are left out.
     private final class Painter {
         let g: MascotGeometry
         let style: MascotStyle
@@ -337,7 +370,9 @@ enum MascotArt {
         var lineColor: CGColor { color(MascotPalette.line) }
         /// arcs, dots: on a dark backdrop the line colour would vanish
         func free(_ a: CGFloat) -> CGColor { color(style.dark ? MascotPalette.inkOnDark : MascotPalette.line, a) }
-        var width: CGFloat { sticker ? line * 3.4 : line }
+        var width: CGFloat { sticker ? line * (style.sticker ? 3.4 : 2.2) : line }
+        /// the rim's pass: only the chick and the egg get an edge
+        var rimOnly: Bool { sticker && !style.sticker }
 
         func paint(_ ctx: CGContext, _ p: MascotPose) {
             if p.bug > 0 && !sticker { bug(ctx, p) }
@@ -357,7 +392,7 @@ enum MascotArt {
                 ctx.restoreGState()
             }
             if !eggFirst && (p.egg || p.cup > 0 || p.cap.alpha > 0) { egg(ctx, p) }
-            for s in p.sparkles where s.alpha > 0 { sparkle(ctx, s.at, s.size, s.alpha, warm: s.warm) }
+            if !rimOnly { for s in p.sparkles where s.alpha > 0 { sparkle(ctx, s.at, s.size, s.alpha, warm: s.warm) } }
         }
 
         /// The chick's transform: about its foot, moved, lifted, tilted, squashed.
@@ -483,6 +518,7 @@ enum MascotArt {
         }
 
         func arcs(_ ctx: CGContext, _ p: MascotPose) {
+            if rimOnly { return }
             ctx.setLineWidth(width)
             for (i, a) in g.arcs.enumerated() {
                 let alpha = i < p.arcs.count ? p.arcs[i] : 1
@@ -538,12 +574,12 @@ enum MascotArt {
                     ctx.restoreGState()
                 }
             } else if p.cup > 0 {
-                ctx.setAlpha(p.cup)
-                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                // solid all the way: it shrinks about its bottom (a fade showed a grey ghost of the shell)
+                ctx.translateBy(x: pivot.x, y: pivot.y)
+                ctx.scaleBy(x: 0.4 + 0.6 * p.cup, y: p.cup)
+                ctx.translateBy(x: -pivot.x, y: -pivot.y)
                 ctx.addPath(e.cup); ctx.setFillColor(color(MascotPalette.shell)); ctx.fillPath()
                 ctx.addPath(e.cup); ctx.strokePath()
-                ctx.endTransparencyLayer()
-                ctx.setAlpha(1)
             }
             ctx.restoreGState()
             if !p.egg && p.cap.alpha > 0 {
@@ -551,12 +587,10 @@ enum MascotArt {
                 let c = CGPoint(x: g.cx, y: e.crackY - 200)
                 ctx.translateBy(x: c.x + p.cap.dx, y: c.y + p.cap.dy)
                 ctx.rotate(by: p.cap.turn)
+                ctx.scaleBy(x: p.cap.size, y: p.cap.size)
                 ctx.translateBy(x: -c.x, y: -c.y)
-                ctx.setAlpha(p.cap.alpha)
-                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
                 ctx.addPath(e.cap); ctx.setFillColor(color(MascotPalette.shell)); ctx.fillPath()
                 ctx.addPath(e.cap); ctx.setLineWidth(width); ctx.setStrokeColor(lineColor); ctx.strokePath()
-                ctx.endTransparencyLayer()
                 ctx.restoreGState()
             }
         }

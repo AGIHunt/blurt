@@ -65,7 +65,8 @@ The mac app's mascot (onboarding hero, the island, notifications) is this chick 
 - `chick.swift` writes `skills/blurt/recorder/macos/Sources/BlurtApp/Icons/MascotGeometry.swift` from `master` and
   `small`, plus the mascot palette (`mascotPalette`): the icon's `#17140F` line and eyes, a warm butter-yellow body
   `#FFC83D` (the yellow of the earlier 1A mascot), wings `#F7B52A`, a coral beak `#FF7A45`, faint cheeks, the egg's
-  shell, and `#F4F1EA` for the free marks (arcs, thought dots) on dark backdrops. The art's colours live here with
+  shell, and `#F4F1EA` for the free marks (arcs, thought dots) on dark backdrops, where the chick and egg also get a
+  thin white rim (the sticker edge, thinner) so the black line reads on the island. The art's colours live here with
   the art; the UI's live in `tokens.json`.
 - `Icons/MascotArt.swift` poses it part by part (hops, tilt, flapping wings drawn whole behind the body, blinks, ^ ^
   eyes, open beak, pulsing arcs, the egg it hatches from, sparkles, the bug in `peck`); `Icons/Mascot.swift` plays the

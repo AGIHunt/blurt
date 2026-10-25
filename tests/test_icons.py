@@ -233,6 +233,8 @@ def test_mac_mascot_is_the_brand_chick_in_code():
     for clip in ("idle", "listening", "thinking", "wobble", "hatching", "happy", "peck"):
         assert f"case .{clip}:" in art, clip
     assert "webp" not in player and "CGImageSource" not in player
+    # on a dark backdrop (the island) the chick keeps its line with a thin light rim (MascotArt.check renders it)
+    assert "rim: dark" in art and "on black the chick's edge is the light rim" in art
     app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
     src = "\n".join(p.read_text() for p in app.rglob("*.swift"))
     # the old drawn hen and egg are gone

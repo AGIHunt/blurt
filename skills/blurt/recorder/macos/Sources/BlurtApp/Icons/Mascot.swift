@@ -8,7 +8,8 @@
 //   MascotImage(clip: .idle, size: 64, backdrop: .light)                             SwiftUI
 //
 // `backdrop`: what the chick sits on — the island is always dark, the onboarding field reads as light; `.auto` follows
-// the view's appearance. On dark the free marks (sound arcs, thought dots) turn light and the ground shadow goes.
+// the view's appearance. On dark the free marks (sound arcs, thought dots) turn light, the ground shadow goes, and the
+// chick and egg get a thin white rim so their black line still reads on black.
 //
 // One shared 60 fps timer drives every playing layer and stops when none plays. Each tick renders the clip's pose at
 // that moment into the layer's model `contents` (no CAAnimation), so offscreen renders (FrameCapture, `mascotframes`)

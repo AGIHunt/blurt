@@ -454,15 +454,17 @@ yellow and its bounce.
 - **Colour**: a warm butter-yellow body (`#FFC83D`, the 1A yellow) under the line, wings a shade deeper, a coral beak,
   faint cheeks, a soft shade low on the body. The art's colours live in `chick.swift` with the art, like the icon's
   line and white body; the UI's colours stay in `tokens.json`. On a dark backdrop (the island, dark mode) the free
-  marks (sound arcs, thought dots) turn light (`#F4F1EA`) and the ground shadow goes; the body keeps its line. On
-  the onboarding field it reads as on a light backdrop, like the icon on its tile. Notification pictures carry the
-  logo's white sticker edge.
+  marks (sound arcs, thought dots) turn light (`#F4F1EA`), the ground shadow goes, and the chick and the egg get a
+  thin white rim (the logo's sticker edge, thinner) so their black line — the tuft, the wing nubs, the shell — still
+  reads on the island's black; the arcs and sparkles get none. On the onboarding field it reads as on a light
+  backdrop, like the icon on its tile. Notification pictures carry the logo's full white sticker edge.
 - **Motion** (`Icons/MascotArt.swift`, vector, drawn for each moment at 60 fps while it plays): posed part by part
   about the foot — hops with squash and stretch, tilt, wings that flap (drawn whole behind the body, so at rest only
   the nub shows, as on the icon), blinks, glances, ^ ^ eyes, an open beak, sound arcs that pulse. Clips: `idle`
   (breathes, blinks, glances), `listening` (head tilted, the arcs pulse outward, inner then outer — like the menu-bar
   glyph), `thinking` (eyes up, thought dots where the arcs were), `wobble` (the egg rocking: organizing), `hatching`
-  (the egg cracks, the cap flies off, the chick pops up and hops out, ending where `idle` begins), `happy` (two hops,
+  (the egg cracks, the cap flies off and shrinks away, the chick pops up and hops out, the cup sinks; shell pieces
+  stay solid, never half-transparent; ending where `idle` begins), `happy` (two hops,
   wings up, sparkles), `peck` (spots a bug, pounces on it, the bug goes in a sparkle, a hop back). Sparkles are warm
   yellow and coral, without a line.
 - **Reduce Motion**: each clip's still moment, which says the same thing (the happy face, the listening tilt with
