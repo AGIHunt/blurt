@@ -115,6 +115,8 @@ final class DictationStream {
         var structureReason: String?
         /// the speech model couldn't recognise the take (nil: it did — an empty text is then silence)
         var asrError: DictationASRFailure?
+        /// each piece's language tag and how sure the model was (transcribe.py's `tag`; the history keeps them)
+        var tags: [[String: Any]] = []
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -289,7 +291,8 @@ final class DictationStream {
                                                    heardEnd: DictationStitch.splitTrailing(prev.raw).end)
             }
         } else if DictationStitch.midSentence(so) {
-            // the model capitalised a window that continues a sentence
+            // the model capitalised a window that continues a sentence: polish.py already asked its model whether the
+            // capital is a name's (`case`); this keeps a lower-case transcript's case when it was not asked
             out = DictationStitch.keepCase(input: input, output: out)
         }
         let model = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
@@ -473,12 +476,14 @@ final class DictationStream {
         }
         let first = ps.first { $0.asr != nil }?.asr ?? [:]
         let repaired = ps.flatMap { ($0.polish?["repaired"] as? [String]) ?? [] }
-        return Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: polished, fellBack: fellBack,
-                      reason: reason, model: pol.first { $0["model"] is String }?["model"] as? String,
-                      asrModel: first["model"] as? String, language: first["language"] as? String,
-                      biased: first["biased"] as? Bool ?? false, terms: terms,
-                      contextUsed: pol.contains { $0["context"] as? Bool == true }, repaired: repaired,
-                      segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+        var r = Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: polished, fellBack: fellBack,
+                       reason: reason, model: pol.first { $0["model"] is String }?["model"] as? String,
+                       asrModel: first["model"] as? String, language: first["language"] as? String,
+                       biased: first["biased"] as? Bool ?? false, terms: terms,
+                       contextUsed: pol.contains { $0["context"] as? Bool == true }, repaired: repaired,
+                       segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+        r.tags = ps.compactMap { $0.asr?["tag"] as? [String: Any] }
+        return r
     }
 
     /// One piece for the Dictation Lab (what each stage made of it, and how long it took).
@@ -489,7 +494,8 @@ final class DictationStream {
                                 "asr_text": p.asrText, "raw": p.raw, "asr_ms": ms(p.asrSpan), "text": p.text,
                                 "polish_in": p.polishInput, "polished": p.polishedPart, "polish_ms": ms(p.polishSpan),
                                 "fell_back": p.polish?["fell_back"] as? Bool ?? false, "reason": p.polish?["reason"] ?? NSNull(),
-                                "repaired": p.polish?["repaired"] as? [String] ?? [], "load_ms": p.loadMS]
+                                "repaired": p.polish?["repaired"] as? [String] ?? [], "load_ms": p.loadMS,
+                                "tag": p.asr?["tag"] ?? NSNull(), "case": p.polish?["case"] ?? NSNull()]
         let g: Double? = p.index < gaps.count ? gaps[p.index] : nil
         o["pause_after"] = g.map { ($0 * 100).rounded() / 100 as Any } ?? NSNull()
         return o
@@ -536,7 +542,7 @@ final class DictationStream {
         var timing = ["asr_ms": Int((t1 - t0) * 1000), "polish_ms": Int((t2 - t1) * 1000), "segments": n,
                       "load_ms": (r["load_ms"] as? Int ?? 0) + (pol?["load_ms"] as? Int ?? 0)]
         timing["total_ms"] = Int((t2 - keyUp) * 1000)
-        return Result(raw: raw, asrText: r["asr_text"] as? String ?? raw, text: text, polished: pol?["polished"] as? String,
+        var out = Result(raw: raw, asrText: r["asr_text"] as? String ?? raw, text: text, polished: pol?["polished"] as? String,
                       fellBack: pol?["fell_back"] as? Bool ?? false, reason: pol?["reason"] as? String,
                       model: pol?["model"] as? String, asrModel: r["model"] as? String, language: r["language"] as? String,
                       biased: r["biased"] as? Bool ?? false, terms: (r["terms"] as? [String] ?? []) + (pol?["terms"] as? [String] ?? []),
@@ -546,7 +552,10 @@ final class DictationStream {
                                 "asr_text": r["asr_text"] as? String ?? raw, "raw": raw, "asr_ms": timing["asr_ms"] ?? 0,
                                 "text": text, "polish_in": raw, "polished": pol?["polished"] ?? NSNull(),
                                 "polish_ms": timing["polish_ms"] ?? 0, "fell_back": pol?["fell_back"] as? Bool ?? false,
-                                "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? []]])
+                                "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? [],
+                                "case": pol?["case"] ?? NSNull()]])
+        if let t = r["tag"] as? [String: Any] { out.tags = [t] }
+        return out
     }
 
     /// What the user waited for after key-up (the work before it was hidden behind the talking), and the total.

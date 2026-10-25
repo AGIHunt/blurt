@@ -266,6 +266,18 @@ final class DictationLiveDecodeTests: XCTestCase {
         let (c3, p3) = DictationLiveDecode.compose([.interim("hello there", hard: false)], pauses: [])
         XCTAssertEqual([c3, p3], ["", "hello there"])
     }
+
+    /// v0.9 dogfood: every fragment of the piece still being said ended in 。 or ? — it read as Blurt cutting the user
+    /// off. The provisional words stay open; the finished ones keep their marks.
+    func testTheWordsStillBeingSaidStayOpen() {
+        XCTAssertEqual(DictationLiveDecode.compose([.interim("我现在。", hard: false)], pauses: []).pending, "我现在")
+        XCTAssertEqual(DictationLiveDecode.compose([.final("Fix it."), .interim("nothing on?", hard: false)], pauses: [0.5]).pending,
+                       " nothing on")
+        XCTAssertEqual(DictationLiveDecode.compose([.final("第一段。"), .final("第二段。")], pauses: [1.5]).committed, "第一段。第二段。")
+        XCTAssertEqual(DictationLiveDecode.openEnded("wait..."), "wait...")          // an ellipsis is the speaker's
+        XCTAssertEqual(DictationLiveDecode.openEnded("好的。 "), "好的")
+        XCTAssertEqual(DictationLiveDecode.openEnded("还在说"), "还在说")
+    }
 }
 
 /// A small deterministic generator (the simulation is the same every run).

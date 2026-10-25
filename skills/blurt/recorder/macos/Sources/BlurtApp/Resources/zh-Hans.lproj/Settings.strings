@@ -124,7 +124,7 @@
 "onboarding.dictation_key" = "听写键";
 "onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。";
 "onboarding.dictation_key.other" = "按一下%@开始听写，再按一下结束；也可以按住说话，松开结束。";
-"onboarding.dictation_key.send" = "说完连按两下%@：文字填进去并发送（回车）。";
+"onboarding.dictation_key.send" = "说完按两下%@：文字填进去并发送（回车）。";
 "settings.perm.not_needed" = "不需要";
 "settings.general.dictation_lab" = "显示听写测试台（开发者用）";
 "settings.general.dictation_lab.hint" = "给开发者打磨听写效果用：照稿朗读、对比模型、标注错误、重跑保存的用例。在主窗口的「听写」页。";
@@ -166,6 +166,7 @@
 "onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
 "onboarding.try" = "试一下";
 "onboarding.try.detail" = "点一下输入框，按一下%@ 说句话，说完再按一下。";
+"onboarding.try.detail.hold" = "点一下输入框，按住%@ 说句话，说完松开。";
 "onboarding.try.placeholder" = "说的话会出现在这里";
 "onboarding.try.works" = "听写可以用了。";
 "onboarding.try.needs_permissions" = "听写要先开好权限。";
@@ -173,10 +174,10 @@
 "onboarding.try.asr_downloading" = "语音模型还在下载，下载好就能试。";
 "onboarding.try.no_model" = "听写要先下载语音模型。";
 "onboarding.try.polish_coming" = "听写已经能用了；润色模型下载完后文字会更顺（还剩 %@）。";
-"onboarding.try.send_next" = "再试试发送：说完连按两下%@，而不是按一下。";
+"onboarding.try.send_next" = "再试试发送：说完按两下%@，而不是按一下。";
 "onboarding.try.sent" = "这就是发送：在别的 App 里，文字填进去后会按回车。";
-"onboarding.try.send" = "想直接发送就连按两下：文字填进去并按回车。";
-"onboarding.use.dictation.detail" = "按一下说，再按一下停 · 连按两下发送";
+"onboarding.try.send" = "想直接发送就按两下：文字填进去并按回车。";
+"onboarding.use.dictation.detail" = "按一下说，再按一下停 · 按两下发送";
 "onboarding.use.dictation.detail_plain" = "按一下说，再按一下停";
 "settings.storage.dictation_history" = "历史";
 "settings.storage.dictation_audio" = "保留的录音";
@@ -239,7 +240,7 @@
 
 "settings.kw.pane.general" = "应用, 偏好, 选项, 通用";
 "settings.kw.pane.dictation" = "听写, 语音输入法, 说话打字, 语音转文字";
-"settings.kw.pane.speech" = "语音识别, 转写, 识别模型, ASR, 模型";
+"settings.kw.pane.speech" = "语音识别, 转写, 语音模型, 识别模型, ASR, 模型";
 "settings.kw.pane.shortcuts" = "快捷键, 热键, 键盘, 按键, 组合键";
 "settings.kw.pane.agents" = "Agent, AI, 编程助手";
 "settings.kw.pane.privacy" = "权限, 隐私, 安全";
@@ -265,7 +266,7 @@
 "settings.kw.dictation.enable" = "开启, 关闭, 打开听写";
 "settings.kw.dictation.key" = "Fn, 地球键, Option, 右 Option, 触发键";
 "settings.kw.dictation.mode" = "按一下, 按住, 按住说话, 切换";
-"settings.kw.dictation.double_tap" = "回车, 发送, 双击, 连按两下";
+"settings.kw.dictation.double_tap" = "回车, 发送, 按两下, 双击, 连按两下";
 "settings.kw.dictation.fn_capture" = "Fn, 地球键, 表情, 输入法";
 "settings.kw.dictation.default_style" = "润色, 原话, 轻整理, 结构化, 自动, 整理";
 "settings.kw.dictation.by_app" = "按应用, 应用类型, 聊天, 代码, 邮件, 笔记";

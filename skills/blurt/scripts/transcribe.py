@@ -87,8 +87,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
-                     use_system_certs)
+                     load_json, probe_duration, save_json, server_exit, serve_exit_reason, serve_said,
+                     update_global_config, use_system_certs)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
 
@@ -1322,6 +1322,8 @@ class Qwen3Mlx(MlxBackend):
     def _decode(self, x, ctx: str, prior: str) -> tuple[str, str | None]:
         prefer = self.prefer or ("Chinese" if not self.args.language and dictation_vocab.cjk_share(prior) >= 0.3 else None)
         self.last = {}
+        # the language tag is read from the prompt without the Words (only the text so far): see _decode_tagged
+        self.tag_context = prior
         # an interim request goes through our own loop even without a preferred tag: it has to be able to stop
         if (prefer or self.stop_check is not None) and self.tagged:
             try:
@@ -1335,12 +1337,20 @@ class Qwen3Mlx(MlxBackend):
         return (r.text or "").strip(), lang_code(getattr(r, "language", None))
 
     def _decode_tagged(self, x, ctx: str, prefer: str | None) -> tuple[str, str | None]:
-        """mlx-qwen3-asr's decode, with the language tag chosen here: the prompt is prefilled up to `language`, the
-        model's probabilities for English and `prefer` are read at the tag, and `prefer` wins unless English is all
-        but certain (dictation_vocab.choose_tag). English that still reads like the Chinese around a name translated
-        (Chinese characters in it, or nothing but names and function words) is decoded once more under `prefer`.
-        The same work as one plain decode; the extra decode only in that case. prefer None (an interim request with no
-        preferred language): the model's own tag, as the plain decode does."""
+        """mlx-qwen3-asr's decode, with the language tag chosen here (docs/design/dictation.md §Code-switching).
+
+        The tag comes from a prompt **without the Words** (`tag_context`: only the dictation's text so far): the
+        prompt is prefilled up to `language`, the model's probabilities for English and `prefer` are read there, and
+        `prefer` wins unless English is all but certain (dictation_vocab.choose_tag, whose threshold was measured
+        without a word list). The text is then decoded with the full context (the Words, which bias the spelling) under
+        that tag. The Words framed as an English sentence pushed the tag toward English and made it depend on their
+        order: one app-captured mixed sentence went from p_en 0.948 (no Words) to 0.9956 — over the 0.995 line, a clean
+        English translation typed — and back under it with the same words in another order (v0.9 dogfood).
+        English that still has Chinese characters in it (translated around a name) is decoded once more under
+        `prefer`. Cost: one more prefill of the prompt (tens of ms), only when the Words are in the context.
+        prefer None (an interim request with no preferred language): the model's own tag under the full context, as
+        the plain decode does. `self.last`: the tag chosen, its probabilities with and without the Words, and the
+        margin to the threshold (the history and the Lab show it)."""
         mx = self.mx
         from mlx_qwen3_asr.audio import compute_features
         from mlx_qwen3_asr.chunking import split_audio_into_chunks
@@ -1352,29 +1362,33 @@ class Qwen3Mlx(MlxBackend):
         eos = set(GenerationConfig().eos_token_ids)
         head = tok.encode("language")
         tag_ids = {name: tok.encode(" " + name)[0] for name in (prefer, "English") if name}
+        tag_ctx = (getattr(self, "tag_context", "") or "").strip()
 
         def positions(a: int, b: int):
             p = mx.arange(a, b)[None, :]
             return mx.stack([p, p, p], axis=1)
 
-        def run(af, budget: int, force: str | None) -> tuple[str, str | None, dict]:
-            ids = tok.build_prompt_tokens(n_audio_tokens=af.shape[1], language=None, context=ctx) + head
+        def prefill(af, budget: int, context: str):
+            ids = tok.build_prompt_tokens(n_audio_tokens=af.shape[1], language=None, context=context) + head
             self._check()
             cache = model.create_cache(max_seq_len=len(ids) + budget + 8)
             logits = model.prefill(input_ids=mx.array([ids]), audio_features=af, position_ids=positions(0, len(ids)), cache=cache)
-            pos = len(ids)
+            return logits, cache, len(ids)
+
+        def tag_probs(logits) -> tuple[float, float, bool]:
+            lp = logits.reshape(-1).astype(mx.float32)
+            lp = lp - mx.logsumexp(lp)
+            top = int(mx.argmax(lp))
+            return float(mx.exp(lp[tag_ids["English"]])), float(mx.exp(lp[tag_ids[prefer]])), top in tag_ids.values()
+
+        def run(af, budget: int, tag: str | None, state=None) -> tuple[str, str | None, dict]:
+            """The text under `tag` (None: the model's own tag), from the prompt with the full context."""
+            logits, cache, pos = state or prefill(af, budget, ctx)
             info: dict = {}
-            if force:
-                tag = force
-            elif not prefer:
-                tag = None
-            else:
-                lp = logits.reshape(-1).astype(mx.float32)
-                lp = lp - mx.logsumexp(lp)
-                p_pref, p_en = (float(mx.exp(lp[tag_ids[prefer]])), float(mx.exp(lp[tag_ids["English"]])))
-                top = int(mx.argmax(lp))
-                info = {"p_en": round(p_en, 4), f"p_{lang_code(prefer) or prefer}": round(p_pref, 4)}
-                tag = dictation_vocab.choose_tag(p_en, p_pref, prefer) if top in tag_ids.values() else None
+            if prefer and state is None and ctx.strip() != tag_ctx:
+                # what the Words alone would have tagged (only shown: the tag was picked without them)
+                p_en, p_pref, _ = tag_probs(logits)
+                info["p_en_words"] = round(p_en, 4)
             if tag is None:   # the model's own tag (no speech, another language): decode on from it, as before
                 suffix = [int(mx.argmax(logits.reshape(-1)))]
             else:
@@ -1400,13 +1414,27 @@ class Qwen3Mlx(MlxBackend):
                 lang, text = tag, parse_asr_output(raw, user_language=tag)[1]
             return (text or "").strip(), lang, info
 
+        def pick(af, budget: int):
+            """The tag from the prompt without the Words → (tag or None, info, the prefill when it is the decode's own)."""
+            state = prefill(af, budget, tag_ctx)
+            p_en, p_pref, top_is_tag = tag_probs(state[0])
+            info = {"p_en": round(p_en, 4), f"p_{lang_code(prefer) or prefer}": round(p_pref, 4),
+                    "margin": dictation_vocab.tag_margin(p_en, p_pref)}
+            tag = dictation_vocab.choose_tag(p_en, p_pref, prefer) if top_is_tag else None
+            return tag, info, (state if ctx.strip() == tag_ctx else None)
+
         texts, langs, last = [], [], {}
         for chunk, _off in split_audio_into_chunks(np.asarray(x, np.float32), sr=SR):
             self._check()
             mel, fl = compute_features(chunk)
             af, _ = model.audio_tower(mel.astype(mx.float16), fl)
             budget = resolve_max_new_tokens(None, audio_duration_sec=len(chunk) / SR)
-            text, lang, info = run(af, budget, None)
+            if prefer:
+                tag, info, state = pick(af, budget)
+                text, lang, more = run(af, budget, tag, state)
+                info.update(more)
+            else:
+                (text, lang, info), tag = run(af, budget, None), None
             if prefer and lang == "English" and dictation_vocab.translated_glue(text, self.names):
                 text2, _, _ = run(af, budget, prefer)
                 if dictation_vocab.cjk_share(text2) > 0:
@@ -2196,24 +2224,26 @@ def cmd_serve(a):
     save_json(SERVE_FILE, {"pid": os.getpid(), "port": port, "token": token, "parent": a.parent,
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
-    if a.preload:
-        mid = getattr(a, "model_id", None)
-        if not mid and getattr(a, "purpose", None) == "dictation":
-            mid = dictation_models()["selected"]
-        # --no-download: a model that isn't here stays unloaded (the server still answers: model_missing)
-        try:
-            with no_download(getattr(a, "no_download", False)):
-                eng.load(None, mid)
-        except Fail as e:
-            if e.code != "model_missing":
-                raise
-            serve_said(f"serve: preload skipped ({e})")
-    emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
-    last = time.time()
-    uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
-    tier = probe()["tier"]
     why = None
+    # from here on the run file is ours to remove, whatever happens — a preload that fails included (a run file left
+    # pointing at a dead or stuck process made the app wait for a server that never answered)
     try:
+        if a.preload:
+            mid = getattr(a, "model_id", None)
+            if not mid and getattr(a, "purpose", None) == "dictation":
+                mid = dictation_models()["selected"]
+            # --no-download: a model that isn't here stays unloaded (the server still answers: model_missing)
+            try:
+                with no_download(getattr(a, "no_download", False)):
+                    eng.load(None, mid)
+            except Fail as e:
+                if e.code != "model_missing":
+                    raise
+                serve_said(f"serve: preload skipped ({e})")
+        emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
+        last = time.time()
+        uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
+        tier = probe()["tier"]
         while not why:
             now = time.time()
             why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, a.idle,
@@ -2735,7 +2765,17 @@ def main():
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
+        if a.cmd == "serve":
+            server_exit(e.exit_code)
         sys.exit(e.exit_code)
+    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd != "serve":
+            raise
+        import traceback
+        traceback.print_exc()
+        server_exit(1)
+    if a.cmd == "serve":
+        server_exit(0)
 
 
 if __name__ == "__main__":

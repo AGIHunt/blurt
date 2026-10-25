@@ -93,6 +93,26 @@
       (`DictationReformatAfterPaste`), a miss reported once (`takeMiss`), a given-up server by pid and not ended while a
       voice note waits on it, the typed check in the live panel, the top line's fade, the aura after the double-tap
       window (`DictationGlow`).
+- [ ] **Windows / Linux: the v0.9 dictation dogfood, pass 2** (macOS done; the speech side is shared): the server's
+      language tag without the Words and `asr_tags` in the history, the request's stable term order, servers ending
+      with `server_exit` and polish's preload beside its loop are in the scripts already. The apps need: a stuck
+      server replaced at key-down by its health (`WarmServer.health`: ping + CPU; on Windows the process's CPU times
+      and command line through `GetProcessTimes` / the PEB, on Linux /proc/<pid>/stat and cmdline), a request given up
+      on by `DictationASRFailure.hung` and "Still recognizing… Esc to cancel" 3 s after the stop; the paste's landing
+      before Return and the clipboard's restore (`DictationPasteLanding`: UIA / AT-SPI value reads, else 0.6 s / 1.5 s);
+      one line for "Copied, not sent" (`DictationDeliveredLine`); nothing typed or copied into a password field
+      (`hold`); Typeless / Wispr Flow notices (`DictationFnClash`; their Windows process names; said after a take,
+      never over one, and a key change mid-take ends it: `moment`, `keyChangeEndsTake`); the limit grace of 4 s
+      and the 30-second amber clock; the live panel's typed text from the top (8 lines) and open-ended interims
+      (`DictationLiveDecode.openEnded`); a shortcut joining push-to-talk cancelling quietly (`joinedEarly`); the
+      Dictation page's no-model state (`DictationPageStatus`), delete with Undo keeping the recording, project words
+      apart (`DictationVocabulary.groups`), model names from the catalogs (`ModelCatalog`); the zh gesture words
+      (按一下 / 按住 / 按两下) and 未润色 / 识别原文 in their strings; the terminal polish variant for Windows Terminal,
+      PowerShell, cmd and Linux terminals (`polishVariant`); the field's `before` sent with every polish request (the
+      first word's case is polish's model's call, `sentence_case`) and a short reply's `case` request to a loaded
+      server; the hang told by idle CPU alone (3 s); a stuck server's launcher ended only when it is the stuck
+      process's parent; Return at 0.6 s at the latest (`returnAfter`); the spelling-dictionary
+      check for learned words (Hunspell / the Windows spell checker in place of NSSpellChecker).
 - [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
       welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
       "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.

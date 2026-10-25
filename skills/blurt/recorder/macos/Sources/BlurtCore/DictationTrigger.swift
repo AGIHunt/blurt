@@ -221,11 +221,21 @@ public struct DictationTrigger {
         if !a { settle() }
     }
 
-    /// The take ended by itself (the time limit) at `t`: the user's next tap, a moment later, was meant as its stop —
-    /// it does nothing instead of starting a new take.
+    /// The take ended by itself (the time limit) at `t`: the user's next tap, while the island still says so, was
+    /// meant as its stop — it does nothing instead of starting a new take (v0.9 dogfood: a tap 2–4 s later started one
+    /// under "dictation ended", listening ears and that line at once).
     public mutating func endedByItself(at t: Double) {
         reset(active: false)
-        quietUntil = t + 2.0
+        quietUntil = t + DictationTrigger.limitGrace
+    }
+
+    /// How long after the time limit a tap is the late stop: as long as the island's line about it shows.
+    public static let limitGrace = 4.0
+
+    /// A cancel that is a shortcut, not a cancelled dictation: another key (not Esc) or a click joined push-to-talk
+    /// within its first second, before any piece of it was cut for transcription — said quietly (no "Cancelled").
+    public static func joinedEarly(esc: Bool, listening: Bool, elapsed: Double, finalPieces: Int) -> Bool {
+        !esc && listening && elapsed < 1.0 && finalPieces == 0
     }
 
     /// Not dictating any more: a key still held is waited out (its release must not start or stop anything).

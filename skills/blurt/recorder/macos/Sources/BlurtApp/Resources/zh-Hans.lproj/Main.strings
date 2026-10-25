@@ -450,6 +450,7 @@
 "main.dictation.info.terms" = "用到的词";
 "main.dictation.info.context" = "上下文";
 "main.dictation.info.context.yes" = "已使用";
+"main.dictation.info.model.other" = "其他模型";
 "main.dictation.none" = "没有选中听写";
 "main.dictation.none.detail" = "在左边选一条。↑↓ 切换，⌘C 复制，⌫ 删除。";
 "main.dictation.copy_all" = "全部复制";

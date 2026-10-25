@@ -87,8 +87,10 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     nothing pasted, no history entry) and Return goes to the app in front now;
   - **dictating, hands-free** ("dictate, then send", the useful case): the first tap stopped it and the paste starts
     as usual; the second one (no mic opened for it) queues Return, posted once `DictationInsert` reports the paste
-    done — after the clipboard comes back (0.6 s), so the ⌘V has landed. Not when the text was only copied (secure
-    input, Blurt in front …) or nothing was heard: Return would then send something else;
+    done — once the field shows the text (`DictationPasteLanding`, read every 30 ms; a field that can't be read:
+    0.6 s, as keys reach the app in order), so the ⌘V has landed. Not when the text was only copied (the app
+    changed, Blurt in front …), held (a password field) or nothing was heard: Return would then send something else
+    — "已复制，没有发送 · ⌘V 粘贴" is then one line (v0.9 dogfood: "copied" replaced "not sent" in the same frame);
   - **push-to-talk** (hold mode, or auto held): letting go stops it; a **double tap** right after sends it the same
     way — release, tap, tap, as the help text says (「刚说完时连按两下」 / "right after you dictate"). A tap within the
     window of the release does nothing by itself (it is the double tap's first tap); before, that single tap already
@@ -149,7 +151,14 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   checked with a real Fn press (below), so Settings and the guide still offer the "Do Nothing" step when the setting
   isn't 0. If macOS refuses the filter, `filterRefused` sends the plan to the listen-only tap / monitor until
   Accessibility or the key changes. Typeless (`now.typeless.desktop`) and Wispr Flow (`com.electron.wispr-flow`)
-  running are named in Settings → Dictation and the assistant: both apps would react to Fn.
+  running are named in Settings → Dictation and the assistant: both apps would react to Fn. They are also said where
+  it matters (v0.9 dogfood: a user who never reopens Settings saw the text typed twice and blamed Blurt): when a Fn
+  take starts, or one of them launches, once a day per app — "Typeless 也在听 Fn，文字可能输入两次" with **改用右
+  Option** (the key changes at once) and **设置…** (`DictationFnClash`, `Dictation.fnClashNotice`). Never over a take
+  that is listening: it waits for that take to end and comes after the island's line about it (`moment` →
+  `.afterTake`, a passive line). Any key change while a take listens (Settings, this button) ends the take as if its
+  key came up (`keyChangeEndsTake`; review: a click on the button mid-take left a Fn take listening 135 s with no key
+  to stop it).
 - **Which listener** (BlurtCore `DictationListener`, `DictationListenerTests`). The bug it fixes: a listen-only tap
   made at launch **before** Input Monitoring was granted is accepted by macOS, but it only gets the events aimed at
   Blurt itself, and macOS never upgrades it. `start()` returned early because the tap existed, and the status said
@@ -531,7 +540,11 @@ do:
   yet (pending, 60 %); an interim after a hard cut loses the words the piece before already has
   (`DictationStitch.dropOverlap`); when the seam mark of the committed text changes because more follows, the common
   part stays committed. No words are read for meaning.
-- **The panel** (`LiveTextLines`): up to three lines, newest at the bottom; the panel keeps the height it reached
+- **The panel** (`LiveTextLines`): up to three lines while listening, newest at the bottom; the text typed after the
+  stop is shown from its top, up to eight lines (the last fades out when there is more: `IslandLayout.liveLines`), so a
+  Structured list's heading and first item are checked before a double tap sends it (v0.9 dogfood). The piece still being said never ends in the
+  model's 。/? (`DictationLiveDecode.openEnded`, display only). A press shows no words until it has become a
+  dictation (a hold in tap-only mode, Fn+← no longer flash them). The panel keeps the height it reached
   during the take (no shrinking back when an interim is revised shorter); the lines are laid out from a line start
   that only moves forward while the text before it is unchanged, so the lines showing don't re-wrap as the text grows;
   only the characters that changed since the last update fade in (the common prefix stays). The mint caret, the
@@ -575,9 +588,15 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    - there is no app in front;
    - Blurt itself is in front (its own text views get a `paste:` action; panels get nothing);
    - secure event input is on (`IsSecureEventInputEnabled()`: a password field anywhere), or the focused element is an
-     `AXSecureTextField` (role or subrole);
+     `AXSecureTextField` (role or subrole) — then nothing is typed **or copied** (`hold`): the text stays in the
+     history and the island says "光标在密码框里，没有输入" with **复制** — what was said there by accident never
+     lands on the clipboard by itself, where clipboard managers keep it (v0.9 dogfood);
    - Accessibility isn't granted (a posted ⌘V wouldn't arrive).
-4. Restore the old pasteboard 0.6 s later, unless something else has changed it since. While pastes overlap (a
+4. Restore the old pasteboard once the paste has landed — 0.15 s after the field shows the text, or 1.5 s after
+   ⌘V when the field can't be read (WeChat, Electron) — unless something else has changed it since (before: a fixed
+   0.6 s that a slow app could beat, then paste — and send — the user's old clipboard). A double tap's Return goes
+   when the field shows the text, or after 0.6 s at the latest (a field that never shows it exactly — it turns
+   quotes or emoji into its own — only delays the clipboard). While pastes overlap (a
    reformat right after a dictation) one snapshot is held: the last paste to finish puts it back, so the user's
    clipboard is never replaced by dictated text (v0.9 dogfood #27).
 5. Only into the app the take started in: when the app in front isn't the one at the key-down (compared by pid), the
@@ -597,9 +616,18 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
   least 2 units, or 1 when both end the same way right after it (「的。」 before 「的。」);
 - **punctuation**: the text after starts with punctuation → no punctuation at the insertion's end; it continues the
   sentence (a CJK character, a lower-case word, a digit) while the text before ends mid-sentence → no closing
-  。.!?！？ (between two whole sentences it stays). The text before ends mid-sentence → no leading 「，」 and no capital
-  the speech model gave (ordinary words only, as at the seams); it ends in punctuation → no second mark at the start
-  (seen: polish repeated the field's 「今天的安排：」 — the overlap and its 「：」 went);
+  。.!?！？ (between two whole sentences it stays). The text before ends mid-sentence → no leading 「，」; it ends in
+  punctuation → no second mark at the start (seen: polish repeated the field's 「今天的安排：」 — the overlap and its
+  「：」 went);
+- **the first word's capital** when the text before stops mid-sentence ("I think ▮"): polish's model decides, as a
+  language model — is " the" or " The" the likelier next word after the text before (`polish.py sentence_case`, on the
+  model's thread, ~20 ms warm)? A capital that only started a sentence goes (margin > 2 nats: a sentence word scored
+  5–11 after "I think"; "Thursday", "John", "Python", "GitHub" keep theirs). Only a word written like a sentence start
+  is asked ("The", not "iOS", "API" or "I"); a word of the user's own list keeps its spelling unasked. A reply too
+  short to polish is asked too (`cmd: "case"`), by a model already loaded only — never a wait. Without polish the words
+  go in as heard (only a transcript heard in lower case keeps it: `keepCase`). The v0.9 dogfood's "I think The new
+  layout is fine." came from the speech model capitalising every piece; the prompt's note alone didn't move the 2B
+  model (`tests/test_polish_case_model.py` with the model: `BLURT_TEST_POLISH_MODEL=…`);
 - **spacing**: a space between Latin words at either seam; between CJK and Latin the field's own way (else the
   dictation's, else spaced, as polish writes);
 - never: anything in the field is deleted or moved; a fit that would leave nothing to insert; a field whose text can't
@@ -636,9 +664,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
   the app they started in, else copied). Esc while listening says "已取消" too (it used to vanish silently; nothing is
-  kept — the take was in front of the user). A paste already under way (the 0.6 s of ⌘V) can't be taken back.
+  kept — the take was in front of the user). A paste already under way (⌘V until it has landed) can't be taken back.
+  Another key or a click in push-to-talk's first second, before anything was cut, is a shortcut (Fn+← is Home): the
+  take goes without "已取消" (`DictationTrigger.joinedEarly`).
 - **Check before send.** After the stop the live panel shows the text actually typed — polished, structured — for
-  1.5 s (`LiveTranscript.showTyped`), instead of disappearing 0.6 s after the paste with the raw transcript in it.
+  1.5 s (`LiveTranscript.showTyped`; up to 4 s for a longer text), instead of disappearing 0.6 s after the paste with
+  the raw transcript in it.
   Two ways to send are taught (guide, the setting's detail, a quiet tip for the first five takes in chat apps):
   tap to stop → check → double-tap; or double-tap instead of the stop tap. The near-miss double tap (≤ 0.8 s, nothing
   heard) still sends (product decision). While the panel shows the typed text, the caret after the words becomes the
@@ -653,15 +684,15 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   download would bring. `transcribe.py dictation-models` is read once, by `DictationModels` (Settings' rows, the
   download manager's sizes, `dictationReady` for the welcome line and the assistant), and Dictation follows its
   `$asr` — one answer for every surface. Not ready: the key doesn't listen (no mic, no warm-up) and the island says
-  "还没有识别模型（2.5 GB）· 下载" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）·
-  下载"; while that download runs, "识别模型还在下载（1.2 / 2.5 GB）· 查看"; the list unreadable: "还没有识别模型 ·
+  "还没有语音模型（2.5 GB）· 下载" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）·
+  下载"; while that download runs, "语音模型还在下载（1.2 / 2.5 GB）· 查看"; the list unreadable: "还没有语音模型 ·
   查看模型…". The button calls `Dictation.getSpeechModel` — the one entry for a dictation's model download: one job
   in the app's one download manager (`ModelDownloads`; `DictationModels.dictationJob`) for
   `DictationSpeechModels.toGet`: the configured model when that is the one missing, else the recommended one; only the
   VAD → the selected model's `setup` (which brings just it, 0.6 MB) — never pinning the choice. The island says it
-  started ("开始下载识别模型（2.5 GB）· 下载好就能按 Fn 听写 · 查看").
+  started ("开始下载语音模型（2.5 GB）· 下载好就能按 Fn 听写 · 查看").
   A take that fails with model_missing asks `dictation-models` again (never assumes), and when the model (or VAD) is
-  there later, the island offers **Retry** for the newest such take ("识别模型好了，刚才那段录音还在") — it is never
+  there later, the island offers **Retry** for the newest such take ("语音模型好了，刚才那段录音还在") — it is never
   pasted by itself minutes later.
 - **Nothing is downloaded for a dictation.** Every dictation request carries `no_download` (finals and interims);
   the server also treats any `purpose: dictation` request that way; the CLI fallback runs `note --no-server
@@ -670,7 +701,7 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
 - **Recognition failed.** `Dictation.transcribe` always answers — `ok`, or `code` (model_missing, timeout, …) — and
   `DictationStream.Result.asrError` carries it; an empty text is silence only when recognition worked. A failed take
   keeps its wav and a history row (`insert: none`, `reason: asr_failed:<code>`), and the island says what failed
-  with **Retry** (no model: "还没有识别模型，录音还在" with **Download…**). Retry (the island, the Dictation page) runs
+  with **Retry** (no model: "还没有语音模型，录音还在" with **Download…**). Retry (the island, the Dictation page) runs
   the whole recording again and pastes like any take (from the page: copied). Before: "没听到内容", the audio
   deleted, nothing in the history.
 - **A hung or slow server.** A server call gets `15 s + 1.5 × the audio` (`DictationASRFailure.serverTimeout`), not
@@ -679,10 +710,32 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   started it, ended (the Python server, then `uv`), except while a voice note is waiting on it (it may only be busy
   with that note; the note has its own timeout and CLI fallback); the CLI no longer asks that same server first. Measured with the scratch
   app's server stopped (SIGSTOP): 25 s from the stop to the text for a 6 s take (before: 243 s).
+- **A hang is told by the server's behaviour** (v0.9 dogfood: 21.6 s of dots for a 3 s take with the server
+  stopped; most users would dictate again). The call is asked every ¼ s (`WarmServer.call(giveUp:)`) and given up on
+  as soon as there is no answer after 3 s **and** the server's CPU time hasn't moved for 2 s, whatever the audio's
+  length (`DictationASRFailure.hung`, `CPUWatch`) — a server that is loading or decoding keeps its CPU moving (~0.5 s
+  of CPU per 0.5 s on a 4-minute file) and is waited for, up to `serverTimeout`; waiting half the audio as well held a
+  stopped server's 20 s take 9.5 s. 3 s after the stop a take still on its way says so,
+  with the way out: "还在识别… Esc 取消" / "还在润色… Esc 取消" (`Dictation.slowToastKey`; gone when it lands or is
+  cancelled).
+- **A stuck server is replaced, also one an earlier app left behind.** Servers end with `os._exit` after removing
+  their run file (`_common.server_exit`; a preload that fails is inside the same `finally`): three servers of apps
+  long gone sat deadlocked in Python's teardown for hours here, still holding their models, one still listening with
+  its run file in place — and every dictation (relaunches included) waited ~20 s for it, then ran the CLI (~9 s).
+  At the key-down (and the launch prewarm) the server the run file names is pinged (0.5 s) and looked at
+  (`WarmServer.health`, `ProcessProbe`): it answers or its CPU moves → left alone; its process is gone or the pid now
+  belongs to something else (its command line isn't `transcribe.py serve`, it started after the file was written) →
+  the file goes; alive, a server, no answer, no CPU → stuck: ended (SIGKILL) whoever started it, the file removed, a
+  fresh server started (`VoiceInput.replaceIfStuck`; the polish server the same way in `Dictation.warm`). A request
+  that hung does the same. `dictation_asr_server given_up` says `ended` only when a process really went. A `uv` ended
+  on purpose is not started again online (`WarmSpawn.retire`).
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
-  分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 2 s
-  (`DictationTrigger.endedByItself`) is taken as the stop that came late, not a new take.
+  分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 4 s — as long as
+  that line shows (`DictationTrigger.limitGrace`, `endedByItself`) — is taken as the stop that came late, not a new
+  take (v0.9 dogfood: a tap 2–4 s later started one under the line). The last 30 s show the clock in the island's
+  attention colour with one quiet "还剩 30 秒". A new take drops what the island said about the last one: its tip, the
+  5-minute line, "还在识别…"; the stop drops ⇧'s Structured line (⇧ works only while listening).
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
   "文字已复制，没有发送"); a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
   tap mode) says how this mode starts, once a day — reported once (`DictationTrigger.takeMiss`), not again on every
@@ -955,7 +1008,9 @@ polish above — stays the default everywhere and never restructures. Which styl
   another app's field through Accessibility, read back — and pasted as a dictation is); otherwise, after 5 minutes, or
   in a field that can't be read (WeChat), the new version goes to the clipboard and the island says so. The island
   offers **Undo** (back to the style it was typed in). The after-typing watch restarts on the new text.
-- **The list chip** (`suggest_lists`): after a light take of ≥ 24 units is pasted, the structuring pass runs in the
+- **The list chip** (`suggest_lists`): after a light take long enough to hold a list is pasted (24 CJK characters or
+  12 Latin words — a word counts as two characters, `DictationStitch.mayHoldList`; counting both alike, the English
+  three-point list never got the chip), the structuring pass runs in the
   background; when the model made it a list, the island offers **Make a List** for 6 s (one click types the list it
   already has) and the history records `suggest`. Nothing on the dictation's path waits for it. (v0.8 offered it when
   the rule-based renderer counted ≥ 2 ordinal markers.)
@@ -1091,6 +1146,9 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
   suggested again), `removed` (a seed the user removed: never seeded again). A removed manual word just goes.
 - `sounds_like`: what a speech model wrote instead, learned from the user's fixes. Only a hint that the word is
   relevant when it is heard (`ranked` / `relevant` list it first, so the models hear about it); the seed has none.
+- The Words tab shows the user's own words (added, learned) as **你的词**, the projects' names and keys under their
+  own heading **来自你的项目** with where they come from (v0.9 dogfood: "Atlas Web, AW, BA" under "Your words" left the
+  user wondering whether to delete them), and the built-in ones folded; the filter shows from 20 of the first two.
 - The seed, once per launch and when the Words tab or Settings → Dictation opens, adds what's missing: each project's
   name and key (`project`; 2–40 characters, at most three words) and, as `default`, a short list of the products this
   app's users dictate about (`DictationVocabulary.builtIn`, 19): Claude Code, Claude, Codex, Cursor, Typeless, MCP,
@@ -1161,7 +1219,26 @@ probabilities of " English" and of the user's language are read, and the tag is
   model; it caught 1 piece of 218 in the names eval).
 - English-only users, or a language set in Settings (`asr.language`), keep the plain decode. If the library changes
   under it, the first failure switches back to the library's `transcribe` for good (`TaggedDecode` tests).
-- Cost: none — it is the same one decode (the probe is the tag step the model would run anyway).
+- **The tag is read without the Words** (v0.9 dogfood). With the Words on — the default, seeded with the project
+  names — the app typed 「这个 feature 下周上线」 as "This feature will be launched next week." 3 times in 3: the
+  Words' English sentence put the tag at p_en 0.9956 (0.948 without them), 0.0006 over the line, and a clean
+  translation has no Chinese left for the redo to catch. Which side of the line it fell on also depended on the
+  words' order (sorted by hits, so it changed after every take: 0.9958 in the app's order, 0.9886 in the file's).
+  Now the tag comes from its own prefill of the prompt with only the text so far (`tag_context`: what
+  `EN_TAG_THRESHOLD` was measured with), and the text is decoded with the full context — the Words still bias the
+  spelling — under that tag. In-app takes (34: 20 mixed, 11 English, 3 Chinese): CER over the mixed ones 10.6 % →
+  2.9 %; only the translated one changed. The request is also deterministic: `dictation_vocab.ranked` picks the terms
+  by relevance, source and use, and orders them by name; the app sends the file's source and hits with each word,
+  so the app and the Dictation Lab send the same words in the same order (`StableOrder` tests).
+- What decided is kept: the server's `tag` (`p_en` / `p_<lang>` without the Words, `p_en_words` with them, `margin` =
+  logit(English share) − logit(threshold): log-odds, so a clear English piece (0.9999) is +3.9 rather than the 0.005 a
+  linear difference allows on that side of a 0.995 line, `redone`) goes into the history entry (`asr_tags`, one per
+  piece) and the Lab's runs; the Lab flags a tag within 1.0 of the line (a share of about 0.987–0.998) as a close call (`fragile_tag`, the CLI's "fragile language tag", the
+  stage view's line). The app-captured wav is a regression test
+  (`tests/test_dictation_codeswitch_model.py`, with the model: `BLURT_TEST_QWEN_MODEL=…`), the decode path a model-free
+  one (`tests/test_transcribe_language_tag.py`), and the built-in reading script has the sentence (b031).
+- Cost: one more prefill of the prompt when the Words are in it (tens of ms; none without them — the one prefill
+  does both). The probe is the tag step the model would run anyway.
 
 Found on the way: on a noisy piece it couldn't make out, the model answered with the word list itself
 ("Claude Code、Codex、blurt、口喷鸡…" — the old pipeline would have pasted that). `dictation_vocab.context_dump` (≥ 4
@@ -1289,7 +1366,9 @@ After a paste, `DictationWatch` follows the same AX element (the one focused jus
   ≤ 50 %, cut short (op → option), the same consonant skeleton (cloud → Claude), or close in toneless pinyin
   (口喷机 → 口喷鸡, 克劳德 → Claude). One changed CJK character is learned with the unchanged ones before it. A fix
   to one ordinary word is learned as a phrase with its unchanged neighbour (pool request → pull request); fixes on
-  function words (there → their) are grammar, not vocabulary. A replaced run is cut where the edited text has
+  function words (there → their) are grammar, not vocabulary — and so is a fix to any lower-case word the system's
+  spelling dictionary knows (`DictationLearn.spelledRight`: NSSpellChecker; the word list has no contractions, so a
+  fix to "you're" was offered as a word to learn, v0.9 dogfood). A replaced run is cut where the edited text has
   punctuation or changes script, and the typed tokens are shared out so each part pairs with what sounds like it
   (绘画 BA 三 → 会话，BA-3 is 绘画 → 会话, and BA 三 → BA-3 on its own); a term never has sentence punctuation in it
   (`DictationVocabulary.hasSentencePunctuation`, also refused by `learn`).
@@ -1551,7 +1630,22 @@ mainland China). Until then dictation types the raw transcript. `mlx-lm` is adde
 - edit lines: `{"op":"delete","ids"}`, `{"op":"item","id","item","uid"}`, `{"op":"clear"}`, `{"op":"correct","id",
   "text"}` (the user's correction from the Dictation page: `corrected` on the entry; prune folds it into the line),
   `{"op":"style","id","action","from","to","replaced"}` (reformat-last, its undo, `revert`: a rendered list taken
-  apart in the field, or `suggest`: the list chip shown; folded into `reformats`).
+  apart in the field, or `suggest`: the list chip shown; folded into `reformats`);
+- since v0.9: `asr_tags` (per piece, the speech model's language tag: `tag`, `p_en` / `p_<lang>` without the Words,
+  `p_en_words` with them, `margin` to the English line, `redone` — §Code-switching), and `insert` can be `held` (a
+  password field had the focus: neither typed nor copied).
+
+**Delete** (⌫, the detail's button) says so on the island with **Undo** (⌘Z does the same); the entries' kept
+recordings wait in `audio/.deleted/` for two minutes and Undo puts them back, so Retry and Add to Lab still work on
+the restored row (v0.9 dogfood: the audio went at once). Launch's retention and Clear History empty that folder.
+
+**The page** says the one step in the way of a first dictation (`DictationPageStatus`): off → on, the key's
+permission → Turn On, **the speech model** → "还没有语音模型（2.5 GB）" with **下载** and its progress while it comes
+down (before: "✓ 听写已开启" with no model), and only then "听写已开启"; the list's header says a missing model in place
+of the settings link. Every row keeps the app icon's slot (Blurt's own windows: its icon; an app that can't be found:
+the generic app icon), the marks are 13 pt, and a take that fell back says **未润色** in words with the reason on
+hover. Models are named from the skill's catalogs before the live list answers (`ModelCatalog`), apps never by a
+bundle id (`AppNames`: else "未知 App"), and an old entry's raw context dict says only that it was used.
 
 Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
 (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on, and with the take whenever its
@@ -1594,7 +1688,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |
 | `lab_mic` | unset (the default input): the Dictation Lab's microphone, by device name |
 | `styles` | unset = light everywhere (§Styles). `{"chat"\|"code"\|"mail"\|"notes"\|"other"\|"default": STYLE, "apps": {BUNDLE: STYLE}, "learned": [BUNDLE]}`, STYLE = `verbatim` \| `light` \| `structured` \| `auto`; written as one dictionary (bundle ids have dots) |
-| `suggest_lists` | `true`: after a light take of ≥ 24 units, the structuring pass runs in the background (after the paste); when the model made it a list, the island offers *Make a List* |
+| `suggest_lists` | `true`: after a light take that may hold a list (24 CJK characters or 12 Latin words), the structuring pass runs in the background (after the paste); when the model made it a list, the island offers *Make a List* |
 | `learn_styles` | `true`: suggest an app's style from the user's switches (asks once; never switches by itself) |
 | `style_asked` | the suggestions already asked (`BUNDLE\|STYLE`), whatever the answer |
 | `style_hint_shown` | how often ⇧ → Structured was explained on the island (`DictationStyleToggleHint`: twice, then the ear's list mark alone) |

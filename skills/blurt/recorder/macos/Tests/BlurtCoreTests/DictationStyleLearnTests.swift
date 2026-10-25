@@ -17,6 +17,9 @@ final class DictationStyleLearnTests: XCTestCase {
         // the user fixed a word inside it: never overwritten
         let edited = doc.replacingOccurrences(of: "跑测试", with: "跑全部测试")
         XCTAssertNil(DictationReformat.span(in: edited, inserted: typed, prefix: prefix, suffix: suffix, near: at))
+        // …and what they see now is what reformat-last restyles and copies (v0.9 dogfood: their fix was missing)
+        XCTAssertEqual(DictationLearn.locate(in: edited, prefix: prefix, suffix: suffix, near: at, maxLength: 200),
+                       typed.replacingOccurrences(of: "跑测试", with: "跑全部测试"))
         // typed right after it, or right before it: the anchors changed — no replacement either
         XCTAssertNil(DictationReformat.span(in: doc.replacingOccurrences(of: "\n下一段", with: "好的\n下一段"), inserted: typed,
                                             prefix: prefix, suffix: suffix, near: at))

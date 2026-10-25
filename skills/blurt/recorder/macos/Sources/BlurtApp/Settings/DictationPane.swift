@@ -157,11 +157,8 @@ final class DictationSettings: ObservableObject {
     }
     func setSuggestLists(_ v: Bool) { suggestLists = v; save("suggest_lists", v ? nil : false) }
     func setLearnStyles(_ v: Bool) { learnStyles = v; save("learn_styles", v ? nil : false) }
-    /// an app's name from its bundle id (installed apps only; else the id)
-    func appName(_ bundle: String) -> String {
-        guard let u = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else { return bundle }
-        return FileManager.default.displayName(atPath: u.path).replacingOccurrences(of: ".app", with: "")
-    }
+    /// an app's name from its bundle id (AppNames: the running or installed app's; else "Unknown app", never the id)
+    func appName(_ bundle: String) -> String { AppNames.displayOrUnknown(name: nil, bundle: bundle) }
 
     /// A row's Allow: the permission guide for that one (Blurt in the list, the pane, the helper panel).
     func allow(_ k: PermissionKind) { PermissionGuide.shared.start(.dictation, only: [k], source: .dictation) }

@@ -29,6 +29,8 @@
 "dictation.toast.copied" = "Copied — paste with ⌘V";
 "dictation.toast.pasted_unsure" = "Pasted";
 "dictation.toast.copy_again" = "Copy Again";
+"dictation.toast.copy" = "Copy";
+"dictation.toast.secure_held" = "A password field has the cursor — nothing typed";
 "dictation.mic.builtin" = "Use the Mac’s microphone for dictation";
 "dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start, so the first words are lost. Automatic: on when the default input is Bluetooth.";
 "dictation.mic.start_sound" = "Play a sound when listening starts";
@@ -109,6 +111,8 @@
 "dictation.history.item_made" = "Added as %@";
 "dictation.history.show" = "Show";
 "dictation.history.delete" = "Delete";
+"dictation.history.deleted.one" = "Dictation deleted";
+"dictation.history.deleted.many" = "%ld dictations deleted";
 "dictation.history.more" = "More";
 "dictation.history.reason.timeout" = "Polish took too long — typed as spoken";
 "dictation.history.reason.unavailable" = "The polish model wasn’t ready — typed as spoken";
@@ -122,7 +126,7 @@
 "dictation.history.reason.empty" = "Polish returned nothing — typed as spoken";
 "dictation.history.reason.error" = "Polish failed — typed as spoken";
 
-/* Words, recognition model */
+/* Words, speech model */
 "dictation.toast.learned" = "Learned “%@”";
 "dictation.toast.undo" = "Undo";
 "dictation.vocab.section" = "Words";
@@ -133,7 +137,7 @@
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
 "dictation.vocab.context.detail" = "On: names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
-"dictation.vocab.learn" = "Learn from my fixes";
+"dictation.vocab.learn" = "Learn from my corrections";
 "dictation.vocab.learn.detail" = "On: when you fix a name Blurt got wrong, it learns the word.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
@@ -262,7 +266,9 @@
 "dictation.lab.stage.polish_off" = "Polish off";
 "dictation.lab.ms" = "%ld ms";
 "dictation.lab.ms.total" = "%ld ms after release";
-"dictation.lab.fell_back" = "Fell back: %@";
+"dictation.lab.fell_back" = "Not polished: %@";
+"dictation.lab.tag" = "Language: %1$@ · %2$@ from the English line";
+"dictation.lab.tag.fragile" = "Close call on the language (%@ from the English line)";
 "dictation.lab.guard.passed" = "Passed";
 "dictation.lab.piece.whole" = "whole take";
 "dictation.lab.piece.committed" = "polished: %@";
@@ -389,6 +395,8 @@
 "dictation.style.reformat.same" = "This one reads the same in every style";
 "dictation.style.reformatted" = "Reformatted as %@";
 "dictation.style.copied" = "Copied as %@ — the text in the field was left alone";
+"dictation.style.copied.edited" = "Copied your edited text as %@ — the field was left alone";
+"dictation.style.copied.original" = "You edited it — copied the original dictation as %@";
 "dictation.style.undone" = "Back to %@";
 "dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
 "dictation.style.learn.structured" = "Format spoken lists in %@ from now on?";
@@ -431,7 +439,7 @@
 "dictation.style.by_app" = "By kind of app";
 "dictation.style.follow" = "Same as above (%@)";
 "dictation.models.section" = "Models";
-"dictation.models.asr" = "Recognition model";
+"dictation.models.asr" = "Speech model";
 "dictation.models.polish" = "Polish model";
 "dictation.models.none" = "Not downloaded yet";
 "dictation.models.change" = "Change…";
@@ -448,6 +456,8 @@
 "dictation.words.add.placeholder" = "Add a word, like Claude Code";
 "dictation.words.filter" = "Filter";
 "dictation.words.mine" = "Your words · %ld";
+"dictation.words.projects" = "From your projects · %ld";
+"dictation.words.projects.detail" = "Your projects’ names and keys are added for you. Remove any you don’t say.";
 "dictation.words.mine.empty" = "None yet. Add the names and terms you say often — or correct a dictation in the history and Blurt learns the word.";
 "dictation.words.suggested" = "To review · %ld";
 "dictation.words.builtin" = "Built-in words: %ld";
@@ -479,6 +489,7 @@
 "dictation.style.toast.structured.first" = "%@: a list when you finish, with only what you settled on · ⇧ to go back";
 "dictation.toast.cancelled" = "Cancelled";
 "dictation.toast.limit" = "Stopped at the 5-minute limit";
+"dictation.toast.ends_soon" = "30 s left";
 "dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
 "dictation.toast.no_model" = "No speech model yet (%@)";
 "dictation.toast.no_model.get" = "Download…";
@@ -488,15 +499,21 @@
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
 "dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
 "dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
+"dictation.toast.slow.asr" = "Still recognizing… Esc to cancel";
+"dictation.toast.fn_clash" = "%@ also listens to Fn — text may go in twice";
+"dictation.toast.fn_clash.switch" = "Use Right Option";
+"dictation.toast.fn_clash.settings" = "Settings…";
+"dictation.toast.slow.polish" = "Still polishing… Esc to cancel";
 "dictation.toast.retry" = "Retry";
 "dictation.toast.retry_gone" = "That recording is gone";
 "dictation.toast.copied_app" = "Copied — paste with ⌘V";
 "dictation.toast.not_sent" = "Not sent";
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
 "dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
-"dictation.toast.not_sent.copied" = "Copied, not sent · paste with ⌘V";
+"dictation.toast.not_sent.copied" = "Copied, not sent";
+"dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
-"dictation.toast.tap_mode" = "Tap %@ to start talking";
+"dictation.toast.tap_mode" = "Tap %@ to start talking (you can switch to hold in Settings)";
 "dictation.toast.no_polish" = "No polish model yet — typed as you said it";
 "dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may come out wrong";
 "dictation.tip.send" = "Double-tap %@ to send";

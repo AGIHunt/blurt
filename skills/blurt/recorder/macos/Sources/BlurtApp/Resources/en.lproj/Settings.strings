@@ -166,6 +166,7 @@
 "onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
 "onboarding.try" = "Try it";
 "onboarding.try.detail" = "Click the box, tap %@ and say something. Tap it again when you’re done.";
+"onboarding.try.detail.hold" = "Click the box, hold %@ and say something. Let go when you’re done.";
 "onboarding.try.placeholder" = "Your words appear here";
 "onboarding.try.works" = "Dictation works.";
 "onboarding.try.needs_permissions" = "Dictation needs its permissions first.";

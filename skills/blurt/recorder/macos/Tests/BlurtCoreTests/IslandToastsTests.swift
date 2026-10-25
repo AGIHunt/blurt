@@ -8,7 +8,8 @@ final class IslandToastsTests: XCTestCase {
     /// "⇧ to go back" after ⇧ stopped meaning anything.
     func testANewTakeDropsWhatWasSaidAboutTheLastOne() {
         let start = Set(DictationToastKeys.droppedAtStart)
-        XCTAssertTrue(start.isSuperset(of: [DictationToastKeys.take, DictationToastKeys.tip, DictationToastKeys.listening]))
+        XCTAssertTrue(start.isSuperset(of: [DictationToastKeys.take, DictationToastKeys.tip, DictationToastKeys.listening,
+                                            DictationToastKeys.slow]))
         // still true across a new take: a failed take's Retry, "Cancelled · Undo", the model's Download…, and the
         // once-a-day notices (their day is spent when posted: dropped, they wouldn't come back until tomorrow)
         XCTAssertFalse(start.contains(DictationToastKeys.notice))
@@ -35,12 +36,15 @@ final class IslandToastsTests: XCTestCase {
 
     /// A double tap after the app changed: "Not sent" was replaced in the same frame by "Copied — paste with ⌘V".
     func testCopiedAndNotSentIsOneLine() {
-        XCTAssertEqual(DictationCopyToast.key(copied: true, appChanged: true, sendWanted: true), "dictation.toast.not_sent.copied")
-        XCTAssertEqual(DictationCopyToast.key(copied: true, appChanged: true, sendWanted: false), "dictation.toast.copied_app")
-        XCTAssertEqual(DictationCopyToast.key(copied: true, appChanged: false, sendWanted: false), "dictation.toast.copied")
-        XCTAssertNil(DictationCopyToast.key(copied: false, appChanged: false, sendWanted: true))
-        XCTAssertTrue(DictationCopyToast.checked("dictation.toast.copied"), "a done line carries the ok check")
-        XCTAssertFalse(DictationCopyToast.checked("dictation.toast.not_sent.copied"))
+        let notSent = DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: true)
+        XCTAssertEqual(notSent.copyKey, "dictation.toast.copied.not_sent")
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true).copyKey,
+                       "dictation.toast.copied_app")
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false).copyKey,
+                       "dictation.toast.copied")
+        XCTAssertNil(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: true, appChanged: false).copyKey)
+        XCTAssertTrue(DictationDeliveredLine.copied(appChanged: false).checked, "a done line carries the ok check")
+        XCTAssertFalse(notSent.checked)
     }
 
     /// "Discard this recording and its 3 snaps?" for one still and two markers.

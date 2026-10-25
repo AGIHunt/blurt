@@ -13,6 +13,9 @@
 //                                      line. Replaced in the field: "text" becomes the entry's text (what is there
 //                                      now), the first version is kept as `typedFirst`.
 // Since the styles work: "style", "style_source", "style_router" (DictationStyleRecord: the router's inputs and decision).
+// Since v0.9: "asr_tags" — per piece, the speech model's language tag and how sure it was (DictationLanguageTag: the
+// tag, p_en / p_<lang> read without the Words, p_en_words with them, the margin to the threshold, redone), so a take
+// typed in the wrong language shows in the history and the Dictation Lab.
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
 // no entry points at that is over an hour old (a take dropped, cancelled, or cut short by a quit or a crash). It runs
@@ -62,6 +65,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var style: DictationStyleRecord?
     /// what was typed first, when reformat-last replaced it in the field since (`text` is then the current version)
     public var typedFirst: String?
+    /// the speech model's language tag per piece (nil: an older entry, or a model without one)
+    public var asrTags: [DictationLanguageTag]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -101,6 +106,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
         if let c = corrected { o["corrected"] = c }
+        if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
         style?.write(into: &o)
         return o
     }
@@ -131,7 +137,57 @@ public struct DictationEntry: Identifiable, Hashable {
         repaired = o["repaired"] as? [String]
         fitted = o["fitted"] as? [String]
         corrected = o["corrected"] as? String
+        asrTags = (o["asr_tags"] as? [[String: Any]])?.compactMap(DictationLanguageTag.init(json:))
         style = DictationStyleRecord(json: o)
+    }
+}
+
+/// The speech model's language tag for one piece (transcribe.py's `tag`): which language it wrote in, the
+/// probabilities it gave English and the user's language without the Words (what decided) and with them, and how far
+/// the decision was from the line (`margin`, in log-odds: logit(English share) − logit(threshold), > 0 English — a
+/// clear English piece is about +4, the v0.9 translated sentence +0.1). Within `fragileMargin` the tag could flip with
+/// a slightly different take — the Dictation Lab flags it.
+public struct DictationLanguageTag: Hashable {
+    public var tag: String?
+    public var pEn: Double?
+    /// the user's language's probability (p_zh, p_ja …) and its code
+    public var pPref: Double?
+    public var prefer: String?
+    public var pEnWords: Double?
+    public var margin: Double?
+    public var redone: Bool
+    public static let fragileMargin = 1.0           // log-odds (dictation_vocab.FRAGILE_MARGIN)
+
+    public var fragile: Bool { margin.map { abs($0) < DictationLanguageTag.fragileMargin } ?? false }
+
+    /// The pieces' closest call (the smallest margin either way): what the Lab shows for a take.
+    public static func closest(_ tags: [DictationLanguageTag]) -> DictationLanguageTag? {
+        tags.filter { $0.margin != nil }.min { abs($0.margin!) < abs($1.margin!) }
+    }
+    public static func closest(_ json: [[String: Any]]) -> DictationLanguageTag? { closest(json.compactMap(DictationLanguageTag.init(json:))) }
+
+    public init?(json o: [String: Any]) {
+        guard !o.isEmpty else { return nil }
+        tag = o["tag"] as? String
+        pEn = (o["p_en"] as? NSNumber)?.doubleValue
+        if let (k, v) = o.first(where: { $0.key.hasPrefix("p_") && $0.key != "p_en" && $0.key != "p_en_words" }) {
+            prefer = String(k.dropFirst(2))
+            pPref = (v as? NSNumber)?.doubleValue
+        }
+        pEnWords = (o["p_en_words"] as? NSNumber)?.doubleValue
+        margin = (o["margin"] as? NSNumber)?.doubleValue
+        redone = o["redone"] as? Bool ?? false
+    }
+
+    public var json: [String: Any] {
+        var o: [String: Any] = [:]
+        if let t = tag { o["tag"] = t }
+        if let p = pEn { o["p_en"] = p }
+        if let k = prefer, let p = pPref { o["p_\(k)"] = p }
+        if let p = pEnWords { o["p_en_words"] = p }
+        if let m = margin { o["margin"] = m }
+        if redone { o["redone"] = true }
+        return o
     }
 }
 
@@ -158,12 +214,49 @@ public final class DictationHistory {
 
     public func append(_ e: DictationEntry) { appendLine(e.json) }
 
+    /// Deletes entries. Their kept recordings move aside (audio/.deleted/) for Undo — `restoreAudio` puts them back,
+    /// `purgeDeleted` removes them for good (the page does after a couple of minutes; `prune` at launch, `clear`).
+    /// Before, the audio went at once and Undo brought back a row without it: no Retry, no Add to Lab.
     public func delete(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         let gone = load().filter { ids.contains($0.id) }
         appendLine(["op": "delete", "ids": ids, "t": DictationEntry.iso.string(from: Date())])
-        for e in gone { if let a = e.audio { try? FileManager.default.removeItem(at: resolve(a)) } }
+        let fm = FileManager.default
+        for e in gone {
+            guard let a = e.audio else { continue }
+            let src = resolve(a)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            try? fm.createDirectory(at: deletedDir, withIntermediateDirectories: true)
+            let dst = deletedDir.appendingPathComponent(src.lastPathComponent)
+            try? fm.removeItem(at: dst)
+            if (try? fm.moveItem(at: src, to: dst)) == nil { try? fm.removeItem(at: src) }
+        }
         NotificationCenter.default.post(name: DictationHistory.changed, object: self, userInfo: ["ids": ids])
+    }
+
+    /// Where deleted entries' recordings wait for Undo.
+    public var deletedDir: URL { audioDir.appendingPathComponent(".deleted") }
+
+    /// Undo of a delete: the entry's recording back where it was. true when it is there (again).
+    @discardableResult
+    public func restoreAudio(_ e: DictationEntry) -> Bool {
+        guard let a = e.audio else { return false }
+        let dst = resolve(a), src = deletedDir.appendingPathComponent(dst.lastPathComponent)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: dst.path) { return true }
+        return (try? fm.moveItem(at: src, to: dst)) != nil
+    }
+
+    /// The deleted recordings go for good: these (`names`: file names), or all older than `olderThan` s.
+    public func purgeDeleted(_ names: [String]? = nil, olderThan: TimeInterval = 0, now: Date = Date()) {
+        let fm = FileManager.default
+        let all = (try? fm.contentsOfDirectory(atPath: deletedDir.path)) ?? []
+        for n in names ?? all where all.contains(n) {
+            let f = deletedDir.appendingPathComponent(n)
+            if olderThan > 0, let m = (try? fm.attributesOfItem(atPath: f.path))?[.modificationDate] as? Date,
+               now.timeIntervalSince(m) < olderThan { continue }
+            try? fm.removeItem(at: f)
+        }
     }
 
     /// Posted after `delete` (userInfo "ids") and `clear` (no ids: everything): the app forgets what it kept of
@@ -264,6 +357,7 @@ public final class DictationHistory {
     /// any recording in audio/ that no entry keeps (`pruneOrphanAudio`). Returns how many entries went.
     @discardableResult
     public func prune(days: Int, now: Date = Date()) -> Int {
+        purgeDeleted()                  // a delete's Undo doesn't outlive the app
         let all = load()
         pruneOrphanAudio(keeping: all, now: now)
         let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)

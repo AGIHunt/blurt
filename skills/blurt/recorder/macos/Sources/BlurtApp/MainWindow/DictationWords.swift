@@ -1,7 +1,8 @@
 // The Dictation page's Words tab (词库; docs/design/dictation.md §Custom words): the one place the custom words are
 // managed. The list column: an add field (pasting "a, b, c" adds three; a word already there is flagged under it), a
 // filter once there are more than 20 words, the words learned once and waiting for the user (Add / Ignore), the
-// user's own words as chips that wrap (added, learned, their projects'), and the built-in words folded into one line
+// user's own words as chips that wrap (added, learned), their projects' names and keys under their own heading (so
+// nobody wonders whether they added them), and the built-in words folded into one line
 // ("Built-in words: 19 · Show"). The chips take the keyboard: Tab enters them, ← → move, ⌫ removes, Return or a
 // double-click edits the spelling; the × shows on the chosen chip and on hover. Remove, Add and Ignore say so on the
 // island with Undo (⌘Z too). The detail column: the chosen word — where it came from, how often dictation used it,
@@ -17,7 +18,10 @@ final class DictationWordsModel: ObservableObject {
     /// a filter field shows once there are more words than this
     static let filterFrom = 20
 
+    /// the user's own words: added, or learned from their corrections
     @Published var mine: [VocabTerm] = []
+    /// their projects' names and keys (seeded by the app): their own section, so the user knows where they came from
+    @Published var projects: [VocabTerm] = []
     @Published var builtIn: [VocabTerm] = []
     @Published var suggestions: [VocabTerm] = []
     @Published var newWord = ""
@@ -29,16 +33,18 @@ final class DictationWordsModel: ObservableObject {
     func reload() {
         let all = DictationVocabulary.shared.load()
         let byName: (VocabTerm, VocabTerm) -> Bool = { $0.term.localizedCaseInsensitiveCompare($1.term) == .orderedAscending }
-        let m = all.filter { $0.state == .active && $0.source != .builtIn }.sorted(by: byName)
-        let b = all.filter { $0.state == .active && $0.source == .builtIn }.sorted(by: byName)
+        let g = DictationVocabulary.groups(all)
+        let m = g.own.sorted(by: byName), p = g.projects.sorted(by: byName), b = g.builtIn.sorted(by: byName)
         let s = all.filter { $0.state == .suggested }
         if m != mine { mine = m }
+        if p != projects { projects = p }
         if b != builtIn { builtIn = b }
         if s != suggestions { suggestions = s }
-        if let t = selected, !(m + b + s).contains(where: { $0.term == t }) { selected = nil }
+        if let t = selected, !(m + p + b + s).contains(where: { $0.term == t }) { selected = nil }
     }
 
-    var showsFilter: Bool { mine.count + builtIn.count > DictationWordsModel.filterFrom }
+    /// the user's and their projects' words only: the 19 built-in ones don't make a short list long
+    var showsFilter: Bool { mine.count + projects.count > DictationWordsModel.filterFrom }
 
     func matching(_ ts: [VocabTerm]) -> [VocabTerm] {
         let q = filter.trimmingCharacters(in: .whitespaces)
@@ -46,7 +52,7 @@ final class DictationWordsModel: ObservableObject {
         return ts.filter { $0.term.localizedCaseInsensitiveContains(q) }
     }
 
-    var current: VocabTerm? { selected.flatMap { t in (mine + builtIn + suggestions).first { $0.term == t } } }
+    var current: VocabTerm? { selected.flatMap { t in (mine + projects + builtIn + suggestions).first { $0.term == t } } }
 
     /// the chip whose spelling is being edited, and the text so far
     @Published var renaming: String?
@@ -55,7 +61,7 @@ final class DictationWordsModel: ObservableObject {
     /// What the add field would add: one word per comma (or 、 ; a line).
     var entries: [String] { DictationVocabulary.entries(newWord) }
     /// The words in the add field that are already on the list (said under the field, not added twice).
-    var duplicates: [String] { entries.filter { t in (mine + builtIn).contains { $0.term.caseInsensitiveCompare(t) == .orderedSame } } }
+    var duplicates: [String] { entries.filter { t in (mine + projects + builtIn).contains { $0.term.caseInsensitiveCompare(t) == .orderedSame } } }
 
     func add() {
         let ts = entries.filter { !duplicates.contains($0) }
@@ -127,7 +133,7 @@ final class DictationWordsModel: ObservableObject {
         guard let old = renaming else { return }
         renaming = nil
         let n = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard n != old, let t = (mine + builtIn).first(where: { $0.term == old }) else { return }
+        guard n != old, let t = (mine + projects + builtIn).first(where: { $0.term == old }) else { return }
         guard DictationVocabulary.shared.rename(old, to: n) else { return NSSound.beep() }
         let um = DictationHistoryWindow.shared.undoManager
         um?.registerUndo(withTarget: self) { m in
@@ -146,7 +152,7 @@ final class DictationWordsModel: ObservableObject {
 
     /// tests: what the tab shows
     func report() {
-        emit(["event": "dictation_words", "mine": mine.map(\.term), "built_in": builtIn.count, "suggestions": suggestions.map(\.term),
+        emit(["event": "dictation_words", "mine": mine.map(\.term), "projects": projects.map(\.term), "built_in": builtIn.count, "suggestions": suggestions.map(\.term),
               "show_built_in": showBuiltIn, "filter": filter, "selected": selected ?? NSNull(), "duplicates": duplicates,
               "renaming": renaming ?? NSNull()])
     }
@@ -165,6 +171,7 @@ struct DictationWordsList: View {
                 VStack(alignment: .leading, spacing: 18) {
                     if !w.suggestions.isEmpty { suggestions }
                     mine
+                    if !w.projects.isEmpty { projects }
                     builtIn
                 }
                 .padding(.horizontal, 14).padding(.vertical, 14)
@@ -237,6 +244,20 @@ struct DictationWordsList: View {
             } else if shown.isEmpty {
                 Text(T("dictation.words.no_match")).font(.system(size: 12)).foregroundStyle(.secondary)
             } else {
+                chips(shown)
+            }
+        }
+    }
+
+    /// The projects' names and keys: their own heading and where they come from, so nobody wonders whether they
+    /// added them (v0.9 dogfood: "Atlas Web, AW, BA" under "Your words").
+    @ViewBuilder var projects: some View {
+        let shown = w.matching(w.projects)
+        if !shown.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                heading(T("dictation.words.projects", w.projects.count))
+                Text(T("dictation.words.projects.detail")).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 chips(shown)
             }
         }

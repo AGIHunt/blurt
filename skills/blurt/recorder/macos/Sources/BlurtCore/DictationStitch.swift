@@ -37,6 +37,22 @@ public enum DictationStitch {
     }
 
     /// Each CJK character, each Latin word, each digit — with its range.
+    /// Too short for polish to tidy ("OK", 「好的」): polish.py answers "short" without its model (`len(units) <= 2`),
+    /// so the app doesn't ask — a one-word reply after the polish server's idle exit waited ~2 s for a model load it
+    /// didn't use (v0.9 dogfood).
+    public static let polishMinUnits = 3
+    public static func nothingToPolish(_ text: String) -> Bool { units(text).count < polishMinUnits }
+
+    /// Long enough to hold a list worth suggesting (the ≡ chip's structuring pass after the paste): 24 Chinese
+    /// characters, or 12 Latin words — a word carries about what two characters do. Counting both alike, a 22-word
+    /// English list of three points never got the chip Chinese got for the same three points (v0.9 dogfood).
+    public static let listMinContent = 24
+    public static func mayHoldList(_ text: String) -> Bool {
+        let us = units(text)
+        let cjk = us.filter { $0.value.unicodeScalars.first.map(isCJK) ?? false }.count
+        return cjk + 2 * (us.count - cjk) >= listMinContent
+    }
+
     public static func units(_ text: String) -> [Unit] {
         var out: [Unit] = []
         var i = text.startIndex

@@ -470,6 +470,44 @@ class Notes(unittest.TestCase):
         self.assertTrue(T.SERVE_FILE.exists())
         return th, out
 
+    def test_a_failed_preload_leaves_no_run_file(self):
+        # v0.9 dogfood: a run file left pointing at a dead (or stuck) process — the app trusted it and waited for a
+        # server that would never answer
+        class Broken(FakeBackend):
+            def __init__(self, *_a, **_k):
+                raise T.Fail("the model is broken", "error")
+        T.BACKENDS = {**T.BACKENDS, "sensevoice": Broken}
+        with config({"asr": {"auto": False, "backend": "sensevoice"}}), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(T.Fail):
+                T.cmd_serve(Namespace(preload=True, idle=600, exit_after=1800, parent=None))
+        self.assertFalse(T.SERVE_FILE.exists())
+
+    def test_a_server_ends_without_the_interpreters_teardown(self):
+        # a finalizer deadlocked during teardown kept servers alive for hours: serve ends with os._exit, after its
+        # run file is gone (the finally in cmd_serve) — also when it failed
+        ended = []
+
+        def fake_exit(code=0):
+            ended.append(code)
+            raise SystemExit(code)
+        saved = (T.cmd_serve, T.server_exit, sys.argv)
+        try:
+            T.server_exit = fake_exit
+            sys.argv = ["transcribe.py", "serve"]
+            T.cmd_serve = lambda a: None
+            with self.assertRaises(SystemExit):
+                T.main()
+
+            def fails(a):
+                raise T.Fail("no", "deps", 4)
+            T.cmd_serve = fails
+            with self.assertRaises(SystemExit), contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                T.main()
+        finally:
+            T.cmd_serve, T.server_exit, sys.argv = saved
+        self.assertEqual(ended, [0, 4])
+
     def test_warm_server_exits_when_asked(self):
         # dict026: Blurt quitting (or anyone) asks the server to go, and the memory comes back at once
         with config({"asr": {"auto": False, "backend": "sensevoice"}}):

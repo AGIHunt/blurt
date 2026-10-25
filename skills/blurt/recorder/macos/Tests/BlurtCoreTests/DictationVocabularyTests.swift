@@ -30,6 +30,21 @@ final class DictationVocabularyTests: XCTestCase {
         v.remove("tmux")                                              // a manual word just goes
         XCTAssertEqual(v.load().map(\.term), ["Claude Code"])
         XCTAssertEqual(v.payload().first?["term"] as? String, "Claude Code")
+        // the request carries what the file says (source, hits): the server ranks the app's words exactly as it ranks
+        // the file's own (the Dictation Lab), so both send the speech model the same words in the same order
+        XCTAssertEqual(v.payload().first?["source"] as? String, "manual")
+        XCTAssertEqual(v.payload().first?["hits"] as? Int, 0)
+    }
+
+    /// The Words tab: the projects' names and keys under their own heading, not in "Your words" (v0.9 dogfood).
+    func testProjectWordsAreTheirOwnGroup() {
+        v.seed(projects: [(name: "Atlas Web", key: "AW")])
+        v.add("Kubernetes")
+        _ = v.learn(heard: "clod", fixed: "Claude", explicit: true)
+        let g = DictationVocabulary.groups(v.load())
+        XCTAssertEqual(Set(g.own.map(\.term)), ["Kubernetes"])            // "Claude" is a built-in already
+        XCTAssertEqual(g.projects.map(\.term), ["Atlas Web", "AW"])
+        XCTAssertEqual(g.builtIn.count, DictationVocabulary.builtIn.count)
     }
 
     func testSeedOnceAndRemovedStaysRemoved() {
@@ -249,6 +264,18 @@ final class DictationLearnTests: XCTestCase {
         XCTAssertEqual(f, [.init(heard: "pool request", fixed: "pull request", kind: .spelling)])
         // no plain neighbour to anchor it: nothing
         XCTAssertEqual(DictationLearn.fixes(typed: "the pool", edited: "the pull", isCommonWord: { _ in true }), [])
+    }
+
+    /// v0.9 dogfood: a fix to "you're" was offered as a word to learn — the word list has no contractions; the
+    /// system's spelling dictionary (the app's `spelledRight`) knows it is ordinary language.
+    func testAContractionIsGrammarNotATerm() {
+        let saved = DictationLearn.spelledRight
+        defer { DictationLearn.spelledRight = saved }
+        DictationLearn.spelledRight = { ["you're", "doesn't"].contains($0) }
+        XCTAssertTrue(DictationLearn.isCommonWord("you're"))
+        XCTAssertFalse(DictationLearn.isCommonWord("tmuxx"))
+        XCTAssertEqual(DictationLearn.fixes(typed: "I think your right about it", edited: "I think you're right about it",
+                                            isCommonWord: DictationLearn.isCommonWord), [])
     }
 
     func testChineseFixes() {

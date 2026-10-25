@@ -274,6 +274,7 @@
 "capture.voice.maxed" = "已到 %@ 上限，语音备注已保存";
 "capture.voice.words_failed" = "备注没能转成文字";
 "capture.live.ax" = "已识别的文字";
+"capture.live.more" = "…还有 %ld 行";
 "capture.voice_drop.hint_paste" = "松手粘贴到 %@";
 "capture.voice_drop.hint_copy" = "松手后在 %@ 里按 ⌘V";
 "capture.voice_drop.pasted" = "已粘贴到 %@";

@@ -109,7 +109,7 @@
 "speech.dictation.loading" = "正在查找模型…";
 "speech.dictation.asr" = "识别";
 "speech.dictation.polish" = "润色";
-"speech.dictation.polish.unsupported" = "润色需要 Apple 芯片的 Mac。听写会照你说的原话输入。";
+"speech.dictation.polish.unsupported" = "润色需要 Apple 芯片的 Mac。听写会直接输入识别出的文字，不润色。";
 "speech.dictation.more" = "其他模型（%ld）";
 "speech.dictation.recommended" = "推荐：%@";
 "speech.dictation.recommended.size" = "共 %@";

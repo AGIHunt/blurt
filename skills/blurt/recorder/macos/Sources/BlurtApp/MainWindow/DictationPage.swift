@@ -37,7 +37,8 @@ struct DictationExtras: Equatable {
         if let s = c as? String, !s.isEmpty { context = s }
         else if let d = c as? [String: Any] {
             let parts = ["app", "kind", "source", "summary", "title", "field"].compactMap { d[$0] as? String }.filter { !$0.isEmpty }
-            context = parts.isEmpty ? (d.isEmpty ? nil : d.keys.sorted().joined(separator: ", ")) : parts.joined(separator: " · ")
+            // an older entry's raw context dict ({"before","after","selection"}): never its keys — just that it was used
+            context = parts.isEmpty ? (d.isEmpty ? nil : T("main.dictation.info.context.yes")) : parts.joined(separator: " · ")
         } else if let a = c as? [String], !a.isEmpty { context = a.joined(separator: ", ") }
         else if (c as? Bool) == true { context = T("main.dictation.info.context.yes") }
     }
@@ -191,8 +192,9 @@ final class DictationHistoryModel: ObservableObject {
         copy(es.map(shownText).joined(separator: "\n\n"), from: es.count == 1 ? es[0].id : nil)
     }
 
-    /// ⌘Z puts them back (the text and the item link; a recording kept with them is gone). The row after the last
-    /// deleted one is selected, as in Mail.
+    /// ⌘Z — or the island's "Deleted · Undo" — puts them back: the text, the item link and a recording kept with them
+    /// (it waits in audio/.deleted/ for a couple of minutes: DictationHistory.delete). The row after the last deleted
+    /// one is selected, as in Mail.
     func delete(_ es: [DictationEntry], undo: UndoManager? = nil) {
         guard !es.isEmpty else { return }
         let undo = DictationHistoryWindow.shared.undoManager ?? undo     // the main window's: what ⌘Z in its Edit menu reaches
@@ -204,10 +206,22 @@ final class DictationHistoryModel: ObservableObject {
         DictationHistory.shared.delete(es.map(\.id))
         reload()
         selection = next.map { [$0.id] } ?? []
+        // the recordings go for good once Undo is unlikely
+        let files = es.compactMap { $0.audio.map { DictationHistory.shared.resolve($0).lastPathComponent } }
+        if !files.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + DictationHistoryModel.audioUndoSeconds) {
+                DictationHistory.shared.purgeDeleted(files)
+            }
+        }
+        // said where the user looks while dictating too, with the way back (an Undo only in the Edit menu went unseen)
+        island.toast(es.count == 1 ? T("dictation.history.deleted.one") : T("dictation.history.deleted.many", es.count),
+                     key: "dictation.history.deleted", seconds: 5, actionTitle: T("dictation.toast.undo")) { [weak undo] in
+            if let u = undo, u.canUndo { u.undo() }
+        }
         undo?.registerUndo(withTarget: self) { m in
             for e in es.reversed() {
                 var back = e
-                back.audio = nil
+                if !DictationHistory.shared.restoreAudio(e) { back.audio = nil }
                 DictationHistory.shared.append(back)
                 if let i = e.item, let u = e.itemUID { DictationHistory.shared.markItem(e.id, item: i, uid: u) }
             }
@@ -358,6 +372,16 @@ final class DictationHistoryModel: ObservableObject {
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
     func turnOn() { Dictation.shared.openSetup(from: "page") }
+    /// How long a deleted dictation's recording waits for Undo.
+    static let audioUndoSeconds = 120.0
+
+    /// The one step in the way of a dictation, for the empty state and the header (DictationPageStatus): the speech
+    /// model counts as much as the key's permission.
+    @MainActor static func pageStatus(enabled: Bool, needsSetup: Bool) -> DictationPageStatus {
+        let models = DictationModels.shared, dl = ModelDownloads.shared
+        let download = models.dictationJob.flatMap { j in dl.queue.contains(j.id) ? dl.progress(j.id) ?? (0, j.sizeMB) : nil }
+        return .of(enabled: enabled, needsSetup: needsSetup, modelReady: models.dictationReady, download: download)
+    }
 
     // MARK: words for the views
 
@@ -390,14 +414,23 @@ final class DictationHistoryModel: ObservableObject {
     // MARK: app icons (the app a dictation went into)
 
     private static var icons: [String: NSImage] = [:]
-    static func icon(_ bundle: String?) -> NSImage? {
-        guard let b = bundle, !b.isEmpty else { return nil }
+    /// The app's icon; Blurt's own for its own windows (any of its builds), else the generic app icon — never a gap:
+    /// the list's names keep one left edge (v0.9 dogfood: rows without an icon jumped 28 pt left).
+    static func icon(_ bundle: String?) -> NSImage {
+        guard let b = bundle, !b.isEmpty else { return genericIcon }
         if let i = icons[b] { return i }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) else { return nil }
-        let i = NSWorkspace.shared.icon(forFile: url.path)
+        let i: NSImage
+        if b == Bundle.main.bundleIdentifier || b.hasPrefix(DictationInsert.productionBundleID) {
+            i = NSApp.applicationIconImage
+        } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: b) {
+            i = NSWorkspace.shared.icon(forFile: url.path)
+        } else {
+            i = genericIcon
+        }
         icons[b] = i
         return i
     }
+    static let genericIcon = NSWorkspace.shared.icon(for: .application)
 }
 
 // MARK: - the page (two columns of the main window)
@@ -597,6 +630,9 @@ struct RowWash: View {
 
 struct DictationListView: View {
     @ObservedObject var m: DictationHistoryModel
+    /// the header's "no speech model" follows the models and their download
+    @ObservedObject var models = DictationModels.shared
+    @ObservedObject var downloads = ModelDownloads.shared
     @Environment(\.undoManager) private var undo
 
     var body: some View {
@@ -639,7 +675,22 @@ struct DictationListView: View {
                 }
             }
             Spacer(minLength: 8)
-            if !quiet && (!m.enabled || m.needsSetup) {
+            let status = DictationHistoryModel.pageStatus(enabled: m.enabled, needsSetup: m.needsSetup)
+            if !quiet, status == .noModel {
+                // the speech model is gone (removed in Settings, another model chosen): where the settings link was
+                HStack(spacing: 5) {
+                    Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
+                    Text(T("dictation.toast.no_model_plain")).foregroundStyle(.secondary)
+                    LinkButton(title: T("dictation.toast.no_model.action"), tint: .brandAttnInk) { Dictation.getSpeechModel(from: "page") }
+                }
+            } else if !quiet, case let .downloading(done, total) = status {
+                HStack(spacing: 5) {
+                    Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
+                    Text(T("dictation.toast.model_downloading", modelSize(done), modelSize(total))).foregroundStyle(.secondary)
+                        .monospacedDigit()
+                    LinkButton(title: T("dictation.toast.model_downloading.action")) { ModelDownloads.showProgress() }
+                }
+            } else if !quiet && (!m.enabled || m.needsSetup) {
                 // dictation can't work right now: say so where the settings link was
                 HStack(spacing: 5) {
                     Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
@@ -725,9 +776,7 @@ struct DictationRow: View {
         let x = m.extras[e.id]
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 5) {
-                if let i = DictationHistoryModel.icon(e.bundle) {
-                    Image(nsImage: i).resizable().interpolation(.high).frame(width: 14, height: 14)
-                }
+                Image(nsImage: DictationHistoryModel.icon(e.bundle)).resizable().interpolation(.high).frame(width: 14, height: 14)
                 Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                     .lineLimit(1)
                 marks(x)
@@ -751,7 +800,13 @@ struct DictationRow: View {
     @ViewBuilder func marks(_ x: DictationExtras?) -> some View {
         HStack(spacing: 4) {
             if e.fellBack {
-                mark(.undo, .brandAttn, DictationHistoryModel.reasonText(e.reason))
+                // a word, not a lone arrow: what happened is the point ("Not polished" — the reason on hover)
+                Text(T("dictation.history.badge.fell_back")).font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(Color.brandAttnInk)
+                    .padding(.horizontal, 5).padding(.vertical, 1)
+                    .background(Capsule().fill(Color.brandAttn.opacity(0.14)))
+                    .help(DictationHistoryModel.reasonText(e.reason))
+                    .accessibilityLabel(DictationHistoryModel.reasonText(e.reason))
             } else if DictationHistoryModel.differs(e) {
                 mark(.wand, .secondary, T("dictation.history.badge.polished"))
             }
@@ -764,34 +819,58 @@ struct DictationRow: View {
         }
     }
 
+    /// A row's mark at the icon floor (system.md §2.6: never below 13), in full secondary.
     func mark(_ i: BlurtIcon, _ c: Color, _ tip: String) -> some View {
-        glyph(i, 10).foregroundStyle(c).opacity(c == .secondary ? 0.8 : 1).help(tip).accessibilityLabel(tip)
+        glyph(i, 13).foregroundStyle(c).help(tip).accessibilityLabel(tip)
     }
 }
 
-/// Nothing dictated yet: how to, and what stands in the way if anything does.
+/// Nothing dictated yet: how to, and what stands in the way if anything does — the one blocking step
+/// (DictationPageStatus: off, the key's permission, the speech model), with its button.
 struct DictationEmptyView: View {
     @ObservedObject var m: DictationHistoryModel
+    @ObservedObject var models = DictationModels.shared
+    @ObservedObject var downloads = ModelDownloads.shared
 
     var body: some View {
         EmptyStateContent(title: T("dictation.history.empty.title"), message: T("dictation.history.empty.body", Dictation.keyInline)) {
             status
         }
+        .onAppear { models.loadIfNeeded() }
     }
 
     @ViewBuilder var status: some View {
-        if !m.enabled {
+        switch DictationHistoryModel.pageStatus(enabled: m.enabled, needsSetup: m.needsSetup) {
+        case .off:
             VStack(spacing: 8) {
                 pill(T("main.dictation.off"), .secondary)
                 Button(T("main.dictation.settings")) { m.openSettings() }.controlSize(.regular)
             }
-        } else if m.needsSetup {
+        case .needsPermission:
             VStack(spacing: 8) {
                 pill(T("dictation.menu.turn_on.tip", Dictation.keyInline), .brandAttn)
                 // the one thing standing in the way: this view's primary
                 Button(T("dictation.menu.turn_on")) { m.turnOn() }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
             }
-        } else {
+        case .noModel:
+            VStack(spacing: 8) {
+                if let j = models.dictationJob {
+                    pill(T("dictation.toast.no_model", modelSize(j.sizeMB)), .brandAttn)
+                    Button(T("dictation.toast.no_model.action")) { Dictation.getSpeechModel(from: "page") }
+                        .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                } else {
+                    // what is missing can't be fetched from here: the models' page
+                    pill(T("dictation.toast.no_model_plain"), .brandAttn)
+                    Button(T("dictation.toast.no_model.settings")) { SpeechPane.showDictationModels() }.controlSize(.regular)
+                }
+            }
+        case .downloading(let done, let total):
+            VStack(spacing: 8) {
+                pill(T("dictation.toast.model_downloading", modelSize(done), modelSize(total)), .brandAttn)
+                ProgressView(value: min(done, total), total: max(total, 1)).frame(width: 220)
+                Button(T("dictation.toast.model_downloading.action")) { ModelDownloads.showProgress() }.controlSize(.regular)
+            }
+        case .ready:
             pill(T("main.dictation.ready"), .brandOk, check: true)
         }
     }
@@ -799,7 +878,7 @@ struct DictationEmptyView: View {
     /// A status line in a pill: a dot (attention), or a check (ready: ok is always a check shape).
     func pill(_ s: String, _ c: Color, check: Bool = false) -> some View {
         HStack(spacing: 6) {
-            if check { glyph(.check, 10).foregroundStyle(c) } else { Circle().fill(c).frame(width: 6, height: 6) }
+            if check { glyph(.check, 13).foregroundStyle(c) } else { Circle().fill(c).frame(width: 6, height: 6) }
             Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).multilineTextAlignment(.leading)
         }
         .padding(.horizontal, 10).padding(.vertical, 5)
@@ -933,7 +1012,7 @@ struct DictationDetailView: View {
                 }
                 if e.fellBack {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        glyph(.undo, 11).foregroundStyle(Color.brandAttnInk)
+                        glyph(.undo, 13).foregroundStyle(Color.brandAttnInk)
                         Text(DictationHistoryModel.reasonText(e.reason)).font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
@@ -949,12 +1028,7 @@ struct DictationDetailView: View {
 
     func title(_ e: DictationEntry) -> some View {
         HStack(spacing: 12) {
-            if let i = DictationHistoryModel.icon(e.bundle) {
-                Image(nsImage: i).resizable().interpolation(.high).frame(width: 34, height: 34)
-            } else {
-                glyph(.keyboard, 20).foregroundStyle(.secondary).frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35)))
-            }
+            Image(nsImage: DictationHistoryModel.icon(e.bundle)).resizable().interpolation(.high).frame(width: 34, height: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")).font(.system(size: 17, weight: .semibold))
                 Text("\(DictationHistoryModel.dayTitle(e.time)) \(DictationHistoryModel.time(e.time)) · \(DictationHistoryModel.duration(e.duration))")
@@ -1013,7 +1087,7 @@ struct DictationDetailView: View {
     @ViewBuilder func savedNote(_ n: DictationHistoryModel.SavedNote) -> some View {
         let sep = T("main.dictation.correct.sep")
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            glyph(.check, 11).foregroundStyle(Color.brandOk)
+            glyph(.check, 13).foregroundStyle(Color.brandOk)
             // the note is quiet; its one action reads as a link (brand ink), not as more of the sentence
             if !n.added.isEmpty {
                 Text(T("main.dictation.correct.added", n.added.joined(separator: sep))).foregroundStyle(.secondary)
@@ -1079,7 +1153,7 @@ struct DictationDetailView: View {
                 }
                 Button { m.copy(text, from: copyID) } label: {
                     HStack(spacing: 4) {
-                        glyph(m.copied == copyID ? .check : .copy, 11)
+                        glyph(m.copied == copyID ? .check : .copy, 13)
                         Text(m.copied == copyID ? T("main.dictation.copied") : T("dictation.history.copy"))
                     }
                     .font(.system(size: 11))
@@ -1117,7 +1191,7 @@ struct DictationDetailView: View {
             }
             Spacer()
             Button(role: .destructive) { m.delete([e], undo: undo) } label: {
-                HStack(spacing: 4) { glyph(.trash, 11); Text(T("dictation.history.delete")) }
+                HStack(spacing: 4) { glyph(.trash, 13); Text(T("dictation.history.delete")) }
             }
             .help(T("main.dictation.delete.tip"))
         }

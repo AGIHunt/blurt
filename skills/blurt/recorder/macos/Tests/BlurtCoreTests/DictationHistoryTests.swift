@@ -9,6 +9,65 @@ final class DictationHistoryTests: XCTestCase {
                        polished: nil, text: text, model: nil, fellBack: false, reason: nil, insert: "pasted")
     }
 
+    /// v0.9: the speech model's language call is kept per piece, so a take typed in the wrong language shows in the
+    /// history and in the Lab (with how close the call was).
+    func testTheLanguageTagIsKeptAndACloseCallIsFlagged() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        var e = entry("d-t", "这个 feature 下周上线。", 1000)
+        e.asrTags = [["tag": "Chinese", "p_en": 0.9497, "p_zh": 0.0503, "margin": -2.355, "p_en_words": 0.994],
+                     ["tag": "Chinese", "p_en": 0.99, "p_zh": 0.01, "margin": -0.697, "redone": true],
+                     ["tag": "English", "p_en": 0.9999, "p_zh": 0.0001, "margin": 3.917]]
+            .compactMap(DictationLanguageTag.init(json:))
+        h.append(e)
+        let back = try XCTUnwrap(h.load().first?.asrTags)
+        XCTAssertEqual(back.count, 3)
+        XCTAssertEqual(back[0].prefer, "zh")
+        XCTAssertEqual(back[0].pPref ?? 0, 0.0503, accuracy: 1e-6)
+        XCTAssertEqual(back[0].pEnWords ?? 0, 0.994, accuracy: 1e-6)
+        XCTAssertFalse(back[0].fragile)
+        XCTAssertTrue(back[1].redone)
+        XCTAssertFalse(back[2].fragile)                              // a clear English piece is no close call
+        XCTAssertEqual(DictationLanguageTag.closest(back)?.margin ?? 0, -0.697, accuracy: 1e-6)
+        XCTAssertTrue(DictationLanguageTag.closest(back)?.fragile ?? false)
+        XCTAssertNil(DictationLanguageTag.closest([[String: Any]]()))
+        XCTAssertNil(entry("d-old", "x", 1).asrTags)                 // an older entry has none
+    }
+
+    /// v0.9 dogfood: Undo of a delete brought back a row without its recording (Retry and Add to Lab gone). The
+    /// recording now waits aside until Undo is unlikely.
+    func testADeletedRecordingComesBackWithUndoAndGoesLater() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        try FileManager.default.createDirectory(at: h.audioDir, withIntermediateDirectories: true)
+        var e = entry("d-a", "kept", 1000)
+        e.audio = "audio/d-a.wav"
+        let wav = h.resolve("audio/d-a.wav")
+        try Data("RIFF".utf8).write(to: wav)
+        h.append(e)
+        h.delete(["d-a"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wav.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.deletedDir.appendingPathComponent("d-a.wav").path))
+        // Undo: the recording is back where the entry says
+        XCTAssertTrue(h.restoreAudio(e))
+        h.append(e)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wav.path))
+        XCTAssertEqual(h.load().first?.audio, "audio/d-a.wav")
+        // deleted again and purged: gone for good, Undo can't bring it
+        h.delete(["d-a"])
+        h.purgeDeleted(["d-a.wav"])
+        XCTAssertFalse(h.restoreAudio(e))
+        XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: h.deletedDir.path))?.isEmpty ?? true)
+        // the launch prune purges what is left aside
+        h.append(e)
+        try Data("RIFF".utf8).write(to: wav)
+        h.delete(["d-a"])
+        h.prune(days: 30)
+        XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: h.deletedDir.path))?.isEmpty ?? true)
+    }
+
     func testDeleteThenWriteAgainComesBackOnce() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

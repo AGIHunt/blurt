@@ -68,6 +68,12 @@ def test_apply_style():
         S.apply_style(light, "email")
 
 
+def test_terminals_get_the_terminal_variant():
+    # the same table as DictationAppCategory.isTerminal: a command said into a terminal stays a command
+    assert S.is_terminal("com.apple.Terminal") and S.is_terminal("com.googlecode.iterm2") and S.is_terminal("com.mitchellh.ghostty")
+    assert not S.is_terminal("com.microsoft.VSCode") and not S.is_terminal(None) and not S.is_terminal("com.apple.Notes")
+
+
 def test_list_lines():
     assert S.list_lines("intro:\n1. a\n2. b") == 2
     assert S.list_lines("- a\n- b") == 2

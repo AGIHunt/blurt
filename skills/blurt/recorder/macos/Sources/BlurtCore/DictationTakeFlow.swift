@@ -157,9 +157,20 @@ public enum DictationASRFailure: Equatable {
         }
     }
 
-    /// How long a speech-server call may take for this much audio: a model load (cold, from disk) plus 1.5× the
-    /// audio — a piece of 20 s gets 45 s, not a flat minute, and a hung server is given up on in proportion.
+    /// How long a speech-server call may take for this much audio at most: a model load (cold, from disk) plus 1.5×
+    /// the audio — a piece of 20 s gets 45 s. A hung server is told well before that (`hung`).
     public static func serverTimeout(audioSeconds: Double) -> Double { 15 + 1.5 * max(0, audioSeconds) }
+
+    /// A request in flight is given up on as hung: no answer after `minWait` s while the server's CPU time hasn't
+    /// moved for `stalledFor` s (v0.9 dogfood: a stopped server held a 3 s take 21.6 s, only dots on the island). The
+    /// idle CPU decides, whatever the audio's length: a server that works (loading, decoding a long take, another
+    /// request first) keeps its CPU moving — ~0.5 s of CPU per 0.5 s while decoding a 4-minute file — and is waited
+    /// for, up to serverTimeout. (Waiting half the audio as well held a stopped server's 20 s take 9.5 s; review.)
+    public static let stalledFor = 2.0
+    public static let minWait = 3.0
+    public static func hung(waited: Double, cpuIdle: Double) -> Bool {
+        waited >= minWait && cpuIdle >= stalledFor
+    }
 }
 
 /// `transcribe.py dictation-models` as the key-down needs it. A dictation never downloads anything, so the key listens
@@ -251,6 +262,53 @@ public struct DictationReformatAfterPaste<ID: Hashable> {
 
 /// Dictation gave up on a speech server that didn't answer: still given up only while that same server (by pid) is
 /// the one running — a fresh server is used at once.
+/// What the island says once a take is in (or on the clipboard): one line, never two that replace each other in the
+/// same frame (v0.9 dogfood: a send asked for, the app changed meanwhile — "Copied, ⌘V" showed, "not sent" never did).
+public enum DictationDeliveredLine: Equatable {
+    /// copied — `appChanged`: the user moved to another app meanwhile
+    case copied(appChanged: Bool)
+    /// a double tap asked to send, the text is only on the clipboard: Return was not pressed
+    case copiedNotSent
+    /// a double tap asked to send and nothing went in (why: not_pasted)
+    case notSent
+    /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): "Copy again"
+    case pastedUnsure
+    /// a password field had the focus: not typed, not copied — "Copy" is the user's call
+    case held
+    case none
+
+    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take.
+    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool) -> DictationDeliveredLine {
+        switch result {
+        case "held": return .held
+        case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
+        case "pasted": return confirmed ? .none : .pastedUnsure
+        default: return sendAsked ? .notSent : .none
+        }
+    }
+
+    /// The line's string key (Dictation.strings) when the text was left on the clipboard: copied, or copied and not
+    /// sent — one line that says both. nil for the other lines (they have their own button or wording).
+    public var copyKey: String? {
+        switch self {
+        case .copiedNotSent: return "dictation.toast.copied.not_sent"
+        case .copied(let changed): return changed ? "dictation.toast.copied_app" : "dictation.toast.copied"
+        default: return nil
+        }
+    }
+
+    /// A plain copy is done (the ok check, as every done line); "not sent" isn't.
+    public var checked: Bool { if case .copied = self { return true }; return false }
+
+    /// How long a copied line stays: longer when there is more to read (the app changed, or it wasn't sent).
+    public var copySeconds: Double {
+        switch self {
+        case .copied(false): return 2.4
+        default: return 4
+        }
+    }
+}
+
 public enum DictationServerGiveUp {
     public static func stillGivenUp(givenUp: Int32?, now: Int32?) -> Bool {
         guard let g = givenUp else { return true }      // no pid known: the minute holds

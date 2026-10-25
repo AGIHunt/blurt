@@ -210,7 +210,11 @@ final class VoiceInput {
     /// load it, a new one preloads it.
     static func warmSpeechModel(dictation: Bool = false) {
         if dictation && WarmServer.running("asr-serve") {
+            // a run file can name a server that will never answer (stuck since an app long gone, or ours hung): the
+            // key-down asks it, and one that is stuck is replaced — on a relaunch too (v0.9 dogfood: every take
+            // waited ~20 s for one, then ran the CLI, until a reboot)
             DispatchQueue.global(qos: .userInitiated).async {
+                if replaceIfStuck("warm") { return }
                 _ = WarmServer.call("asr-serve", ["cmd": "load", "purpose": "dictation"], timeout: 30)
             }
             return
@@ -221,24 +225,80 @@ final class VoiceInput {
                                  server: "asr-serve")
     }
 
-    /// Dictation gave up on a server that stopped answering: the one Blurt started goes (SIGKILL: a stopped process
-    /// doesn't take SIGTERM), so the next key-down starts a fresh one. A server someone else started is left alone.
-    static func endUnresponsiveServer() {
-        guard let s = server, s.isRunning else { return }
-        // the server itself is `uv run`'s child (or grandchild): it goes first, while it can still be told from a
-        // stranger's by its ancestry (killing only `uv` left it orphaned and running)
-        if let d = try? Data(contentsOf: WarmServer.infoURL("asr-serve")),
-           let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let pid = (o["pid"] as? NSNumber)?.int32Value,
-           descends(pid, from: s.processIdentifier) {
-            kill(pid, SIGKILL)
+    /// While a stuck server is being replaced (dictation's pieces wait for the new one, not for the CLI).
+    private static let replaceLock = NSLock()
+    private static var replacingNow = false
+    static var replacing: Bool { replaceLock.lock(); defer { replaceLock.unlock() }; return replacingNow }
+
+    /// The speech server the run file names, when it doesn't answer (WarmServer.health, a 0.5 s ping): a stuck one —
+    /// this app's, or one an app that is gone left behind; a server process of this home by its command line and
+    /// start time — is ended, a stale file (its process gone, the pid reused) removed, and a fresh server started.
+    /// One that answers or is busy (its CPU moves: loading, decoding) is left alone. Blocking: off the main thread.
+    /// true when the old one was replaced.
+    @discardableResult
+    static func replaceIfStuck(_ why: String) -> Bool {
+        replaceLock.lock()
+        if replacingNow { replaceLock.unlock(); return true }
+        replacingNow = true
+        replaceLock.unlock()
+        defer { replaceLock.lock(); replacingNow = false; replaceLock.unlock() }
+        let pid = WarmServer.pid("asr-serve")
+        let h = WarmServer.health("asr-serve", script: "transcribe.py")
+        var result: String
+        var oursStuck = false
+        switch h {
+        case .answers, .working: return false
+        case .gone, .notAServer:
+            WarmServer.forget("asr-serve", pid: pid)
+            result = "forgot"
+        case .stuck:
+            // our `uv run` goes with it only when the stuck process is its child (told before it ends): a stuck file of
+            // someone else's next to our own server, still starting, leaves ours alone (review)
+            let ours = onMain { server?.isRunning == true ? server?.processIdentifier : nil }
+            oursStuck = ours.map { u in pid.map { descends($0, from: u) } ?? false } ?? false
+            if oursStuck, let u = ours { WarmSpawn.retire(u) }      // its exit is no failed start
+            result = pid.map { WarmServer.end("asr-serve", pid: $0) } == true ? "ended" : "not_ended"
         }
-        kill(s.processIdentifier, SIGKILL)
-        server = nil
-        emit(["event": "asr_server_ended", "why": "unresponsive"])
+        emit(["event": "asr_server_replaced", "why": why, "health": "\(h)", "pid": pid ?? NSNull(), "result": result,
+              "ours": oursStuck])
+        let sem = DispatchSemaphore(value: 0)
+        DispatchQueue.main.async {
+            if oursStuck, let s = server, s.isRunning { kill(s.processIdentifier, SIGKILL) }
+            // a server of ours still starting stays: it writes the run file in a moment (warmSpeechModel waits for it)
+            if oursStuck || server?.isRunning != true { server = nil }
+            warmSpeechModel(dictation: true)
+            sem.signal()
+        }
+        _ = sem.wait(timeout: .now() + 2)
+        return true
     }
 
+    /// Dictation gave up on a server that stopped answering. `hung`: its CPU stood still while a request waited — it is
+    /// replaced like any stuck server (ours or not: replaceIfStuck). Else (only slow past the time limit): the one
+    /// Blurt started goes (SIGKILL: a stopped process doesn't take SIGTERM), so the next key-down starts a fresh one;
+    /// a server someone else started is left alone. true when a process was ended.
+    @discardableResult
+    static func endUnresponsiveServer(hung: Bool = false) -> Bool {
+        if hung { return replaceIfStuck("hung") }
+        guard let s = server, s.isRunning else { return false }
+        WarmSpawn.retire(s.processIdentifier)
+        // the server itself is `uv run`'s child (or grandchild): it goes first, while it can still be told from a
+        // stranger's by its ancestry (killing only `uv` left it orphaned and running)
+        if let pid = WarmServer.pid("asr-serve"), descends(pid, from: s.processIdentifier) {
+            kill(pid, SIGKILL)
+            WarmServer.forget("asr-serve", pid: pid)
+        }
+        kill(s.processIdentifier, SIGKILL)
+        DispatchQueue.main.async { server = nil }
+        emit(["event": "asr_server_ended", "why": "unresponsive"])
+        return true
+    }
+
+    /// `body` on the main thread (`server` is the main thread's), from any thread.
+    static func onMain<T>(_ body: () -> T) -> T { Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body) }
+
     /// `pid`'s parent, grandparent … (up to 4) include `ancestor`.
-    private static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
+    static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
         var p = pid
         for _ in 0..<4 {
             var info = proc_bsdinfo()
@@ -256,7 +316,7 @@ final class VoiceInput {
     static var notesWaiting: Int { notesLock.lock(); defer { notesLock.unlock() }; return notesInFlight }
 
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).
-    static var serverStarting: Bool { server?.isRunning == true && !WarmServer.running("asr-serve") }
+    static var serverStarting: Bool { replacing || (server?.isRunning == true && !WarmServer.running("asr-serve")) }
 
     /// One piece of a voice note → its words: the warm server (`note`, the voice-note model), else the CLI (which
     /// asks the server itself, or loads the model). Blocking: off the main thread.

@@ -115,6 +115,17 @@ _PARTS = [
 ]
 
 
+_TERMINALS = {"com.apple.terminal", "com.googlecode.iterm2", "dev.warp.warp-stable", "com.mitchellh.ghostty",
+              "net.kovidgoyal.kitty", "org.alacritty", "io.alacritty", "co.zeit.hyper", "com.github.wez.wezterm"}
+_TERMINAL_PARTS = {"terminal", "iterm2", "warp", "ghostty", "kitty", "alacritty", "wezterm"}
+
+
+def is_terminal(bundle: str | None) -> bool:
+    """A terminal (DictationAppCategory.isTerminal): polish's "terminal" variant — a command said there stays a command."""
+    b = (bundle or "").lower()
+    return bool(b) and (b in _TERMINALS or bool(set(re.split(r"[.\-_]", b)) & _TERMINAL_PARTS))
+
+
 def category(bundle: str | None) -> str:
     b = (bundle or "").lower()
     if not b:

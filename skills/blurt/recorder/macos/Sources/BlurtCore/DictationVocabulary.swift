@@ -146,11 +146,22 @@ public final class DictationVocabulary {
     public func suggestions() -> [VocabTerm] { load().filter { $0.state == .suggested } }
     /// The active words the user sees as theirs (added, learned, their projects'), in the file's order.
     public func userWords() -> [VocabTerm] { load().filter { $0.state == .active && $0.source != .builtIn } }
+    /// The Words tab's groups of the active words: the user's own (added, learned from their corrections) and their
+    /// projects' names and keys (seeded — shown apart, so nobody wonders whether they added them).
+    public static func groups(_ all: [VocabTerm]) -> (own: [VocabTerm], projects: [VocabTerm], builtIn: [VocabTerm]) {
+        let active = all.filter { $0.state == .active }
+        return (active.filter { $0.source == .manual || $0.source == .learned }, active.filter { $0.source == .project },
+                active.filter { $0.source == .builtIn })
+    }
     /// The active built-in words (the Words tab shows them on one folded line).
     public func builtInWords() -> [VocabTerm] { load().filter { $0.state == .active && $0.source == .builtIn } }
 
-    /// What a request to the speech / polish server carries: [{"term","sounds_like"}].
-    public func payload() -> [[String: Any]] { active().map { ["term": $0.term, "sounds_like": $0.soundsLike] } }
+    /// What a request to the speech / polish server carries: [{"term","sounds_like","source","hits"}] — what the file
+    /// says, so the server ranks them exactly as it does the file's own words (the Dictation Lab, the CLI's --vocab):
+    /// dictation_vocab.ranked picks by relevance, source and use, and orders by name, never by the hit counts.
+    public func payload() -> [[String: Any]] {
+        active().map { ["term": $0.term, "sounds_like": $0.soundsLike, "source": $0.source.rawValue, "hits": $0.hits] }
+    }
 
     static func key(_ s: String) -> String {
         s.lowercased().components(separatedBy: CharacterSet.whitespaces.union(CharacterSet(charactersIn: "-_.·"))).joined()

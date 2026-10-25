@@ -33,6 +33,18 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(r, islandW - IslandLayout.earWidth + 2)
     }
 
+    /// "✓ 已发送" (check 12 + gap 4 + ~39 pt of text): the ear widens so the word keeps the 14 pt inset (v0.9 dogfood:
+    /// it sat 4 pt from the rounded corner).
+    func testTheSentWordKeepsTheInset() {
+        let content: CGFloat = 55
+        let ear = IslandLayout.earWidth(content: content)
+        XCTAssertEqual(ear, 71)
+        let r: CGFloat = 600                              // the notch's right edge
+        let x = IslandLayout.earOrigin(.right, width: content, outer: r + ear, inner: r)
+        XCTAssertEqual(r + ear - (x + content), IslandLayout.earInset)
+        XCTAssertEqual(IslandLayout.earWidth(content: 30), IslandLayout.earWidth)   // a short one: the usual ear
+    }
+
     func testCapsuleEarsUseTheSameInset() {
         XCTAssertEqual(IslandLayout.earOrigin(.left, width: 30, outer: 100, inner: nil), 114)
         XCTAssertEqual(IslandLayout.earOrigin(.right, width: 30, outer: 300, inner: nil), 256)

@@ -89,6 +89,10 @@ extension Dictation {
     static let noticeToastKey = DictationToastKeys.notice
     /// The first takes' tips (passive): a new take drops them.
     static let tipToastKey = DictationToastKeys.tip
+    /// "Still recognising… Esc to cancel": up while a slow take is on its way, gone when it lands or is cancelled.
+    static let slowToastKey = DictationToastKeys.slow
+    /// What a listening take says about itself ("still listening", the 5-minute limit): a new take drops it.
+    static let listeningToastKey = DictationToastKeys.listening
 
     // MARK: the line of takes
 
@@ -104,10 +108,23 @@ extension Dictation {
         }
         updatePhase()
         take.stream.finish(keyUp: take.keyUp, structure: take.structure) { [weak self] r in self?.landed(take, r) }
+        // a take that is slow to come (a model loading, a server that stopped answering) says so after a few seconds,
+        // with the way out — not only moving dots (v0.9 dogfood: 20 s of dots, and the user dictated it again)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.slowAfter) { [weak self, weak take] in
+            guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
+                  take.failure == nil else { return }
+            emit(["event": "dictation_slow", "id": take.id, "stage": take.stage.rawValue])
+            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr",
+                       key: Dictation.slowToastKey, seconds: 60)
+        }
     }
+
+    /// How long after the stop a take still on its way says so (and how to cancel it).
+    static let slowAfter = 3.0
 
     /// A take's text is in (or recognition failed, or there were no words).
     private func landed(_ take: DictationTake, _ r: DictationStream.Result) {
+        if !takes.values.contains(where: { $0 !== take && $0.result == nil }) { island.dropToasts(key: Dictation.slowToastKey) }
         guard !take.cancelled, takes[take.id] === take else {
             // a result nobody takes: its audio goes too (not while "Cancelled" still offers Undo for it)
             if cancelledTakes[take.id] !== take { try? FileManager.default.removeItem(at: take.wav) }
@@ -179,6 +196,7 @@ extension Dictation {
             stopped.append(id)
             emit(["event": "dictation_cancel", "id": id, "phase": t.stage.rawValue])
         }
+        island.dropToasts(key: Dictation.slowToastKey)
         // after Undo's time: the audio goes
         DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.undoSeconds + 1) { [weak self] in
             guard let self = self else { return }
@@ -363,7 +381,14 @@ extension Dictation {
             let len = min(max(0, f.selection.length), ns.length - loc)
             let before = String(ns.substring(to: loc).suffix(500))
             let after = String(ns.substring(from: loc + len).prefix(500))
-            let fit = Dictation.fit(text, before: before, after: after, list: styleRecord.rendered)
+            // the field's sentence goes on before the cursor ("I think ▮"): polish's model already lowered a capital
+            // that only started a sentence (polish.py `sentence_case`, also for a reply too short to polish; v0.9
+            // dogfood: "I think The new layout is fine"). Without polish the words go in as heard, except that a
+            // transcript heard in lower case keeps it (keepCase)
+            let cased = !styleRecord.rendered && DictationStitch.midSentence(before)
+                ? DictationStitch.keepCase(input: r.raw, output: text) : text
+            var fit = Dictation.fit(cased, before: before, after: after, list: styleRecord.rendered)
+            if cased != text { fit.changes.append("capital") }
             if fit.changes.count > 0 {
                 emit(["event": "dictation_fit", "id": id, "changes": fit.changes, "from": text.count, "to": fit.text.count])
                 text = fit.text
@@ -380,20 +405,19 @@ extension Dictation {
             LiveTranscript.shared.end(session: take.liveSession)
         }
         inserting = true
-        DictationInsert.insert(text, appChanged: appChanged) { [weak self] result in
+        DictationInsert.insert(text, appChanged: appChanged, field: field, before: now) { [weak self] result in
             guard let self = self else { return }
             self.queue.delivered(id)
             self.takes[id] = nil
             self.inserting = false
-            var sent = false, sendWanted = false
+            var sent = false
+            let sendAsked = take.sendAfterPaste
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
                 if result == .pasted { self.pressReturn(after: "paste"); sent = true } else {
                     // left on the clipboard (another app in front now, a password field, Blurt in front …): Return
-                    // would send without it — said with "copied" below, in one line
+                    // would send without it — the one line below says so
                     emit(["event": "dictation_send", "result": "skipped", "why": appChanged ? "app_changed" : "not_pasted", "after": "paste"])
-                    sendWanted = true
-                    if result != .copied { self.sendSkipped("not_pasted") }
                 }
             }
             // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
@@ -412,6 +436,7 @@ extension Dictation {
                                        timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
+            entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
@@ -419,18 +444,31 @@ extension Dictation {
             self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
-            // copied (and, after a double tap, not sent): one line that says both — "Not sent" used to be replaced in the
-            // same frame by "Copied — paste with ⌘V" (same key), so the user never learned the message didn't go
-            if let k = DictationCopyToast.key(copied: result == .copied, appChanged: appChanged, sendWanted: sendWanted) {
-                self.toast(k, key: Dictation.toastKey, seconds: appChanged || sendWanted ? 4 : 2.4,
-                           icon: DictationCopyToast.checked(k) ? .check : nil)
-            } else if result == .pasted, !DictationInsert.lastPasteConfirmed {
+            // one line about how it went (DictationDeliveredLine: never two that replace each other in one frame)
+            let line = DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
+                                                   confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged)
+            switch line {
+            case .copied, .copiedNotSent:
+                // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
+                // carries the ok check as every done line
+                if let k = line.copyKey { self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : nil) }
+            case .notSent:
+                self.sendSkipped(nil)               // nothing went in: "Not sent"
+            case .held:
+                island.toast(Loc.t("dictation.toast.secure_held", table: "Dictation"), key: Dictation.toastKey, seconds: 6,
+                             actionTitle: Loc.t("dictation.toast.copy", table: "Dictation"), action: {
+                    DictationInsert.copy(text)
+                    emit(["event": "dictation_copy_held", "id": id])
+                })
+            case .pastedUnsure:
                 // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
                 island.toast(Loc.t("dictation.toast.pasted_unsure", table: "Dictation"), key: Dictation.toastKey,
                              actionTitle: Loc.t("dictation.toast.copy_again", table: "Dictation"), action: {
                     DictationInsert.copy(text)
                     emit(["event": "dictation_copy_again", "id": id])
                 })
+            case .none:
+                break
             }
             if result == .pasted { self.afterPaste(take, r, category: styleRecord.category, sent: sent) }
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,
@@ -442,7 +480,8 @@ extension Dictation {
                                       "style": styleRecord.style, "style_source": styleRecord.source,
                                       "category": styleRecord.category, "structure_reason": r.structureReason ?? NSNull(),
                                       "rendered": styleRecord.rendered, "variant": styleRecord.variant,
-                                      "style_ms": styled.ms, "app_changed": appChanged]
+                                      "style_ms": styled.ms, "app_changed": appChanged, "language": r.language ?? NSNull(),
+                                      "tags": r.tags]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)
@@ -482,15 +521,22 @@ extension Dictation {
 
     /// true once per day for `what` (app.dictation_notices: the day each was last said).
     static func onceADay(_ what: String) -> Bool {
+        guard !saidToday(what) else { return false }
         var said = Config.shared["app.dictation_notices"] as? [String: Any] ?? [:]
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
-        let today = "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
-        if DictationInsert.testMode, ProcessInfo.processInfo.environment["BLURT_TEST_NOTICES_ALWAYS"] == "1" {} else {
-            guard said[what] as? String != today else { return false }
-        }
         said[what] = today
         Config.shared.set("app.dictation_notices", said)
         return true
+    }
+
+    /// `what` was said today already (nothing is marked).
+    static func saidToday(_ what: String) -> Bool {
+        if DictationInsert.testMode, ProcessInfo.processInfo.environment["BLURT_TEST_NOTICES_ALWAYS"] == "1" { return false }
+        return (Config.shared["app.dictation_notices"] as? [String: Any])?[what] as? String == today
+    }
+
+    private static var today: String {
+        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        return "\(c.year ?? 0)-\(c.month ?? 0)-\(c.day ?? 0)"
     }
 
     /// After a take went in: a model that fell back (once a day), else one of the first takes' tips.

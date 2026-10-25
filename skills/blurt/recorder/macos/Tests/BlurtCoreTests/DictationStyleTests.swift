@@ -8,6 +8,22 @@ import XCTest
 final class DictationStyleTests: XCTestCase {
     // MARK: which text a style types
 
+    /// Terminals get polish's "terminal" variant (a command said there stays a command); chat apps "chat"; others none.
+    func testPolishVariantByApp() {
+        XCTAssertEqual(DictationAppCategory.polishVariant(bundle: "com.apple.Terminal"), "terminal")
+        XCTAssertEqual(DictationAppCategory.polishVariant(bundle: "com.googlecode.iterm2"), "terminal")
+        XCTAssertEqual(DictationAppCategory.polishVariant(bundle: "com.mitchellh.ghostty"), "terminal")
+        XCTAssertEqual(DictationAppCategory.polishVariant(bundle: "com.microsoft.VSCode"), nil)      // an editor: sentences
+        XCTAssertEqual(DictationAppCategory.polishVariant(bundle: "com.tencent.xinWeChat"), "chat")
+        XCTAssertNil(DictationAppCategory.polishVariant(bundle: nil))
+        // mid-sentence in the field: the transcript's own case comes back over a capital polish gave (names keep theirs)
+        XCTAssertTrue(DictationStitch.midSentence("I think "))
+        XCTAssertEqual(DictationStitch.keepCase(input: "the new layout is fine", output: "The new layout is fine."),
+                       "the new layout is fine.")
+        XCTAssertEqual(DictationStitch.keepCase(input: "Thursday after the review", output: "Thursday after the review."),
+                       "Thursday after the review.")
+    }
+
     func testPick() {
         let light = "明天要做三件事，第一跑测试，第二更新文档。"
         let listed = "明天要做三件事：\n1. 跑测试\n2. 更新文档"

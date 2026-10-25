@@ -405,6 +405,8 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
             "fitted": text, "fit": fitted, "terms_applied": terms, "fell_back": r.fellBack, "reason": r.reason ?? NSNull(),
             "repaired": r.repaired, "timings": timing, "language": r.language ?? NSNull(), "asr_model": r.asrModel ?? NSNull(),
             "polish_model": r.model ?? NSNull(), "context_used": r.contextUsed, "biased": r.biased,
+            "tags": r.tags, "tag_margin": DictationLanguageTag.closest(r.tags)?.margin ?? NSNull(),
+            "fragile_tag": DictationLanguageTag.closest(r.tags)?.fragile ?? false,
         ]
         draft.take = take
         draft.duration = (duration * 100).rounded() / 100
