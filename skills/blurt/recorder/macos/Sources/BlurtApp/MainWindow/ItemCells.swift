@@ -1,13 +1,22 @@
-// The item list's look and cells. One line per item (K8 density pass): the kind's icon in its colour, the item's one
-// state ring (K3 — click it for what you can do from there), the title (medium weight while it's new), the id and
-// project folded into quiet text, the time; an item whose file can't be read has a small warning mark before its title
-// (its tooltip says to fix it in an editor). The full table (All Items) adds a header and a State column (ring + name)
-// instead of the ring up front. Fixed row height, view-based, reused — 20k rows scroll like 20.
+// The item list's look and cells. One line per item (Linear's list): the kind's icon in its colour (a voice note's
+// waveform), the id in a fixed column of quiet tabular digits, the title taking the rest (regular weight; medium only
+// where "new" sets an item apart — never in the Inbox, where every row is new), then the one state mark that says
+// something (to verify, in progress…; the Inbox's "new" ring only under the pointer — click it for what you can do
+// from there) and a short date ("10:42", "Mon", "Oct 24"). The Inbox and In Progress come grouped by project: a quiet
+// header above each run (drawn in the top band of the run's first row), so a row never repeats its project's name. An
+// item whose file can't be read has a small warning mark before its title (its tooltip says to fix it in an editor).
+// The full table (All Items) adds a header and Project / State columns. Fixed row heights, view-based, reused — 20k
+// rows scroll like 20.
 import AppKit
 import BlurtCore
 
 enum Look {
-    static let rowHeight: CGFloat = 30
+    static let rowHeight: CGFloat = 32
+    /// The band above a project run's first row that holds its header (the first run's is shorter: no gap above it).
+    static let sectionHeight: CGFloat = 34, firstSectionHeight: CGFloat = 28
+    /// The id column: the UI font with tabular figures (system.md §2.7: a monospace O reads as zero), quiet.
+    static let idFont = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+    static let sectionFont = NSFont.systemFont(ofSize: 12, weight: .semibold)
     static let titleFont = NSFont.systemFont(ofSize: 13, weight: .regular)
     static let titleUnread = NSFont.systemFont(ofSize: 13, weight: .medium)
     static let subFont = NSFont.systemFont(ofSize: 11)
@@ -20,6 +29,16 @@ enum Look {
 
     static func kindName(_ k: String) -> String {
         KindStyle.builtIn.contains(k) ? T("kind.\(k)") : k.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+    /// "Issues", "Ideas"… — the Filter menu and the filter line name kinds in the plural.
+    static func kindPlural(_ k: String) -> String {
+        switch k {
+        case "issue": return menuCase(T("main.filter.kind_plural.issue"))
+        case "idea": return menuCase(T("main.filter.kind_plural.idea"))
+        case "note": return menuCase(T("main.filter.kind_plural.note"))
+        case "task": return menuCase(T("main.filter.kind_plural.task"))
+        default: return kindName(k)
+        }
     }
     static func stateName(_ s: String) -> String { Lifecycle.isState(s) ? T("state.\(s)") : s }
     /// "With Claude Code" / "Copied to your agent" for handed_off, else the state's name.
@@ -66,6 +85,16 @@ enum Look {
         cache[k] = i
         return i
     }
+    /// A list row's leading mark: the kind's icon, or for a note that was spoken (a voice note) the waveform in the
+    /// note's colour — the recording's own mark (system.md §3.2), so a voice note reads as one before its title does.
+    static func leadImage(kind: String, voice: Bool, size: CGFloat = KindStyle.rowSize) -> NSImage {
+        guard voice, kind == "note" else { return kindImage(kind, size: size) }
+        let k = "v:\(size)"
+        if let i = cache[k] { return i }
+        let i = KindStyle.voiceImage(size: size)
+        cache[k] = i
+        return i
+    }
     static func ring(_ state: String, size: CGFloat = 14) -> NSImage {
         let k = "r:\(state):\(size)"
         if let i = cache[k] { return i }
@@ -82,32 +111,56 @@ private func onRow(_ image: NSImage?, emphasized: Bool) -> NSImage? {
     return t
 }
 
-/// The kind icon and — in the dense list — the state ring, side by side. The ring is a button: it opens the state menu.
+/// Cells centre their content on the row's own 32 pt band at the bottom: the run's first row is taller and keeps its
+/// section header in the band above.
+func rowMiddle(_ v: NSView, in cell: NSView) -> NSLayoutConstraint {
+    v.centerYAnchor.constraint(equalTo: cell.bottomAnchor, constant: -Look.rowHeight / 2)
+}
+
+/// The kind icon (a voice note's waveform).
 final class LeadCell: NSTableCellView {
     let icon = NSImageView()
-    let ring = StateRingButton()
     /// The kind icon in its colour; white on a selected (emphasized) row, like the text next to it.
     var kindImage: NSImage? { didSet { restyle() } }
-    var showsRing = true { didSet { ring.isHidden = !showsRing } }
     override var backgroundStyle: NSView.BackgroundStyle { didSet { restyle() } }
     private func restyle() {
         let on = backgroundStyle == .emphasized
         icon.image = onRow(kindImage, emphasized: on)
         icon.contentTintColor = on ? .white : nil
-        ring.emphasized = on
     }
     override init(frame: NSRect) {
         super.init(frame: frame)
-        for v in [icon, ring] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(icon)
         icon.imageScaling = .scaleNone
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), rowMiddle(icon, in: self),
             icon.widthAnchor.constraint(equalToConstant: 18),
-            ring.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 3), ring.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// The dense list's state mark, after the title: the ring of a state that says something (to verify, in progress,
+/// handed off, to do…). Where every row is new (the Inbox) the "new" ring shows only on the row under the pointer
+/// (S opens the state menu for the selection), so it stays one click away without a column of identical rings.
+final class MarkCell: NSTableCellView {
+    let ring = StateRingButton()
+    /// a "new" ring stays hidden until the row is pointed at or selected
+    var quietWhenNew = false { didSet { update() } }
+    var rowActive = false { didSet { if rowActive != oldValue { update() } } }
+    override var backgroundStyle: NSView.BackgroundStyle { didSet { ring.emphasized = backgroundStyle == .emphasized } }
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        ring.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(ring)
+        NSLayoutConstraint.activate([
+            ring.centerXAnchor.constraint(equalTo: centerXAnchor), rowMiddle(ring, in: self),
             ring.widthAnchor.constraint(equalToConstant: 20), ring.heightAnchor.constraint(equalToConstant: 20),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
+    func update() { ring.isHidden = quietWhenNew && ring.ringState == "new" && !rowActive }
 }
 
 /// The state ring as a borderless button (14 pt ring in a 20 pt target). Hover shows a soft circle, like a toolbar
@@ -179,7 +232,7 @@ final class StateCell: NSTableCellView {
         NSLayoutConstraint.activate([
             button.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 0),
             button.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
-            button.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rowMiddle(button, in: self),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -225,9 +278,9 @@ final class TitleCell: NSTableCellView, InlineEditable {
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             title.trailingAnchor.constraint(lessThanOrEqualTo: suggest.leadingAnchor, constant: -8),
-            title.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rowMiddle(title, in: self),
             suggest.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
-            suggest.centerYAnchor.constraint(equalTo: centerYAnchor),
+            rowMiddle(suggest, in: self),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -341,8 +394,8 @@ final class IconTextCell: NSTableCellView {
         lead = label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 6)
         bare = label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2)
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            lead, label.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2), rowMiddle(icon, in: self),
+            lead, rowMiddle(label, in: self),
             label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
         ])
     }
@@ -396,29 +449,83 @@ final class PillView: NSView {
     override func accessibilityValue() -> Any? { text }
 }
 
-/// The item's id and, outside its own project, the project — "BA-12" / "BA-12 · bug-agent".
+/// The item's id ("BA-12"), left-aligned in its own fixed column so every id starts at one x (Linear's list).
 final class MetaCell: NSTableCellView {
     let key = NSTextField(labelWithString: "")
     override init(frame: NSRect) {
         super.init(frame: frame)
         key.translatesAutoresizingMaskIntoConstraints = false
-        key.font = Look.monoSub
+        key.font = Look.idFont
         key.textColor = .secondaryLabelColor
         key.lineBreakMode = .byTruncatingTail
-        key.alignment = .right
+        key.alignment = .left
         key.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addSubview(key)
-        NSLayoutConstraint.activate([key.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -2),
-                                     key.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 2),
-                                     key.centerYAnchor.constraint(equalTo: centerYAnchor)])
+        NSLayoutConstraint.activate([key.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
+                                     key.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -2),
+                                     rowMiddle(key, in: self)])
     }
     required init?(coder: NSCoder) { fatalError() }
 }
 
 /// Row view: VoiceOver reads the whole row as one sentence (kind, title, id, state, project, time). Selection is the
-/// brand tint (BrandRowView).
+/// brand tint (BrandRowView). The first row of a project run (the grouped Inbox) is taller and draws the run's header
+/// — the project's name and how many items it has here — in its top band; the selection covers the row's own band only.
+/// The row under the pointer tells its state mark (the Inbox's hidden "new" ring shows then).
 final class ItemRowView: BrandRowView {
     var label = "" { didSet { setAccessibilityLabel(label) } }
+    /// (name, count) of the run this row starts, nil for every other row
+    var section: (name: String, count: String)? { didSet { needsDisplay = true } }
+    private(set) var hovering = false { didSet { if hovering != oldValue { tellMark() } } }
+    private var area: NSTrackingArea?
+
+    override var selectionBand: NSRect {
+        let h = min(bounds.height, Look.rowHeight)
+        return NSRect(x: bounds.minX, y: isFlipped ? bounds.maxY - h : bounds.minY, width: bounds.width, height: h)
+    }
+
+    func tellMark() {
+        for case let c as MarkCell in subviews { c.rowActive = hovering }
+    }
+    override func didAddSubview(_ v: NSView) {
+        super.didAddSubview(v)
+        if let c = v as? MarkCell { c.rowActive = hovering }
+    }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        area.map(removeTrackingArea)
+        let a = NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect], owner: self)
+        addTrackingArea(a)
+        area = a
+    }
+    override func mouseEntered(with event: NSEvent) { hovering = true }
+    override func mouseExited(with event: NSEvent) { hovering = false }
+    override func prepareForReuse() { super.prepareForReuse(); hovering = false; section = nil }
+    override func setFrameSize(_ newSize: NSSize) {
+        let changed = newSize.height != frame.height
+        super.setFrameSize(newSize)
+        if changed { needsDisplay = true }
+    }
+
+    override func drawBackground(in dirtyRect: NSRect) {
+        super.drawBackground(in: dirtyRect)
+        guard let s = section, bounds.height > Look.rowHeight + 1 else { return }
+        let name = NSAttributedString(string: s.name, attributes: [.font: Look.sectionFont, .foregroundColor: NSColor.labelColor])
+        let count = NSAttributedString(string: s.count, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
+                                                                    .foregroundColor: NSColor.secondaryLabelColor])
+        // the header ends 5 pt above the row's own band, its text where the kind icons start
+        let x = (subviews.first { $0 is LeadCell }?.frame.minX ?? 4) + 2
+        let nh = ceil(name.size().height)
+        let y = isFlipped ? bounds.maxY - Look.rowHeight - 5 - nh : bounds.minY + Look.rowHeight + 5
+        let room = max(0, bounds.width - x - 16 - count.size().width - 6)
+        let w = min(ceil(name.size().width), room)
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingMiddle
+        let cut = NSMutableAttributedString(attributedString: name)
+        cut.addAttribute(.paragraphStyle, value: p, range: NSRange(location: 0, length: cut.length))
+        cut.draw(in: NSRect(x: x, y: y, width: w, height: nh))
+        count.draw(at: NSPoint(x: x + w + 6, y: y + (nh - ceil(count.size().height)) / 2 + (isFlipped ? 0.5 : -0.5)))
+    }
 }
 
 /// The selection blurt draws in its own lists (§3.3): a rounded `BrandColor.tint` wash (r 6), a neutral 6 % wash when the
@@ -432,13 +539,16 @@ class BrandRowView: NSTableRowView {
     static let testKeyLook = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
         && ProcessInfo.processInfo.environment["BLURT_TEST_KEY_LOOK"] == "1"
 
+    /// The part of the row the selection covers (a row with a section header above it keeps the header unwashed).
+    var selectionBand: NSRect { bounds }
+
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
         let key = window?.isKeyWindow == true && NSApp.isActive || BrandRowView.testKeyLook
         (key ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
         // the inset / source-list styles inset the row itself; a row as wide as its table keeps a margin like theirs
         let pad: CGFloat = frame.minX < 1 && abs(frame.width - (superview?.bounds.width ?? 0)) < 1 ? 10 : 0
-        NSBezierPath(roundedRect: bounds.insetBy(dx: pad, dy: 0), xRadius: 6, yRadius: 6).fill()
+        NSBezierPath(roundedRect: selectionBand.insetBy(dx: pad, dy: 0), xRadius: 6, yRadius: 6).fill()
     }
 
     override func viewDidMoveToWindow() {

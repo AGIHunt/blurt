@@ -231,5 +231,14 @@
   "source.type.dictation": "听写",
   "source.session.unnamed": "打开",
   "source.merged_earlier_other": "更早的 {n} 条",
-  "item.unreadable": "这一条的文件读不出来。口喷鸡不会覆盖它；在编辑器里改好后，这里就会显示出来。"
+  "item.unreadable": "这一条的文件读不出来。口喷鸡不会覆盖它；在编辑器里改好后，这里就会显示出来。",
+  "voice.label": "录音",
+  "voice.play": "播放",
+  "voice.pause": "暂停",
+  "voice.position": "录音中的位置",
+  "voice.more": "更多",
+  "handoff.copy_more": "其他复制方式",
+  "chip.add_type": "添加类型…",
+  "chip.type_none": "不设类型",
+  "media.title": "截图和片段"
 }

@@ -475,15 +475,20 @@ enum SelfTests {
             let c = MainWindowController.shared
             out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
                  "banner": c.focusedBanner ?? NSNull(), "job": c.shownJob ?? NSNull()])
+        case "mainkinds":               // mainkinds issue,idea|all: the Filter menu's kinds
+            let c = MainWindowController.shared
+            c.model.kinds = arg == "all" || arg.isEmpty ? [] : Set(arg.split(separator: ",").map(String.init))
+            c.list.filtersChanged()
+            out(["kinds": c.model.kinds.sorted(), "rows": c.model.rowCount, "line": FilterBar.describe(c.model) ?? NSNull()])
         case "mainfilter":              // mainfilter STATE|inbox|all: the State filter
             let c = MainWindowController.shared
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg
             c.model.reload()
             out(["state": c.model.state ?? NSNull(), "rows": c.model.rowCount])
-        case "mainpopup":               // mainpopup filter|context: open the State filter / the selection's context menu
+        case "mainpopup":               // mainpopup filter|context: open the toolbar's Filter menu / the selection's context menu
             let c = MainWindowController.shared
             DispatchQueue.main.async {
-                if arg == "filter" { c.list.bar.state.performClick(nil); return }
+                if arg == "filter" { c.showFilterMenu(); return }
                 guard let r = c.list.table.selectedRowIndexes.first, let m = c.contextMenu(for: c.list.table.selectedRowIndexes) else { return }
                 let rect = c.list.table.rect(ofRow: r)
                 m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 160, y: rect.midY), in: c.list.table)

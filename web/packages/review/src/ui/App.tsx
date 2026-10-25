@@ -27,9 +27,9 @@ function Shell({ onTheme }: { onTheme: () => void }) {
     return (
       <>
         {s.item ? (
-          // an item with nothing to show (a typed or spoken one) gets no picture well: the details start at the top
+          // one document column: the header, the properties and actions, then what it is (the recording, the
+          // pictures, the words) — the pictures sit inside the column, never in a well above the title
           <main id="itemView" className={cx("focus item-mode", s.mediaItems(s.item).length === 0 && "bare")}>
-            {s.mediaItems(s.item).length > 0 && <Stage />}
             {/* a fresh inspector per item: nothing of one item's editing state can show under another's title */}
             <Inspector key={s.keyOf(s.item)} />
           </main>

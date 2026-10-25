@@ -125,7 +125,7 @@ function Caption({ m }: { m: Media | undefined }) {
 }
 
 /** report where the frames are, so a native layer can drag them out as files (C6 registerDragRects) */
-function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]) {
+export function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]) {
   const s = useStore();
   const reg = s.host.registerDragRects;
   useEffect(() => {
@@ -162,6 +162,84 @@ function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
+}
+
+/** The main window's detail (item mode): the item's pictures and clips inside its column, edge to edge with a 1 px
+    inner stroke — no grey well around them. What you can do with one (Quick Look, Download, Show in Finder) sits in a
+    small bar over its top corner while the pointer is on it (or a key is in it); a frame's time only where it says
+    something (a clip, a frame of a recording among others). Several: a row of thumbnails under it. */
+export function ItemMedia({ i }: { i: import("../host").Item }) {
+  const s = useStore();
+  const h = s.host;
+  const ref = useRef<HTMLElement>(null);
+  const items = s.mediaItems(i);
+  const k = s.mediaIndex(items);
+  const m = items[k];
+  useDragRects(ref, [s.keyOf(i), k, items.length]);
+  if (!m) return null;
+  const rel = m.rel || "";
+  const many = items.length >= 2;
+  const reveal = s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal");
+  return (
+    <section className={cx("imedia", many && "many")} ref={ref} id="itemMedia" aria-label={s.t("media.title")}>
+      {m.kind === "wait" ? (
+        <div className={cx("iwait", !s.stalled && "shim")}>
+          <Icon name="hatch" className="hatching" />
+          <span>{s.stalled ? s.t("media.none") : s.t("media.adding")}</span>
+        </div>
+      ) : (
+        <figure className="imain" data-rel={rel} tabIndex={-1}>
+          {m.kind === "img" ? (
+            <img key={m.src} src={m.src} alt={m.cap || ""} onClick={() => (h.quickLook ? h.quickLook(rel) : s.openLightbox(m.src))} />
+          ) : (
+            <video key={m.src + m.kind} src={m.src} controls playsInline preload="metadata"
+              onLoadedMetadata={(e) => {
+                if (m.kind === "orig" && m.start != null) e.currentTarget.currentTime = Math.max(0, m.start - 1.5);
+              }} />
+          )}
+          <figcaption className="ibar">
+            {(m.kind !== "img" || many) && <span className="tm">{m.label}{m.kind === "orig" && m.start != null ? ` · ${s.clock(m.start)}` : ""}</span>}
+            {h.quickLook && (
+              <button onClick={() => h.quickLook!(rel)} title={s.t("media.quick_look")} aria-label={s.t("media.quick_look")}>
+                <Icon name="eye" size={15} />
+              </button>
+            )}
+            {h.downloadUrl ? (
+              <a href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </a>
+            ) : h.download ? (
+              <button onClick={() => h.download!(rel)} title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </button>
+            ) : null}
+            {h.reveal && (
+              <button onClick={() => h.reveal!(rel)} title={reveal} aria-label={reveal}>
+                <Icon name="reveal" size={15} />
+              </button>
+            )}
+          </figcaption>
+          {m.cap ? <p className="icap">{m.cap}</p> : null}
+        </figure>
+      )}
+      {many && (
+        <div className="ithumbs">
+          {items.map((x, n) =>
+            x.kind === "img" ? (
+              <button key={x.src} className={cx("th", n === k && "on")} data-m={n} data-rel={x.rel} onClick={() => s.selectMedia(x.src)} aria-label={x.label}>
+                <img src={x.src} alt="" />
+              </button>
+            ) : x.kind === "wait" ? null : (
+              <button key={x.src + x.kind} className={cx("th vid", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)}>
+                <Icon name={x.kind === "clip" ? "film" : "video"} className="ic" />
+                {x.label}
+              </button>
+            ),
+          )}
+        </div>
+      )}
+    </section>
+  );
 }
 
 export function Slide() {

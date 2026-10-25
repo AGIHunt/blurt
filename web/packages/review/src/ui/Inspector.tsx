@@ -9,6 +9,7 @@ import { isTitle, kindOf, SEV, type ReviewStore } from "../store";
 import { Icon, type IconName } from "./Icon";
 import { cx, useStore } from "./ctx";
 import { agentName, StateControl } from "./Queue";
+import { ItemMedia } from "./Stage";
 import { isMacLike } from "./TopBar";
 import { MovePicker } from "./Views";
 
@@ -185,6 +186,131 @@ function ChipSelect({ id, cls, label, value, options, onPick, children }: {
   );
 }
 
+/** Severity as its own glyph: three rising bars, as many filled as it is severe (low 1, medium 2, high 3) — the
+    level reads in grayscale; only high takes the issue colour. No coloured chip fill: severity is the quietest property. */
+function SevBars({ sev }: { sev: string }) {
+  const n = sev === "high" || sev === "critical" ? 3 : sev === "low" ? 1 : 2;
+  return (
+    <svg className={cx("sevbars", "sev-" + sev)} width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      {[0, 1, 2].map((k) => (
+        <rect key={k} x={1.5 + k * 4.25} y={9 - k * 3.25} width="2.75" height={3.5 + k * 3.25} rx="1" className={k < n ? "on" : "off"} />
+      ))}
+    </svg>
+  );
+}
+
+/** A voice note's recording: a session's shots/NNN.wav (source.session + source.shot), as the app writes it. */
+export function voiceAudio(i: Item): string | null {
+  const src = i.source;
+  if (!src || src.type !== "voice" || !src.session || src.shot == null) return null;
+  return `${String(src.session).replace(/[\\/]+$/, "")}/shots/${String(src.shot).padStart(3, "0")}.wav`;
+}
+
+/** Voice Memos' row for the recording itself: play, the waveform as a scrubber (brand ink: blurt's own capture), the
+    length in tabular digits, and a ⋯ menu (Show in Finder, Download). The waveform is read from the wav; until then
+    (or where it can't be read) a flat line holds its place — never a made-up shape. */
+function VoiceCard({ rel }: { rel: string }) {
+  const s = useStore();
+  const h = s.host;
+  const src = h.fileUrl(rel);
+  const audio = useRef<HTMLAudioElement>(null);
+  const [dur, setDur] = useState<number | null>(null);
+  const [at, setAt] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    let off = false;
+    const AC = typeof window !== "undefined" ? window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext : undefined;
+    if (!AC || typeof fetch === "undefined") return;
+    (async () => {
+      try {
+        const r = await fetch(src);
+        if (!r.ok) return;
+        const ctx = new AC();
+        const data = await ctx.decodeAudioData(await r.arrayBuffer());
+        void ctx.close?.();
+        const ch = data.getChannelData(0);
+        const N = 72;
+        const step = Math.max(1, Math.floor(ch.length / N));
+        const out: number[] = [];
+        for (let b = 0; b < N; b++) {
+          let sum = 0;
+          for (let x = b * step; x < Math.min(ch.length, (b + 1) * step); x++) sum += ch[x] * ch[x];
+          out.push(Math.sqrt(sum / step));
+        }
+        const max = Math.max(...out, 1e-4);
+        if (!off) {
+          setPeaks(out.map((v) => Math.max(0.08, Math.min(1, v / max))));
+          setDur((d) => d ?? data.duration);
+        }
+      } catch {
+        /* the flat line stays */
+      }
+    })();
+    return () => {
+      off = true;
+    };
+  }, [src]);
+  if (gone) return null;
+  const total = dur ?? 0;
+  const frac = total > 0 ? Math.min(1, at / total) : 0;
+  const toggle = () => {
+    const a = audio.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => setPlaying(false));
+    else a.pause();
+  };
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audio.current;
+    if (!a || !total) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * total;
+    setAt(a.currentTime);
+  };
+  const bars = peaks ?? Array.from({ length: 72 }, () => 0.08);
+  const reveal = h.reveal ? (h.host === "macos" ? s.label("media.reveal_mac") : s.label("media.reveal")) : null;
+  const dl = h.download || h.downloadUrl ? s.label("media.download") : null;
+  return (
+    <div className={cx("voice", playing && "playing")} id="voiceCard" role="group" aria-label={s.t("voice.label")}>
+      <button className="vplay" id="voicePlay" onClick={toggle} aria-label={s.t(playing ? "voice.pause" : "voice.play")} title={s.t(playing ? "voice.pause" : "voice.play")}>
+        <Icon name={playing ? "pause-fill" : "play-fill"} size={14} />
+      </button>
+      <div className="vwave" onClick={seek} role="slider" aria-label={s.t("voice.position")} aria-valuemin={0}
+        aria-valuemax={Math.round(total)} aria-valuenow={Math.round(at)} aria-valuetext={s.clock(at)} tabIndex={-1}>
+        {bars.map((v, k) => (
+          <i key={k} className={k / bars.length < frac ? "on" : undefined} style={{ height: `${Math.round(v * 100)}%` }} />
+        ))}
+      </div>
+      <span className="vtime">{dur == null ? "" : playing || at > 0 ? `${s.clock(at)} / ${s.clock(total)}` : s.clock(total)}</span>
+      {(reveal || dl) && (
+        <label className="pick vmore" title={s.t("voice.more")}>
+          <Icon name="more" size={16} />
+          <select id="voiceMore" value="" aria-label={s.t("voice.more")} onChange={(e) => {
+            const v = e.target.value;
+            e.target.value = "";
+            if (v === "reveal") h.reveal?.(rel);
+            else if (v === "download") {
+              if (h.download) h.download(rel);
+              else if (h.downloadUrl) window.open(h.downloadUrl(rel), "_blank");
+            }
+          }}>
+            <option value="" disabled>{s.t("voice.more")}</option>
+            {reveal && <option value="reveal">{reveal}</option>}
+            {dl && <option value="download">{dl}</option>}
+          </select>
+        </label>
+      )}
+      <audio ref={audio} src={src} preload="metadata"
+        onLoadedMetadata={(e) => Number.isFinite(e.currentTarget.duration) && setDur(e.currentTarget.duration)}
+        onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onEnded={(e) => { setPlaying(false); e.currentTarget.currentTime = 0; setAt(0); }}
+        onError={() => setGone(true)} />
+    </div>
+  );
+}
+
 const shortSha = (c?: string | null) => (c ? String(c).slice(0, 7) : "");
 const pct = (s: ReviewStore, x: number | null | undefined) => (x == null ? "" : s.i18n.formatNumber(x, { style: "percent", maximumFractionDigits: 0 }));
 
@@ -256,23 +382,34 @@ function HandoffPanel({ i }: { i: Item }) {
   const h = s.host;
   if (!h.dispatch && !s.canHandoff) return null;
   if (!canDo("hand_off", s.stateOf(i))) return null;
+  // the one primary; its shortcut is in its tooltip, not a key cap inside it
+  const key = s.mode === "item" ? ` (${isMacLike() ? "⌘⏎" : "Ctrl+Enter"})` : "";
   return (
     <div className="handoff" id="handoffRow" aria-label={s.t("handoff.title")}>
       {h.dispatch && (
-        <button className="btn sm primary" id="dispatchBtn" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch([i])}>
+        <button className="btn sm primary" id="dispatchBtn" title={s.t("handoff.dispatch.hint") + key} onClick={() => s.dispatch([i])}>
           <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
-          {s.mode === "item" && <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>}
         </button>
       )}
       {s.canHandoff && (
-        <>
+        // the two copies are one control: Copy Instruction, and the full text in its menu (a split button)
+        <span className="split" role="group" aria-label={s.label("handoff.copy_instruction")}>
           <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff([i], "instruction")}>
             <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
           </button>
-          <button className="btn sm ghost" id="copyFull" title={s.t("handoff.copy_full.hint")} onClick={() => void s.handoff([i], "full")}>
-            {s.label("handoff.copy_full")}
-          </button>
-        </>
+          <label className="btn sm pick split-ch" title={s.t("handoff.copy_more")}>
+            <Icon name="chevron-down" size={12} />
+            <select id="copyMenu" value="" aria-label={s.t("handoff.copy_more")} onChange={(e) => {
+              const v = e.target.value as "instruction" | "full" | "";
+              e.target.value = "";
+              if (v) void s.handoff([i], v);
+            }}>
+              <option value="" disabled>{s.t("handoff.copy_more")}</option>
+              <option value="instruction" title={s.t("handoff.copy_instruction.hint")}>{s.label("handoff.copy_instruction")}</option>
+              <option value="full" id="copyFull" title={s.t("handoff.copy_full.hint")}>{s.label("handoff.copy_full")}</option>
+            </select>
+          </label>
+        </span>
       )}
     </div>
   );
@@ -339,11 +476,12 @@ function Provenance({ i }: { i: Item }) {
   if (src.session) {
     // when it was captured, not the folder's name (the folder is one click away)
     const when = sessionWhen(s, String(src.session)) ?? s.t("source.session.unnamed");
+    // in the footer line: "Original capture" as a link to its folder, when it was made in the tooltip
     rows.push([s.t("source.session"), s.host.reveal ? (
-      <button className="linkbtn trunc" onClick={() => s.host.reveal!(String(src.session))} title={s.t("source.session.reveal")}>
-        <Icon name="folder" size={12} /> {when}
+      <button className="linkbtn" onClick={() => s.host.reveal!(String(src.session))} title={`${when} · ${s.t("source.session.reveal")}`}>
+        <Icon name="folder" size={12} /> {s.t("source.session")}
       </button>
-    ) : <span className="trunc">{when}</span>]);
+    ) : <span className="trunc" title={when}>{s.t("source.session")} {when}</span>]);
   }
   if (i.aliases?.length) rows.push([s.t("source.aliases"), s.i18n.formatList(i.aliases)]);
   if (i.merged_from?.length) {
@@ -355,23 +493,29 @@ function Provenance({ i }: { i: Item }) {
   }
   // "captured in this project" says nothing on an item that has no project (Unassigned)
   const by = i.project_by && p && !(i.project_by === "capture" && (i.project || "inbox") === "inbox") ? i.project_by : null;
-  if (!type && !rows.length && !by) return null;
+  if (!type && !rows.length && !by && !sug) return null;
+  // one quiet line, the way a mail's header says where it's from: "Voice note · Oct 26, 1:10 AM · john" — the labels
+  // only where a bare value wouldn't say what it is
+  const bare = new Set([s.t("source.captured"), s.t("source.by"), s.t("source.session")]);
+  const parts: React.ReactNode[] = [];
+  if (type)
+    parts.push(
+      <span className="prov-t" key="type">
+        <Icon name={SOURCE_ICON[type] ?? "info"} size={13} />
+        {s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}
+        {type === "recording" && i.time?.start != null ? ` ${s.t("source.at", { time: s.clock(i.time.start) })}` : ""}
+      </span>,
+    );
+  for (const [k, v] of rows)
+    parts.push(
+      <span key={k} className="prov-v">
+        {bare.has(k) ? null : <span className="prov-k">{k} </span>}
+        {v}
+      </span>,
+    );
+  if (by) parts.push(<span key="by" className="prov-v">{s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })}</span>);
   return (
     <section className="prov" id="provenance" aria-label={s.t("source.title")}>
-      <h4>{s.t("source.title")}</h4>
-      {type && (
-        <div className="prov-t">
-          <Icon name={SOURCE_ICON[type] ?? "info"} size={14} />
-          <span>{s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}</span>
-          {type === "recording" && i.time?.start != null ? <span className="mute">· {s.t("source.at", { time: s.clock(i.time.start) })}</span> : null}
-        </div>
-      )}
-      {by && (
-        <div className="prov-t">
-          <Icon name={by === "ai" ? "spark" : by === "user" ? "pencil" : by === "migrate" ? "restart" : "folder"} size={14} />
-          <span>{s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })}</span>
-        </div>
-      )}
       {/* an Unassigned item's suggestion from its organizing run: only a suggestion, one click moves it (K2) */}
       {sug && (i.project || "inbox") === "inbox" && s.canMove && (
         <div className="prov-sug" title={
@@ -386,15 +530,15 @@ function Provenance({ i }: { i: Item }) {
           </button>
         </div>
       )}
-      {rows.length > 0 && (
-        <dl>
-          {rows.map(([k, v]) => (
-            <div key={k}>
-              <dt>{k}</dt>
-              <dd>{v}</dd>
-            </div>
+      {parts.length > 0 && (
+        <p className="prov-line">
+          {parts.map((x, n) => (
+            <span key={n} className="prov-p">
+              {n > 0 && <span className="prov-dot" aria-hidden="true"> · </span>}
+              {x}
+            </span>
           ))}
-        </dl>
+        </p>
       )}
     </section>
   );
@@ -496,7 +640,12 @@ export function Inspector() {
   const { body: main, prompt, rest } = specsOf(i, kind, s);
   const kept = opened.ik === ik ? opened.keys : [];
   const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
-  const body: React.ReactNode[] = [F(main, prompt)];
+  // a voice note's words are its body: the empty summary waits in Add field instead of a prompt under the transcript
+  const voice = i.source?.type === "voice";
+  const said = voice && !!(i.quote || "").trim();
+  const audio = voiceAudio(i);
+  const mainShown = !said || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
+  const body: React.ReactNode[] = mainShown ? [F(main, prompt)] : [];
   if (kind === "issue" && (i.code_refs || []).length)
     body.push(
       <div className="f" key="code">
@@ -525,12 +674,14 @@ export function Inspector() {
       n++;
     } else body.push(F(f));
   }
-  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} onAdd={(k) => open(k, true)} />);
+  body.push(<AddField key="add" specs={[...(mainShown ? [] : [main]), ...rest.filter((f) => !shown.includes(f))]} onAdd={(k) => open(k, true)} />);
+  const media = s.mode === "item" ? s.mediaItems(i) : [];
 
   return (
     <aside className="side insp scroll" id="side" ref={side}>
       <div className="idrow">
         <span className="iid">{i.id || ""}</span>
+        {s.canMove && <span className="idsep" aria-hidden="true">·</span>}
         {s.canMove && <MovePicker items={[i]} id="projectPick" current={i.project || "inbox"} />}
         {s.mode === "review" && (
           <>
@@ -553,18 +704,25 @@ export function Inspector() {
         <StateControl i={i} id="statePill" shortcuts controlled />
         <ChipSelect id="kindChip" cls="kind-chip" label={s.t("chip.kind")} value={kind} onPick={s.setKind}
           options={[...KINDS, ...(KINDS.includes(kind as never) ? [] : [kind])].map((k) => [k, s.kindLabel(k)])}>
-          <KindIcon kind={kind} size={16} /> {s.kindLabel(kind)}
+          {/* a spoken note wears the recording's mark, in the note's colour */}
+          {voice && kind === "note" ? (
+            <span className="kind-ic k-note"><Icon name="waveform" size={16} /></span>
+          ) : (
+            <KindIcon kind={kind} size={16} />
+          )}{" "}
+          {voice && kind === "note" ? s.t("source.type.voice") : s.kindLabel(kind)}
         </ChipSelect>
         {kind === "issue" && (
           <>
             <ChipSelect id="sevChip" cls={"sev-" + sev} label={s.t("chip.severity")} value={sev} onPick={s.setSev}
               options={SEV.map((v) => [v, s.t("severity." + v)])}>
-              <span className="sw" />
+              <SevBars sev={sev} />
               {s.t("severity." + sev)}
             </ChipSelect>
-            <ChipSelect id="typeChip" label={s.t("chip.type")} value={String(i.type ?? "")} onPick={s.setType}
-              options={[["", s.t("chip.type")], ...s.types.map((t): [string, string] => [t, s.typeLabel(t)])]}>
-              {i.type ? s.typeLabel(String(i.type)) : s.t("chip.type")}
+            {/* an unset type is never shown by its own name: "Add type…" waits under the pointer (or the keyboard) */}
+            <ChipSelect id="typeChip" cls={i.type ? undefined : "chip-add"} label={s.t("chip.type")} value={String(i.type ?? "")} onPick={s.setType}
+              options={[["", i.type ? s.t("chip.type_none") : s.t("chip.add_type")], ...s.types.map((t): [string, string] => [t, s.typeLabel(t)])]}>
+              {i.type ? s.typeLabel(String(i.type)) : <><Icon name="plus" size={12} /> {s.t("chip.add_type")}</>}
             </ChipSelect>
           </>
         )}
@@ -576,6 +734,9 @@ export function Inspector() {
       </div>
       <WorkPanel i={i} />
       <HandoffPanel i={i} />
+      {voice && audio && <VoiceCard key={audio} rel={audio} />}
+      {said && <p className="transcript" id="transcript">{i.quote}</p>}
+      {media.length > 0 && <ItemMedia i={i} />}
       {(i.questions || []).length > 0 && (
         <div className="ask">
           <div className="h">
@@ -589,7 +750,7 @@ export function Inspector() {
           <Field key={ik + ":answer"} i={i} k="answer" type="text" placeholder={s.t("field.answer")} />
         </div>
       )}
-      {i.quote && (
+      {i.quote && !said && (
         <div className="quote">
           <Icon name="quote" className="qmark" />
           <span className="ql">{s.t("field.quote")}</span>

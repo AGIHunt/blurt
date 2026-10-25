@@ -564,21 +564,49 @@ body {
   padding: 20px 24px 90px;
   background: var(--bg);
 }
+/* "IN-1 · Unassigned": the id in the UI font with tabular figures (as the list sets it, §2.7), then where it lives —
+   a quiet breadcrumb that is also the Move menu (its chevron shows under the pointer) */
 .idrow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
   color: var(--mute);
-  font: 600 12px/1 var(--mono);
-  margin-bottom: 10px;
-  min-height: 26px;
+  font: 500 12px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 4px;
+  min-height: 24px;
+}
+.idrow .iid {
+  color: var(--mute);
+  letter-spacing: 0.01em;
+}
+.idrow .idsep {
+  color: var(--faint);
+  margin: 0 1px;
 }
 .idrow .pos {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
 }
 .idrow .pick.proj {
-  margin-left: -2px;
+  margin-left: -4px;
+  height: 24px;
+  padding: 0 6px;
+  gap: 5px;
+  font: 500 12px/1 var(--font);
+  color: var(--mute);
+}
+.idrow .pick.proj .ico {
+  width: 13px;
+  height: 13px;
+}
+.idrow .pick.proj .pick-ch {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.idrow .pick.proj:hover .pick-ch,
+.idrow .pick.proj:focus-within .pick-ch {
+  opacity: 1;
 }
 .idrow .nav {
   display: flex;
@@ -604,10 +632,10 @@ body {
   background: transparent;
   font-size: var(--fs-title);
   line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  padding: 6px 8px;
-  margin: 0 -8px 8px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  padding: 4px 8px;
+  margin: 0 -8px 10px;
   border-radius: var(--r-sm);
   resize: none;
   overflow: hidden;
@@ -639,8 +667,29 @@ body {
 .chips {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+}
+/* the properties are one quiet set: the same borderless grey pill for state, kind, severity and type — the state's
+   ring and the kind's icon carry their colour, the words stay ink (no green "New", no amber "Medium") */
+.chips .spill {
+  box-shadow: none;
+  background: var(--chip);
+  padding: 0 9px 0 6px;
+  font-weight: 600;
+}
+.chips .spill .spill-l,
+.chips .spill.s-to_verify .spill-l,
+.chips .spill.s-done .spill-l {
+  color: var(--ink-2);
+}
+.chips .spill.s-to_verify {
+  background: var(--chip);
+  box-shadow: none;
+}
+.chips .spill:hover .spill-l {
+  color: var(--ink);
 }
 .chip {
   height: 26px;
@@ -689,23 +738,39 @@ button.chip:hover {
   outline: 3px solid var(--focus-soft);
   box-shadow: 0 0 0 1px var(--focus);
 }
-.chip .sw {
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-  background: currentColor;
+/* severity: three rising bars, as many filled as it is severe; only high takes the issue colour */
+.sevbars {
+  flex: none;
 }
-.chip.sev-high {
-  color: var(--kind-issue);
-  background: color-mix(in srgb, var(--kind-issue) 12%, transparent);
+.sevbars rect.on {
+  fill: var(--ink-2);
 }
-.chip.sev-medium {
-  color: var(--attn-ink);
-  background: var(--attn-soft);
+.sevbars rect.off {
+  fill: var(--line-2);
 }
-.chip.sev-low {
-  color: var(--info);
-  background: color-mix(in srgb, var(--info) 13%, transparent);
+.sevbars.sev-high rect.on,
+.sevbars.sev-critical rect.on {
+  fill: var(--kind-issue);
+}
+/* an unset type: "Add type…" under the pointer (or the keyboard) only — never "Type" posing as a value */
+.chip.chip-add {
+  background: transparent;
+  color: var(--mute);
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.chip.chip-add .ico {
+  width: 12px;
+  height: 12px;
+}
+.chips:hover .chip.chip-add,
+.chip.chip-add:focus-within {
+  opacity: 1;
+}
+.chip.chip-add:hover {
+  background: var(--hover);
+  color: var(--ink);
 }
 .chip code {
   font: 600 11px/1 var(--mono);
@@ -780,8 +845,37 @@ button.chip:hover {
 .handoff {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 0 0 16px;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+}
+/* Copy Instruction and the rest of the copies: one split button (the native kind) */
+.split {
+  display: inline-flex;
+  align-items: stretch;
+}
+.split > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split > .split-ch {
+  width: 24px;
+  padding: 0;
+  justify-content: center;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--mute);
+}
+.split > .split-ch:hover {
+  color: var(--ink);
+}
+.split > .split-ch .ico {
+  width: 12px;
+  height: 12px;
+}
+.split > .split-ch:has(select:focus-visible) {
+  box-shadow: 0 0 0 3px var(--focus-soft);
 }
 .btn.sm {
   height: calc(var(--ctl-h) - 2px);
@@ -876,27 +970,38 @@ button.chip:hover {
   color: var(--ink-2);
 }
 
-/* provenance: where it came from, how it got into this project */
+/* provenance: where it came from, how it got into this project — one quiet footer line under the one hairline */
 .prov {
-  margin-top: 6px;
-  padding-top: 14px;
+  margin-top: 22px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-  font-size: 12.5px;
-  color: var(--ink-2);
-}
-.prov h4 {
-  margin: 0 0 8px;
   font-size: 12px;
   color: var(--mute);
 }
+.prov-line {
+  margin: 0;
+  line-height: 1.7;
+}
+.prov-p {
+  white-space: nowrap;
+}
+.prov-p:has(.trunc) {
+  white-space: normal;
+}
 .prov-t {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 5px;
+  gap: 5px;
+  vertical-align: bottom;
 }
 .prov-t .ico {
   color: var(--mute);
+}
+.prov-dot {
+  color: var(--faint);
+}
+.prov-k {
+  color: var(--faint);
 }
 .prov .mute {
   color: var(--mute);
@@ -905,12 +1010,13 @@ button.chip:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 8px 0 6px;
+  margin: 0 0 10px;
   padding: 7px 8px 7px 10px;
   border-radius: var(--r);
   background: var(--brand-tint);
   color: var(--ink);
   font-weight: 600;
+  font-size: 12.5px;
 }
 .prov-sug .ico {
   color: var(--brand-ink);
@@ -918,25 +1024,17 @@ button.chip:hover {
 .prov-sug .btn {
   margin-left: auto;
 }
-.prov dl {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 14px;
-  margin: 10px 0 0;
-}
-.prov dl > div {
-  display: contents;
-}
-.prov dt {
+.prov .linkbtn {
+  margin: -4px -6px;
+  font-size: inherit;
+  font-weight: 500;
   color: var(--mute);
 }
-.prov dd {
-  margin: 0;
-  min-width: 0;
+.prov .linkbtn:hover {
+  color: var(--ink);
 }
-.prov .linkbtn {
-  margin: -4px -8px;
-  font-size: inherit;
+.prov a {
+  color: var(--mute);
 }
 .trunc {
   display: inline-block;
@@ -1013,15 +1111,23 @@ button.chip:hover {
   gap: 0 22px;
 }
 .fields {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
+  padding-top: 2px;
 }
 .f {
   margin-bottom: 12px;
 }
-/* the empty fields wait in this quiet menu (only filled ones are rows) */
+/* the empty fields wait in this quiet menu (only filled ones are rows): a mute link, full ink under the pointer */
 .fields .addf {
   margin: -2px 0 6px -10px;
+  color: var(--faint);
+  font-weight: 500;
+}
+.insp:hover .fields .addf,
+.fields .addf:focus-within {
+  color: var(--mute);
+}
+.fields .addf:hover {
+  color: var(--ink);
 }
 .f label {
   display: flex;
@@ -1080,17 +1186,7 @@ button.chip:hover {
 .search::placeholder {
   color: var(--faint);
 }
-.f.exp label::before,
-.f.act-f label::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-  background: var(--ok);
-}
-.f.act-f label::before {
-  background: var(--drop);
-}
+/* a field's label is a label: no coloured dot before it (a bare red dot is the recording mark, §2.7) */
 .f.big textarea {
   font-size: calc(var(--fs) + 2px);
   line-height: 1.65;
@@ -1967,29 +2063,20 @@ button.chip:hover {
   color: var(--faint);
 }
 
-/* ---------- item mode (the main window's detail pane): no queue, no triage bar; one column when narrow ---------- */
-.focus.item-mode {
-  height: var(--vh);
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: clamp(280px, 52vh, 620px) auto;
-  overflow: auto;
-}
-.item-mode .stage {
-  border-radius: 0;
-  min-height: 260px;
-}
+/* ---------- item mode (the main window's detail pane): one document column — header, properties, actions, then what
+   the item is (the recording, the pictures, the words), then its fields; no queue, no triage bar, no picture well ---------- */
+.focus.item-mode,
 .focus.item-mode.bare {
-  grid-template-rows: auto;
-}
-.item-mode .slide {
-  padding: 14px 14px 8px;
-}
-.item-mode .media.has-strip {
-  --below: 118px;
+  display: block;
+  height: var(--vh);
+  overflow: auto;
 }
 .item-mode .side {
   overflow: visible;
-  padding: 18px 20px 40px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 18px 24px 48px;
+  background: transparent;
 }
 .item-saved {
   position: fixed;
@@ -1997,19 +2084,192 @@ button.chip:hover {
   bottom: 10px;
   z-index: 20;
 }
-@media (min-width: 980px) {
-  .focus.item-mode {
-    grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: var(--vh);
-    overflow: hidden;
-  }
-  .item-mode .side {
-    overflow: auto;
-  }
-  .focus.item-mode.bare {
-    grid-template-columns: minmax(0, 720px);
-    justify-content: center;
-  }
+
+/* a voice note's recording: Voice Memos' row — play, the waveform in brand ink (blurt's own capture), the length */
+.voice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 10px 0 10px;
+  margin: 0 0 14px;
+  border-radius: 12px;
+  background: var(--brand-tint);
+}
+.vplay {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-ink);
+  color: var(--on-brand-ink);
+}
+.vplay:hover {
+  filter: brightness(1.06);
+}
+.vplay .ico {
+  width: 14px;
+  height: 14px;
+  margin-left: 1px;
+}
+.voice.playing .vplay .ico {
+  margin-left: 0;
+}
+.vwave {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.vwave i {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brand-ink) 42%, transparent);
+}
+.vwave i.on {
+  background: var(--brand-ink);
+}
+.vtime {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font: 500 12px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.vmore {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+}
+.vmore:hover,
+.vmore:focus-within {
+  background: color-mix(in srgb, var(--brand-ink) 12%, transparent);
+  color: var(--ink);
+}
+/* what was said: the note's body, in ink at reading size */
+.transcript {
+  margin: 0 0 16px;
+  font-size: calc(var(--fs) + 1px);
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+/* the pictures and clips: inside the column, edge to edge, a 1 px inner stroke, the controls over the corner */
+.imedia {
+  margin: 0 0 18px;
+}
+.imain {
+  position: relative;
+  margin: 0;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.imain::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px var(--img-stroke);
+  pointer-events: none;
+}
+.imain img,
+.imain video {
+  display: block;
+  max-width: 100%;
+  max-height: 420px;
+  object-fit: contain;
+}
+.imain img {
+  cursor: zoom-in;
+}
+.ibar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(20, 20, 20, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 1;
+}
+.imain:hover .ibar,
+.imain:focus-within .ibar {
+  opacity: 1;
+}
+.ibar button,
+.ibar a {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.ibar button:hover,
+.ibar a:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.ibar .tm {
+  padding: 0 6px 0 7px;
+  font: 600 11.5px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.imain video ~ .ibar {
+  top: 8px;
+}
+.icap {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  color: var(--mute);
+}
+.ithumbs {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  overflow-x: auto;
+  padding: 2px;
+}
+.ithumbs .th {
+  width: 64px;
+  height: 42px;
+}
+.iwait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 64px;
+  padding: 0 14px;
+  border-radius: 8px;
+  background: var(--wait, var(--hover));
+  color: var(--mute);
+  font-size: 12.5px;
+}
+.iwait .hatching {
+  width: 20px;
+  height: 20px;
 }
 
 /* ---------- narrow windows ---------- */

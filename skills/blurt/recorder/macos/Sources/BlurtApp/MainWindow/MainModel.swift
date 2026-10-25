@@ -53,6 +53,9 @@ enum Scope: Hashable {
 
     /// The full table (every column, a header) — elsewhere the list is a dense one-line list.
     var isTable: Bool { self == .all }
+    /// Places that gather items from every project: their list comes grouped by project (Unassigned first), a quiet
+    /// header above each run, so a row never repeats its project's name.
+    var groupsByProject: Bool { self == .inbox || self == .inProgress }
     /// Whether the running jobs show above the list.
     var showsJobs: Bool {
         switch self { case .inbox, .inProgress, .project, .unassigned: return true; default: return false }
@@ -103,6 +106,9 @@ final class MainModel {
     /// Unassigned only: its items by the project an organizing run suggested (the sidebar's order)
     private(set) var suggestionGroups: [SuggestionGroup] = []
     private(set) var lastReloadMS = 0.0
+    /// The grouped places: the project run starting at each row that starts one (the row draws its header).
+    private(set) var sections: [Int: ListSection] = [:]
+    func section(at row: Int) -> ListSection? { sections[row] }
 
     private var pages: [Int: [ItemRow]] = [:]
     private let pageSize = 100
@@ -214,8 +220,8 @@ final class MainModel {
                           inbox: state == "inbox", sort: sort, limit: 0)
         q.ascending = ascending
         switch scope {
-        case .inbox: q.inbox = true
-        case .inProgress: if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
+        case .inbox: q.inbox = true; q.byProject = true
+        case .inProgress: q.byProject = true; if state == nil { q.states = Lifecycle.states.filter(Lifecycle.active.contains) }
         case .unassigned: q.project = "inbox"; q.bySuggestion = true     // each suggested project's items together
         case .project(let p): q.project = p
         case .session(let s): q.session = s; if sort == "updated" && !ascending { q.sort = "t_start" }
@@ -267,7 +273,14 @@ final class MainModel {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
         overrides.removeAll()
-        uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
+        if scope.groupsByProject, scope != .dictation {
+            let rows = (try? reader?.uidProjects(query)) ?? []
+            uids = rows.map(\.uid)
+            sections = ListSections.starts(ListSections.runs(rows.map(\.project)))
+        } else {
+            uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
+            sections = [:]
+        }
         rowByUID = nil
         // Unassigned: "Looks like X · Move All (3)" — what an organizing run suggested, per registered project, in the
         // order the rows below are in (by the project's name: IndexReader's bySuggestion)
@@ -291,7 +304,20 @@ final class MainModel {
         overrides.merge(states) { _, n in n }
         let leaving = Set(states.filter { _, s in allowed.map { !$0.contains(s) } ?? (s == "discarded") }.keys)
         if !leaving.isEmpty {
-            uids.removeAll(where: leaving.contains)
+            // the runs shift with the rows that leave: recut them from what stays
+            if !sections.isEmpty {
+                var projects: [String] = []
+                var runs = sections.values.sorted { $0.start < $1.start }.makeIterator()
+                var run = runs.next()
+                for (k, u) in uids.enumerated() {
+                    while let r = run, k >= r.start + r.count { run = runs.next() }
+                    if !leaving.contains(u) { projects.append(run?.project ?? "") }
+                }
+                uids.removeAll(where: leaving.contains)
+                sections = ListSections.starts(ListSections.runs(projects))
+            } else {
+                uids.removeAll(where: leaving.contains)
+            }
             rowByUID = nil
         }
         pages.removeAll()           // refetched for what's on screen, with the overrides
@@ -325,6 +351,19 @@ final class MainModel {
         return rowByUID?[uid]
     }
 
+    /// How many of each built-in kind this place lists with its other filters (state, search) as they are — the
+    /// Filter menu's counts.
+    func kindCounts() -> [String: Int] {
+        guard let r = reader, scope != .dictation else { return [:] }
+        var out: [String: Int] = [:]
+        for k in ["issue", "idea", "note", "task"] {
+            var q = query
+            q.kinds = [k]
+            out[k] = try? r.count(q)
+        }
+        return out
+    }
+
     func project(id: String) -> ProjectEntry? { projects.first { $0.id == id } }
     func sessionRow(id: String) -> SessionRow? { (try? reader?.session(id: id)) ?? nil }
     func itemRow(uid: String) -> ItemRow? { (try? reader?.item(uid: uid)) ?? nil }
@@ -354,5 +393,7 @@ final class MainModel {
     }
 
     static func relative(_ t: Double) -> String { Loc.relative(Date(timeIntervalSince1970: t)) }
+    /// The list's date column: "10:42", "Yesterday", "Mon", "Oct 24" (Loc.listDate).
+    static func listDate(_ t: Double) -> String { Loc.listDate(Date(timeIntervalSince1970: t)) }
     static func shortDate(_ t: Double) -> String { Loc.dateTime(Date(timeIntervalSince1970: t)) }
 }

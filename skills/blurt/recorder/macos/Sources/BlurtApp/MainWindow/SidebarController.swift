@@ -14,7 +14,8 @@ final class SidebarNode: NSObject {
     var children: [SidebarNode] = []
     var accessibility: String?
     var dimmed = false
-    var detail: String?          // the project key, quiet
+    var detail: String?          // quiet text after the name (unused by the places and projects today)
+    var tip: String?             // the row's tooltip: a project's name and its id prefix
     /// counts of what needs you are tinted (attention), plain counts aren't
     var alert = false
 
@@ -93,13 +94,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.onReturn = { [weak self] in self?.renameSelected() ?? false }
         scroll.documentView = outline
 
-        let open = NSButton(title: T("project.open_folder"), image: Look.symbol("folder.badge.plus", "", size: 13) ?? NSImage(),
+        // Notes' "New Folder": a plus and the words, in the rows' own size and ink (secondary), not a faint caption
+        let open = NSButton(title: " " + T("project.open_folder"), image: Look.symbol("plus", "", size: 12, weight: .medium) ?? NSImage(),
                             target: self, action: #selector(openTapped))
         open.bezelStyle = .recessed
         open.isBordered = false
         open.imagePosition = .imageLeading
         open.contentTintColor = .secondaryLabelColor
-        open.font = .systemFont(ofSize: 12)
+        open.font = .systemFont(ofSize: 13)
         open.toolTip = T("main.sidebar.open_folder.tip")
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
         let root = NSView()
@@ -107,7 +109,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
-            open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
         view = root
@@ -148,9 +150,9 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             node.accessibility = ax
             return node
         }
-        // not items: what was dictated into other apps — a page of its own (DictationPage.swift)
-        // the same mark as Settings → Dictation (text typed at a cursor); the keyboard is Shortcuts'
-        let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
+        // not items: what was dictated into other apps — a page of its own (DictationPage.swift); the mic, as macOS
+        // marks Dictation (the same mark as Settings → Dictation, the menu and ⌘K)
+        let dictation = place(T("dictation.history.sidebar"), .dictation, "mic", nil, ax: T("main.sidebar.dictation.ax"))
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
@@ -159,10 +161,12 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             dictation,
         ]
         let projectNodes = model.projects.map { p -> SidebarNode in
+            // a project's count is plain secondary digits: the one mint pill is the Inbox's (what's new for you, §3.3),
+            // so the brand marks on screen stay few. The key ("AW", its ids' prefix) is the row's tooltip, not text.
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
                                 count: p.inbox > 0 ? p.inbox : nil)
-            n.alert = p.inbox > 0
-            n.detail = p.key
+            n.alert = false
+            n.tip = p.key.isEmpty ? p.name : T("main.sidebar.project_tip", p.name, p.key)
             n.dimmed = !p.registered || !p.exists
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath
             n.accessibility = [p.name, path, !p.exists ? T("main.sidebar.missing") : nil, !p.registered ? T("main.sidebar.not_opened") : nil]
@@ -364,7 +368,8 @@ final class SourceCell: NSTableCellView, InlineEditable {
         super.init(frame: .zero)
         identifier = id
         for v in [icon, title, key, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
-        title.lineBreakMode = .byTruncatingTail
+        // a long project name keeps both ends ("口喷鸡 iOS…截断）"): the tooltip has it whole
+        title.lineBreakMode = .byTruncatingMiddle
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         key.textColor = .secondaryLabelColor
@@ -410,6 +415,7 @@ final class SourceCell: NSTableCellView, InlineEditable {
         key.isHidden = n.detail == nil
         icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.alphaValue = 1
+        toolTip = n.tip
         applyInk()
         badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = n.alert

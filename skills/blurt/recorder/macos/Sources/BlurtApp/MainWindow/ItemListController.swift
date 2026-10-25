@@ -1,5 +1,7 @@
-// The middle column: the running jobs (K4) above a filter bar and a view-based NSTableView with a fixed row height.
-// Dense one-line rows everywhere; All Items shows the same table with a header and every column. Keyboard-first:
+// The middle column: the running jobs (K4) above a view-based NSTableView with fixed row heights. Dense one-line rows
+// everywhere (the Inbox and In Progress grouped by project, a header above each run); All Items shows the same table
+// with a header and every column. The kind / state filter lives in the toolbar's Filter menu (and View ▸ Filter); a
+// quiet line above the list says which filter is on, with Clear, only while one is. Keyboard-first:
 // J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick Look), ⌘C
 // (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen / restore), W won't
 // do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a project in the sidebar
@@ -401,82 +403,108 @@ final class MissingFolderBanner: NSView {
     @objc func tapped() { onLocate?() }
 }
 
-/// Kind segments and the state filter (the count is the window's subtitle).
-final class FilterBar: NSView {
-    let kinds = NSSegmentedControl()
-    let state = NSPopUpButton()
-    var onChange: (() -> Void)?
+/// The top of the list: the place's name in 17 pt semibold (system.md §7) with its counts beside it in secondary
+/// ("Inbox  9 new · 6 to verify") — Linear's and Reminders' page heading. In the content, not the toolbar: a bar
+/// item is drawn washed out whenever the window isn't key, and the list's anchor should outweigh its rows.
+final class ListHeading: NSView {
+    let title = NSTextField(labelWithString: "")
+    let counts = NSTextField(labelWithString: "")
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        kinds.segmentCount = KindStyle.builtIn.count
-        kinds.trackingMode = .selectAny
-        kinds.segmentStyle = .roundRect
-        kinds.controlSize = .small
-        for (k, key) in KindStyle.builtIn.enumerated() {
-            kinds.setImage(Look.kindImage(key, size: KindStyle.smallSize), forSegment: k)
-            kinds.setImageScaling(.scaleNone, forSegment: k)
-            kinds.setWidth(28, forSegment: k)
-            kinds.setToolTip(T("main.filter.only_kind", Look.kindName(key), k + 1), forSegment: k)
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = .labelColor
+        counts.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        counts.textColor = .secondaryLabelColor
+        for t in [title, counts] {
+            t.lineBreakMode = .byTruncatingTail
+            t.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(t)
         }
-        kinds.target = self
-        kinds.action = #selector(changed)
-        kinds.setAccessibilityLabel(T("main.filter.kind"))
-        state.controlSize = .small
-        state.font = .systemFont(ofSize: 11)
-        state.bezelStyle = .recessed
-        state.isBordered = true
-        state.target = self
-        state.action = #selector(changed)
-        // All but discarded · Needs you · each live state · Discarded (only here: K3)
-        func add(_ title: String, _ value: String?, ring: String?) {
-            state.addItem(withTitle: title)
-            state.lastItem?.representedObject = value
-            state.lastItem?.image = ring.map { Look.ring($0, size: 12) }
-        }
-        add(T("main.filter.live"), nil, ring: nil)
-        add(T("main.filter.needs_you"), "inbox", ring: nil)
-        state.lastItem?.image = Look.symbol("tray", "", size: 11)
-        state.menu?.addItem(.separator())
-        for s in Lifecycle.live { add(Look.stateName(s), s, ring: s) }
-        state.menu?.addItem(.separator())
-        add(Look.stateName("discarded"), "discarded", ring: "discarded")
-        state.setAccessibilityLabel(T("main.filter.state"))
-        let spacer = NSView()
-        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
-        let row = NSStackView(views: [kinds, state, spacer])
-        row.orientation = .horizontal
-        row.spacing = 8
-        row.edgeInsets = NSEdgeInsets(top: 0, left: 12, bottom: 0, right: 14)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(row)
-        let line = NSBox()
-        line.boxType = .separator
-        line.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(line)
+        title.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        counts.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: leadingAnchor), row.trailingAnchor.constraint(equalTo: trailingAnchor),
-            row.centerYAnchor.constraint(equalTo: centerYAnchor),
-            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
-            line.bottomAnchor.constraint(equalTo: bottomAnchor),
-            heightAnchor.constraint(equalToConstant: 32),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
+            title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            counts.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 8),
+            counts.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
+            counts.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            heightAnchor.constraint(equalToConstant: 38),
         ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    @objc func changed() { onChange?() }
+    func set(title t: String, counts c: String) {
+        title.stringValue = t
+        counts.stringValue = c
+        setAccessibilityLabel([t, c].filter { !$0.isEmpty }.joined(separator: ", "))
+    }
+}
 
-    var selectedKinds: Set<String> {
-        Set(KindStyle.builtIn.enumerated().filter { kinds.isSelected(forSegment: $0.offset) }.map(\.element))
+/// The filter in effect, said above the list only while one is on ("Showing Issues, Ideas · To Verify  Clear") — the
+/// filter itself is the toolbar's Filter menu (Linear's display menu, Mail's filter button): no band of unlabelled
+/// segments for a control that's rarely changed. A click on the line opens that menu right there.
+final class FilterBar: NSView {
+    let summary = NSButton()
+    let clear = NSButton()
+    var onClear: (() -> Void)?
+    /// the Filter menu, built when it opens (MainWindowController.filterMenu)
+    var makeMenu: (() -> NSMenu?)?
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        summary.isBordered = false
+        summary.imagePosition = .imageLeading
+        summary.image = Look.symbol("line.3.horizontal.decrease.circle.fill", "", size: 13)
+        summary.contentTintColor = BrandColor.ink
+        summary.font = .systemFont(ofSize: 12)
+        summary.lineBreakMode = .byTruncatingTail
+        summary.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        summary.target = self
+        summary.action = #selector(openMenu)
+        summary.toolTip = T("main.filter.change")
+        clear.title = T("main.filter.clear")
+        clear.bezelStyle = .recessed
+        clear.controlSize = .small
+        clear.font = .systemFont(ofSize: 11)
+        clear.target = self
+        clear.action = #selector(clearTapped)
+        clear.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [summary, clear] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            summary.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18), summary.centerYAnchor.constraint(equalTo: centerYAnchor),
+            clear.leadingAnchor.constraint(greaterThanOrEqualTo: summary.trailingAnchor, constant: 8),
+            clear.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16), clear.centerYAnchor.constraint(equalTo: centerYAnchor),
+            heightAnchor.constraint(equalToConstant: 30),
+        ])
+        isHidden = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    @objc func clearTapped() { onClear?() }
+    @objc func openMenu() {
+        guard let m = makeMenu?() else { return }
+        m.popUp(positioning: nil, at: NSPoint(x: summary.frame.minX, y: summary.frame.minY - 4), in: self)
+    }
+
+    /// What the line says: the kinds picked and the state, in the menu's own words.
+    static func describe(_ m: MainModel) -> String? {
+        var parts: [String] = []
+        if !m.kinds.isEmpty {
+            parts.append(Loc.list(KindStyle.builtIn.filter(m.kinds.contains).map { Look.kindPlural($0) }
+                                  + m.kinds.filter { !KindStyle.builtIn.contains($0) }.sorted().map(Look.kindName)))
+        }
+        if let st = m.shownState { parts.append(st == "inbox" ? T("main.filter.needs_you") : Look.stateName(st)) }
+        return parts.isEmpty ? nil : T("main.filter.showing", parts.joined(separator: " · "))
     }
 
     func sync(_ m: MainModel) {
-        for (k, key) in KindStyle.builtIn.enumerated() { kinds.setSelected(m.kinds.contains(key), forSegment: k) }
-        state.selectItem(at: state.itemArray.firstIndex { !$0.isSeparatorItem && $0.representedObject as? String == m.state } ?? 0)
-        let ready = m.indexState == .ready
-        kinds.isHidden = !ready
-        state.isHidden = !ready || m.scope == .inbox
-        isHidden = m.isEmptyWorld && !m.filtered      // nothing to filter yet: the first-run state alone
+        let text = m.indexState == .ready && !m.isEmptyWorld ? Self.describe(m) : nil
+        isHidden = text == nil
+        summary.title = " " + (text ?? "")
+        summary.setAccessibilityLabel(text)
     }
 }
 
@@ -490,6 +518,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let missing = MissingFolderBanner()
     let suggestions = SuggestionsBanner()
     let bar = FilterBar()
+    /// the place's name and counts at the top of the list (ListHeading)
+    let heading = ListHeading()
     let empty = EmptyStateView()
     /// the item the empty state's "Show AW-11" goes to
     private(set) var elsewhereUID: String?
@@ -522,13 +552,15 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     required init?(coder: NSCoder) { fatalError() }
 
     struct Col { let id: String; let title: String; let width: CGFloat; let min: CGFloat; let max: CGFloat; let sort: String? }
+    /// kind · id · title · (project · state, the table) · the state mark (the dense list) · date
     static var columns: [Col] { [
-        Col(id: "lead", title: "", width: 44, min: 22, max: 44, sort: "kind"),
+        Col(id: "lead", title: "", width: 22, min: 22, max: 30, sort: "kind"),
+        Col(id: "meta", title: T("main.col.id"), width: 52, min: 44, max: 120, sort: "id"),
         Col(id: "title", title: T("main.col.title"), width: 260, min: 120, max: 4000, sort: "title"),
-        Col(id: "meta", title: T("main.col.id"), width: 64, min: 48, max: 120, sort: "id"),
         Col(id: "project", title: T("main.col.project"), width: 110, min: 60, max: 240, sort: "project"),
         Col(id: "state", title: T("main.col.state"), width: 120, min: 60, max: 220, sort: "state"),
-        Col(id: "time", title: T("main.col.updated"), width: 78, min: 56, max: 140, sort: "updated"),
+        Col(id: "mark", title: "", width: 20, min: 20, max: 20, sort: nil),
+        Col(id: "time", title: T("main.col.updated"), width: 64, min: 56, max: 140, sort: "updated"),
     ] }
 
     override func loadView() {
@@ -567,7 +599,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
-        bar.onChange = { [weak self] in self?.filtersChanged() }
+        bar.onClear = { [weak self] in self?.clearKindAndState() }
         jobs.onSelect = { [weak self] id in self?.actions?.selectJob(id) }
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
@@ -580,11 +612,12 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         }
         NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
         suggestions.onMoveAll = { [weak self] p, uids in self?.actions?.move(uids: uids, to: p) }
-        let stack = NSStackView(views: [captures, taken, missing, jobs, suggestions, bar])
+        let stack = NSStackView(views: [heading, captures, taken, missing, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
+            heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
             captures.widthAnchor.constraint(equalTo: stack.widthAnchor), taken.widthAnchor.constraint(equalTo: stack.widthAnchor),
             missing.widthAnchor.constraint(equalTo: stack.widthAnchor), suggestions.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
@@ -604,22 +637,32 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     func applyLayout() {
         let full = model.scope.isTable
         let inProject: Bool = { if case .project = model.scope { return true }; return model.scope == .unassigned }()
+        // the id column fits the widest id this list can show ("IOS-128"), so every title starts at one x
+        let idWidth = idColumnWidth()
         // only when the layout changes: a column the user resized keeps its width across reloads
-        guard appliedLayout != [full, inProject] else { return }
+        guard appliedLayout != [full, inProject] || (!full && abs((table.tableColumn(withIdentifier: .init("meta"))?.width ?? 0) - idWidth) > 0.5) else { return }
         appliedLayout = [full, inProject]
-        metaWant = full ? 0 : (inProject ? 56 : 132)
         for c in table.tableColumns {
             switch c.identifier.rawValue {
-            case "lead": c.width = full ? 22 : 44
+            case "lead": c.width = 22
             case "project": c.isHidden = inProject || !full; c.width = 100; projectHiddenForRoom = false
-            case "meta": c.width = full ? 58 : (inProject ? 56 : 132); c.maxWidth = full ? 120 : 200
+            case "meta": c.width = full ? 58 : idWidth
             case "state": c.isHidden = !full; c.width = 120
-            case "time": c.width = 72
+            case "mark": c.isHidden = full
+            case "time": c.width = full ? 72 : 60
             default: break
             }
         }
         table.headerView = full ? header : nil
         fitTitle()
+    }
+
+    /// The dense list's id column: wide enough for the longest key here plus a three-digit number, in the id font.
+    func idColumnWidth() -> CGFloat {
+        let keys = model.projects.map(\.key) + ["IN"]
+        let longest = keys.max { $0.count < $1.count } ?? "IN"
+        let w = ("\(longest)-888" as NSString).size(withAttributes: [.font: Look.idFont]).width
+        return min(72, max(44, ceil(w) + 6))
     }
 
     /// The title column takes whatever the fixed columns leave (users can still resize those).
@@ -628,28 +671,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         fitTitle()
     }
 
-    /// The dense list's id column at full width ("AW-2 · Atlas Web"); 0 in the table, where the user sizes it.
-    private var metaWant: CGFloat = 0
-    /// Below this the id column shows the key alone.
-    static let metaWithProject: CGFloat = 110
-
     func fitTitle() {
         guard let title = table.tableColumn(withIdentifier: .init("title")) else { return }
         let others = table.tableColumns.filter { $0 !== title && !$0.isHidden }
         let spacing = table.intercellSpacing.width * CGFloat(others.count + 1) + 24   // + the inset style's margins
         func room() -> CGFloat { scroll.contentView.bounds.width - others.reduce(0) { $0 + $1.width } - spacing }
-        // a narrow list (a job's detail beside it): the id column gives up the project name before the title is
-        // squeezed, and no column ever ends up past the list's edge
-        if metaWant > 0, let meta = table.tableColumn(withIdentifier: .init("meta")) {
-            let mw = min(metaWant, max(meta.minWidth, room() + meta.width - 200))
-            if abs(meta.width - mw) > 0.5 {
-                let crossed = (meta.width < Self.metaWithProject) != (mw < Self.metaWithProject)
-                meta.width = mw
-                if crossed, let col = table.tableColumns.firstIndex(of: meta) {
-                    table.reloadData(forRowIndexes: IndexSet(integersIn: 0..<table.numberOfRows), columnIndexes: [col])
-                }
-            }
-        }
         // the full table in a narrow list (a small window, the detail at its minimum): Project, then State give way
         // before State and Updated end up past the list's edge; they grow back to their usual width when there's room
         if model.scope.isTable, let project = table.tableColumn(withIdentifier: .init("project")) {
@@ -773,11 +799,15 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         table.scrollRowToVisible(r)
     }
 
+    /// The Filter menu's picks (or the filter line's Clear): the list starts at its top again.
     func filtersChanged() {
-        model.kinds = bar.selectedKinds
-        model.state = bar.state.selectedItem?.representedObject as? String
         model.reload()
         scrollToStart()
+    }
+    func clearKindAndState() {
+        model.kinds = []
+        model.state = nil
+        filtersChanged()
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
@@ -910,25 +940,30 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let quiet = it.discarded || Lifecycle.closed.contains(it.state)
         switch col {
         case "lead":
-            let c = make("lead") { () -> LeadCell in
-                let c = LeadCell()
+            let c = make("lead") { LeadCell() }
+            let voice = it.sourceType == "voice" && it.kind == "note"
+            c.kindImage = Look.leadImage(kind: it.kind, voice: voice)
+            c.icon.alphaValue = it.discarded ? 0.4 : 1
+            c.icon.setAccessibilityLabel(voice ? T("main.kind.voice_note") : Look.kindName(it.kind))
+            return c
+        case "mark":
+            let c = make("mark") { () -> MarkCell in
+                let c = MarkCell()
                 c.ring.target = self
                 c.ring.action = #selector(ringClicked(_:))
                 return c
             }
-            c.kindImage = Look.kindImage(it.kind)
-            c.icon.alphaValue = it.discarded ? 0.4 : 1
-            c.icon.setAccessibilityLabel(Look.kindName(it.kind))
-            c.showsRing = !model.scope.isTable
             c.ring.set(it.state, label: Look.stateLabel(it))
             c.ring.isEnabled = !it.legacy
+            c.quietWhenNew = model.scope == .inbox
             return c
         case "title":
             let c = make("title") { TitleCell() }
             // the search hit, unless it is just the title again
             let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
             let hit = searching && SearchHit.adds(it.snippet, to: it.title) ? it.snippet : nil
-            c.set(title: it.title, unread: it.state == "new" && !it.unreadable, dimmed: quiet, struck: false, hit: hit,
+            // medium weight sets a new item apart — except in the Inbox, where every row is new (it would set none apart)
+            c.set(title: it.title, unread: it.state == "new" && !it.unreadable && model.scope != .inbox, dimmed: quiet, struck: false, hit: hit,
                   unreadable: it.unreadable)
             c.toolTip = it.unreadable ? T("main.unreadable.fix_first")
                 : [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
@@ -939,11 +974,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             return c
         case "meta":
             let c = make("meta") { MetaCell() }
-            let full = model.scope.isTable
-            let roomy = (table.tableColumn(withIdentifier: .init("meta"))?.width ?? 0) >= Self.metaWithProject
-            c.key.stringValue = full || inOwnProject || it.projectID == "inbox" || !roomy ? it.itemID : "\(it.itemID) · \(it.projectName)"
-            c.toolTip = it.projectID == "inbox" ? nil : it.projectName
-            c.key.alignment = full ? .left : .right
+            c.key.stringValue = it.itemID
+            c.key.textColor = quiet ? .tertiaryLabelColor : .secondaryLabelColor
+            c.toolTip = it.projectID == "inbox" ? T("project.inbox") : it.projectName
             return c
         case "project":
             let c = make("icontext") { IconTextCell() }
@@ -961,7 +994,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             return c
         case "time":
             let c = make("time") { IconTextCell() }
-            c.set(MainModel.relative(it.updated), font: Look.monoSub, align: .right)
+            c.set(MainModel.listDate(it.updated), font: Look.monoSub, align: .right)
             c.label.textColor = .secondaryLabelColor
             c.toolTip = MainModel.shortDate(it.updated)
             return c
@@ -971,12 +1004,27 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let v = make("row") { ItemRowView() }
+        let sec = model.section(at: row)
+        v.section = sec.map { (sectionName($0), Loc.number($0.count)) }
         if let it = model.item(at: row) {
-            v.label = [Look.kindName(it.kind), it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.stateLabel(it),
-                       it.projectID == "inbox" ? T("project.inbox") : it.projectName,
-                       MainModel.relative(it.updated)].joined(separator: ", ")
+            v.label = ([sec.map { "\(sectionName($0)), \(TP("main.items.count", $0.count))" }, Look.kindName(it.kind),
+                        it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.stateLabel(it),
+                        it.projectID == "inbox" ? T("project.inbox") : it.projectName, MainModel.shortDate(it.updated)] as [String?])
+                .compactMap { $0 }.joined(separator: ", ")
         }
         return v
+    }
+
+    /// A project run's header: the project's name (Unassigned for the inbox store).
+    func sectionName(_ s: ListSection) -> String {
+        if s.project == "inbox" { return T("project.inbox") }
+        return model.project(id: s.project)?.name ?? model.item(at: s.start)?.projectName ?? s.project
+    }
+
+    /// A project run's first row is taller: its header sits above the row's own band.
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
+        guard model.section(at: row) != nil else { return Look.rowHeight }
+        return Look.rowHeight + (row == 0 ? Look.firstSectionHeight : Look.sectionHeight)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -1005,11 +1053,11 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     /// The ring of a row on screen (the S key opens the menu under it).
     func ringView(row r: Int) -> NSView? {
-        let id = model.scope.isTable ? "state" : "lead"
+        let id = model.scope.isTable ? "state" : "mark"
         guard let col = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == id }) else { return nil }
         table.scrollRowToVisible(r)
         switch table.view(atColumn: col, row: r, makeIfNecessary: false) {
-        case let c as LeadCell: return c.ring
+        case let c as MarkCell: return c.ring
         case let c as StateCell: return c.button
         default: return nil
         }

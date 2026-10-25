@@ -237,5 +237,14 @@
   "source.session.unnamed": "Open",
   "source.merged_earlier_one": "{n} earlier item",
   "source.merged_earlier_other": "{n} earlier items",
-  "item.unreadable": "This item’s file can’t be read. Blurt won’t overwrite it; fix it in an editor and it shows up here."
+  "item.unreadable": "This item’s file can’t be read. Blurt won’t overwrite it; fix it in an editor and it shows up here.",
+  "voice.label": "Recording",
+  "voice.play": "Play",
+  "voice.pause": "Pause",
+  "voice.position": "Position in the recording",
+  "voice.more": "More",
+  "handoff.copy_more": "More ways to copy",
+  "chip.add_type": "Add type…",
+  "chip.type_none": "No type",
+  "media.title": "Pictures and clips"
 }

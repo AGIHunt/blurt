@@ -98,6 +98,9 @@ public struct ItemQuery: Equatable {
     /// Unassigned: items with the same suggested project next to each other (by that project's name), the ones with no
     /// suggestion last — then `sort` within each run.
     public var bySuggestion = false
+    /// The Inbox and In Progress: each project's items together, Unassigned first, then the projects by name — then
+    /// `sort` within each run (the main window's list shows a section header per run).
+    public var byProject = false
     public var limit = 50, offset = 0                 // limit 0 = no limit (uids)
     public init(text: String? = nil, kinds: [String] = [], states: [String] = [], statuses: [String] = [], workStates: [String] = [],
                 inbox: Bool = false, project: String? = nil, session: String? = nil, sort: String = "updated", limit: Int = 50,
@@ -275,6 +278,16 @@ public final class IndexReader {
         return try rows("SELECT i.uid \(base) ORDER BY \(order(q)) LIMIT ? OFFSET ?", args + [lim, q.offset]) { $0.text(0) }
     }
 
+    /// The project of every match, in display order: (uid, project id) — what the list's section headers are cut from
+    /// (one cheap pass, no full rows).
+    public func uidProjects(_ q: ItemQuery) throws -> [(uid: String, project: String)] {
+        let (base, args, _) = whereClause(q)
+        let lim = q.limit > 0 ? q.limit : -1
+        return try rows("SELECT i.uid, i.project_id \(base) ORDER BY \(order(q)) LIMIT ? OFFSET ?", args + [lim, q.offset]) {
+            (uid: $0.text(0), project: $0.text(1))
+        }
+    }
+
     /// Full rows for these uids, in the same order (missing uids are skipped). `terms` fills `snippet`.
     public func items(uids: [String], terms: [String] = []) throws -> [ItemRow] {
         guard !uids.isEmpty else { return [] }
@@ -397,7 +410,8 @@ public final class IndexReader {
         let groups = q.bySuggestion
             ? "(i.suggested_project IS NULL), (SELECT sp.name FROM projects sp WHERE sp.id = i.suggested_project) COLLATE NOCASE, i.suggested_project, "
             : ""
-        return first + groups + sortOrder(q)
+        let projects = q.byProject ? "(i.project_id != 'inbox'), p.name COLLATE NOCASE, i.project_id, " : ""
+        return first + projects + groups + sortOrder(q)
     }
 
     /// Live items of a store (`project`, "inbox" for Unassigned) that carry a suggested project: (uid, project id),
