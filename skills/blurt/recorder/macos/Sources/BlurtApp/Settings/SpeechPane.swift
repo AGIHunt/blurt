@@ -10,8 +10,9 @@
 // stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
 // here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
 // for the next, never a second copy of a model the assistant is already fetching. A purpose whose model isn't on this
-// Mac says "· downloading" or "None yet" (never names it as if in use), and while a batch runs no new "X is recommended
-// · Download" offer joins it.
+// Mac says "· downloading" or "None yet" (never names it as if in use) — and in the model list such a model has no
+// purpose badge, only "For … once it's downloaded" —, and while a batch runs no new "X is recommended · Download" offer
+// joins it. Move to Trash asks by the model's name and size, never its folder's path.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine
@@ -378,7 +379,10 @@ struct SpeechPane: View {
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
             Button(S("speech.cancel"), role: .cancel) { confirmRemove = nil }
-        } message: { Text(confirmRemove?.path ?? "") }
+        } message: {
+            // the model by its name and size — never its folder's path (the Storage pane's rows say the same)
+            Text(confirmRemove.map { S("speech.remove.message", $0.title, modelSize($0.sizeMB)) } ?? "")
+        }
     }
 
     // MARK: This Mac + what it uses
@@ -514,7 +518,10 @@ struct SpeechPane: View {
     }
 
     func modelRow(_ x: ASRModel) -> some View {
-        let uses = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
+        // the purposes it runs: only a model on this Mac runs anything — one picked but not downloaded yet says when
+        // it will (as the purpose rows above say "None yet"), never a badge that reads as "in use"
+        let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
+        let uses = x.installed ? picked : []
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 StatusDot(tone: x.installed ? (uses.isEmpty ? .off : .good) : .off)
@@ -525,6 +532,9 @@ struct SpeechPane: View {
                         .font(.caption2.weight(.medium)).foregroundStyle(Color.brandInk)
                         .padding(.horizontal, 6).padding(.vertical, 1.5)
                         .background(Capsule().fill(Color.brandTint))
+                } else if !x.installed, !picked.isEmpty {
+                    Text(S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) })))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
                 actions(x, inUse: !uses.isEmpty)

@@ -58,7 +58,7 @@ extension App {
                   "satisfied": PermissionKind.allCases.filter(g.satisfied).map(\.rawValue),
                   "fn_usage": SystemAccess.fnUsage?.rawValue ?? NSNull(), "fn_apps": SystemAccess.fnClashApps,
                   "running": g.running, "flow": g.flow.rawValue, "steps": g.steps.map(\.rawValue), "current": g.current?.rawValue ?? NSNull(),
-                  "finished": g.finished ?? NSNull(), "dock": g.dock.rawValue, "no_window": g.noWindow,
+                  "finished": g.finished ?? NSNull(), "finished_detail": g.finishedDetail ?? NSNull(), "dock": g.dock.rawValue, "no_window": g.noWindow,
                   "panel": HelperPanel.shared.isShown, "panel_window": HelperPanel.shared.windowNumber ?? -1,
                   "panel_frame": f.map { [$0.minX, $0.minY, $0.width, $0.height].map { Double(Int($0)) } } ?? NSNull(),
                   "target": t.map { [$0.minX, $0.minY, $0.width, $0.height].map { Double(Int($0)) } } ?? NSNull(),

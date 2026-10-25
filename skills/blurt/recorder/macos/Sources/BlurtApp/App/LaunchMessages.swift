@@ -40,6 +40,9 @@ final class LaunchMessages {
         DispatchQueue.main.asyncAfter(deadline: .now() + queue.hold) { [weak self] in self?.queue.flush() }
     }
 
+    /// The launch's messages are still held: a word now would only repeat what goes up in a moment.
+    var holding: Bool { queue.collecting }
+
     /// `shown`: called when the message really goes up (not when it is dropped). `stillTrue`: asked at the end of the
     /// hold — false drops it.
     func post(_ rank: LaunchRank, _ t: Island.Toast, stillTrue: (() -> Bool)? = nil, shown: (() -> Void)? = nil) {

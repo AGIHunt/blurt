@@ -8,7 +8,9 @@
 // while they are missing (a dry run per installed agent says so). The current project's default agent for sessions
 // (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart. Each installed
 // agent says whether the blurt skill + MCP are in it: a "Skill + MCP" badge, or Connect… whose tooltip says they are
-// not in it yet (no grey label repeated down the list).
+// not in it yet (no grey label repeated down the list). One lead column (AgentsLayout: handle, checkbox, dot) on every
+// row — tmux and the agents without a command line too — so the names share one x and sub-rows sit under them; the
+// processing pickers name models from the agent's own list, never a raw id.
 // "Ask your agent" (agents.ask) ends the page: three requests in plain words, each copyable — sending items anywhere
 // (Slack, Feishu, Linear…) is the agent's job with its own tools, so there are no connector settings here; this is
 // where the old Export pane's links land (SettingsCatalog.moved).
@@ -318,8 +320,10 @@ struct AgentsPane: View {
     var sessionsSection: some View {
         SettingsGroup("agents.sessions") {
             SettingsLine {
-                HStack(spacing: 14) {
+                HStack(spacing: AgentsLayout.gap) {
+                    // its dot in the agents' dot column, its name at their names' x
                     StatusDot(tone: AgentSessions.shared.tmuxAvailable ? .good : .warn).frame(width: SettingsMetrics.leadingWidth)
+                        .frame(width: AgentsLayout.lead, alignment: .trailing)
                     VStack(alignment: .leading, spacing: 3) {
                         if let v = AgentSessions.shared.tmuxVersion, AgentSessions.shared.tmuxAvailable {
                             Text(TL("agents.tmux.ok", v)).font(.system(size: SettingsMetrics.titleSize))
@@ -414,14 +418,23 @@ struct AgentsPane: View {
         let on = m.enabled.contains(a.id)
         SettingsLine {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                if ordered {
-                    Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).help(TL("agents.drag"))
-                    // not installed: nothing to tick (it couldn't run)
-                    Toggle("", isOn: Binding(get: { on && (a.installed || a.state == "checking") }, set: { m.toggle(a.id, $0) }))
-                        .labelsHidden().toggleStyle(.checkbox).disabled(!a.installed && a.state != "checking")
+            HStack(spacing: AgentsLayout.gap) {
+                // one fixed lead column (handle, checkbox, dot) for every row — the agents that run, the ones opened
+                // by hand and tmux — so all names start at the same x and every sub-row sits under its name
+                HStack(spacing: 0) {
+                    if ordered {
+                        Image(systemName: "line.3.horizontal").foregroundStyle(.tertiary).help(TL("agents.drag"))
+                            .frame(width: AgentsLayout.handle)
+                        // not installed: nothing to tick (it couldn't run)
+                        Toggle("", isOn: Binding(get: { on && (a.installed || a.state == "checking") }, set: { m.toggle(a.id, $0) }))
+                            .labelsHidden().toggleStyle(.checkbox).disabled(!a.installed && a.state != "checking")
+                            .frame(width: AgentsLayout.checkbox)
+                    } else {
+                        Color.clear.frame(width: AgentsLayout.handle + AgentsLayout.checkbox, height: 1)
+                    }
+                    StatusDot(tone: tone(a, ordered: ordered)).frame(width: SettingsMetrics.leadingWidth)
                 }
-                StatusDot(tone: tone(a, ordered: ordered))
+                .frame(width: AgentsLayout.lead, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
                         Text(a.name).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).foregroundStyle(on || !ordered ? .primary : .secondary)
@@ -457,15 +470,15 @@ struct AgentsPane: View {
                     Text(TL(a.installed ? "agents.fix" : "agents.install_hint")).font(.caption).foregroundStyle(.secondary)
                     if looksLikeCommand(a.fix) { CommandText(text: commandPart(a.fix)) }
                     else { Text(a.fix).font(.caption).textSelection(.enabled) }
-                }.padding(.leading, ordered ? 44 : 17)
+                }.padding(.leading, AgentsLayout.text)
             }
             if ordered, a.installed, let ms = m.models[a.id] { processingRow(a, ms) }
             if a.id == "codex" && a.installed {
-                Text(TL("agents.codex_trust")).font(.caption).foregroundStyle(.secondary).padding(.leading, ordered ? 44 : 17)
+                Text(TL("agents.codex_trust")).font(.caption).foregroundStyle(.secondary).padding(.leading, AgentsLayout.text)
             }
             if let t = m.tests[a.id] {
                 Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .font(.caption).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr).padding(.leading, ordered ? 44 : 17)
+                    .font(.caption).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr).padding(.leading, AgentsLayout.text)
             }
         }
         }
@@ -482,7 +495,7 @@ struct AgentsPane: View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(ProcessingKind.allCases, id: \.self) { k in processingLine(a, ms, k) }
         }
-        .padding(.leading, 44)
+        .padding(.leading, AgentsLayout.text)
     }
 
     @ViewBuilder
@@ -491,9 +504,9 @@ struct AgentsPane: View {
             Text(TL("agents.processing.\(k.rawValue)")).font(.caption).foregroundStyle(.secondary)
                 .frame(minWidth: 64, alignment: .leading)
             Picker("", selection: Binding(get: { m.processingModel(a.id, k) }, set: { m.setProcessing(a.id, k, model: $0) })) {
-                Text(ms.cheapest.map { c in TL("agents.processing.cheapest_named", ms.models.first { $0.id == c }?.name ?? c) }
-                     ?? TL("agents.processing.cheapest")).tag("cheapest")
-                Text(ms.cliDefault.map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
+                // by the model's name from the agent's own list; one it doesn't list goes unnamed (never its raw id)
+                Text(ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")).tag("cheapest")
+                Text(ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
                 Divider()
                 ForEach(ms.models) { x in Text(x.name).tag(x.id) }
             }
@@ -658,4 +671,14 @@ struct AgentDrop: DropDelegate {
 func shortVersion(_ v: String) -> String {
     if let r = v.range(of: #"\d+\.\d+(\.\d+)?"#, options: .regularExpression) { return String(v[r]) }
     return String(v.prefix(16))
+}
+
+/// The Agents pane's columns: a lead (drag handle, checkbox, status dot) of one width on every row, then the name —
+/// sub-rows (what to fix, the processing models, Codex's trust line, a test's result) start at the name's x.
+enum AgentsLayout {
+    static let handle: CGFloat = 18
+    static let checkbox: CGFloat = 20
+    static let gap: CGFloat = 8
+    static var lead: CGFloat { handle + checkbox + SettingsMetrics.leadingWidth }
+    static var text: CGFloat { lead + gap }
 }

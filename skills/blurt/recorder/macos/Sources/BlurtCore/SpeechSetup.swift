@@ -8,6 +8,14 @@
 //             step's Next becomes "Skip for Now"; Try it offers that same Try Again, never a Download button that
 //             has nothing to download; the dictation key refuses before listening ("isn't set up yet · Set Up…").
 //   failed    the tools are fine but a download stopped: its own sentence, Try Again and the small model alone.
+//   cause     what the blocked sentence puts it down to (Cause): the network only when macOS says the Mac is offline
+//             ("needs the internet once: connect, then Try Again"); online, the tools failed for another reason (a
+//             proxy, a script error, an update half done): "couldn't set up its speech tools", no talk of connecting.
+//   list      `dictation-models` that didn't answer (ListFailure): offline or an error — the dictation key refuses
+//             before listening; a timeout (a cold `uv` sync after an update) is not a refusal: the take goes ahead.
+//   retry     Try Again shows "Checking…" for at least `minimumCheck` (an offline retry fails in a blink and would look
+//             like a button that does nothing), keeps the footer's Skip for Now, and a retry that still fails says
+//             when it tried ("Tried again at 14:32: still offline").
 //   network   a failure is retried by itself once the Mac comes back online (NetworkRetry: only on the change from
 //             offline to online, never in a loop).
 import Foundation
@@ -45,14 +53,48 @@ public enum SpeechSetup {
     }
 
     /// The step's own action is still to do: the footer offers "Skip for Now" (plain) instead of the brand Next.
-    /// `settled`: the user took the small model alone and it is in.
-    public static func pending(_ s: Step, settled: Bool) -> Bool {
+    /// `settled`: the user took the small model alone and it is in. `retrying`: Try Again runs ("Checking…") — the
+    /// footer stays as it was rather than flashing to Next and back.
+    public static func pending(_ s: Step, settled: Bool, retrying: Bool = false) -> Bool {
+        if retrying { return true }
         switch s {
         case .needsUV, .blocked, .failed: return true
         case .offer: return !settled
         case .checking, .downloading, .ready: return false
         }
     }
+
+    /// Try Again's "Checking…" lasts at least this long (seconds).
+    public static let minimumCheck: TimeInterval = 1.0
+
+    /// What a blocked setup is put down to.
+    public enum Cause: Equatable {
+        /// macOS says the Mac is offline: connect, then Try Again
+        case offline
+        /// online, and it still failed (a proxy, a script error): no talk of connecting
+        case error
+    }
+
+    /// `online`: NetworkWatch's last answer (nil: none yet — not taken for offline).
+    public static func cause(online: Bool?) -> Cause { online == false ? .offline : .error }
+
+    /// Why `dictation-models` didn't answer.
+    public enum ListFailure: String, Equatable {
+        /// it ran out of time (a cold `uv` sync after an update): dictation still goes ahead
+        case timeout
+        /// the Mac is offline (the tools can't be fetched)
+        case offline
+        /// it failed while online (a script error, the skill missing): its detail goes to the log
+        case error
+    }
+
+    public static func listFailure(timedOut: Bool, online: Bool?) -> ListFailure {
+        timedOut ? .timeout : cause(online: online) == .offline ? .offline : .error
+    }
+
+    /// The dictation key refuses before listening ("isn't set up yet · Set Up…"): the tools can't run. Not on a
+    /// timeout — the take goes ahead as it always did.
+    public static func refusesDictation(_ f: ListFailure?) -> Bool { f == .offline || f == .error }
 
     /// The Try-it step, when dictation can't be tried yet and permissions are fine.
     public enum TryState: Equatable {

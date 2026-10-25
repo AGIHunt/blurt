@@ -14,6 +14,8 @@ public enum ModelCatalog {
         public var sizeMB: Double
         /// a polish model (polish_models.json), else speech recognition
         public var polish: Bool
+        /// the speech backend that runs it ("openai", "sensevoice"…)
+        public var backend: String? = nil
     }
 
     private static let lock = NSLock()
@@ -31,16 +33,22 @@ public enum ModelCatalog {
             for m in models {
                 guard let id = m["id"] as? String, let name = m["name"] as? String else { continue }
                 out.append(Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0,
-                                 polish: file.hasPrefix("polish")))
+                                 polish: file.hasPrefix("polish"), backend: m["backend"] as? String))
             }
         }
         if dir == BlurtPaths.scripts { cached = out }
         return out
     }
 
-    /// The model's name; nil when no catalogue has it.
+    /// The model's name; nil when no catalogue has it. A `backend:model` id — what the scripts make up for a model
+    /// set by backend and name (a cloud API's "openai:whisper-1") — is named by its backend's catalogue entry and the
+    /// model: "OpenAI-compatible API · whisper-1" (the backend's alone for ":default").
     public static func name(_ id: String, dir: URL = BlurtPaths.scripts) -> String? {
-        entries(dir: dir).first { $0.id == id }?.name
+        let all = entries(dir: dir)
+        if let e = all.first(where: { $0.id == id }) { return e.name }
+        let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let e = all.first(where: { $0.backend == parts[0] && !$0.polish }) else { return nil }
+        return parts[1].isEmpty || parts[1] == "default" ? e.name : "\(e.name) · \(parts[1])"
     }
 
     /// The model whose files are in this folder (Storage's rows: a folder name → the model's name).

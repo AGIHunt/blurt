@@ -87,7 +87,8 @@ final class ShellDataTests: XCTestCase {
         for t in [#"{"a": 1,}"#, #"{"a": [1,],}"#, #"{"a": 1,, }"#, "{\"a\": {\"b\": 2,},\n}"] {
             XCTAssertNotNil(ConfigText.parse(Data(t.utf8)), t)
         }
-        for t in [#"{"a": 1 "b": 2}"#, #"{"a": "#, #"{"a": 1,,"b": 2}"#, "[1]", ""] {
+        for t in [#"{"a": 1 "b": 2}"#, #"{"a": "#, #"{"a": 1,,"b": 2}"#, "[1]", "", #"{"a": NaN}"#, #"{"a": Infinity}"#,
+                  #"{"a": -Infinity}"#] {
             XCTAssertNil(ConfigText.parse(Data(t.utf8)), t)
         }
         // a write normalises it and keeps everything
@@ -105,12 +106,52 @@ final class ShellDataTests: XCTestCase {
         XCTAssertNil(c["app.onboarded"], "every setting at its default — the app doesn't take that for a first run (readable)")
         XCTAssertFalse(c.checkReadable())
         XCTAssertEqual(told.count, 1, "said at launch, before any write")
+        var refused: [String] = []
+        c.onWriteRefused = { refused.append($0) }
         XCTAssertFalse(c.set("lang", "en"))
-        XCTAssertEqual(told.count, 1, "the refused write doesn't say it again")
+        XCTAssertEqual(told.count, 1, "the refused write doesn't copy it again")
+        XCTAssertEqual(refused, ["lang"], "but a refused write is still reported — the launch notice didn't use it up")
+        XCTAssertFalse(c.set("record.dictation.polish_timeout_ms", 900))
+        XCTAssertEqual(refused, ["lang", "record.dictation.polish_timeout_ms"], "each one: the app says it once per session")
         // missing is fine (nothing to lose, a first run)
         let fresh = Config(url: dir.appendingPathComponent("none.json"))
         XCTAssertTrue(fresh.readable)
         XCTAssertTrue(fresh.checkReadable())
+    }
+
+    func testTheSkillStaysWhereItWasWhenConfigBreaks() {
+        // a skill installed somewhere other than ~/.claude/skills/blurt (Codex, a custom path, a dev checkout)
+        let skill = dir.appendingPathComponent("my skill/blurt")
+        try! FileManager.default.createDirectory(at: skill.appendingPathComponent("scripts"), withIntermediateDirectories: true)
+        let u = dir.appendingPathComponent("config.json")
+        let defaults = UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!
+        // readable: the config's skill_dir, remembered
+        let good = #"{"skill_dir": "\#(skill.path)", "record": {"countdown": 3}}"#
+        try! good.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: defaults).path, skill.path)
+        XCTAssertEqual(defaults.string(forKey: BlurtPaths.rememberedKey), skill.path)
+        // a missing brace further down: its skill_dir still stands whole in the text
+        try! #"{"skill_dir": "\#(skill.path)", "record": {"countdown": 3}"#.write(to: u, atomically: true, encoding: .utf8)
+        let broken = Config(url: u)
+        XCTAssertFalse(broken.readable)
+        XCTAssertEqual(BlurtPaths.skillDir(config: broken, remembered: UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!).path,
+                       skill.path, "read from the text, nothing remembered")
+        // broken before skill_dir: the one a readable file named last time
+        try! #"{"record": {"countdown": 3 "skill_dir": "/elsewhere"}"#.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: defaults).path, skill.path)
+        // nothing to go by: the usual install location
+        XCTAssertEqual(BlurtPaths.skillDir(config: Config(url: u), remembered: UserDefaults(suiteName: "blurt-test-\(UUID().uuidString)")!),
+                       BlurtPaths.defaultSkillDir)
+    }
+
+    func testATopLevelStringIsFoundInABrokenFile() {
+        func find(_ t: String) -> String? { ConfigText.topLevelString("skill_dir", in: Data(t.utf8)) }
+        XCTAssertEqual(find(#"{"a": {"skill_dir": "/nested"}, "skill_dir": "/top" "#), "/top", "the top level only")
+        XCTAssertEqual(find(#"{"skill_dir": "/p\"q", "#), "/p\"q", "escapes decoded")
+        XCTAssertNil(find(#"{"skill_dir": 3,"#))
+        XCTAssertNil(find(#"{"x": "skill_dir", "y": 1"#), "a value is not a key")
+        XCTAssertNil(find(#"{"skill_dir": "/unclosed"#))
+        XCTAssertEqual(Config(url: dir.appendingPathComponent("none.json")).lenientString("skill_dir"), nil)
     }
 
     func testWriteWaitsForTheScriptsLock() {
@@ -290,7 +331,9 @@ final class LaunchQueueTests: XCTestCase {
         XCTAssertEqual(q.post(4, "permission", now: t0 + 2), .held)
         XCTAssertEqual(q.post(7, "welcome again", now: t0 + 2), .held)
         XCTAssertTrue(shown.isEmpty)
+        XCTAssertTrue(q.collecting, "held: a word now would repeat what goes up in a moment (config: the write-refused line)")
         q.flush()
+        XCTAssertFalse(q.collecting)
         XCTAssertEqual(shown, ["welcome"], "the highest; between equals the first posted")
         XCTAssertEqual(Set(dropped), ["model", "permission", "welcome again"])
     }

@@ -192,6 +192,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         FilePrivacy.lockDown()          // Blurt's data is this account's alone (0700 / 0600)
         Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
+        Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
         Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
         watchNetwork()
         ensureDefaultWorkspace()
@@ -900,6 +901,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         t.seconds = 10
         LaunchMessages.shared.post(.config, t)
+    }
+
+    /// A setting couldn't be saved because config.json doesn't parse: once per session, an ordinary line (what the
+    /// user just did — the launch line may be long gone, and a launch message would be dropped by then). Not while
+    /// the launch's messages are held: the launch line says it in a moment ("can't save").
+    private static var writeRefusedSaid = false
+    static func configWriteRefused(_ key: String) {
+        emit(["event": "config_write_refused", "key": key, "said": !writeRefusedSaid && !LaunchMessages.shared.holding])
+        guard !writeRefusedSaid, !LaunchMessages.shared.holding else { return }
+        writeRefusedSaid = true
+        var t = Island.Toast(text: T("app.config.not_saved"), actionTitle: T("app.config.show")) {
+            NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
+        }
+        t.seconds = 8
+        island.toast(t)
     }
 
     // tiny, non-blocking toast under the menu bar (no notification permission needed) — only without the island

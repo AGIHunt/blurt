@@ -91,10 +91,13 @@ final class DictationModels: ObservableObject {
 
     @Published var asr: DictationASRState?
     @Published var polish: PolishState?
-    /// `dictation-models` ran and couldn't answer: the speech tools aren't set up (an offline first run — uv couldn't
-    /// install them). Dictation then refuses before listening ("isn't set up yet · Set Up…", Dictation.notSetUp), the
-    /// menu offers Set Up Dictation…, and the welcome line says so — instead of listening and failing without a reason.
+    /// `dictation-models` ran and couldn't answer, offline or on an error (not a timeout: BlurtCore
+    /// SpeechSetup.refusesDictation): the speech tools aren't set up (an offline first run — uv couldn't install
+    /// them). Dictation then refuses before listening ("isn't set up yet · Set Up…", Dictation.notSetUp), the menu
+    /// offers Set Up Dictation…, and the welcome line says so — instead of listening and failing without a reason.
     @Published private(set) var asrUnreadable = false
+    /// Why the last `dictation-models` didn't answer (nil: it did).
+    @Published private(set) var asrFailure: SpeechSetup.ListFailure?
     private var loaded = false
     private var sub: AnyCancellable?
 
@@ -140,10 +143,24 @@ final class DictationModels: ObservableObject {
         loaded = true
         async let a = SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 120)
         async let p = SkillCLI.shared.run("polish.py", ["models"], timeout: 60)
-        asr = (try? await a)?.decode(DictationASRState.self)
+        var timedOut = false, detail = ""
+        do {
+            let r = try await a
+            asr = r.decode(DictationASRState.self)
+            if asr == nil { detail = r.errorText }
+        } catch {
+            asr = nil
+            if case ScriptError.timeout = error { timedOut = true }
+            detail = "\(error)"
+        }
         polish = (try? await p)?.decode(PolishState.self)
-        if asrUnreadable != (asr == nil) { emit(["event": "dictation_models_readable", "readable": asr != nil]) }
-        asrUnreadable = asr == nil
+        asrFailure = asr != nil ? nil : SpeechSetup.listFailure(timedOut: timedOut, online: NetworkWatch.shared.isOnline)
+        let unreadable = SpeechSetup.refusesDictation(asrFailure)
+        if asrUnreadable != unreadable || asrFailure != nil {
+            emit(["event": "dictation_models_readable", "readable": asr != nil, "failure": asrFailure?.rawValue ?? NSNull(),
+                  "detail": detail.isEmpty ? NSNull() : String(detail.suffix(400))])
+        }
+        asrUnreadable = unreadable
     }
 
     /// Once per run (the history's names); Settings reloads whenever it opens.

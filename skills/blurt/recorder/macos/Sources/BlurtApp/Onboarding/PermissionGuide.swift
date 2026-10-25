@@ -36,8 +36,10 @@ final class PermissionGuide: ObservableObject {
     @Published private(set) var satisfiedNow: Set<PermissionKind> = []
     /// the current step was just satisfied: the panel shows its check for a moment
     @Published private(set) var stepDone = false
-    /// the walk ended with everything done: the check-mark line the assistant / Settings show
+    /// the walk ended with everything done: the check-mark line the assistant / Settings show — a short headline
+    /// ("Permissions are set"), and what comes next, if anything, as a quieter line under it (`finishedDetail`)
     @Published private(set) var finished: String?
+    @Published private(set) var finishedDetail: String?
     /// the panel's side of the System Settings window (its arrow points that way)
     @Published var dock: HelperDock.Side = .free
     /// System Settings has no window on screen (the panel offers to open the pane again)
@@ -90,6 +92,7 @@ final class PermissionGuide: ObservableObject {
         self.only = only
         self.reauthorize = reauthorize && (only ?? []).contains(.screen)
         finished = nil
+        finishedDetail = nil
         let walk = PermissionPlan.steps(flow, only: only, satisfied: satisfiedSet)
         emit(["event": "perm_guide", "op": "start", "flow": flow.rawValue, "source": source.rawValue, "steps": walk.map(\.rawValue),
               "reauthorize": self.reauthorize])
@@ -218,18 +221,20 @@ final class PermissionGuide: ObservableObject {
         let model = DictationModels.shared.dictationReady != false
         let dictationWorks = heard && model
         let aboutDictation = flow == .dictation || source == .menu || source == .island
-        let msg = aboutDictation && dictationWorks ? T("settings.perm.done.dictation")
-            : aboutDictation && heard ? T("settings.perm.done.no_model", Dictation.keyInline)
-            : everything ? T("settings.perm.done.all") : T("settings.perm.done.some")
+        let (msg, detail): (String, String?) = aboutDictation && dictationWorks ? (T("settings.perm.done.dictation"), nil)
+            : aboutDictation && heard ? (T("settings.perm.done.no_model.title"), T("settings.perm.done.no_model", Dictation.keyInline))
+            : everything ? (T("settings.perm.done.all"), nil) : (T("settings.perm.done.some.title"), T("settings.perm.done.some"))
         finished = msg
+        finishedDetail = detail
         finishedAt = Date()
-        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "dictation_works": dictationWorks, "model": model,
+        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "detail": detail ?? NSNull(),
+              "dictation_works": dictationWorks, "model": model,
               "missing": PermissionPlan.steps(flow, satisfied: satisfiedSet).map(\.rawValue)])
         HelperPanel.shared.showDone(msg, after: already ? 0 : 0.2)
         bringBack()
         let at = finishedAt
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            MainActor.assumeIsolated { if self?.finishedAt == at { self?.finished = nil } }
+            MainActor.assumeIsolated { if self?.finishedAt == at { self?.finished = nil; self?.finishedDetail = nil } }
         }
     }
 
@@ -288,9 +293,14 @@ struct PermissionDoneBanner: View {
     @ObservedObject var g = PermissionGuide.shared
     var body: some View {
         if let f = g.finished {
-            HStack(spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 13, weight: .semibold)).foregroundStyle(Color.brandOk)
-                Text(f).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(f).fixedSize(horizontal: false, vertical: true)
+                    if let d = g.finishedDetail {
+                        Text(d).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
                 Spacer()
             }
             .padding(.vertical, 2)

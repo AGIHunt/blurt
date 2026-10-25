@@ -6,6 +6,7 @@
 // created next to it; a discarded take removes live/. All calls come from the recorder's capture queue.
 
 import AVFoundation
+import BlurtCore
 import CoreMedia
 import Foundation
 
@@ -117,7 +118,7 @@ var liveLaunched: Set<String> = []
 
 func launchLive(_ session: URL) {
     guard liveAudioWanted(), !liveLaunched.contains(session.path),
-          let skill = readConfig()["skill_dir"] as? String,
+          case let skill = BlurtPaths.skillDir.path,       // also when config.json doesn't parse (Paths.skillDir)
           FileManager.default.fileExists(atPath: "\(skill)/scripts/live.py"), let uv = findExecutable("uv") else { return }
     let live = session.appendingPathComponent("live")
     guard FileManager.default.fileExists(atPath: live.path) else { return }   // no mic → no sidecar

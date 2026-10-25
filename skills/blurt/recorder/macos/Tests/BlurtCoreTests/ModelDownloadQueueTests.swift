@@ -23,6 +23,15 @@ final class ModelDownloadQueueTests: XCTestCase {
         XCTAssertEqual(q.next?.id, asr.id)
     }
 
+    func testOnlyTheNetworkKeepsALaunchBatchForTheNetwork() {
+        XCTAssertTrue(ModelDownloadQueue.waitsForNetwork(code: "network", online: true), "the script said so")
+        XCTAssertTrue(ModelDownloadQueue.waitsForNetwork(code: nil, online: false), "uv couldn't fetch the tools: macOS says offline")
+        // online: a crash, a traceback, a full disk is a failure with its error — not "finish once you're online"
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: nil, online: true))
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: "error", online: true))
+        XCTAssertFalse(ModelDownloadQueue.waitsForNetwork(code: nil, online: nil), "no answer yet is not offline")
+    }
+
     func testOneBarOverTheBatch() {
         var q = ModelDownloadQueue()
         q.add([asr, polish])

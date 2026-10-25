@@ -35,6 +35,25 @@ final class SpeechSetupTests: XCTestCase {
         XCTAssertTrue(SpeechSetup.pending(.offer, settled: false))
         XCTAssertFalse(SpeechSetup.pending(.offer, settled: true), "the small model alone came down: the step is done")
         for s in [SpeechSetup.Step.checking, .downloading, .ready] { XCTAssertFalse(SpeechSetup.pending(s, settled: false), "\(s)") }
+        // Try Again running: the footer keeps Skip for Now (no flash to Next and back)
+        XCTAssertTrue(SpeechSetup.pending(.checking, settled: false, retrying: true))
+        XCTAssertGreaterThanOrEqual(SpeechSetup.minimumCheck, 0.8, "an offline retry is seen to run")
+    }
+
+    func testTheBlockedSentenceBlamesTheNetworkOnlyWhenOffline() {
+        XCTAssertEqual(SpeechSetup.cause(online: false), .offline)
+        XCTAssertEqual(SpeechSetup.cause(online: true), .error, "online and still failing: a proxy, a script error — not 'connect'")
+        XCTAssertEqual(SpeechSetup.cause(online: nil), .error, "no answer yet is not offline")
+    }
+
+    func testOnlyAListThatCantRunStopsDictation() {
+        XCTAssertEqual(SpeechSetup.listFailure(timedOut: true, online: false), .timeout)
+        XCTAssertEqual(SpeechSetup.listFailure(timedOut: false, online: false), .offline)
+        XCTAssertEqual(SpeechSetup.listFailure(timedOut: false, online: true), .error)
+        XCTAssertFalse(SpeechSetup.refusesDictation(.timeout), "a cold uv sync after an update: the take goes ahead")
+        XCTAssertFalse(SpeechSetup.refusesDictation(nil))
+        XCTAssertTrue(SpeechSetup.refusesDictation(.offline))
+        XCTAssertTrue(SpeechSetup.refusesDictation(.error))
     }
 
     func testTryItNeverOffersADownloadThatDoesNothing() {
@@ -84,7 +103,12 @@ final class ModelCatalogTests: XCTestCase {
         XCTAssertEqual(ModelCatalog.name("qwen3-asr-1.7b-mlx", dir: d), "Qwen3-ASR 1.7B (MLX)")
         XCTAssertEqual(ModelCatalog.name("sensevoice-small", dir: d), "SenseVoice Small")
         XCTAssertNotNil(ModelCatalog.name("gemma4-e2b", dir: d), "the polish catalogue too")
-        XCTAssertNil(ModelCatalog.name("openai:whisper-1", dir: d))
+        // a model the scripts name by backend (a cloud API in use): its backend's entry and the model, never "no
+        // longer listed"
+        XCTAssertEqual(ModelCatalog.name("openai:whisper-1", dir: d), "OpenAI-compatible API · whisper-1")
+        XCTAssertEqual(ModelCatalog.name("openai:default", dir: d), "OpenAI-compatible API")
+        XCTAssertNil(ModelCatalog.name("nobackend:x", dir: d))
+        XCTAssertNil(ModelCatalog.name("no-such-model", dir: d))
     }
 
     func testStorageFoldersMapToTheirModel() {

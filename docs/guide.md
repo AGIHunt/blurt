@@ -17,9 +17,10 @@ to that setting.
 **First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through what dictation
 needs — the Microphone and Accessibility (Input Monitoring only if your key needs it) — and the speech models; Screen
 Recording is asked for the first time you snap or record. After that, try `Fn` in any text field to dictate and `⌥⇧A`
-to snap. Setting up speech needs the internet once: if the Mac is offline (or a proxy blocks it), the models step says
-so in one sentence with *Try Again*, it tries again by itself when the Mac is back online, and until then `Fn` says
-*Dictation isn't set up yet · Set Up…* instead of listening. The notch at the top of the screen says one short line when there is something
+to snap. Setting up speech needs the internet once: if the Mac is offline, the models step says so in one sentence
+with *Try Again* (if the Mac is online and it still fails — a proxy, say — it says that instead), it tries again by
+itself when the Mac is back online, and until then `Fn` says *Dictation isn't set up yet · Set Up…* instead of
+listening. The notch at the top of the screen says one short line when there is something
 to know — at most one at launch. It always says the latest thing you did (a newer line takes the place of an older
 one about the same thing); a line with *Undo* stays at least 5 seconds and waits while the pointer is on it. Clicking the line opens the
 notch; only its button undoes. The main window's messages ("Moved to …", "Done · Undo") show there too, and `⌘Z`
@@ -571,7 +572,9 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
   footer says so while an agent is on).
 - **Editing `~/.blurt/config.json` by hand:** a comma left before `}` or `]` is fine. If the file can't be read at
   all, Blurt and its scripts use the defaults (dictation, voice notes and processing keep working), keep a copy as
-  `config.json.bad-<time>`, and say so once at launch with *Show File*; changes aren't saved until you fix it.
+  `config.json.bad-<time>`, and say so once at launch with *Show File*; changes aren't saved until you fix it (the
+  first change you make that can't be saved says so too). Blurt keeps finding its scripts wherever the skill is
+  installed.
 - **The menu** shows a shortcut next to a row only when it works; one another app or another Blurt holds has none,
   and its tooltip says why. When dictation can't work yet, the menu's first row says why: *Turn On Dictation…*
   (permissions), *Set Up Dictation…* (the speech tools didn't download) or *Download Speech Model…*.
@@ -599,7 +602,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 **第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）、下好语音模型；
 屏幕录制等你第一次截图或录屏时再开。之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。设置语音要联一次网：Mac 没联网（或被代理挡住）时，
-模型这一步只用一句话说明，配一个「重试」，联网后会自己再试；在那之前按 `Fn` 会提示「听写还没设置好 · 设置…」，而不是听半天。
+模型这一步只用一句话说明，配一个「重试」（Mac 联着网还是失败，比如被代理挡住，会照实说），联网后会自己再试；在那之前按 `Fn` 会提示
+「听写还没设置好 · 设置…」，而不是听半天。
 屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。它说的总是你刚做的事
 （关于同一件事的新话会直接替换旧的）；带「撤销」的话至少停留 5 秒，鼠标指着时一直等着。点这句话会打开刘海，只有点它的按钮才会撤销。主窗口的提示（「已移到…」「已完成 · 撤销」）也在这里，提示消失后在主窗口按 `⌘Z` 照样能撤销。
 
@@ -836,7 +840,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的名字和大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型（包括这个版本用不到的旧模型）可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
 - **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API 密钥时，语音本来就只在你的 Mac 上识别；打开它，以后设置了密钥也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。录屏、截图、条目都存在你的 Mac 上；整理或交给 Agent 时，需要的内容会发给你用的 Agent，按它的条款处理（开着 Agent 时，页面底部会写明）。
-- **手改 `~/.blurt/config.json`**：`}` 或 `]` 前面多一个逗号没关系。文件完全读不了时，口喷鸡和它的脚本都先用默认设置（听写、语音备注和整理照常能用），把原文件另存为 `config.json.bad-<时间>`，启动时说一次，配「显示文件」；改好之前，设置的改动不会保存。
+- **手改 `~/.blurt/config.json`**：`}` 或 `]` 前面多一个逗号没关系。文件完全读不了时，口喷鸡和它的脚本都先用默认设置（听写、语音备注和整理照常能用），把原文件另存为 `config.json.bad-<时间>`，启动时说一次，配「显示文件」；改好之前，设置的改动不会保存（第一次没存上的改动也会提示）。不管 skill 装在哪，口喷鸡都还能找到它的脚本。
 - **菜单**里只给能用的快捷键标上按键；被别的 App 或另一个口喷鸡占着的不标，鼠标停上去会说明原因。听写还用不了时，菜单第一行会说为什么：「开启听写…」（权限）、「设置听写…」（语音工具没下载下来）或「下载语音模型…」。
 - **同时开着两个口喷鸡**（正式版和开发版）：先打开的那个负责快捷键；听写键交给能听到它的那个（macOS 没给权限的版本不会占着它）；它退出后，另一个接管。
 

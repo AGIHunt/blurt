@@ -45,7 +45,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from _common import (BLURT_HOME, IS_LINUX, IS_MAC, IS_WIN, STATE_FILE, die, ffmpeg_bin, fix_tcl_env, fmt_ts,  # noqa: E402
-                     global_config, load_json, new_session_dir, probe_duration, run, save_json, update_global_config)
+                     global_config, load_json, new_session_dir, probe_duration, run, save_config_if_readable, save_json)
 
 VIRTUAL_MIC_HINTS = ("virtual", "blackhole", "loopback", "soundflower", "zoom", "teams", "oray", "vb-audio",
                      "voicemeeter", "stereo mix", "立体声混音", "aggregate", "聚集", "cable")
@@ -644,7 +644,7 @@ def prune_sparkle(fw: Path) -> None:
 def remember_skill_dir() -> None:
     skill = str(Path(__file__).resolve().parent.parent)
     if global_config().get("skill_dir") != skill:
-        update_global_config({"skill_dir": skill})
+        save_config_if_readable({"skill_dir": skill})      # a config.json that doesn't parse: skipped, never fatal
 
 
 def ensure_app_installed(force: bool = False) -> Path | None:
@@ -842,7 +842,7 @@ def cmd_start(a) -> None:
         die(f"recording failed: {result.get('code')}: {result.get('message')}{hint}")
     final = session / "recording.mp4"
     if result.get("region"):
-        update_global_config({"record": {"last_region": result["region"]}})
+        save_config_if_readable({"record": {"last_region": result["region"]}})
     dur = probe_duration(final)
     events = session / "events.jsonl"
     n_markers = sum(1 for l in events.open(encoding="utf-8") if '"marker"' in l) if events.exists() else 0

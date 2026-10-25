@@ -113,6 +113,7 @@ final class WelcomeLineWidthTests: XCTestCase {
             // the other launch lines that explain a problem: a config.json that can't be read, shortcuts that don't
             // work (one by name, several by count), models waiting for the network, dictation not set up
             lines.append((main["app.config.unreadable"] ?? "app.toast?", main["app.config.show"]))
+            lines.append((main["app.config.not_saved"] ?? "app.toast?", main["app.config.show"]))
             lines.append((String(format: capture["capture.keys.wont_work"] ?? "app.toast?", "⌃⌥⇧⌘A"), main["app.toast.change_shortcut"]))
             lines.append((String(format: capture["capture.keys.wont_work_many"] ?? "app.toast?", "11"), main["app.toast.change_shortcut"]))
             lines.append((main["app.models.offline"] ?? "app.toast?", table(lang, "Settings")["onboarding.models.retry"]))

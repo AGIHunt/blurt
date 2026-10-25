@@ -123,6 +123,14 @@ public struct ModelDownloadQueue: Codable, Equatable {
         return .failed
     }
 
+    /// A batch carried over from the last run that failed: kept for the network (model-downloads.json stays, "finish
+    /// once you're online", resumed when it is) only when it really is the network — the script said so (`code`
+    /// "network"), or macOS says the Mac is offline (`online` false). A crash, a full disk or a traceback while online
+    /// is an ordinary failure: its error kept, Try Again — never an "offline" line that comes back at every launch.
+    public static func waitsForNetwork(code: String?, online: Bool?) -> Bool {
+        code == "network" || online == false
+    }
+
     // MARK: a setup ended
 
     /// The Stop the user pressed while the setup ran: none, one model, or everything — then with the models waiting

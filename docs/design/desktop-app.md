@@ -211,8 +211,11 @@ Windows/Linux: Blurt（Tauri 2）
    多一个大对勾。下好后岛上提示一次「语音模型好了 · 按 Fn 试试」；中断了也提示，「重试…」重新打开这一步。大小在引导、设置、
    菜单、提示里都用同一种写法（十进制，`ModelBundle.size`：228 MB、2.5 GB、6.1 GB）。下载失败时可重试，或「先装小模型」SenseVoice Small（228 MB，听写和语音备注都能先用它，按钮提示里写明）。
    **断网 / 被代理挡住的第一次**（`BlurtCore/SpeechSetup.swift`）：语音工具没装好（预热 `transcribe.py backends` 失败）和模型列表
-   读不到是**同一个状态**（`.blocked`）：一句话「口喷鸡没能下载语音工具。第一次设置要联网：连上网络后点『重试』」和**一个**主按钮
-   「重试」（重新预热 → 读列表 → 有要下的就接着下），不再是两段报错、两个重试；这时底部是「跳过这一步」，不是绿色的「下一步」。
+   读不到是**同一个状态**（`.blocked`）：一句话和**一个**主按钮「重试」（重新预热 → 读列表 → 有要下的就接着下），不再是两段报错、
+   两个重试；这时底部是「跳过这一步」，不是绿色的「下一步」，重试期间也不变。这句话只在 macOS 说 Mac 断网时才怪网络（`SpeechSetup.Cause`，
+   NetworkWatch 的状态）：「口喷鸡没能下载语音工具。第一次设置要联网：连上网络后点『重试』」；联着网还失败（代理、脚本出错、更新没装完）
+   时说「口喷鸡没能装好语音工具。如果用了代理或 VPN，先检查一下，再点『重试』」，不叫人去联网。「检查中…」至少显示 1 秒
+   （`SpeechSetup.minimumCheck`：断网时重试一眨眼就失败，看着像按了没反应），重试后仍不行就在下面加一行小字「14:32 又试了一次：还是没联网」。
    工具好、只是下载失败时才是「下载中断了」+「重试」+「先装小模型」。任何一个模型下好了（说明网通了），之前失败的预热会安静地再跑一次；
    Mac 从断网变回联网时（`App/NetworkWatch.swift`，NWPathMonitor，只在「断 → 通」那一下）自动重试一次，不会循环。预热里的建索引
    跟语音无关，失败只记日志，不挡这一步。不会悄悄少下一个模型，每次打开引导都重新读一遍。镜像和设置 → 语音的
@@ -220,7 +223,8 @@ Windows/Linux: Blurt（Tauri 2）
    听写和润色保持「自动」，装好推荐的就用推荐的。uv：找到就在后台静默预热依赖、建索引，失败时只显示一句话和「重试」（原始
    输出只进事件日志）；没找到时只显示一句话
    和「安装 uv」按钮，经用户同意后用官方安装器装到 `~/.blurt/bin`（按钮的提示里是完整命令）。
-4. **试一下**：一个输入框，「按一下 Fn 说句话……想直接发送就连按两下：文字填进去并按回车」，第一次听写成功后显示对勾；连按两下
+4. **试一下**：一个输入框，「按一下 Fn 说句话……想直接发送就连按两下：文字填进去并按回车」（听写还试不了——权限、语音工具或模型
+   没好——时标题下面改说「听写设置好后，可以在这里试一下」，不和下面那句原因打架），第一次听写成功后显示对勾；连按两下
    发送打开时，接着出第二个练习「再试试发送：说完连按两下 Fn，而不是按一下」，看到一次连按两下就打勾「这就是发送：在别的 App 里，
    文字填进去后会按回车」（口喷鸡自己的窗口里不会真按回车）。只有听写
    识别模型本身还在下载时才让人等（它自己的进度条）；识别模型到了、润色还在下载时说「听写已经能用了；润色模型下载完后文字会更顺
@@ -236,10 +240,16 @@ Windows/Linux: Blurt（Tauri 2）
 「开启…」或「下载」时就不说冲突：那些键本来就没说，冲突留到下次启动那一句）。每种说法在中英文里都放得下（`WelcomeLineWidthTests`
 按岛的宽度量过）。模型列表读不到（语音工具没装好，断网的第一次）时说「口喷鸡在菜单栏里 · 听写还没设置好」并带「设置…」（引导的
 第 3 步），不再只是把听写略过。config.json 读不了时不当成第一次启动：不再弹欢迎语和引导（`Onboarding.needed` 看 `Config.readable`），
-只说「读不了 config.json · 先用默认设置」并带「显示文件」（启动时就说，`Config.checkReadable`，不等第一次保存被拒）。
+只说「读不了 config.json · 先用默认设置，改动不会保存」并带「显示文件」（启动时就说，`Config.checkReadable`，不等第一次保存被拒）；
+之后真有一次设置没存上（`Config.onWriteRefused`，启动那句不会把它用掉），每次运行再说一次「这项改动没保存 · config.json 读不了」
+（启动的 3 秒等待里不说：那句马上就上）。脚本在哪（`skill_dir`）不跟着坏掉的文件变：先从文本里把顶层的 `"skill_dir": "…"` 读出来
+（`ConfigText.topLevelString`），读不到就用上次读得了时记下的（App 的 defaults），都没有才用 `~/.claude/skills/blurt`
+（`BlurtPaths.skillDir`）——否则装在 Codex、自定路径或开发目录里的 skill 会整个找不到，听写被说成「还没设置好」。
 `}` / `]` 前多一个逗号 App 和脚本都照读（`ConfigText.dropTrailingCommas` = `_common.drop_trailing_commas`，同一份用例）；完全读不了时
 脚本也用默认设置（`_common.read_global_config`：不抛异常，另存 `config.json.bad-<时间>`，stderr 一行 `config_unreadable`），
-听写、语音备注、整理都照常，只有写设置会被拒。
+听写、语音备注、整理都照常，只有写设置会被拒：`update_global_config` 抛 `ConfigUnreadable`（CLI 报 JSON `config_unreadable`，没有
+traceback）；只是顺手记一下的写（硬件指纹、`auto --apply`、`last_region`、`skill_dir`、下载完「用它」）走 `save_config_if_readable`，
+跳过并在结果里带 `"saved": false`——模型照样算下好了。NaN / Infinity 两边都不认（Python 的 json 认、JSONSerialization 不认）。
 
 **模型下载**（macOS `App/ModelDownloads.swift`，规则在 `BlurtCore/ModelDownloadQueue.swift`）：App 里所有模型下载都走这一个
 管理器——引导的「下载推荐模型」、设置 → 语音（听写的识别和润色模型、录屏和语音备注的模型）、听写键的「还没有语音模型 · 下载」。
@@ -251,10 +261,12 @@ Windows/Linux: Blurt（Tauri 2）
 又要的模型照常下载。还没下完的队列写在 `$BLURT_HOME/model-downloads.json`：退出时结束当前的 setup（已下的
 部分留着），下次启动安静地接着下，等第一行进度到了才说「继续下载语音模型 · 还剩 N GB」（排在欢迎语之前；「还剩」= 这一批减去已经
 下来的，正在下的那个下了多少也算进去，`ModelDownloadQueue.remaining`；还在启动的 3 秒等待里就停了的话这句不出）。下次启动时没网
-（setup 报 `network`，或 uv 连依赖都装不了）：文件留着，岛上一句「联网后会接着下载语音模型 · 重试」，联网时（NetworkWatch）或下次
-启动自动接着下，不再把队列删掉、却又说「还在下」。进度只认这个模型自己的行（`ModelBundle.acceptProgress`：总量要在模型大小的 ±50%
-内，同一个模型里进度不往回退）；setup 先下的 VAD 打印成「  vad 1.7/1.7 MB」（`transcribe.py progress_line`），不会被当成模型下完了
-（以前进度条会先跳到 2.5 / 6.1 GB 再掉回去）；HF 下载的进度按真正写到盘上的块算（`st_blocks`），预分配的空文件不算。「停止」和 SIGTERM（`uv run` 转成
+（setup 报 `network`，或 macOS 说 Mac 没联网——`ModelDownloadQueue.waitsForNetwork`；联着网时崩溃、磁盘满、traceback 都是普通的失败，
+错误留着，给「重试」）：文件留着，岛上一句「联网后会接着下载语音模型 · 重试」，联网时（NetworkWatch）或下次启动自动接着下，不再把
+队列删掉、却又说「还在下」。网络时断时续（或连着需要登录的 Wi-Fi）时，联网触发的重试又失败就不再说，等下次启动或点「重试」。进度只认这个模型自己的行（`ModelBundle.acceptProgress`：总量要在模型大小的 ±50%
+内，同一个模型里进度不往回退）；setup 先下的 VAD 打印成「  vad 1.7/1.7 MB」（`_common.progress_line`，`transcribe.py` 和
+`polish.py` 用同一个），不会被当成模型下完了
+（以前进度条会先跳到 2.5 / 6.1 GB 再掉回去）；HF 下载的进度按真正写到盘上的块算（`st_blocks`，`_common.landed_in`，两个脚本一样），预分配的空文件不算。「停止」和 SIGTERM（`uv run` 转成
 143）都算停止，不算失败。每个模型下完：听写重新读一遍有没有模型，语音备注模型按这台 Mac 重新选，润色接上新模型；听写模型一到就
 马上加载（`Dictation.prewarm`），所以下完后的第一下 Fn 不用等。脚本那边（`transcribe.py` / `polish.py setup --parent PID`）：
 同一个模型同时只下一份（`$BLURT_HOME/run/download-<id>.lock`，第二个等第一个下完后直接用）；半截的文件用 HTTP Range 续传；

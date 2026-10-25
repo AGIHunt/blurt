@@ -119,7 +119,8 @@
 "settings.perm.list_sep" = ", ";
 "settings.perm.done.dictation" = "Done — dictation works in every app now.";
 "settings.perm.done.all" = "Done — Blurt has every permission it needs.";
-"settings.perm.done.some" = "Done for now — allow the rest here any time.";
+"settings.perm.done.some.title" = "Done for now";
+"settings.perm.done.some" = "Allow the rest here any time.";
 "onboarding.permissions_detail" = "Dictation needs the microphone, and Accessibility to type at the cursor. Blurt opens each switch in System Settings for you.";
 "onboarding.dictation_key" = "Dictation key";
 "onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk.";
@@ -307,7 +308,8 @@
 "settings.kw.storage.choose_models" = "choose model, change model, download model";
 "settings.kw.storage.files" = "cache, index, runs, jobs, temporary";
 "settings.kw.storage.live_audio" = "live audio, pcm, clean up";
-"settings.perm.done.no_model" = "Permissions are set. Next, the speech model — then %@ dictates anywhere.";
+"settings.perm.done.no_model.title" = "Permissions are set";
+"settings.perm.done.no_model" = "Next, download the speech model — then %@ dictates anywhere.";
 "settings.privacy.local_asr.off_keys" = "%@ is set up: the automatic choice may send audio there.";
 "settings.privacy.local_asr.off_none" = "No cloud API key is set, so speech is recognized on this Mac. Turn on to keep it that way after you set one.";
 "settings.privacy.local_asr.on" = "Speech is recognized on this Mac only, even with a cloud API key set.";
@@ -317,7 +319,11 @@
 "settings.storage.undo" = "Undo";
 "settings.storage.videos.trashed" = "%1$@ (%2$@) moved to the Trash";
 "onboarding.setup.blocked" = "Blurt couldn’t download its speech tools. It needs the internet once to set them up: connect, then Try Again.";
-"onboarding.try.blocked" = "Dictation can’t work yet: its speech tools haven’t downloaded.";
+"onboarding.setup.blocked_error" = "Blurt couldn’t set up its speech tools. If you use a proxy or VPN, check it, then Try Again.";
+"onboarding.setup.retried_offline" = "Tried again at %@: still offline.";
+"onboarding.setup.retried_error" = "Tried again at %@: same problem.";
+"onboarding.try.detail_later" = "Once dictation is set up, try it here.";
+"onboarding.try.blocked" = "Dictation can’t work yet: its speech tools aren’t set up.";
 "onboarding.models.small.help" = "SenseVoice Small: dictation and voice notes work with it. The full set can come later.";
 "settings.privacy.stay_with_agents" = "Recordings, snaps and items stay on your Mac (~/Blurt or the project’s .blurt/). When you organise them or hand them off, what’s needed goes to the agent you use (Claude Code, Codex…), under its terms.";
 "settings.storage.model.vad_name" = "Voice detector";

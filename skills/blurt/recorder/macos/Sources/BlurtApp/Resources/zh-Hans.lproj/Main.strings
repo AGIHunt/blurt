@@ -459,7 +459,8 @@
 "main.dictation.info.polish.get" = "下载…";
 "app.toast.welcome_no_dictation" = "口喷鸡在菜单栏里 · %1$@ 截图 · %2$@ 录屏";
 "app.toast.change_shortcut" = "更换…";
-"app.config.unreadable" = "读不了 config.json · 先用默认设置";
+"app.config.unreadable" = "读不了 config.json · 先用默认设置，改动不会保存";
+"app.config.not_saved" = "这项改动没保存 · config.json 读不了";
 "app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
 "app.contract.app_older" = "口喷鸡 skill 比 App 新";
 "app.contract.how" = "怎么更新";

@@ -15,7 +15,8 @@ public final class LaunchQueue<Message> {
     private let drop: (Message, Int) -> Void
     private let stale: (Message) -> Bool
     private var held: [(rank: Int, message: Message)] = []
-    private var collecting = false
+    /// The launch's messages are still held (the first seconds after start()).
+    public private(set) var collecting = false
     private var oneShown = false
     private var started: Date?
 

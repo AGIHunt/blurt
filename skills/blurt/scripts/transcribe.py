@@ -87,8 +87,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
-                     load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
-                     use_system_certs)
+                     landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
+                     serve_exit_reason, serve_said, use_system_certs)
 from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
 
@@ -683,14 +683,6 @@ def qos_cpu_seconds() -> dict | None:
 
 
 # ------------------------------------------------------------------ downloads
-def progress_line(done_bytes: float, total_bytes: float, aux: str | None = None) -> str:
-    """The '  N/M MB' line the app's bar reads (BlurtCore ModelBundle.parseProgress), in MB with one decimal. `aux`:
-    a file fetched on the way to the model (the VAD before a model's own files) — its line is named ('  vad 1.7/1.7
-    MB') so it is never read as the model's own progress (a 1.7 MB file done is not 2.5 GB done)."""
-    q = f"{done_bytes / 2**20:.1f}/{total_bytes / 2**20:.1f} MB"
-    return f"  {aux} {q}" if aux else f"  {q}"
-
-
 def _download_url(urls: list[str], dest: Path, label: str, aux: str | None = None) -> Path:
     if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirror first
         urls = sorted(urls, key=lambda u: "hf-mirror" not in u)
@@ -823,16 +815,10 @@ def _du_mb(p: Path) -> float:
 
 
 def _progress_poller(target: Path, total_mb: float, stop: threading.Event) -> None:
-    """HF downloads: report '  N/M MB' from what has landed on disk (incl. *.incomplete blobs) — the blocks really
-    written (st_blocks), not the size: a blob set to its full length up front would count as done before a byte came."""
-    def landed(f: Path) -> int:
-        st = f.stat()
-        blocks = getattr(st, "st_blocks", None)
-        return min(st.st_size, blocks * 512) if blocks is not None else st.st_size
+    """HF downloads: report '  N/M MB' from what has landed on disk (incl. *.incomplete blobs: _common.landed_in)."""
     while not stop.wait(1.0):
         if target.exists():
-            done = sum(landed(f) for f in target.rglob("*") if f.is_file() and not f.is_symlink())
-            serve_said(progress_line(min(done, total_mb * 2**20), total_mb * 2**20))
+            serve_said(progress_line(min(landed_in(target), total_mb * 2**20), total_mb * 2**20))
 
 
 def install_model(m: dict) -> Path:
@@ -2333,8 +2319,10 @@ def auto_plan(apply: bool) -> dict:
            "needs_download": list(by_model.values()),
            "hardware_changed": cfg.get("hardware") != hw["fingerprint"]}
     if apply and is_auto(cfg):
-        update_global_config({"asr": {"models": picks, "hardware": hw["fingerprint"]}})
-        out["applied"] = True
+        # a config.json that doesn't parse: nothing saved, said (not a traceback) — the picks still run as defaults
+        out["applied"] = save_config_if_readable({"asr": {"models": picks, "hardware": hw["fingerprint"]}})
+        if not out["applied"]:
+            out["saved"] = False
     return out
 
 
@@ -2504,9 +2492,9 @@ def cmd_setup(a):
             patch["model"] = a.model
     if a.language:
         patch["language"] = a.language
-    if patch:
-        update_global_config({"asr": patch})
-    emit({"ok": True, "model": m["id"], "path": str(path), "asr": asr_config()})
+    # the download is done either way: a config.json that doesn't parse only leaves the choice unsaved ("saved": false)
+    saved = save_config_if_readable({"asr": patch}) if patch else True
+    emit({"ok": True, "model": m["id"], "path": str(path), "asr": asr_config(), **({} if saved else {"saved": False})})
 
 
 def cmd_backends(_a):

@@ -319,3 +319,8 @@
   - Tray menu shows a shortcut only when it is registered; Settings: download-aware model rows, filled radio only
     for an installed model, Storage names from `asr_models.json` / `polish_models.json`, an unknown model folder
     as an older model (Move to Trash), project remove with Undo, open-at-login with the test-build guard.
+  - Review follow-ups: the scripts' location must not come from an unreadable config.json alone (read `skill_dir`
+    from the text, else the last good one); a refused settings write says so once per session; "offline" only when
+    the OS says so (a crash or a full disk online is a normal failure with Try Again; the setup's blocked sentence
+    blames the network only when offline); a timeout of `dictation-models` doesn't block dictation; Try Again shows
+    Checking… for ≥ 1 s and says when it tried; a retry the network's return started stays quiet if it fails again.

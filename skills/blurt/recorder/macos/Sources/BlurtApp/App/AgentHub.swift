@@ -211,7 +211,7 @@ final class AgentHub {
         var reg: [String: Any] = [:]
         var urls: [URL] = []
         if let u = Bundle.main.url(forResource: "agents", withExtension: "json") { urls.append(u) }
-        if let s = readConfig()["skill_dir"] as? String { urls.append(URL(fileURLWithPath: s).appendingPathComponent("scripts/agents.json")) }
+        urls.append(BlurtPaths.scripts.appendingPathComponent("agents.json"))      // the skill's own (Paths.skillDir)
         for u in urls {
             if let d = try? Data(contentsOf: u), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] { reg = o; break }
         }

@@ -178,11 +178,16 @@ def _drop_trailing_commas_once(text: str) -> str:
     return "".join(out)
 
 
+def _no_constant(name: str):
+    raise ValueError(f"{name} is not JSON")
+
+
 def parse_config_text(text: str) -> dict | None:
     """config.json's text → the settings, or None when it doesn't parse even with trailing commas left out (or isn't
-    an object)."""
+    an object). NaN / Infinity are refused: Python's json takes them, the app's JSONSerialization doesn't, and both
+    must read exactly the same files."""
     try:
-        v = json.loads(drop_trailing_commas(text.lstrip("﻿")))
+        v = json.loads(drop_trailing_commas(text.lstrip("﻿")), parse_constant=_no_constant)
     except ValueError:
         return None
     return v if isinstance(v, dict) else None
@@ -235,14 +240,26 @@ def global_config() -> dict:
     return read_global_config()[0]
 
 
+class ConfigUnreadable(Exception):
+    """config.json doesn't parse, so a setting can't be saved (the file is left as it is). `code` for the CLIs' JSON
+    errors ({"ok": false, "code": "config_unreadable"})."""
+
+    code = "config_unreadable"
+
+    def __init__(self, path: Path):
+        super().__init__(f"{path} doesn't parse; nothing was saved — fix or remove it")
+        self.path = path
+
+
 def update_global_config(patch: dict) -> dict:
     """Read-modify-write under $BLURT_HOME/.config.lock — the lock the app's Config.set takes too, so neither loses the
-    other's change. An unreadable config.json is left as it is: the write raises (json.JSONDecodeError)."""
+    other's change. An unreadable config.json is left as it is: the write raises ConfigUnreadable (a clean error the
+    CLIs report as JSON) — or use save_config_if_readable for a write that is only a convenience."""
     path = _config_path()
     with file_lock(path.parent / ".config.lock"):
         cfg, ok = read_global_config()
         if not ok:
-            raise json.JSONDecodeError("config.json doesn't parse", "", 0)
+            raise ConfigUnreadable(path)
         for k, v in patch.items():
             if isinstance(v, dict) and isinstance(cfg.get(k), dict):
                 cfg[k].update(v)
@@ -250,6 +267,47 @@ def update_global_config(patch: dict) -> dict:
                 cfg[k] = v
         save_json(path, cfg)
     return cfg
+
+
+def save_config_if_readable(patch: dict) -> bool:
+    """update_global_config, except that an unreadable config.json only skips the write (the `config_unreadable`
+    line already went to stderr): for what is a convenience — the hardware fingerprint, the last region, where the
+    skill is, a model to use after its download — so a hand-edit slip never fails the work around it. False: not
+    saved."""
+    try:
+        update_global_config(patch)
+        return True
+    except ConfigUnreadable:
+        return False
+
+
+def progress_line(done_bytes: float, total_bytes: float, aux: str | None = None) -> str:
+    """The '  N/M MB' line the app's bar reads (BlurtCore ModelBundle.parseProgress), in MB with one decimal — every
+    model download (transcribe.py, polish.py) prints it this way. `aux`: a file fetched on the way to the model (the VAD
+    before a model's own files) — its line is named ('  vad 1.7/1.7 MB') so it is never read as the model's own
+    progress (a 1.7 MB file done is not 2.5 GB done)."""
+    q = f"{done_bytes / 2**20:.1f}/{total_bytes / 2**20:.1f} MB"
+    return f"  {aux} {q}" if aux else f"  {q}"
+
+
+def landed_bytes(f: Path) -> int:
+    """What of a downloading file is really on disk: its blocks written (st_blocks), not its size — a blob set to its
+    full length up front (Hugging Face's *.incomplete) would count as done before a byte came."""
+    st = f.stat()
+    blocks = getattr(st, "st_blocks", None)
+    return min(st.st_size, blocks * 512) if blocks is not None else st.st_size
+
+
+def landed_in(target: Path) -> int:
+    """landed_bytes over every file under a model's folder (symlinks not counted twice)."""
+    total = 0
+    for f in target.rglob("*"):
+        try:
+            if f.is_file() and not f.is_symlink():
+                total += landed_bytes(f)
+        except OSError:
+            pass  # renamed away mid-walk (a blob finishing)
+    return total
 
 
 def new_session_dir(root: Path | None = None) -> Path:

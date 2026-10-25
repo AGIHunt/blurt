@@ -13,8 +13,11 @@
 //      dependencies are warmed up in the background as soon as uv is there. Speech tools that didn't install and a
 //      model list that couldn't be read are one state (BlurtCore SpeechSetup .blocked — offline, a proxy): one
 //      sentence and one Try Again (the warm-up, the list, then the download), Next becomes Skip for Now, and it is
-//      tried again by itself when the Mac comes back online (NetworkWatch);
-//   4. try it — a text box ("tap Fn and say something … or double-tap to send it") that shows a check once the first
+//      tried again by itself when the Mac comes back online (NetworkWatch). Its sentence blames the network only when
+//      macOS says the Mac is offline (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows
+//      Checking… for at least a second with the footer kept, and a retry still blocked says when it tried;
+//   4. try it — a text box ("tap Fn and say something … or double-tap to send it"; "once dictation is set up, try it
+//      here" while it can't be tried yet, so the instruction never sits above the reason) that shows a check once the first
 //      dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the double tap
 //      came (Dictation.sendAttempts; no Return goes into Blurt's own window); it waits only while dictation's own
 //      recogniser is still coming down (its bar) — with it in and
@@ -51,6 +54,8 @@ final class OnboardingModel: ObservableObject {
     @Published var warm: String?            // nil | "running" | "done" | "failed" (the script's output: the event only)
     /// Try Again runs: the warm-up, the list, then the download (the step shows "Checking…" meanwhile)
     @Published var retrying = false
+    /// The last Try Again ended still blocked, at this time ("Tried again at 14:32: still offline")
+    @Published var retriedAt: Date?
     @Published var dictationKey = Dictation.key
     /// a dictation walk started here (Input Monitoring's row shows once Accessibility stays off after it)
     @Published var walked = false
@@ -161,19 +166,30 @@ final class OnboardingModel: ObservableObject {
 
     /// The one Try Again (the models step, the Try-it step, back online): the speech tools again if they didn't
     /// install, the model list, then the download — what was asked for is carried through, not half of it.
+    /// "Checking…" lasts at least SpeechSetup.minimumCheck (offline it fails in a blink), and a retry that is still
+    /// blocked says when it tried.
     func retrySetup(via: String) {
         guard !retrying, uv != nil else { return }
         retrying = true
+        retriedAt = nil
         if warm == "failed" { warm = nil }
         emit(["event": "onboarding_retry", "via": via])
+        let started = Date()
         Task {
             await warmUpNow()
             await ModelSetup.shared.load()
+            let left = SpeechSetup.minimumCheck - Date().timeIntervalSince(started)
+            if left > 0 { try? await Task.sleep(nanoseconds: UInt64(left * 1e9)) }
             retrying = false
+            if speechStep == .blocked { retriedAt = Date() }
+            emit(["event": "onboarding_retry_done", "via": via, "step": "\(speechStep)", "cause": "\(blockedCause)"])
             let ms = ModelSetup.shared
             if warm == "done", ms.listRead, !ms.pending.isEmpty, !ms.downloading { ms.start() }
         }
     }
+
+    /// What a blocked setup is put down to: the network only when macOS says the Mac is offline.
+    var blockedCause: SpeechSetup.Cause { SpeechSetup.cause(online: NetworkWatch.shared.isOnline) }
 
     /// The Mac is online again (NetworkWatch): a blocked or failed setup is tried again by itself.
     func backOnline() {
@@ -265,7 +281,7 @@ struct OnboardingView: View {
     var pending: Bool {
         switch m.step {
         case 1: return !guide.missing(.dictation).isEmpty
-        case 2: return SpeechSetup.pending(m.speechStep, settled: models.settled)
+        case 2: return SpeechSetup.pending(m.speechStep, settled: models.settled, retrying: m.retrying)
         default: return false
         }
     }
@@ -331,8 +347,21 @@ struct OnboardingView: View {
         case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle", key))
         case 1: return (T("onboarding.permissions"), T("onboarding.permissions_detail"))
         case 2: return (T("onboarding.models"), T("onboarding.models.detail"))
-        default: return (T("onboarding.try"), T("onboarding.try.detail", key) + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
+        default:
+            // dictation can't be tried yet (permissions, its speech tools or model): no "tap Fn and say something"
+            // above the line that says why
+            if !canTryNow { return (T("onboarding.try"), T("onboarding.try.detail_later")) }
+            return (T("onboarding.try"), T("onboarding.try.detail", key) + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
         }
+    }
+
+    /// The Try-it step's instruction holds: dictation's permissions are on and its recogniser is in (or not known yet —
+    /// the list is still being read).
+    var canTryNow: Bool {
+        if m.tried { return true }
+        if !guide.missing(.dictation).isEmpty { return false }
+        if models.dictationReady { return true }
+        return !(models.loaded || m.speechStep == .blocked)
     }
 
     func check(_ text: String) -> some View {
@@ -443,7 +472,14 @@ struct OnboardingView: View {
                         HStack { BrandSpinnerView(); Text(T("onboarding.models.checking")).foregroundStyle(.secondary) }
                     case .blocked:
                         // the tools or the list: one cause, one sentence, one Try Again (the rows wait for it)
-                        Text(T("onboarding.setup.blocked")).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
+                        let offline = m.blockedCause == .offline
+                        Text(T(offline ? "onboarding.setup.blocked" : "onboarding.setup.blocked_error"))
+                            .foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
+                        if let at = m.retriedAt {
+                            Text(T(offline ? "onboarding.setup.retried_offline" : "onboarding.setup.retried_error",
+                                   at.formatted(date: .omitted, time: .shortened)))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.primary(true)
                     default:
                         modelRows
@@ -695,8 +731,9 @@ final class Onboarding: NSObject, NSWindowDelegate {
               "login": m.openAtLogin, "models": ms.parts.map { "\($0.kind.rawValue):\($0.id):\($0.installed ? "installed" : "missing")" },
               "total_mb": ms.totalMB, "downloading": ms.current ?? NSNull(), "progress": [pr.done, pr.total].map { Double(Int($0)) },
               "failed": ms.failed, "ready": ms.ready, "dictation_ready": ms.dictationReady, "step_state": "\(m.speechStep)",
-              "skip_for_now": m.step == 2 && SpeechSetup.pending(m.speechStep, settled: ms.settled), "list_read": ms.listRead,
-              "dictation_progress": ms.dictationProgress.map { [Int($0.done), Int($0.total)] } ?? NSNull()])
+              "skip_for_now": m.step == 2 && SpeechSetup.pending(m.speechStep, settled: ms.settled, retrying: m.retrying), "list_read": ms.listRead,
+              "dictation_progress": ms.dictationProgress.map { [Int($0.done), Int($0.total)] } ?? NSNull(),
+              "retrying": m.retrying, "cause": "\(m.blockedCause)", "retried_at": m.retriedAt.map { $0.timeIntervalSince1970 } ?? NSNull()])
     }
 
     /// Back to the front as it was (the permission guide finished), without changing the step.

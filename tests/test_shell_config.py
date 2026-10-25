@@ -33,9 +33,22 @@ class ConfigAndPrivacy(unittest.TestCase):
     def test_unreadable_config_is_left_alone(self):
         p = self.home / "config.json"
         p.write_text('{"record": {,, }')
-        with self.assertRaises(json.JSONDecodeError):
-            _common.update_global_config({"lang": "en"})
+        import contextlib
+        import io
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(_common.ConfigUnreadable) as e:
+                _common.update_global_config({"lang": "en"})
+            self.assertEqual(e.exception.code, "config_unreadable")       # a clean JSON error for the CLIs, no traceback
+            # a write that is only a convenience (hardware fingerprint, last region, skill_dir, a model to use): skipped
+            self.assertFalse(_common.save_config_if_readable({"lang": "en"}))
         self.assertEqual(p.read_text(), '{"record": {,, }')
+        # record.py's bookkeeping (where the skill is) goes the same way: a CLI recording isn't stopped by it
+        import record
+        with contextlib.redirect_stderr(io.StringIO()):
+            record.remember_skill_dir()
+        self.assertEqual(p.read_text(), '{"record": {,, }')
+        p.write_text('{}')
+        self.assertTrue(_common.save_config_if_readable({"lang": "en"}))
 
     def test_a_trailing_comma_reads_like_the_app_reads_it(self):
         # a hand edit's most common slip: the app (Swift) reads it, so the scripts must too — dictation, voice notes
@@ -52,11 +65,41 @@ class ConfigAndPrivacy(unittest.TestCase):
         # the same list as ShellDataTests.testATrailingCommaReadsAsTheScriptsReadIt: what one side reads, the other does
         for t in ['{"a": 1,}', '{"a": [1,],}', '{"a": 1,, }', '{"a": {"b": 2,},\n}']:
             self.assertIsNotNone(_common.parse_config_text(t), t)
-        for t in ['{"a": 1 "b": 2}', '{"a": ', '{"a": 1,,"b": 2}', '[1]', '']:
+        # NaN / Infinity: Python's json takes them, the app's JSONSerialization doesn't — so neither does
+        for t in ['{"a": 1 "b": 2}', '{"a": ', '{"a": 1,,"b": 2}', '[1]', '', '{"a": NaN}', '{"a": Infinity}',
+                  '{"a": -Infinity}']:
             self.assertIsNone(_common.parse_config_text(t), t)
         # a write normalises it (and keeps everything)
         _common.update_global_config({"lang": "zh"})
         self.assertEqual(json.loads(p.read_text())["record"]["engine"], "sck")
+
+    def test_a_cli_never_tracebacks_on_an_unreadable_config(self):
+        # the app runs `transcribe.py auto --apply` at every launch: a hand-edit slip must not turn it into a traceback
+        import subprocess
+        (self.home / "config.json").write_text('{"asr": {"auto": true}, "record": {')
+        p = subprocess.run([sys.executable, str(ROOT / "skills/blurt/scripts/transcribe.py"), "auto", "--apply"],
+                           capture_output=True, text=True, timeout=120, env={**os.environ, "BLURT_HOME": str(self.home)})
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertNotIn("Traceback", p.stderr)
+        out = json.loads(p.stdout.strip().splitlines()[-1])
+        self.assertEqual((out["ok"], out.get("applied"), out.get("saved")), (True, False, False))
+        self.assertIn('"config_unreadable"', p.stderr)
+        self.assertEqual((self.home / "config.json").read_text(), '{"asr": {"auto": true}, "record": {')
+
+    def test_progress_is_one_line_and_one_count_for_every_download(self):
+        import polish
+        import transcribe
+        self.assertIs(transcribe.progress_line, _common.progress_line)
+        self.assertIs(polish.progress_line, _common.progress_line)
+        self.assertEqual(_common.progress_line(812 * 2**20, 2468 * 2**20), "  812.0/2468.0 MB")
+        # a blob set to its full length up front has landed nothing yet
+        d = self.home / "blob-dir"
+        d.mkdir()
+        with open(d / "x.incomplete", "wb") as f:
+            f.truncate(64 * 2**20)
+        (d / "y").write_bytes(b"z" * 8192)
+        self.assertLess(_common.landed_in(d), 2**20)
+        self.assertGreaterEqual(_common.landed_in(d), 8192)
 
     def test_unreadable_config_reads_as_defaults_and_says_so_once(self):
         import contextlib
