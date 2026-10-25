@@ -466,7 +466,9 @@ yellow and its bounce.
   (the egg cracks, the cap flies off and shrinks away, the chick pops up and hops out, the cup sinks; shell pieces
   stay solid, never half-transparent; ending where `idle` begins), `happy` (two hops,
   wings up, sparkles), `peck` (spots a bug, pounces on it, the bug goes in a sparkle, a hop back). Sparkles are warm
-  yellow and coral, without a line.
+  yellow and coral, without a line. The layer draws 4 % past its square (`MascotArt.bleed`), so a landing squash or
+  the flying cap is never cut off; the `mascotcheck` self-test holds every clip inside that, keeps shell pieces
+  solid, and checks the rim on black.
 - **Reduce Motion**: each clip's still moment, which says the same thing (the happy face, the listening tilt with
   both arcs, the chick out of its egg).
 - **Restraint**: the mascot is illustration, not UI: it never carries brand mint or the gradient, and only one

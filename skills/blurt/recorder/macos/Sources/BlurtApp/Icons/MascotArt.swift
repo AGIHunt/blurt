@@ -102,6 +102,9 @@ enum MascotArt {
     /// The square the mascot is drawn in, in hero space: the art (wings to arcs) is 87 % of its width, centred; the foot
     /// sits 7 % above its bottom; the room above is for hops, the flying egg cap and thought dots.
     static let stage = CGRect(x: -28, y: -128, width: 1320, height: 1320)
+    /// How far past the stage a moment may reach, as a fraction of its side (a landing squash with the rim, the egg cap
+    /// flying up, the pounce): MascotLayer draws this much extra room, and `check` holds every clip inside it.
+    static let bleed: CGFloat = 0.04
 
     struct Timing {
         let duration: Double
@@ -209,9 +212,10 @@ enum MascotArt {
                 + burst(t, from: 0.76, around: CGPoint(x: 626, y: 560), radius: 560, angles: [-148, -108])
 
         case .peck:
-            // spots the bug, pounces on it (the bug goes in a sparkle), a happy hop back to the middle
+            // spots the bug, pounces on it (the bug goes in a sparkle), a happy hop back to the middle; the travel keeps
+            // the whole chick (wings up, rim, ringing arcs) inside the stage at both ends
             let go = hop(t, at: 0.66, air: 0.4, height: 240), back = hop(t, at: 2.0, air: 0.34, height: 130)
-            p.x = -180 + 400 * smooth(span(t, 0.66, 1.06)) - 220 * smooth(span(t, 2.0, 2.34))
+            p.x = -145 + 300 * smooth(span(t, 0.66, 1.06)) - 155 * smooth(span(t, 2.0, 2.34))
             p.lift = go.lift + back.lift
             p.squash = go.squash + back.squash
             p.scale = 0.78 + 0.22 * smooth(span(t, 2.0, 2.34))
@@ -225,7 +229,7 @@ enum MascotArt {
             p.arcGrow = [0.12 * bell(t, 1.1, 1.5), 0.14 * bell(t, 1.16, 1.56)]
             p.bug = t < 1.06 ? 1 : 0
             p.bugSquish = 0.25 * bell(t, 0.98, 1.06)
-            p.sparkles = burst(t, from: 1.06, around: CGPoint(x: 846, y: 640), radius: 470, angles: [-168, -128, -62])
+            p.sparkles = burst(t, from: 1.06, around: CGPoint(x: 781, y: 640), radius: 470, angles: [-168, -128, -62])
         }
         p.blink = min(1, p.blink)
         return p
@@ -233,7 +237,8 @@ enum MascotArt {
 
     /// What should hold of every clip (the `mascotcheck` self-test): one-shots end on the chick at rest, where `idle`
     /// (onboarding's `then`) begins, so nothing jumps; loops join up; every still moment draws something;
-    /// shell pieces are never half-transparent; on black the chick's edge is the light rim. Problems, or [].
+    /// shell pieces are never half-transparent; on black the chick's edge is the light rim;
+    /// nothing reaches past the stage's bleed. Problems, or [].
     static func check() -> [String] {
         var bad: [String] = []
         func near(_ a: CGFloat, _ b: CGFloat, _ eps: CGFloat = 0.01) -> Bool { abs(a - b) <= eps }
@@ -255,6 +260,24 @@ enum MascotArt {
             // shell pieces are solid or gone, never a half-transparent ghost
             for i in 0...60 where ![0, 1].contains(pose(c, at: t.duration * Double(i) / 60).cap.alpha) {
                 bad.append("\(c.rawValue): the cap is half-transparent"); break
+            }
+        }
+        // nothing is cut off: no paint on the border of the stage plus its bleed, at any moment of any clip (dark: with
+        // the rim)
+        for c in MascotClip.allCases {
+            let side: CGFloat = 112, pad = side * bleed, px = Int(side + 2 * pad), n = 48
+            guard let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: px * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { continue }
+            let bytes = data.bindMemory(to: UInt8.self, capacity: px * px * 4)
+            let d = timing(c).duration
+            outer: for i in 0...n {
+                ctx.clear(CGRect(x: 0, y: 0, width: px, height: px))
+                draw(ctx, in: CGRect(x: pad, y: pad, width: side, height: side), pose: pose(c, at: d * Double(i) / Double(n)),
+                     style: .forSize(56, dark: true))
+                for k in 0..<px where [(0, k), (px - 1, k), (k, 0), (k, px - 1)].contains(where: { bytes[($0.1 * px + $0.0) * 4 + 3] > 8 }) {
+                    bad.append("\(c.rawValue): reaches past the stage's bleed"); break outer
+                }
             }
         }
         // on black the chick's outer edge is the light rim, not its black line lost in the backdrop (ear and toast sizes)
@@ -279,7 +302,7 @@ enum MascotArt {
     }
 
     /// Where the bug sits in the peck (hero space): on the ground, right of the chick.
-    static let bugAt = CGPoint(x: 886, y: 1030)
+    static let bugAt = CGPoint(x: 821, y: 1030)
 
     // MARK: - timing helpers
 

@@ -12,8 +12,9 @@
 // chick and egg get a thin white rim so their black line still reads on black.
 //
 // One shared 60 fps timer drives every playing layer and stops when none plays. Each tick renders the clip's pose at
-// that moment into the layer's model `contents` (no CAAnimation), so offscreen renders (FrameCapture, `mascotframes`)
-// see the same frame the screen does. Reduce Motion: the clip's still moment, no movement; a one-shot's completion
+// that moment into the model `contents` of a sublayer a little larger than the layer (the bleed, so a landing squash
+// or the flying egg cap is not cut off; no CAAnimation), so offscreen renders (FrameCapture, `mascotframes`) see the
+// same frame the screen does. Reduce Motion: the clip's still moment, no movement; a one-shot's completion
 // still runs. The line glyphs (BlurtIcon.chicken, the menu-bar chick .blurt) move with GlyphMotion below.
 import AppKit
 import BlurtCore
@@ -46,18 +47,20 @@ final class MascotLibrary {
     }
 
     /// One moment of a clip as an image, `points` square at `scale` (`time` nil = the still moment). `backdrop` fills
-    /// behind it (nil = transparent); `sticker`: the logo's white edge round the art, for any backdrop.
+    /// behind it (nil = transparent); `sticker`: the logo's white edge round the art, for any backdrop. `bleed`: extra
+    /// room on every side, as a fraction of `points` (the image grows, the chick keeps its size), for the moments that
+    /// reach past the square (a landing squash, the flying egg cap, the pounce).
     func image(_ c: MascotClip, at time: Double? = nil, points: CGFloat, scale: CGFloat = 2, dark: Bool = false,
-               backdrop: CGColor? = nil, sticker: Bool = false) -> CGImage? {
-        let px = Int((points * scale).rounded())
-        guard px > 0, let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+               backdrop: CGColor? = nil, sticker: Bool = false, bleed: CGFloat = 0) -> CGImage? {
+        let px = Int((points * scale).rounded()), pad = Int((points * scale * bleed).rounded())
+        guard px > 0, let ctx = CGContext(data: nil, width: px + 2 * pad, height: px + 2 * pad, bitsPerComponent: 8, bytesPerRow: 0,
                                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        let r = CGRect(x: 0, y: 0, width: px, height: px)
-        if let b = backdrop { ctx.setFillColor(b); ctx.fill(r) }
+        if let b = backdrop { ctx.setFillColor(b); ctx.fill(CGRect(x: 0, y: 0, width: px + 2 * pad, height: px + 2 * pad)) }
         var style = MascotStyle.forSize(points, dark: dark, scale: scale)
         style.sticker = sticker
-        MascotArt.draw(ctx, in: r, pose: MascotArt.pose(c, at: time ?? MascotArt.timing(c).still), style: style)
+        MascotArt.draw(ctx, in: CGRect(x: pad, y: pad, width: px, height: px),
+                       pose: MascotArt.pose(c, at: time ?? MascotArt.timing(c).still), style: style)
         return ctx.makeImage()
     }
 
@@ -82,8 +85,14 @@ final class MascotLibrary {
     }
 }
 
-/// A layer that plays one clip at a time, drawn afresh for each moment at its size and scale.
+/// A layer that plays one clip at a time, drawn afresh for each moment at its size and scale. The drawing sits on a
+/// sublayer `MascotLayer.bleed` larger on every side, so the few moments that reach past the square are not cut off
+/// (the layer itself does not clip; its frame is the chick's square, as before).
 final class MascotLayer: CALayer {
+    /// The room the art may use past the layer's square, as a fraction of its side (MascotArt.check keeps every clip
+    /// inside it).
+    static let bleed: CGFloat = MascotArt.bleed
+    private let art = CALayer()
     private(set) var clip: MascotClip?
     private var started: CFTimeInterval = 0
     private var shown: Double = 0          // the clip time on screen
@@ -96,9 +105,11 @@ final class MascotLayer: CALayer {
 
     override init() {
         super.init()
-        contentsGravity = .resizeAspect
         contentsScale = 2
         actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        art.contentsGravity = .resizeAspect
+        art.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        addSublayer(art)
     }
     override init(layer: Any) { super.init(layer: layer) }
     required init?(coder: NSCoder) { fatalError() }
@@ -159,14 +170,21 @@ final class MascotLayer: CALayer {
         redraw()
     }
 
-    /// Draws the current moment at the layer's pixel size.
+    /// Hidden or cleared by its host: drop the drawing too.
+    override var contents: Any? { didSet { if contents == nil { art.contents = nil } } }
+
+    /// Draws the current moment at the layer's pixel size (plus the bleed).
     private func redraw() {
         guard let c = clip, bounds.width >= 1 else { return }
         let side = min(bounds.width, bounds.height)
-        let img = MascotLibrary.shared.image(c, at: shown, points: side, scale: max(1, contentsScale), dark: dark)
+        let b = Self.bleed
+        let img = MascotLibrary.shared.image(c, at: shown, points: side, scale: max(1, contentsScale), dark: dark, bleed: b)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        contents = img
+        art.contentsScale = contentsScale
+        art.frame = CGRect(x: bounds.midX - side * (0.5 + b), y: bounds.midY - side * (0.5 + b),
+                           width: side * (1 + 2 * b), height: side * (1 + 2 * b))
+        art.contents = img
         CATransaction.commit()
     }
 }
