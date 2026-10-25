@@ -208,7 +208,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Listening aura | **glow** | `gradient.glow` under the notch at 35–55 %, fades in over 200 ms when listening starts and out when it stops. Only while listening or capturing; never while idle. |
 | Dictation keyboard glyph, voice mic glyph | M | |
 | Recording ear | `rec` dot + white time | paused `attn`. The mic level bars there are **G** too (blurt hears you), but there is **no glow**: red owns that moment. |
-| Live-text panel | M caret | text 92 % white (committed) / 60 % (pending). A flat mint 2 pt caret while listening. **No rule under the text** (v2.1: the island's level bars already say blurt hears you). |
+| Live-text panel | M caret | text 92 % white (committed) / 60 % (pending: dictation's piece still being said, provisional until its transcript lands). Up to three lines, newest at the bottom; the panel keeps the height it reached during a take. A flat mint 2 pt caret while listening. **No rule under the text** (v2.1: the island's level bars already say blurt hears you). |
 | Alert dot | `attn` | |
 | List rows: selection / hover target | T (island 20 %) | |
 | Check marks, progress, AI-sort wand, quoted query | M | |

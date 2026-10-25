@@ -1,6 +1,11 @@
-// The words while you talk (v0.8.6): a small dark panel under the island with the last line or two of what has been
-// recognised so far — the voice note (⌥⇧V, VoiceNoteStream) and dictation (DictationStream's pieces) — the newest
-// words fading in. The report: nothing to see while talking, and seeing it would help.
+// The words while you talk (v0.8.6): a small dark panel under the island with the last lines (up to three, newest at
+// the bottom) of what has been recognised so far — the voice note (⌥⇧V, VoiceNoteStream) and dictation
+// (DictationStream) — the newest words fading in. The report: nothing to see while talking, and seeing it would help.
+//  • Dictation keeps up with the speech (v0.9, docs/design/dictation.md §Live text): after the finished pieces'
+//    transcripts (committed, 92 % white) comes the piece still being said, decoded about once a second (pending,
+//    60 %: provisional until its piece's own transcript replaces it). Seeing it is how the user decides between
+//    fixing it by hand and double-tapping to send. A take's panel doesn't jump: it keeps the height it reached, and
+//    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor).
 //
 //  • Settings → General → "Show text while I talk" (边说边显示文字; record.live_text, on).
 //  • It shows nothing until there are words (the island already says it is listening), follows the island's bottom
@@ -11,7 +16,7 @@
 //    the panel would be, it sits at the bottom of the screen instead, like subtitles.
 //  • Nothing here changes what is typed or filed, or when: it only shows the pieces that were transcribed anyway.
 // Tests (test commands only): `live state` reports what it shows and where; `live caret X,Y,W,H` stands in for
-// dictation's caret (global top-left points), `live caret -` clears it.
+// dictation's caret (global top-left points), `live caret -` clears it; `live show COMMITTED|PENDING` puts words up.
 
 import AppKit
 import BlurtCore
@@ -33,6 +38,7 @@ final class LiveTranscript {
     private var session = 0
     private var source: Source?
     private var text = ""
+    private var pending = ""
     private(set) var shown = false
     private var hideToken = 0
     /// where the take types (dictation's caret, global Cocoa points): the panel stays off it
@@ -49,6 +55,7 @@ final class LiveTranscript {
         session += 1
         source = s
         text = ""
+        pending = ""
         avoid = caret
         hideToken += 1
         view.reset()
@@ -65,14 +72,20 @@ final class LiveTranscript {
         if shown { place(animated: true) }
     }
 
-    /// The words so far.
-    func update(_ t: String, session s: Int) {
+    /// The words so far: `committed` (transcribed pieces) then `pending` (dictation's piece still being said,
+    /// provisional — shown quieter).
+    func update(_ committed: String, pending p: String = "", session s: Int) {
         guard s == session, LiveTranscript.enabled else { return }
-        let words = t.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !words.isEmpty, words != text else { return }
-        text = words
-        view.show(words, animated: !reduceMotion)
-        emit(["event": "live_text", "source": source?.rawValue ?? "", "chars": words.count, "session": s])
+        var c = String(committed.drop { $0.isWhitespace || $0.isNewline })
+        var q = c.isEmpty ? String(p.drop { $0.isWhitespace || $0.isNewline }) : p
+        q = String(q.reversed().drop { $0.isWhitespace || $0.isNewline }.reversed())
+        if q.isEmpty { c = c.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard !(c + q).isEmpty, c != text || q != pending else { return }
+        text = c
+        pending = q
+        view.show(committed: c, pending: q, animated: !reduceMotion)
+        emit(["event": "live_text", "source": source?.rawValue ?? "", "chars": c.count + q.count, "pending": q.count,
+              "session": s])
         if !shown { show() } else { place(animated: true) }
     }
 
@@ -134,7 +147,7 @@ final class LiveTranscript {
     private func hide(animated: Bool) {
         guard shown, let p = panel else { return }
         shown = false
-        emit(["event": "live_hidden", "chars": text.count])
+        emit(["event": "live_hidden", "chars": text.count + pending.count])
         guard animated else { p.orderOut(nil); return }
         NSAnimationContext.runAnimationGroup({ c in
             c.duration = reduceMotion ? 0.12 : 0.3
@@ -184,15 +197,17 @@ final class LiveTranscript {
 
     // MARK: tests
 
-    /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT | end` — `show` puts TEXT up as a listening
-    /// voice note's words would (a take begins if none is on; no microphone), `end` commits it (the caret goes, the
-    /// panel goes 1.5 s later).
+    /// `live state | caret X,Y,W,H | caret - | set on|off | show TEXT[|PENDING] | end` — `show` puts TEXT up as a
+    /// listening voice note's words would (a take begins if none is on; no microphone), PENDING after it as
+    /// dictation's provisional words; `end` commits it (the caret goes, the panel goes 1.5 s later).
     func testCommand(_ arg: String) {
         let a = arg.split(separator: " ").map(String.init)
         switch a.first ?? "" {
         case "show":
             if source == nil { begin(.voice) }
-            update(String(arg.dropFirst(4)).trimmingCharacters(in: .whitespaces), session: session)
+            let parts = String(arg.dropFirst(4)).trimmingCharacters(in: .whitespaces).split(separator: "|", maxSplits: 1,
+                                                                                          omittingEmptySubsequences: false)
+            update(String(parts.first ?? ""), pending: parts.count > 1 ? String(parts[1]) : "", session: session)
         case "end":
             end(session: session, after: 1.5)
         case "caret":
@@ -204,7 +219,8 @@ final class LiveTranscript {
         default: break
         }
         emit(["event": "live_state", "enabled": LiveTranscript.enabled, "shown": shown, "source": source?.rawValue ?? NSNull(),
-              "text": text, "lines": view.shownLines, "bottom": bottom, "frame": frameDump, "session": session])
+              "text": text, "pending": pending, "lines": view.shownLines, "bottom": bottom, "frame": frameDump,
+              "session": session])
     }
 }
 
@@ -213,8 +229,7 @@ private extension CGFloat {
 }
 
 /// The panel's face: a dark, slightly translucent rounded rect (a HUD blur under a black tint), the text on top —
-/// neutral white (92 % the newest line, 60 % the one before) and a flat mint caret after the words while the take
-/// listens. No rule or underline: the island's level bars already say blurt is hearing.
+/// neutral white (92 % committed, 60 % pending) and a flat mint caret after the words while the take listens. No rule or underline: the island's level bars already say blurt is hearing.
 final class LiveTextView: NSView {
     private let blur = NSVisualEffectView()
     private let tint = NSView()
@@ -252,22 +267,36 @@ final class LiveTextView: NSView {
     var shownLines: [String] { text.lines }
     func reset() { text.reset() }
     func fittingHeight(width: CGFloat) -> CGFloat { text.fittingHeight(width: width) }
-    func show(_ t: String, animated: Bool) { text.show(t, animated: animated) }
+    func show(committed: String, pending: String, animated: Bool) { text.show(committed: committed, pending: pending, animated: animated) }
 }
 
-/// The last two lines of the text, the older one dimmer; the words new since the last update fade in.
+
+/// The last three lines of the text, newest at the bottom: the committed words 92 % white, the pending ones (the piece
+/// still being said, provisional) 60 %; the words new since the last update fade in. No jumping: the lines are laid
+/// out from a line start that only moves forward (a long take doesn't re-wrap what is showing), and the panel keeps
+/// the height it reached during the take.
 final class LiveTextLines: NSView {
     static let font = NSFont.systemFont(ofSize: 14, weight: .regular)
     static let pad = NSSize(width: 16, height: 10)
     static let lineH: CGFloat = 20
+    static let maxLines = 3
 
     private var text = ""
+    /// where the pending words start in `text` (UTF-16; = its length when everything is committed)
+    private var pendingFrom = 0
     /// characters of `text` that were already showing (the rest fades in)
     private var stable = 0
     private var fade: CGFloat = 1
     private var fadeStart: CFTimeInterval = 0
     private var timer: Timer?
+    /// the layout starts here (UTF-16, a line start of an earlier layout) while the text before it stays the same
+    private var anchor = 0
+    private var anchorPrefix = ""
+    /// the most lines shown this take: the panel never shrinks back while it is up
+    private var tallest = 1
     private(set) var lines: [String] = []
+    /// the lines' pending part (tests)
+    private(set) var pendingText = ""
     /// the take listens: a flat 2 pt mint caret after the last word (steady: the island's level moves)
     var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
 
@@ -276,21 +305,30 @@ final class LiveTextLines: NSView {
     override var allowsVibrancy: Bool { false }
 
     func reset() {
-        text = ""; stable = 0; fade = 1; lines = []
+        text = ""; pendingFrom = 0; stable = 0; fade = 1; lines = []; pendingText = ""
+        anchor = 0; anchorPrefix = ""; tallest = 1; cached = nil
         timer?.invalidate(); timer = nil
         needsDisplay = true
     }
 
-    /// One line when it fits on one, else two.
+    /// As many lines as the text needs, up to three — and never fewer than this take already showed.
     func fittingHeight(width: CGFloat) -> CGFloat {
-        let n = max(1, min(2, layout(width: width).count))
-        return LiveTextLines.pad.height * 2 + CGFloat(n) * LiveTextLines.lineH
+        tallest = max(tallest, min(LiveTextLines.maxLines, max(1, layout(width: width).count)))
+        return LiveTextLines.pad.height * 2 + CGFloat(tallest) * LiveTextLines.lineH
     }
 
-    func show(_ t: String, animated: Bool) {
-        // what was there stays; what is new fades in (a rewrite — a hard cut's overlap dropped — fades in whole)
-        stable = t.hasPrefix(text) ? (text as NSString).length : 0
+    /// `committed` then `pending` (provisional: the piece still being said).
+    func show(committed: String, pending: String, animated: Bool) {
+        let t = committed + pending
+        let old = text as NSString, new = t as NSString
+        // what was there stays; only what changed fades in (a revision of the pending words, a rewrite at a seam)
+        var common = 0
+        let n = min(old.length, new.length)
+        while common < n, old.character(at: common) == new.character(at: common) { common += 1 }
+        stable = common
         text = t
+        pendingFrom = (committed as NSString).length
+        pendingText = pending
         fade = animated ? 0 : 1
         fadeStart = CACurrentMediaTime()
         timer?.invalidate()
@@ -307,8 +345,7 @@ final class LiveTextLines: NSView {
         needsDisplay = true
     }
 
-    /// The text's lines at this width — the tail only (two lines never need more than the last few hundred
-    /// characters) — as (range in `text`, the line).
+    /// The text's lines at this width from the anchor on, as (range in `text`, the line).
     private func layout(width: CGFloat) -> [(NSRange, String)] {
         // the island ticks this every frame while it moves: the same text at the same width is laid out once
         if let c = cached, c.text == text, c.width == width { return c.lines }
@@ -321,7 +358,23 @@ final class LiveTextLines: NSView {
     private func layoutTail(width: CGFloat) -> [(NSRange, String)] {
         let ns = text as NSString
         guard ns.length > 0 else { return [] }
-        let from = max(0, ns.length - 320)
+        // the text before the anchor changed (a seam rewritten, a new take): start over near the end
+        if anchor > ns.length || !text.hasPrefix(anchorPrefix) {
+            anchor = max(0, ns.length - 240)
+            anchorPrefix = ns.substring(to: anchor)
+        }
+        var out = lineRanges(ns, from: anchor, width: width)
+        // more lines than show: the anchor moves to a line start above the visible ones, where the next layout
+        // breaks exactly as this one did
+        if out.count > LiveTextLines.maxLines + 2 {
+            anchor = out[out.count - LiveTextLines.maxLines - 1].0.location
+            anchorPrefix = ns.substring(to: anchor)
+            out = Array(out.suffix(LiveTextLines.maxLines + 1))
+        }
+        return out
+    }
+
+    private func lineRanges(_ ns: NSString, from: Int, width: CGFloat) -> [(NSRange, String)] {
         let tail = ns.substring(from: from)
         let storage = NSTextStorage(string: tail, attributes: [.font: LiveTextLines.font])
         let lm = NSLayoutManager()
@@ -344,24 +397,31 @@ final class LiveTextLines: NSView {
     }
 
     override func draw(_ dirty: NSRect) {
-        let shown = Array(layout(width: bounds.width).suffix(2))
+        let shown = Array(layout(width: bounds.width).suffix(LiveTextLines.maxLines))
         lines = shown.map(\.1)
         let ink = NSColor(white: 1, alpha: 0.92), dim = NSColor(white: 1, alpha: 0.6)      // neutral, never brand
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byClipping
+        let rows = max(shown.count, Int((bounds.height - LiveTextLines.pad.height * 2) / LiveTextLines.lineH + 0.5))
+        let room = bounds.width - LiveTextLines.pad.width * 2
         for (i, (range, line)) in shown.enumerated() {
-            // the line before the last is dimmer where it was already showing; the newest words are bright, fading in
-            let base = i == shown.count - 1 ? ink : dim
-            let s = NSMutableAttributedString(string: line, attributes: [.font: LiveTextLines.font, .foregroundColor: base,
+            let s = NSMutableAttributedString(string: line, attributes: [.font: LiveTextLines.font, .foregroundColor: ink,
                                                                          .paragraphStyle: style])
             let len = (line as NSString).length
-            let newFrom = max(0, stable - range.location)       // what is new on this line since the last update
-            if newFrom < len {
-                s.addAttribute(.foregroundColor, value: ink.withAlphaComponent(ink.alphaComponent * fade),
-                               range: NSRange(location: newFrom, length: len - newFrom))
+            // the pending words (the piece still being said) are quieter until their piece is final
+            let pendingAt = min(len, max(0, pendingFrom - range.location))
+            if pendingAt < len { s.addAttribute(.foregroundColor, value: dim, range: NSRange(location: pendingAt, length: len - pendingAt)) }
+            // what is new on this line since the last update fades in, in its own tone
+            let newFrom = min(len, max(0, stable - range.location))
+            if newFrom < len, fade < 1 {
+                s.enumerateAttribute(.foregroundColor, in: NSRange(location: newFrom, length: len - newFrom)) { v, r, _ in
+                    guard let c = v as? NSColor else { return }
+                    s.addAttribute(.foregroundColor, value: c.withAlphaComponent(c.alphaComponent * fade), range: r)
+                }
             }
-            let y = LiveTextLines.pad.height + CGFloat(i) * LiveTextLines.lineH + 1
-            let room = bounds.width - LiveTextLines.pad.width * 2
+            // newest at the bottom: a take that showed more lines before keeps them in place from below
+            let row = rows - shown.count + i
+            let y = LiveTextLines.pad.height + CGFloat(row) * LiveTextLines.lineH + 1
             s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: room, height: LiveTextLines.lineH),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
             if listening && i == shown.count - 1 {

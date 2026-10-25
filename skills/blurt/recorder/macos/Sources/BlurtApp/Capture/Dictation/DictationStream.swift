@@ -10,6 +10,13 @@
 //      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
+// Live text (docs/design/dictation.md §Live text): the words shown while talking (LiveTranscript) are the finished
+// pieces' transcripts and, about once a second, the open piece's audio so far decoded by the same warm server as an
+// *interim* request (on its own queue; BlurtCore's DictationLiveDecode decides when). Interim text shows quieter
+// until its piece's final transcript replaces it; nothing typed or filed comes from it. A final piece always goes
+// first: no interim is sent while a final one is queued or under way, and the server stops an interim decode as soon
+// as another request waits (transcribe.py serve). Off on the light / minimal tiers (record.dictation.live_partial).
+//
 // A cut is a pause, not a sentence end (each piece used to come back as a whole utterance: a full stop at every
 // breath). So a piece's own ending isn't final: its trailing 。/，is taken off before polish, and polish works over a
 // sliding window — the last, unfinished clause of the window before (`carry`) is polished again together with the
@@ -43,6 +50,8 @@ final class DictationStream {
         var variant: String?
         /// Structured's one pass over the whole take (polish.py structure_timeout_ms)
         var structureTimeout = 10.0
+        /// decode the piece still being said for the live text (Dictation.livePartial)
+        var interim = false
     }
 
     /// One piece of the recording and what became of it.
@@ -69,6 +78,10 @@ final class DictationStream {
         var loadMS = 0
         /// the polish window's input (the carried clause + this piece): the Dictation Lab shows it
         var polishInput = ""
+        /// its transcript is in (the live text shows it as committed)
+        var asrDone = false
+        /// when its last sample arrived (the live text's lag is measured from it)
+        var arrived: CFTimeInterval = 0
         init(index: Int, start: Int, end: Int, hard: Bool, last: Bool = false) {
             self.index = index; self.start = start; self.end = end; self.hard = hard; self.last = last
         }
@@ -110,9 +123,9 @@ final class DictationStream {
     let wholeWav: URL
     /// stage changes after key-up (transcribing → polishing), on the main queue
     var onStage: ((String) -> Void)?
-    /// what has been heard so far (the pieces' transcripts, joined), on the main queue after each piece — the words
-    /// shown while talking (LiveTranscript); nothing else reads it
-    var onHeard: ((String) -> Void)?
+    /// the words shown while talking (LiveTranscript), on the main queue: the finished pieces' transcripts joined
+    /// (`committed`) and the interim text of the pieces still to come (`pending`); nothing else reads them
+    var onLive: ((_ committed: String, _ pending: String) -> Void)?
 
     private var segmenter = DictationSegmenter(sampleRate: NoteVoice.rate)
     private var audio: [Float] = []             // main thread
@@ -129,16 +142,26 @@ final class DictationStream {
     /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
     /// punctuation it ended in — polished again with the next piece
     private var carry = "", carryPolished = "", carryEnd = ""
+    // the live text (main thread): when to decode the open piece, and what the interim requests said per piece
+    private var live = DictationLiveDecode(sampleRate: NoteVoice.rate)
+    private var interims: [Int: (text: String, arrived: CFTimeInterval)] = [:]
+    private let liveQ = DispatchQueue(label: "blurt.dictation.live", qos: .userInitiated)
+    private var liveOffLogged = false
+    private var firstAudio: CFTimeInterval = 0
+    /// interim requests sent / shown this take (dictation_text's timing)
+    private var interimSent = 0, interimShown = 0
 
     init(id: String, dir: URL, wholeWav: URL, options: Options) {
         self.id = id; self.dir = dir; self.wholeWav = wholeWav; self.opt = options
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if !options.interim || !options.streaming { live = DictationLiveDecode(sampleRate: NoteVoice.rate, off: .setting) }
     }
 
     // MARK: while talking (main thread)
 
     func append(_ x: [Float]) {
         guard !cancelled else { return }
+        if audio.isEmpty { firstAudio = CACurrentMediaTime() }
         audio += x
         guard opt.streaming else { return }
         let cuts = segmenter.feed(x)
@@ -149,22 +172,27 @@ final class DictationStream {
             pieceStart = cut.nextStart
             pieceHard = cut.hard
         }
+        interimIfDue()
     }
 
     var segments: Int { lock.lock(); defer { lock.unlock() }; return pieces.count }
 
     func cancel() {
         cancelled = true
+        live.stop()
         let ps = lock.locked { pieces }
         for p in ps { try? FileManager.default.removeItem(at: wav(p.index)) }
+        try? FileManager.default.removeItem(at: liveWav)
     }
 
     private func wav(_ i: Int) -> URL { dir.appendingPathComponent("\(id)-p\(i).wav") }
 
     private func enqueue(start: Int, end: Int, hard: Bool, last: Bool = false) {
         guard end > start else { return }
+        live.finalQueued()          // before the request goes out: no interim is sent from here until it is in
         let p = lock.locked { () -> Piece in
             let p = Piece(index: pieces.count, start: start, end: end, hard: hard, last: last)
+            p.arrived = CACurrentMediaTime() - Double(max(0, audio.count - end)) / NoteVoice.rate
             pieces.append(p)
             return p
         }
@@ -201,16 +229,15 @@ final class DictationStream {
             text = DictationStitch.dropOverlap(previous: prev.raw, next: text)
             heard = DictationStitch.dropOverlap(previous: prev.asrText, next: heard)
         }
-        p.raw = text
-        p.asrText = heard
-        if let f = onHeard {
-            // the live transcript (LiveTranscript): what was heard so far, joined as the transcript is
-            let (all, gaps) = lock.locked { (pieces.prefix(p.index + 1).map(\.raw), pauses) }
-            let so = DictationStitch.joinPieces(all, pauses: gaps)
-            DispatchQueue.main.async { f(so) }
+        lock.locked {
+            p.raw = text
+            p.asrText = heard
+            p.asrDone = true
         }
+        // the live text: this piece's transcript replaces its interim text (and interim requests may go again)
+        DispatchQueue.main.async { self.finalLanded(p.index) }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
-              "chars": text.count, "ok": r != nil])
+              "server_ms": r?["ms"] ?? NSNull(), "chars": text.count, "ok": r != nil])
         polishQ.async { self.polish(p) }
     }
 
@@ -272,12 +299,100 @@ final class DictationStream {
               "ms": Int((p.polishSpan.1 - p.polishSpan.0) * 1000)])
     }
 
+    // MARK: live text (main thread; the interim requests on liveQ)
+
+    private var liveWav: URL { dir.appendingPathComponent("\(id)-live.wav") }
+
+    /// As audio arrives: the open piece's audio so far to the warm server when DictationLiveDecode says so.
+    private func interimIfDue() {
+        guard onLive != nil else { return }
+        let index = lock.locked { pieces.count }
+        guard let t = live.next(now: CACurrentMediaTime(), piece: index, pieceStart: pieceStart, audioEnd: audio.count,
+                                hasSpeech: segmenter.pieceHasSpeech) else { return logLiveOff() }
+        let samples = Array(audio[t.start..<t.end])
+        let issued = CACurrentMediaTime()
+        // the text so far as context, as a final piece gets it (names spelled the same way)
+        let (done, gaps, hint) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "") }
+        let prior = String(DictationStitch.joinPieces(done, pauses: gaps).suffix(200))
+        let url = liveWav, vocab = opt.vocab, language = opt.language
+        interimSent += 1
+        liveQ.async { [weak self] in
+            guard let self = self, !self.cancelled else { return }
+            DictationStream.writeWav(samples, to: url)
+            let t0 = CACurrentMediaTime()
+            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint)
+            let secs = CACurrentMediaTime() - t0
+            try? FileManager.default.removeItem(at: url)
+            DispatchQueue.main.async { self.interimDone(t, r, seconds: secs, arrived: issued) }
+        }
+    }
+
+    private func interimDone(_ t: DictationLiveDecode.Ticket, _ r: [String: Any]?, seconds: Double, arrived: CFTimeInterval) {
+        let code = r?["code"] as? String
+        // a model still loading isn't the decode's own time
+        let load = Double(r?["load_ms"] as? Int ?? 0) / 1000
+        let a: DictationLiveDecode.Answer = r?["ok"] as? Bool == true ? .text(seconds: max(0, seconds - load))
+            : code == "interrupted" || code == "no_server" ? .interrupted : code == "interim_unsupported" ? .unsupported : .failed
+        let show = !cancelled && live.done(t, a)
+        let text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        emit(["event": "dictation_interim", "id": id, "piece": t.piece, "audio_s": Double(t.end) / NoteVoice.rate,
+              "window_s": Double(t.end - t.start) / NoteVoice.rate, "ms": Int(seconds * 1000),
+              "server_ms": r?["ms"] ?? NSNull(), "result": r?["ok"] as? Bool == true ? "text" : code ?? "failed",
+              "shown": show && !text.isEmpty, "chars": text.count, "interval": live.interval])
+        if show, !text.isEmpty {
+            interims[t.piece] = (text, arrived)
+            interimShown += 1
+            publish("interim")
+        }
+        logLiveOff()
+    }
+
+    private func logLiveOff() {
+        guard let why = live.off, !liveOffLogged, why != .setting else { return }
+        liveOffLogged = true
+        emit(["event": "dictation_interim_off", "id": id, "why": why.rawValue, "decode_s": live.smoothed ?? NSNull()])
+    }
+
+    /// A final piece's transcript is in.
+    private func finalLanded(_ i: Int) {
+        live.finalDone(piece: i)
+        interims[i] = nil
+        publish("final")
+        if !live.stopped { interimIfDue() }
+    }
+
+    /// The panel's text: committed (finished pieces) and pending (interim), with how far it is behind the audio.
+    private func publish(_ source: String) {
+        guard let f = onLive, !cancelled else { return }
+        let (ps, gaps) = lock.locked { (pieces.map { ($0.asrDone, $0.raw, $0.hard, $0.arrived) }, pauses) }
+        var items: [DictationLiveDecode.Piece] = []
+        var covered: CFTimeInterval = 0
+        for (i, p) in ps.enumerated() {
+            if p.0 {
+                items.append(.final(p.1)); covered = max(covered, p.3)
+            } else if let it = interims[i] {
+                items.append(.interim(it.text, hard: p.2)); covered = max(covered, it.arrived)
+            } else {
+                items.append(.none)
+            }
+        }
+        if let it = interims[ps.count] { items.append(.interim(it.text, hard: pieceHard)); covered = max(covered, it.arrived) }
+        let (committed, pending) = DictationLiveDecode.compose(items, pauses: gaps)
+        f(committed, pending)
+        let now = CACurrentMediaTime()
+        emit(["event": "dictation_live", "id": id, "source": source, "t": ((now - firstAudio) * 1000).rounded() / 1000,
+              "lag_ms": covered > 0 ? Int((now - covered) * 1000) : NSNull(), "committed": committed.count,
+              "pending": pending.count, "listening": !live.stopped])
+    }
+
     // MARK: key-up
 
     /// The last piece, then everything joined; `structure` (Structured / Auto at key-up): the joined text then goes
     /// through the polish model's structuring pass once. `done` runs on the main queue.
     func finish(keyUp: CFTimeInterval, structure: Bool = false, _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
+        live.stop()             // no more interim requests: an answer under way still shows until its piece is in
+        lock.locked { finalCounts = (interimSent, interimShown) }
         let n = lock.locked { pieces.count }
         let tail = audio.count - pieceStart
         if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
@@ -405,8 +520,13 @@ final class DictationStream {
         let asrAll = ps.reduce(0) { $0 + ($1.asrSpan.1 - $1.asrSpan.0) }, polAll = ps.reduce(0) { $0 + ($1.polishSpan.1 - $1.polishSpan.0) }
         return ["asr_ms": Int(asr * 1000), "polish_ms": Int(pol * 1000), "load_ms": ps.reduce(0) { $0 + $1.loadMS },
                 "segments": ps.count, "asr_ms_all": Int(asrAll * 1000), "polish_ms_all": Int(polAll * 1000),
-                "total_ms": Int((CACurrentMediaTime() - keyUp) * 1000)]
+                "total_ms": Int((CACurrentMediaTime() - keyUp) * 1000), "interim_sent": interimCounts.sent,
+                "interim_shown": interimCounts.shown]
     }
+
+    /// interim requests this take (read off the main thread once the take is over: a copy taken at key-up)
+    private var interimCounts: (sent: Int, shown: Int) { lock.locked { finalCounts } }
+    private var finalCounts = (sent: 0, shown: 0)
 
     static func writeWav(_ x: [Float], to url: URL) {
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: NoteVoice.rate, AVNumberOfChannelsKey: 1,

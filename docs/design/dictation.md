@@ -35,6 +35,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 | Names inside Chinese speech: the language tag, learning from a correction (`learn`, the lab's API) | `transcribe.py` (`Qwen3Mlx._decode_tagged`, `switch_language`), `dictation_vocab.py` (`choose_tag`, `translated_glue`, `context_dump`, `fixes`, `learn`), `tests/test_dictation_vocab.py` (`CodeSwitch`, `TaggedDecode`, `FalseCorrections`, `LearnFromCorrection`), `tests/fixtures/dictation_false_corrections.jsonl`; the page's **Correct**: `MainWindow/DictationPage.swift`, `DictationVocabulary.learnCorrection`, `DictationHistory.correct` |
 | Controller (capture → ASR → polish → insert → history) | `Capture/Dictation/Dictation.swift` |
 | Streaming: cut, transcribe and polish while talking; punctuation at the seams (pauses, polish windows) | `Capture/Dictation/DictationStream.swift`; pure: `BlurtCore/DictationSegmenter.swift` (cuts, pause lengths), `BlurtCore/DictationStitch.swift` (joins, `seam`, `mark`, `commitSplit`, `fallbackSeam`, `keepCase`, `listLines`) (`DictationSegmenterTests`, `DictationStitchTests`); its Python port for the lab, `scripts/dictation_stitch.py` (`tests/test_dictation_stitch.py`; `tests/fixtures/dictation_seams.jsonl` is shared by both) |
+| Live text: the words while talking, the piece still being said decoded as interim requests (§Live text) | `Capture/Dictation/DictationStream.swift` (`interimIfDue`, `publish`), `Capture/LiveTranscript.swift` (`LiveTextLines`); pure: `BlurtCore/DictationLiveDecode.swift` (when, stale answers, `compose`; `DictationLiveDecodeTests`); the server's stop check: `transcribe.py` (`cmd_serve`, `Qwen3Mlx._check`, `Interrupted`; `tests/test_transcribe_interim.py`) |
 | The mic: engine prepared at launch, built-in mic choice | `Capture/NoteBubble.swift` (`NoteVoice`, `MicEngine`, `AudioDevices`); pure: `DictationMicChoice` |
 | Insertion, fitting at the cursor, Return for a double tap | `Capture/Dictation/DictationInsert.swift`; the rules: `BlurtCore/DictationPastePolicy.swift` (`DictationPastePolicy`, `DictationSendPolicy`; `DictationPastePolicyTests`), `BlurtCore/DictationFit.swift` (`DictationFitTests`) |
 | Styles: the router, categories, which text a style types (`DictationStyle.pick`), variants, history records, reformat's rules, learning (pure, unit-tested) | `BlurtCore/DictationStyle.swift`, `DictationStyleRecord.swift`, `DictationStyleLearn.swift`; `DictationStyleTests`, `DictationStyleLearnTests`; `scripts/dictation_styles.py`, `tests/test_dictation_styles.py` |
@@ -483,6 +484,75 @@ prompts of the pack, one plain sentence:
   (`results/app-e2e-r2.jsonl`, 19 takes each): fell back 15 / 19 → 0 / 19, key-up → paste 413 → 346 ms median
   (paired −49 ms; −7 ms on the 4 takes both polished), no stray spaces.
 - What the lab replay can't show: the fit at the cursor; real voices and rooms (only the user can check those).
+
+## Live text (v0.9)
+
+The report: "When I press Fn and talk, the recognised text isn't shown live. Double-tapping Fn sends straight away,
+so seeing the text tells me whether to fix it by hand first or just send it." Before, the panel under the island
+(`LiveTranscript`, `record.live_text`) showed only the finished pieces' transcripts: a take without pauses showed
+nothing for up to 20 s, then a whole piece at once. Now the words keep up with the speech, as Typeless and Wispr Flow
+do:
+
+- **Interim decodes** (`DictationStream.interimIfDue`, on its own serial queue): about once a second, while the user
+  talks, the open piece's audio so far (at most its last 20 s — the segmenter cuts at 20 s anyway) goes to the same
+  warm speech server as a `note` request with `"interim": true`, with the same prior (the finished pieces' text) and
+  words as a final piece. Only the warm server: no CLI fallback, no server start (a missing server is tried again
+  later). Its text is never typed, filed or polished.
+- **The final pieces always come first.** `BlurtCore/DictationLiveDecode` (pure, `DictationLiveDecodeTests`) sends an
+  interim request only when none is in flight and no final piece is queued or being transcribed (`finalQueued` is
+  counted on the main thread before the final request leaves; `finalDone` when its transcript is in). A cut that
+  comes while an interim decode runs can't wait for it either: `transcribe.py serve` gives an interim request a stop
+  check — is another connection waiting on the listening socket (`select`, no accept)? — and `Qwen3Mlx` looks at it
+  before each chunk, before the prefill and between tokens, raising `Interrupted` (answer `{"ok": false, "code":
+  "interrupted"}`). Interim requests always go through the tag-aware decode loop (it is ours, so it can stop; without
+  a preferred language it takes the model's own tag, as the plain decode does). A backend that can't stop halfway
+  (SenseVoice, Whisper, a Qwen whose tag-aware decoder failed) answers `interim_unsupported` and the take has no
+  interim text. Stale answers are dropped: a piece whose final transcript has landed, or an answer older than one
+  already shown. At key-up nothing more is sent; an answer under way still shows until its piece is in.
+- **Adaptive**: the interval is twice the smoothed decode time, within 0.8–1.2 s; smoothed over ≥ 3 decodes above
+  0.9 s (a slow machine, a 20 s window on a slow model) turns interim decodes off for the take
+  (`dictation_interim_off`); so do 3 failures in a row. The first decode of a session also waits for the model to
+  warm up and doesn't count alone. The light / minimal tiers (< 16 GB, as `transcribe.py tier_for`) never start them:
+  `record.dictation.live_partial` unset = by the machine, `true` / `false` to force.
+- **What shows** (`DictationLiveDecode.compose`, mechanical only): the finished pieces' transcripts joined as the
+  transcript is (`DictationStitch.joinPieces`: committed, 92 % white), then the interim texts of the pieces not final
+  yet (pending, 60 %); an interim after a hard cut loses the words the piece before already has
+  (`DictationStitch.dropOverlap`); when the seam mark of the committed text changes because more follows, the common
+  part stays committed. No words are read for meaning.
+- **The panel** (`LiveTextLines`): up to three lines, newest at the bottom; the panel keeps the height it reached
+  during the take (no shrinking back when an interim is revised shorter); the lines are laid out from a line start
+  that only moves forward while the text before it is unchanged, so the lines showing don't re-wrap as the text grows;
+  only the characters that changed since the last update fade in (the common prefix stays). The mint caret, the
+  position rules and the no-rule look (`system.md`) are unchanged. After key-up the panel shows the final transcripts
+  until the text is pasted, as before.
+- Logged: `dictation_interim` (piece, audio_s, window_s, ms, result, shown), `dictation_live` (each update: committed /
+  pending characters, `lag_ms` = now − when the newest audio the shown text covers arrived), `dictation_interim_off`;
+  `dictation_text` carries `interim_sent` / `interim_shown`; `dictation_piece_text` the server's own `server_ms` (the
+  rest of `ms` is the wait at the server's door).
+
+Measured in the isolated test app (`promo/cases/v0.9-polish/livetext/`, not in git: `audio/` three `say` clips with
+few pauses — zh 53.6 s, en 42.0 s, zh/en mixed 45.1 s; `results/`, `shots/`, `scripts/`), Qwen3-ASR 1.7B and Gemma 4
+E2B warm, M5 Max, the wav fed in real time as the mic, released 0.1 s after the last word (the worst case: the last
+piece is all still to do), interim decodes on and off alternately, 4 takes each (`results/summary-r3.txt`):
+
+| Clip | first words shown (off → on) | lag, time-weighted mean | worst moment | key-up → paste, off | on |
+|---|---:|---:|---:|---:|---:|
+| zh, 53.6 s, 3 pieces | 20.5 s → 0.64 s | 10.2 s → 0.86 s | 19.9 s → 2.4 s | 1065–1218 ms (one 3664) | 1035–1552 ms |
+| en, 42.0 s, 3 pieces | 20.8 s → 0.63 s | 10.4 s → 0.99 s | 20.8 s → 2.9 s | 509–556 ms | 506–583 ms |
+| mixed, 45.1 s, 3 pieces | 21.0 s → 0.62 s | 9.7 s → 1.26 s | 20.4 s → 3.7 s | 621–798 ms | 600–760 ms |
+
+- Lag: how far the newest word shown is behind the audio, over the time the user talks (it grows between updates and
+  drops at each). Right at an update it is 330–410 ms (median; p90 0.58–1.02 s): the decode of the open piece so far,
+  ~0.1 s for 1–2 s of it, 0.3–0.7 s for 10 s, ~1.1 s for 16 s of mixed speech. Mixed speech's long windows stretch
+  the interval toward 2 s, hence its worse mean.
+- Key-up → paste: no difference beyond the takes' own spread (median of all 12: 639 ms on, 652 ms off). The final
+  pieces' wait at the server's door (`ms − server_ms`): median 2 ms either way, at most 63 ms with interim decodes on
+  (27 interim decodes stopped for a final piece; the wait is one decoding step, or the prefill under way), ≤ 2 ms off.
+- 39–59 interim requests a take, 95 % shown (the rest stale or stopped).
+- Found on the way: `dictation stop-after` was a wall-clock timer, and a background test app's timers are coalesced —
+  the release came 0.2–1.8 s late, later when the app was idle (interim decodes off), so the first comparison made
+  "off" look ~1 s faster (the last piece was already done when the late release came). It now counts the audio fed
+  (`Dictation.beginCapture`), exact to the 0.1 s buffer.
 
 ## Insert
 
@@ -1395,6 +1465,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
+| `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
 | `start_sound` | `false`: a soft tick when listening starts |
@@ -1563,6 +1634,18 @@ by tag (`length:short`, `feature:correction` …).
 
 (Each entry describes the code of its time; later work may have replaced what it checked — the model-first entry says
 what went.)
+
+- Live text (`promo/cases/v0.9-polish/livetext/`, not in git: `audio/` the three `say` clips, `results/` the takes
+  (`results-r3.jsonl`, `summary-r3.txt`, `waits.txt`; the two earlier rounds with the wall-clock release kept for the
+  record), `shots/` the panel during the zh, en and mixed takes, `scripts/` the driver and the analysis): `swift test`
+  `DictationLiveDecodeTests` (one at a time, never while a final piece is pending, the interval and the window, slow /
+  unsupported / failing servers, stale answers dropped, key-up, a simulated 60 s take on a serial server where no final
+  piece ever waits more than one step, `compose`); `pytest tests/test_transcribe_interim.py` (a final request ends a
+  3 s interim decode in < 0.5 s and is answered; an interim alone answers; a model that can't stop takes none;
+  `Interrupted` isn't taken for a broken tag-aware decoder; an interim request without a preferred language goes
+  through the loop). The isolated test build (`dev.blurt.recorder.auditlivetext`, scratch `BLURT_HOME`, models
+  symlinked read-only, LaunchServices, the `dictation wav` hook as the mic, nothing pasted — no test pad, so the
+  clipboard is never touched —, screenshots of its own panel only) for the numbers in §Live text.
 
 - Model first (`promo/cases/v0.8-dictation-model-first/`, not in git: `audio/` the 28 new `say` cases (`vc*.wav`),
   `results/` the lab rounds `before-*-r{1,2}.json` / `after-*-r{1,2}.json`, the polish evals `polish-*.json`,
