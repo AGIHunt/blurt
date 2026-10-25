@@ -107,6 +107,7 @@
 "capture.drawer.missing_sub" = "文件夹不见了 · 找到它…";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
 "capture.note.goes_to" = "归入 %@";
+"capture.note.goes_missing" = "%@：文件夹不见了";
 "capture.note.stays_card" = "留作卡片";
 "capture.note.keep_discard" = "⏎ 不写备注直接留下 · Esc 丢弃";
 "capture.note.keep_tip" = "留下（⏎）";

@@ -185,7 +185,11 @@ final class Snapper {
             let shot = b.add(n: n, image: img, scale: scale, region: region, t: nil, project: p.isInbox ? nil : p.id)
             emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull(),
                   "in_place": withNote])
-            if p.isInbox { MissingFolder.warnIfCurrentMissing() }
+            // the current project's folder is gone: said once the snap is a card (the island can't show it under an
+            // in-place note — the note's chip says it meanwhile)
+            if p.isInbox, ProjectStore.shared.missingCurrent != nil {
+                if withNote { self.missingWarn.insert(ObjectIdentifier(shot)) } else { MissingFolder.warnIfCurrentMissing() }
+            }
             if withNote {
                 // (before anything else runs: the stage holds the shot back from the cards until it is done)
                 InkStage.shared.open(shot, image: img, selection: ns)
@@ -435,6 +439,7 @@ final class Snapper {
     /// transcribed first (also next to typed text: the item gets both). Its words couldn't be had and nothing was
     /// typed → a card that remembers the project (Retry files it there). Auto: a card, its words fetched for it.
     func settled(_ s: Shot) {
+        if missingWarn.remove(ObjectIdentifier(s)) != nil, !s.deleted { MissingFolder.warnIfCurrentMissing() }
         guard !s.deleted, let b = s.batch else { return }
         let filing = s.assignedBy == "capture" ? s.project : nil
         // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
@@ -480,6 +485,8 @@ final class Snapper {
     }
     /// filings under way (prepareForQuit waits for them a moment)
     private var filing = 0
+    /// in-place snaps taken while the current project's folder was missing: the island says so once they settle
+    private var missingWarn = Set<ObjectIdentifier>()
 
     /// Filing into `missing` (its folder moved or was renamed) was refused: the captures stay Unassigned cards, and the
     /// island says so with Locate… (MissingFolder). Nothing was written.

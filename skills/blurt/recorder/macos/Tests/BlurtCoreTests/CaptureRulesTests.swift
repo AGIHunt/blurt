@@ -159,9 +159,9 @@ final class CaptureRulesTests: XCTestCase {
     /// dogfood v0.9-2: 13 s of quiet speech in fan noise, ended with the key, was deleted ("Didn't hear anything")
     /// although the stream's segmenter had cut a piece of it and offline ASR found words.
     func testQuietSpeechTheUserEndedIsNeverDeletedInSilence() {
-        // the segmenter heard speech: kept (the speech model decides)
+        // the segmenter heard something (it hears a fan too): asked, even on a quiet input
         XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, streamHeard: true,
-                                        peakDB: -21.5), .keep(toast: .none))
+                                        peakDB: -80), .unsure)
         // nothing heard by either, but a real input: ask ("Didn't hear anything · Keep")
         XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, peakDB: -21.5), .unsure)
         XCTAssertEqual(VoiceKeep.decide(.maxed, heardSpeech: false, seconds: 600, soundSeconds: 0, peakDB: -40), .unsure)

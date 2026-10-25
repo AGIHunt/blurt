@@ -315,8 +315,8 @@
   - Live words in notes on every tier: `transcribe.py serve` now answers interim requests on SenseVoice
     (`quick_decode`); the client asks for them on every tier for notes, and one `interim_unsupported` backs off 4 s
     instead of turning them off for the take (BlurtCore `DictationLiveDecode.refusalBackoff` / `maxRefusals`).
-  - A voice note the user ended is never deleted in silence: the stream's segmenter hearing speech counts, and a take
-    nothing heard (not digital silence, ≥ 1.5 s) gets "Didn't hear anything · Keep" for the Undo window
+  - A voice note the user ended is never deleted in silence: a take nothing was heard in (not digital silence,
+    ≥ 1.5 s) gets "Didn't hear anything · Keep" for the Undo window
     (BlurtCore `VoiceKeep.unsure`). The card shows the words already heard while its last piece is transcribed
     (`CardNote.heard`), and the live panel leaves where it is.
   - The recording's discard question: on its own line when it doesn't fit beside the answers, snaps and markers

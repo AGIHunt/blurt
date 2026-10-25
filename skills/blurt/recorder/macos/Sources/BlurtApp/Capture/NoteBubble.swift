@@ -1389,6 +1389,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// (v0.9-fix2: a bare "Unassigned ⌄" didn't read as where the snap goes). The list's row is still "Unassigned".
     private var destination: String {
         guard let pid = shot?.project, let p = ProjectStore.shared.project(id: pid) else {
+            // the current project's folder is gone (MissingFolder): say why it stays a card
+            if let m = ProjectStore.shared.missingCurrent { return Loc.t("capture.note.goes_missing", table: "Capture", m.name) }
             return Loc.t("capture.note.stays_card", table: "Capture")
         }
         return Loc.t("capture.note.goes_to", table: "Capture", p.name)

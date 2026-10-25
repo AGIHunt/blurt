@@ -107,6 +107,7 @@
 "capture.drawer.missing_sub" = "Folder not found · Locate…";
 "capture.note.discard_tip" = "Discard this snap (Esc)";
 "capture.note.goes_to" = "Goes to %@";
+"capture.note.goes_missing" = "%@: folder not found";
 "capture.note.stays_card" = "Stays as a card";
 "capture.note.keep_discard" = "⏎ keep without a note · Esc discard";
 "capture.note.keep_tip" = "Keep (⏎)";

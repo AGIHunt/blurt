@@ -18,10 +18,11 @@
 //  • VoiceKeep — whether a ⌥⇧V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
 //    lasted and held a sound above the room (`soundSeconds`: NoteEndpointer's held sound 6 dB over the noise floor),
 //    even if the room hid the speech from the endpointer — the speech model decides, and a take with no words stays as
-//    audio ("No words recognized · Retry"). The stream's segmenter hearing speech counts too (v0.9-fix2: 13 s of quiet
-//    speech in fan noise was deleted while the segmenter had cut a piece of it). A take the user ended that neither
-//    heard is never deleted outright unless it is a slip of the key or digital silence: "Didn't hear anything · Keep"
-//    (`unsure`) keeps its audio for the Undo window, and Keep files it (the speech model then decides).
+//    audio ("No words recognized · Retry"). A take the user ended that the endpointer heard nothing in is never deleted
+//    outright unless it is a slip of the key or digital silence (v0.9-fix2: 13 s of quiet speech in fan noise was
+//    deleted): "Didn't hear anything · Keep" (`unsure`) keeps its audio for the Undo window, and Keep files it (the
+//    speech model then decides). The stream's segmenter hearing something is a reason to ask (its looser test also
+//    hears a fan), and makes an Esc'd take undoable.
 //  • VoiceDiscard — a voice note cancelled with Esc waits for its Undo as NNN.discarded.wav, which a quit or a crash
 //    never brings back (CaptureRestore ignores it; the next launch sweeps it).
 //  • RecordingNotes — a recording's snap notes pause the take once per note session, however often the bubble
@@ -227,17 +228,17 @@ public enum VoiceKeep: Equatable {
     /// transcribes pieces with a looser test than the endpointer's); `peakDB`: the take's loudest moment.
     public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double,
                               streamHeard: Bool = false, peakDB: Double = -.infinity) -> VoiceKeep {
-        let heard = heardSpeech || streamHeard
         let sound = seconds >= minUserSeconds && soundSeconds >= minSoundSeconds
-        // the user ended it after a while and it isn't digital silence: ask, never delete in silence
-        let ask = seconds >= minUserSeconds && peakDB > silencePeakDB
+        // the user ended it after a while and it isn't digital silence (or the segmenter heard something): ask, never
+        // delete in silence — the segmenter's looser test also hears a fan, so it is a reason to ask, not to keep
+        let ask = seconds >= minUserSeconds && (peakDB > silencePeakDB || streamHeard)
         switch ended {
-        case .cancel: return heard ? .undoable : .drop(toast: .none)
+        case .cancel: return heardSpeech || streamHeard ? .undoable : .drop(toast: .none)
         case .noMic: return .drop(toast: .none)
         case .noSpeech: return .drop(toast: .checkMic)
-        case .user, .maxed: return heard || sound ? .keep(toast: .none) : ask ? .unsure : .drop(toast: .nothing)
-        case .silence: return heard || sound ? .keep(toast: .none) : .drop(toast: .nothing)
-        case .micLost: return heard || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
+        case .user, .maxed: return heardSpeech || sound ? .keep(toast: .none) : ask ? .unsure : .drop(toast: .nothing)
+        case .silence: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
+        case .micLost: return heardSpeech || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
         }
     }
 }

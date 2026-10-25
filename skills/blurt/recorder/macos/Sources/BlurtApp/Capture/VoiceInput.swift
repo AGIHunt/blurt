@@ -32,10 +32,9 @@
 //  • what is kept (BlurtCore VoiceKeep, v0.9): a note the user ends (the key, Done, letting go, quitting) is kept when
 //    it lasted 1.5 s and held a sound above the room, even if the room hid the speech from the endpointer — the speech
 //    model decides; no words → a card that says "No words recognized" with Retry (with a project too: it is filed
-//    there once Retry has words, never as an empty item). The stream's segmenter hearing speech counts as heard. A
-//    take the user ended in which neither heard anything (a fan, a hum, very quiet speech) is never deleted in
-//    silence: "Didn't hear anything · Keep" for the Undo window (v0.9-fix2); only a slip of the key or digital
-//    silence goes at once. Nothing
+//    there once Retry has words, never as an empty item). A take the user ended in which nothing was heard (a fan,
+//    a hum, very quiet speech) is never deleted in silence: "Didn't hear anything · Keep" for the Undo window
+//    (v0.9-fix2); only a slip of the key or digital silence goes at once. Nothing
 //    heard for the whole wait: "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone
 //    mid-note (a headset out, the input switched: NoteVoice's watchdog) ends it with what was said.
 //  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
