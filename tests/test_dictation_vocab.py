@@ -183,7 +183,9 @@ class Prompt(unittest.TestCase):
         self.assertTrue(lines[1].startswith("Near the cursor: "))
         self.assertIn(" ▮ tail", lines[1])
         self.assertLessEqual(len(lines[1]), len("Near the cursor: ") + polish.CONTEXT_CHARS + 10)
-        self.assertEqual(lines[2], "Dictation: 用cloud code")
+        # the text before the cursor stops mid-sentence: the request says the dictation goes on with it
+        self.assertEqual(lines[2], "Dictation (it continues the sentence before the cursor: its first word keeps a capital only "
+                                   "if it is a name): 用cloud code")
         # no text around the cursor: the window title stands in
         self.assertEqual(polish.context_text({"title": "Release notes — Pages"}), "Release notes — Pages")
         self.assertEqual(polish.context_text(None), "")
