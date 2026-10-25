@@ -29,12 +29,13 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥⇧A` | Drag an area and let go, then say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Drag on the picture to circle the exact spot: the note never closes while you're drawing. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
+| **Snap** | `⌥⇧A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). *Goes to …* under the note changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* on the island) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the island as you talk. |
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
-screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. The island shows the state: pause bars and the time
+screen — the same strokes as on a snap: `⌃⇧` for a box, `⌃⌥` for an ellipse, rest the pointer to straighten a rough
+shape (the ink fades after 3 seconds) — `⌥⇧D` keeps the pen on. The island shows the state: pause bars and the time
 in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it off),
 the stills you took, and markers (`⌥⇧M`) counted apart from them. Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
@@ -545,11 +546,11 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 | | 快捷键 | 做什么 |
 |---|---|---|
-| **截图** | `⌥⇧A` | 框一块区域，松手，接着说（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已记下」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。在图上直接拖动，可以圈出具体位置：正在画的时候备注不会关掉。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
+| **截图** | `⌥⇧A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已记下」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。直接在画面上画：拖动是随手画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。说话的备注不会在你画的时候、也不会在落笔后 1.5 秒内结束；只画了或只打了字，就按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。备注下面的「归入 …」可以改这张截图去哪：点它（或按 Tab），打字筛选最近的项目，按 `⏎`。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
 | **语音备注** | `⌥⇧V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥⇧V`（或点岛上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的应用。说的时候，识别出的文字显示在岛下方。 |
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或岛上的「完成」）结束。 |
 
-录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
+录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆，停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
 刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；
 截下的画面有几张；标记（`⌥⇧M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。

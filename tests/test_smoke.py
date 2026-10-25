@@ -147,5 +147,31 @@ class PenMarks(unittest.TestCase):
         self.assertTrue(x <= 0.2 and y <= 0.4 and x + w >= 0.6 and y + h >= 0.8)
 
 
+    def test_the_pens_own_shapes_win(self):
+        """v0.9-next: the recording pen draws boxes (⌃⇧), ellipses (⌃⌥) and snaps rough shapes clean; events.jsonl says
+        which (`shape`), and a long thin box — which the length heuristic would call free — is still a loop."""
+        try:
+            import numpy, PIL  # noqa: F401
+        except ImportError:
+            self.skipTest("numpy / pillow not installed")
+        sys.path.insert(0, str(SCRIPTS))
+        import frames
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        video = Path(tmp.name) / "recording.mp4"
+        c = [[0.1, 0.40], [0.9, 0.40], [0.9, 0.44], [0.1, 0.44], [0.1, 0.40]]
+        box = [p for q in c for p in (q, q)]                 # corners doubled, as the app stores a box
+        ell = [[0.5 + 0.2 * math.cos(i / 72 * 2 * math.pi), 0.5 + 0.1 * math.sin(i / 72 * 2 * math.pi)] for i in range(73)]
+        events = [{"t": 1.0, "t0": 0.5, "type": "stroke", "visible": 3, "shape": "box", "points": box},
+                  {"t": 9.0, "t0": 8.5, "type": "stroke", "visible": 3, "shape": "ellipse", "points": ell},
+                  {"t": 20.0, "t0": 19.5, "type": "stroke", "visible": 3, "shape": "line", "points": [[0.1, 0.9], [0.6, 0.9]]},
+                  {"t": 30.0, "t0": 29.5, "type": "stroke", "visible": 3, "points": [[0.1, 0.4], [0.9, 0.4], [0.9, 0.44], [0.1, 0.44]]}]
+        (video.parent / "events.jsonl").write_text("\n".join(map(json.dumps, events)), encoding="utf-8")
+        frames.probe_size = lambda _: (1600, 1000)
+        got = [s["shape"] for s in frames.strokes(video)]
+        self.assertEqual(got, ["loop", "loop", "line", "free"])
+        self.assertEqual(frames.strokes(video)[0]["box"], [0.1, 0.4, 0.8, 0.04])
+
+
 if __name__ == "__main__":
     unittest.main()

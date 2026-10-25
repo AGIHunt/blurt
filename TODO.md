@@ -106,6 +106,14 @@
 - [x] **Pen** (macOS): hold ⌃ and drag to circle / underline; ink fades 3 s after the last stroke, is in the video and
       in events.jsonl (`frames.py marks`, `grab --crop/--box stroke`); ✎ on the bar / ⌥⇧D keeps it on
 - [ ] Pen on Windows (Tk overlay), click ripples, pen for the review page (draw on a frame to correct the agent)
+- [ ] Windows / Linux counterparts of the in-place snap markup (macOS done, v0.9-next): the selection freezes in place
+      at 1:1 with the outside dimmed, the pen on it (drag freehand, ⇧ box, ⌥ ellipse, rest 0.5 s to snap a rough
+      line / box / ellipse clean — BlurtCore `InkFit`; ⌘Z/Ctrl+Z undo), one markup colour with a soft shadow and a
+      display-scaled width, the "Drag to draw · ⇧ box · ⌥ ellipse" hint the first 3 times; the note docks beside the
+      selection (`BubbleDock`: right, left, below, above; the selection's display); a spoken note ends on the pause but
+      not within 1.5 s of a stroke, ink / typing only ends with Enter, Done or a click outside; the marked picture flies
+      to the notch as the card; the "Goes to X" chip switches project in place (recent projects, type to filter, Enter);
+      the recording pen gets the same modifiers under its key (Ctrl+Shift box, Ctrl+Alt ellipse, rest to snap)
 - [ ] Windows / Linux counterparts of the v0.8.7 capture fixes (macOS done): a cancelled voice note keeps its audio
       for "Voice note discarded · Undo" (5 s); editing a card's note shows its spoken words to correct, and a re-record
       never overwrites the old wav until it is kept; cards never age out of the thread; when drag-out pastes notes,

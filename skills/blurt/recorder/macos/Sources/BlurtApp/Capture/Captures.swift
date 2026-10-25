@@ -12,6 +12,9 @@
 //    it onto a project in the island (filed there the same way, no agent), onto "Unassigned", or hands the cards to
 //    the AI: "Organize" (into the current project) / "Auto-sort" (one card, its menu) / "Auto-sort All Cards" (the
 //    island's menu) — one agent run per batch with the processing model.
+//  • v0.9-next: a snap with a note is marked up in place — the picture freezes where it was taken (InkStage), the pen
+//    on it, the bubble beside it; it becomes a card (or is filed) only when the note is done, flying up from there.
+//    Until then it is not among `cards`. The bubble's "Goes to X" chip retargets it (`retarget`).
 //  • Esc in the note bubble clears what was typed first, then discards the capture (Trash, with Undo for 5 s, as a voice
 //    note's); ⏎ keeps it without a note.
 //  • Screen Recording missing → the snap doesn't open the picker: the island says so, Open Settings starts the guide.
@@ -54,8 +57,11 @@ final class Snapper {
     private var collectTimer: Timer?
     private var collectSeen = Set<String>()
 
-    /// Every card, oldest first.
-    var cards: [Shot] { cardBatches.flatMap { $0.live.filter(\.isCard) }.sorted { ($0.wall, $0.n) < ($1.wall, $1.n) } }
+    /// Every card, oldest first (a snap still being marked up in place is not a card yet: it hangs once it is done).
+    var cards: [Shot] {
+        let staged = InkStage.shared.shot
+        return cardBatches.flatMap { $0.live.filter { $0.isCard && $0 !== staged } }.sorted { ($0.wall, $0.n) < ($1.wall, $1.n) }
+    }
 
     // MARK: entry points
 
@@ -93,7 +99,7 @@ final class Snapper {
             app?.busy = false
             guard let r = r else { self?.restoreFocus(); return }
             setRecordConfig("last_snap_region", [Int(r.minX), Int(r.minY), Int(r.width), Int(r.height)])
-            self?.capture(r)
+            self?.capture(r, picker: p)
         }
         app.picker = p
         registerHotkey(.pickEnter, key: kVK_Return, mods: 0)
@@ -152,26 +158,49 @@ final class Snapper {
 
     // MARK: stills
 
-    /// `region`: global top-left points. Also used directly by tests (`snapregion x,y,w,h`).
-    func capture(_ region: CGRect, withNote: Bool = true) {
+    /// `region`: global top-left points. Also used directly by tests (`snapregion x,y,w,h`). With a note (v0.9-next):
+    /// the picture freezes in place and the pen is on it (InkStage), the note bubble beside it; it flies up to become
+    /// the card when the note is done (NoteBubble.close). `picker`: its dim stays until the stage is up.
+    func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil) {
         let ns = toNS(region)
         captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
-            guard let self = self else { return }
+            guard let self = self else { picker?.closeWindows(); return }
             guard let img = img else {
+                picker?.closeWindows()
                 self.snapFailed()
                 self.restoreFocus()
                 return
             }
-            shutterFlash(ns)
             self.playShutter()
             let p = self.target
             let b = self.openBatch(for: p)
             let n = b.reserve()
             let shot = b.add(n: n, image: img, scale: scale, region: region, t: nil, project: p.isInbox ? nil : p.id)
-            emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull()])
-            hanging.catchCapture(shot, from: ns)
-            if withNote { NoteBubble.shared.begin(shot, mode: .listen) } else { self.settled(shot); self.restoreFocus() }
+            emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull(),
+                  "in_place": withNote])
+            if withNote {
+                // (before anything else runs: the stage holds the shot back from the cards until it is done)
+                InkStage.shared.open(shot, image: img, selection: ns)
+                picker?.closeWindows()
+                shutterFlash(ns, above: true)
+                NoteBubble.shared.begin(shot, mode: .listen, inPlace: ns)
+            } else {
+                picker?.closeWindows()
+                shutterFlash(ns)
+                hanging.catchCapture(shot, from: ns)
+                self.settled(shot)
+                self.restoreFocus()
+            }
         }
+    }
+
+    /// The bubble's "Goes to X" chip: this capture goes to `project` instead (nil: it hangs as a card). The island's
+    /// current project stays as it is.
+    func retarget(_ s: Shot, to project: String?) {
+        guard let b = s.batch, !s.deleted else { return }
+        let was = s.project
+        if let p = project { b.assign(s, project: p, by: "capture") } else { b.release(s) }
+        emit(["event": "retarget", "n": s.n, "from": was ?? NSNull(), "project": project ?? NSNull()])
     }
 
     /// No picture came back. Without Screen Recording access that is why: "Open Settings" starts the permission guide.

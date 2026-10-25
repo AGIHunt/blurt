@@ -615,7 +615,9 @@ final class IslandContent: NSView {
             place(pen, x: 12, y: y + 3)
             hintEnd = pen.frame.maxX
         } else if let key = rec.penKey?.1 {
-            let h = keyHint(Loc.string("capture.rec.pen_hint", table: "Capture"), key: key, maxWidth: w - 230)
+            // the snap's modifiers under the pen key: ⇧ box, ⌥ ellipse (⌃ when ⌥ is the pen key)
+            let fmt = rec.penKind == .option ? "capture.rec.pen_hint_opt" : "capture.rec.pen_hint"
+            let h = keyHint(Loc.string(fmt, table: "Capture"), key: key, maxWidth: w - 230)
             place(h, x: 18, y: y + 6)
             hintEnd = h.frame.maxX
         }
