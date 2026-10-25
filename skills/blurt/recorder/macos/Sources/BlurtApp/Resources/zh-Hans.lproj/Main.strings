@@ -178,6 +178,8 @@
 "main.move.here" = "当前所在";
 "main.move.list" = "项目";
 "main.move.placeholder" = "移到…";
+"main.move.placeholder.one" = "把 %@ 移到…";
+"main.move.current" = "当前";
 "main.palette.move_pick" = "移到项目…";
 "main.palette.switch_project" = "切换项目…";
 "main.palette.use_none" = "不指定当前项目（新的截图和录屏进未归类）";

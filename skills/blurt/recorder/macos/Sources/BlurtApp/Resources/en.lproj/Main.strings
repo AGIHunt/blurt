@@ -178,6 +178,8 @@
 "main.move.here" = "here now";
 "main.move.list" = "Projects";
 "main.move.placeholder" = "Move to…";
+"main.move.placeholder.one" = "Move %@ to…";
+"main.move.current" = "Current";
 "main.palette.move_pick" = "Move to Project…";
 "main.palette.switch_project" = "Switch Project…";
 "main.palette.use_none" = "No Current Project (new snaps and recordings to Unassigned)";

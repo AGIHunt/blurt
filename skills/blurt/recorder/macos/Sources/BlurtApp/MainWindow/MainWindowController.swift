@@ -683,23 +683,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: projects
 
-    @objc func openFolder() {
+    @objc func openFolder() { pickFolder(then: nil) }
+
+    /// `then` (the Move popover's Open Folder…): one folder, and what to do with its project once it is open.
+    func pickFolder(then: ((Project) -> Void)?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.allowsMultipleSelection = true
+        panel.allowsMultipleSelection = then == nil
         panel.canCreateDirectories = true
         panel.prompt = T("main.open.prompt")
         panel.message = T("main.open.message")
         let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
             guard r == .OK else { return }
-            self?.openFolders(panel.urls)
+            self?.openFolders(panel.urls, then: then)
         }
         if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { activateApp(); done(panel.runModal()) }
     }
 
-    /// Registers the folders as projects (projects.py add) and shows the last one.
-    func openFolders(_ urls: [URL]) {
+    /// Registers the folders as projects (projects.py add) and shows the last one (or hands it to `then`).
+    func openFolders(_ urls: [URL]) { openFolders(urls, then: nil) }
+
+    func openFolders(_ urls: [URL], then: ((Project) -> Void)?) {
         Task { @MainActor in
             var last: Project?
             for u in urls {
@@ -708,7 +713,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             }
             if let p = last {
                 model.reloadSidebar()
-                reveal(project: p.id)
+                if let then = then { then(p) } else { reveal(project: p.id) }
             }
         }
     }
@@ -1182,12 +1187,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if visible.isEmpty { t.scrollRowToVisible(anchor) }
         var r = t.rect(ofRow: anchor)
         if let col = t.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {
+            // the arrow points at the start of the title: the popover hangs from the item it moves
             r = r.intersection(t.rect(ofColumn: col))
-            r.size.width = min(r.width, 120)
+            r.size.width = min(r.width, 24)
         }
         let here = Set(items.map(\.projectID))
         let uids = items.map(\.uid)
-        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil) { [weak self] pid in self?.move(uids: uids, to: pid) }
+        // what moves, in the field: "Move BA-1 to…", "Move 3 items to…"
+        let subject = items.count == 1 && !items[0].itemID.isEmpty ? T("main.move.placeholder.one", items[0].itemID)
+            : TP("main.move.placeholder.many", items.count)
+        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil, subject: subject,
+                               choose: { [weak self] pid in self?.move(uids: uids, to: pid) },
+                               openFolder: { [weak self] in self?.pickFolder { self?.move(uids: uids, to: $0.id) } })
         movePopover = p
         p.show(relativeTo: r, of: t)
     }

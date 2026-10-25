@@ -296,6 +296,9 @@ enum SelfTests {
             if a.count == 2, let w = MainWindowController.shared.window, let sc = w.screen?.visibleFrame {
                 w.setFrame(NSRect(x: sc.midX - a[0] / 2, y: sc.midY - a[1] / 2, width: a[0], height: a[1]), display: true)
             }
+        case "mainfront":               // mainfront on | off: the window above others without activating (screenshots
+                                        // of a popover, whose blur shows what is behind it), then back behind them
+            if let w = MainWindowController.shared.window { arg == "off" ? w.orderBack(nil) : w.orderFrontRegardless() }
         case "mainsplit":               // the three columns' frames and the table's columns
             let c = MainWindowController.shared
             out(["columns": c.split.splitViewItems.map { "\($0.viewController.view.frame)" },
@@ -454,7 +457,7 @@ enum SelfTests {
             default: c.movePopover?.type(arg)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                out(["open": c.movePopover != nil, "shown": c.movePopover?.shownIDs ?? []])
+                out(["open": c.movePopover != nil, "shown": c.movePopover?.shownIDs ?? [], "selected": c.movePopover?.selectedID ?? ""])
             }
         case "mainchord":               // mainchord cmd+delete: ⌘⌫ on the list, through NSApp (the menus get it first)
             let c = MainWindowController.shared

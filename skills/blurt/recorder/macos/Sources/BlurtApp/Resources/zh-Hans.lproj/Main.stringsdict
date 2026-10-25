@@ -184,6 +184,20 @@
 			<string>把这 %ld 条交给 Agent</string>
 		</dict>
 	</dict>
+	<key>main.move.placeholder.many</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>把 %#@n@移到…</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>%ld 条</string>
+		</dict>
+	</dict>
 	<key>main.move.done</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
