@@ -1,4 +1,5 @@
-// Settings → Speech (K9): which speech model this Mac uses for recordings, live captions and voice notes, chosen
+// Settings → Speech (K9; a page of SettingsKit rows, titles and descriptions from SettingsCatalog): which speech
+// model this Mac uses for recordings, live captions and voice notes, chosen
 // for its chip, memory and the languages the user speaks (`transcribe.py models`: hardware, tier, registry,
 // recommendation, what is installed and measured). Automatic by default (`transcribe.py auto --apply`); manual
 // per purpose. Dictation's speech and polish models are chosen here too, in their own section (DictationModels.swift:
@@ -363,36 +364,16 @@ private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de",
 // MARK: - Pane
 
 struct SpeechPane: View {
-    /// Settings → Dictation's "Change…" / "Download…" (and tests): scroll to a section ("dictation").
-    static let scrollRequest = Notification.Name("BlurtSpeechPaneScroll")
-    /// The section to scroll to, kept until the pane has scrolled there: a pane that isn't on screen yet picks it up
-    /// when it appears, one already showing gets `scrollRequest`.
-    @MainActor static var pendingScroll: String?
     @ObservedObject var m = SpeechModel.shared
     @State var confirmRemove: ASRModel?
 
-    /// Settings → Speech scrolled to dictation's models.
+    /// Settings → Speech scrolled to dictation's models (Settings → Dictation's "Change…" / "Download…").
     @MainActor static func showDictationModels() {
-        pendingScroll = "dictation"
-        AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
-        NotificationCenter.default.post(name: SpeechPane.scrollRequest, object: nil)
-    }
-
-    /// Scrolls to the pending section. A pane that has just appeared lays its Form out over a few passes (and the
-    /// models load into it), so the scroll is repeated until that settles; a repeat where it already is moves nothing.
-    @MainActor private func scrollToPending(_ proxy: ScrollViewProxy) {
-        guard let id = SpeechPane.pendingScroll else { return }
-        for (i, delay) in [0, 0.15, 0.4, 0.8].enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard SpeechPane.pendingScroll == id else { return }
-                proxy.scrollTo(id, anchor: .top)
-                if i == 3 { SpeechPane.pendingScroll = nil }
-            }
-        }
+        AppEnvironment.settings?.show(pane: "speech/dictation")
     }
 
     var body: some View {
-        ScrollViewReader { proxy in PaneFrame {
+        SettingsPage(.speech) {
             machineSection
             DictationModelsSection()
             languagesSection
@@ -400,9 +381,6 @@ struct SpeechPane: View {
             resourcesSection
             cloudSection
             advancedSection
-        }
-        .onAppear { scrollToPending(proxy) }
-        .onReceive(NotificationCenter.default.publisher(for: SpeechPane.scrollRequest)) { _ in scrollToPending(proxy) }
         }
         .task { await m.load() }
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
@@ -414,54 +392,33 @@ struct SpeechPane: View {
     // MARK: This Mac + what it uses
 
     @ViewBuilder var machineSection: some View {
-        Section {
+        SettingsGroup("speech.machine", content: {
             if let s = m.state {
-                MachineRow(hw: s.hardware)
-                Toggle(isOn: Binding(get: { m.auto }, set: { m.setAuto($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(S("speech.auto.title"))
-                        Text(S("speech.auto.detail")).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                SettingsLine { MachineRow(hw: s.hardware) }
+                SettingToggle("speech.auto", isOn: Binding(get: { m.auto }, set: { m.setAuto($0) }))
                 ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
                 ForEach(suggestions, id: \.model.id) { sug in suggestionRow(sug.model, purposes: sug.purposes) }
             } else if m.loading {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.loading")).foregroundStyle(.secondary) }
+                SettingsLine { HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.loading")).foregroundStyle(.secondary) } }
             }
-        } header: {
-            HStack {
-                Text(S("speech.section.machine"))
-                Spacer()
-                if m.loading && m.state != nil { ProgressView().controlSize(.mini) }
-            }
-        } footer: {
-            if let e = m.error { Text(e).font(.caption).foregroundStyle(Color.brandErr) }
-        }
+            if let e = m.error { SettingsLine { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr) } }
+        }, accessory: {
+            if m.loading && m.state != nil { ProgressView().controlSize(.mini) }
+        })
     }
 
     func purposeRow(_ p: ASRPurpose) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: p.symbol).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                .frame(width: 22, alignment: .center).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(p.title)
-                Text(p.detail).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 12)
+        SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
             if m.auto {
                 Text(m.selected(p)?.title ?? "—").foregroundStyle(.secondary)
             } else {
-                Picker("", selection: Binding(get: { m.selected(p)?.id ?? "" }, set: { id in
+                RowPicker(label: p.title, selection: Binding(get: { m.selected(p)?.id ?? "" }, set: { id in
                     if let x = m.model(id) { m.choose(x, for: p) }
                 })) {
                     ForEach(choices(p)) { x in Text(x.title).tag(x.id) }
                 }
-                .labelsHidden()
-                .fixedSize()
             }
         }
-        .accessibilityElement(children: .combine)
     }
 
     /// Installed models that run here (cloud ones when a key is set and local-only is off).
@@ -483,9 +440,10 @@ struct SpeechPane: View {
     }
 
     func suggestionRow(_ x: ASRModel, purposes: [ASRPurpose]) -> some View {
+        SettingsLine {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Image(systemName: "sparkles").foregroundStyle(Color.brandInk).frame(width: 22).accessibilityHidden(true)
+            HStack(alignment: .firstTextBaseline, spacing: 14) {
+                Image(systemName: "sparkles").foregroundStyle(Color.brandInk).frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(S("speech.suggest.title", x.title)).fontWeight(.medium)
                     Text(suggestionDetail(x, purposes)).font(.caption).foregroundStyle(.secondary)
@@ -497,10 +455,10 @@ struct SpeechPane: View {
                         .disabled(!(x.runsHere ?? true))
                 }
             }
-            if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 32) }
-            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 32) }
+            if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 36) }
+            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 36) }
         }
-        .padding(.vertical, 4)
+        }
     }
 
     func suggestionDetail(_ x: ASRModel, _ purposes: [ASRPurpose]) -> String {
@@ -518,29 +476,28 @@ struct SpeechPane: View {
     // MARK: Languages
 
     @ViewBuilder var languagesSection: some View {
-        Section {
-            FlowLayout(spacing: 6) {
-                ForEach(m.languages, id: \.self) { code in
-                    LanguageChip(title: endonym(code), help: languageName(code), removable: m.languages.count > 1) {
-                        m.setLanguages(m.languages.filter { $0 != code })
-                    }
-                }
-                Menu {
-                    ForEach(offeredLanguages.filter { !m.languages.contains($0) }, id: \.self) { code in
-                        Button(endonym(code) + (endonym(code) == languageName(code) ? "" : " — " + languageName(code))) {
-                            m.setLanguages(m.languages + [code])
+        SettingsGroup("speech.languages",
+                      footer: S(m.state?.languagesSet == true ? "speech.languages.footer" : "speech.languages.footer.system")) {
+            SettingsLine {
+                FlowLayout(spacing: 6) {
+                    ForEach(m.languages, id: \.self) { code in
+                        LanguageChip(title: endonym(code), help: languageName(code), removable: m.languages.count > 1) {
+                            m.setLanguages(m.languages.filter { $0 != code })
                         }
                     }
-                } label: {
-                    Label(S("speech.languages.add"), systemImage: "plus")
+                    Menu {
+                        ForEach(offeredLanguages.filter { !m.languages.contains($0) }, id: \.self) { code in
+                            Button(endonym(code) + (endonym(code) == languageName(code) ? "" : " — " + languageName(code))) {
+                                m.setLanguages(m.languages + [code])
+                            }
+                        }
+                    } label: {
+                        Label(S("speech.languages.add"), systemImage: "plus")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
                 }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
             }
-            .padding(.vertical, 2)
-        } header: { Text(S("speech.section.languages")) } footer: {
-            Text(S(m.state?.languagesSet == true ? "speech.languages.footer" : "speech.languages.footer.system"))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -549,14 +506,8 @@ struct SpeechPane: View {
     @ViewBuilder var modelsSection: some View {
         let here = m.models.filter { $0.local && ($0.runsHere ?? true) }
         let elsewhere = m.models.filter { $0.local && !($0.runsHere ?? true) }.count
-        Section {
-            ForEach(here) { modelRow($0) }
-        } header: { Text(S("speech.section.models")) } footer: {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(S("speech.models.footer")).fixedSize(horizontal: false, vertical: true)
-                if elsewhere > 0 { Text(S("speech.models.elsewhere")) }
-            }
-            .font(.caption).foregroundStyle(.secondary)
+        SettingsGroup("speech.models", footer: S("speech.models.footer") + (elsewhere > 0 ? "\n" + S("speech.models.elsewhere") : "")) {
+            ForEach(here) { x in SettingsLine { modelRow(x) } }
         }
     }
 
@@ -592,7 +543,6 @@ struct SpeechPane: View {
             if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
             if let b = m.bench[x.id], let e = b.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
         }
-        .padding(.vertical, 3)
     }
 
     func coverage(_ x: ASRModel) -> String {
@@ -629,35 +579,37 @@ struct SpeechPane: View {
     @ViewBuilder var resourcesSection: some View {
         if let s = m.state {
             let cores = s.hardware.perfCores + s.hardware.effCores
-            Section {
-                Stepper(value: Binding(get: { s.limits.threads }, set: { m.setLimit("threads", $0) }), in: 1...max(1, cores)) {
-                    LabeledRow(title: S("speech.limits.threads"), value: decimal(Double(s.limits.threads)),
-                               detail: S("speech.limits.threads.detail", decimal(Double(cores))))
+            SettingsGroup("speech.resources", footer: S("speech.limits.footer")) {
+                SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores)))) {
+                    HStack(spacing: 6) {
+                        Text(decimal(Double(s.limits.threads))).monospacedDigit().foregroundStyle(.secondary)
+                        Stepper(S("speech.limits.threads"), value: Binding(get: { s.limits.threads }, set: { m.setLimit("threads", $0) }),
+                                in: 1...max(1, cores)).labelsHidden()
+                    }
                 }
-                Stepper(value: Binding(get: { s.limits.maxConcurrent }, set: { m.setLimit("max_concurrent", $0) }), in: 1...4) {
-                    LabeledRow(title: S("speech.limits.concurrent"), value: decimal(Double(s.limits.maxConcurrent)),
-                               detail: S("speech.limits.concurrent.detail"))
+                SettingRow("speech.concurrent") {
+                    HStack(spacing: 6) {
+                        Text(decimal(Double(s.limits.maxConcurrent))).monospacedDigit().foregroundStyle(.secondary)
+                        Stepper(S("speech.limits.concurrent"), value: Binding(get: { s.limits.maxConcurrent }, set: { m.setLimit("max_concurrent", $0) }),
+                                in: 1...4).labelsHidden()
+                    }
                 }
                 if s.hardware.gpu.kind == "apple" {
-                    VStack(alignment: .leading, spacing: 4) {
-                        LabeledRow(title: S("speech.limits.memory"), value: percent(s.limits.maxMemoryFraction, digits: 0),
-                                   detail: S("speech.limits.memory.detail", mb(s.hardware.ramGB * 1024 * s.limits.maxMemoryFraction)))
-                        Slider(value: Binding(get: { s.limits.maxMemoryFraction }, set: { v in
-                            m.state?.limits.maxMemoryFraction = (v * 20).rounded() / 20
-                        }), in: 0.1...0.5, step: 0.05) { editing in
-                            if !editing, let f = m.state?.limits.maxMemoryFraction { m.setLimit("max_memory_fraction", f) }
+                    SettingRow("speech.memory", detail: S("speech.limits.memory.detail", mb(s.hardware.ramGB * 1024 * s.limits.maxMemoryFraction))) {
+                        HStack(spacing: 10) {
+                            Slider(value: Binding(get: { s.limits.maxMemoryFraction }, set: { v in
+                                m.state?.limits.maxMemoryFraction = (v * 20).rounded() / 20
+                            }), in: 0.1...0.5, step: 0.05) { editing in
+                                if !editing, let f = m.state?.limits.maxMemoryFraction { m.setLimit("max_memory_fraction", f) }
+                            }
+                            .frame(width: 150)
+                            .accessibilityLabel(S("speech.limits.memory"))
+                            Text(percent(s.limits.maxMemoryFraction, digits: 0)).monospacedDigit().foregroundStyle(.secondary)
+                                .frame(minWidth: 34, alignment: .trailing)
                         }
-                        .accessibilityLabel(S("speech.limits.memory"))
                     }
                 }
-                Toggle(isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(S("speech.limits.battery"))
-                        Text(S("speech.limits.battery.detail")).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            } header: { Text(S("speech.section.resources")) } footer: {
-                Text(S("speech.limits.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }))
             }
         }
     }
@@ -665,36 +617,36 @@ struct SpeechPane: View {
     // MARK: Cloud
 
     @ViewBuilder var cloudSection: some View {
-        Section {
+        SettingsGroup("speech.cloud", footer: S(m.localOnly ? "speech.cloud.local_only" : "speech.cloud.keys")) {
             ForEach(m.models.filter { !$0.local }) { x in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    StatusDot(tone: x.installed && !m.localOnly ? .good : .off)
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(x.title)
-                        Text((x.keys ?? []).joined(separator: "  ")).font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary).textSelection(.enabled)
+                SettingsLine {
+                    HStack(alignment: .center, spacing: 14) {
+                        StatusDot(tone: x.installed && !m.localOnly ? .good : .off).frame(width: SettingsMetrics.leadingWidth)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(x.title).font(.system(size: SettingsMetrics.titleSize))
+                            Text((x.keys ?? []).joined(separator: "  ")).font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                        Spacer()
+                        Text(x.installed ? S("speech.cloud.set") : S("speech.cloud.not_set")).foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Text(x.installed ? S("speech.cloud.set") : S("speech.cloud.not_set")).foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 2)
             }
-        } header: { Text(S("speech.section.cloud")) } footer: {
-            Text(S(m.localOnly ? "speech.cloud.local_only" : "speech.cloud.keys"))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
 
     // MARK: Advanced
 
     @ViewBuilder var advancedSection: some View {
-        Section {
-            Picker(S("speech.advanced.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
-                Text(S("speech.advanced.language.auto")).tag("auto")
-                ForEach(m.languages, id: \.self) { Text(endonym($0)).tag($0) }
+        SettingsGroup("speech.advanced") {
+            SettingRow("speech.language") {
+                RowPicker(label: S("speech.advanced.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
+                    Text(S("speech.advanced.language.auto")).tag("auto")
+                    ForEach(m.languages, id: \.self) { Text(endonym($0)).tag($0) }
+                }
             }
-            Toggle(S("speech.advanced.mirror"), isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
-        } header: { Text(S("speech.section.advanced")) }
+            SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
+        }
     }
 }
 
@@ -755,21 +707,6 @@ private struct Metric: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-private struct LabeledRow: View {
-    var title: String
-    var value: String
-    var detail: String
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Text(title)
-                Text(value).monospacedDigit().foregroundStyle(.secondary)
-            }
-            Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 

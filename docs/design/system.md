@@ -254,6 +254,12 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 
 | Element | Brand | Detail |
 |---|---|---|
+| Settings window | — | One resizable window (860 × 620, at least 760 × 520): a sidebar (the search field, then the panes in three small groups) and a page. The page is the pane's title (22 pt semibold), then sections: a 14 pt semibold heading, rows over a 1 px `separatorColor` hairline, a 12 pt secondary footnote. A row is its title (13 pt) and one-line description (12 pt, secondary) on the left, the control on the right (`SettingsKit`: `SettingsPage`, `SettingsGroup`, `SettingRow`). The page is `controlBackgroundColor`; no grouped-form cards. A section without a heading has no hairline above its first row. Under the transparent titlebar the page's ground fades out over 18 pt, so scrolled rows slip under it rather than being cut by the window's edge. |
+| Settings sidebar selection | T | the main window's `BrandRowView` (rounded tint, text `ink`; neutral 6 % when the window isn't key); while searching, panes show their match count (plain digits) and panes without matches are dimmed |
+| Settings: the row a search or a link lands on | T | a brief rounded tint behind the row, fading out over 0.7 s (none with Reduce Motion: it appears and goes) |
+| Settings search results | T (chosen) | the matched words in semibold (never brand), the section on the right in secondary; one row is ever tinted: the pointer moving onto a row makes it the keyboard's choice |
+| Settings: Agents drag to reorder | I | a 2 pt `brand.ink` line where the dragged agent will land |
+| Text buttons in Settings ("Change in Dictation…") | I | plain text button in `brand.ink`, not the system link blue |
 | Switches, checkboxes, radios, sliders, focus | `brand.accent` (native) | the `AccentColor` asset; no custom drawing |
 | Mic test meter | **G** vertical (dark) / I (light) | idle bars neutral |
 | "Recommended", "Runs first" badges | T + I | |

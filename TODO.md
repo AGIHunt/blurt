@@ -123,6 +123,11 @@
       the items' toolbar actions, no filter chips and a blank detail while there are no items at all
 
 ## Windows / Linux app (Tauri) — counterparts of the Mac shell fixes (audit E2)
+- [ ] Settings like the Mac's v0.9 window (docs/design/desktop-app.md §2.3): a sidebar with a search field and the
+      panes in three groups (Preferences / Work / This Mac), a page of rows (title + one-line description, control on
+      the right), search across every row in English and Chinese with per-row keywords (port BlurtCore
+      `SettingsCatalog` — ids, string keys, the `settings.kw.*` keywords — so both apps search the same index), a hit
+      opens its pane, scrolls to the row and flashes it; `blurt://settings/<pane>/<row>`
 - [ ] `settings.rs` `write_config`: take `$BLURT_HOME/.config.lock` (the lock `_common.update_global_config` and the Mac
       `Config.set` share) and never overwrite a config.json that doesn't parse (copy it to `config.json.bad-<time>`, say
       so once) — BlurtCore/Config.swift

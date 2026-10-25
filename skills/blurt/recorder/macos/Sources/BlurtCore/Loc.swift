@@ -84,6 +84,13 @@ public enum Loc {
         return key
     }
 
+    /// A key in one given language, nil when that language doesn't have it (Settings search matches both languages).
+    public static func string(_ key: String, table: String, language lang: String) -> String? {
+        guard let b = bundle(lang) else { return nil }
+        let s = b.localizedString(forKey: key, value: missing, table: table)
+        return s == missing ? nil : s
+    }
+
     /// Whether a key exists in the current language (tests, optional strings).
     public static func has(_ key: String, table: String = "Common") -> Bool {
         bundle(language).map { $0.localizedString(forKey: key, value: missing, table: table) != missing } ?? false
