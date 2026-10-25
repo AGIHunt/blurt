@@ -40,8 +40,9 @@ in the last minute). Prefer the old way? *Settings → General → End a voice n
 silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognised so far shows in a
-small dark panel under the island — the last line or two, the newest words fading in. It never takes the focus or a
-click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
+small dark panel under the island — the last two or three lines, the newest at the bottom, fading in. In a dictation
+the words keep up with you even when you don't pause: the part you're still saying shows in a lighter grey and firms
+up to white as each stretch is finished. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
 a recording. Because a voice note is transcribed piece by piece while you talk, its card has its words about as soon
 as you stop. Turn it off in *Settings → General → Show text while I talk*.
 
@@ -231,8 +232,12 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
   longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
   a few dots while it transcribes and polishes. `Esc` cancels. Fn used with another key (`Fn`-arrow, `Fn`-F-keys…)
-  never starts a dictation. What has been recognised so far shows under the island while you talk (a line or two,
-  after each pause); it's the raw transcript — the polished text is what gets typed.
+  never starts a dictation. What has been recognised so far shows under the island while you talk, about a second
+  behind you: the words you're still saying in a lighter grey (they can still change), then white once that stretch
+  is done. It's the raw transcript — the polished text is what gets typed — so it's there to tell you whether to
+  fix something by hand or just double-tap to send. It doesn't slow the paste down. (On Macs with less than 16 GB
+  the grey part is left out and the words appear after each pause; `record.dictation.live_partial` true / false
+  overrides that.)
 - **Dictating into the middle of a sentence.** Blurt looks at the text on both sides of the cursor and inserts only
   what's new: put the cursor in 「我知道你就是▮的。」, say 「就是从老家回来的」, and you get 「我知道你就是从老家回来的。」 —
   not the repeated 「就是」 or a second full stop. Punctuation and spaces fit the sentence too. It only trims what it
@@ -417,7 +422,7 @@ so the two must speak the same version: when one is older than the other, the is
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；岛上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
-**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在岛下方的深色小面板里：最后一两行，最新的字淡入。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
+**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在岛下方的深色小面板里：最后两三行，最新的在最下面，淡入。听写时即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
 菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其它图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
@@ -519,7 +524,7 @@ so the two must speak the same version: when one is older than the other, the is
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
 - **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
-- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方（每次停顿后更新一两行）；那是原始转写，真正输入的是润色后的文字。
+- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。那是原始转写，真正输入的是润色后的文字；它的用处是让你决定先手动改一下，还是直接双击发送。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
 - **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。

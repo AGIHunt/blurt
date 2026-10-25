@@ -27,8 +27,11 @@
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
 //    polish_timeout_ms); at key-up only the last piece is left. Any fall-back = that piece's raw text.
-//    The pieces' transcripts so far show under the island while the user talks (LiveTranscript, record.live_text,
-//    on; DictationStream.onHeard) — out of the way of the caret (read once at the start), gone once the text is in.
+//    The words show under the island while the user talks (LiveTranscript, record.live_text, on;
+//    DictationStream.onLive): the finished pieces' transcripts, then — quieter, provisional — the piece still being
+//    said, decoded about once a second by the warm speech server as an interim request that never delays a final
+//    piece (BlurtCore's DictationLiveDecode; record.dictation.live_partial, unset = on from 16 GB). Out of the way of
+//    the caret (read once at the start), gone once the text is in.
 //  • insert: DictationInsert (pasteboard → ⌘V into the app in front, DictationPastePolicy → pasteboard back).
 //    History: DictationHistory (history.jsonl, with asr / polish / load / total ms).
 //  • words (DictationVocabulary, vocabulary.json): sent with every request as hints, never rewrites — the speech
@@ -40,7 +43,7 @@
 // auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
 // polish_timeout_ms, load_budget_ms (12000), streaming (true), precapture (true), builtin_mic (automatic), start_sound
 // (false), retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true),
-// double_tap_send (true). Test hooks:
+// double_tap_send (true), live_partial (automatic: on from 16 GB). Test hooks:
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
 import BlurtCore
@@ -82,7 +85,8 @@ final class Dictation {
     /// tests: the "microphone" (a wav) — `dictation wav PATH`, else BLURT_TEST_MIC_WAV / BLURT_NOTE_WAV
     var testWav: String?
     /// tests: stop the next dictation at this point of the wav, as a key-up would (`dictation stop-after S`): a release
-    /// timed to the audio, which a command sent from outside can't be
+    /// timed to the audio, which a command sent from outside can't be — counted in audio fed, not by a timer (a
+    /// background test app's timers are coalesced: a wall-clock stop came 0.2–1.8 s late, later when the app was idle)
     var testStopAfter: Double?
     private var front: NSRunningApplication?
     private var holdTimer: Timer?
@@ -141,6 +145,12 @@ final class Dictation {
     static var loadBudget: Double { max(1, (settings["load_budget_ms"] as? Double ?? 12000) / 1000) }
     /// transcribe and polish while talking (DictationStream); off = everything after key-up, the old way
     static var streaming: Bool { settings["streaming"] as? Bool ?? true }
+    /// the live text also shows the piece still being said (interim decodes about once a second): unset = by the
+    /// machine (not on the light / minimal tiers, < 16 GB), true / false
+    static var livePartial: Bool {
+        settings["live_partial"] as? Bool
+            ?? DictationLiveDecode.tierAllows(ramGB: Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824)
+    }
     /// open the mic on the key-down, before the trigger has decided (the first words aren't lost)
     static var precapture: Bool { settings["precapture"] as? Bool ?? true }
     /// the Mac's own mic for dictation: unset = automatic (when the default input is Bluetooth), true / false
@@ -586,12 +596,25 @@ final class Dictation {
         opt.vocab = DictationVocabulary.shared.payload()
         opt.polish = Dictation.polishOn && polishModel != nil && base.polishes
         opt.variant = styleDecision?.category == .chat ? "chat" : nil
+        opt.interim = Dictation.livePartial && LiveTranscript.enabled
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
-        v.onSamples = { [weak s] x in s?.append(x) }
-        // the words while talking: the pieces' transcripts as they come in (shown from the first one on)
+        let stopAt = DictationInsert.testMode ? testStopAfter : nil
+        testStopAfter = nil
+        v.onSamples = { [weak s, weak v, weak self] x in
+            s?.append(x)
+            // tests: the release at that point of the audio, after this buffer (as a key-up would)
+            if let t = stopAt, let v = v, v.elapsed >= t {
+                DispatchQueue.main.async {
+                    guard let self = self, self.voice === v, self.phase == .listening else { return }
+                    self.trigger.reset(active: false)
+                    self.stop()
+                }
+            }
+        }
+        // the words while talking: the pieces' transcripts as they come in, the piece still being said after them
         let live = LiveTranscript.shared.begin(.dictation)
         liveSession = live
-        s.onHeard = { t in LiveTranscript.shared.update(t, session: live) }
+        s.onLive = { committed, pending in LiveTranscript.shared.update(committed, pending: pending, session: live) }
         voice = v
         stream = s
         wav = url
@@ -606,14 +629,6 @@ final class Dictation {
                 self.trigger.reset(active: false, keepTap: true)     // a second tap still sends: Return needs no mic
                 self.discard(quietly: true)
                 NoteVoice.toastUnavailable()
-            }
-        }
-        if DictationInsert.testMode, let t = testStopAfter {
-            testStopAfter = nil
-            DispatchQueue.main.asyncAfter(deadline: .now() + t) { [weak self] in
-                guard let self = self, self.voice === v, self.phase == .listening else { return }
-                self.trigger.reset(active: false)
-                self.stop()
             }
         }
     }
@@ -843,6 +858,19 @@ final class Dictation {
         }
         sem.wait()
         return out
+    }
+
+    /// An interim request for the live text: the warm server only (no process start, no CLI — a missing server is
+    /// "no_server", tried again later), `interim` so the server stops it as soon as a final piece (or anything) waits.
+    /// Blocking: off the main thread.
+    static func transcribeInterim(_ wav: URL, vocab: [[String: Any]], language: String, prior: String,
+                                  hint: String) -> [String: Any]? {
+        guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
+        var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
+                                  "vocab": vocab, "interim": true]
+        if !prior.isEmpty { req["prior"] = prior }
+        if !hint.isEmpty { req["hint"] = hint }
+        return WarmServer.call("asr-serve", req, timeout: 15)
     }
 
     /// The warm polish server. A model still coming up (the server starting, the weights loading) gets `loadBudget`

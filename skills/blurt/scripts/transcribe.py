@@ -19,7 +19,9 @@ video, so any backend (even ones without timestamps) works.
                                                      biased; they are hints, the text is as heard → + "asr_text","biased"
   transcribe.py serve  [--preload] [--model-id ID | --purpose dictation] [--idle 600] [--parent PID]   keep the
                                                      voice-note (or dictation) model warm; ends after --idle s unused
-                                                     (the memory goes back), with the --parent app, or on "exit"
+                                                     (the memory goes back), with the --parent app, or on "exit".
+                                                     A request with "interim": true (dictation's live text) is
+                                                     stopped as soon as another request waits → code "interrupted"
   transcribe.py dictation-models                     the models dictation can use here: selected, recommended
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
   transcribe.py recommend [--languages zh,en] [--purpose batch|live|note]
@@ -60,6 +62,7 @@ import json
 import os
 import platform
 import re
+import select as _select  # `select` is this module's model pick
 import shutil
 import socket
 import subprocess
@@ -103,6 +106,11 @@ class Fail(Exception):
     def __init__(self, message: str, code: str = "error", exit_code: int = 1):
         super().__init__(message)
         self.code, self.exit_code = code, exit_code
+
+
+class Interrupted(Exception):
+    """An interim decode (dictation's live text) stopped because another request is waiting (docs/design/dictation.md
+    §Live text): the final pieces never wait for one."""
 
 
 def emit(obj: dict) -> None:
@@ -1196,7 +1204,18 @@ class MlxWhisper(MlxBackend):
 
 class Qwen3Mlx(MlxBackend):
     """Qwen3-ASR 0.6B on MLX (mlx-qwen3-asr): ~0.18 s for a 6 s dictation on an M5 Max, and the only fast local
-    model here that takes a vocabulary per request (`context`) — dictation's default on Apple Silicon."""
+    model here that takes a vocabulary per request (`context`) — dictation's default on Apple Silicon.
+    Interruptible: with `stop_check` set (an interim request), the decode looks at it before each stage and each
+    token and raises Interrupted — the tag-aware decoder below is a loop of ours, so it can stop between steps."""
+    stop_check = None
+
+    @property
+    def interruptible(self) -> bool:
+        return self.tagged
+
+    def _check(self):
+        if self.stop_check is not None and self.stop_check():
+            raise Interrupted("another request is waiting")
 
     def load(self, args):
         try:
@@ -1254,21 +1273,25 @@ class Qwen3Mlx(MlxBackend):
     def _decode(self, x, ctx: str, prior: str) -> tuple[str, str | None]:
         prefer = self.prefer or ("Chinese" if not self.args.language and dictation_vocab.cjk_share(prior) >= 0.3 else None)
         self.last = {}
-        if prefer and self.tagged:
+        # an interim request goes through our own loop even without a preferred tag: it has to be able to stop
+        if (prefer or self.stop_check is not None) and self.tagged:
             try:
                 return self._decode_tagged(x, ctx, prefer)
+            except Interrupted:
+                raise
             except Exception as e:  # noqa: BLE001 — another mlx-qwen3-asr: its own transcribe, as before
                 self.tagged = False
                 print(f"qwen3-asr: tag-aware decode unavailable ({type(e).__name__}: {e}); plain decode", file=sys.stderr, flush=True)
         r = self.m.transcribe(x, model=self.repo, context=ctx, language=self.args.language)
         return (r.text or "").strip(), lang_code(getattr(r, "language", None))
 
-    def _decode_tagged(self, x, ctx: str, prefer: str) -> tuple[str, str | None]:
+    def _decode_tagged(self, x, ctx: str, prefer: str | None) -> tuple[str, str | None]:
         """mlx-qwen3-asr's decode, with the language tag chosen here: the prompt is prefilled up to `language`, the
         model's probabilities for English and `prefer` are read at the tag, and `prefer` wins unless English is all
         but certain (dictation_vocab.choose_tag). English that still reads like the Chinese around a name translated
         (Chinese characters in it, or nothing but names and function words) is decoded once more under `prefer`.
-        The same work as one plain decode; the extra decode only in that case."""
+        The same work as one plain decode; the extra decode only in that case. prefer None (an interim request with no
+        preferred language): the model's own tag, as the plain decode does."""
         mx = self.mx
         from mlx_qwen3_asr.audio import compute_features
         from mlx_qwen3_asr.chunking import split_audio_into_chunks
@@ -1279,7 +1302,7 @@ class Qwen3Mlx(MlxBackend):
         tok = _TokenizerHolder.get(_ModelHolder.get_resolved_path(self.repo, dtype=mx.float16))
         eos = set(GenerationConfig().eos_token_ids)
         head = tok.encode("language")
-        tag_ids = {name: tok.encode(" " + name)[0] for name in (prefer, "English")}
+        tag_ids = {name: tok.encode(" " + name)[0] for name in (prefer, "English") if name}
 
         def positions(a: int, b: int):
             p = mx.arange(a, b)[None, :]
@@ -1287,12 +1310,15 @@ class Qwen3Mlx(MlxBackend):
 
         def run(af, budget: int, force: str | None) -> tuple[str, str | None, dict]:
             ids = tok.build_prompt_tokens(n_audio_tokens=af.shape[1], language=None, context=ctx) + head
+            self._check()
             cache = model.create_cache(max_seq_len=len(ids) + budget + 8)
             logits = model.prefill(input_ids=mx.array([ids]), audio_features=af, position_ids=positions(0, len(ids)), cache=cache)
             pos = len(ids)
             info: dict = {}
             if force:
                 tag = force
+            elif not prefer:
+                tag = None
             else:
                 lp = logits.reshape(-1).astype(mx.float32)
                 lp = lp - mx.logsumexp(lp)
@@ -1311,6 +1337,7 @@ class Qwen3Mlx(MlxBackend):
             for _ in range(1, budget):
                 if token in eos or detect_repetition(out):
                     break
+                self._check()
                 logits = model.step(input_ids=mx.array([[token]]), position_ids=positions(pos, pos + 1), cache=cache,
                                     validate_input_ids=False)
                 pos += 1
@@ -1326,11 +1353,12 @@ class Qwen3Mlx(MlxBackend):
 
         texts, langs, last = [], [], {}
         for chunk, _off in split_audio_into_chunks(np.asarray(x, np.float32), sr=SR):
+            self._check()
             mel, fl = compute_features(chunk)
             af, _ = model.audio_tower(mel.astype(mx.float16), fl)
             budget = resolve_max_new_tokens(None, audio_duration_sec=len(chunk) / SR)
             text, lang, info = run(af, budget, None)
-            if lang == "English" and dictation_vocab.translated_glue(text, self.names):
+            if prefer and lang == "English" and dictation_vocab.translated_glue(text, self.names):
                 text2, _, _ = run(af, budget, prefer)
                 if dictation_vocab.cjk_share(text2) > 0:
                     text, lang = text2, prefer
@@ -1984,13 +2012,15 @@ class NoteEngine:
         return self
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
-             purpose: str | None = None, prior: str | None = None, hint: str | None = None) -> dict:
+             purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None) -> dict:
         """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
         them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
         `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
         the sentence.
         hint: the target app's window title and the text around the cursor — words seen there are listed to the model
-        first."""
+        first.
+        stop: an interim request (dictation's live text) — a callable that says another request is waiting; the decode
+        then raises Interrupted. Only an interruptible backend takes one (else Fail "interim_unsupported")."""
         t0 = time.perf_counter()
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
@@ -1999,6 +2029,8 @@ class NoteEngine:
         t_load = time.perf_counter()
         self.load(language, model_id)
         load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not before else 0
+        if stop is not None and not getattr(self.backend, "interruptible", False):
+            raise Fail(f"{self.name} can't stop a decode halfway: no interim requests", "interim_unsupported")
         x = read_wav(wav)
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
@@ -2008,6 +2040,8 @@ class NoteEngine:
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
         retried = False
+        if stop is not None:
+            self.backend.stop_check = stop
         try:
             results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
             # Qwen3-ASR now and then answers nothing for a short piece that follows a whole sentence of context (a
@@ -2018,6 +2052,8 @@ class NoteEngine:
                 results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
                 retried = True
         finally:
+            if stop is not None:
+                self.backend.stop_check = None
             if biased:
                 self.backend.set_vocab([])  # a voice note after this gets no dictation words
             if prior and hasattr(self.backend, "set_prior"):
@@ -2077,7 +2113,9 @@ def cmd_note(a):
 
 def cmd_serve(a):
     """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"load"|"ping"|"exit",
-    …}), one JSON line out. Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
+    …}), one JSON line out. A "note" with "interim": true (dictation's live text: the piece still being said) is
+    stopped as soon as another connection waits — a final piece never waits for it — and answers
+    {"ok": false, "code": "interrupted"}; on a model that can't stop halfway it answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
     the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
     started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
@@ -2130,11 +2168,16 @@ def cmd_serve(a):
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.backend is not None}
                     elif req.get("cmd") == "note":
                         last = time.time()
-                        if req.get("purpose") == "dictation":
+                        interim = bool(req.get("interim"))
+                        if req.get("purpose") == "dictation" and not interim:
                             uses.append(last)
                             del uses[:-50]
+                        # an interim decode looks for a waiting connection (a final piece, anything) between steps
+                        stop = (lambda: bool(_select.select([srv], [], [], 0)[0])) if interim else None
                         resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
-                                        req.get("purpose"), req.get("prior"), req.get("hint"))
+                                        req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop)
+                        if interim:
+                            resp["interim"] = True
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
@@ -2148,6 +2191,8 @@ def cmd_serve(a):
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
                     resp = {"ok": False, "error": str(e), "code": e.code}
+                except Interrupted:
+                    resp = {"ok": False, "error": "interrupted", "code": "interrupted", "interim": True}
                 except Exception as e:  # noqa: BLE001 — keep serving
                     resp = {"ok": False, "error": f"{type(e).__name__}: {e}"[:300], "code": "error"}
                 try:
