@@ -411,8 +411,8 @@ final class SettingsPaneCell: NSTableCellView {
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         badge.setContentCompressionResistancePriority(.required, for: .horizontal)
         badge.setContentHuggingPriority(.required, for: .horizontal)
-        imageView = icon
-        textField = title
+        // not wired as imageView / textField: the source list would repaint them in the accent when selected — the
+        // name stays labelColor on the brand tint, as in the main window's sidebar (system.md §3.3)
         NSLayoutConstraint.activate([
             icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 2),
             icon.centerYAnchor.constraint(equalTo: centerYAnchor),

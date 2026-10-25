@@ -19,6 +19,7 @@
 "state.handed_off" = "已交给 Agent";
 "state.handed_off.session" = "已交给 %@";
 "state.handed_off.external" = "已复制给你的 Agent";
+"state.handed_off.desktop" = "已交给 %@ 桌面端";
 "state.in_progress" = "进行中";
 "state.to_verify" = "待验证";
 "state.done" = "完成";

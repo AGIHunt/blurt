@@ -138,7 +138,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         // The agent ended: say how (the ended card: its reason, Review Changes… or Restart), not tmux's dead window.
         // The window stays readable (remain-on-exit) behind Show Output — until it is gone (merged, discarded,
         // restarted, ended with --kill), when a grouped view session would slide onto another session's window.
-        let windowGone = j.state == .cancelled || ["merge", "discard", "restart"].contains(j.agent?.finishAction ?? "")
+        let windowGone = j.state == .cancelled || ["merge", "discard", "restart", "take_back"].contains(j.agent?.finishAction ?? "")
         if !j.isActive, state.outputShown != cur || windowGone, state.attach != .ended {
             if windowGone { state.outputShown = nil }
             surface.attach(cur, force: true)        // → .ended without a client

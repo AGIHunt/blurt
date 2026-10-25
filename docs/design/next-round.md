@@ -242,7 +242,9 @@ Claude Code、Codex 是「干活的」：一个文件夹里跑各种会话。口
 字符串值如果匹配 `^[A-Za-z0-9][A-Za-z0-9_.:/+-]*$` 且不是 `true false null yes no on off ~` 或数字，就不加引号。
 读取时：值以 `{ [ "` 开头或是 JSON 数字 / true / false / null → `json.loads`；否则当普通字符串（去掉首尾空白）。
 别的工具写进来的块状 YAML：只认「`key:` 后面跟若干行 `  - 标量`」这一种（读成字符串列表），其它解析不了的，这个文件在索引里标
-`parse_error`、`items.py` 拒绝写它（`code: "unparseable"`），绝不覆盖。
+`parse_error`、`items.py` 拒绝写它（`code: "unparseable"`），绝不覆盖。按 uid 找它照样找得到（`store.salvage_header`：逐行读出
+还能解析的 uid / id / title / kind / aliases），所以应用按 uid 操作时得到的是 `unparseable` 而不是 `not_found`；详情页的文档对它给
+`_unreadable: [{uid, id, title, path}]`，页面说「读不出来」而不是「不在这里」（dogfood-2 W56）。
 
 键的顺序固定（写入时按这个顺序，之后的未知键按字母序，读到的未知键原样保留）：
 
@@ -450,8 +452,12 @@ open_items, unassigned}`（open = state ∈ new / todo / handed_off / in_progres
 - **doc** 多两个键：`project`（batch.project）和每条的 `store`。review.py 不再接受整份文档的 POST（400，v0.5 的旧页面）；`/files/` 同时认
   `/files/%2FUsers%2F…` 和 `/files//Users/…`（页面把 `files/` 和绝对路径直接拼起来），会话相对路径照旧；确认后的摘要多 `items: [{id, uid, path}]`，
   `file` 是 batch.json。
-- **index**：多一个索引 `items_session ON items(session_id)`；解析不了的文件也有一行（`parse_error`，没有 uid 时 uid =
-  `"X" + sha1(path)[:25]`，item_id = 文件名）；同一项目两个文件同一个 id（手工复制）时后来的 item_id 加 `~<uid 后 4 位>`。`index.py update` 也收会话里的
+- **index**：多一个索引 `items_session ON items(session_id)`；解析不了的文件也有一行（`parse_error`；uid / id 取自还能解析的那几行，
+  都没有时 uid 沿用这个路径原来那一行的，再没有才是 `"X" + sha1(path)[:25]`，item_id = 文件名；坏掉的那行是 kind / state / title
+  时沿用原来那一行的，列表不会把想法显示成笔记）。同一路径永远只有一行：任何一次写入前先删掉这个路径上 uid 不同的旧行（手改 uid、
+  切分支或同步把另一条放到同名文件、先以 X… 记下后来修好），否则 UNIQUE(path) 会让这个文件次次被跳过。每个文件、每个会话
+  各在一个 SAVEPOINT 里：一个出错只回滚它自己，列进 `"skipped": [{path, error}]`，扫描和批量 update 照常提交其余的；scan 还返回
+  `"unreadable": [{uid, id, path}]`（应用每个文件只提醒一次，`skipped` 的文件也一样：「X 没能加进列表」+ 在访达中显示，原始错误只进日志）；同一项目两个文件同一个 id（手工复制）时后来的 item_id 加 `~<uid 后 4 位>`。`index.py update` 也收会话里的
   `items.json` / `batch.json` / `shots.jsonl` / `meta.json`（= 它的会话）；search 多 `--sort title`。还没迁移的 v1/v2 会话，条目行挂在它将来所在的项目
   （store）下；`--root` 发现的未登记项目 `registered = 0`，key 用 store.json 的或默认规则算出的。
 - **MCP**：`list_projects.unassigned` = inbox 行是它的条目数，项目行是 AI 建议归它、还在 inbox 里的条目数；`mark_fixed` 返回
@@ -801,11 +807,24 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 - dispatch 的结果里每个 job 多一个 `handoff`；`launch[]` 多 `paste`（`interactive.session.prompt = "paste"` 的 agent，应用起来后粘贴）和
   `patterns`（应用做终端兜底用）。tmux 下的 paste 由后台的 `sessions.py send --after 3` 完成。条目改状态失败时多一个警告
   `{"code": "items_not_updated", "items", "message"}`（会话已经起来了）。
-- 错误码：dispatch `needs_project`、`mixed_projects`、`deleted`、`bad_transition`（条目不是 todo / handed_off）、`bad_agent`、`no_agent`、
+- 错误码：dispatch `needs_project`、`mixed_projects`、`deleted`、`bad_transition`（条目在待验证 / 已完成 / 不做）、`already_dispatched`
+  （条目还在一个活着的会话里：带 `job` 和条目的 `id`）、`auth`（带 `agent` 和 `fix`）、`bad_agent`、`no_agent`、
   `no_tmux`（退出码 4）、`tmux`、`git`；finish `no_worktree`、`running`（merge 前要先停 agent）、`uncommitted`（worktree 里有没提交的改动，
   带 `count`）、`wrong_branch`、`dirty`、`nothing`（分支没有新提交）、`conflict`（已 `merge --abort`）、`no_remote`、`push`、`gone`。
 - agent 对象另有（owner 内部用，读者可忽略）：`worktree.repo`（主仓库路径）、`base_sha`（不用 worktree 时派发那一刻的 HEAD，给 diff 用）、
   `started` / `closed`（条目已经推到 in_progress / to_verify）、`hooks_live`（收到过生命周期 hook）、`items_error`。
+- handed_off / in_progress 的条目，它的会话已经结束（启动失败、没回报就退出）时**可以再派**：dry run 带警告 `taken_back`，真派发时先
+  `set_work(…, "todo", by="user")` 收回（历史里有这一步）再交给新会话（dogfood-2 W33）。
+- `take-back JOB`（收回）：它手上的条目回到 todo；会话已经结束时，worktree 没有提交也没有未提交改动 → 连同分支、死窗口一起删掉，记
+  `finish.action = "take_back"`；有改动 → 留着，返回 `has_changes`。任何一次删 worktree 后，`.<repo>-worktrees/` 空了也删掉。
+- `clean-up JOB`：条目在别处收回之后（items.py：`R`、状态菜单、提示条）应用调它。不收回任何东西；会话已经结束、而且**没有一条**还在它手上
+  （handed_off / in_progress 且 `work.job` 是它）时，才像 take-back 一样清理；否则返回 `still_with_it: [uid]`，什么都不动。
+- `jobs.py gc`：结束超过 14 天、不在最新 300 个里的 agent 任务，只剩一个死窗口（remain-on-exit，每个最多 5 万行回滚）时不再因此永远留着：
+  先关掉那个窗口再删任务。窗口还活着、未完成条目还指着、worktree 没收尾的照旧留着。
+- Codex 的生命周期 hook 命令固定是 `'$BLURT_HOME/bin/blurt-hook' --agent codex`（每次派发重写这个 sh 小脚本去 exec 当前的 python 和
+  sessions.py），命令文本不随解释器、skill 路径或版本变，所以「Hooks need review」只出现一次。Windows 暂无（TODO.md）。
+- 会话异常结束的 `job.error` 多一个 `reason`：按失败分类（agents.json failures，含新的 `outdated`）用界面语言写好的一句话（哪个 agent、
+  怎么回事、怎么办）；`message` 只进日志。
 - `stop`：发两次 C-c（间隔 0.4 秒）、最多等 3 秒；任务一律变成 cancelled（即使 agent 自己的 SessionEnd 先到）。`discard` 不改条目状态
   （in_progress → todo 不在 K3 的表里），由用户在界面上重新打开。merge 成功后也关掉那个窗口。
 

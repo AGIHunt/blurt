@@ -118,7 +118,7 @@ final class AgentsModel: ObservableObject {
             if login { signInChecked = true }
             error = nil
         } catch {
-            self.error = "\(error)"
+            self.error = peopleText(error, context: "agents detect")
             rows = rows.map { var r = $0; if r.state == "checking" { r.state = "unknown" }; return r }    // no spinner for good
         }
         doctor = await doc
@@ -178,7 +178,7 @@ final class AgentsModel: ObservableObject {
         projectAgent = id
         Task {
             do { try await ProjectStore.shared.update(p.id, ["default_agent": id.isEmpty ? NSNull() : id]) }
-            catch { self.error = "\(error)" }
+            catch { self.error = peopleText(error, context: "project default agent") }
         }
     }
 
@@ -189,8 +189,8 @@ final class AgentsModel: ObservableObject {
         do {
             let p = try await Agents.shared.install(a.id, dryRun: true)
             plan = (a, p, false)
-            emit(["event": "install_preview", "agent": a.id, "changes": p.changes.map(InstallSheet.summary)])
-        } catch { self.error = "\(error)" }
+            emit(["event": "install_preview", "agent": a.id, "changes": p.changes.map { InstallSheet.summary($0, agent: a.id) }])
+        } catch { self.error = peopleText(error, context: "install preview") }
     }
 
     /// Step 2, after the user said yes.
@@ -203,7 +203,7 @@ final class AgentsModel: ObservableObject {
             plan = (cur.agent, p, true)
             connected[cur.agent.id] = p.applied ? true : nil
             emit(["event": "install_applied", "agent": cur.agent.id, "applied": p.applied])
-        } catch { self.error = "\(error)" }
+        } catch { self.error = peopleText(error, context: "install") }
     }
 
     /// One tiny headless prompt through the agent's real command line: proves it runs and is logged in (costs a
@@ -228,10 +228,14 @@ final class AgentsModel: ObservableObject {
                 f.minimumFractionDigits = 1
                 tests[a.id] = (true, TL("agents.test.ok", f.string(from: secs as NSNumber) ?? "\(secs)"))
             } else {
-                let why = r.status.map { TL("agents.test.exit", Int($0)) } ?? TL("agents.test.timeout")
-                tests[a.id] = (false, why + " · " + String(out.suffix(160)))
+                // its reason in words (login, quota, network… with the fix), never an exit code or raw output (logged)
+                NSLog("blurt agent test %@: status %@: %@", a.id, r.status.map { "\($0)" } ?? "timeout", String(out.suffix(600)))
+                let def = AgentHub.shared.def(a.id)
+                let why = r.status == nil ? TL("agents.test.timeout")
+                    : def.flatMap { d in AgentHub.shared.classify(out).map { $0.reasonText(d) } } ?? TL("agents.test.failed", a.name)
+                tests[a.id] = (false, why)
             }
-        } catch { tests[a.id] = (false, "\(error)") }
+        } catch { tests[a.id] = (false, peopleText(error, context: "agent test")) }
     }
 }
 
@@ -554,16 +558,23 @@ struct InstallSheet: View {
     var plan: InstallPlan
     var applied: Bool
 
-    /// One line per change for the confirmation sheet.
-    static func summary(_ c: InstallChange) -> String {
+    /// One line per change for the confirmation sheet — in words: what ("the Blurt skill", "the blurt MCP") and the
+    /// agent's own fix in the user's language, never the script's English or a raw error (that goes to the log only;
+    /// the sheet shows this line and nothing else per change).
+    static func summary(_ c: InstallChange, agent: String = "") -> String {
         switch c.action {
         case "symlink": return TL("install.symlink", c.path ?? "", c.target ?? "")
         case "exists": return TL("install.exists", c.path ?? c.argv?.joined(separator: " ") ?? "")
         case "conflict": return TL("install.conflict", c.path ?? "", c.pointsTo ?? "?")
         case "run": return TL("install.run", (c.argv ?? []).joined(separator: " "))
         case "json_merge": return TL("install.json_merge", (c.key ?? []).joined(separator: "."), c.path ?? "")
-        case "manual": return TL("install.manual", c.what ?? "", c.how ?? "")
-        default: return "\(c.action): \(c.error ?? c.path ?? "")"
+        case "manual":
+            let what = c.what.map { TL("install.what.\($0)") } ?? ""
+            let fix = AgentHub.shared.def(agent).map(\.fixText).flatMap { $0.isEmpty ? nil : $0 } ?? c.how ?? ""
+            return TL("install.manual", what, fix)
+        default:
+            NSLog("blurt install: %@ %@: %@", c.action, c.path ?? "", c.error ?? "")
+            return c.path.map { TL("install.error.path", ($0 as NSString).abbreviatingWithTildeInPath) } ?? TL("install.error")
         }
     }
 
@@ -575,10 +586,9 @@ struct InstallSheet: View {
                 ForEach(Array(plan.changes.enumerated()), id: \.offset) { _, c in
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Image(systemName: icon(c)).foregroundStyle(color(c))
-                        Text(Self.summary(c)).font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
+                        Text(Self.summary(c, agent: agent.id)).font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let e = c.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 22) }
                 }
             }
             .padding(10)

@@ -18,9 +18,9 @@ type FieldType = "text" | "area" | "list" | "tags" | "src";
 const RESERVED = new Set(["id", "uid", "kind", "title", "quote", "time", "frames", "clip", "source", "tags", "confidence",
   "questions", "answer", "state", "restore_to", "status", "exported", "merged_from", "merged_into", "severity", "type", "fix", "fix_history",
   "schema", "work", "work_history", "project", "project_by", "project_confidence", "suggested_project", "created",
-  "updated", "path", "store", "aliases", "language", "assignee"]);
-const SHOWN = new Set(["module", "owner", "actual", "expected", "steps", "code_refs", "summary", "why", "inspired_by",
-  "next_steps", "open_questions", "details", "due"]);
+  "updated", "path", "store", "aliases", "language", "assignee", "enrich"]);
+/** shown by the kind's own layout (issue: its code refs): never repeated as a generic field */
+const CUSTOM = new Set(["code_refs"]);
 
 function format(i: Item, k: string, type: FieldType): string {
   if (type === "src") return i.source?.url || "";
@@ -202,7 +202,7 @@ function WorkPanel({ i }: { i: Item }) {
   const st = s.stateOf(i);
   const rec = i.work ?? (i.fix ? fixAsWork(i.fix) : undefined);
   if (!rec || st === "new" || st === "discarded") return null;
-  const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(rec.agent) }) : "";
+  const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(s, rec.agent) }) : "";
   const when = rec.at ? s.i18n.formatRelative(rec.at) : "";
   // one Open Session per item: while it is with the agent a host banner may have it (the Mac app), else it is here
   const banner = s.host.sessionBanner && (st === "handed_off" || st === "in_progress");
@@ -294,7 +294,7 @@ function WorkHistory({ i }: { i: Item }) {
         {[...rows].reverse().map((f, n) => (
           <li key={n} className={"s-" + (f.state ?? "todo")}>
             <span className="wls">{s.stateLabel(f.state ?? "todo")}</span>
-            {f.agent && f.agent !== "human" ? <span className="wla">{s.t("work.by", { who: agentName(f.agent) })}</span> : null}
+            {f.agent && f.agent !== "human" ? <span className="wla">{s.t("work.by", { who: agentName(s, f.agent) })}</span> : null}
             {f.commit ? <code>{shortSha(f.commit)}</code> : null}
             {f.pr ? (
               <a href={f.pr} target="_blank" rel="noreferrer">
@@ -310,7 +310,18 @@ function WorkHistory({ i }: { i: Item }) {
   );
 }
 
-const SOURCE_ICON: Record<string, IconName> = { recording: "video", snap: "snap", voice: "waveform", url: "external-link", import: "download", service: "agent" };
+const SOURCE_ICON: Record<string, IconName> = { recording: "video", snap: "snap", voice: "waveform", dictation: "mic", url: "external-link", import: "download", service: "agent" };
+
+/** "com.apple.TextEdit" → "TextEdit": an older dictation row stored the app's bundle id; people see its last part */
+export const appLabel = (app: string) => (/^[a-z0-9-]+(\.[A-Za-z0-9-]+){2,}$/.test(app) ? app.split(".").pop()! : app);
+
+/** A capture folder ("20261025-101010-shots") as the moment it was made, in the reader's format; null if it isn't one. */
+export function sessionWhen(s: ReviewStore, dir: string): string | null {
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/.exec(dir.split(/[\\/]/).pop() || "");
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+  return s.i18n.formatDate(d.toISOString(), { dateStyle: "medium", timeStyle: "short" });
+}
 
 /** where the item came from and how it got into this project (K1 source, K2 project_by / suggestion) */
 function Provenance({ i }: { i: Item }) {
@@ -322,19 +333,25 @@ function Provenance({ i }: { i: Item }) {
   const sug = i.suggested_project && s.project(i.suggested_project.id);
   if (i.created) rows.push([s.t("source.captured"), <span title={s.i18n.formatDate(i.created, { dateStyle: "full", timeStyle: "short" })}>{s.i18n.formatDate(i.created)}</span>]);
   if (src.by) rows.push([s.t("source.by"), String(src.by)]);
-  if (src.app) rows.push([s.t("source.app"), String(src.app)]);
+  if (src.app) rows.push([s.t("source.app"), appLabel(String(src.app))]);
   if (src.url)
     rows.push([s.t("source.page"), <a href={String(src.url)} target="_blank" rel="noreferrer" className="trunc">{String(src.url).replace(/^https?:\/\//, "")}</a>]);
-  if (src.session)
+  if (src.session) {
+    // when it was captured, not the folder's name (the folder is one click away)
+    const when = sessionWhen(s, String(src.session)) ?? s.t("source.session.unnamed");
     rows.push([s.t("source.session"), s.host.reveal ? (
       <button className="linkbtn trunc" onClick={() => s.host.reveal!(String(src.session))} title={s.t("source.session.reveal")}>
-        <Icon name="folder" size={12} /> {String(src.session).split(/[\\/]/).pop()}
+        <Icon name="folder" size={12} /> {when}
       </button>
-    ) : <span className="trunc">{String(src.session).split(/[\\/]/).pop()}</span>]);
+    ) : <span className="trunc">{when}</span>]);
+  }
   if (i.aliases?.length) rows.push([s.t("source.aliases"), s.i18n.formatList(i.aliases)]);
   if (i.merged_from?.length) {
-    const ids = i.merged_from.map((u) => s.data.items.find((x) => x.uid === u)?.id || (u.length > 12 ? u.slice(0, 8) + "…" : u));
-    rows.push([s.t("source.merged_from"), s.i18n.formatList(ids)]);
+    // an item merged in that this doc no longer lists has no id to show here: say how many, never its uid
+    const known = i.merged_from.map((u) => s.data.items.find((x) => x.uid === u || x.id === u)?.id).filter((x): x is string => !!x);
+    const other = i.merged_from.length - known.length;
+    const parts = other ? [...known, s.plural("source.merged_earlier", other)] : known;
+    rows.push([s.t("source.merged_from"), s.i18n.formatList(parts)]);
   }
   // "captured in this project" says nothing on an item that has no project (Unassigned)
   const by = i.project_by && p && !(i.project_by === "capture" && (i.project || "inbox") === "inbox") ? i.project_by : null;
@@ -403,15 +420,19 @@ function specsOf(i: Item, kind: string, s: ReviewStore): { body: Spec; prompt: s
   } else if (kind === "task") {
     body = { k: "details", label: t("field.details") };
     prompt = t("field.prompt.task");
-    rest = [{ k: "owner", label: t("field.owner"), type: "text", pair: "when" }, { k: "due", label: t("field.due"), type: "text", pair: "when" }];
+    // what "done" means is what the agent is handed: the user sees and edits it too (dogfood-2 W34)
+    rest = [{ k: "expected", label: t("field.done_when") }, { k: "steps", label: t("field.task_steps"), type: "list" },
+      { k: "owner", label: t("field.owner"), type: "text", pair: "when" }, { k: "due", label: t("field.due"), type: "text", pair: "when" }];
   } else {
     body = { k: "summary", label: t("field.summary"), cls: "big" };
     prompt = t("field.prompt.note");
     rest = [{ k: "details", label: t("field.details") }];
   }
-  // anything else the lens added: shown generically so custom lenses just work
+  // anything else the item holds: shown generically, so custom lenses just work and no stored field is ever hidden
+  // (another kind's field — an idea's `expected` after a kind change — included)
+  const own = new Set([body.k, ...rest.map((f) => f.k)]);
   for (const [k, v] of Object.entries(i)) {
-    if (RESERVED.has(k) || SHOWN.has(k) || k.startsWith("_")) continue;
+    if (RESERVED.has(k) || own.has(k) || k.startsWith("_") || (kind === "issue" && CUSTOM.has(k))) continue;
     if (typeof v === "string") rest.push({ k, label: fieldLabel(k, s.i18n) });
     else if (Array.isArray(v) && v.every((x) => typeof x === "string")) rest.push({ k, label: fieldLabel(k, s.i18n), type: "list" });
   }

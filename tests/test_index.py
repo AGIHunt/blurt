@@ -244,7 +244,122 @@ def test_cards_and_unparseable_files(env):
     bad.write_text("---\nuid: 01JB7ZK3Q4M8W2E5R6T9Y0ABD1\nid: IN-9\ntitle: half\nx: {broken\n---\n")
     cli("update", bad)
     r = db().execute("SELECT * FROM items WHERE path = ?", (str(bad),)).fetchone()
-    assert r["parse_error"] and r["item_id"] == "IN-9-bad"
+    # the lines that still parse give its identity: found by its uid, listed under its own id
+    assert r["parse_error"] and r["item_id"] == "IN-9" and r["uid"] == "01JB7ZK3Q4M8W2E5R6T9Y0ABD1"
+
+
+def _retitle(path: Path, title: str) -> None:
+    lines = path.read_text(encoding="utf-8").split("\n")
+    k = next(i for i, ln in enumerate(lines) if ln.startswith("title:"))
+    lines[k] = f"title: {json.dumps(title)}"
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _break(path: Path) -> None:
+    """Hand-edit one front-matter line of an item file into something that doesn't parse."""
+    lines = path.read_text(encoding="utf-8").split("\n")
+    k = next(i for i, ln in enumerate(lines) if ln.startswith("kind:"))
+    lines[k] = "kind: [broken"
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_one_broken_file_never_stops_a_scan_or_an_update(env):
+    """dogfood-2 W56: a previously indexed item broken by hand made every scan and every batch update fail
+    (UNIQUE items.path, the whole transaction rolled back), so other edits never reached the lists."""
+    migrated(env)
+    files = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))
+    assert len(files) >= 3
+    broken, a, b = files[0], files[1], files[2]
+    uid = st.read_header(broken)["uid"]
+    _break(broken)
+    _retitle(a, "edited on disk A")
+    _retitle(b, "edited on disk B")
+    r = cli("update", a, broken, b)
+    assert r["updated"] == 3 and "skipped" not in r
+    con = db()
+    titles = {x["path"]: x["title"] for x in con.execute("SELECT path, title FROM items")}
+    assert titles[str(a)] == "edited on disk A" and titles[str(b)] == "edited on disk B"
+    row = con.execute("SELECT * FROM items WHERE path = ?", (str(broken),)).fetchone()
+    assert row["uid"] == uid and row["parse_error"]                      # the same row, marked unreadable in place
+    _retitle(a, "again A")
+    s = cli("scan")
+    assert s["unreadable"] == [{"uid": uid, "id": row["item_id"], "path": str(broken)}] and "skipped" not in s
+    assert db().execute("SELECT title FROM items WHERE path = ?", (str(a),)).fetchone()[0] == "again A"
+    # the app addresses items by uid: a broken one says it can't be read (never "not found"), and a detail's doc
+    # lists it as unreadable instead of leaving it out
+    p = subprocess.run([sys.executable, str(SCRIPTS / "items.py"), "state", uid, "--action", "done"],
+                       capture_output=True, text=True, env=os.environ.copy())
+    assert json.loads(p.stdout.strip().splitlines()[-1])["code"] == "unparseable"
+    doc = cli("doc", "--project", row["project_id"], "--item", uid, script="items.py")["doc"]
+    assert [u["uid"] for u in doc["_unreadable"]] == [uid] and uid not in [i["uid"] for i in doc["items"]]
+
+
+def test_a_broken_kind_line_keeps_the_kind_the_list_showed(env):
+    """Review of fix 2: a hand-broken idea showed a note icon in the list (its kind line was the broken one)."""
+    migrated(env)
+    con = db()
+    row = next(r for r in con.execute("SELECT path, kind, state FROM items WHERE kind != 'note'"))
+    f = Path(row["path"])
+    _break(f)
+    cli("update", f)
+    after = db().execute("SELECT kind, state, parse_error FROM items WHERE path = ?", (str(f),)).fetchone()
+    assert after["parse_error"] and (after["kind"], after["state"]) == (row["kind"], row["state"])
+
+
+def test_a_file_whose_uid_changed_replaces_its_row(env):
+    """Review of fix 2: a readable file at an indexed path with another uid than its row (a uid edited by hand, a
+    checkout that put another item at the same name) hit UNIQUE items.path and was skipped on every scan."""
+    migrated(env)
+    f = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))[0]
+    uid = st.read_header(f)["uid"]
+    new = "01JB7ZK3Q4M8W2E5R6T9Y0ZZZZ"
+    f.write_text(f.read_text(encoding="utf-8").replace(uid, new), encoding="utf-8")
+    r = cli("update", f)
+    assert r["updated"] == 1 and "skipped" not in r
+    rows = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchall()
+    assert [(x["uid"], x["parse_error"]) for x in rows] == [(new, None)]
+    s = cli("scan", "--full")
+    assert "skipped" not in s and not db().execute("SELECT 1 FROM items WHERE uid = ?", (uid,)).fetchone()
+
+
+def test_a_file_indexed_broken_without_a_uid_then_fixed(env):
+    """A file first indexed while its uid line didn't parse gets a stand-in uid; once fixed, its real uid takes
+    the row over instead of the file being skipped from then on."""
+    migrated(env)
+    items = env["repo"] / ".blurt" / "items"
+    src = sorted(items.glob("*.md"))[0]
+    h = st.read_header(src)
+    real_uid = "01JB7ZK3Q4M8W2E5R6T9Y0AAAA"
+    text = src.read_text(encoding="utf-8").replace(h["uid"], real_uid).replace(f"id: {h['id']}", "id: NEW-99")
+    f = items / "NEW-99-copied.md"
+    good = text
+    f.write_text("\n".join("uid: [broken" if ln.startswith("uid:") else ln for ln in text.split("\n")),
+                 encoding="utf-8")
+    cli("update", f)
+    row = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchone()
+    assert row["uid"].startswith("X") and row["parse_error"]
+    f.write_text(good, encoding="utf-8")
+    r = cli("update", f)
+    assert "skipped" not in r
+    rows = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchall()
+    assert [(x["uid"], x["parse_error"]) for x in rows] == [(real_uid, None)]
+
+
+def test_a_file_that_throws_is_skipped_and_reported(env, monkeypatch):
+    """Whatever else goes wrong with one file is rolled back alone (SAVEPOINT) and listed, never the whole batch."""
+    migrated(env)
+    files = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))
+    real_index_file = index.index_file
+
+    def flaky(con, p, *a, **kw):
+        if Path(p) == files[0]:
+            raise RuntimeError("boom")
+        return real_index_file(con, p, *a, **kw)
+    monkeypatch.setattr(index, "index_file", flaky)
+    _retitle(files[1], "still indexed")
+    r = index.update_paths([files[0], files[1]])
+    assert r["skipped"][0]["path"] == str(files[0]) and "boom" in r["skipped"][0]["error"]
+    assert db().execute("SELECT title FROM items WHERE path = ?", (str(files[1]),)).fetchone()[0] == "still indexed"
 
 
 def test_readonly_reader_and_wal(env):

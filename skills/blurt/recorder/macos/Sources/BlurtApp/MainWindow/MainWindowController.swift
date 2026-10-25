@@ -237,7 +237,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         show()
         guard let row = model.itemRow(uid: uid) else {
             // a link, notification or job for an item that was deleted or moved out of every store
-            appDelegate?.toast(T("app.url.no_item", String(uid.prefix(12))))
+            appDelegate?.toast(T("app.url.no_item"))
             return
         }
         model.text = ""
@@ -447,7 +447,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func renameSelection() {
         // in place, in the row (micro 1): no sheet; Return / Tab / a click away commits, Esc reverts
         let sel = list.selectedItems
-        guard sel.count == 1, let it = sel.first, !it.legacy, Scripts.canWrite else { NSSound.beep(); return }
+        guard sel.count == 1, let it = sel.first, !it.readOnly, Scripts.canWrite else { NSSound.beep(); return }
         window?.makeFirstResponder(list.table)
         if !list.beginRename(commit: { [weak self] it, t in self?.edit([it], ["title": t]) }) { NSSound.beep() }
     }
@@ -487,6 +487,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             switch await Scripts.awaiting({ Scripts.state(items.map(\.uid), action: action, done: $0) }) {
             case .success:
                 self.wrote(items)
+                // taken back from a session that is over: it leaves no worktree, branch or window behind
+                if action == "take_back" { SessionRecovery.cleanUp(jobs: items.compactMap(\.workJob)) }
                 guard !redoing else { return }
                 // where it went, and the way back — the row may just have left the list (like the review page's toast)
                 let to = StateMenu.target(action, items)
@@ -504,7 +506,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// Why a key does nothing for the selection: a discarded item has to be restored first; otherwise the state's
     /// own menu (S) has what can be done from there.
     func notHere(_ key: String, _ items: [ItemRow]) -> String? {
-        switch Lifecycle.refusal(forKey: key, states: items.filter { !$0.legacy }.map(\.state)) {
+        if !items.isEmpty, items.allSatisfy(\.unreadable) { return T("main.unreadable.fix_first") }
+        switch Lifecycle.refusal(forKey: key, states: items.filter { !$0.readOnly }.map(\.state)) {
         case .discarded: return T("main.state.restore_first")
         case .state(let s): return T("main.state.not_here", s.map(Look.stateName) ?? T("main.state.these"))
         case nil: return nil
@@ -551,7 +554,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// A list key (A, D, R, W, X / ⌫) on the selection: each item gets what the key means from its own state — R sends
     /// back what is waiting to be verified and reopens what is done in the same press.
     func act(key: String) {
-        let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.legacy }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
+        let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.readOnly }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
         let runs = byAction.filter { !$0.key.isEmpty }
         guard !runs.isEmpty else {
             NSSound.beep()
@@ -583,7 +586,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// User edits = items.py user-ops by uid, per project (the same ops the review component sends).
     func edit(_ items: [ItemRow], _ set: [String: Any]) {
-        let items = items.filter { !$0.legacy }
+        let items = items.filter { !$0.readOnly }
         guard !items.isEmpty else { return }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
         // ⌘Z: each item's old title / kind back (registered now, so inside an undo it becomes the redo)
@@ -687,8 +690,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             var last: Project?
             for u in urls {
                 do { last = try await ProjectStore.shared.open(folder: u) }
-                catch let e as ProjectError { alert(T("main.open.failed", u.lastPathComponent), Scripts.Failure(code: e.code, message: "\(e)").localized) }
-                catch { alert(T("main.open.failed", u.lastPathComponent), "\(error)") }
+                catch { alert(T("main.open.failed", u.lastPathComponent), peopleText(error, context: "open folder")) }
             }
             if let p = last {
                 model.reloadSidebar()
@@ -702,7 +704,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// item back to the project it came from, with its old id. The step is on the stack at once; the move runs in
     /// writes, after anything still being written.
     func move(uids: [String], to project: String) {
-        guard model.items(uids: uids).contains(where: { $0.projectID != project && !$0.legacy }) else { return }
+        guard model.items(uids: uids).contains(where: { $0.projectID != project && !$0.readOnly }) else { return }
         move(uids: uids, to: project, toast: true)
     }
 
@@ -712,7 +714,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         register(moveUndoName(project), step) { c, s in c.undoMove(uids: uids, to: project, s) }
         writes.run { [weak self] in
             guard let self = self else { return }
-            let items = self.model.items(uids: uids).filter { $0.projectID != project && !$0.legacy }
+            let items = self.model.items(uids: uids).filter { $0.projectID != project && !$0.readOnly }
             guard !items.isEmpty else { return self.drop(step) }
             step.value = items.map { (uid: $0.uid, project: $0.projectID) }
             switch await Scripts.awaiting({ Scripts.move(items.map(\.uid), to: project, done: $0) }) {
@@ -730,7 +732,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     static func projectName(_ id: String) -> String {
-        id == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: id)?.name ?? id
+        id == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: id)?.name ?? T("main.project.removed_name")
     }
     private func moveUndoName(_ project: String) -> String { T("main.move.undo_name", Self.projectName(project)) }
 
@@ -900,40 +902,66 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: handing off (K5 in Blurt, K6 to your own agent)
 
-    /// Why these items can't go to a session in Blurt, before anyone tries (the menus show it as the item's tooltip,
-    /// ⌘Return as a toast): nil = they can.
-    func dispatchBlocker(_ items: [ItemRow]) -> String? {
-        let items = items.filter { !$0.discarded && !$0.legacy }
-        if items.isEmpty { return nil }
-        if Set(items.map(\.projectID)).count > 1 { return T("main.dispatch.one_project") }
-        if items.first?.projectID == "inbox" { return T("main.dispatch.needs_project") }
-        return nil
+    /// Why these items can't go to a session in Blurt, decided here before the panel opens (HandOffCheck: the rules
+    /// sessions.py enforces) — the menus show it as the item's tooltip, ⌘Return as a toast with the way out. The panel
+    /// never opens on something it would refuse.
+    func dispatchBlock(_ items: [ItemRow]) -> HandOffBlock? {
+        let check = items.filter { !$0.legacy }.map {
+            HandOffCheck.Item(itemID: $0.itemID, state: $0.state, projectID: $0.projectID, job: $0.workJob, unreadable: $0.unreadable)
+        }
+        return HandOffCheck.block(check) { JobStore.shared.job($0)?.isActive == true }
+    }
+
+    func dispatchBlocker(_ items: [ItemRow]) -> String? { dispatchBlock(items).map(Self.blockText) }
+
+    static func blockText(_ b: HandOffBlock) -> String {
+        switch b {
+        case .unreadable: return T("main.unreadable.fix_first")
+        case .discarded: return T("main.dispatch.discarded")
+        case .finished(let s): return T("main.dispatch.reopen_first", Look.stateName(s))
+        case .withSession(let id, _): return T("main.dispatch.with_session", id)
+        case .mixedProjects: return T("main.dispatch.one_project")
+        case .needsProject: return T("main.dispatch.needs_project")
+        }
     }
 
     /// Start an agent session in Blurt: the dispatch panel (agent, mode, worktree, the concurrent-edit reminder —
-    /// inline, Terminal/DispatchPanel). Items that can't go say why at once, with the way out (Move to Project…).
+    /// inline, Terminal/DispatchPanel). Items that can't go say why at once, with the way out (Move to Project…,
+    /// Restore, Reopen, Open Its Session).
     func dispatch(uids: [String]) {
-        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
-        guard !items.isEmpty else { NSSound.beep(); return }
-        if let why = dispatchBlocker(items) {
+        let all = model.items(uids: uids)
+        guard !all.isEmpty else { NSSound.beep(); return }
+        if let b = dispatchBlock(all) {
             NSSound.beep()
-            let inbox = items.first?.projectID == "inbox" && Set(items.map(\.projectID)).count == 1
+            let why = Self.blockText(b)
+            let way: (String, () -> Void)?
+            switch b {
+            case .needsProject: way = (T("main.dispatch.move_first"), { [weak self] in self?.showMoveMenu() })
+            case .discarded: way = (StateMenu.title("restore"), { [weak self] in self?.apply("restore", to: all) })
+            case .finished: way = (StateMenu.title("reopen"), { [weak self] in self?.apply("reopen", to: all) })
+            case .withSession(_, let job): way = (T("main.dispatch.open_session"), { TerminalModule.reveal(job: job) })
+            case .unreadable:
+                let f = all.first(where: \.unreadable)?.fileURL
+                way = f.map { u in (T("main.unreadable.open"), { NSWorkspace.shared.open(u) }) }
+            case .mixedProjects: way = nil
+            }
+            emit(["event": "dispatch_blocked", "why": "\(b)"])
             if let island = AppEnvironment.island {
-                island.toast(why, actionTitle: inbox ? T("main.dispatch.move_first") : nil,
-                             action: inbox ? { [weak self] in self?.showMoveMenu() } : nil)
+                island.toast(why, actionTitle: way?.0, action: way?.1)
             } else {
                 appDelegate?.toast(why)
             }
             return
         }
-        guard let d = AppEnvironment.dispatch else { NSSound.beep(); return }
+        let items = all.filter { !$0.discarded && !$0.readOnly }
+        guard !items.isEmpty, let d = AppEnvironment.dispatch else { NSSound.beep(); return }
         d(items.map(\.uid))
     }
 
     /// Copy instruction / full text for your own agent app (K6). The sheet is written and the items marked handed off
     /// when you copy — that click is the hand-off.
     func handOff(uids: [String], what: String, reply: @escaping ([String: Any]?) -> Void) {
-        let items = model.items(uids: uids).filter { !$0.discarded && !$0.legacy }
+        let items = model.items(uids: uids).filter { !$0.discarded && !$0.readOnly }
         guard !items.isEmpty else { NSSound.beep(); return reply(nil) }
         Scripts.handoff(items.map(\.uid)) { [weak self] r in
             switch r {
@@ -966,7 +994,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// clips: seconds) the island says so and the action is off; then "Saved" with Show in Finder takes that line's
     /// place, or an alert says why not (the script's own reason under ours). `to` (tests): skip the panel.
     func exportBundle(uids: [String], to fixed: URL? = nil, done: ((URL?) -> Void)? = nil) {
-        let items = model.items(uids: uids).filter { !$0.legacy }
+        let items = model.items(uids: uids).filter { !$0.readOnly }
         guard !items.isEmpty, Scripts.canWrite, !bundling else { NSSound.beep(); done?(nil); return }
         let one = Set(items.map(\.projectID)).count == 1
         let name = HandoffBundle.fileName(project: one ? items[0].projectName : nil, count: items.count, chinese: Loc.isChinese)
@@ -999,8 +1027,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 case .failure(let f):
                     emit(["event": "bundle_failed", "code": f.code, "error": f.message])
                     AppEnvironment.island?.dropToasts(key: "bundle")
-                    self?.alert(T("main.bundle.failed"), HandoffBundle.failureText(ours: Self.errorSentence(f.code), script: f.message,
-                                                                                  fallback: f.localized))
+                    NSLog("blurt bundle: %@: %@", f.code, f.message)
+                    let ours = Loc.has("main.bundle.error.\(f.code)", table: "Main") ? T("main.bundle.error.\(f.code)") : Self.errorSentence(f.code)
+                    self?.alert(T("main.bundle.failed"), HandoffBundle.failureText(ours: ours, fallback: f.localized))
                     done?(nil)
                 }
             }
@@ -1051,7 +1080,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let one = items.map { $0.count == 1 } ?? true
         let bar = items == nil
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.doc", key: "c", mods: [.command, .shift])
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         _ = add(m, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
@@ -1104,7 +1133,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// M (and Move to Project… in the palette): a small popover at the selection — type to filter, ↩ moves every
     /// selected item there (one ⌘Z for all of them). Nothing selected, or items that can't move: a beep.
     func pickProject() {
-        let items = list.selectedItems.filter { !$0.legacy }
+        let items = list.selectedItems.filter { !$0.readOnly }
         guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
         let t = list.table
         let rows = t.selectedRowIndexes
@@ -1245,16 +1274,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             // disabled with the reason as its tooltip, never an alert after the click (micro 23)
             let why = dispatchBlocker(items)
             item.toolTip = why
-            return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.legacy }
+            return Scripts.canWrite && why == nil && items.contains { !$0.discarded && !$0.readOnly }
         case #selector(mCopyInstruction), #selector(mCopyFull):
-            return Scripts.canWrite && items.contains { !$0.discarded && !$0.legacy }
+            return Scripts.canWrite && items.contains { !$0.discarded && !$0.readOnly }
         case #selector(mExportBundle):
-            return Scripts.canWrite && !bundling && items.contains { !$0.legacy }
+            return Scripts.canWrite && !bundling && items.contains { !$0.readOnly }
         case #selector(mState(_:)):
             guard Scripts.canWrite, let a = item.representedObject as? String else { return false }
             if a == "back" {
                 // the menu bar's one "back" entry says what R does for the selection
-                let back = items.filter { !$0.legacy }.compactMap { Lifecycle.backAction($0.state) }
+                let back = items.filter { !$0.readOnly }.compactMap { Lifecycle.backAction($0.state) }
                 item.title = StateMenu.title(Set(back).count == 1 ? back[0] : "send_back")
                 return !back.isEmpty
             }
@@ -1263,15 +1292,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return Scripts.canWrite && !StateMenu.actions(for: items, canHandOff: true).isEmpty
         case #selector(mMove(_:)):
             guard let p = item.representedObject as? String else { return false }
-            return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
+            return Scripts.canWrite && items.contains { $0.projectID != p && !$0.readOnly }
         case #selector(mOpenSession):
             return items.count == 1 && sessionJob(items[0]) != nil
         case #selector(mRename):
             // one title at a time: with several rows selected Rename is off and E beeps
-            return Scripts.canWrite && items.count == 1 && !items[0].legacy
+            return Scripts.canWrite && items.count == 1 && !items[0].readOnly
         case #selector(mSetKind(_:)):
             if inMenuBar(item), let k = item.representedObject as? String { item.state = !items.isEmpty && items.allSatisfy { $0.kind == k } ? .on : .off }
-            return Scripts.canWrite && items.contains { !$0.legacy }
+            return Scripts.canWrite && items.contains { !$0.readOnly }
         case #selector(mRenameShownProject), #selector(mShownProjectSettings), #selector(mRevealShownProject):
             return shownProject != nil
         case #selector(mUseShownProject):
@@ -1285,7 +1314,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mClearFilters):
             return model.filtered
         case #selector(mEnrich):
-            return Scripts.canWrite && items.contains { !$0.legacy && !$0.discarded }
+            return Scripts.canWrite && items.contains { !$0.readOnly && !$0.discarded }
         case #selector(mReviewBatch):
             return items.count == 1 && items[0].sessionURL != nil
         case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
@@ -1465,7 +1494,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
             menu.addItem(.separator())
             menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
-            _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
+            _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.doc", key: "c", mods: [.command, .shift])
             _ = add(menu, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
             menu.addItem(.separator())
             _ = add(menu, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")

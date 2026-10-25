@@ -9,7 +9,10 @@ import { isMacLike } from "./TopBar";
 /** The state's name; "handed off" says to whom (K10 state.handed_off.session / .external). */
 export function stateText(s: ReviewStore, i: Item): string {
   const st = s.stateOf(i);
-  if (st === "handed_off" && i.work?.to === "session") return s.t("state.handed_off.session", { agent: agentName(i.work.agent) });
+  if (st === "handed_off" && i.work?.to === "session") {
+    const desktop = i._work_runner === "desktop" ? desktopName(s, i.work.agent) : null;
+    return desktop ? s.t("state.handed_off.desktop", { app: desktop }) : s.t("state.handed_off.session", { agent: agentName(s, i.work.agent) });
+  }
   if (st === "handed_off" && i.work?.to === "external") return s.t("state.handed_off.external");
   return s.stateLabel(st);
 }
@@ -51,8 +54,12 @@ export function StateControl({ i, variant = "pill", id, shortcuts = false, contr
   );
 }
 
-const AGENTS: Record<string, string> = { claude: "Claude Code", codex: "Codex", human: "" };
-export const agentName = (a: string | null | undefined) => (a ? (AGENTS[a] ?? a) : "agent");
+/** An agent's name as the user knows it (the doc's `agents`, from agents.json and their own agent_defs); a localized
+    "Agent" when the doc doesn't say — never its id. */
+export const agentName = (s: ReviewStore, a: string | null | undefined) =>
+  (a && s.data.agents?.[a]?.name) || s.t("agent.generic");
+/** The agent's desktop app ("Claude"), when the hand-off went there. */
+const desktopName = (s: ReviewStore, a: string | null | undefined) => (a && s.data.agents?.[a]?.desktop) || null;
 
 export function Queue() {
   const s = useStore();

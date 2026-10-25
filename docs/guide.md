@@ -238,7 +238,8 @@ The Inbox holds what needs you, and its header says how much: *3 new · 2 to ver
 same). Select an item to see everything about it on the right — what you said, the frames, steps, the suspected code —
 and edit any field; changes save as you type. Only fields with something in them are shown; **Add field** under them
 brings back an empty one. To go through a freshly processed capture quickly, open the capture and use the keyboard: `J`/`K` next and
-previous, `A` keep, `X` discard, `Z` undo, `M` merge into the previous item, `G` list view, `?` all shortcuts.
+previous, `A` keep, `X` discard, `Z` undo, `M` merge into the previous item, `G` list view, `?` all shortcuts (`⌘/`
+also opens them, from the Help menu).
 
 Editing, the Mac way:
 - `M` moves the selected items to a project: type to filter, `↩` to move (see Projects).
@@ -261,6 +262,13 @@ Editing, the Mac way:
 - Each place keeps its own filters: a State filter set in All Items stays there and never empties your Inbox.
 - `⌘Q` in this window closes it; Blurt keeps running in the menu bar for dictation and capture. Quit is in the menu
   bar icon's menu.
+- A task's **Done when** is what the agent is told "done" means; it shows (and can be edited) with the task's details.
+  No field an item holds is ever hidden.
+- An item file you or a sync tool edited into something Blurt can't read stays in the list, with a small warning mark
+  before its title, and its details say *This item's file can't be read* with **Open in Editor** and **Show in
+  Finder**. Blurt never overwrites it, and nothing else stops because of it: the other items keep updating, and Blurt
+  says once which file needs fixing. Fix it and save; it shows up again. A file whose item changed underneath it (a
+  checkout, a sync, a uid edited by hand) simply shows the new item.
 
 ### 5. Hand off to an agent
 
@@ -301,6 +309,17 @@ reads *No response*: look at its window, or restart it. An agent that isn't sign
 hand-off panel — it says what to run, and offers the other agent; agents handing work off from the command line get
 the same answer.
 
+The panel always works on the items' own project (its default agent, the model you last picked for it), whatever
+project is current. What can't be handed off says why before the panel opens, with the way out: a discarded item
+(**Restore**), one waiting to be verified or done (**Reopen**), one a session is still working on (**Open Session**).
+An item whose last session ended without reporting can simply be handed off again: it is taken back from that session
+first. **Take Back** on a session that is over and changed nothing also removes its worktree, its `blurt/…` branch and
+its window — nothing is left next to your repo; when it did change something, the worktree stays for **Review
+Changes…**. Taking back one item of a session (`R`, the state menu) leaves its other items with it; the clean-up
+happens once none is left. Codex asks once to trust Blurt's hooks ("Trust all and continue"); the hook command no longer changes when
+Python or Blurt updates, so it doesn't ask again. If an agent is too old to start in Blurt's terminal, the session
+says to update it.
+
 The conversation's first line is its title, such as *AW-12 · Login button does nothing (Blurt hand-off)*, so you can
 find it in the agent's own list of conversations; Codex also gets it as the thread's name.
 
@@ -310,7 +329,8 @@ Settings → Agents). With the desktop app, Blurt still makes the worktree, then
 the items filled in: confirm the folder and press Send there. Blurt doesn't see that conversation live, so the item
 reads *In the Claude desktop app · the agent reports progress*, with **Go to Claude**; the items move when the agent reports
 them through the Blurt MCP. If the MCP isn't installed for Claude, the panel offers **Install…**, or you mark the items
-yourself. **Review Changes…** and **Merge** work on the worktree as usual. A Claude session already running in Blurt's
+yourself: the item then says *no progress comes back here: mark it done when it is*, with **Mark as Done** next to
+**Go to Claude**, and the session list reads *In Claude desktop · waiting for you to mark it*. **Review Changes…** and **Merge** work on the worktree as usual. A Claude session already running in Blurt's
 terminal can move there with **Continue in Claude Desktop…** in its **⋯** menu (Claude Code 2.1.285 or later, signed
 in with a Claude subscription); the agent stops here and live status stops with it. If the Blurt MCP isn't installed
 for Claude, the confirmation says so and offers **Install…** first, since the desktop app can't report progress
@@ -322,8 +342,14 @@ when the agent left its work uncommitted (Codex can't commit inside a worktree),
 Merge** and Blurt commits it first, as "HS-5 Create done.txt (Blurt hand-off)". A branch with no changes can only be
 discarded, never pushed. **Discard** puts the items back in *To do*. `Esc` closes the sheet at any point.
 
-Organizing a recording stops when you quit Blurt (Blurt asks first), and a recording is never organized twice at the
-same time. If organizing fails, it stays under *In progress* with **Try Again** and **Dismiss** until you pick one.
+Organizing a recording stops when you quit Blurt (Blurt asks first; Return keeps it going), and a recording is never
+organized twice at the same time. Running work is listed above the list under *Running*. If organizing fails, it stays
+there with **Try Again** and **Dismiss** until you pick one, and it says why in words: which agent, what went wrong
+(not signed in, out of quota, no network) and what to do — the step that failed is the one that did (*Prepare* when
+the agent couldn't work at all). **Try Again** checks the agents again, so signing in and pressing it just works.
+When the first agent in your order can't run, the next one organizes instead: Blurt says so at the notch each time,
+and the job keeps it (*Organized by Codex (Claude Code isn't signed in)*). When none can run, it lists each agent of
+your order with its own fix.
 
 ### 6. Item states
 
@@ -724,19 +750,23 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 「待处理」里是需要你看的，标题下面直接写着有多少：「3 条新的 · 2 条待验证」（菜单栏菜单里也是这么写）。选中一条，右边是它的全部内容——
 原话、截图、步骤、可能相关的代码——每个字段都能改，边打边保存。只显示有内容的字段；空的字段在下面的「**添加字段**」里，选一个就加回来。刚整理好的一次录屏或一批截图想快速过一遍，就打开它，用键盘：`J` / `K` 下一条 / 上一条，
-`A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
+`A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键（「帮助」菜单里的 `⌘/` 也行）。
 
 按 Mac 的习惯编辑：
 - `M` 把选中的条目移到项目：打字筛选，`↩` 移过去（见「项目和当前项目」）。
 - `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次（或在第一个控件上按 `⇧Tab`）回到列表。
 - 在「**复现步骤**」里，回车开始下一步，在空的一步上回车结束列表，`⌃⌘↑` / `⌃⌘↓` 移动一步。
-- 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、任务），列表和详情里一样。
+- 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、待办），列表和详情里一样。
 - **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步（「撤销改种类」「撤销编辑标题」）。它只撤销你自己的这一步：Agent 之后写的状态不受影响；口喷鸡还在保存时按下的 `⌘Z` 会等保存完再执行。
 - `⌫` 或 `⌘⌫` 丢弃选中的条目，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
 - 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。条目不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
 - 在第一条上按 `↑` 会走到列表上方的横幅和正在运行的任务；在横幅上按回车会打开它。
 - 每个位置有自己的筛选：在「全部条目」里设的状态筛选只留在那里，不会把「待处理」筛空。
 - 在这个窗口按 `⌘Q` 只是关掉窗口；口喷鸡还在菜单栏里，听写和截图照常能用。要退出，从菜单栏图标的菜单里选。
+- 待办的「**完成标准**」就是交给 Agent 时说的「做到什么算完成」，和待办的详情放在一起，能看也能改。条目里存着的字段一个都不会藏起来。
+- 你或同步工具把条目文件改成了口喷鸡读不懂的样子，它还留在列表里，标题前有个小警示标记，详情写着「这一条的文件读不出来」，带
+  「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他条目照常更新，口喷鸡只提醒一次是哪个文件要改。
+  改好保存，它就回来了。同一个文件换成了另一条（切分支、同步、手改了 uid），列表里显示的就是新的那条。
 
 ### 5. 交给 Agent
 
@@ -765,13 +795,20 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
 没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
 
+面板用的总是这些条目自己的项目（它的默认 Agent、上次给它选的模型），和当前项目是哪个无关。交不了的条目在面板打开之前就说明原因，
+并给出出路：已丢弃的（「**恢复**」）、待验证或已完成的（「**重新打开**」）、还有会话在做的（「**打开会话**」）。上一个会话没回报就结束了的条目，
+可以直接再交：会先从那个会话收回。对已经结束、什么都没改的会话按「**收回**」，它的 worktree、`blurt/…` 分支和窗口也会一起清掉，
+不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。只收回会话里的一条（`R`、状态菜单）时，其他条目还跟着它，
+等一条都不剩了才清理。Codex 会请你信任一次口喷鸡的 hooks（选「Trust all and continue」）；
+hooks 的命令不会再因为 Python 或口喷鸡更新而变，所以不会再问。Agent 版本太旧、在口喷鸡终端里起不来时，会话会提示你先更新它。
+
 对话的第一行是它的标题，比如「AW-12 · 登录按钮点了没反应（口喷鸡交接）」，在 Agent 自己的对话列表里一眼就能找到；Codex 还会把它设为线程名。
 
 **Claude 桌面端。** 装了 Claude 桌面端时，「交给 Agent」面板会问 Claude Code 在哪运行：「**在口喷鸡终端运行**」（推荐）或
 「**在 Claude 桌面端运行**」。选择按 Agent 记住（设置 → Agent 里也能改）。选桌面端时，口喷鸡照样建好 worktree，然后在 Claude
 里开一个新对话、填好这些条目：在 Claude 里确认文件夹并点发送。口喷鸡看不到那个对话的实时状态，条目上方写着「在 Claude 桌面端进行 ·
-由 Agent 回报进度」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，条目才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
-不装就自己标记条目。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
+进度由 Agent 回报」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，条目才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
+不装就自己标记条目：这时条目上写着「这里收不到进度，做完后回来标为完成」，「**标为完成**」就在「**前往 Claude**」旁边，会话列表里写「在 Claude 桌面端 · 等你标记」。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
 「**在 Claude 桌面端继续…**」移过去（需要 Claude Code 2.1.285 或更高、用 Claude 订阅登录）；Agent 会在这里停下，实时状态也随之停止。
 Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度，并先给「**安装…**」。桌面端没接过对话时，「**重新开始会话**」会在口喷鸡终端里
 为这些条目开一个新会话。
@@ -780,8 +817,11 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。
 没有改动的分支只能丢弃，不会被推送。「**丢弃**」会把条目放回「要做」。随时按 `Esc` 关掉这个面板。
 
-整理录屏时退出口喷鸡会停止整理（退出前会先问你），同一段录屏也不会同时整理两次。整理失败的会留在「进行中」，
-带着「**重试**」和「**忽略**」，直到你选一个。
+整理录屏时退出口喷鸡会停止整理（退出前会先问你，按回车就是不退出），同一段录屏也不会同时整理两次。正在跑的整理和会话列在列表上方的
+「**正在运行**」里。整理失败的会留在那里，带着「**重试**」和「**忽略**」，直到你选一个；它会用一句话说明是哪个 Agent、出了什么问题
+（没登录、额度用完、连不上网）和该怎么办，标红的也是真正出问题的那一步（Agent 根本没法工作时是「准备」）。「**重试**」会重新检查 Agent，
+所以登录后直接点就行。排在前面的 Agent 用不了时，由下一个来整理：每次换都会在刘海里说，整理记录里也留着（「由 Codex 整理（Claude Code 没登录）」）。
+一个都用不了时，会按你排的顺序列出每个 Agent 和它自己的解决办法。
 
 ### 6. 条目状态
 

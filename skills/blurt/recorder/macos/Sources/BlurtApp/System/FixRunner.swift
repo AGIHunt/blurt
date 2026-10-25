@@ -15,7 +15,7 @@ final class FixRunner {
     /// An item reached "to verify" (K3). `item` is the item's front-matter. Only what the agent claimed is said for
     /// it: "fixed" / "won't fix" (and the chick pecks); a merge of its branch says so; anything else is neutral.
     func announceFixed(uid: String, item: [String: Any], session: URL) {
-        let title = item["title"] as? String ?? uid
+        let title = (item["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? item["id"] as? String ?? T("main.item.untitled")
         let work = item["work"] as? [String: Any] ?? [:]
         let detail = Self.verifyDetail(work)
         emit(["event": "to_verify", "uid": uid, "title": title, "detail": detail])

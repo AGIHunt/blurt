@@ -61,11 +61,13 @@ public struct SessionBannerPlan: Equatable {
     /// `work`: the item's session (WorkSession.of); `outcome`: its job's (nil when the job is gone); `stalled`: the
     /// watchdog says it isn't responding (AgentInfo.stalled); `desktop`: it runs in the agent's desktop app
     /// (AgentInfo.isDesktop), where nothing here is live — Go to Claude, and its worktree's changes when it has one.
+    /// `reports` false: the desktop app has no blurt MCP, so nothing will ever move the item — marking it done is the
+    /// user's, right there next to Go to Claude.
     public static func plan(_ work: WorkSession, outcome: SessionOutcome?, stalled: Bool = false, desktop: Bool = false,
-                            worktree: Bool = false) -> SessionBannerPlan {
+                            worktree: Bool = false, reports: Bool = true) -> SessionBannerPlan {
         switch work {
         case .live where desktop:
-            return SessionBannerPlan(tone: .brand, actions: ["desktop"],
+            return SessionBannerPlan(tone: reports ? .brand : .neutral, actions: reports ? ["desktop"] : ["desktop", "done"],
                                      more: ["session"] + (worktree ? ["review"] : []) + ["take_back"])
         case .live(let st):
             // no response for a minute: look at it, or start it again

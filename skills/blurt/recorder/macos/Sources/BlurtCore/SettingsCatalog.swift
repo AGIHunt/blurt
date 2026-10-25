@@ -71,7 +71,7 @@ public enum SettingsCatalog {
         pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
         pane("speech", "settings.kit.speech", "Settings", "waveform", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
-        pane("agents", "settings.kit.agents", "Settings", "wand.and.stars", "work"),
+        pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
     ]

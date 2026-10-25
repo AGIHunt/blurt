@@ -6,6 +6,9 @@
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
 //   nothing     a quiet placeholder (blank while no items exist at all: the list's first-run state speaks).
+//   unreadable  an item whose file doesn't parse: "can't be read" (never "gone"), Open in Editor and Show in Finder;
+//               the parser's words go to the log. A folder that comes back re-shows the item even when its index row
+//               didn't change. Load and download failures are said in words; the host's raw error is only logged.
 //
 // Host protocol v3 (C6 + next-round.md "审核组件宿主协议 v3"):
 //   page          blurt-app://ui/index.html?mode=item|review&item=<uid>&scope=<session abs | project:<id>>&platform=mac&theme=auto&lang=…
@@ -96,6 +99,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         placeholder.onButton = { [weak self] tag in
             if tag == 1 { self?.actions?.webWrote() }
             if tag == 7, let p = self?.missingProject { self?.actions?.locateFolder(p) }
+            if tag == 8, let f = self?.currentItem?.fileURL { NSWorkspace.shared.open(f) }       // the system's editor for .md
+            if tag == 9, let f = self?.currentItem?.fileURL { NSWorkspace.shared.activateFileViewerSelecting([f]) }
         }
         banner.onAction = { [weak self] a in self?.bannerAction(a) }
         jobView.onAction = { [weak self] a in
@@ -214,7 +219,11 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             return only(placeholder)
         }
         if let e = item.parseError {
-            placeholder.show(symbol: "exclamationmark.triangle", title: T("main.detail.parse_error"), message: e)
+            // never "gone": the file is there, Blurt protects it. The parser's own words go to the log only.
+            NSLog("blurt main window: %@ can't be read: %@", item.fileURL.path, e)
+            placeholder.show(symbol: "exclamationmark.triangle", title: T("main.detail.parse_error"),
+                             message: T("main.detail.parse_error.detail"),
+                             buttons: [(T("main.unreadable.open"), 8), (T("action.reveal_in_finder"), 9)])
             return only(placeholder)
         }
         guard FileManager.default.fileExists(atPath: item.fileURL.path) else {
@@ -275,8 +284,16 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     /// The index has a newer row for the item on show (its state, title, file, project): the banner follows it, and
     /// an item whose file moved (to another project, a folder renamed on disk) or came back is shown again from there.
     func refresh(item: ItemRow, projects: [ProjectEntry]) {
-        guard let cur = currentItem, cur.uid == item.uid, cur != item else { return }
+        guard let cur = currentItem, cur.uid == item.uid else { return }
         let wasShown = !web.isHidden
+        // the folder came back (or went) with the index row unchanged: what is on show no longer matches the disk
+        // (dogfood-2 W19: "can't find this folder" stayed up after the folder was restored)
+        if cur == item {
+            if wasShown != FileManager.default.fileExists(atPath: item.fileURL.path), item.parseError == nil, !item.legacy {
+                show(item: item, projects: projects)
+            }
+            return
+        }
         if item.fileURL != cur.fileURL || item.projectID != cur.projectID || item.sessionURL != cur.sessionURL
             || wasShown != FileManager.default.fileExists(atPath: item.fileURL.path) || item.parseError != cur.parseError {
             return show(item: item, projects: projects)
@@ -499,7 +516,8 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             DistributedNotificationCenter.default().post(name: .init("com.apple.DownloadFileFinished"), object: dest.path)
             appDelegate?.toast(T("main.toast.downloaded", dest.lastPathComponent), icon: .check)
         } catch {
-            appDelegate?.toast(T("main.toast.download_failed", error.localizedDescription))
+            NSLog("blurt download: %@", "\(error)")
+            appDelegate?.toast(T("main.toast.download_failed"))
         }
     }
 
@@ -663,8 +681,9 @@ final class ItemBanner: NSView {
             let stalled = job?.agent?.stalled ?? false
             let desktop = job?.agent?.isDesktop ?? false
             let app = job?.agent.map { DesktopApp.name($0.agent) } ?? ""
+            let reports = !(job?.agent?.desktopNeedsMarking ?? false)
             let plan = SessionBannerPlan.plan(work, outcome: outcome, stalled: stalled, desktop: desktop,
-                                              worktree: job?.agent?.worktree != nil)
+                                              worktree: job?.agent?.worktree != nil, reports: reports)
             switch plan.tone {
             case .brand: tint = BrandColor.ink
             case .attn: tint = BrandColor.attn
@@ -672,8 +691,9 @@ final class ItemBanner: NSView {
             }
             switch (work, outcome) {
             case (.live, _) where desktop:
-                // nothing here is live: only the agent's reports move the item
-                text.stringValue = T("main.banner.desktop", app)
+                // nothing here is live: only the agent's reports move the item — and without the blurt MCP, nothing
+                // does: say so instead of promising progress
+                text.stringValue = T(reports ? "main.banner.desktop" : "main.banner.desktop.no_mcp", app)
             case (.live, _) where stalled:
                 text.stringValue = T("main.banner.with_agent", who, T("main.banner.no_response"))
             case (.live(let st), _):
@@ -703,7 +723,7 @@ final class ItemBanner: NSView {
             // the batch it came from is still being organised: the item fills in as the agent goes
             if let dir = it.sessionDir, let j = JobStore.shared.active.first(where: { $0.type == .process && $0.session?.path == dir }) {
                 tint = BrandColor.ink
-                icon.image = Look.symbol("wand.and.sparkles", "", size: 13)
+                icon.image = Look.symbol("sparkles", "", size: 13)
                 icon.contentTintColor = BrandColor.ink
                 text.stringValue = T("main.banner.organizing", JobLook.status(j))
                 processingJob = j.id

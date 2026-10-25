@@ -1,7 +1,8 @@
-// Jobs in the main window (K4): the "In progress" section above the list — one compact row per running job (what,
+// Jobs in the main window (K4): the "Running" section above the list ("In Progress" is the items' place) — one compact row per running job (what,
 // which step, how far, which project; agent sessions with their status), plus organising that failed in the last
 // week until it is retried or dismissed (JobFailures) — and the detail page of a job: its steps as a timeline, its
-// reason, Retry / Dismiss. An agent session's detail is its title and status line, then its terminal pane (whose
+// reason in words (JobError.reason, else the code's sentence — never the raw message), who organised it when another
+// agent stood in, Retry / Dismiss. An agent session's detail is its title and status line, then its terminal pane (whose
 // header carries Stop, Open in Terminal, Show Log…): no second timeline above it. Nothing here opens anything by
 // itself: rows are clicked.
 import AppKit
@@ -12,7 +13,7 @@ enum JobLook {
     static func title(_ j: Job) -> String {
         let what: String
         if j.type == .agent, let a = j.agent {
-            what = AgentHub.shared.def(a.agent)?.name ?? a.agent
+            what = AgentNames.name(a.agent)
         } else {
             what = T("job.type.\(j.type.rawValue)")
         }
@@ -23,32 +24,50 @@ enum JobLook {
         return detail.map { "\(what) · \($0)" } ?? what
     }
 
-    /// A session dir's batch title (batch.json, then meta.json), else its time stamp as a date.
-    static func sessionLabel(_ dir: URL) -> String {
+    /// The quit alert's title for one organising run: "口喷鸡还在整理「Pricing walkthrough」。", or by when it was
+    /// captured ("口喷鸡还在整理今天 19:40 的内容。") — never the job's own title, which starts with "整理" again.
+    static func quitTitle(_ j: Job) -> String {
+        if let s = j.session, let t = batchTitle(s) { return T("app.quit.organizing.title", t) }
+        if let s = j.session { return T("app.quit.organizing.title_at", sessionLabel(s)) }
+        return T("app.quit.organizing.title_n", 1)
+    }
+
+    /// A session dir's batch title (batch.json, then meta.json).
+    static func batchTitle(_ dir: URL) -> String? {
         for f in ["batch.json", "meta.json"] {
             if let d = try? Data(contentsOf: dir.appendingPathComponent(f)),
                let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let t = o["title"] as? String, !t.isEmpty { return t }
         }
+        return nil
+    }
+
+    /// A session dir's batch title, else its time stamp as a date.
+    static func sessionLabel(_ dir: URL) -> String {
+        if let t = batchTitle(dir) { return t }
         let name = dir.lastPathComponent
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
-        return f.date(from: String(name.prefix(15))).map(Loc.dateTime) ?? name
+        // never the folder's own name: when it was made, else just "a capture"
+        let made = (try? FileManager.default.attributesOfItem(atPath: dir.path)[.creationDate]) as? Date
+        return (f.date(from: String(name.prefix(15))) ?? made).map(Loc.dateTime) ?? T("main.job.capture")
     }
 
     /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
     /// the same thing.
     static func errorText(_ j: Job) -> String? {
-        j.error.map { errorText($0, agent: j.agent.map { AgentHub.shared.def($0.agent)?.name ?? $0.agent } ?? j.usage?.agent.map(AgentNames.name)) }
+        j.error.map { errorText($0, agent: (j.agent?.agent ?? j.usage?.agent).map(AgentNames.name)) }
     }
 
-    /// A failed job's reason in words: its hint, else the known code ("Claude Code isn’t logged in." when the agent is
-    /// known), else the raw message.
+    /// A failed job's reason in words: its hint, else the sentence composed when it failed (which agent, why, the fix
+    /// or advice), else the code's sentence ("Claude Code isn’t signed in." when the agent is known), else a generic
+    /// one. Never the raw message: that stays in the log (Show Log).
     static func errorText(_ e: JobError, agent: String?) -> String {
         if let h = e.hintKey { return T(h) }
-        let key = "main.job.error.\(e.code)"
+        if let r = e.reason { return r }
+        let key = Loc.has("main.job.error.\(e.code)", table: "Main") ? "main.job.error.\(e.code)" : "main.job.error.unknown"
         if let a = agent, Loc.has(key + ".named", table: "Main") { return T(key + ".named", a) }
-        return Loc.has(key, table: "Main") ? T(key) : e.message
+        return T(key)
     }
 
     /// What it is doing now: a session in the session list's words (AgentSessionRow.stateText), else the current step.
@@ -70,7 +89,7 @@ enum JobLook {
         case .record: return "record.circle"
         case .snap: return "camera.viewfinder"
         case .voice: return "waveform"
-        case .process: return "wand.and.sparkles"
+        case .process: return "sparkles"
         case .route: return "arrow.triangle.branch"
         case .agent: return "apple.terminal"
         }
@@ -264,6 +283,9 @@ final class JobDetailView: NSView {
         header.lineBreakMode = .byTruncatingTail
         sub.font = .systemFont(ofSize: 12)
         sub.textColor = .secondaryLabelColor
+        sub.lineBreakMode = .byTruncatingMiddle
+        sub.cell?.truncatesLastVisibleLine = true
+        error.isSelectable = true               // the fix in it ("run `claude` and /login") can be copied
         steps.orientation = .vertical
         steps.alignment = .leading
         steps.spacing = 0
@@ -288,33 +310,41 @@ final class JobDetailView: NSView {
             terminalBox.topAnchor.constraint(equalTo: stack.bottomAnchor), terminalBox.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalBox.trailingAnchor.constraint(equalTo: trailingAnchor), terminalBox.bottomAnchor.constraint(equalTo: bottomAnchor),
             header.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
+            sub.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
             error.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
         ])
     }
     required init?(coder: NSCoder) { fatalError() }
 
     /// "Used about 24K tokens · gpt-6-luna" / "用了约 2.4万 token · gpt-6-luna"; "No AI · 0 tokens" for a capture filed
-    /// from its note.
-    static func usageText(_ u: (tokens: Int?, agent: String?, model: String?, effort: String?)) -> String {
-        guard let agent = u.agent else { return T("job.usage.none") }
-        let model = u.model ?? T("job.usage.cli_default")
-        guard let n = u.tokens else { return T("job.usage.unknown", AgentNames.name(agent)) + " · " + model }
+    /// from its note; nil when the agent didn't say (nothing to tell, so nothing shown).
+    static func usageText(_ u: (tokens: Int?, agent: String?, model: String?, effort: String?)) -> String? {
+        guard u.agent != nil else { return T("job.usage.none") }
+        guard let n = u.tokens else { return nil }
         let compact = n.formatted(.number.notation(.compactName).precision(.significantDigits(1...2)).locale(Loc.locale))
-        return T("job.usage.tokens", compact) + " · " + model
+        return T("job.usage.tokens", compact) + (u.model.map { " · " + $0 } ?? "")
+    }
+
+    /// "由 Codex 整理（Claude Code 没登录）" for an organising run another agent took over; nil when the first one did.
+    static func organizerText(_ j: Job) -> String? {
+        guard let o = j.organizer else { return nil }
+        return T("main.job.organized_by", AgentNames.name(o.agent), o.insteadOf.joined(separator: T("app.agent.list_sep")))
     }
 
     func show(_ j: Job, projectName: String?) {
         let sameJob = job?.id == j.id
         job = j
         header.stringValue = JobLook.title(j)
-        var parts = j.type == .agent ? [T("job.type.agent")] : []
-        if let p = projectName { parts.append(p) }
-        parts.append(Loc.relative(j.started ?? j.created))
-        // the session list's words for it (couldn't start, ready to review, merged…), not the agent's raw status
-        if j.agent != nil { parts.append(AgentSessionRow.stateText(j)) }
-        if let b = j.agent?.branch, j.agent?.finishAction == nil { parts.append(b) }
-        if let u = j.usage { parts.append(JobDetailView.usageText(u)) }
+        // an agent session: the pane header below carries its project, state and branch — said once, not twice
+        var parts: [String] = []
+        if j.type != .agent {
+            if let p = projectName { parts.append(p) }
+            parts.append(Loc.relative(j.started ?? j.created))
+            if let o = JobDetailView.organizerText(j) { parts.append(o) }
+        }
+        if let u = j.usage, let t = JobDetailView.usageText(u) { parts.append(t) }
         sub.stringValue = parts.joined(separator: "  ·  ")
+        sub.isHidden = parts.isEmpty
         steps.arrangedSubviews.forEach { $0.removeFromSuperview() }
         // an agent session: its status is in the line above and its terminal below — no timeline in between
         steps.isHidden = j.type == .agent

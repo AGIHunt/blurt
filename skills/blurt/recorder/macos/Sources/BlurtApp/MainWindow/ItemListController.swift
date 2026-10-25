@@ -928,8 +928,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             // the search hit, unless it is just the title again
             let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
             let hit = searching && SearchHit.adds(it.snippet, to: it.title) ? it.snippet : nil
-            c.set(title: it.title, unread: it.state == "new", dimmed: quiet, struck: false, hit: hit)
-            c.toolTip = [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
+            c.set(title: it.title, unread: it.state == "new" && !it.unreadable, dimmed: quiet, struck: false, hit: hit,
+                  unreadable: it.unreadable)
+            c.toolTip = it.unreadable ? T("main.unreadable.fix_first")
+                : [it.quote.isEmpty ? nil : "“\(it.quote)”", it.sessionTitle].compactMap { $0 }.joined(separator: "\n")
             // an Unassigned item the organizing run suggested a project for: one click files it there (⌘Z undoes)
             let sug = it.projectID == "inbox" && !it.discarded && Scripts.canWrite
                 ? it.suggestedProject.flatMap { s in model.project(id: s).flatMap { $0.registered ? $0 : nil } } : nil

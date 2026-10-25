@@ -187,6 +187,10 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertIn('actions?.takeBack(r.id) }.disabled(inFlight)', views)
         web = self.src("WebHost/WebHostController.swift")
         self.assertIn('if a == "restart" || a == "take_back" { b.isEnabled = false }', web)
+        # taking back one item elsewhere (R, state menu) only cleans its session up, never takes the rest back
+        clean = rec[rec.index("static func cleanUp(jobs:"):rec.index("static func takeBack(")]
+        self.assertIn("AgentSessions.shared.cleanUp(job: j)", clean)
+        self.assertNotIn("takeBack(job:", clean)
 
     def test_banner_keeps_two_buttons_and_review_opens_the_sheet(self):
         web = self.src("WebHost/WebHostController.swift")
@@ -214,12 +218,29 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertIn('Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)', fin)
         self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
 
+    def test_review_of_fix_2_raw_text_and_list_marks(self):
+        # raw-id #14: the install sheet says each change in words only; the script's error goes to the log
+        pane = self.src("Settings/AgentsPane.swift")
+        body = pane[pane.index("var body: some View", pane.index("struct InstallSheet")):]
+        self.assertNotIn("c.error", body[:body.index("HStack {\n                if m.installing")])
+        # an unreadable item is marked in the list, not only once it is selected
+        ilc = self.src("MainWindow/ItemListController.swift")
+        self.assertIn("unreadable: it.unreadable)", ilc)
+        self.assertIn('c.toolTip = it.unreadable ? T("main.unreadable.fix_first")', ilc)
+        # the fallback notes only remember running jobs
+        hub = self.src("App/AgentHub.swift")
+        self.assertIn("JobStore.shared.job($0.key)?.isActive == true", hub)
+
     def test_primaries_use_the_brand_style(self):
         d = self.src("Terminal/DispatchPanel.swift")
         self.assertIn('TL("dispatch.start"))', d)       # "Open in Claude" when the hand-off goes to the desktop app
         self.assertIn('TL("dispatch.start.desktop", DesktopApp.name(m.agent))', d)
         self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
         self.assertIn("loginChecked: loginVerified", d)
+        # a failed dry run keeps Start off; a failed real start leaves it on to try again
+        self.assertIn("&& !checkFailed &&", d)
+        start = d[d.index("func start() async"):d.index("struct DispatchView")]
+        self.assertNotIn("checkFailed = true", start)
         ilc = self.src("MainWindow/ItemListController.swift")
         self.assertIn("let spinner = BrandSpinner(", ilc)       # the brand arc (one BrandSpinner, sized for the empty state)
         self.assertNotIn("NSProgressIndicator()", ilc)

@@ -59,9 +59,7 @@ final class GeneralModel: ObservableObject {
 
     private func run(_ f: @escaping () async throws -> Void) {
         Task { @MainActor in
-            do { try await f(); error = nil } catch let e as ProjectError {
-                error = Scripts.Failure(code: e.code, message: "\(e)").localized
-            } catch { self.error = "\(error)" }
+            do { try await f(); error = nil } catch { self.error = peopleText(error, context: "projects") }
             reload()
         }
     }
@@ -92,7 +90,7 @@ final class GeneralModel: ObservableObject {
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginError = nil
-        } catch { loginError = error.localizedDescription }
+        } catch { loginError = peopleText(error, context: "open at login") }
         openAtLogin = SMAppService.mainApp.status == .enabled
     }
     func setLanguage(_ v: String) {

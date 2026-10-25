@@ -12,7 +12,8 @@ session — is a job (contract K4). One JSON file per job, written only by its o
   jobs.py list [--active] [--type T] [--project P] [--limit 50]   → {"ok","jobs":[…]} (newest first)
   jobs.py watch [--interval 0.5]                    one line of effective state per changed job, until killed
   jobs.py gc                                        → {"ok","removed":[ids]} (never an agent job an unfinished
-                                                    item points at, or whose worktree waits to be finished)
+                                                    item points at, whose worktree waits to be finished, or whose
+                                                    window still runs; an old one's dead window is closed with it)
 
 Files, in $BLURT_HOME/jobs/: <id>.json (the job; owner only, atomic replace, under <id>.lock when several owner
 processes may write it), <id>.events.jsonl (everyone else: one O_APPEND line each, < 4 KB), <id>.log (raw output),
@@ -368,17 +369,25 @@ def _keeps_work(j: dict) -> bool:
         return False
 
 
-def gc(live_windows: set[str] | None = None, now: float | None = None, referenced: set[str] | None = None) -> list[str]:
+def gc(live_windows: set[str] | None = None, now: float | None = None, referenced: set[str] | None = None,
+       dead_windows: dict[str, str] | None = None, kill_window=None) -> list[str]:
     """Remove jobs that ended more than 14 days ago and aren't among the newest 300. Never an agent job whose tmux
-    window is still there (live_windows = job ids that have one; None = ask sessions.py), whose worktree waits to be
-    finished, or that an unfinished item still points at (referenced; None = ask index.db). Hand-off notes stay."""
+    window is still alive (live_windows = job ids with a running window; None = ask sessions.py), whose worktree waits
+    to be finished, or that an unfinished item still points at (referenced; None = ask index.db). An agent job whose
+    window is only a dead one kept for its scrollback (remain-on-exit, up to 50k lines in Blurt's tmux server) no
+    longer pins it: past those 14 days the window is closed (dead_windows = job id → window id) and the job goes.
+    Hand-off notes stay."""
     if live_windows is None:
         try:
             sys.path.insert(0, str(Path(__file__).resolve().parent))
             import sessions
-            live_windows = set(sessions.live_jobs())
+            wins = sessions.panes()
+            live_windows = {j for j, w in wins.items() if not w.get("dead")}
+            dead_windows = {j: w["window"] for j, w in wins.items() if w.get("dead")}
+            kill_window = kill_window or (lambda wid: sessions.tmux("kill-window", "-t", wid, check=False))
         except Exception:  # noqa: BLE001 — no tmux / not importable: keep every agent job
             live_windows = None
+    dead_windows = dead_windows or {}
     if referenced is None:
         referenced = referenced_jobs()
     now = time.time() if now is None else now
@@ -391,9 +400,15 @@ def gc(live_windows: set[str] | None = None, now: float | None = None, reference
         ended = parse_iso(j.get("ended")) or parse_iso(j.get("updated"))
         if ended is None or now - ended < KEEP_DAYS * 86400:
             continue
-        if j.get("type") == "agent" and (live_windows is None or j["id"] in live_windows or referenced is None
-                                         or j["id"] in referenced or _keeps_work(j)):
-            continue
+        if j.get("type") == "agent":
+            if (live_windows is None or j["id"] in live_windows or referenced is None
+                    or j["id"] in referenced or _keeps_work(j)):
+                continue
+            if j["id"] in dead_windows:
+                if kill_window is None:
+                    continue  # can't close it from here: keep the job with its window
+                with contextlib.suppress(Exception):
+                    kill_window(dead_windows[j["id"]])
         for suffix in ATTACHED:
             with contextlib.suppress(OSError):
                 path(j["id"], suffix).unlink()

@@ -14,9 +14,16 @@ public enum DispatchMode: String { case together, parallel }
 public enum WorktreeChoice: String { case on, off, auto }
 
 public struct DispatchWarning {
-    public let code: String              // concurrent_edit | no_git | no_tmux | draft_confirmed
+    public let code: String              // concurrent_edit | no_git | no_tmux | draft_confirmed | taken_back
     public let jobs: [String]
     public let items: [String]
+
+    /// The Terminal.strings key of its sentence in the panel: one item or several read differently ("this item" /
+    /// "these items"; Chinese has no plural form to pick from, so the count picks the key).
+    public var noteKey: String { code == "taken_back" && items.count == 1 ? "warning.taken_back.one" : "warning.\(code)" }
+    /// A note about what will happen anyway (unreviewed items become To Do) is a check; one that is worth reading
+    /// before Start (no git, no tmux, items taken back from an ended session) is the info mark.
+    public var symbol: String { code == "draft_confirmed" ? "checkmark.circle" : "info.circle" }
 }
 
 /// `launch` rows: only for the app runner (no tmux) — the app runs these argv in its own pty.
@@ -80,7 +87,21 @@ public struct SessionsError: Error, CustomStringConvertible {
     public let message: String
     /// The session it is about (already_dispatched: the one the item is with).
     public var job: String? = nil
+    /// What sessions.py adds for people: auth's fix ("run `claude` and log in"), the item id it is about (BA-12), the
+    /// agent. The message itself is for the log only.
+    public var fix: String? = nil, itemID: String? = nil, agent: String? = nil
     public var description: String { "\(code): \(message)" }
+
+    public init(code: String, message: String, job: String? = nil, fix: String? = nil, itemID: String? = nil, agent: String? = nil) {
+        self.code = code; self.message = message; self.job = job; self.fix = fix; self.itemID = itemID; self.agent = agent
+    }
+
+    /// From sessions.py's {"ok": false, "code", "error", …} line.
+    public init(json o: [String: Any], fallback: String) {
+        self.init(code: o["code"] as? String ?? fallback, message: o["error"] as? String ?? "", job: o["job"] as? String,
+                  fix: (o["fix"] as? String).flatMap { $0.isEmpty ? nil : $0 }, itemID: (o["id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                  agent: o["agent"] as? String)
+    }
 }
 
 /// sessions.py doctor
@@ -131,8 +152,9 @@ public final class AgentSessions {
             out = try await ScriptRunner.shared.run("sessions.py", args, timeout: timeout)
         } catch ScriptError.failed(let status, let stdout, let stderr) {
             let o = Self.lastJSON(stdout)
-            throw SessionsError(code: o["code"] as? String ?? (status == 4 ? "missing_dependency" : "failed"),
-                                message: o["error"] as? String ?? String(stderr.suffix(400)), job: o["job"] as? String)
+            var e = SessionsError(json: o, fallback: status == 4 ? "missing_dependency" : "failed")
+            if o["error"] == nil { e = SessionsError(code: e.code, message: String(stderr.suffix(400)), job: e.job) }
+            throw e
         } catch ScriptError.scriptMissing(let p) {
             throw SessionsError(code: "no_sessions_cli", message: "missing \(p)")
         } catch ScriptError.uvMissing {
@@ -141,9 +163,7 @@ public final class AgentSessions {
             throw SessionsError(code: "timeout", message: "sessions.py timed out after \(Int(t)) s")
         }
         let o = Self.lastJSON(out)
-        if o["ok"] as? Bool == false {
-            throw SessionsError(code: o["code"] as? String ?? "failed", message: o["error"] as? String ?? "", job: o["job"] as? String)
-        }
+        if o["ok"] as? Bool == false { throw SessionsError(json: o, fallback: "failed") }
         return o
     }
 
@@ -227,6 +247,20 @@ public final class AgentSessions {
     /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted).
     public func finish(job: String, action: String) async throws -> [String: Any] {
         try await call(["finish", job, "--action", action], timeout: action == "pr" ? 180 : 90)
+    }
+
+    /// 收回 (`sessions.py take-back`): its items back to To Do; an ended session with no change also goes (window,
+    /// worktree, branch). → has changes left in its worktree (they stay, for review).
+    public func takeBack(job: String) async throws -> Bool {
+        let o = try await call(["take-back", job], timeout: 60)
+        return o["has_changes"] != nil
+    }
+
+    /// After items were taken back elsewhere (items.py): `sessions.py clean-up` — an ended session cleans up only once
+    /// none of its items is still with it; it takes nothing back. → true when it kept a worktree with changes.
+    public func cleanUp(job: String) async throws -> Bool {
+        let o = try await call(["clean-up", job], timeout: 60)
+        return o["has_changes"] != nil
     }
 
     /// The same items, agent and model in a fresh session (`sessions.py restart`): for one that ended without

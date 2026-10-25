@@ -148,7 +148,7 @@
 "verify.notification" = "待验证：%@";
 
 /* sessions.py 的错误（按 code） */
-"error.unknown" = "出了点问题（%@）。";
+"error.unknown" = "没能完成，请再试一次。如果一直这样，详情见日志。";
 "error.failed" = "会话命令执行失败。";
 "error.timeout" = "会话命令超时了。";
 "error.missing_dependency" = "这台 Mac 上缺少 tmux 或 git。";
@@ -202,7 +202,7 @@
 "agents.state.ready" = "已登录";
 "agents.state.not_installed" = "未安装";
 "agents.state.manual" = "已安装 · 手动接入";
-"agents.manual.header" = "只接 skill + MCP";
+"agents.manual.header" = "在它们自己的 App 里用";
 "agents.manual.footer" = "这些没有命令行，不会在口喷鸡里运行。在它们自己的设置里导入 blurt skill 和 MCP 一次即可，用「复制指令」把条目交给它们。";
 "agents.sessions.header" = "会话";
 "agents.tmux.ok" = "tmux %@";
@@ -252,6 +252,8 @@
 "row.no_changes" = "已结束 · 没有改动";
 "finish.state.keep" = "已保留";
 "finish.state.restart" = "已重新开始";
+"finish.state.take_back" = "已收回";
+"take_back.changes_kept" = "条目已收回。这个会话留下的改动还在它的分支上，可以先查看改动。";
 "header.show_items" = "在列表中显示条目";
 "header.show_log" = "显示日志";
 "overlay.show_output" = "查看输出";
@@ -299,6 +301,7 @@
 "overlay.desktop.body" = "口喷鸡看不到这个对话的实时状态。进度由 Agent 回报：它报告了，条目才会更新。";
 "overlay.desktop.body_continued" = "这个会话从口喷鸡终端移到了这里。口喷鸡看不到它的实时状态，进度由 Agent 回报。";
 "row.desktop" = "在 %@ 桌面端";
+"row.desktop.no_mcp" = "在 %@ 桌面端 · 等你标记";
 "agents.handoff_target" = "交给 %@ 时";
 "agents.handoff_target.hint" = "交给 Agent 面板默认选这个，每次都能改。";
 "agents.handoff_target.no_app" = "没有安装 %@ 桌面端，所以在口喷鸡终端运行。";
@@ -311,3 +314,22 @@
 "error.no_session_id" = "Agent 还没报告这是哪个对话，稍后再试。";
 "error.bad_runner" = "只有在口喷鸡终端里运行的会话才能这样做。";
 "dispatch.start.desktop" = "在 %@ 里打开";
+
+/* sessions.py codes that had no sentence (they used to show raw) */
+"error.auth" = "%@ 还没登录，登录后再开始。";
+"error.auth.fix" = "%1$@ 还没登录：%2$@。登录后再开始。";
+"error.bad_transition" = "这些条目在等你验证或已经做完，先重新打开，才能再交给 Agent。";
+"error.finished" = "这个会话已经处理过了。";
+"error.already_dispatched.named" = "%@ 已经在一个还在进行的会话里。";
+"error.io" = "口喷鸡没能读写需要的文件，请再试一次。";
+"error.unparseable" = "有条目的文件读不出来，先在编辑器里改好它。";
+"error.not_found" = "找不到这些条目了，可能已经被移走或删除。";
+"error.locked" = "另一个操作正在进行，稍等一下再试。";
+"warning.taken_back" = "之前那个会话已经结束，这些条目会从它那里收回，交给新的会话。";
+"warning.taken_back.one" = "之前那个会话已经结束，这一条会从它那里收回，交给新的会话。";
+"dispatch.untitled" = "没有标题";
+"install.what.skill" = "口喷鸡 skill";
+"install.what.mcp" = "blurt MCP";
+"install.error" = "有一处设置文件的格式口喷鸡不认得，没有改它。";
+"install.error.path" = "%@ 的格式口喷鸡不认得，没有改它。";
+"agents.test.failed" = "%@ 没有通过测试。在终端里运行它，看看能不能正常回答。";

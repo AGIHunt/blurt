@@ -46,7 +46,7 @@ struct AgentSessionRow: Identifiable {
     var isAppRunner: Bool { agent.runner == "app" }
     /// Its window is still there to read (Show Output): not once merged, discarded or restarted (the window went).
     var hasOutput: Bool {
-        (agent.tmuxWindow != nil || isAppRunner) && !["merge", "discard", "restart"].contains(agent.finishAction ?? "")
+        (agent.tmuxWindow != nil || isAppRunner) && !["merge", "discard", "restart", "take_back"].contains(agent.finishAction ?? "")
     }
     /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
     /// there is something to review).
@@ -57,7 +57,8 @@ struct AgentSessionRow: Identifiable {
     static func stateText(_ job: Job) -> String {
         guard let agent = job.agent else { return "" }
         switch SessionOutcome.of(job) {
-        case .live where agent.isDesktop: return TL("row.desktop", DesktopApp.name(agent.agent))
+        case .live where agent.isDesktop:
+            return TL(agent.desktopNeedsMarking ? "row.desktop.no_mcp" : "row.desktop", DesktopApp.name(agent.agent))
         case .live(let st): return agent.stalled ? TL("row.no_response") : st.title
         case .review: return TL("row.ready_to_review")
         case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")

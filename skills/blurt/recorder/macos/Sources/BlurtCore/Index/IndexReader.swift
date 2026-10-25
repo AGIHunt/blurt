@@ -65,6 +65,10 @@ public struct ItemRow: Hashable {
     public var fileURL: URL { URL(fileURLWithPath: path.components(separatedBy: "#").first ?? path) }
     /// A v1/v2 session that hasn't been migrated yet ("<items.json>#<id>"): shown, not editable.
     public var legacy: Bool { path.contains("#") }
+    /// Its file doesn't parse (hand-edited, a sync conflict): listed, never written — its detail says how to fix it.
+    public var unreadable: Bool { parseError != nil }
+    /// Shown, not editable: a legacy row or an unreadable file.
+    public var readOnly: Bool { legacy || unreadable }
     /// Needs you (K3): new, or an agent says it's finished.
     public var needsYou: Bool { Lifecycle.inbox.contains(state) }
     public var discarded: Bool { state == "discarded" }

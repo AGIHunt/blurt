@@ -138,19 +138,19 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.action.snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
             e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
             e(T("main.menu.start_session"), "paperplane", "⌘↩", enabled: has) { c.handOffSelection() },
-            e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
+            e(T("main.cmd.copy_instruction"), "doc.on.doc", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
             e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
             e(T("main.menu.export_bundle"), "archivebox", enabled: has) { c.mExportBundle() },
             e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },
-            e(T("action.reveal_in_finder"), "folder", "⇧⌘R", enabled: has) { c.mReveal() },
+            e(T("action.reveal_in_finder"), "arrow.up.forward.app", "⇧⌘R", enabled: has) { c.mReveal() },
             e(T("action.copy_path"), "doc.on.doc", "⌥⌘C", enabled: has) { c.copyPaths() },
             e(T("main.menu.rename"), "pencil", "E", enabled: has) { c.renameSelection() },
-            e(T("main.palette.move_pick"), "folder", "M", enabled: has && Scripts.canWrite) { DispatchQueue.main.async { c.pickProject() } },
+            e(T("main.palette.move_pick"), "arrow.turn.up.right", "M", enabled: has && Scripts.canWrite) { DispatchQueue.main.async { c.pickProject() } },
             e(T("main.palette.switch_project"), "arrow.left.arrow.right", hk(.project)) { AppEnvironment.island?.showSwitcher() },
             e(T("main.place.inbox"), "tray", "⌘1") { c.go(.inbox) },
-            e(T("main.place.progress"), "circle.dashed", "⌘2") { c.go(.inProgress) },
+            e(T("main.place.progress"), "circle.righthalf.filled", "⌘2") { c.go(.inProgress) },
             e(T("project.inbox"), "tray.2", "⌘3") { c.go(.unassigned) },
-            e(T("main.place.all"), "square.stack", "⌘4") { c.go(.all) },
+            e(T("main.place.all"), "list.bullet.rectangle", "⌘4") { c.go(.all) },
             e(T("main.empty.clear_filters"), "line.3.horizontal.decrease.circle", enabled: c.model.filtered) { c.clearFilters() },
             e(T("menu.rescan"), "arrow.clockwise") { c.model.scan() },
             e(T("dictation.history.menu"), "character.cursor.ibeam", "⌥⌘D") { c.showDictation() },
@@ -175,7 +175,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         for p in c.model.projects where p.registered {
             out.append(e(p.name, "folder", detail: T("main.palette.project", (p.path.path as NSString).abbreviatingWithTildeInPath)) { c.reveal(project: p.id) })
             if !items.isEmpty {
-                out.append(e(T("main.palette.move_to", p.name), "arrow.right.doc.on.clipboard") { c.move(uids: items.map(\.uid), to: p.id) })
+                out.append(e(T("main.palette.move_to", p.name), "arrow.turn.up.right") { c.move(uids: items.map(\.uid), to: p.id) })
             }
             // where new captures go: the user's pick, never a guess (K2)
             if p.id != current {

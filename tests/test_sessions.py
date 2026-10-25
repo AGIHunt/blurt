@@ -191,6 +191,55 @@ def test_parallel_worktrees_diff_merge_discard(p2):
     assert disc["taken_back"] == [b["uid"]] and p2.get(b["uid"])["state"] == "todo"
     assert p2.git(repo, "worktree", "list").count("\n") == 0
     assert p2.job(ja["id"])["agent"]["finish"]["action"] == "merge"
+    assert not wroot.exists()  # the last worktree went: no empty .<repo>-worktrees/ left beside the project
+
+
+def test_take_back_cleans_up_a_session_that_changed_nothing(p2):
+    """dogfood-2 W40-W42: 收回 on a session that changed nothing left its worktree folder and blurt/… branch next
+    to the repo (the next hand-off got -2, -3) and its dead window in Blurt's tmux. Now nothing is left; a session
+    that did change something keeps its worktree for review."""
+    repo = p2.repo()
+    proj = p2.project(repo)
+    a = p2.item(proj["id"], title="Nothing to do here")
+    b = p2.item(proj["id"], title="Something to keep")
+    ja = dispatch(p2, a["uid"], agent="claude")["jobs"][0]
+    jb = dispatch(p2, b["uid"], agent="claude")["jobs"][0]
+    (Path(jb["worktree"]) / "notes.md").write_text("draft\n")
+    for j in (ja, jb):
+        p2.run("sessions.py", "stop", j["id"])
+    r = p2.run("sessions.py", "take-back", ja["id"])
+    assert r["taken_back"] == [a["uid"]] and r["cleaned"] and p2.get(a["uid"])["state"] == "todo"
+    assert not Path(ja["worktree"]).exists() and ja["branch"] not in p2.git(repo, "branch", "--list")
+    assert p2.job(ja["id"])["agent"]["finish"]["action"] == "take_back"
+    windows = p2.tmux("list-windows", "-a", "-F", "#{window_id}").split()
+    assert p2.job(ja["id"])["agent"]["tmux"]["window"] not in windows
+    kept = p2.run("sessions.py", "take-back", jb["id"])
+    assert kept["has_changes"] == {"ahead": 0, "dirty": 1} and not kept["cleaned"] and Path(jb["worktree"]).exists()
+    assert p2.get(b["uid"])["state"] == "todo"
+    # the next hand-off of A gets the plain branch name again, not -2
+    again = dispatch(p2, a["uid"], agent="claude")["jobs"][0]
+    assert again["branch"] == ja["branch"]
+
+
+def test_taking_back_one_item_leaves_the_rest_of_its_session_alone(p2):
+    """Review of fix 2: R on ONE item of an ended two-item session ran take-back for the whole job, which moved the
+    other item to To Do too and removed the worktree it was still with. clean-up takes nothing back and waits until
+    none of the session's items is still with it."""
+    repo = p2.repo()
+    proj = p2.project(repo)
+    a = p2.item(proj["id"], title="First of two")
+    b = p2.item(proj["id"], title="Second of two")
+    j = dispatch(p2, a["uid"], b["uid"], agent="claude", mode="together")["jobs"][0]
+    p2.run("sessions.py", "stop", j["id"])
+    p2.run("items.py", "state", a["uid"], "--action", "take_back", "--by", "user")
+    r = p2.run("sessions.py", "clean-up", j["id"])
+    assert r["still_with_it"] == [b["uid"]] and not r["cleaned"] and r["taken_back"] == []
+    assert p2.get(a["uid"])["state"] == "todo" and p2.get(b["uid"])["state"] in ("handed_off", "in_progress")
+    assert Path(j["worktree"]).exists() and (p2.job(j["id"])["agent"].get("finish") or {}).get("action") != "take_back"
+    p2.run("items.py", "state", b["uid"], "--action", "take_back", "--by", "user")
+    r = p2.run("sessions.py", "clean-up", j["id"])
+    assert r["cleaned"] and not Path(j["worktree"]).exists() and j["branch"] not in p2.git(repo, "branch", "--list")
+    assert p2.job(j["id"])["agent"]["finish"]["action"] == "take_back"
 
 
 def test_merge_conflict_leaves_everything_as_it_was(p2):

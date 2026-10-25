@@ -136,6 +136,10 @@
      "reason": {"zh": "连不上 {name} 的服务：检查网络 / 代理后再整理", "en": "couldn't reach {name}'s servers: check the network / proxy and try again"},
      "patterns": ["enotfound", "econnrefused", "econnreset", "etimedout", "getaddrinfo", "network (error|is unreachable)",
                   "connection (error|refused|reset|timed out|closed)", "could not resolve host", "fetch failed", "unable to connect",
-                  "stream disconnected", "certificate verify failed", "(ssl|tls) (error|handshake)"]}
+                  "stream disconnected", "certificate verify failed", "(ssl|tls) (error|handshake)",
+                  "dns error", "failed to lookup address", "error sending request", "nodename nor servname", "os error 5[01]\\b"]},
+    {"id": "outdated", "short": {"zh": "版本太旧", "en": "outdated"},
+     "reason": {"zh": "{name} 的版本太旧，没能启动：在终端里把它更新到最新版，再重新开始", "en": "{name} is too old to start here: update it in a terminal, then start again"},
+     "patterns": ["timed out discarding buffered terminal input"]}
   ]
 }

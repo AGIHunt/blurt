@@ -312,6 +312,39 @@ def read_header(path: Path) -> dict:
     return {}
 
 
+IDENTITY = ("uid", "id", "title", "kind", "state", "aliases")
+
+
+def salvage_header(path: Path) -> dict:
+    """The identity of an item file whose front-matter doesn't parse as a whole (hand-edited, a sync conflict): its
+    uid / id / title / kind / state / aliases, read one line at a time, a line that doesn't parse skipped. A file that does
+    parse gives the same as read_header. Used to keep finding a broken file by its uid (so it can say it's broken,
+    with its own id) — never to write it."""
+    h = read_header(path)
+    if h:
+        return h
+    out: dict = {}
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            if fh.readline().strip() != "---":
+                return {}
+            for ln in fh:
+                if ln.strip() == "---":
+                    break
+                m = _KEY.match(ln.rstrip("\n"))
+                if not m or m.group(1) not in IDENTITY or m.group(1) in out:
+                    continue
+                try:
+                    v = parse_value(m.group(2) or "")
+                except Unparseable:
+                    continue
+                if (m.group(1) == "aliases" and isinstance(v, list)) or isinstance(v, str):
+                    out[m.group(1)] = v
+    except OSError:
+        return {}
+    return out
+
+
 def write_item(path: Path, item: dict) -> None:
     write_text_atomic(path, render(item))
 
@@ -461,7 +494,7 @@ class Store:
         key = ("u", uid) if uid else ("a", alias)
 
         def valid(p):
-            h = read_header(p) if p is not None and p.is_file() else {}
+            h = salvage_header(p) if p is not None and p.is_file() else {}
             return (uid and h.get("uid") == uid) or (alias and alias in (h.get("aliases") or []))
         try:
             mtime = self.items_dir.stat().st_mtime_ns
@@ -484,7 +517,7 @@ class Store:
     def _build_map(self) -> dict:
         out: dict = {}
         for p in self.files():
-            h = read_header(p)
+            h = salvage_header(p)  # a broken file is still found by its uid: load() then says it's unreadable
             if h.get("uid"):
                 out[("u", h["uid"])] = p
             for a in h.get("aliases") or []:

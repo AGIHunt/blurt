@@ -217,6 +217,11 @@ export class ReviewStore {
   get item(): Item | undefined {
     return this.missing ? undefined : this.data.items[this.cur];
   }
+  /** item mode: the item asked for is there but its file can't be read — the page says so (never "gone") */
+  get unreadable(): boolean {
+    const want = this.itemId;
+    return this.missing && !!want && (this.data._unreadable || []).some((u) => u.uid === want || u.id === want);
+  }
   keyOf = (i: Item) => this.key(i);
   /** the review's view of the state: pending (new) · drop (discarded) · keep (anything else) */
   st = (i: Item) => statusOf(i);
@@ -453,6 +458,8 @@ export class ReviewStore {
       this.emit();
       this.schedulePoll();
     } catch (e) {
+      // the host's own words go to the console (and its log); the page says it in the reader's language
+      console.warn("blurt review: load failed:", e);
       this.loadError = String((e as Error)?.message || e);
       this.emit();
     }

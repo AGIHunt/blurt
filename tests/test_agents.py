@@ -306,6 +306,24 @@ def test_hook_python_is_not_a_cache_venv():
     assert Path(agents.hook_python()).exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="the sh shim is macOS / Linux")
+def test_codex_hook_command_never_changes_with_the_interpreter(env, tmp_path):
+    """dogfood-2 W41: the hook command embedded whichever python ran sessions.py, so every interpreter upgrade (or
+    a moved skill) brought Codex's "Hooks need review" screen back. Now it names only $BLURT_HOME/bin/blurt-hook,
+    which is rewritten to exec today's interpreter and script."""
+    a = agents.hook_command("codex", None, "/opt/old/python3.12")
+    b = agents.hook_command("codex", None, "/opt/new/python3.14")
+    shim = env["bh"] / "bin" / "blurt-hook"
+    assert a == b == f"'{shim}' --agent codex" and "python" not in a
+    body = shim.read_text()
+    assert "/opt/new/python3.14" in body and str(agents.SESSIONS_PY) in body and os.access(shim, os.X_OK)
+    # it runs: the hook subcommand with the agent's arguments (a bad job id answers, never hangs)
+    agents.hook_command("codex", None, sys.executable)
+    r = subprocess.run([str(shim), "--agent", "codex"], input="{}", capture_output=True, text=True, timeout=30,
+                       env={**os.environ, "BLURT_JOB": ""})
+    assert r.returncode in (0, 1, 2)
+
+
 @pytest.mark.skipif(sys.platform != "darwin" or not shutil.which("codex"), reason="codex's own macOS seatbelt")
 def test_codex_sandbox_keeps_blurt_home_read_only(tmp_path, monkeypatch):
     """The organizing run's writable roots under codex's real sandbox (`codex sandbox`, no model call, a scratch

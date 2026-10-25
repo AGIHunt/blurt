@@ -148,7 +148,7 @@
 "verify.notification" = "Ready to verify: %@";
 
 /* Errors from sessions.py (by code) */
-"error.unknown" = "Something went wrong (%@).";
+"error.unknown" = "That didn’t work. Try again; if it keeps failing, the details are in the log.";
 "error.failed" = "The session command failed.";
 "error.timeout" = "The session command took too long.";
 "error.missing_dependency" = "tmux or git is missing on this Mac.";
@@ -202,7 +202,7 @@
 "agents.state.ready" = "Signed in";
 "agents.state.not_installed" = "Not installed";
 "agents.state.manual" = "Installed · set up by hand";
-"agents.manual.header" = "Skill + MCP only";
+"agents.manual.header" = "Used in their own app";
 "agents.manual.footer" = "These have no command line, so they never run in Blurt. Import the blurt skill and MCP once in their own settings; “Copy instruction” hands items to them.";
 "agents.sessions.header" = "Sessions";
 "agents.tmux.ok" = "tmux %@";
@@ -251,6 +251,8 @@
 "row.failed" = "Stopped with an error";
 "row.no_changes" = "Ended · no changes";
 "finish.state.keep" = "Kept for later";
+"finish.state.take_back" = "Taken back";
+"take_back.changes_kept" = "Taken back. The session’s changes are still on its branch: review them first.";
 "finish.state.restart" = "Started again";
 "header.show_items" = "Show Items in List";
 "header.show_log" = "Show Log";
@@ -299,6 +301,7 @@
 "overlay.desktop.body" = "Blurt doesn’t see this conversation live. Progress comes from the agent: the items move when it reports them.";
 "overlay.desktop.body_continued" = "This session moved here from Blurt’s terminal. Blurt doesn’t see it live any more: progress comes from the agent.";
 "row.desktop" = "In %@ desktop";
+"row.desktop.no_mcp" = "In %@ desktop · waiting for you to mark it";
 "agents.handoff_target" = "Hand-offs to %@";
 "agents.handoff_target.hint" = "Where the hand-off sheet starts. You can change it each time.";
 "agents.handoff_target.no_app" = "%@ desktop isn’t installed, so hand-offs run in Blurt’s terminal.";
@@ -311,3 +314,22 @@
 "error.no_session_id" = "The agent hasn’t said which conversation this is yet. Try again in a moment.";
 "error.bad_runner" = "Only a session running in Blurt’s terminal can do that.";
 "dispatch.start.desktop" = "Open in %@";
+
+/* sessions.py codes that had no sentence (they used to show raw) */
+"error.auth" = "%@ isn’t signed in. Sign in, then start again.";
+"error.auth.fix" = "%1$@ isn’t signed in: %2$@. Then start again.";
+"error.bad_transition" = "These items are waiting to be verified or are done. Reopen them to hand them off again.";
+"error.finished" = "This session has already been dealt with.";
+"error.already_dispatched.named" = "%@ is already with a session that is still going.";
+"error.io" = "Blurt couldn’t read or write a file it needs. Try again.";
+"error.unparseable" = "An item’s file can’t be read. Fix it in an editor first.";
+"error.not_found" = "These items can’t be found any more. They may have been moved or deleted.";
+"error.locked" = "Something else is running. Try again in a moment.";
+"warning.taken_back" = "Their last session has ended: the items are taken back from it and handed to the new one.";
+"warning.taken_back.one" = "Its last session has ended: the item is taken back from it and handed to the new one.";
+"dispatch.untitled" = "Untitled";
+"install.what.skill" = "the Blurt skill";
+"install.what.mcp" = "the blurt MCP";
+"install.error" = "A settings file isn’t in a shape Blurt knows, so it was left alone.";
+"install.error.path" = "%@ isn’t in a shape Blurt knows, so it was left alone.";
+"agents.test.failed" = "%@ didn’t pass the test. Run it in a terminal and check that it answers.";

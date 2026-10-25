@@ -54,8 +54,8 @@ final class Spotlight {
     static func searchable(_ r: IndexedItem) -> CSSearchableItem {
         let a = CSSearchableItemAttributeSet(contentType: UTType.text)
         a.title = r.title.isEmpty ? r.itemID : r.title
-        let kind = kindLabel(r.kind)
-        let ws = (r.workspacePath as NSString).lastPathComponent
+        let kind = Look.kindName(r.kind)
+        let ws = r.projectID == "inbox" ? T("project.inbox") : r.projectName.isEmpty ? (r.workspacePath as NSString).lastPathComponent : r.projectName
         var desc = [kind, ws].joined(separator: " · ")
         if r.fixState == "fixed" { desc += T("main.misc.fixed") }
         if !r.quote.isEmpty { desc += "\n“\(r.quote)”" }
@@ -69,16 +69,6 @@ final class Spotlight {
         let item = CSSearchableItem(uniqueIdentifier: r.uid, domainIdentifier: domain, attributeSet: a)
         item.expirationDate = .distantFuture
         return item
-    }
-
-    static func kindLabel(_ k: String) -> String {
-        switch k {
-        case "issue": return T("main.misc.issue")
-        case "idea": return T("main.misc.idea")
-        case "note": return T("main.misc.note")
-        case "task": return T("main.misc.task")
-        default: return k
-        }
     }
 
     /// CSSearchQuery over our own index (the acceptance test: an item's title is found).

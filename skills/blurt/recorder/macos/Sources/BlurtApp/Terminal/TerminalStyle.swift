@@ -1,6 +1,6 @@
 // Strings (K10 table "Terminal", plus the shared `session.*` words from "Common") and the visual language of agent
-// sessions: the status colours, the status mark (a still ring with a dot for a session in the agent's desktop app,
-// never the spinner), the terminal's light / dark palettes.
+// sessions: the status colours, the status mark (one shape per state; an outward arrow for a session in the agent's
+// desktop app, never the spinner), the terminal's light / dark palettes. sessionsErrorText: codes in words, never raw.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -15,14 +15,22 @@ func TL(_ key: String, _ a: CVarArg...) -> String {
     }
 }
 
-/// A sessions.py error code → a sentence for people.
+/// A sessions.py error code → a sentence for people, never the code or the script's own message (those go to the
+/// log). auth names the agent and its fix; already_dispatched names the item.
 func sessionsErrorText(_ e: Error) -> String {
-    if let s = e as? SessionsError {
+    NSLog("blurt sessions: %@", "\(e)")
+    guard let s = e as? SessionsError else { return TL("error.unknown") }
+    switch s.code {
+    case "auth":
+        let name = s.agent.map(AgentNames.name) ?? "Agent"
+        return s.fix.map { TL("error.auth.fix", name, $0) } ?? TL("error.auth", name)
+    case "already_dispatched" where s.itemID != nil:
+        return TL("error.already_dispatched.named", s.itemID!)
+    default:
         let key = "error.\(s.code)"
         let t = TL(key)
-        return t == key ? TL("error.unknown", s.code) : t
+        return t == key ? TL("error.unknown") : t
     }
-    return TL("error.unknown", "\(e)")
 }
 
 extension AgentSessionStatus {
@@ -64,8 +72,10 @@ extension NSColor {
     }
 }
 
-/// The status mark of a session: a turning arc while the agent works, a filled dot that breathes once when it needs
-/// you, a quiet dot when the turn is done, a hollow ring once it has exited. Reduced motion: no turning, no breathing.
+/// The status mark of a session, one shape per state (readable without colour): a turning arc while the agent works,
+/// an attention disc with "!" that breathes once when it needs you, an ok disc with a check when the turn is done, an
+/// error disc with "×" when it failed (never a bare red dot), a hollow ring once it has exited. Reduced motion: no
+/// turning, no breathing.
 struct SessionStatusMark: View {
     var status: AgentSessionStatus
     var size: CGFloat = 10
@@ -79,8 +89,9 @@ struct SessionStatusMark: View {
     var body: some View {
         ZStack {
             if elsewhere {
-                Circle().strokeBorder(AgentSessionStatus.running.color, lineWidth: 1.4)
-                Circle().fill(AgentSessionStatus.running.color).frame(width: size * 0.36, height: size * 0.36)
+                // out of here, to the agent's app: an outward arrow, never the handed-off ring's dot
+                Image(systemName: "arrow.up.right.circle").resizable().scaledToFit().fontWeight(.medium)
+                    .foregroundStyle(AgentSessionStatus.running.color)
             } else {
             switch status {
             case .running:
@@ -92,9 +103,12 @@ struct SessionStatusMark: View {
             case .waitingInput:
                 Circle().fill(status.color.opacity(0.28)).scaleEffect(pulse ? 1.9 : 1).opacity(pulse ? 0 : 1)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.9).repeatCount(2, autoreverses: false), value: pulse)
-                Circle().fill(status.color)
-            case .turnDone, .error:
-                Circle().fill(status.color)
+                disc("exclamationmark.circle.fill")
+            case .turnDone:
+                disc("checkmark.circle.fill")
+            case .error:
+                // never a bare red dot: that is the recording dot (system.md §2.3)
+                disc("xmark.circle.fill")
             case .exited:
                 Circle().strokeBorder(status.color, lineWidth: 1.4)
             }
@@ -105,6 +119,12 @@ struct SessionStatusMark: View {
         .onChange(of: status) { s in pulse = false; DispatchQueue.main.async { pulse = s == .waitingInput } }
         .accessibilityElement()
         .accessibilityLabel(elsewhere ? TL("mark.elsewhere") : status.title)
+    }
+
+    /// A filled disc with its state's sign cut out: each coloured state has a shape twin (system.md §1.5), so waiting,
+    /// done and failed differ in grayscale too.
+    private func disc(_ symbol: String) -> some View {
+        Image(systemName: symbol).resizable().scaledToFit().foregroundStyle(.white, status.color)
     }
 }
 

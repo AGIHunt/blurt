@@ -39,6 +39,8 @@ def test_an_agent_that_dies_at_startup_says_why_and_can_start_again(p2):
                   what="the reason")
     assert job["state"] == "failed" and job["error"]["code"] == "agent_exit"
     assert job["error"]["message"] == "Error: timed out discarding buffered terminal input"
+    # people get a sentence with what to do (too old: update it), never the raw line (dogfood-2 W41)
+    assert "Codex" in job["error"]["reason"] and "update" in job["error"]["reason"].lower()
     assert job["agent"]["last_output"][-1] == job["error"]["message"]
     assert not any("Pane is dead" in ln for ln in job["agent"]["last_output"])
     assert job["agent"]["changes"] == {"ahead": 0, "dirty": 0}  # nothing to review
@@ -108,6 +110,36 @@ def test_the_same_item_is_not_dispatched_twice(p2):
     # once that session is over, the item can be handed off again
     p2.run("sessions.py", "event", "--job", first, "--event", "pane-dead", "--exit", "1")
     assert dispatch(p2, it["uid"], agent="claude", runner="app")["launch"]
+
+
+def test_an_item_left_in_progress_by_an_ended_session_can_go_again(p2):
+    """dogfood-2 W33: after "<Agent> couldn't start" or "the agent never reported", the item stays in progress (by
+    design). Handing it off again said bad_transition, raw, with Start still enabled: now the ended session gives it
+    back (history says so) and the new one takes it. Done items still ask to be reopened; a live session still wins."""
+    p2.env["FAKE_EXIT"] = "3"
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    first = dispatch(p2, it["uid"], agent="claude")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(first) == "waiting_input")
+    p2.type(first)
+    p2.wait(lambda: p2.status(first) == "turn_done")
+    # still going: not a second time, and the refusal names the item (the app's sentence uses it)
+    busy = dispatch(p2, it["uid"], agent="claude", ok=False)
+    assert busy["code"] == "already_dispatched" and busy["job"] == first and busy["id"] == it["id"]
+    p2.type(first)
+    p2.wait(lambda: p2.status(first) == "error", what="error")
+    assert p2.get(it["uid"])["state"] == "in_progress"
+    p2.env.pop("FAKE_EXIT")
+    dry = dispatch(p2, it["uid"], agent="claude", dry_run=True)
+    assert {"code": "taken_back", "items": [it["uid"]]} in dry["warnings"]
+    assert p2.get(it["uid"])["state"] == "in_progress"            # a dry run changes nothing
+    second = dispatch(p2, it["uid"], agent="claude")["jobs"][0]["id"]
+    item = p2.get(it["uid"])
+    assert item["state"] == "handed_off" and item["work"]["job"] == second
+    assert [h.get("state") for h in item.get("work_history", [])][-2:] == ["in_progress", "todo"]  # given back, then on
+    # done: reopen first
+    p2.run("items.py", "state", it["uid"], "--state", "done", "--by", "user")
+    assert dispatch(p2, it["uid"], agent="claude", ok=False)["code"] == "bad_transition"
 
 
 def test_a_sandboxed_agent_leaves_changes_and_merge_commits_them(p2):

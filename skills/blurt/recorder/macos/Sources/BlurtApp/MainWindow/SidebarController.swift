@@ -153,7 +153,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
-            place(T("main.place.progress"), .inProgress, "circle.dashed", c.active, ax: T("main.sidebar.progress.ax")),
+            place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
             dictation,

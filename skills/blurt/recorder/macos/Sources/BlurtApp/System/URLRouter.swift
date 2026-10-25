@@ -56,11 +56,12 @@ enum URLRouter {
         case .item(let uid):
             if let mw = AppEnvironment.mainWindow { mw.show(); mw.reveal(uid: uid); return true }
             if let it = IndexLookup.item(uid: uid) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: it.path)]); return true }
-            appDelegate?.toast(T("app.url.no_item", String(uid.prefix(12))))
+            appDelegate?.toast(T("app.url.no_item"))
             return true
         case .session(let dir):
             guard FileManager.default.fileExists(atPath: dir.path) else {
-                appDelegate?.toast(T("app.url.no_session", (dir.path as NSString).abbreviatingWithTildeInPath))
+                NSLog("blurt url: no session at %@", dir.path)          // the path for the log, not the toast
+                appDelegate?.toast(T("app.url.no_session"))
                 return true
             }
             if let mw = AppEnvironment.mainWindow { mw.show(); mw.reveal(session: dir); return true }
