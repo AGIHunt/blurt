@@ -6,9 +6,13 @@
 //                         pasted in the order they were said, one at a time, whichever finishes first
 //   DictationRunaway      a hands-free take nobody stopped: a reminder after 20 s without speech, a countdown on the
 //                         ear from 4:30, and the 5-minute limit said out loud when it ends the take
-//   DictationTips         one quiet line after a take, for the first few: double-tap to send (chat apps), ⇧ for a
-//                         list, ⌥⇧L for another style — each until it was shown enough or the user used it
+//   DictationTips         one quiet line after a take, for the first few: double-tap to send (chat apps, up to 5),
+//                         ⇧ for a list, ⌥⇧L for another style (from the first take elsewhere, a different one each
+//                         time) — each until it was shown enough or the user used it
 //   DictationASRFailure   why a take's words couldn't be recognised, in the user's terms (no model, too slow, failed)
+//   DictationSpeechModels what `transcribe.py dictation-models` says: can a take run with nothing downloaded, what a
+//                         download would have to bring, whether a weaker model ran
+//   DictationReformatAfterPaste  ⌥⇧L while a take is on its way: bound to that take, never run for another
 import Foundation
 
 /// The takes that stopped and wait for their text, in the order they were said. Each is pasted only once the one
@@ -122,8 +126,7 @@ public enum DictationTip: String, CaseIterable {
         if chat {
             return sendOn && !sent && left(.send) ? .send : nil
         }
-        // the other two start after the first take (that one is about getting the words in at all)
-        guard shown["takes"] ?? 0 >= 1 else { return nil }
+        // elsewhere: from the first take, one each — ⇧ for a list, then ⌥⇧L (a chat app's takes teach sending first)
         return [.list, .reformat].first(where: left)
     }
 }
@@ -157,4 +160,108 @@ public enum DictationASRFailure: Equatable {
     /// How long a speech-server call may take for this much audio: a model load (cold, from disk) plus 1.5× the
     /// audio — a piece of 20 s gets 45 s, not a flat minute, and a hung server is given up on in proportion.
     public static func serverTimeout(audioSeconds: Double) -> Double { 15 + 1.5 * max(0, audioSeconds) }
+}
+
+/// `transcribe.py dictation-models` as the key-down needs it. A dictation never downloads anything, so the key listens
+/// only when a take can run as things are: the selected model (local and on this Mac, or a cloud one with its key) and
+/// the VAD every take goes through (`ready`). A model outside the Settings rows (a cloud one, the voice-note pick) is
+/// judged by itself, never by being absent from them.
+public struct DictationSpeechModels: Equatable {
+    public var selected: String
+    public var ready: Bool
+    public var selectedInstalled: Bool
+    public var recommended: String
+    public var recommendedInstalled: Bool
+    /// record.dictation.asr_model (nil: automatic), and whether it is on this Mac
+    public var configured: String?
+    public var configuredInstalled: Bool
+    /// what a download would bring: "silero-vad" and/or the selected model's id
+    public var missing: [String]
+
+    public static let vad = "silero-vad"
+
+    public init(selected: String, ready: Bool, selectedInstalled: Bool, recommended: String, recommendedInstalled: Bool,
+                configured: String? = nil, configuredInstalled: Bool = false, missing: [String] = []) {
+        self.selected = selected; self.ready = ready; self.selectedInstalled = selectedInstalled
+        self.recommended = recommended; self.recommendedInstalled = recommendedInstalled
+        self.configured = configured; self.configuredInstalled = configuredInstalled; self.missing = missing
+    }
+
+    /// The CLI's answer (or Settings' reload of it). An older answer without `ready` falls back to the rows.
+    public init?(_ r: [String: Any]) {
+        guard let selected = r["selected"] as? String else { return nil }
+        let rows = r["models"] as? [[String: Any]] ?? []
+        func row(_ id: String) -> Bool { rows.contains { $0["id"] as? String == id && $0["installed"] as? Bool == true } }
+        let rec = r["recommended"] as? String ?? selected
+        let selIn = r["selected_installed"] as? Bool ?? row(selected)
+        let configured = r["configured"] as? String
+        self.init(selected: selected, ready: r["ready"] as? Bool ?? selIn, selectedInstalled: selIn, recommended: rec,
+                  recommendedInstalled: row(rec), configured: configured,
+                  configuredInstalled: r["configured_installed"] as? Bool ?? configured.map(row) ?? false,
+                  missing: r["missing"] as? [String] ?? (selIn ? [] : [selected]))
+    }
+
+    /// Only the VAD is missing (the model is there): the island says that, not "no speech model".
+    public var onlyVADMissing: Bool { !ready && selectedInstalled && missing == [DictationSpeechModels.vad] }
+
+    /// What "Download…" gets: the configured model when that is what's missing, else the recommended one; with the
+    /// model there and only the VAD missing, the selected model's setup (which brings the VAD) without choosing it.
+    public var toGet: (id: String, choose: Bool)? {
+        if ready { return recommendedInstalled ? nil : (recommended, true) }
+        if selectedInstalled { return (selected, false) }
+        if let c = configured, !configuredInstalled { return (c, true) }
+        return (recommended, true)
+    }
+
+    /// The once-a-day "a weaker model ran" notice after a take recognised by `used`: only when the user didn't pick
+    /// that model themselves (a configured model on this Mac is their choice, not a fallback).
+    public func weakerModelRan(_ used: String?) -> Bool {
+        guard let used = used, !recommendedInstalled, used != recommended else { return false }
+        if let c = configured, configuredInstalled, c == used { return false }
+        return true
+    }
+}
+
+/// ⌥⇧L pressed while a take is still on its way (being transcribed, polished or pasted): it means the take said
+/// last, once it is in. Bound to that take's id: a take cancelled, failed or empty takes the request with it, and it
+/// never runs for a later one.
+public struct DictationReformatAfterPaste<ID: Hashable> {
+    public private(set) var pending: (id: ID, via: String)?
+
+    public init() {}
+
+    /// The take it is for (the queue's last), or nil when nothing is on its way.
+    @discardableResult
+    public mutating func request(last: ID?, via: String) -> ID? {
+        guard let id = last else { pending = nil; return nil }
+        pending = (id, via)
+        return id
+    }
+
+    /// `id` was pasted: the request's `via` when it was for this take (it is then used up).
+    public mutating func delivered(_ id: ID) -> String? {
+        guard let p = pending, p.id == id else { return nil }
+        pending = nil
+        return p.via
+    }
+
+    /// `id` left without a paste (cancelled, failed, nothing heard): a request for it goes too.
+    public mutating func forget(_ id: ID) { if pending?.id == id { pending = nil } }
+}
+
+/// Dictation gave up on a speech server that didn't answer: still given up only while that same server (by pid) is
+/// the one running — a fresh server is used at once.
+public enum DictationServerGiveUp {
+    public static func stillGivenUp(givenUp: Int32?, now: Int32?) -> Bool {
+        guard let g = givenUp else { return true }      // no pid known: the minute holds
+        return now == nil || now == g
+    }
+}
+
+/// When the listening aura under the island comes up for a take: at once for push-to-talk, after the double-tap
+/// window for a tap-started take when a double tap sends (that first tap may turn out to be a send's).
+public enum DictationGlow {
+    public static func delay(pushToTalk: Bool, doubleTapSend: Bool, window: Double) -> Double {
+        pushToTalk || !doubleTapSend ? 0 : window
+    }
 }

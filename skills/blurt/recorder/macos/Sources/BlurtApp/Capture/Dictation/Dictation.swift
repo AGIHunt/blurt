@@ -90,17 +90,19 @@ final class Dictation {
     // the takes that stopped and are on their way to the cursor (DictationTakes.swift)
     var takes: [String: DictationTake] = [:]
     var queue = DictationPasteQueue<String>()
-    /// ⌥⇧L came while a paste was under way: run once it is in (it is about that take)
-    var reformatAfterPaste: String?
+    /// ⌥⇧L came while a take was on its way: run once that take is in (BlurtCore's DictationReformatAfterPaste)
+    var reformatAfterPaste = DictationReformatAfterPaste<String>()
     /// takes whose speech recognition failed, kept (with their audio) for Retry — the last few
     var failedTakes: [String: DictationTake] = [:]
+    /// takes stopped on their way by Esc, kept (with their audio) while "Cancelled" offers Undo
+    var cancelledTakes: [String: DictationTake] = [:]
     /// when Return was last pressed (a hint about a missed press doesn't come after a send)
     var lastSendAt: CFTimeInterval = 0
     /// Settings' model list (DictationModels) → `speechModels`; the history being cleared or edited
     var observers: [Any] = []
-    /// `transcribe.py dictation-models`: the selected model, whether it is on this Mac, the recommended one (nil: not
-    /// known yet — the key then listens as before)
-    var speechModels: (selected: String, installed: Bool, recommended: String, recommendedInstalled: Bool)?
+    /// `transcribe.py dictation-models`: can a take run with nothing downloaded (the selected model and the VAD), what
+    /// is missing, the recommended and configured models (nil: not known yet — the key then listens as before)
+    var speechModels: DictationSpeechModels?
     /// tests (`dictation front NAME`): the app in front as far as the paste check knows (the pad is always the field)
     var testFront = "test-pad"
 
@@ -123,6 +125,9 @@ final class Dictation {
     private var armedAt: CFTimeInterval = 0
     /// audio is arriving: the island says "listening" only from here
     private(set) var micLive = false
+    /// the listening aura shows from here (DictationGlow: after the double-tap window for a tap-started take)
+    private(set) var glowFrom: CFTimeInterval = 0
+    var glowOn: Bool { phase == .listening && micLive && CACurrentMediaTime() >= glowFrom }
     /// tests: the "microphone" (a wav) — `dictation wav PATH`, else BLURT_TEST_MIC_WAV / BLURT_NOTE_WAV
     var testWav: String?
     /// tests: stop the next dictation at this point of the wav, as a key-up would (`dictation stop-after S`): a release
@@ -252,7 +257,7 @@ final class Dictation {
             WarmSpawn.testNoServers ? "test" : phase != .idle ? "busy" : nil
         if let s = skip { return emit(["event": "dictation_prewarm", "why": why, "skipped": s]) }
         refreshSpeechModels { [weak self] in
-            guard let self = self, let m = self.speechModels, m.installed, Dictation.enabled else {
+            guard let self = self, let m = self.speechModels, m.ready, Dictation.enabled else {
                 return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed",
                              "model": self?.speechModels?.selected ?? NSNull()])
             }
@@ -272,17 +277,17 @@ final class Dictation {
         }
     }
 
-    /// The dictation-models answer (the CLI's, or Settings' when it reloads it).
+    /// The dictation-models answer (the CLI's, or Settings' when it reloads it). A take that failed for lack of a
+    /// model, when a model is there now: the island offers Retry for it.
     func setSpeechModels(_ r: [String: Any]) {
-        guard let selected = r["selected"] as? String else { return }
-        let rows = r["models"] as? [[String: Any]] ?? []
-        let rec = r["recommended"] as? String ?? selected
-        func installed(_ id: String) -> Bool { rows.contains { $0["id"] as? String == id && $0["installed"] as? Bool == true } }
-        let was = speechModels?.installed
-        speechModels = (selected, installed(selected), rec, installed(rec))
-        if was != speechModels?.installed {
-            emit(["event": "dictation_models", "selected": selected, "installed": installed(selected), "recommended": rec])
+        guard let m = DictationSpeechModels(r) else { return }
+        let was = speechModels
+        speechModels = m
+        if was?.ready != m.ready || was?.missing != m.missing {
+            emit(["event": "dictation_models", "selected": m.selected, "ready": m.ready, "installed": m.selectedInstalled,
+                  "missing": m.missing, "recommended": m.recommended])
         }
+        if was?.ready == false, m.ready { modelArrived() }
     }
 
     /// Dictation listens with the Mac's own mic (DictationMicChoice: automatic = when the default input is Bluetooth).
@@ -533,7 +538,7 @@ final class Dictation {
         // opened on the key-down closes again, and nothing is kept
         if precaptured, !listening, !trigger.armedDown { dropPrecapture() }
         // a press this mode doesn't use (a tap in hold mode, a long press in tap mode): say how it starts
-        if let m = trigger.miss { missedPress(m) }
+        if let m = trigger.takeMiss() { missedPress(m) }
         updateShiftFilter()
         scheduleHoldTick()
     }
@@ -588,7 +593,7 @@ final class Dictation {
     }
 
     /// The speech model dictation would use isn't on this Mac (known only once `dictation-models` has answered).
-    var speechModelMissing: Bool { speechModels.map { !$0.installed } ?? false }
+    var speechModelMissing: Bool { speechModels.map { !$0.ready } ?? false }
 
     /// Key went down alone: get the models loaded while the user starts talking. A server that isn't running is
     /// started offline first (no package index lookup: `uv run` checking PyPI after its cache expired took 13 s here,
@@ -778,6 +783,11 @@ final class Dictation {
         voice?.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
         if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
         listening = true
+        // a tap-started take may be a double tap's first tap (a send): the listening aura waits out the window, so a
+        // send never flashes it
+        glowFrom = CACurrentMediaTime() + DictationGlow.delay(pushToTalk: trigger.pushToTalk,
+                                                             doubleTapSend: Dictation.doubleTapSend && trigger.doubleTap,
+                                                             window: trigger.doubleTapWindow)
         island.dropToasts(key: Dictation.takeToastKey)      // the last take's Undo / list chip: not this take's
         updatePhase()
         captureContext()
@@ -836,7 +846,8 @@ final class Dictation {
     func cancel(quietly: Bool = false) {
         guard listening else {
             dropPrecapture()
-            if cancelPending(), !quietly { toast("dictation.toast.cancelled", seconds: 1.2) }
+            let stopped = cancelPending()
+            if !stopped.isEmpty, !quietly { toastCancelled(stopped) }
             return
         }
         trigger.reset(active: false)
@@ -996,20 +1007,26 @@ final class Dictation {
         return out
     }
 
-    /// A speech server that stopped answering (hung, stopped): its requests go to the CLI for a minute, and the one
-    /// Blurt started is ended, so the next key-down starts a fresh one.
+    /// A speech server that stopped answering (hung, stopped): its requests go to the CLI for a minute — that server,
+    /// by its pid: a fresh one (the next key-down starts it) is used as soon as it is up. The one Blurt started is
+    /// ended, except while a voice note is waiting on it (it may only be busy with that note: the note's own timeout
+    /// and CLI fallback cover a real hang).
     private static let serverLock = NSLock()
     private static var serverGivenUpAt: Date?
+    private static var serverGivenUpPid: Int32?
     static var serverGivenUp: Bool {
         serverLock.lock(); defer { serverLock.unlock() }
-        return serverGivenUpAt.map { Date().timeIntervalSince($0) < 60 } ?? false
+        guard let at = serverGivenUpAt, Date().timeIntervalSince(at) < 60 else { return false }
+        return DictationServerGiveUp.stillGivenUp(givenUp: serverGivenUpPid, now: WarmServer.pid("asr-serve"))
     }
     private static func giveUpOnServer() {
         serverLock.lock()
         serverGivenUpAt = Date()
+        serverGivenUpPid = WarmServer.pid("asr-serve")
         serverLock.unlock()
-        emit(["event": "dictation_asr_server", "state": "given_up"])
-        DispatchQueue.main.async { VoiceInput.endUnresponsiveServer() }
+        let busy = VoiceInput.notesWaiting > 0
+        emit(["event": "dictation_asr_server", "state": "given_up", "pid": serverGivenUpPid ?? NSNull(), "ended": !busy])
+        if !busy { DispatchQueue.main.async { VoiceInput.endUnresponsiveServer() } }
     }
 
     /// An interim request for the live text: the warm server only (no process start, no CLI — a missing server is

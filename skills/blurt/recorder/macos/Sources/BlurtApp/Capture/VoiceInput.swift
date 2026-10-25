@@ -240,12 +240,19 @@ final class VoiceInput {
         return false
     }
 
+    /// Voice-note pieces waiting on the speech server now (dictation doesn't end a server a note is using).
+    private static let notesLock = NSLock()
+    private static var notesInFlight = 0
+    static var notesWaiting: Int { notesLock.lock(); defer { notesLock.unlock() }; return notesInFlight }
+
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).
     static var serverStarting: Bool { server?.isRunning == true && !WarmServer.running("asr-serve") }
 
     /// One piece of a voice note → its words: the warm server (`note`, the voice-note model), else the CLI (which
     /// asks the server itself, or loads the model). Blocking: off the main thread.
     static func transcribePiece(_ wav: URL, prior: String) -> [String: Any]? {
+        notesLock.lock(); notesInFlight += 1; notesLock.unlock()
+        defer { notesLock.lock(); notesInFlight -= 1; notesLock.unlock() }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto"]
         if !prior.isEmpty { req["prior"] = String(prior.suffix(200)) }
         let until = Date().addingTimeInterval(15)

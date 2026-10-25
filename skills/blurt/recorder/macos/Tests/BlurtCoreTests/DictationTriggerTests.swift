@@ -432,6 +432,18 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertNil(a.miss)
     }
 
+    /// review: the miss stayed set until the next dictation-key press, so every other key and click re-reported it
+    func testAMissIsReportedOnce() {
+        var h = DictationTrigger(key: .fn, mode: .hold)
+        _ = h.run("fn-down@0 fn-up@90")
+        XCTAssertEqual(h.takeMiss(), .tappedInHoldMode)
+        XCTAssertNil(h.takeMiss())
+        // the keys and the click that follow don't bring it back
+        _ = h.run("key:0@500 click@700")
+        XCTAssertNil(h.takeMiss())
+        XCTAssertNil(h.miss)
+    }
+
     func testNearMissDoubleTapIsAQuickStop() {
         // the second press 520 ms after the first release: outside the window, so the first tap's dictation stops —
         // but it was a near miss, and the app sends instead of "nothing heard" when nothing was

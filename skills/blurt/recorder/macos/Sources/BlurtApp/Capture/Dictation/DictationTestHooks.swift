@@ -59,10 +59,13 @@ extension App {
         case "front":               // front NAME: the app in front as the paste check sees it (a slow take's user moved on)
             d.testFront = rest.isEmpty ? "test-pad" : rest
             emit(["event": "dictation_test_front", "front": d.testFront])
-        case "models":              // models missing|installed|-: what dictation-models said (- = ask it again)
+        case "models":              // models missing|vad|installed|-: what dictation-models said (- = ask it again;
+                                    // vad = the model is there, the VAD isn't)
             if rest == "-" { d.refreshSpeechModels() } else {
-                let ok = rest != "missing"
-                d.setSpeechModels(["selected": "test-asr", "recommended": "test-asr",
+                let ok = rest != "missing", vad = rest != "vad" && ok
+                d.setSpeechModels(["selected": "test-asr", "recommended": "test-asr", "ready": ok && vad,
+                                   "selected_installed": ok,
+                                   "missing": (vad ? [] : ["silero-vad"]) + (ok ? [] : ["test-asr"]),
                                    "models": [["id": "test-asr", "installed": ok]]])
             }
         case "retry": d.retry(rest, via: "test")    // retry ID: a failed take again (the island's / history's Retry)
@@ -102,7 +105,7 @@ extension App {
         case "setup": d.openSetup()                             // what "Turn On Dictation…" does
         case "status":
             emit(["event": "dictation_status", "phase": d.phase.rawValue, "pending": d.queue.ids, "inserting": d.inserting,
-                  "speech_model_missing": d.speechModelMissing, "failed": Array(d.failedTakes.keys), "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
+                  "speech_model_missing": d.speechModelMissing, "failed": Array(d.failedTakes.keys), "cancelled": Array(d.cancelledTakes.keys), "reformat_for": d.reformatAfterPaste.pending?.id ?? NSNull(), "speech_missing": d.speechModels?.missing ?? [], "tap": d.tapInstalled, "test_mode": DictationInsert.testMode, "polish_model": d.polishModel ?? NSNull(),
                   "needs_setup": d.needsSetup, "key": Dictation.key.rawValue, "asked_version": Config.shared["app.dictation_asked_version"] ?? NSNull(),
                   "nudged_at": Config.shared["app.dictation_nudged_at"] ?? NSNull(), "prompted_flag": Config.shared["app.dictation_prompted"] ?? NSNull(),
                   "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,

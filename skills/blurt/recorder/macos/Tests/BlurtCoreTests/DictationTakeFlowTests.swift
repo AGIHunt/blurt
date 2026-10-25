@@ -71,8 +71,8 @@ final class DictationTakeFlowTests: XCTestCase {
         XCTAssertNil(T.next(chat: true, sendOn: true, sent: false, shown: ["send": 5]))
         XCTAssertNil(T.next(chat: true, sendOn: true, sent: true, shown: [:]))
         XCTAssertNil(T.next(chat: true, sendOn: false, sent: false, shown: [:]))
-        // elsewhere: nothing on the very first take, then ⇧ for a list once, ⌥⇧L once, then quiet
-        XCTAssertNil(T.next(chat: false, sendOn: true, sent: false, shown: [:]))
+        // elsewhere: from the very first take, ⇧ for a list once, ⌥⇧L once, then quiet
+        XCTAssertEqual(T.next(chat: false, sendOn: true, sent: false, shown: [:]), .list)
         XCTAssertEqual(T.next(chat: false, sendOn: true, sent: false, shown: ["takes": 1]), .list)
         XCTAssertEqual(T.next(chat: false, sendOn: true, sent: false, shown: ["takes": 2, "list": 1]), .reformat)
         XCTAssertNil(T.next(chat: false, sendOn: true, sent: false, shown: ["takes": 3, "list": 1, "reformat": 1]))
@@ -86,5 +86,107 @@ final class DictationTakeFlowTests: XCTestCase {
         // the server's time scales with the audio: a hung server is given up on in proportion, not after a flat minute
         XCTAssertEqual(DictationASRFailure.serverTimeout(audioSeconds: 0), 15)
         XCTAssertEqual(DictationASRFailure.serverTimeout(audioSeconds: 20), 45)
+    }
+
+    // MARK: the speech model a take needs (review: VAD missing, a cloud model outside the rows)
+
+    func testReadyComesFromTheCLINotTheRows() {
+        // a cloud model: not one of the rows, but ready (its key is set)
+        let cloud = DictationSpeechModels(["selected": "openai-compatible", "recommended": "qwen3-asr-0.6b-mlx",
+                                           "ready": true, "selected_installed": true, "missing": [String](),
+                                           "models": [["id": "qwen3-asr-0.6b-mlx", "installed": false]]])!
+        XCTAssertTrue(cloud.ready)
+        XCTAssertFalse(cloud.recommendedInstalled)
+        // the model is there, the VAD isn't: not ready, and what to say is the VAD
+        let vad = DictationSpeechModels(["selected": "qwen3-asr-0.6b-mlx", "recommended": "qwen3-asr-0.6b-mlx",
+                                         "ready": false, "selected_installed": true, "missing": ["silero-vad"],
+                                         "models": [["id": "qwen3-asr-0.6b-mlx", "installed": true]]])!
+        XCTAssertFalse(vad.ready)
+        XCTAssertTrue(vad.onlyVADMissing)
+        // Download… then runs the selected model's setup (which brings the VAD) without changing the choice
+        XCTAssertEqual(vad.toGet?.id, "qwen3-asr-0.6b-mlx")
+        XCTAssertEqual(vad.toGet?.choose, false)
+        // an older CLI without `ready`: the rows, as before
+        let old = DictationSpeechModels(["selected": "a", "recommended": "a", "models": [["id": "a", "installed": true]]])!
+        XCTAssertTrue(old.ready)
+        XCTAssertNil(DictationSpeechModels(["models": []]))
+    }
+
+    func testWhatDownloadGets() {
+        typealias M = DictationSpeechModels
+        // nothing: the recommended one, chosen
+        let none = M(selected: "sv", ready: false, selectedInstalled: false, recommended: "q17", recommendedInstalled: false,
+                     missing: ["silero-vad", "sv"])
+        XCTAssertEqual(none.toGet?.id, "q17")
+        XCTAssertEqual(none.toGet?.choose, true)
+        XCTAssertFalse(none.onlyVADMissing)
+        // the user picked a model that isn't there: that one, not the recommended one
+        let picked = M(selected: "sv", ready: false, selectedInstalled: false, recommended: "q17", recommendedInstalled: false,
+                       configured: "turbo", configuredInstalled: false, missing: ["sv"])
+        XCTAssertEqual(picked.toGet?.id, "turbo")
+        // ready with the recommended one: nothing to get
+        XCTAssertNil(M(selected: "q", ready: true, selectedInstalled: true, recommended: "q", recommendedInstalled: true).toGet)
+    }
+
+    func testWeakerModelNoticeNotForTheUsersOwnChoice() {
+        typealias M = DictationSpeechModels
+        let auto = M(selected: "sv", ready: true, selectedInstalled: true, recommended: "q17", recommendedInstalled: false)
+        XCTAssertTrue(auto.weakerModelRan("sv"))
+        XCTAssertFalse(auto.weakerModelRan("q17"))
+        XCTAssertFalse(auto.weakerModelRan(nil))
+        let chosen = M(selected: "sv", ready: true, selectedInstalled: true, recommended: "q17", recommendedInstalled: false,
+                       configured: "sv", configuredInstalled: true)
+        XCTAssertFalse(chosen.weakerModelRan("sv"))
+        // the chosen one isn't what ran (it fell back): said
+        XCTAssertTrue(chosen.weakerModelRan("ct2"))
+        let have = M(selected: "q17", ready: true, selectedInstalled: true, recommended: "q17", recommendedInstalled: true)
+        XCTAssertFalse(have.weakerModelRan("sv"))
+    }
+
+    // MARK: ⌥⇧L while a take is on its way (review: it ran for a later take)
+
+    func testReformatAfterPasteIsBoundToItsTake() {
+        var q = DictationPasteQueue<String>()
+        var r = DictationReformatAfterPaste<String>()
+        q.add("A")
+        XCTAssertEqual(r.request(last: q.last, via: "hotkey"), "A")
+        // A is cancelled (Esc), fails, or hears nothing: the request goes with it
+        r.forget("A")
+        q.drop("A")
+        q.add("B")
+        q.markReady("B")
+        XCTAssertEqual(q.next(), "B")
+        XCTAssertNil(r.delivered("B"), "B never asked for a reformat")
+        // asked for B, B pasted: used once
+        XCTAssertEqual(r.request(last: "B", via: "hotkey"), "B")
+        XCTAssertNil(r.delivered("C"))
+        XCTAssertEqual(r.delivered("B"), "hotkey")
+        XCTAssertNil(r.delivered("B"))
+        // several on their way: the one said last
+        q = DictationPasteQueue<String>()
+        q.add("X"); q.add("Y")
+        XCTAssertEqual(r.request(last: q.last, via: "hotkey"), "Y")
+        XCTAssertNil(r.delivered("X"))
+        XCTAssertEqual(r.delivered("Y"), "hotkey")
+        // nothing on its way: no request
+        XCTAssertNil(r.request(last: nil, via: "hotkey"))
+        XCTAssertNil(r.pending)
+    }
+
+    // MARK: the hung server (review: the given-up minute held for a fresh server)
+
+    func testAFreshServerIsUsedAtOnce() {
+        XCTAssertTrue(DictationServerGiveUp.stillGivenUp(givenUp: 100, now: 100))
+        XCTAssertFalse(DictationServerGiveUp.stillGivenUp(givenUp: 100, now: 200))
+        XCTAssertTrue(DictationServerGiveUp.stillGivenUp(givenUp: 100, now: nil))
+        XCTAssertTrue(DictationServerGiveUp.stillGivenUp(givenUp: nil, now: 200))
+    }
+
+    // MARK: the aura on a send (finding #10)
+
+    func testTheAuraWaitsOutTheDoubleTapWindow() {
+        XCTAssertEqual(DictationGlow.delay(pushToTalk: false, doubleTapSend: true, window: 0.4), 0.4)
+        XCTAssertEqual(DictationGlow.delay(pushToTalk: true, doubleTapSend: true, window: 0.4), 0)
+        XCTAssertEqual(DictationGlow.delay(pushToTalk: false, doubleTapSend: false, window: 0.4), 0)
     }
 }

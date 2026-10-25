@@ -85,6 +85,12 @@
       their take, Clear History keeping live audio, learning once at the watch's end (`DictationLearn.EditWatch`),
       split fixes + no punctuation in terms, Save Correction suggesting with Add / Undo / ⌘Z, the Words tab's keyboard,
       Undo, rename and "a, b, c" adding. `dictation_vocab.py` already has the Python side of the learning rules.
+      Review round: readiness from `dictation-models`' `ready` / `missing` (`DictationSpeechModels`: the VAD counts, a
+      cloud model is judged by itself, the configured model is what Download… gets), Retry offered once the model
+      arrives, Undo on "Cancelled" for takes stopped on their way (audio kept 5 s), ⌥⇧L bound to its take
+      (`DictationReformatAfterPaste`), a miss reported once (`takeMiss`), a given-up server by pid and not ended while a
+      voice note waits on it, the typed check in the live panel, the top line's fade, the aura after the double-tap
+      window (`DictationGlow`).
 - [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
       welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
       "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.

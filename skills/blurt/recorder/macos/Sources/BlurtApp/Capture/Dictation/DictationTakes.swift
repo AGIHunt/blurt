@@ -8,9 +8,13 @@
 //  • a take is pasted only into the app it started in: when the user moved to another app meanwhile (a slow take), the
 //    text is copied and the island says "Copied — paste with ⌘V", and a queued Return is dropped;
 //  • after the stop, the live panel shows the text actually typed for about 1.5 s — what a double tap would send;
-//  • Esc (or the menu's Cancel) while a take is on its way throws it away: never pasted, its Return dropped;
+//  • Esc (or the menu's Cancel) while a take is on its way stops it: never pasted, its Return dropped — with Undo on
+//    "Cancelled" for a few seconds (an Esc meant for the app in front shouldn't cost the take), its audio kept until then;
 //  • recognition failed (no model, a model that didn't answer, an error): the take keeps its audio and a history
-//    row, the island says what failed, with Retry (or Download… when there is no model). Never "nothing heard";
+//    row, the island says what failed and that the recording was kept, with Retry (or Download… when a model or the
+//    VAD is missing — once it is there, the island offers Retry for that take). Never "nothing heard";
+//  • ⌥⇧L while a take is on its way is for that take (DictationReformatAfterPaste): it runs when that take is in,
+//    and goes with it when it is cancelled, fails or heard nothing;
 //  • the once-a-day notices (a polish or speech model fell back), the quiet tips of the first takes, what a skipped
 //    Return or a press the mode doesn't use means.
 // `Dictation.getSpeechModel` / `getPolishModel` are the one way dictation asks for a model download (Settings →
@@ -46,6 +50,8 @@ final class DictationTake {
     var sendAfterPaste = false
     var cancelled = false
     var result: DictationStream.Result?
+    /// recognition failed with this (DictationASRFailure.code): kept for Retry
+    var failure: String?
 
     init(id: String, front: NSRunningApplication?, frontKey: String, started: Date, duration: Double, wav: URL,
          context: DictationContext?, polishTried: Bool, keyUp: CFTimeInterval, style: DictationStyleRouter.Decision?,
@@ -61,6 +67,8 @@ final class DictationTake {
 extension Dictation {
     /// The key of the toasts that belong to one take (reformat's Undo, the list chip): a new take drops them.
     static let takeToastKey = "dictation.take"
+    /// The key of "no speech model · Download…" and "the model is ready · Retry": the newest says what is true now.
+    static let modelToastKey = "dictation.model"
 
     // MARK: the line of takes
 
@@ -81,7 +89,8 @@ extension Dictation {
     /// A take's text is in (or recognition failed, or there were no words).
     private func landed(_ take: DictationTake, _ r: DictationStream.Result) {
         guard !take.cancelled, takes[take.id] === take else {
-            try? FileManager.default.removeItem(at: take.wav)        // a result nobody takes: its audio goes too
+            // a result nobody takes: its audio goes too (not while "Cancelled" still offers Undo for it)
+            if cancelledTakes[take.id] !== take { try? FileManager.default.removeItem(at: take.wav) }
             return
         }
         if let f = r.asrError { return recognitionFailed(take, f) }
@@ -101,10 +110,11 @@ extension Dictation {
         pump()
     }
 
-    /// Out of the line without a paste.
+    /// Out of the line without a paste (a ⌥⇧L meant for it goes too).
     private func leave(_ take: DictationTake) {
         takes[take.id] = nil
         queue.drop(take.id)
+        reformatAfterPaste.forget(take.id)
         updatePhase()
         pump()
     }
@@ -120,10 +130,12 @@ extension Dictation {
         deliver(take, r)
     }
 
-    /// Esc / the menu's Cancel with no take listening: the takes still on their way go (never pasted). A paste
-    /// already under way can't be taken back, but its queued Return is dropped. true: something was cancelled.
+    /// Esc / the menu's Cancel with no take listening: the takes still on their way stop (never pasted). A paste
+    /// already under way can't be taken back, but its queued Return is dropped. The stopped takes keep their audio
+    /// for `undoSeconds` — "Cancelled" offers Undo (an Esc meant for the app in front, a popover, vim). Returns the
+    /// ids that were stopped.
     @discardableResult
-    func cancelPending() -> Bool {
+    func cancelPending() -> [String] {
         if let d = queue.delivering, let t = takes[d], t.sendAfterPaste {
             t.sendAfterPaste = false
             emit(["event": "dictation_send", "result": "cancelled", "id": d])
@@ -131,22 +143,48 @@ extension Dictation {
         let ids = queue.ids.filter { $0 != queue.delivering }
         guard !ids.isEmpty else {
             if inserting { emit(["event": "dictation_cancel", "phase": "inserting", "kept": true]) }
-            return false
+            return []
         }
+        var stopped: [String] = []
         for id in ids {
             guard let t = takes[id] else { queue.drop(id); continue }
             t.cancelled = true
             t.sendAfterPaste = false
             t.stream.cancel()
-            try? FileManager.default.removeItem(at: t.wav)
             LiveTranscript.shared.end(session: t.liveSession)
             takes[id] = nil
             queue.drop(id)
+            reformatAfterPaste.forget(id)
+            cancelledTakes[id] = t
+            stopped.append(id)
             emit(["event": "dictation_cancel", "id": id, "phase": t.stage.rawValue])
+        }
+        // after Undo's time: the audio goes
+        DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.undoSeconds + 1) { [weak self] in
+            guard let self = self else { return }
+            for id in stopped {
+                guard let t = self.cancelledTakes.removeValue(forKey: id) else { continue }
+                try? FileManager.default.removeItem(at: t.wav)
+            }
         }
         updatePhase()
         pump()
-        return true
+        return stopped
+    }
+
+    /// How long "Cancelled" offers Undo for takes stopped on their way.
+    static let undoSeconds = 5.0
+
+    /// "Cancelled", with Undo when takes on their way were stopped (they go on as if Esc hadn't come).
+    func toastCancelled(_ stopped: [String]) {
+        guard !stopped.isEmpty else { return toast("dictation.toast.cancelled", seconds: 1.2) }
+        var t = Island.Toast(text: Loc.t("dictation.toast.cancelled", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: { [weak self] in
+            guard let self = self else { return }
+            for id in stopped where self.cancelledTakes[id] != nil { self.retry(id, via: "undo_cancel") }
+        })
+        t.seconds = Dictation.undoSeconds
+        island.toast(t)
     }
 
     // MARK: recognition failed
@@ -165,42 +203,76 @@ extension Dictation {
                                insert: "none", audio: "audio/\(take.wav.lastPathComponent)")
         DictationHistory.shared.append(e)
         DictationHistoryWindow.shared.reloadIfOpen()
+        take.failure = f.code
         failedTakes[take.id] = take
         // only the last few stay in memory (an older one is retried from the history)
         if failedTakes.count > 5, let old = failedTakes.values.min(by: { $0.started < $1.started }) { failedTakes[old.id] = nil }
         leave(take)
         emit(["event": "dictation_text", "id": take.id, "ok": false, "asr_error": f.code])
-        if f == .noModel {
-            speechModels = speechModels.map { ($0.selected, false, $0.recommended, $0.recommendedInstalled) }
-            return noSpeechModel()
+        guard f == .noModel else { return toastFailed(take.id, f) }
+        // what is missing, asked again (never assumed): the key-down then refuses only while it really is missing
+        refreshSpeechModels { [weak self] in
+            guard let self = self else { return }
+            if let m = self.speechModels, m.ready {
+                // there now (a download finished meanwhile, a race): just Retry
+                return self.toastFailed(take.id, .failed("model_missing"))
+            }
+            self.noSpeechModel(kept: true)
         }
+    }
+
+    /// "Recognition failed · recording kept" (or "too slow"), with Retry.
+    private func toastFailed(_ id: String, _ f: DictationASRFailure) {
         var t = Island.Toast(text: Loc.t(f == .timedOut ? "dictation.toast.asr_slow" : "dictation.toast.asr_failed", table: "Dictation"),
                              actionTitle: Loc.t("dictation.toast.retry", table: "Dictation"), action: { [weak self] in
-            self?.retry(take.id, via: "island")
+            self?.retry(id, via: "island")
         })
         t.seconds = 8
         island.toast(t)
     }
 
-    /// No speech model on this Mac: the island says so, its button gets one.
-    func noSpeechModel() {
-        var t = Island.Toast(text: Loc.t("dictation.toast.no_model", table: "Dictation"),
+    /// No speech model on this Mac (or no VAD — the small file every take goes through): the island says which, its
+    /// button gets it. `kept`: a take failed for it, and its recording was kept.
+    func noSpeechModel(kept: Bool = false) {
+        let vad = speechModels?.onlyVADMissing ?? false
+        let key = (vad ? "dictation.toast.no_vad" : "dictation.toast.no_model") + (kept ? ".kept" : "")
+        var t = Island.Toast(text: Loc.t(key, table: "Dictation"),
                              actionTitle: Loc.t("dictation.toast.no_model.get", table: "Dictation"), action: {
             Dictation.getSpeechModel(from: "island")
         })
         t.seconds = 8
+        t.key = Dictation.modelToastKey       // one at a time; the model arriving replaces it
+        island.toast(t)
+        emit(["event": "dictation_no_model", "missing": speechModels?.missing ?? [], "kept": kept])
+    }
+
+    /// The speech model (or the VAD) is there now: the newest take that failed for lack of it gets Retry on the
+    /// island — not pasted by itself minutes later into whatever has the focus.
+    func modelArrived() {
+        let waiting = failedTakes.values.filter { $0.failure == DictationASRFailure.noModel.code }
+        guard let take = waiting.max(by: { $0.started < $1.started }) else {
+            return island.dropToasts(key: Dictation.modelToastKey)      // "Download…" is moot now
+        }
+        emit(["event": "dictation_model_arrived", "retry": take.id])
+        var t = Island.Toast(text: Loc.t("dictation.toast.model_ready", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.toast.retry", table: "Dictation"), action: { [weak self] in
+            self?.retry(take.id, via: "model_ready")
+        })
+        t.seconds = 8
+        t.key = Dictation.modelToastKey       // in place of a "no model · Download…" still showing or waiting
         island.toast(t)
     }
 
     /// Retry a take whose recognition failed (the island's button, the history's): the whole recording again, then
     /// pasted like any take — into the app it started in, else copied (from the history: always copied).
     func retry(_ id: String, via: String) {
-        let take = failedTakes.removeValue(forKey: id) ?? historyTake(id)
+        let take = failedTakes.removeValue(forKey: id) ?? cancelledTakes.removeValue(forKey: id) ?? historyTake(id)
         guard let take = take, FileManager.default.fileExists(atPath: take.wav.path) else {
             emit(["event": "dictation_retry", "id": id, "result": "no_audio", "via": via])
             return toast("dictation.toast.retry_gone")
         }
         take.cancelled = false
+        take.failure = nil
         take.stage = .transcribing
         takes[id] = take
         queue.add(id)
@@ -336,11 +408,8 @@ extension Dictation {
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)
-            // ⌥⇧L pressed while this paste was under way: it meant this take
-            if let via = self.reformatAfterPaste {
-                self.reformatAfterPaste = nil
-                self.reformatLast(via: via)
-            }
+            // ⌥⇧L pressed while this take was on its way: it meant this take (never a later one)
+            if let via = self.reformatAfterPaste.delivered(id) { self.reformatLast(via: via) }
             self.pump()
         }
     }
@@ -399,8 +468,8 @@ extension Dictation {
             return notice("dictation.toast.no_polish", action: { Dictation.getPolishModel(from: "island") })
         }
         // the recommended speech model isn't there: a weaker one ran (it may not know the user's words)
-        if let m = speechModels, !m.recommendedInstalled, let used = r.asrModel, used != m.recommended,
-           Dictation.onceADay("asr_fallback") {
+        // (not when the model that ran is the one the user chose)
+        if let m = speechModels, m.weakerModelRan(r.asrModel), let used = r.asrModel, Dictation.onceADay("asr_fallback") {
             emit(["event": "dictation_notice", "notice": "asr_fallback", "model": used])
             return notice("dictation.toast.weaker_asr", action: { Dictation.getSpeechModel(from: "island") })
         }
@@ -440,16 +509,21 @@ extension Dictation {
 
     // MARK: models
 
-    /// The one way dictation gets its speech model: Settings → Speech → Dictation, the recommended model's download
-    /// started there (DictationModels — Settings' own downloader).
+    /// The one way dictation gets its speech model: Settings → Speech → Dictation, the download started there
+    /// (DictationModels — Settings' own downloader) for what is missing (DictationSpeechModels.toGet): the configured
+    /// model when that one is missing, else the recommended one; only the VAD → the selected model's setup, which
+    /// brings it, without changing the choice.
     static func getSpeechModel(from source: String) {
-        emit(["event": "dictation_get_model", "kind": "asr", "from": source])
+        let get = Dictation.shared.speechModels?.toGet
+        emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": get?.id ?? NSNull(),
+              "choose": get?.choose ?? true])
         MainActor.assumeIsolated {
             SpeechPane.showDictationModels()
             let m = DictationModels.shared
             Task { @MainActor in
                 await m.load()
-                if let a = m.recommendedASR, !a.installed { m.installASR(a) }
+                guard let g = get ?? m.recommendedASR.map({ ($0.id, true) }) else { return }
+                m.installASR(id: g.id, choose: g.choose)
             }
         }
     }
@@ -471,8 +545,7 @@ extension Dictation {
     func watchModelChanges() {
         MainActor.assumeIsolated {
             let sub = DictationModels.shared.$asr.compactMap { $0 }.receive(on: DispatchQueue.main).sink { [weak self] a in
-                self?.setSpeechModels(["selected": a.selected, "recommended": a.recommended,
-                                       "models": a.models.map { ["id": $0.id, "installed": $0.installed] as [String: Any] }])
+                self?.setSpeechModels(a.dictionary)
             }
             observers.append(sub)
         }
@@ -485,7 +558,7 @@ extension Dictation {
     func watchHistoryClear() {
         DictationHistory.liveIDs = { [weak self] in
             guard let self = self else { return [] }
-            return Array(self.takes.keys) + (self.listening || self.precapturing ? [self.entryID] : [])
+            return Array(self.takes.keys) + Array(self.cancelledTakes.keys) + (self.listening || self.precapturing ? [self.entryID] : [])
         }
         let o = NotificationCenter.default.addObserver(forName: DictationHistory.changed, object: nil, queue: .main) { [weak self] n in
             guard let self = self else { return }

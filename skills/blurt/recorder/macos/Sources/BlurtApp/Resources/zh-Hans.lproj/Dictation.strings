@@ -479,6 +479,10 @@
 "dictation.toast.still_listening" = "还在听 · 按%@ 结束 · Esc 取消";
 "dictation.toast.no_model" = "还没有识别模型";
 "dictation.toast.no_model.get" = "下载…";
+"dictation.toast.no_model.kept" = "还没有识别模型，录音还在";
+"dictation.toast.no_vad" = "还缺语音检测文件（不到 1 MB）";
+"dictation.toast.no_vad.kept" = "还缺语音检测文件，录音还在";
+"dictation.toast.model_ready" = "识别模型好了，刚才那段录音还在";
 "dictation.toast.asr_failed" = "没能识别这段话，录音还在";
 "dictation.toast.asr_slow" = "识别模型没有回应，录音还在";
 "dictation.toast.retry" = "重试";

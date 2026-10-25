@@ -620,17 +620,32 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   at a time, whichever finishes first. The trigger is told `pending`: a tap within the window is still the double
   tap's second one (Return after the paste); a third tap right after a send is a bounce and starts nothing.
 - **Esc cancels a take on its way** (and the menu's Cancel): never pasted, its Return dropped, the island says
-  "已取消" / "Cancelled". Esc while listening says so too (it used to vanish silently). A paste already under way (the
-  0.6 s of ⌘V) can't be taken back.
+  "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
+  the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
+  for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
+  the app they started in, else copied). Esc while listening says "已取消" too (it used to vanish silently; nothing is
+  kept — the take was in front of the user). A paste already under way (the 0.6 s of ⌘V) can't be taken back.
 - **Check before send.** After the stop the live panel shows the text actually typed — polished, structured — for
   1.5 s (`LiveTranscript.showTyped`), instead of disappearing 0.6 s after the paste with the raw transcript in it.
   Two ways to send are taught (guide, the setting's detail, a quiet tip for the first five takes in chat apps):
   tap to stop → check → double-tap; or double-tap instead of the stop tap. The near-miss double tap (≤ 0.8 s, nothing
-  heard) still sends (product decision).
+  heard) still sends (product decision). While the panel shows the typed text, the caret after the words becomes the
+  ok check (the design system's done shape): that is what is in. A top line that continues text above it fades in
+  from its left edge (28 pt), so it reads as continued rather than cut mid-sentence. A tap-started take's listening
+  aura waits out the double-tap window (`DictationGlow`), so an idle double tap (a send) never flashes it.
 - **No speech model.** `transcribe.py dictation-models` is read at launch and whenever Settings reloads its model
-  list (`DictationModels.$asr`). With the selected model not installed the key doesn't listen (no mic, no warm-up):
-  the island says "还没有识别模型 · 下载…"; the button calls `Dictation.getSpeechModel` — the one entry for a
-  dictation's model download: Settings → Speech → Dictation, the recommended model's download started there.
+  list (`DictationModels.$asr`); BlurtCore's `DictationSpeechModels` reads it. Its `ready` says whether a take can run
+  with nothing downloaded: the selected model (local and on this Mac, or a cloud one with its key — judged by itself,
+  not by being one of the Settings rows) **and** the VAD every take goes through (`silero_vad.onnx`, 0.6 MB, in
+  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). `missing` lists what a
+  download would bring. Not ready: the key doesn't listen (no mic, no warm-up) and the island says "还没有识别模型 ·
+  下载…" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）· 下载…". The button calls
+  `Dictation.getSpeechModel` — the one entry for a dictation's model download: Settings → Speech → Dictation, the
+  download started there for `DictationSpeechModels.toGet`: the configured model when that is the one missing, else
+  the recommended one; only the VAD → the selected model's `setup` (which brings it) without changing the choice.
+  A take that fails with model_missing asks `dictation-models` again (never assumes), and when the model (or VAD) is
+  there later, the island offers **Retry** for the newest such take ("识别模型好了，刚才那段录音还在") — it is never
+  pasted by itself minutes later.
 - **Nothing is downloaded for a dictation.** Every dictation request carries `no_download` (finals and interims);
   the server also treats any `purpose: dictation` request that way; the CLI fallback runs `note --no-server
   --no-download`; dictation's preload is `serve --no-download` (a missing model stays unloaded). Before: an interim
@@ -638,11 +653,14 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
 - **Recognition failed.** `Dictation.transcribe` always answers — `ok`, or `code` (model_missing, timeout, …) — and
   `DictationStream.Result.asrError` carries it; an empty text is silence only when recognition worked. A failed take
   keeps its wav and a history row (`insert: none`, `reason: asr_failed:<code>`), and the island says what failed
-  with **Retry** (no model: **Download…**). Retry (the island, the Dictation page) runs the whole recording again and
-  pastes like any take (from the page: copied). Before: "没听到内容", the audio deleted, nothing in the history.
+  with **Retry** (no model: "还没有识别模型，录音还在" with **Download…**). Retry (the island, the Dictation page) runs
+  the whole recording again and pastes like any take (from the page: copied). Before: "没听到内容", the audio
+  deleted, nothing in the history.
 - **A hung or slow server.** A server call gets `15 s + 1.5 × the audio` (`DictationASRFailure.serverTimeout`), not
-  a flat minute; a server that doesn't answer in that time is given up on for a minute and, when Blurt started it,
-  ended (the Python server, then `uv`); the CLI no longer asks that same server first. Measured with the scratch
+  a flat minute; a server that doesn't answer in that time is given up on for a minute — that server, by its pid
+  (`DictationServerGiveUp`): a fresh one started by the next key-down is used as soon as it is up — and, when Blurt
+  started it, ended (the Python server, then `uv`), except while a voice note is waiting on it (it may only be busy
+  with that note; the note has its own timeout and CLI fallback); the CLI no longer asks that same server first. Measured with the scratch
   app's server stopped (SIGSTOP): 25 s from the stop to the text for a 6 s take (before: 243 s).
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
@@ -650,9 +668,12 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   (`DictationTrigger.endedByItself`) is taken as the stop that came late, not a new take.
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
   "文字已复制，没有发送"); a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
-  tap mode) says how this mode starts, once a day; a polish model or the recommended speech model missing says so
-  once a day with Download…
-- **Reformat and its toasts belong to a take.** ⌥⇧L during a paste waits for it (it is about that take); the list
+  tap mode) says how this mode starts, once a day — reported once (`DictationTrigger.takeMiss`), not again on every
+  key and click that follows; a polish model or the recommended speech model missing says so once a day with
+  Download… (not when the model that ran is the one the user chose in Settings).
+- **Reformat and its toasts belong to a take.** ⌥⇧L while a take is on its way waits for it — the take said last,
+  bound by id (`DictationReformatAfterPaste`): when that take is cancelled, fails or hears nothing, the request goes
+  with it, and it never runs for a later take; the list
   chip and Undo act on the `DictationLastPaste` they were shown for, carry the key `dictation.take` and go when the
   next take starts (`Island.dropToasts`). A reformat replaced in the field writes its `text` (and `before`) to the
   history, so the page shows the text as it stands, the first version under it.

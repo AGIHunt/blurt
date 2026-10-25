@@ -232,11 +232,12 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
   longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
   a few dots while it transcribes and polishes. `Esc` cancels — while you talk, and also while the text is still on
-  its way (it then never goes in). Fn used with another key (`Fn`-arrow, `Fn`-F-keys…) never starts a dictation.
+  its way (it then never goes in; *Undo* on the island brings it back for a few seconds, in case that `Esc` was meant
+  for another app). Fn used with another key (`Fn`-arrow, `Fn`-F-keys…) never starts a dictation.
   What has been recognised so far shows under the island while you talk, about a second behind you: the words you're
   still saying in a lighter grey (they can still change), then white once that stretch is done. When you stop, that
-  panel shows the text that was actually typed — polished, or laid out as a list — for about a second and a half:
-  what a double tap would now send. It doesn't slow the paste down. (On Macs with less than 16 GB the grey part is
+  panel shows the text that was actually typed — polished, or laid out as a list — for about a second and a half,
+  with a small check after it: what a double tap would now send. It doesn't slow the paste down. (On Macs with less than 16 GB the grey part is
   left out and the words appear after each pause; `record.dictation.live_partial` true / false overrides that.)
 - **The next thought right away.** Tap Fn again as soon as you've stopped (after half a second, so it isn't a double
   tap) and the next dictation starts listening while the last one is still being typed; they go in in the order you
@@ -248,10 +249,12 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   island says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down (−0:30), and at the
   limit the island says the dictation stopped there and types what you said. A tap right after that doesn't start a
   new one.
-- **No speech model yet.** Fn doesn't listen; the island says *No speech model yet* with **Download…**, which opens
-  Settings → Speech → Dictation with the download already started. A dictation never downloads a model by itself.
-  If recognising a dictation fails anyway, the recording is kept and the island says so with **Retry**; the
-  Dictation page lists it too, with Retry. It never says "didn't catch anything" for that.
+- **No speech model yet.** Fn doesn't listen; the island says *No speech model yet* (or, when only the small speech
+  detection file is missing, says that) with **Download…**, which opens Settings → Speech → Dictation with the
+  download already started — the model you picked in Settings if that's the one missing. A dictation never downloads
+  a model by itself. If recognising a dictation fails anyway, the recording is kept and the island says so with
+  **Retry**; once the model is there, the island offers Retry for it again. The Dictation page lists it too, with
+  Retry. It never says "didn't catch anything" for that.
 - **Dictating into the middle of a sentence.** Blurt looks at the text on both sides of the cursor and inserts only
   what's new: put the cursor in 「我知道你就是▮的。」, say 「就是从老家回来的」, and you get 「我知道你就是从老家回来的。」 —
   not the repeated 「就是」 or a second full stop. Punctuation and spaces fit the sentence too. It only trims what it
@@ -556,11 +559,11 @@ so the two must speak the same version: when one is older than the other, the is
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
 - **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
-- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消：说话时可以，文字还在处理时也可以（那段话就不会输入）。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。按下结束后，这里会显示真正输入的文字（润色过的，或者排好的清单）约一秒半，也就是双击会发送出去的内容。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
+- **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消：说话时可以，文字还在处理时也可以（那段话就不会输入；几秒内可以点岛上的「撤销」找回来，免得按给别的 App 的 `Esc` 把它丢掉）。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。按下结束后，这里会显示真正输入的文字（润色过的，或者排好的清单）约一秒半，后面带一个小对勾，也就是双击会发送出去的内容。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
 - **马上说下一段。** 刚结束就再按一下 Fn（隔半秒以上，免得算成双击），下一段马上开始听，上一段还在输入也不影响；几段按你说的先后顺序输入。
 - **只输入到原来的地方。** 文字只会输入到你开始说话时所在的 App。等文字好了你已经换到别的 App（说得很长、模型还在加载），就改成复制，岛上提示「已复制，⌘V 粘贴」；这时双击也不会按回车。
 - **忘了结束的听写。** 单按开始的听写最长 5 分钟。超过 20 秒没说话，岛上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间倒数（−0:30），到上限时岛上会说明听写已结束，并输入你说的内容。紧接着按的那一下不会开始新的一段。
-- **还没有识别模型。** 按 Fn 不会开始听，岛上提示「还没有识别模型」和**下载…**，点它会打开「设置 → 语音 → 听写」并开始下载。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，岛上说明原因并给出**重试**；听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
+- **还没有识别模型。** 按 Fn 不会开始听，岛上提示「还没有识别模型」（只缺那个很小的语音检测文件时，就说缺这个文件）和**下载…**，点它会打开「设置 → 语音 → 听写」并开始下载；如果你在设置里选了某个模型而它不在，下载的就是那个。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，岛上说明原因并给出**重试**；模型下载好以后，岛上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
 - **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。有两种用法：
   - **先看再发：** 按一下结束，看一眼文字（输入框里，或岛下方的面板），再双击发送；要改就先改。

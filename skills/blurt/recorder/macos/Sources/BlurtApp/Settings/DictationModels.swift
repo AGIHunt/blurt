@@ -43,6 +43,27 @@ struct DictationASRState: Decodable {
     var recommended: String
     var selected: String
     var models: [DictationASRModel]
+    // can a dictation run with nothing downloaded (the selected model and the VAD), and what is missing for that
+    var ready: Bool?
+    var selectedInstalled: Bool?
+    var configuredInstalled: Bool?
+    var missing: [String]?
+    enum CodingKeys: String, CodingKey {
+        case configured, recommended, selected, models, ready, missing
+        case selectedInstalled = "selected_installed", configuredInstalled = "configured_installed"
+    }
+
+    /// The CLI's shape again, for Dictation (BlurtCore's DictationSpeechModels reads it).
+    var dictionary: [String: Any] {
+        var d: [String: Any] = ["selected": selected, "recommended": recommended,
+                                "models": models.map { ["id": $0.id, "installed": $0.installed] as [String: Any] }]
+        if let c = configured { d["configured"] = c }
+        if let r = ready { d["ready"] = r }
+        if let s = selectedInstalled { d["selected_installed"] = s }
+        if let c = configuredInstalled { d["configured_installed"] = c }
+        if let m = missing { d["missing"] = m }
+        return d
+    }
 }
 
 struct PolishState: Decodable {
@@ -126,8 +147,17 @@ final class DictationModels: ObservableObject {
         Task { await load() }
     }
 
-    /// `transcribe.py setup --model-id ID` (it adds its package through uv) — only when the user asks.
-    func installASR(_ m: DictationASRModel) {
+    /// Dictation's "Download…" (Dictation.getSpeechModel): the row when it is one, else (a cloud or voice-note model
+    /// whose VAD is missing) its setup all the same — `choose` false leaves the choice as it is.
+    func installASR(id: String, choose: Bool) {
+        let row = asr?.models.first { $0.id == id }
+        installASR(row ?? DictationASRModel(id: id, name: nil, sizeMB: 1, installed: false, recommended: false, vocab: "none"),
+                   choose: choose)
+    }
+
+    /// `transcribe.py setup --model-id ID` (it adds its package through uv, and the VAD) — only when the user asks.
+    /// `choose`: it becomes dictation's model once it is in.
+    func installASR(_ m: DictationASRModel, choose: Bool = true) {
         guard asrDownload[m.id] == nil else { return }
         asrFailed[m.id] = nil
         asrDownload[m.id] = (0, m.sizeMB)
@@ -140,7 +170,7 @@ final class DictationModels: ObservableObject {
         }, onExit: { [weak self] st in
             guard let self = self else { return }
             self.asrDownload[m.id] = nil
-            if st != 0 { self.asrFailed[m.id] = true } else { self.save("asr_model", m.id) }
+            if st != 0 { self.asrFailed[m.id] = true } else if choose { self.save("asr_model", m.id) }
             emit(["event": "asr_download", "model": m.id, "status": Int(st)])
             Task { await self.load() }
         })

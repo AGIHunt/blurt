@@ -126,6 +126,11 @@ public struct DictationTrigger {
         case heldInTapMode
     }
     public private(set) var miss: Miss?
+    /// The miss, once: read and cleared together, so the keys and clicks that follow don't report it again.
+    public mutating func takeMiss() -> Miss? {
+        defer { miss = nil }
+        return miss
+    }
 
     /// macOS's double-click interval (System Settings → Accessibility → Pointer Control) as the double-tap window:
     /// a Fn tap with the little finger is slower than a click, so never under 0.3 s; never over 0.5 s, where two

@@ -12,8 +12,8 @@
 //    sentence; code: one line);
 //  • reformat-last (⌥⇧L, the island's suggestion chip): the last take in the next style — verbatim → light →
 //    structured → verbatim — with the same model passes (made on demand, off the dictation's path), replacing it in the
-//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥⇧L during a paste waits for it
-//    (it means the take just typed); the chip and Undo act on the take they were shown for, never on a newer one, and
+//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥⇧L while a take is on its way waits
+//    for it (it means the take said last; cancelled, failed or empty, the request goes with it); the chip and Undo act on the take they were shown for, never on a newer one, and
 //    go when the next take starts. History: the style, the router's inputs, every reformat / undo / revert /
 //    suggestion, and the text now in the field;
 //  • the list chip: after a light take long enough to hold a list, the structuring pass runs in the background (after
@@ -204,10 +204,11 @@ extension Dictation {
     /// ⌥⇧L (and the test hook): the last take in the next style of the cycle that reads differently.
     func reformatLast(via: String) {
         guard !listening else { return }                // talking: ⇧ is the style key now
-        // a take is being pasted (or the last one is still on its way): this is about that take — once it is in
+        // a take is being pasted (or the last one is still on its way): this is about the take said last — once it
+        // is in, and only that one (cancelled, failed or empty: the request goes with it)
         guard !inserting, queue.isEmpty else {
-            reformatAfterPaste = via
-            return emit(["event": "dictation_reformat", "result": "after_paste", "via": via])
+            let id = reformatAfterPaste.request(last: queue.last, via: via)
+            return emit(["event": "dictation_reformat", "result": "after_paste", "via": via, "for": id ?? NSNull()])
         }
         noteUsed(.reformat)
         guard let lp = lastPaste else {

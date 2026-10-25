@@ -68,5 +68,57 @@ class NoDownload(unittest.TestCase):
         self.assertIn('"--no-server"', src)
 
 
+class DictationReady(unittest.TestCase):
+    """`dictation-models` says whether a take can run with nothing downloaded — the VAD included, and a selected model
+    that isn't one of the local rows (a cloud one) judged by itself — so the key never refuses a working setup and
+    never listens for a take that is bound to fail."""
+
+    def _models(self, *, vad: bool, have: set[str], configured=None, note="sensevoice-small"):
+        import tempfile
+        from pathlib import Path
+        d = Path(tempfile.mkdtemp())
+        if vad:
+            (d / "silero_vad.onnx").write_bytes(b"x")
+        hw = {"kind": "apple", "tier": "standard", "ram_gb": 16, "chip": "Apple M2", "fingerprint": "t"}
+        cfg = {"record": {"dictation": {"asr_model": configured}}} if configured else {}
+        with mock.patch.object(T, "MODELS_DIR", d), mock.patch.object(T, "global_config", lambda: cfg), \
+                mock.patch.object(T, "select", lambda _p: {"id": note}), \
+                mock.patch.object(T, "installed", lambda m: m["id"] in have), \
+                mock.patch.object(T, "runs_here", lambda m: True), mock.patch.object(T, "_fits", lambda m, h: True), \
+                mock.patch.object(T, "hw_kind", lambda h: "apple"):
+            return T.dictation_models(hw)
+
+    def test_ready_needs_the_vad_too(self):
+        r = self._models(vad=False, have={T.QWEN_MLX})
+        self.assertEqual(r["selected"], T.QWEN_MLX)
+        self.assertTrue(r["selected_installed"])
+        self.assertFalse(r["ready"])
+        self.assertEqual(r["missing"], ["silero-vad"])
+
+    def test_ready_with_model_and_vad(self):
+        r = self._models(vad=True, have={T.QWEN_MLX})
+        self.assertTrue(r["ready"])
+        self.assertEqual(r["missing"], [])
+
+    def test_a_selected_model_outside_the_rows_is_judged_by_itself(self):
+        cloud = next(m["id"] for m in T.entries() if not m.get("local", True))
+        self.assertNotIn(cloud, T.DICTATION_MODELS)
+        r = self._models(vad=True, have={cloud}, note=cloud)
+        self.assertEqual(r["selected"], cloud)
+        self.assertTrue(r["selected_installed"])
+        self.assertTrue(r["ready"])
+
+    def test_nothing_on_this_mac(self):
+        r = self._models(vad=False, have=set())
+        self.assertFalse(r["ready"])
+        self.assertEqual(r["missing"], ["silero-vad", r["selected"]])
+
+    def test_configured_installed(self):
+        r = self._models(vad=True, have={T.SV}, configured=T.SV)
+        self.assertEqual(r["configured"], T.SV)
+        self.assertTrue(r["configured_installed"])
+        self.assertEqual(r["selected"], T.SV)
+
+
 if __name__ == "__main__":
     unittest.main()

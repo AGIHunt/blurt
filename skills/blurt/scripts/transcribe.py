@@ -22,7 +22,7 @@ video, so any backend (even ones without timestamps) works.
                                                      (the memory goes back), with the --parent app, or on "exit".
                                                      A request with "interim": true (dictation's live text) is
                                                      stopped as soon as another request waits → code "interrupted"
-  transcribe.py dictation-models                     the models dictation can use here: selected, recommended
+  transcribe.py dictation-models                     the models dictation can use here: selected, recommended, ready (runs with nothing downloaded, VAD included), missing
   transcribe.py probe                                hardware → tier (pro / standard / light / minimal)
   transcribe.py recommend [--languages zh,en] [--purpose batch|live|note]
   transcribe.py auto   [--apply]                     pick a model per purpose for this machine (asr.models);
@@ -2312,7 +2312,18 @@ def dictation_models(hw: dict | None = None) -> dict:
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
                      "ram_mb": m.get("ram_mb"), "installed": installed(m), "vocab": m.get("vocab") or "none",
                      "recommended": mid == rec, "fits": _fits(m, hw)})
-    return {"configured": configured, "recommended": rec, "selected": selected, "models": rows}
+    # ready: a dictation can run right now with nothing downloaded (it never downloads: `no_download`) — the
+    # selected model (local and on this Mac, or a cloud one with its key) and the VAD every take goes through.
+    # missing: what a download would have to bring for that ("silero-vad" and/or the selected model's id)
+    sel = entry(selected)
+    missing = [] if (MODELS_DIR / "silero_vad.onnx").exists() else ["silero-vad"]
+    selected_installed = bool(sel and installed(sel))
+    if not selected_installed:
+        missing.append(selected)
+    return {"configured": configured, "configured_installed": bool(configured and entry(configured)
+                                                                     and installed(entry(configured))),
+            "recommended": rec, "selected": selected, "selected_installed": selected_installed,
+            "ready": not missing, "missing": missing, "models": rows}
 
 
 def cmd_dictation_models(_a):
