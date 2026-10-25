@@ -1,6 +1,7 @@
 // The item list's look and cells. One line per item (K8 density pass): the kind's icon in its colour, the item's one
 // state ring (K3 — click it for what you can do from there), the title (medium weight while it's new), the id and
-// project folded into quiet text, the time. The full table (All Items) adds a header and a State column (ring + name)
+// project folded into quiet text, the time; an item whose file can't be read has a small warning mark before its title
+// (its tooltip says to fix it in an editor). The full table (All Items) adds a header and a State column (ring + name)
 // instead of the ring up front. Fixed row height, view-based, reused — 20k rows scroll like 20.
 import AppKit
 import BlurtCore
@@ -238,11 +239,22 @@ final class TitleCell: NSTableCellView, InlineEditable {
         suggest.onMove = move
     }
 
-    func set(title t: String, unread: Bool, dimmed: Bool, struck: Bool, hit: String?) {
+    /// unreadable: the item's file doesn't parse — a small warning mark before the title says so in the list,
+    /// before the row is even selected (its detail then says what to do).
+    func set(title t: String, unread: Bool, dimmed: Bool, struck: Bool, hit: String?, unreadable: Bool = false) {
         var attrs: [NSAttributedString.Key: Any] = [.font: unread ? Look.titleUnread : Look.titleFont,
                                                     .foregroundColor: dimmed ? NSColor.secondaryLabelColor : NSColor.labelColor]
         if struck { attrs[.strikethroughStyle] = NSUnderlineStyle.single.rawValue; attrs[.strikethroughColor] = NSColor.tertiaryLabelColor }
-        let s = NSMutableAttributedString(string: t.isEmpty ? T("main.item.untitled") : t, attributes: attrs)
+        let s = NSMutableAttributedString()
+        if unreadable, let mark = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: T("main.unreadable.fix_first"))?
+            .withSymbolConfiguration(.init(pointSize: 11, weight: .regular).applying(.init(paletteColors: [BrandColor.attnInk]))) {
+            let a = NSTextAttachment()
+            a.image = mark
+            a.bounds = NSRect(x: 0, y: -1.5, width: mark.size.width, height: mark.size.height)
+            s.append(NSAttributedString(attachment: a))
+            s.append(NSAttributedString(string: " ", attributes: attrs))
+        }
+        s.append(NSAttributedString(string: t.isEmpty ? T("main.item.untitled") : t, attributes: attrs))
         if let h = hit {
             s.append(NSAttributedString(string: "   ", attributes: [.font: Look.subFont]))
             s.append(TitleCell.marked(SearchHit.shown(h)))

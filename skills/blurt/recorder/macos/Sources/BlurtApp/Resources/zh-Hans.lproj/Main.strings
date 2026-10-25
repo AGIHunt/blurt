@@ -93,6 +93,8 @@
 "main.unreadable.show" = "显示";
 "main.unreadable.found" = "%@ 的文件读不出来，先在编辑器里改好它。";
 "main.unreadable.found.many" = "有 %d 条的文件读不出来，先在编辑器里改好它们。";
+"main.skipped.found" = "%@ 没能加进列表，详情见日志。";
+"main.skipped.found.many" = "有 %d 个文件没能加进列表，详情见日志。";
 "main.scan.failed" = "没能刷新列表。";
 
 "main.dispatch.needs_project" = "先把这些条目移到一个项目里";

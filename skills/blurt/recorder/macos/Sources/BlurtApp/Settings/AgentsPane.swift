@@ -559,7 +559,8 @@ struct InstallSheet: View {
     var applied: Bool
 
     /// One line per change for the confirmation sheet — in words: what ("the Blurt skill", "the blurt MCP") and the
-    /// agent's own fix in the user's language, never the script's English or a raw error.
+    /// agent's own fix in the user's language, never the script's English or a raw error (that goes to the log only;
+    /// the sheet shows this line and nothing else per change).
     static func summary(_ c: InstallChange, agent: String = "") -> String {
         switch c.action {
         case "symlink": return TL("install.symlink", c.path ?? "", c.target ?? "")
@@ -588,7 +589,6 @@ struct InstallSheet: View {
                         Text(Self.summary(c, agent: agent.id)).font(.system(size: 11.5, design: .monospaced)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    if let e = c.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 22) }
                 }
             }
             .padding(10)

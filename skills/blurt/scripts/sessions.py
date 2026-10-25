@@ -40,6 +40,9 @@ or in the agent's desktop app (Claude: --runner desktop).
   sessions.py take-back JOB                  收回: the items still with it go back to To Do; a session that is over
                                              and left no change also goes (its window, worktree and branch: finish
                                              action take_back) — with changes, they stay ({"has_changes"}) for review
+  sessions.py clean-up JOB                   after items were taken back elsewhere (items.py): a session that is
+                                             over cleans up as take-back does, but only once none of its items is
+                                             still with it ({"still_with_it": [uid]} otherwise); takes nothing back
   sessions.py restart JOB                    the same items, agent and model in a fresh session (the old one ended
                                              without changes: its window, worktree and branch go); once per job
                                              (code finished after that)
@@ -1384,9 +1387,9 @@ def _commit_left_over(job: dict, wt: dict) -> str | None:
     return git(path, "rev-parse", "HEAD").stdout.strip()
 
 
-def _take_back(job_id: str, uids: list[str]) -> list[str]:
-    """The user gave up on this session (discard, restart): its items still with it go back to To Do. Items handed
-    to another session since are left alone."""
+def _still_with(job_id: str, uids: list[str]) -> list[str]:
+    """The items of uids that are still with this session (handed off to it or in progress there). Items handed to
+    another session since don't count."""
     import handoff
     mine = []
     for u in uids:
@@ -1396,6 +1399,14 @@ def _take_back(job_id: str, uids: list[str]) -> list[str]:
             continue
         if it.get("state") in ("handed_off", "in_progress") and (it.get("work") or {}).get("job") == job_id:
             mine.append(u)
+    return mine
+
+
+def _take_back(job_id: str, uids: list[str]) -> list[str]:
+    """The user gave up on this session (discard, restart): its items still with it go back to To Do. Items handed
+    to another session since are left alone."""
+    import handoff
+    mine = _still_with(job_id, uids)
     if mine:
         handoff.set_work(mine, "todo", by="user")
     return mine
@@ -1403,17 +1414,37 @@ def _take_back(job_id: str, uids: list[str]) -> list[str]:
 
 def take_back(job_id: str) -> dict:
     """收回: the items still with this session go back to To Do (the user's move, in their history). A session that
-    is over then cleans up after itself when nothing of it would be lost — its dead window, and a worktree with no
-    commit and no uncommitted change (with its branch): no folder or blurt/… branch left next to the user's repo, no
-    -2 / -3 on the next hand-off. A worktree with changes stays for review (has_changes); a live session keeps going."""
+    is over then cleans up after itself when nothing of it would be lost (_clean_up_ended)."""
     import handoff
     job = _job(job_id)
-    a = job.get("agent") or {}
     try:
         taken = _take_back(job_id, job.get("items") or [])
     except handoff.CliError as e:
         raise SessionError(e.code, str(e)) from None
-    out: dict = {"ok": True, "taken_back": taken, "cleaned": False}
+    return _clean_up_ended(job_id, job, {"ok": True, "taken_back": taken, "cleaned": False}, taken)
+
+
+def clean_up(job_id: str) -> dict:
+    """After some items were taken back elsewhere (items.py: R, the state menu, the item's banner): the session that
+    is over cleans up only once none of its items is still with it — taking back one item of three never moves the
+    other two or removes the worktree they are still with. Nothing is taken back here."""
+    import handoff
+    job = _job(job_id)
+    try:
+        left = _still_with(job_id, job.get("items") or [])
+    except handoff.CliError as e:
+        raise SessionError(e.code, str(e)) from None
+    out: dict = {"ok": True, "taken_back": [], "cleaned": False}
+    if left:
+        return {**out, "still_with_it": left}
+    return _clean_up_ended(job_id, job, out, [])
+
+
+def _clean_up_ended(job_id: str, job: dict, out: dict, taken: list[str]) -> dict:
+    """A session that is over and has nothing left to lose goes: its dead window, and a worktree with no commit and
+    no uncommitted change (with its branch) — no folder or blurt/… branch left next to the user's repo, no -2 / -3
+    on the next hand-off. A worktree with changes stays for review (has_changes); a live session keeps going."""
+    a = job.get("agent") or {}
     wins = panes()
     if a.get("finish") or (job.get("state") in ("running", "queued") and is_alive(job, wins)):
         return out
@@ -1680,6 +1711,8 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--keep-branch", action="store_true")
     s = sub.add_parser("take-back")
     s.add_argument("job")
+    s = sub.add_parser("clean-up")
+    s.add_argument("job")
     s = sub.add_parser("restart")
     s.add_argument("job")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
@@ -1720,6 +1753,8 @@ def main(argv: list[str] | None = None) -> None:
             emit(finish(a.job, a.action, a.keep_branch))
         elif a.cmd == "take-back":
             emit(take_back(a.job))
+        elif a.cmd == "clean-up":
+            emit(clean_up(a.job))
         elif a.cmd == "restart":
             emit(restart(a.job, a.lang))
         elif a.cmd == "event":

@@ -245,10 +245,11 @@ Editing, the Mac way:
   bar icon's menu.
 - A task's **Done when** is what the agent is told "done" means; it shows (and can be edited) with the task's details.
   No field an item holds is ever hidden.
-- An item file you or a sync tool edited into something Blurt can't read stays in the list, and its details say *This
-  item's file can't be read* with **Open in Editor** and **Show in Finder**. Blurt never overwrites it, and nothing
-  else stops because of it: the other items keep updating, and Blurt says once which file needs fixing. Fix it and
-  save; it shows up again.
+- An item file you or a sync tool edited into something Blurt can't read stays in the list, with a small warning mark
+  before its title, and its details say *This item's file can't be read* with **Open in Editor** and **Show in
+  Finder**. Blurt never overwrites it, and nothing else stops because of it: the other items keep updating, and Blurt
+  says once which file needs fixing. Fix it and save; it shows up again. A file whose item changed underneath it (a
+  checkout, a sync, a uid edited by hand) simply shows the new item.
 
 ### 5. Hand off to an agent
 
@@ -295,7 +296,8 @@ project is current. What can't be handed off says why before the panel opens, wi
 An item whose last session ended without reporting can simply be handed off again: it is taken back from that session
 first. **Take Back** on a session that is over and changed nothing also removes its worktree, its `blurt/…` branch and
 its window — nothing is left next to your repo; when it did change something, the worktree stays for **Review
-Changes…**. Codex asks once to trust Blurt's hooks ("Trust all and continue"); the hook command no longer changes when
+Changes…**. Taking back one item of a session (`R`, the state menu) leaves its other items with it; the clean-up
+happens once none is left. Codex asks once to trust Blurt's hooks ("Trust all and continue"); the hook command no longer changes when
 Python or Blurt updates, so it doesn't ask again. If an agent is too old to start in Blurt's terminal, the session
 says to update it.
 
@@ -723,8 +725,9 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - 每个位置有自己的筛选：在「全部条目」里设的状态筛选只留在那里，不会把「待处理」筛空。
 - 在这个窗口按 `⌘Q` 只是关掉窗口；口喷鸡还在菜单栏里，听写和截图照常能用。要退出，从菜单栏图标的菜单里选。
 - 待办的「**完成标准**」就是交给 Agent 时说的「做到什么算完成」，和待办的详情放在一起，能看也能改。条目里存着的字段一个都不会藏起来。
-- 你或同步工具把条目文件改成了口喷鸡读不懂的样子，它还留在列表里，详情写着「这一条的文件读不出来」，带「**在编辑器中打开**」和
-  「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他条目照常更新，口喷鸡只提醒一次是哪个文件要改。改好保存，它就回来了。
+- 你或同步工具把条目文件改成了口喷鸡读不懂的样子，它还留在列表里，标题前有个小警示标记，详情写着「这一条的文件读不出来」，带
+  「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他条目照常更新，口喷鸡只提醒一次是哪个文件要改。
+  改好保存，它就回来了。同一个文件换成了另一条（切分支、同步、手改了 uid），列表里显示的就是新的那条。
 
 ### 5. 交给 Agent
 
@@ -756,7 +759,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 面板用的总是这些条目自己的项目（它的默认 Agent、上次给它选的模型），和当前项目是哪个无关。交不了的条目在面板打开之前就说明原因，
 并给出出路：已丢弃的（「**恢复**」）、待验证或已完成的（「**重新打开**」）、还有会话在做的（「**打开会话**」）。上一个会话没回报就结束了的条目，
 可以直接再交：会先从那个会话收回。对已经结束、什么都没改的会话按「**收回**」，它的 worktree、`blurt/…` 分支和窗口也会一起清掉，
-不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。Codex 会请你信任一次口喷鸡的 hooks（选「Trust all and continue」）；
+不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。只收回会话里的一条（`R`、状态菜单）时，其他条目还跟着它，
+等一条都不剩了才清理。Codex 会请你信任一次口喷鸡的 hooks（选「Trust all and continue」）；
 hooks 的命令不会再因为 Python 或口喷鸡更新而变，所以不会再问。Agent 版本太旧、在口喷鸡终端里起不来时，会话会提示你先更新它。
 
 对话的第一行是它的标题，比如「AW-12 · 登录按钮点了没反应（口喷鸡交接）」，在 Agent 自己的对话列表里一眼就能找到；Codex 还会把它设为线程名。

@@ -5,8 +5,9 @@
 // offered as a scan in the window instead), and the window comes back if it was open when the app quit — only for
 // background launches (login item, `--background`), never on top of a plain launch that starts a recording, and
 // never because something finished (K4: nothing opens by itself). BLURT_OPEN_MAIN=1 opens it right away (tests).
-// What a scan found is said once (ScanReport): item files that can't be read (skipped, each named once per run, with
-// Show), and a scan that failed (with Try Again) — never dropped on the floor.
+// What a scan found is said once (ScanReport, ScanFindings): item files that can't be read (each named once per run,
+// with Show), files that couldn't be indexed at all (Show in Finder; the error goes to the log), and a scan that
+// failed (with Try Again) — never dropped on the floor.
 import AppKit
 import BlurtCore
 
@@ -26,8 +27,8 @@ enum MainWindowModule {
 
 /// What a full scan has to tell: files it couldn't read, or that it failed. The raw details go to the log.
 enum ScanReport {
-    /// Unreadable files already said this run: each is named once, not on every scan.
-    private static var told = Set<String>()
+    /// Files already said this run: each is named once, not on every scan.
+    private static var told = ScanFindings.Told()
 
     static func handle(_ r: Result<[String: Any], Error>, retry: (() -> Void)?) {
         switch r {
@@ -35,12 +36,21 @@ enum ScanReport {
             for s in o["skipped"] as? [[String: Any]] ?? [] {
                 NSLog("blurt index: skipped %@: %@", s["path"] as? String ?? "?", s["error"] as? String ?? "")
             }
-            let fresh = (o["unreadable"] as? [[String: Any]] ?? []).filter { told.insert($0["path"] as? String ?? "").inserted }
-            guard let first = fresh.first else { return }
-            let text = fresh.count == 1 ? T("main.unreadable.found", first["id"] as? String ?? "") : T("main.unreadable.found.many", fresh.count)
-            emit(["event": "scan_unreadable", "count": fresh.count])
-            let uid = first["uid"] as? String
-            say(text, action: uid.map { u in (T("main.unreadable.show"), { AppEnvironment.mainWindow?.reveal(uid: u) }) })
+            let fresh = ScanFindings.fresh(in: o, told: &told)
+            if let first = fresh.unreadable.first {
+                let n = fresh.unreadable.count
+                emit(["event": "scan_unreadable", "count": n])
+                let text = n == 1 ? T("main.unreadable.found", first.id ?? URL(fileURLWithPath: first.path).lastPathComponent)
+                                  : T("main.unreadable.found.many", n)
+                say(text, action: first.uid.map { u in (T("main.unreadable.show"), { AppEnvironment.mainWindow?.reveal(uid: u) }) })
+            }
+            if let first = fresh.skipped.first {   // couldn't be indexed at all: the list still shows what it had
+                let n = fresh.skipped.count
+                emit(["event": "scan_skipped", "count": n])
+                let url = URL(fileURLWithPath: first.path)
+                let text = n == 1 ? T("main.skipped.found", url.lastPathComponent) : T("main.skipped.found.many", n)
+                say(text, action: (T("action.reveal_in_finder"), { NSWorkspace.shared.activateFileViewerSelecting([url]) }))
+            }
         case .failure(let e):
             NSLog("blurt index: scan failed: %@", "\(e)")
             emit(["event": "scan_failed"])

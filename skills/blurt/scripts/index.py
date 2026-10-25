@@ -388,6 +388,10 @@ def _insert_item(con, r: dict) -> bool:
             con.execute("DELETE FROM items WHERE uid = ?", (r["uid"],))
         else:
             return False  # the same uid twice (a copied folder): the one indexed first keeps it
+    # One row per file, always: the file at this path may now carry another uid than its row (a uid edited by hand, a
+    # checkout or sync that put another item at the same name, a broken file indexed under a stand-in uid and fixed
+    # since). The old row goes, or UNIQUE(path) would refuse this file on every scan.
+    con.execute("DELETE FROM items WHERE path = ? AND uid != ?", (r["path"], r["uid"]))
     clash = con.execute("SELECT uid FROM items WHERE project_id = ? AND item_id = ? AND uid != ?",
                         (r["project_id"], r["item_id"], r["uid"])).fetchone()
     if clash:  # two files claim one id (copied by hand): keep both findable
@@ -445,13 +449,18 @@ def index_file(con, p: Path, now: float, reg: dict, s: st.Store | None = None, f
     try:
         item = st.read_item(p)
     except (st.Unparseable, OSError) as e:
-        h = st.salvage_header(p)  # uid / id / title from the lines that still parse
-        was = con.execute("SELECT uid FROM items WHERE path = ?", (str(p),)).fetchone()
+        h = st.salvage_header(p)  # uid / id / title / kind / state from the lines that still parse
+        was = con.execute("SELECT uid, item_id, title, kind, state FROM items WHERE path = ?", (str(p),)).fetchone()
         uid = h.get("uid") if isinstance(h.get("uid"), str) else \
             was["uid"] if was else "X" + hashlib.sha1(str(p).encode()).hexdigest()[:25]
-        con.execute("DELETE FROM items WHERE path = ? AND uid != ?", (str(p), uid))  # one row per file, always
-        r = {**item_row({"uid": uid, "id": h.get("id") or p.stem, "title": h.get("title") or p.stem,
-                         "kind": h.get("kind"), "state": h.get("state")}, s.root, pid, None, str(p), mtime),
+        # a line that is the broken one keeps what the list showed before (an idea stays an idea, not a note)
+        same = was if was and was["uid"] == uid else None
+
+        def keep(key, col, default=None):
+            v = h.get(key)
+            return v if isinstance(v, str) and v else (same[col] if same else default)
+        r = {**item_row({"uid": uid, "id": keep("id", "item_id", p.stem), "title": keep("title", "title", p.stem),
+                         "kind": keep("kind", "kind"), "state": keep("state", "state")}, s.root, pid, None, str(p), mtime),
              "parse_error": str(e)[:300]}
         _insert_item(con, r)
         return "unreadable"

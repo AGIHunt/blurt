@@ -51,15 +51,16 @@ enum SessionRecovery {
     }
 
     /// After items were taken back some other way (R, the state menu, the item's banner: items.py): their sessions
-    /// that are over clean up the same way (sessions.py take-back finds nothing more to take back, and removes a
-    /// no-change worktree, its branch and the dead window).
+    /// that are over clean up the same way (`sessions.py clean-up`: a no-change worktree, its branch and the dead
+    /// window go) — but only once none of the session's items is still with it. Taking back one item of three never
+    /// moves the other two or removes the worktree they are still with.
     static func cleanUp(jobs: [String]) {
         let ended = Set(jobs).filter { JobStore.shared.job($0).map { $0.type == .agent && !$0.isActive && $0.agent?.finishAction == nil } ?? false }
         guard !ended.isEmpty else { return }
         Task { @MainActor in
             var kept = false
             for j in ended.sorted() {
-                do { kept = try await AgentSessions.shared.takeBack(job: j) || kept }
+                do { kept = try await AgentSessions.shared.cleanUp(job: j) || kept }
                 catch { NSLog("blurt take back: clean-up of %@ failed: %@", j, "\(error)") }
             }
             emit(["event": "session_cleanup", "jobs": ended.sorted(), "changes_kept": kept])

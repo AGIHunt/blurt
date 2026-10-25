@@ -14,9 +14,16 @@ public enum DispatchMode: String { case together, parallel }
 public enum WorktreeChoice: String { case on, off, auto }
 
 public struct DispatchWarning {
-    public let code: String              // concurrent_edit | no_git | no_tmux | draft_confirmed
+    public let code: String              // concurrent_edit | no_git | no_tmux | draft_confirmed | taken_back
     public let jobs: [String]
     public let items: [String]
+
+    /// The Terminal.strings key of its sentence in the panel: one item or several read differently ("this item" /
+    /// "these items"; Chinese has no plural form to pick from, so the count picks the key).
+    public var noteKey: String { code == "taken_back" && items.count == 1 ? "warning.taken_back.one" : "warning.\(code)" }
+    /// A note about what will happen anyway (unreviewed items become To Do) is a check; one that is worth reading
+    /// before Start (no git, no tmux, items taken back from an ended session) is the info mark.
+    public var symbol: String { code == "draft_confirmed" ? "checkmark.circle" : "info.circle" }
 }
 
 /// `launch` rows: only for the app runner (no tmux) — the app runs these argv in its own pty.
@@ -246,6 +253,13 @@ public final class AgentSessions {
     /// worktree, branch). → has changes left in its worktree (they stay, for review).
     public func takeBack(job: String) async throws -> Bool {
         let o = try await call(["take-back", job], timeout: 60)
+        return o["has_changes"] != nil
+    }
+
+    /// After items were taken back elsewhere (items.py): `sessions.py clean-up` — an ended session cleans up only once
+    /// none of its items is still with it; it takes nothing back. → true when it kept a worktree with changes.
+    public func cleanUp(job: String) async throws -> Bool {
+        let o = try await call(["clean-up", job], timeout: 60)
         return o["has_changes"] != nil
     }
 

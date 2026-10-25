@@ -160,6 +160,28 @@ def test_gc_keeps_what_items_and_worktrees_still_need(home, tmp_path):
         assert (home / "jobs" / f"{ids[kept]}.json").exists()
 
 
+def test_gc_closes_old_dead_windows_instead_of_keeping_their_jobs_forever(home):
+    """dogfood-2 #41: a final agent job's dead window (remain-on-exit, up to 50k lines of scrollback each) pinned the
+    job in gc forever. Past 14 days the dead window is closed and the job goes; a running window still pins it."""
+    old = time.time() - 20 * 86400
+    dead, alive, young = (jobs.create("agent")["id"] for _ in range(3))
+    for jid, when in ((dead, old), (alive, old), (young, time.time())):
+        def end(j, when=when):
+            jobs.finish(j, "done")
+            j["ended"] = jobs.now_iso(when)
+        jobs.update(jid, end)
+    killed = []
+    orig = jobs.KEEP_LAST
+    jobs.KEEP_LAST = 0
+    try:
+        removed = jobs.gc(live_windows={alive}, referenced=set(), kill_window=killed.append,
+                          dead_windows={dead: "@7", young: "@9"})
+    finally:
+        jobs.KEEP_LAST = orig
+    assert removed == [dead] and killed == ["@7"]          # a young job keeps its dead window for reading
+    assert (home / "jobs" / f"{alive}.json").exists() and (home / "jobs" / f"{young}.json").exists()
+
+
 def test_referenced_jobs_reads_the_index(home, monkeypatch):
     import sqlite3
     import index

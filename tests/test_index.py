@@ -294,6 +294,57 @@ def test_one_broken_file_never_stops_a_scan_or_an_update(env):
     assert [u["uid"] for u in doc["_unreadable"]] == [uid] and uid not in [i["uid"] for i in doc["items"]]
 
 
+def test_a_broken_kind_line_keeps_the_kind_the_list_showed(env):
+    """Review of fix 2: a hand-broken idea showed a note icon in the list (its kind line was the broken one)."""
+    migrated(env)
+    con = db()
+    row = next(r for r in con.execute("SELECT path, kind, state FROM items WHERE kind != 'note'"))
+    f = Path(row["path"])
+    _break(f)
+    cli("update", f)
+    after = db().execute("SELECT kind, state, parse_error FROM items WHERE path = ?", (str(f),)).fetchone()
+    assert after["parse_error"] and (after["kind"], after["state"]) == (row["kind"], row["state"])
+
+
+def test_a_file_whose_uid_changed_replaces_its_row(env):
+    """Review of fix 2: a readable file at an indexed path with another uid than its row (a uid edited by hand, a
+    checkout that put another item at the same name) hit UNIQUE items.path and was skipped on every scan."""
+    migrated(env)
+    f = sorted((env["repo"] / ".blurt" / "items").glob("*.md"))[0]
+    uid = st.read_header(f)["uid"]
+    new = "01JB7ZK3Q4M8W2E5R6T9Y0ZZZZ"
+    f.write_text(f.read_text(encoding="utf-8").replace(uid, new), encoding="utf-8")
+    r = cli("update", f)
+    assert r["updated"] == 1 and "skipped" not in r
+    rows = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchall()
+    assert [(x["uid"], x["parse_error"]) for x in rows] == [(new, None)]
+    s = cli("scan", "--full")
+    assert "skipped" not in s and not db().execute("SELECT 1 FROM items WHERE uid = ?", (uid,)).fetchone()
+
+
+def test_a_file_indexed_broken_without_a_uid_then_fixed(env):
+    """A file first indexed while its uid line didn't parse gets a stand-in uid; once fixed, its real uid takes
+    the row over instead of the file being skipped from then on."""
+    migrated(env)
+    items = env["repo"] / ".blurt" / "items"
+    src = sorted(items.glob("*.md"))[0]
+    h = st.read_header(src)
+    real_uid = "01JB7ZK3Q4M8W2E5R6T9Y0AAAA"
+    text = src.read_text(encoding="utf-8").replace(h["uid"], real_uid).replace(f"id: {h['id']}", "id: NEW-99")
+    f = items / "NEW-99-copied.md"
+    good = text
+    f.write_text("\n".join("uid: [broken" if ln.startswith("uid:") else ln for ln in text.split("\n")),
+                 encoding="utf-8")
+    cli("update", f)
+    row = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchone()
+    assert row["uid"].startswith("X") and row["parse_error"]
+    f.write_text(good, encoding="utf-8")
+    r = cli("update", f)
+    assert "skipped" not in r
+    rows = db().execute("SELECT uid, parse_error FROM items WHERE path = ?", (str(f),)).fetchall()
+    assert [(x["uid"], x["parse_error"]) for x in rows] == [(real_uid, None)]
+
+
 def test_a_file_that_throws_is_skipped_and_reported(env, monkeypatch):
     """Whatever else goes wrong with one file is rolled back alone (SAVEPOINT) and listed, never the whole batch."""
     migrated(env)

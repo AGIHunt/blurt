@@ -38,9 +38,14 @@ final class WorkDogfoodTests: XCTestCase {
             XCTAssertEqual(s.map(\.step), ["transcribe", "prepare"], c)
             XCTAssertEqual(s.map(\.state), [.pending, .failed], c)
         }
+        // review: a login / network failure on a recording already transcribed (Retry, a fallback) is still the
+        // agent's, never "writing items failed"
         let after = OrganizeSteps.onFailure(failureClass: "auth", transcribed: true)
-        XCTAssertEqual(after.map(\.step), ["transcribe", "write"])
+        XCTAssertEqual(after.map(\.step), ["transcribe", "prepare"])
         XCTAssertEqual(after.map(\.state), [.done, .failed])
+        let written = OrganizeSteps.onFailure(failureClass: "agent_exit", transcribed: true)
+        XCTAssertEqual(written.map(\.step), ["transcribe", "write"])
+        XCTAssertEqual(written.map(\.state), [.done, .failed])
         XCTAssertEqual(OrganizeSteps.onFailure(failureClass: nil, transcribed: false).map(\.step), ["transcribe"])
     }
 
@@ -73,5 +78,31 @@ final class WorkDogfoodTests: XCTestCase {
         XCTAssertEqual(busy.itemID, "HS-2")
         XCTAssertEqual(SessionsError(json: [:], fallback: "missing_dependency").code, "missing_dependency")
         XCTAssertNil(SessionsError(json: ["fix": "", "id": ""], fallback: "x").fix)
+    }
+
+    func testTakenBackNoteReadsRightForOneItemAndIsNotACheckmark() {
+        let one = DispatchWarning(code: "taken_back", jobs: [], items: ["U1"])
+        let two = DispatchWarning(code: "taken_back", jobs: [], items: ["U1", "U2"])
+        XCTAssertEqual(one.noteKey, "warning.taken_back.one")
+        XCTAssertEqual(two.noteKey, "warning.taken_back")
+        XCTAssertEqual(one.symbol, "info.circle")
+        XCTAssertEqual(DispatchWarning(code: "no_git", jobs: [], items: []).symbol, "info.circle")
+        XCTAssertEqual(DispatchWarning(code: "draft_confirmed", jobs: [], items: ["U1"]).symbol, "checkmark.circle")
+        XCTAssertEqual(DispatchWarning(code: "draft_confirmed", jobs: [], items: ["U1"]).noteKey, "warning.draft_confirmed")
+    }
+
+    func testScanFindingsAreSaidOncePerRunAndSkippedFilesToo() {
+        var told = ScanFindings.Told()
+        let report: [String: Any] = [
+            "unreadable": [["uid": "U1", "id": "AW-6", "path": "/r/.blurt/items/AW-6.md"]],
+            "skipped": [["path": "/r/.blurt/items/AW-7.md", "error": "IntegrityError: UNIQUE constraint failed"]],
+        ]
+        let first = ScanFindings.fresh(in: report, told: &told)
+        XCTAssertEqual(first.unreadable, [ScanFindings.File(path: "/r/.blurt/items/AW-6.md", uid: "U1", id: "AW-6")])
+        XCTAssertEqual(first.skipped.map(\.path), ["/r/.blurt/items/AW-7.md"])   // review: skipped files are told too
+        XCTAssertTrue(ScanFindings.fresh(in: report, told: &told).isEmpty)          // the next scan: nothing new to say
+        var more = report
+        more["skipped"] = [["path": "/r/.blurt/items/AW-7.md"], ["path": "/r/.blurt/items/AW-8.md"]]
+        XCTAssertEqual(ScanFindings.fresh(in: more, told: &told).skipped.map(\.path), ["/r/.blurt/items/AW-8.md"])
     }
 }

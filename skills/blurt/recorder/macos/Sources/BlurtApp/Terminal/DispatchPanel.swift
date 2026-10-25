@@ -12,7 +12,8 @@
 // then need marking by hand and offers Install (the Settings → Agents installer).
 // The project (its default agent, the remembered model, the header) is the items' own — never the sidebar's current
 // one; the current project only seeds New Session's picker. A dry run that fails keeps Start off, its reason in the
-// same tinted box as every other warning here (never a raw code: sessionsErrorText).
+// same tinted box as every other warning here (never a raw code: sessionsErrorText); a start that fails says why in
+// the same box and leaves Start on, to try again.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -57,6 +58,9 @@ final class DispatchModel: ObservableObject {
     @Published var warnings: [DispatchWarning] = []
     @Published var preview: [[String: Any]] = []
     @Published var phase: Phase = .idle
+    /// The dry run with the current choices failed: starting would fail the same way. A real start that failed (a
+    /// timeout, tmux) leaves Start on, so the user can just try again.
+    @Published private(set) var checkFailed = false
     /// The sign-in check has answered (or 3 s passed): until then Start waits, so it never starts a logged-out agent.
     @Published var loginChecked = false
     /// The full login check came back (not just the 3 s wait): sessions.py needn't check again (--force).
@@ -121,11 +125,10 @@ final class DispatchModel: ObservableObject {
     var chosenAgent: AgentChoice? { agents.first { $0.id == agent } }
     /// Another agent that can take over from a logged-out one.
     var alternative: AgentChoice? { agents.first { $0.id != agent && !$0.loggedOut } }
-    var failed: Bool { if case .failed = phase { return true } else { return false } }
     var canStart: Bool {
         // the desktop app signs in on its own: the CLI's login only matters in the terminal. A dry run that failed
         // would fail the same way: Start stays off until a choice changes and the check passes.
-        count > 0 && !agent.isEmpty && phase != .starting && !failed && chosenAgent?.session != false
+        count > 0 && !agent.isEmpty && phase != .starting && !checkFailed && chosenAgent?.session != false
             && (desktop || (loginChecked && chosenAgent?.loggedOut != true))
     }
 
@@ -213,6 +216,7 @@ final class DispatchModel: ObservableObject {
         let gen = checkGen
         if phase != .starting { phase = .checking }
         busyJob = nil
+        checkFailed = false
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent.isEmpty ? nil : agent, mode: mode,
                                                             worktree: mode == .parallel ? .on : worktree, dryRun: true,
@@ -227,6 +231,7 @@ final class DispatchModel: ObservableObject {
             warnings = []
             preview = []
             busyJob = (error as? SessionsError).flatMap { $0.code == "already_dispatched" ? $0.job : nil }
+            checkFailed = true
             phase = .failed(sessionsErrorText(error))
         }
     }
@@ -353,8 +358,8 @@ struct DispatchView: View {
             }
 
             // codes this version has no sentence for are left out rather than shown raw
-            ForEach(m.warnings.filter { $0.code != "concurrent_edit" && TL("warning.\($0.code)") != "warning.\($0.code)" }, id: \.code) { w in
-                Label(TL("warning.\(w.code)"), systemImage: w.code == "no_tmux" ? "info.circle" : "checkmark.circle")
+            ForEach(m.warnings.filter { $0.code != "concurrent_edit" && TL($0.noteKey) != $0.noteKey }, id: \.code) { w in
+                Label(TL(w.noteKey), systemImage: w.symbol)
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
 

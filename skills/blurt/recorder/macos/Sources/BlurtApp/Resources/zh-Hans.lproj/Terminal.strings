@@ -326,6 +326,7 @@
 "error.not_found" = "找不到这些条目了，可能已经被移走或删除。";
 "error.locked" = "另一个操作正在进行，稍等一下再试。";
 "warning.taken_back" = "之前那个会话已经结束，这些条目会从它那里收回，交给新的会话。";
+"warning.taken_back.one" = "之前那个会话已经结束，这一条会从它那里收回，交给新的会话。";
 "dispatch.untitled" = "没有标题";
 "install.what.skill" = "口喷鸡 skill";
 "install.what.mcp" = "blurt MCP";

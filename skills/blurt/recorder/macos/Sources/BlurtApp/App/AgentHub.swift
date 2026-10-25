@@ -505,13 +505,15 @@ extension App {
     func noteFallback(_ why: [String], using: AgentDef, job: JobWriter) {
         let key = why.joined(separator: ",") + ">" + using.id
         guard App.fallbackNoted[job.id] != key else { return }
+        // only running jobs need remembering: the finished ones' entries go, so this never grows with the app's age
+        App.fallbackNoted = App.fallbackNoted.filter { $0.key == job.id || JobStore.shared.job($0.key)?.isActive == true }
         App.fallbackNoted[job.id] = key
         job.set("organizer", ["agent": using.id, "instead_of": why] as [String: Any])
         emit(["event": "organize_fallback", "job": job.id, "agent": using.id, "instead_of": why])
         AppEnvironment.island?.toast(T("app.agent.fallback_notice", why.joined(separator: T("app.agent.list_sep")), using.name),
                                      actionTitle: nil, action: nil)
     }
-    /// job id → the switch already said for it
+    /// job id → the switch already said for it (running jobs only: pruned on every new switch)
     static var fallbackNoted: [String: String] = [:]
 
     /// "还没有能用的 Agent：Claude Code 没登录 — 在终端运行 claude，然后输入 /login；Codex 没安装 — …" — each agent of the

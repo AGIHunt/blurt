@@ -93,6 +93,8 @@
 "main.unreadable.show" = "Show";
 "main.unreadable.found" = "%@’s file can’t be read. Fix it in an editor.";
 "main.unreadable.found.many" = "%d item files can’t be read. Fix them in an editor.";
+"main.skipped.found" = "%@ couldn’t be added to the list. Details are in the log.";
+"main.skipped.found.many" = "%d files couldn’t be added to the list. Details are in the log.";
 "main.scan.failed" = "Couldn’t refresh the list.";
 
 "main.dispatch.needs_project" = "Move these items to a project first";

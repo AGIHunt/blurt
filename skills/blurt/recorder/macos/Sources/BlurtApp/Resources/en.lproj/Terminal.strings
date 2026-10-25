@@ -326,6 +326,7 @@
 "error.not_found" = "These items can’t be found any more. They may have been moved or deleted.";
 "error.locked" = "Something else is running. Try again in a moment.";
 "warning.taken_back" = "Their last session has ended: the items are taken back from it and handed to the new one.";
+"warning.taken_back.one" = "Its last session has ended: the item is taken back from it and handed to the new one.";
 "dispatch.untitled" = "Untitled";
 "install.what.skill" = "the Blurt skill";
 "install.what.mcp" = "the blurt MCP";

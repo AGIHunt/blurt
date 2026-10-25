@@ -441,9 +441,11 @@ open_items, unassigned}`（open = state ∈ new / todo / handed_off / in_progres
   `/files/%2FUsers%2F…` 和 `/files//Users/…`（页面把 `files/` 和绝对路径直接拼起来），会话相对路径照旧；确认后的摘要多 `items: [{id, uid, path}]`，
   `file` 是 batch.json。
 - **index**：多一个索引 `items_session ON items(session_id)`；解析不了的文件也有一行（`parse_error`；uid / id 取自还能解析的那几行，
-  都没有时 uid 沿用这个路径原来那一行的，再没有才是 `"X" + sha1(path)[:25]`，item_id = 文件名；同一路径永远只有一行）。每个文件、每个会话
+  都没有时 uid 沿用这个路径原来那一行的，再没有才是 `"X" + sha1(path)[:25]`，item_id = 文件名；坏掉的那行是 kind / state / title
+  时沿用原来那一行的，列表不会把想法显示成笔记）。同一路径永远只有一行：任何一次写入前先删掉这个路径上 uid 不同的旧行（手改 uid、
+  切分支或同步把另一条放到同名文件、先以 X… 记下后来修好），否则 UNIQUE(path) 会让这个文件次次被跳过。每个文件、每个会话
   各在一个 SAVEPOINT 里：一个出错只回滚它自己，列进 `"skipped": [{path, error}]`，扫描和批量 update 照常提交其余的；scan 还返回
-  `"unreadable": [{uid, id, path}]`（应用每个文件只提醒一次）；同一项目两个文件同一个 id（手工复制）时后来的 item_id 加 `~<uid 后 4 位>`。`index.py update` 也收会话里的
+  `"unreadable": [{uid, id, path}]`（应用每个文件只提醒一次，`skipped` 的文件也一样：「X 没能加进列表」+ 在访达中显示，原始错误只进日志）；同一项目两个文件同一个 id（手工复制）时后来的 item_id 加 `~<uid 后 4 位>`。`index.py update` 也收会话里的
   `items.json` / `batch.json` / `shots.jsonl` / `meta.json`（= 它的会话）；search 多 `--sort title`。还没迁移的 v1/v2 会话，条目行挂在它将来所在的项目
   （store）下；`--root` 发现的未登记项目 `registered = 0`，key 用 store.json 的或默认规则算出的。
 - **MCP**：`list_projects.unassigned` = inbox 行是它的条目数，项目行是 AI 建议归它、还在 inbox 里的条目数；`mark_fixed` 返回
@@ -803,6 +805,10 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
   `set_work(…, "todo", by="user")` 收回（历史里有这一步）再交给新会话（dogfood-2 W33）。
 - `take-back JOB`（收回）：它手上的条目回到 todo；会话已经结束时，worktree 没有提交也没有未提交改动 → 连同分支、死窗口一起删掉，记
   `finish.action = "take_back"`；有改动 → 留着，返回 `has_changes`。任何一次删 worktree 后，`.<repo>-worktrees/` 空了也删掉。
+- `clean-up JOB`：条目在别处收回之后（items.py：`R`、状态菜单、提示条）应用调它。不收回任何东西；会话已经结束、而且**没有一条**还在它手上
+  （handed_off / in_progress 且 `work.job` 是它）时，才像 take-back 一样清理；否则返回 `still_with_it: [uid]`，什么都不动。
+- `jobs.py gc`：结束超过 14 天、不在最新 300 个里的 agent 任务，只剩一个死窗口（remain-on-exit，每个最多 5 万行回滚）时不再因此永远留着：
+  先关掉那个窗口再删任务。窗口还活着、未完成条目还指着、worktree 没收尾的照旧留着。
 - Codex 的生命周期 hook 命令固定是 `'$BLURT_HOME/bin/blurt-hook' --agent codex`（每次派发重写这个 sh 小脚本去 exec 当前的 python 和
   sessions.py），命令文本不随解释器、skill 路径或版本变，所以「Hooks need review」只出现一次。Windows 暂无（TODO.md）。
 - 会话异常结束的 `job.error` 多一个 `reason`：按失败分类（agents.json failures，含新的 `outdated`）用界面语言写好的一句话（哪个 agent、
