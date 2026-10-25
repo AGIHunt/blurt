@@ -6,7 +6,7 @@
 import AppKit
 import BlurtCore
 
-/// "Goes to ordo-platform ⌄" / "Unassigned ⌄": quiet text on a faint fill, a little stronger under the pointer.
+/// "Goes to ordo-platform ⌄" / "Stays as a card ⌄": quiet text on a faint fill, a little stronger under the pointer.
 final class ProjectChip: NSButton {
     var onClick: (() -> Void)?
     private var hovering = false { didSet { needsDisplay = true } }
@@ -160,8 +160,8 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
     }
 }
 
-/// One project in the chip's list: its colour dot, its name, a check on the one the capture goes to now; Unassigned with
-/// the tray, under a hairline, as in the island's switcher. A project whose folder can't be found: a question-mark
+/// One project in the chip's list: its folder in its colour (the island switcher's and Move To's mark), its name, a
+/// check on the one the capture goes to now; Unassigned with the sidebar's tray.2, under a hairline. A project whose folder can't be found: a question-mark
 /// folder, its name dimmed, "folder not found" after it (picking it says so at the notch: MissingFolder).
 final class PickRow: NSView {
     let project: Project?
@@ -208,10 +208,10 @@ final class PickRow: NSView {
         if missing, let img = NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .regular).applying(.init(paletteColors: [.tertiaryLabelColor]))) {
             img.draw(in: NSRect(x: x - 2, y: bounds.midY - img.size.height / 2, width: img.size.width, height: img.size.height))
-        } else if let p = project {
-            ProjectLook.color(p).setFill()
-            NSBezierPath(ovalIn: NSRect(x: x, y: bounds.midY - 3.5, width: 7, height: 7)).fill()
-        } else if let img = NSImage(systemSymbolName: "tray", accessibilityDescription: nil)?
+        } else if let p = project, let img = NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 10, weight: .regular).applying(.init(paletteColors: [ProjectLook.color(p)]))) {
+            img.draw(in: NSRect(x: x - 2, y: bounds.midY - img.size.height / 2, width: img.size.width, height: img.size.height))
+        } else if project == nil, let img = NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 9, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
             img.draw(in: NSRect(x: x - 1, y: bounds.midY - img.size.height / 2, width: img.size.width, height: img.size.height))
         }

@@ -1384,11 +1384,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func fmt(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
-    /// "Goes to ordo-platform" for a fresh shot taken with a current project; "Unassigned" without one (the snap hangs
-    /// as a card until a project is picked) — the name every project picker gives that choice.
+    /// "Goes to ordo-platform" for a fresh snap taken with a current project; "Stays as a card" without one — what
+    /// happens to it (it hangs under the notch until a project is picked), as the voice note's island line says it
+    /// (v0.9-fix2: a bare "Unassigned ⌄" didn't read as where the snap goes). The list's row is still "Unassigned".
     private var destination: String {
         guard let pid = shot?.project, let p = ProjectStore.shared.project(id: pid) else {
-            return Loc.t("project.inbox")
+            return Loc.t("capture.note.stays_card", table: "Capture")
         }
         return Loc.t("capture.note.goes_to", table: "Capture", p.name)
     }
