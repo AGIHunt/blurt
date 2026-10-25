@@ -622,6 +622,20 @@ body {
   background: var(--panel);
   box-shadow: 0 0 0 3px var(--focus-soft);
 }
+/* an emptied title, while it is being typed: said right there, never saved (Esc puts the old one back) */
+.title.invalid,
+.title.invalid:focus {
+  border-color: var(--kind-issue);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--kind-issue) 18%, transparent);
+}
+.title::placeholder {
+  color: var(--faint);
+}
+.field-err {
+  margin: -4px 0 10px;
+  font-size: 12px;
+  color: var(--kind-issue);
+}
 .chips {
   display: flex;
   flex-wrap: wrap;
@@ -647,6 +661,33 @@ body {
 }
 button.chip:hover {
   color: var(--ink);
+}
+/* a chip with a menu of its values (kind, severity, type): a native select laid over it */
+.chip-pick {
+  position: relative;
+  cursor: pointer;
+  gap: 5px;
+}
+.chip-pick:hover {
+  color: var(--ink);
+}
+.chip-pick select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.chip-pick .pick-ch {
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+  color: currentColor;
+}
+.chip-pick:has(select:focus-visible) {
+  outline: 3px solid var(--focus-soft);
+  box-shadow: 0 0 0 1px var(--focus);
 }
 .chip .sw {
   width: 7px;

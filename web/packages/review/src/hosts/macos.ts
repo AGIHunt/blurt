@@ -125,5 +125,12 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   if (info.sessionBanner) host.sessionBanner = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
   if (has.has("download")) host.download = (path) => notify("download", { path });
+  // one undo stack per window: the page's steps go on the window's NSUndoManager
+  if (has.has("registerUndo")) {
+    host.registerUndo = (label) => notify("registerUndo", { label });
+    host.windowUndo = (redo) => notify("windowUndo", { redo });
+    host.undone = (uid) => notify("undone", { uid });
+  }
+  if (has.has("focusList")) host.focusList = () => notify("focusList", {});
   return host;
 }

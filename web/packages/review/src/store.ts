@@ -6,7 +6,7 @@
    than a field — a state change (K3: keep, done, send back, discard…) — goes as an explicit `state` op, sent at once
    and shown optimistically until the server's answer arrives. */
 import { resolveLang, systemLanguages } from "@blurt/i18n";
-import { actionForKey, canDo, isInbox, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
+import { actionForKey, canDo, isInbox, KINDS, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
 import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp } from "./host";
 import { humanizeKey } from "./fields";
 import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
@@ -18,6 +18,8 @@ export type View = "overview" | "focus" | "list";
 export type StateFilter = "live" | "inbox" | State;
 export type ProcPhase = "hidden" | "working" | "fin" | "out";
 export type SaveState = "" | "saving" | "saved" | "error";
+/** what an undo step is called (the host's Edit menu: "Undo Change State") */
+export type UndoLabel = "undo.state" | "undo.move" | "undo.merge" | "undo.edit";
 
 export interface Media {
   kind: "img" | "wait" | "clip" | "orig";
@@ -109,6 +111,9 @@ export class ReviewStore {
 
   private knownSrc = new Set<string>();
   private undoStack: string[] = [];
+  private redoStack: string[] = [];
+  /** the field being edited: the snapshot from when it got the focus (one undo step per editing session) */
+  private editing: { snap: string; key: string; k: string; was: string } | null = null;
   private listeners = new Set<() => void>();
   private net: Promise<unknown> = Promise.resolve();
   private saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -272,7 +277,7 @@ export class ReviewStore {
     }
     const moves = items.map((i) => ({ i, from: this.stateOf(i), to: targetOf(action, i) })).filter((m): m is { i: Item; from: State; to: State } => !!m.to);
     if (!moves.length) return 0;
-    this.snapshot();
+    this.snapshot("undo.state");
     for (const { i, from, to } of moves) {
       this.setLocal(i, to, from);
       if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action });
@@ -300,11 +305,11 @@ export class ReviewStore {
   moveTo = (items: Item[], projectId: string) => {
     const moving = items.filter((i) => i.project !== projectId);
     if (!this.canMove || !moving.length) return;
-    this.snapshot();
+    this.snapshot("undo.move");
     for (const i of moving) i.project = projectId;
     this.flush();
     const name = this.projectName(this.project(projectId));
-    this.showToast(this.plural("project.moved", moving.length, { project: name }), false, "folder");
+    this.showToast(this.plural("project.moved", moving.length, { project: name }), true, "folder");
   };
 
   /** the host can write a handoff (the browser page only when review.py says it can: doc `_caps`) */
@@ -557,13 +562,48 @@ export class ReviewStore {
   flush = () => this.save(0);
 
   // ---------------------------------------------------------------- user actions
-  private snapshot() {
-    this.undoStack.push(JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item && this.key(this.item) }));
-    if (this.undoStack.length > 80) this.undoStack.shift();
+  private snapString() {
+    return JSON.stringify({ items: this.data.items, base: [...this.base.values()], cur: this.cur, cid: this.item && this.key(this.item) });
   }
+  /** One undoable step of the user's (`label`: undo.state | undo.move | undo.merge | undo.edit). Where the host keeps
+      the window's undo stack (the Mac app), the step goes there too: ⌘Z works wherever the focus is, the Edit menu
+      names it, and the host calls undo() / redo() back. */
+  private snapshot(label: UndoLabel, snap = this.snapString()) {
+    this.undoStack.push(snap);
+    if (this.undoStack.length > 80) this.undoStack.shift();
+    this.redoStack = [];
+    this.host.registerUndo?.(this.t(label));
+  }
+  /** Z, ⌘Z outside a text field, a toast's Undo: the host's window-wide undo when it has one (it calls undo() back),
+      else the page's own. */
+  undoLast = () => (this.host.windowUndo ? this.host.windowUndo(false) : this.undo());
+  redoLast = () => (this.host.windowUndo ? this.host.windowUndo(true) : this.redo());
+
+  /** A field's editing session — focus to blur — is one undo step: the snapshot taken when it got the focus goes on
+      the stack when it loses it, if the field changed (typing autosaves meanwhile, as before). */
+  beginEdit = (i: Item, k: string) => {
+    this.editing = { snap: this.snapString(), key: this.key(i), k, was: JSON.stringify(k === "source" ? i.source : i[k]) ?? "" };
+  };
+  endEdit = (i: Item) => {
+    const e = this.editing;
+    this.editing = null;
+    if (!e || e.key !== this.key(i)) return;
+    if ((JSON.stringify(e.k === "source" ? i.source : i[e.k]) ?? "") !== e.was) this.snapshot("undo.edit", e.snap);
+  };
+
   undo = () => {
     const s = this.undoStack.pop();
     if (!s) return;
+    this.redoStack.push(this.snapString());
+    this.restore(s, "toast.undone");
+  };
+  redo = () => {
+    const s = this.redoStack.pop();
+    if (!s) return;
+    this.undoStack.push(this.snapString());
+    this.restore(s, "toast.redone");
+  };
+  private restore(s: string, toast: string) {
     const o = JSON.parse(s) as { items: Item[]; base: Item[]; cur: number; cid?: string };
     const now = new Map(this.data.items.map((i) => [this.key(i), this.stateOf(i)]));
     const was = new Map(o.items.map((i) => [this.key(i), migrate(i)])); // before the rebase writes the server's into them
@@ -584,15 +624,21 @@ export class ReviewStore {
       const p = this.pendingState.get(k); // unanswered: still as the user set it
       if (p) Object.assign(i, p);
     }
-    const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
-    this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
+    if (this.mode === "item") {
+      // the detail keeps showing the item the host selected; the host is told which item the step was about
+      this.pointAt();
+      if (o.cid) this.host.undone?.(o.cid);
+    } else {
+      const k = this.data.items.findIndex((i) => this.key(i) === o.cid);
+      this.cur = this.legacy || k < 0 ? Math.min(o.cur, this.data.items.length - 1) : k;
+    }
     this.mediaSel = null;
     this.menuOpen = false;
     this.dir = "down";
     this.slideKey++;
     this.save();
-    this.showToast(this.t("toast.undone"));
-  };
+    this.showToast(this.t(toast));
+  }
 
   go = (k: number, d?: "up" | "down") => {
     if (k < 0 || k >= this.data.items.length) return;
@@ -621,31 +667,24 @@ export class ReviewStore {
     }
     setTimeout(() => this.nextPending(), 90);
   };
-  setSev = (v: string) => {
+  /** A chip's pick (kind, severity, type) on the current item: one undoable step. Nothing when it is the value already. */
+  private setChip(k: "kind" | "severity" | "type", v: string) {
     const i = this.item;
-    if (!i || kindOf(i) !== "issue") return;
-    i.severity = v;
+    if (!i || (k !== "kind" && kindOf(i) !== "issue") || (k === "kind" ? kindOf(i) : String(i[k] ?? "")) === v) return;
+    this.snapshot("undo.edit");
+    if (v) i[k] = v;
+    else delete i[k];
     this.save();
-  };
-  cycleSev = () => {
-    const i = this.item;
-    if (!i) return;
-    const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
-    this.setSev(SEV[(SEV.indexOf(sev as never) + 1) % 3]);
-  };
-  cycleType = () => {
-    const i = this.item;
-    if (!i) return;
-    const ks = this.types;
-    i.type = ks[(ks.indexOf(String(i.type)) + 1) % ks.length];
-    this.save();
-  };
+  }
+  setKind = (v: string) => this.setChip("kind", v);
+  setSev = (v: string) => this.setChip("severity", v);
+  setType = (v: string) => this.setChip("type", v);
   mergePrev = () => {
     if (this.mode === "item") return;
     let j = this.cur - 1;
     while (j >= 0 && this.st(this.data.items[j]) === "drop") j--;
     if (j < 0) return;
-    this.snapshot();
+    this.snapshot("undo.merge");
     const p = this.data.items[j];
     const i = this.data.items[this.cur];
     mergeInto(p, i, this.key);
@@ -827,10 +866,13 @@ export class ReviewStore {
     this.selectMedia(src);
     setTimeout(() => void document.querySelector<HTMLVideoElement>("#mediaBox video")?.play().catch(() => {}), 60);
   }
-  editTitle = () => {
+  /** E: the title, all of it selected; `atEnd` (the host's Return from its list): the caret after the last character */
+  editTitle = (atEnd = false) => {
     const ta = document.querySelector<HTMLTextAreaElement>(".insp .title");
-    ta?.focus();
-    ta?.select();
+    if (!ta) return;
+    ta.focus();
+    if (atEnd) ta.setSelectionRange(ta.value.length, ta.value.length);
+    else ta.select();
   };
 
   onKeyDown = (e: KeyboardEvent) => {
@@ -848,7 +890,19 @@ export class ReviewStore {
       if (this.modal) this.closeModal();
       else if (this.lightbox) this.openLightbox(null);
       else if (this.selected.size && !typing) this.clearSelection();
-      else ae?.blur();
+      else if (typing) ae?.blur();
+      else if (this.host.focusList) {
+        // nothing left to cancel: back to the host's list, which keeps its selection (the Mac app)
+        e.preventDefault();
+        this.host.focusList();
+      } else ae?.blur();
+      return;
+    }
+    // ⌘Z / ⇧⌘Z outside a text field: the user's last step (a text field keeps its own typing undo)
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "z" || e.key === "Z") && !typing) {
+      e.preventDefault();
+      if (e.shiftKey) this.redoLast();
+      else this.undoLast();
       return;
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -868,11 +922,10 @@ export class ReviewStore {
       ArrowRight: () => this.stepMedia(1),
       " ": this.togglePlay,
       o: this.playOrig,
-      e: this.editTitle,
+      e: () => this.editTitle(),
       s: () => this.item && this.setMenuOpen(true),
-      "1": () => this.setSev("high"),
-      "2": () => this.setSev("medium"),
-      "3": () => this.setSev("low"),
+      // 1–4 set the kind, as in the Mac app's list (severity is the chip's menu)
+      ...Object.fromEntries(KINDS.map((kd, n) => [String(n + 1), () => this.setKind(kd)])),
       ...(review
         ? {
             j: () => this.go(this.cur + 1, "up"),
@@ -885,8 +938,8 @@ export class ReviewStore {
             x: () => this.decide("discard"),
             Backspace: () => this.decide("discard"),
             Delete: () => this.decide("discard"),
-            z: this.undo,
-            u: this.undo,
+            z: this.undoLast,
+            u: this.undoLast,
             m: this.mergePrev,
           }
         : {}),

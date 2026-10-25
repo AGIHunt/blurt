@@ -53,6 +53,10 @@ export function mountReview(el: HTMLElement, host: BlurtHost, opts: MountOptions
   return {
     store,
     setItem: (id) => store.setItem(id),
+    undo: () => store.undo(),
+    redo: () => store.redo(),
+    pollNow: () => store.pollNow(),
+    focusTitle: () => store.editTitle(true),
     setTheme: (t) => theme.set(t),
     setPlatform: (p) => applyPlatform(p, html),
     setLang: (l) => store.setLang(l),

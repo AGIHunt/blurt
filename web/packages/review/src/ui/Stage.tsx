@@ -255,7 +255,7 @@ export function Stage() {
             <span>{s.t("action.merge")}</span>
             <kbd>M</kbd>
           </button>
-          <button className="act ghost" id="undoBtn" onClick={s.undo}>
+          <button className="act ghost" id="undoBtn" onClick={s.undoLast}>
             <Icon name="undo" size={16} />
             <span>{s.t("action.undo")}</span>
             <kbd>Z</kbd>

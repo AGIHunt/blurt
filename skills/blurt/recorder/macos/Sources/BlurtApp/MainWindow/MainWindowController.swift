@@ -380,7 +380,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
     }
 
-    func openSelection() { window?.makeFirstResponder(detail.web) }
+    /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
+    func openSelection() {
+        guard !detail.web.isHidden else { return }
+        window?.makeFirstResponder(detail.web)
+        detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
+    }
 
     func handOffSelection() {
         let uids = list.selectedItems.map(\.uid)
@@ -389,22 +394,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func renameSelection() {
+        // in place, in the row (micro 1): no sheet; Return / Tab / a click away commits, Esc reverts
         let sel = list.selectedItems
-        guard sel.count == 1, let it = sel.first, !it.legacy, let w = window else { NSSound.beep(); return }
-        let a = NSAlert()
-        a.messageText = T("main.rename.title")
-        a.informativeText = "\(Look.kindName(it.kind)) · \(it.itemID)"
-        let f = NSTextField(string: it.title)
-        f.frame = NSRect(x: 0, y: 0, width: 340, height: 24)
-        a.accessoryView = f
-        a.addButton(withTitle: T("action.save"))
-        a.addButton(withTitle: T("action.cancel"))
-        a.window.initialFirstResponder = f
-        a.beginSheetModal(for: w) { [weak self] r in
-            let t = f.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard r == .alertFirstButtonReturn, !t.isEmpty, t != it.title else { return }
-            self?.edit([it], ["title": t])
-        }
+        guard sel.count == 1, let it = sel.first, !it.legacy, Scripts.canWrite else { NSSound.beep(); return }
+        window?.makeFirstResponder(list.table)
+        if !list.beginRename(commit: { [weak self] it, t in self?.edit([it], ["title": t]) }) { NSSound.beep() }
     }
 
     func setKind(_ kind: String) { edit(list.selectedItems.filter { $0.kind != kind }, ["kind": kind]) }
@@ -422,6 +416,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if action == "hand_off" { return dispatch(uids: items.map(\.uid)) }
         guard Scripts.canWrite else { return alert(T("main.error.cant_edit"), T("main.error.no_scripts")) }
         if redoing { registerStateUndo(action, items) }
+        // shown at once (the row takes its new state, or leaves a place that no longer lists it); the index agrees a
+        // moment later, or puts it back if the write failed
+        if action != "restore" {
+            model.optimistic(states: Dictionary(items.compactMap { it in Lifecycle.target(of: action, state: it.state).map { (it.uid, $0) } },
+                                                uniquingKeysWith: { a, _ in a }))
+        }
         Scripts.state(items.map(\.uid), action: action) { [weak self] r in
             switch r {
             case .success:
@@ -434,7 +434,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 let what = items.count == 1 ? items[0].itemID : TP("main.items.count", items.count)
                 appDelegate?.toast(T("main.state.toast", Look.stateName(to), what),
                                    icon: ["todo", "done"].contains(to) ? .check : nil, undo: self.undoToast(StateMenu.title(action)))
-            case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
+            case .failure(let f):
+                self?.model.reload()            // the optimistic state goes: the index has the truth
+                self?.alert(T("main.error.save_title"), f.localized)
             }
         }
     }
@@ -536,10 +538,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// After a write: make sure the index catches up even when items.py couldn't update it in-process.
+    /// After a write: make sure the index catches up even when items.py couldn't update it in-process; the detail page
+    /// re-reads its doc in place (its scroll, media and caret stay) — an item that moved elsewhere is shown again
+    /// from there by the model's reload (WebHostController.refresh(item:)).
     func wrote(_ items: [ItemRow]) {
         Scripts.indexUpdate(items.map(\.fileURL))
-        detail.reload()
+        detail.pollNow()
     }
 
     func copyPaths() {
@@ -1037,6 +1041,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
     func quickLook(files: [URL]) { list.toggleQuickLook(files) }
     func webWrote() { detail.currentItem.map { Scripts.indexUpdate([$0.fileURL]) } }
+    /// ⌘Z took back a step the detail page made on another item than the one selected: show that one, like the
+    /// list's own undo does.
+    func webUndid(_ uid: String) {
+        guard detail.currentItem?.uid != uid, !uid.isEmpty else { return }
+        if model.row(of: uid) != nil { list.select(id: uid) }
+    }
     func revealJob(_ id: String) { reveal(job: id) }
 
     func openCode(_ ref: String, item: ItemRow?) {

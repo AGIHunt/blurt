@@ -215,7 +215,7 @@
 "main.menu.move_to" = "Move to Project";
 "main.menu.open_in" = "Open in %@";
 "main.menu.quick_look" = "Quick Look";
-"main.menu.rename" = "Rename…";
+"main.menu.rename" = "Rename";
 "main.menu.review_batch" = "Review the Whole Capture";
 "main.menu.start_session" = "Hand Off to Agent";
 "main.menu.open_session" = "Open Session";

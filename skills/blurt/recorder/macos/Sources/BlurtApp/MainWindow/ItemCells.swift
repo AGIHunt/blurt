@@ -234,6 +234,44 @@ final class TitleCell: NSTableCellView {
         title.attributedStringValue = s
     }
 
+    // MARK: rename in place (E, the menus' Rename)
+
+    private var shown: NSAttributedString?
+    /// The title becomes an editable field over the row, the whole title selected (InlineRename drives it).
+    func beginEditing(_ text: String, delegate: NSTextFieldDelegate) {
+        shown = title.attributedStringValue
+        title.isEditable = true
+        title.isSelectable = true
+        title.drawsBackground = true
+        title.backgroundColor = .textBackgroundColor
+        title.font = Look.titleFont
+        title.textColor = .labelColor
+        title.stringValue = text
+        title.delegate = delegate
+        title.setAccessibilityLabel(T("main.rename.title"))
+    }
+    func setInvalid(_ on: Bool) {
+        title.wantsLayer = true
+        title.layer?.borderWidth = on ? 1 : 0
+        title.layer?.borderColor = NSColor.systemRed.cgColor
+        title.layer?.cornerRadius = 3
+    }
+    /// Back to a label: `text` (the new title, shown at once — the index follows) or what it showed before.
+    func endEditing(showing text: String?) {
+        setInvalid(false)
+        title.delegate = nil
+        title.isEditable = false
+        title.isSelectable = false
+        title.drawsBackground = false
+        if let t = text, let s = shown?.mutableCopy() as? NSMutableAttributedString {
+            s.replaceCharacters(in: NSRange(location: 0, length: s.length), with: t)
+            title.attributedStringValue = s
+        } else if let s = shown {
+            title.attributedStringValue = s
+        }
+        shown = nil
+    }
+
     /// index.py snippets mark the hit as [hit]
     static func marked(_ s: String) -> NSAttributedString {
         let out = NSMutableAttributedString()

@@ -256,6 +256,7 @@ final class MainModel {
     func reload() {
         let t0 = DispatchTime.now().uptimeNanoseconds
         pages.removeAll()
+        overrides.removeAll()
         uids = scope == .dictation ? [] : (try? reader?.uids(query)) ?? []
         rowByUID = nil
         lastReloadMS = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
@@ -267,6 +268,24 @@ final class MainModel {
         }
     }
 
+    /// A state change shown at once, before items.py and the index have it (the next reload from index.db agrees, or
+    /// puts the truth back if the write failed): the rows take their new state, and those this place no longer lists
+    /// (a key pressed in the Inbox, a discard) leave it.
+    func optimistic(states: [String: String]) {
+        guard !states.isEmpty else { return }
+        let allowed = query.allowedStates.map(Set.init)
+        overrides.merge(states) { _, n in n }
+        let leaving = Set(states.filter { _, s in allowed.map { !$0.contains(s) } ?? (s == "discarded") }.keys)
+        if !leaving.isEmpty {
+            uids.removeAll(where: leaving.contains)
+            rowByUID = nil
+        }
+        pages.removeAll()           // refetched for what's on screen, with the overrides
+        onReload?()
+    }
+    /// States shown before the index has them (optimistic); a reload from the index drops them.
+    private var overrides: [String: String] = [:]
+
     func item(at row: Int) -> ItemRow? {
         guard row >= 0, row < uids.count, let r = reader else { return nil }
         let p = row / pageSize
@@ -274,7 +293,11 @@ final class MainModel {
             let slice = Array(uids[(p * pageSize)..<min((p + 1) * pageSize, uids.count)])
             let rows = (try? r.items(uids: slice, terms: query.terms)) ?? []
             // a uid can vanish between the two queries (index.py committed): keep the row count stable until the reload
-            let byUID = Dictionary(rows.map { ($0.uid, $0) }, uniquingKeysWith: { a, _ in a })
+            let byUID = Dictionary(rows.map { r -> (String, ItemRow) in
+                var r = r
+                if let s = overrides[r.uid] { r.state = s }
+                return (r.uid, r)
+            }, uniquingKeysWith: { a, _ in a })
             pages[p] = slice.map { byUID[$0] ?? ItemRow(uid: $0, itemID: "", kind: "note", title: "…") }
         }
         return pages[p]?[row % pageSize]

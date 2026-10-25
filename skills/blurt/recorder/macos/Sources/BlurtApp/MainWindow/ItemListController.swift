@@ -89,6 +89,61 @@ final class ItemTableView: NSTableView {
     }
 }
 
+/// Rename in place (micro 1): the row's title turns into a field with the whole title selected. Return, Tab or a click
+/// elsewhere commits; Esc puts the title back. An empty title is refused right there (a red ring and a beep — it
+/// never commits). The focus goes back to the list with the row still selected; ⌘Z undoes it ("Undo Rename").
+final class InlineRename: NSObject, NSTextFieldDelegate {
+    let cell: TitleCell
+    let uid: String
+    let original: String
+    let commit: (String) -> Void
+    let done: () -> Void
+    private var finished = false
+
+    init(cell: TitleCell, uid: String, original: String, commit: @escaping (String) -> Void, done: @escaping () -> Void) {
+        self.cell = cell
+        self.uid = uid
+        self.original = original
+        self.commit = commit
+        self.done = done
+        super.init()
+    }
+
+    func start() {
+        cell.beginEditing(original, delegate: self)
+        cell.window?.makeFirstResponder(cell.title)
+        cell.title.currentEditor()?.selectAll(nil)
+    }
+
+    var text: String { cell.title.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+    func controlTextDidChange(_ obj: Notification) { cell.setInvalid(text.isEmpty) }
+
+    func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+        switch sel {
+        case #selector(NSResponder.cancelOperation(_:)): finish(save: false); return true
+        case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)), #selector(NSResponder.insertBacktab(_:)):
+            if text.isEmpty { NSSound.beep(); cell.setInvalid(true); return true }
+            finish(save: true)
+            return true
+        default: return false
+        }
+    }
+
+    /// A click elsewhere: commit what's there (an empty title puts the old one back).
+    func controlTextDidEndEditing(_ obj: Notification) { finish(save: !text.isEmpty) }
+
+    func finish(save: Bool) {
+        guard !finished else { return }
+        finished = true
+        let t = text
+        let changed = save && t != original
+        cell.endEditing(showing: changed ? t : nil)
+        done()
+        if changed { commit(t) }
+    }
+}
+
 /// Big centred message with an image and up to two buttons — the one empty state (docs/design/system.md §3.5,
 /// `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`). The friendly states (first launch, inbox zero,
 /// nothing here yet, no results) show the brand mark: the app icon, the 4A chick on its tile. Trouble (scan failed, a
@@ -580,8 +635,32 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: reload
 
+    // MARK: rename in place
+
+    private(set) var renaming: InlineRename?
+    private var reloadAfterRename = false
+
+    /// E (or Rename in a menu) on the one selected row: its title becomes editable right there.
+    func beginRename(commit: @escaping (ItemRow, String) -> Void) -> Bool {
+        guard renaming == nil, table.selectedRowIndexes.count == 1, let r = table.selectedRowIndexes.first, let it = model.item(at: r),
+              let col = table.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) else { return false }
+        table.scrollRowToVisible(r)
+        guard let cell = table.view(atColumn: col, row: r, makeIfNecessary: true) as? TitleCell else { return false }
+        let e = InlineRename(cell: cell, uid: it.uid, original: it.title, commit: { commit(it, $0) }) { [weak self] in
+            guard let self = self else { return }
+            self.renaming = nil
+            self.view.window?.makeFirstResponder(self.table)       // back to the list, the row still selected
+            if self.reloadAfterRename { self.reloadAfterRename = false; self.reload() }
+        }
+        renaming = e
+        e.start()
+        return true
+    }
+
     /// Reload rows, keeping the selection (by uid) and the scroll position where possible.
     func reload(keep: [String]? = nil) {
+        // never under a title being renamed: once it's done
+        if renaming != nil { reloadAfterRename = true; return }
         let keepIDs = keep ?? selectionIDs     // captured before the model changed (row numbers mean other rows now)
         let top = table.rows(in: table.visibleRect).location
         let topID = topIDSeen                  // likewise: the model's rows are the new ones already

@@ -268,6 +268,24 @@ enum SelfTests {
                 return ["\(String(repeating: " ", count: depth))\(type(of: v)) \(v.frame) hidden=\(v.isHidden)"] + v.subviews.flatMap { dump($0, depth + 1) }
             }
             out(["views": dump(d.jobView, 0)])
+        case "mainrename":              // mainrename [TEXT | esc | -]: the row title being renamed in place: its state, or
+            let c = MainWindowController.shared   // TEXT typed then Return, Esc, "-" an empty title then Return
+            if let r = c.list.renaming, let tv = r.cell.title.currentEditor() as? NSTextView {
+                switch arg {
+                case "": break
+                case "esc": _ = r.control(r.cell.title, textView: tv, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+                default:
+                    tv.string = arg == "-" ? "" : arg
+                    r.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+                    _ = r.control(r.cell.title, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                }
+            }
+            out(["renaming": c.list.renaming != nil, "field": c.list.renaming?.cell.title.stringValue ?? NSNull(),
+                 "responder": "\(type(of: c.window?.firstResponder as Any))", "selected": c.list.selectedIDs])
+        case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
+            MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
+                out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])
+            }
         case "maindetail":              // the item the detail page shows (uid, id, title) — never another than the selected one
             let c = MainWindowController.shared
             let js = "(() => { const s = window.blurtReview && window.blurtReview.store; const i = s && s.item;"

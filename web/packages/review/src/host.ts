@@ -194,6 +194,15 @@ export interface BlurtHost {
   download?(path: string): void;
   /** the review was confirmed */
   confirmed?(): void;
+  /** One undo stack per window (the Mac app): the page's undoable step, named for the Edit menu ("Change State").
+      The host calls the handle's undo() / redo() when ⌘Z / ⇧⌘Z reach that step. */
+  registerUndo?(label: string): void;
+  /** ⌘Z / ⇧⌘Z (or Z, a toast's Undo) on the page outside a text field: the window's undo, whatever step is next */
+  windowUndo?(redo: boolean): void;
+  /** an undo / redo on the page was about this item (uid): the host shows it if it isn't the one selected */
+  undone?(uid: string): void;
+  /** Esc with nothing left to cancel: the focus goes back to the host's list (its selection kept) */
+  focusList?(): void;
 
   // browser only: hand-written items.json without ids is saved whole, as review.py has always accepted
   saveDoc?(doc: ReviewDoc, confirm?: boolean): Promise<void>;
@@ -219,6 +228,13 @@ export interface ReviewHandle {
   /** item mode: show another item without reloading. false: the loaded doc doesn't have it — load one that does
       (the page shows "not here" meanwhile, never the item it showed before) */
   setItem(itemId: string): boolean;
+  /** the host's ⌘Z / ⇧⌘Z reached a step the page registered (BlurtHost.registerUndo) */
+  undo(): void;
+  redo(): void;
+  /** the host wrote behind the page (its own list's keys, a move): fetch the doc again, in place */
+  pollNow(): void;
+  /** the host's Return on its list: the title, caret at the end */
+  focusTitle(): void;
   setTheme(theme: ThemePref): void;
   setPlatform(p: Platform): void;
   /** the UI language ("en" | "zh-Hans"; "zh" accepted) */

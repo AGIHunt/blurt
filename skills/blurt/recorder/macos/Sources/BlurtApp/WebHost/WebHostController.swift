@@ -16,6 +16,8 @@
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
+//   undo          registerUndo {label} (a page step on the window's NSUndoManager; ⌘Z calls blurtReview.undo() /
+//                 redo() back), windowUndo {redo} (⌘Z on the page outside a field), undone {uid}, focusList (Esc)
 //   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
 //                 pages: jobId), registerDragRects {rects}, download {path|rel}, confirmed {scope} (a batch confirmed:
 //                 review.py, if it asked for this batch, hears it — ReviewHandoff)
@@ -34,6 +36,10 @@ protocol WebHostActions: AnyObject {
     func revealJob(_ id: String)
     func jobAction(_ action: String, job: Job)
     func webWrote()
+    /// the page undid / redid a step about this item (not necessarily the one shown): select it
+    func webUndid(_ uid: String)
+    /// Esc on the page with nothing left to cancel
+    func focusList()
 }
 
 /// What a page shows: one capture session's batch, or one project's items.
@@ -120,7 +126,33 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl"]
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl",
+         "registerUndo", "focusList"]
+    }
+
+    // MARK: one undo stack per window
+    //
+    // The page's own undoable steps (a state from the pill, a chip, a move, a field's editing session) go on the
+    // window's NSUndoManager next to the list's: ⌘Z / ⇧⌘Z work wherever the focus is and the Edit menu names the step.
+    // Each page load has its own target: a step of a page since replaced is dropped with it (nothing left to undo
+    // there), never run against another page.
+
+    private final class PageSteps {}
+    private var pageSteps = PageSteps()
+
+    private func registerPageStep(_ label: String, undo: Bool, on target: PageSteps) {
+        guard let um = view.window?.undoManager else { return }
+        um.registerUndo(withTarget: target) { [weak self] t in
+            guard let self = self, t === self.pageSteps else { return }
+            self.web.evaluateJavaScript("window.blurtReview && window.blurtReview.\(undo ? "undo" : "redo")()")
+            self.registerPageStep(label, undo: !undo, on: t)       // inside an undo: the redo, and back
+        }
+        um.setActionName(label)
+    }
+
+    private func dropPageSteps() {
+        view.window?.undoManager?.removeAllActions(withTarget: pageSteps)
+        pageSteps = PageSteps()
     }
 
     /// sessionBanner only in item mode: the banner above the page exists only there, so a batch keeps the panel's own.
@@ -209,6 +241,15 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     func reload() { if let s = loadedScope { load(s, mode: loadedMode, item: currentItem?.uid) } }
 
+    /// Something was written behind the page (a list key, a move, a rename): it fetches the doc again in place — no
+    /// reload, so its scroll, media, caret and undo steps stay. A page without pollNow is reloaded.
+    func pollNow() {
+        guard loadedScope != nil, !web.isHidden else { return }
+        web.evaluateJavaScript("window.blurtReview && window.blurtReview.pollNow ? (window.blurtReview.pollNow(), true) : false") { [weak self] r, _ in
+            if (r as? Bool) != true { self?.reload() }
+        }
+    }
+
     /// The index has a newer row for the item on show (its state, title, file, project): the banner follows it, and
     /// an item whose file moved (to another project, a folder renamed on disk) or came back is shown again from there.
     func refresh(item: ItemRow, projects: [ProjectEntry]) {
@@ -229,6 +270,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     }
 
     private func load(_ scope: DocScope, mode: String, item: String?) {
+        dropPageSteps()
         loadedScope = scope
         loadedMode = mode
         overlay.set([])
@@ -354,6 +396,21 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             reply(nil, nil)
         case "download":
             if let f = file() { Self.download(f) }
+            reply(nil, nil)
+        case "registerUndo":
+            registerPageStep(p["label"] as? String ?? "", undo: true, on: pageSteps)
+            reply(nil, nil)
+        case "windowUndo":          // ⌘Z / Z / a toast's Undo on the page, outside a text field: the window's next step
+            if let um = view.window?.undoManager {
+                if p["redo"] as? Bool == true { if um.canRedo { um.redo() } else { NSSound.beep() } }
+                else if um.canUndo { um.undo() } else { NSSound.beep() }
+            }
+            reply(nil, nil)
+        case "undone":
+            if let uid = p["uid"] as? String { actions?.webUndid(uid) }
+            reply(nil, nil)
+        case "focusList":
+            actions?.focusList()
             reply(nil, nil)
         case "confirmed":
             actions?.webWrote()

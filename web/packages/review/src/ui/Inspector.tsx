@@ -1,4 +1,4 @@
-import { canDo, stateOf } from "@blurt/ui";
+import { canDo, KINDS, stateOf } from "@blurt/ui";
 import { KindIcon, StatusRing } from "@blurt/ui/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { FixRecord, Item, WorkRecord } from "../host";
@@ -75,31 +75,59 @@ function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }:
       onFocus?.();
       atFocus.current = format(i, k, type);
       setDraft(atFocus.current);
+      s.beginEdit(i, k); // focus to blur is one undo step
     },
     onBlur: () => {
       // an emptied title is never saved (setField refuses it): put back the one it had when editing began
-      if (title && draft !== null && !isTitle(draft) && isTitle(atFocus.current)) {
-        if (i.title !== atFocus.current) s.setField(i, k, atFocus.current);
-        s.showToast(s.t("toast.title_empty"), false, "x");
+      if (title && draft !== null && !isTitle(draft) && isTitle(atFocus.current) && i.title !== atFocus.current) {
+        s.setField(i, k, atFocus.current);
       }
       setDraft(null);
+      s.endEdit(i);
     },
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       setDraft(e.target.value);
       s.setField(i, k, parse(e.target.value, type));
     },
     onKeyDown: (e: React.KeyboardEvent) => {
-      // single-line fields (and the title) commit on Enter — never the Enter that picks an IME candidate
-      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey) return;
-      if (!isEnter(e)) return;
-      if (!multiline || title) {
+      const el = e.currentTarget as HTMLElement;
+      const done = () => {
         e.preventDefault();
-        e.stopPropagation(); // this Enter commits the field; it must not also reach the page's Enter = keep
-        (e.currentTarget as HTMLElement).blur();
+        e.stopPropagation(); // the field's own key: never also the page's (Enter = keep, ⌘Enter = hand off, Esc)
+        el.blur();
+      };
+      // Esc cancels the edit: the value it had when editing began comes back (re-saved if typing already saved)
+      if (e.key === "Escape" && !e.nativeEvent.isComposing) {
+        if (format(i, k, type) !== atFocus.current) s.setField(i, k, parse(atFocus.current, type));
+        setDraft(atFocus.current);
+        return done();
       }
+      if (e.key !== "Enter" || e.shiftKey || !isEnter(e)) return;
+      // Enter commits a single-line field and the title, ⌘Enter a multi-line one — never with an empty title
+      const commits = e.metaKey || e.ctrlKey || !multiline || title;
+      if (!commits) return;
+      if (title && !isTitle(draft)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      done();
     },
   };
-  if (title) return <textarea className="title" rows={1} aria-label={s.t("field.title")} {...props} />;
+  if (title) {
+    const empty = draft !== null && !isTitle(draft);
+    return (
+      <>
+        <textarea className={cx("title", empty && "invalid")} rows={1} aria-label={s.t("field.title")} aria-invalid={empty || undefined}
+          aria-describedby={empty ? "titleErr" : undefined} {...props} placeholder={s.t("field.title")} />
+        {empty && (
+          <p className="field-err" id="titleErr" role="status">
+            {s.t("field.title_required")}
+          </p>
+        )}
+      </>
+    );
+  }
   const box = multiline ? <textarea rows={1} aria-label={label} {...props} /> : <input aria-label={label ?? placeholder} {...props} />;
   if (k === "answer") return box;
   return (
@@ -110,6 +138,26 @@ function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }:
       </label>
       {box}
     </div>
+  );
+}
+
+/** A chip that opens a menu of its values (kind, severity, type) with the current one checked — a native <select>
+    under the chip, so the host draws its own menu (arrow keys, Return picks, Esc closes). A pick is one undoable step. */
+function ChipSelect({ id, cls, label, value, options, onPick, children }: {
+  id: string; cls?: string; label: string; value: string; options: [string, string][]; onPick: (v: string) => void; children: React.ReactNode;
+}) {
+  return (
+    <label className={cx("chip chip-pick", cls)} title={label}>
+      {children}
+      <Icon name="chevron-down" size={11} className="pick-ch" />
+      <select id={id} value={value} aria-label={label} onChange={(e) => onPick(e.target.value)}>
+        {options.map(([v, t]) => (
+          <option key={v} value={v}>
+            {t}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -451,18 +499,21 @@ export function Inspector() {
       <Field key={ik + ":title"} i={i} k="title" title />
       <div className="chips">
         <StateControl i={i} id="statePill" shortcuts controlled />
-        <span className="chip kind-chip">
+        <ChipSelect id="kindChip" cls="kind-chip" label={s.t("chip.kind")} value={kind} onPick={s.setKind}
+          options={[...KINDS, ...(KINDS.includes(kind as never) ? [] : [kind])].map((k) => [k, s.kindLabel(k)])}>
           <KindIcon kind={kind} size={14} /> {s.kindLabel(kind)}
-        </span>
+        </ChipSelect>
         {kind === "issue" && (
           <>
-            <button className={"chip sev-" + sev} id="sevChip" title="1 / 2 / 3" onClick={s.cycleSev}>
+            <ChipSelect id="sevChip" cls={"sev-" + sev} label={s.t("chip.severity")} value={sev} onPick={s.setSev}
+              options={SEV.map((v) => [v, s.t("severity." + v)])}>
               <span className="sw" />
               {s.t("severity." + sev)}
-            </button>
-            <button className="chip" id="typeChip" onClick={s.cycleType}>
+            </ChipSelect>
+            <ChipSelect id="typeChip" label={s.t("chip.type")} value={String(i.type ?? "")} onPick={s.setType}
+              options={[["", s.t("chip.type")], ...s.types.map((t): [string, string] => [t, s.typeLabel(t)])]}>
               {i.type ? s.typeLabel(String(i.type)) : s.t("chip.type")}
-            </button>
+            </ChipSelect>
           </>
         )}
         {i.confidence === "low" && (
