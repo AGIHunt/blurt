@@ -1181,6 +1181,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             field.currentEditor()?.selectedRange = NSRange(location: (w as NSString).length, length: 0)
             hold.savedUntil = CACurrentMediaTime() + NoteBubble.savedSeconds
             emit(["event": "note_words_shown", "n": shot?.n ?? 0, "chars": w.count])
+            // in place: the screen is given back now — only the picture and the bubble wait out the saved window
+            if staged { InkStage.shared.lift() }
             layout()
         }
         refreshStatus()
