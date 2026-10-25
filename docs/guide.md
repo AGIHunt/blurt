@@ -251,6 +251,22 @@ reads *No response*: look at its window, or restart it. An agent that isn't logg
 hand-off panel — it says what to run, and offers the other agent; agents handing work off from the command line get
 the same answer.
 
+The conversation's first line is its title, such as *AW-12 · Login button does nothing (Blurt hand-off)*, so you can
+find it in the agent's own list of conversations; Codex also gets it as the thread's name.
+
+**Claude desktop.** If the Claude desktop app is installed, the hand-off panel asks where Claude Code runs: **Run in
+Blurt's terminal** (recommended) or **Run in Claude desktop**. Blurt remembers the choice for each agent (also in
+Settings → Agents). With the desktop app, Blurt still makes the worktree, then opens a new Claude conversation with
+the items filled in: confirm the folder and press Send there. Blurt doesn't see that conversation live, so the item
+reads *In Claude desktop · progress comes from the agent*, with **Go to Claude**; the items move when the agent reports
+them through the Blurt MCP. If the MCP isn't installed for Claude, the panel offers **Install…**, or you mark the items
+yourself. **Review Changes…** and **Merge** work on the worktree as usual. A Claude session already running in Blurt's
+terminal can move there with **Continue in Claude Desktop…** in its **⋯** menu (Claude Code 2.1.285 or later, signed
+in with a Claude subscription); the agent stops here and live status stops with it. If the Blurt MCP isn't installed
+for Claude, the confirmation says so and offers **Install…** first, since the desktop app can't report progress
+without it. If the desktop app doesn't take the conversation, **Restart Session** starts a new session on the same
+items in Blurt's terminal.
+
 **Review Changes…** shows what changed on the session's branch. **Merge** (`⌘↩`) brings it into your project folder;
 when the agent left its work uncommitted (Codex can't commit inside a worktree), the button reads **Commit and
 Merge** and Blurt commits it first, as "HS-5 Create done.txt (Blurt hand-off)". A branch with no changes can only be
@@ -655,6 +671,17 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 （只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。条目上方的提示条
 最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
 没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
+
+对话的第一行是它的标题，比如「AW-12 · 登录按钮点了没反应（口喷鸡交接）」，在 Agent 自己的对话列表里一眼就能找到；Codex 还会把它设为线程名。
+
+**Claude 桌面端。** 装了 Claude 桌面端时，「交给 Agent」面板会问 Claude Code 在哪运行：「**在口喷鸡终端运行**」（推荐）或
+「**在 Claude 桌面端运行**」。选择按 Agent 记住（设置 → Agent 里也能改）。选桌面端时，口喷鸡照样建好 worktree，然后在 Claude
+里开一个新对话、填好这些条目：在 Claude 里确认文件夹并点发送。口喷鸡看不到那个对话的实时状态，条目上方写着「在 Claude 桌面端进行 ·
+由 Agent 回报进度」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，条目才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
+不装就自己标记条目。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
+「**在 Claude 桌面端继续…**」移过去（需要 Claude Code 2.1.285 或更高、用 Claude 订阅登录）；Agent 会在这里停下，实时状态也随之停止。
+Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度，并先给「**安装…**」。桌面端没接过对话时，「**重新开始会话**」会在口喷鸡终端里
+为这些条目开一个新会话。
 
 「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
 里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。

@@ -114,9 +114,33 @@ def test_prompt_work_points_at_the_note(p2):
     it = p2.item(proj["id"])
     out = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--worktree", "on", "--branch", "blurt/x-1",
                  "--lang", "en")
-    assert out["prompt"].startswith(f"Read {out['path']} and handle the items in it.") and "blurt/x-1" in out["prompt"]
+    # the first line is a human title (what Codex / Claude list the conversation as), then the instructions
+    title, blank, rest = out["prompt"].split("\n", 2)
+    assert title == f"{it['id']} · The login button does nothing (Blurt hand-off)" == out["title"] and blank == ""
+    assert rest.startswith(f"Read {out['path']} and handle the items in it.") and "blurt/x-1" in rest
     assert "commit your work there" in out["prompt"] and "mark_fixed" in out["prompt"]
     note = Path(out["path"]).read_text()
     assert "to: session" in note and 'branch: "blurt/x-1"' in note and "uv run" not in note  # no sandbox prompt for uv
     zh = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--handoff", out["handoff"], "--lang", "zh")
-    assert zh["handoff"] == out["handoff"] and zh["prompt"].startswith(f"读 {out['path']}，") and "不要提交" in zh["prompt"]
+    zt, _, zrest = zh["prompt"].split("\n", 2)
+    assert zt == f"{it['id']} · The login button does nothing（口喷鸡交接）"
+    assert zh["handoff"] == out["handoff"] and zrest.startswith(f"读 {out['path']}，") and "不要提交" in zh["prompt"]
+    two = p2.item(proj["id"], title="Second\nline")
+    many = p2.run("agents.py", "prompt", "work", "--items", it["uid"], two["uid"], "--lang", "en")
+    assert many["prompt"].split("\n", 1)[0] == f"2 items · {proj['name']} (Blurt hand-off)"
+
+
+def test_work_title_rules():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "skills" / "blurt" / "scripts"))
+    import agents
+    one = {"id": "AW-12", "uid": "u1", "title": "  Login\n button   does nothing  "}
+    assert agents.work_title([one], "Atlas", "en") == "AW-12 · Login button does nothing (Blurt hand-off)"
+    assert agents.work_title([one], "Atlas", "zh-Hans") == "AW-12 · Login button does nothing（口喷鸡交接）"
+    # a long title is cut, never the id or the suffix; the whole line stays one line within TITLE_MAX
+    long = agents.work_title([{**one, "title": "x" * 400}], None, "en")
+    assert long.startswith("AW-12 · xxx") and long.endswith("… (Blurt hand-off)") and len(long) <= agents.TITLE_MAX
+    assert "\n" not in long
+    assert agents.work_title([{"uid": "abcdef0123", "title": ""}], None, "en") == "abcdef01 (Blurt hand-off)"
+    assert agents.work_title([one, {**one, "id": "AW-13"}], "Atlas Web", "en") == "2 items · Atlas Web (Blurt hand-off)"
+    assert agents.work_title([one, one, one], "口喷鸡 iOS", "zh") == "3 个条目 · 口喷鸡 iOS（口喷鸡交接）"
+    assert agents.work_title([one, one], None, "en") == "2 items (Blurt hand-off)"

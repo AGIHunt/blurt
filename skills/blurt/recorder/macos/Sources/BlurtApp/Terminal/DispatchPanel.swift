@@ -5,6 +5,11 @@
 // What does block, said next to the choice instead of after it: an agent that isn't logged in (its fix, and the
 // other agent to use; Start waits up to 3 s for the sign-in check after a launch), and items already with a session
 // that is still going (Open Its Session).
+// Where it runs, for an agent with a desktop app that is installed (Claude): Blurt's terminal (recommended) or the
+// desktop app, remembered per agent (HandoffTarget, config sessions.target). The desktop app still gets Blurt's
+// worktree; Start opens its claude:// link (DesktopApp) and the sheet has said once that the user confirms the folder
+// and presses Send there. Without the blurt MCP for that agent nothing reports progress: the sheet says the items
+// then need marking by hand and offers Install (the Settings → Agents installer).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -39,6 +44,12 @@ final class DispatchModel: ObservableObject {
     @Published var cliDefault: String?
     @Published var model = ""
     @Published var mode: DispatchMode = .together
+    /// Blurt's terminal, or the agent's desktop app (only when `desktopAvailable`).
+    @Published var target: HandoffTarget = .terminal
+    /// A desktop dry run: is the blurt MCP installed for the agent (false = items need marking by hand).
+    @Published var desktopMCP: Bool?
+    var desktopAvailable: Bool { !agent.isEmpty && DesktopApp.available(agent) }
+    var desktop: Bool { target == .desktop && desktopAvailable }
     @Published var worktree: WorktreeChoice = .auto
     @Published var warnings: [DispatchWarning] = []
     @Published var preview: [[String: Any]] = []
@@ -99,7 +110,8 @@ final class DispatchModel: ObservableObject {
     /// Another agent that can take over from a logged-out one.
     var alternative: AgentChoice? { agents.first { $0.id != agent && !$0.loggedOut } }
     var canStart: Bool {
-        count > 0 && !agent.isEmpty && phase != .starting && chosenAgent?.session != false && loginChecked && chosenAgent?.loggedOut != true
+        // the desktop app signs in on its own: the CLI's login only matters in the terminal
+        count > 0 && !agent.isEmpty && phase != .starting && chosenAgent?.session != false && (desktop || (loginChecked && chosenAgent?.loggedOut != true))
     }
 
     func load() async {
@@ -118,6 +130,7 @@ final class DispatchModel: ObservableObject {
         let globalDefault = Config.shared["record.default_agent"] as? String
         let order = [saved, projectDefault, globalDefault, d?.pick, list.first?.id].compactMap { $0 }
         agent = order.first { id in list.contains { $0.id == id } } ?? ""
+        target = DesktopApp.target(agent)
         if pickItems { await loadCandidates() } else { await loadLabels() }
         await loadModels()
         await check()
@@ -187,10 +200,12 @@ final class DispatchModel: ObservableObject {
         busyJob = nil
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent.isEmpty ? nil : agent, mode: mode,
-                                                            worktree: mode == .parallel ? .on : worktree, dryRun: true, model: model)
+                                                            worktree: mode == .parallel ? .on : worktree, dryRun: true,
+                                                            model: desktop ? nil : model, desktop: desktop)
             guard gen == checkGen else { return }
             warnings = r.warnings
             preview = r.rows
+            desktopMCP = desktop ? r.mcp : nil
             if phase == .checking { phase = .idle }
         } catch {
             guard gen == checkGen else { return }
@@ -205,13 +220,17 @@ final class DispatchModel: ObservableObject {
         phase = .starting
         Config.shared.set("sessions.agent", agent)
         rememberModel()
+        if desktopAvailable { DesktopApp.remember(agent, target) }
+        let toDesktop = desktop
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent, mode: mode,
                                                             worktree: mode == .parallel ? .on : (worktree == .auto ? (worktreeOn ? .on : .off) : worktree),
-                                                            dryRun: false, model: model, loginChecked: loginVerified)
+                                                            dryRun: false, model: toDesktop ? nil : model, loginChecked: loginVerified,
+                                                            desktop: toDesktop)
             for l in r.launch { AppRunner.shared.launch(l) }
+            for l in r.links { DesktopApp.open(l.url, job: l.job) }
             emit(["event": "dispatch", "jobs": r.jobs, "warnings": r.warnings.map(\.code), "app_runner": r.launch.count,
-                  "agent": agent, "model": model.isEmpty ? NSNull() : model])
+                  "agent": agent, "model": model.isEmpty || toDesktop ? NSNull() : model, "target": toDesktop ? "desktop" : "terminal"])
             phase = .idle
             return r
         } catch {
@@ -224,6 +243,9 @@ final class DispatchModel: ObservableObject {
 
 struct DispatchView: View {
     @ObservedObject var m: DispatchModel
+    @ObservedObject var agentsModel = AgentsModel.shared
+    /// This sheet asked for the installer (the blurt MCP for the desktop app): its sheet shows here, not in Settings.
+    @State var installAsked = false
     var close: () -> Void
     var started: (DispatchResult) -> Void
 
@@ -255,14 +277,29 @@ struct DispatchView: View {
                             }
                         }
                             .labelsHidden().fixedSize()
-                        if let a = m.chosenAgent, a.loggedOut {
+                        if let a = m.chosenAgent, a.loggedOut, !m.desktop {
                             loggedOutCallout(a)
-                        } else if !m.loginChecked {
+                        } else if !m.loginChecked && !m.desktop {
                             Text(TL("dispatch.checking_login")).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
-                if !m.models.isEmpty {
+                if m.desktopAvailable {
+                    field(TL("dispatch.run_in")) {
+                        Picker("", selection: $m.target) {
+                            Text(TL("dispatch.run_in.terminal")).tag(HandoffTarget.terminal)
+                            Text(TL("dispatch.run_in.desktop", DesktopApp.name(m.agent))).tag(HandoffTarget.desktop)
+                        }
+                        .pickerStyle(.radioGroup).labelsHidden().fixedSize()
+                        .accessibilityLabel(TL("dispatch.run_in"))
+                        if m.desktop {
+                            Text(TL("dispatch.desktop.send", DesktopApp.name(m.agent)))
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            if m.desktopMCP == false { noMCPCallout }
+                        }
+                    }
+                }
+                if !m.models.isEmpty && !m.desktop {
                     field(TL("dispatch.model")) {
                         Picker("", selection: $m.model) {
                             Text(m.cliDefault.map { TL("dispatch.model.default_named", $0) } ?? TL("dispatch.model.default")).tag("")
@@ -325,7 +362,7 @@ struct DispatchView: View {
                 Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction)
                 // while the concurrent-edit reminder is up, its two buttons are the choice
                 if !(m.concurrent != nil && !m.worktreeOn) {
-                    Button(TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
+                    Button(m.desktop ? TL("dispatch.start.desktop", DesktopApp.name(m.agent)) : TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
                         .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                         .disabled(!m.canStart)
                 }
@@ -336,12 +373,43 @@ struct DispatchView: View {
         .padding(.bottom, 20)
         .frame(width: 500)
         .task { await m.load() }
-        .onChange(of: m.agent) { _ in Task { await m.loadModels(); await m.check() } }
+        .sheet(isPresented: Binding(get: { installAsked && agentsModel.plan != nil },
+                                    set: { if !$0 { agentsModel.plan = nil; installAsked = false; Task { await m.check() } } })) {
+            if let p = agentsModel.plan { InstallSheet(m: agentsModel, agent: p.agent, plan: p.plan, applied: p.applied) }
+        }
+        .onChange(of: m.agent) { _ in m.target = DesktopApp.target(m.agent); Task { await m.loadModels(); await m.check() } }
+        .onChange(of: m.target) { _ in Task { await m.check() } }
         .onChange(of: m.model) { _ in Task { await m.check() } }
         .onChange(of: m.mode) { _ in Task { await m.check() } }
         .onChange(of: m.worktree) { _ in Task { await m.check() } }
         .onChange(of: m.chosen) { _ in Task { await m.check() } }
         .onChange(of: m.projectID) { _ in Task { await m.loadCandidates(); await m.check() } }
+        // Settings → Agents changed the remembered choice while this sheet is open: follow it
+        .onReceive(NotificationCenter.default.publisher(for: DesktopApp.targetChanged)) { n in
+            if n.object as? String == m.agent { m.target = DesktopApp.target(m.agent) }
+        }
+    }
+
+    /// The desktop app has no blurt MCP: nothing will report progress. Install it (the Settings → Agents installer,
+    /// previewed first), or go ahead and mark the items by hand. Start stays on.
+    var noMCPCallout: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: "info.circle").foregroundStyle(.secondary)
+            Text(TL("dispatch.desktop.no_mcp", DesktopApp.name(m.agent))).font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if agentsModel.installing == m.agent { ProgressView().controlSize(.small) }
+            else {
+                Button(TL("dispatch.desktop.install")) {
+                    installAsked = true
+                    let a = CoreAgent(id: m.agent, name: m.chosenAgent?.name ?? AgentNames.name(m.agent), installed: true, state: "ready")
+                    Task { await agentsModel.preview(a) }
+                }
+                .controlSize(.small)
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.35)))
     }
 
     /// The chosen agent isn't logged in: what to run, and the agent to use instead. Start stays off.

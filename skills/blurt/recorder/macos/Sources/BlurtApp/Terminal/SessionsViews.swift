@@ -1,7 +1,8 @@
 // SwiftUI parts of a sessions pane: the list, the header above the terminal, the overlay for the states in which the
 // terminal has nothing to show — above all the card a session ends on: how it ended in words (SessionOutcome), what
 // the agent said last when it failed, and the one next step (Review Changes…, Restart Session), with Take Back and
-// Show Output beside it. A dead window is never the first thing shown; Show Output opens it.
+// Show Output beside it. A dead window is never the first thing shown; Show Output opens it. A session in the agent's
+// desktop app shows its desktop card instead of a terminal: it isn't live here, progress comes from the agent.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -21,6 +22,10 @@ protocol SessionActions: AnyObject {
     func takeBack(_ job: String)
     /// the ended session's terminal, as the agent left it
     func showOutput(_ job: String)
+    /// the agent's desktop app comes forward (Go to Claude)
+    func goToDesktop(_ job: String)
+    /// a terminal session moves to the agent's desktop app (asks first)
+    func continueDesktop(_ job: String)
 }
 
 // MARK: - List
@@ -64,7 +69,7 @@ struct SessionsList: View {
                 .buttonStyle(.borderless)
                 .help(TL("list.new.help"))
                 Spacer()
-                let live = model.alive.count
+                let live = Job.runningHere(model.alive.map(\.job))  // a desktop one runs elsewhere
                 if live > 0 {
                     Text(Loc.plural("list.live", table: "Terminal", count: live)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -83,7 +88,7 @@ struct AgentSessionRowView: View {
         let outcome = row.outcome
         let needsYou: Bool = { if case .failed = outcome { return true }; return row.status == .waitingInput }()
         HStack(alignment: .top, spacing: 9) {
-            SessionStatusMark(status: row.status).padding(.top, 4)
+            SessionStatusMark(status: row.status, elsewhere: row.inDesktop).padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.label).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
@@ -128,7 +133,7 @@ struct SessionHeader: View {
                     .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
                     .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
                 if let r = pane.job.flatMap({ model.row($0) }) {
-                    SessionStatusMark(status: r.status, size: 11)
+                    SessionStatusMark(status: r.status, size: 11, elsewhere: r.inDesktop)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
                             Text(r.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -136,8 +141,11 @@ struct SessionHeader: View {
                         }
                         HStack(spacing: 5) {
                             // the user's own decision (merged, restarted…) is past news: no status colour
-                            Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
-                            Text("·").foregroundStyle(.tertiary)
+                            // a desktop session's card says where it is: not again here
+                            if !r.inDesktop {
+                                Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
+                                Text("·").foregroundStyle(.tertiary)
+                            }
                             Text(r.agentName)
                             if r.agent.finishAction == nil, let b = r.agent.branch {
                                 Text("·").foregroundStyle(.tertiary)
@@ -177,7 +185,7 @@ struct SessionHeader: View {
                     .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
-            if r.alive && !r.isAppRunner {
+            if r.alive && !r.isAppRunner && !r.agent.isDesktop {
                 Menu {
                     ForEach(ExternalTerminals.installed, id: \.id) { t in
                         Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
@@ -193,8 +201,14 @@ struct SessionHeader: View {
             }
             Menu {
                 if r.alive {
-                    Button(TL("header.interrupt")) { actions?.interrupt(r.id) }
-                    Button(TL("header.end")) { actions?.end(r.id) }
+                    // the desktop card has Go to Claude as its primary; the menu has it too
+                    if r.agent.isDesktop { Button(TL("header.go_desktop", DesktopApp.name(r.agent.agent))) { actions?.goToDesktop(r.id) } }
+                    else { Button(TL("header.interrupt")) { actions?.interrupt(r.id) } }
+                    Button(TL(r.agent.isDesktop ? "header.end_desktop" : "header.end")) { actions?.end(r.id) }
+                    if DesktopContinue.offered(r.agent, alive: r.alive, supported: DesktopApp.supports(r.agent.agent),
+                                               check: DesktopApp.continueCheck(r.agent.agent) { model.objectWillChange.send() }) {
+                        Button(TL("header.continue_desktop", DesktopApp.name(r.agent.agent))) { actions?.continueDesktop(r.id) }
+                    }
                     // no response for a minute (the watchdog): start it again from here
                     if r.agent.stalled { Button(TL("overlay.restart")) { actions?.restart(r.id) } }
                     Divider()
@@ -271,6 +285,10 @@ struct SessionOverlay: View {
                 card {
                     if let r = row { endedSummary(r) } else { Text(TL("overlay.ended.title")).font(.headline) }
                 }
+            case .desktop:
+                card {
+                    if let r = row { desktopCard(r) }
+                }
             case .elsewhere:
                 card {
                     Text(TL("overlay.elsewhere.title")).font(.headline)
@@ -307,7 +325,7 @@ struct SessionOverlay: View {
     @ViewBuilder
     func endedSummary(_ r: AgentSessionRow) -> some View {
         let outcome = r.outcome
-        SessionStatusMark(status: r.status, size: 14)
+        SessionStatusMark(status: r.status, size: 14, elsewhere: r.inDesktop)
         Text(Self.endedTitle(r)).font(.headline).multilineTextAlignment(.center)
         if case .failed = outcome, let why = JobLook.errorText(r.job), !r.agent.lastOutput.contains(why) {
             Text(why).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
@@ -350,6 +368,35 @@ struct SessionOverlay: View {
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }
+        }
+        .padding(.top, 4)
+    }
+
+    /// A session in the agent's desktop app: nothing live here. Its items, what moves them (the agent's reports), and
+    /// the way there; its worktree's changes can be reviewed and merged as usual.
+    @ViewBuilder
+    func desktopCard(_ r: AgentSessionRow) -> some View {
+        let app = DesktopApp.name(r.agent.agent)
+        Image(systemName: "macwindow").font(.system(size: 22, weight: .light)).foregroundStyle(Color.brandInk)
+        Text(TL("overlay.desktop.title", app)).font(.headline)
+        // without the blurt MCP there nothing reports: the user marks the items (the same words as the hand-off sheet)
+        Text(TL(r.agent.desktopNeedsMarking ? "overlay.desktop.body_nomcp"
+                : r.agent.continuedFrom != nil ? "overlay.desktop.body_continued" : "overlay.desktop.body", app))
+            .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
+            .fixedSize(horizontal: false, vertical: true)
+        if !r.items.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                ForEach(r.items.prefix(5), id: \.self) { i in
+                    HStack(spacing: 6) {
+                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(i.title).lineLimit(1)
+                    }.font(.callout)
+                }
+            }
+        }
+        HStack(spacing: 8) {
+            if r.agent.worktree != nil { Button(TL("header.review")) { actions?.review(r.id) } }
+            Button(TL("header.go_desktop", app)) { actions?.goToDesktop(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
         }
         .padding(.top, 4)
     }

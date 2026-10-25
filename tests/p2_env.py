@@ -28,11 +28,20 @@ FAKE_CLAUDE = r'''
 import json, os, subprocess, sys
 a = sys.argv[1:]
 if a[:2] == ["auth", "status"]:  # FAKE_AUTH_OUT: what `claude auth status --json` says with no login
-    print(json.dumps({"loggedIn": not os.environ.get("FAKE_AUTH_OUT")})); sys.exit(0)
+    out = {"loggedIn": not os.environ.get("FAKE_AUTH_OUT"), "authMethod": os.environ.get("FAKE_AUTH_METHOD", "api_key")}
+    if os.environ.get("FAKE_AUTH_SUB"):  # logged in with a subscription (Pro, Max…)
+        out.update(authMethod="claude.ai", subscriptionType=os.environ["FAKE_AUTH_SUB"])
+    print(json.dumps(out)); sys.exit(0)
 if a[:2] == ["mcp", "get"]:
     sys.exit(0 if os.environ.get("FAKE_MCP", "1") == "1" else 1)
 if a[:1] == ["--version"]:
-    print("2.1.259 (Claude Code)"); sys.exit(0)
+    print(os.environ.get("FAKE_CLAUDE_VERSION", "2.1.259") + " (Claude Code)"); sys.exit(0)
+if a[:1] == ["--desktop"]:  # hands the conversation to the desktop app and exits; FAKE_DESKTOP_LOG records how
+    with open(os.environ["FAKE_DESKTOP_LOG"], "a") as f:
+        f.write(json.dumps({"argv": a, "cwd": os.getcwd(), "claudecode": os.environ.get("CLAUDECODE")}) + "\n")
+    if os.environ.get("FAKE_DESKTOP_EXIT"):
+        print("Error: the desktop app isn't installed"); sys.exit(int(os.environ["FAKE_DESKTOP_EXIT"]))
+    sys.exit(0)
 if os.environ.get("FAKE_LOGGED_OUT"):  # what Claude Code 2.1 draws when it has no login: no hook fires, it stays open
     print("Not logged in · Please run /login", flush=True)
     input(); sys.exit(0)
@@ -76,6 +85,23 @@ if a[:2] == ["mcp", "get"]:
     sys.exit(0)
 if a[:1] == ["--version"]:
     print("codex-cli 0.157.0"); sys.exit(0)
+if a[:1] == ["app-server"]:  # JSON-RPC on stdio, one object per line, as codex 0.164 speaks it; FAKE_RPC_LOG records
+    log = os.environ.get("FAKE_RPC_LOG")
+    for line in sys.stdin:
+        msg = json.loads(line)
+        if log:
+            with open(log, "a") as f:
+                f.write(json.dumps({**msg, "codex_home": os.environ.get("CODEX_HOME")}) + "\n")
+        if os.environ.get("FAKE_RPC_HANG") or "id" not in msg:
+            continue
+        print(json.dumps({"method": "thread/started", "params": {}}), flush=True)  # noise: a notification
+        if msg["method"] == "initialize":
+            print(json.dumps({"id": msg["id"], "result": {"userAgent": "fake"}}), flush=True)
+        elif os.environ.get("FAKE_RPC_ERROR"):
+            print(json.dumps({"id": msg["id"], "error": {"code": -32600, "message": os.environ["FAKE_RPC_ERROR"]}}), flush=True)
+        else:
+            print(json.dumps({"id": msg["id"], "result": {}}), flush=True)
+    sys.exit(0)
 notify, hooks = None, {}
 for i, x in enumerate(a):
     if x == "-c":

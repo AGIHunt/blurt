@@ -492,3 +492,6 @@
 // dogfood v0.9 review
 "main.banner.no_response" = "一分钟没有反应";
 "main.banner.more" = "更多";
+// Agent 的桌面端（Claude）
+"main.banner.desktop" = "在 %@ 桌面端进行 · 由 Agent 回报进度";
+"main.banner.go_desktop" = "前往 %@";

@@ -22,7 +22,7 @@ the user confirms *done*.
 
 ```
 sessions.py dispatch --items BA-12 BA-13 [--agent claude|codex|…] [--mode together|parallel]
-                     [--worktree on|off|auto] [--runner tmux|app|auto] [--dry-run] [--lang en|zh]
+                     [--worktree on|off|auto] [--runner tmux|app|auto|desktop] [--dry-run] [--lang en|zh]
 ```
 
 - `together` (default): one window, one conversation for all the items. `parallel`: one window per item, each in
@@ -39,6 +39,33 @@ sessions.py dispatch --items BA-12 BA-13 [--agent claude|codex|…] [--mode toge
   at a time (`$BLURT_HOME/run/dispatch.lock`).
 - Without tmux (or on Windows) the app runs the returned `launch` argv in its own terminal and reports the exit
   with `sessions.py event --job J --event pane-dead --exit N`.
+
+## The title line
+
+Every hand-off prompt starts with a title line, then a blank line, then the instructions: one item
+`AW-12 · <title> (Blurt hand-off)`, several `3 items · <project> (Blurt hand-off)` (Chinese: `（口喷鸡交接）`). Agents list a
+conversation by its first message, so that is what the user sees there. Codex threads also get it as their name:
+once a session's hooks report its thread id, `sessions.py name-thread` sets it through `codex app-server`
+(`thread/name/set`, the session's own `CODEX_HOME`), best effort; the outcome is `agent.thread_name` on the job.
+
+## Claude desktop
+
+`sessions.py dispatch … --runner desktop` (agents with `interactive.desktop` in agents.json — Claude) makes the
+worktree and the note as usual and returns each job's `url`: `claude://code/new?folder=<worktree>&q=<prompt>`, the note
+inline while the link stays under about 14k characters, else the short prompt pointing at the note. Nothing starts:
+the app opens the link and the user confirms the folder and presses Send in Claude. The job (`agent.runner:
+"desktop"`) has no window and no live status; its items move only when you report (`mark_fixed` with state `fixing`
+when you start an item, `fixed` when it's done), and it ends once none is still with it — then its worktree is
+reviewed and merged as usual. Without the blurt MCP installed for Claude (the dry run's `mcp: false`) nothing can
+report: the user marks the items by hand.
+
+`sessions.py continue-desktop JOB` moves a running Claude session from Blurt's terminal to the desktop app (its agent
+ends in the window, then `claude --desktop --resume <session id>`); `sessions.py desktop-check` says whether that is
+available (Claude Code 2.1.285 or later, signed in with a subscription) and, as `mcp`, whether the blurt MCP is
+installed for Claude: the desktop app doesn't get the `--mcp-config` a terminal session may have had, so without it
+`continue-desktop` refuses (`desktop_no_mcp`) unless `--without-mcp` (the user marks the items by hand). When the
+desktop app doesn't take the conversation (`desktop_failed`) the job fails as a terminal session: `restart` starts a
+new one in Blurt's terminal. Don't run either unless the user asked.
 
 ## Status
 
@@ -103,5 +130,6 @@ its `fix`. `--force` skips that check when the caller already made it (the app's
 ## Other commands
 
 `sessions.py list [--project ID] [--all]`, `attach-cmd JOB` (argv for an embedded terminal: a grouped view per
-terminal), `send JOB --text T [--enter]`, `stop JOB [--kill]`, `doctor`.
+terminal), `send JOB --text T [--enter]`, `stop JOB [--kill]`, `doctor`, `desktop-check [--agent claude]`,
+`continue-desktop JOB`, `name-thread --job J --thread T` (the hooks run it).
 `jobs.py get|list|watch|gc`; `handoff.py get H-0012`; `agents.py prompt work --items …`.

@@ -4,6 +4,7 @@
 //     the pane or the app only ends that client; the agent keeps running and the next attach shows it again.
 //   app runner (no tmux): the session's pty belongs to AppRunner for the session's whole life; the surface borrows its
 //     view while it is shown.
+//   desktop (the agent's desktop app): nothing to attach — the pane shows the desktop card (state .desktop).
 import AppKit
 import SwiftUI
 import SwiftTerm
@@ -53,6 +54,7 @@ enum AttachState: Equatable {
     case detached                // the tmux client ended while the session lives on
     case ended                   // the session itself is over
     case elsewhere               // an app-runner session already shown in another pane
+    case desktop                 // it runs in the agent's desktop app: no terminal here
     case failed(String)
 }
 
@@ -91,6 +93,7 @@ final class TerminalSurface: NSView, LocalProcessTerminalViewDelegate {
         self.job = job
         guard let job = job else { state = .none; return }
         guard let j = JobStore.shared.job(job), let a = j.agent else { state = .failed(TL("error.no_job")); return }
+        if a.isDesktop, j.isActive { state = .desktop; return }
         if !j.isActive, !output { state = .ended; return }
         if a.runner == "app" {
             guard let v = AppRunner.shared.view(for: job) else { state = j.isActive ? .failed(TL("error.app_runner_lost")) : .ended; return }

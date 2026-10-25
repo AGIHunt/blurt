@@ -24,6 +24,8 @@ struct AgentSessionRow: Identifiable {
         return job.isActive ? agent.status : (agent.status == .error || job.state == .failed ? .error : .exited)
     }
     var alive: Bool { job.isActive }
+    /// Going on in the agent's desktop app: nothing runs here, so no spinner and not in the "running" count.
+    var inDesktop: Bool { job.inDesktop }
     /// "BA-12, BA-13" — the tmux window's name, else the item ids
     var label: String {
         if let n = agent.windowName, !n.isEmpty { return n.replacingOccurrences(of: ",", with: ", ") }
@@ -55,6 +57,7 @@ struct AgentSessionRow: Identifiable {
     static func stateText(_ job: Job) -> String {
         guard let agent = job.agent else { return "" }
         switch SessionOutcome.of(job) {
+        case .live where agent.isDesktop: return TL("row.desktop", DesktopApp.name(agent.agent))
         case .live(let st): return agent.stalled ? TL("row.no_response") : st.title
         case .review: return TL("row.ready_to_review")
         case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")

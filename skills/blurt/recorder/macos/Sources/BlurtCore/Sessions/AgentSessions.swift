@@ -5,6 +5,9 @@
 //   tmux: a private server, `tmux -L $BLURT_TMUX_SOCKET` (default "blurt"); one session per project (blurt-<slug>), one
 //   window per dispatch. Each embedded terminal attaches through its own grouped view session, so two panes can show
 //   two windows of the same project without moving each other.
+//   desktop: the agent's desktop app (Claude: `dispatch --runner desktop`). sessions.py makes the worktree and the note
+//   and returns a claude:// link per job (DesktopLink) for the app to open; nothing runs here, and the job's items move
+//   only when the agent reports. `continueInDesktop` moves a running terminal session there.
 import Foundation
 
 public enum DispatchMode: String { case together, parallel }
@@ -34,6 +37,41 @@ public struct DispatchResult {
     public let launch: [AppLaunch]
     /// Per job: project, window, worktree, branch, cwd, items (as sessions.py printed them).
     public let rows: [[String: Any]]
+    /// --runner desktop: each job's link into the desktop app, in job order (only links DesktopLink accepts).
+    public var links: [(job: String, url: URL)] = []
+    /// A desktop dry run: is the blurt MCP installed for the agent (false = nothing reports progress; nil = unknown).
+    public var mcp: Bool? = nil
+}
+
+/// The claude:// link a desktop hand-off opens. Only the desktop app's own scheme is ever opened from a sessions.py
+/// answer — never a web or file URL.
+public enum DesktopLink {
+    public static let schemes: Set<String> = ["claude"]
+
+    public static func url(_ s: String?) -> URL? {
+        guard let s = s, let u = URL(string: s), let sc = u.scheme?.lowercased(), schemes.contains(sc) else { return nil }
+        return u
+    }
+
+    /// The folder and prompt a link carries (self-tests and logs say what was opened without the whole prompt).
+    public static func parts(_ u: URL) -> (folder: String?, prompt: String?) {
+        let q = URLComponents(url: u, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return (q.first { $0.name == "folder" }?.value, q.first { $0.name == "q" }?.value)
+    }
+}
+
+/// sessions.py desktop-check: may a running terminal session continue in the desktop app.
+public struct DesktopContinueCheck: Equatable {
+    public let available: Bool
+    /// unsupported | not_installed | version | login
+    public let reason: String?
+    public let version: String?
+    /// Is the blurt MCP installed for the agent (nil = can't tell)? false: the desktop app would have nothing to report
+    /// progress with — the confirmation says the items then need marking by hand and offers Install.
+    public let mcp: Bool?
+    public init(available: Bool, reason: String?, version: String?, mcp: Bool? = nil) {
+        self.available = available; self.reason = reason; self.version = version; self.mcp = mcp
+    }
 }
 
 /// sessions.py said {"ok": false, "code": …}. The UI shows `code` localized (Terminal table `error.<code>`).
@@ -122,9 +160,12 @@ public final class AgentSessions {
     /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to. `loginChecked`: the caller
     /// already knows the agent is logged in (the dispatch panel won't start otherwise) — sessions.py skips its own
     /// login check (--force); without it, a logged-out agent fails with code auth.
+    /// `desktop`: the agent's desktop app instead of a terminal (`--runner desktop`): the result's `links` are for the
+    /// caller to open.
     public func dispatch(items: [String], agent: String?, mode: DispatchMode, worktree: WorktreeChoice, dryRun: Bool,
-                         model: String? = nil, loginChecked: Bool = false) async throws -> DispatchResult {
+                         model: String? = nil, loginChecked: Bool = false, desktop: Bool = false) async throws -> DispatchResult {
         var args = ["dispatch", "--items"] + items + ["--mode", mode.rawValue, "--worktree", worktree.rawValue, "--lang", lang]
+        if desktop { args += ["--runner", "desktop"] }
         if loginChecked && !dryRun { args.append("--force") }
         if let a = agent, !a.isEmpty { args += ["--agent", a] }
         if let m = model, !m.isEmpty { args += ["--model", m] }
@@ -139,7 +180,30 @@ public final class AgentSessions {
             return AppLaunch(job: job, argv: argv, env: l["env"] as? [String: String] ?? [:],
                              cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory()))
         }
-        return DispatchResult(jobs: rows.compactMap { $0["id"] as? String }, warnings: warnings, launch: launch, rows: rows)
+        var r = DispatchResult(jobs: rows.compactMap { $0["id"] as? String }, warnings: warnings, launch: launch, rows: rows)
+        r.links = Self.links(rows)
+        r.mcp = o["mcp"] as? Bool
+        return r
+    }
+
+    static func links(_ rows: [[String: Any]]) -> [(job: String, url: URL)] {
+        rows.compactMap { r in
+            guard let j = r["id"] as? String, let u = DesktopLink.url(r["url"] as? String) else { return nil }
+            return (j, u)
+        }
+    }
+
+    /// A running terminal session moves to the desktop app (`sessions.py continue-desktop`): its agent ends here.
+    /// withoutMCP: the user agreed to go on with no blurt MCP there (items marked by hand); else that is refused.
+    public func continueInDesktop(job: String, withoutMCP: Bool = false) async throws {
+        _ = try await call(["continue-desktop", job] + (withoutMCP ? ["--without-mcp"] : []), timeout: 60)
+    }
+
+    /// May terminal sessions of `agent` continue in its desktop app (CLI version, a subscription login)? Probes only.
+    public func desktopCheck(agent: String) async throws -> DesktopContinueCheck {
+        let o = try await call(["desktop-check", "--agent", agent], timeout: 45)
+        return DesktopContinueCheck(available: o["available"] as? Bool ?? false, reason: o["reason"] as? String,
+                                    version: o["version"] as? String, mcp: o["mcp"] as? Bool)
     }
 
     public func attachCommand(job: String) async throws -> (argv: [String], env: [String: String]) {
@@ -175,7 +239,9 @@ public final class AgentSessions {
             return AppLaunch(job: job, argv: argv, env: l["env"] as? [String: String] ?? [:],
                              cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory()))
         }
-        return DispatchResult(jobs: rows.compactMap { $0["id"] as? String }, warnings: [], launch: launch, rows: rows)
+        var r = DispatchResult(jobs: rows.compactMap { $0["id"] as? String }, warnings: [], launch: launch, rows: rows)
+        r.links = Self.links(rows)
+        return r
     }
 
     /// The app runner's pty exited (`sessions.py event --event pane-dead`): the job and the items move on (K3).

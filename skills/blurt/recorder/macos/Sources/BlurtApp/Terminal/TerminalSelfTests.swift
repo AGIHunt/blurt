@@ -8,6 +8,10 @@
 //   type N TEXT             TEXT typed into pane N's terminal (the key-input path: insertText); "\r" sends Return
 //   state                   every pane: job, attach state, cols × rows, the visible text
 //   size N W H              pane N's window content size            windowid sessions|dispatch [N]
+//   dispatch-set target terminal|desktop   where the panel's hand-off runs (DesktopApp: nothing opens under tests —
+//                           its link is reported as event desktop_open)
+//   desktop-check AGENT yes|no|ask   what Continue in Claude Desktop's check says (yes / no: an override; ask: the CLI)
+//   continue-desktop JOB    what the header's Continue in Claude Desktop does after its confirmation
 import AppKit
 import SwiftTerm
 import BlurtCore
@@ -56,13 +60,35 @@ enum TerminalSelfTests {
             if words[0] == "worktree" { m.worktree = WorktreeChoice(rawValue: words[1]) ?? .auto }
             if words[0] == "agent" { m.agent = words[1]; m.agentTouched = true }
             if words[0] == "model" { m.model = words[1] == "default" ? "" : words[1] }
+            if words[0] == "target" { m.target = HandoffTarget(rawValue: words[1]) ?? .terminal }
             out(["ok": true])
         case "dispatch-state":
             guard let m = DispatchPanel.current?.model else { out(["error": "no panel"]); return }
             out(["agent": m.agent, "agents": m.agents.map(\.id), "items": m.items.map { "\($0.ref) \($0.title)" },
                  "model": m.model, "models": m.models.map(\.id), "cli_default": m.cliDefault ?? NSNull(),
                  "warnings": m.warnings.map(\.code), "worktree": m.worktreeOn, "branch": m.branchPreview ?? NSNull(),
-                 "phase": "\(m.phase)", "can_start": m.canStart])
+                 "phase": "\(m.phase)", "can_start": m.canStart, "target": m.target.rawValue,
+                 "desktop_available": m.desktopAvailable, "desktop_mcp": m.desktopMCP ?? NSNull()])
+        case "desktop-check":
+            guard words.count == 2 else { out(["error": "usage"]); return }
+            switch words[1] {
+            case "yes": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: true, reason: nil, version: "test")
+            case "no": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: false, reason: "version", version: "test")
+            case "nomcp": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: true, reason: nil, version: "test", mcp: false)
+            default: DesktopApp.checkOverride[words[0]] = nil
+            }
+            SessionsModel.shared.objectWillChange.send()
+            out(["agent": words[0], "check": words[1]])
+        case "continue-desktop":
+            guard let p = pane(1) else { out(["error": "no pane"]); return }
+            p.performContinueDesktop(arg) { err in out(["job": arg, "error": err ?? NSNull()]) }
+        case "continue-desktop-ask":    // the ⋯ menu's Continue in Claude Desktop…: its confirmation, on screen
+            guard let p = pane(1) else { out(["error": "no pane"]); return }
+            p.continueDesktop(arg)
+            out(["job": arg])
+        case "continue-desktop-nomcp":  // what that confirmation's Continue does when the blurt MCP isn't installed
+            guard let p = pane(1) else { out(["error": "no pane"]); return }
+            p.performContinueDesktop(arg, withoutMCP: true) { err in out(["job": arg, "error": err ?? NSNull()]) }
         case "dispatch-start":
             guard let c = DispatchPanel.current else { out(["error": "no panel"]); return }
             c.start()

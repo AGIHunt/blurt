@@ -310,6 +310,32 @@ struct AgentsPane: View {
                     }
                 }
             }
+            ForEach(m.rows.filter { $0.installed && m.sessions($0) && DesktopApp.supports($0.id) }) { a in handoffTargetRow(a) }
+        }
+    }
+
+    /// Where an agent's hand-offs run (an agent with a desktop app: Claude): Blurt's terminal (recommended) or the
+    /// desktop app — the hand-off sheet starts with this (config sessions.target, the same key the sheet remembers).
+    @ViewBuilder
+    func handoffTargetRow(_ a: CoreAgent) -> some View {
+        let installed = DesktopApp.available(a.id)
+        SettingsLine {
+            HStack(alignment: .center, spacing: 14) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(TL("agents.handoff_target", a.name)).font(.system(size: SettingsMetrics.titleSize))
+                    Text(installed ? TL("agents.handoff_target.hint") : TL("agents.handoff_target.no_app", DesktopApp.name(a.id)))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                RowPicker(label: TL("agents.handoff_target", a.name),
+                          selection: Binding(get: { DesktopApp.target(a.id) },
+                                             set: { DesktopApp.remember(a.id, $0); m.objectWillChange.send() })) {
+                    Text(TL("dispatch.run_in.terminal")).tag(HandoffTarget.terminal)
+                    Text(TL("dispatch.run_in.desktop", DesktopApp.name(a.id))).tag(HandoffTarget.desktop)
+                }
+                .disabled(!installed)
+            }
         }
     }
 
