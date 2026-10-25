@@ -10,6 +10,26 @@ final class DictationPastePolicyTests: XCTestCase {
         .init(hasFrontApp: front, frontIsBlurt: blurt, secureInput: secure, accessibility: ax, focusSecure: secureField, focusIsText: text)
     }
 
+    /// The paste has landed when the field shows the text: Return may go then, and only then does the clipboard come
+    /// back (a fixed 0.6 s could beat a slow app, which then pasted — and sent — the user's old clipboard).
+    func testAPasteHasLandedWhenTheFieldShowsIt() {
+        let L = DictationPasteLanding.self
+        XCTAssertTrue(L.landed(before: "Hi ", selection: NSRange(location: 3, length: 0), now: "Hi there.", inserted: "there."))
+        XCTAssertTrue(L.landed(before: "我知道你就是的。", selection: NSRange(location: 6, length: 0),
+                               now: "我知道你就是从老家回来的。", inserted: "从老家回来"))
+        // a selection is replaced
+        XCTAssertTrue(L.landed(before: "send the old text", selection: NSRange(location: 9, length: 3), now: "send the new text",
+                               inserted: "new"))
+        // not yet: the field is as it was
+        XCTAssertFalse(L.landed(before: "Hi ", selection: NSRange(location: 3, length: 0), now: "Hi ", inserted: "there."))
+        // something else changed (the user typed): not this paste
+        XCTAssertFalse(L.landed(before: "Hi ", selection: NSRange(location: 3, length: 0), now: "Hi x", inserted: "there."))
+        // a field that tidies the spacing around it still has it
+        XCTAssertTrue(L.landed(before: "a", selection: NSRange(location: 1, length: 0), now: "a there.", inserted: "there."))
+        XCTAssertLessThan(L.restoreMargin, L.unconfirmedRestore)
+        XCTAssertGreaterThan(L.unconfirmedRestore, L.unconfirmedReturn)          // the clipboard never before Return
+    }
+
     func testPastesIntoATextField() {
         XCTAssertEqual(P.decide(s()), .paste(confirmed: true))
     }
@@ -23,8 +43,8 @@ final class DictationPastePolicyTests: XCTestCase {
     func testRefusals() {
         XCTAssertEqual(P.decide(s(front: false)), .copy(reason: "no_front_app"))
         XCTAssertEqual(P.decide(s(blurt: true)), .own)
-        XCTAssertEqual(P.decide(s(secure: true)), .copy(reason: "secure_input"))
-        XCTAssertEqual(P.decide(s(secureField: true, text: true)), .copy(reason: "secure_input"))
+        XCTAssertEqual(P.decide(s(secure: true)), .hold(reason: "secure_input"))       // never on the clipboard by itself
+        XCTAssertEqual(P.decide(s(secureField: true, text: true)), .hold(reason: "secure_input"))
         XCTAssertEqual(P.decide(s(ax: false)), .copy(reason: "no_accessibility"))
         // Blurt in front wins over everything but "no app" (its own text views get a paste: action)
         XCTAssertEqual(P.decide(s(blurt: true, secure: true)), .own)

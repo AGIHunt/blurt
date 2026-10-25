@@ -33,6 +33,39 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertNil(entry("d-old", "x", 1).asrTags)                 // an older entry has none
     }
 
+    /// v0.9 dogfood: Undo of a delete brought back a row without its recording (Retry and Add to Lab gone). The
+    /// recording now waits aside until Undo is unlikely.
+    func testADeletedRecordingComesBackWithUndoAndGoesLater() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        try FileManager.default.createDirectory(at: h.audioDir, withIntermediateDirectories: true)
+        var e = entry("d-a", "kept", 1000)
+        e.audio = "audio/d-a.wav"
+        let wav = h.resolve("audio/d-a.wav")
+        try Data("RIFF".utf8).write(to: wav)
+        h.append(e)
+        h.delete(["d-a"])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wav.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: h.deletedDir.appendingPathComponent("d-a.wav").path))
+        // Undo: the recording is back where the entry says
+        XCTAssertTrue(h.restoreAudio(e))
+        h.append(e)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wav.path))
+        XCTAssertEqual(h.load().first?.audio, "audio/d-a.wav")
+        // deleted again and purged: gone for good, Undo can't bring it
+        h.delete(["d-a"])
+        h.purgeDeleted(["d-a.wav"])
+        XCTAssertFalse(h.restoreAudio(e))
+        XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: h.deletedDir.path))?.isEmpty ?? true)
+        // the launch prune purges what is left aside
+        h.append(e)
+        try Data("RIFF".utf8).write(to: wav)
+        h.delete(["d-a"])
+        h.prune(days: 30)
+        XCTAssertTrue((try? FileManager.default.contentsOfDirectory(atPath: h.deletedDir.path))?.isEmpty ?? true)
+    }
+
     func testDeleteThenWriteAgainComesBackOnce() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: dir) }

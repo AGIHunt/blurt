@@ -213,12 +213,49 @@ public final class DictationHistory {
 
     public func append(_ e: DictationEntry) { appendLine(e.json) }
 
+    /// Deletes entries. Their kept recordings move aside (audio/.deleted/) for Undo — `restoreAudio` puts them back,
+    /// `purgeDeleted` removes them for good (the page does after a couple of minutes; `prune` at launch, `clear`).
+    /// Before, the audio went at once and Undo brought back a row without it: no Retry, no Add to Lab.
     public func delete(_ ids: [String]) {
         guard !ids.isEmpty else { return }
         let gone = load().filter { ids.contains($0.id) }
         appendLine(["op": "delete", "ids": ids, "t": DictationEntry.iso.string(from: Date())])
-        for e in gone { if let a = e.audio { try? FileManager.default.removeItem(at: resolve(a)) } }
+        let fm = FileManager.default
+        for e in gone {
+            guard let a = e.audio else { continue }
+            let src = resolve(a)
+            guard fm.fileExists(atPath: src.path) else { continue }
+            try? fm.createDirectory(at: deletedDir, withIntermediateDirectories: true)
+            let dst = deletedDir.appendingPathComponent(src.lastPathComponent)
+            try? fm.removeItem(at: dst)
+            if (try? fm.moveItem(at: src, to: dst)) == nil { try? fm.removeItem(at: src) }
+        }
         NotificationCenter.default.post(name: DictationHistory.changed, object: self, userInfo: ["ids": ids])
+    }
+
+    /// Where deleted entries' recordings wait for Undo.
+    public var deletedDir: URL { audioDir.appendingPathComponent(".deleted") }
+
+    /// Undo of a delete: the entry's recording back where it was. true when it is there (again).
+    @discardableResult
+    public func restoreAudio(_ e: DictationEntry) -> Bool {
+        guard let a = e.audio else { return false }
+        let dst = resolve(a), src = deletedDir.appendingPathComponent(dst.lastPathComponent)
+        let fm = FileManager.default
+        if fm.fileExists(atPath: dst.path) { return true }
+        return (try? fm.moveItem(at: src, to: dst)) != nil
+    }
+
+    /// The deleted recordings go for good: these (`names`: file names), or all older than `olderThan` s.
+    public func purgeDeleted(_ names: [String]? = nil, olderThan: TimeInterval = 0, now: Date = Date()) {
+        let fm = FileManager.default
+        let all = (try? fm.contentsOfDirectory(atPath: deletedDir.path)) ?? []
+        for n in names ?? all where all.contains(n) {
+            let f = deletedDir.appendingPathComponent(n)
+            if olderThan > 0, let m = (try? fm.attributesOfItem(atPath: f.path))?[.modificationDate] as? Date,
+               now.timeIntervalSince(m) < olderThan { continue }
+            try? fm.removeItem(at: f)
+        }
     }
 
     /// Posted after `delete` (userInfo "ids") and `clear` (no ids: everything): the app forgets what it kept of
@@ -319,6 +356,7 @@ public final class DictationHistory {
     /// any recording in audio/ that no entry keeps (`pruneOrphanAudio`). Returns how many entries went.
     @discardableResult
     public func prune(days: Int, now: Date = Date()) -> Int {
+        purgeDeleted()                  // a delete's Undo doesn't outlive the app
         let all = load()
         pruneOrphanAudio(keeping: all, now: now)
         let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)

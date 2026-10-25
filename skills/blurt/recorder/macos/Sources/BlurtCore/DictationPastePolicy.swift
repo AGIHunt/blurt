@@ -15,6 +15,37 @@
 // The user's clipboard is put back after the paste either way.
 import Foundation
 
+/// When a posted ⌘V has landed, and when the user's clipboard may come back (v0.9 dogfood). The clipboard used to come
+/// back on a fixed 0.6 s timer and a double tap's Return waited for that timer: a slow app (a busy Electron chat, a
+/// Mac under memory pressure) could read the clipboard after it was put back and paste — then send — the user's old
+/// clipboard, and every send waited 0.6 s more than it needed. Now, where the field can be read, the text in it says
+/// when the paste landed: Return goes at once and the clipboard comes back a moment later; where it can't (WeChat,
+/// Electron), Return keeps the old 0.6 s (keys reach the app in order: Return after ⌘V) and the clipboard waits 1.5 s.
+public enum DictationPasteLanding {
+    /// how often the field is read while waiting
+    public static let poll = 0.03
+    /// a readable field that never shows the text (it reformats it, or the paste went elsewhere): give up waiting
+    public static let confirmTimeout = 1.5
+    /// after the text is seen: the clipboard comes back this much later
+    public static let restoreMargin = 0.15
+    /// an unreadable field: Return after this (as before) …
+    public static let unconfirmedReturn = 0.6
+    /// … and the clipboard back after this
+    public static let unconfirmedRestore = 1.5
+
+    /// The field's text shows the inserted text where the cursor was (`before` with `selection` replaced by it), or
+    /// at least it grew by it and has it — a field may tidy spacing around it.
+    public static func landed(before: String, selection: NSRange, now: String, inserted: String) -> Bool {
+        let b = before as NSString, n = now as NSString
+        guard !inserted.isEmpty, now != before else { return false }
+        let loc = min(max(0, selection.location), b.length), len = min(max(0, selection.length), b.length - loc)
+        if now == b.replacingCharacters(in: NSRange(location: loc, length: len), with: inserted) { return true }
+        let ins = inserted as NSString
+        if loc + ins.length <= n.length, n.substring(with: NSRange(location: loc, length: ins.length)) == inserted { return true }
+        return n.length >= b.length - len + ins.length && now.contains(inserted)
+    }
+}
+
 public enum DictationPastePolicy {
     public enum Decision: Equatable {
         /// ⌘V; `confirmed`: the focus is known to be a text field (else the island offers "Copy again")
@@ -23,6 +54,10 @@ public enum DictationPastePolicy {
         case own
         /// the text stays on the clipboard
         case copy(reason: String)
+        /// nothing typed, nothing copied: the text waits in the history and on the island's Copy (a password field
+        /// has the focus — text said there by accident shouldn't land on the clipboard, where clipboard managers
+        /// keep it; v0.9 dogfood)
+        case hold(reason: String)
     }
 
     public struct Situation: Equatable {
@@ -49,7 +84,7 @@ public enum DictationPastePolicy {
         guard s.hasFrontApp else { return .copy(reason: "no_front_app") }
         if s.appChanged { return .copy(reason: "app_changed") }
         if s.frontIsBlurt { return .own }
-        if s.secureInput || s.focusSecure { return .copy(reason: "secure_input") }
+        if s.secureInput || s.focusSecure { return .hold(reason: "secure_input") }
         guard s.accessibility else { return .copy(reason: "no_accessibility") }
         return .paste(confirmed: s.focusIsText == true)
     }

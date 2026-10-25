@@ -13,6 +13,8 @@ final class DictationTakeFlowTests: XCTestCase {
         XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false), .pastedUnsure)
         XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: true, confirmed: true, appChanged: false), .notSent)
         XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: false, confirmed: true, appChanged: false), .none)
+        // a password field: not typed, not copied — the line offers Copy (also when a send was asked)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "held", sendAsked: true, confirmed: true, appChanged: false), .held)
     }
 
     func testPastesGoInTheOrderTheyWereSaid() {

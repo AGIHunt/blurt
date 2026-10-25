@@ -393,7 +393,7 @@ extension Dictation {
             LiveTranscript.shared.end(session: take.liveSession)
         }
         inserting = true
-        DictationInsert.insert(text, appChanged: appChanged) { [weak self] result in
+        DictationInsert.insert(text, appChanged: appChanged, field: field, before: now) { [weak self] result in
             guard let self = self else { return }
             self.queue.delivered(id)
             self.takes[id] = nil
@@ -443,6 +443,12 @@ extension Dictation {
                            seconds: changed ? 4 : 2.4, icon: .check)
             case .notSent:
                 self.sendSkipped(nil)               // nothing went in: "Not sent"
+            case .held:
+                island.toast(Loc.t("dictation.toast.secure_held", table: "Dictation"), key: Dictation.toastKey, seconds: 6,
+                             actionTitle: Loc.t("dictation.toast.copy", table: "Dictation"), action: {
+                    DictationInsert.copy(text)
+                    emit(["event": "dictation_copy_held", "id": id])
+                })
             case .pastedUnsure:
                 // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
                 island.toast(Loc.t("dictation.toast.pasted_unsure", table: "Dictation"), key: Dictation.toastKey,

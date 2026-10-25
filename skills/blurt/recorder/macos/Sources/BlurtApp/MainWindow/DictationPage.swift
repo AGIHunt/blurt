@@ -192,8 +192,9 @@ final class DictationHistoryModel: ObservableObject {
         copy(es.map(shownText).joined(separator: "\n\n"), from: es.count == 1 ? es[0].id : nil)
     }
 
-    /// ⌘Z puts them back (the text and the item link; a recording kept with them is gone). The row after the last
-    /// deleted one is selected, as in Mail.
+    /// ⌘Z — or the island's "Deleted · Undo" — puts them back: the text, the item link and a recording kept with them
+    /// (it waits in audio/.deleted/ for a couple of minutes: DictationHistory.delete). The row after the last deleted
+    /// one is selected, as in Mail.
     func delete(_ es: [DictationEntry], undo: UndoManager? = nil) {
         guard !es.isEmpty else { return }
         let undo = DictationHistoryWindow.shared.undoManager ?? undo     // the main window's: what ⌘Z in its Edit menu reaches
@@ -205,10 +206,22 @@ final class DictationHistoryModel: ObservableObject {
         DictationHistory.shared.delete(es.map(\.id))
         reload()
         selection = next.map { [$0.id] } ?? []
+        // the recordings go for good once Undo is unlikely
+        let files = es.compactMap { $0.audio.map { DictationHistory.shared.resolve($0).lastPathComponent } }
+        if !files.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + DictationHistoryModel.audioUndoSeconds) {
+                DictationHistory.shared.purgeDeleted(files)
+            }
+        }
+        // said where the user looks while dictating too, with the way back (an Undo only in the Edit menu went unseen)
+        island.toast(es.count == 1 ? T("dictation.history.deleted.one") : T("dictation.history.deleted.many", es.count),
+                     key: "dictation.history.deleted", seconds: 5, actionTitle: T("dictation.toast.undo")) { [weak undo] in
+            if let u = undo, u.canUndo { u.undo() }
+        }
         undo?.registerUndo(withTarget: self) { m in
             for e in es.reversed() {
                 var back = e
-                back.audio = nil
+                if !DictationHistory.shared.restoreAudio(e) { back.audio = nil }
                 DictationHistory.shared.append(back)
                 if let i = e.item, let u = e.itemUID { DictationHistory.shared.markItem(e.id, item: i, uid: u) }
             }
@@ -359,6 +372,8 @@ final class DictationHistoryModel: ObservableObject {
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
     func turnOn() { Dictation.shared.openSetup(from: "page") }
+    /// How long a deleted dictation's recording waits for Undo.
+    static let audioUndoSeconds = 120.0
 
     /// The one step in the way of a dictation, for the empty state and the header (DictationPageStatus): the speech
     /// model counts as much as the key's permission.

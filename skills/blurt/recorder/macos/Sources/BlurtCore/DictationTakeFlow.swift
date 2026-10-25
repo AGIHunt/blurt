@@ -271,11 +271,14 @@ public enum DictationDeliveredLine: Equatable {
     case notSent
     /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): "Copy again"
     case pastedUnsure
+    /// a password field had the focus: not typed, not copied — "Copy" is the user's call
+    case held
     case none
 
-    /// `result`: pasted | copied | none; `sendAsked`: a double tap queued Return for this take.
+    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take.
     public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool) -> DictationDeliveredLine {
         switch result {
+        case "held": return .held
         case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
         case "pasted": return confirmed ? .none : .pastedUnsure
         default: return sendAsked ? .notSent : .none

@@ -29,6 +29,8 @@
 "dictation.toast.copied" = "已复制，⌘V 粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
 "dictation.toast.copy_again" = "再复制一次";
+"dictation.toast.copy" = "复制";
+"dictation.toast.secure_held" = "光标在密码框里，没有输入";
 "dictation.mic.builtin" = "听写时使用 Mac 自带的麦克风";
 "dictation.mic.builtin.detail" = "蓝牙耳机要约一秒才开始收音，开头的话会丢。自动：默认输入是蓝牙时开启。";
 "dictation.mic.start_sound" = "开始收音时播放提示音";
@@ -109,6 +111,8 @@
 "dictation.history.item_made" = "已转为 %@";
 "dictation.history.show" = "查看";
 "dictation.history.delete" = "删除";
+"dictation.history.deleted.one" = "已删除这条听写";
+"dictation.history.deleted.many" = "已删除 %ld 条听写";
 "dictation.history.more" = "更多";
 "dictation.history.reason.timeout" = "润色太慢，这次没润色";
 "dictation.history.reason.unavailable" = "润色模型还没就绪，这次没润色";

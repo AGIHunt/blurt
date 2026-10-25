@@ -25,6 +25,11 @@ final class DictationField {
         self.element = element; self.textView = textView; self.app = app; self.pid = pid
     }
 
+    /// One of our own text views (a paste's landing check reads it).
+    static func of(_ tv: NSTextView) -> DictationField {
+        DictationField(element: nil, textView: tv, app: "Blurt", pid: ProcessInfo.processInfo.processIdentifier)
+    }
+
     /// The field with the keyboard focus now, or nil (none, no Accessibility, a password field, an element without
     /// readable text). Test builds: the test pad, only when it is open.
     static func focused() -> DictationField? {
