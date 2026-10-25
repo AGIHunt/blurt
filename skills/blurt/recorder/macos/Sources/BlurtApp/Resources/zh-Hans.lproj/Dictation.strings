@@ -377,7 +377,7 @@
 "dictation.style.light" = "轻整理";
 "dictation.style.structured" = "结构化";
 "dictation.style.auto" = "自动";
-"dictation.style.toast.structured" = "%@：说完后整理清单和改口 · 再按 ⇧ 切回";
+"dictation.style.toast.structured" = "%@：说完会理成清单 · 再按 ⇧ 切回";
 "dictation.style.toast.back" = "已切回%@";
 "dictation.style.chip" = "这条像清单";
 "dictation.style.chip.key" = "这条像清单 · %@";

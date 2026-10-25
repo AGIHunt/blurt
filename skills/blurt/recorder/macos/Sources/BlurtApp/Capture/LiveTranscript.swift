@@ -10,8 +10,9 @@
 //  • It is the island's lower half, not a second pop-up (v0.9 dogfood: a 460 pt grey glass card under a 297 pt black
 //    notch read as two unrelated things): the island's own black, 6 pt under it, in its width family — exactly the
 //    open island's width under a voice note, the ears plus 24 pt a side while dictation listens (IslandLayout
-//    .livePanelWidth, from the width the island is settling to, so the words don't re-wrap while it springs) — with
-//    the window's own soft shadow, which keeps its edge on a dark wallpaper.
+//    .livePanelWidth, from the width the island is settling to without a toast, so the words don't re-wrap while it
+//    springs or while a toast grows it) — with the window's own soft shadow, which keeps its edge on a dark
+//    wallpaper. On a capsule screen the capsule widens to the same family while the panel shows (15 pt corners).
 //  • Settings → General → "Show text while I talk" (边说边显示文字; record.live_text, on).
 //  • It shows nothing until there are words (the island already says it is listening), follows the island's bottom
 //    edge (and goes below the hanging cards when they are down), and fades away a moment after the take ends.
@@ -136,6 +137,7 @@ final class LiveTranscript {
     private func show() {
         let p = ensurePanel()
         shown = true
+        island.wake()                       // a capsule widens to the panel's width family (Island.target)
         place(animated: false)
         p.alphaValue = 0
         p.orderFrontRegardless()
@@ -151,6 +153,7 @@ final class LiveTranscript {
     private func hide(animated: Bool) {
         guard shown, let p = panel else { return }
         shown = false
+        island.wake()                       // a capsule goes back to its ears' width
         emit(["event": "live_hidden", "chars": text.count + pending.count])
         guard animated else { p.orderOut(nil); return }
         NSAnimationContext.runAnimationGroup({ c in
@@ -171,7 +174,7 @@ final class LiveTranscript {
         guard let s = screen else { return }
         let w = IslandLayout.livePanelWidth(islandWidth: island.restingWidth, open: island.open, screenWidth: s.frame.width)
         let h = view.fittingHeight(width: w)
-        view.radius = island.open ? 22 : 14             // the island's own bottom corners when open
+        view.radius = IslandLayout.livePanelRadius(open: island.open, notch: island.onNotch)
         if view.frame.size != NSSize(width: w, height: h) { view.frame = NSRect(x: 0, y: 0, width: w, height: h) }
         var top = isl.minY - LiveTranscript.gap
         if let cards = hanging.shownBottom { top = min(top, cards - LiveTranscript.gap) }

@@ -139,4 +139,12 @@ final class DictationStyleTests: XCTestCase {
             XCTAssertEqual(DictationStyleVariant.apply(t, category: .code, structured: false).text, t)
         }
     }
+
+    /// ⇧'s line explains Structured the first two times ever, then the ear's chip alone says it (dogfood #22).
+    func testTheStyleToggleExplainsItselfOnlyAtFirst() {
+        XCTAssertTrue(DictationStyleToggleHint.says(shown: 0))
+        XCTAssertTrue(DictationStyleToggleHint.says(shown: 1))
+        XCTAssertFalse(DictationStyleToggleHint.says(shown: 2))
+        XCTAssertFalse(DictationStyleToggleHint.says(shown: 40))
+    }
 }

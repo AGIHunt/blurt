@@ -854,6 +854,15 @@ export class ReviewStore {
       else this.openFinish();
       return;
     }
+    // ⌘Z undoes the page's last step (a state, a merge, an edit) — also after its toast is gone (micro 20): the
+    // island's Undo is only the visible way to it. In a text field it stays the field's; with nothing to undo here it
+    // goes on to the app (the main window's own Undo).
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "z" && !typing && !this.modal) {
+      if (!this.undoStack.length) return;
+      e.preventDefault();
+      this.undo();
+      return;
+    }
     if (e.key === "Escape") {
       if (this.modal) this.closeModal();
       else if (this.lightbox) this.openLightbox(null);

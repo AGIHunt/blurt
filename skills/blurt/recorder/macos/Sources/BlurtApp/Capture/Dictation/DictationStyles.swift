@@ -110,6 +110,10 @@ extension Dictation {
         styleToggles += 1
         routeStyle()
         emit(["event": "dictation_style", "action": "toggle", "via": via.rawValue, "style": to.rawValue, "id": entryID])
+        // the ear's chip says which style it is; the line explains Structured the first couple of times only
+        let shown = Dictation.settings["style_hint_shown"] as? Int ?? 0
+        guard DictationStyleToggleHint.says(shown: shown) else { return }
+        if to == .structured { Dictation.set("style_hint_shown", shown + 1) }
         island.toast(Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
                            table: "Dictation", Dictation.styleName(to)), key: Dictation.toastKey)
     }
@@ -175,8 +179,9 @@ extension Dictation {
                 let key = hk(.reformat)
                 island.toast(Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
                              key: Dictation.toastKey, seconds: 6,
-                             actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self] in
-                    self?.reformat(to: .structured, action: "reformat", via: "chip")
+                             actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self, weak lp] in
+                    guard let lp = lp else { return }
+                    self?.reformat(lp, to: .structured, action: "reformat", via: "chip")
                 })
                 emit(["event": "dictation_style", "action": "suggest_list", "id": id, "lines": DictationStitch.listLines(s)])
             }
@@ -207,9 +212,14 @@ extension Dictation {
         }
     }
 
-    /// The suggestion chip (structured) and Undo (the original style).
-    func reformat(to style: DictationStyle, action: String, via: String) {
-        guard phase == .idle, let lp = lastPaste else { return }
+    /// The suggestion chip (structured) and Undo (the original style), for the take `lp` they were shown for: when a
+    /// newer take has come since, they do nothing (they never rewrite the newer text — dogfood #29: the toast read the
+    /// last take at click time, not its own).
+    func reformat(_ lp: DictationLastPaste, to style: DictationStyle, action: String, via: String) {
+        guard phase == .idle, lastPaste === lp else {
+            emit(["event": "dictation_reformat", "result": "stale", "via": via, "id": lp.id])
+            return
+        }
         withLight(lp) { [weak self] in
             self?.withStructured(lp) { [weak self] in
                 guard let self = self, self.lastPaste === lp, let t = lp.version(style), t != lp.currentVersion else { return }
@@ -276,7 +286,10 @@ extension Dictation {
                 let original = lp.original
                 t = Island.Toast(text: Loc.t(replaced ? "dictation.style.reformatted" : "dictation.style.copied", table: "Dictation", name),
                                  actionTitle: replaced ? Loc.t("dictation.toast.undo", table: "Dictation") : nil,
-                                 action: replaced ? { [weak self] in self?.reformat(to: original, action: "undo", via: "toast") } : nil)
+                                 action: replaced ? { [weak self, weak lp] in
+                                     guard let lp = lp else { return }
+                                     self?.reformat(lp, to: original, action: "undo", via: "toast")
+                                 } : nil)
             }
             // one toast about the last take: a second ⌥⇧L replaces the first at once, with its own Undo; the ok check
             // when the field really changed ("copied, paste with ⌘V" is not done yet)

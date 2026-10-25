@@ -1,5 +1,6 @@
-// BlurtCore/ToastQueue.swift: the island's toasts — newest first, replaced by key, stale ones dropped, at least 5 s and
-// paused while pointed at, a pushed-out Undo or question comes back.
+// BlurtCore/ToastQueue.swift: the island's toasts — newest first (older plain replies superseded), replaced by key,
+// stale ones dropped, at least 5 s and paused while pointed at, a pushed-out Undo or question comes back for the time
+// it had left, every exit but acting on it reported to onGone, a body click acts only on a line without a button.
 import XCTest
 @testable import BlurtCore
 
@@ -54,6 +55,37 @@ final class ToastQueueTests: XCTestCase {
         q.post(entry("C"), now: 0.2)
         run(q, from: 0.2, to: 1.3)
         XCTAssertEqual(q.current?.text, "C")
+        XCTAssertTrue(q.waiting.isEmpty, "B, older than C, is superseded with it")
+        var seen: [String] = []
+        var t = 1.3
+        while t <= 12 { q.tick(now: t, paused: false, canShow: { _ in true }); if let c = q.current?.text, seen.last != c { seen.append(c) }; t += 1.0 / 60 }
+        XCTAssertEqual(seen, ["C"], "B never goes up after C (the past out of order)")
+    }
+
+    /// An older reply that was held back by `canShow` (the open island) isn't superseded: it still waits its turn.
+    func testAHeldBackReplyIsNotSuperseded() {
+        let q = Q()
+        q.post(entry("Filed to Alpha"), now: 0, canShowNow: false)
+        q.post(entry("Copied"), now: 0.1)
+        XCTAssertEqual(q.current?.text, "Copied")
+        XCTAssertTrue(q.waiting.isEmpty, "both could show: the older plain one is superseded")
+        let q2 = Q()
+        q2.post(entry("Filed to Alpha", key: "file"), now: 0, canShowNow: false)
+        q2.post(entry("Deleted · Undo", key: "delete", actionable: true), now: 0.1, canShowNow: false)
+        run(q2, from: 0.1, to: 0.3, canShow: { $0.key == "delete" })
+        XCTAssertEqual(q2.current?.text, "Deleted · Undo")
+        XCTAssertEqual(q2.waiting.map(\.text), ["Filed to Alpha"])
+    }
+
+    /// An older Undo is not a plain line: it still comes after the newer reply.
+    func testAnOlderUndoIsNotSuperseded() {
+        let q = Q()
+        q.post(entry("A", seconds: 6), now: 0)
+        q.post(entry("Deleted · Undo", key: "delete", actionable: true), now: 0.1)
+        q.post(entry("C"), now: 0.2)
+        run(q, from: 0.2, to: 1.3)
+        XCTAssertEqual(q.current?.text, "C")
+        XCTAssertEqual(q.waiting.map(\.text), ["Deleted · Undo"])
     }
 
     /// "Nothing to reformat yet" no longer waits behind the launch welcome; the welcome comes back after it.
@@ -92,6 +124,45 @@ final class ToastQueueTests: XCTestCase {
         XCTAssertEqual(q.waiting.first?.seconds ?? 0, 3.5, accuracy: 0.1)
         run(q, from: 1.6, to: 6.7)
         XCTAssertEqual(q.current?.text, "Deleted · Undo")
+        // for the time it had left (3.5 s), not a fresh 5 s
+        run(q, from: 6.7, to: 9.9)
+        XCTAssertEqual(q.current?.text, "Deleted · Undo")
+        run(q, from: 9.9, to: 10.5)
+        XCTAssertNil(q.current)
+    }
+
+    /// Every toast that goes without being acted on is reported once; one acted on (dismissCurrent) is not.
+    func testOnGoneReportsEveryExitButActingOnIt() {
+        let q = Q()
+        var gone: [String] = []
+        q.onGone = { gone.append($0.text) }
+        q.post(entry("Page · Undo", key: "page", actionable: true), now: 0)
+        q.post(entry("Page again · Undo", key: "page", actionable: true), now: 0.5)        // replaced
+        XCTAssertEqual(gone, ["Page · Undo"])
+        run(q, from: 0.5, to: 6)                                                           // expired
+        XCTAssertEqual(gone, ["Page · Undo", "Page again · Undo"])
+        q.post(entry("Stale"), now: 6, canShowNow: false)
+        run(q, from: 6, to: 6 + Q.staleReply + 1, canShow: { _ in false })                 // stale
+        XCTAssertEqual(gone.last, "Stale")
+        q.post(entry("Dictation", key: "d"), now: 20)
+        q.drop(key: "d")                                                                   // dropped
+        XCTAssertEqual(gone.last, "Dictation")
+        q.post(entry("Acted · Undo", actionable: true), now: 30)
+        q.dismissCurrent()                                                                 // acted on
+        XCTAssertEqual(gone.last, "Dictation")
+        q.post(entry("Superseded"), now: 40)
+        run(q, from: 40, to: 40.5)
+        q.post(entry("Newer"), now: 40.5)
+        run(q, from: 40.5, to: 41.2)                                                       // pushed out, not coming back
+        XCTAssertEqual(gone.last, "Superseded")
+        XCTAssertEqual(gone.filter { $0 == "Superseded" }.count, 1)
+    }
+
+    /// A click on a toast's body: only a line without a button acts; with a button, it just opens the island.
+    func testBodyClickActsOnlyWithoutAButton() {
+        XCTAssertEqual(Q.bodyClick(hasButton: true, hasAction: true), .open, "an Undo runs only from its button")
+        XCTAssertEqual(Q.bodyClick(hasButton: false, hasAction: true), .act)
+        XCTAssertEqual(Q.bodyClick(hasButton: false, hasAction: false), .open)
     }
 
     func testAQuestionComesBackUntilAnswered() {
@@ -178,6 +249,7 @@ final class ToastQueueTests: XCTestCase {
         q.post(entry("Deleted · Undo", key: "delete", actionable: true), now: 0.1, canShowNow: false)
         run(q, from: 0.1, to: 0.3, canShow: { $0.key == "delete" })
         XCTAssertEqual(q.current?.text, "Deleted · Undo")
+        XCTAssertEqual(q.waiting.map(\.text), ["Filed to Alpha"], "held back, not superseded")
     }
 
     /// The display link idles while nothing shows: a long gap before the next tick is not time on screen.

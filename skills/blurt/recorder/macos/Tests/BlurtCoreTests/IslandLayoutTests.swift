@@ -90,6 +90,20 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertEqual(IslandLayout.livePanelWidth(islandWidth: 297, open: false, screenWidth: 300), 268)
     }
 
+    /// A capsule screen (no notch): the capsule widens while live text shows, so the pair has the notch's
+    /// proportions — the panel 24 pt a side wider than the island, not 2.8 times as wide (the review's 340 under 120).
+    func testOnACapsuleTheIslandWidensToThePanelsFamily() {
+        let island = max(120, IslandLayout.liveCapsuleWidth())
+        let panel = IslandLayout.livePanelWidth(islandWidth: island, open: false, screenWidth: 1440)
+        XCTAssertEqual(panel - island, 48, "the panel is the island plus 24 pt a side, as under the notch")
+        XCTAssertLessThan(panel / island, 1.2)
+        XCTAssertEqual(abs(island - 297), 5, accuracy: 6, "about the notch with its ears")
+        // the corners follow the shape above
+        XCTAssertEqual(IslandLayout.livePanelRadius(open: false, notch: false), 15)
+        XCTAssertEqual(IslandLayout.livePanelRadius(open: false, notch: true), 14)
+        XCTAssertEqual(IslandLayout.livePanelRadius(open: true, notch: false), 22)
+    }
+
     // MARK: cards
 
     func testAnOrdinarySnapKeepsTheClassicCard() {

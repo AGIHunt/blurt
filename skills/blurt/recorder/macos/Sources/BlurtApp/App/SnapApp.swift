@@ -34,6 +34,7 @@
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
+//     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
@@ -229,6 +230,7 @@ extension App {
             guard let t = island.currentToast else { return }
             island.dismissToast()
             if arg == "2" { t.second?() } else { t.action?() }
+        case "islandclick": island.testClickToastLine()   // a click on the toast's line (not its button), as mouseDown sends it
         case "askproject": Housekeeping.askAboutCarriedOverProject()
         case "enrich":                                  // enrich UID,UID…: "AI fill-in" for those items
             enrich(arg.split(separator: ",").map(String.init), project: ProjectStore.shared.currentID)

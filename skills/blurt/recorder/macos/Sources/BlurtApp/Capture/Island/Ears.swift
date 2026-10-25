@@ -1,5 +1,5 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
-// bars when paused), counts with an SF Symbol (the cards' with a mint clasp), the mic level, a voice waveform, the
+// bars when paused), counts with an SF Symbol (the cards' count in mint, the cards' clasp colour), the mic level, a voice waveform, the
 // hatching egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out —
 // Icons/Mascot.swift), an alert marker, "Sent" with the ok check. No implicit animations: a new state replaces the old at once, never
 // drawn over it.
@@ -45,8 +45,9 @@ final class EarSlot {
         case recording(paused: Bool, time: String)
         /// a count with an SF Symbol; `tint` colours both (a quieter count: white at 60 %)
         case count(symbol: String, n: Int, tint: NSColor?)
-        /// the hanging cards waiting (the left ear): the cards glyph with the cards' own mint clasp, so it never reads
-        /// like the inbox's tray beside it
+        /// the hanging cards waiting (the left ear): the plain stack glyph and its count in mint (the cards' clasp
+        /// colour), so it never reads like the inbox's tray count beside it (white at 60 %) — a mint dot on the glyph's
+        /// top edge read as a jar's lid at 11 pt
         case cards(Int)
         case level(Float)
         case wave([Float])
@@ -200,14 +201,7 @@ final class EarSlot {
             text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
         case .cards(let n):
             sym("rectangle.stack.fill", 11, color: NSColor(white: 1, alpha: 0.85))
-            // the clasp: a mint dot ringed in the island's black on the glyph's top edge
-            dot.backgroundColor = BrandColor.Island.fill.cgColor
-            dot.borderColor = NSColor.black.cgColor
-            dot.borderWidth = 1
-            dot.cornerRadius = 2.5
-            dot.frame = CGRect(x: icon.frame.midX - 2.5, y: icon.frame.minY - 2.5, width: 5, height: 5)
-            dot.isHidden = false
-            text(Loc.number(n))
+            text(Loc.number(n), color: BrandColor.Island.fill)
         case .level(let v):
             drawLevel(v)
             x = 22

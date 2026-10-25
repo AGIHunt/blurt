@@ -11,7 +11,10 @@
 //    ends `earInset` from the right edge, under the right ear's number; a line with nothing beside it is centred.
 //  • time left (IslandLayout.timeLeft): rounded up, so the clock and the time left always add up to the limit.
 //  • the live-text panel (IslandLayout.livePanelWidth): the island's lower half, not a second pop-up — as wide as
-//    the island when it is open (a voice note), else a little wider than its ears, in one width family.
+//    the island when it is open (a voice note), else a little wider than its ears, in one width family; the width
+//    is the island's without a toast (one during a take never re-wraps the words). On a capsule (no notch) the
+//    island itself widens to `liveCapsuleWidth` while live text shows, so the pair is the notch's proportions there
+//    too, and the panel's corners are the capsule's (15; under the notch 14, under the open island 22).
 //  • a snap's card (CardShape): 84 pt high, as wide as its picture wants within 84…150 pt; a picture too wide or
 //    too tall for that is shown whole (letterboxed on the card's surface), never as a blown-up slice of its middle.
 import CoreGraphics
@@ -77,11 +80,21 @@ public enum IslandLayout {
     /// The live-text panel's width under an island `islandWidth` wide (its resting width, so the words don't
     /// re-wrap while it springs): the same width when it is open (`open`), else the ears plus 24 pt a side —
     /// never narrower than `minWidth` (a line has to hold a phrase), never wider than the open island.
-    public static func livePanelWidth(islandWidth: CGFloat, open: Bool, minWidth: CGFloat = 340, openWidth: CGFloat = 480,
-                                      screenWidth: CGFloat) -> CGFloat {
+    public static func livePanelWidth(islandWidth: CGFloat, open: Bool, minWidth: CGFloat = livePanelMinWidth,
+                                      openWidth: CGFloat = 480, screenWidth: CGFloat) -> CGFloat {
         let w = open ? islandWidth : min(openWidth, max(minWidth, islandWidth + 48))
         return min(w, screenWidth - 32)
     }
+
+    /// The narrowest the live panel is (a line has to hold a phrase).
+    public static let livePanelMinWidth: CGFloat = 340
+
+    /// The capsule's width while live text hangs under it: the panel's minimum less its 24 pt a side — about the
+    /// notch with its ears (297 pt), so the island and its lower half keep one proportion on every screen.
+    public static func liveCapsuleWidth(panelMin: CGFloat = livePanelMinWidth) -> CGFloat { panelMin - 48 }
+
+    /// The live panel's corner radius: the open island's 22, else the notch's panel 14, the capsule's 15.
+    public static func livePanelRadius(open: Bool, notch: Bool) -> CGFloat { open ? 22 : notch ? 14 : 15 }
 }
 
 public enum CardShape {

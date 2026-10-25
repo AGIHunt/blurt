@@ -28,6 +28,8 @@ private let ink3 = NSColor(white: 1, alpha: 0.38)
 /// Composed of layers (wantsUpdateLayer), never drawn: while the island grows, AppKit draws a drawn view piece by piece
 /// as the clip uncovers it, and the seams of those pieces showed as dark scanlines and stair-step ghosts through the
 /// gradient (dogfood: 排成清单 / Undo / 在访达中显示 for most of the grow animation). Layers are whole at every frame.
+/// The title is a picture of the line drawn with font smoothing (BlurtCore TextImage), not a CATextLayer: a text layer
+/// draws without smoothing, and the semibold title came out ~20 % lighter than the drawn button's.
 final class IslandButton: NSView {
     var action: () -> Void
     var symbol: String { didSet { needsDisplay = true } }
@@ -43,7 +45,7 @@ final class IslandButton: NSView {
     private let film = CALayer()             // hover / pressed
     private let highlight = CALayer()        // the 1 pt inner highlight along the top of a gradient pill
     private let iconLayer = CALayer()
-    private let titleLayer = CATextLayer()
+    private let titleLayer = CALayer()
     private let badgeLayer = CALayer()
 
     init(symbol: String, title: String? = nil, tip: String, fill: NSColor? = nil, gradient: [(UInt32, CGFloat)]? = nil,
@@ -162,10 +164,14 @@ final class IslandButton: NSView {
             var name = t
             while !name.isEmpty && ((name + (name == t ? "" : "…")) as NSString).size(withAttributes: attrs).width > room { name.removeLast() }
             let shown = name == t ? t : name + "…"
-            let sz = (shown as NSString).size(withAttributes: attrs)
-            HangingCards.setText(titleLayer, shown, font: IslandButton.titleFont, color: fg)
-            titleLayer.contentsScale = scale
-            titleLayer.frame = CGRect(x: tx, y: ((b.height - ceil(sz.height)) / 2).rounded(), width: ceil(sz.width) + 1, height: ceil(sz.height))
+            // the line as AppKit draws it (smoothed: its full weight), measured from the picture itself so it centres
+            if let line = TextImage.line(shown, font: IslandButton.titleFont, color: fg.cgColor, scale: scale) {
+                titleLayer.contents = line.image
+                titleLayer.contentsScale = scale
+                titleLayer.frame = CGRect(x: tx, y: ((b.height - line.size.height) / 2).rounded(), width: line.size.width, height: line.size.height)
+            } else {
+                titleLayer.contents = nil
+            }
         }
         CATransaction.commit()
     }

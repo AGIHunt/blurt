@@ -21,7 +21,8 @@
 // Each ear's content sits against the island's outer edge (BlurtCore IslandLayout.earOrigin), never centred in its ear.
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
 // Toasts: BlurtCore ToastQueue — the newest reply first, replaced by key, passive lines (launch, jobs) behind replies,
-// stale ones dropped, ≥ 5 s and held while the pointer is on one (hovering a toast doesn't open the island under it).
+// stale ones dropped, ≥ 5 s and held while the pointer is on one (hovering a toast doesn't open the island under it;
+// a click on its line does, and only its button runs its action — ToastQueue.bodyClick).
 // Right-click (on the count, anywhere on it): Show N Hanging Cards · Recently Taken (N) — the cards dragged out into
 // other apps in the last 7 days, each with Copy / Copy Image / Copy Note / Put Back (TakenPanel.swift).
 //
@@ -130,6 +131,10 @@ final class Island: NSObject, IslandHosting {
     private let toastQ: ToastQueue<Toast> = {
         let q = ToastQueue<Toast>()
         q.floorSeconds = Double(ProcessInfo.processInfo.environment["BLURT_TOAST_MIN_SECONDS"] ?? "") ?? 0   // tests: time to screenshot
+        q.onGone = { e in
+            emit(["event": "island_toast_gone", "text": e.text])
+            e.payload.gone?()
+        }
         return q
     }()
     private var toastNow: Toast? { toastQ.current?.payload }
@@ -160,6 +165,9 @@ final class Island: NSObject, IslandHosting {
         /// Not a reply to what the user just did (a launch message, a job that finished, a reminder): it waits behind
         /// every reply instead of taking the slot (ToastQueue).
         var passive = false
+        /// It went without being acted on (expired, replaced, superseded, stale, dropped — ToastQueue.onGone): the
+        /// main window's page toast answers its page "gone" here, so the page never waits on an Undo that's gone.
+        var gone: (() -> Void)?
         /// A question: the text wraps, two answers under it, and it stays until one is chosen (also over the open
         /// island). `action` is the first answer.
         var secondTitle: String?
@@ -372,20 +380,24 @@ final class Island: NSObject, IslandHosting {
         return (cardCount > 0, !hatches.isEmpty || reviewCount > 0 || agentAlert != nil)
     }
 
-    /// The shape's target: (width, height, corner radius).
-    private func target() -> (w: CGFloat, h: CGFloat, r: CGFloat) {
+    /// The shape's target: (width, height, corner radius). `toast`: false — what it would be without the toast
+    /// showing (the live-text panel's width goes by that).
+    private func target(toast: Bool = true) -> (w: CGFloat, h: CGFloat, r: CGFloat) {
         let e = earsWanted
         let anyEar = e.left || e.right
         if open || drawer != nil {
             return (content.preferredWidth, min(Island.maxH, content.fittingHeight), 22)
         }
-        if toastNow != nil {
+        if toast, toastNow != nil {
             return (min(Island.openW, max(toastFloor, content.toastWidth)), content.fittingHeight, 20)
         }
         if geo.notch {
             return (geo.notchW + (anyEar ? 2 * Island.earW : 0), geo.notchH, 10)
         }
-        let cw = max(120, (e.left ? left.width + 24 : 0) + (e.right ? right.width + 24 : 0) + (anyEar ? 8 : 0))
+        var cw = max(120, (e.left ? left.width + 24 : 0) + (e.right ? right.width + 24 : 0) + (anyEar ? 8 : 0))
+        // live text hangs under it: the capsule takes the panel's width family (as the notch with its ears does), so
+        // the two read as one shape, not a 340 pt panel under a 120 pt pill
+        if anyEar, LiveTranscript.shared.shown { cw = max(cw, IslandLayout.liveCapsuleWidth()) }
         return (anyEar || revealed ? max(cw, revealed && !anyEar ? 150 : 0) : 120, 30, 15)
     }
 
@@ -393,9 +405,12 @@ final class Island: NSObject, IslandHosting {
     /// content spans all of it (IslandLayout.toast), so the text lines up with the island's edges.
     var toastFloor: CGFloat { IslandLayout.toastFloor(notchWidth: geo.notch ? geo.notchW : nil) }
 
-    /// The width the island is settling to (not the spring's value now): the live-text panel follows it without
-    /// re-wrapping its words while the shape springs.
-    var restingWidth: CGFloat { target().w }
+    /// The width the island is settling to (not the spring's value now), as it is without a toast: the live-text
+    /// panel goes by it, so its words don't re-wrap while the shape springs — nor when a toast (⇧'s style, "nothing
+    /// heard") grows the island for a few seconds during a take.
+    var restingWidth: CGFloat { target(toast: false).w }
+    /// The island has a notch (its live panel's corners follow: 14 under the notch, 15 under the capsule).
+    var onNotch: Bool { geo.notch }
 
     private var capsuleVisible: Bool {
         geo.notch || open || drawer != nil || toastNow != nil || revealed || earsWanted.left || earsWanted.right
@@ -697,9 +712,17 @@ final class Island: NSObject, IslandHosting {
         }
         // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
         if earHit(p) { hanging.reveal(via: "ear"); return }
-        // a click on the collapsed island opens it right away
+        // a toast's body: a line without a button (a peck's "open the item") is its own button; one with a button acts
+        // only through it — a click meant to open the island never runs an Undo, forgets a word or undoes a page step
+        if let t = toastNow, let a = t.action,
+           ToastQueue<Toast>.bodyClick(hasButton: t.actionTitle != nil, hasAction: true) == .act {
+            a()
+            toastQ.dismissCurrent()
+            refresh()
+            return
+        }
+        // a click on the collapsed island (or on a toast's line) opens it right away; the toast is held meanwhile
         if !open && drawer == nil { setOpen(true) }
-        if let t = toastNow, let a = t.action { toastQ.dismissCurrent(); a(); refresh() }
     }
 
     // MARK: drawer: switcher (⌥⇧O) and drop targets (a card dragged in)
@@ -881,6 +904,11 @@ final class Island: NSObject, IslandHosting {
         }
     }
     var currentToast: Toast? { toastNow }
+    /// Tests: what a click on the toast's line does — its leading edge, away from any button.
+    func testClickToastLine() {
+        clicked(at: NSPoint(x: geo.cx - w.value / 2 + 24, y: geo.top + h.value - 23))
+        emit(["event": "island_clicked", "open": open, "toast": toastNow?.text ?? NSNull()])
+    }
     /// The toasts waiting, in the order they'd go up (tests).
     var waitingToasts: [String] { toastQ.waiting.map(\.text) }
     /// A toast with this key is showing or waiting to.

@@ -153,4 +153,8 @@
       bars when paused, the pen while latched, markers counted apart, the discard question naming the stills; the
       live-text panel in the island's black and width family; snap cards shaped by their picture (`CardShape`), the
       mic mark leading the caption, a clean "+N" count tile; the desktop app's page toasts on the island (host
-      method `toast`).
+      method `toast`). Follow-ups from the review: older plain replies superseded by a newer one (never shown after
+      it), a pushed-out Undo back for its real remaining time, `onGone` answering a page toast "gone"; a click on a
+      toast's line opens the island, only its button acts; the live panel's width ignoring toasts and, without a
+      notch, the overlay widening to the panel's family; "Couldn't transcribe" in amber with the mic mark kept; ⇧'s
+      style line only the first two times; the cards count in mint on the plain stack glyph.

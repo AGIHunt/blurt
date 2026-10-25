@@ -354,11 +354,17 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             let done = ["check", "copy"].contains(p["icon"] as? String ?? "")
             guard !text.isEmpty else { return reply("shown", nil) }
             guard island.started else { appDelegate?.toast(text, icon: done ? .check : nil); return reply("shown", nil) }
+            // the page waits for the answer: "undo" from the button, "gone" the moment the island lets the toast go
+            // (replaced, superseded, expired after a hover hold, stale) — never a click on an Undo the page gave up on
             var answered = false
-            island.toast(text, key: "main.page", icon: done ? .check : nil,
-                         actionTitle: undo ? Loc.t("capture.undo", table: "Capture") : nil,
-                         action: undo ? { if !answered { answered = true; reply("undo", nil) } } : nil)
-            if !undo { reply("shown", nil) }
+            func answer(_ r: String) { if !answered { answered = true; reply(r, nil) } }
+            var t = Island.Toast(text: text, actionTitle: undo ? Loc.t("capture.undo", table: "Capture") : nil,
+                                 action: undo ? { answer("undo") } : nil)
+            t.key = "main.page"
+            t.icon = done ? .check : nil
+            t.gone = { answer("gone") }
+            island.toast(t)
+            if !undo { answer("shown") }
         case "confirmed":
             actions?.webWrote()
             if case .session(let u)? = scope(p) { ReviewHandoff.confirmed(session: u) }

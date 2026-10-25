@@ -107,14 +107,14 @@ extension App {
             switch a.first ?? "status" {
             case "toggle": d.toggleStyle(via: a.count > 1 && a[1] == "island" ? .island : .shift)
             case "reformat": d.reformatLast(via: "test")
-            case "chip": d.reformat(to: .structured, action: "reformat", via: "chip")
-            case "undo": if let lp = d.lastPaste { d.reformat(to: lp.original, action: "undo", via: "test") }
+            case "chip": if let lp = d.lastPaste { d.reformat(lp, to: .structured, action: "reformat", via: "chip") }
+            case "undo": if let lp = d.lastPaste { d.reformat(lp, to: lp.original, action: "undo", via: "test") }
             case "set" where a.count > 2:
                 var c = Dictation.styleConfig
                 let st = DictationStyle(rawValue: a[2])
                 if let cat = DictationAppCategory(rawValue: a[1]) { c.categories[cat] = st } else { c.apps[a[1]] = st }
                 Dictation.setStyleConfig(c)
-            case "reset": Dictation.set("styles", nil); Dictation.set("style_asked", nil)
+            case "reset": Dictation.set("styles", nil); Dictation.set("style_asked", nil); Dictation.set("style_hint_shown", nil)
             case "app": d.testStyleBundle = a.count > 1 && a[1] != "-" ? a[1] : nil
             case "suggest" where a.count > 1: d.checkStyleSuggestion(bundle: a[1])
             case "answer":
