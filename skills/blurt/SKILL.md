@@ -240,7 +240,8 @@ claim back). `--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set b
 `work` with `patch`, and never edit item files yourself.
 A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Started
 from Claude desktop with the items in the prompt itself, your reports (steps 2 and 4) are the only progress the user
-sees — make both.
+sees — make both. Don't run `sessions.py continue-desktop` unless the user asked; without the blurt MCP installed for
+Claude it refuses (`desktop_no_mcp`), and `--without-mcp` is only for when the user agreed to mark the items by hand.
 
 ## 8. Across recordings: index and MCP
 

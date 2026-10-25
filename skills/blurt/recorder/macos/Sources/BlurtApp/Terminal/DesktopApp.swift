@@ -5,6 +5,7 @@
 // presses Send. Under BLURT_TEST_COMMANDS nothing is opened at all — the link is checked and reported on stdout
 // (event desktop_open), so test runs never reach the user's real Claude.
 import AppKit
+import SwiftUI
 import BlurtCore
 
 enum DesktopApp {
@@ -26,8 +27,11 @@ enum DesktopApp {
         HandoffTarget.resolve(Config.shared[HandoffTarget.configKey], agent: agent, available: available(agent))
     }
     static func remember(_ agent: String, _ t: HandoffTarget) {
+        guard target(agent) != t else { return }
         Config.shared.set(HandoffTarget.configKey, HandoffTarget.store(Config.shared[HandoffTarget.configKey], agent: agent, target: t))
+        NotificationCenter.default.post(name: targetChanged, object: agent)  // an open hand-off sheet follows Settings
     }
+    static let targetChanged = Notification.Name("BlurtHandoffTargetChanged")
 
     /// A hand-off's link (sessions.py dispatch --runner desktop): only the app's own scheme (DesktopLink).
     static func open(_ url: URL, job: String) {
@@ -76,5 +80,29 @@ enum DesktopApp {
             }
         }
         return cur?.check
+    }
+
+    /// Ask again next time (the blurt MCP was just installed: the confirmation no longer warns).
+    @MainActor static func forgetCheck(_ agent: String) { checks[agent] = nil }
+}
+
+/// The blurt MCP installer for `agent` (Settings → Agents: AgentsModel preview, then apply), shown from Continue in
+/// Claude Desktop's confirmation. `close` once it is done, cancelled or failed.
+struct MCPInstallHost: View {
+    @ObservedObject var m = AgentsModel.shared
+    let agent: String
+    let close: () -> Void
+    @State private var shown = false
+
+    var body: some View {
+        Group {
+            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
+            else { ProgressView().controlSize(.small).padding(40) }
+        }
+        .task {
+            await m.preview(CoreAgent(id: agent, name: AgentNames.name(agent), installed: true, state: "ready"))
+            if m.plan == nil { close() } else { shown = true }
+        }
+        .onChange(of: m.plan == nil) { gone in if gone && shown { close() } }
     }
 }

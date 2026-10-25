@@ -5,7 +5,8 @@
 // In the main window (pane "main") the item list already picks the session, so the sessions list starts hidden
 // (the header's sidebar button shows it). A session that ends shows its ended card (SessionsViews), not the dead
 // window; Show Output attaches to what the agent left on screen. A session in the agent's desktop app has no terminal:
-// its card says so (Go to Claude, Review Changes…); Continue in Claude Desktop moves a terminal session there.
+// its card says so (Go to Claude, Review Changes…); Continue in Claude Desktop moves a terminal session there, asking
+// first — and, without the blurt MCP installed for Claude, saying the items then need marking by hand, with Install….
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -186,25 +187,46 @@ extension SessionsPaneController: SessionActions {
     }
 
     /// Continue in Claude Desktop: say first what changes (the terminal here closes, live status stops, progress comes
-    /// from the agent), then move it.
+    /// from the agent), then move it. Without the blurt MCP installed for the app (the terminal session may have had it
+    /// through --mcp-config, which the app doesn't get) nothing would report from there: the confirmation says the
+    /// items then need marking by hand, and offers Install (the Settings → Agents installer, previewed first).
     func continueDesktop(_ job: String) {
         guard let a = JobStore.shared.job(job)?.agent, let w = view.window else { return }
         let app = DesktopApp.name(a.agent)
+        let noMCP = DesktopApp.continueCheck(a.agent) {}?.mcp == false
         let alert = NSAlert()
         alert.messageText = TL("continue_desktop.title", app)
-        alert.informativeText = TL("continue_desktop.body", app)
+        alert.informativeText = TL(noMCP ? "continue_desktop.body_nomcp" : "continue_desktop.body", app)
         alert.addButton(withTitle: TL("continue_desktop.confirm"))
+        if noMCP { alert.addButton(withTitle: TL("dispatch.desktop.install")) }
         alert.addButton(withTitle: TL("common.cancel"))
+        emit(["event": "continue_desktop_confirm", "job": job, "no_mcp": noMCP])
         alert.beginSheetModal(for: w) { r in
-            guard r == .alertFirstButtonReturn else { return }
-            self.performContinueDesktop(job) { err in if let e = err { self.presentError(e) } }
+            switch r {
+            case .alertFirstButtonReturn:
+                self.performContinueDesktop(job, withoutMCP: noMCP) { err in if let e = err { self.presentError(e) } }
+            case .alertSecondButtonReturn where noMCP:
+                self.installMCP(a.agent)
+            default: break
+            }
         }
     }
 
-    func performContinueDesktop(_ job: String, done: @escaping (String?) -> Void) {
+    /// The existing installer (AgentsModel: preview, then apply), as a sheet here; afterwards Continue asks again.
+    func installMCP(_ agent: String) {
+        guard let w = view.window else { return }
+        let host = NSHostingController(rootView: AnyView(EmptyView()))
+        host.rootView = AnyView(MCPInstallHost(agent: agent) { [weak host] in
+            DesktopApp.forgetCheck(agent)
+            if let h = host { self.dismiss(h) }
+        })
+        presentAsSheet(host)
+    }
+
+    func performContinueDesktop(_ job: String, withoutMCP: Bool = false, done: @escaping (String?) -> Void) {
         Task { @MainActor in
             do {
-                try await AgentSessions.shared.continueInDesktop(job: job)
+                try await AgentSessions.shared.continueInDesktop(job: job, withoutMCP: withoutMCP)
                 emit(["event": "session_continue_desktop", "job": job])
                 JobStore.shared.rescan()
                 done(nil)

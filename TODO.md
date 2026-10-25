@@ -162,8 +162,10 @@
       `DesktopLink`) — never under the test channel; the one line "confirm the folder and press Send"; the no-MCP
       callout with Install…; the banner *In Claude desktop · progress comes from the agent* + Go to Claude
       (`SessionBannerPlan` with `desktop:`); the session pane's desktop card instead of a terminal; *Continue in Claude
-      Desktop…* only when `sessions.py desktop-check` says available (`DesktopContinue.offered`), asking first.
-      `claude --desktop` itself: check on Windows that it opens the desktop app as on the Mac.
+      Desktop…* only when `sessions.py desktop-check` says available (`DesktopContinue.offered`), asking first —
+      with its `mcp: false` the question says items need marking by hand and offers Install…, and Continue passes
+      `--without-mcp`; a desktop session's still status mark (no spinner, not in the running count) and the card's
+      no-MCP wording (`agent.desktop.mcp`). `claude --desktop` itself: check on Windows that it opens the desktop app as on the Mac.
 - [ ] Organising runs: start the agent in its own process group / job object (Mac: BlurtCore `ProcessGroup`), record
       `agent_pgid` and its leader's start time (`agent_pgid_start`), stop it on quit (ask first — not on logout /
       shutdown) and stop a leftover one at launch only while it is still that group (`ProcessGroup.isOurs`; a reused

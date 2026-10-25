@@ -283,7 +283,11 @@
 "continue_desktop.title" = "在 %@ 桌面端继续？";
 "continue_desktop.body" = "Agent 会在口喷鸡终端里停下，同一个对话在 %@ 里打开。之后口喷鸡看不到它的实时状态，进度由 Agent 回报。";
 "continue_desktop.confirm" = "继续";
-"overlay.desktop.title" = "在 %@ 桌面端进行";
+"continue_desktop.body_nomcp" = "Agent 会在口喷鸡终端里停下，同一个对话在 %@ 里打开。那里没装 blurt MCP，Agent 没法回报进度：做完后要你自己标记条目，或者先装上。";
+"overlay.desktop.body_nomcp" = "口喷鸡看不到这个对话的实时状态，%@ 也没装 blurt MCP，Agent 没法回报进度。做完后自己标记条目。";
+"mark.elsewhere" = "在桌面端";
+"error.desktop_no_mcp" = "桌面端没装 blurt MCP，那里不会有任何进度回报。";
+"overlay.desktop.title" = "在 %@ 里进行中";
 "overlay.desktop.body" = "口喷鸡看不到这个对话的实时状态。进度由 Agent 回报：它报告了，条目才会更新。";
 "overlay.desktop.body_continued" = "这个会话从口喷鸡终端移到了这里。口喷鸡看不到它的实时状态，进度由 Agent 回报。";
 "row.desktop" = "在 %@ 桌面端";
@@ -295,7 +299,7 @@
 "error.desktop_login" = "需要用 Claude 订阅账号登录 Claude Code。";
 "error.desktop_unsupported" = "这个 Agent 不能在桌面端继续。";
 "error.desktop_not_installed" = "没有安装 Claude Code。";
-"error.desktop_failed" = "桌面端没有接过这个对话。重新开始会话就能在这里继续。";
+"error.desktop_failed" = "桌面端没有接过这个对话，这里的 Agent 也已经停下。“重新开始会话”会在口喷鸡终端里为这些条目开一个新会话。";
 "error.no_session_id" = "Agent 还没报告这是哪个对话，稍后再试。";
 "error.bad_runner" = "只有在口喷鸡终端里运行的会话才能这样做。";
 "dispatch.start.desktop" = "在 %@ 里打开";

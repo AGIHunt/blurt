@@ -74,6 +74,7 @@ enum TerminalSelfTests {
             switch words[1] {
             case "yes": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: true, reason: nil, version: "test")
             case "no": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: false, reason: "version", version: "test")
+            case "nomcp": DesktopApp.checkOverride[words[0]] = DesktopContinueCheck(available: true, reason: nil, version: "test", mcp: false)
             default: DesktopApp.checkOverride[words[0]] = nil
             }
             SessionsModel.shared.objectWillChange.send()
@@ -81,6 +82,13 @@ enum TerminalSelfTests {
         case "continue-desktop":
             guard let p = pane(1) else { out(["error": "no pane"]); return }
             p.performContinueDesktop(arg) { err in out(["job": arg, "error": err ?? NSNull()]) }
+        case "continue-desktop-ask":    // the ⋯ menu's Continue in Claude Desktop…: its confirmation, on screen
+            guard let p = pane(1) else { out(["error": "no pane"]); return }
+            p.continueDesktop(arg)
+            out(["job": arg])
+        case "continue-desktop-nomcp":  // what that confirmation's Continue does when the blurt MCP isn't installed
+            guard let p = pane(1) else { out(["error": "no pane"]); return }
+            p.performContinueDesktop(arg, withoutMCP: true) { err in out(["job": arg, "error": err ?? NSNull()]) }
         case "dispatch-start":
             guard let c = DispatchPanel.current else { out(["error": "no panel"]); return }
             c.start()

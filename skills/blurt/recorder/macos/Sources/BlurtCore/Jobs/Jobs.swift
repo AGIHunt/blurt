@@ -69,9 +69,14 @@ public struct AgentInfo {
     public var agentSessionID: String? = nil
     /// Moved here from another runner ("tmux": Continue in Claude Desktop).
     public var continuedFrom: String? = nil
+    /// A desktop job: is the blurt MCP installed for that app (agent.desktop.mcp)? false = nothing reports from there,
+    /// the user marks its items by hand. nil = not known.
+    public var desktopMCP: Bool? = nil
 
     /// It runs in the agent's desktop app: no terminal and no live status; only the agent's own reports move its items.
     public var isDesktop: Bool { runner == "desktop" }
+    /// The desktop job's card says to mark its items by hand (the blurt MCP isn't installed there).
+    public var desktopNeedsMarking: Bool { isDesktop && desktopMCP == false }
 
     /// sessions.py's watchdog gave up on it: no hook and nothing new in its window for a minute since it started
     /// (a screen nothing recognises). It reads "No response" and offers Restart Session beside Open Session.
@@ -99,6 +104,10 @@ public struct Job: Identifiable {
     public let updated: Date?
 
     public var isActive: Bool { state == .queued || state == .running }
+    /// An agent session going on in the agent's desktop app: nothing runs here (no spinner, not counted as running).
+    public var inDesktop: Bool { isActive && agent?.isDesktop == true }
+    /// The sessions running here, for the list's "2 running": desktop ones go on elsewhere.
+    public static func runningHere(_ jobs: [Job]) -> Int { jobs.filter { $0.isActive && !$0.inDesktop }.count }
     /// The user put this failure away: it no longer waits in the jobs section.
     public var dismissed: Bool { raw["dismissed"] as? Bool ?? false }
     /// The step in progress, else the next one to run.
@@ -238,7 +247,8 @@ public enum JobFold {
                 changes: (a["changes"] as? [String: Any]).map { (($0["ahead"] as? NSNumber)?.intValue ?? 0, ($0["dirty"] as? NSNumber)?.intValue ?? 0) },
                 started: a["started"] as? Bool ?? false, model: a["model"] as? String,
                 title: a["title"] as? String, agentSessionID: a["agent_session_id"] as? String,
-                continuedFrom: (a["continued"] as? [String: Any])?["from"] as? String)
+                continuedFrom: (a["continued"] as? [String: Any])?["from"] as? String,
+                desktopMCP: (a["desktop"] as? [String: Any])?["mcp"] as? Bool)
         }
         return Job(id: id, type: type, state: JobState(rawValue: o["state"] as? String ?? "") ?? .queued,
                    project: o["project"] as? String, session: (o["session"] as? String).map { URL(fileURLWithPath: $0) },

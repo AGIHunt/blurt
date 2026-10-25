@@ -69,7 +69,7 @@ struct SessionsList: View {
                 .buttonStyle(.borderless)
                 .help(TL("list.new.help"))
                 Spacer()
-                let live = model.alive.count
+                let live = Job.runningHere(model.alive.map(\.job))  // a desktop one runs elsewhere
                 if live > 0 {
                     Text(Loc.plural("list.live", table: "Terminal", count: live)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -88,7 +88,7 @@ struct AgentSessionRowView: View {
         let outcome = row.outcome
         let needsYou: Bool = { if case .failed = outcome { return true }; return row.status == .waitingInput }()
         HStack(alignment: .top, spacing: 9) {
-            SessionStatusMark(status: row.status).padding(.top, 4)
+            SessionStatusMark(status: row.status, elsewhere: row.inDesktop).padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.label).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
@@ -133,7 +133,7 @@ struct SessionHeader: View {
                     .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
                     .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
                 if let r = pane.job.flatMap({ model.row($0) }) {
-                    SessionStatusMark(status: r.status, size: 11)
+                    SessionStatusMark(status: r.status, size: 11, elsewhere: r.inDesktop)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
                             Text(r.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -141,8 +141,11 @@ struct SessionHeader: View {
                         }
                         HStack(spacing: 5) {
                             // the user's own decision (merged, restarted…) is past news: no status colour
-                            Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
-                            Text("·").foregroundStyle(.tertiary)
+                            // a desktop session's card says where it is: not again here
+                            if !r.inDesktop {
+                                Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
+                                Text("·").foregroundStyle(.tertiary)
+                            }
                             Text(r.agentName)
                             if r.agent.finishAction == nil, let b = r.agent.branch {
                                 Text("·").foregroundStyle(.tertiary)
@@ -322,7 +325,7 @@ struct SessionOverlay: View {
     @ViewBuilder
     func endedSummary(_ r: AgentSessionRow) -> some View {
         let outcome = r.outcome
-        SessionStatusMark(status: r.status, size: 14)
+        SessionStatusMark(status: r.status, size: 14, elsewhere: r.inDesktop)
         Text(Self.endedTitle(r)).font(.headline).multilineTextAlignment(.center)
         if case .failed = outcome, let why = JobLook.errorText(r.job), !r.agent.lastOutput.contains(why) {
             Text(why).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
@@ -376,7 +379,9 @@ struct SessionOverlay: View {
         let app = DesktopApp.name(r.agent.agent)
         Image(systemName: "macwindow").font(.system(size: 22, weight: .light)).foregroundStyle(Color.brandInk)
         Text(TL("overlay.desktop.title", app)).font(.headline)
-        Text(TL(r.agent.continuedFrom != nil ? "overlay.desktop.body_continued" : "overlay.desktop.body", app))
+        // without the blurt MCP there nothing reports: the user marks the items (the same words as the hand-off sheet)
+        Text(TL(r.agent.desktopNeedsMarking ? "overlay.desktop.body_nomcp"
+                : r.agent.continuedFrom != nil ? "overlay.desktop.body_continued" : "overlay.desktop.body", app))
             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
             .fixedSize(horizontal: false, vertical: true)
         if !r.items.isEmpty {

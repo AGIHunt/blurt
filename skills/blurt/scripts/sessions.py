@@ -16,11 +16,15 @@ or in the agent's desktop app (Claude: --runner desktop).
                        for the app to open — nothing is started here; the job's items move only when the agent
                        reports (blurt MCP), and it ends once none is still with it. Its dry run says "mcp": whether
                        the blurt MCP is installed for the agent (false = items need marking by hand)
-  sessions.py continue-desktop JOB          a running terminal session moves to the desktop app: its agent ends in
+  sessions.py continue-desktop JOB [--without-mcp]
+                                             a running terminal session moves to the desktop app: its agent ends in
                                              the window, then `claude --desktop --resume <session id>`; the job
                                              becomes a desktop one. Codes desktop_version / desktop_login /
-                                             desktop_unsupported when desktop-check says no
-  sessions.py desktop-check [--agent claude] → {"available", "reason", "version"}: may sessions continue there
+                                             desktop_unsupported when desktop-check says no; desktop_no_mcp when
+                                             the blurt MCP isn't installed for it (nothing would report progress)
+                                             unless --without-mcp; desktop_failed when the app didn't take it (the
+                                             job then fails as a terminal session: Restart starts one here)
+  sessions.py desktop-check [--agent claude] → {"available", "reason", "version", "mcp"}: may sessions continue there
                                              (CLI version ≥ interactive.desktop.continue.min_version, logged in
                                              with a subscription — probes only)
   sessions.py name-thread --job J --thread T the hooks start this once a session's thread id is known: the thread
@@ -707,11 +711,16 @@ def desktop_check(agent: str) -> dict:
     return {"ok": True, "agent": agent, **agents.desktop_continue_check(agent)}
 
 
-def continue_desktop(job_id: str) -> dict:
+def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
     """Move a running terminal session to the agent's desktop app (interactive.desktop.continue: claude --desktop
     --resume <session id>): end the agent in its window, then open the same conversation there. From then on the job
     is a desktop one (runner "desktop"): no live status, its items move only when the agent reports, and the window's
-    last hooks are ignored. Only where desktop_continue_check says it is available."""
+    last hooks are ignored. Only where desktop_continue_check says it is available.
+    The desktop app has only the MCP servers the user installed (a terminal session may have had blurt's through
+    --mcp-config): without it nothing reports progress there, so it is refused (code desktop_no_mcp) unless
+    without_mcp — the user was told the items then need marking by hand. agent.desktop.mcp records which it was.
+    When the app doesn't take the conversation over, the window is already gone: the job fails as a terminal one
+    (runner back to "tmux", agent.continued.failed), so Restart starts a new session in Blurt's terminal."""
     import agents
     job = _job(job_id)
     a = job.get("agent") or {}
@@ -732,13 +741,17 @@ def continue_desktop(job_id: str) -> dict:
     if not chk["available"]:
         raise SessionError(f"desktop_{chk['reason']}", f"can't continue in the desktop app ({chk['reason']})",
                            version=chk.get("version"))
+    if chk.get("mcp") is False and not without_mcp:
+        raise SessionError("desktop_no_mcp", "the blurt MCP isn't installed for the desktop app, so nothing would "
+                           "report progress there (pass --without-mcp to go on, and mark the items by hand)")
     bin_ = agents.find_bin(defn, agents.clean_env())
     now = jobs.now_iso()
 
     def moved(j):  # first: the hooks of the agent about to end must not end the job
         ag = j.setdefault("agent", {})
         ag.update(runner="desktop", status="running", status_at=now, status_source="desktop",
-                  continued={"from": "tmux", "at": now, "tmux": ag.get("tmux")}, items_handed=True)
+                  continued={"from": "tmux", "at": now, "tmux": ag.get("tmux")}, items_handed=True,
+                  desktop={**(ag.get("desktop") or {}), "mcp": chk.get("mcp")})
     jobs.update(job_id, moved)
     tmux("send-keys", "-t", w["pane"], "C-c", check=False)
     time.sleep(0.4)
@@ -770,7 +783,9 @@ def continue_desktop(job_id: str) -> dict:
     def done(j):
         ag = j.setdefault("agent", {})
         ag["tmux"] = None  # the window is gone: nothing to attach to or show
-        if err:
+        if err:  # a terminal session again, ended: Restart starts a new one here, not another desktop link
+            ag["runner"] = "tmux"
+            ag["continued"] = {**(ag.get("continued") or {}), "failed": err}
             _set_status(j, "error", "desktop")
             j["error"] = {"code": "agent_exit", "message": err, "hint_key": None, "detail": None}
     jobs.update(job_id, done)
@@ -1007,7 +1022,10 @@ def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
                 # from it but the agent itself (the blurt MCP): no hooks, no window, no live status
                 dp = agents.desktop_prompt(pr, desktop, e["cwd"])
                 jobs.path(jid, ".prompt.md").write_text(dp["prompt"] + "\n", encoding="utf-8")
-                agent_obj.update(status_source="desktop", desktop={"inline": dp["inline"], "url_chars": len(dp["url"])})
+                if mcp is None:  # without it nothing reports from there: the card says to mark the items by hand
+                    mcp = agents.mcp_installed(defn)
+                agent_obj.update(status_source="desktop", desktop={"inline": dp["inline"], "url_chars": len(dp["url"]),
+                                                                   "mcp": mcp})
                 e["_desktop"] = dp
                 cmd = None
             else:
@@ -1488,7 +1506,9 @@ def _restart(job_id: str, lang: str | None) -> dict:
         project = handoff.project(job.get("project")) if job.get("project") else None
     except handoff.CliError:
         project = None
-    if a.get("id") and project:  # still logged out: say so now, while the old session is still there to look at
+    # still logged out: say so now, while the old session is still there to look at (not for the desktop app, which
+    # signs in on its own — as dispatch)
+    if a.get("id") and project and a.get("runner") != "desktop":
         login_gate(a["id"], project, lang)
     try:
         _take_back(job_id, again)
@@ -1615,6 +1635,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--agent", default="claude")
     s = sub.add_parser("continue-desktop")
     s.add_argument("job")
+    s.add_argument("--without-mcp", action="store_true", help="go on without the blurt MCP (items marked by hand)")
     sub.add_parser("doctor")
     a = p.parse_args(argv)
     try:
@@ -1644,7 +1665,7 @@ def main(argv: list[str] | None = None) -> None:
         elif a.cmd == "desktop-check":
             emit(desktop_check(a.agent))
         elif a.cmd == "continue-desktop":
-            emit(continue_desktop(a.job))
+            emit(continue_desktop(a.job, a.without_mcp))
         elif a.cmd == "doctor":
             emit(doctor())
     except SessionError as e:

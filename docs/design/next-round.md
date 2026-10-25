@@ -890,10 +890,19 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
   `claude --version` ≥ `interactive.desktop.continue.min_version`（2.1.285），且 `claude auth status --json` 说用订阅登录
   （`subscriptionType` 非空，或 `authMethod` 是 claude.ai / oauth）；只做这两个探测，查不清就不显示（结果在应用里留 10 分钟）。
   确认后 `sessions.py continue-desktop JOB`：先把任务改成 desktop（结束中的进程再发的 hook 一律忽略），给窗口发两次 C-c、最多等 4 秒、
-  关窗口，再在会话目录里跑 `claude --desktop --resume <agent_session_id>`（8 秒内非 0 退出 = 失败：任务 error，可以重新开始）。
+  关窗口，再在会话目录里跑 `claude --desktop --resume <agent_session_id>`。8 秒内非 0 退出 = 失败：窗口已经关了，任务按终端会话
+  失败（`runner` 改回 `tmux`，`agent.continued.failed` 记原因），「重新开始会话」在口喷鸡终端里开新会话（不是再开一个桌面端链接）。
   之后同上：实时状态停止，进度由 Agent 回报；`agent.continued = {from: "tmux", at, tmux}`，`agent.tmux = null`。
+  blurt MCP：终端会话可能是靠 `--mcp-config` 临时带上的，`--desktop --resume` 不会带过去。所以 desktop-check 也回 `mcp`
+  （`mcp_installed`）；false 时确认框换成「那里没装 blurt MCP，Agent 没法回报进度：做完后要你自己标记条目，或者先装上」，多一个
+  「安装…」（同一个安装器，先预览，装完重新检查）；`continue-desktop` 没有 `--without-mcp` 就拒绝（`desktop_no_mcp`）。任务记
+  `agent.desktop.mcp`（交给桌面端时也记），false 时卡片说「做完后自己标记条目」。
+  桌面端任务在会话列表、标题和结束卡片里用静止的圆环加点（不是转圈），也不算进列表底部的「N 个运行中」；会话标题下不再重复
+  「在 Claude 桌面端」，卡片标题是「在 Claude 里进行中」。设置 → Agent 改了「交给 Claude Code 时」，开着的交给 Agent 面板跟着变。
+  桌面端任务的「重新开始会话」不查 CLI 登录（和 dispatch 一样，桌面端自己登录）。
+  桌面端提示词不再重复交接单里的提交规则和 mark_fixed 那一行（只在开头说一次，带上开始时的 fixing），给链接省字符。
   错误码：`desktop_version` / `desktop_login` / `desktop_unsupported` / `desktop_not_installed`、`no_session_id`、`bad_runner`、
-  `desktop_failed`、`no_desktop`。
+  `desktop_failed`、`desktop_no_mcp`、`no_desktop`。
 - 测试：`BLURT_TEST_PROMPT_PREFIX`（只给真实 agent 的测试运行）加在提示词最前面；`BLURT_TEST_COMMANDS=1` 下应用不打开任何链接、
   不切到 Claude，只在 stdout 报 `desktop_open` / `desktop_go`。
 

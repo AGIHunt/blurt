@@ -384,6 +384,10 @@ struct DispatchView: View {
         .onChange(of: m.worktree) { _ in Task { await m.check() } }
         .onChange(of: m.chosen) { _ in Task { await m.check() } }
         .onChange(of: m.projectID) { _ in Task { await m.loadCandidates(); await m.check() } }
+        // Settings → Agents changed the remembered choice while this sheet is open: follow it
+        .onReceive(NotificationCenter.default.publisher(for: DesktopApp.targetChanged)) { n in
+            if n.object as? String == m.agent { m.target = DesktopApp.target(m.agent) }
+        }
     }
 
     /// The desktop app has no blurt MCP: nothing will report progress. Install it (the Settings → Agents installer,

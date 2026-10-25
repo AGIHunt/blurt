@@ -262,7 +262,10 @@ reads *In Claude desktop · progress comes from the agent*, with **Go to Claude*
 them through the Blurt MCP. If the MCP isn't installed for Claude, the panel offers **Install…**, or you mark the items
 yourself. **Review Changes…** and **Merge** work on the worktree as usual. A Claude session already running in Blurt's
 terminal can move there with **Continue in Claude Desktop…** in its **⋯** menu (Claude Code 2.1.285 or later, signed
-in with a Claude subscription); the agent stops here and live status stops with it.
+in with a Claude subscription); the agent stops here and live status stops with it. If the Blurt MCP isn't installed
+for Claude, the confirmation says so and offers **Install…** first, since the desktop app can't report progress
+without it. If the desktop app doesn't take the conversation, **Restart Session** starts a new session on the same
+items in Blurt's terminal.
 
 **Review Changes…** shows what changed on the session's branch. **Merge** (`⌘↩`) brings it into your project folder;
 when the agent left its work uncommitted (Codex can't commit inside a worktree), the button reads **Commit and
@@ -677,6 +680,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 由 Agent 回报进度」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，条目才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
 不装就自己标记条目。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
 「**在 Claude 桌面端继续…**」移过去（需要 Claude Code 2.1.285 或更高、用 Claude 订阅登录）；Agent 会在这里停下，实时状态也随之停止。
+Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度，并先给「**安装…**」。桌面端没接过对话时，「**重新开始会话**」会在口喷鸡终端里
+为这些条目开一个新会话。
 
 「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
 里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。

@@ -53,6 +53,31 @@ final class DesktopHandoffTests: XCTestCase {
         XCTAssertEqual(j.agent!.continuedFrom, "tmux")
         XCTAssertFalse(job(runner: "tmux").agent!.isDesktop)
         XCTAssertNil(job(runner: "tmux").agent!.continuedFrom)
+        // no blurt MCP for the desktop app: the card says to mark the items by hand; unknown says nothing
+        XCTAssertTrue(job(extra: ["desktop": ["mcp": false]]).agent!.desktopNeedsMarking)
+        XCTAssertFalse(job(extra: ["desktop": ["mcp": true]]).agent!.desktopNeedsMarking)
+        XCTAssertFalse(job().agent!.desktopNeedsMarking)
+        XCTAssertNil(job().agent!.desktopMCP)
+        XCTAssertFalse(job(runner: "tmux", extra: ["desktop": ["mcp": false]]).agent!.desktopNeedsMarking)
+    }
+
+    /// A desktop session goes on elsewhere: no spinner, and not in the list's running count. A Continue that failed
+    /// turned the job back into an ended terminal one (sessions.py), so it is neither.
+    func testDesktopSessionsDontCountAsRunningHere() {
+        let desk = job(), term = job(runner: "tmux"), ended = job(state: "done", status: "exited")
+        XCTAssertTrue(desk.inDesktop)
+        XCTAssertFalse(term.inDesktop)
+        XCTAssertFalse(ended.inDesktop)
+        XCTAssertEqual(Job.runningHere([desk, term, ended]), 1)
+        let failedContinue = job(runner: "tmux", state: "failed", status: "error",
+                                 extra: ["continued": ["from": "tmux", "failed": "exit 2"], "agent_session_id": "s-1"])
+        XCTAssertFalse(failedContinue.agent!.isDesktop)
+        XCTAssertFalse(failedContinue.inDesktop)
+        XCTAssertFalse(DesktopContinue.offered(failedContinue.agent!, alive: failedContinue.isActive, supported: true,
+                                               check: DesktopContinueCheck(available: true, reason: nil, version: "t")))
+        // the check carries whether the blurt MCP is there (the confirmation's no-MCP wording); default unknown
+        XCTAssertNil(DesktopContinueCheck(available: true, reason: nil, version: "t").mcp)
+        XCTAssertEqual(DesktopContinueCheck(available: true, reason: nil, version: "t", mcp: false).mcp, false)
     }
 
     func testBannerSaysGoToClaudeWhileItRunsThere() {

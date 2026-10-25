@@ -66,8 +66,11 @@ public struct DesktopContinueCheck: Equatable {
     /// unsupported | not_installed | version | login
     public let reason: String?
     public let version: String?
-    public init(available: Bool, reason: String?, version: String?) {
-        self.available = available; self.reason = reason; self.version = version
+    /// Is the blurt MCP installed for the agent (nil = can't tell)? false: the desktop app would have nothing to report
+    /// progress with — the confirmation says the items then need marking by hand and offers Install.
+    public let mcp: Bool?
+    public init(available: Bool, reason: String?, version: String?, mcp: Bool? = nil) {
+        self.available = available; self.reason = reason; self.version = version; self.mcp = mcp
     }
 }
 
@@ -191,15 +194,16 @@ public final class AgentSessions {
     }
 
     /// A running terminal session moves to the desktop app (`sessions.py continue-desktop`): its agent ends here.
-    public func continueInDesktop(job: String) async throws {
-        _ = try await call(["continue-desktop", job], timeout: 60)
+    /// withoutMCP: the user agreed to go on with no blurt MCP there (items marked by hand); else that is refused.
+    public func continueInDesktop(job: String, withoutMCP: Bool = false) async throws {
+        _ = try await call(["continue-desktop", job] + (withoutMCP ? ["--without-mcp"] : []), timeout: 60)
     }
 
     /// May terminal sessions of `agent` continue in its desktop app (CLI version, a subscription login)? Probes only.
     public func desktopCheck(agent: String) async throws -> DesktopContinueCheck {
         let o = try await call(["desktop-check", "--agent", agent], timeout: 45)
         return DesktopContinueCheck(available: o["available"] as? Bool ?? false, reason: o["reason"] as? String,
-                                    version: o["version"] as? String)
+                                    version: o["version"] as? String, mcp: o["mcp"] as? Bool)
     }
 
     public func attachCommand(job: String) async throws -> (argv: [String], env: [String: String]) {

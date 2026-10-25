@@ -61,7 +61,11 @@ report: the user marks the items by hand.
 
 `sessions.py continue-desktop JOB` moves a running Claude session from Blurt's terminal to the desktop app (its agent
 ends in the window, then `claude --desktop --resume <session id>`); `sessions.py desktop-check` says whether that is
-available (Claude Code 2.1.285 or later, signed in with a subscription). Don't run either unless the user asked.
+available (Claude Code 2.1.285 or later, signed in with a subscription) and, as `mcp`, whether the blurt MCP is
+installed for Claude: the desktop app doesn't get the `--mcp-config` a terminal session may have had, so without it
+`continue-desktop` refuses (`desktop_no_mcp`) unless `--without-mcp` (the user marks the items by hand). When the
+desktop app doesn't take the conversation (`desktop_failed`) the job fails as a terminal session: `restart` starts a
+new one in Blurt's terminal. Don't run either unless the user asked.
 
 ## Status
 

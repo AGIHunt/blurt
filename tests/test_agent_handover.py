@@ -86,16 +86,25 @@ def test_desktop_url_and_prompt():
     assert " " not in url and "\n" not in url and "&q=" in url and url.count("&") == 1  # every value encoded
     work = {"title": "AW-12 · Fix it (Blurt hand-off)", "path": "/h/H-0001.md", "rule": "Don't push.", "lang": "en",
             "prompt": "AW-12 · Fix it (Blurt hand-off)\n\nRead /h/H-0001.md and handle the items in it.",
-            "full": "# Atlas · AW-12\nDetails here\n\n## 1. AW-12 · Fix it\nuid u1 · issue"}
+            "full": "# Atlas · AW-12\n" + agents_mcp_line("en") + "\nDon't push.\n\n## 1. AW-12 · Fix it\nuid u1 · issue"}
     small = agents.desktop_prompt(work, CLAUDE_DESKTOP, folder)
     assert small["inline"] is True and small["prompt"].split("\n", 1)[0] == work["title"]
+    # said once: the rule only in the note, the mark_fixed instructions only in the header (with the start call)
+    assert small["prompt"].count("Don't push.") == 1 and agents_mcp_line("en") not in small["prompt"]
+    assert small["prompt"].count("mark_fixed") == 2
     assert "## 1. AW-12 · Fix it" in small["prompt"] and 'state "fixing"' in small["prompt"] and "/h/H-0001.md" in small["prompt"]
     assert parse_qs(urlsplit(small["url"]).query)["q"] == [small["prompt"]]
     # too long for the link (max_url ≈ 14k): the short prompt that points at the note
     big = agents.desktop_prompt({**work, "full": "界面" * 3000}, CLAUDE_DESKTOP, folder)
     assert big["inline"] is False and big["prompt"] == work["prompt"] and len(big["url"]) <= CLAUDE_DESKTOP["max_url"]
-    zh = agents.desktop_prompt({**work, "lang": "zh"}, CLAUDE_DESKTOP, folder)
-    assert "state 填 \"fixing\"" in zh["prompt"]
+    zh = agents.desktop_prompt({**work, "lang": "zh", "full": "# 交接\n" + agents_mcp_line("zh") + "\n## 1. AW-12 · 修"},
+                               CLAUDE_DESKTOP, folder)
+    assert "state 填 \"fixing\"" in zh["prompt"] and agents_mcp_line("zh") not in zh["prompt"]
+
+
+def agents_mcp_line(lang: str) -> str:
+    import handoff
+    return handoff.T[lang]["mcp"]
 
 
 def test_desktop_dispatch_is_a_job_only_the_agent_reports_on(p2):
@@ -117,7 +126,9 @@ def test_desktop_dispatch_is_a_job_only_the_agent_reports_on(p2):
     assert p2.tmux("list-windows", "-a") == ""  # nothing started here: the app opens the link
     j = p2.job(jid)
     assert j["agent"]["runner"] == "desktop" and j["agent"]["status_source"] == "desktop" and j["state"] == "running"
-    assert j["agent"]["desktop"] == {"inline": True, "url_chars": len(row["url"])} and j["agent"]["items_handed"] is True
+    assert j["agent"]["desktop"] == {"inline": True, "url_chars": len(row["url"]), "mcp": True}
+    assert j["agent"]["items_handed"] is True
+    assert q["q"][0].count("commit your work there") == 1  # the rule once (in the note), not again in the header
     p2.run("sessions.py", "monitor", "--once", "--job", jid)
     item = p2.get(it["uid"])
     assert item["state"] == "handed_off" and item["work"]["job"] == jid  # only the agent says it started
@@ -182,7 +193,9 @@ def test_continue_gating(p2):
     assert check(FAKE_CLAUDE_VERSION="2.1.285")["reason"] == "login"  # an API key is not a subscription
     assert check(FAKE_CLAUDE_VERSION="2.1.285", FAKE_AUTH_SUB="max", FAKE_AUTH_OUT="1")["reason"] == "login"
     assert check(FAKE_CLAUDE_VERSION="2.1.285", FAKE_AUTH_SUB="pro") == {"available": True, "reason": None,
-                                                                          "version": "2.1.285 (Claude Code)"}
+                                                                          "version": "2.1.285 (Claude Code)", "mcp": True}
+    # no blurt MCP for Claude: still possible, but the app has to say the items then need marking by hand
+    assert check(FAKE_CLAUDE_VERSION="2.1.285", FAKE_AUTH_SUB="pro", FAKE_MCP="0")["mcp"] is False
     assert check(FAKE_CLAUDE_VERSION="2.10.0", FAKE_AUTH_SUB="max")["available"] is True  # numbers, not strings
     assert check(FAKE_CLAUDE_VERSION="next", FAKE_AUTH_SUB="max")["reason"] == "version"
     assert agents.desktop_continue_check("codex", cfg={}, env=p2.env)["reason"] == "unsupported"
@@ -207,6 +220,7 @@ def test_continue_in_desktop_hands_the_conversation_over(p2):
     a = out["job"]["agent"]
     assert a["runner"] == "desktop" and a["status"] == "running" and a["status_source"] == "desktop"
     assert a["tmux"] is None and a["continued"]["from"] == "tmux" and a["continued"]["tmux"]["window"] == win
+    assert a["desktop"] == {"mcp": True}
     assert out["job"]["state"] == "running"
     calls = [json.loads(ln) for ln in (p2.tmp / "desktop.jsonl").read_text().splitlines()]
     assert calls == [{"argv": ["--desktop", "--resume", "fake-claude-1"], "cwd": str(Path(a["cwd"]).resolve()),
@@ -235,3 +249,41 @@ def test_continue_in_desktop_refusals(p2):
     assert r["code"] == "desktop_failed" and "isn't installed" in r["error"]
     j = p2.job(jid)
     assert j["state"] == "failed" and j["agent"]["status"] == "error" and "isn't installed" in j["error"]["message"]
+    # …as a terminal session again: Restart starts a new one in Blurt's terminal, not another desktop link
+    assert j["agent"]["runner"] == "tmux" and "isn't installed" in j["agent"]["continued"]["failed"]
+    out = p2.run("sessions.py", "restart", jid, "--lang", "en")
+    new = p2.job(out["jobs"][0]["id"])
+    assert new["agent"]["runner"] == "tmux" and new["agent"]["tmux"] and "url" not in out["jobs"][0]
+    assert p2.get(it["uid"])["work"]["job"] == new["id"]
+
+
+@needs_tmux
+def test_continue_in_desktop_without_the_mcp_asks_first(p2):
+    """The terminal session had the blurt MCP through --mcp-config; `claude --desktop --resume` doesn't carry it. With
+    none installed for Claude nothing would report from the desktop app: refused unless the user agreed to mark the
+    items by hand (--without-mcp), and recorded on the job for its card."""
+    p2.env.update(FAKE_DESKTOP_LOG=str(p2.tmp / "desktop.jsonl"), FAKE_CLAUDE_VERSION="2.1.290", FAKE_AUTH_SUB="max",
+                  FAKE_MCP="0")
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = p2.run("sessions.py", "dispatch", "--items", it["uid"], "--agent", "claude")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "waiting_input")
+    assert p2.run("sessions.py", "desktop-check")["mcp"] is False
+    r = p2.run("sessions.py", "continue-desktop", jid, ok=False)
+    assert r["code"] == "desktop_no_mcp" and p2.job(jid)["agent"]["runner"] == "tmux"
+    assert p2.tmux("list-windows", "-a", "-F", "#{pane_dead}").split() == ["0"]  # nothing touched
+    assert not (p2.tmp / "desktop.jsonl").exists()
+    a = p2.run("sessions.py", "continue-desktop", jid, "--without-mcp")["job"]["agent"]
+    assert a["runner"] == "desktop" and a["desktop"] == {"mcp": False}
+
+
+@needs_tmux
+def test_restart_of_a_desktop_job_skips_the_cli_login(p2):
+    """The desktop app signs in on its own: restarting a desktop hand-off doesn't ask the CLI's login (as dispatch)."""
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = p2.run("sessions.py", "dispatch", "--items", it["uid"], "--agent", "claude", "--runner", "desktop")["jobs"][0]["id"]
+    p2.run("sessions.py", "stop", jid, "--kill")
+    p2.env["FAKE_AUTH_OUT"] = "1"
+    out = p2.run("sessions.py", "restart", jid, "--lang", "en")
+    assert out["jobs"][0]["url"].startswith("claude://code/new?")

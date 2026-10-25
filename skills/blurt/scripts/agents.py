@@ -821,11 +821,14 @@ WORK_PROMPT = {
 }
 # The desktop app's prompt carries the note itself: the app starts in the worktree and would have to ask before it
 # reads a file outside it. Progress comes only from the agent there (no hooks), so it says when it starts an item too.
+# The commit rule is in the note itself (inlined below), and so is the fallback without the MCP: only the note's own
+# mark_fixed line is left out (DESKTOP_PROMPT says it, with the start call too). Every char counts: the whole prompt
+# rides in the claude:// link, and Chinese text percent-encodes to about nine chars a glyph.
 DESKTOP_PROMPT = {
-    "en": "{title}\n\nHandle the items below (the same note is saved at {note}). {rule} When you start an item, call the "
-          "blurt MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state "
-          "\"fixed\" (or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
-    "zh": "{title}\n\n处理下面的条目（同一份交接单也存在 {note}）。{rule}开始做某一条时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
+    "en": "{title}\n\nHandle the items below (the same note is saved at {note}). When you start an item, call the blurt "
+          "MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state \"fixed\" "
+          "(or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
+    "zh": "{title}\n\n处理下面的条目（同一份交接单也存在 {note}）。开始做某一条时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
           "state 填 \"fixing\"；做完后再调用 mark_fixed，state 填 \"fixed\"（或 \"wontfix\"），附一句说明。口喷鸡只能通过这些报告"
           "告诉用户进度。\n\n{body}",
 }
@@ -915,11 +918,14 @@ def desktop_url(spec: dict, folder: str, prompt: str) -> str:
 def desktop_prompt(work: dict, spec: dict, folder: str) -> dict:
     """The prompt and URL for the desktop app (`work` = prompt_work's answer): the note inline while the URL stays
     within spec max_url (about 14k chars), else the short prompt pointing at the note. → {"prompt", "url", "inline"}"""
+    import handoff
+    lang = work.get("lang") or "en"
     body = (work.get("full") or "").strip()
+    own = (handoff.T.get(lang) or handoff.T["en"])["mcp"]  # the note's own mark_fixed line: said above, with more
+    body = "\n".join(ln for ln in body.split("\n") if ln.strip() != own)
     limit = int(spec.get("max_url") or 14000)
     if body:
-        full = DESKTOP_PROMPT[work.get("lang") or "en"].format(title=work["title"], note=work["path"],
-                                                               rule=work["rule"], body=body)
+        full = DESKTOP_PROMPT[lang].format(title=work["title"], note=work["path"], body=body)
         url = desktop_url(spec, folder, full)
         if len(url) <= limit:
             return {"prompt": full, "url": url, "inline": True}
@@ -954,27 +960,29 @@ def desktop_continue_check(agent: str, cfg: dict | None = None, env: dict | None
     """Can a running terminal session of `agent` move to its desktop app (claude --desktop --resume <id>)? Only from
     interactive.desktop.continue.min_version, and when its status probe says logged in with a subscription. Probes
     only (--version, auth status): never logs in, upgrades or starts anything.
-    → {"available": bool, "reason": None | "unsupported" | "not_installed" | "version" | "login", "version"}"""
+    "mcp": is the blurt MCP installed for the agent (mcp_installed; asked only when available)? A terminal session may
+    have had it through --mcp-config, which the desktop app doesn't get: without it nothing reports progress there.
+    → {"available": bool, "reason": None | "unsupported" | "not_installed" | "version" | "login", "version", "mcp"}"""
     d = definitions(cfg if cfg is not None else config()).get(agent) or {}
     cont = (desktop_spec(d) or {}).get("continue")
     if not isinstance(cont, dict) or not cont.get("argv"):
-        return {"available": False, "reason": "unsupported", "version": None}
+        return {"available": False, "reason": "unsupported", "version": None, "mcp": None}
     env = clean_env(env)
     bin_ = find_bin(d, env)
     if not bin_:
-        return {"available": False, "reason": "not_installed", "version": None}
+        return {"available": False, "reason": "not_installed", "version": None, "mcp": None}
     v = version_of(d, bin_, env)
     have, need = version_tuple(v), version_tuple(cont.get("min_version"))
     if need and (have is None or have < need):
-        return {"available": False, "reason": "version", "version": v}
+        return {"available": False, "reason": "version", "version": v, "mcp": None}
     args = (d.get("status") or {}).get("args")
     ok = False
     if args:
         code, out = _run([bin_, *args], env, timeout=15)
         ok = code == 0 and subscription_login(out, cont.get("auth") or {}) is True
     if not ok:
-        return {"available": False, "reason": "login", "version": v}
-    return {"available": True, "reason": None, "version": v}
+        return {"available": False, "reason": "login", "version": v, "mcp": None}
+    return {"available": True, "reason": None, "version": v, "mcp": mcp_installed(d, env)}
 
 
 # ------------------------------------------------------------------ thread names (interactive.session.thread_name)

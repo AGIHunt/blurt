@@ -1,5 +1,6 @@
 // Strings (K10 table "Terminal", plus the shared `session.*` words from "Common") and the visual language of agent
-// sessions: the status colours, the status mark, the terminal's light / dark palettes.
+// sessions: the status colours, the status mark (a still ring with a dot for a session in the agent's desktop app,
+// never the spinner), the terminal's light / dark palettes.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -68,12 +69,19 @@ extension NSColor {
 struct SessionStatusMark: View {
     var status: AgentSessionStatus
     var size: CGFloat = 10
+    /// It goes on elsewhere (the agent's desktop app) and Blurt doesn't see it live: a still ring with a dot, never the
+    /// spinner.
+    var elsewhere: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var spin = false
     @State private var pulse = false
 
     var body: some View {
         ZStack {
+            if elsewhere {
+                Circle().strokeBorder(AgentSessionStatus.running.color, lineWidth: 1.4)
+                Circle().fill(AgentSessionStatus.running.color).frame(width: size * 0.36, height: size * 0.36)
+            } else {
             switch status {
             case .running:
                 Circle().stroke(status.color.opacity(0.22), lineWidth: 1.6)
@@ -90,12 +98,13 @@ struct SessionStatusMark: View {
             case .exited:
                 Circle().strokeBorder(status.color, lineWidth: 1.4)
             }
+            }
         }
         .frame(width: size, height: size)
         .onAppear { spin = true; pulse = status == .waitingInput }
         .onChange(of: status) { s in pulse = false; DispatchQueue.main.async { pulse = s == .waitingInput } }
         .accessibilityElement()
-        .accessibilityLabel(status.title)
+        .accessibilityLabel(elsewhere ? TL("mark.elsewhere") : status.title)
     }
 }
 
