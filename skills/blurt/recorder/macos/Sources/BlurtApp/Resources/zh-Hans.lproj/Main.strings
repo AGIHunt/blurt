@@ -640,7 +640,7 @@
 "main.job.stopped" = "你停止了这次整理。点「重试」重新整理。";
 "main.job.step_stopped" = "已停止";
 "main.empty.go_inbox" = "前往待处理";
-"main.empty.project.detail_other" = "新的录屏和截图会放进当前项目。把这个项目设为当前项目，就会放到这里。";
+"main.empty.project.detail_other" = "新的录屏和截图会放进当前项目。把这个项目设为当前项目，它们就会放到这里。";
 "main.empty.no_results_in" = "「%2$@」里没有找到「%1$@」";
 "main.empty.search_all" = "在全部条目里搜索";
 "main.empty.clear_search" = "清除搜索";

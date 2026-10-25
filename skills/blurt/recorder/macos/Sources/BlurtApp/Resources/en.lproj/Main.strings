@@ -639,7 +639,7 @@
 "main.job.stopped" = "You stopped this run. Try again to organize it.";
 "main.job.step_stopped" = "Stopped";
 "main.empty.go_inbox" = "Go to Inbox";
-"main.empty.project.detail_other" = "New recordings and snaps go to the current project. Make this one current to fill it.";
+"main.empty.project.detail_other" = "New recordings and snaps go to the current project. Make this one current and they land here.";
 "main.empty.no_results_in" = "No results for “%1$@” in %2$@";
 "main.empty.search_all" = "Search All Items";
 "main.empty.clear_search" = "Clear Search";
