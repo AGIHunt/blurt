@@ -242,7 +242,7 @@ extension Dictation {
     /// Light for a take that was typed verbatim: polish it now (the warm server; off the dictation's path).
     private func withLight(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
         guard lp.light == nil, !lp.raw.isEmpty, Dictation.polishOn, polishModel != nil else { return then() }
-        let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : nil
+        let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: lp.bundle) ? "terminal" : nil
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Dictation.polish(lp.raw, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
                                      context: nil, variant: variant)
@@ -279,7 +279,7 @@ extension Dictation {
     /// The last take as the user edited it in the field, in `style` — the same passes the take's own versions got
     /// (Light: polish; Structured: the structuring pass; Verbatim: as it stands) — then copied, the field left alone.
     private func restyleEdited(_ lp: DictationLastPaste, _ edited: String, to style: DictationStyle, action: String, via: String) {
-        let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : nil
+        let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: lp.bundle) ? "terminal" : nil
         let t0 = CACurrentMediaTime()
         DispatchQueue.global(qos: .userInitiated).async {
             var out = edited

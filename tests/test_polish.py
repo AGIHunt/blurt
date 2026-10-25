@@ -595,6 +595,31 @@ class Echo(unittest.TestCase):
         self.assertEqual(g["fallback_text"], "把这个，不对，这两个拿到那一边去")
 
 
+class RequestNotes(unittest.TestCase):
+    """What the request tells the model about this dictation (v0.9 dogfood: "I think The new layout is fine", and
+    "Get status and then run the tests again." typed into Terminal)."""
+
+    def test_continuing_a_sentence_is_said(self):
+        self.assertTrue(polish.continues_sentence({"before": "I think "}))
+        self.assertTrue(polish.continues_sentence({"before": "我觉得"}))
+        self.assertFalse(polish.continues_sentence({"before": "Done. "}))
+        self.assertFalse(polish.continues_sentence({"before": "他说：“好的。”"}))
+        self.assertFalse(polish.continues_sentence({"before": "first line\n"}))
+        self.assertFalse(polish.continues_sentence({"before": ""}))
+        self.assertFalse(polish.continues_sentence(None))
+        m = polish.user_message("the new layout is fine", None, {"before": "I think "})
+        self.assertIn("continues the sentence before the cursor", m)
+        self.assertNotIn("continues", polish.user_message("the new layout is fine", None, {"before": "Done. "}))
+
+    def test_a_terminal_says_a_command_stays_a_command(self):
+        m = polish.user_message("get status", None, None, "terminal")
+        self.assertIn("terminal", m)
+        self.assertTrue(m.endswith("Dictation (typed into a terminal: when it is a shell command (git status, npm test), write the "
+                                   "command, in lower case with no full stop; anything else is an ordinary sentence, tidied as "
+                                   "usual): get status"))
+        self.assertEqual(polish.user_message("get status", None, None), "get status")
+
+
 class ServeWhileLoading(unittest.TestCase):
     """polish.py serve loads its model beside the loop (v0.9 dogfood: after the 10-minute idle exit, a one-word take
     waited ~2 s in the listen backlog for a model load, then was answered "short" in 0 ms — counted as polish time)."""

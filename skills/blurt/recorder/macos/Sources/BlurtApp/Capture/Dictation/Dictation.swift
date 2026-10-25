@@ -808,7 +808,7 @@ final class Dictation {
         opt.loadBudget = Dictation.loadBudget
         opt.vocab = DictationVocabulary.shared.payload()
         opt.polish = Dictation.polishOn && polishModel != nil && base.polishes
-        opt.variant = styleDecision?.category == .chat ? "chat" : nil
+        opt.variant = styleDecision?.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: styleBundle) ? "terminal" : nil
         opt.interim = Dictation.livePartial && LiveTranscript.enabled
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
         let stopAt = DictationInsert.testMode ? testStopAfter : nil

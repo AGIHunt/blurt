@@ -376,7 +376,13 @@ extension Dictation {
             let len = min(max(0, f.selection.length), ns.length - loc)
             let before = String(ns.substring(to: loc).suffix(500))
             let after = String(ns.substring(from: loc + len).prefix(500))
-            let fit = Dictation.fit(text, before: before, after: after, list: styleRecord.rendered)
+            // the field's sentence goes on before the cursor ("I think ▮"): a capital polish gave the first word only
+            // for starting a sentence goes — the transcript's own case decides (names keep theirs; v0.9 dogfood:
+            // "I think The new layout is fine")
+            let cased = !styleRecord.rendered && DictationStitch.midSentence(before)
+                ? DictationStitch.keepCase(input: r.raw, output: text) : text
+            var fit = Dictation.fit(cased, before: before, after: after, list: styleRecord.rendered)
+            if cased != text { fit.changes.append("capital") }
             if fit.changes.count > 0 {
                 emit(["event": "dictation_fit", "id": id, "changes": fit.changes, "from": text.count, "to": fit.text.count])
                 text = fit.text

@@ -80,6 +80,26 @@ public enum DictationAppCategory: String, CaseIterable, Hashable {
         "com.logseq.logseq": .notes, "abnerworks.typora": .notes, "com.ulyssesapp.mac": .notes,
         "com.apple.textedit": .notes, "com.evernote.evernote": .notes, "com.youdao.note.youdaonotemac": .notes,
     ]
+    /// A terminal (of the code apps): polish gets the "terminal" variant — a shell command said there stays a command
+    /// (lower case, no full stop), a sentence for an agent stays a sentence; the model tells which (v0.9 dogfood:
+    /// "git status" became "Get status … again.").
+    public static func isTerminal(bundle: String?) -> Bool {
+        guard let b = bundle?.lowercased(), !b.isEmpty else { return false }
+        if terminals.contains(b) { return true }
+        let parts = Set(b.split(whereSeparator: { $0 == "." || $0 == "-" || $0 == "_" }).map(String.init))
+        return !parts.isDisjoint(with: ["terminal", "iterm2", "warp", "ghostty", "kitty", "alacritty", "wezterm"])
+    }
+    static let terminals: Set<String> = [
+        "com.apple.terminal", "com.googlecode.iterm2", "dev.warp.warp-stable", "com.mitchellh.ghostty", "net.kovidgoyal.kitty",
+        "org.alacritty", "io.alacritty", "co.zeit.hyper", "com.github.wez.wezterm",
+    ]
+
+    /// polish's variant of light for an app: "chat" (tone words stay), "terminal" (commands stay commands), or nil.
+    public static func polishVariant(bundle: String?) -> String? {
+        if isTerminal(bundle: bundle) { return "terminal" }
+        return of(bundle: bundle) == .chat ? "chat" : nil
+    }
+
     static let parts_: [(DictationAppCategory, Set<String>)] = [
         (.chat, ["wechat", "xinwechat", "feishu", "lark", "dingtalk", "slack", "telegram", "discord", "whatsapp", "signal",
                  "teams", "wework", "messenger"]),

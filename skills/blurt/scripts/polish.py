@@ -569,7 +569,7 @@ Sometimes the message starts with "Words:" (the speaker's own names and terms) a
 - everything above still applies to the dictation;
 - never add a listed word that wasn't spoken, and never copy or continue the text near the cursor: it only shows how names are spelled there and how the sentence goes on;
 - reply with the cleaned dictation only.
-A note in brackets after "Dictation" says more about this one (its language, or that it is a chat message whose tone words and sentence-final particles stay)."""
+A note in brackets after "Dictation" says more about this one: its language; that it is a chat message whose tone words and sentence-final particles stay; that it continues the sentence before the cursor (then it doesn't start with a capital unless its first word is a name); or that it goes into a terminal (then a shell command is written exactly as a command)."""
 
 EXAMPLES = [     # the custom-word ones first: the plain ones last keep the 41-case eval where it was
     ("Words: Claude Code, tmux, worktree, Codex\nDictation: 嗯我刚才用cloud code在t mux里面那个跑了一下测试",
@@ -641,9 +641,33 @@ def user_message(text: str, terms: list[dict] | None = None, context: dict | str
         notes.append("English: keep it in English")
     if variant == "chat":
         notes.append("a chat message: keep its tone words and sentence-final particles")
+    # the field's text before the cursor stops mid-sentence ("I think ▮"): the dictation goes on with it, so it doesn't
+    # start a sentence of its own (v0.9 dogfood: "I think The new layout is fine"). The punctuation decides that it
+    # stops mid-sentence, as DictationFit does; whether a capital is a name's is the model's call.
+    if continues_sentence(context):
+        notes.append("it continues the sentence before the cursor: its first word keeps a capital only if it is a name")
+    if variant == "terminal":
+        notes.append("typed into a terminal: when it is a shell command (git status, npm test), write the command, in lower "
+                     "case with no full stop; anything else is an ordinary sentence, tidied as usual")
     if not lines and not notes:
         return text
     return "\n".join(lines + ["Dictation" + (f" ({'; '.join(notes)})" if notes else "") + ": " + text])
+
+
+_ENDS = "。.!?！？"
+
+
+def continues_sentence(context: dict | str | None) -> bool:
+    """The field's text right before the cursor stops mid-sentence: there is some, on the same line, and it doesn't end
+    in a sentence mark (a closing quote or bracket after one counts as ended) — DictationFit's rule."""
+    if not isinstance(context, dict):
+        return False
+    before = str(context.get("before") or "")
+    t = before.rstrip(" \t")
+    if not t or t.endswith("\n"):
+        return False
+    core = t.rstrip("）)」』”\"’'")
+    return bool(core) and core[-1] not in _ENDS
 
 
 def context_text(context: dict | str | None) -> str:
@@ -1485,7 +1509,7 @@ def cmd_eval(a):
     rows = []
     structured = getattr(a, "style", "light") == "structured"
     for i, c in enumerate(cases):
-        r = eng.polish(c["input"], a.model_id, a.timeout)
+        r = eng.polish(c["input"], a.model_id, a.timeout, None, c.get("context"), c.get("variant"))
         out = r["polished"] or ""
         row = {"id": c["id"], "lang": c["lang"], "tags": c.get("tags", []), "ms": r["ms"],
                "fell_back": r["fell_back"], "reason": r["reason"], "output": out, "final": r["text"],
@@ -1554,7 +1578,8 @@ def main():
     r.add_argument("--priority", choices=["utility", "background", "user-initiated", "default"])
     r.add_argument("--context", help="text around the cursor (for spelling; never stored)")
     r.add_argument("--no-vocab", action="store_true", help="ignore the custom words")
-    r.add_argument("--variant", choices=["chat"], help="the app category's variant of light (chat keeps 吧 呢 啊)")
+    r.add_argument("--variant", choices=["chat", "terminal"],
+                   help="the app category's variant of light (chat keeps 吧 呢 啊; terminal: a command stays a command)")
     r.add_argument("--style", choices=["light", "structured"], default="light",
                    help="structured: the structuring pass on the text (resolve self-corrections, lay out lists)")
     g = sub.add_parser("guard")

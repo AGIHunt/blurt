@@ -798,7 +798,9 @@ def run_case(c: dict, cfg: dict, backend) -> dict:
     cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
     ctx = context_payload(c) if cfg.get("context") else None
     timeout = max(0.5, float(settings().get("polish_timeout_ms") or 3000) / 1000)
-    extra = {"variant": "chat"} if cat == "chat" else {}
+    # the app's polish variant: chat keeps tone words; a terminal keeps a command a command
+    extra = {"variant": "chat"} if cat == "chat" else \
+        {"variant": "terminal"} if styles.is_terminal((c.get("app") or {}).get("bundle")) else {}
     answers: list[dict] = []
     structured: dict | None = None
     can_structure = hasattr(backend, "structure")
