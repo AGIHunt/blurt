@@ -117,7 +117,15 @@ Category variants of Light. They are part of the per-app default, not separate s
   - Today the repair treats 呢 as a removable discourse word. For chat, sentence-final particles move to "must keep".
 - **Code / terminal** (Terminal, iTerm2, Warp, VS Code, Cursor, Xcode, JetBrains, Claude Code in a terminal): no line
   breaks unless Structured was asked for. Multi-line pastes collapse in Claude Code (Wispr had to fix the same thing).
-  Identifiers and custom words stay as spoken.
+  Identifiers and custom words stay as spoken. In a terminal (Terminal, iTerm2, Warp, Ghostty, kitty, Alacritty,
+  WezTerm, Hyper: `DictationAppCategory.isTerminal`) polish gets the `terminal` variant: when the model reads it as a
+  shell command it writes the command (lower case, no full stop: "get status" → "git status"); a request stays a
+  sentence (v0.9 dogfood: Terminal got "Get status and then run the tests again."). Measured on the eval cases
+  (term-01/03/05): commands kept, the request kept as a sentence; a request that starts like an instruction ("please
+  refactor…") can lose its capital — harmless in a terminal prompt.
+- **Any app, mid-sentence**: when the field's text before the cursor stops mid-sentence, polish is told the dictation
+  continues it, and the app keeps the transcript's case for its first word (`DictationStitch.keepCase` — a name the
+  speech model capitalised keeps its capital): "I think the new layout is fine", not "I think The new layout…".
 - **Mail**: paragraphs allowed; no greeting or sign-off added.
 - **Notes / docs** (Notes, Obsidian, Notion, Bear, Pages, Word): Light, plus a *suggestion* when a take looks like a
   list (§3.4). No auto-structure by default.
@@ -231,7 +239,9 @@ The implementation is described in `dictation.md` §Styles; in short:
   ear shows a list mark while Structured. The Fn filter keeps that lone ⇧ from the app in front (input methods
   switch Chinese / English on it).
 - **4, reformat-last** (`⌥⇧L`, configurable; none of Blurt's keys, ⌥⌘D or the lab's ⌥⌘L clash) with Undo, and the
-  island's *Make a List* after a list-like take typed as prose. Replaces only untouched text, else the clipboard.
+  island's *Make a List* after a list-like take typed as prose. Replaces only untouched text, else the clipboard —
+  and when the user edited the text since, it is their edited text that is restyled and copied (v0.9 dogfood: their
+  方案 → 计划 fix was missing from the copy); an edit that can't be told apart says the dictation as said was used.
 - **5, spoken triggers: dropped** (conflicts with dictating instructions to AI; see §3.6).
 - **6, suggestions**: ≥ 3 consistent signals in an app (≥ 70 %) → asked once; never switched silently; learned apps
   show in Settings with Reset.
