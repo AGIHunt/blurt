@@ -1528,6 +1528,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 do { try await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
                 catch { appDelegate?.toast(sessionsErrorText(error)) }
             }
+        case let a where a.hasPrefix("item:"):          // an item the job wrote, from its detail
+            reveal(uid: String(a.dropFirst(5)))
+        case "stop" where job.type != .agent:            // an organising run: Stop in its detail (⌘.)
+            JobStop.stop(job)
         case "stop":
             Task { @MainActor in
                 do { try await AgentSessions.shared.stop(job: job.id, kill: false) }

@@ -1,10 +1,12 @@
-// Jobs in the main window (K4): the "Running" section above the list ("In Progress" is the items' place) — one compact row per running job (what,
-// which step, how far, which project; agent sessions with their status), plus organising that failed in the last
-// week until it is retried or dismissed (JobFailures) — and the detail page of a job: its steps as a timeline, its
-// reason in words (JobError.reason, else the code's sentence — never the raw message), who organised it when another
-// agent stood in, Retry / Dismiss. An agent session's detail is its title and status line, then its terminal pane (whose
-// header carries Stop, Open in Terminal, Show Log…): no second timeline above it. Nothing here opens anything by
-// itself: rows are clicked.
+// Jobs in the main window (K4): the "Running" section above the list ("In Progress" is the items' place) — one row per
+// running job on the item rows' grid (kind icon, the spinner in the state ring's column, title, how far in the time
+// column; agent sessions with their status), plus organising that failed in the last week until it is retried or
+// dismissed (JobFailures) — and the detail page of a job: what it does to what and when it started, one control (Stop,
+// ⌘., while it runs; Try Again when it failed) with ⋯ for Show Log / Show in Finder / Dismiss, one progress bar with
+// the elapsed time, its steps in an inset group with each one's time, the items written so far; its reason in words
+// (JobError.reason, else the code's sentence — never the raw message), who organised it when another agent stood in.
+// An agent session's detail is its title and status line, then its terminal pane (whose header carries Stop, Open in
+// Terminal, Show Log…): no steps above it. Nothing here opens anything by itself: rows are clicked.
 import AppKit
 import BlurtCore
 
@@ -96,39 +98,205 @@ enum JobLook {
     }
 }
 
+extension JobLook {
+    /// The steps a job shows, in order. AI fill-in has no recording to transcribe, no frames to cut, nothing to file:
+    /// just prepare and write.
+    static func steps(_ j: Job) -> [JobStep] {
+        var s = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps
+        if j.type == .process, j.session == nil { s = s.filter { !["transcribe", "frames", "route"].contains($0.id) } }
+        return s
+    }
+
+    /// How far a running job is, 0…1: what it reports, else its steps (the running one's own share counted in). The
+    /// list row and the detail say this one number. nil for an agent session or a job that isn't running.
+    static func fraction(_ j: Job) -> Double? {
+        guard j.isActive, j.type != .agent else { return nil }
+        if let p = j.progress { return min(max(p, 0), 1) }
+        let s = steps(j)
+        guard !s.isEmpty else { return nil }
+        let done = Double(s.filter { $0.state == .done || $0.state == .skipped }.count)
+        let part = s.first { $0.state == .running }?.progress ?? 0
+        return min((done + part) / Double(s.count), 1)
+    }
+
+    /// What it is doing now, as a status ("Preparing…", "正在写入条目…"): the step's name reads as a heading, this as
+    /// what is happening.
+    static func doing(_ j: Job) -> String {
+        guard j.agent == nil, j.isActive, let s = j.currentStep else { return status(j) }
+        switch s.id {
+        case "prepare": return T("main.job.doing.prepare")
+        case "transcribe": return T("main.job.doing.transcribe")
+        case "write": return T("main.job.doing.write")
+        case "frames": return T("main.job.doing.frames")
+        default: return T("job.step.\(s.id)")
+        }
+    }
+
+    /// The list row's right-hand text: how far (one number) while it runs, else its status.
+    static func rowStatus(_ j: Job) -> String {
+        if j.agent == nil, j.isActive { return fraction(j).map { Loc.percent($0) } ?? doing(j) }
+        return status(j)
+    }
+
+    /// The detail's title: what the job does to what — "Organizing “Checkout walkthrough”", else the row's title.
+    static func detailTitle(_ j: Job) -> String {
+        if j.type == .process, let s = j.session {
+            if let t = batchTitle(s) { return T("main.job.title.organizing", t) }
+            return T("main.job.title.organizing_at", sessionLabel(s))
+        }
+        return title(j)
+    }
+
+    /// The agent organising a recording, from its meta.json (AgentHub writes it when the run starts): "Claude Code".
+    static func agentName(_ j: Job) -> String? {
+        guard let dir = j.session, let d = try? Data(contentsOf: dir.appendingPathComponent("meta.json")),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+              let a = o["agent"] as? [String: Any], a["job"] as? String == j.id else { return nil }
+        return a["name"] as? String ?? (a["id"] as? String).map(AgentNames.name)
+    }
+
+    /// A run's time as a clock: 0:42, 12:05, 1:02:03 — no leading zero on the first figure (Loc.duration pads it).
+    static func clock(_ seconds: Double) -> String {
+        let s = Int(max(0, seconds.rounded())), h = s / 3600, m = s % 3600 / 60, sec = s % 60
+        return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
+    }
+
+    /// The user stopped it (Stop in the detail): said as a stop, never as a failure.
+    static func stopped(_ j: Job) -> Bool { j.state == .cancelled }
+
+    /// When each step started and ended (the job's raw steps).
+    static func stepTimes(_ j: Job) -> [String: (start: Date?, end: Date?)] {
+        var out: [String: (start: Date?, end: Date?)] = [:]
+        for s in j.raw["steps"] as? [[String: Any]] ?? [] {
+            if let id = s["id"] as? String { out[id] = (JobFold.date(s["started"]), JobFold.date(s["ended"])) }
+        }
+        return out
+    }
+}
+
+/// Stop for an organising run (the detail's Stop, ⌘.): the job is marked cancelled for everyone at once (an event
+/// line, like any other reporter), and the agent's process group is stopped — now, or the moment it starts if the
+/// run is still preparing. The run's own end then keeps it stopped (JobFold.finishing).
+enum JobStop {
+    private static var stopping: Set<String> = []
+    private static var token: UUID?
+
+    static func canStop(_ j: Job) -> Bool { j.isActive && (j.type == .process || j.type == .route) }
+
+    static func stop(_ j: Job) {
+        guard canStop(j) else { return }
+        JobFiles.appendEvent(j.id, ["event": "stop", "state": JobState.cancelled.rawValue, "source": "user"])
+        stopping.insert(j.id)
+        if token == nil { token = JobStore.shared.addObserver { _ in sweep() } }
+        JobStore.shared.rescan()
+        sweep()
+        emit(["event": "job_stop", "job": j.id])
+    }
+
+    /// Every stopped run whose agent is (still, or by now) running: stop its group. A run whose owner has closed it
+    /// is done with.
+    private static func sweep() {
+        for id in stopping {
+            guard let j = JobStore.shared.job(id), j.ended == nil else { stopping.remove(id); continue }
+            guard let g = appDelegate?.organisers[id] else { continue }
+            DispatchQueue.global(qos: .userInitiated).async { ProcessGroup.stop(g) }
+        }
+    }
+}
+
+// MARK: - The list's running section
+
+/// Where the list's columns are, in a view's own coordinates, so a job row or a header above the table sits on the
+/// item rows' grid: the kind icon, the state ring, the title, the time column, the selection's edges.
+struct ListGrid {
+    var icon: CGFloat = 8, ring: CGFloat? = nil, title: CGFloat = 34, trailing: CGFloat = 8
+    /// where the time column's text starts (its cell sets it from the left)
+    var time: CGFloat? = nil
+    var washMin: CGFloat = 0, washMax: CGFloat = 0
+
+    static func of(_ v: NSView) -> ListGrid {
+        var g = ListGrid(trailing: v.bounds.width - 8, washMin: 0, washMax: v.bounds.width)
+        guard let t = table(near: v) else { return g }
+        func col(_ id: String) -> NSRect? {
+            let i = t.column(withIdentifier: .init(id))
+            guard i >= 0, !t.tableColumns[i].isHidden else { return nil }
+            return t.convert(t.rect(ofColumn: i), to: v)
+        }
+        guard let lead = col("lead"), let title = col("title") else { return g }
+        g.icon = lead.minX + 2                                  // LeadCell: the icon 2 in, 18 wide; the ring 3 after it
+        g.ring = lead.width >= 40 ? lead.minX + 2 + 18 + 3 + 10 : nil
+        g.title = title.minX + 2                                // TitleCell: the title 2 in
+        g.trailing = (col("time") ?? col("meta")).map { $0.maxX - 2 } ?? g.trailing
+        g.time = col("time").map { $0.minX + 2 }
+        // the selection as the table draws it (BrandRowView): its row view, inset like the inset style's rows
+        if t.numberOfRows > 0, let rv = t.rowView(atRow: 0, makeIfNecessary: false) {
+            let pad: CGFloat = rv.frame.minX < 1 && abs(rv.frame.width - t.bounds.width) < 1 ? 10 : 0
+            let r = t.convert(rv.frame.insetBy(dx: pad, dy: 0), to: v)
+            g.washMin = r.minX
+            g.washMax = r.maxX
+        } else {
+            g.washMin = lead.minX - 6
+            g.washMax = g.trailing + 8
+        }
+        return g
+    }
+
+    /// The item table beside a view above it (the list's own column).
+    private static func table(near v: NSView) -> NSTableView? {
+        var p = v.superview
+        for _ in 0..<6 {
+            guard let at = p else { return nil }
+            for s in at.subviews {
+                if let t = (s as? NSScrollView)?.documentView as? ItemTableView { return t }
+            }
+            p = at.superview
+        }
+        return nil
+    }
+}
+
 /// The running jobs above the list. Hidden when there are none; at most four rows, then "N more".
 final class JobsSection: NSView {
     var onSelect: ((String) -> Void)?
     private let stack = NSStackView()
-    private let header = NSTextField(labelWithString: "")
+    private let header = GridLabel()
     private var rows: [String: JobRow] = [:]
+    private var resizeObserver: NSObjectProtocol?
     static let maxRows = 4
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        header.font = .systemFont(ofSize: 11, weight: .semibold)
-        header.textColor = .secondaryLabelColor
+        header.label.font = .systemFont(ofSize: 11, weight: .semibold)
+        header.label.textColor = .secondaryLabelColor
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 2
-        stack.edgeInsets = NSEdgeInsets(top: 8, left: 10, bottom: 8, right: 10)
+        stack.spacing = 0
+        // no rule under it: the filter strip below has its own
+        stack.edgeInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
-        let line = NSBox()
-        line.boxType = .separator
-        line.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(line)
         NSLayoutConstraint.activate([
             stack.topAnchor.constraint(equalTo: topAnchor), stack.leadingAnchor.constraint(equalTo: leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: line.topAnchor),
-            line.leadingAnchor.constraint(equalTo: leadingAnchor), line.trailingAnchor.constraint(equalTo: trailingAnchor),
-            line.bottomAnchor.constraint(equalTo: bottomAnchor),
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor), stack.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
+        // a column the user resizes, or the list's layout switching: the rows follow the grid
+        resizeObserver = NotificationCenter.default.addObserver(forName: NSTableView.columnDidResizeNotification, object: nil,
+                                                                queue: .main) { [weak self] _ in self?.regrid() }
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         isHidden = true
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { resizeObserver.map(NotificationCenter.default.removeObserver) }
+
+    private func regrid() {
+        for v in stack.arrangedSubviews { v.needsLayout = true; v.needsDisplay = true }
+    }
+
+    override func layout() {
+        super.layout()
+        regrid()
+    }
 
     /// "In progress · 2", "In progress · 2 · 1 failed", "Failed · 1": the failures it lists (JobFailures) aren't in
     /// progress.
@@ -145,11 +313,10 @@ final class JobsSection: NSView {
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
-        header.stringValue = Self.headerText(jobs)
-        setAccessibilityLabel(header.stringValue)
-        let h = NSStackView(views: [header])
-        h.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 2, right: 0)
-        stack.addArrangedSubview(h)
+        header.label.stringValue = Self.headerText(jobs)
+        setAccessibilityLabel(header.label.stringValue)
+        stack.addArrangedSubview(header)
+        header.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         // what needs the user first: an agent waiting for an answer, then failures, then the rest by age
         let ordered = jobs.sorted { a, b in
             func rank(_ j: Job) -> Int { j.agent?.status == .waitingInput ? 0 : j.state == .failed ? 1 : 2 }
@@ -163,61 +330,139 @@ final class JobsSection: NSView {
             r.selected = j.id == selected
             keep[j.id] = r
             stack.addArrangedSubview(r)
-            r.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -20).isActive = true
+            r.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
         rows = keep
         if jobs.count > Self.maxRows {
-            let more = NSTextField(labelWithString: TP("main.jobs.more", jobs.count - Self.maxRows))
-            more.font = .systemFont(ofSize: 11)
-            more.textColor = .secondaryLabelColor
-            let m = NSStackView(views: [more])
-            m.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 0, right: 0)
-            stack.addArrangedSubview(m)
+            let more = GridLabel()
+            more.label.stringValue = TP("main.jobs.more", jobs.count - Self.maxRows)
+            more.label.font = .systemFont(ofSize: 11)
+            more.label.textColor = .secondaryLabelColor
+            more.onTitle = true
+            stack.addArrangedSubview(more)
+            more.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         }
     }
 }
 
-/// One job: icon (the brand arc while it runs), title, project, what it is doing, a thin progress bar.
+/// A line of small text on the list's grid: the section header over the kind icon, "N more" in the title column.
+final class GridLabel: NSView {
+    let label = NSTextField(labelWithString: "")
+    var onTitle = false
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        addSubview(label)
+        heightAnchor.constraint(equalToConstant: 20).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func layout() {
+        super.layout()
+        let g = ListGrid.of(self)
+        let x = onTitle ? g.title : g.icon
+        let h = label.intrinsicContentSize.height
+        label.frame = NSRect(x: x, y: (bounds.height - h) / 2, width: max(0, g.trailing - x), height: h)
+    }
+}
+
+/// The brand arc (BrandSpinner: the one spinner) on a faint track ring, so at row size it reads as busy, not as a
+/// stray "(". The list row and the running step use this one.
+final class TrackedSpinner: NSView {
+    let arc: BrandSpinner
+    private let track = CAShapeLayer()
+    private let size: CGFloat
+
+    init(size: CGFloat) {
+        self.size = size
+        arc = BrandSpinner(size: size)
+        super.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        wantsLayer = true
+        track.fillColor = nil
+        track.lineWidth = size >= 24 ? 2.25 : 1.75
+        layer?.addSublayer(track)
+        arc.frame = bounds
+        arc.autoresizingMask = [.width, .height]
+        arc.setAccessibilityElement(false)
+        addSubview(arc)
+        isHidden = true
+        setAccessibilityElement(true)
+        setAccessibilityRole(.progressIndicator)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: size, height: size) }
+
+    override func layout() {
+        super.layout()
+        track.frame = bounds
+        track.path = CGPath(ellipseIn: bounds.insetBy(dx: track.lineWidth, dy: track.lineWidth), transform: nil)
+        restroke()
+    }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); restroke() }
+    private func restroke() {
+        effectiveAppearance.performAsCurrentDrawingAppearance { track.strokeColor = NSColor.labelColor.withAlphaComponent(0.12).cgColor }
+    }
+
+    func startAnimation() { isHidden = false; arc.startAnimation() }
+    func stopAnimation() { arc.stopAnimation(); isHidden = true }
+}
+
+/// A flat progress bar (§3.3: ink in light, mint in dark), drawn here so it never turns grey when the window isn't key
+/// the way the system's bar does. The track is the label colour at 10 %, so it reads on any wash.
+final class FlatProgressBar: NSView {
+    var value: Double = 0 { didSet { needsDisplay = true; setAccessibilityValue(Loc.percent(value)) } }
+    var thickness: CGFloat = 4 { didSet { invalidateIntrinsicContentSize() } }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        setAccessibilityElement(true)
+        setAccessibilityRole(.progressIndicator)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override var intrinsicContentSize: NSSize { NSSize(width: NSView.noIntrinsicMetric, height: thickness) }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let r = NSRect(x: 0, y: (bounds.height - thickness) / 2, width: bounds.width, height: thickness)
+        let rad = thickness / 2
+        NSColor.labelColor.withAlphaComponent(0.10).setFill()
+        NSBezierPath(roundedRect: r, xRadius: rad, yRadius: rad).fill()
+        let w = r.width * CGFloat(min(max(value, 0), 1))
+        guard w > 0 else { return }
+        BrandColor.ink.setFill()
+        NSBezierPath(roundedRect: NSRect(x: r.minX, y: r.minY, width: max(w, thickness), height: thickness), xRadius: rad, yRadius: rad).fill()
+    }
+}
+
+/// One job on the list's grid, the height of an item row: its kind icon in the kind column, the spinner (or its
+/// failure mark) in the state ring's, the title in the title column, how far it is in the time column. Selected: the
+/// selection wash alone; working and not selected: the 1 pt brand hairline (§4) — never both on one row.
 final class JobRow: NSView {
     var onClick: (() -> Void)?
     let icon = NSImageView()
-    let spinner = BrandSpinner(size: 14)
+    let mark = NSImageView()
+    let spinner = TrackedSpinner(size: 14)
     let title = NSTextField(labelWithString: "")
     let status = NSTextField(labelWithString: "")
-    let bar = NSProgressIndicator()
     private var hover = false { didSet { needsDisplay = true } }
-    var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected) } }
-    /// While AI works on this job (processing a recording into items, organizing cards): the spinner plus one static 1 pt
-    /// brand hairline round the row (design system §4) — no rim, no glow, no motion of its own.
+    var selected = false { didSet { needsDisplay = true; setAccessibilitySelected(selected); updateWorking() } }
     private let working = WorkingOutline(frame: .zero)
     private var aiWorking = false
+    private var grid = ListGrid()
 
     init() {
         super.init(frame: .zero)
         working.cornerRadius = 6
-        title.font = .systemFont(ofSize: 12, weight: .medium)
+        title.font = Look.titleFont
         title.lineBreakMode = .byTruncatingTail
-        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        status.font = .systemFont(ofSize: 11)
-        status.alignment = .right
-        status.setContentCompressionResistancePriority(.required, for: .horizontal)
-        bar.style = .bar
-        bar.controlSize = .mini
-        bar.minValue = 0
-        bar.maxValue = 1
-        for v in [icon, spinner, title, status, bar] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
-        NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 30),
-            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 16),
-            spinner.centerXAnchor.constraint(equalTo: icon.centerXAnchor), spinner.centerYAnchor.constraint(equalTo: icon.centerYAnchor),
-            spinner.widthAnchor.constraint(equalToConstant: 14), spinner.heightAnchor.constraint(equalToConstant: 14),
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8), title.centerYAnchor.constraint(equalTo: centerYAnchor),
-            status.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 10),
-            status.trailingAnchor.constraint(equalTo: bar.leadingAnchor, constant: -10), status.centerYAnchor.constraint(equalTo: centerYAnchor),
-            bar.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8), bar.centerYAnchor.constraint(equalTo: centerYAnchor),
-            bar.widthAnchor.constraint(equalToConstant: 56),
-        ])
+        title.cell?.truncatesLastVisibleLine = true
+        status.font = Look.subFont
+        status.textColor = .secondaryLabelColor
+        status.alignment = .left           // placed where the times start (layout)
+        icon.imageScaling = .scaleNone
+        mark.imageScaling = .scaleNone
+        for v in [icon, mark, spinner, title, status] as [NSView] { addSubview(v) }
+        heightAnchor.constraint(equalToConstant: Look.rowHeight).isActive = true
         addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
@@ -225,81 +470,216 @@ final class JobRow: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func set(_ j: Job, project: String?) {
-        title.stringValue = JobLook.title(j) + (project.map { "  ·  \($0)" } ?? "")
-        status.stringValue = JobLook.status(j)
-        status.textColor = JobLook.statusColor(j)
-        let waiting = j.agent?.status == .waitingInput
-        let busy = j.state == .running && j.type != .agent && j.state != .failed
-        let ai = busy && (j.type == .process || j.type == .route)
-        if ai != aiWorking {
-            aiWorking = ai
-            if ai, working.superview == nil { addSubview(working) }
-            working.set(active: ai)
+        let name = JobLook.title(j)
+        let t = NSMutableAttributedString(string: name, attributes: [.font: Look.titleFont, .foregroundColor: NSColor.labelColor])
+        if let p = project {
+            t.append(NSAttributedString(string: "  ·  \(p)", attributes: [.font: Look.titleFont, .foregroundColor: NSColor.secondaryLabelColor]))
         }
-        icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), JobLook.title(j), size: 13)
+        title.attributedStringValue = t
+        status.stringValue = JobLook.rowStatus(j)
+        status.textColor = JobLook.statusColor(j)
+        status.font = j.agent == nil && JobLook.fraction(j) != nil ? Look.monoSub : Look.subFont
+        let waiting = j.agent?.status == .waitingInput
+        let busy = j.state == .running && j.type != .agent
+        aiWorking = busy && (j.type == .process || j.type == .route)
+        if aiWorking, working.superview == nil { addSubview(working) }
+        updateWorking()
+        icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), name, size: 13)
         icon.contentTintColor = waiting ? BrandColor.attn : .secondaryLabelColor
-        icon.isHidden = busy
         busy ? spinner.startAnimation() : spinner.stopAnimation()
-        if let p = j.progress ?? j.currentStep?.progress { bar.isIndeterminate = false; bar.doubleValue = p; bar.isHidden = false }
-        else { bar.isHidden = true }
-        setAccessibilityLabel("\(title.stringValue), \(status.stringValue)")
+        spinner.setAccessibilityLabel(JobLook.doing(j))
+        // a failure says so in the state column too, in the error colour (the words are on the right)
+        mark.image = j.state == .failed ? Look.symbol("xmark.circle.fill", T("job.state.failed"), size: 13) : nil
+        mark.contentTintColor = BrandColor.err
+        needsLayout = true
+        setAccessibilityLabel("\(name), \(status.stringValue)")
     }
+
+    private func updateWorking() { working.set(active: aiWorking && !selected) }
 
     override func layout() {
         super.layout()
-        working.frame = bounds
+        grid = ListGrid.of(self)
+        let h = bounds.height
+        icon.frame = NSRect(x: grid.icon, y: (h - 18) / 2, width: 18, height: 18)
+        if let ring = grid.ring {
+            spinner.frame = NSRect(x: ring - 7, y: (h - 14) / 2, width: 14, height: 14)
+            mark.frame = NSRect(x: ring - 9, y: (h - 18) / 2, width: 18, height: 18)
+            icon.isHidden = false
+        } else {
+            // the full table has no ring column: the spinner (or the failure mark) takes the icon's place
+            spinner.frame = NSRect(x: grid.icon + 2, y: (h - 14) / 2, width: 14, height: 14)
+            mark.frame = icon.frame
+            icon.isHidden = !spinner.isHidden || mark.image != nil
+        }
+        let sw = ceil(status.intrinsicContentSize.width) + 4, sh = status.intrinsicContentSize.height
+        // in the time column, where the items' times start; a longer status grows to the left
+        let sx = min(grid.time ?? .greatestFiniteMagnitude, grid.trailing - sw)
+        status.frame = NSRect(x: sx, y: (h - sh) / 2, width: sw, height: sh)
+        let th = title.intrinsicContentSize.height
+        title.frame = NSRect(x: grid.title, y: (h - th) / 2, width: max(0, status.frame.minX - 12 - grid.title), height: th)
+        working.frame = wash
+        window?.invalidateCursorRects(for: self)
+    }
+
+    private var wash: NSRect {
+        let lo = max(0, grid.washMin), hi = min(bounds.width, grid.washMax > grid.washMin ? grid.washMax : bounds.width)
+        return NSRect(x: lo, y: 0, width: max(0, hi - lo), height: bounds.height)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard hover || selected else { return }
-        (selected ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 6, yRadius: 6).fill()
+        let key = window?.isKeyWindow == true && NSApp.isActive || BrandRowView.testKeyLook
+        (selected && key ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
+        NSBezierPath(roundedRect: wash, xRadius: 6, yRadius: 6).fill()
     }
     override func mouseEntered(with event: NSEvent) { hover = true }
     override func mouseExited(with event: NSEvent) { hover = false }
     override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func resetCursorRects() { addCursorRect(wash, cursor: .pointingHand) }
 }
 
-/// The detail column for a job: what it is, its steps as a vertical timeline (done, running with progress, pending,
-/// failed, skipped), the error with what to do, and its items. Agent sessions add the terminal (P3) below.
+// MARK: - The detail
+
+/// An inset group, System Settings style: r 10, a hairline round it in light, a raised surface in dark. Its rows
+/// draw the rules between them.
+final class GroupCard: NSView {
+    let rows = NSStackView()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        rows.orientation = .vertical
+        rows.alignment = .leading
+        rows.spacing = 0
+        rows.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(rows)
+        NSLayoutConstraint.activate([
+            rows.topAnchor.constraint(equalTo: topAnchor), rows.bottomAnchor.constraint(equalTo: bottomAnchor),
+            rows.leadingAnchor.constraint(equalTo: leadingAnchor), rows.trailingAnchor.constraint(equalTo: trailingAnchor),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    func set(_ views: [NSView]) {
+        rows.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        for v in views {
+            rows.addArrangedSubview(v)
+            v.widthAnchor.constraint(equalTo: rows.widthAnchor).isActive = true
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
+    override func draw(_ dirtyRect: NSRect) {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let p = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
+        (dark ? NSColor.white.withAlphaComponent(0.05) : NSColor.controlBackgroundColor).setFill()
+        p.fill()
+        (dark ? NSColor.white.withAlphaComponent(0.07) : NSColor.separatorColor).setStroke()
+        p.lineWidth = 1
+        p.stroke()
+    }
+}
+
+/// A row in a GroupCard: draws the rule above it (not above the first), from where its text starts.
+class GroupRow: NSView {
+    var ruleInset: CGFloat = 38
+    var first = false { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        guard !first else { return }
+        NSColor.separatorColor.setFill()
+        NSRect(x: ruleInset, y: 0, width: bounds.width - ruleInset, height: 1 / (window?.backingScaleFactor ?? 2)).fill()
+    }
+}
+
+/// The detail column for a job: what it does to what and when it started, one control (Stop while it runs, Try
+/// Again when it failed) with ⋯ for the rest, how far it is (one bar, one number, the time so far), its steps in an
+/// inset group with each one's time, and the items it has written so far. Agent sessions show their title and status
+/// line, then the terminal (P3) below.
 final class JobDetailView: NSView {
-    var onAction: ((String) -> Void)?           // "log", "retry", "dismiss", "items", "stop", "external"
+    var onAction: ((String) -> Void)?           // "log", "retry", "dismiss", "items", "item:<uid>", "stop", "external"
     private let stack = NSStackView()
+    private let headerRow = NSView()
     private let header = NSTextField(labelWithString: "")
+    private let controls = NSStackView()
     private let sub = NSTextField(labelWithString: "")
-    private let steps = NSStackView()
     private let error = NSTextField(wrappingLabelWithString: "")
-    private let buttons = NSStackView()
+    private let progress = NSView()
+    private let bar = FlatProgressBar()
+    private let doing = NSTextField(labelWithString: "")
+    private let elapsed = NSTextField(labelWithString: "")
+    private let stepsTitle = NSTextField(labelWithString: "")
+    private let stepsCard = GroupCard()
+    private let itemsTitle = NSTextField(labelWithString: "")
+    private let itemsCard = GroupCard()
     private(set) var job: Job?
     /// The terminal pane for agent jobs (AppEnvironment.terminal), or a note that it isn't available.
     let terminalBox = NSView()
     private var terminal: TerminalPaneHosting?
+    private var ticker: Timer?
+    /// The running step's time label and when it started, for the ticker.
+    private var runningStep: (label: NSTextField, start: Date)?
+    static let maxItems = 8
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         header.font = .systemFont(ofSize: 17, weight: .semibold)
         header.lineBreakMode = .byTruncatingTail
+        header.cell?.truncatesLastVisibleLine = true
+        header.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        controls.orientation = .horizontal
+        controls.spacing = 6
+        controls.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [header, controls] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; headerRow.addSubview(v) }
+        NSLayoutConstraint.activate([
+            header.leadingAnchor.constraint(equalTo: headerRow.leadingAnchor), header.centerYAnchor.constraint(equalTo: headerRow.centerYAnchor),
+            header.trailingAnchor.constraint(lessThanOrEqualTo: controls.leadingAnchor, constant: -12),
+            controls.trailingAnchor.constraint(equalTo: headerRow.trailingAnchor), controls.centerYAnchor.constraint(equalTo: headerRow.centerYAnchor),
+            headerRow.heightAnchor.constraint(equalToConstant: 26),
+        ])
         sub.font = .systemFont(ofSize: 12)
         sub.textColor = .secondaryLabelColor
         sub.lineBreakMode = .byTruncatingMiddle
         sub.cell?.truncatesLastVisibleLine = true
+        sub.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         error.isSelectable = true               // the fix in it ("run `claude` and /login") can be copied
-        steps.orientation = .vertical
-        steps.alignment = .leading
-        steps.spacing = 0
         error.font = .systemFont(ofSize: 12)
-        error.textColor = BrandColor.err
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
+        doing.font = .systemFont(ofSize: 12)
+        doing.textColor = .secondaryLabelColor
+        doing.lineBreakMode = .byTruncatingTail
+        doing.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        elapsed.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        elapsed.textColor = .secondaryLabelColor
+        elapsed.alignment = .right
+        for v in [bar, doing, elapsed] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; progress.addSubview(v) }
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: progress.topAnchor), bar.leadingAnchor.constraint(equalTo: progress.leadingAnchor),
+            bar.trailingAnchor.constraint(equalTo: progress.trailingAnchor), bar.heightAnchor.constraint(equalToConstant: 4),
+            doing.topAnchor.constraint(equalTo: bar.bottomAnchor, constant: 7), doing.leadingAnchor.constraint(equalTo: progress.leadingAnchor),
+            doing.trailingAnchor.constraint(lessThanOrEqualTo: elapsed.leadingAnchor, constant: -12),
+            elapsed.firstBaselineAnchor.constraint(equalTo: doing.firstBaselineAnchor), elapsed.trailingAnchor.constraint(equalTo: progress.trailingAnchor),
+            doing.bottomAnchor.constraint(equalTo: progress.bottomAnchor),
+        ])
+        for t in [stepsTitle, itemsTitle] {
+            t.font = .systemFont(ofSize: 13, weight: .semibold)
+            t.textColor = .labelColor
+        }
+        stepsTitle.stringValue = T("main.job.steps")
+        itemsTitle.stringValue = T("main.job.items")
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
-        stack.edgeInsets = NSEdgeInsets(top: 22, left: 24, bottom: 16, right: 24)
-        for v in [header, sub, steps, error, buttons] as [NSView] { stack.addArrangedSubview(v) }
+        // the title's line on the list's first line ("Running · 1"): one top under the toolbar for both columns
+        stack.edgeInsets = NSEdgeInsets(top: 3, left: 24, bottom: 16, right: 24)
+        let full: [NSView] = [headerRow, sub, error, progress, stepsTitle, stepsCard, itemsTitle, itemsCard]
+        for v in full { stack.addArrangedSubview(v) }
+        stack.setCustomSpacing(1, after: headerRow)
         stack.setCustomSpacing(18, after: sub)
-        stack.setCustomSpacing(14, after: steps)
+        stack.setCustomSpacing(18, after: error)
+        stack.setCustomSpacing(24, after: progress)
+        stack.setCustomSpacing(8, after: stepsTitle)
+        stack.setCustomSpacing(24, after: stepsCard)
+        stack.setCustomSpacing(8, after: itemsTitle)
         stack.translatesAutoresizingMaskIntoConstraints = false
         terminalBox.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
@@ -309,12 +689,11 @@ final class JobDetailView: NSView {
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalBox.topAnchor.constraint(equalTo: stack.bottomAnchor), terminalBox.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalBox.trailingAnchor.constraint(equalTo: trailingAnchor), terminalBox.bottomAnchor.constraint(equalTo: bottomAnchor),
-            header.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
-            sub.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
-            error.widthAnchor.constraint(lessThanOrEqualTo: stack.widthAnchor, constant: -48),
         ])
+        for v in full { v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true }
     }
     required init?(coder: NSCoder) { fatalError() }
+    deinit { ticker?.invalidate() }
 
     /// "Used about 24K tokens · gpt-6-luna" / "用了约 2.4万 token · gpt-6-luna"; "No AI · 0 tokens" for a capture filed
     /// from its note; nil when the agent didn't say (nothing to tell, so nothing shown).
@@ -331,51 +710,195 @@ final class JobDetailView: NSView {
         return T("main.job.organized_by", AgentNames.name(o.agent), o.insteadOf.joined(separator: T("app.agent.list_sep")))
     }
 
+    /// The line under the title: where, when it started (and how long it took), who organised it, what it cost.
+    static func subtitle(_ j: Job, projectName: String?) -> String {
+        var parts: [String] = []
+        let start = j.started ?? j.created
+        // an agent session: the pane header below carries its project, state and branch — said once, not twice
+        if j.type != .agent {
+            if let p = projectName { parts.append(p) }
+            parts.append(T("main.job.started", Loc.relative(start)))
+            if let end = j.ended, !j.isActive { parts.append(T("main.job.took", JobLook.clock(end.timeIntervalSince(start)))) }
+            if let o = organizerText(j) { parts.append(o) } else if j.isActive, let a = JobLook.agentName(j) { parts.append(a) }
+        }
+        if let u = j.usage, let t = usageText(u) { parts.append(t) }
+        return parts.joined(separator: "  ·  ")
+    }
+
     func show(_ j: Job, projectName: String?) {
         let sameJob = job?.id == j.id
         job = j
-        header.stringValue = JobLook.title(j)
-        // an agent session: the pane header below carries its project, state and branch — said once, not twice
-        var parts: [String] = []
-        if j.type != .agent {
-            if let p = projectName { parts.append(p) }
-            parts.append(Loc.relative(j.started ?? j.created))
-            if let o = JobDetailView.organizerText(j) { parts.append(o) }
-        }
-        if let u = j.usage, let t = JobDetailView.usageText(u) { parts.append(t) }
-        sub.stringValue = parts.joined(separator: "  ·  ")
-        sub.isHidden = parts.isEmpty
-        steps.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        // an agent session: its status is in the line above and its terminal below — no timeline in between
-        steps.isHidden = j.type == .agent
-        var ids = j.steps.isEmpty ? (jobSteps[j.type] ?? []).map { JobStep(id: $0, state: .pending) } : j.steps
-        // AI fill-in has no recording to transcribe, no frames to cut, nothing to file: just prepare and write
-        if j.type == .process, j.session == nil { ids = ids.filter { !["transcribe", "frames", "route"].contains($0.id) } }
-        if j.type != .agent {
-            for (k, s) in ids.enumerated() { steps.addArrangedSubview(StepRow(s, last: k == ids.count - 1, failed: j.state == .failed)) }
-        }
-        stack.setCustomSpacing(j.type == .agent ? 8 : 18, after: sub)
-        // the session pane says why an agent failed, with its last output: only other jobs say it here
-        if j.type != .agent, let why = JobLook.errorText(j) {
+        let agent = j.type == .agent
+        header.stringValue = JobLook.detailTitle(j)
+        header.toolTip = header.stringValue
+        sub.stringValue = Self.subtitle(j, projectName: projectName)
+        sub.isHidden = sub.stringValue.isEmpty
+        stack.setCustomSpacing(agent ? 8 : 18, after: sub)
+
+        // why it ended: the session pane says it for an agent; a stop the user made is said quietly, not in red
+        if !agent, JobLook.stopped(j) {
+            error.stringValue = T("main.job.stopped")
+            error.textColor = .secondaryLabelColor
+            error.isHidden = false
+        } else if !agent, let why = JobLook.errorText(j) {
             error.stringValue = why
+            error.textColor = BrandColor.err
             error.isHidden = false
         } else { error.isHidden = true }
-        buttons.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        func button(_ t: String, _ action: String) {
-            let b = NSButton(title: t, target: self, action: #selector(tap(_:)))
-            b.identifier = .init(action)
-            b.bezelStyle = .rounded
-            b.controlSize = .regular
-            buttons.addArrangedSubview(b)
-        }
-        if j.type != .agent {
-            if j.state == .failed, j.type == .process, j.session != nil || !j.items.isEmpty { button(T("action.retry"), "retry") }
-            if j.state == .failed, !j.dismissed { button(T("main.job.dismiss"), "dismiss") }
-            if FileManager.default.fileExists(atPath: JobFiles.log(j.id).path) { button(T("main.job.show_log"), "log") }
-            if !j.items.isEmpty { button(TP("main.job.show_items", j.items.count), "items") }
-        }
-        buttons.isHidden = buttons.arrangedSubviews.isEmpty
+
+        // how far: one bar, one number, the time so far — only while it runs
+        let fraction = JobLook.fraction(j)
+        progress.isHidden = agent || !j.isActive
+        bar.isHidden = fraction == nil
+        bar.value = fraction ?? 0
+        doing.stringValue = JobLook.doing(j) + (fraction.map { "  " + Loc.percent($0) } ?? "")
+
+        showControls(j)
+        showSteps(j)
+        showItems(j)
+        ticker?.invalidate()
+        ticker = nil
+        startTicker()
+        tick()
         attachTerminal(j, sameJob: sameJob)
+    }
+
+    private func startTicker() {
+        guard ticker == nil, window != nil, let j = job, j.isActive, j.type != .agent else { return }
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        RunLoop.main.add(t, forMode: .common)
+        ticker = t
+    }
+
+    /// The live times: the run's elapsed time, the running step's.
+    private func tick() {
+        guard let j = job else { return }
+        if window == nil || isHidden { ticker?.invalidate(); ticker = nil; return }
+        elapsed.stringValue = T("main.job.elapsed", JobLook.clock(Date().timeIntervalSince(j.started ?? j.created)))
+        if let r = runningStep { r.label.stringValue = JobLook.clock(Date().timeIntervalSince(r.start)) }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        startTicker()
+    }
+
+    override func viewDidUnhide() {
+        super.viewDidUnhide()
+        startTicker()
+    }
+
+    // MARK: controls: at most two at rest — the one thing to do, and ⋯ for the rest
+
+    private func showControls(_ j: Job) {
+        controls.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        // an agent session: its terminal pane's header carries Stop, Open in Terminal, Show Log…
+        guard j.type != .agent else { return }
+        let canRetry = (j.state == .failed || JobLook.stopped(j)) && j.type == .process && (j.session != nil || !j.items.isEmpty)
+        var more: [(String, String)] = []
+        if JobStop.canStop(j) {
+            let b = plain(T("main.job.stop"), "stop")
+            b.keyEquivalent = "."
+            b.keyEquivalentModifierMask = .command
+            b.toolTip = T("main.job.stop.tip")
+            controls.addArrangedSubview(b)
+        } else if canRetry {
+            let b = BrandButton(title: T("action.retry"), target: self, action: #selector(tap(_:)))
+            b.identifier = .init("retry")
+            b.fontSize = 12
+            b.hPad = 12
+            b.radius = 6
+            controls.addArrangedSubview(b)
+            if j.state == .failed, !j.dismissed { more.append((T("main.job.dismiss"), "dismiss")) }
+        } else if j.state == .failed, !j.dismissed {
+            controls.addArrangedSubview(plain(T("main.job.dismiss"), "dismiss"))
+        } else if j.state == .done, !j.items.isEmpty {
+            controls.addArrangedSubview(plain(TP("main.job.show_items", j.items.count), "items"))
+        }
+        if logURL(j) != nil { more.append((T("main.job.show_log"), "log")) }
+        if j.session != nil { more.append((T("action.reveal_in_finder"), "reveal")) }
+        guard !more.isEmpty else { return }
+        let menu = NSMenu()
+        for (title, action) in more {
+            let i = NSMenuItem(title: Look.menuCase(title), action: #selector(menuTap(_:)), keyEquivalent: "")
+            i.target = self
+            i.representedObject = action
+            menu.addItem(i)
+        }
+        controls.addArrangedSubview(MenuButton(menu: menu, label: T("main.job.more")))
+    }
+
+    private func plain(_ title: String, _ action: String) -> NSButton {
+        let b = NSButton(title: title, target: self, action: #selector(tap(_:)))
+        b.identifier = .init(action)
+        b.bezelStyle = .rounded
+        b.controlSize = .small
+        return b
+    }
+
+    /// The job's own log, else the recording's agent.log (an organising run writes there).
+    private func logURL(_ j: Job) -> URL? {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: JobFiles.log(j.id).path) { return JobFiles.log(j.id) }
+        if let s = j.session?.appendingPathComponent("agent.log"), fm.fileExists(atPath: s.path) { return s }
+        return nil
+    }
+
+    // MARK: steps
+
+    private func showSteps(_ j: Job) {
+        runningStep = nil
+        let show = j.type != .agent
+        stepsTitle.isHidden = !show
+        stepsCard.isHidden = !show
+        guard show else { return }
+        let times = JobLook.stepTimes(j)
+        let stopped = JobLook.stopped(j)
+        var rows: [NSView] = []
+        for (k, s) in JobLook.steps(j).enumerated() {
+            // a stopped run's step that was going says it stopped, not that it failed
+            let look: StepLook = stopped && (s.state == .running || s.state == .failed) ? .stopped
+                : !j.isActive && s.state == .running ? .failed : StepLook(s.state)
+            let t = times[s.id]
+            let r = StepRow(s, look: look, start: t?.start, end: t?.end)
+            r.first = k == 0
+            if look == .running, let st = t?.start { runningStep = (r.time, st) }
+            rows.append(r)
+        }
+        stepsCard.set(rows)
+    }
+
+    // MARK: items
+
+    private func showItems(_ j: Job) {
+        let producing = j.type == .process || j.type == .route
+        let show = j.type != .agent && (!j.items.isEmpty || (producing && (j.isActive || j.state == .done)))
+        itemsTitle.isHidden = !show
+        itemsCard.isHidden = !show
+        guard show else { return }
+        var rows: [GroupRow] = []
+        if j.items.isEmpty {
+            rows.append(NoteRow(j.isActive ? T("main.job.items.waiting") : T("main.job.items.none")))
+        } else {
+            let first = Array(j.items.prefix(Self.maxItems))
+            let found = (try? IndexReader(url: BlurtPaths.indexDB)).flatMap { try? $0.items(uids: first) } ?? []
+            let byUID = Dictionary(found.map { ($0.uid, $0) }, uniquingKeysWith: { a, _ in a })
+            for uid in first {
+                guard let it = byUID[uid] else { continue }
+                let r = JobItemRow(it)
+                r.onClick = { [weak self] in self?.onAction?("item:" + uid) }
+                rows.append(r)
+            }
+            if rows.isEmpty { rows.append(NoteRow(TP("main.items.count", j.items.count))) }
+            if j.items.count > Self.maxItems {
+                let more = JobItemRow(nil, text: T("main.job.items.more", j.items.count))
+                more.onClick = { [weak self] in self?.onAction?("items") }
+                rows.append(more)
+            }
+        }
+        itemsTitle.stringValue = j.items.isEmpty ? T("main.job.items") : T("main.job.items") + "  " + Loc.number(j.items.count)
+        for (k, r) in rows.enumerated() { r.first = k == 0 }
+        itemsCard.set(rows)
     }
 
     private func attachTerminal(_ j: Job, sameJob: Bool) {
@@ -408,116 +931,238 @@ final class JobDetailView: NSView {
         }
     }
 
-    @objc func tap(_ b: NSButton) { b.identifier.map { onAction?($0.rawValue) } }
+    @objc func tap(_ b: NSButton) { b.identifier.map { run($0.rawValue) } }
+    @objc func menuTap(_ i: NSMenuItem) { (i.representedObject as? String).map(run) }
+
+    private func run(_ action: String) {
+        guard let j = job else { return }
+        switch action {
+        case "log": if let u = logURL(j) { NSWorkspace.shared.open(u) }
+        case "reveal": if let s = j.session { NSWorkspace.shared.activateFileViewerSelecting([s]) }
+        default: onAction?(action)
+        }
+    }
 }
 
-/// One step of the timeline: a marker (check, spinner ring, hollow, x, dash) on a vertical line, its name, progress.
-final class StepRow: NSView {
-    init(_ s: JobStep, last: Bool, failed: Bool, label: String? = nil) {
+/// ⋯ beside the header's button: a borderless menu button for the rarer actions (Show Log, Show in Finder, Dismiss).
+final class MenuButton: NSButton {
+    private let items: NSMenu
+    init(menu: NSMenu, label: String) {
+        items = menu
+        super.init(frame: NSRect(x: 0, y: 0, width: 24, height: 22))
+        isBordered = false
+        bezelStyle = .regularSquare
+        image = Look.symbol("ellipsis.circle", label, size: 15)
+        imagePosition = .imageOnly
+        contentTintColor = .secondaryLabelColor
+        toolTip = label
+        setAccessibilityLabel(label)
+        target = self
+        action = #selector(open)
+        translatesAutoresizingMaskIntoConstraints = false
+        widthAnchor.constraint(equalToConstant: 24).isActive = true
+        heightAnchor.constraint(equalToConstant: 22).isActive = true
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    @objc private func open() { items.popUp(positioning: nil, at: NSPoint(x: 0, y: bounds.height + 4), in: self) }
+}
+
+/// A quiet line inside a group: "Items appear here as they’re written."
+final class NoteRow: GroupRow {
+    init(_ text: String) {
         super.init(frame: .zero)
-        let marker = StepMarker(state: s.state)
-        // a failed step says so in words, not only in red: "Transcribing · Failed"
-        let base = label ?? T("job.step.\(s.id)")
-        let name = NSTextField(labelWithString: s.state == .failed ? "\(base) · \(T("job.state.failed"))" : base)
-        name.font = .systemFont(ofSize: 13, weight: s.state == .running ? .semibold : .regular)
-        name.textColor = s.state == .pending || s.state == .skipped ? .tertiaryLabelColor : s.state == .failed ? BrandColor.err : .labelColor
-        let extra = NSTextField(labelWithString: s.state == .running ? s.progress.map { Loc.percent($0) } ?? "" : s.state == .skipped ? T("main.job.skipped") : "")
-        extra.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        extra.textColor = .secondaryLabelColor
-        let line = NSBox()
-        line.boxType = .custom
-        line.borderWidth = 0
-        line.fillColor = .separatorColor
-        line.isHidden = last
-        for v in [marker, name, extra, line] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        let l = NSTextField(labelWithString: text)
+        l.font = .systemFont(ofSize: 12)
+        l.textColor = .secondaryLabelColor
+        l.lineBreakMode = .byTruncatingTail
+        l.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(l)
         NSLayoutConstraint.activate([
-            heightAnchor.constraint(equalToConstant: 30), widthAnchor.constraint(greaterThanOrEqualToConstant: 240),
-            marker.leadingAnchor.constraint(equalTo: leadingAnchor), marker.topAnchor.constraint(equalTo: topAnchor, constant: 4),
-            marker.widthAnchor.constraint(equalToConstant: 14), marker.heightAnchor.constraint(equalToConstant: 14),
-            line.centerXAnchor.constraint(equalTo: marker.centerXAnchor), line.topAnchor.constraint(equalTo: marker.bottomAnchor, constant: 2),
-            line.bottomAnchor.constraint(equalTo: bottomAnchor, constant: 2), line.widthAnchor.constraint(equalToConstant: 1),
-            name.leadingAnchor.constraint(equalTo: marker.trailingAnchor, constant: 10), name.centerYAnchor.constraint(equalTo: marker.centerYAnchor),
-            extra.leadingAnchor.constraint(equalTo: name.trailingAnchor, constant: 8), extra.centerYAnchor.constraint(equalTo: marker.centerYAnchor),
-            extra.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            heightAnchor.constraint(equalToConstant: 36),
+            l.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), l.centerYAnchor.constraint(equalTo: centerYAnchor),
+            l.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
+        ])
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// An item the job wrote, as the list shows it — kind icon, state ring, title, its id — one click opens it. Without
+/// an item: a "Show all 12" line in the title's place.
+final class JobItemRow: GroupRow {
+    var onClick: (() -> Void)?
+    private var hover = false { didSet { needsDisplay = true } }
+
+    init(_ it: ItemRow?, text: String? = nil) {
+        super.init(frame: .zero)
+        ruleInset = 12
+        let title = NSTextField(labelWithString: it?.title ?? text ?? "")
+        title.font = Look.titleFont
+        title.textColor = it == nil ? BrandColor.ink : .labelColor
+        title.lineBreakMode = .byTruncatingTail
+        title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let key = NSTextField(labelWithString: it?.itemID ?? "")
+        key.font = Look.monoSub
+        key.textColor = .secondaryLabelColor
+        key.setContentCompressionResistancePriority(.required, for: .horizontal)
+        let icon = NSImageView(), ring = NSImageView()
+        icon.imageScaling = .scaleNone
+        ring.imageScaling = .scaleNone
+        if let it = it {
+            icon.image = Look.kindImage(it.kind)
+            icon.setAccessibilityLabel(Look.kindName(it.kind))
+            ring.image = Look.ring(it.state)
+            ring.toolTip = Look.stateLabel(it)
+        }
+        for v in [icon, ring, title, key] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        let x: CGFloat = it == nil ? 12 : 12 + 18 + 3 + 20 + 6
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 32),
+            icon.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), icon.centerYAnchor.constraint(equalTo: centerYAnchor),
+            icon.widthAnchor.constraint(equalToConstant: 18),
+            ring.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 3), ring.centerYAnchor.constraint(equalTo: centerYAnchor),
+            ring.widthAnchor.constraint(equalToConstant: 20),
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: x), title.centerYAnchor.constraint(equalTo: centerYAnchor),
+            key.leadingAnchor.constraint(greaterThanOrEqualTo: title.trailingAnchor, constant: 12),
+            key.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12), key.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect], owner: self))
+        setAccessibilityElement(true)
+        setAccessibilityRole(.button)
+        setAccessibilityLabel([it?.itemID, title.stringValue].compactMap { $0 }.joined(separator: " "))
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard hover else { return }
+        NSColor.labelColor.withAlphaComponent(0.06).setFill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 4, dy: 2), xRadius: 6, yRadius: 6).fill()
+    }
+    override func mouseEntered(with event: NSEvent) { hover = true }
+    override func mouseExited(with event: NSEvent) { hover = false }
+    override func mouseUp(with event: NSEvent) { if bounds.contains(convert(event.locationInWindow, from: nil)) { onClick?() } }
+    override func accessibilityPerformPress() -> Bool { onClick?(); return true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+}
+
+/// How a step is drawn: its state, or "stopped" for the step a stopped run was on.
+enum StepLook: Equatable {
+    case pending, running, done, failed, skipped, stopped
+    init(_ s: StepState) {
+        switch s {
+        case .pending: self = .pending
+        case .running: self = .running
+        case .done: self = .done
+        case .failed: self = .failed
+        case .skipped: self = .skipped
+        }
+    }
+}
+
+/// One step in the group: its marker, its name, and on the right how long it took (or has been going).
+final class StepRow: GroupRow {
+    let time = NSTextField(labelWithString: "")
+
+    init(_ s: JobStep, look: StepLook, start: Date?, end: Date?, label: String? = nil) {
+        super.init(frame: .zero)
+        let marker = StepMarker(look: look)
+        let base = label ?? T("job.step.\(s.id)")
+        // a failed step says so in words, not only in red: "Transcribing · Failed"
+        let name = NSTextField(labelWithString: look == .failed ? "\(base) · \(T("job.state.failed"))" : base)
+        name.font = .systemFont(ofSize: 13, weight: look == .running ? .medium : .regular)
+        name.textColor = look == .failed ? BrandColor.err : look == .pending ? .secondaryLabelColor : look == .skipped ? .tertiaryLabelColor : .labelColor
+        name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        switch look {
+        case .running: time.stringValue = start.map { JobLook.clock(Date().timeIntervalSince($0)) } ?? ""
+        case .done, .failed: time.stringValue = start.flatMap { st in end.map { JobLook.clock($0.timeIntervalSince(st)) } } ?? ""
+        case .skipped: time.stringValue = T("main.job.skipped")
+        case .stopped: time.stringValue = T("main.job.step_stopped")
+        case .pending: time.stringValue = ""
+        }
+        time.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        time.textColor = .secondaryLabelColor
+        time.alignment = .right
+        time.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [marker, name, time] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 36),
+            marker.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12), marker.centerYAnchor.constraint(equalTo: centerYAnchor),
+            marker.widthAnchor.constraint(equalToConstant: 16), marker.heightAnchor.constraint(equalToConstant: 16),
+            name.leadingAnchor.constraint(equalTo: marker.trailingAnchor, constant: 10), name.centerYAnchor.constraint(equalTo: centerYAnchor),
+            time.leadingAnchor.constraint(greaterThanOrEqualTo: name.trailingAnchor, constant: 12),
+            time.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12), time.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor),
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
-        setAccessibilityLabel("\(name.stringValue), \(T("main.job.step_state.\(s.state.rawValue)")) \(extra.stringValue)")
+        let said: String
+        switch look {
+        case .pending: said = T("main.job.step_state.pending")
+        case .running: said = T("main.job.step_state.running")
+        case .done: said = T("main.job.step_state.done")
+        case .failed: said = T("main.job.step_state.failed")
+        case .skipped: said = T("main.job.step_state.skipped")
+        case .stopped: said = T("main.job.step_stopped")
+        }
+        setAccessibilityLabel("\(name.stringValue), \(said)" + (look == .running || look == .done ? ", \(time.stringValue)" : ""))
     }
     required init?(coder: NSCoder) { fatalError() }
 }
 
+/// A step's 16 pt marker, one family: done = the ok disc with a check, running = the shared spinner arc on its track,
+/// pending = a hollow ring, failed = the error disc with an ×, skipped / stopped = the ring with a dash.
 final class StepMarker: NSView {
-    let state: StepState
-    private var ring: CAShapeLayer?
-    init(state: StepState) {
-        self.state = state
-        super.init(frame: NSRect(x: 0, y: 0, width: 14, height: 14))
-        wantsLayer = true
+    let look: StepLook
+
+    init(look: StepLook) {
+        self.look = look
+        super.init(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
+        if look == .running {
+            let s = TrackedSpinner(size: 16)
+            s.frame = bounds
+            s.autoresizingMask = [.width, .height]
+            addSubview(s)
+            s.startAnimation()
+        }
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard state == .running, ring == nil, let layer = layer else { return }
-        // a quarter arc going round — the one motion on this page; still when Reduce Motion is on
-        let r = CAShapeLayer()
-        r.frame = bounds
-        r.path = CGPath(ellipseIn: bounds.insetBy(dx: 1.5, dy: 1.5), transform: nil)
-        r.fillColor = nil
-        effectiveAppearance.performAsCurrentDrawingAppearance { r.strokeColor = BrandColor.ink.cgColor }
-        r.lineWidth = 1.75
-        r.strokeStart = 0
-        r.strokeEnd = 0.3
-        r.lineCap = .round
-        layer.addSublayer(r)
-        ring = r
-        if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-            let spin = CABasicAnimation(keyPath: "transform.rotation.z")
-            spin.fromValue = 0
-            spin.toValue = -Double.pi * 2
-            spin.duration = 1.1
-            spin.repeatCount = .infinity
-            r.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-            r.position = CGPoint(x: bounds.midX, y: bounds.midY)
-            r.add(spin, forKey: "spin")
-        }
-    }
-
-    override func viewDidChangeEffectiveAppearance() {
-        super.viewDidChangeEffectiveAppearance()
-        effectiveAppearance.performAsCurrentDrawingAppearance { ring?.strokeColor = BrandColor.ink.cgColor }
-    }
+    override var intrinsicContentSize: NSSize { NSSize(width: 16, height: 16) }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
 
     override func draw(_ dirtyRect: NSRect) {
-        let r = bounds.insetBy(dx: 1.5, dy: 1.5)
-        switch state {
+        let c = NSPoint(x: bounds.midX, y: bounds.midY)
+        switch look {
         case .done:
             BrandColor.ok.setFill()
             NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
             BrandColor.onOk.setStroke()
             let p = NSBezierPath()
-            p.move(to: NSPoint(x: 4, y: 7.2)); p.line(to: NSPoint(x: 6.2, y: 5)); p.line(to: NSPoint(x: 10.2, y: 9.2))
-            p.lineWidth = 1.6; p.lineCapStyle = .round; p.lineJoinStyle = .round
+            p.move(to: NSPoint(x: c.x - 3.6, y: c.y + 0.1)); p.line(to: NSPoint(x: c.x - 1.1, y: c.y - 2.4)); p.line(to: NSPoint(x: c.x + 3.7, y: c.y + 2.6))
+            p.lineWidth = 1.7; p.lineCapStyle = .round; p.lineJoinStyle = .round
             p.stroke()
         case .failed:
             BrandColor.err.setFill()
             NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
             NSColor.white.setStroke()
-            let p = NSBezierPath()
-            p.move(to: NSPoint(x: 4.6, y: 4.6)); p.line(to: NSPoint(x: 9.4, y: 9.4))
-            p.move(to: NSPoint(x: 9.4, y: 4.6)); p.line(to: NSPoint(x: 4.6, y: 9.4))
-            p.lineWidth = 1.6; p.lineCapStyle = .round
+            let p = NSBezierPath(), d: CGFloat = 2.8
+            p.move(to: NSPoint(x: c.x - d, y: c.y - d)); p.line(to: NSPoint(x: c.x + d, y: c.y + d))
+            p.move(to: NSPoint(x: c.x + d, y: c.y - d)); p.line(to: NSPoint(x: c.x - d, y: c.y + d))
+            p.lineWidth = 1.7; p.lineCapStyle = .round
             p.stroke()
         case .running:
-            NSColor.separatorColor.setStroke()
-            let c = NSBezierPath(ovalIn: r); c.lineWidth = 1.75; c.stroke()
-        case .skipped:
+            break                                   // the spinner draws itself
+        case .pending, .skipped, .stopped:
             NSColor.tertiaryLabelColor.setStroke()
-            let p = NSBezierPath(); p.move(to: NSPoint(x: 4, y: 7)); p.line(to: NSPoint(x: 10, y: 7)); p.lineWidth = 1.5; p.stroke()
-        case .pending:
-            NSColor.tertiaryLabelColor.setStroke()
-            let c = NSBezierPath(ovalIn: r); c.lineWidth = 1.5; c.stroke()
+            let ring = NSBezierPath(ovalIn: bounds.insetBy(dx: 1.75, dy: 1.75))
+            ring.lineWidth = 1.5
+            ring.stroke()
+            guard look != .pending else { return }
+            (look == .stopped ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor).setStroke()
+            let p = NSBezierPath()
+            p.move(to: NSPoint(x: c.x - 3, y: c.y)); p.line(to: NSPoint(x: c.x + 3, y: c.y))
+            p.lineWidth = 1.5; p.lineCapStyle = .round
+            p.stroke()
         }
     }
 }

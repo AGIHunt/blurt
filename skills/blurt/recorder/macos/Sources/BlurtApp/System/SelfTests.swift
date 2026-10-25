@@ -18,7 +18,7 @@
 //   onboardingtest step N|setup|download|small|retry|reload|login on|off|done|state   the assistant's buttons → onboarding_state
 //   network [online|offline|real] as if the Mac just came back online (NetworkWatch's handlers run) / reads offline
 //   mainempty KIND               one main-window empty state (ItemListController.testEmpty: first | inbox_zero | …)
-//   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI-working
+//   mainfakejob process|route|record [SESSION] | items UIDS | done | failed | clear   a running job in the list's jobs section (the AI-working
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
 //   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
@@ -94,12 +94,27 @@ enum SelfTests {
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             switch a.first ?? "process" {
             case "done": fakeJobs.forEach { $0.finish(.done) }; fakeJobs = []
+            case "failed": fakeJobs.forEach { $0.finish(.failed, error: JobError(code: "auth", message: "test")) }; fakeJobs = []
             case "clear": fakeJobs.forEach { $0.finish(.cancelled) }; fakeJobs = []
+            case "items":               // items UID,UID…: the last fake job has written these
+                let uids = a.count > 1 ? a[1].split(separator: ",").map(String.init) : []
+                fakeJobs.last?.setItems(uids)
+                out(["items": uids.count])
             default:
                 let type = JobType(rawValue: a.first ?? "process") ?? .process
-                let j = JobWriter(type: type, project: ProjectStore.shared.currentID, session: a.count > 1 ? URL(fileURLWithPath: a[1]) : nil,
-                                  title: "Test \(type.rawValue)")
-                if let first = jobSteps[type]?.first { j.step(first, .running, progress: 0.4) }
+                let session = a.count > 1 ? URL(fileURLWithPath: a[1]) : nil
+                // with a recording: a run 72 s in, its first step done, the next one going (as a real one looks)
+                let j = JobWriter(type: type, project: ProjectStore.shared.currentID, session: session,
+                                  title: session == nil ? "Test \(type.rawValue)" : nil)
+                if session != nil, let ids = jobSteps[type], ids.count > 1 {
+                    let at = { (s: Double) in ISO8601DateFormatter().string(from: Date().addingTimeInterval(-s)) }
+                    j.set("created", at(72))
+                    j.set("started", at(72))
+                    j.set("steps", ids.enumerated().map { k, id -> [String: Any] in
+                        k == 0 ? ["id": id, "state": "done", "started": at(72), "ended": at(61)]
+                            : k == 1 ? ["id": id, "state": "running", "started": at(61), "progress": 0.4]
+                            : ["id": id, "state": "pending"] })
+                } else if let first = jobSteps[type]?.first { j.step(first, .running, progress: 0.4) }
                 fakeJobs.append(j)
                 out(["job": j.id])
             }

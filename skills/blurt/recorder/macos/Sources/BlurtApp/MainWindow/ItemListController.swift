@@ -274,7 +274,6 @@ final class CapturesBanner: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         row.title.font = .systemFont(ofSize: 12, weight: .semibold)
         row.status.textColor = BrandColor.ink
-        row.bar.isHidden = true
         row.spinner.isHidden = true
         row.icon.image = BlurtIcon.snap.image(size: 15)
         row.icon.contentTintColor = BrandColor.ink
@@ -320,7 +319,6 @@ final class TakenBanner: NSView {
         row.translatesAutoresizingMaskIntoConstraints = false
         row.title.font = .systemFont(ofSize: 12, weight: .regular)
         row.status.textColor = BrandColor.ink
-        row.bar.isHidden = true
         row.spinner.isHidden = true
         row.icon.image = Look.symbol("arrow.up.right.square", "", size: 14)
         row.icon.contentTintColor = .secondaryLabelColor

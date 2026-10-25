@@ -86,6 +86,29 @@ final class SessionOutcomeTests: XCTestCase {
         XCTAssertEqual(out[1]["ended"] as? String, "t")
     }
 
+    /// Stop in the job's detail: an event marks the run cancelled; the killed agent's exit (a failure) or items it
+    /// wrote anyway (done) don't undo that, and its steps close.
+    func testAStoppedRunStaysStopped() {
+        var job: [String: Any] = ["id": "j-3", "type": "process", "state": "running", "error": NSNull(),
+                                  "steps": [["id": "prepare", "state": "done"], ["id": "transcribe", "state": "running"]]]
+        JobFold.apply(["event": "stop", "state": "cancelled", "source": "user"], to: &job)
+        XCTAssertEqual(JobFold.job(job)?.state, .cancelled)
+        var failed = job
+        JobFold.finishing(&failed, state: .failed, error: JobError(code: "unknown", message: "exit 143"), at: "t")
+        XCTAssertEqual(JobFold.job(failed)?.state, .cancelled)
+        XCTAssertNil(JobFold.job(failed)?.error)
+        XCTAssertEqual((failed["steps"] as? [[String: Any]])?.map { $0["state"] as? String }, ["done", "failed"])
+        XCTAssertEqual(failed["ended"] as? String, "t")
+        var done = job
+        JobFold.finishing(&done, state: .done, error: nil, at: "t")
+        XCTAssertEqual(JobFold.job(done)?.state, .cancelled)
+        // a run nobody stopped ends as its owner says
+        var plain: [String: Any] = ["id": "j-4", "type": "process", "state": "running"]
+        JobFold.finishing(&plain, state: .failed, error: JobError(code: "quota", message: "429"), at: "t")
+        XCTAssertEqual(JobFold.job(plain)?.state, .failed)
+        XCTAssertEqual(JobFold.job(plain)?.error?.code, "quota")
+    }
+
     func testFailuresStayUntilRetriedOrDismissed() {
         func job(_ id: String, _ state: String, created: String, session: String? = "/s/a", dismissed: Bool = false) -> Job {
             var o: [String: Any] = ["id": id, "type": "process", "state": state, "created": created, "ended": created,
