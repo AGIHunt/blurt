@@ -161,7 +161,7 @@ function SelectionBar() {
       {s.canMove && <MovePicker items={items} id="selMove" />}
       {s.canHandoff && live.length > 0 && (
         <button className="btn sm" id="selCopy" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff(live, "instruction")}>
-          <Icon name="copy" size={14} /> {s.t("handoff.copy_instruction")}
+          <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
         </button>
       )}
       {s.host.dispatch && live.length > 0 && (

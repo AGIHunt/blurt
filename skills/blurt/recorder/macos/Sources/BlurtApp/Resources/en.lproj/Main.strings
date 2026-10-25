@@ -258,10 +258,13 @@
 "main.project.key.locked" = "Items are already numbered %1$@-1, %1$@-2…, so the key stays.";
 "main.project.name" = "Name";
 "main.project.open_as" = "Open as Project";
-"main.project.remove" = "Remove from Blurt…";
-"main.project.remove.confirm" = "Remove";
-"main.project.remove.detail" = "The folder and its items stay where they are. Open the folder again to bring it back.";
-"main.project.remove.title" = "Remove “%@” from Blurt?";
+"main.project.remove" = "Remove from Blurt";
+"main.project.remove.undo_name" = "Remove from Blurt";
+"main.project.removed" = "Removed “%@” from Blurt — the folder and its items stay where they are";
+"main.project.rename" = "Rename";
+"main.project.rename.undo_name" = "Rename Project";
+"main.project.rename.empty" = "A project needs a name";
+"main.project.reorder.undo_name" = "Reorder Projects";
 "main.project.save_failed" = "Couldn’t save the project";
 "main.project.use_failed" = "Couldn’t switch the project";
 "main.project.settings" = "Project Settings…";
@@ -332,6 +335,7 @@
 "menu.hide" = "Hide Blurt";
 
 "menu.item" = "Item";
+"menu.project" = "Project";
 
 "menu.minimize" = "Minimize";
 

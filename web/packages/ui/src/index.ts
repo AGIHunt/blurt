@@ -69,6 +69,7 @@ export function setSystemAccent(color: string | null, el: HTMLElement = document
   else el.style.removeProperty("--sys-accent");
 }
 
+export * from "./casing";
 export * from "./contrast";
 export * from "./kinds";
 export * from "./lifecycle";

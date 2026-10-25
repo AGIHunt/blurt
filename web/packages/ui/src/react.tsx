@@ -3,6 +3,7 @@
 import { Icon, type IconName } from "@blurt/icons";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type RefObject } from "react";
 import { createPortal } from "react-dom";
+import { menuCase } from "./casing";
 import { kindIcon, kindStyle, ringAttrs, ringShapes } from "./kinds";
 import { actionForKey, menuFor, TRANSITIONS, type Action, type State } from "./lifecycle";
 
@@ -280,7 +281,7 @@ function StateMenu({ id, anchor, state, t, canHandOff, restoreTo, alignEnd, keys
         >
           <StatusRing state={target(a)} size={14} />
           <span className="smenu-t">
-            <span className="smenu-v">{t(`action.${a}`)}</span>
+            <span className="smenu-v">{menuCase(t(`action.${a}`))}</span>
             <span className="smenu-h">{hint(a)}</span>
           </span>
           {(typeof keys === "function" ? keys(a) : keys) && (

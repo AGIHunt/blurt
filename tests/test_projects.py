@@ -108,6 +108,31 @@ class Registry(TmpCase):
         self.assertEqual(ok("projects.py", "current", env=self.e.env())["current"], "auto")
         self.assertEqual(run_cli("projects.py", "remove", pa["id"], env=self.e.env())[1]["code"], "no_project")
 
+    def test_remove_restores_losslessly_and_the_users_order(self):
+        """Remove from Blurt is undoable without asking (micro 9): restore puts back exactly what was removed; the
+        user's own order (micro 11) is the registry's, and using a project never changes it."""
+        a, b, c = (make_repo(self.tmp / n) for n in ("alpha", "beta", "gamma"))
+        ids = [ok("projects.py", "add", p, env=self.e.env())["project"]["id"] for p in (a, b, c)]
+        ok("projects.py", "set", ids[1], "--json", json.dumps({"description": "the API", "default_agent": "codex",
+                                                               "worktree": False, "hints": {"apps": ["Xcode"]}}), env=self.e.env())
+        ok("projects.py", "use", ids[1], env=self.e.env())
+        reg = lambda: json.loads((self.e.home / "projects.json").read_text())  # noqa: E731
+        before = reg()
+        removed = ok("projects.py", "remove", ids[1], env=self.e.env())["removed"]
+        self.assertEqual((removed["index"], removed["current"]), (1, True))
+        self.assertEqual(reg()["current"], "auto")
+        back = ok("projects.py", "restore", "--json", json.dumps(removed), env=self.e.env())["project"]
+        self.assertEqual(back["id"], ids[1])
+        self.assertEqual(reg(), before)          # name, key, settings, place in the list, current: all as they were
+        c2, o = run_cli("projects.py", "restore", "--json", json.dumps(removed), env=self.e.env())
+        self.assertEqual((c2, o["code"]), (1, "exists"))
+        # the user's order: dragged in the sidebar; untouched by use
+        ok("projects.py", "order", ids[2], ids[0], env=self.e.env())
+        self.assertEqual([p["id"] for p in reg()["projects"]], [ids[2], ids[0], ids[1]])
+        ok("projects.py", "use", ids[1], env=self.e.env())
+        self.assertEqual([p["id"] for p in reg()["projects"]], [ids[2], ids[0], ids[1]])
+        self.assertEqual(run_cli("projects.py", "order", "nope", env=self.e.env())[1]["code"], "no_project")
+
     def test_open_items_counts(self):
         a = self.tmp / "p"
         a.mkdir()

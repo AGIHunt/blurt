@@ -9,7 +9,9 @@ is its only writer (lock $BLURT_HOME/.projects.lock, atomic replace). The apps r
                                            (<PATH>/.blurt, kept out of git via .git/info/exclude) → {"ok","project","created"}
                                            A folder with a store whose project moved away (renamed on disk) or was
                                            removed is that project again → + "relocated": the old path
-  projects.py remove ID                    unregister only — never deletes .blurt → {"ok"}
+  projects.py remove ID                    unregister only — never deletes .blurt → {"ok","removed":{entry,index,current}}
+  projects.py restore --json REMOVED       undo of remove: that entry back at its place → {"ok","project"}
+  projects.py order ID …                   the user's order (the app's sidebar): these first → {"ok","order"}
   projects.py set ID --json '{patch}'      name description default_agent worktree worktree_root modules hints key
                                            pinned → {"ok","project"}   (key: only while the project has no items)
   projects.py use ID|auto                  the current project (captures go there) → {"ok","current"}
@@ -362,14 +364,48 @@ def cmd_add(path: str, name=None, key=None, description=None) -> dict:
 
 
 def cmd_remove(pid: str) -> dict:
+    """Unregister. The answer carries the registry entry as it was (and where, and whether it was current): `restore`
+    puts exactly that back — the app's Undo after Remove from Blurt loses nothing (name, key, description, agent,
+    worktree, modules, hints, its place in the list)."""
     with editing() as reg:
-        n = len(reg["projects"])
-        reg["projects"] = [p for p in reg["projects"] if p.get("id") != pid]
-        if len(reg["projects"]) == n:
+        k = next((n for n, p in enumerate(reg["projects"]) if p.get("id") == pid), None)
+        if k is None:
             raise ProjectError(f"no project {pid}", "no_project")
-        if reg.get("current") == pid:
+        e = reg["projects"].pop(k)
+        was_current = reg.get("current") == pid
+        if was_current:
             reg["current"] = "auto"
-    return {"ok": True}
+    return {"ok": True, "removed": {"entry": e, "index": k, "current": was_current}}
+
+
+def cmd_restore(removed: dict) -> dict:
+    """Undo of `remove`: the entry it answered, back at its place (and current again if it was)."""
+    e = removed.get("entry") if isinstance(removed, dict) else None
+    if not isinstance(e, dict) or not e.get("id") or not e.get("path"):
+        raise ProjectError("restore: pass what remove answered as removed", "bad_args")
+    with editing() as reg:
+        if any(p.get("id") == e["id"] or _same_folder(p.get("path"), Path(e["path"])) for p in reg["projects"]):
+            raise ProjectError(f"{e['path']} is registered again already", "exists")
+        if e.get("key") in {p.get("key") for p in reg["projects"]}:
+            raise ProjectError(f"another project uses the key {e.get('key')} now", "key_taken")
+        k = removed.get("index")
+        reg["projects"].insert(k if isinstance(k, int) and 0 <= k <= len(reg["projects"]) else len(reg["projects"]), e)
+        if removed.get("current"):
+            reg["current"] = e["id"]
+    return {"ok": True, "project": row(e)}
+
+
+def cmd_order(ids: list[str]) -> dict:
+    """The user's order of the projects (the app's sidebar, dragged): these first, in this order; any other keeps its
+    place after them. Opening a folder appends it; using a project never reorders (⌘5–⌘9 stay put)."""
+    with editing() as reg:
+        by = {p.get("id"): p for p in reg["projects"]}
+        unknown = [i for i in ids if i not in by]
+        if unknown:
+            raise ProjectError(f"no project {', '.join(unknown)}", "no_project")
+        first = [by[i] for i in dict.fromkeys(ids)]
+        reg["projects"] = first + [p for p in reg["projects"] if p.get("id") not in set(ids)]
+    return {"ok": True, "order": [p["id"] for p in first]}
 
 
 def cmd_set(pid: str, patch: dict) -> dict:
@@ -673,6 +709,10 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--description")
     s = sub.add_parser("remove")
     s.add_argument("id")
+    s = sub.add_parser("restore")
+    s.add_argument("--json", required=True)
+    s = sub.add_parser("order")
+    s.add_argument("ids", nargs="+")
     s = sub.add_parser("set")
     s.add_argument("id")
     s.add_argument("--json", required=True)
@@ -698,6 +738,14 @@ def main(argv: list[str] | None = None) -> None:
             out = cmd_add(a.path, a.name, a.key, a.description)
         elif a.cmd == "remove":
             out = cmd_remove(a.id)
+        elif a.cmd == "restore":
+            try:
+                removed = json.loads(a.json)
+            except ValueError as e:
+                raise ProjectError(f"--json: {e}")
+            out = cmd_restore(removed)
+        elif a.cmd == "order":
+            out = cmd_order(a.ids)
         elif a.cmd == "set":
             try:
                 patch = json.loads(a.json)

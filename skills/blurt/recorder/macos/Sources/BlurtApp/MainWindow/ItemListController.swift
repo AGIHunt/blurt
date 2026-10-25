@@ -89,18 +89,26 @@ final class ItemTableView: NSTableView {
     }
 }
 
-/// Rename in place (micro 1): the row's title turns into a field with the whole title selected. Return, Tab or a click
+/// A row whose title can be renamed in place: an item's title (TitleCell), a project's name in the sidebar (SourceCell).
+protocol InlineEditable: AnyObject {
+    var editField: NSTextField { get }
+    func beginEditing(_ text: String, delegate: NSTextFieldDelegate)
+    func setInvalid(_ on: Bool)
+    func endEditing(showing text: String?)
+}
+
+/// Rename in place (micro 1, 10): the row's title turns into a field with the whole title selected. Return, Tab or a click
 /// elsewhere commits; Esc puts the title back. An empty title is refused right there (a red ring and a beep — it
 /// never commits). The focus goes back to the list with the row still selected; ⌘Z undoes it ("Undo Rename").
 final class InlineRename: NSObject, NSTextFieldDelegate {
-    let cell: TitleCell
+    let cell: InlineEditable
     let uid: String
     let original: String
     let commit: (String) -> Void
     let done: () -> Void
     private var finished = false
 
-    init(cell: TitleCell, uid: String, original: String, commit: @escaping (String) -> Void, done: @escaping () -> Void) {
+    init(cell: InlineEditable, uid: String, original: String, commit: @escaping (String) -> Void, done: @escaping () -> Void) {
         self.cell = cell
         self.uid = uid
         self.original = original
@@ -111,11 +119,11 @@ final class InlineRename: NSObject, NSTextFieldDelegate {
 
     func start() {
         cell.beginEditing(original, delegate: self)
-        cell.window?.makeFirstResponder(cell.title)
-        cell.title.currentEditor()?.selectAll(nil)
+        cell.editField.window?.makeFirstResponder(cell.editField)
+        cell.editField.currentEditor()?.selectAll(nil)
     }
 
-    var text: String { cell.title.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
+    var text: String { cell.editField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     func controlTextDidChange(_ obj: Notification) { cell.setInvalid(text.isEmpty) }
 

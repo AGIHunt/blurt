@@ -6,7 +6,7 @@
    than a field — a state change (K3: keep, done, send back, discard…) — goes as an explicit `state` op, sent at once
    and shown optimistically until the server's answer arrives. */
 import { resolveLang, systemLanguages } from "@blurt/i18n";
-import { actionForKey, canDo, isInbox, KINDS, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
+import { actionForKey, canDo, isInbox, KINDS, menuCase, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
 import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp } from "./host";
 import { humanizeKey } from "./fields";
 import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
@@ -155,6 +155,8 @@ export class ReviewStore {
     return this.i18n.lang;
   }
   t = (k: string, p?: Record<string, string | number | null | undefined>) => this.i18n.t(k, p);
+  /** a button or menu label: English in Title Case ("Mark as Done"); the catalog keeps sentence case */
+  label = (k: string) => menuCase(this.t(k));
   plural = (k: string, n: number, p?: Record<string, string | number | null | undefined>) => this.i18n.plural(k, n, p);
   kindLabel = (k: string) => (this.i18n.has(`kind.${k}`) ? this.t(`kind.${k}`) : humanizeKey(k));
   typeLabel = (k: string) => (this.i18n.has(`type.${k}`) ? this.t(`type.${k}`) : humanizeKey(k));

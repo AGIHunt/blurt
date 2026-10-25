@@ -198,8 +198,9 @@ final class StateCell: NSTableCellView {
 }
 
 /// The title (one line), with the search hit after it when the hit isn't in the title.
-final class TitleCell: NSTableCellView {
+final class TitleCell: NSTableCellView, InlineEditable {
     let title = NSTextField(labelWithString: "")
+    var editField: NSTextField { title }
     override init(frame: NSRect) {
         super.init(frame: frame)
         title.lineBreakMode = .byTruncatingTail

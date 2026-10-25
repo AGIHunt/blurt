@@ -224,7 +224,7 @@ final class MainModel {
     func reloadSidebar() {
         let byID = Dictionary(((try? reader?.projects()) ?? []).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         counts = (try? reader?.counts()) ?? IndexCounts()
-        var list = ProjectStore.shared.projects.map { p -> ProjectEntry in
+        var list = ProjectStore.shared.ordered.map { p -> ProjectEntry in
             var e = ProjectEntry(id: p.id, name: p.name, key: p.key, path: p.path, registered: true, exists: p.exists, pinned: p.pinned)
             e.open = byID[p.id]?.openItems ?? 0
             e.inbox = byID[p.id]?.inbox ?? 0

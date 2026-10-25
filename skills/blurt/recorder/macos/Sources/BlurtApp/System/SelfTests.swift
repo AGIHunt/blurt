@@ -270,18 +270,37 @@ enum SelfTests {
             out(["views": dump(d.jobView, 0)])
         case "mainrename":              // mainrename [TEXT | esc | -]: the row title being renamed in place: its state, or
             let c = MainWindowController.shared   // TEXT typed then Return, Esc, "-" an empty title then Return
-            if let r = c.list.renaming, let tv = r.cell.title.currentEditor() as? NSTextView {
+            if let r = c.list.renaming, let tv = r.cell.editField.currentEditor() as? NSTextView {
                 switch arg {
                 case "": break
-                case "esc": _ = r.control(r.cell.title, textView: tv, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
+                case "esc": _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.cancelOperation(_:)))
                 default:
                     tv.string = arg == "-" ? "" : arg
                     r.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
-                    _ = r.control(r.cell.title, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                    _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
                 }
             }
-            out(["renaming": c.list.renaming != nil, "field": c.list.renaming?.cell.title.stringValue ?? NSNull(),
+            out(["renaming": c.list.renaming != nil, "field": c.list.renaming?.cell.editField.stringValue ?? NSNull(),
                  "responder": "\(type(of: c.window?.firstResponder as Any))", "selected": c.list.selectedIDs])
+        case "mainprojects":            // mainprojects [rename ID NAME | order ID,ID… | remove ID]: the sidebar's projects
+            let c = MainWindowController.shared
+            let w = arg.split(separator: " ", maxSplits: 2).map(String.init)
+            switch w.first ?? "" {
+            case "rename" where w.count == 3:
+                c.sidebar.select(.project(w[1]))
+                c.window?.makeFirstResponder(c.sidebar.outline)
+                if c.sidebar.renameSelected(), let r = c.sidebar.renaming, let tv = r.cell.editField.currentEditor() as? NSTextView {
+                    tv.string = w[2]
+                    _ = r.control(r.cell.editField, textView: tv, doCommandBy: #selector(NSResponder.insertNewline(_:)))
+                }
+            case "order" where w.count == 2: c.reorderProjects(w[1].split(separator: ",").map(String.init))
+            case "remove" where w.count == 2: c.removeProject(w[1])
+            default: break
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                out(["projects": c.model.projects.map { "\($0.name) \($0.key)" }, "go": c.shortcutProjects.map(\.name),
+                     "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
+            }
         case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
             MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
                 out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])

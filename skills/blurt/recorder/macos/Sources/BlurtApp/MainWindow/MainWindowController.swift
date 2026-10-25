@@ -707,22 +707,95 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
+    /// Remove from Blurt: at once, no question (micro 9) — the folder and its items stay where they are, and Undo
+    /// (⌘Z, the toast) puts the project back exactly as it was (projects.py restore: name, key, settings, its place in
+    /// the list, current or not).
     func removeProject(_ id: String) {
-        guard let p = ProjectStore.shared.project(id: id), let w = window else { return }
-        let a = NSAlert()
-        a.messageText = T("main.project.remove.title", p.name)
-        a.informativeText = T("main.project.remove.detail")
-        a.addButton(withTitle: T("main.project.remove.confirm"))
-        a.addButton(withTitle: T("action.cancel"))
-        a.beginSheetModal(for: w) { [weak self] r in
-            guard r == .alertFirstButtonReturn else { return }
-            Task { @MainActor in
-                do {
-                    try await ProjectStore.shared.remove(id)
-                    if self?.model.scope == .project(id) { self?.go(.inbox) }
-                } catch { self?.alert(T("main.project.save_failed"), "\(error)") }
-            }
+        guard let p = ProjectStore.shared.project(id: id) else { return }
+        Task { @MainActor in
+            do {
+                let removed = try await ProjectStore.shared.remove(id)
+                model.filters.forget(Scope.project(id).key)
+                if model.scope == .project(id) { go(.inbox) }
+                let name = T("main.project.remove.undo_name")
+                if let um = window?.undoManager, !removed.isEmpty {
+                    um.registerUndo(withTarget: self) { c in c.restoreProject(removed, name: name) }
+                    um.setActionName(name)
+                }
+                appDelegate?.toast(T("main.project.removed", p.name), undo: undoToast(name))
+            } catch { alert(T("main.project.save_failed"), "\(error)") }
         }
+    }
+
+    private func restoreProject(_ removed: [String: Any], name: String) {
+        let id = (removed["entry"] as? [String: Any])?["id"] as? String
+        if let um = window?.undoManager, let id = id {
+            um.registerUndo(withTarget: self) { c in c.removeProject(id) }      // ⇧⌘Z removes it again
+            um.setActionName(name)
+        }
+        Task { @MainActor in
+            do {
+                try await ProjectStore.shared.restore(removed)
+                model.reloadSidebar()
+                if let id = id { reveal(project: id) }
+            } catch let e as ProjectError {
+                alert(T("main.project.save_failed"), Scripts.Failure(code: e.code, message: "\(e)").localized)
+            } catch { alert(T("main.project.save_failed"), "\(error)") }
+        }
+    }
+
+    /// A project's name typed in place in the sidebar; ⌘Z puts the old one back.
+    func renameProject(_ id: String, to name: String) {
+        guard let old = ProjectStore.shared.project(id: id)?.name, old != name else { return }
+        let undoName = T("main.project.rename.undo_name")
+        if let um = window?.undoManager {
+            um.registerUndo(withTarget: self) { c in c.renameProject(id, to: old) }
+            um.setActionName(undoName)
+        }
+        Task { @MainActor in
+            do { try await ProjectStore.shared.update(id, ["name": name]) }
+            catch let e as ProjectError { alert(T("main.project.save_failed"), Scripts.Failure(code: e.code, message: "\(e)").localized) }
+            catch { alert(T("main.project.save_failed"), "\(error)") }
+        }
+    }
+
+    /// The projects dragged into a new order (⌘5–⌘9 follow it); ⌘Z puts the old order back.
+    func reorderProjects(_ ids: [String]) {
+        let old = ProjectStore.shared.ordered.map(\.id)
+        guard old != ids else { return }
+        if let um = window?.undoManager {
+            um.registerUndo(withTarget: self) { c in c.reorderProjects(old) }
+            um.setActionName(T("main.project.reorder.undo_name"))
+        }
+        Task { @MainActor in
+            do { try await ProjectStore.shared.order(ids) }
+            catch { alert(T("main.project.save_failed"), "\(error)") }
+        }
+    }
+
+    /// The project on show (the menu bar's Project menu acts on it).
+    var shownProject: String? {
+        if case .project(let p) = model.scope, model.project(id: p)?.registered == true { return p }
+        return nil
+    }
+    @objc func mRenameShownProject() {
+        guard let p = shownProject else { return }
+        sidebar.select(.project(p))
+        window?.makeFirstResponder(sidebar.outline)
+        sidebar.renameSelected()
+    }
+    @objc func mShownProjectSettings() { shownProject.map(projectSettings) }
+    @objc func mUseShownProject() {
+        guard let p = shownProject else { return }
+        useProject(ProjectStore.shared.currentID == p ? nil : p)
+    }
+    @objc func mRevealShownProject() { shownProject.flatMap { model.project(id: $0) }.map { NSWorkspace.shared.activateFileViewerSelecting([$0.path]) } }
+    @objc func mRemoveShownProject() { shownProject.map(removeProject) }
+    @objc func mRenameProject(_ i: NSMenuItem) {
+        guard let p = i.representedObject as? String else { return }
+        sidebar.select(.project(p))
+        window?.makeFirstResponder(sidebar.outline)
+        DispatchQueue.main.async { [weak self] in self?.sidebar.renameSelected() }   // after the context menu closed
     }
 
     func useProject(_ id: String?) {
@@ -885,7 +958,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
-        for p in ProjectStore.shared.projects {
+        for p in ProjectStore.shared.ordered {
             let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
             i.state = here == [p.id] ? .on : .off
         }
@@ -921,6 +994,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let cur = ProjectStore.shared.currentID == id
         let use = add(m, cur ? T("main.project.use_auto") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
+        _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
         m.addItem(.separator())
         _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "folder", obj: p.path)
@@ -1021,6 +1095,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mSetKind(_:)):
             if inMenuBar(item), let k = item.representedObject as? String { item.state = !items.isEmpty && items.allSatisfy { $0.kind == k } ? .on : .off }
             return Scripts.canWrite && items.contains { !$0.legacy }
+        case #selector(mRenameShownProject), #selector(mShownProjectSettings), #selector(mRevealShownProject):
+            return shownProject != nil
+        case #selector(mUseShownProject):
+            item.title = shownProject != nil && ProjectStore.shared.currentID == shownProject ? T("main.project.use_auto") : T("main.project.use")
+            return shownProject != nil
+        case #selector(mRemoveShownProject):
+            // ⌘⌫ never while typing (the search field's, a rename's own ⌘⌫ deletes text)
+            return shownProject != nil && !(window?.firstResponder is NSText)
         case #selector(mSort(_:)):
             item.state = item.representedObject as? String == model.sort ? .on : .off
             return model.scope != .dictation

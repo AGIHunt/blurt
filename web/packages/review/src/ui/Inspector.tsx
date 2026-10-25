@@ -206,10 +206,10 @@ function WorkPanel({ i }: { i: Item }) {
           {verify && (
             <>
               <button className="btn sm keep" id="workDone" onClick={() => s.act([i], "done")}>
-                <StatusRing state="done" size={14} /> {s.t("action.done")}
+                <StatusRing state="done" size={14} /> {s.label("action.done")}
               </button>
               <button className="btn sm" id="workBack" onClick={() => s.act([i], "send_back")}>
-                <StatusRing state="todo" size={14} /> {s.t("action.send_back")}
+                <StatusRing state="todo" size={14} /> {s.label("action.send_back")}
               </button>
             </>
           )}
@@ -241,10 +241,10 @@ function HandoffPanel({ i }: { i: Item }) {
       {s.canHandoff && (
         <>
           <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff([i], "instruction")}>
-            <Icon name="copy" size={14} /> {s.t("handoff.copy_instruction")}
+            <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
           </button>
           <button className="btn sm ghost" id="copyFull" title={s.t("handoff.copy_full.hint")} onClick={() => void s.handoff([i], "full")}>
-            {s.t("handoff.copy_full")}
+            {s.label("handoff.copy_full")}
           </button>
         </>
       )}

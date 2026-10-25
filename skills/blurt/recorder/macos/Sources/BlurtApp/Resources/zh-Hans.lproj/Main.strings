@@ -258,10 +258,13 @@
 "main.project.key.locked" = "条目已经编号为 %1$@-1、%1$@-2…，前缀不再改。";
 "main.project.name" = "名称";
 "main.project.open_as" = "作为项目打开";
-"main.project.remove" = "从口喷鸡移除…";
-"main.project.remove.confirm" = "移除";
-"main.project.remove.detail" = "文件夹和里面的条目都不会动，重新打开这个文件夹就能回来。";
-"main.project.remove.title" = "从口喷鸡移除「%@」？";
+"main.project.remove" = "从口喷鸡移除";
+"main.project.remove.undo_name" = "从口喷鸡移除";
+"main.project.removed" = "已从口喷鸡移除「%@」，文件夹和里面的条目都还在";
+"main.project.rename" = "重命名";
+"main.project.rename.undo_name" = "重命名项目";
+"main.project.rename.empty" = "项目需要一个名字";
+"main.project.reorder.undo_name" = "调整项目顺序";
 "main.project.save_failed" = "没能保存项目";
 "main.project.use_failed" = "没能切换项目";
 "main.project.settings" = "项目设置…";
@@ -332,6 +335,7 @@
 "menu.hide" = "隐藏口喷鸡";
 
 "menu.item" = "条目";
+"menu.project" = "项目";
 
 "menu.minimize" = "最小化";
 

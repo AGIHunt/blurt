@@ -93,6 +93,12 @@ enum MainMenu {
         let itemMenu = menu(T("menu.item"), [changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
                                              state("discard", "\u{8}"), .separator()])
         c.itemActions(into: itemMenu, items: nil)       // the rest as in the context menu (one builder)
+        // the project on show: what its sidebar row's menu offers, with keys
+        _ = menu(T("menu.project"), [item(T("main.project.settings"), #selector(MainWindowController.mShownProjectSettings), "i"),
+                                     item(T("main.project.rename"), #selector(MainWindowController.mRenameShownProject)),
+                                     item(T("main.project.use"), #selector(MainWindowController.mUseShownProject)), .separator(),
+                                     item(T("action.reveal_in_finder"), #selector(MainWindowController.mRevealShownProject)), .separator(),
+                                     item(T("main.project.remove"), #selector(MainWindowController.mRemoveShownProject), "\u{8}")])
         _ = menu(T("menu.window"), [item(T("menu.minimize"), #selector(NSWindow.performMiniaturize(_:)), "m", target: nil),
                                     item(T("menu.zoom"), #selector(NSWindow.performZoom(_:)), "", target: nil)])
         let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command, .shift]),

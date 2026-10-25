@@ -45,8 +45,27 @@ public enum ProjectError: Error, CustomStringConvertible {
 public final class ProjectStore {
     public static let shared = ProjectStore()
 
-    /// Registered projects, pinned and most recently used first. Not the inbox.
+    /// Registered projects, pinned and most recently used first (the capture switcher, Open Recent). Not the inbox.
     public private(set) var projects: [Project] = []
+    /// The same projects in the user's own order — the registry's (a folder opened goes last; dragging in the sidebar
+    /// reorders; using one never does), pinned first. The main window's sidebar, its Move menus and ⌘5–⌘9 read this,
+    /// so a key keeps going to the same project.
+    public private(set) var ordered: [Project] = []
+
+    /// Pinned first, otherwise as listed (stable).
+    public static func userOrder(_ registry: [Project]) -> [Project] {
+        registry.filter(\.pinned) + registry.filter { !$0.pinned }
+    }
+
+    /// A drop in the sidebar: `ids` with `dragged` put where it was dropped (`index` counts the rows as they were,
+    /// the dragged one included — the outline view's child index).
+    public static func reordered(_ ids: [String], moving dragged: String, to index: Int) -> [String] {
+        guard let from = ids.firstIndex(of: dragged) else { return ids }
+        var out = ids
+        out.remove(at: from)
+        out.insert(dragged, at: max(0, min(out.count, index > from ? index - 1 : index)))
+        return out
+    }
     /// nil = auto (AI sorts captures into projects)
     public private(set) var currentID: String?
     /// Who set the current project: "user", or "migrate" (carried over from v0.6 — the app asks once).
@@ -94,6 +113,7 @@ public final class ProjectStore {
             if a.pinned != b.pinned { return a.pinned }
             return (a.lastUsed ?? .distantPast) > (b.lastUsed ?? .distantPast)
         }
+        ordered = Self.userOrder(list)
         let cur = raw["current"] as? String
         currentID = cur == nil || cur == "auto" || !list.contains(where: { $0.id == cur }) ? nil : cur
         currentBy = raw["current_by"] as? String
@@ -173,9 +193,9 @@ public final class ProjectStore {
         let m = modified
         if m == lastStamp, source != nil { return }
         watchFile()
-        let before = (projects, currentID)
+        let before = (projects, currentID, ordered.map(\.id))
         reload()
-        if before.0 != projects || before.1 != currentID { onChange?() }
+        if before.0 != projects || before.1 != currentID || before.2 != ordered.map(\.id) { onChange?() }
     }
 
     // MARK: changes (projects.py)
@@ -219,8 +239,21 @@ public final class ProjectStore {
         try await cli(["set", id, "--json", String(decoding: d, as: UTF8.self)])
     }
 
-    /// Unregisters it. The folder and its .blurt are never touched.
-    public func remove(_ id: String) async throws { try await cli(["remove", id]) }
+    /// Unregisters it. The folder and its .blurt are never touched. The answer is what `restore` needs to put the
+    /// registry entry back exactly (the Undo of Remove from Blurt).
+    @discardableResult
+    public func remove(_ id: String) async throws -> [String: Any] {
+        try await cli(["remove", id])["removed"] as? [String: Any] ?? [:]
+    }
+
+    /// Undo of `remove`: the same entry, at its place, current again if it was.
+    public func restore(_ removed: [String: Any]) async throws {
+        let d = try JSONSerialization.data(withJSONObject: removed, options: [.sortedKeys])
+        try await cli(["restore", "--json", String(decoding: d, as: UTF8.self)])
+    }
+
+    /// The user's order (the sidebar, dragged): these first, in this order.
+    public func order(_ ids: [String]) async throws { try await cli(["order"] + ids) }
 
     // MARK: where captures go
 
