@@ -256,9 +256,14 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     func outlineView(_ o: NSOutlineView, validateDrop info: NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let pb = info.draggingPasteboard
         if pb.types?.contains(.blurtProject) == true {
-            // between two projects only (an unopened folder listed after them stays last)
+            // between two projects only (an unopened folder listed after them stays last), and inside the dragged
+            // one's own section: the line snaps to the nearest place it can really go (pinned stay above the rest)
             guard let g = projectsGroup, (item as? SidebarNode) === g, index != NSOutlineViewDropOnItemIndex,
-                  index <= model.projects.filter(\.registered).count else { return [] }
+                  let id = pb.pasteboardItems?.first?.string(forType: .blurtProject) else { return [] }
+            let reg = model.projects.filter(\.registered)
+            let ok = ProjectStore.dropRange(reg.map(\.id), pinned: Set(reg.filter(\.pinned).map(\.id)), moving: id)
+            let at = min(max(index, ok.lowerBound), ok.upperBound)
+            if at != index { o.setDropItem(g, dropChildIndex: at) }
             return .move
         }
         if pb.types?.contains(.blurtItems) == true {

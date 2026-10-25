@@ -25,4 +25,24 @@ final class ProjectOrderTests: XCTestCase {
         XCTAssertEqual(ProjectStore.reordered(ids, moving: "b", to: 1), ids)                    // where it was
         XCTAssertEqual(ProjectStore.reordered(ids, moving: "x", to: 0), ids)
     }
+
+    /// A pinned project can't be dropped among the unpinned ones (it would snap back), nor the other way round.
+    func testDropStaysInsideTheDraggedProjectsSection() {
+        let ids = ["p1", "p2", "a", "b", "c"]
+        let pinned: Set<String> = ["p1", "p2"]
+        XCTAssertEqual(ProjectStore.dropRange(ids, pinned: pinned, moving: "c"), 2...5)
+        XCTAssertEqual(ProjectStore.dropRange(ids, pinned: pinned, moving: "p2"), 0...2)
+        XCTAssertEqual(ProjectStore.dropRange(["a", "b"], pinned: [], moving: "a"), 0...2)
+        // a drop clamped into the range lands at the section's edge
+        let at = min(max(0, 2), 5)
+        XCTAssertEqual(ProjectStore.userOrder(ProjectStore.reordered(ids, moving: "c", to: at).map { p($0, pinned: pinned.contains($0)) }).map(\.id),
+                       ["p1", "p2", "c", "a", "b"])
+    }
+
+    /// An order applied later (⌘Z after a project was removed meanwhile) never names a project that isn't there.
+    func testAnOrderAppliedLaterSkipsProjectsThatAreGone() {
+        XCTAssertEqual(ProjectStore.reconciled(["b", "gone", "a"], with: ["a", "b", "c"]), ["b", "a", "c"])
+        XCTAssertEqual(ProjectStore.reconciled([], with: ["a", "b"]), ["a", "b"])
+        XCTAssertEqual(ProjectStore.reconciled(["a", "b"], with: ["a", "b"]), ["a", "b"])
+    }
 }

@@ -158,3 +158,7 @@
   - Projects: rename in place in the sidebar, the user's order (`projects.py order`, drag to reorder; `⌘5`–`⌘9`
     follow it), Remove from Blurt with Undo (`projects.py remove` answers the entry, `restore` puts it back).
   - Rename an item in place (E), 1–4 = kind, the ? panel grouped and localized, one spinner (the brand arc).
+  - Undo after review: register each undoable write when it is asked for and run the writes one after another
+    (BlurtCore `SerialWork` / `UndoStep`), drop a failed write's step; ⌘⌫ / Delete on the list discards items (never a
+    project); an id typed in the search that this place doesn't list says where the item is (Show it); ↑ from the first
+    row reaches the banners above the list. (The page's per-step state undo is in the shared review store already.)

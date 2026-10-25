@@ -185,15 +185,21 @@ previous, `A` keep, `X` discard, `Z` undo, `M` merge into the previous item, `G`
 
 Editing, the Mac way:
 - `E` renames the selected item right in the list (Return keeps it, Esc puts the old title back); Return moves into the
-  item's details with the cursor at the end of its title. In a field, Esc puts back what was there; Esc again goes back to
-  the list.
+  item's details with the cursor at the end of its title. In a field, Esc puts back what was there; Esc again (or `⇧Tab`
+  from the first control) goes back to the list.
 - In **Steps**, Return starts the next step, Return on an empty step ends the list, `⌃⌘↑`/`⌃⌘↓` move a step.
 - The kind, severity and type chips open a menu of their values; `1`–`4` set the kind (issue, idea, note, task) in the
   list and in the details alike.
 - **One undo for the whole window**: `⌘Z` / `⇧⌘Z` take back the last step wherever it was made — a state, a move, a
-  rename, a field you edited in the details — and the Edit menu says which.
+  rename, a field you edited in the details — and the Edit menu says which ("Undo Change Kind", "Undo Edit Title"). It
+  takes back only your own step: a state an agent wrote since stays, and a `⌘Z` pressed while Blurt is still saving
+  waits for that save.
+- `⌫` or `⌘⌫` discards the selected items, as in Finder. Removing a project from Blurt has no key; it's in the
+  project's menu.
 - Search finds an item by its ID too (`AW-11`, or an ID it had before it moved), in the search field, `⌘K` and for
-  agents (MCP).
+  agents (MCP). When the item isn't in the place you're searching (it's discarded, filtered out or in another project),
+  the list says where it is, with a button that shows it.
+- `↑` on the first item walks up into the banners and running jobs above the list; Return on a banner opens it.
 - Each place keeps its own filters: a State filter set in All Items stays there and never empties your Inbox.
 - `⌘Q` in this window closes it; Blurt keeps running in the menu bar for dictation and capture. Quit is in the menu
   bar icon's menu.
@@ -513,11 +519,13 @@ so the two must speak the same version: when one is older than the other, the is
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键。
 
 按 Mac 的习惯编辑：
-- `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次回到列表。
+- `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次（或在第一个控件上按 `⇧Tab`）回到列表。
 - 在「**复现步骤**」里，回车开始下一步，在空的一步上回车结束列表，`⌃⌘↑` / `⌃⌘↓` 移动一步。
 - 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、任务），列表和详情里一样。
-- **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步。
-- 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。
+- **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步（「撤销改种类」「撤销编辑标题」）。它只撤销你自己的这一步：Agent 之后写的状态不受影响；口喷鸡还在保存时按下的 `⌘Z` 会等保存完再执行。
+- `⌫` 或 `⌘⌫` 丢弃选中的条目，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
+- 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。条目不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
+- 在第一条上按 `↑` 会走到列表上方的横幅和正在运行的任务；在横幅上按回车会打开它。
 - 每个位置有自己的筛选：在「全部条目」里设的状态筛选只留在那里，不会把「待处理」筛空。
 - 在这个窗口按 `⌘Q` 只是关掉窗口；口喷鸡还在菜单栏里，听写和截图照常能用。要退出，从菜单栏图标的菜单里选。
 

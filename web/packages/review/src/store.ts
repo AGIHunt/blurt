@@ -4,11 +4,12 @@
    Two doc shapes (host.ts): v2 (a session's items.json, ops by display id) and v3 (K1 doc: a session or a project,
    ops by uid, projects). Everything the page edits is a field diff (sync.ts); the one thing that is an action rather
    than a field — a state change (K3: keep, done, send back, discard…) — goes as an explicit `state` op, sent at once
-   and shown optimistically until the server's answer arrives. */
+   and shown optimistically until the server's answer arrives. Undo restores the page's fields from a snapshot, but a
+   state only where that step changed it (UndoEntry.states), so an agent's state written meanwhile is never undone. */
 import { resolveLang, systemLanguages } from "@blurt/i18n";
 import { actionForKey, canDo, isInbox, KINDS, menuCase, migrate, stateOf, targetOf, type Action, type State } from "@blurt/ui";
 import type { BlurtHost, Item, MountOptions, ProjectRef, ReviewDoc, UserOp } from "./host";
-import { humanizeKey } from "./fields";
+import { fieldLabel, humanizeKey } from "./fields";
 import { makeI18n, SEVERITIES, TYPES, type I18n } from "./i18n";
 import { imeBusy, isEnter } from "./ime";
 import { byId, byUid, canon, clone, diffOps, mergeInto, norm, rebase, statusOf, type KeyFn } from "./sync";
@@ -19,7 +20,33 @@ export type StateFilter = "live" | "inbox" | State;
 export type ProcPhase = "hidden" | "working" | "fin" | "out";
 export type SaveState = "" | "saving" | "saved" | "error";
 /** what an undo step is called (the host's Edit menu: "Undo Change State") */
-export type UndoLabel = "undo.state" | "undo.move" | "undo.merge" | "undo.edit";
+/** the page's first control the Tab key reaches (document order; tabindex ≥ 0, enabled, not hidden) */
+export function firstTabbable(root: ParentNode = document): HTMLElement | null {
+  const sel = 'a[href], button, input, select, textarea, [contenteditable="true"], [tabindex]';
+  for (const el of root.querySelectorAll<HTMLElement>(sel)) {
+    if (el.tabIndex < 0 || (el as HTMLButtonElement).disabled || el.closest("[hidden], [inert], [aria-hidden='true']")) continue;
+    if ((el as HTMLInputElement).type === "hidden") continue;
+    return el;
+  }
+  return null;
+}
+
+export type UndoLabel = "undo.state" | "undo.move" | "undo.merge" | "undo.kind" | "undo.severity" | "undo.type" | "undo.field";
+/** one item's state as a step left it (`restore_to` only for discarded) */
+type StateAt = Pick<Item, "state" | "restore_to">;
+/** A state the step itself changed: undo puts `from` back only while the item is still at `to` (an agent's later
+    to_verify, or another page's change, is never undone by it). */
+interface StateStep {
+  k: string;
+  from: StateAt;
+  to: StateAt;
+}
+/** an undo/redo entry: the page as it was (fields), and the states this step changed — nothing else's state */
+interface UndoEntry {
+  snap: string;
+  label: string;
+  states: StateStep[];
+}
 
 export interface Media {
   kind: "img" | "wait" | "clip" | "orig";
@@ -110,8 +137,8 @@ export class ReviewStore {
   readonly ar = new Map<string, number>();
 
   private knownSrc = new Set<string>();
-  private undoStack: string[] = [];
-  private redoStack: string[] = [];
+  private undoStack: UndoEntry[] = [];
+  private redoStack: UndoEntry[] = [];
   /** the field being edited: the snapshot from when it got the focus (one undo step per editing session) */
   private editing: { snap: string; key: string; k: string; was: string } | null = null;
   private listeners = new Set<() => void>();
@@ -279,11 +306,14 @@ export class ReviewStore {
     }
     const moves = items.map((i) => ({ i, from: this.stateOf(i), to: targetOf(action, i) })).filter((m): m is { i: Item; from: State; to: State } => !!m.to);
     if (!moves.length) return 0;
-    this.snapshot("undo.state");
-    for (const { i, from, to } of moves) {
+    const snap = this.snapString();
+    const steps = moves.map(({ i }): StateStep => ({ k: this.key(i), from: this.stateAt(i), to: this.stateAt(i) }));
+    moves.forEach(({ i, from, to }, n) => {
       this.setLocal(i, to, from);
+      steps[n].to = this.stateAt(i);
       if (!this.legacy) this.actionOps.push({ op: "state", id: this.key(i), action });
-    }
+    });
+    this.snapshot("undo.state", steps, snap);
     this.flush();
     if (opts.toast !== false) {
       const to = moves[0].to;
@@ -570,11 +600,20 @@ export class ReviewStore {
   /** One undoable step of the user's (`label`: undo.state | undo.move | undo.merge | undo.edit). Where the host keeps
       the window's undo stack (the Mac app), the step goes there too: ⌘Z works wherever the focus is, the Edit menu
       names it, and the host calls undo() / redo() back. */
-  private snapshot(label: UndoLabel, snap = this.snapString()) {
-    this.undoStack.push(snap);
+  private snapshot(label: UndoLabel | string, states: StateStep[] = [], snap = this.snapString()) {
+    const name = label.startsWith("undo.") ? this.t(label) : label;
+    this.undoStack.push({ snap, label: name, states });
     if (this.undoStack.length > 80) this.undoStack.shift();
     this.redoStack = [];
-    this.host.registerUndo?.(this.t(label));
+    this.host.registerUndo?.(name);
+  }
+  private stateAt(i: Item): StateAt {
+    const m = migrate(i);
+    return m.restore_to ? { state: m.state, restore_to: m.restore_to } : { state: m.state };
+  }
+  /** what the Edit menu calls the last step ("Change Kind", "Edit Steps to Reproduce") */
+  get undoName(): string | undefined {
+    return this.undoStack[this.undoStack.length - 1]?.label;
   }
   /** Z, ⌘Z outside a text field, a toast's Undo: the host's window-wide undo when it has one (it calls undo() back),
       else the page's own. */
@@ -590,37 +629,40 @@ export class ReviewStore {
     const e = this.editing;
     this.editing = null;
     if (!e || e.key !== this.key(i)) return;
-    if ((JSON.stringify(e.k === "source" ? i.source : i[e.k]) ?? "") !== e.was) this.snapshot("undo.edit", e.snap);
+    if ((JSON.stringify(e.k === "source" ? i.source : i[e.k]) ?? "") !== e.was)
+      this.snapshot(menuCase(this.t("undo.field", { field: fieldLabel(e.k, this.i18n) })), [], e.snap);
   };
 
   undo = () => {
-    const s = this.undoStack.pop();
-    if (!s) return;
-    this.redoStack.push(this.snapString());
-    this.restore(s, "toast.undone");
+    const e = this.undoStack.pop();
+    if (!e) return;
+    this.redoStack.push({ snap: this.snapString(), label: e.label, states: e.states.map(({ k, from, to }) => ({ k, from: to, to: from })) });
+    this.restore(e, "toast.undone");
   };
   redo = () => {
-    const s = this.redoStack.pop();
-    if (!s) return;
-    this.undoStack.push(this.snapString());
-    this.restore(s, "toast.redone");
+    const e = this.redoStack.pop();
+    if (!e) return;
+    this.undoStack.push({ snap: this.snapString(), label: e.label, states: e.states.map(({ k, from, to }) => ({ k, from: to, to: from })) });
+    this.restore(e, "toast.redone");
   };
-  private restore(s: string, toast: string) {
-    const o = JSON.parse(s) as { items: Item[]; base: Item[]; cur: number; cid?: string };
+  private restore(e: UndoEntry, toast: string) {
+    const o = JSON.parse(e.snap) as { items: Item[]; base: Item[]; cur: number; cid?: string };
     const now = new Map(this.data.items.map((i) => [this.key(i), this.stateOf(i)]));
-    const was = new Map(o.items.map((i) => [this.key(i), migrate(i)])); // before the rebase writes the server's into them
     // undo the user's own steps only: whatever the agent wrote since stays
     this.data.items = this.legacy
       ? o.items
       : rebase(o.items, new Map(o.base.map((i) => [this.key(i), i])), [...this.base.values()].map(clone), true, this.key).items;
-    // a state the user changed goes back explicitly (the server owns `state`): {op: "state", state, undo: true}.
-    // Items no longer on the page (merged away) come back through the merge's own undo (`add`).
+    // A state goes back only where this step changed it, and only while the item is still where the step left it
+    // (the server owns `state`: {op: "state", state, undo: true}). Every other item keeps the state it has now —
+    // an agent's to_verify written after a chip pick is not the chip's to undo. Items no longer on the page (merged
+    // away) come back through the merge's own undo (`add`).
+    const steps = new Map(e.states.map((st) => [st.k, st]));
     for (const i of this.data.items) {
       const k = this.key(i);
-      const { state, restore_to } = was.get(k) ?? {};
-      if (state && now.has(k) && state !== now.get(k)) {
-        this.setLocal(i, state, restore_to ?? "new");
-        if (!this.legacy) this.actionOps.push({ op: "state", id: k, state, undo: true });
+      const st = steps.get(k);
+      if (st && now.get(k) === st.to.state) {
+        this.setLocal(i, st.from.state!, st.from.restore_to ?? st.to.state!);
+        if (!this.legacy) this.actionOps.push({ op: "state", id: k, state: st.from.state!, undo: true });
         continue;
       }
       const p = this.pendingState.get(k); // unanswered: still as the user set it
@@ -673,7 +715,7 @@ export class ReviewStore {
   private setChip(k: "kind" | "severity" | "type", v: string) {
     const i = this.item;
     if (!i || (k !== "kind" && kindOf(i) !== "issue") || (k === "kind" ? kindOf(i) : String(i[k] ?? "")) === v) return;
-    this.snapshot("undo.edit");
+    this.snapshot(k === "kind" ? "undo.kind" : k === "severity" ? "undo.severity" : "undo.type");
     if (v) i[k] = v;
     else delete i[k];
     this.save();
@@ -887,6 +929,17 @@ export class ReviewStore {
       if (this.mode === "item") this.item && this.act([this.item], "hand_off");
       else this.openFinish();
       return;
+    }
+    // ⇧Tab from the detail's first control: back to the host's list (the Mac app), the way Tab came in — not round
+    // to the page's last control
+    if (e.key === "Tab" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing && this.host.focusList && !this.modal) {
+      const first = firstTabbable();
+      if (!ae || ae === document.body || ae === first) {
+        e.preventDefault();
+        ae?.blur(); // a field's edit ends (its undo step) before the focus leaves
+        this.host.focusList();
+        return;
+      }
     }
     if (e.key === "Escape") {
       if (this.modal) this.closeModal();

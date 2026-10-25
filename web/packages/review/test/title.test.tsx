@@ -2,7 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 import type { BlurtHost, SessionDoc, UserOp } from "../src/host";
-import { ReviewStore } from "../src/store";
+import { firstTabbable, ReviewStore } from "../src/store";
 import { StoreCtx } from "../src/ui/ctx";
 import { Inspector } from "../src/ui/Inspector";
 
@@ -108,7 +108,7 @@ describe("one undo stack per window (micro 3, 4, 12, 13)", () => {
     act(() => type(ta, "Login fails on Safari"));
     expect(labels).toEqual([]); // nothing while typing
     act(() => ta.blur());
-    expect(labels).toEqual(["Edit"]); // one step for the whole edit
+    expect(labels).toEqual(["Edit Title"]); // one step for the whole edit
     act(() => s.undo()); // the host's ⌘Z
     expect(s.item!.title).toBe("Login button does nothing");
     act(() => s.redo()); // ⇧⌘Z
@@ -116,7 +116,7 @@ describe("one undo stack per window (micro 3, 4, 12, 13)", () => {
     // focus and blur without a change: no step
     act(() => ta.focus());
     act(() => ta.blur());
-    expect(labels).toEqual(["Edit"]);
+    expect(labels).toEqual(["Edit Title"]);
     done();
   });
 
@@ -150,9 +150,32 @@ describe("one undo stack per window (micro 3, 4, 12, 13)", () => {
       sev.dispatchEvent(new Event("change", { bubbles: true }));
     });
     expect(s.item!.severity).toBe("high");
-    expect(labels).toEqual(["Edit", "Edit", "Edit"]);
+    expect(labels).toEqual(["Change Kind", "Change Kind", "Change Severity"]);
     act(() => s.undo());
     expect(s.item!.severity).toBeUndefined();
+    done();
+  });
+
+  it("⇧Tab from the detail's first control goes back to the host's list (micro 5); from a later one it stays a Tab", async () => {
+    const { s, el, labels, done } = await mounted();
+    let back = 0;
+    s.host.focusList = () => void back++;
+    const first = firstTabbable(el)!;
+    expect(first).toBeTruthy();
+    const tab = () => {
+      const e = new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true, cancelable: true });
+      act(() => s.onKeyDown(e));
+      return e.defaultPrevented;
+    };
+    act(() => first.focus());
+    expect(tab()).toBe(true);
+    expect(back).toBe(1);
+    expect(document.activeElement).not.toBe(first);
+    const later = [...el.querySelectorAll<HTMLElement>("textarea, input, button")].find((x) => x !== first && x.tabIndex >= 0)!;
+    act(() => later.focus());
+    expect(tab()).toBe(false);
+    expect(back).toBe(1);
+    expect(labels).toEqual([]);
     done();
   });
 });

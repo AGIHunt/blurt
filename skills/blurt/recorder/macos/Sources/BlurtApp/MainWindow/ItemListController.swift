@@ -39,6 +39,8 @@ final class ItemTableView: NSTableView {
         let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
         let ch = e.charactersIgnoringModifiers ?? ""
         if mods == .command, e.keyCode == 36 || e.keyCode == 76 { actions?.handOffSelection(); return }
+        // ⌘⌫ = delete these (Finder's Move to Trash): the items are discarded, as ⌫ does — never the project
+        if mods == .command, e.keyCode == 51 || e.keyCode == 117 { actions?.act(key: "delete"); return }
         if mods.isEmpty || mods == .shift {
             switch (e.keyCode, ch) {
             case (36, _), (76, _): actions?.openSelection(); return
@@ -255,6 +257,11 @@ final class EmptyStateView: NSView {
 final class CapturesBanner: NSView {
     var onClick: (() -> Void)?
     private let row = JobRow()
+    /// the keyboard cursor is on it (↑ from the first item, micro 15)
+    var selected: Bool {
+        get { row.selected }
+        set { row.selected = newValue }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -296,6 +303,11 @@ final class CapturesBanner: NSView {
 final class TakenBanner: NSView {
     var onClick: (() -> Void)?
     private let row = JobRow()
+    /// the keyboard cursor is on it (↑ from the first item, micro 15)
+    var selected: Bool {
+        get { row.selected }
+        set { row.selected = newValue }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -474,6 +486,25 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let missing = MissingFolderBanner()
     let bar = FilterBar()
     let empty = EmptyStateView()
+    /// the item the empty state's "Show AW-11" goes to
+    private(set) var elsewhereUID: String?
+
+    /// A search for an item's id that this place doesn't list: the item, and where it is instead.
+    func elsewhere(_ q: String) -> (ItemRow, String)? {
+        let ids = ItemQuery(text: q).idTerms
+        guard ids.count == 1, let r = model.reader,
+              let it = ((try? r.items(ItemQuery(text: ids[0], states: Lifecycle.states, limit: 4))) ?? []).first(where: { $0.itemID.uppercased() == ids[0] })
+        else { return nil }
+        if it.discarded { return (it, T("main.empty.id_in", it.itemID, Look.stateName("discarded"))) }
+        let here: Bool
+        switch model.scope {
+        case .project(let p): here = it.projectID == p
+        case .unassigned: here = it.projectID == "inbox"
+        case .all: here = true
+        default: here = false
+        }
+        return (it, here ? T("main.empty.id_filtered", it.itemID) : T("main.empty.id_in", it.itemID, it.projectID == "inbox" ? T("project.inbox") : it.projectName))
+    }
     let scroll = NSScrollView()
     private var suppressSelection = false
     private var header: NSTableHeaderView?
@@ -810,7 +841,13 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         }
         guard model.rowCount == 0 else { empty.isHidden = true; return }
         let q = model.text.trimmingCharacters(in: .whitespaces)
-        if !q.isEmpty {
+        if !q.isEmpty, let (it, why) = elsewhere(q) {
+            // an id typed here for an item this place doesn't list (discarded, filtered out, another project): say
+            // where it is and take you there — ⌘K finds it anywhere, the search shouldn't just say "no results"
+            elsewhereUID = it.uid
+            empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q), message: why,
+                       buttons: [(T("main.empty.show_item", it.itemID), 8), (T("main.empty.clear_all"), 2)])
+        } else if !q.isEmpty {
             empty.show(symbol: nil, mark: true, title: T("main.empty.no_results", q),
                        message: model.kinds.count + (model.shownState == nil ? 0 : 1) > 0
                            ? T("main.empty.filters_on") : T("main.empty.try_shorter"),

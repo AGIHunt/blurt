@@ -35,7 +35,10 @@
   "undo.state": "改状态",
   "undo.move": "移到项目",
   "undo.merge": "合并",
-  "undo.edit": "编辑",
+  "undo.kind": "改种类",
+  "undo.severity": "改严重程度",
+  "undo.type": "改类型",
+  "undo.field": "编辑{field}",
   "toast.copied": "已复制 {text}",
   "field.title_required": "标题不能为空。按 Esc 恢复原标题。",
 

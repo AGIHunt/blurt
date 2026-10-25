@@ -130,6 +130,9 @@
 "main.empty.scan_failed" = "The scan failed";
 "main.empty.scanning" = "Scanning your items…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
+"main.empty.show_item" = "Show %@";
+"main.empty.id_in" = "%1$@ is in %2$@.";
+"main.empty.id_filtered" = "%@ is here, but the filters hide it.";
 
 "main.error.bad_transition" = "That state change isn’t possible from here.";
 "main.error.deleted" = "It’s in Discarded. Restore it first.";
@@ -142,6 +145,10 @@
 "main.error.no_scripts" = "This needs the blurt skill’s scripts and uv. Run record.py build once, or reinstall the skill.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
 "main.error.not_found" = "Blurt can’t find that any more.";
+"main.error.no_project" = "That project isn’t in Blurt any more.";
+"main.error.exists" = "That folder is in Blurt already.";
+"main.error.not_a_folder" = "That isn’t a folder.";
+"main.error.reserved" = "That’s Blurt’s own folder.";
 "main.error.save_title" = "Couldn’t save";
 "main.error.timeout" = "It took too long. Try again in a moment.";
 "main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
@@ -204,6 +211,8 @@
 "main.keys.section.item" = "Item";
 "main.keys.section.window" = "Edit and Window";
 "main.keys.detail" = "Show or hide the detail";
+"main.keys.back_to_list" = "From the detail back to the list";
+"main.keys.close_window" = "Close the window (Blurt stays in the menu bar)";
 
 "main.list.label" = "Items";
 

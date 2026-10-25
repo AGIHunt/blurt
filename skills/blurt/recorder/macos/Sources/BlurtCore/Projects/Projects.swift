@@ -66,6 +66,22 @@ public final class ProjectStore {
         out.insert(dragged, at: max(0, min(out.count, index > from ? index - 1 : index)))
         return out
     }
+    /// Where a dragged project may land (child indices, as in reordered): inside its own section — pinned ones stay
+    /// above the rest, so a drop across the line would only snap back (`ids` pinned first, as userOrder lists them).
+    public static func dropRange(_ ids: [String], pinned: Set<String>, moving dragged: String) -> ClosedRange<Int> {
+        let n = ids.filter(pinned.contains).count
+        return pinned.contains(dragged) ? 0...n : n...ids.count
+    }
+
+    /// A wanted order applied later (an undo, a queued drag): the projects still registered, in the wanted order;
+    /// any not in it (added meanwhile) keep their place after them — projects.py order refuses an id it doesn't know.
+    public static func reconciled(_ want: [String], with current: [String]) -> [String] {
+        let have = Set(current)
+        let first = want.filter(have.contains)
+        let taken = Set(first)
+        return first + current.filter { !taken.contains($0) }
+    }
+
     /// nil = auto (AI sorts captures into projects)
     public private(set) var currentID: String?
     /// Who set the current project: "user", or "migrate" (carried over from v0.6 — the app asks once).

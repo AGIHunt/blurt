@@ -130,6 +130,9 @@
 "main.empty.scan_failed" = "扫描失败";
 "main.empty.scanning" = "正在扫描你的条目…";
 "main.empty.try_shorter" = "试试更短的词，或换个说法。";
+"main.empty.show_item" = "显示 %@";
+"main.empty.id_in" = "%1$@ 在「%2$@」里。";
+"main.empty.id_filtered" = "%@ 就在这里，只是被筛选隐藏了。";
 
 "main.error.bad_transition" = "当前状态下不能这样改。";
 "main.error.deleted" = "它在已丢弃里，先恢复它。";
@@ -142,6 +145,10 @@
 "main.error.no_scripts" = "需要 blurt skill 的脚本和 uv。运行一次 record.py build，或重新安装 skill。";
 "main.error.no_uv" = "没装 uv，口喷鸡的设置助手可以帮你装。";
 "main.error.not_found" = "找不到了。";
+"main.error.no_project" = "这个项目已经不在口喷鸡里了。";
+"main.error.exists" = "这个文件夹已经在口喷鸡里了。";
+"main.error.not_a_folder" = "这不是文件夹。";
+"main.error.reserved" = "这是口喷鸡自己的文件夹。";
 "main.error.save_title" = "没能保存";
 "main.error.timeout" = "等太久了，稍后再试。";
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
@@ -204,6 +211,8 @@
 "main.keys.section.item" = "条目";
 "main.keys.section.window" = "编辑与窗口";
 "main.keys.detail" = "显示或隐藏详情";
+"main.keys.back_to_list" = "从详情回到列表";
+"main.keys.close_window" = "关闭窗口（口喷鸡留在菜单栏）";
 
 "main.list.label" = "条目";
 

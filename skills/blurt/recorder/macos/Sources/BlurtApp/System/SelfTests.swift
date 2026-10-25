@@ -325,7 +325,9 @@ enum SelfTests {
             c.searchItem?.searchField.stringValue = arg
             c.model.text = arg
             c.model.reload()
-            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS])
+            c.list.updateEmpty()
+            out(["rows": c.model.rowCount, "ms": c.model.lastReloadMS,
+                 "empty": c.list.empty.isHidden ? NSNull() : (c.list.empty.accessibilityLabel() ?? "") as Any])
         case "mainproject":             // mainproject ID: its settings sheet
             MainWindowController.shared.projectSettings(arg)
         case "mainstate", "mainmove":   // mainstate ACTION (K3: keep, done, back, …) / mainmove PROJECT: on the selection
@@ -376,11 +378,33 @@ enum SelfTests {
             c.window?.makeFirstResponder(c.list.table)
             if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: c.window?.windowNumber ?? 0,
                                         context: nil, characters: arg, charactersIgnoringModifiers: arg, isARepeat: false,
-                                        keyCode: arg == "\u{7f}" ? 51 : 0) {
+                                        keyCode: arg == "\u{7f}" ? 51 : arg == "\r" ? 36 : 0) {
                 // async: S opens a menu, which runs its own loop until it closes
                 DispatchQueue.main.async { c.list.table.keyDown(with: e) }
             }
             out(["key": arg])
+        case "mainchord":               // mainchord cmd+delete: ⌘⌫ on the list, through NSApp (the menus get it first)
+            let c = MainWindowController.shared
+            c.window?.makeFirstResponder(c.list.table)
+            if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [.command], timestamp: ProcessInfo.processInfo.systemUptime,
+                                        windowNumber: c.window?.windowNumber ?? 0, context: nil, characters: "\u{7f}",
+                                        charactersIgnoringModifiers: "\u{7f}", isARepeat: false, keyCode: 51) {
+                NSApp.sendEvent(e)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                out(["scope": c.model.scope.key, "projects": c.model.projects.filter(\.registered).map(\.name),
+                     "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
+            }
+        case "mainbanner":              // mainbanner captures|taken N: show that banner with N (no cards needed), for the ↑ walk
+            let c = MainWindowController.shared
+            let w = arg.split(separator: " ").map(String.init)
+            let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
+            if w.first == "captures" { c.list.captures.set(count: n) } else { c.list.taken.set(count: n) }
+            out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
+        case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
+            let c = MainWindowController.shared
+            out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
+                 "banner": c.focusedBanner ?? NSNull(), "job": c.shownJob ?? NSNull()])
         case "mainfilter":              // mainfilter STATE|inbox|all: the State filter
             let c = MainWindowController.shared
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg

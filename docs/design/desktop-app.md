@@ -260,7 +260,8 @@ Windows/Linux: Blurt（Tauri 2）
 | `R` | 审核模式 |
 | `Space` | Quick Look |
 | `?` | 显示键位表 |
-| `⌘Z` / `⇧⌘Z` | 窗口里只有一个撤销栈：列表的状态、移动、改名，和详情页的状态、标签、字段编辑（一次聚焦到失焦算一步，`registerUndo` 桥）都在同一个 `NSUndoManager` 上 |
+| `⌘Z` / `⇧⌘Z` | 窗口里只有一个撤销栈：列表的状态、移动、改名，和详情页的状态、标签、字段编辑（一次聚焦到失焦算一步，`registerUndo` 桥）都在同一个 `NSUndoManager` 上。原生步骤在发起动作的那次按键里就登记（目标是各自的 `UndoStep`，写失败就 `removeAllActions(withTarget:)` 撤掉这一步）；脚本写入（items.py / projects.py）按发起顺序经 `SerialWork` 串行执行，撤销在原动作写完之后才跑。页面的一步只记它自己改的状态（uid、from、to），撤销时只在条目仍是 to 时发 `state --undo`，别的条目的状态（Agent 之后写的 to_verify）不动 |
+| `⌫` / `⌘⌫` | 丢弃选中的条目（访达的「移到废纸篓」）；「从口喷鸡移除」项目没有快捷键 |
 | `⌘Q` | 主窗口里是关窗口回到菜单栏（第一次会提示一次），退出在菜单栏图标的菜单里 |
 
 v0.9 补充（主窗口）：

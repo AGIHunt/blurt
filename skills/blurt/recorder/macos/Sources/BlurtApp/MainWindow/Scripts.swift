@@ -65,6 +65,12 @@ enum Scripts {
         }
     }
 
+    /// One of the callback calls below, awaited (the main window's writes run one after another: SerialWork).
+    @MainActor
+    static func awaiting(_ call: (@escaping (Result<[String: Any], Failure>) -> Void) -> Void) async -> Result<[String: Any], Failure> {
+        await withCheckedContinuation { k in call { k.resume(returning: $0) } }
+    }
+
     // MARK: the writes the main window makes
 
     /// items.py user-ops (the review component's ops, by uid). `scope` = [SESSION] | ["--project", P].

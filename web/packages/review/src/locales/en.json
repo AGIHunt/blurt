@@ -35,7 +35,10 @@
   "undo.state": "Change State",
   "undo.move": "Move to Project",
   "undo.merge": "Merge",
-  "undo.edit": "Edit",
+  "undo.kind": "Change Kind",
+  "undo.severity": "Change Severity",
+  "undo.type": "Change Type",
+  "undo.field": "Edit {field}",
   "toast.copied": "Copied {text}",
   "field.title_required": "A title can’t be empty. Esc puts the old one back.",
 
