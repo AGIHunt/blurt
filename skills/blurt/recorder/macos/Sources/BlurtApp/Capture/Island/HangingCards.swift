@@ -493,7 +493,7 @@ final class HangingCards: NSObject {
             c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.99)).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.08)).cgColor
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
-            let words = s.words
+            let words = s.words ?? note.text      // (note.text: the words heard while it was said, until its own are in)
             let dur = HangingCards.clock(s.duration ?? 0)
             let text = words ?? HangingCards.statusText(note.status) ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
             // "Couldn't transcribe" needs you: the attention colour, never the quiet grey of a placeholder
@@ -881,6 +881,7 @@ final class HangingCards: NSObject {
         if panel == nil || screen != target { ensurePanel(on: target) }
         // the batch's change callback may have hung it already (quietly): catch that card
         let c = cards.first { $0.shot === s } ?? makeCard(s, x: anchor.x)
+        style(c)            // hung quietly before its last details were in (a voice note's heard words): what flies is current
         if !cards.contains(where: { $0 === c }) { cards.append(c) }
         sortCards()
         layout()
