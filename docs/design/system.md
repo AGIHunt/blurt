@@ -332,6 +332,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Settings: the row a search or a link lands on | T | a brief rounded tint behind the row, fading out over 0.7 s (none with Reduce Motion: it appears and goes) |
 | Settings search results | T (chosen) | the matched words in semibold (never brand), the section on the right in secondary; one row is ever tinted: the pointer moving onto a row makes it the keyboard's choice |
 | Settings: Agents drag to reorder | I | a 2 pt `brand.ink` line where the dragged agent will land |
+| Settings → Storage | — (greys) | macOS Storage's layout: "Blurt uses 4.2 GB" (size semibold, tabular) over a 6 pt bar split by kind in greys (data is never brand, §3.9) with a one-line legend; then rows of one anatomy: icon, name, one plain line (never a path: that is the tooltip), the size in one 76 pt right-aligned column, "—" for nothing. Actions (Show in Finder, Move to Trash, with Undo) sit in a ⋯ menu shown on hover or focus and in the right-click menu, in a reserved 24 pt slot so sizes never move. Only the exception is labelled ("Not used"), never "In use" on every row |
 | Text buttons in Settings ("Change in Dictation…") | I | plain text button in `brand.ink`, not the system link blue |
 | Switches, checkboxes, radios, sliders, focus | `brand.accent` (native) | the `AccentColor` asset; no custom drawing |
 | Mic test meter | **G** vertical (dark) / I (light) | idle bars neutral |

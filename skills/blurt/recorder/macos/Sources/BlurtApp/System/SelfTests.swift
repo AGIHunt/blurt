@@ -191,6 +191,9 @@ enum SelfTests {
                 m.trash([u], name: arg, window: NSApp.keyWindow)
                 out(["trashing": u.path])
             }
+        case "storagehover":            // storagehover NAME: Settings → Storage shows that row's ⋯ as on hover (empty: none)
+            MainActor.assumeIsolated { StorageHover.shared.forced = arg.isEmpty ? nil : arg }
+            out(["hover": arg])
         case "shortcutswap":            // shortcutswap yes|no: answer the "already used" question; undo: ⌘Z's undo
             let m = HotkeySettings.shared
             if arg == "undo" { m.fields.values.first?.window?.undoManager?.undo() } else { m.testAnswerSwap(arg == "yes") }

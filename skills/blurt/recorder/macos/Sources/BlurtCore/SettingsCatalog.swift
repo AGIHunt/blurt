@@ -139,10 +139,9 @@ public enum SettingsCatalog {
         sec("privacy.permissions", "settings.privacy.permissions_live"),
         sec("privacy.data", "settings.privacy.data"),
 
-        sec("storage.recordings", "settings.privacy.recordings_screenshots"),
+        sec("storage.recordings", "settings.storage.recordings"),
         sec("storage.models", "settings.storage.models"),
-        sec("storage.dictation", "dictation.settings.tab", "Dictation"),
-        sec("storage.files", "settings.privacy.blurt_own_files"),
+        sec("storage.files", "settings.storage.app_data"),
     ]
 
     public static func section(_ id: String) -> SettingsSection? { sections.first { $0.id == id } }
@@ -260,13 +259,12 @@ public enum SettingsCatalog {
             row("privacy.spotlight", "privacy.data", "settings.privacy.items_appear_spotlight", detail: S("settings.privacy.spotlight.detail")),
 
             // Storage
+            // (the storage rows themselves — folders, videos, models, files — come from the disk; the sections and
+            // their keywords are what search lands on)
             whole("storage.recordings"),
-            row("storage.videos", "storage.recordings", "settings.storage.videos", detail: S("settings.storage.videos.footer")),
-            row("storage.auto_delete", "storage.recordings", "settings.storage.videos.auto"),
+            row("storage.auto_delete", "storage.recordings", "settings.storage.videos.auto", detail: S("settings.storage.videos.footer")),
             whole("storage.models", detail: S("settings.storage.model.footer")),
-            row("storage.choose_models", "storage.models", "settings.storage.choose_models", detail: S("settings.storage.choose_models.detail")),
-            whole("storage.files", detail: S("settings.privacy.index_can_be_deleted")),
-            row("storage.live_audio", "storage.files", "settings.privacy.raw_live_caption_audio"),
+            whole("storage.files"),
         ]
         return e
     }()

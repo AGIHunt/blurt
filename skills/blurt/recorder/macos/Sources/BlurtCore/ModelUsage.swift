@@ -37,6 +37,31 @@ public enum ModelUsage {
         return out
     }
 
+    /// The Settings panes that pick a model: Speech (recordings, live captions, voice notes) and Dictation (the model
+    /// Fn dictation runs, and its clean-up).
+    public enum Feature: Int, Comparable {
+        case speech, dictation
+        public static func < (a: Feature, b: Feature) -> Bool { a.rawValue < b.rawValue }
+    }
+
+    /// Model folder (as `merge` spells it) → which panes' picks use it, in pane order. A model nothing picks is absent;
+    /// the voice detector, which every local model needs, is not named by a pick and so is absent too.
+    public static func users(asr: [String: Any]?, dictation: [String: Any]?, polish: [String: Any]?) -> [String: [Feature]] {
+        var out: [String: Set<Feature>] = [:]
+        let dictating = dictation?["selected"] as? String
+        for m in (asr?["models"] as? [[String: Any]]) ?? [] where m["installed"] as? Bool == true {
+            guard let p = m["path"] as? String, m["role"] as? String != "vad" else { continue }
+            if !((m["purposes"] as? [String]) ?? []).isEmpty { out[root(p), default: []].insert(.speech) }
+            if dictating != nil, m["id"] as? String == dictating { out[root(p), default: []].insert(.dictation) }
+        }
+        let sel = polish?["selected"] as? String
+        for m in (polish?["models"] as? [[String: Any]]) ?? [] where m["installed"] as? Bool == true {
+            guard let p = m["path"] as? String, m["id"] as? String == sel else { continue }
+            out[root(p), default: []].insert(.dictation)
+        }
+        return out.mapValues { $0.sorted() }
+    }
+
     /// A model's folder as the Storage rows list it: ours as they are; in the Hugging Face cache, the repo folder
     /// (…/hub/models--org--name), not the snapshot inside it.
     public static func root(_ p: String) -> String {
