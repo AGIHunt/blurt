@@ -303,6 +303,13 @@ enum SelfTests {
             let c = MainWindowController.shared
             out(["columns": c.split.splitViewItems.map { "\($0.viewController.view.frame)" },
                  "table": c.list.table.tableColumns.map { "\($0.identifier.rawValue)=\(Int($0.width))\($0.isHidden ? "h" : "")" }])
+        case "mainselection":           // the several-selected detail: title, summary, buttons, ⋯ menu, rows; "click ID" presses one
+            let d = MainWindowController.shared.detail
+            if arg.hasPrefix("click ") {
+                let id = String(arg.dropFirst(6))
+                d.selection.button(id)?.performClick(nil)
+            }
+            out(["shown": d.showsSelection].merging(d.selection.testDescription) { a, _ in a })
         case "mainviews":               // frames of the detail's views (layout checks)
             let d = MainWindowController.shared.detail
             func dump(_ v: NSView, _ depth: Int) -> [String] {

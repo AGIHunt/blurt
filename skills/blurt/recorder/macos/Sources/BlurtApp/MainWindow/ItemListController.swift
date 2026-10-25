@@ -1006,6 +1006,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         let v = make("row") { ItemRowView() }
         let sec = model.section(at: row)
         v.section = sec.map { (sectionName($0), Loc.number($0.count)) }
+        v.nextOwnsBand = model.section(at: row + 1) == nil
         if let it = model.item(at: row) {
             v.label = ([sec.map { "\(sectionName($0)), \(TP("main.items.count", $0.count))" }, Look.kindName(it.kind),
                         it.title.isEmpty ? T("main.item.untitled") : it.title, it.itemID, Look.stateLabel(it),

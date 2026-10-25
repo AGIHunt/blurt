@@ -131,6 +131,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             // the same item still selected, but its row changed under it (a state, a move, a renamed folder)
             if self.shownJob == nil, self.list.selectedIDs.count == 1, let it = self.list.selectedItems.first {
                 self.detail.refresh(item: it, projects: self.model.projects)
+            } else if self.shownJob == nil, self.list.selectedIDs.count > 1, self.detail.showsSelection {
+                self.showSelectionSummary()     // a state or a move changed what the buttons can do
             } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.model.isEmptyWorld,
                       self.detail.showsNothing {
                 self.listSelectionChanged()     // the first item arrived (or the last one went): "Nothing selected" or blank
@@ -392,10 +394,111 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if shownJob != nil { return }
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
+        } else if items.count > 1 {
+            showSelectionSummary()
         } else {
-            detail.showNothing(items.count, quiet: items.isEmpty && model.isEmptyWorld)
+            detail.showNothing(quiet: model.isEmptyWorld)
         }
         scheduleSave()
+    }
+
+    // MARK: several selected (SelectionView)
+
+    func showSelectionSummary() {
+        let items = list.selectedItems
+        guard items.count > 1 else { return }
+        detail.showSelection(items, plan: selectionPlan(items))
+    }
+
+    /// The agent the hand-off panel will start with, when it is already decided (the last one used, the project's,
+    /// the global default) — the primary names it; nil: "Hand Off…" and the panel picks.
+    func handOffAgentName(_ items: [ItemRow]) -> String? {
+        let projects = Set(items.map(\.projectID))
+        let project = projects.count == 1 ? projects.first.flatMap { ProjectStore.shared.project(id: $0) }?.defaultAgent : nil
+        let ids = [Config.shared["sessions.agent"] as? String, project, Config.shared["record.default_agent"] as? String]
+        return ids.compactMap { $0 }.lazy.compactMap { AgentHub.shared.def($0)?.name }.first
+    }
+
+    /// What the selection summary offers. Inline: Hand Off…, Move to Project… and the one state action that moves the
+    /// batch on (Keep for new items, Mark as Done for those in work, Reopen / Restore for closed ones); everything else
+    /// in ⋯ — the same entries the state menu and the Item menu have. The primary is the one that can go: Hand Off when
+    /// HandOffCheck lets it, else the way out of what blocks it (Move to Project… for Unassigned or mixed projects,
+    /// Reopen, Restore), with the reason on one line under the buttons.
+    func selectionPlan(_ items: [ItemRow]) -> SelectionPlan {
+        var p = SelectionPlan()
+        let writable = Scripts.canWrite && items.contains { !$0.readOnly }
+        let block = dispatchBlock(items)
+        let n = items.count
+        let agent = handOffAgentName(items)
+        let handOff = SelectionPlan.Action(
+            id: "hand_off", title: agent.map { T("main.selection.hand_off_to", $0) } ?? T("main.selection.hand_off"),
+            tip: block.map(Self.blockText) ?? TP("main.selection.hand_off.tip", n),
+            enabled: block == nil && writable && AppEnvironment.dispatch != nil)
+        let move = SelectionPlan.Action(id: "move", title: T("main.selection.move"), tip: TP("main.selection.move.tip", n),
+                                        enabled: writable)
+        let states = writable ? StateMenu.actions(for: items, canHandOff: false) : []
+        var way: String?
+        switch block {
+        case .finished?: way = states.contains("reopen") ? "reopen" : nil
+        case .discarded?: way = states.contains("restore") ? "restore" : nil
+        default: break
+        }
+        let state = way ?? states.first { $0 != "discard" }
+        p.actions = [handOff, move]
+        if let a = state {
+            let valid = StateMenu.valid(a, items).count
+            let title = StateMenu.title(a) + (valid < n ? " (\(Loc.number(valid)))" : "")
+            let (k, mods) = StateMenu.key(a)
+            let key = k.isEmpty ? "" : " (\(mods.contains(.command) ? "⌘" : "")\(k == "\u{8}" ? "⌫" : k.uppercased()))"
+            p.actions.append(.init(id: a, title: title, tip: StateMenu.hint(a, items) + key))
+        }
+        switch block {
+        case nil: p.primary = handOff.enabled ? "hand_off" : nil
+        case .needsProject?, .mixedProjects?: p.primary = writable ? "move" : nil
+        default: p.primary = way
+        }
+        if let b = block, writable {
+            // under the buttons the line says why Hand Off is off and what the primary does about it
+            switch b {
+            case .mixedProjects: p.blocked = T("main.selection.blocked.mixed")
+            case .needsProject: p.blocked = T("main.selection.blocked.needs_project")
+            case .finished: p.blocked = T("main.selection.blocked.finished")     // about the batch, not "this item"
+            default: p.blocked = Self.blockText(b)
+            }
+        }
+        // the primary leads the row
+        if let pr = p.primary, let i = p.actions.firstIndex(where: { $0.id == pr }) { p.actions.insert(p.actions.remove(at: i), at: 0) }
+        p.more = selectionMoreMenu(items, inline: Set(p.actions.map(\.id)), states: states)
+        return p
+    }
+
+    /// ⋯: the state actions not inline (StateMenu's entries, "(n)" where they apply to some), then the Item menu's
+    /// actions without the two already inline (Hand Off, Move to Project).
+    func selectionMoreMenu(_ items: [ItemRow], inline: Set<String>, states: [String]) -> NSMenu {
+        let m = NSMenu()
+        m.autoenablesItems = true
+        let rest = states.filter { !inline.contains($0) }
+        for a in rest {
+            if a == "discard", !m.items.isEmpty { m.addItem(.separator()) }
+            m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self))
+        }
+        if !rest.isEmpty { m.addItem(.separator()) }
+        itemActions(into: m, items: items, inSelection: true)
+        return m
+    }
+
+    func selectionAction(_ id: String, from v: NSView) {
+        let items = list.selectedItems
+        switch id {
+        case "hand_off": handOffSelection()
+        case "move": pickProject(from: v)
+        default: apply(id, to: items)
+        }
+    }
+
+    func deselect(uid: String) {
+        guard let row = model.row(of: uid) else { return }
+        list.table.deselectRow(row)
     }
 
     /// The rows above the list from the keyboard (micro 15): the "Unfiled captures" and "Recently dragged out"
@@ -1117,10 +1220,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// all there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
     /// Three groups: change the item, take it out of Blurt (every copy in one Copy submenu), look at its files. One
     /// symbol per action (system.md §2.7): `folder` only for projects, `sparkles` only for Organise.
-    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+    /// `inSelection`: the selection summary's ⋯ menu, which has its own Move to Project… button.
+    func itemActions(into m: NSMenu, items: [ItemRow]?, inSelection: Bool = false) {
         let one = items.map { $0.count == 1 } ?? true
         let bar = items == nil
-        m.addItem(submenu(T("main.menu.move_to"), "arrow.turn.up.right", moveMenu()))
+        if !inSelection { m.addItem(submenu(T("main.menu.move_to"), "arrow.turn.up.right", moveMenu())) }
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
         if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "text.badge.plus")
@@ -1177,9 +1281,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// M (and Move to Project… in the palette): a small popover at the selection — type to filter, ↩ moves every
     /// selected item there (one ⌘Z for all of them). Nothing selected, or items that can't move: a beep.
-    func pickProject() {
+    func pickProject() { pickProject(from: nil) }
+
+    /// `anchor`: hang the popover from that view (the selection summary's button) instead of the selected rows.
+    func pickProject(from anchor: NSView?) {
         let items = list.selectedItems.filter { !$0.readOnly }
         guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
+        let here = Set(items.map(\.projectID))
+        let uids = items.map(\.uid)
+        // what moves, in the field: "Move BA-1 to…", "Move 3 items to…"
+        let subject = items.count == 1 && !items[0].itemID.isEmpty ? T("main.move.placeholder.one", items[0].itemID)
+            : TP("main.move.placeholder.many", items.count)
+        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil, subject: subject,
+                               choose: { [weak self] pid in self?.move(uids: uids, to: pid) },
+                               openFolder: { [weak self] in self?.pickFolder { self?.move(uids: uids, to: $0.id) } })
+        movePopover = p
+        if let v = anchor {         // the selection summary's Move to Project… button: the popover hangs from it
+            p.show(relativeTo: v.bounds, of: v)
+            return
+        }
         let t = list.table
         let rows = t.selectedRowIndexes
         let visible = rows.filter { t.rows(in: t.visibleRect).contains($0) }
@@ -1191,15 +1311,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             r = r.intersection(t.rect(ofColumn: col))
             r.size.width = min(r.width, 24)
         }
-        let here = Set(items.map(\.projectID))
-        let uids = items.map(\.uid)
-        // what moves, in the field: "Move BA-1 to…", "Move 3 items to…"
-        let subject = items.count == 1 && !items[0].itemID.isEmpty ? T("main.move.placeholder.one", items[0].itemID)
-            : TP("main.move.placeholder.many", items.count)
-        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil, subject: subject,
-                               choose: { [weak self] pid in self?.move(uids: uids, to: pid) },
-                               openFolder: { [weak self] in self?.pickFolder { self?.move(uids: uids, to: $0.id) } })
-        movePopover = p
         p.show(relativeTo: r, of: t)
     }
     /// the Move popover on show (wp6 tests read it)

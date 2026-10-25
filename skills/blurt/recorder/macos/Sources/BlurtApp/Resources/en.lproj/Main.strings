@@ -607,3 +607,15 @@
 "main.palette.no_results" = "No commands or items match “%@”";
 "main.palette.hint.copy_instruction" = "Copy an instruction to paste into your own agent";
 "main.palette.hint.copy_full" = "Copy the whole item as text";
+
+/* several items selected (SelectionView) */
+"main.selection.hand_off" = "Hand Off…";
+"main.selection.hand_off_to" = "Hand Off to %@…";
+"main.selection.move" = "Move to Project…";
+"main.selection.more" = "More Actions";
+"main.selection.remove" = "Remove from Selection";
+"main.selection.list" = "Selected items";
+"main.cmd.copy_instruction.tip" = "Copies a prompt that lists these items, to paste into your own agent app";
+"main.selection.blocked.mixed" = "Hand off works on one project at a time: move these to one first";
+"main.selection.blocked.needs_project" = "Hand off needs a project: move these to one first";
+"main.selection.blocked.finished" = "Only new and to-do items can be handed off";

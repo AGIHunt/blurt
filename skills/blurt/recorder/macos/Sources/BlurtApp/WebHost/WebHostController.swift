@@ -5,6 +5,8 @@
 //               item's one Open Session button (blurtHostInfo.sessionBanner: the page leaves its own out then);
 //   a batch     the same component in review mode (the whole capture session: keep / drop / merge, then confirm);
 //   a job       its step timeline (JobDetailView) and, for agent sessions, the embedded terminal (P3);
+//   several     what is selected and what to do with all of it (SelectionView: the kinds, the places, the rows;
+//               Hand Off as the one primary, Move and a state action, the rest in ⋯ — MainWindowController.selectionPlan).
 //   nothing     a quiet placeholder (blank while no items exist at all: the list's first-run state speaks).
 //   unreadable  an item whose file doesn't parse: "can't be read" (never "gone"), Open in Editor and Show in Finder;
 //               the parser's words go to the log. A folder that comes back re-shows the item even when its index row
@@ -48,6 +50,10 @@ protocol WebHostActions: AnyObject {
     func focusList()
     /// "Locate…" for a project whose folder is gone
     func locateFolder(_ id: String)
+    /// One of the selection summary's buttons (SelectionPlan.Action.id), clicked in `from`.
+    func selectionAction(_ id: String, from: NSView)
+    /// × on a row of the selection summary: that item leaves the selection.
+    func deselect(uid: String)
 }
 
 /// What a page shows: one capture session's batch, or one project's items.
@@ -75,6 +81,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     /// An item's pane: the list's own surface behind the (transparent) page, so list and detail read as one sheet
     let surface = PaneSurface()
     let jobView = JobDetailView()
+    let selection = SelectionView()
     private var loadedScope: DocScope?
     private var loadedMode = ""
     private(set) var currentItem: ItemRow?
@@ -110,7 +117,9 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             guard let self = self, let j = self.currentJob else { return }
             self.actions?.jobAction(a, job: j)
         }
-        for v in [surface, banner, web!, overlay, placeholder, jobView] as [NSView] {
+        selection.onAction = { [weak self] id, v in self?.actions?.selectionAction(id, from: v) }
+        selection.onRemove = { [weak self] uid in self?.actions?.deselect(uid: uid) }
+        for v in [surface, banner, web!, overlay, placeholder, jobView, selection] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
             root.addSubview(v)
             NSLayoutConstraint.activate([v.leadingAnchor.constraint(equalTo: root.leadingAnchor), v.trailingAnchor.constraint(equalTo: root.trailingAnchor)])
@@ -122,6 +131,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
             overlay.topAnchor.constraint(equalTo: web.topAnchor), overlay.bottomAnchor.constraint(equalTo: web.bottomAnchor),
             placeholder.topAnchor.constraint(equalTo: root.topAnchor), placeholder.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             jobView.topAnchor.constraint(equalTo: root.topAnchor), jobView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            selection.topAnchor.constraint(equalTo: root.topAnchor), selection.bottomAnchor.constraint(equalTo: root.bottomAnchor),
         ])
         view = root
         accentObserver = NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -189,32 +199,44 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
     // MARK: what to show
 
     private func only(_ v: NSView?) {
-        for x in [web!, overlay, placeholder, jobView] as [NSView] { x.isHidden = x !== v && !(v === web && x === overlay) }
+        for x in [web!, overlay, placeholder, jobView, selection] as [NSView] { x.isHidden = x !== v && !(v === web && x === overlay) }
         if v !== web { banner.set(nil); overlay.set([]) }
         surface.isHidden = true
         showsNothing = false
         showsQuietNothing = false
+        showsSelection = false
     }
 
     /// What showNothing put up, until something else replaces it.
     private(set) var showsNothing = false, showsQuietNothing = false
 
-    /// Nothing selected (or several): a quiet placeholder. `quiet`: no items exist at all yet — the pane stays blank
-    /// and the list's first-run state is the one thing to look at.
-    func showNothing(_ count: Int = 0, quiet: Bool = false) {
+    /// Nothing selected: a quiet placeholder. `quiet`: no items exist at all yet — the pane stays blank and the list's
+    /// first-run state is the one thing to look at. (Several selected: showSelection.)
+    func showNothing(quiet: Bool = false) {
         currentItem = nil
         currentJob = nil
         if quiet {
             only(nil)
         } else {
-            let msg = count > 1 ? TP("main.detail.multi.detail", count) : T("main.detail.none.detail")
-            placeholder.show(symbol: count > 1 ? "square.stack.3d.up" : "sidebar.right",
-                             title: count > 1 ? TP("main.detail.multi", count) : T("main.detail.none"), message: msg)
+            placeholder.show(symbol: "sidebar.right", title: T("main.detail.none"), message: T("main.detail.none.detail"))
             only(placeholder)
         }
         showsNothing = true
         showsQuietNothing = quiet
     }
+
+    /// Several items selected: what they are and what you can do with all of them (SelectionView). Shown again in
+    /// place when the rows change under it (a state, a move): the buttons follow the items.
+    func showSelection(_ items: [ItemRow], plan: SelectionPlan) {
+        currentItem = nil
+        currentJob = nil
+        selection.show(items, plan: plan)
+        only(selection)
+        showsSelection = true
+    }
+
+    /// What showSelection put up, until something else replaces it.
+    private(set) var showsSelection = false
 
     func show(item: ItemRow, projects: [ProjectEntry]) {
         currentItem = item

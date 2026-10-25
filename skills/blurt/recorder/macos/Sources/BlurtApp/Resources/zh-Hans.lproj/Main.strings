@@ -608,3 +608,15 @@
 "main.palette.no_results" = "没有匹配“%@”的命令或条目";
 "main.palette.hint.copy_instruction" = "复制一段指令，粘贴给你自己的 Agent";
 "main.palette.hint.copy_full" = "把整个条目复制为文本";
+
+/* several items selected (SelectionView) */
+"main.selection.hand_off" = "交给 Agent…";
+"main.selection.hand_off_to" = "交给 %@…";
+"main.selection.move" = "移到项目…";
+"main.selection.more" = "更多操作";
+"main.selection.remove" = "不选这一条";
+"main.selection.list" = "选中的条目";
+"main.cmd.copy_instruction.tip" = "复制一段列出这些条目的指令，粘贴给你自己的 Agent";
+"main.selection.blocked.mixed" = "交给 Agent 只处理同一个项目的条目，先把它们移到一个项目";
+"main.selection.blocked.needs_project" = "交给 Agent 前要有项目，先把它们移到一个项目";
+"main.selection.blocked.finished" = "只有新的和要做的条目能交给 Agent";

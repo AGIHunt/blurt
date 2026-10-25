@@ -82,22 +82,6 @@
 			<string>%ld items selected</string>
 		</dict>
 	</dict>
-	<key>main.detail.multi.detail</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>one</key>
-			<string>⌘↩ hands it to an agent · ⇧⌘C copies an instruction</string>
-			<key>other</key>
-			<string>⌘↩ hands them to an agent · ⇧⌘C copies an instruction</string>
-		</dict>
-	</dict>
 	<key>main.items.count</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -336,6 +320,134 @@
 			<string>its snap is kept</string>
 			<key>other</key>
 			<string>its %ld snaps are kept</string>
+		</dict>
+	</dict>
+	<key>main.selection.hand_off.tip</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Start an agent session in Blurt with this item (⌘↩)</string>
+			<key>other</key>
+			<string>Start an agent session in Blurt with these %ld items (⌘↩)</string>
+		</dict>
+	</dict>
+	<key>main.selection.move.tip</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Move it to a project (M)</string>
+			<key>other</key>
+			<string>Move the %ld items to a project (M)</string>
+		</dict>
+	</dict>
+	<key>main.selection.more_rows</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>+%ld more</string>
+			<key>other</key>
+			<string>+%ld more</string>
+		</dict>
+	</dict>
+	<key>main.selection.projects</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld project</string>
+			<key>other</key>
+			<string>%ld projects</string>
+		</dict>
+	</dict>
+	<key>main.selection.kind.issue</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld issue</string>
+			<key>other</key>
+			<string>%ld issues</string>
+		</dict>
+	</dict>
+	<key>main.selection.kind.idea</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld idea</string>
+			<key>other</key>
+			<string>%ld ideas</string>
+		</dict>
+	</dict>
+	<key>main.selection.kind.note</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld note</string>
+			<key>other</key>
+			<string>%ld notes</string>
+		</dict>
+	</dict>
+	<key>main.selection.kind.task</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld task</string>
+			<key>other</key>
+			<string>%ld tasks</string>
 		</dict>
 	</dict>
 </dict>

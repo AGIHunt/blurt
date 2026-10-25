@@ -554,6 +554,8 @@ class BrandRowView: NSTableRowView {
 
     /// The part of the row the selection covers (a row with a section header above it keeps the header unwashed).
     var selectionBand: NSRect { bounds }
+    /// false when the next row starts a section (its header sits between them): the band stops at this row
+    var nextOwnsBand = true
 
     override func drawSelection(in dirtyRect: NSRect) {
         guard selectionHighlightStyle != .none else { return }
@@ -561,7 +563,37 @@ class BrandRowView: NSTableRowView {
         (key ? BrandColor.tint : NSColor.labelColor.withAlphaComponent(0.06)).setFill()
         // the inset / source-list styles inset the row itself; a row as wide as its table keeps a margin like theirs
         let pad: CGFloat = frame.minX < 1 && abs(frame.width - (superview?.bounds.width ?? 0)) < 1 ? 10 : 0
-        NSBezierPath(roundedRect: selectionBand.insetBy(dx: pad, dy: 0), xRadius: 6, yRadius: 6).fill()
+        // adjacent selected rows read as one band (Finder, Mail): the wash runs into the gap between them and only the
+        // band's outer ends are rounded
+        // a row whose top band holds a section header starts a band of its own
+        let own = selectionBand == bounds
+        let up = isPreviousRowSelected && own, down = isNextRowSelected && nextOwnsBand
+        var r = selectionBand.insetBy(dx: pad, dy: 0)
+        let gap = Self.gap(self)
+        if up { r.origin.y -= isFlipped ? gap : 0; r.size.height += gap }
+        if down { r.origin.y -= isFlipped ? 0 : gap; r.size.height += gap }
+        Self.band(r, top: !up, bottom: !down, flipped: isFlipped).fill()
+    }
+
+    /// The space between two rows' views (the inset style leaves one): half of it is this row's to fill.
+    static func gap(_ v: NSTableRowView) -> CGFloat {
+        guard let t = v.superview as? NSTableView ?? v.superview?.superview as? NSTableView else { return 0 }
+        return max(0, (t.rowHeight + t.intercellSpacing.height - v.frame.height) / 2) + 0.5
+    }
+
+    /// A rectangle rounded (r 6) at its top and / or bottom only.
+    static func band(_ r: NSRect, top: Bool, bottom: Bool, flipped: Bool) -> NSBezierPath {
+        // in view coordinates the top edge is minY when flipped, maxY otherwise
+        let (tY, bY) = flipped ? (r.minY, r.maxY) : (r.maxY, r.minY)
+        let tr: CGFloat = top ? 6 : 0, br: CGFloat = bottom ? 6 : 0
+        let p = NSBezierPath()
+        p.move(to: NSPoint(x: r.midX, y: tY))
+        p.appendArc(from: NSPoint(x: r.maxX, y: tY), to: NSPoint(x: r.maxX, y: bY), radius: tr)
+        p.appendArc(from: NSPoint(x: r.maxX, y: bY), to: NSPoint(x: r.minX, y: bY), radius: br)
+        p.appendArc(from: NSPoint(x: r.minX, y: bY), to: NSPoint(x: r.minX, y: tY), radius: br)
+        p.appendArc(from: NSPoint(x: r.minX, y: tY), to: NSPoint(x: r.midX, y: tY), radius: tr)
+        p.close()
+        return p
     }
 
     override func viewDidMoveToWindow() {
