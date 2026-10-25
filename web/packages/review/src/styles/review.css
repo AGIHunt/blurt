@@ -1461,8 +1461,8 @@ button.chip:hover {
   font-variant-numeric: tabular-nums;
 }
 .card .h .kind-ic .ico {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 .card.s-done .tt,
 .card.s-wontfix .tt {

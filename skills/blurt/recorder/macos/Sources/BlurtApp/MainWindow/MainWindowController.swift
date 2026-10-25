@@ -1047,7 +1047,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let m = NSMenu()
         for (k, key) in KindStyle.builtIn.enumerated() {
             let i = add(m, Look.kindName(key), #selector(mSetKind(_:)), nil, obj: key, key: "\(k + 1)", mods: [])
-            i.image = Look.kindImage(key)
+            i.image = Look.kindImage(key, size: KindStyle.smallSize)
             i.state = items.allSatisfy { $0.kind == key } ? .on : .off
         }
         return m

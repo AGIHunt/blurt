@@ -34,7 +34,9 @@ Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their f
 I scanned WP5's code after merging it (71e8340) and found nothing to replace. `MainWindow/BrandIcons.swift` already
 routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For new UI, follow the same pattern:
 
-- Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` and the work state's `StatusRing.image(state, size:)` (K8). Eggs are
+- Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` / `KindStyle.image(kind, size:)` and the work state's
+  `StatusRing.image(state, size:)` (K8). The kind icons (`bug`, `lightbulb`, `document`, `checkbox`, `tag`) are one family of
+  our own, never SF Symbols (docs/design/system.md §2.6). Eggs are
   brand and motion only (the island's hatching egg: the mascot's `wobble` / `hatching` clips).
 - Session states: to process = `.egg`, hatching = `.hatch`, reviewed = `.hatched`. Fixed = `.peck`, fixing = `.wand` (SF `wand.and.stars`).
 - Never put an emoji or a ✓ / ✗ / ● glyph into a title. Use `icon.label(text, font:, color:)` for NSTextField or

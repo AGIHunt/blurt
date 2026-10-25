@@ -421,7 +421,7 @@ export default function App() {
                 {KINDS.map((k) => (
                   <button key={k} className={`fchip ${kinds.includes(k) ? 'on' : ''}`} aria-pressed={kinds.includes(k)} aria-label={t(`kind.${k}`)} title={t(`kind.${k}`)}
                     onClick={() => setKinds((ks) => (ks.includes(k) ? ks.filter((x) => x !== k) : [...ks, k]))}>
-                    <KindIcon kind={k} size={14} />
+                    <KindIcon kind={k} size={16} />
                   </button>
                 ))}
               </div>

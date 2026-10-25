@@ -67,7 +67,7 @@ export function Queue() {
         const kd = kindOf(i);
         return (
           <div key={s.keyOf(i)} className={cx("qi", s.st(i), k === s.cur && "cur", "s-" + s.stateOf(i))} data-k={k} onClick={() => s.go(k)} aria-current={k === s.cur ? "true" : undefined}>
-            <KindIcon kind={kd} size={15} title={s.kindLabel(kd)} />
+            <KindIcon kind={kd} size={16} title={s.kindLabel(kd)} />
             <div className="qb">
               <div className="t">
                 <span className="tt">{i.title}</span>

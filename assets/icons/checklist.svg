@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="generic">
-  <title>Checklist — a task</title>
-  <path d="m3.6 6.6 1.7 1.7 3-3.2M3.6 12.6l1.7 1.7 3-3.2"/>
-  <path d="M11.5 6.5h9M11.5 12.5h9M11.5 18.5h9"/>
-  <circle cx="5.6" cy="18.5" r="1.2" fill="currentColor" stroke="none"/>
-</svg>

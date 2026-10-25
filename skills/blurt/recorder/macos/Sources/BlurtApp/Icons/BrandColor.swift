@@ -54,10 +54,10 @@ enum BrandColor {
     /// Item kinds (icon tints): light / dark sRGB, ≥ 3:1 on every surface.
     enum Kind {
         static let palette: [String: (UInt32, UInt32)] = [
-            "issue": (0xD9432A, 0xFF7A5C),
-            "idea": (0xA8710A, 0xFFC53D),
-            "note": (0x3E63DD, 0x8DA4EF),
-            "task": (0x7650D8, 0xA994F5),
+            "issue": (0xBB493A, 0xEE8771),
+            "idea": (0xA26D05, 0xE1AE51),
+            "note": (0x4467D2, 0x90A7F1),
+            "task": (0x7559CB, 0xAA98F2),
         ]
         /// a custom lens whose HSL hue lands here moves 60° on (no lens reads as brand or success)
         static let customHueGap = 145...190

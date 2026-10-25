@@ -1,5 +1,5 @@
 {
-  "_": "macOS mapping. generic: SF Symbol candidates, best first (the first one this macOS has wins; macOS 13 is the floor, newer names come first with an older fallback after them; none available → our own vector). brand: always our vector; `nearest` is only the closest SF Symbol, for reference. aliases: other names that resolve to the same icon on every platform.",
+  "_": "macOS mapping. generic: SF Symbol candidates, best first (the first one this macOS has wins; macOS 13 is the floor, newer names come first with an older fallback after them; none available → our own vector). brand: always our vector; `nearest` is only the closest SF Symbol, for reference. aliases: other names that resolve to the same icon on every platform. The item kinds (bug, lightbulb, document, checkbox, tag) are brand: always our own family, never SF Symbols, so the four read as one set (docs/design/system.md §2.6).",
   "generic": {
     "check": [
       "checkmark"
@@ -145,18 +145,6 @@
     "arrow-left": [
       "arrow.left"
     ],
-    "lightbulb": [
-      "lightbulb"
-    ],
-    "document": [
-      "doc.text"
-    ],
-    "checklist": [
-      "checklist"
-    ],
-    "tag": [
-      "tag"
-    ],
     "terminal": [
       "apple.terminal"
     ],
@@ -185,7 +173,12 @@
     "snap": "camera.viewfinder",
     "ink": "scribble.variable",
     "mcp": "powerplug",
-    "egg": "oval.portrait"
+    "egg": "oval.portrait",
+    "bug": "ladybug",
+    "lightbulb": "lightbulb",
+    "document": "doc.text",
+    "checkbox": "checkmark.square",
+    "tag": "tag"
   },
   "aliases": {
     "close": "x",
@@ -195,7 +188,7 @@
     "process": "chicken",
     "issue": "bug",
     "idea": "lightbulb",
-    "todo": "checklist",
+    "todo": "checkbox",
     "listening": "waveform",
     "voice": "waveform",
     "screenshot": "snap",
@@ -210,12 +203,13 @@
     "open-external": "external-link",
     "plug": "mcp",
     "note": "document",
-    "task": "checklist",
+    "task": "checkbox",
     "lens": "tag",
     "open-folder": "folder-plus",
     "branch": "git-branch",
     "pr": "git-pull-request",
     "handoff": "send",
-    "notify": "bell"
+    "notify": "bell",
+    "checklist": "checkbox"
   }
 }

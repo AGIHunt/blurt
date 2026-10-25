@@ -16,7 +16,7 @@ const SURFACES = { light: ["#ffffff", "#f6f6f6", "#ececec", "#f3f3f3", "#eaeaea"
 
 describe("kinds (K8)", () => {
   it("maps kinds to icons; custom lenses get a tag", () => {
-    expect(["issue", "idea", "note", "task", "perf"].map(kindIcon)).toEqual(["bug", "lightbulb", "document", "checklist", "tag"]);
+    expect(["issue", "idea", "note", "task", "perf"].map(kindIcon)).toEqual(["bug", "lightbulb", "document", "checkbox", "tag"]);
   });
   it.each(["light", "dark"] as const)("%s: kind colours and the to-verify colour have 3:1 on every surface", (t) => {
     for (const name of ["--kind-issue", "--kind-idea", "--kind-note", "--kind-task", "--attn"])

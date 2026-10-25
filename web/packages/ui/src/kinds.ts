@@ -6,11 +6,11 @@ import type { State } from "./lifecycle";
 export const KINDS = ["issue", "idea", "note", "task"] as const;
 export type BuiltinKind = (typeof KINDS)[number];
 
-const KIND_ICON: Record<BuiltinKind, string> = { issue: "bug", idea: "lightbulb", note: "document", task: "checklist" };
+const KIND_ICON: Record<BuiltinKind, string> = { issue: "bug", idea: "lightbulb", note: "document", task: "checkbox" };
 
 export const isBuiltinKind = (k: string): k is BuiltinKind => (KINDS as readonly string[]).includes(k);
 
-/** The icon name for a kind (@blurt/icons): bug / lightbulb / document / checklist; a custom lens is a tag. */
+/** The icon name for a kind (@blurt/icons): bug / lightbulb / document (a page) / checkbox; a custom lens is a tag. */
 export const kindIcon = (kind: string): string => (isBuiltinKind(kind) ? KIND_ICON[kind] : "tag");
 
 /** A custom lens's hue: h = (h·31 + code unit) mod 360 over the name (same hash as the old eggs, Swift and Rust). */
