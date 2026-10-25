@@ -3,9 +3,10 @@
 // Card content (CardNote.make):
 //  • the note is the typed text first, then the words said (if both, each once: "typed\nsaid") — the card shows it,
 //    the hover note shows it, a copy / drag / captures.py item carries it.
-//  • the mic mark means "these words were spoken": only when there is a voice note *and* its words.
+//  • the mic mark means "these words were spoken": only when there is a voice note *and* its words — or when its
+//    transcription failed (`marksMic`): the audio is there to retry, and the card says so.
 //  • a voice note still being transcribed: a quiet "Transcribing…" (never an empty card); failed: "Couldn't
-//    transcribe" (Retry in the card's right-click menu). A voice note that turned out to hold no speech is dropped
+//    transcribe" in the attention colour (`needsYou`: it isn't a caption), Retry in the card's right-click menu. A voice note that turned out to hold no speech is dropped
 //    (no mark, nothing left to transcribe) — the app does that, CardNote never sees one.
 //
 // Copy / drag-out (v0.8.3: CardFiles.swift / CardPasteboard / CardDropTarget.swift): one rich item — picture and note
@@ -35,6 +36,11 @@ public struct CardNote: Equatable {
     public let showsMic: Bool
     /// A voice note whose words aren't here (yet).
     public let status: Status
+
+    /// The card carries the mic mark: the words said are here, or the audio is, waiting for a retry.
+    public var marksMic: Bool { showsMic || status == .failed }
+    /// The card needs the user (its status is drawn in the attention colour, not like a caption).
+    public var needsYou: Bool { status == .failed }
 
     public static func make(typed: String?, said: String?, hasVoice: Bool, transcription: Transcription) -> CardNote {
         let s = clean(said)

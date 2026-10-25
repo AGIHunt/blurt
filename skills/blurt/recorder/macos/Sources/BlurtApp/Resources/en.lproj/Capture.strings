@@ -135,6 +135,8 @@
 "capture.rec.pause" = "Pause";
 "capture.rec.paused" = "Paused";
 "capture.rec.pen_hint" = "Hold %@ and drag to draw";
+"capture.rec.pen_off_tip" = "Turn the pen off";
+"capture.rec.pen_on" = "Pen on · Esc to stop";
 "capture.rec.restart" = "Restart";
 "capture.rec.resume" = "Resume";
 "capture.rec.snap_note" = "Snap and add a note (pauses)";

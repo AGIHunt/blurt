@@ -81,14 +81,17 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             let chick = MascotView(clip: clip, size: 50, backdrop: .dark)
             chick.show(clip, frame: 0)
             var t = Island.Toast(text: text, actionTitle: action, action: run)
+            t.passive = true            // a job that finished waits behind what the user is doing now (ToastQueue)
             t.art = chick
             t.seconds = max(2.4, (MascotLibrary.shared.clip(clip)?.duration ?? 1.5) + 0.8)
             Island.shared.toast(t)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { chick.play(clip) }
         } else if let r = launch, AppEnvironment.island != nil {
             LaunchMessages.shared.post(r, Island.Toast(text: text, actionTitle: action, action: run))
-        } else if let island = AppEnvironment.island {
-            island.toast(text, actionTitle: action, action: run)
+        } else if AppEnvironment.island != nil {
+            var t = Island.Toast(text: text, actionTitle: action, action: run)
+            t.passive = true
+            Island.shared.toast(t)
         } else {
             appDelegate?.toast(text, seconds: 2.4)
         }

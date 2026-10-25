@@ -43,7 +43,11 @@ export function scopeFrom(win: Window, info: HostInfo = {}): Scope | undefined {
   return session ? { session } : undefined;
 }
 
-export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtHost {
+// a toast's answer can take as long as the island holds it (a hover holds it, a newer toast puts an Undo back): the
+// app answers "gone" itself when the island lets it go, so this is only a backstop
+const TOAST_TIMEOUT_MS = 10 * 60 * 1000;
+
+export function createMacosHost(win: W = window as W, timeoutMs = 30000, toastTimeoutMs = TOAST_TIMEOUT_MS): BlurtHost {
   const handler = win.webkit?.messageHandlers?.blurt;
   if (!handler) throw new Error("macos host: webkit.messageHandlers.blurt is missing");
   let seq = 0;
@@ -58,13 +62,13 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
     else p.resolve(result);
   };
 
-  function call<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+  function call<T>(method: string, params: Record<string, unknown> = {}, ms = timeoutMs): Promise<T> {
     const id = ++seq;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`macos host: ${method} timed out`));
-      }, timeoutMs);
+      }, ms);
       pending.set(id, { resolve: resolve as (v: unknown) => void, reject, timer });
       let r: unknown;
       try {
@@ -125,5 +129,7 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   if (info.sessionBanner) host.sessionBanner = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
   if (has.has("download")) host.download = (path) => notify("download", { path });
+  // the answer: "undo" when its Undo is clicked, "gone" when the island let it go without (or, as a backstop, timed out)
+  if (has.has("toast")) host.toast = (t) => call<string>("toast", { ...t }, toastTimeoutMs).catch(() => "gone");
   return host;
 }

@@ -145,3 +145,16 @@
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in
       `--brand-ink` and its length; never a bare mic glyph). Done toasts ("Saved", "Copied") carry the `ok` check in
       the overlay island too; search hits that span lines show on one line (" · ") in the desktop app's lists.
+- [ ] Island toasts and cards (Mac v0.9 fix pass, docs/design/system.md §3.2) in the overlays: the toast rule of BlurtCore
+      `ToastQueue` (newest reply first, same key replaces at once, launch / job lines behind replies, stale ones dropped,
+      ≥ 5 s and held while pointed at); toast content spanning the whole shape (`IslandLayout.toast`: text 18 pt in, the
+      button under the right ear's number, a lone line centred); ears anchored to the outer edges, no cross-fades; one
+      live meter in the open voice island; dictation's "Sent" as the ok check in the right ear; recording ear: pause
+      bars when paused, the pen while latched, markers counted apart, the discard question naming the stills; the
+      live-text panel in the island's black and width family; snap cards shaped by their picture (`CardShape`), the
+      mic mark leading the caption, a clean "+N" count tile; the desktop app's page toasts on the island (host
+      method `toast`). Follow-ups from the review: older plain replies superseded by a newer one (never shown after
+      it), a pushed-out Undo back for its real remaining time, `onGone` answering a page toast "gone"; a click on a
+      toast's line opens the island, only its button acts; the live panel's width ignoring toasts and, without a
+      notch, the overlay widening to the panel's family; "Couldn't transcribe" in amber with the mic mark kept; ⇧'s
+      style line only the first two times; the cards count in mint on the plain stack glyph.

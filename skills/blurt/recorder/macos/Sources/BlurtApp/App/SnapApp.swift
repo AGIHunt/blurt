@@ -34,6 +34,7 @@
 //     assign N PROJECT|inbox  = dropping card N (of the inbox's batches) on that target · aisort · deleteall
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
 //     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
+//     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
 //     project ID|auto         switch the current project
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
 //     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
@@ -229,6 +230,7 @@ extension App {
             guard let t = island.currentToast else { return }
             island.dismissToast()
             if arg == "2" { t.second?() } else { t.action?() }
+        case "islandclick": island.testClickToastLine()   // a click on the toast's line (not its button), as mouseDown sends it
         case "askproject": Housekeeping.askAboutCarriedOverProject()
         case "enrich":                                  // enrich UID,UID…: "AI fill-in" for those items
             enrich(arg.split(separator: ",").map(String.init), project: ProjectStore.shared.currentID)
@@ -319,6 +321,20 @@ extension App {
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
+        case "islandtoast":                             // islandtoast KEY|ACTION|ICON|passive|TEXT ("-" = none): one island toast
+            let a = arg.components(separatedBy: "|")
+            guard a.count >= 5 else { return }
+            func v(_ i: Int) -> String? { a[i] == "-" || a[i].isEmpty ? nil : a[i] }
+            var t = Island.Toast(text: a[4...].joined(separator: "|"), actionTitle: v(1), action: v(1).map { title in
+                { emit(["event": "island_toast_action", "title": title]) }
+            })
+            t.key = v(0)
+            t.icon = v(2).flatMap(BlurtIcon.init(rawValue:))
+            t.passive = a[3] == "passive"
+            island.toast(t)
+        case "islandsent": island.dictationSent()      // the ear's "Sent" moment after a double tap
+        case "toaststate":                              // what the island says now, and what waits
+            emit(["event": "toast_state", "current": island.currentToast?.text ?? NSNull(), "waiting": island.waitingToasts])
         case "axcards":
             let els = hanging.accessibilityElements().map { e -> [String: Any] in
                 let r = toCG(e.accessibilityFrame())

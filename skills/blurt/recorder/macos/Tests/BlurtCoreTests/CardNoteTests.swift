@@ -49,6 +49,18 @@ final class CardNoteTests: XCTestCase {
         XCTAssertEqual(make(nil, "words", voice: true, .failed).status, .none, "words are there: nothing failed")
     }
 
+    /// A failed card doesn't read like a caption: it keeps the mic mark (the audio is there to retry) and needs you.
+    func testAFailedCardKeepsTheMicAndNeedsYou() {
+        let f = make(nil, nil, voice: true, .failed)
+        XCTAssertTrue(f.marksMic)
+        XCTAssertTrue(f.needsYou)
+        let pending = make(nil, nil, voice: true, .pending)
+        XCTAssertFalse(pending.marksMic, "still transcribing: no mark yet")
+        XCTAssertFalse(pending.needsYou)
+        XCTAssertTrue(make(nil, "words", voice: true).marksMic)
+        XCTAssertFalse(make("typed", nil, voice: false).marksMic)
+    }
+
     func testNoVoiceNoStatus() {
         XCTAssertEqual(make(nil, nil, voice: false, .pending), CardNote(text: nil, showsMic: false, status: .none))
         XCTAssertFalse(make(nil, "stale words", voice: false).showsMic, "a dropped voice note leaves no mark")

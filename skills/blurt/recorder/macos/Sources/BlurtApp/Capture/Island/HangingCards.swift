@@ -13,7 +13,8 @@
 //    coming back while they are still on their way up turns them round from where they are (no restart).
 //  • the row (v0.9, BlurtCore CardRow): newest first, left to right, centred under the island — at most 5 cards and
 //    never wider than 780 pt (voice cards are wider, so fewer of them); the rest wait behind a quiet "+N" tile at the
-//    row's end (the newest of them, dimmed, a second edge behind it, the count). A click on the tile opens the overview
+//    row's end (the card surface, a second edge behind it, the count — no ghost picture). A snap's card takes its
+//    picture's shape (BlurtCore CardShape: 84 pt high, 84–150 wide; a toolbar or a sidebar shown whole). A click on the tile opens the overview
 //    of every card (CardsOverview.swift). Nothing pages or rotates: the order is always the time they were taken. The
 //    threads come out of the island's bottom edge straight above their cards, or — for a row wider than the island —
 //    spread along that edge in proportion (CardRow.threadX), so they hang near vertical instead of fanning out.
@@ -36,10 +37,12 @@
 //    is a button (its words, or "Screenshot N"; press = copy; actions: edit, move, auto-sort, delete), then the
 //    tile ("Show all N cards", press = the overview, with the keyboard in it).
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
-//    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (top right
-//    once there is a caption) only when the note was spoken *and* its words are here. A spoken note still being
-//    transcribed: "Transcribing…" under whatever was typed, never an empty mic; failed: "Couldn't transcribe" and
-//    Retry Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
+//    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (leading the
+//    band's first line in white — the note's, or the status's when that is all there is; a small capsule bottom right
+//    only on a bare picture) when the note was spoken *and* its words are here, or its transcription failed (the audio
+//    is there to retry). A spoken note still being transcribed: a quiet "Transcribing…" under whatever was typed,
+//    never an empty mic; failed: "Couldn't transcribe" in the attention amber (it needs you; not a caption) and Retry
+//    Transcription in the right-click menu. A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
 //  • hover shortens the thread and lifts the card (its neighbours make room); its note, under the whole row (never over
 //    a neighbour), only adds what the card can't show (CardTip): the rest of a note cut short, the play button of a
@@ -151,6 +154,8 @@ final class HangingCard {
     let caption = CATextLayer()     // shot cards: the note (typed, then said)
     let captionStatus = CATextLayer()   // shot cards: "Transcribing…" / "Couldn't transcribe"
     let badge = CALayer()
+    /// shot cards with a caption: the marks (spoken, inked) inline before the note, never a capsule over the picture
+    let captionMarks = CALayer()
     let close = CALayer()
     let copied = CATextLayer()
     var size: CGSize
@@ -189,7 +194,7 @@ final class HangingCard {
 
     init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
         shot = s
-        size = s.kind == .voice ? HangingCards.voiceSize : HangingCards.shotSize
+        size = s.kind == .voice ? HangingCards.voiceSize : HangingCards.shotFit(s).size
         gripX = size.width / 2
         self.x = Spring(x, response: 0.5, damping: 0.82)
         grip = Spring(-HangingCards.shotSize.height - 40, response: 0.55, damping: 0.72)
@@ -260,6 +265,12 @@ let capturePasteboardType = NSPasteboard.PasteboardType("dev.blurt.capture")
 
 final class HangingCards: NSObject {
     static let shotSize = CGSize(width: 112, height: 84)
+    /// A snap's card follows its picture (BlurtCore CardShape): 84 pt high, 84…150 wide; a toolbar or a sidebar is
+    /// shown whole on the card's surface instead of as a blown-up slice of its middle.
+    static func shotFit(_ s: Shot) -> CardShape.Fit {
+        let px = s.pixelSize.width > 0 ? s.pixelSize : (s.markedThumb ?? s.thumb).map { CGSize(width: $0.width, height: $0.height) }
+        return CardShape.shot(px)
+    }
     static let voiceSize = CGSize(width: 168, height: 50)
     static let gap: CGFloat = 12
     static let edge: CGFloat = 12                  // the cards keep this far from the screen's edges
@@ -481,8 +492,11 @@ final class HangingCards: NSObject {
             let words = s.words
             let dur = HangingCards.clock(s.duration ?? 0)
             let text = words ?? HangingCards.statusText(note.status) ?? Loc.t("capture.voice.card_empty", table: "Capture", dur)
-            setText(c.title, text, font: f,
-                    color: words == nil ? NSColor(white: dark ? 1 : 0, alpha: 0.5) : (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1)))
+            // "Couldn't transcribe" needs you: the attention colour, never the quiet grey of a placeholder
+            let quiet = NSColor(white: dark ? 1 : 0, alpha: 0.5)
+            let title = words != nil ? (dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.08, alpha: 1))
+                : note.needsYou ? NSColor(cgColor: HangingCards.cardColor(BrandColor.attnInk, dark: dark)) ?? quiet : quiet
+            setText(c.title, text, font: f, color: title)
             let fit = (text as NSString).boundingRect(with: NSSize(width: c.title.frame.width, height: 400), options: [.usesLineFragmentOrigin],
                                                       attributes: [.font: f]).height
             c.truncated = words != nil && fit > c.title.frame.height + 1
@@ -494,17 +508,33 @@ final class HangingCards: NSObject {
             c.card.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
             c.face.contents = s.markedThumb ?? s.thumb
-            layoutCaption(c, note)
+            layoutCaption(c, note, marks: HangingCards.marks(s))
         }
         c.card.shadowOpacity = dark ? 0.55 : 0.3
         stylePick(c)                    // a ⌘-click selection's ring survives a restyle (appearance, a new note)
-        // the mic mark: these words were spoken — never on a card without them
-        let marks: [BlurtIcon] = (s.kind == .shot && note.showsMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
-        c.badge.contents = marks.isEmpty ? nil : HangingCards.badgeImage(marks)
-        c.badge.isHidden = marks.isEmpty
-        // with a caption along the bottom, the marks move to the top right corner (the × has the top left)
+        // the mic mark: these words were spoken (or the audio waits for a retry) — never on a card without them
+        let marks = HangingCards.marks(s)
+        // on a bare picture: the small capsule in its bottom right corner; with a band (a note, or only its status
+        // line), the marks lead the band's first line (white, on the dark band) — a capsule moved to the top corner
+        // covered what was there ("$24.00"), and one in the corner covered "Couldn't transcribe"
+        let banded = s.kind == .shot && !c.scrim.isHidden
         let w = c.size.width, h = c.size.height
-        c.badge.frame = CGRect(x: w - 6 - 31, y: c.caption.isHidden && c.captionStatus.isHidden ? h - 6 - 16 : 6, width: 31, height: 16)
+        c.badge.contents = marks.isEmpty || banded ? nil : HangingCards.badgeImage(marks)
+        c.badge.isHidden = marks.isEmpty || banded
+        let badgeW = HangingCards.badgeWidth(marks.count)
+        c.badge.frame = CGRect(x: w - 6 - badgeW, y: h - 6 - 16, width: badgeW, height: 16)
+        c.captionMarks.isHidden = marks.isEmpty || !banded
+        if banded, !marks.isEmpty {
+            let first = c.caption.isHidden ? c.captionStatus.frame : c.caption.frame
+            c.captionMarks.contents = HangingCards.inlineMarksImage(marks)
+            c.captionMarks.frame = CGRect(x: 7, y: first.minY + (c.caption.isHidden ? 1 : 1.5),
+                                          width: HangingCards.inlineMarksWidth(marks.count), height: 10)
+        }
+    }
+
+    /// What a card is marked with: its words were spoken (when they are here, or the audio waits for a retry), ink.
+    static func marks(_ s: Shot) -> [BlurtIcon] {
+        (s.kind == .shot && s.note.marksMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
     }
 
     /// "Transcribing…" / "Couldn't transcribe" (nil: nothing pending).
@@ -518,7 +548,7 @@ final class HangingCards: NSObject {
 
     /// A shot card's note along its bottom edge, white on a dark band: up to two lines of it, or one line and the
     /// quiet status under it.
-    private func layoutCaption(_ c: HangingCard, _ note: CardNote) {
+    private func layoutCaption(_ c: HangingCard, _ note: CardNote, marks: [BlurtIcon]) {
         let w = c.size.width, h = c.size.height
         let f = NSFont.systemFont(ofSize: 10, weight: .semibold)
         let sf = NSFont.systemFont(ofSize: 9.5, weight: .medium)
@@ -530,7 +560,9 @@ final class HangingCards: NSObject {
         c.scrim.isHidden = text == nil && status == nil
         c.truncated = false
         guard !c.scrim.isHidden else { return }
-        let inner = w - 14
+        // the marks lead the band's first line: the note's (both its lines start after them), else the status's
+        let lead = marks.isEmpty ? 0 : HangingCards.inlineMarksWidth(marks.count) + 3
+        let inner = w - 14 - (text == nil ? 0 : lead)
         var lines: CGFloat = 0
         if let t = text {
             let hgt = (t as NSString).boundingRect(with: NSSize(width: inner, height: 400), options: [.usesLineFragmentOrigin],
@@ -539,20 +571,34 @@ final class HangingCards: NSObject {
             c.truncated = hgt > lines * lineH + 2             // more than the card's one or two lines: the hover note has it
             setText(c.caption, t, font: f, color: NSColor(white: 1, alpha: 0.96))
         }
-        if let st = status { setText(c.captionStatus, st, font: sf, color: NSColor(white: 1, alpha: 0.72)) }
+        // "Couldn't transcribe" needs you (the attention amber, §2.3); "Transcribing…" is quiet
+        if let st = status { setText(c.captionStatus, st, font: sf, color: note.needsYou ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.72)) }
         let statusH: CGFloat = status == nil ? 0 : 12
         let band = 5 + lines * lineH + statusH + 5
-        c.caption.frame = CGRect(x: 7, y: h - 5 - statusH - lines * lineH, width: inner, height: lines * lineH + 1)
-        c.captionStatus.frame = CGRect(x: 7, y: h - 5 - statusH, width: inner, height: statusH)
+        c.caption.frame = CGRect(x: 7 + lead, y: h - 5 - statusH - lines * lineH, width: inner, height: lines * lineH + 1)
+        let statusLead = text == nil ? lead : 0
+        c.captionStatus.frame = CGRect(x: 7 + statusLead, y: h - 5 - statusH, width: w - 14 - statusLead, height: statusH)
         c.scrim.frame = CGRect(x: 0, y: h - band - 10, width: w, height: band + 10)
     }
 
     static func clock(_ t: Double) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
 
+    static func badgeWidth(_ n: Int) -> CGFloat { 5 * 2 + CGFloat(max(1, n)) * 10 + CGFloat(max(0, n - 1)) * 3 }
+    static func inlineMarksWidth(_ n: Int) -> CGFloat { CGFloat(max(1, n)) * 9 + CGFloat(max(0, n - 1)) * 2 }
+
+    /// The marks before a caption: white, 9 pt, no capsule (the note's dark band is under them).
+    static func inlineMarksImage(_ icons: [BlurtIcon]) -> CGImage? {
+        renderImage(CGSize(width: inlineMarksWidth(icons.count), height: 10)) { ctx in
+            for (i, ic) in icons.enumerated() {
+                ic.draw(in: ctx, rect: CGRect(x: CGFloat(i) * 11, y: 0.5, width: 9, height: 9), color: CGColor(gray: 1, alpha: 0.96))
+            }
+        }
+    }
+
     /// The small dark capsule with the card's indicator icons (voice note, ink).
     static func badgeImage(_ icons: [BlurtIcon]) -> CGImage? {
         let side: CGFloat = 10, gap: CGFloat = 3, pad: CGFloat = 5
-        let w = pad * 2 + CGFloat(icons.count) * side + CGFloat(icons.count - 1) * gap, h: CGFloat = 16
+        let w = badgeWidth(icons.count), h: CGFloat = 16
         return renderImage(CGSize(width: w, height: h)) { ctx in
             ctx.setFillColor(CGColor(gray: 0, alpha: 0.55))
             ctx.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerWidth: 8, cornerHeight: 8, transform: nil))
@@ -583,7 +629,7 @@ final class HangingCards: NSObject {
         c.face.frame = c.card.bounds
         c.face.cornerRadius = c.card.cornerRadius
         c.face.masksToBounds = true
-        c.face.contentsGravity = .resizeAspectFill
+        c.face.contentsGravity = s.kind == .voice || HangingCards.shotFit(s).fills ? .resizeAspectFill : .resizeAspect
         c.card.addSublayer(c.face)
         if s.kind == .voice {
             // a text card: a voice note is words that happened to be spoken — up to two lines of them, and a small
@@ -621,6 +667,10 @@ final class HangingCards: NSObject {
         c.badge.contentsGravity = .topRight
         c.badge.contentsScale = 2
         c.card.addSublayer(c.badge)
+        c.captionMarks.contentsScale = 2
+        c.captionMarks.contentsGravity = .left
+        c.captionMarks.isHidden = true
+        c.card.addSublayer(c.captionMarks)
         c.close.frame = CGRect(x: -8, y: -8, width: 20, height: 20)
         c.close.cornerRadius = 10
         c.close.backgroundColor = NSColor(white: 0.12, alpha: 0.9).cgColor
@@ -752,18 +802,17 @@ final class HangingCards: NSObject {
         stack.isHidden = t.stackX == nil
         stackBack.isHidden = stack.isHidden
         if let sx = t.stackX {
-            // the tile: the newest card that doesn't hang, dimmed, a second edge behind it, and how many wait there
+            // the tile: the card surface, a second edge behind it, and how many wait there — no ghost of a picture
+            // under the count (it competed with the faded text and ink of the next snap)
             let sz = HangingCards.shotSize
             stack.bounds = CGRect(origin: .zero, size: sz)
             stack.position = CGPoint(x: sx, y: 0)
             stack.anchorPoint = CGPoint(x: 0.5, y: 0)
             stackBack.bounds = stack.bounds
             stackBack.anchorPoint = stack.anchorPoint
-            let next = row.more > 0 ? cards[row.more - 1].shot : nil
-            let picture = next.flatMap { $0.kind == .shot ? $0.markedThumb ?? $0.thumb : nil }
             stackFace.frame = stack.bounds
-            stackFace.contents = picture
-            stackFace.opacity = picture == nil ? 0 : 0.35
+            stackFace.contents = nil
+            stackFace.opacity = 0
             let dark = isDarkMode
             let f = NSFont.systemFont(ofSize: 17, weight: .semibold)
             stackText.string = NSAttributedString(string: "+\(row.more)", attributes: [.font: f, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])

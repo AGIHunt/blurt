@@ -377,7 +377,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto";
-"dictation.style.toast.structured" = "%@: lists and corrections tidied when you finish · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: tidied into a list when you finish · ⇧ to go back";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";

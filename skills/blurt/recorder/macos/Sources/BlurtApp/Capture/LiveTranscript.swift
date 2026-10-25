@@ -1,4 +1,4 @@
-// The words while you talk (v0.8.6): a small dark panel under the island with the last lines (up to three, newest at
+// The words while you talk (v0.8.6): a panel under the island with the last lines (up to three, newest at
 // the bottom) of what has been recognised so far — the voice note (⌥⇧V, VoiceNoteStream) and dictation
 // (DictationStream) — the newest words fading in. The report: nothing to see while talking, and seeing it would help.
 //  • Dictation keeps up with the speech (v0.9, docs/design/dictation.md §Live text): after the finished pieces'
@@ -7,6 +7,12 @@
 //    fixing it by hand and double-tapping to send. A take's panel doesn't jump: it keeps the height it reached, and
 //    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor).
 //
+//  • It is the island's lower half, not a second pop-up (v0.9 dogfood: a 460 pt grey glass card under a 297 pt black
+//    notch read as two unrelated things): the island's own black, 6 pt under it, in its width family — exactly the
+//    open island's width under a voice note, the ears plus 24 pt a side while dictation listens (IslandLayout
+//    .livePanelWidth, from the width the island is settling to without a toast, so the words don't re-wrap while it
+//    springs or while a toast grows it) — with the window's own soft shadow, which keeps its edge on a dark
+//    wallpaper. On a capsule screen the capsule widens to the same family while the panel shows (15 pt corners).
 //  • Settings → General → "Show text while I talk" (边说边显示文字; record.live_text, on).
 //  • It shows nothing until there are words (the island already says it is listening), follows the island's bottom
 //    edge (and goes below the hanging cards when they are down), and fades away a moment after the take ends.
@@ -30,8 +36,7 @@ final class LiveTranscript {
     static var enabled: Bool { recordConfig()["live_text"] as? Bool ?? true }
     static func setEnabled(_ on: Bool) { setRecordConfig("live_text", on ? nil : false) }
 
-    static let width: CGFloat = 460
-    static let gap: CGFloat = 8
+    static let gap: CGFloat = 6
 
     private var panel: NSPanel?
     private let view = LiveTextView()
@@ -110,14 +115,14 @@ final class LiveTranscript {
 
     private func ensurePanel() -> NSPanel {
         if let p = panel { return p }
-        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: LiveTranscript.width, height: 60),
+        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 345, height: 60),
                         styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         p.isFloatingPanel = true
         p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
         p.hidesOnDeactivate = false
         p.isOpaque = false
         p.backgroundColor = .clear
-        p.hasShadow = false
+        p.hasShadow = true              // the system's soft shadow round the black shape: its edge on any wallpaper
         p.ignoresMouseEvents = true
         p.becomesKeyOnlyIfNeeded = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
@@ -132,6 +137,7 @@ final class LiveTranscript {
     private func show() {
         let p = ensurePanel()
         shown = true
+        island.wake()                       // a capsule widens to the panel's width family (Island.target)
         place(animated: false)
         p.alphaValue = 0
         p.orderFrontRegardless()
@@ -147,6 +153,7 @@ final class LiveTranscript {
     private func hide(animated: Bool) {
         guard shown, let p = panel else { return }
         shown = false
+        island.wake()                       // a capsule goes back to its ears' width
         emit(["event": "live_hidden", "chars": text.count + pending.count])
         guard animated else { p.orderOut(nil); return }
         NSAnimationContext.runAnimationGroup({ c in
@@ -165,8 +172,9 @@ final class LiveTranscript {
         let isl = island.frameOnScreen
         let screen = island.screen ?? NSScreen.screens.first { $0.frame.contains(NSPoint(x: isl.midX, y: isl.midY)) } ?? NSScreen.main
         guard let s = screen else { return }
-        let w = min(LiveTranscript.width, s.frame.width - 32)
+        let w = IslandLayout.livePanelWidth(islandWidth: island.restingWidth, open: island.open, screenWidth: s.frame.width)
         let h = view.fittingHeight(width: w)
+        view.radius = IslandLayout.livePanelRadius(open: island.open, notch: island.onNotch)
         if view.frame.size != NSSize(width: w, height: h) { view.frame = NSRect(x: 0, y: 0, width: w, height: h) }
         var top = isl.minY - LiveTranscript.gap
         if let cards = hanging.shownBottom { top = min(top, cards - LiveTranscript.gap) }
@@ -181,11 +189,13 @@ final class LiveTranscript {
             if !b.insetBy(dx: -6, dy: -10).intersects(c) { f = b; bottom = true }
         }
         if p.frame != f {
-            if animated && p.frame.size == f.size && abs(p.frame.minY - f.minY) < 60 && !reduceMotion {
+            let resized = p.frame.size != f.size
+            if animated && !resized && abs(p.frame.minY - f.minY) < 60 && !reduceMotion {
                 NSAnimationContext.runAnimationGroup { c in c.duration = 0.18; p.animator().setFrame(f, display: true) }
             } else {
                 p.setFrame(f, display: true)
             }
+            if resized { p.invalidateShadow() }
         }
     }
 
@@ -228,32 +238,24 @@ private extension CGFloat {
     func clamped(_ lo: CGFloat, _ hi: CGFloat) -> CGFloat { hi < lo ? lo : Swift.min(Swift.max(self, lo), hi) }
 }
 
-/// The panel's face: a dark, slightly translucent rounded rect (a HUD blur under a black tint), the text on top —
-/// neutral white (92 % committed, 60 % pending) and a flat mint caret after the words while the take listens. No rule or underline: the island's level bars already say blurt is hearing.
+/// The panel's face: the island's own black (#000), rounded like the island's bottom corners, the
+/// text on top — neutral white (92 % committed, 60 % pending) and a flat mint caret after the words while the take
+/// listens. No blur, no border, no rule or underline: it is the island's lower half, and the island's level bars
+/// already say blurt is hearing.
 final class LiveTextView: NSView {
-    private let blur = NSVisualEffectView()
-    private let tint = NSView()
     private let text = LiveTextLines()
+    var radius: CGFloat = 14 { didSet { if radius != oldValue { layer?.cornerRadius = radius } } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = 14
+        layer?.cornerRadius = radius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        layer?.borderWidth = 0.5
-        layer?.borderColor = NSColor(white: 1, alpha: 0.10).cgColor
-        blur.material = .hudWindow
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        blur.appearance = NSAppearance(named: .darkAqua)
-        tint.wantsLayer = true
-        tint.layer?.backgroundColor = NSColor(white: 0, alpha: 0.62).cgColor
-        for v in [blur, tint, text] as [NSView] {
-            v.frame = bounds
-            v.autoresizingMask = [.width, .height]
-            addSubview(v)
-        }
+        layer?.backgroundColor = NSColor.black.cgColor
+        text.frame = bounds
+        text.autoresizingMask = [.width, .height]
+        addSubview(text)
     }
     required init?(coder: NSCoder) { fatalError() }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -269,7 +271,6 @@ final class LiveTextView: NSView {
     func fittingHeight(width: CGFloat) -> CGFloat { text.fittingHeight(width: width) }
     func show(committed: String, pending: String, animated: Bool) { text.show(committed: committed, pending: pending, animated: animated) }
 }
-
 
 /// The last three lines of the text, newest at the bottom: the committed words 92 % white, the pending ones (the piece
 /// still being said, provisional) 60 %; the words new since the last update fade in. No jumping: the lines are laid

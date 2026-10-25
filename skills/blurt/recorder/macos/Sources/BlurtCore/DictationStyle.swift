@@ -218,3 +218,12 @@ public enum DictationStyleVariant {
         c.unicodeScalars.contains { (0x3400...0x9FFF).contains($0.value) || (0xF900...0xFAFF).contains($0.value) }
     }
 }
+
+/// ⇧ while listening (or a click on the island): what the island says about it. The right ear's chip (the list glyph
+/// beside the clock) shows the style either way; the toast explains Structured only the first `explainTimes` times
+/// ever, then says nothing (dogfood #22: the long line on every ⇧, every take, grew the island to its maximum).
+public enum DictationStyleToggleHint {
+    public static let explainTimes = 2
+    /// Whether this toggle gets its line, after `shown` explanations so far.
+    public static func says(shown: Int) -> Bool { shown < explainTimes }
+}

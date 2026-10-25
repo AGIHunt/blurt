@@ -725,14 +725,32 @@ export class ReviewStore {
   };
 
   showToast(msg: string, withUndo = false, icon?: "check" | "x" | "copy" | "folder") {
+    // the Mac app shows it on the island (one place for the main window's toasts); its Undo comes back here
+    if (this.host.toast) {
+      void this.host.toast({ msg, undo: withUndo, icon }).then((r) => {
+        if (r === "undo" && withUndo) this.undo();
+      });
+      return;
+    }
     this.toast = { msg, undo: withUndo, show: true, icon };
+    this.armToast();
+    this.emit();
+  }
+  /** How long a toast stays (an Undo window is never shorter); it waits while the pointer is on it (holdToast). */
+  static readonly toastMs = 5000;
+  private armToast() {
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
       if (this.toast) this.toast = { ...this.toast, show: false };
       this.emit();
-    }, 2400);
-    this.emit();
+    }, ReviewStore.toastMs);
   }
+  /** The pointer is on the toast (true) or left it: it stays while pointed at, then its full time again. */
+  holdToast = (on: boolean) => {
+    if (!this.toast?.show) return;
+    if (on) clearTimeout(this.toastTimer);
+    else this.armToast();
+  };
   copy = (text: string) => {
     void navigator.clipboard?.writeText(text);
     this.showToast(this.t("toast.copied", { text }), false, "copy");
@@ -834,6 +852,15 @@ export class ReviewStore {
       e.preventDefault();
       if (this.mode === "item") this.item && this.act([this.item], "hand_off");
       else this.openFinish();
+      return;
+    }
+    // ⌘Z undoes the page's last step (a state, a merge, an edit) — also after its toast is gone (micro 20): the
+    // island's Undo is only the visible way to it. In a text field it stays the field's; with nothing to undo here it
+    // goes on to the app (the main window's own Undo).
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "z" && !typing && !this.modal) {
+      if (!this.undoStack.length) return;
+      e.preventDefault();
+      this.undo();
       return;
     }
     if (e.key === "Escape") {

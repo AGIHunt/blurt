@@ -284,11 +284,14 @@ final class OverviewTile: NSView, NSDraggingSource {
         layer?.addSublayer(face)
         if s.kind == .shot {
             face.contents = s.markedThumb ?? s.thumb
+            // a toolbar or a sidebar is shown whole on the tile's surface, never as a slice of its middle (CardShape)
+            if let t = s.markedThumb ?? s.thumb,
+               !CardShape.fills(picture: CGSize(width: t.width, height: t.height), box: sz) { face.contentsGravity = .resizeAspect }
         } else {
             // a voice note is its words, on the card's own surface, with the small mic mark (colours: restyle())
             let words = NSTextField(wrappingLabelWithString: s.words ?? HangingCards.statusText(s.note.status) ?? "")
             words.font = .systemFont(ofSize: 11.5, weight: .medium)
-            words.textColor = s.words == nil ? .secondaryLabelColor : .labelColor
+            words.textColor = s.words != nil ? .labelColor : s.note.needsYou ? BrandColor.attnInk : .secondaryLabelColor
             words.maximumNumberOfLines = 4
             words.lineBreakMode = .byWordWrapping            // (truncating-tail made it one line: "Ship the beta o…")
             words.cell?.truncatesLastVisibleLine = true
@@ -306,7 +309,7 @@ final class OverviewTile: NSView, NSDraggingSource {
         restyle()
         let line = NSTextField(labelWithString: OverviewTile.line(s))
         line.font = .systemFont(ofSize: 11)
-        line.textColor = s.kind == .shot && s.words != nil ? .labelColor : .secondaryLabelColor
+        line.textColor = s.kind == .shot && s.words != nil ? .labelColor : s.kind == .shot && s.note.needsYou ? BrandColor.attnInk : .secondaryLabelColor
         line.maximumNumberOfLines = 2
         line.cell?.wraps = true
         line.lineBreakMode = .byWordWrapping
@@ -350,6 +353,8 @@ final class OverviewTile: NSView, NSDraggingSource {
         f.dateFormat = "HH:mm"
         let when = f.string(from: Date(timeIntervalSince1970: s.wall))
         if s.kind == .shot, let w = s.words { return w.replacingOccurrences(of: "\n", with: " · ") }
+        // a snap whose note couldn't be transcribed says so (in amber), not just its time
+        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) { return "\(when) · \(st)" }
         return when
     }
 

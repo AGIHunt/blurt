@@ -99,8 +99,13 @@ final class Dictation {
     private var liveSession = 0
     /// the text around the cursor when this dictation started (polish's hints; never stored unless debugging)
     private var context: DictationContext?
-    /// a double tap came while the text was still on its way: Return once it has been pasted
-    private var sendAfterPaste = false
+    /// a double tap came while the text was still on its way: Return once it has been pasted (the island's ears say
+    /// "sending" meanwhile)
+    private var sendAfterPaste = false { didSet { if sendAfterPaste != oldValue { island.dictationChanged() } } }
+    var sendQueued: Bool { sendAfterPaste }
+    /// The island toasts about a take (its style, a reformat, "nothing heard"…): a newer one replaces the one showing
+    /// at once, and a new take clears them (Island.toast(_:key:)).
+    static let toastKey = "dictation"
     /// the paste is under way (⌘V posted, the clipboard not back yet)
     private var inserting = false { didSet { updateTriggerBusy() } }
 
@@ -240,13 +245,11 @@ final class Dictation {
 
     /// "Learned “Claude” · Undo" — the first time a fix became a word.
     static func toastLearned(_ term: String) {
-        var t = Island.Toast(text: Loc.t("dictation.toast.learned", table: "Dictation", term),
-                             actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: {
+        island.toast(Loc.t("dictation.toast.learned", table: "Dictation", term), key: "dictation.learned", icon: .check,
+                     actionTitle: Loc.t("dictation.toast.undo", table: "Dictation"), action: {
             DictationVocabulary.shared.forget(term)
             emit(["event": "dictation_vocab_undo", "term": term])
         })
-        t.seconds = 5
-        island.toast(t)
         emit(["event": "dictation_learned_toast", "term": term])
     }
 
@@ -545,11 +548,11 @@ final class Dictation {
     /// Not while recording (it owns the mic) or while a voice note listens.
     private func canListen(toast: Bool) -> Bool {
         if (NSApp.delegate as? App)?.rec != nil {
-            if toast { island.toast(Loc.t("dictation.toast.recording_busy", table: "Dictation"), actionTitle: nil, action: nil) }
+            if toast { island.toast(Loc.t("dictation.toast.recording_busy", table: "Dictation"), key: Dictation.toastKey) }
             return false
         }
         if VoiceInput.shared.active || NoteBubble.shared.isListening {     // a voice note, or a snap's spoken note
-            if toast { island.toast(Loc.t("dictation.toast.voice_busy", table: "Dictation"), actionTitle: nil, action: nil) }
+            if toast { island.toast(Loc.t("dictation.toast.voice_busy", table: "Dictation"), key: Dictation.toastKey) }
             return false
         }
         return true
@@ -695,6 +698,7 @@ final class Dictation {
             registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
             escRegistered = true
         }
+        island.dropToasts(key: Dictation.toastKey)      // what the island said about the last take is over
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "style": styleDecision?.style.rawValue ?? "light",
@@ -767,11 +771,7 @@ final class Dictation {
     private func pressReturn(after: String) {
         let r = DictationInsert.pressReturn()
         emit(["event": "dictation_send", "result": r.result, "why": r.why ?? NSNull(), "after": after])
-        if r.pressed {
-            var t = Island.Toast(text: Loc.t("dictation.toast.sent", table: "Dictation"), actionTitle: nil, action: nil)
-            t.seconds = 1.2
-            island.toast(t)
-        }
+        if r.pressed { island.dictationSent() }         // "Sent" with the ok check, in the ear
     }
 
     private func releaseEsc() {
@@ -787,7 +787,7 @@ final class Dictation {
         precaptured = false
         releaseEsc()
         phase = .idle
-        if !quietly { island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil) }
+        if !quietly { island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), key: Dictation.toastKey) }
     }
 
     // MARK: the words
@@ -827,7 +827,7 @@ final class Dictation {
                     emit(["event": "dictation_send", "result": "skipped", "why": "nothing_dictated", "after": "paste"])
                 }
                 self.phase = .idle
-                island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+                island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), key: Dictation.toastKey)
                 emit(["event": "dictation_text", "id": id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
                 return
             }
@@ -978,16 +978,14 @@ final class Dictation {
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
             if result == .copied {
-                island.toast(Loc.t("dictation.toast.copied", table: "Dictation"), actionTitle: nil, action: nil)
+                island.toast(Loc.t("dictation.toast.copied", table: "Dictation"), key: Dictation.toastKey)
             } else if result == .pasted, !DictationInsert.lastPasteConfirmed {
                 // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
-                var t = Island.Toast(text: Loc.t("dictation.toast.pasted_unsure", table: "Dictation"),
-                                     actionTitle: Loc.t("dictation.toast.copy_again", table: "Dictation"), action: {
+                island.toast(Loc.t("dictation.toast.pasted_unsure", table: "Dictation"), key: Dictation.toastKey,
+                             actionTitle: Loc.t("dictation.toast.copy_again", table: "Dictation"), action: {
                     DictationInsert.copy(text)
                     emit(["event": "dictation_copy_again", "id": id])
                 })
-                t.seconds = 4
-                island.toast(t)
             }
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,
                                       "fell_back": r.fellBack, "reason": r.reason ?? NSNull(),

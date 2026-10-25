@@ -1,6 +1,7 @@
 // A capture as a small designed tile (v0.9), wherever a list shows captures outside the cards themselves — Recently
 // Dragged Out's rows and the island menu's "Recently Dragged Out" submenu:
-//   shot   the picture filling a rounded tile (aspect fill, like the cards overview), a 0.5 pt hairline round it
+//   shot   the picture filling a rounded tile (aspect fill, like the cards overview), a 0.5 pt hairline round it — a
+//          picture too wide or too tall for that (a toolbar, a sidebar) is shown whole on the tile's neutral surface
 //   voice  a soft brand-tint tile (brand.tint: it is one of blurt's own captures) with the waveform mark in brand ink,
 //          sized like the icons next to it, and the note's length under it when the tile is tall enough
 // Drawn at draw time, so the dynamic colours follow the light / dark appearance of whatever shows it. It replaces the
@@ -18,7 +19,9 @@ enum CaptureThumb {
             NSColor(white: 0.5, alpha: 0.2).setFill()
             r.fill()
             let iw = CGFloat(cg.width), ih = CGFloat(cg.height)
-            let k = max(r.width / max(iw, 1), r.height / max(ih, 1))         // aspect fill
+            // aspect fill, unless that would cut most of it (a toolbar, a sidebar): then whole (BlurtCore CardShape)
+            let fill = CardShape.fills(picture: CGSize(width: iw, height: ih), box: r.size)
+            let k = fill ? max(r.width / max(iw, 1), r.height / max(ih, 1)) : min(r.width / max(iw, 1), r.height / max(ih, 1))
             let sz = NSSize(width: iw * k, height: ih * k)
             NSImage(cgImage: cg, size: sz).draw(in: NSRect(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2,
                                                           width: sz.width, height: sz.height))

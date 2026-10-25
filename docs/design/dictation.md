@@ -115,7 +115,14 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     keyboard.
   - Return is a `CGEvent` (`kVK_Return`, no modifiers, HID level) posted only when `DictationSendPolicy` allows it:
     another app in front (never Blurt), secure input off, Accessibility granted (the Fn filter already needs it).
-    The island says 「已发送」 / "Sent" for a moment. Test builds never post it: `dictation_test_send` logs
+    The island's right ear says 「已发送」 / "Sent" with the ok check for 1.6 s (`Island.dictationSent`: no toast, the
+    island doesn't grow for one word); while a queued Return waits for the paste the ear shows the working dots.
+    Dictation's other toasts share one key (`Dictation.toastKey`): a newer one replaces the one showing at once, and a
+    new take clears them (BlurtCore `ToastQueue`). A toast's Undo and the ≡ chip's "Make a list" act on the take they
+    were shown for (`reformat(lp, …)`): after a newer take they do nothing (`dictation_reformat` result `stale`), never
+    rewrite the newer text. ⇧'s line ("Structured: tidied into a list when you finish · ⇧ to go back") shows the first
+    two times ever (`DictationStyleToggleHint`, `record.dictation.style_hint_shown`); after that the ear's list mark
+    alone says it. Test builds never post it: `dictation_test_send` logs
     "would press Return" (with the hooks' simulated Accessibility), and `dictation send-policy front=… secure=… ax=…`
     reports the policy.
   - Price: two quick taps no longer mean "start, then stop at once" (that dictated nothing anyway); someone used to

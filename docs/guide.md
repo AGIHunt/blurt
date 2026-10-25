@@ -17,7 +17,10 @@ to that setting.
 **First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through the permissions
 (Screen Recording, Microphone, Accessibility, Input Monitoring) and a speech model; after that, try `Fn` in any text
 field to dictate and `⌥⇧A` to snap. The island at the top of the screen says one short line when there is something
-to know — at most one at launch.
+to know — at most one at launch. It always says the latest thing you did (a newer line takes the place of an older
+one about the same thing); a line with *Undo* stays at least 5 seconds and waits while the pointer is on it. Clicking the line opens the
+island; only its button undoes. The main window's messages ("Moved to …", "Done · Undo") show there too, and `⌘Z`
+still undoes there after the line is gone.
 
 ### 1. Capture
 
@@ -31,7 +34,9 @@ Linux) is where capture starts. Hover it to see your current project and the thr
 | **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* on the island) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
-screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. Use a recording for flows, animations and timing;
+screen (the ink fades after 3 seconds), `⌥⇧D` keeps the pen on. The island shows the state: pause bars and the time
+in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it off),
+the stills you took, and markers (`⌥⇧M`) counted apart from them. Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
 
 **Long voice notes.** A voice note no longer ends when you stop to think: it goes on until you press `⌥⇧V` again,
@@ -162,6 +167,9 @@ What you can do with a card:
 - The newest five cards hang side by side, newest on the left; the others wait behind a **+N** tile at the end of the
   row. Click it to see every card at once, newest first: click to copy, double-click to edit, right-click for the
   card's menu, drag one out into any app or onto a project in the island, `⌫` to delete.
+- A snap's card takes its picture's shape: a wide screenshot hangs a wider card, and a toolbar or a sidebar shows
+  whole instead of as a slice of its middle. A spoken note's mic mark sits before the note's first words. If a note
+  couldn't be turned into words, the card says so in amber and keeps the mic mark: right-click it to retry.
 - Your very first card says what to do with it: click to copy, or drag it into any app.
 - While you record, the cards stay tucked away (they would cover what you're showing); `⌥⇧H` still brings them down.
 
@@ -245,7 +253,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
 - **Double-tap Fn to send.** Two quick taps press Return in the app in front. Right after you dictate, tap twice
   instead of once: the dictation stops, the text goes in, and then it is sent — the Return you'd press yourself in a
   chat. (With push-to-talk: let go, then double-tap.) Taps while the text is still on its way never lose it: a double
-  tap then sends once it is in. The island says "Sent". It works with whichever key
+  tap then sends once it is in. The island's right ear shows a check and "Sent". It works with whichever key
   you set, never types into Blurt itself or a password field, and can be turned off in *Settings → Dictation*
   (*Double-tap Fn to send (Return)*).
 - *Settings → Dictation* (or the setup assistant) switches the key to **right Option** or **either Option key** (left
@@ -276,7 +284,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   full stop; in terminals and code editors the text stays on one line. When you *want* it tidier — a list, or just
   the version you settled on:
   - **press ⇧ on its own while you talk** (any time, even halfway through, and also while holding Fn): *Structured*.
-    The island's right ear shows a list mark. When you let go, the same local model goes over the whole dictation once
+    The island's right ear shows a list mark (the first couple of times a short line also says what it does). When you let go, the same local model goes over the whole dictation once
     more: what you took back or restated goes (in whatever words you did it), and points you counted off or listed
     become a numbered list with the sentence before them as its heading — only when you really enumerated; otherwise
     it stays a paragraph. It never rewrites or summarizes: if its result loses anything, you get the Light text. This
@@ -405,7 +413,8 @@ so the two must speak the same version: when one is older than the other, the is
 ——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
 **第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好权限（录屏、麦克风、辅助功能、输入监控）、下好语音模型；
-之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。
+之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。它说的总是你刚做的事
+（关于同一件事的新话会直接替换旧的）；带「撤销」的话至少停留 5 秒，鼠标指着时一直等着。点这句话会打开刘海，只有点它的按钮才会撤销。主窗口的提示（「已移到…」「已完成 · 撤销」）也在这里，提示消失后在主窗口按 `⌘Z` 照样能撤销。
 
 ### 1. 截图、语音备注和录屏
 
@@ -418,6 +427,8 @@ so the two must speak the same version: when one is older than the other, the is
 | **录屏** | `⌥⇧R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥⇧R`（或岛上的「完成」）结束。 |
 
 录屏时：`⌥⇧P` 暂停；`⌥⇧A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画（笔迹 3 秒后消失）；`⌥⇧D` 让画笔常开。
+刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；
+截下的画面有几张；标记（`⌥⇧M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；岛上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
@@ -472,6 +483,7 @@ so the two must speak the same version: when one is older than the other, the is
 - 双击卡片改备注。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录，按 `Esc` 备注保持原样。卡片会一直挂着，直到你处理它，放多久都不会自己消失。
 - **删除**：点 ×、右键「删除」，或者键盘在卡片上时按 `⌫`。不会先问你：岛上显示「已删除 · 撤销」5 秒，点「撤销」卡片就回到原处。这时再删一张，会变成「已删除 2 张卡片 · 撤销」，两张一起回来。岛的右键菜单里的「删除全部 N 张卡片」也一样，一次「撤销」全部回来。
 - 最新的 5 张并排挂着，最新的在最左边；其余的在这一排末尾的「+N」后面等着。点「+N」可以一次看到所有卡片（最新的在前）：单击复制，双击改备注，右键是卡片的菜单，拖到任意 App 或岛上的项目，`⌫` 删除。
+- 截图卡片跟着图片的形状走：宽屏截图挂一张更宽的卡片，工具栏、侧边栏这种很宽或很高的图会完整显示，不会只露出中间一截。说过备注的卡片，话筒标记在备注第一行的开头。备注没能转成文字时，卡片会用琥珀色写明，并保留话筒标记：右键卡片可以重试。
 - 第一次挂上卡片时，它会提示一句怎么用：点一下复制，或拖进任意 App。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
 
@@ -526,13 +538,13 @@ so the two must speak the same version: when one is older than the other, the is
 - **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
 - **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。那是原始转写，真正输入的是润色后的文字；它的用处是让你决定先手动改一下，还是直接双击发送。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
-- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。岛上会显示「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
+- **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。说完时把「再按一下」换成「连按两下」：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。刘海右侧会显示一个对勾和「已发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 语音 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
 - **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），就照你说的原话输入。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 语音」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
-  - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。
+  - **说话时单按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，岛右侧会出现清单标记（头两次还会有一句短话说明它做什么）。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下岛也一样。
   - **⌥⇧L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，岛上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，新版本放进剪贴板，你的修改不动。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，岛上会出现几秒「排成清单」。
   - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI Agent 的指令。
   - 「设置 → 听写」风格下的「按 App 类型」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他应用）选：跟随上面、轻整理、原话、结构化，或「自动」（只有模型排成了清单才用结构化的版本）。如果你在某个 App 里总是同样地切换（三次以上），岛上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。

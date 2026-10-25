@@ -22,7 +22,12 @@ final class LaunchMessages {
     static let shared = LaunchMessages()
 
     private struct Held { let rank: LaunchRank; let toast: Island.Toast; let shown: (() -> Void)? }
-    private lazy var queue = LaunchQueue<Held>(show: { h in island.toast(h.toast); h.shown?() }, dropped: { h, _ in
+    private lazy var queue = LaunchQueue<Held>(show: { h in
+        var t = h.toast
+        t.passive = true            // a launch message never pushes aside what the user just did (ToastQueue)
+        island.toast(t)
+        h.shown?()
+    }, dropped: { h, _ in
         emit(["event": "launch_toast_dropped", "rank": h.rank.rawValue, "text": h.toast.text])
     })
 
