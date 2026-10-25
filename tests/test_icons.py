@@ -26,8 +26,38 @@ def test_icons_follow_the_grid():
     assert [e for ic in icons for e in iconlib.lint(ic)] == []
     names = {i.name for i in icons}
     for brand in ("chicken", "blurt", "egg", "hatch", "hatched", "peck", "bug", "spark", "document",
-                  "checklist", "mic", "waveform", "snap", "agent", "agent-run", "mcp"):
+                  "checkbox", "mic", "waveform", "snap", "agent", "agent-run", "mcp"):
         assert brand in names
+
+
+KIND_ICONS = {"issue": "bug", "idea": "lightbulb", "note": "document", "task": "checkbox"}   # a custom lens: "tag"
+
+
+def test_kind_icons_are_one_family():
+    """docs/design/system.md §2.6: the four kinds and the lens tag are one family of our own — brand group, no SF Symbol
+    on macOS, one footprint inside the 24 grid (2.5…21.5, at least 14 × 16) — and mac and web map the kinds the same."""
+    import json
+    names = set(KIND_ICONS.values()) | {"tag"}
+    sf = json.loads((ROOT / "assets/icons/sf-symbols.json").read_text())
+    assert not names & set(sf["generic"]), "kind icons never fall back to SF Symbols"
+    icons = {i.name: i for i in iconlib.load_all()}
+    for n in names:
+        ic = icons[n]
+        assert ic.group == "brand", n
+        x0, y0, x1, y1 = iconlib.bbox(ic)
+        assert 2.5 <= x0 and 2.5 <= y0 and x1 <= 21.5 and y1 <= 21.5, (n, x0, y0, x1, y1)
+        w, h = x1 - x0, y1 - y0
+        assert min(w, h) >= 14 and max(w, h) >= 16.5, (n, w, h)
+        assert all(L.opacity == 1 for L in ic.layers), n          # no duotone or tiles: plain line glyphs
+    assert "checklist" not in icons and sf["aliases"]["checklist"] == "checkbox"
+    kind = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Icons/KindStyle.swift").read_text()
+    assert "systemSymbolName" not in kind and "sfSymbols" not in kind
+    swift_case = {"bug": "bug", "lightbulb": "lightbulb", "document": "document", "checkbox": "checkbox"}
+    for k, n in KIND_ICONS.items():
+        assert f'case "{k}": return .{swift_case[n]}' in kind, k
+    ts = (ROOT / "web/packages/ui/src/kinds.ts").read_text()
+    assert ", ".join(f'{k}: "{n}"' for k, n in KIND_ICONS.items()) in ts
+    assert ': "tag")' in ts and "default: return .tag" in kind
 
 
 def test_path_parser_expands_everything_to_absolute_cubics():

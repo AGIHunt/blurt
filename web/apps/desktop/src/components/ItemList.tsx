@@ -75,7 +75,7 @@ export const ItemList = memo(function ItemList({
             onClick={(e) => onSelect(r.uid, e.shiftKey ? 'range' : e.metaKey || e.ctrlKey ? 'toggle' : 'one')}
             onDoubleClick={() => onOpen(r)}
           >
-            <KindIcon kind={r.kind} size={15} title={t(`kind.${r.kind}`)} />
+            <KindIcon kind={r.kind} size={16} title={t(`kind.${r.kind}`)} />
             <StatePill variant="ring" state={r.state} label={stateText(r)} t={t} onPick={(a) => onAction(r, a)} canHandOff={canHandOff} keys={false} mac={mac} />
             <span className="iid">{r.item_id}</span>
             <span className="ititle">

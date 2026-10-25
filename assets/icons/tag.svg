@@ -1,5 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="generic">
-  <title>Tag — a custom kind</title>
-  <path d="M3.5 5.5v6.1a2 2 0 0 0 .6 1.4l7.9 7.9a2 2 0 0 0 2.8 0l6.1-6.1a2 2 0 0 0 0-2.8l-7.9-7.9a2 2 0 0 0-1.4-.6H5.5a2 2 0 0 0-2 2Z"/>
-  <circle cx="8.2" cy="8.2" r="1.3" fill="currentColor" stroke="none"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Tag — a custom lens (kind family)</title>
+  <path d="M4.75 6.5v5a2 2 0 0 0 .6 1.4l6.75 6.75a2 2 0 0 0 2.8 0l4.5-4.5a2 2 0 0 0 0-2.8L12.65 5.35a2 2 0 0 0-1.4-.6h-4.75a1.75 1.75 0 0 0-1.75 1.75Z"/>
+  <circle cx="8.9" cy="8.9" r="1.15" fill="currentColor" stroke="none"/>
 </svg>

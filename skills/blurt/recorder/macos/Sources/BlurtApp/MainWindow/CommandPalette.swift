@@ -162,7 +162,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                   keys: a == "discard" ? "⌫" : Lifecycle.keyLabel(a), enabled: Scripts.canWrite) { c.apply(a, to: items) }
         }, at: min(out.count, 6))
         for k in KindStyle.builtIn {
-            out.append(Entry(title: T("main.palette.only_kind", Look.kindName(k)), detail: "", image: Look.kindImage(k), keys: "", enabled: true) {
+            out.append(Entry(title: T("main.palette.only_kind", Look.kindName(k)), detail: "", image: Look.kindImage(k, size: KindStyle.smallSize), keys: "", enabled: true) {
                 c.model.kinds = [k]; c.model.reload()
             })
         }
@@ -216,7 +216,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 // where it stands, once it is past To do (in progress, done…): the same words as the list
                 let state = ["new", "todo"].contains(it.state) ? nil : Look.stateLabel(it)
                 return Entry(title: title, detail: [it.itemID, it.projectName, state, hit].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "),
-                      image: Look.kindImage(it.kind), keys: "", enabled: true) { [weak self] in
+                      image: Look.kindImage(it.kind, size: KindStyle.smallSize), keys: "", enabled: true) { [weak self] in
                     self?.controller.reveal(uid: it.uid)
                 }
             }

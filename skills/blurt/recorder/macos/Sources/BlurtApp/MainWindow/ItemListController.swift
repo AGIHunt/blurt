@@ -414,7 +414,7 @@ final class FilterBar: NSView {
         kinds.segmentStyle = .roundRect
         kinds.controlSize = .small
         for (k, key) in KindStyle.builtIn.enumerated() {
-            kinds.setImage(Look.kindImage(key), forSegment: k)
+            kinds.setImage(Look.kindImage(key, size: KindStyle.smallSize), forSegment: k)
             kinds.setImageScaling(.scaleNone, forSegment: k)
             kinds.setWidth(28, forSegment: k)
             kinds.setToolTip(T("main.filter.only_kind", Look.kindName(key), k + 1), forSegment: k)

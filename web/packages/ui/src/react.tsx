@@ -16,7 +16,8 @@ export interface KindIconProps {
   className?: string;
 }
 
-/** A kind's icon in its colour: issue = bug, idea = light bulb, note = document, task = checklist, custom lens = tag. */
+/** A kind's icon in its colour: issue = bug, idea = light bulb, note = page, task = checkbox with a tick, custom lens = tag.
+    One family (assets/icons, docs/design/system.md §2.6): 16 px in rows, chips and cards, 18 in headings. */
 export function KindIcon({ kind, size = 16, title, className }: KindIconProps) {
   return (
     <span className={"kind-ic k-" + kind.replace(/[^\w-]/g, "_") + (className ? " " + className : "")} style={kindStyle(kind) as CSSProperties}>

@@ -1,7 +1,8 @@
-// K8: one icon and one colour per item kind — issue (bug), idea (lightbulb), note (document), task (checklist), a
-// custom lens (tag, hue from its name). On macOS the SF Symbol, like every native list; the colour is dynamic
-// (light / dark). Values from assets/color/tokens.json (generated BrandColor.Kind; web: tokens.css --kind-*, kinds.ts
-// customKindColor), so the two can't drift.
+// K8: one icon and one colour per item kind — issue (bug), idea (light bulb), note (page), task (checkbox with a tick),
+// a custom lens (tag, hue from its name). The kinds are one family of our own (assets/icons, docs/design/system.md §2.6):
+// the 24 grid, the 1.75 line, one footprint — never SF Symbols, so the four always read as one set next to each other.
+// The colour is dynamic (light / dark), from assets/color/tokens.json (generated BrandColor.Kind; web: tokens.css
+// --kind-*, kinds.ts customKindColor), so the two can't drift.
 import AppKit
 import BlurtCore
 
@@ -13,7 +14,7 @@ enum KindStyle {
         case "issue": return .bug
         case "idea": return .lightbulb
         case "note": return .document
-        case "task": return .checklist
+        case "task": return .checkbox
         default: return .tag
         }
     }
@@ -26,19 +27,21 @@ enum KindStyle {
         return dynamic(rgb(customColor(kind, dark: false)), rgb(customColor(kind, dark: true)))
     }
 
-    /// The kind's icon in its colour, `pointSize` like text (an SF Symbol where macOS has it), with the localized kind
-    /// (or the lens name) as its accessibility description.
-    static func image(_ kind: String, pointSize: CGFloat = 13, weight: NSFont.Weight = .medium) -> NSImage {
+    /// The sizes the kind icon is drawn at (the glyph fills ~18 of the 24 grid): `row` in list rows (the 18 pt slot next
+    /// to the 14 pt state ring), `small` in menus, the palette and the filter's segments.
+    static let rowSize: CGFloat = 18
+    static let smallSize: CGFloat = 16
+
+    /// The kind's icon in its colour, `size` points square (our vector: the same drawing as the web's), with the
+    /// localized kind (or the lens name) as its accessibility description.
+    static func image(_ kind: String, size: CGFloat = rowSize) -> NSImage {
         let key = "kind.\(kind)"
         let name = Loc.t(key) == key ? kind : Loc.t(key)
-        let ic = icon(kind)
-        let base = ic.sfSymbols.lazy.compactMap { NSImage(systemSymbolName: $0, accessibilityDescription: name) }.first?
-            .withSymbolConfiguration(.init(pointSize: pointSize, weight: weight)) ?? ic.image(size: (pointSize * 1.15).rounded())
         let c = color(kind)
-        let im = NSImage(size: base.size, flipped: false) { r in
-            base.draw(in: r)
-            c.set()
-            r.fill(using: .sourceIn)
+        let ic = icon(kind)
+        let im = NSImage(size: NSSize(width: size, height: size), flipped: true) { r in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            ic.draw(in: ctx, rect: r, color: c.cgColor, flipped: true)
             return true
         }
         im.accessibilityDescription = name

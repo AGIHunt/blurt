@@ -38,7 +38,7 @@ export function ListView() {
             </button>
             {kinds.map((k) => (
               <button key={k} className={cx(s.kindF === k && "on")} data-kf={k} onClick={() => s.setKindF(k)}>
-                <KindIcon kind={k} size={14} />
+                <KindIcon kind={k} size={16} />
                 {s.kindLabel(k)}
               </button>
             ))}
@@ -127,7 +127,7 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
       </div>
       <div className="body">
         <div className="h">
-          <KindIcon kind={kd} size={14} title={s.kindLabel(kd)} />
+          <KindIcon kind={kd} size={16} title={s.kindLabel(kd)} />
           <span>{i.id || ""}</span>
           <span className="sp" />
           {i.time && i.time.start != null ? <span className="tm">{s.clock(i.time.start)}</span> : null}
@@ -268,7 +268,7 @@ export function Overview() {
         <div className="ov-kinds" aria-label={s.t("overview.kinds")}>
           {Object.entries(ks).map(([k, v]) => (
             <span className="chip" key={k}>
-              <KindIcon kind={k} size={14} /> {s.kindLabel(k)} · {s.i18n.formatNumber(v.length)}
+              <KindIcon kind={k} size={16} /> {s.kindLabel(k)} · {s.i18n.formatNumber(v.length)}
             </span>
           ))}
         </div>
@@ -276,7 +276,7 @@ export function Overview() {
         {Object.entries(ks).map(([k, v]) => (
           <section key={k}>
             <h3>
-              <KindIcon kind={k} size={16} /> {s.kindLabel(k)}
+              <KindIcon kind={k} size={18} /> {s.kindLabel(k)}
             </h3>
             <div className="ov-list">
               {v.map((i) => (

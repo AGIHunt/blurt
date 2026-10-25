@@ -54,10 +54,12 @@ enum Look {
     }
 
     private static var cache: [String: NSImage] = [:]
-    static func kindImage(_ kind: String) -> NSImage {
-        if let i = cache["k:" + kind] { return i }
-        let i = KindStyle.image(kind, pointSize: 12, weight: .medium)
-        cache["k:" + kind] = i
+    /// The kind icon in its colour: 18 pt in list rows, `KindStyle.smallSize` (16) in menus, the palette and the filter.
+    static func kindImage(_ kind: String, size: CGFloat = KindStyle.rowSize) -> NSImage {
+        let k = "k:\(kind):\(size)"
+        if let i = cache[k] { return i }
+        let i = KindStyle.image(kind, size: size)
+        cache[k] = i
         return i
     }
     static func ring(_ state: String, size: CGFloat = 14) -> NSImage {

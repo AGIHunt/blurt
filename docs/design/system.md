@@ -167,17 +167,60 @@ means "brand" uses the explicit `BrandColor` token, never `controlAccentColor`, 
 ### 2.5 Item kinds (icon colours)
 
 These are icon tints only (and the kind chip in the review page). Floor 3 : 1 on every surface, including `#EAEAEA` /
-`#383838`.
+`#383838`. **Balanced (v0.9)**: the four sit at one OKLCH lightness (≈ 0.56 light, ≈ 0.75 dark) and a moderate
+chroma (0.12–0.17), so no kind shouts in a list. Before, the issue red (C 0.19) dominated a list of mostly issues on
+light, and the idea yellow (L 0.85) did on dark.
 
-| Kind | Light | on `#FFF / #F6F6F6 / #ECECEC / #EAEAEA` | Dark | on `#1E1E1E / #2A2A2A / #323232 / #383838` | vs today |
+| Kind | Light | on `#FFF / #F6F6F6 / #ECECEC / #EAEAEA` | Dark | on `#1E1E1E / #2A2A2A / #323232 / #383838` | vs v0.8 |
 |---|---|---|---|---|---|
-| issue | `#D9432A` | 4.39 / 4.06 / 3.71 / 3.65 | `#FF7A5C` | 6.50 / 5.60 / 5.00 / 4.57 | toward the retired coral (was `#D93D42` / `#FF6B6B`) |
-| idea | `#A8710A` | 4.17 / 3.86 / 3.53 / 3.47 | `#FFC53D` | 10.56 / 9.09 / 8.12 / 7.43 | unchanged |
-| note | `#3E63DD` | 5.21 / 4.82 / 4.41 / 4.33 | `#8DA4EF` | 6.90 / 5.94 / 5.30 / 4.85 | unchanged |
-| task | `#7650D8` | 5.37 / 4.97 / 4.55 / 4.47 | `#A994F5` | 6.54 / 5.63 / 5.03 / 4.60 | green → violet (was `#218358` / `#3DD68C`) |
+| issue | `#BB493A` | 5.09 / 4.71 / 4.31 / 4.23 | `#EE8771` | 6.62 / 5.70 / 5.09 / 4.66 | brick, calmer (was `#D9432A` / `#FF7A5C`, C 0.19) |
+| idea | `#A26D05` | 4.44 / 4.11 / 3.76 / 3.69 | `#E1AE51` | 8.24 / 7.09 / 6.33 / 5.79 | dark much less bright (was `#A8710A` / `#FFC53D`) |
+| note | `#4467D2` | 5.10 / 4.72 / 4.32 / 4.24 | `#90A7F1` | 7.13 / 6.14 / 5.48 / 5.02 | a touch less chroma (was `#3E63DD` / `#8DA4EF`) |
+| task | `#7559CB` | 5.19 / 4.80 / 4.39 / 4.31 | `#AA98F2` | 6.73 / 5.80 / 5.18 / 4.74 | a touch less chroma (was `#7650D8` / `#A994F5`) |
 
 Custom lenses (`KindStyle.customColor`, `kinds.ts customKindColor`): if the hashed hue lands in **145°–190°** (HSL),
 add 60°, so no lens looks like brand or success.
+
+### 2.6 Icons: the family (v0.9)
+
+One line family for everything we draw ourselves (`assets/icons/*.svg` → `build.py` → Swift `BlurtIconPaths`, web
+`@blurt/icons`, Tk PNGs). New icons follow these rules; `tests/test_icons.py` checks the mechanical ones.
+
+- **Grid**: 24 × 24, y down. Keylines: the safe area is 2…22; a glyph's live area is about 3.5…20.5 (17 units).
+  Circles and diagonals may reach 2.5 / 21.5 so they look as big as squares.
+- **Line**: 1.75 units, round caps and joins, everywhere, at every size (a 16 px icon draws a 1.17 px line, an 18 pt
+  one 1.31 pt). No hairlines, no mixed widths. Corners: radius 2.5–4 on boxes (4 on a 15-unit square), 2 on small
+  joints. Fills only for dots (≤ 1.25 radius: an eye, a tag's hole) and the `-fill` media variants.
+- **Detail**: as few strokes as the metaphor needs; nothing closer than 2 units (it fills in at 14 px). Counters in
+  small shapes (a quote's dot, a circle) stay ≥ 2.5 units across.
+- **Size in use**: 16 px / pt in rows, chips, cards and menus; 18 in macOS list rows and headings; 14 only for a
+  glyph inside a button next to 12–13 px text. Never below 13.
+- **Groups**: `brand` glyphs are always our drawing; `generic` ones use the SF Symbol on macOS (`sf-symbols.json`)
+  and our drawing elsewhere. Toolbars and sidebars stay SF Symbols on macOS (native), the web draws ours.
+
+**The kinds** are one set of their own and always our drawing, on every platform (never SF Symbols, so they never mix
+two families in one column):
+
+| Kind | Icon | Metaphor | Footprint |
+|---|---|---|---|
+| issue | `bug` | a beetle: one capsule body, a head line, a centre seam, two legs a side, two antennae | 17 × 17 |
+| idea | `lightbulb` | a bulb with a shine arc and one base line | 14 × 18 |
+| note | `document` | a page with a folded corner and two lines | 14.5 × 18 |
+| task | `checkbox` | a rounded square (r 4) with a tick (not a list: a task is one thing to do) | 16.5 × 16.5 |
+| custom lens | `tag` | a tag with its hole, in the lens's hue (§2.5) | 17 × 17 |
+
+Each is drawn alone in its kind colour (outline, no tile, no duotone): rows stay calm and the colour stays a mark,
+never a block. Sizes: 18 pt in macOS list rows (the 18 pt slot beside the 14 pt state ring), 16 in the filter
+segments, menus, the palette and every web surface (queue rows, chips, cards, the detail's kind chip), 18 in overview
+headings. Code: `KindStyle.image(kind, size:)` / `Look.kindImage` (macOS), `<KindIcon kind size/>` (web). The
+comparison that chose this (today vs line / tinted chip / duotone, light and dark, real sizes) is in
+`promo/cases/v0.9-next/kind-icons/`.
+
+Neighbours, checked at the same sizes: the state rings (drawn, 1.5 pt line at 14 / 18) and the macOS toolbar and
+sidebar (SF Symbols) sit well with the kinds. On the review page `quote` was the one clear outlier (a closed "99"
+that read as bold digits) and is now two open rounded marks. Still to look at: `git-pull-request` (its 2.5-unit
+circles close up at 13–14 px), `merge` (a narrow Y, lighter than its neighbours), `film` (a dense grid at 14) and
+`languages` (letters, busier than the rest).
 
 ## 3. Usage by surface
 
@@ -247,7 +290,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Links | I underline | text `ink`, 1.5 pt `brand.ink` underline; standalone text / link buttons in `brand.ink` |
 | State rings new / handed_off / in_progress, job spinner arc | I | one spinner everywhere: `BrandSpinner` (job rows, the item banner, the scanning empty state) is the running step's quarter arc, 1.1 s a turn, still under Reduce Motion; never the grey system spokes |
 | Labels (en) | — | buttons and menu items in Title Case at display (`Look.menuCase`, web `menuCase`); the string catalogs keep sentence case, so the same words read right inside sentences |
-| Kind icons in lists | kind tokens | outline glyphs at one weight; the issue kind is the brand outline bug (no dense SF ladybug) |
+| Kind icons in lists | kind tokens | the kind family (§2.6) at 18 pt in rows, 16 in the filter, menus and the palette; our drawing, never SF Symbols |
 | to_verify / done / todo / wontfix / discarded | `attn` + "!" / `ok` + ✓ / secondary / tertiary | |
 | "New" counts and badges | M | pill, `brand.on` digits (`CountPill`); plain counts neutral |
 | Suggested project (an Unassigned row's "Looks like X · Move", the "Looks like X [Move All (3)]" line above the list) | `brand.ink` on the action word only | the project name in secondary label, "Move" in brand ink 11 pt medium, no pill and no wash: it is an offer, not a state; the group line's button is a plain small bordered button (the one primary stays the view's); the project's folder glyph in its own colour (`ProjectLook`) |
@@ -634,10 +677,10 @@ variables in the web sources. `web/packages/ui/src/tokens.test.ts` reads the flo
 | `err` | `#C02F35` | 5.68 / 5.25 / 4.81 | `#FF6B6B` | 6.01 / 5.17 / 4.62 | `#FF6B6B` |
 | `info` | `#3A5BD9` | 5.71 / 5.28 / 4.83 | `#8DA4EF` | 6.90 / 5.94 / 5.30 | `#8DA4EF` |
 | `markup` | `#FF5C3D` | content | `#FF5C3D` | content | `#FF5C3D` |
-| `kind.issue` | `#D9432A` | 4.39 / 4.06 / 3.71 | `#FF7A5C` | 6.50 / 5.60 / 5.00 | — |
-| `kind.idea` | `#A8710A` | 4.17 / 3.86 / 3.53 | `#FFC53D` | 10.56 / 9.09 / 8.12 | — |
-| `kind.note` | `#3E63DD` | 5.21 / 4.82 / 4.41 | `#8DA4EF` | 6.90 / 5.94 / 5.30 | — |
-| `kind.task` | `#7650D8` | 5.37 / 4.97 / 4.55 | `#A994F5` | 6.54 / 5.63 / 5.03 | — |
+| `kind.issue` | `#BB493A` | 5.09 / 4.71 / 4.31 | `#EE8771` | 6.62 / 5.70 / 5.09 | — |
+| `kind.idea` | `#A26D05` | 4.44 / 4.11 / 3.76 | `#E1AE51` | 8.24 / 7.09 / 6.33 | — |
+| `kind.note` | `#4467D2` | 5.10 / 4.72 / 4.32 | `#90A7F1` | 7.13 / 6.14 / 5.48 | — |
+| `kind.task` | `#7559CB` | 5.19 / 4.80 / 4.39 | `#AA98F2` | 6.73 / 5.80 / 5.18 | — |
 
 | Gradient | Stops | Contrast |
 |---|---|---|

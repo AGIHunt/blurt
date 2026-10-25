@@ -532,7 +532,7 @@ export function Inspector() {
         <StateControl i={i} id="statePill" shortcuts controlled />
         <ChipSelect id="kindChip" cls="kind-chip" label={s.t("chip.kind")} value={kind} onPick={s.setKind}
           options={[...KINDS, ...(KINDS.includes(kind as never) ? [] : [kind])].map((k) => [k, s.kindLabel(k)])}>
-          <KindIcon kind={kind} size={14} /> {s.kindLabel(kind)}
+          <KindIcon kind={kind} size={16} /> {s.kindLabel(kind)}
         </ChipSelect>
         {kind === "issue" && (
           <>
