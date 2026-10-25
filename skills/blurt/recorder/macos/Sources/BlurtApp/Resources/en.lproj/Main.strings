@@ -258,8 +258,8 @@
 "main.list.label" = "Items";
 
 "main.menu.change_state" = "Change State…";
-"main.menu.copy_link" = "Copy Link";
-"main.menu.enrich" = "AI Fill-in";
+"main.menu.copy_link" = "Copy Item Link";
+"main.menu.enrich" = "Fill In Details with AI";
 "main.menu.export_bundle" = "Export Hand-off Bundle…";
 "main.bundle.save" = "Export";
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";

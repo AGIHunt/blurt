@@ -90,9 +90,15 @@ enum MainMenu {
         }
         let changeState = item(T("main.menu.change_state"), #selector(MainWindowController.mStateMenu))
         displayKey(changeState, "s")
-        let itemMenu = menu(T("menu.item"), [changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
-                                             state("discard", "\u{8}"), .separator()])
-        c.itemActions(into: itemMenu, items: nil)       // the rest as in the context menu (one builder)
+        // the context menu's order (MainWindowController.contextMenu): hand off, the states, the item actions (one
+        // builder), Discard last after a separator; the menu bar adds Change State… (S) and every state's row
+        let itemMenu = menu(T("menu.item"), [])
+        c.handOffActions(into: itemMenu, items: nil)
+        for i in [NSMenuItem.separator(), changeState, state("keep", "a"), state("done", "d"), state("back", "r"), state("wontfix", "w"),
+                  .separator()] { itemMenu.addItem(i) }
+        c.itemActions(into: itemMenu, items: nil)
+        itemMenu.addItem(.separator())
+        itemMenu.addItem(state("discard", "\u{8}"))
         // the project on show: what its sidebar row's menu offers. Remove from Blurt has no key: ⌘⌫ on a selection
         // means "delete these" on the Mac (Finder), so in the list it discards the items, never the project
         _ = menu(T("menu.project"), [item(T("main.project.settings"), #selector(MainWindowController.mShownProjectSettings), "i"),

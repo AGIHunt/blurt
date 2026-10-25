@@ -258,8 +258,8 @@
 "main.list.label" = "条目";
 
 "main.menu.change_state" = "更改状态…";
-"main.menu.copy_link" = "复制链接";
-"main.menu.enrich" = "AI 补全";
+"main.menu.copy_link" = "复制条目链接";
+"main.menu.enrich" = "用 AI 补全详情";
 "main.menu.export_bundle" = "导出交接包…";
 "main.bundle.save" = "导出";
 "main.bundle.message" = "一个 .zip：概要、每一条的详情和截图，在别的电脑上也能打开。";

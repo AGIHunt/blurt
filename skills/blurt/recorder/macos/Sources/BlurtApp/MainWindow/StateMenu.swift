@@ -65,8 +65,10 @@ enum StateMenu {
 
     static func title(_ action: String) -> String { Look.menuCase(T("action.\(action)")) }
 
-    /// One entry. `items` decides the hint, the target and the "(n)" count.
-    static func item(_ action: String, items: [ItemRow], selector: Selector, target: AnyObject?, keys: Bool = true) -> NSMenuItem {
+    /// One entry. `items` decides the hint, the target ring and the "(n)" count. `hints`: the hint as a second line (the
+    /// ring's menu); false shows it only as the tooltip and accessibility help (the context menu: one line a row).
+    static func item(_ action: String, items: [ItemRow], selector: Selector, target: AnyObject?, keys: Bool = true,
+                     hints: Bool = true) -> NSMenuItem {
         let n = valid(action, items).count
         let t = title(action) + (items.count > 1 && n < items.count ? " (\(Loc.number(n)))" : "")
         let (k, mods) = keys ? key(action) : ("", [])
@@ -76,7 +78,8 @@ enum StateMenu {
         i.representedObject = action
         i.image = icon(action, items)
         let h = hint(action, items)
-        if explained.contains(action) { setHint(i, h) }
+        // a second line only in the ring's own menu, and only where the words don't say it all (Discard)
+        if hints && explained.contains(action) { setHint(i, h) }
         i.toolTip = h
         i.setAccessibilityLabel(t)
         i.setAccessibilityHelp(h)

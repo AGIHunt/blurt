@@ -1075,45 +1075,71 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty else { return nil }
         let m = NSMenu()
         m.autoenablesItems = true
-        // what you can do from here (K3); handing off has its own section below
-        let states = StateMenu.actions(for: items, canHandOff: false)
-        if !states.isEmpty, Scripts.canWrite {
-            m.addItem(menuHeader(T("state.menu")))
-            for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
+        // the primary verb first (the detail's one primary button, ⌘↩)
+        handOffActions(into: m, items: items)
+        // what you can do from the items' state (K3), one line a row: no header and no hints (the rings say what each
+        // leads to; the hint is the tooltip, and the ring's own menu, S, shows it in full). Discard waits for the end.
+        let states = Scripts.canWrite ? StateMenu.actions(for: items, canHandOff: false) : []
+        func state(_ a: String) -> NSMenuItem { StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self, hints: false) }
+        let lead = states.filter { $0 != "discard" }
+        if !lead.isEmpty {
             m.addItem(.separator())
+            lead.forEach { m.addItem(state($0)) }
         }
+        m.addItem(.separator())
         itemActions(into: m, items: items)
+        // the one destructive verb last, on its own (as in StateMenu.menu and the Item menu)
+        if states.contains("discard") {
+            m.addItem(.separator())
+            m.addItem(state("discard"))
+        }
         return m
     }
 
-    /// The item actions after the state section — one builder for the context menu and the menu bar's Item menu, so
-    /// both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are all
-    /// there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
-    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+    /// The first group of the context menu and the menu bar's Item menu: Hand Off to Agent, and the agent session it
+    /// started when there is one to open. `items` nil: the menu bar.
+    func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
         let one = items.map { $0.count == 1 } ?? true
-        let bar = items == nil
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.doc", key: "c", mods: [.command, .shift])
-        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
-        _ = add(m, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
-        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
-        if bar || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
+        if items == nil || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
             _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
         }
-        m.addItem(.separator())
-        m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
+    }
+
+    /// The item actions between the state rows and Discard — one builder for the context menu and the menu bar's Item
+    /// menu, so both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are
+    /// all there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
+    /// Three groups: change the item, take it out of Blurt (every copy in one Copy submenu), look at its files. One
+    /// symbol per action (system.md §2.7): `folder` only for projects, `sparkles` only for Organise.
+    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+        let one = items.map { $0.count == 1 } ?? true
+        let bar = items == nil
+        m.addItem(submenu(T("main.menu.move_to"), "arrow.turn.up.right", moveMenu()))
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
         if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
+        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "text.badge.plus")
+        m.addItem(.separator())
+        m.addItem(submenu(T("menu.copy"), "doc.on.doc", copyMenu()))
+        _ = add(m, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
+        m.addItem(.separator())
+        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
+        _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "arrow.up.forward.app", key: "r", mods: [.command, .shift])
+        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
         if bar || (one && items?.first?.sessionURL != nil) {
             _ = add(m, T("main.menu.review_batch"), #selector(mReviewBatch), "rectangle.stack")
         }
-        m.addItem(.separator())
-        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
-        _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "folder", key: "r", mods: [.command, .shift])
-        _ = add(m, T("action.copy_path"), #selector(mCopyPath), "doc.on.doc", key: "c", mods: [.command, .option])
-        _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink), "link")
-        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
+    }
+
+    /// Copy ▸: the instruction for your own agent first (⇧⌘C), then the item's text, its link and its file's path
+    /// (⌥⌘C). Words only — the parent row carries the copy glyph.
+    func copyMenu() -> NSMenu {
+        let m = NSMenu()
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), key: "c", mods: [.command, .shift])
+        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull))
+        _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink))
+        _ = add(m, T("action.copy_path"), #selector(mCopyPath), key: "c", mods: [.command, .option])
+        return m
     }
 
     @discardableResult
@@ -1210,7 +1236,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
         m.addItem(.separator())
-        _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "folder", obj: p.path)
+        _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "arrow.up.forward.app", obj: p.path)
         if let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenURLInEditor(_:)), "chevron.left.forwardslash.chevron.right", obj: p.path) }
         _ = add(m, T("action.copy_path"), #selector(mCopyURL(_:)), "doc.on.doc", obj: p.path)
         m.addItem(.separator())
