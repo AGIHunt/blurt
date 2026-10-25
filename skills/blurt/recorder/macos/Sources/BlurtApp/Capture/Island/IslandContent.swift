@@ -519,7 +519,7 @@ final class IslandContent: NSView {
             if cards > 0 {
                 // with a current project the cards are organised into it; with none, into Unassigned, each item with
                 // the project the run suggests (the user moves it with a click). Either way one agent run for all.
-                let cur = ProjectStore.shared.captureTarget.isInbox ? nil : ProjectStore.shared.captureTarget
+                let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
                 let b = cur.map { p in
                     IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
                                  tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
@@ -714,9 +714,9 @@ final class IslandContent: NSView {
 
     // MARK: voice input
 
-    /// How the voice note ends, said on the island: "press ⌥⇧V again to finish · Esc to cancel" (the user's key; the
-    /// Done button without one), "pause to finish" with record.voice.end_on_pause, "let go to finish" while held —
-    /// and in its last minute, the time left.
+    /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
+    /// the picker say it: "Listening · ⌥⇧V done · Esc discard" (the user's key; "click Done" without one), "pause to
+    /// finish" with record.voice.end_on_pause, "let go to finish" while held — and in its last minute, the time left.
     static func voiceHint() -> String {
         let v = VoiceInput.shared
         var s: String

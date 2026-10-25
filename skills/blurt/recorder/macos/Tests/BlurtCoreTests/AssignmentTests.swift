@@ -161,6 +161,10 @@ final class AssignmentTests: XCTestCase {
         XCTAssertEqual(ProjectStore.captureTarget(current: gone, inbox: inbox).id, "inbox")
         XCTAssertEqual(ProjectStore.captureTarget(current: nil, inbox: inbox).id, "inbox")
         XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path.path))
+        // Organize (the island's button and its menu alike): into the project only while its folder is there
+        XCTAssertEqual(ProjectStore.organizeTarget(current: here, inbox: inbox), "ba")
+        XCTAssertNil(ProjectStore.organizeTarget(current: gone, inbox: inbox))
+        XCTAssertNil(ProjectStore.organizeTarget(current: nil, inbox: inbox))
         // Locate…: the moved folder holds this project's store; another project's is refused
         let moved = dir.appendingPathComponent("billing-api-moved")
         XCTAssertEqual(ProjectStore.locatePick(moved, projectID: "ba"), .empty)

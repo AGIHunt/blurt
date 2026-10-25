@@ -203,9 +203,7 @@ final class Shot {
     /// What a capture without a note is called — VoiceOver, Recently Dragged Out, the island's menu: "Snap · 19:03" /
     /// "Voice note · 19:03" (v0.9-fix2: "Screenshot 15", a session counter that skipped numbers).
     var plainName: String {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        let at = f.string(from: Date(timeIntervalSince1970: wall))
+        let at = CaptureTime.label(Date(timeIntervalSince1970: wall), now: Date(timeIntervalSince1970: Snapper.now), locale: Loc.locale)
         return Loc.t(kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture", at)
     }
     var assignedBy: String?      // capture | user | ai
@@ -307,7 +305,11 @@ final class ShotBatch {
         let dirURL = shotsDir
         let line = s.line
         io.async {
-            try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+            // never below a project folder that is gone (StoreFolders): the picture stays in memory, on the card
+            guard StoreFolders.make(dirURL) else {
+                DispatchQueue.main.async { emit(["event": "shot_write_refused", "n": n, "dir": dirURL.path]); done?(s) }
+                return
+            }
             if let d = pngData(image, scale: scale) { try? d.write(to: url) }
             appendJSONL(self.jsonl, line)
             DispatchQueue.main.async {

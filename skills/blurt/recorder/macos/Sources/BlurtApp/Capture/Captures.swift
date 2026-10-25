@@ -57,7 +57,7 @@ func shotsPrompt(_ dir: URL) -> String? {
 final class Snapper {
     var prevApp: NSRunningApplication?
     var app: App? { NSApp.delegate as? App }
-    private var open: [String: ShotBatch] = [:]          // project id → its store's collecting -shots batch
+    private var open: [String: ShotBatch] = [:]          // store path → its collecting -shots batch (StoreFolders.batchKey)
     private(set) var cardBatches: [ShotBatch] = []       // batches with cards still hanging
     private var collectTimer: Timer?
     private var collectSeen = Set<String>()
@@ -133,9 +133,17 @@ final class Snapper {
     var target: Project { ProjectStore.shared.captureTarget }
 
     /// The store's open shots batch: the newest `-shots` session still collecting and under 12 h old, else a new one.
+    /// Kept by the store's path, not the project's id: a project relocated with Locate… keeps its id but has a new
+    /// store, and a batch kept from before still points into the old folder — writing there would make it again.
     func openBatch(for p: Project) -> ShotBatch {
-        let key = p.id
-        if let b = open[key] { return b }
+        // never a project whose folder is gone (callers pass `target`, which already says Unassigned then)
+        guard p.isInbox || p.exists else { return openBatch(for: ProjectStore.shared.inbox) }
+        let key = StoreFolders.batchKey(p.store)
+        open = open.filter { FileManager.default.fileExists(atPath: $0.value.dir.path) }    // moved away meanwhile
+        if let b = open[key] {
+            if StoreFolders.stillUsable(b.dir, store: p.store) { return b }
+            open[key] = nil
+        }
         let root = p.store.appendingPathComponent("sessions")
         let recent = ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.creationDateKey])) ?? [])
             .filter { $0.lastPathComponent.hasSuffix("-shots") }.sorted { $0.lastPathComponent > $1.lastPathComponent }
@@ -148,7 +156,7 @@ final class Snapper {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyyMMdd-HHmmss"
         let dir = root.appendingPathComponent(f.string(from: Date()) + "-shots")
-        try? FileManager.default.createDirectory(at: dir.appendingPathComponent("shots"), withIntermediateDirectories: true)
+        StoreFolders.make(dir.appendingPathComponent("shots"))
         let b = ShotBatch(dir: dir, inRecording: false)
         b.writeMeta(project: .some(p.isInbox ? nil : p.id))
         return adopt(b, key: key, project: p)
@@ -188,7 +196,8 @@ final class Snapper {
             // the current project's folder is gone: said once the snap is a card (the island can't show it under an
             // in-place note — the note's chip says it meanwhile)
             if p.isInbox, ProjectStore.shared.missingCurrent != nil {
-                if withNote { self.missingWarn.insert(ObjectIdentifier(shot)) } else { MissingFolder.warnIfCurrentMissing() }
+                if withNote, let m = ProjectStore.shared.missingCurrent { self.warnWhenSettled(shot, missing: m) }
+                else { MissingFolder.warnIfCurrentMissing() }
             }
             if withNote {
                 // (before anything else runs: the stage holds the shot back from the cards until it is done)
@@ -439,7 +448,8 @@ final class Snapper {
     /// transcribed first (also next to typed text: the item gets both). Its words couldn't be had and nothing was
     /// typed → a card that remembers the project (Retry files it there). Auto: a card, its words fetched for it.
     func settled(_ s: Shot) {
-        if missingWarn.remove(ObjectIdentifier(s)) != nil, !s.deleted { MissingFolder.warnIfCurrentMissing() }
+        // (only while it is still a card: a project picked meanwhile filed it, and "kept as a card" would be wrong)
+        if let p = missingWarn.removeValue(forKey: ObjectIdentifier(s)), !s.deleted, s.project == nil { MissingFolder.warn(p) }
         guard !s.deleted, let b = s.batch else { return }
         let filing = s.assignedBy == "capture" ? s.project : nil
         // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
@@ -485,8 +495,13 @@ final class Snapper {
     }
     /// filings under way (prepareForQuit waits for them a moment)
     private var filing = 0
-    /// in-place snaps taken while the current project's folder was missing: the island says so once they settle
-    private var missingWarn = Set<ObjectIdentifier>()
+    /// in-place snaps that couldn't go to their project (its folder is missing — the current one, or one picked in
+    /// the note's chip): the island says so, with Locate…, once they settle
+    private var missingWarn: [ObjectIdentifier: Project] = [:]
+
+    /// "Can't find X's folder · Locate…" for a snap still marked up in place: said once it settles — the island's
+    /// toasts don't show under an in-place note, and one said now would be gone before the note closes.
+    func warnWhenSettled(_ s: Shot, missing p: Project) { missingWarn[ObjectIdentifier(s)] = p }
 
     /// Filing into `missing` (its folder moved or was renamed) was refused: the captures stay Unassigned cards, and the
     /// island says so with Locate… (MissingFolder). Nothing was written.
@@ -585,6 +600,11 @@ final class Snapper {
     func handToAI(project: String? = nil, shots: [Shot]? = nil) {
         let all = (shots ?? cards).filter(\.isCard)
         guard !all.isEmpty else { return }
+        // never into a project whose folder is gone: the cards stay, and the island offers Locate… (MissingFolder)
+        if let id = project, let p = ProjectStore.shared.project(id: id), !p.exists {
+            emit(["event": "organize_refused", "project": id, "reason": "folder_missing", "captures": all.map(\.n)])
+            return MissingFolder.warn(p)
+        }
         NoteBubble.shared.commit()
         // the cards come off the notch only once an agent can take them: none usable → they stay, and the island says why
         agentReady { [weak self] ok in
@@ -800,6 +820,7 @@ final class Snapper {
         if !cardBatches.contains(where: { $0 === b }) { b.onChange = { hanging.refresh() }; cardBatches.append(b) }
         hanging.catchCapture(s, from: from)
         takenChanged()
+        TakenPanel.shared.makeRoomForCards()        // the card hangs where the panel may be
     }
 
     /// Recently Taken: captures dragged out in the last 7 days, newest first.

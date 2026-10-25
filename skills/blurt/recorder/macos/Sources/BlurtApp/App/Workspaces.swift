@@ -45,5 +45,5 @@ func ensureDefaultWorkspace() {
     }
 }
 
-/// A new recording's session dir in the current store.
-func newSessionDir() -> URL { ProjectStore.shared.newSessionDir(.video) }
+/// A new recording's session dir in the store of `target` (where its take goes: App.takeTarget).
+func newSessionDir(in target: Project) -> URL { ProjectStore.shared.newSessionDir(.video, in: target) }

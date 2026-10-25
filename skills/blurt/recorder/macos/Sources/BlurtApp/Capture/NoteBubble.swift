@@ -161,7 +161,7 @@ final class NoteVoice {
     private(set) var failReason: String?
 
     func start(_ ready: @escaping (Bool) -> Void) {
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        StoreFolders.make(url.deletingLastPathComponent())       // never below a project folder that is gone
         let settings: [String: Any] = [AVFormatIDKey: kAudioFormatLinearPCM, AVSampleRateKey: NoteVoice.rate, AVNumberOfChannelsKey: 1,
                                        AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false, AVLinearPCMIsBigEndianKey: false]
         file = try? AVAudioFile(forWriting: url, settings: settings, commonFormat: .pcmFormatFloat32, interleaved: false)
@@ -1521,8 +1521,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func picked(_ p: Project?) {
         guard let s = shot else { return }
-        // a project whose folder can't be found takes nothing: the capture stays where it was, the island says why
-        if let p = p, !p.exists { closePick(); MissingFolder.warn(p); return refreshStatus() }
+        // a project whose folder can't be found takes nothing: the capture stays a card (what the island's line says,
+        // with Locate…) — in place, said once the note settles (the island can't show it under the note)
+        if let p = p, !p.exists {
+            if s.project != nil { snapper.retarget(s, to: nil) }
+            closePick()
+            if staged { snapper.warnWhenSettled(s, missing: p) } else { MissingFolder.warn(p) }
+            emit(["event": "note_pick_missing", "n": s.n, "project": p.id, "deferred": staged])
+            return refreshStatus()
+        }
         if s.project != p?.id { snapper.retarget(s, to: p?.id) }
         closePick()
         refreshStatus()
