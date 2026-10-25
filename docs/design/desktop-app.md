@@ -954,6 +954,11 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
 - **测试钩子**：`BLURT_TEST_COMMANDS=1` 时 `dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]` 通知通道（见 `System/SelfTests.swift`）；
   `BLURT_NO_ONBOARDING` 不弹引导；`BLURT_AGENT_HOME` 让 `agents.py install` 在临时 HOME 里装；`BLURT_HOME` 非默认时从不请求通知权限
   （bundle id 和正式版共用）。
+- **版面检查（layout lint）**：测试通道上的 `layoutcheck [min|restore|dump]`（`System/LayoutCheck.swift`，规则在 BlurtCore 的
+  `LayoutLint`）走一遍每个可见窗口的无障碍树，报告控件 / 文字超出窗口边缘、压在红绿灯下、可交互控件互相重叠、文字被截断。
+  无人值守的全量检查：`BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s`（或 `python3 tests/test_gui_layout.py`
+  出报告）——隔离的 App 副本，打开引导每一步、设置每个面板、主窗口各视图和钩子能开的面板，中英文各一遍，可缩放窗口再缩到最小
+  尺寸查一遍；有任何问题就失败。
 
 ### C8 · Tauri（Windows/Linux）命令和录制引擎
 
@@ -1195,6 +1200,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
 ### 合并后的集成检查（每合并一个包都在本机跑一遍）
 
 1. `uv run --with pytest pytest tests/`
+   （动了窗口或面板的版面：再跑 `BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s`）
 2. `pnpm -C web test && pnpm -C web build`
 3. `record.py build` 后启动 Blurt.app，跑一次截图闭环：⌥⇧A → 鸡舍 → 整理 → 主窗口出现条目 → 审核 → 「让 Claude 修」→ 收到 `mark_fixed` → 播放啄虫动画
 4. CI 上 desktop 的构建矩阵全绿

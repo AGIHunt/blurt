@@ -502,31 +502,45 @@ struct AgentsPane: View {
         .padding(.leading, AgentsLayout.text)
     }
 
+    /// The kind, then its model and effort pickers — those under it when the page is too narrow for one line (the
+    /// pickers keep their size: on one line at Settings' minimum width they pushed the whole page, its scroll bar
+    /// included, past the window's edges)
     @ViewBuilder
     func processingLine(_ a: CoreAgent, _ ms: AgentModels, _ k: ProcessingKind) -> some View {
-        HStack(spacing: 8) {
-            Text(TL("agents.processing.\(k.rawValue)")).font(.caption).foregroundStyle(.secondary)
-                .frame(minWidth: 64, alignment: .leading)
-            Picker("", selection: Binding(get: { m.processingModel(a.id, k) }, set: { m.setProcessing(a.id, k, model: $0) })) {
-                // by the model's name from the agent's own list; one it doesn't list goes unnamed (never its raw id)
-                Text(ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")).tag("cheapest")
-                Text(ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
-                Divider()
-                ForEach(ms.models) { x in Text(x.name).tag(x.id) }
+        let label = Text(TL("agents.processing.\(k.rawValue)")).font(.caption).foregroundStyle(.secondary)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                label.frame(minWidth: 64, alignment: .leading)
+                processingPickers(a, ms, k)
             }
-            .labelsHidden().fixedSize().controlSize(.small)
-            .accessibilityLabel(TL("agents.processing.\(k.rawValue)"))
-            if !ms.efforts.isEmpty {
-                Picker("", selection: Binding(get: { m.processingEffort(a.id, k) }, set: { m.setProcessing(a.id, k, effort: $0) })) {
-                    Text(TL("agents.effort.default")).tag("default")
-                    Divider()
-                    ForEach(ms.efforts, id: \.self) { e in Text(TL("agents.effort.\(e)")).tag(e) }
-                }
-                .labelsHidden().fixedSize().controlSize(.small)
-                .accessibilityLabel(TL("agents.effort"))
+            VStack(alignment: .leading, spacing: 3) {
+                label
+                HStack(spacing: 8) { processingPickers(a, ms, k) }
             }
         }
         .help(TL("agents.processing.\(k.rawValue).help"))
+    }
+
+    @ViewBuilder
+    func processingPickers(_ a: CoreAgent, _ ms: AgentModels, _ k: ProcessingKind) -> some View {
+        Picker("", selection: Binding(get: { m.processingModel(a.id, k) }, set: { m.setProcessing(a.id, k, model: $0) })) {
+            // by the model's name from the agent's own list; one it doesn't list goes unnamed (never its raw id)
+            Text(ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")).tag("cheapest")
+            Text(ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")).tag("default")
+            Divider()
+            ForEach(ms.models) { x in Text(x.name).tag(x.id) }
+        }
+        .labelsHidden().fixedSize().controlSize(.small)
+        .accessibilityLabel(TL("agents.processing.\(k.rawValue)"))
+        if !ms.efforts.isEmpty {
+            Picker("", selection: Binding(get: { m.processingEffort(a.id, k) }, set: { m.setProcessing(a.id, k, effort: $0) })) {
+                Text(TL("agents.effort.default")).tag("default")
+                Divider()
+                ForEach(ms.efforts, id: \.self) { e in Text(TL("agents.effort.\(e)")).tag(e) }
+            }
+            .labelsHidden().fixedSize().controlSize(.small)
+            .accessibilityLabel(TL("agents.effort"))
+        }
     }
 
     /// `c` nil: the brand badge ("Runs first"), brand ink on the brand tint (§3.4)

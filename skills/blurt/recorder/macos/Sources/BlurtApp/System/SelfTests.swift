@@ -27,6 +27,9 @@
 //                                written straight to PATH (no panel); cancel closes the sheet
 //   mainsuggest [moveall P | move ROW]   Unassigned's suggestion groups and rows ("Looks like X · Move"), pressing one
 //   mainmovepop [open | QUERY | return | esc]   M on the list: the Move popover, typing into it, choosing
+//   layoutcheck [min|restore|dump]   the layout lint: every visible window's controls and texts inside the window, not
+//                                on top of each other, not truncated → {"event": "layoutcheck", "windows": [{"title",
+//                                "size", "problems": [{"kind", "role", "label", "frame", "bounds"}]}]} (LayoutCheck.swift)
 import AppKit
 import Carbon.HIToolbox
 import BlurtCore
@@ -564,6 +567,8 @@ enum SelfTests {
                 worst = max(worst, ms); total += ms; n += 1
             }
             out(["rows": c.model.rowCount, "steps": n, "avg_ms": n > 0 ? total / Double(n) : 0, "worst_ms": worst])
+        case "layoutcheck":             // layoutcheck [min|restore|dump]: the layout lint over every visible window
+            LayoutCheck.run(arg)        // (LayoutCheck.swift) → {"event": "layoutcheck", "windows": [...]}
         case "perms":
             let p = Permissions()
             out(["screen": p.screen.rawValue, "mic": p.mic.rawValue, "accessibility": p.accessibility.rawValue,
