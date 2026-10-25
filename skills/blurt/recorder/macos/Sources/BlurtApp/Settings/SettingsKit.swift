@@ -1,5 +1,5 @@
 // Shared pieces of the Settings panes and the setup assistant: the one look of every pane — SettingsPage (the pane's
-// title, its groups, scrolling to a row a search or a link asked for), SettingsGroup (a section), SettingsLine (one line
+// title, its groups, scrolling to a row a search or a link asked for, kept in view while the page still grows), SettingsGroup (a section), SettingsLine (one line
 // over a hairline), SettingRow / SettingToggle (a setting: title and one-line description from SettingsCatalog on the
 // left, the control on the right) —, status dots, the live permission model and its rows, config helpers, a
 // project-config reader/writer.
@@ -101,6 +101,12 @@ struct SettingsPage<Content: View>: View {
     var subtitle: String?
     @ViewBuilder var content: Content
     private let flash = SettingsFlash.shared         // not observed: the page only acts on a new request
+    /// The row or section a request landed on, kept in view while the page still grows above it (Agents' sign-in
+    /// checks come in seconds later and add lines) — else a link to the page's last section ends with it cut off.
+    /// It lets go after 8 s (2 s more after each change), 20 s at most, or as soon as the user scrolls, clicks or
+    /// types: never a page that jumps back under the user.
+    @State private var hold: Hold?
+    private struct Hold { let id: String; let anchor: UnitPoint; let since: Date; var until: Date }
 
     init(_ pane: SettingsPane, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.pane = pane
@@ -122,11 +128,23 @@ struct SettingsPage<Content: View>: View {
                 .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 22).padding(.bottom, 44)
                 .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
+                // (a preference doesn't come out of a ScrollView: the height is watched in place)
+                .background(GeometryReader { g in Color.clear.onChange(of: g.size.height) { _ in keep(proxy) } })
             }
             .onAppear { go(proxy) }
             .onReceive(flash.$request) { _ in go(proxy) }
         }
         .settingsPageGround()
+    }
+
+    /// The page grew or shrank: the row a request landed on goes back where it was put, while the hold lasts.
+    private func keep(_ proxy: ScrollViewProxy) {
+        guard var h = hold else { return }
+        let now = Date()
+        guard now < h.until, now < h.since.addingTimeInterval(20), UserInput.shared.last < h.since else { hold = nil; return }
+        proxy.scrollTo(h.id, anchor: h.anchor)
+        h.until = max(h.until, now.addingTimeInterval(2))
+        hold = h
     }
 
     /// A page that has just appeared lays itself out over a few passes (and loads into it): the scroll is repeated
@@ -135,14 +153,31 @@ struct SettingsPage<Content: View>: View {
     private func go(_ proxy: ScrollViewProxy) {
         guard let r = flash.request, r.pane == pane.rawValue else { return }
         let section = SettingsCatalog.entry(r.id)?.section
+        let anchor = section == r.id || SettingsCatalog.section(r.id) != nil ? UnitPoint.top : UnitPoint(x: 0.5, y: 0.25)
+        UserInput.shared.watch()
+        hold = Hold(id: r.id, anchor: anchor, since: Date(), until: Date().addingTimeInterval(8))
         for (i, delay) in [0.05, 0.2, 0.45, 0.8].enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 guard flash.request == r else { return }
                 if let s = section, s != r.id { proxy.scrollTo(s, anchor: .top) }
-                proxy.scrollTo(r.id, anchor: section == r.id || SettingsCatalog.section(r.id) != nil ? .top : UnitPoint(x: 0.5, y: 0.25))
+                proxy.scrollTo(r.id, anchor: anchor)
                 if i == 0 { flash.flash(r.id) }
                 if i == 3 { flash.request = nil }
             }
+        }
+    }
+}
+
+/// When the user last scrolled, clicked or typed in this app (SettingsPage stops keeping a row in view then).
+final class UserInput {
+    static let shared = UserInput()
+    private(set) var last = Date.distantPast
+    private var monitor: Any?
+    func watch() {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] e in
+            self?.last = Date()
+            return e
         }
     }
 }

@@ -149,15 +149,15 @@ def test_all_tools_over_stdio(env):
     assert "once per group" in r["_tools"]["bundle_items"]["description"]
     b = text_json(r["bundle"])
     assert b["uids"] == [r["_uid"]] and b["title"] == "Login issues" and b["name"].endswith("-1-item.zip")
-    assert Path(b["path"]).parent == env["tmp"] / "bundles" and Path(b["path"]).is_file()
-    assert b["summary"].startswith("Login issues: 1 item (Issues 1; To verify 1).") and b["states"] == {"to_verify": 1}
+    assert Path(b["path"]).parent == (env["tmp"] / "bundles").resolve() and Path(b["path"]).is_file()
+    assert b["summary"].startswith("Login issues: 1 item (1 issue; 1 to verify).") and b["states"] == {"to_verify": 1}
     import zipfile
     with zipfile.ZipFile(b["path"]) as z:
         names = z.namelist()
         summary = z.read(next(n for n in names if n.endswith("/summary.md"))).decode()
     assert any("/frames/" in n for n in names) and str(env["tmp"]) not in summary
     bp = text_json(r["bundle_project"])
-    assert bp["uids"] == [r["_uid"]] and bp["path"] == str(env["tmp"] / "bundles" / "x.zip")
+    assert bp["uids"] == [r["_uid"]] and bp["path"] == str((env["tmp"] / "bundles" / "x.zip").resolve())
     assert r["bundle_none"]["is_error"] and r["bundle_bad"]["is_error"]
     assert r["_tools"]["update_item"]["params"] == ["set", "uid", "unset"]
     assert r["_tools"]["mark_fixed"]["params"] == ["agent", "commit", "note", "pr", "state", "uid"]

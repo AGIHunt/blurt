@@ -21,7 +21,8 @@
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
 //   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
-//   mainbundle [PATH.zip|cancel] Export Hand-off Bundle… on the selection: its Save sheet (suggested name back), or
+//   mainbundle [PATH.zip|cancel] Export Hand-off Bundle… on the selection (PATH: bundling + the action's state at once,
+//                            then the result): its Save sheet (suggested name back), or
 //                                written straight to PATH (no panel); cancel closes the sheet
 import AppKit
 import Carbon.HIToolbox
@@ -481,8 +482,12 @@ enum SelfTests {
                 return
             }
             c.exportBundle(uids: c.list.selectedItems.map(\.uid), to: URL(fileURLWithPath: arg)) { u in
-                out(["path": u?.path ?? NSNull(), "exists": u.map { FileManager.default.fileExists(atPath: $0.path) } ?? false])
+                out(["path": u?.path ?? NSNull(), "exists": u.map { FileManager.default.fileExists(atPath: $0.path) } ?? false,
+                     "bundling": c.bundling])
             }
+            // while it packs: the action is off (one bundle at a time) and the island says so
+            let probe = NSMenuItem(title: "", action: #selector(MainWindowController.mExportBundle), keyEquivalent: "")
+            out(["bundling": c.bundling, "action_enabled": c.validateMenuItem(probe)])
         case "mainmenu":                // mainmenu: the context menu of the selection, as titles (enabled ones)
             let c = MainWindowController.shared
             let m = c.contextMenu(for: c.list.table.selectedRowIndexes)

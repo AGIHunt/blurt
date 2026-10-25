@@ -43,4 +43,13 @@ public enum HandoffBundle {
         let n = chinese ? "\(count)条" : (count == 1 ? "1-item" : "\(count)-items")
         return "\(slug(project ?? ""))-\(f.string(from: day))-\(n).zip"
     }
+
+    /// The failure alert's text: the app's sentence for the error code, then the script's own reason ("can't write
+    /// /System/x.zip: Permission denied"), so the user sees why; `fallback` (the general sentence) only when there is
+    /// neither.
+    public static func failureText(ours: String?, script: String, fallback: String) -> String {
+        let reason = script.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = [ours, reason.isEmpty || reason == ours ? nil : reason].compactMap { $0 }
+        return parts.isEmpty ? fallback : parts.joined(separator: "\n\n")
+    }
 }

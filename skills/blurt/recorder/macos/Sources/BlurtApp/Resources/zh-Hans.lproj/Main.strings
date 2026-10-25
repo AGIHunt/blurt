@@ -135,6 +135,7 @@
 "main.error.deleted" = "它在已丢弃里，先恢复它。";
 "main.error.cant_edit" = "现在不能修改";
 "main.error.generic" = "出了点问题，详情见日志。";
+"main.error.io" = "没法在这里写入文件，换一个文件夹试试。";
 "main.error.bad_key" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
 "main.error.key_in_use" = "项目里已经有条目了，前缀不能再改。";
 "main.error.key_taken" = "这个前缀已经被别的项目用了。";
@@ -221,6 +222,7 @@
 "main.bundle.message" = "一个 .zip：概要、每一条的详情和截图，在别的电脑上也能打开。";
 "main.bundle.saved" = "交接包已保存：%@";
 "main.bundle.failed" = "没能导出交接包";
+"main.bundle.packing" = "正在打包交接包（%@）…";
 "main.menu.kind" = "种类";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";

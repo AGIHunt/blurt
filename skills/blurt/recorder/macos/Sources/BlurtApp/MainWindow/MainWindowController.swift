@@ -7,7 +7,8 @@
 // Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
 // (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
 // handoff.py, sessions.py (AppEnvironment.dispatch, P3); Export Hand-off Bundle… (Item menu, context menu, the Hand Off
-// toolbar menu, ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet. The index follows (items.py updates it in-process, FSEvents
+// toolbar menu, ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet ("Packing…" on the island, the action
+// off, until it is done). The index follows (items.py updates it in-process, FSEvents
 // + `index.py update` catch everything else) and the model reloads when index.db's data_version moves. The writes run
 // one after another (writes: SerialWork), and each undoable one is on the window's NSUndoManager from the moment it is
 // asked for, so ⌘Z always takes back the latest step, after it has been written.
@@ -65,6 +66,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     var quitHintShown = false
     /// Export Hand-off Bundle…'s Save panel while it is up (tests read its suggested name, then cancel it).
     var bundlePanel: NSSavePanel?
+    /// A hand-off bundle is being packed: the action is off until it is done (one at a time).
+    private(set) var bundling = false
 
     init() {
         sidebar = SidebarController(model: model)
@@ -952,33 +955,53 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     @objc func mCopyInstruction() { handOff(uids: list.selectedItems.map(\.uid), what: "instruction") { _ in } }
     @objc func mCopyFull() { handOff(uids: list.selectedItems.map(\.uid), what: "full") { _ in } }
     @objc func mExportBundle() { exportBundle(uids: list.selectedItems.map(\.uid)) }
+    /// The app's own sentence for a script's error code ("main.error.<code>"), nil when it has none.
+    static func errorSentence(_ code: String) -> String? {
+        let k = "main.error.\(code)"
+        return T(k) == k ? nil : T(k)
+    }
 
     /// Export Hand-off Bundle…: the selected items as one .zip for someone else (a summary, every item, its
     /// screenshots and clips; relative paths, so it opens on their machine) — export_local.py bundle. The Save panel
-    /// is a sheet on this window, with the skill's name for it; nothing changes state. `to` (tests): skip the panel.
+    /// is a sheet on this window, with the skill's name for it; nothing changes state. While it packs (uv, copying the
+    /// clips: seconds) the island says so and the action is off; then "Saved" with Show in Finder takes that line's
+    /// place, or an alert says why not (the script's own reason under ours). `to` (tests): skip the panel.
     func exportBundle(uids: [String], to fixed: URL? = nil, done: ((URL?) -> Void)? = nil) {
         let items = model.items(uids: uids).filter { !$0.legacy }
-        guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); done?(nil); return }
+        guard !items.isEmpty, Scripts.canWrite, !bundling else { NSSound.beep(); done?(nil); return }
         let one = Set(items.map(\.projectID)).count == 1
         let name = HandoffBundle.fileName(project: one ? items[0].projectName : nil, count: items.count, chinese: Loc.isChinese)
         let write: (URL) -> Void = { [weak self] url in
             emit(["event": "bundle_export", "items": items.count, "path": url.path])
+            self?.bundling = true
+            let packing = T("main.bundle.packing", TP("main.items.count", items.count))
+            if let island = AppEnvironment.island {
+                island.toast(packing, key: "bundle", icon: nil, seconds: 300, actionTitle: nil, action: nil)
+            } else {
+                self?.window?.subtitle = packing
+            }
             Scripts.call("export_local.py", ["bundle", "--items"] + items.map(\.uid) + ["-o", url.path, "--lang", Loc.isChinese ? "zh" : "en"],
                          timeout: 300) { r in
+                self?.bundling = false
+                if AppEnvironment.island == nil { self?.updateTitle() }
                 switch r {
                 case .success(let o):
                     let path = URL(fileURLWithPath: o["path"] as? String ?? url.path)
                     emit(["event": "bundle_exported", "path": path.path, "items": o["items"] ?? 0, "missing": o["missing"] ?? []])
                     let text = T("main.bundle.saved", path.lastPathComponent)
                     if let island = AppEnvironment.island {
-                        island.toast(text, actionTitle: T("action.reveal_in_finder")) { NSWorkspace.shared.activateFileViewerSelecting([path]) }
+                        island.toast(text, key: "bundle", icon: .check, seconds: 8, actionTitle: T("action.reveal_in_finder")) {
+                            NSWorkspace.shared.activateFileViewerSelecting([path])
+                        }
                     } else {
                         appDelegate?.toast(text, icon: .check)
                     }
                     done?(path)
                 case .failure(let f):
                     emit(["event": "bundle_failed", "code": f.code, "error": f.message])
-                    self?.alert(T("main.bundle.failed"), f.localized)
+                    AppEnvironment.island?.dropToasts(key: "bundle")
+                    self?.alert(T("main.bundle.failed"), HandoffBundle.failureText(ours: Self.errorSentence(f.code), script: f.message,
+                                                                                  fallback: f.localized))
                     done?(nil)
                 }
             }
@@ -1203,7 +1226,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mCopyInstruction), #selector(mCopyFull):
             return Scripts.canWrite && items.contains { !$0.discarded && !$0.legacy }
         case #selector(mExportBundle):
-            return Scripts.canWrite && items.contains { !$0.legacy }
+            return Scripts.canWrite && !bundling && items.contains { !$0.legacy }
         case #selector(mState(_:)):
             guard Scripts.canWrite, let a = item.representedObject as? String else { return false }
             if a == "back" {

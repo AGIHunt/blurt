@@ -135,6 +135,7 @@
 "main.error.deleted" = "It’s in Discarded. Restore it first.";
 "main.error.cant_edit" = "Can’t edit right now";
 "main.error.generic" = "Something went wrong. The details are in the log.";
+"main.error.io" = "Couldn’t write the file there. Choose another folder.";
 "main.error.bad_key" = "2–5 letters or digits, starting with a letter (IN is taken).";
 "main.error.key_in_use" = "The key can’t change once the project has items.";
 "main.error.key_taken" = "Another project already uses that key.";
@@ -221,6 +222,7 @@
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
 "main.bundle.saved" = "Hand-off bundle saved: %@";
 "main.bundle.failed" = "Couldn’t export the hand-off bundle";
+"main.bundle.packing" = "Packing the hand-off bundle (%@)…";
 "main.menu.kind" = "Kind";
 "main.undo.kind" = "Change Kind";
 "main.menu.move_to" = "Move to Project";

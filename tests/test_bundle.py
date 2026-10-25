@@ -57,7 +57,7 @@ def test_bundle_by_items_is_self_contained(p2):
     out = p2.run("export_local.py", "bundle", "--items", issues[0]["uid"], issues[1]["id"], idea["uid"],
                  issues[0]["uid"], "-o", out_dir, "--lang", "en")
     assert out["ok"] and out["items"] == 3  # a REF given twice counts once
-    assert out["name"] == f"checkout-web-{TODAY}-3-items.zip" and Path(out["path"]) == out_dir / out["name"]
+    assert out["name"] == f"checkout-web-{TODAY}-3-items.zip" and Path(out["path"]) == out_dir.resolve() / out["name"]
     assert out["kinds"] == {"issue": 2, "idea": 1} and out["states"] == {"new": 2, "todo": 1}
     assert out["uids"] == [issues[0]["uid"], issues[1]["uid"], idea["uid"]] and out["missing"] == []
     files = read_zip(Path(out["path"]))
@@ -71,7 +71,7 @@ def test_bundle_by_items_is_self_contained(p2):
 
     summary = files[root + "summary.md"].decode()
     assert summary.startswith("# Checkout Web hand-off\n") and f"3 items · Checkout Web · {TODAY}" in summary
-    assert "**By kind**: Issues 2 · Ideas 1" in summary and "**By state**: New 2 · To do 1" in summary
+    assert "**By kind**: 2 issues · 1 idea" in summary and "**By state**: 2 new · 1 to do" in summary
     sec = summary.split(f"## {issues[0]['id']} · Pay button 0 does nothing", 1)[1].split("\n## ", 1)[0]
     assert "**State**: To do · **Kind**: Issue · **Module**: cart · **Owner**: Ana" in sec
     assert "> I click pay and nothing happens (0)" in sec and "1. Open the cart\n2. Click Pay" in sec
@@ -97,7 +97,7 @@ def test_bundle_by_items_is_self_contained(p2):
     assert "**Why**: Fewer steps at checkout" in idea_md and "_user" not in idea_md and "work" not in idea_md
 
     para = out["summary"]
-    assert para.startswith("Checkout Web hand-off: 3 items (Issues 2, Ideas 1; New 2, To do 1).")
+    assert para.startswith("Checkout Web hand-off: 3 items (2 issues, 1 idea; 2 new, 1 to do).")
     assert f"Items: {issues[0]['id']} Pay button 0 does nothing; " in para and "\n" not in para
     # nothing changed state
     assert p2.get(issues[1]["uid"])["state"] == "new" and p2.get(issues[0]["uid"])["state"] == "todo"
@@ -107,7 +107,7 @@ def test_bundle_by_project_filters_and_never_overwrites(p2):
     _, proj, issues, idea, gone = seed(p2, 3)
     first = p2.run("export_local.py", "bundle", "--project", proj["key"], "--lang", "en")
     # the default: the project's store exports/, every kind, all but discarded, by kind then id
-    assert Path(first["path"]).parent == Path(proj["path"]) / ".blurt" / "exports"
+    assert Path(first["path"]).parent == (Path(proj["path"]) / ".blurt" / "exports").resolve()
     assert first["items"] == 4 and gone["uid"] not in first["uids"] and first["uids"][-1] == idea["uid"]
     again = p2.run("export_local.py", "bundle", "--project", proj["key"], "--lang", "en")
     assert again["path"] != first["path"] and again["name"].endswith("~2.zip") and Path(first["path"]).is_file()
@@ -120,7 +120,7 @@ def test_bundle_by_project_filters_and_never_overwrites(p2):
     gone_too = p2.run("export_local.py", "bundle", "--project", proj["id"], "--state", "discarded", "-o", p2.tmp / "c")
     assert gone_too["uids"] == [gone["uid"]] and gone_too["name"].endswith("-1-item.zip")
     exact = p2.run("export_local.py", "bundle", "--items", idea["uid"], "-o", p2.tmp / "picked" / "mine.zip")
-    assert exact["path"] == str(p2.tmp / "picked" / "mine.zip") and "mine/summary.md" in read_zip(Path(exact["path"]))
+    assert exact["path"] == str((p2.tmp / "picked" / "mine.zip").resolve()) and "mine/summary.md" in read_zip(Path(exact["path"]))
 
 
 def test_bundle_zh_and_mixed_projects(p2):
@@ -130,10 +130,10 @@ def test_bundle_zh_and_mixed_projects(p2):
     out = p2.run("export_local.py", "bundle", "--items", zh["uid"], issues[0]["uid"], "-o", p2.tmp / "z", "--lang", "zh")
     assert out["name"] == f"blurt-{TODAY}-2条.zip"  # two projects: no project in the name
     s = read_zip(Path(out["path"]))[f"blurt-{TODAY}-2条/summary.md"].decode()
-    assert s.startswith("# 交接包\n") and "**按类型**：问题 2" in s and "**按状态**：新 1 · 要做 1" in s
+    assert s.startswith("# 交接包\n") and "**按类型**：2 个问题" in s and "**按状态**：新 1 条 · 要做 1 条" in s
     assert "**项目**：官网" in s and "**项目**：Checkout Web" in s  # each item says which project it is from
     assert "**: " not in s  # Chinese labels take the full-width colon
-    assert out["summary"].startswith("交接包：2 条（问题 2；新 1，要做 1）。解压后打开 summary.md")
+    assert out["summary"].startswith("交接包：2 条（2 个问题；新 1 条，要做 1 条）。解压后打开 summary.md")
     one = p2.run("export_local.py", "bundle", "--items", zh["uid"], "-o", p2.tmp / "z1")  # language from the item
     assert one["name"] == f"官网-{TODAY}-1条.zip" and one["summary"].startswith("官网 交接包：1 条")
 
@@ -151,6 +151,68 @@ def test_bundle_errors(p2):
     out = p2.run("export_local.py", "bundle", "--items", issues[0]["uid"], "-o", p2.tmp / "m")
     assert out["ok"] and len(out["missing"]) == 1 and out["missing"][0].startswith(f"{issues[0]['id']}: ")
     assert out["files"] == 1  # the clip
+    # … and the teammate reads that a screenshot is missing, in summary.md and in the item's file
+    files = read_zip(Path(out["path"]))
+    for name in (n for n in files if n.endswith(".md")):
+        assert "_Not included, the file is gone: Frame 1 — the pay button, greyed out_" in files[name].decode(), name
+    # a folder that can't be written, a file where the folder should be: an error line, not a traceback
+    (p2.tmp / "plain.txt").write_text("x")
+    for target in (p2.tmp / "plain.txt", p2.tmp / "plain.txt" / "deeper"):
+        bad = p2.run("export_local.py", "bundle", "--items", issues[0]["uid"], "-o", target, ok=False)
+        assert bad["_exit"] == 1 and bad["code"] == "io" and "can't write" in bad["error"], bad
+    ro = p2.tmp / "readonly"
+    ro.mkdir()
+    ro.chmod(0o500)
+    try:
+        bad = p2.run("export_local.py", "bundle", "--items", issues[0]["uid"], "-o", ro, ok=False)
+        assert bad["code"] == "io" and "Traceback" not in bad.get("_stderr", ""), bad
+    finally:
+        ro.chmod(0o700)
+    assert not list(ro.iterdir())  # no temp file left behind
+
+
+def test_bundle_scrubs_every_local_path_and_returns_an_absolute_path(p2):
+    repo, proj, issues, _, _ = seed(p2, 1)
+    store = Path(proj["path"]) / ".blurt"
+    it = p2.item(proj["id"], title="Crash on start", actual=f"crash in {repo}, log at {store}/logs/x.log",
+                 expected=f"opens; see /Volumes/Data/dumps/core.1 and {p2.tmp}/elsewhere/trace.txt",
+                 code_refs=[f"{repo}/web/src/App.tsx:3", "/tmp/other/file.ts:9", "C:\\Users\\ana\\src\\Pay.tsx:4"],
+                 quote="POST /api/v1/users fails, see https://example.com/Users/a/b")
+    (p2.tmp / "work").mkdir()
+    out = p2.run("export_local.py", "bundle", "--items", it["uid"], "-o", "rel-out", cwd=p2.tmp / "work")
+    assert Path(out["path"]).is_absolute() and Path(out["path"]) == (p2.tmp / "work" / "rel-out" / out["name"]).resolve()
+    files = read_zip(Path(out["path"]))
+    for name, data in files.items():
+        text = data.decode()
+        for bad in (str(repo), str(p2.tmp), str(p2.tmp.resolve()), "/Volumes/", "/tmp/", "/private/", "C:\\"):
+            assert bad not in text, (name, bad)
+    md = next(d.decode() for n, d in files.items() if n.endswith(".md") and "/items/" in n)
+    assert f"crash in {repo.name}, log at logs/x.log" in md  # the project folder by its name; inside it, relative
+    assert "see core.1 and trace.txt" in md
+    assert "`web/src/App.tsx:3`, `file.ts:9`, `Pay.tsx:4`" in md
+    assert "POST /api/v1/users fails, see https://example.com/Users/a/b" in md  # a route and a URL stay as they are
+
+
+def test_bundle_summary_section_always_says_what_the_item_is(p2):
+    _, proj, _, idea, _ = seed(p2, 1)
+    task = p2.item(proj["id"], kind="task", title="Ask Ana about cards", quote="", details="Before Friday's demo")
+    out = p2.run("export_local.py", "bundle", "--items", idea["uid"], task["uid"], "-o", p2.tmp / "s", "--lang", "en")
+    s = next(d.decode() for n, d in read_zip(Path(out["path"])).items() if n.endswith("/summary.md"))
+    sec = s.split(f"## {idea['id']} · Remember the last card", 1)[1].split("\n## ", 1)[0]
+    assert "**Why**: Fewer steps at checkout" in sec
+    assert "**Details**: Before Friday's demo" in s.split(f"## {task['id']}", 1)[1]
+    assert "**By kind**: 1 idea · 1 task" in s and out["summary"].startswith("Checkout Web hand-off: 2 items (1 idea, 1 task;")
+
+
+def test_bundle_names_the_inbox_in_the_bundle_language(p2):
+    zh_ui = p2.home / "config.json"
+    zh_ui.write_text('{"record": {"install_app": false}, "lang": "zh"}')
+    it = p2.item("inbox", title="Something loose")
+    out = p2.run("export_local.py", "bundle", "--project", "inbox", "--lang", "en", "-o", p2.tmp / "i")
+    assert out["name"] == f"unassigned-{TODAY}-1-item.zip" and out["title"] == "Unassigned hand-off", out
+    assert out["uids"] == [it["uid"]]
+    zh = p2.run("export_local.py", "bundle", "--project", "inbox", "--lang", "zh", "-o", p2.tmp / "i")
+    assert zh["name"] == f"未归类-{TODAY}-1条.zip"
 
 
 def test_bundle_name_and_slug():

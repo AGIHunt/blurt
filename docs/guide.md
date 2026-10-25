@@ -238,8 +238,11 @@ Select one or more items and choose how they get done:
 - **Export Hand-off Bundle…** — for a person rather than an agent: one `.zip` with a summary (counts by kind and
   state, then each item with its state, what you said, the steps, suspected code and screenshots), a file per item,
   and the screenshots and clips. It uses relative paths only, so it opens on a teammate's computer. Pick where to
-  save it; it is named after the project, the date and the number of items. The items keep their state. It is in the
-  Item menu, the context menu, the **Hand Off** toolbar menu and `⌘K`.
+  save it; it is named after the project, the date and the number of items. While it packs, the notch says so; then
+  it says where it saved it, with **Show in Finder**. The items keep their state. Paths on your Mac don't go into it:
+  a path inside the project becomes relative, any other one keeps only the file name, and a screenshot that is no
+  longer on disk is listed as not included. It is in the Item menu, the context menu, the **Hand Off** toolbar menu
+  and `⌘K`.
 
 To send items somewhere — a Slack channel, a Feishu group, Linear, GitHub, Notion — ask your agent, for example
 "Bundle the checkout issues and post them to #web in Slack". It packs them (the `bundle_items` tool) and sends them
@@ -658,7 +661,9 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - **复制指令**：一句话的指令，指向一份交接单，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接单本身。
 - **导出交接包…**：给人看，而不是给 Agent：一个 `.zip`，里面有概要（按类型、按状态的条数，然后每一条的状态、你的原话、复现步骤、
   疑似代码位置和截图）、每条一个文件，以及截图和录屏片段。里面只用相对路径，同事的电脑上也能打开。选好保存位置即可，文件名是
-  项目、日期和条数。条目的状态不会变。「条目」菜单、右键菜单、工具栏的「**交给 Agent**」菜单和 `⌘K` 里都有。
+  项目、日期和条数。打包时刘海会显示进度，完成后告诉你存在哪里，并带「**在访达中显示**」。条目的状态不会变。你这台 Mac 上的路径
+  不会写进去：项目里的路径变成相对路径，其他路径只留文件名；已经找不到的截图会注明没有打包进来。「条目」菜单、右键菜单、
+  工具栏的「**交给 Agent**」菜单和 `⌘K` 里都有。
 
 想把条目发到别处——Slack 频道、飞书群、Linear、GitHub、Notion——直接跟 Agent 说，比如「把 A 模块的问题打包发给飞书群里的张三」。
 它会打包（`bundle_items` 工具），再用它自己已有的工具发出去；口喷鸡本身不接任何第三方服务。「设置 → Agent → 可以这样跟 Agent 说」

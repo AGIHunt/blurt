@@ -295,8 +295,9 @@ def mark_fixed(uid: str, state: str = "fixed", commit: str | None = None, pr: st
     "every field, frames/ and clips/), relative paths only, so it opens on a teammate's machine. Named "
     "\"<project>-<date>-<n items>.zip\". Pass uids (from search_items), or a filter: project (+ state, kind; default "
     "every state but discarded). Grouping is yours: for \"the A module's issues for Zhang San\" pick those items and "
-    "call once per group; title names the bundle (e.g. \"Payment issues for Zhang San\"). out_dir = a folder or a "
-    "path ending in .zip (default: the project's .blurt/exports/). Returns the zip's path and `summary`, one "
+    "call once per group; title names the bundle (e.g. \"Payment issues for Zhang San\"). out_dir = an absolute "
+    "folder or path ending in .zip (default: the project's .blurt/exports/). Returns the zip's absolute path and "
+    "`summary`, one "
     "paragraph to paste next to the file. Blurt sends nothing anywhere: post or upload the zip with the tool you "
     "already have for that destination (Slack, Feishu/Lark, Notion, Google Drive, Linear, GitHub, email…), after the "
     "user confirms where. No item changes state."))

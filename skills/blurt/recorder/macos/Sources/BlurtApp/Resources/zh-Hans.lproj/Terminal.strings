@@ -216,7 +216,7 @@
 "agents.move_up" = "往前挪";
 "agents.connected" = "skill + MCP";
 "agents.connected.help" = "这个 Agent 里装好了 blurt skill 和 MCP：能查找、读取和更新你的条目。";
-"agents.not_connected" = "还没装 skill 和 MCP";
+"agents.not_connected.help" = "这个 Agent 里还没装 blurt skill 和 MCP。点「连接…」安装，装之前先列出要改的地方。";
 "agents.ask.header" = "可以这样跟 Agent 说";
 "agents.ask.footer" = "发到哪里，用的是 Agent 自己已有的工具：Slack、飞书、Linear、GitHub、邮件。口喷鸡给它条目；别人也要看时，再给一个交接包（一个带截图的 .zip）。";
 "agents.ask.1" = "把 A 模块的问题打包发给飞书群里的张三";

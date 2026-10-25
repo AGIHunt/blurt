@@ -217,7 +217,9 @@ other destination goes through the tools you already have.
   `export_local.py bundle --items <uid|id> … [-o DIR|FILE.zip] [--title "…"]`, or `--project <key> [--state todo …]
   [--kind issue …]` (MCP: `bundle_items`). One `.zip` named `<project>-<date>-<n items>.zip`: `summary.md` (counts by
   kind and state; per item its state, quote, steps, suspected code, screenshots inline), `items/*.md` (every field),
-  `frames/`, `clips/` — relative paths only, so it opens on a teammate's machine. It prints `summary`, one paragraph
+  `frames/`, `clips/` — relative paths only, so it opens on a teammate's machine (paths in the text are made
+  relative or cut to the file name; a frame no longer on disk is named as not included). It prints the zip's absolute
+  `path` and `summary`, one paragraph
   to post with the file. Grouping is your judgement, not a rule: "把 A 模块的问题打包发给飞书群里的张三" → find A's
   issues (`search_items` / `index.py search`, read their `module`, `owner`, titles), one bundle per group with a
   `--title` that says who it is for, then send it with the user's own tool for that chat. Bundling changes no state.

@@ -7,7 +7,8 @@
 // an agent (agents.py install: a --dry-run preview first, applied only after the user confirms) and is offered only
 // while they are missing (a dry run per installed agent says so). The current project's default agent for sessions
 // (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart. Each installed
-// agent says whether the blurt skill + MCP are in it ("Skill + MCP", or "No skill or MCP yet" with Connect…).
+// agent says whether the blurt skill + MCP are in it: a "Skill + MCP" badge, or Connect… whose tooltip says they are
+// not in it yet (no grey label repeated down the list).
 // "Ask your agent" (agents.ask) ends the page: three requests in plain words, each copyable — sending items anywhere
 // (Slack, Feishu, Linear…) is the agent's job with its own tools, so there are no connector settings here; this is
 // where the old Export pane's links land (SettingsCatalog.moved).
@@ -404,9 +405,12 @@ struct AgentsPane: View {
                 if a.state == "checking" { ProgressView().controlSize(.mini) }
                 // the blurt skill + MCP: Connect only while they are missing (manual agents: always offered)
                 if (a.installed && m.connected[a.id] == false) || !a.headless {
-                    if a.headless { Text(TL("agents.not_connected")).font(.caption).foregroundStyle(.secondary) }
+                    // not connected yet: said on the button's tooltip, not as one more grey label on every row
                     if m.installing == a.id { ProgressView().controlSize(.small) }
-                    else { Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help")) }
+                    else {
+                        Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small)
+                            .help(TL(a.headless ? "agents.not_connected.help" : "agents.install.help"))
+                    }
                 }
                 if a.headless && a.installed {
                     if m.testing == a.id { ProgressView().controlSize(.small) }

@@ -189,7 +189,14 @@ B = {
            "para": "{title}: {n} ({kinds}; {states}). Open summary.md in the zip: each item with its state, what was "
                    "said, the steps, suspected code and screenshots. {list}",
            "list": "Items: {items}.", "more": "and {k} more", "sep": "; ", "comma": ", ", "colon": "**: ",
-           "kinds": {"issue": "Issues", "idea": "Ideas", "note": "Notes", "task": "Tasks"},
+           "missing": "Not included, the file is gone: {files}",
+           # counts: "6 issues", "1 idea"; "5 new", "2 to do" — (one, many) per kind, one form per state
+           "kind_n": {"issue": ("{n} issue", "{n} issues"), "idea": ("{n} idea", "{n} ideas"),
+                      "note": ("{n} note", "{n} notes"), "task": ("{n} task", "{n} tasks")},
+           "kind_other": ("{n} {kind}", "{n} {kind}"),
+           "state_n": "{n} {state}",
+           "states_low": {"new": "new", "todo": "to do", "handed_off": "handed off", "in_progress": "in progress",
+                          "to_verify": "to verify", "done": "done", "wontfix": "won't do", "discarded": "discarded"},
            "kind": {"issue": "Issue", "idea": "Idea", "note": "Note", "task": "Task"},
            "states": {"new": "New", "todo": "To do", "handed_off": "Handed off", "in_progress": "In progress",
                       "to_verify": "To verify", "done": "Done", "wontfix": "Won't do", "discarded": "Discarded"}},
@@ -201,7 +208,13 @@ B = {
            "para": "{title}：{n}（{kinds}；{states}）。解压后打开 summary.md：每一条都有状态、原话、复现步骤、疑似代码位置和截图。"
                    "{list}",
            "list": "包括：{items}。", "more": "等 {k} 条", "sep": "；", "comma": "，", "colon": "**：",
-           "kinds": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
+           "missing": "没有打包进来，文件已经不在了：{files}",
+           "kind_n": {"issue": ("{n} 个问题", "{n} 个问题"), "idea": ("{n} 个想法", "{n} 个想法"),
+                      "note": ("{n} 条笔记", "{n} 条笔记"), "task": ("{n} 条待办", "{n} 条待办")},
+           "kind_other": ("{n} 条{kind}", "{n} 条{kind}"),
+           "state_n": "{state} {n} 条",
+           "states_low": {"new": "新", "todo": "要做", "handed_off": "已交给 Agent", "in_progress": "进行中",
+                          "to_verify": "待验证", "done": "完成", "wontfix": "不做", "discarded": "已丢弃"},
            "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
            "states": {"new": "新", "todo": "要做", "handed_off": "已交给 Agent", "in_progress": "进行中",
                       "to_verify": "待验证", "done": "完成", "wontfix": "不做", "discarded": "已丢弃"}},
@@ -211,6 +224,11 @@ BUNDLE_SKIP = SKIP | {"id", "title", "kind", "frames", "clip", "quote", "time", 
                       "fix", "fix_history", "source_session", "project_reason", "handoff", "note", "steps",
                       "code_refs", "summary", "actual", "expected", "module", "owner", "severity", "type", "due"}
 LEAD = ("summary", "actual", "expected")
+# absolute paths left after the known roots are made relative: under these top folders it is this machine's file
+# (a web route like "/api/v1/users" is not); keep only its last part
+LOCAL_PATH = re.compile(r"(?<![\w:/.~-])/(?:Users|home|private|tmp|var|Volumes|mnt|media|root|opt|srv)"
+                        r"(?:/[^\s/'\"`<>()\[\]|]+){2,}")
+WIN_PATH = re.compile(r"(?<![\w])[A-Za-z]:\\(?:[^\s\\'\"`<>()\[\]|]+\\)+([^\s\\'\"`<>()\[\]|]+)")
 UNSAFE = re.compile(r"[^\w.-]+")
 
 
@@ -289,20 +307,26 @@ def _counts(items: list[dict], key, order: list[str]) -> list[tuple[str, int]]:
 
 
 class _Scrub:
-    """This machine's paths, made to mean something elsewhere: a project's folder → relative to it (code refs), the
-    home folder → ~. Applied to every text the bundle writes, so no absolute local path leaves in it."""
+    """This machine's paths, made to mean something elsewhere. Applied to every text the bundle writes, so no
+    absolute local path leaves in it: a path inside a project's folder → relative to it (code refs); the folder on its
+    own → its name; the home folder → ~; any other path on this machine (/Volumes/…, /tmp/…, C:\\…) → its last
+    part (file.ts:3)."""
 
     def __init__(self, items: list[dict]):
         names = items_mod._project_names()
         roots = {str(Path(r)) for i in items for r in ((names.get(i.get("project")) or {}).get("path"), i.get("store"))
                  if r}
-        self.roots = sorted(roots, key=len, reverse=True)
+        self.roots = [(r, re.compile(re.escape(r) + r"(?![\w.-])")) for r in sorted(roots, key=len, reverse=True)
+                      if len(r) > 1]
         self.home = str(Path.home())
 
     def __call__(self, s: str) -> str:
-        for r in self.roots:
-            s = s.replace(r + os.sep, "")
-        return s.replace(self.home + os.sep, "~" + os.sep) if len(self.home) > 1 else s
+        for r, bare in self.roots:
+            s = bare.sub(lambda _m, r=r: Path(r).name, s.replace(r + os.sep, ""))
+        if len(self.home) > 1:
+            s = s.replace(self.home + os.sep, "~" + os.sep)
+        s = LOCAL_PATH.sub(lambda m: m.group(0).rsplit("/", 1)[1], s)
+        return WIN_PATH.sub(lambda m: m.group(1), s)
 
 
 def _md(v) -> str:
@@ -323,7 +347,7 @@ def _head(i: dict, t: dict, L: dict, show_project: bool) -> str:
             f"**{L['kind']}**: {t['kind'].get(i.get('kind'), i.get('kind') or '')}"]
     meta += [f"**{L[k]}**: {_md(i[k])}" for k in ("module", "owner", "severity", "type", "due") if _md(i.get(k))]
     if show_project and (i.get("_project") or {}).get("name"):
-        meta.append(f"**{t['project']}**: {i['_project']['name']}")
+        meta.append(f"**{t['project']}**: {i['_project']['name']}")  # bundle() names the inbox in its language
     if i.get("time") and text(i["time"]):
         meta.append(f"**{L['time']}**: {text(i['time'])}")
     url = i["source"].get("url") if isinstance(i.get("source"), dict) else None
@@ -349,7 +373,7 @@ def _refs(i: dict, L: dict) -> list[str]:
 
 
 def _media(m: dict, t: dict, up: str) -> list[str]:
-    out = []
+    out = [f"_{t['missing'].format(files=t['comma'].join(m['missing']))}_", ""] if m.get("missing") else []
     for n, (rel, f) in enumerate(m.get("frames", []), 1):
         cap = str(f.get("caption") or "").replace("[", "(").replace("]", ")").replace("\n", " ").strip()
         out += [f"![{t['frame']} {n}{' — ' + cap if cap else ''}](<{up}{rel}>)", ""]
@@ -362,17 +386,24 @@ def _title(i: dict) -> str:
     return " · ".join(x for x in (str(i.get("id") or i["uid"]), _md(i.get("title"))) if x)
 
 
+def _own(i: dict, L: dict) -> list[list[str]]:
+    """The lens's own fields, in the item's order: why, inspired_by, next_steps, details, a custom lens's …"""
+    return [[f"**{L.get(k, k)}**", _md(v), ""] if isinstance(v, list) else [f"**{L.get(k, k)}**: {_md(v)}", ""]
+            for k, v in i.items() if k not in BUNDLE_SKIP and not k.startswith("_") and _md(v)]
+
+
 def summary_section(i: dict, t: dict, L: dict, m: dict, file: str, show_project: bool) -> list[str]:
-    return ([f"## {_title(i)}", "", _head(i, t, L, show_project), ""] + _lead(i, L) + _refs(i, L) + _media(m, t, "")
-            + [f"[{t['full']}](<items/{file}>)", ""])
+    # an item with none of summary / actual / expected (an idea with only a "why", a task's "details") still says
+    # what it is about: its first own field
+    own = [] if any(_md(i.get(k)) for k in LEAD) else (_own(i, L) or [[]])[0]
+    return ([f"## {_title(i)}", "", _head(i, t, L, show_project), ""] + _lead(i, L) + own + _refs(i, L)
+            + _media(m, t, "") + [f"[{t['full']}](<items/{file}>)", ""])
 
 
 def item_file(i: dict, t: dict, L: dict, m: dict) -> str:
     out = [f"# {_title(i)}", "", _head(i, t, L, True), ""] + _lead(i, L)
-    for k, v in i.items():  # the lens's own fields: why, inspired_by, next_steps, details, a custom lens's …
-        if k in BUNDLE_SKIP or k.startswith("_") or not _md(v):
-            continue
-        out += [f"**{L.get(k, k)}**", _md(v), ""] if isinstance(v, list) else [f"**{L.get(k, k)}**: {_md(v)}", ""]
+    for lines in _own(i, L):
+        out += lines
     out += _refs(i, L)
     if i.get("tags"):
         out += [" ".join(f"`#{x}`" for x in i["tags"]), ""]
@@ -402,12 +433,19 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
         raise BundleError("no items to bundle", "no_items")
     lang, day = _lang(items, lang), day or date.today()
     t, L = B[lang], LABELS[lang]
+    import projects  # noqa: PLC0415
+    for i in items:  # "Unassigned" / "未归类" follows the UI language; the bundle says it in its own
+        if i.get("project") == items_mod.st.INBOX and isinstance(i.get("_project"), dict):
+            i["_project"] = {**i["_project"], "name": projects.INBOX_NAMES.get(lang, projects.INBOX_NAMES["en"])}
     pids = {i.get("project") for i in items}
     pname = (items[0].get("_project") or {}).get("name") if len(pids) == 1 else None
     title = (title or "").strip() or (t["title"].format(project=pname) if pname else t["title_bare"])
     count = t["n_item" if len(items) == 1 else "n_items"].format(n=len(items))
-    path = _target(Path(out).expanduser(), bundle_name(pname, len(items), lang, day))
-    path.parent.mkdir(parents=True, exist_ok=True)
+    path = _target(Path(out).expanduser().resolve(), bundle_name(pname, len(items), lang, day))
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise BundleError(f"can't write {path}: {e.strerror or e}", "io") from None
     root, paths = path.stem, _Scrub(items)
 
     def scrub(s: str) -> str:  # no local paths; and "**状态**：" in Chinese, with its own colon
@@ -431,11 +469,13 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
     files: dict[str, str] = {}
     for i in items:
         ident = slug(str(i.get("id") or ""), i["uid"], lower=False)
-        m = media.setdefault(i["uid"], {"frames": []})
+        m = media.setdefault(i["uid"], {"frames": [], "missing": []})
         for n, f in enumerate([f for f in i.get("frames") or [] if isinstance(f, dict) and f.get("path")], 1):
             src = Path(f["path"])
             if not src.is_file():
                 missing.append(f"{ident}: {src.name}")
+                cap = str(f.get("caption") or "").replace("\n", " ").strip()
+                m["missing"].append(f"{t['frame']} {n}{' — ' + cap if cap else ''}")
                 continue
             m["frames"].append(("frames/" + unique(f"{ident}-{n}{src.suffix.lower() or '.png'}"), f))
             copies.append((src, m["frames"][-1][0]))
@@ -446,15 +486,16 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
                 copies.append((src, m["clip"]))
             else:
                 missing.append(f"{ident}: {src.name}")
+                m["missing"].append(t["clip"])
         files[i["uid"]] = unique("items/" + slug(Path(i.get("path") or "").stem, ident, lower=False) + ".md")[len("items/"):]
 
     kinds = _counts(items, lambda i: i.get("kind") or "", KIND_ORDER)
     states = _counts(items, state_of, list(STATES))
-    kinds_t = [(t["kinds"].get(k, k), n) for k, n in kinds]
-    states_t = [(t["states"].get(k, k), n) for k, n in states]
+    kinds_t = [t["kind_n"].get(k, t["kind_other"])[n != 1].format(n=n, kind=k) for k, n in kinds]
+    states_t = [t["state_n"].format(n=n, state=t["states_low"].get(k, k)) for k, n in states]
     md = [f"# {title}", "", " · ".join([count, *([pname] if pname else []), day.isoformat()]), "",
-          f"**{t['by_kind']}**: " + " · ".join(f"{k} {n}" for k, n in kinds_t), "",
-          f"**{t['by_state']}**: " + " · ".join(f"{k} {n}" for k, n in states_t), "", t["read"], ""]
+          f"**{t['by_kind']}**: " + " · ".join(kinds_t), "",
+          f"**{t['by_state']}**: " + " · ".join(states_t), "", t["read"], ""]
     for i in items:
         md += summary_section(i, t, L, media[i["uid"]], files[i["uid"]], len(pids) > 1)
     md += [f"_{t['made'].format(date=day.isoformat())}_", ""]
@@ -466,17 +507,23 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
             for i in items:
                 z.writestr(f"{root}/items/{files[i['uid']]}", scrub(item_file(i, t, L, media[i["uid"]])))
             for src, rel in copies:  # pictures and video are compressed already
-                z.write(src, f"{root}/{rel}", compress_type=zipfile.ZIP_STORED)
+                try:
+                    z.write(src, f"{root}/{rel}", compress_type=zipfile.ZIP_STORED)
+                except OSError as e:
+                    raise BundleError(f"can't read {src.name}: {e.strerror or e}", "unreadable") from None
         os.replace(tmp, path)
+    except OSError as e:  # a folder we may not write to, a file where the folder should be, a full disk
+        raise BundleError(f"can't write {path}: {e.strerror or e}", "io") from None
     finally:
-        if tmp.exists():
-            tmp.unlink()
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
 
     shown = [_title(i).replace(" · ", " ", 1) for i in items[:5]]
     if len(items) > 5:
         shown.append(t["more"].format(k=len(items) - 5))
-    para = t["para"].format(title=title, n=count, kinds=t["comma"].join(f"{k} {n}" for k, n in kinds_t),
-                            states=t["comma"].join(f"{k} {n}" for k, n in states_t),
+    para = t["para"].format(title=title, n=count, kinds=t["comma"].join(kinds_t), states=t["comma"].join(states_t),
                             list=t["list"].format(items=t["sep"].join(shown)))
     return {"ok": True, "path": str(path), "name": path.name, "title": title, "items": len(items),
             "kinds": dict(kinds), "states": dict(states), "uids": [i["uid"] for i in items], "files": len(copies),

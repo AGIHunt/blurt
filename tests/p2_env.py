@@ -155,9 +155,10 @@ class P2:
                         HOME=str(tmp / "userhome"), PATH=f"{self.bin}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin",
                         LANG="en_US.UTF-8")
 
-    def run(self, script: str, *args, ok: bool = True, input: str | None = None, timeout: float = 60) -> dict:
+    def run(self, script: str, *args, ok: bool = True, input: str | None = None, timeout: float = 60,
+            cwd: Path | None = None) -> dict:
         p = subprocess.run([sys.executable, str(self.scripts / script), *map(str, args)], capture_output=True,
-                           text=True, encoding="utf-8", env=self.env, input=input, timeout=timeout)
+                           text=True, encoding="utf-8", env=self.env, input=input, timeout=timeout, cwd=cwd)
         lines = [ln for ln in p.stdout.splitlines() if ln.startswith("{")]
         out = json.loads(lines[-1]) if lines else {"_stdout": p.stdout, "_stderr": p.stderr}
         if ok:

@@ -8,7 +8,9 @@ user's agent (you) already has. Ask once where things go, then remember it in `.
 - **Hand-off bundle** (a teammate, a chat, anything that takes a file): `export_local.py bundle --items <uid|id> …`
   or `--project <key> [--state …] [--kind …]`, `[-o DIR|FILE.zip] [--title "…"]` (MCP: `bundle_items`). One
   self-contained `.zip`, `<project>-<date>-<n items>.zip`: `summary.md` + `items/*.md` + `frames/` + `clips/`, relative
-  paths only. The JSON it prints has `path` and `summary` (one paragraph to post with the file). Group by meaning
+  paths only (local paths in the text become relative, or just the file name). The JSON it prints has `path`
+  (absolute) and `summary` (one paragraph to post with the file); an error is `{"ok": false, "code", "error"}`
+  (`io`: the folder can't be written). Group by meaning
   (module, owner, what the user asked for) and make one bundle per group; bundling changes no item's state.
 - **Feishu / Lark** (Base, docs, a group chat): with lark-cli or a Feishu MCP if the session has one. Rows: map
   fields by meaning (异常描述 / 所属模块 / 预期效果与实际效果 / 复现步骤 / 截图或视频 / 对应 owner for issues) and upload

@@ -371,7 +371,7 @@
       card: (n, t) => `第 ${n} 张截图${t ? "：" + t : ""}。单击复制，双击改备注`, del: "扔掉这张",
       q: (t) => `「${t}」`,
       st: (n, k, m) => `整理中… 已出 ${n} 条，截图补充中 ${k}/${m}`, done: "✓ 整理完了",
-      end: (k, d) => `审完了：保留 ${k} 条，丢弃 ${d} 条。接下来导出到飞书、GitHub，或者直接说「帮我改掉」。`,
+      end: (k, d) => `审完了：保留 ${k} 条，丢弃 ${d} 条。接下来可以让 Agent 记到飞书或 GitHub，或者打包成交接包，也可以直接说「帮我改掉」。`,
       rules: [[/记一下|记得|待办|todo|要找|找.{1,6}要/i, "task"], [/没反应|不对|错|bug|崩|卡住|丑|坏|不了|没用|看不清/i, "issue"], [/要|应该|放个|加个|可以|想|最好|如果/, "idea"]],
     } : {
       lines: [
@@ -394,7 +394,7 @@
       card: (n, t) => `Screenshot ${n}${t ? ": " + t : ""}. Click to copy, double-click to edit the note`, del: "Toss this one",
       q: (t) => `“${t}”`,
       st: (n, k, m) => `Sorting… ${n} items so far, frames ${k}/${m}`, done: "✓ all sorted",
-      end: (k, d) => `Done: ${k} kept, ${d} dropped. Next, export to Lark or GitHub, or just say “fix these”.`,
+      end: (k, d) => `Done: ${k} kept, ${d} dropped. Next, ask your agent to file them in Lark or GitHub, bundle them for a teammate, or just say “fix these”.`,
       rules: [[/\b(todo|to-do|remember|note to self|ask|need to)\b/i, "task"], [/nothing happens|broken|bug|wrong|doesn'?t|does not|crash|ugly|can'?t|unreadable/i, "issue"], [/should|would be nice|could|idea|maybe|let'?s|want|how about/i, "idea"]],
     };
     const classify = (t) => (L.rules.find(([r]) => r.test(t)) || [, "note"])[1];
