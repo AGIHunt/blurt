@@ -6,7 +6,9 @@
 //   items.py migrate --all   v1/v2 sessions (items.json, no batch.json) → Markdown stores (K1; idempotent)
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
 //   transcribe.py auto --apply   speech models for this Mac (K9); after a hardware change that wants a download, one
-//                            quiet line in the island offers Settings → Speech (once: --apply records the hardware)
+//                            quiet line in the island offers Settings → Speech — pending until it was seen (a launch
+//                            whose one line went to something else offers it again), dropped once the model is in
+//   the skill's contract     a mismatch also stays in the menu-bar menu and Settings → General while it lasts
 //   Snapper.expireTaken      captures dragged out into another app 7+ days ago (Recently Taken) go to the Trash —
 //                            also hourly while the app runs
 //                            (BlurtCore TakenCaptures; the app's own, no script)
@@ -55,19 +57,21 @@ enum Housekeeping {
         let sig = "\(app)/\(skill ?? -1)"
         guard Config.shared["app.contract_warned"] as? String != sig else { return }
         emit(["event": "skill_contract", "skill": skill ?? -1, "app": SkillContract.expected])
-        var t: Island.Toast
-        switch m {
-        case .skillOlder:
-            t = Island.Toast(text: T("app.contract.skill_older"), actionTitle: T("app.contract.how")) {
-                NSWorkspace.shared.open(Help.guideURL(section: "update"))
-            }
-        case .appOlder:
-            t = Island.Toast(text: T("app.contract.app_older"), actionTitle: Updater.shared.canCheck ? T("app.menu.updates") : nil) {
-                Updater.shared.checkForUpdates(nil)
-            }
-        }
+        let text = T(m.appIsOlder ? "app.contract.app_older" : "app.contract.skill_older")
+        let action = m.appIsOlder && Updater.shared.canCheck ? T("app.menu.updates") : T("app.contract.how")
+        var t = Island.Toast(text: text, actionTitle: action) { contractHelp() }
         t.seconds = 8
+        // ranked above the welcome (it breaks things); while it lasts, the menu-bar menu and Settings → General say so too
         LaunchMessages.shared.post(.skill, t) { Config.shared.set("app.contract_warned", sig) }   // said once it was seen
+    }
+
+    /// The way to fix a skill / app mismatch: a newer app from the updater when it can check, else the guide's
+    /// "Updating" section (a local build updates with `record.py build`, which the guide spells out).
+    static func contractHelp() {
+        let m = SkillContract.check(skill: SkillContract.skillVersion())
+        emit(["event": "skill_contract_help", "mismatch": m.map { "\($0)" } ?? NSNull()])
+        if m?.appIsOlder == true && Updater.shared.canCheck { Updater.shared.checkForUpdates(nil) }
+        else { NSWorkspace.shared.open(Help.guideURL(section: "update")) }
     }
 
     /// Settings → Storage's "Delete videos automatically" (off unless the user chose an age): organized recordings'
@@ -84,7 +88,8 @@ enum Housekeeping {
 
     /// The candidates' videos to the Trash. Each session is stamped a recording first (VideoRetention.stamp), so with
     /// its video gone it doesn't turn into a snap batch, and stamped video_removed for each video that went.
-    static func trashVideos(_ c: [VideoRetention.Candidate], auto: Bool, then: (() -> Void)? = nil) {
+    /// `then` gets what moved (original → where it is in the Trash), for Undo.
+    static func trashVideos(_ c: [VideoRetention.Candidate], auto: Bool, then: (([URL: URL]) -> Void)? = nil) {
         for s in c { VideoRetention.stamp(s.session) }
         NSWorkspace.shared.recycle(c.flatMap(\.files)) { done, _ in
             let gone = Set(done.keys.map { $0.standardizedFileURL.path })
@@ -94,25 +99,35 @@ enum Housekeeping {
             }
             emit(["event": "videos_deleted", "auto": auto, "sessions": c.count, "files": done.count,
                   "bytes": c.reduce(Int64(0)) { $0 + $1.bytes }])
-            then?()
+            then?(done)
         }
     }
 
     /// K9: pick the speech models for this machine. Skipped until onboarding is done (it downloads the first model);
     /// the hardware is recorded only then, so the first real launch afterwards may suggest a better model.
+    /// The suggestion stays pending (config app.model_suggest_pending) until its line was seen — a launch whose line
+    /// went to something more urgent offers it again next time, as long as the recommended model is still missing.
+    /// `--apply` records the hardware, so `hardware_changed` is true only once: the pending flag is what remembers.
     static func speechModels() async {
         guard !Onboarding.needed, (try? ScriptRunner.shared.scriptURL("transcribe.py")) != nil else { return }
         guard let r = try? await ScriptRunner.shared.json("transcribe.py", ["auto", "--apply"], timeout: 120),
-              r["ok"] as? Bool == true, r["hardware_changed"] as? Bool == true,
-              let need = r["needs_download"] as? [[String: Any]], !need.isEmpty else { return }
+              r["ok"] as? Bool == true else { return }
+        let need = r["needs_download"] as? [[String: Any]] ?? []
+        let pending = Config.shared["app.model_suggest_pending"] != nil
+        guard !need.isEmpty else {
+            if pending { Config.shared.set("app.model_suggest_pending", nil) }      // it came down meanwhile
+            return
+        }
+        guard r["hardware_changed"] as? Bool == true || pending else { return }
+        let models = need.compactMap { $0["model"] as? String }
         let mb = need.compactMap { ($0["size_mb"] as? NSNumber)?.doubleValue }.reduce(0, +)
-        let size = ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file)
+        Config.shared.set("app.model_suggest_pending", ["models": models, "size_mb": mb])
         await MainActor.run {
-            emit(["event": "asr_suggest", "models": need.compactMap { $0["model"] as? String }, "size_mb": mb])
+            emit(["event": "asr_suggest", "models": models, "size_mb": mb, "again": pending])
             guard AppEnvironment.island != nil else { return }
-            LaunchMessages.shared.post(.model, Island.Toast(text: T("main.speech.recommended", size), actionTitle: T("main.speech.recommended.action")) {
+            LaunchMessages.shared.post(.model, Island.Toast(text: T("main.speech.recommended", modelSize(mb)), actionTitle: T("main.speech.recommended.action")) {
                 AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue)
-            })
+            }) { Config.shared.set("app.model_suggest_pending", nil) }        // seen: not again
         }
     }
 

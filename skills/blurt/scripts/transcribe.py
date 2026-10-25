@@ -28,7 +28,10 @@ video, so any backend (even ones without timestamps) works.
   transcribe.py auto   [--apply]                     pick a model per purpose for this machine (asr.models);
                                                      lists what still has to be downloaded
   transcribe.py models                               the registry (asr_models.json) + installed, measured, selected
-  transcribe.py setup  --model ID [--use all|batch,live,note]   download a model (progress on stderr)
+  transcribe.py setup  --model ID [--use all|batch,live,note] [--parent PID]   download a model (progress on
+                                                     stderr): one at a time per model (a second one waits), a
+                                                     partial file continued (HTTP Range), a mirror folder installed
+                                                     only once every file of its manifest is in; ends with --parent
   transcribe.py bench  [AUDIO] [--model ID] [--languages zh,en]  real-time factor, peak memory, CPU load and (on the
                                                      built-in `say` samples) the error rate per language
                                                      → $BLURT_HOME/asr-bench.json
@@ -85,6 +88,8 @@ import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      load_json, probe_duration, save_json, serve_exit_reason, serve_said, update_global_config,
                      use_system_certs)
+from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
+                     safetensors_complete, watch_parent)
 
 use_system_certs()
 
@@ -684,17 +689,15 @@ def _download_url(urls: list[str], dest: Path, label: str) -> Path:
     last = None
     for url in urls:
         try:
-            print(f"downloading {label} <- {url}", file=sys.stderr, flush=True)
-            tmp = dest.with_suffix(dest.suffix + ".part")
-            with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "blurt"}), timeout=30) as r, \
-                    open(tmp, "wb") as f:
-                total, done, t0 = int(r.headers.get("content-length") or 0), 0, time.time()
-                while chunk := r.read(1 << 20):
-                    f.write(chunk)
-                    done += len(chunk)
-                    if total and time.time() - t0 > 1:
-                        print(f"  {done >> 20}/{total >> 20} MB", file=sys.stderr, flush=True)
-                        t0 = time.time()
+            serve_said(f"downloading {label} <- {url}")
+            tmp = dest.with_suffix(dest.suffix + ".part")      # a partial one from last time is continued (Range)
+            t0 = [time.time()]
+
+            def progress(done: int, total: int) -> None:
+                if total and time.time() - t0[0] > 1:
+                    serve_said(f"  {done >> 20}/{total >> 20} MB")
+                    t0[0] = time.time()
+            fetch(url, tmp, progress=progress, timeout=30)
             os.replace(tmp, dest)
             return dest
         except Exception as e:  # noqa: BLE001 — try the next mirror
@@ -748,7 +751,7 @@ def model_path(m: dict) -> Path | None:
         return d if d.is_dir() and all(p.exists() for p in need) else None
     if inst.get("hf"):
         own = MODELS_DIR / "asr" / inst["hf"].split("/")[-1]       # a ModelScope download (the mirror)
-        if own.is_dir() and (own / "config.json").exists() and any(own.glob("*.safetensors")) and not any(own.glob("*.part")):
+        if folder_complete(own, legacy=_own_legacy_complete):
             return own
         snap = hf_snapshot(inst["hf"])
         if snap is None and m["backend"] == "faster-whisper":  # older Blurt downloaded it under models/faster-whisper
@@ -758,6 +761,11 @@ def model_path(m: dict) -> Path | None:
                 snap = snap.parent if snap else None
         return snap
     return None
+
+
+def _own_legacy_complete(d: Path) -> bool:
+    """A mirror download from before the manifest: its config, every weight shard, and no file still partial."""
+    return (d / "config.json").exists() and safetensors_complete(d) and not any(d.glob("*.part"))
 
 
 def installed(m: dict) -> bool:
@@ -783,11 +791,12 @@ def _progress_poller(target: Path, total_mb: float, stop: threading.Event) -> No
     while not stop.wait(1.0):
         if target.exists():
             done = sum(f.stat().st_size for f in target.rglob("*") if f.is_file() and not f.is_symlink()) / 2**20
-            print(f"  {int(min(done, total_mb))}/{int(total_mb)} MB", file=sys.stderr, flush=True)
+            serve_said(f"  {int(min(done, total_mb))}/{int(total_mb)} MB")
 
 
 def install_model(m: dict) -> Path:
-    """Download a registry model (and the VAD every local backend needs). Progress on stderr."""
+    """Download a registry model (and the VAD every local backend needs). Progress on stderr. One download of a
+    model at a time (download_lock): a second caller waits, then finds it installed."""
     download("silero_vad.onnx")
     if not m.get("local", True):
         return MODELS_DIR
@@ -798,6 +807,14 @@ def install_model(m: dict) -> Path:
         raise Fail(f"{m['id']} is not downloaded", "model_missing")
     if not runs_here(m):
         raise Fail(f"{m['id']} does not run on {platform_key()}", "unsupported")
+    with download_lock(m["id"]):
+        have = model_path(m)                  # the other download finished while this one waited
+        if have:
+            return have
+        return _install_unlocked(m)
+
+
+def _install_unlocked(m: dict) -> Path:
     inst = m["install"]
     if inst.get("files"):
         for rel in inst["files"]:
@@ -835,9 +852,10 @@ def install_model(m: dict) -> Path:
 
 
 def _modelscope(repo: str, total_mb: float) -> Path:
-    """An mlx-community repo from ModelScope's mirror → MODELS_DIR/asr/<name> (each file .part first)."""
+    """An mlx-community repo from ModelScope's mirror → MODELS_DIR/asr/<name>: the manifest and the download marker
+    first (the folder is a model only once every file is in: folder_complete), each file through <name>.part,
+    continued where a cut-short download left it."""
     dest = MODELS_DIR / "asr" / repo.split("/")[-1]
-    dest.mkdir(parents=True, exist_ok=True)
     api = f"https://modelscope.cn/api/v1/models/{repo}/repo/files?Recursive=true"
     try:
         with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "blurt"}), timeout=30) as r:
@@ -845,8 +863,9 @@ def _modelscope(repo: str, total_mb: float) -> Path:
     except Exception as e:  # noqa: BLE001
         raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
     want = [x for x in files if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))]
+    begin_download(dest, [{"path": x["Path"], "size": x.get("Size")} for x in want])
     done = 0.0
-    print(f"downloading {repo} (ModelScope)", file=sys.stderr, flush=True)
+    serve_said(f"downloading {repo} (ModelScope)")
     for x in want:
         p = dest / x["Path"]
         if p.exists() and p.stat().st_size == x.get("Size"):
@@ -855,17 +874,16 @@ def _modelscope(repo: str, total_mb: float) -> Path:
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_name(p.name + ".part")
         url = f"https://modelscope.cn/models/{repo}/resolve/master/{x['Path']}"
+        t0 = [time.time()]
+
+        def progress(have: int, _total: int) -> None:
+            if time.time() - t0[0] > 1:
+                serve_said(f"  {int(done + have / 2**20)}/{int(total_mb)} MB")
+                t0[0] = time.time()
+        got = 0
         for attempt in range(3):
-            t0, got = time.time(), 0
             try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "blurt"}), timeout=60) as r, \
-                        open(tmp, "wb") as o:
-                    while chunk := r.read(1 << 20):
-                        o.write(chunk)
-                        got += len(chunk)
-                        if time.time() - t0 > 1:
-                            print(f"  {int(done + got / 2**20)}/{int(total_mb)} MB", file=sys.stderr, flush=True)
-                            t0 = time.time()
+                got = fetch(url, tmp, x.get("Size"), progress)       # each try continues the last one's bytes
             except Exception as e:  # noqa: BLE001
                 if attempt == 2:
                     raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
@@ -876,6 +894,7 @@ def _modelscope(repo: str, total_mb: float) -> Path:
                 raise Fail(f"could not download {repo} from ModelScope: {x['Path']} came short", "network")
         done += got / 2**20
         os.replace(tmp, p)
+    end_download(dest)
     return dest
 
 
@@ -2344,6 +2363,7 @@ def cmd_models(_a):
 
 
 def cmd_setup(a):
+    watch_parent(getattr(a, "parent", None))   # started by the app: ends with it (the next setup continues the files)
     if a.model_id:
         m = entry(a.model_id)
         if not m:
@@ -2615,6 +2635,7 @@ def main():
     s.add_argument("--model")
     s.add_argument("--language")
     s.add_argument("--use", help="also select it: all, or a comma list of batch,live,note")
+    s.add_argument("--parent", type=int, help="end when this process (the app that started the download) is gone")
     sub.add_parser("backends")
     sub.add_parser("models")
     sub.add_parser("dictation-models")

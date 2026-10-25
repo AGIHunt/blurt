@@ -1,19 +1,18 @@
 // The setup assistant's models step (Onboarding.swift, docs/design/desktop-app.md §2.2): one "Download recommended
 // models" for this Mac — dictation's recogniser, the polish model and the voice-note model (BlurtCore ModelBundle) —
-// with the total size and one progress bar (Stop ends it). The downloads run one after another and carry on when the
-// assistant closes (a toast says when they're in, or that they stopped — its Show opens this step again). When the set
+// with the total size and one progress bar (Stop ends it). The downloads themselves are the app's one download manager
+// (App/ModelDownloads.swift): they run one after another, carry on when the assistant closes (a line says so; the
+// menu-bar menu and Settings → Speech show the progress), and pick up again after a quit or a crash. When the set
 // didn't come down, SenseVoice Small alone is offered. A list that couldn't be read shows "Couldn't read the models"
 // and Try Again — never a set with a model quietly left out. Read again each time the assistant opens.
 //   reads      `transcribe.py dictation-models`, `polish.py models`, `transcribe.py models` (SpeechModel)
-//   downloads  `transcribe.py setup --model-id ID` / `polish.py setup --model ID`, nothing pinned: dictation and polish
-//              stay automatic (the recommended model runs once it is installed); voice notes are re-picked with
-//              `transcribe.py auto --apply`.
-//   mirror     ModelBundle.mirror, like Settings → Dictation and → Speech: the China-friendly mirrors first when
-//              Settings → Speech says so, or, never set, when the region is CN (both scripts still try the other source
-//              when one fails).
-// Test builds: BLURT_TEST_ASR_SETUP / BLURT_TEST_POLISH_SETUP stand in for the two setup scripts (fake downloads).
+//   downloads  ModelDownloads, nothing pinned: dictation and polish stay automatic (the recommended model runs once it
+//              is installed); voice notes are re-picked with `transcribe.py auto --apply`.
+//   dictation  `dictationReady`: the recogniser is in — the Try-it step works from then on, even while the polish and
+//              voice-note models are still coming.
 import AppKit
 import BlurtCore
+import Combine
 
 @MainActor
 final class ModelSetup: ObservableObject {
@@ -22,24 +21,34 @@ final class ModelSetup: ObservableObject {
     @Published private(set) var parts: [ModelBundle.Part] = []
     @Published private(set) var loading = false
     @Published private(set) var loaded = false
-    /// the downloads under way (fixed when they start), the finished ones, the current one's last "N/M MB"
-    @Published private(set) var running: [ModelBundle.Part] = []
-    @Published private(set) var finished: Set<String> = []
-    @Published private(set) var current: String?
-    @Published private(set) var line: (done: Double, total: Double)?
-    @Published private(set) var failed = false
-    /// the user settled for the small model (it came down): the step is done, the full set stays on offer
-    @Published private(set) var settled = false
+    /// the user asked for the small model alone
     private var only = false
-    private var proc: Process?
-    /// Stop was pressed: however the script exits, the set stops here
-    private var stopping = false
-    /// the assistant is showing (else a toast says the models are in)
+    /// the user settled for the small model (it came down): the step is done, the full set stays on offer
+    var settled: Bool { only && !downloading && SpeechModel.shared.model(ModelBundle.fallbackID)?.installed == true }
+    /// the assistant is showing (else the download manager's toasts say how the models went)
     var shown = false
+    private var sub: AnyCancellable?
 
-    var pending: [ModelBundle.Part] { ModelBundle.pending(parts) }
+    init() {
+        // the manager's progress is this step's progress
+        sub = ModelDownloads.shared.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.managerChanged() } }
+        }
+    }
+
+    private var dl: ModelDownloads { ModelDownloads.shared }
+    private var ids: Set<String> { Set(parts.map(\.id)) }
+
+    var pending: [ModelBundle.Part] { ModelBundle.pending(parts.map { p in var p = p; p.installed = p.installed || finished.contains(p.id); return p }) }
     var totalMB: Double { ModelBundle.totalMB(parts) }
-    var downloading: Bool { current != nil }
+    /// this step's models that are in the manager's batch, in order
+    var running: [ModelBundle.Part] { dl.queue.jobs.filter { ids.contains($0.id) }.map(\.part) }
+    var finished: Set<String> { Set(dl.queue.finished).intersection(ids) }
+    var current: String? { dl.current.flatMap { ids.contains($0) ? $0 : nil } }
+    var line: (done: Double, total: Double)? { current == nil ? nil : dl.line }
+    /// one of this step's models is downloading or waiting its turn
+    var downloading: Bool { dl.queue.pending.contains { ids.contains($0.id) } }
+    var failed: Bool { parts.contains { dl.failed[$0.id] != nil } }
     var ready: Bool { loaded && !parts.isEmpty && pending.isEmpty }
     var progress: (done: Double, total: Double) { ModelBundle.progress(running, finished: finished, current: current, line: line) }
     /// SenseVoice Small, when it is still missing
@@ -47,10 +56,25 @@ final class ModelSetup: ObservableObject {
         SpeechModel.shared.model(ModelBundle.fallbackID).flatMap { $0.installed ? nil : part($0, .note) }
     }
 
+    /// The recogniser dictation runs on is in (installed, or came down in this batch): Try it works now.
+    var dictationReady: Bool {
+        guard let d = parts.first(where: { $0.kind == .dictation }) else { return DictationModels.shared.dictationReady == true }
+        return d.installed || finished.contains(d.id) || DictationModels.shared.dictationReady == true
+    }
+    /// The recogniser is the one coming down now (or waiting): its own bar on the Try-it step.
+    var dictationProgress: (done: Double, total: Double)? {
+        guard let d = parts.first(where: { $0.kind == .dictation }), !dictationReady, dl.queue.contains(d.id) else { return nil }
+        return dl.progress(d.id) ?? (0, d.sizeMB)
+    }
+    /// What is still coming besides the recogniser (MB), once the recogniser is in.
+    var restMB: Double { dl.queue.pending.filter { ids.contains($0.id) && $0.kind != .dictation }.reduce(0) { $0 + $1.sizeMB } }
+
+    private func managerChanged() { objectWillChange.send() }
+
     // MARK: what this Mac gets
 
     func load() async {
-        guard !loading, !downloading else { return }
+        guard !loading else { return }
         loading = true
         defer { loading = false }
         async let d = try? SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 180)
@@ -68,7 +92,8 @@ final class ModelSetup: ObservableObject {
         let note = speech.recommended(.note).map { part($0, .note) }
         // a list that couldn't be read: no set ("Couldn't read the models" + Try Again), never a set without that model
         let plan = ModelBundle.plan(dictation: dictation, polish: pm, polishRuns: polish?.supported, note: note)
-        parts = plan ?? []
+        // while the set downloads, keep the rows it started with (a read mid-download changes nothing that matters)
+        if !(downloading && plan == nil) { parts = plan ?? [] }
         loaded = true
         emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
@@ -82,87 +107,28 @@ final class ModelSetup: ObservableObject {
 
     // MARK: download
 
-    /// The recommended set (or `only` these), one after another.
+    /// The recommended set (or `only` these), through the download manager.
     func start(only: [ModelBundle.Part]? = nil) {
-        guard !downloading else { return }
         let todo = only ?? pending
         guard !todo.isEmpty else { return }
-        running = todo
-        finished = []
-        failed = false
-        stopping = false
         self.only = only != nil
         emit(["event": "onboarding_models", "op": "start", "models": todo.map(\.id), "total_mb": todo.reduce(0) { $0 + $1.sizeMB }])
-        next()
+        dl.download(todo.map { ModelDownloadQueue.Job(id: $0.id, kind: $0.kind, name: $0.name, sizeMB: $0.sizeMB) }, via: "onboarding")
     }
 
-    private func next() {
-        guard let p = running.first(where: { !finished.contains($0.id) }) else { return done() }
-        current = p.id
-        line = nil
-        let env = ProcessInfo.processInfo.environment
-        let test = env["BLURT_TEST_COMMANDS"] == "1"
-        let (script, args) = p.kind == .polish
-            ? ((test ? env["BLURT_TEST_POLISH_SETUP"] : nil) ?? "polish.py", ["setup", "--model", p.id])
-            : ((test ? env["BLURT_TEST_ASR_SETUP"] : nil) ?? "transcribe.py", ["setup", "--model-id", p.id])
-        var extra: [String: String] = [:]
-        if ModelBundle.mirror { extra["BLURT_HF_MIRROR"] = "1" }
-        do {
-            proc = try SkillCLI.shared.spawn(script, args, env: extra, onLine: { [weak self] l, _ in
-                if let q = ModelBundle.parseProgress(l) { self?.line = q }
-            }, onExit: { [weak self] st in
-                guard let self = self else { return }
-                self.proc = nil
-                emit(["event": "onboarding_models", "op": "part", "model": p.id, "status": Int(st), "stopped": self.stopping])
-                if self.stopping {
-                    self.stopping = false
-                    self.stop(failed: false)
-                } else if st == 0 {
-                    self.finished.insert(p.id)
-                    self.next()
-                } else {
-                    self.stop(failed: st != 15)
-                }
-            })
-        } catch { stop(failed: true) }
-    }
-
-    private func stop(failed f: Bool) {
-        current = nil
-        line = nil
-        failed = f
-        Task { await refresh() }
-        // the assistant was closed: say so, and its Show opens the models step again (Try Again, Small Model Only)
-        if f && !shown {
-            AppEnvironment.island?.toast(T("onboarding.models.failed_toast"), actionTitle: T("onboarding.models.failed_open")) {
-                Onboarding.shared.show(step: 2)
-            }
-        }
-    }
-
-    private func done() {
-        current = nil
-        line = nil
-        settled = settled || only
-        emit(["event": "onboarding_models", "op": "done", "models": running.map(\.id)])
-        Task {
-            await refresh()
-            if !shown { AppEnvironment.island?.toast(T("onboarding.models.ready_toast"), actionTitle: nil, action: nil) }
-        }
-    }
-
-    /// The models in use now: polish picks its model up, voice notes are re-picked for this Mac, the rows re-read.
-    private func refresh() async {
-        Dictation.shared.refreshPolishModel()
-        await SpeechModel.shared.reapply()
-        await load()
-    }
-
-    /// The progress bar's Stop: the current download ends (what came down is kept), the set stays on offer.
+    /// The progress bar's Stop: the downloads end (what came down is kept), the set stays on offer.
     func cancel() {
-        guard let p = proc else { return }
+        guard downloading else { return }
         emit(["event": "onboarding_models", "op": "stop", "model": current ?? NSNull()])
-        stopping = true
-        p.terminate()
+        dl.stop()
+    }
+
+    /// The assistant closed while the set downloads: one line says it carries on, and where to see it.
+    func closedWhileDownloading() {
+        guard downloading else { return }
+        let left = modelSize(dl.queue.remainingMB)
+        var t = Island.Toast(text: T("app.models.background", left), actionTitle: T("app.models.show")) { ModelDownloads.showProgress() }
+        t.seconds = 6
+        island.toast(t)
     }
 }

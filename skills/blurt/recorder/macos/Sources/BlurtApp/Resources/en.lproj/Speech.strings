@@ -121,3 +121,4 @@
 "speech.dictation.progress" = "%1$@ of %2$@";
 "speech.dictation.no_words" = "can’t take your words";
 "speech.dictation.footer" = "Both run on this Mac. Nothing is downloaded until you click Download.";
+"speech.download.queued" = "Queued";

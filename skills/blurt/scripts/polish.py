@@ -9,8 +9,11 @@ resolves self-corrections and lays out what the speaker enumerated. A mechanical
 text before the pass whenever the model rewrote, shortened, added or translated.
 
   polish.py models                          the registry (polish_models.json) + installed, selected, recommended
-  polish.py setup --model ID                download a model (progress "  N/M MB" on stderr); ModelScope when the
-                                            mirror is on (asr.hf_mirror / BLURT_HF_MIRROR) or Hugging Face fails
+  polish.py setup --model ID [--parent PID] download a model (progress "  N/M MB" on stderr); ModelScope when the
+                                            mirror is on (asr.hf_mirror / BLURT_HF_MIRROR) or Hugging Face fails.
+                                            One at a time per model (a second one waits); a partial file is continued;
+                                            a mirror folder counts only once every file of its manifest is in; ends
+                                            with the --parent app
   polish.py serve [--preload] [--idle 600] [--parent PID]   keep the model warm (127.0.0.1,
                                             $BLURT_HOME/run/polish-serve.json); ends after --idle s unused (the
                                             memory goes back), with the --parent app, or on "exit"
@@ -47,6 +50,8 @@ sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, load_json, save_json, serve_exit_reason,  # noqa: E402
                      serve_said)
+from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
+                     safetensors_complete, watch_parent)
 
 HERE = Path(__file__).parent
 RUN_DIR = BLURT_HOME / "run"
@@ -795,14 +800,16 @@ def hf_cache() -> Path:
 
 
 def _complete(d: Path) -> bool:
-    return d.is_dir() and (d / "config.json").exists() and any(d.glob("*.safetensors")) \
+    """A Hugging Face snapshot (or an older Blurt's mirror download): its config, every weight shard, nothing partial."""
+    return d.is_dir() and (d / "config.json").exists() and safetensors_complete(d) \
         and not any(d.glob("*.part")) and not any(d.glob("*.incomplete"))
 
 
 def model_path(m: dict) -> Path | None:
-    """The newest complete copy: our own download ($BLURT_HOME/models/polish/<name>) or the Hugging Face cache."""
+    """The newest complete copy: our own download ($BLURT_HOME/models/polish/<name>: complete only once every file of
+    its manifest is in — folder_complete) or the Hugging Face cache."""
     own = POLISH_DIR / m["repo"].split("/")[-1]
-    if _complete(own):
+    if folder_complete(own, legacy=_complete):
         return own
     root = hf_cache() / ("models--" + m["repo"].replace("/", "--"))
     if root.is_dir() and not any((root / "blobs").glob("*.incomplete")):
@@ -1300,22 +1307,23 @@ def _progress(target: Path, total_mb: float, stop) -> None:
     while not stop.wait(1.0):
         if target.exists():
             done = sum(f.stat().st_size for f in target.rglob("*") if f.is_file() and not f.is_symlink()) / 2**20
-            print(f"  {int(min(done, total_mb))}/{int(total_mb)} MB", file=sys.stderr, flush=True)
+            serve_said(f"  {int(min(done, total_mb))}/{int(total_mb)} MB")
 
 
 def _modelscope(m: dict) -> Path:
     """mlx-community's repos are mirrored on ModelScope (fast from mainland China): files into
-    $BLURT_HOME/models/polish/<name>, each written to .part first."""
+    $BLURT_HOME/models/polish/<name> — the manifest and the download marker first (a model only once every file is in:
+    folder_complete), each file through <name>.part, continued where a cut-short download left it."""
     repo = m["repo"]
     dest = POLISH_DIR / repo.split("/")[-1]
-    dest.mkdir(parents=True, exist_ok=True)
     api = f"https://modelscope.cn/api/v1/models/{repo}/repo/files?Recursive=true"
     with urllib.request.urlopen(urllib.request.Request(api, headers={"User-Agent": "blurt"}), timeout=30) as r:
         files = json.load(r)["Data"]["Files"]
     want = [f for f in files if f.get("Type") == "blob" and not f["Path"].endswith((".md", ".gitattributes"))]
+    begin_download(dest, [{"path": f["Path"], "size": f.get("Size")} for f in want])
     total = sum(f.get("Size") or 0 for f in want) / 2**20
     done = 0.0
-    print(f"downloading {repo} (ModelScope)", file=sys.stderr, flush=True)
+    serve_said(f"downloading {repo} (ModelScope)")
     for f in want:
         p = dest / f["Path"]
         if p.exists() and p.stat().st_size == f.get("Size"):
@@ -1324,18 +1332,18 @@ def _modelscope(m: dict) -> Path:
         p.parent.mkdir(parents=True, exist_ok=True)
         url = f"https://modelscope.cn/models/{repo}/resolve/master/{f['Path']}"
         tmp = p.with_name(p.name + ".part")
-        t0 = time.time()
-        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "blurt"}), timeout=60) as r, \
-                open(tmp, "wb") as o:
-            while chunk := r.read(1 << 20):
-                o.write(chunk)
-                done += len(chunk) / 2**20
-                if time.time() - t0 > 1:
-                    print(f"  {int(done)}/{int(total)} MB", file=sys.stderr, flush=True)
-                    t0 = time.time()
-        if f.get("Size") and tmp.stat().st_size != f["Size"]:      # a dropped connection can end the read quietly
-            raise RuntimeError(f"{f['Path']} came short ({tmp.stat().st_size} of {f['Size']} bytes)")
+        t0 = [time.time()]
+
+        def progress(have: int, _total: int) -> None:
+            if time.time() - t0[0] > 1:
+                serve_said(f"  {int(done + have / 2**20)}/{int(total)} MB")
+                t0[0] = time.time()
+        got = fetch(url, tmp, f.get("Size"), progress)
+        if f.get("Size") and got != f["Size"]:      # a dropped connection can end the read quietly (kept: next try continues)
+            raise RuntimeError(f"{f['Path']} came short ({got} of {f['Size']} bytes)")
+        done += got / 2**20
         os.replace(tmp, p)
+    end_download(dest)
     return dest
 
 
@@ -1358,26 +1366,36 @@ def _huggingface(m: dict) -> Path:
         stop.set()
 
 
+def _download(m: dict) -> None:
+    """The mirror first when asked for (else Hugging Face first), the other one when that fails. Done only when a
+    source finished and left a complete model; otherwise the last source's error — never "ok" on a partial folder."""
+    sources = [_modelscope, _huggingface] if mirror_on() else [_huggingface, _modelscope]
+    last: Exception | None = None
+    for src in sources:
+        try:
+            src(m)
+        except Exception as e:  # noqa: BLE001 — try the other source
+            last = e
+            serve_said(f"  failed: {e}")
+            continue
+        if model_path(m):
+            return
+        last = RuntimeError(f"{src.__name__.strip('_')} finished but {m['repo']} is not complete")
+    raise Fail(f"could not download {m['repo']}: {last}", "network")
+
+
 def cmd_setup(a):
+    watch_parent(getattr(a, "parent", None))   # started by the app: ends with it (the next setup continues the files)
     m = entry(a.model_id)
     if not m:
         raise Fail(f"unknown polish model {a.model_id}", "usage")
     if not supported():
         raise Fail("polish needs Apple Silicon (MLX)", "unsupported")
-    have = model_path(m)
-    if not have:
-        sources = [_modelscope, _huggingface] if mirror_on() else [_huggingface, _modelscope]
-        last = None
-        for src in sources:
-            try:
-                src(m)
-                if model_path(m):
-                    break
-            except Exception as e:  # noqa: BLE001 — try the other source
-                last = e
-                print(f"  failed: {e}", file=sys.stderr, flush=True)
-        if not model_path(m):
-            raise Fail(f"could not download {m['repo']}: {last}", "network")
+    if not model_path(m):
+        # one download of a model at a time: a second setup waits, then finds it in
+        with download_lock(m["id"]):
+            if not model_path(m):
+                _download(m)
     if a.use:
         from _common import update_global_config  # noqa: PLC0415
         cfg = global_config()
@@ -1475,6 +1493,7 @@ def main():
     s = sub.add_parser("setup")
     s.add_argument("--model", "--model-id", dest="model_id", required=True)
     s.add_argument("--use", action="store_true", help="also select it (record.dictation.polish_model)")
+    s.add_argument("--parent", type=int, help="end when this process (the app that started the download) is gone")
     sv = sub.add_parser("serve")
     sv.add_argument("--preload", action="store_true")
     sv.add_argument("--model", "--model-id", dest="model_id")

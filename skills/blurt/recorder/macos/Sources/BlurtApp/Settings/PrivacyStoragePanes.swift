@@ -1,7 +1,9 @@
 // Settings → Privacy (live permission state — the one full list of them —, local-only speech recognition, what is
 // kept, Spotlight) and Settings → Storage (rows from SettingsCatalog; the folders, models and files are lines of their
 // groups) (what takes space, model by model and folder by folder, and cleaning what
-// can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default).
+// can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default). Move
+// to Trash acts at once, like Finder, with Undo (the island's button, ⌘Z); only turning on automatic deletion asks.
+// Privacy's "never use cloud recognition" says what it does where things stand (no cloud key set: local anyway).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -91,21 +93,33 @@ struct PrivacyPane: View {
                     HStack(alignment: .firstTextBaseline) {
                         Hint(T("settings.privacy.macos_applies_screen_recording"))
                         Spacer()
-                        // Screen Recording allowed while Blurt runs: some macOS versions apply it only after a relaunch
-                        if perms.screen != .granted || Permissions.askedScreen {
+                        // Screen Recording asked for while Blurt runs: some macOS versions apply it only after a
+                        // relaunch — only then is Restart offered
+                        if Permissions.askedScreen {
                             Button(T("settings.perm.restart")) { SystemAccess.relaunch() }
                         }
                     }
                 }
             })
             SettingsGroup("privacy.data", footer: T("settings.privacy.recordings_screenshots_items_stay")) {
-                SettingToggle("privacy.local_asr", isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
+                // what the switch does, said for where things stand: off with no cloud key set is local too
+                SettingToggle("privacy.local_asr", isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }), detail: localDetail)
                 SettingToggle("privacy.keep_live", isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
                 SettingToggle("privacy.spotlight", isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
             }
         }
         .onAppear { m.reload(); perms.start() }
         .onDisappear { perms.stop() }
+        .task { if speech.state == nil { await speech.load() } }      // which cloud services have a key
+    }
+
+    @ObservedObject var speech = SpeechModel.shared
+
+    /// On: never the cloud. Off: local anyway while no cloud key is set; with one, the automatic choice may use it.
+    var localDetail: String {
+        if m.localASR { return T("settings.privacy.local_asr.on") }
+        let cloud = speech.models.filter { !$0.local && $0.installed }.map(\.title)
+        return cloud.isEmpty ? T("settings.privacy.local_asr.off_none") : T("settings.privacy.local_asr.off_keys", Loc.list(cloud))
     }
 }
 
@@ -262,22 +276,64 @@ final class StorageModel: ObservableObject {
         await load()
     }
 
-    func trash(_ urls: [URL]) {
+    /// Move to Trash at once — like Finder, no question — with Undo: the island's button and ⌘Z (the Settings window's
+    /// undo) put it back where it was.
+    func trash(_ urls: [URL], name: String, window: NSWindow?) {
         NSWorkspace.shared.recycle(urls) { done, _ in
             Task { @MainActor in
                 emit(["event": "storage_trash", "files": done.count])
                 await self.load()
+                await DictationModels.shared.load()          // a model gone: the dictation key knows
+                self.offerUndo(done, text: T("settings.storage.trashed", name), window: window) { _ in }
             }
         }
     }
 
-    /// The videos of organized recordings older than `days` (nil = all) go to the Trash.
-    func deleteVideos(olderThan days: Int?) {
+    /// The videos of organized recordings older than `days` (nil = all) go to the Trash, with Undo.
+    func deleteVideos(olderThan days: Int?, window: NSWindow?) {
         let c = videos(olderThan: days)
         guard !c.isEmpty else { return }
-        message = T("settings.storage.videos.freed", byteString(c.reduce(0) { $0 + $1.bytes }))
-        Housekeeping.trashVideos(c, auto: false) { Task { @MainActor in await self.load() } }
+        let bytes = byteString(c.reduce(0) { $0 + $1.bytes })
+        message = T("settings.storage.videos.freed", bytes)
+        Housekeeping.trashVideos(c, auto: false) { done in
+            Task { @MainActor in
+                await self.load()
+                self.offerUndo(done, text: T("settings.storage.videos.trashed", TP("settings.storage.videos.count", c.count), bytes), window: window) { _ in
+                    for s in c { VideoRetention.unstampRemoved(s.session) }
+                }
+            }
+        }
     }
+
+    /// "Moved to the Trash · Undo" in the island, and the same step on the window's ⌘Z.
+    private func offerUndo(_ moved: [URL: URL], text: String, window: NSWindow?, restored: @escaping ([URL]) -> Void) {
+        guard !moved.isEmpty else { return }
+        var undone = false
+        let undo: () -> Void = { [weak self] in
+            guard !undone else { return }
+            undone = true
+            var back: [URL] = []
+            for (orig, trashed) in moved where (try? FileManager.default.moveItem(at: trashed, to: orig)) != nil { back.append(orig) }
+            restored(back)
+            emit(["event": "storage_trash_undo", "files": back.count])
+            Task { @MainActor in
+                self?.message = nil
+                await self?.load()
+                await DictationModels.shared.load()
+            }
+        }
+        if let um = window?.undoManager {
+            um.registerUndo(withTarget: self) { _ in undo() }
+            um.setActionName(T("settings.privacy.move_trash"))
+        }
+        var t = Island.Toast(text: text, actionTitle: T("settings.storage.undo")) { undo() }
+        t.seconds = 8
+        island.toast(t)
+        lastTrash = undo
+    }
+
+    /// Tests: the last Move to Trash's Undo.
+    var lastTrash: (() -> Void)?
 
     /// "Delete videos automatically". Turning it on deletes what is already older at once (Housekeeping), so the pane
     /// asks first when that is anything (StoragePane's .auto).
@@ -293,10 +349,10 @@ final class StorageModel: ObservableObject {
 
 struct StoragePane: View {
     @StateObject var m = StorageModel()
-    /// What the confirmation is about.
+    /// What the confirmation is about: only turning on automatic deletion asks (it deletes on its own from then on).
     enum Ask: Identifiable {
-        case videos(Int?), auto(Int), trash(StorageModel.Row)
-        var id: String { switch self { case .videos(let d): return "v\(d ?? 0)"; case .auto(let d): return "a\(d)"; case .trash(let r): return r.id } }
+        case auto(Int)
+        var id: String { switch self { case .auto(let d): return "a\(d)" } }
     }
     @State var ask: Ask?
 
@@ -347,7 +403,7 @@ struct StoragePane: View {
                 ForEach(m.app) { r in
                     row(r.name, detail: r.detail, bytes: r.bytes) {
                         if ["build", "prompts", "bench", "tmp"].contains(r.path.lastPathComponent) {
-                            Button(T("settings.privacy.move_trash")) { ask = .trash(r) }
+                            Button(T("settings.privacy.move_trash")) { m.trash([r.path], name: r.name, window: NSApp.keyWindow) }
                         }
                         revealButton(r.path)
                     }
@@ -356,35 +412,24 @@ struct StoragePane: View {
             }
         }
         .task { await m.load() }
+        // the one question left: a policy that deletes on its own from now on (a Move to Trash has Undo instead)
         .alert(alertTitle, isPresented: Binding(get: { ask != nil }, set: { if !$0 { ask = nil } }), presenting: ask) { a in
-            Button({ if case .auto = a { return T("settings.storage.videos.auto_on") }; return T("settings.privacy.move_trash") }(), role: .destructive) {
-                switch a {
-                case .videos(let d): m.deleteVideos(olderThan: d)
-                case .auto(let d): m.setAutoDelete(d)
-                case .trash(let r): m.trash([r.path])
-                }
+            Button(T("settings.storage.videos.auto_on"), role: .destructive) {
+                if case .auto(let d) = a { m.setAutoDelete(d) }
                 ask = nil
             }
             Button(T("settings.privacy.cancel"), role: .cancel) { ask = nil }
         } message: { a in
-            switch a {
-            case .videos(let d):
-                let c = m.videos(olderThan: d)
-                Text(TP("settings.storage.videos.count", c.count) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + "). " + T("settings.storage.videos.confirm"))
-            case .auto(let d):
+            if case .auto(let d) = a {
                 let c = m.videos(olderThan: d)
                 Text(T("settings.storage.videos.auto_confirm") + " " + TP("settings.storage.videos.count", c.count) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + "). " + T("settings.storage.videos.confirm"))
-            case .trash(let r): Text((r.path.path as NSString).abbreviatingWithTildeInPath)
             }
         }
     }
 
     var alertTitle: String {
-        switch ask {
-        case .videos: return T("settings.storage.videos.confirm_title")
-        case .auto(let d): return T("settings.storage.videos.auto_confirm_title", d)
-        default: return T("settings.privacy.move_trash_2")
-        }
+        if case .auto(let d) = ask { return T("settings.storage.videos.auto_confirm_title", d) }
+        return ""
     }
 
     /// Never applies at once; an age does too when no video is that old yet, else it asks first — choosing it moves
@@ -401,11 +446,11 @@ struct StoragePane: View {
                 Menu(T("settings.storage.videos.delete")) {
                     ForEach(VideoRetention.choices, id: \.self) { d in
                         let c = m.videos(olderThan: d)
-                        Button(T("settings.storage.videos.older", d) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + ")") { ask = .videos(d) }
+                        Button(T("settings.storage.videos.older", d) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + ")") { m.deleteVideos(olderThan: d, window: NSApp.keyWindow) }
                             .disabled(c.isEmpty)
                     }
                     Divider()
-                    Button(T("settings.storage.videos.all")) { ask = .videos(nil) }
+                    Button(T("settings.storage.videos.all")) { m.deleteVideos(olderThan: nil, window: NSApp.keyWindow) }
                 }
                 .fixedSize()
                 .disabled(m.videos.isEmpty)
@@ -426,7 +471,7 @@ struct StoragePane: View {
                 }
                 Spacer()
                 Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)
-                if r.removable { Button(T("settings.privacy.move_trash")) { ask = .trash(r) } }
+                if r.removable { Button(T("settings.privacy.move_trash")) { m.trash([r.path], name: r.name, window: NSApp.keyWindow) } }
                 revealButton(r.path)
             }
         }

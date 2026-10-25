@@ -16,7 +16,7 @@
 import Foundation
 
 public enum ModelBundle {
-    public enum Kind: String, Equatable { case dictation, polish, note }
+    public enum Kind: String, Equatable, Codable { case dictation, polish, note }
 
     public struct Part: Equatable {
         public var id: String
@@ -68,6 +68,21 @@ public enum ModelBundle {
             done += p.sizeMB * min(max(l.done / l.total, 0), 1)
         }
         return (min(done, total), total)
+    }
+
+    /// A model's size the same way on every surface (the assistant, Settings, the menu, the toasts): decimal units like
+    /// Finder, whole MB below 1 GB, one decimal above — "228 MB", "2.5 GB", "6.1 GB".
+    public static func size(_ mb: Double, locale: Locale = .current) -> String {
+        let f = NumberFormatter()
+        f.locale = locale
+        f.numberStyle = .decimal
+        if mb.rounded() < 1000 {
+            f.maximumFractionDigits = 0
+            return (f.string(from: max(0, mb).rounded() as NSNumber) ?? "\(Int(mb))") + " MB"
+        }
+        f.minimumFractionDigits = 1
+        f.maximumFractionDigits = 1
+        return (f.string(from: (mb / 1000) as NSNumber) ?? "\(mb / 1000)") + " GB"
     }
 
     /// A download's progress line ("  812/2468 MB") → (812, 2468); anything else nil.

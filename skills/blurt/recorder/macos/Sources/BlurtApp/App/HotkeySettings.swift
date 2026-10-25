@@ -8,22 +8,34 @@
 //
 // ⌥⇧R starts a recording and also finishes one; ⌥⇧S only finishes — it is the key a recording started from the
 // chat (no menu-bar app) listens to, so it stays, listed under While recording as "Finish recording".
+//
+// What the field refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing key
+// (⌘C is Copy in every app: KeyCombo.reserved) and a macOS system shortcut. Keys another action has ask first — a
+// sheet on this window, "Swap" moves them here and turns the other one off — never a silent duplicate. Every change
+// (set, clear, swap, restore) can be undone with ⌘Z. The field works from the keyboard: Tab reaches it (focus ring),
+// Space or Return starts recording, Delete clears it.
 
 import AppKit
 import BlurtCore
 import Carbon.HIToolbox
 import SwiftUI
 
-/// Click, then press the new combination. Esc cancels, ⌫ turns the hotkey off, and so does the × at the field's right
-/// end. Global hotkeys are suspended meanwhile, or pressing the current one would fire it instead of being recorded.
+/// Click (or Space / Return), then press the new combination. Esc cancels, ⌫ turns the hotkey off, and so does the ×
+/// at the field's right end. Global hotkeys are suspended meanwhile, or pressing the current one would fire it instead
+/// of being recorded.
 final class ShortcutField: NSView {
     let action: HotAction
     var onSet: ((Shortcut?) -> Void)?
+    /// a refusal's reason, for the line under the action's name (nil: clear it)
+    var onRefuse: ((String?) -> Void)?
     var recording = false { didSet { needsDisplay = true } }
     var live = ""                       // modifiers held while recording
     var conflict = false { didSet { needsDisplay = true } }
     var monitor: Any?
     var refuse: String?                 // "needs ⌃ / ⌥ / ⌘" flash
+    /// the last refusal (tests read it)
+    private(set) var lastRefusal: String?
+    private var refuseGeneration = 0
     static let size = NSSize(width: 140, height: 24)
 
     init(_ a: HotAction) {
@@ -31,13 +43,37 @@ final class ShortcutField: NSView {
         super.init(frame: NSRect(origin: .zero, size: Self.size))
         setAccessibilityRole(.button)
         setAccessibilityLabel(a.title)
+        setAccessibilityHelp(Loc.t("capture.keys.field_ax_hint", table: "Capture"))
     }
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize { Self.size }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var acceptsFirstResponder: Bool { true }
-    override func accessibilityValue() -> Any? { Hotkeys.shared.shortcut(action)?.label ?? Loc.t("capture.keys.off", table: "Capture") }
+    override var canBecomeKeyView: Bool { true }
+    override func accessibilityValue() -> Any? { Hotkeys.shared.shortcut(action)?.label ?? Loc.t("capture.keys.none", table: "Capture") }
+    override func accessibilityPerformPress() -> Bool { recording ? stop() : start(); return true }
+
+    // the system focus ring, shaped like the field (Tab moves through the fields)
+    override var focusRingMaskBounds: NSRect { bounds }
+    override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).fill() }
+    override func becomeFirstResponder() -> Bool { noteFocusRingMaskChanged(); return true }
+    override func resignFirstResponder() -> Bool {
+        if recording { stop() }
+        noteFocusRingMaskChanged()
+        return true
+    }
+
+    /// Not recording: Space / Return start, Delete clears; anything else (Tab) goes on as usual.
+    override func keyDown(with e: NSEvent) {
+        guard !recording else { return }
+        let code = Int(e.keyCode)
+        guard Shortcut.carbonMods(e.modifierFlags) == 0 else { return super.keyDown(with: e) }
+        if [kVK_Space, kVK_Return, kVK_ANSI_KeypadEnter].contains(code) { start() }
+        else if [kVK_Delete, kVK_ForwardDelete].contains(code) {
+            if Hotkeys.shared.shortcut(action) != nil { onSet?(nil) } else { NSSound.beep() }
+        } else { super.keyDown(with: e) }
+    }
 
     /// The × at the right end, shown while there is a shortcut to turn off (and not while recording).
     private var clearRect: NSRect? {
@@ -60,7 +96,7 @@ final class ShortcutField: NSView {
         if let r = refuse { text = r; color = BrandColor.attnInk }
         else if recording { text = live.isEmpty ? Loc.t("capture.keys.type", table: "Capture") : live; color = BrandColor.ink }
         else if let s = s { text = s.label; color = .labelColor }
-        else { text = Loc.t("capture.keys.off", table: "Capture"); color = .tertiaryLabelColor }
+        else { text = Loc.t("capture.keys.none", table: "Capture"); color = .tertiaryLabelColor }
         let font = recording || s == nil || refuse != nil ? NSFont.systemFont(ofSize: 12, weight: .medium)
                                                           : NSFont.systemFont(ofSize: 13, weight: .semibold)
         let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: color])
@@ -107,15 +143,33 @@ final class ShortcutField: NSView {
         if (Int(e.keyCode) == kVK_Delete || Int(e.keyCode) == kVK_ForwardDelete) && mods == 0 { stop(); onSet?(nil); return }
         guard let s = Shortcut(mods: mods, code: Int(e.keyCode)) else { flash(Loc.t("capture.keys.bad_key", table: "Capture")); return }
         guard s.isAcceptable else { flash(Loc.t("capture.keys.needs_mod", table: "Capture")); return }
+        // ⌘C would take Copy away from every app; a macOS shortcut would go to macOS: say why, keep listening
+        if let r = s.reserved { flash(r.short(s), reason: r.reason(s)); return }
+        if Hotkeys.shared.systemShortcuts().contains(s) {
+            flash(Loc.t("capture.keys.system_short", table: "Capture"), reason: Loc.t("capture.keys.system_refused", table: "Capture", s.label))
+            return
+        }
         stop()
         onSet?(s)
     }
 
-    func flash(_ msg: String) {
+    /// A refusal: a short word inside the field for a moment, the whole reason under the action's name a while longer.
+    func flash(_ msg: String, reason: String? = nil) {
         NSSound.beep()
         refuse = msg
+        lastRefusal = reason ?? msg
+        refuseGeneration += 1
+        let g = refuseGeneration
         needsDisplay = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in self?.refuse = nil; self?.needsDisplay = true }
+        if let r = reason { onRefuse?(r) }
+        emit(["event": "shortcut_refused", "action": action.rawValue, "why": reason ?? msg])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { [weak self] in self?.refuse = nil; self?.needsDisplay = true }
+        if reason != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+                guard let self = self, self.refuseGeneration == g else { return }
+                self.onRefuse?(nil)
+            }
+        }
     }
 
     func stop() {
@@ -136,7 +190,8 @@ struct ShortcutRecorder: NSViewRepresentable {
 
     func makeNSView(context: Context) -> ShortcutField {
         let f = ShortcutField(action)
-        f.onSet = { [weak model] s in Hotkeys.shared.set(s, for: action); model?.refresh() }
+        f.onSet = { [weak model, weak f] s in model?.set(s, for: action, window: f?.window) }
+        f.onRefuse = { [weak model] why in model?.refusals[action] = why }
         model.fields[action] = f
         return f
     }
@@ -157,6 +212,74 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     /// The recorder fields on screen now, by action (`shortcut` / `recordkey` test hooks).
     var fields: [HotAction: ShortcutField] = [:]
     @Published var drawKey = "control"
+    /// why the field just refused a key ("⌘C is Copy in every app — add ⌥ or ⌃"), shown under the action's name
+    @Published var refusals: [HotAction: String] = [:]
+    /// the swap question on screen (tests answer it: `shortcutswap yes|no`)
+    private(set) var asking: NSAlert?
+
+    /// A field's new keys. Keys another action has: ask on this window whether to swap — never a silent duplicate.
+    /// Every change can be undone (⌘Z): the whole record.hotkeys as it was comes back.
+    func set(_ s: Shortcut?, for a: HotAction, window: NSWindow?) {
+        refusals[a] = nil
+        guard s != Hotkeys.shared.shortcut(a) || Hotkeys.shared.states[a]?.isConflict == true else { return }
+        if let s = s, let other = Hotkeys.shared.owner(of: s, except: a) {
+            return askSwap(s, to: a, from: other, window: window)
+        }
+        change(window) { Hotkeys.shared.set(s, for: a) }
+        emit(["event": "shortcut_set", "action": a.rawValue, "now": s?.spec ?? "off"])
+    }
+
+    private func askSwap(_ s: Shortcut, to a: HotAction, from other: HotAction, window: NSWindow?) {
+        let alert = NSAlert()
+        alert.messageText = Loc.t("capture.keys.swap.title", table: "Capture", s.label, other.title)
+        alert.informativeText = Loc.t("capture.keys.swap.detail", table: "Capture", a.title, s.label, other.title)
+        alert.addButton(withTitle: Loc.t("capture.keys.swap.ok", table: "Capture"))
+        alert.addButton(withTitle: Loc.t("capture.keys.swap.cancel", table: "Capture"))
+        asking = alert
+        emit(["event": "shortcut_swap_ask", "action": a.rawValue, "keys": s.spec, "other": other.rawValue])
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard let self = self else { return }
+            self.asking = nil
+            let yes = r == .alertFirstButtonReturn
+            emit(["event": "shortcut_swap", "action": a.rawValue, "other": other.rawValue, "swapped": yes])
+            if yes { self.change(window) { Hotkeys.shared.swap(s, to: a) } }
+            self.refresh()
+        }
+        if let w = window { alert.beginSheetModal(for: w, completionHandler: done) } else { done(alert.runModal()) }
+    }
+
+    /// Tests: answer the swap question as its buttons would.
+    func testAnswerSwap(_ yes: Bool) {
+        guard let a = asking, let w = a.window.sheetParent else { return }
+        w.endSheet(a.window, returnCode: yes ? .alertFirstButtonReturn : .alertSecondButtonReturn)
+    }
+
+    /// Runs `apply`, with undo (⌘Z) back to record.hotkeys as it was before.
+    private func change(_ window: NSWindow?, _ apply: () -> Void) {
+        let before = Config.shared["record.hotkeys"]
+        apply()
+        registerUndo(window?.undoManager, restoring: before)
+        refresh()
+    }
+
+    private func registerUndo(_ um: UndoManager?, restoring config: Any?) {
+        guard let um = um else { return }
+        let now = Config.shared["record.hotkeys"]
+        um.registerUndo(withTarget: self) { me in
+            me.restoreConfig(config)
+            me.registerUndo(um, restoring: now)       // redo
+        }
+        um.setActionName(Loc.t("capture.keys.undo_set", table: "Capture"))
+    }
+
+    private func restoreConfig(_ c: Any?) {
+        ShortcutField.active?.stop()
+        Config.shared.set("record.hotkeys", c)
+        Hotkeys.shared.load()
+        Hotkeys.shared.apply()
+        emit(["event": "shortcut_undo"])
+        refresh()
+    }
 
     override init() {
         super.init()
@@ -191,8 +314,10 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     /// Under an action's name: why it doesn't work, a config entry that couldn't be read, or nothing.
     func note(_ a: HotAction) -> (text: String, warn: Bool)? {
         let hk = Hotkeys.shared
+        if let why = refusals[a] { return (why, true) }
         if let bad = hk.invalid[a] { return (Loc.t("capture.keys.unreadable", table: "Capture", bad), true) }
         let st = hk.states[a] ?? .ok
+        if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return (r.reason(s), true) }
         if st.isConflict { return (st.text, true) }
         if st == .notHere { return (Loc.t("capture.keys.menu_bar_only", table: "Capture"), false) }
         return nil
@@ -205,8 +330,8 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
 
     func restore() {
         ShortcutField.active?.stop()
-        Hotkeys.shared.restoreDefaults()
-        refresh()
+        refusals = [:]
+        change(fields.values.compactMap(\.window).first ?? window) { Hotkeys.shared.restoreDefaults() }
     }
 
     @objc func openDictation() {
@@ -269,8 +394,10 @@ struct ShortcutsPane: View {
 
     /// Dictation's key: set in Settings → Dictation; shown here like the others, with the way there.
     var dictationRow: some View {
-        SettingRow("shortcuts.dictation",
-                   detail: Dictation.enabled ? Loc.t("dictation.mode.\(Dictation.mode.rawValue)", table: "Dictation") : nil) {
+        // "Tap or hold · double-tap to send": the double tap presses Return, so it is said wherever the key is
+        let mode = Loc.t("dictation.mode.\(Dictation.mode.rawValue)", table: "Dictation")
+        return SettingRow("shortcuts.dictation",
+                   detail: Dictation.enabled ? (Dictation.doubleTapSend ? mode + " · " + Loc.t("dictation.mode.send_suffix", table: "Dictation") : mode) : nil) {
             HStack(spacing: 10) {
                 // a text button in brand ink (§3.3 links), not the system's blue
                 Button(Loc.t("capture.keys.dictation_change", table: "Capture")) { m.openDictation() }

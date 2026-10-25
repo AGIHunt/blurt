@@ -14,6 +14,9 @@ public enum SkillContract {
         case skillOlder(skill: Int)
         /// The skill is newer than this app understands: update the app.
         case appOlder(skill: Int)
+
+        /// The app is the side to update.
+        public var appIsOlder: Bool { if case .appOlder = self { return true }; return false }
     }
 
     /// The skill's contract from its _common.py: nil = no skill there; 0 = a skill from before the handshake.

@@ -206,10 +206,11 @@ struct OnboardingView: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 3) {
-                    // a large headline: gradient text (flat brand ink with Increase Contrast)
-                    Text(T("onboarding.welcome_blurt")).font(.system(size: 24, weight: .bold)).brandGradientText()
-                    Text(T("onboarding.subtitle", Dictation.keyShort(m.dictationKey)))
-                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    // a large headline: gradient text (flat brand ink with Increase Contrast) — the welcome on the first
+                    // step, then the step's own name (the bars below already say which step it is)
+                    let h = heading
+                    Text(h.title).font(.system(size: 24, weight: .bold)).brandGradientText()
+                    Text(h.detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
             }
@@ -252,11 +253,15 @@ struct OnboardingView: View {
         }
     }
 
-    func title(_ n: Int, _ t: String, _ sub: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(T("onboarding.step", "\(n)") + t).font(.headline)
-            Text(sub).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-        }.padding(.bottom, 10)
+    /// The headline and its line for the step showing.
+    var heading: (title: String, detail: String) {
+        let key = Dictation.keyShort(m.dictationKey)
+        switch m.step {
+        case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle", key))
+        case 1: return (T("onboarding.permissions"), T("onboarding.permissions_detail"))
+        case 2: return (T("onboarding.models"), T("onboarding.models.detail"))
+        default: return (T("onboarding.try"), T("onboarding.try.detail", key) + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
+        }
     }
 
     func check(_ text: String) -> some View {
@@ -273,7 +278,8 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 12) {
             GroupBox {
                 VStack(spacing: 12) {
-                    use(T("onboarding.use.dictation"), Dictation.keyShort(m.dictationKey))
+                    use(T("onboarding.use.dictation"), Dictation.keyShort(m.dictationKey),
+                        detail: T(Dictation.doubleTapSend ? "onboarding.use.dictation.detail" : "onboarding.use.dictation.detail_plain"))
                     Divider()
                     use(T("onboarding.use.snap"), hk(.snap))
                     Divider()
@@ -286,9 +292,12 @@ struct OnboardingView: View {
         }
     }
 
-    func use(_ what: String, _ key: String) -> some View {
+    func use(_ what: String, _ key: String, detail: String? = nil) -> some View {
         HStack {
-            Text(what)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(what)
+                if let d = detail { Text(d).font(.caption).foregroundStyle(.secondary) }
+            }
             Spacer()
             Text(key.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary)     // zh short names lead with a space
         }
@@ -316,7 +325,6 @@ struct OnboardingView: View {
 
     var permissions: some View {
         VStack(alignment: .leading, spacing: 10) {
-            title(2, T("onboarding.permissions"), T("onboarding.permissions_detail"))
             PermissionDoneBanner()
             if !guide.missing(.dictation).isEmpty {
                 setupButton.buttonStyle(.brand).keyboardShortcut(.defaultAction)
@@ -330,11 +338,12 @@ struct OnboardingView: View {
                 .labelsHidden().pickerStyle(.segmented).fixedSize()
                 Spacer()
             }
-            Text(m.dictationKey == .fn ? T("onboarding.dictation_key.fn") : T("onboarding.dictation_key.other", Dictation.keyInline(m.dictationKey)))
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            // the step's footnotes in one style (Hint); attention ink only for the Fn clash
+            Hint((m.dictationKey == .fn ? T("onboarding.dictation_key.fn") : T("onboarding.dictation_key.other", Dictation.keyInline(m.dictationKey)))
+                 + (Dictation.doubleTapSend ? T("onboarding.dictation_key.send", Dictation.keyInline(m.dictationKey)) : ""))
             if m.dictationKey == .fn, !SystemAccess.fnClashApps.isEmpty {
                 Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
-                    .font(.caption).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                    .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
             }
             Hint(T("onboarding.permissions.screen_later"))
         }
@@ -342,11 +351,11 @@ struct OnboardingView: View {
 
     // MARK: 3 models
 
-    func size(_ mb: Double) -> String { ByteCountFormatter.string(fromByteCount: Int64(mb * 1_000_000), countStyle: .file) }
+    /// The same size format as Settings (modelSize).
+    func size(_ mb: Double) -> String { modelSize(mb) }
 
     var modelsStep: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(3, T("onboarding.models"), T("onboarding.models.detail"))
             GroupBox {
                 VStack(alignment: .leading, spacing: 10) {
                     if m.uv == nil {
@@ -385,7 +394,12 @@ struct OnboardingView: View {
         ForEach(models.parts, id: \.id) { p in
             let have = p.installed || models.finished.contains(p.id)
             HStack(spacing: 10) {
-                StatusDot(tone: have ? .good : .warn)
+                // in: ok; coming down now: a small spinner; waiting its turn: quiet; missing while idle: attention
+                if models.current == p.id {
+                    ProgressView().controlSize(.mini).frame(width: 8, height: 8)
+                } else {
+                    StatusDot(tone: have ? .good : models.downloading ? .off : .warn)
+                }
                 Text(T("onboarding.models.kind.\(p.kind.rawValue)"))
                 Text(p.name).foregroundStyle(.secondary)
                 Spacer()
@@ -404,7 +418,8 @@ struct OnboardingView: View {
             }
             Text(T("onboarding.models.background")).font(.caption).foregroundStyle(.secondary)
         } else if models.ready {
-            check(T("onboarding.models.ready"))
+            // the rows' checks already say it: a quiet caption, not a fourth check
+            Text(T("onboarding.models.ready")).font(.caption).foregroundStyle(.secondary)
         } else if models.failed {
             Text(T("onboarding.models.failed")).font(.callout).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
             HStack {
@@ -424,7 +439,6 @@ struct OnboardingView: View {
 
     var tryIt: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title(4, T("onboarding.try"), T("onboarding.try.detail", Dictation.keyShort(m.dictationKey)))
             TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
                 .lineLimit(3...5)
                 .textFieldStyle(.roundedBorder)
@@ -436,8 +450,23 @@ struct OnboardingView: View {
                     Text(T("onboarding.try.needs_permissions")).foregroundStyle(.secondary)
                     setupButton
                 }
-            } else if models.downloading {
-                Text(T("onboarding.try.downloading")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            } else if let p = models.dictationProgress {
+                // only the recogniser itself blocks trying it: its own bar
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(T("onboarding.try.asr_downloading")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    ProgressView(value: min(p.done, p.total), total: max(p.total, 1)) {
+                        Text(T("onboarding.models.progress", size(p.done), size(p.total))).font(.caption).monospacedDigit()
+                    }
+                }
+            } else if models.downloading && models.dictationReady {
+                // dictation works already; polish (and the voice-note model) are still coming
+                Text(T("onboarding.try.polish_coming", size(models.restMB))).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if models.loaded && !models.dictationReady {
+                HStack(spacing: 10) {
+                    Text(T("onboarding.try.no_model")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Button(T("onboarding.models.download")) { models.start() }
+                }
             }
             Spacer().frame(height: 6)
             Toggle(isOn: $m.openAtLogin) {
@@ -531,6 +560,7 @@ final class Onboarding: NSObject, NSWindowDelegate {
         // the view's onDisappear doesn't come when the window closes: from now on the island says how the models went
         MainActor.assumeIsolated {
             ModelSetup.shared.shown = false
+            ModelSetup.shared.closedWhileDownloading()       // "the models carry on in the background · Show"
             model?.stopTry()
         }
         window = nil
@@ -569,7 +599,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
               "missing": PermissionGuide.shared.missing(.dictation).map(\.rawValue), "walked": m.walked, "tried": m.tried,
               "login": m.openAtLogin, "models": ms.parts.map { "\($0.kind.rawValue):\($0.id):\($0.installed ? "installed" : "missing")" },
               "total_mb": ms.totalMB, "downloading": ms.current ?? NSNull(), "progress": [pr.done, pr.total].map { Double(Int($0)) },
-              "failed": ms.failed, "ready": ms.ready])
+              "failed": ms.failed, "ready": ms.ready, "dictation_ready": ms.dictationReady,
+              "dictation_progress": ms.dictationProgress.map { [Int($0.done), Int($0.total)] } ?? NSNull()])
     }
 
     /// Back to the front as it was (the permission guide finished), without changing the step.

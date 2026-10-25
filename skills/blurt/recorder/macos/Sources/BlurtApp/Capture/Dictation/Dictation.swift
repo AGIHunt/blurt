@@ -22,8 +22,13 @@
 //    trigger decides, and closes again if the press becomes a shortcut; the island says "listening" once audio
 //    arrives. The models are warmed on key-down (offline-first spawns, WarmSpawn): `transcribe.py serve --preload
 //    --purpose dictation` and, with polish on, `polish.py serve --preload`; the speech model also a few seconds after
-//    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed). The servers end with Blurt (`--parent`)
-//    and after 10 idle minutes, which is what gives their memory back.
+//    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed) and as soon as the download manager brings
+//    dictation's model in. The servers end with Blurt (`--parent`) and after 10 idle minutes, which is what gives their
+//    memory back. A key press never downloads anything: the servers and the CLI run with BLURT_NO_DOWNLOAD, and without
+//    an installed recogniser (DictationModels.dictationReady) the key starts nothing — the island says the model is
+//    still downloading (Show) or offers to download it (App/ModelDownloads.swift).
+//  • two running Blurts: the first to listen keeps the key (HotkeyCenter.dictationOwner); the other one listens once
+//    it quits.
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
 //    polish_timeout_ms); at key-up only the last piece is left. Any fall-back = that piece's raw text.
@@ -189,6 +194,7 @@ final class Dictation {
         if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
         apply()
         refreshPolishModel()
+        MainActor.assumeIsolated { DictationModels.shared.loadIfNeeded() }    // is there a recogniser? (the key waits on it)
         seedVocabulary()
         DictationWatch.shared.onLearned = { term in Dictation.toastLearned(term) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in self?.launchCheck() }
@@ -268,19 +274,26 @@ final class Dictation {
         trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
         keys.watchedKeyCodes = trigger.key.keyCodes
         keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
-        if Dictation.enabled {
+        // another running Blurt (a release next to a dev build) already listens to this key: it keeps it — two
+        // listeners would both type — and this one takes over when that one quits (App.otherInstancesChanged)
+        let hk = Hotkeys.shared
+        hk.testBuild = DictationInsert.testMode
+        deferredTo = Dictation.enabled && hk.resident ? hk.dictationOwner(trigger.key.rawValue) : nil
+        if Dictation.enabled && deferredTo == nil {
             // DictationKeys polls (and listens for Blurt being activated) until the key is heard everywhere; test
             // builds only simulate macOS, and only when a test says something about it
             keys.start()
+            hk.dictationKey = trigger.key.rawValue
         } else {
             keys.stop()
+            hk.dictationKey = nil
             if busy { cancel() }
         }
         lastAccess = access
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
               "key": trigger.key.rawValue, "filter": keys.filtering,
               "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "double_tap_window": trigger.doubleTapWindow, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
-              "test_mode": DictationInsert.testMode])
+              "test_mode": DictationInsert.testMode, "deferred_to": deferredTo.map { Int($0) } ?? NSNull()])
     }
 
     /// The key is heard in other apps (a tap made with Input Monitoring, or the Accessibility monitor).
@@ -318,8 +331,22 @@ final class Dictation {
 
     /// What the cues go by: on, and is the key heard (the tap, not a permission check).
     var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed) }
-    /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder.
-    var needsSetup: Bool { access.needsSetup }
+    /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder. Not while another Blurt has
+    /// the key (nothing to set up here).
+    var needsSetup: Bool { deferredTo == nil && access.needsSetup }
+    /// The pid of the other running Blurt that listens to the dictation key instead of this one.
+    private(set) var deferredTo: pid_t?
+
+    /// Another Blurt started or quit: listen again if the key is free now (or leave it, if one has it).
+    func checkOwner(via why: String) {
+        guard Dictation.enabled else { return }
+        let before = deferredTo
+        let owner = Hotkeys.shared.dictationOwner(trigger.key.rawValue)
+        guard owner != before else { return }
+        apply()
+        emit(["event": "dictation_owner", "via": why, "deferred_to": deferredTo.map { Int($0) } ?? NSNull(),
+              "before": before.map { Int($0) } ?? NSNull()])
+    }
 
     /// "Dictation is on: tap right Option to talk" — once, when the key starts being heard.
     private func confirmOn() {
@@ -523,6 +550,7 @@ final class Dictation {
     /// started offline first (no package index lookup: `uv run` checking PyPI after its cache expired took 13 s here,
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
     func warm() {
+        guard hasModel(toast: false) else { return }        // nothing to load (and nothing is ever downloaded for it)
         VoiceInput.warmSpeechModel(dictation: true)
         guard Dictation.polishOn, polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
@@ -542,8 +570,9 @@ final class Dictation {
         }
     }
 
-    /// Not while recording (it owns the mic) or while a voice note listens.
+    /// Not while recording (it owns the mic), while a voice note listens, or without a speech model to run on.
     private func canListen(toast: Bool) -> Bool {
+        guard hasModel(toast: toast) else { return false }
         if (NSApp.delegate as? App)?.rec != nil {
             if toast { island.toast(Loc.t("dictation.toast.recording_busy", table: "Dictation"), actionTitle: nil, action: nil) }
             return false
@@ -553,6 +582,51 @@ final class Dictation {
             return false
         }
         return true
+    }
+
+    /// Dictation has a recogniser installed (DictationModels.dictationReady, read at launch and after every download or
+    /// removal; not read yet = yes). Without one the key starts nothing — a key press is never a hidden download —
+    /// and says so: "still downloading (1.2 of 2.5 GB) · Show", or "no speech model yet · Download".
+    private func hasModel(toast: Bool) -> Bool {
+        guard MainActor.assumeIsolated({ DictationModels.shared.dictationReady }) == false else { return true }
+        if toast {
+            emit(["event": "dictation_no_model"])
+            MainActor.assumeIsolated { Dictation.toastNoModel() }
+        }
+        return false
+    }
+
+    /// The island's line when dictation has no speech model: its download's progress while it comes down (Show), else
+    /// the offer to download it (through the app's download manager).
+    @MainActor static func toastNoModel() {
+        let dl = ModelDownloads.shared
+        guard let j = DictationModels.shared.dictationJob else { return }
+        var t: Island.Toast
+        if dl.queue.contains(j.id) {
+            let p = dl.progress(j.id) ?? (0, j.sizeMB)
+            t = Island.Toast(text: Loc.t("dictation.toast.model_downloading", table: "Dictation", modelSize(p.done), modelSize(max(p.total, j.sizeMB))),
+                             actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) { ModelDownloads.showProgress() }
+        } else {
+            t = Island.Toast(text: Loc.t("dictation.toast.no_model", table: "Dictation", modelSize(j.sizeMB)),
+                             actionTitle: Loc.t("dictation.toast.no_model.action", table: "Dictation")) {
+                Dictation.shared.downloadModel(via: "key")
+            }
+        }
+        t.seconds = 6
+        island.toast(t)
+    }
+
+    /// Dictation's recommended recogniser, through the download manager (it is loaded as soon as it is in).
+    func downloadModel(via: String) {
+        MainActor.assumeIsolated {
+            guard let j = DictationModels.shared.dictationJob else { return }
+            ModelDownloads.shared.download([j], via: "dictation")
+            emit(["event": "dictation_model_download", "via": via, "model": j.id])
+            var t = Island.Toast(text: Loc.t("dictation.toast.model_started", table: "Dictation", modelSize(j.sizeMB), Dictation.keyShort),
+                                 actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) { ModelDownloads.showProgress() }
+            t.seconds = 5
+            island.toast(t)
+        }
     }
 
     /// The mic (or the test wav) → the wav file and the stream. On the key-down (pre-capture) or at the start.
@@ -827,7 +901,12 @@ final class Dictation {
                     emit(["event": "dictation_send", "result": "skipped", "why": "nothing_dictated", "after": "paste"])
                 }
                 self.phase = .idle
-                island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+                // no recogniser (removed while running): say that, not "nothing heard", which blames the voice
+                if MainActor.assumeIsolated({ DictationModels.shared.dictationReady }) == false {
+                    MainActor.assumeIsolated { Dictation.toastNoModel() }
+                } else {
+                    island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+                }
                 emit(["event": "dictation_text", "id": id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
                 return
             }
@@ -853,7 +932,9 @@ final class Dictation {
         let sem = DispatchSemaphore(value: 0)
         var out: [String: Any]?
         Task.detached {
-            out = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", language, "--dictation", "--vocab"], timeout: 120)
+            // BLURT_NO_DOWNLOAD: a missing model is an error here ("model_missing"), never a download behind a key press
+            out = (try? await SkillCLI.shared.run("transcribe.py", ["note", wav.path, "--language", language, "--dictation", "--vocab"],
+                                                  env: ["BLURT_NO_DOWNLOAD": "1"], timeout: 120))?.json
             sem.signal()
         }
         sem.wait()
@@ -1026,11 +1107,13 @@ enum WarmSpawn {
             return nil
         }
         let args = args.first == "serve" && !args.contains("--parent") ? args + ["--parent", "\(getpid())"] : args
-        let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1"]) { _ in }
+        // BLURT_NO_DOWNLOAD: a server started by a key press never downloads a model (the download manager does that,
+        // when the user asks); a request for a missing model is answered "model_missing"
+        let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1", "BLURT_NO_DOWNLOAD": "1"]) { _ in }
         p?.terminationHandler = { proc in
             guard proc.terminationStatus != 0, !WarmServer.running(server) else { return }
             emit(["event": "warm_spawn_online", "script": script, "status": Int(proc.terminationStatus)])
-            DispatchQueue.main.async { _ = try? ScriptRunner.shared.spawn(script, args) { _ in } }
+            DispatchQueue.main.async { _ = try? ScriptRunner.shared.spawn(script, args, env: ["BLURT_NO_DOWNLOAD": "1"]) { _ in } }
         }
         return p
     }

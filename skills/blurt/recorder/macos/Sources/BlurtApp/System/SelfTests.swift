@@ -152,10 +152,22 @@ enum SelfTests {
                     NSApp.postEvent(e, atStart: false)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    let m = HotkeySettings.shared
                     out(["action": act.rawValue, "now": Hotkeys.shared.shortcut(act)?.spec ?? "off",
                          "config": (Config.shared["record.hotkeys"] as? [String: Any])?[act.rawValue] ?? NSNull(),
-                         "state": "\(Hotkeys.shared.states[act].map { "\($0)" } ?? "")"])
+                         "state": "\(Hotkeys.shared.states[act].map { "\($0)" } ?? "")",
+                         "refused": m.refusals[act] ?? NSNull(), "note": m.note(act)?.text ?? NSNull(),
+                         "asking": m.asking?.messageText ?? NSNull()])
+                    if f.recording { f.stop() }
                 }
+            }
+        case "shortcutswap":            // shortcutswap yes|no: answer the "already used" question; undo: ⌘Z's undo
+            let m = HotkeySettings.shared
+            if arg == "undo" { m.fields.values.first?.window?.undoManager?.undo() } else { m.testAnswerSwap(arg == "yes") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                out(["hotkeys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
+                     "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, "\(Hotkeys.shared.state($0))") }),
+                     "asking": m.asking?.messageText ?? NSNull()])
             }
         case "fix":
             let uids = (arg.split(separator: " ").first ?? "").split(separator: ",").map(String.init)
