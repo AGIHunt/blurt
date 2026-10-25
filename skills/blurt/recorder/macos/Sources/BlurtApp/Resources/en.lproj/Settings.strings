@@ -61,27 +61,27 @@
 "settings.kit.system_settings" = "System Settings…";
 
 "settings.privacy.agent_runs" = "Agent runs";
-"settings.privacy.audio_never_goes_cloud" = "On: audio never goes to a cloud recognition service. Organizing and fixing are done by the agent you chose, under its own terms.";
+"settings.privacy.audio_never_goes_cloud" = "On this Mac only, or a cloud service once one has a key.";
 "settings.privacy.benchmark_samples" = "Benchmark samples";
 "settings.privacy.blurt_own_files" = "Blurt’s own files";
 "settings.privacy.build_cache" = "Build cache";
 "settings.privacy.cancel" = "Cancel";
 "settings.privacy.clean_up" = "Clean up";
 "settings.privacy.data" = "Data";
-"settings.privacy.deleted_by_default_once" = "Off: deleted once it is transcribed. The video has the same sound.";
+"settings.privacy.deleted_by_default_once" = "A separate audio file; the recording’s video already has the sound.";
 "settings.privacy.freed" = "Freed ";
 "settings.privacy.index_can_be_deleted" = "The index can be rebuilt any time.";
-"settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
-"settings.privacy.keep_raw_live_caption" = "Keep the raw audio from live captions";
-"settings.privacy.local_speech_recognition_only" = "Never use cloud speech recognition";
-"settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
+"settings.privacy.items_appear_spotlight" = "Show items in Spotlight";
+"settings.privacy.keep_raw_live_caption" = "Keep microphone audio after transcribing";
+"settings.privacy.local_speech_recognition_only" = "Speech recognition";
+"settings.privacy.macos_applies_screen_recording" = "macOS applies this change after Blurt restarts.";
 "settings.privacy.move_trash" = "Move to Trash";
 "settings.privacy.no_recordings" = "No recordings or snaps yet";
 "settings.privacy.permissions_live" = "Permissions";
 "settings.privacy.prompts" = "Prompts";
 "settings.privacy.raw_live_caption_audio" = "Raw live-caption audio";
 "settings.privacy.recordings_screenshots" = "Recordings and snaps";
-"settings.privacy.recordings_screenshots_items_stay" = "Recordings, snaps and items stay on your Mac (~/Blurt or the project’s .blurt/). Blurt uploads nothing.";
+"settings.privacy.recordings_screenshots_items_stay" = "Everything is stored on this Mac.";
 "settings.privacy.search_index" = "Search index";
 
 /* The permission guide (Onboarding/PermissionGuide.swift, HelperPanel.swift) */
@@ -235,7 +235,7 @@
 "settings.general.assistant.detail" = "Permissions, models and a first try, in four steps.";
 "settings.general.language.relaunch" = "Relaunch Now";
 "settings.kit.allow_help" = "Control-click for the System Settings pane";
-"settings.privacy.spotlight.detail" = "Find items by their title from Spotlight (⌘Space).";
+"settings.privacy.spotlight.detail" = "Find items by title with ⌘Space.";
 "settings.shortcuts.restore" = "Restore";
 
 "settings.kw.pane.general" = "app, preferences, options";
@@ -299,8 +299,8 @@
 "settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
 "settings.kw.agents.ask" = "export, send, share, bundle, hand-off, zip, Slack, Feishu, Lark, Linear, GitHub, Notion, Jira, email";
 "settings.kw.privacy.permissions" = "Screen Recording, microphone, accessibility, input monitoring, allow";
-"settings.kw.privacy.local_asr" = "local, offline, on device, cloud";
-"settings.kw.privacy.keep_live" = "live audio, raw audio, pcm";
+"settings.kw.privacy.local_asr" = "local, offline, on device, cloud, automatic, speech recognition";
+"settings.kw.privacy.keep_live" = "live audio, raw audio, pcm, live captions, microphone";
 "settings.kw.privacy.spotlight" = "Spotlight, search, index";
 "settings.kw.storage.recordings" = "recordings, snaps, screenshots, sessions, folders";
 "settings.kw.storage.videos" = "video, mp4, delete videos, free space";
@@ -311,9 +311,9 @@
 "settings.kw.storage.live_audio" = "live audio, pcm, clean up";
 "settings.perm.done.no_model.title" = "Permissions are set";
 "settings.perm.done.no_model" = "Next, download the speech model — then %@ dictates anywhere.";
-"settings.privacy.local_asr.off_keys" = "%@ is set up: the automatic choice may send audio there.";
-"settings.privacy.local_asr.off_none" = "No cloud API key is set, so speech is recognized on this Mac. Turn on to keep it that way after you set one.";
-"settings.privacy.local_asr.on" = "Speech is recognized on this Mac only, even with a cloud API key set.";
+"settings.privacy.local_asr.off_keys" = "Automatic may send audio to %@.";
+"settings.privacy.local_asr.off_none" = "On this Mac, since no cloud service has a key.";
+"settings.privacy.local_asr.on" = "Audio never goes to a cloud service, even with a key set.";
 "settings.storage.trashed" = "“%@” moved to the Trash";
 "settings.storage.undo_failed" = "Couldn’t put “%@” back";
 "settings.storage.undo_failed_many" = "%d items couldn’t be put back";
@@ -326,7 +326,7 @@
 "onboarding.try.detail_later" = "Once dictation is set up, try it here.";
 "onboarding.try.blocked" = "Dictation can’t work yet: its speech tools aren’t set up.";
 "onboarding.models.small.help" = "SenseVoice Small: dictation and voice notes work with it. The full set can come later.";
-"settings.privacy.stay_with_agents" = "Recordings, snaps and items stay on your Mac (~/Blurt or the project’s .blurt/). When you organise them or hand them off, what’s needed goes to the agent you use (Claude Code, Codex…), under its terms.";
+"settings.privacy.stay_with_agents" = "Everything is stored on this Mac; your agent gets only what you send it.";
 "settings.storage.model.vad_name" = "Voice detector";
 "settings.storage.model.unknown" = "Older model";
 "settings.storage.model.unused" = "Not used by this version of Blurt";
@@ -357,3 +357,18 @@
 "settings.kw.general.about" = "about, version, update, check for updates, guide, manual, help, setup assistant, onboarding";
 "settings.kw.dictation.lab" = "lab, developer, test bench, debug, compare models";
 "settings.projects.make_current" = "Send New Snaps Here";
+"settings.privacy.where_files" = "Where files are kept…";
+"settings.privacy.perms.all_allowed" = "All allowed";
+"settings.privacy.perms.why" = "Needed to record, hear you and paste dictation.";
+"settings.privacy.perms.missing" = "Not allowed yet: %@";
+"settings.privacy.perms.show" = "Show Details";
+"settings.privacy.perms.hide" = "Hide Details";
+"settings.privacy.perm.screen" = "Records your screen and takes snaps.";
+"settings.privacy.perm.microphone" = "Hears narration, voice notes and dictation.";
+"settings.privacy.perm.accessibility" = "Pastes dictation and lets you hold Control to draw.";
+"settings.privacy.perm.input_monitoring" = "Hears %@ only, never what you type.";
+"settings.privacy.perm.turned_off" = "Turned off in System Settings.";
+"settings.privacy.perm.not_allowed" = "Not allowed";
+"settings.privacy.local_asr.auto" = "Automatic";
+"settings.privacy.local_asr.local" = "On This Mac Only";
+"settings.privacy.local_asr.help" = "Cloud services are set up in Speech. Organizing and fixing are done by the agent you chose, under its own terms.";

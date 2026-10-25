@@ -1,13 +1,21 @@
-// Settings → Privacy (live permission state — the one full list of them —, local-only speech recognition, what is
-// kept, Spotlight) and Settings → Storage (rows from SettingsCatalog; the folders, models and files are lines of their
-// groups) (what takes space, model by model and folder by folder, and cleaning what
-// can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default). Move
-// to Trash acts at once, like Finder, with Undo (the island's button, ⌘Z; BlurtCore TrashRestore: a folder made again
-// takes its old contents back, what can't come back is said); only turning on automatic deletion asks.
-// Privacy's "never use cloud recognition" says what it does where things stand (no cloud key set: local anyway), and
-// its footer says what leaves the Mac: nothing, or — with an agent on — what organising and hand-offs send to it.
-// Storage's model rows are named from the catalogues at once (BlurtCore ModelCatalog), never by folder; a folder no
-// catalogue knows is an older model nothing uses — Move to Trash, with Undo. Empty rows are left out.
+// Settings → Privacy and Settings → Storage.
+//
+// Privacy leads with what stays on this Mac (one line: nothing leaves it, or — with an agent on — only what organizing
+// and hand-offs send to it; "Where files are kept…" opens Storage). Then the permissions, folded into one line while
+// all four are allowed (status said once, at the right: the check and "All allowed"); a disclosure shows them one by
+// one, and anything missing opens the list by itself, missing first, each with its Allow… (the long reasons are
+// tooltips). The Screen Recording row says macOS applies a change after a restart, with Restart Blurt, only when
+// Screen Recording was asked for while Blurt runs (SystemAccess.screenAskedThisRun). Then the three data choices, each
+// one line: where speech is recognized (Automatic / On This Mac Only, its line saying what happens now), keeping the
+// microphone audio, Spotlight. Every row starts at the same left edge; headings have no rule under them.
+//
+// Storage (rows from SettingsCatalog; the folders, models and files are lines of their groups): what takes space,
+// model by model and folder by folder, and cleaning what can safely go: videos of organized recordings, unused models,
+// caches — always to the Trash, never by default. Move to Trash acts at once, like Finder, with Undo (the island's
+// button, ⌘Z; BlurtCore TrashRestore: a folder made again takes its old contents back, what can't come back is said);
+// only turning on automatic deletion asks. Storage's model rows are named from the catalogues at once (BlurtCore
+// ModelCatalog), never by folder; a folder no catalogue knows is an older model nothing uses — Move to Trash, with
+// Undo. Empty rows are left out.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -87,27 +95,24 @@ final class PrivacyModel: ObservableObject {
 struct PrivacyPane: View {
     @StateObject var perms = Permissions()
     @StateObject var m = PrivacyModel()
+    @ObservedObject var speech = SpeechModel.shared
 
     var body: some View {
         SettingsPage(.privacy) {
+            PrivacyPromise()
             SettingsGroup("privacy.permissions", content: {
-                PermissionSetupButton(flow: .all, source: .privacy, p: perms)
-                PermissionRows(p: perms, source: .privacy, lines: true)
-                SettingsLine {
-                    HStack(alignment: .firstTextBaseline) {
-                        Hint(T("settings.privacy.macos_applies_screen_recording"))
-                        Spacer()
-                        // Screen Recording asked for while Blurt runs: some macOS versions apply it only after a
-                        // relaunch — only then is Restart offered
-                        if Permissions.askedScreen {
-                            Button(T("settings.perm.restart")) { SystemAccess.relaunch() }
-                        }
+                PermissionsSummary(p: perms)
+            })
+            SettingsGroup("privacy.data") {
+                // where speech is recognized, said for where things stand (Automatic with no cloud key set: here too)
+                SettingRow("privacy.local_asr", detail: localDetail, help: T("settings.privacy.local_asr.help")) {
+                    RowPicker(label: T("settings.privacy.local_speech_recognition_only"),
+                              selection: Binding(get: { m.localASR }, set: { m.setLocal($0) })) {
+                        Text(T("settings.privacy.local_asr.auto")).tag(false)
+                        Text(T("settings.privacy.local_asr.local")).tag(true)
                     }
                 }
-            })
-            SettingsGroup("privacy.data", footer: dataFooter) {
-                // what the switch does, said for where things stand: off with no cloud key set is local too
-                SettingToggle("privacy.local_asr", isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }), detail: localDetail)
+                .hidesRuleAbove()
                 SettingToggle("privacy.keep_live", isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
                 SettingToggle("privacy.spotlight", isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
             }
@@ -117,21 +122,180 @@ struct PrivacyPane: View {
         .task { if speech.state == nil { await speech.load() } }      // which cloud services have a key
     }
 
-    @ObservedObject var speech = SpeechModel.shared
-
-    /// What stays on this Mac, said as it is: with an agent on (the default), organising and hand-offs send what they
-    /// need to it — "nothing is uploaded" would be untrue then.
-    var dataFooter: String {
-        // record.agents = [] turns every agent off; unset is the registry's default order (agents on)
-        let agentsOff = Agents.shared.order?.isEmpty == true
-        return T(agentsOff ? "settings.privacy.recordings_screenshots_items_stay" : "settings.privacy.stay_with_agents")
-    }
-
-    /// On: never the cloud. Off: local anyway while no cloud key is set; with one, the automatic choice may use it.
+    /// On this Mac only: never the cloud. Automatic: here anyway while no cloud key is set; with one, it may go there.
     var localDetail: String {
         if m.localASR { return T("settings.privacy.local_asr.on") }
         let cloud = speech.models.filter { !$0.local && $0.installed }.map(\.title)
         return cloud.isEmpty ? T("settings.privacy.local_asr.off_none") : T("settings.privacy.local_asr.off_keys", Loc.list(cloud))
+    }
+}
+
+/// The page's first line: what stays on this Mac, said as it is — with an agent on (the default), organizing and
+/// hand-offs send what they need to it, so "nothing is uploaded" would be untrue then — and where the files are.
+private struct PrivacyPromise: View {
+    var body: some View {
+        // record.agents = [] turns every agent off; unset is the registry's default order (agents on)
+        let agentsOff = Agents.shared.order?.isEmpty == true
+        let line = T(agentsOff ? "settings.privacy.recordings_screenshots_items_stay" : "settings.privacy.stay_with_agents")
+        var text = AttributedString(line.hasSuffix("。") ? line : line + " ")     // no space after a full-width stop
+        var link = AttributedString(T("settings.privacy.where_files"))
+        link.link = URL(string: "blurt-settings:storage")
+        link.foregroundColor = .brandInk
+        text.append(link)
+        return Text(text)
+            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .environment(\.openURL, OpenURLAction { _ in
+                AppEnvironment.settings?.show(pane: "storage")
+                return .handled
+            })
+            .padding(.top, 6)
+    }
+}
+
+/// The permissions: one line while all four are allowed, the four rows under a disclosure. Something missing (or a
+/// Screen Recording change waiting for a restart) opens it by itself, what needs the user first; the user's own
+/// click wins after that.
+private struct PermissionsSummary: View {
+    @ObservedObject var p: Permissions
+    @ObservedObject var guide = PermissionGuide.shared
+    /// the user's own choice; nil = open exactly while something needs attention
+    @State private var shown: Bool?
+    static let kinds: [PermissionKind] = [.screen, .microphone, .accessibility, .inputMonitoring]
+
+    /// Not allowed, and needed for what Blurt does now.
+    func needs(_ k: PermissionKind) -> Bool { p.state(k) != .granted && !guide.satisfied(k) }
+
+    var body: some View {
+        let missing = Self.kinds.filter(needs)
+        // a Screen Recording change waiting for a restart: its row (with Restart Blurt) comes right after the missing
+        let restart = SystemAccess.screenAskedThisRun && !missing.contains(.screen)
+        let open = shown ?? (!missing.isEmpty || restart)
+        let sep = T("settings.perm.list_sep")
+        let first = missing + (restart ? [.screen] : [])
+        let ordered = first + Self.kinds.filter { !first.contains($0) }
+
+        SettingsLine {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Self.kinds.map(PermissionGuide.name).joined(separator: sep)).font(.system(size: SettingsMetrics.titleSize))
+                    Text(missing.isEmpty ? T("settings.privacy.perms.why")
+                         : T("settings.privacy.perms.missing", missing.map(PermissionGuide.name).joined(separator: sep)))
+                        .font(.system(size: SettingsMetrics.detailSize))
+                        .foregroundStyle(missing.isEmpty ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.brandAttnInk))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if missing.isEmpty {
+                    PermissionMark(ok: true)
+                    Text(T("settings.privacy.perms.all_allowed")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+                } else {
+                    // the walk through everything still missing
+                    Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) { guide.start(.all, source: .privacy) }
+                }
+                Button { toggle(open) } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .frame(width: 18, height: 18).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(T(open ? "settings.privacy.perms.hide" : "settings.privacy.perms.show"))
+                .accessibilityLabel(T(open ? "settings.privacy.perms.hide" : "settings.privacy.perms.show"))
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { toggle(open) }
+        }
+        .hidesRuleAbove()
+        // the check-mark line after a walk ("Done — Blurt has every permission it needs.")
+        if guide.finished != nil { SettingsLine { PermissionDoneBanner() } }
+        if open {
+            ForEach(ordered, id: \.self) { k in SettingsLine { row(k) } }
+        }
+    }
+
+    private func toggle(_ open: Bool) {
+        let reduce = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        withAnimation(reduce ? nil : .easeOut(duration: 0.15)) { shown = !open }
+        emit(["event": "privacy_permissions", "shown": !open])
+    }
+
+    /// One permission: its name and what it is for in one line (the longer reason as the tooltip), then its state at
+    /// the right — the check alone when allowed, or the attention mark and the one button that fixes it.
+    func row(_ k: PermissionKind) -> some View {
+        let st = p.state(k)
+        let now = guide.running && guide.current == k
+        let notNeeded = st != .granted && guide.satisfied(k)
+        let off = st == .denied && !notNeeded
+        return HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(PermissionGuide.name(k)).font(.system(size: SettingsMetrics.titleSize))
+                Text(off ? T("settings.privacy.perm.turned_off") : Self.short(k))
+                    .font(.system(size: SettingsMetrics.detailSize))
+                    .foregroundStyle(off ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
+                // Screen Recording asked for while Blurt runs: some macOS versions apply it only after a relaunch
+                if k == .screen && SystemAccess.screenAskedThisRun {
+                    HStack(spacing: 6) {
+                        Text(T("settings.privacy.macos_applies_screen_recording")).font(.system(size: SettingsMetrics.detailSize))
+                            .foregroundStyle(.secondary)
+                        InkTextButton(T("settings.perm.restart")) { SystemAccess.relaunch() }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .help(PermissionGuide.why(k))
+            if now {
+                Text(T("settings.perm.now")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+            } else if st == .granted {
+                PermissionMark(ok: true).help(T("settings.kit.allowed"))
+            } else if notNeeded {
+                Text(T("settings.perm.not_needed")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+            } else {
+                PermissionMark(ok: false)
+                // turned off: macOS won't ask again, so the button says where it goes (the guide opens the exact
+                // pane, with its helper panel beside it); never asked: Allow… (System Settings' pane in its menu)
+                Button(T(off ? "settings.kit.system_settings" : "settings.kit.allow")) { guide.start(.all, only: [k], source: .privacy) }
+                    .contextMenu { if !off { Button(T("settings.kit.system_settings")) { Permissions.openPane(k) } } }
+                    .help(off ? "" : T("settings.kit.allow_help"))
+                    .accessibilityIdentifier(off ? "perm.\(k).open_settings" : "perm.\(k).allow")
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// What it is for, in one line.
+    static func short(_ k: PermissionKind) -> String {
+        k == .inputMonitoring ? T("settings.privacy.perm.input_monitoring", Dictation.keyInline) : T("settings.privacy.perm.\(k.rawValue)")
+    }
+}
+
+/// Allowed: the ok disc with its check; missing: the attention disc with "!" (§2.3: a state has a shape twin). Said
+/// once, at the row's right, at the size of the text beside it.
+private struct PermissionMark: View {
+    var ok: Bool
+    var body: some View {
+        Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(ok ? Color.brandOnOk : Color(nsColor: BrandColor.onAttn), ok ? Color.brandOk : Color.brandAttn)
+            .font(.system(size: 14))
+            .accessibilityLabel(T(ok ? "settings.kit.allowed" : "settings.privacy.perm.not_allowed"))
+    }
+}
+
+/// A plain text button in brand ink (§3.4: "Change in Dictation…"), not the system's link blue.
+private struct InkTextButton: View {
+    let title: String
+    let action: () -> Void
+    init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
+    var body: some View {
+        Button(action: action) { Text(title).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandInk) }
+            .buttonStyle(.plain)
+            .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+    }
+}
+
+private extension View {
+    /// The first row under a section heading: no rule between the heading and it (only rows are separated).
+    func hidesRuleAbove() -> some View {
+        overlay(alignment: .top) { Rectangle().fill(SettingsMetrics.ground).frame(height: 1).allowsHitTesting(false) }
     }
 }
 

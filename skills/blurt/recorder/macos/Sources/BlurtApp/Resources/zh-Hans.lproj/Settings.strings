@@ -61,27 +61,27 @@
 "settings.kit.system_settings" = "系统设置…";
 
 "settings.privacy.agent_runs" = "Agent 运行记录";
-"settings.privacy.audio_never_goes_cloud" = "打开后，录音不会发给任何云端识别服务。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
+"settings.privacy.audio_never_goes_cloud" = "只在这台 Mac 上识别，或在设置了密钥后用云端服务。";
 "settings.privacy.benchmark_samples" = "测速样本";
 "settings.privacy.blurt_own_files" = "口喷鸡自己的文件";
 "settings.privacy.build_cache" = "构建缓存";
 "settings.privacy.cancel" = "取消";
 "settings.privacy.clean_up" = "清理";
 "settings.privacy.data" = "数据";
-"settings.privacy.deleted_by_default_once" = "关闭时，转写完成后就删除，录屏视频里有同样的声音。";
+"settings.privacy.deleted_by_default_once" = "单独的音频文件；录屏视频里已经有同样的声音。";
 "settings.privacy.freed" = "释放了 ";
 "settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
-"settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
-"settings.privacy.keep_raw_live_caption" = "保留实时字幕的原始音频";
-"settings.privacy.local_speech_recognition_only" = "不用云端语音识别";
-"settings.privacy.macos_applies_screen_recording" = "屏幕录制权限改了之后，macOS 要重新打开口喷鸡才生效。";
+"settings.privacy.items_appear_spotlight" = "在 Spotlight 中显示条目";
+"settings.privacy.keep_raw_live_caption" = "转写后保留麦克风音频";
+"settings.privacy.local_speech_recognition_only" = "语音识别";
+"settings.privacy.macos_applies_screen_recording" = "重新打开口喷鸡后，macOS 才会应用这项更改。";
 "settings.privacy.move_trash" = "移到废纸篓";
 "settings.privacy.no_recordings" = "还没有录屏或截图";
 "settings.privacy.permissions_live" = "权限";
 "settings.privacy.prompts" = "提示词";
 "settings.privacy.raw_live_caption_audio" = "实时字幕的原始音频";
 "settings.privacy.recordings_screenshots" = "录屏和截图";
-"settings.privacy.recordings_screenshots_items_stay" = "录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/），口喷鸡不上传任何东西。";
+"settings.privacy.recordings_screenshots_items_stay" = "所有内容都存在这台 Mac 上。";
 "settings.privacy.search_index" = "搜索索引";
 
 /* 权限向导（Onboarding/PermissionGuide.swift、HelperPanel.swift） */
@@ -234,7 +234,7 @@
 "settings.general.assistant.detail" = "权限、模型和第一次试用，四步完成。";
 "settings.general.language.relaunch" = "现在重新打开";
 "settings.kit.allow_help" = "按住 Control 点按可打开「系统设置」";
-"settings.privacy.spotlight.detail" = "在 Spotlight（⌘空格）里按标题找到条目。";
+"settings.privacy.spotlight.detail" = "用 ⌘空格 按标题找到条目。";
 "settings.shortcuts.restore" = "恢复";
 
 "settings.kw.pane.general" = "应用, 偏好, 选项, 通用";
@@ -298,8 +298,8 @@
 "settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
 "settings.kw.privacy.permissions" = "录屏, 麦克风, 辅助功能, 输入监控, 允许, 屏幕录制";
-"settings.kw.privacy.local_asr" = "本地, 离线, 端侧, 云端";
-"settings.kw.privacy.keep_live" = "实时音频, 原始音频, pcm";
+"settings.kw.privacy.local_asr" = "本地, 离线, 端侧, 云端, 自动, 语音识别";
+"settings.kw.privacy.keep_live" = "实时音频, 原始音频, pcm, 实时字幕, 麦克风";
 "settings.kw.privacy.spotlight" = "Spotlight, 搜索, 索引, 聚焦";
 "settings.kw.storage.recordings" = "录屏, 截图, 文件夹";
 "settings.kw.storage.videos" = "视频, mp4, 删除视频, 释放空间";
@@ -310,9 +310,9 @@
 "settings.kw.storage.live_audio" = "实时音频, pcm, 清理";
 "settings.perm.done.no_model.title" = "权限都好了";
 "settings.perm.done.no_model" = "下一步下载语音模型，之后按%@ 就能随处听写。";
-"settings.privacy.local_asr.off_keys" = "已设置 %@：自动选择时可能把录音发到那里识别。";
-"settings.privacy.local_asr.off_none" = "没有设置云端的 API 密钥，语音都在这台 Mac 上识别。打开后，以后设置了密钥也不会用云端。";
-"settings.privacy.local_asr.on" = "即使设置了云端的 API 密钥，语音也只在这台 Mac 上识别。";
+"settings.privacy.local_asr.off_keys" = "自动时可能把录音发给 %@ 识别。";
+"settings.privacy.local_asr.off_none" = "在这台 Mac 上识别：还没有设置云端服务的密钥。";
+"settings.privacy.local_asr.on" = "即使设置了密钥，录音也不会发给云端服务。";
 "settings.storage.trashed" = "「%@」已移到废纸篓";
 "settings.storage.undo_failed" = "「%@」没能放回原处";
 "settings.storage.undo_failed_many" = "%d 项没能放回原处";
@@ -325,7 +325,7 @@
 "onboarding.try.detail_later" = "听写设置好后，可以在这里试一下。";
 "onboarding.try.blocked" = "听写还用不了：语音工具还没装好。";
 "onboarding.models.small.help" = "SenseVoice Small：听写和语音备注都能用，完整的模型以后再下载。";
-"settings.privacy.stay_with_agents" = "录屏、截图、条目都只存在你的 Mac 上（~/Blurt 或项目的 .blurt/）。整理或交给 Agent 时，需要的内容会发给你用的 Agent（Claude Code、Codex 等），按它的条款处理。";
+"settings.privacy.stay_with_agents" = "所有内容都存在这台 Mac 上；只有你交给 Agent 的内容才会发给它。";
 "settings.storage.model.vad_name" = "人声检测";
 "settings.storage.model.unknown" = "旧模型";
 "settings.storage.model.unused" = "这个版本的口喷鸡用不到";
@@ -356,3 +356,18 @@
 "settings.kw.general.about" = "关于, 版本, 更新, 检查更新, 指南, 帮助, 设置助手, 引导";
 "settings.kw.dictation.lab" = "测试台, 开发者, 调试, 对比模型";
 "settings.projects.make_current" = "新截图归到这里";
+"settings.privacy.where_files" = "文件存放位置…";
+"settings.privacy.perms.all_allowed" = "全部已允许";
+"settings.privacy.perms.why" = "录屏、听你说话和粘贴听写文字都要用到。";
+"settings.privacy.perms.missing" = "还没允许：%@";
+"settings.privacy.perms.show" = "显示详细信息";
+"settings.privacy.perms.hide" = "隐藏详细信息";
+"settings.privacy.perm.screen" = "用来录屏和截图。";
+"settings.privacy.perm.microphone" = "用来听讲解、语音备注和听写。";
+"settings.privacy.perm.accessibility" = "用来粘贴听写文字，按住 Control 键画图。";
+"settings.privacy.perm.input_monitoring" = "只听%@，不记录你打的字。";
+"settings.privacy.perm.turned_off" = "已在「系统设置」里关闭。";
+"settings.privacy.perm.not_allowed" = "未允许";
+"settings.privacy.local_asr.auto" = "自动";
+"settings.privacy.local_asr.local" = "只在这台 Mac 上";
+"settings.privacy.local_asr.help" = "云端服务在「语音」里设置。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
