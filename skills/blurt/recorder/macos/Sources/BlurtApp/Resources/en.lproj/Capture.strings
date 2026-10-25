@@ -107,6 +107,8 @@
 "capture.note.next_hint" = "next shot";
 "capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc discard";
 "capture.note.mic_gone" = "Mic disconnected · type a note · ⏎ save";
+"capture.note.no_mic_done" = "Mic unavailable · type a note · ⏎ done · Esc discard";
+"capture.note.mic_gone_done" = "Mic disconnected · type a note · ⏎ done";
 "capture.note.paused" = "Paused · ⏎ save & resume · Esc resume";
 "capture.note.pen_hint" = "Drag to draw · ⇧ box · ⌥ ellipse";
 "capture.note.placeholder" = "Write a note";

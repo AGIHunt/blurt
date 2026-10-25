@@ -32,6 +32,35 @@ JOB_TYPES = ["record", "snap", "voice", "process", "route", "agent"]
 JOB_STEPS = ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route", "launch", "work", "finish"]
 
 
+CALL = re.compile(r"\b(?:(TP?)|Loc\.(?:t|plural|string|has))\(")
+KEYISH = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z0-9_\\()]*)+$")
+
+
+def first_argument(code: str, i: int) -> tuple[str, int]:
+    """The text of a call's first argument starting at `i` (just after the open paren), and where it ends."""
+    depth, j, in_str = 0, i, False
+    while j < len(code):
+        c = code[j]
+        if in_str:
+            if c == "\\":
+                j += 2
+                continue
+            if c == '"':
+                in_str = False
+        elif c == '"':
+            in_str = True
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                return code[i:j], j
+            depth -= 1
+        elif c == "," and depth == 0:
+            return code[i:j], j
+        j += 1
+    return code[i:], j
+
+
 def strings(path: Path) -> dict:
     """A .strings file as {key: value}; comments and blank lines skipped, anything else is an error."""
     out, text = {}, path.read_text(encoding="utf-8")
@@ -134,6 +163,66 @@ class Tables(unittest.TestCase):
                 for lang in LANGS:
                     if key not in keys(t, lang):
                         missing.append(f"{f.name}: {t}.{key} ({lang})")
+        self.assertEqual(sorted(set(missing)), [])
+
+    def test_every_key_in_a_lookup_expression_exists_and_none_is_glued_together(self):
+        """The literal-first scan above misses keys inside an expression (`Loc.t(staged ? "a" : "b", …)`) and can't see
+        a key glued together from pieces at all — dogfood: `"capture.note.no_mic" + (staged ? "_done" : "")` showed
+        the raw key "capture.note.no_mic_done" in the snap's note. So: every key literal anywhere in a lookup's key
+        argument must exist in both languages, and a key must be written out whole (no `+`, no `\\(…)` in it) unless
+        it is one of the families listed here with every value it can take."""
+        common = None  # the K10 words (kind.*, state.*, action.*, job.step.*): test_common_words checks every one
+        families = {  # file: {the key as written: [every key it can be], or None when another check covers it}
+            "AppDelegate.swift": {'"app.url.ask_\\(what)"': ["app.url.ask_record", "app.url.ask_snap"]},
+            "Hotkeys.swift": {'"capture.keys.reserved\\(pick)"': ["capture.keys.reserved", "capture.keys.reserved_pick"],
+                              '"capture.keys.reserved_menu\\(pick)"': ["capture.keys.reserved_menu",
+                                                                       "capture.keys.reserved_menu_pick"]},
+            "SessionNotifier.swift": {'"notify.many.\\(kind)"': [f"notify.many.{s}" for s in
+                                                                 ("running", "waiting_input", "turn_done", "exited", "error")]},
+            "ItemCells.swift": {'"kind.\\(k)"': common, '"state.\\(s)"': common},
+            "StatusRing.swift": {'"state.\\(state)"': common},
+            "StateMenu.swift": {'"action.\\(action).hint"': common, '"action.\\(action)"': common},
+            # (`.named` only after Loc.has says it is there)
+            "JobViews.swift": {'"job.step.\\(s.id)"': common, 'key + ".named"': None},
+            # the developer-only Dictation Lab (General → Developer) falls back to the raw tag by design
+            "DictationLabViews.swift": {'"dictation.lab.scenario.\\(k.key).\\(v)"': None,
+                                        '"dictation.lab.scenario.\\(k.key)"': None, '"dictation.lab.error_tag.\\(tag)"': None},
+        }
+        missing, glued = [], []
+        for f in SOURCES.rglob("*.swift"):
+            code = "\n".join(l for l in f.read_text(encoding="utf-8").splitlines() if not l.lstrip().startswith("//"))
+            allowed = families.get(f.name, {})
+            for m in CALL.finditer(code):
+                arg, end = first_argument(code, m.end())
+                t = m.group(1) or ""
+                if m.group(0).startswith("Loc."):
+                    tm = re.match(r'\s*,\s*table:\s*"(\w+)"', code[end:])
+                    table = lambda k, tm=tm: tm.group(1) if tm else "Common"
+                else:
+                    table = table_of
+                for written, keys_ in allowed.items():
+                    if written in arg:
+                        arg = arg.replace(written, " ")
+                        for k in keys_ or []:
+                            for lang in LANGS:
+                                if k not in keys(table(k), lang):
+                                    missing.append(f"{f.name}: {table(k)}.{k} ({lang})")
+                lits = list(re.finditer(r'"((?:[^"\\]|\\.)*)"', arg))
+                if lits and "+" in re.sub(r'"((?:[^"\\]|\\.)*)"', '""', arg):
+                    glued.append(f"{f.name}: {arg.strip()} ({t or 'Loc'})")
+                    continue
+                for lit in lits:
+                    s = lit.group(1)
+                    if not KEYISH.match(s):
+                        continue
+                    before, after = arg[:lit.start()].rstrip(), arg[lit.end():].lstrip()
+                    if "\\(" in s or s.endswith((".", "_")) or before.endswith("+") or after.startswith("+"):
+                        glued.append(f"{f.name}: {s} ({t or 'Loc'})")
+                        continue
+                    for lang in LANGS:
+                        if s not in keys(table(s), lang):
+                            missing.append(f"{f.name}: {table(s)}.{s} ({lang})")
+        self.assertEqual(sorted(set(glued)), [], "write the key out whole (a ternary of whole keys), or list the family")
         self.assertEqual(sorted(set(missing)), [])
 
     def test_the_build_ships_the_tables(self):

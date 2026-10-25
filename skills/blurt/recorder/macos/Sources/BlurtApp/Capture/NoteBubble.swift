@@ -1362,7 +1362,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 // in place, nothing said (the mic has stopped listening): it waits for ⏎, Done or a click outside
                 status.stringValue = Loc.t("capture.note.done_discard", table: "Capture")
             } else {
-                status.stringValue = dest + Loc.t((micGone ? "capture.note.mic_gone" : "capture.note.no_mic") + (staged ? "_done" : ""), table: "Capture")
+                // every key written out whole (tests/test_l10n.py checks each one exists in both languages)
+                let key = micGone ? (staged ? "capture.note.mic_gone_done" : "capture.note.mic_gone")
+                                  : (staged ? "capture.note.no_mic_done" : "capture.note.no_mic")
+                status.stringValue = dest + Loc.t(key, table: "Capture")
             }
         case .edit:
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
