@@ -4,17 +4,27 @@
 //  • the ears (IslandLayout.earOrigin): each ear's content sits against the island's *outer* edge, `earInset` in, in
 //    both shapes — the notch's ears and the capsule — so a glyph keeps one leading x and a number one trailing x
 //    through listening, transcribing, polishing and idle (the dogfood found them centred in their 56 pt ear, so the
-//    mint glyph jumped 12 pt at the stop tap). Content wider than the ear gives up the inset before it slides under
-//    the notch.
+//    mint glyph jumped 12 pt at the stop tap). Content wider than the ear widens that ear (IslandLayout.earSpan:
+//    both ears, so the shape stays centred on the notch) instead of giving up its inset — "✓ Sent" sat 4 pt from the
+//    island's rounded corner while the clock beside it kept 14.
 //  • a toast (IslandLayout.toast): its content box is never narrower than the shape it shows in (the notch plus both
 //    ears, or 260 pt on a capsule), so the text starts 18 pt in — the island rows' side inset — and an action button
 //    ends `earInset` from the right edge, under the right ear's number; a line with nothing beside it is centred.
+//    A line too long for the open width wraps onto a second line (`wraps`, `toastHeight`) instead of ending in "…"
+//    mid-word: the lines that explain a failure are the long ones.
 //  • time left (IslandLayout.timeLeft): rounded up, so the clock and the time left always add up to the limit.
 //  • the live-text panel (IslandLayout.livePanelWidth): the island's lower half, not a second pop-up — as wide as
 //    the island when it is open (a voice note), else a little wider than its ears, in one width family; the width
 //    is the island's without a toast (one during a take never re-wraps the words). On a capsule (no notch) the
 //    island itself widens to `liveCapsuleWidth` while live text shows, so the pair is the notch's proportions there
 //    too, and the panel's corners are the capsule's (15; under the notch 14, under the open island 22).
+//  • the live-text panel's lines (IslandLayout.liveLines): the last three while the take listens, newest at the
+//    bottom; once its text has gone in (typed), from the top, up to eight — a Structured list keeps its heading and
+//    its first item in view before a double tap sends it — and a fade on the last line when there is more.
+//  • the live-text panel at the end of a take: it keeps the width its words were laid out at and stays on the
+//    island's bottom edge (never re-placed below the cards that came down meanwhile); the lower half of an open
+//    island (a voice note) goes when the island closes (IslandLayout.livePanelGoes), instead of narrowing and
+//    dropping loose below the new card for a second.
 //  • a snap's card (CardShape): 84 pt high, as wide as its picture wants within 84…150 pt; a picture too wide or
 //    too tall for that is shown whole (letterboxed on the card's surface), never as a blown-up slice of its middle.
 import CoreGraphics
@@ -34,12 +44,22 @@ public enum IslandLayout {
     /// on that side (its minX for the left ear, its maxX for the right), `inner` the notch's edge on that side (nil on
     /// a capsule: nothing to slide under).
     public static func earOrigin(_ side: Side, width: CGFloat, outer: CGFloat, inner: CGFloat?) -> CGFloat {
+        // (only a shape narrower than its content — while the ear still grows to `earSpan` — gives up the inset)
         var inset = earInset
         if let n = inner {
             let room = abs(n - outer) - 2            // keep 2 pt clear of the notch
             inset = max(2, min(earInset, room - width))
         }
         return side == .left ? outer + inset : outer - inset - width
+    }
+
+    /// How wide an ear has to be for content `width` wide to keep `earInset` from the outer edge and 2 pt from the
+    /// notch: the usual 56 pt, more for a wider one ("✓ 已发送", a Structured clock counting down).
+    public static func earWidth(content width: CGFloat) -> CGFloat { max(earWidth, ceil(width) + earInset + 2) }
+
+    /// Both ears' width beside a notch: the wider of the two needs, so the shape stays centred on the notch.
+    public static func earSpan(left: CGFloat, right: CGFloat) -> CGFloat {
+        max(earWidth(content: left), earWidth(content: right))
     }
 
     /// The narrowest a toast's shape is: the notch with both ears, or the capsule's minimum.
@@ -56,7 +76,15 @@ public enum IslandLayout {
         public var textWidth: CGFloat
         /// The action button's x (nil: no button).
         public var buttonX: CGFloat?
+        /// The text doesn't fit on one line at the widest the shape goes: it wraps (`textWidth` is the wrap width;
+        /// at most `toastMaxLines`, the row `toastHeight` high).
+        public var wraps = false
     }
+
+    /// A toast's row: 46 pt for one line, a line's height more for each further one.
+    public static let toastLineHeight: CGFloat = 17
+    public static let toastMaxLines = 2
+    public static func toastHeight(lines: Int) -> CGFloat { 46 + CGFloat(min(max(1, lines), toastMaxLines) - 1) * toastLineHeight }
 
     /// `lead`: the width of what goes before the text (the chick's art, an icon, a key badge, with their gaps);
     /// `art`: the lead is the mascot (drawn from the left edge, so the line is never centred).
@@ -68,8 +96,9 @@ public enum IslandLayout {
         let width = min(maxWidth, max(floor, want))
         var leadX = start
         if button == nil, !art { leadX = max(toastInset, ((width - lead - text) / 2).rounded()) }    // nothing beside it: centred
-        let tw = max(0, min(text, width - leadX - lead - right))
-        return Toast(width: width, leadX: leadX, textWidth: tw, buttonX: button.map { width - earInset - $0 })
+        let room = max(0, width - leadX - lead - right)
+        return Toast(width: width, leadX: leadX, textWidth: min(text, room), buttonX: button.map { width - earInset - $0 },
+                     wraps: text > room + 0.5)
     }
 
     /// The time left of a limit, in whole seconds rounded up (40 s cap, 37.6 s in: "0:03" beside the clock's "0:37").
@@ -92,6 +121,23 @@ public enum IslandLayout {
     /// The capsule's width while live text hangs under it: the panel's minimum less its 24 pt a side — about the
     /// notch with its ears (297 pt), so the island and its lower half keep one proportion on every screen.
     public static func liveCapsuleWidth(panelMin: CGFloat = livePanelMinWidth) -> CGFloat { panelMin - 48 }
+
+    /// The live panel's lines while listening: the last three, newest at the bottom.
+    public static let liveListeningLines = 3
+    /// …and once its text has gone in: from the top, up to this many.
+    public static let liveTypedLines = 8
+
+    /// Which of `total` laid-out lines show: while listening the last `liveListeningLines`; once typed the first
+    /// `liveTypedLines`. `more`: lines are left out below the last one shown (it fades out).
+    public static func liveLines(total: Int, typed: Bool) -> (range: Range<Int>, more: Bool) {
+        guard total > 0 else { return (0..<0, false) }
+        if typed { let n = min(total, liveTypedLines); return (0..<n, total > n) }
+        return (max(0, total - liveListeningLines)..<total, false)
+    }
+
+    /// The live panel goes now, as the island moves: it hung under the open island (`laidOutOpen`: a voice note) and
+    /// the island has closed (`open`) — the note is over and its card has the words.
+    public static func livePanelGoes(laidOutOpen: Bool, open: Bool) -> Bool { laidOutOpen && !open }
 
     /// The live panel's corner radius: the open island's 22, else the notch's panel 14, the capsule's 15.
     public static func livePanelRadius(open: Bool, notch: Bool) -> CGFloat { open ? 22 : notch ? 14 : 15 }

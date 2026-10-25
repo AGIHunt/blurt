@@ -206,7 +206,7 @@ final class PickRow: NSView {
         if let p = project {
             ProjectLook.color(p).setFill()
             NSBezierPath(ovalIn: NSRect(x: x, y: bounds.midY - 3.5, width: 7, height: 7)).fill()
-        } else if let img = NSImage(systemSymbolName: "tray", accessibilityDescription: nil)?
+        } else if let img = NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)?   // Unassigned (the tray is the Inbox)
             .withSymbolConfiguration(.init(pointSize: 9, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
             img.draw(in: NSRect(x: x - 1, y: bounds.midY - img.size.height / 2, width: img.size.width, height: img.size.height))
         }

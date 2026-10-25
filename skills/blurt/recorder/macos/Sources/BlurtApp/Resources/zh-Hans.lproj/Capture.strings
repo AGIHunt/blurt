@@ -15,9 +15,9 @@
 "capture.card.ax_help" = "按下复制 · 操作：编辑备注、移到项目、整理、删除";
 "capture.card.ax_move" = "移到 %@";
 "capture.card.ax_shot" = "截图";
-"capture.card.ax_shot_n" = "截图 %d";
+"capture.card.ax_shot_at" = "截图 · %@";
 "capture.card.ax_voice" = "语音备注";
-"capture.card.ax_voice_n" = "语音备注 %d";
+"capture.card.ax_voice_at" = "语音备注 · %@";
 "capture.card.copied" = "已复制";
 "capture.card.copied_no_ax" = "已复制 · 在聊天 App 里只会粘贴图片";
 "capture.card.copy_image" = "复制图片";
@@ -44,6 +44,8 @@
 "capture.discarded" = "已丢弃";
 "capture.drawer.drop_title" = "放到";
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
+"capture.drawer.missing_sub" = "文件夹不见了 · 选它来重新找到";
+"capture.drawer.missing_toast" = "找不到「%@」的文件夹 · 卡片先留着";
 "capture.drawer.more" = "更多…";
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
 "capture.drawer.none_sub" = "录屏放进未归类，截图作为卡片留在刘海下方";
@@ -143,9 +145,10 @@
 "capture.picker.window_record" = "单击选中这个窗口 · 或直接拖拽框选";
 "capture.picker.window_snap" = "单击截这个窗口 · 或直接拖拽框选";
 "capture.prompt.shots" = "用 blurt skill 处理这批素材：%@\n这是截图模式的 session（mode: shots，没有录屏视频）。shots.jsonl 的每一行是一条素材，锚定一条条目：\"type\": \"shot\" 是截图（就是这一条的首帧；.marked.png 上已经有用户的笔迹；有 .wav 的是语音备注，先转写），\"type\": \"voice\" 是没有图的语音备注（\"said\" 有就是转写，没有就转写 wav）。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页；写好 items.json 后用两三句话总结。";
-"capture.rec.discard" = "放弃";
-"capture.rec.discard_q" = "放弃这段录屏？";
-"capture.rec.discard_tip" = "放弃或重录…";
+"capture.rec.discard" = "丢弃";
+"capture.rec.discard_q" = "丢弃这段录屏？";
+"capture.rec.discard_also" = "会一起丢弃：%@";
+"capture.rec.discard_tip" = "丢弃或重录…";
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
 "capture.rec.keep" = "继续录屏";
@@ -263,7 +266,7 @@
 "capture.keys.undo_set" = "更改快捷键";
 "capture.voice.hint_key" = "在听 · 再按 %@ 结束";
 "capture.voice.hint_done" = "在听 · 点「完成」结束";
-"capture.voice.esc_hint" = "Esc 取消";
+"capture.voice.esc_hint" = "Esc 丢弃";
 "capture.voice.done" = "完成";
 "capture.voice.done_tip" = "结束这条语音备注";
 "capture.voice.sound_settings" = "声音设置";
@@ -278,5 +281,5 @@
 "capture.record.no_permission" = "录屏需要「屏幕录制」权限";
 "capture.record.stale" = "录不了屏：需要重新授权屏幕录制";
 "capture.screen.reallow" = "重新授权…";
-"capture.sort.no_agent" = "整理需要 Claude Code 或 Codex，卡片先留着";
+"capture.sort.no_agent" = "整理需要 Claude Code 或 Codex · 卡片先留着";
 "capture.sort.set_up" = "去设置…";

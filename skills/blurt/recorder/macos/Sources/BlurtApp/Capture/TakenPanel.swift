@@ -8,7 +8,8 @@
 // "Show All…" for this panel) and the main window's "Recently dragged out: N" row (Inbox and Unassigned). After 7 days
 // Snapper.expireTaken moves a taken capture to the Trash.
 //
-// The panel (v0.9 look, docs/design/system.md §3.2): a small utility window on the island's screen, under the island;
+// The panel (v0.9 look, docs/design/system.md §3.2): a small utility window on the island's screen, under the strip
+// the hanging cards use (HangingCards.panelTop) — Put Back hangs the card again right above it, never over it;
 // one compact row per capture, like the main window's lists — its tile (CaptureThumb: the picture, or a voice note's
 // brand-tint tile with the waveform and its length; drag it out), the note on one line, then when it was dragged out
 // and how long it stays (in attention ink on its last day). Pointing at a row gives it the brand-tint wash and shows
@@ -45,7 +46,8 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         let size = w.frame.size
         var x = anchor.midX - size.width / 2
         x = min(max(x, screen.visibleFrame.minX + 12), screen.visibleFrame.maxX - size.width - 12)
-        let y = min(anchor.minY - 12, screen.visibleFrame.maxY) - size.height
+        // under the cards' strip (a card put back from here hangs above the panel, not over its rows)
+        let y = min(anchor.minY - 12, hanging.panelTop, screen.visibleFrame.maxY) - size.height
         w.setFrameOrigin(NSPoint(x: x, y: max(screen.visibleFrame.minY + 12, y)))
         w.orderFrontRegardless()
         emit(["event": "taken_panel", "open": true, "count": rows.count])
@@ -218,14 +220,8 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         return ok
     }
 
-    /// The note's first line, or "Screenshot 15:30" / "Voice note 15:30".
-    static func title(_ s: Shot) -> String {
-        if let t = s.words?.split(whereSeparator: \.isNewline).first.map(String.init) { return t.count > 60 ? String(t.prefix(59)) + "…" : t }
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n) + " · " +
-            f.string(from: Date(timeIntervalSince1970: s.wall))
-    }
+    /// The note's first line, or "Snap · 15:30" / "Voice note · 15:30" (BlurtCore CardName).
+    static func title(_ s: Shot) -> String { CardName.words(s.words) ?? HangingCards.cardName(s) }
 }
 
 /// A row of Recently Taken: its tile (drag it out again), the note, when it was taken; pointed at: Copy and "···".
@@ -397,9 +393,9 @@ final class TakenThumb: NSView, NSDraggingSource {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// What the tile is, for VoiceOver: "Screenshot 3" / "Voice note 3, 00:07" (the length it shows).
+    /// What the tile is, for VoiceOver: "Snap · 15:30" / "Voice note · 15:30, 00:07" (the length it shows).
     static func label(_ s: Shot) -> String {
-        let what = Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n)
+        let what = HangingCards.cardName(s)
         guard s.kind == .voice, let d = s.duration, d > 0 else { return what }
         return what + ", " + Loc.duration(d)
     }

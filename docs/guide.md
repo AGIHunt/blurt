@@ -59,7 +59,9 @@ in the last minute). Prefer the old way? *Settings → General → End a voice n
 silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognized so far shows in a
-small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in. In a dictation
+small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in. When a dictation
+stops, the panel shows the text that went in from its top (up to eight lines), so a list keeps its heading while you
+check it before a double tap sends it. In a dictation
 the words keep up with you even when you don't pause: the part you're still saying shows in a lighter grey and firms
 up to white as each stretch is finished. It never takes the focus or a click, moves to the bottom of the screen when it would cover the line you're dictating into, and is never captured in
 a recording. Because a voice note is transcribed piece by piece while you talk, its card has its words about as soon
@@ -201,7 +203,8 @@ What you can do with a card:
   becomes *Deleted 2 cards · Undo*, bringing both back. *Delete All N Cards* (in the notch's right-click menu) works
   the same way, with one *Undo* for all of them.
 - The newest five cards sit side by side, newest on the left; the others wait behind a **+N** tile at the end of the
-  row. Click it to see every card at once, newest first: click to copy, double-click to edit, right-click for the
+  row (never a *+1* for a card that fits). *Recently Dragged Out* and the all-cards window open below the cards, so a
+  card you put back never covers them. Click it to see every card at once, newest first: click to copy, double-click to edit, right-click for the
   card's menu, drag one out into any app or onto a project in the notch, `⌫` to delete.
 - A snap's card takes its picture's shape: a wide screenshot makes a wider card, and a toolbar or a sidebar shows
   whole instead of as a slice of its middle. A spoken note's mic mark sits before the note's first words. If a note
@@ -370,7 +373,7 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   is ready (a long dictation, a model still loading), it is copied instead and the notch says *Copied — paste with
   ⌘V*; a double tap's Return is then not pressed.
 - **A dictation you forgot.** Hands-free dictation stops by itself at 5 minutes. After 20 seconds without speech the
-  notch says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down (−0:30), and at the
+  notch says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down in amber (−0:30), and at the
   limit the notch says the dictation stopped there and types what you said. A tap right after that doesn't start a
   new one.
 - **No speech model yet.** Fn doesn't listen; the notch says *No speech model yet* with its size (or, when only the
@@ -608,7 +611,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥⇧V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
-**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入。听写时即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
+**边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入。听写停下后，面板从头显示打进去的文字（最多八行），清单的标题也在，方便双击发送前看一眼。听写时即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
 菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其他图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
@@ -672,7 +675,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - 卡片上备注显示不全时，悬停可以看全文（语音备注那里还有播放按钮）。
 - 双击卡片改备注。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录，按 `Esc` 备注保持原样。卡片会一直留着，直到你处理它，放多久都不会自己消失。
 - **删除**：点 ×、右键「删除」，或者键盘在卡片上时按 `⌫`。不会先问你：刘海上显示「已删除 · 撤销」5 秒，点「撤销」卡片就回到原处。这时再删一张，会变成「已删除 2 张卡片 · 撤销」，两张一起回来。刘海的右键菜单里的「删除全部 N 张卡片」也一样，一次「撤销」全部回来。
-- 最新的 5 张并排显示，最新的在最左边；其余的在这一排末尾的「+N」后面等着。点「+N」可以一次看到所有卡片（最新的在前）：单击复制，双击改备注，右键是卡片的菜单，拖到任意 App 或刘海上的项目，`⌫` 删除。
+- 最新的 5 张并排显示，最新的在最左边；其余的在这一排末尾的「+N」后面等着（放得下的那一张不会藏在「+1」后面）。「最近拖走的」和全部卡片的窗口都开在卡片下方，放回去的卡片不会挡住它们。点「+N」可以一次看到所有卡片（最新的在前）：单击复制，双击改备注，右键是卡片的菜单，拖到任意 App 或刘海上的项目，`⌫` 删除。
 - 截图卡片跟着图片的形状走：宽屏截图对应一张更宽的卡片，工具栏、侧边栏这种很宽或很高的图会完整显示，不会只露出中间一截。说过备注的卡片，话筒标记在备注第一行的开头。备注没能转成文字时，卡片会用琥珀色写明，并保留话筒标记：右键卡片可以重试。
 - 第一张卡片出现时，它会提示一句怎么用：点一下复制，或拖进任意 App。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥⇧H` 仍然可以放下来看。
@@ -776,7 +779,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候刘海的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消：说话时可以，文字还在处理时也可以（那段话就不会输入；几秒内可以点刘海上的「撤销」找回来，免得按给别的 App 的 `Esc` 把它丢掉）。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在刘海下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。按下结束后，这里会显示真正输入的文字（润色过的，或者排好的清单）约一秒半，后面带一个小对勾，也就是双击会发送出去的内容。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
 - **马上说下一段。** 刚结束就再按一下 Fn（隔半秒以上，免得算成双击），下一段马上开始听，上一段还在输入也不影响；几段按你说的先后顺序输入。
 - **只输入到原来的地方。** 文字只会输入到你开始说话时所在的 App。等文字好了你已经换到别的 App（说得很长、模型还在加载），就改成复制，刘海上提示「已复制，⌘V 粘贴」；这时双击也不会按回车。
-- **忘了结束的听写。** 单按开始的听写最长 5 分钟。超过 20 秒没说话，刘海上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间倒数（−0:30），到上限时刘海上会说明听写已结束，并输入你说的内容。紧接着按的那一下不会开始新的一段。
+- **忘了结束的听写。** 单按开始的听写最长 5 分钟。超过 20 秒没说话，刘海上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间变成琥珀色倒数（−0:30），到上限时刘海上会说明听写已结束，并输入你说的内容。紧接着按的那一下不会开始新的一段。
 - **还没有语音模型。** 按 Fn 不会开始听，刘海下方提示「还没有语音模型（大小）」（只缺那个很小的语音检测文件时，就说缺这个文件）和**下载**，点它就在上面的下载队列里开始下载，刘海上会说开始了，点「查看」看进度；如果你在设置里选了某个模型而它不在，下载的就是那个。已经在下载时，刘海上显示下载到哪了。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，刘海上说明原因并给出**重试**；模型下载好以后，刘海上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
 - **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。有两种用法：

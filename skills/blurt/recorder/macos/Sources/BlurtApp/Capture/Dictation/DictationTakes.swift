@@ -71,19 +71,21 @@ extension Dictation {
     // The island's toast keys for dictation (Island.toast / BlurtCore ToastQueue: a toast with the same key replaces
     // the one showing at once; different keys queue, newest first, and an Undo or Retry pushed out comes back).
     // `Dictation.toastKey` ("dictation") is what the island says about the last take — reformat's Undo, the list chip,
-    // "nothing heard", "copied": a new take drops them (Dictation.start). The others are kept across a new take.
-    static let toastKey = "dictation"
+    // "nothing heard", "copied": a new take drops them (Dictation.start), with the tips (`noticeToastKey`) and the
+    // 5-minute limit; ⇧'s style line goes when the take stops listening (BlurtCore DictationToastKeys has the rule).
+    // The others are kept across a new take.
+    static let toastKey = DictationToastKeys.take
     /// "no speech model · Download…" and "the model is ready · Retry": the newest says what is true now.
-    static let modelToastKey = "dictation.model"
+    static let modelToastKey = DictationToastKeys.model
     /// ⇧'s style line while a take listens: a second ⇧ replaces it (and it never takes the place of the last take's
     /// Undo or "copied", which keep their own key).
-    static let styleToastKey = "dictation.style"
+    static let styleToastKey = DictationToastKeys.style
     /// "Cancelled · Undo" for takes stopped on their way: a second Esc's replaces it; a new take doesn't drop it.
-    static let cancelToastKey = "dictation.cancel"
+    static let cancelToastKey = DictationToastKeys.cancel
     /// "Recognition failed · Retry" for one take: its own key, so two failed takes each keep their Retry.
     static func failedToastKey(_ id: String) -> String { "dictation.failed.\(id)" }
     /// Once-a-day notices and the first takes' tips (passive: they wait behind replies).
-    static let noticeToastKey = "dictation.notice"
+    static let noticeToastKey = DictationToastKeys.notice
 
     // MARK: the line of takes
 
@@ -380,14 +382,15 @@ extension Dictation {
             self.queue.delivered(id)
             self.takes[id] = nil
             self.inserting = false
-            var sent = false
+            var sent = false, sendWanted = false
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
                 if result == .pasted { self.pressReturn(after: "paste"); sent = true } else {
                     // left on the clipboard (another app in front now, a password field, Blurt in front …): Return
-                    // would send without it
+                    // would send without it — said with "copied" below, in one line
                     emit(["event": "dictation_send", "result": "skipped", "why": appChanged ? "app_changed" : "not_pasted", "after": "paste"])
-                    self.sendSkipped("not_pasted")
+                    sendWanted = true
+                    if result != .copied { self.sendSkipped("not_pasted") }
                 }
             }
             // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
@@ -413,9 +416,11 @@ extension Dictation {
             self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
-            if result == .copied {
-                self.toast(appChanged ? "dictation.toast.copied_app" : "dictation.toast.copied", key: Dictation.toastKey,
-                           seconds: appChanged ? 4 : 2.4)
+            // copied (and, after a double tap, not sent): one line that says both — "Not sent" used to be replaced in the
+            // same frame by "Copied — paste with ⌘V" (same key), so the user never learned the message didn't go
+            if let k = DictationCopyToast.key(copied: result == .copied, appChanged: appChanged, sendWanted: sendWanted) {
+                self.toast(k, key: Dictation.toastKey, seconds: appChanged || sendWanted ? 4 : 2.4,
+                           icon: DictationCopyToast.checked(k) ? .check : nil)
             } else if result == .pasted, !DictationInsert.lastPasteConfirmed {
                 // pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): in case it didn't land
                 island.toast(Loc.t("dictation.toast.pasted_unsure", table: "Dictation"), key: Dictation.toastKey,

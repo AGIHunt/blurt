@@ -21,7 +21,7 @@
 "app.menu.countdown" = "倒计时";
 "app.menu.countdown.none" = "不倒计时";
 "app.menu.countdown.seconds" = "%ld 秒";
-"app.menu.discard" = "放弃这次录屏";
+"app.menu.discard" = "丢弃这次录屏";
 "app.menu.finish" = "完成录屏";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";

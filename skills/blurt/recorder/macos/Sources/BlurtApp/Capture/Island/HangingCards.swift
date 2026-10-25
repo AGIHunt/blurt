@@ -34,7 +34,7 @@
 //    keyboard straight back (the next ⌘V pastes it where the user was), the cards going up a moment later · ↩ on the
 //    tile opens the overview with the keyboard in it · ⌫ deletes · Esc sends them up. Any other key, a click
 //    elsewhere or the cards going up hands the keyboard back (that key itself is not passed on). VoiceOver: each card
-//    is a button (its words, or "Screenshot N"; press = copy; actions: edit, move, organize, delete), then the
+//    is a button (its words, or "Snap · 19:03"; press = copy; actions: edit, move, organize, delete), then the
 //    tile ("Show all N cards", press = the overview, with the keyboard in it).
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
 //    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (leading the
@@ -509,7 +509,9 @@ final class HangingCards: NSObject {
                 mic.contents = BlurtIcon.mic.cgImage(size: 11, scale: mic.contentsScale, color: HangingCards.cardColor(BrandColor.ink, dark: dark))
             }
         } else {
-            c.card.backgroundColor = NSColor(white: 0.5, alpha: 0.2).cgColor
+            // the card's own opaque surface, as the "+N" tile and the overview tiles: a picture shown whole (a toolbar,
+            // a sidebar) is letterboxed on it — a translucent grey picked up the wallpaper, half blue and half grey
+            c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.2, alpha: 0.97) : NSColor(calibratedWhite: 0.985, alpha: 0.98)).cgColor
             c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
             c.face.contents = s.markedThumb ?? s.thumb
             layoutCaption(c, note, marks: HangingCards.marks(s))
@@ -1196,6 +1198,15 @@ final class HangingCards: NSObject {
 
     /// Down right now (tests, the main window).
     var isShown: Bool { shown }
+
+    /// Where a panel that opens under the cards starts (global Cocoa y, its top edge): below the strip they hang in,
+    /// whether they are down now or not (BlurtCore CardRow.panelTop) — Recently Dragged Out and the overview, so a
+    /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows.
+    var panelTop: CGFloat {
+        let depth = CardRow.bandDepth(below: HangingCards.below, slacks: HangingCards.slacks, cardHeight: CardShape.height)
+        let top = CardRow.panelTop(islandBottom: island.frameOnScreen.minY, band: depth)
+        return min(top, (shownBottom ?? .greatestFiniteMagnitude) - 12)
+    }
 
     /// The lowest edge of the cards hanging now (global Cocoa y), nil when they are up: the live transcript goes
     /// below them.
@@ -2102,10 +2113,16 @@ final class HangingCards: NSObject {
         return actions
     }
 
-    /// A card's spoken name: its words, or "Screenshot N" / "Voice note N".
-    static func cardLabel(_ s: Shot) -> String {
-        if let t = s.words { return t }
-        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_n" : "capture.card.ax_shot_n", table: "Capture", s.n)
+    /// A card's spoken name: its words, or what it is and when ("Snap · 19:03" / "Voice note · 19:03").
+    static func cardLabel(_ s: Shot) -> String { s.words ?? cardName(s) }
+
+    /// What a capture is and when it was taken ("Snap · 19:03"), for where its words can't name it — never the
+    /// session's counter ("Screenshot 15" skipped numbers and told nothing apart).
+    static func cardName(_ s: Shot) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return Loc.t(s.kind == .voice ? "capture.card.ax_voice_at" : "capture.card.ax_shot_at", table: "Capture",
+                     f.string(from: Date(timeIntervalSince1970: s.wall)))
     }
 }
 

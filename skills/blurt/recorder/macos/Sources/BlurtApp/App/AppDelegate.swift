@@ -738,7 +738,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
         none.toolTip = T("app.menu.project.none_tip")
-        none.image = App.menuSymbol("tray")              // like the island's chip with no project
+        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)

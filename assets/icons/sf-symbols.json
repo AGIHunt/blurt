@@ -162,6 +162,9 @@
     ],
     "bell": [
       "bell"
+    ],
+    "flag": [
+      "flag"
     ]
   },
   "nearest": {
@@ -178,7 +181,8 @@
     "lightbulb": "lightbulb",
     "document": "doc.text",
     "checkbox": "checkmark.square",
-    "tag": "tag"
+    "tag": "tag",
+    "cards": "rectangle.stack"
   },
   "aliases": {
     "close": "x",

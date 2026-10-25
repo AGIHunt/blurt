@@ -62,11 +62,11 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 item to verify</string><key>other</key><string>%d items to verify</string></dict>
   </dict>
-  <key>capture.rec.discard_q_stills</key>
+  <key>capture.rec.snaps</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Discard this recording and its snap?</string><key>other</key><string>Discard this recording and its %d snaps?</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 snap</string><key>other</key><string>%d snaps</string></dict>
   </dict>
   <key>capture.rec.markers</key>
   <dict>

@@ -90,7 +90,10 @@ final class Dictation {
     private var voice: NoteVoice?
     private var wav: URL?
     /// a take is listening (the mic is this take's)
-    private(set) var listening = false
+    private(set) var listening = false {
+        // ⇧'s style line ("Structured · ⇧ to go back") is over once the take stops listening: ⇧ does nothing then
+        didSet { if oldValue && !listening { DictationToastKeys.droppedWhenListeningEnds.forEach { island.dropToasts(key: $0) } } }
+    }
     private(set) var entryID = ""
     private var startedAt = Date()
     private var heardSpeech = false
@@ -186,6 +189,8 @@ final class Dictation {
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
     /// The right ear's clock while listening: the time so far, from 4:30 the time left ("−0:29") before the limit.
     var earClock: String { DictationRunaway.clock(elapsed: elapsed).text }
+    /// The clock counts down to the 5-minute limit (from 4:30): the island draws it in attention amber.
+    var earCountdown: Bool { DictationRunaway.clock(elapsed: elapsed).countdown }
 
     // MARK: settings (record.dictation.*)
 
@@ -704,7 +709,7 @@ final class Dictation {
             if e == .maxed {
                 // the 5-minute limit: said, and the user's next tap (meant as the stop) doesn't start a new take
                 self.trigger.endedByItself(at: CACurrentMediaTime())
-                self.toast("dictation.toast.limit", key: "dictation.listening", seconds: 4)      // in place of "still listening"
+                self.toast("dictation.toast.limit", key: DictationToastKeys.listening, seconds: 4)      // in place of "still listening"
                 emit(["event": "dictation_limit", "id": self.entryID, "seconds": DictationRunaway.limit])
             } else {
                 self.trigger.reset(active: false)
@@ -837,9 +842,9 @@ final class Dictation {
             registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
             escRegistered = true
         }
-        // what the island said about the last take (its Undo, the list chip, "nothing heard") is over — not a failed
-        // take's Retry or "Cancelled · Undo" (their own keys, DictationTakes.swift)
-        island.dropToasts(key: Dictation.toastKey)
+        // what the island said about the last take (its Undo, the list chip, "nothing heard", its tip, the 5-minute
+        // limit) is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore IslandToasts.swift)
+        DictationToastKeys.droppedAtStart.forEach { island.dropToasts(key: $0) }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
@@ -953,7 +958,7 @@ final class Dictation {
         switch n {
         case .stillListening:
             emit(["event": "dictation_runaway", "notice": "still_listening", "id": entryID, "elapsed": Int(v.elapsed)])
-            toast("dictation.toast.still_listening", Dictation.keyShort, key: "dictation.listening", seconds: 4, passive: true)
+            toast("dictation.toast.still_listening", Dictation.keyShort, key: DictationToastKeys.listening, seconds: 4, passive: true)
         case .endsSoon:
             emit(["event": "dictation_runaway", "notice": "ends_soon", "id": entryID, "elapsed": Int(v.elapsed)])
             island.dictationChanged()
