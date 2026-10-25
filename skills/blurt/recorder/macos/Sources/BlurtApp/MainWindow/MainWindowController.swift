@@ -55,6 +55,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     private(set) var shownJob: String?
     /// The reminder sheet while it is up (tests answer it).
     var openAlert: NSAlert?
+    /// ⌘Q's one-time "still in the menu bar" toast was shown (saved with the window state).
+    var quitHintShown = false
 
     init() {
         sidebar = SidebarController(model: model)
@@ -387,7 +389,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func renameSelection() {
-        guard let it = list.selectedItems.first, let w = window else { return }
+        let sel = list.selectedItems
+        guard sel.count == 1, let it = sel.first, !it.legacy, let w = window else { NSSound.beep(); return }
         let a = NSAlert()
         a.messageText = T("main.rename.title")
         a.informativeText = "\(Look.kindName(it.kind)) · \(it.itemID)"
@@ -815,7 +818,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty else { return nil }
         let m = NSMenu()
         m.autoenablesItems = true
-        let n = items.count
         // what you can do from here (K3); handing off has its own section below
         let states = StateMenu.actions(for: items, canHandOff: false)
         if !states.isEmpty, Scripts.canWrite {
@@ -823,25 +825,37 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
             m.addItem(.separator())
         }
-        // hand off
-        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard")
+        itemActions(into: m, items: items)
+        return m
+    }
+
+    /// The item actions after the state section — one builder for the context menu and the menu bar's Item menu, so
+    /// both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are all
+    /// there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
+    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+        let n = items?.count ?? 1
+        let one = items.map { $0.count == 1 } ?? true
+        let bar = items == nil
+        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
         _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
         _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
-        if n == 1, sessionJob(items[0]) != nil { _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal") }
+        if bar || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
+            _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
+        }
         m.addItem(.separator())
         m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
-        m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items)))
-        if n == 1 { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
-        if n == 1, let it = items.first, it.sessionURL != nil {
+        m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
+        if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
+        if bar || (one && items?.first?.sessionURL != nil) {
             _ = add(m, T("main.menu.review_batch"), #selector(mReviewBatch), "rectangle.stack")
         }
         m.addItem(.separator())
+        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
         _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "folder", key: "r", mods: [.command, .shift])
         _ = add(m, T("action.copy_path"), #selector(mCopyPath), "doc.on.doc", key: "c", mods: [.command, .option])
         _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink), "link")
-        if n == 1, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
-        return m
+        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
     }
 
     @discardableResult
@@ -966,9 +980,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return e.charactersIgnoringModifiers?.lowercased() == item.keyEquivalent
     }
 
+    /// The item sits in the menu bar (at any depth), not in a context or toolbar menu.
+    func inMenuBar(_ item: NSMenuItem) -> Bool {
+        var m = item.menu
+        while let s = m?.supermenu { m = s }
+        return m != nil && m === NSApp.mainMenu
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let items = list.selectedItems
-        if item.action == #selector(mState(_:)) || item.action == #selector(mStateMenu), item.menu?.supermenu != nil, isKeyMatch(item) {
+        if inMenuBar(item), isKeyMatch(item) {
             return false        // a menu-bar item's single key: the list's keyDown handles it there (MainMenu.displayKey)
         }
         switch item.action {
@@ -990,8 +1011,21 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return Scripts.canWrite && items.contains { $0.projectID != p && !$0.legacy }
         case #selector(mOpenSession):
             return items.count == 1 && sessionJob(items[0]) != nil
-        case #selector(mRename), #selector(mSetKind(_:)):
+        case #selector(mRename):
+            // one title at a time: with several rows selected Rename is off and E beeps
+            return Scripts.canWrite && items.count == 1 && !items[0].legacy
+        case #selector(mSetKind(_:)):
+            if inMenuBar(item), let k = item.representedObject as? String { item.state = !items.isEmpty && items.allSatisfy { $0.kind == k } ? .on : .off }
             return Scripts.canWrite && items.contains { !$0.legacy }
+        case #selector(mSort(_:)):
+            item.state = item.representedObject as? String == model.sort ? .on : .off
+            return model.scope != .dictation
+        case #selector(mClearFilters):
+            return model.filtered
+        case #selector(mEnrich):
+            return Scripts.canWrite && items.contains { !$0.legacy && !$0.discarded }
+        case #selector(mReviewBatch):
+            return items.count == 1 && items[0].sessionURL != nil
         case #selector(mReveal), #selector(mCopyPath), #selector(mCopyLink), #selector(mQuickLook), #selector(mOpenInEditor):
             return !items.isEmpty
         default: return true
@@ -1049,13 +1083,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             case "k": palette.toggle(); return true
             case "f": focusSearch(); return true
             case "o": openFolder(); return true
+            case "q": mCloseToMenuBar(); return true     // not Quit: the window goes, Blurt stays in the menu bar
             case "1": go(.inbox); return true
             case "2": go(.inProgress); return true
             case "3": go(.unassigned); return true
             case "4": go(.all); return true
             default: break
             }
-            if let n = Int(ch), n >= 5, n <= 9, n - 5 < model.projects.count { go(.project(model.projects[n - 5].id)); return true }
+            if let n = Int(ch), n >= 5, n <= 9 {
+                let ps = shortcutProjects
+                if n - 5 < ps.count { go(.project(ps[n - 5].id)) } else { NSSound.beep() }
+                return true
+            }
             if e.keyCode == 36 || e.keyCode == 76, window?.firstResponder === list.table { handOffSelection(); return true }
         }
         if mods == [.command, .shift], ch == "r" { mReveal(); return true }
@@ -1144,7 +1183,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         switch menu.identifier?.rawValue {
         case "toolbar-1":
             let n = list.selectedItems.count
-            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "apple.terminal", key: "\r")
+            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
             menu.addItem(.separator())
             menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
             _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.clipboard", key: "c", mods: [.command, .shift])
@@ -1212,6 +1251,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         /// before 0.9: one filter for the whole window (read once, for the place it was saved in)
         var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
+        /// ⌘Q's "Blurt is still in the menu bar" was shown
+        var quitHint: Bool?
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
 
@@ -1235,6 +1276,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.detail = Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
         s.filters = model.allFilters
+        s.quitHint = quitHintShown ? true : nil
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
         s.open = open
@@ -1255,6 +1297,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         model.filters = filters
         model.applyFilters()
+        quitHintShown = s?.quitHint == true
         model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false

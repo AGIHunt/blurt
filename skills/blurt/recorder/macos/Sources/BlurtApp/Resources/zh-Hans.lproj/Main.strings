@@ -189,7 +189,7 @@
 
 "main.keys.back" = "退回 · 收回 · 重新打开 · 恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、任务";
-"main.keys.undo" = "撤销 / 重做状态、标题或种类的修改";
+"main.keys.undo" = "撤销 / 重做上一步修改";
 "main.keys.next" = "下一条 / 上一条";
 "main.keys.open" = "打开（进入详情）";
 "main.keys.palette" = "命令面板";
@@ -200,6 +200,10 @@
 "main.keys.space" = "空格";
 "main.keys.state" = "更改状态（打开菜单）";
 "main.keys.this" = "这个面板";
+"main.keys.section.navigate" = "浏览";
+"main.keys.section.item" = "条目";
+"main.keys.section.window" = "编辑与窗口";
+"main.keys.detail" = "显示或隐藏详情";
 
 "main.list.label" = "条目";
 
@@ -350,6 +354,10 @@
 "menu.shortcuts" = "键盘快捷键";
 
 "menu.toggle_sidebar" = "显示或隐藏侧栏";
+"menu.view" = "显示";
+"menu.toggle_detail" = "显示或隐藏详情";
+"menu.sort_by" = "排序方式";
+"main.quit.kept" = "口喷鸡还在菜单栏里，听写照常能用。要退出，请从菜单栏图标的菜单里选。";
 
 "menu.undo" = "撤销";
 

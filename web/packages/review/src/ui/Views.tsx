@@ -166,7 +166,7 @@ function SelectionBar() {
       )}
       {s.host.dispatch && live.length > 0 && (
         <button className="btn sm primary" id="selDispatch" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch(live)}>
-          <Icon name="terminal" size={14} /> {s.t("handoff.dispatch")}
+          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
         </button>
       )}
       <span className="sp" />

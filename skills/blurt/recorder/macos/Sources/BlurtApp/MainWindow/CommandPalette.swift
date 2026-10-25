@@ -137,7 +137,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
             e(T("main.action.record"), "record.circle", hk(.toggleRecord)) { c.record() },
             e(T("main.action.snap"), "camera.viewfinder", hk(.snap)) { c.snap() },
             e(T("project.open_folder"), "folder.badge.plus", "⌘O") { c.openFolder() },
-            e(T("main.menu.start_session"), "apple.terminal", "⌘↩", enabled: has) { c.handOffSelection() },
+            e(T("main.menu.start_session"), "paperplane", "⌘↩", enabled: has) { c.handOffSelection() },
             e(T("main.cmd.copy_instruction"), "doc.on.clipboard", "⇧⌘C", enabled: has) { c.mCopyInstruction() },
             e(T("main.cmd.copy_full"), "text.alignleft", enabled: has) { c.mCopyFull() },
             e(T("main.menu.quick_look"), "eye", T("main.keys.space"), enabled: has) { c.list.toggleQuickLook() },

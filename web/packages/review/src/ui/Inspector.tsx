@@ -186,7 +186,7 @@ function HandoffPanel({ i }: { i: Item }) {
     <div className="handoff" id="handoffRow" aria-label={s.t("handoff.title")}>
       {h.dispatch && (
         <button className="btn sm primary" id="dispatchBtn" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch([i])}>
-          <Icon name="terminal" size={14} /> {s.t("handoff.dispatch")}
+          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
           {s.mode === "item" && <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>}
         </button>
       )}
