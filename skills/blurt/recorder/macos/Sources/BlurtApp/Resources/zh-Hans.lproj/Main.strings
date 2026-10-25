@@ -361,7 +361,7 @@
 "main.rename.empty" = "标题不能为空";
 
 "main.search.label" = "搜索";
-"main.search.placeholder" = "搜索条目、原话和字段";
+"main.search.placeholder" = "搜索条目";
 
 "main.session.recording" = "录屏 %@";
 "main.session.snaps" = "截图 %@";
@@ -661,3 +661,4 @@
 "main.project.pin" = "置顶";
 "main.project.unpin" = "取消置顶";
 "main.project.pin.undo_name" = "置顶";
+"main.search.tip" = "搜索标题、原话和所有字段。⌘F 或 /";

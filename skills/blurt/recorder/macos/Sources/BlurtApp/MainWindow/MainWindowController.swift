@@ -1747,6 +1747,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             s.searchField.sendsSearchStringImmediately = true
             s.searchField.sendsWholeSearchString = false
             s.searchField.setAccessibilityLabel(T("main.search.label"))
+            s.searchField.toolTip = T("main.search.tip")
             s.preferredWidthForSearchField = 220
             // a fixed field (Mail's, Linear's), not one that takes a third of the window
             let cap = s.searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 240)

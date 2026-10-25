@@ -360,7 +360,7 @@
 "main.rename.empty" = "Title can’t be empty";
 
 "main.search.label" = "Search";
-"main.search.placeholder" = "Search items, quotes and fields";
+"main.search.placeholder" = "Search items";
 
 "main.session.recording" = "Recording, %@";
 "main.session.snaps" = "Snaps, %@";
@@ -660,3 +660,4 @@
 "main.project.pin" = "Pin to Top";
 "main.project.unpin" = "Unpin";
 "main.project.pin.undo_name" = "Pin";
+"main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
