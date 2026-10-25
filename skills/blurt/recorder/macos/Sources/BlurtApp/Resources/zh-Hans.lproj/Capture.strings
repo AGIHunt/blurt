@@ -116,8 +116,8 @@
 "capture.note.next_hint" = "下一张";
 "capture.note.no_mic" = "麦克风不可用 · ⏎ 保存 · Esc 丢弃";
 "capture.note.mic_gone" = "麦克风断开了 · 打字记下 · ⏎ 保存";
-"capture.note.no_mic_done" = "麦克风不可用 · 打字记下 · ⏎ 完成 · Esc 丢弃";
-"capture.note.mic_gone_done" = "麦克风断开了 · 打字记下 · ⏎ 完成";
+"capture.note.no_mic_done" = "麦克风不可用 · ⏎ 完成";
+"capture.note.mic_gone_done" = "麦克风断开了 · ⏎ 完成";
 "capture.note.paused" = "已暂停 · ⏎ 保存并继续 · Esc 继续";
 "capture.note.pen_hint" = "拖动画笔 · ⇧ 方框 · ⌥ 椭圆";
 "capture.note.placeholder" = "写一句备注";

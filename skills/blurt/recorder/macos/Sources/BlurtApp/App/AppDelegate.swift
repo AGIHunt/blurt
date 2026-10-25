@@ -947,6 +947,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let a = NSAlert()
         a.messageText = title
         a.informativeText = text
+        emit(["event": "alert", "title": title, "text": text])
         activateApp()
         a.runModal()
     }

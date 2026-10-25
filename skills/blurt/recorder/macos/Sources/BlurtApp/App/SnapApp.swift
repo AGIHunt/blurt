@@ -275,16 +275,23 @@ extension App {
                 emit(["event": "fake_ink", "events": ev.path])
             }
             island.recordingStarted(r, on: NSScreen.main)
-        case "failtake":                                // failtake STILL.png: a take whose writer failed, with a still and its note
-            let dir = newSessionDir()
+        case "failtake":                                // failtake STILL.png|- [REASON]: a take whose writer failed (REASON: a
+            let a = arg.split(separator: " ").map(String.init)      // RecordingFailure raw value), with a still and its
+            let dir = newSessionDir()                               // note; "-": no still (the alert, the folder goes)
             let shots = dir.appendingPathComponent("shots")
             try? FileManager.default.createDirectory(at: shots, withIntermediateDirectories: true)
-            try? FileManager.default.copyItem(at: URL(fileURLWithPath: arg), to: shots.appendingPathComponent("001.png"))
+            if let still = a.first, still != "-" {
+                try? FileManager.default.copyItem(at: URL(fileURLWithPath: still), to: shots.appendingPathComponent("001.png"))
+            }
             try? Data(#"{"n":1,"t":2.0,"file":"shots/001.png","text":"the total is cut off"}"#.utf8 + [10])
                 .write(to: dir.appendingPathComponent("shots.jsonl"))
             lastSession = dir
             takeStartedAt = Date(timeIntervalSinceNow: -30)
-            takeEnded(5, ["event": "error", "message": "writer failed (test)"])
+            var ev: [String: Any] = ["event": "error", "code": "writer", "message": "writer failed (test)"]
+            if a.count > 1 { ev["reason"] = a[1] }
+            if a.first == "-" { try? FileManager.default.removeItem(at: dir.appendingPathComponent("shots.jsonl")) }
+            takeEnded(5, ev)
+        case "recask": island.confirmDiscard(arg != "off")       // the recording's trash button: the discard question
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.currentID)   // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
