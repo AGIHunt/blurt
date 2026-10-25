@@ -244,6 +244,7 @@ public enum SettingsCatalog {
             row("storage.videos", "storage.recordings", "settings.storage.videos", detail: S("settings.storage.videos.footer")),
             row("storage.auto_delete", "storage.recordings", "settings.storage.videos.auto"),
             whole("storage.models", detail: S("settings.storage.model.footer")),
+            row("storage.choose_models", "storage.models", "settings.storage.choose_models", detail: S("settings.storage.choose_models.detail")),
             whole("storage.files", detail: S("settings.privacy.index_can_be_deleted")),
             row("storage.live_audio", "storage.files", "settings.privacy.raw_live_caption_audio"),
         ]
@@ -290,7 +291,7 @@ public enum SettingsCatalog {
     // MARK: search
 
     /// The entries every word of `query` matches, best first (ties keep the catalogue's order). A query that is a pane's
-    /// name ("快捷键", "Shortcuts") puts that pane's rows first; one that only matches a pane's keywords ("hotkey") lists
+    /// name or its start ("快捷", "short") puts that pane's rows first; one that only matches a pane's keywords ("hotkey") lists
     /// its rows when nothing matches the rows themselves — "voice" finds the voice settings, not every row of Dictation.
     public static func search(_ query: String) -> [SettingsHit] {
         let terms = query.split(whereSeparator: { $0.isWhitespace }).map { fold(String($0)) }.filter { !$0.isEmpty }
@@ -312,10 +313,12 @@ public enum SettingsCatalog {
             }
             return hits.sorted { $0.0.score != $1.0.score ? $0.0.score > $1.0.score : $0.1 < $1.1 }.map(\.0)
         }
-        // the query is a pane's name ("快捷键", "Shortcuts"): that pane's rows lead
+        // the query is (the start of) a pane's name ("快捷", "short", "Shortcuts"): that pane's rows lead, so the
+        // results don't jump around while the name is typed — two letters at least, or one Chinese character
         let q = fold(query.trimmingCharacters(in: .whitespaces))
-        let named = Set(panes.filter { p in
-            [here, other].contains { lang in text(p.title, language: lang).map(fold) == q }
+        let longEnough = q.count >= (q.unicodeScalars.allSatisfy(\.isASCII) ? 2 : 1)
+        let named = !longEnough ? [] : Set(panes.filter { p in
+            [here, other].contains { lang in text(p.title, language: lang).map(fold)?.hasPrefix(q) == true }
         }.map(\.id))
         let rows = pass(false)
         guard !named.isEmpty else { return rows.isEmpty ? pass(true) : rows }

@@ -100,6 +100,13 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertFalse(ids("model").contains("speech.threads"))      // a pane keyword alone doesn't pull in its rows
         XCTAssertTrue(ids("model").contains("storage.models"))
         XCTAssertEqual(ids("shortcuts").first, "shortcuts.record")   // a pane's name: its rows lead, in page order
+        XCTAssertEqual(ids("shortcut").first, "shortcuts.record")    // …or the start of it, as it's typed
+        XCTAssertEqual(ids("short").first, "shortcuts.record")
+        XCTAssertEqual(ids("快捷").first, "shortcuts.record")
+        XCTAssertNotEqual(ids("s").first, "shortcuts.record")        // one letter isn't a pane's name yet
+        XCTAssertEqual(top("codex"), "agents.list")                   // an agent's name finds the agents list
+        XCTAssertEqual(top("claude"), "agents.list")
+        XCTAssertEqual(top("Kimi"), "agents.list")
         XCTAssertEqual(top("voice pause"), "general.voice_end_on_pause")  // every word, anywhere
         XCTAssertTrue(ids("LOGIN").contains("general.login"))         // case doesn't matter
         XCTAssertEqual(ids(""), [])
@@ -114,6 +121,9 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(top("镜像"), "speech.mirror")
         XCTAssertEqual(top("login"), "general.login")                 // English in the Chinese UI
         XCTAssertTrue(ids("快捷键").contains("shortcuts.record"))
+        XCTAssertEqual(ids("快捷").first, "shortcuts.record")
+        XCTAssertEqual(ids("short").first, "shortcuts.record")
+        XCTAssertEqual(top("codex"), "agents.list")
         XCTAssertEqual(SettingsCatalog.title(SettingsCatalog.entry("general.login")!), "登录时打开口喷鸡")
     }
 

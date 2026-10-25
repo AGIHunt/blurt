@@ -68,15 +68,39 @@ enum SettingsMetrics {
     static let detailSize: CGFloat = 12
     static let groupGap: CGFloat = 28
     static let leadingWidth: CGFloat = 22       // an icon or a status dot before a row's title
+    static let ground = Color(nsColor: .controlBackgroundColor)
+    static let topFade: CGFloat = 18            // under the titlebar: rows scrolled up fade out instead of being cut
+}
+
+extension View {
+    /// A page's ground (a pane, the search results), and under the window's transparent titlebar a band of it that
+    /// fades out downwards: rows scrolled up go under it softly instead of being cut by the window's top edge.
+    func settingsPageGround() -> some View {
+        frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(SettingsMetrics.ground)
+            .overlay(alignment: .top) {
+                GeometryReader { g in
+                    let top = g.safeAreaInsets.top
+                    LinearGradient(stops: [.init(color: SettingsMetrics.ground, location: 0),
+                                           .init(color: SettingsMetrics.ground, location: top / (top + SettingsMetrics.topFade)),
+                                           .init(color: SettingsMetrics.ground.opacity(0), location: 1)],
+                                   startPoint: .top, endPoint: .bottom)
+                        .frame(height: top + SettingsMetrics.topFade)
+                        .offset(y: -top)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+    }
 }
 
 /// A pane's page: its title (and an optional line under it), then its groups, scrolling. It scrolls to the row or the
-/// section a search, a link or `show(pane: "speech/dictation")` asked for and flashes it (SettingsNavigator.request).
+/// section a search, a link or `show(pane: "speech/dictation")` asked for and flashes it (SettingsFlash.request).
 struct SettingsPage<Content: View>: View {
     let pane: SettingsPane
     var subtitle: String?
     @ViewBuilder var content: Content
-    @ObservedObject private var nav = SettingsNavigator.shared
+    private let flash = SettingsFlash.shared         // not observed: the page only acts on a new request
 
     init(_ pane: SettingsPane, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.pane = pane
@@ -100,25 +124,24 @@ struct SettingsPage<Content: View>: View {
                 .frame(maxWidth: .infinity)
             }
             .onAppear { go(proxy) }
-            .onReceive(nav.$request) { _ in go(proxy) }
+            .onReceive(flash.$request) { _ in go(proxy) }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(nsColor: .controlBackgroundColor))
+        .settingsPageGround()
     }
 
     /// A page that has just appeared lays itself out over a few passes (and loads into it): the scroll is repeated
     /// until that settles; a repeat where it already is moves nothing. A row that isn't shown (its condition is off)
     /// leaves the page at its section.
     private func go(_ proxy: ScrollViewProxy) {
-        guard let r = nav.request, r.pane == pane.rawValue else { return }
+        guard let r = flash.request, r.pane == pane.rawValue else { return }
         let section = SettingsCatalog.entry(r.id)?.section
         for (i, delay) in [0.05, 0.2, 0.45, 0.8].enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                guard nav.request == r else { return }
+                guard flash.request == r else { return }
                 if let s = section, s != r.id { proxy.scrollTo(s, anchor: .top) }
                 proxy.scrollTo(r.id, anchor: section == r.id || SettingsCatalog.section(r.id) != nil ? .top : UnitPoint(x: 0.5, y: 0.25))
-                if i == 0 { nav.flashRow(r.id) }
-                if i == 3 { nav.request = nil }
+                if i == 0 { flash.flash(r.id) }
+                if i == 3 { flash.request = nil }
             }
         }
     }
@@ -132,7 +155,7 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
     var footer: String?
     var accessory: Accessory
     var content: Content
-    @ObservedObject private var nav = SettingsNavigator.shared
+    @ObservedObject private var flash = SettingsFlash.shared
 
     init(_ id: String, title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.id = id
@@ -160,9 +183,13 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                 }
                 .frame(minHeight: 20)
                 .padding(.bottom, 6)
-                .background(FlashWash(on: id != nil && nav.flash == id))
+                .background(FlashWash(on: id != nil && flash.row == id))
             }
             content
+                // no heading above it: the first row's hairline would only underline the page's title
+                .overlay(alignment: .top) {
+                    if title == nil { Rectangle().fill(SettingsMetrics.ground).frame(height: 1).allowsHitTesting(false) }
+                }
             if let f = footer {
                 Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -189,7 +216,7 @@ struct SettingsLine<Content: View>: View {
     var flashID: String?
     var padding: CGFloat = SettingsMetrics.rowPadding
     @ViewBuilder var content: Content
-    @ObservedObject private var nav = SettingsNavigator.shared
+    @ObservedObject private var flash = SettingsFlash.shared
     @Environment(\.displayScale) private var scale
 
     var body: some View {
@@ -199,7 +226,7 @@ struct SettingsLine<Content: View>: View {
             .overlay(alignment: .top) {
                 Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).allowsHitTesting(false)
             }
-            .background(FlashWash(on: flashID != nil && nav.flash == flashID))
+            .background(FlashWash(on: flashID != nil && flash.row == flashID))
     }
 }
 

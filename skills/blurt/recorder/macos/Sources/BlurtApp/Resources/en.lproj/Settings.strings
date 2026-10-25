@@ -207,7 +207,9 @@
 "settings.storage.model.shared_cache" = "Hugging Face cache, which other apps may share";
 "settings.storage.model.in_use" = "In use";
 "settings.storage.model.none" = "No models downloaded yet";
-"settings.storage.model.footer" = "A model nothing uses can go to the Trash. Models are chosen in Speech and Dictation.";
+"settings.storage.model.footer" = "A model nothing uses can go to the Trash.";
+"settings.storage.choose_models" = "Choose models";
+"settings.storage.choose_models.detail" = "Speech and Dictation each pick their own.";
 "settings.storage.videos" = "Videos of organized recordings";
 "settings.storage.videos.delete" = "Delete";
 "settings.storage.videos.older" = "Older Than %ld Days…";
@@ -259,7 +261,7 @@
 "settings.kw.pane.dictation" = "dictate, speech to text, voice typing, talk to type";
 "settings.kw.pane.speech" = "speech recognition, transcription, ASR, model, whisper";
 "settings.kw.pane.shortcuts" = "shortcut, hotkey, keyboard, key, keys, binding";
-"settings.kw.pane.agents" = "agent, AI, Claude, Codex, Kimi, coding agent";
+"settings.kw.pane.agents" = "agent, AI, coding agent";
 "settings.kw.pane.export" = "export, send, share";
 "settings.kw.pane.privacy" = "permission, private, security";
 "settings.kw.pane.storage" = "disk, space, size, delete, clean up, trash";
@@ -273,7 +275,7 @@
 "settings.kw.general.collect" = "screenshot, cmd shift 3, cmd shift 4, macOS screenshots";
 "settings.kw.general.voice_end_on_pause" = "silence, pause, stop, voice note";
 "settings.kw.general.live_text" = "live caption, transcript, words, panel, subtitles";
-"settings.kw.general.smart_paste" = "paste, chat, WeChat, Slack, Feishu, Claude, picture and note";
+"settings.kw.general.smart_paste" = "paste, chat, WeChat, Slack, Feishu, picture and note";
 "settings.kw.general.drag_copy_note" = "clipboard, copy, drag, note";
 "settings.kw.general.drag_note_file" = "markdown, md file, attach, note file";
 "settings.kw.general.drag_caption" = "caption, burn, strip, note under picture";
@@ -313,7 +315,7 @@
 "settings.kw.speech.mirror" = "mirror, Hugging Face, China, download speed, hf-mirror";
 "settings.kw.shortcuts.draw_key" = "pen, draw, circle, control, annotate";
 "settings.kw.shortcuts.restore" = "reset, defaults, conflicts";
-"settings.kw.agents.list" = "order, organize, auto sort, AI fill-in, connect, MCP, skill, sign in";
+"settings.kw.agents.list" = "order, organize, auto sort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
 "settings.kw.export.target" = "destination, Feishu, Lark, GitHub, Markdown, CSV, Bitable";
 "settings.kw.export.destinations" = "lark-cli, gh, GitHub CLI, set up export";
@@ -325,5 +327,6 @@
 "settings.kw.storage.videos" = "video, mp4, delete videos, free space";
 "settings.kw.storage.auto_delete" = "auto delete, automatically, retention, days";
 "settings.kw.storage.models" = "models, delete model, trash, disk space";
+"settings.kw.storage.choose_models" = "choose model, change model, download model";
 "settings.kw.storage.files" = "cache, index, runs, jobs, temporary";
 "settings.kw.storage.live_audio" = "live audio, pcm, clean up";

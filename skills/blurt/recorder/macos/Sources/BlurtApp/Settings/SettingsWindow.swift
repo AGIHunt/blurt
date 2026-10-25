@@ -6,7 +6,8 @@
 //            matches show how many; the others are dimmed.
 //   Page     the pane (SwiftUI, SettingsKit's SettingsPage), or the search results (SettingsSearch.swift). Each pane's
 //            page is kept once made, so switching back doesn't reload it.
-// State (pane, query, the row to scroll to) lives in SettingsNavigator. The last pane is remembered (app.settings_pane).
+// State (pane, query) lives in SettingsNavigator, the row to scroll to in SettingsFlash. The last pane is remembered
+// (app.settings_pane).
 // show(pane:) takes "speech" or "speech/dictation" (a row or section of that pane: scrolled to and flashed).
 import AppKit
 import Combine

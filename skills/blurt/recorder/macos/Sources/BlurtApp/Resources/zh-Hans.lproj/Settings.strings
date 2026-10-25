@@ -207,7 +207,9 @@
 "settings.storage.model.shared_cache" = "Hugging Face 缓存，其他 App 也可能在用";
 "settings.storage.model.in_use" = "使用中";
 "settings.storage.model.none" = "还没有下载模型";
-"settings.storage.model.footer" = "没被用到的模型可以移到废纸篓。在「语音」和「听写」里选择模型。";
+"settings.storage.model.footer" = "没被用到的模型可以移到废纸篓。";
+"settings.storage.choose_models" = "选择模型";
+"settings.storage.choose_models.detail" = "「语音」和「听写」各选各的模型。";
 "settings.storage.videos" = "已整理录屏的视频";
 "settings.storage.videos.delete" = "删除";
 "settings.storage.videos.older" = "%ld 天前的…";
@@ -258,7 +260,7 @@
 "settings.kw.pane.dictation" = "听写, 语音输入法, 说话打字, 语音转文字";
 "settings.kw.pane.speech" = "语音识别, 转写, 识别模型, ASR, 模型";
 "settings.kw.pane.shortcuts" = "快捷键, 热键, 键盘, 按键, 组合键";
-"settings.kw.pane.agents" = "Agent, AI, Claude, Codex, Kimi, 编程助手";
+"settings.kw.pane.agents" = "Agent, AI, 编程助手";
 "settings.kw.pane.export" = "导出, 发送, 分享";
 "settings.kw.pane.privacy" = "权限, 隐私, 安全";
 "settings.kw.pane.storage" = "磁盘, 空间, 大小, 删除, 清理, 废纸篓";
@@ -272,7 +274,7 @@
 "settings.kw.general.collect" = "截图, 系统截图, ⌘⇧3, ⌘⇧4";
 "settings.kw.general.voice_end_on_pause" = "停顿, 安静, 结束, 语音备注";
 "settings.kw.general.live_text" = "实时字幕, 文字, 面板, 转写";
-"settings.kw.general.smart_paste" = "粘贴, 聊天, 微信, Slack, 飞书, Claude, 图片和备注";
+"settings.kw.general.smart_paste" = "粘贴, 聊天, 微信, Slack, 飞书, 图片和备注";
 "settings.kw.general.drag_copy_note" = "剪贴板, 复制, 拖动, 备注";
 "settings.kw.general.drag_note_file" = "Markdown, md 文件, 附件, 备注文件";
 "settings.kw.general.drag_caption" = "备注条, 印在图片上, 图片下方, 说明文字";
@@ -312,7 +314,7 @@
 "settings.kw.speech.mirror" = "镜像, Hugging Face, 国内, 下载速度, hf-mirror";
 "settings.kw.shortcuts.draw_key" = "画笔, 画图, 圈出, Control, 标注";
 "settings.kw.shortcuts.restore" = "重置, 默认, 冲突";
-"settings.kw.agents.list" = "顺序, 整理, 自动归类, AI 填写, 接入, MCP, skill, 登录";
+"settings.kw.agents.list" = "顺序, 整理, 自动归类, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
 "settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.export.target" = "去向, 飞书, Lark, GitHub, Markdown, CSV, 多维表格";
 "settings.kw.export.destinations" = "lark-cli, gh, GitHub CLI, 设置导出";
@@ -324,5 +326,6 @@
 "settings.kw.storage.videos" = "视频, mp4, 删除视频, 释放空间";
 "settings.kw.storage.auto_delete" = "自动删除, 保留, 天数";
 "settings.kw.storage.models" = "模型, 删除模型, 废纸篓, 磁盘空间";
+"settings.kw.storage.choose_models" = "选择模型, 换模型, 下载模型";
 "settings.kw.storage.files" = "缓存, 索引, 运行记录, 任务, 临时文件";
 "settings.kw.storage.live_audio" = "实时音频, pcm, 清理";

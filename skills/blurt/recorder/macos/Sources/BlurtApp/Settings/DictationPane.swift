@@ -184,7 +184,7 @@ struct DictationPane: View {
     @State var showPermissions = false
     @State var showByApp = false
 
-    @ObservedObject var nav = SettingsNavigator.shared
+    private let nav = SettingsNavigator.shared       // not observed: the pane needn't redraw as the search is typed
 
     var body: some View {
         SettingsPage(.dictation) {
@@ -250,7 +250,7 @@ struct DictationPane: View {
             nav.reveal("dictation.\(id)")
         }
         // a search or a link landing on a row that is folded away: unfold it first
-        .onReceive(nav.$request) { r in
+        .onReceive(SettingsFlash.shared.$request) { r in
             guard let id = r?.id else { return }
             if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
             if id == "dictation.permissions" { showPermissions = true }

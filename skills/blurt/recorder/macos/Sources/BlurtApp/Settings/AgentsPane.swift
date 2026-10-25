@@ -218,16 +218,30 @@ final class AgentsModel: ObservableObject {
 
 struct AgentsPane: View {
     @ObservedObject var m = AgentsModel.shared
-    /// the agent being dragged to a new place in the order
+    /// the agent being dragged to a new place in the order, and the row it is over (where the insertion line shows)
     @State var dragging: String?
+    @State var dropTarget: String?
+
+    /// Dragged down the list, the agent lands after the row it's over; dragged up, before it.
+    func insertsBelow(_ target: String) -> Bool {
+        guard let d = dragging, let from = m.headless.firstIndex(where: { $0.id == d }),
+              let to = m.headless.firstIndex(where: { $0.id == target }) else { return false }
+        return from < to
+    }
 
     var body: some View {
         SettingsPage(.agents) {
             SettingsGroup("agents.list", footer: TL("agents.footer"), content: {
                 ForEach(m.headless) { a in
                     agentRow(a, ordered: true)
+                        .overlay(alignment: insertsBelow(a.id) ? .bottom : .top) {
+                            if dropTarget == a.id, let d = dragging, d != a.id {
+                                Capsule().fill(Color.brandInk).frame(height: 2).offset(y: insertsBelow(a.id) ? 1 : -1)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                         .onDrag { dragging = a.id; return NSItemProvider(object: a.id as NSString) }
-                        .onDrop(of: [.text], delegate: AgentDrop(target: a.id, m: m, dragging: $dragging))
+                        .onDrop(of: [.text], delegate: AgentDrop(target: a.id, m: m, dragging: $dragging, over: $dropTarget))
                 }
                 if let e = m.error { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr).padding(.top, 6) }
             }, accessory: {
@@ -512,21 +526,35 @@ extension InstallChange {
     var summary: String { InstallSheet.summary(self) }
 }
 
-/// Drag an agent onto another to put it there (the order Blurt tries them in).
+/// Drag an agent onto another to put it there (the order Blurt tries them in); a brand-ink line shows where it lands.
+/// What moves is the agent the drop itself names, not what was last picked up: a drag cancelled outside the list leaves
+/// `dragging` set, and a later drop of some other text must not reorder anything.
 struct AgentDrop: DropDelegate {
     let target: String
     let m: AgentsModel
     @Binding var dragging: String?
+    @Binding var over: String?
 
+    func validateDrop(info: DropInfo) -> Bool { info.hasItemsConforming(to: [.text]) }
+    func dropEntered(info: DropInfo) { over = target }
+    func dropExited(info: DropInfo) { if over == target { over = nil } }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
     func performDrop(info: DropInfo) -> Bool {
-        defer { dragging = nil }
-        return MainActor.assumeIsolated {
-            guard let d = dragging, d != target, let from = m.headless.firstIndex(where: { $0.id == d }),
-                  let to = m.headless.firstIndex(where: { $0.id == target }) else { return false }
-            m.move(from: IndexSet(integer: from), to: to > from ? to + 1 : to)
-            return true
+        dragging = nil
+        over = nil
+        guard let p = info.itemProviders(for: [.text]).first, p.canLoadObject(ofClass: NSString.self) else { return false }
+        let target = target, m = m
+        _ = p.loadObject(ofClass: NSString.self) { s, _ in
+            guard let d = s as? String else { return }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard d != target, let from = m.headless.firstIndex(where: { $0.id == d }),
+                          let to = m.headless.firstIndex(where: { $0.id == target }) else { return }
+                    m.move(from: IndexSet(integer: from), to: to > from ? to + 1 : to)
+                }
+            }
         }
+        return true
     }
 }
 

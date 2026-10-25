@@ -323,11 +323,10 @@ struct StoragePane: View {
                     SettingsLine { Text(T("settings.storage.model.none")).foregroundStyle(.secondary) }
                 }
                 ForEach(m.models) { r in modelRow(r) }
-                SettingsLine {
-                    HStack {
-                        Spacer()
-                        Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue) }
-                        Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue) }
+                SettingRow("storage.choose_models") {
+                    HStack(spacing: 8) {
+                        Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: "speech/speech.models") }
+                        Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: "dictation/dictation.models") }
                     }
                 }
             }, accessory: { if m.checkingModels { ProgressView().controlSize(.mini) } })
