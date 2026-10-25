@@ -17,8 +17,9 @@
 //    and goes with it when it is cancelled, fails or heard nothing;
 //  • the once-a-day notices (a polish or speech model fell back), the quiet tips of the first takes, what a skipped
 //    Return or a press the mode doesn't use means.
-// `Dictation.getSpeechModel` / `getPolishModel` are the one way dictation asks for a model download (Settings →
-// Speech → Dictation, the download started there).
+// `Dictation.getSpeechModel` / `getPolishModel` are the one way dictation asks for a model download — through the
+// app's one download manager (App/ModelDownloads.swift): the speech model's starts in place (the island says so, with
+// Show), the polish model's opens Settings → Speech → Dictation with its download started.
 import AppKit
 import BlurtCore
 import Combine
@@ -52,6 +53,8 @@ final class DictationTake {
     var result: DictationStream.Result?
     /// recognition failed with this (DictationASRFailure.code): kept for Retry
     var failure: String?
+    /// the mic's levels while it listened: "nothing heard" names a silent mic by them (NothingHeard)
+    var levels: [Float] = []
 
     init(id: String, front: NSRunningApplication?, frontKey: String, started: Date, duration: Double, wav: URL,
          context: DictationContext?, polishTried: Bool, keyUp: CFTimeInterval, style: DictationStyleRouter.Decision?,
@@ -113,7 +116,7 @@ extension Dictation {
             }
             LiveTranscript.shared.end(session: take.liveSession)
             leave(take)
-            island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), key: Dictation.toastKey)
+            toastNothing(levels: take.levels)       // the mic it listened with, and Change Mic…
             emit(["event": "dictation_text", "id": take.id, "ok": false, "asr_ms": r.timing["asr_ms"] ?? 0])
             return
         }
@@ -241,16 +244,38 @@ extension Dictation {
         })
     }
 
-    /// No speech model on this Mac (or no VAD — the small file every take goes through): the island says which, its
-    /// button gets it. `kept`: a take failed for it, and its recording was kept.
+    /// No speech model on this Mac (or no VAD — the small file every take goes through): the island says which, and
+    /// its button gets it through the app's one download manager (`getSpeechModel`); while that download runs, how far
+    /// it is, with Show. `kept`: a take failed for it, and its recording was kept (Retry comes once it is in:
+    /// modelArrived). The list not read (or unreadable): no size to offer — the models' page instead.
     func noSpeechModel(kept: Bool = false) {
-        let vad = speechModels?.onlyVADMissing ?? false
-        let key = (vad ? "dictation.toast.no_vad" : "dictation.toast.no_model") + (kept ? ".kept" : "")
-        island.toast(Loc.t(key, table: "Dictation"), key: Dictation.modelToastKey, seconds: 8,     // one at a time; the model arriving replaces it
-                     actionTitle: Loc.t("dictation.toast.no_model.get", table: "Dictation"), action: {
-            Dictation.getSpeechModel(from: "island")
-        })
         emit(["event": "dictation_no_model", "missing": speechModels?.missing ?? [], "kept": kept])
+        MainActor.assumeIsolated {
+            let dl = ModelDownloads.shared
+            // one at a time (Dictation.modelToastKey): the newest says what is true now, and the model arriving replaces it
+            guard let j = DictationModels.shared.dictationJob else {
+                return island.toast(Loc.t("dictation.toast.no_model_plain", table: "Dictation"), key: Dictation.modelToastKey,
+                                    seconds: 6, actionTitle: Loc.t("dictation.toast.no_model.settings", table: "Dictation")) {
+                    SpeechPane.showDictationModels()
+                }
+            }
+            if dl.queue.contains(j.id) {
+                let p = dl.progress(j.id) ?? (0, j.sizeMB)
+                return island.toast(Loc.t("dictation.toast.model_downloading", table: "Dictation", modelSize(p.done),
+                                          modelSize(max(p.total, j.sizeMB))), key: Dictation.modelToastKey, seconds: 6,
+                                    actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) {
+                    ModelDownloads.showProgress()
+                }
+            }
+            let vad = self.speechModels?.onlyVADMissing ?? (j.sizeMB == DictationModels.vadMB)
+            let text = kept ? Loc.t(vad ? "dictation.toast.no_vad.kept" : "dictation.toast.no_model.kept", table: "Dictation")
+                : vad ? Loc.t("dictation.toast.no_vad", table: "Dictation")
+                : Loc.t("dictation.toast.no_model", table: "Dictation", modelSize(j.sizeMB))
+            island.toast(text, key: Dictation.modelToastKey, seconds: 8,
+                         actionTitle: Loc.t("dictation.toast.no_model.action", table: "Dictation")) {
+                Dictation.getSpeechModel(from: "island")
+            }
+        }
     }
 
     /// The speech model (or the VAD) is there now: the newest take that failed for lack of it gets Retry on the
@@ -468,13 +493,13 @@ extension Dictation {
         // the polish model isn't there: the words went in as said, and the style control isn't what ran
         if Dictation.polishOn, polishModel == nil, take.style?.base.polishes ?? true, Dictation.onceADay("polish_missing") {
             emit(["event": "dictation_notice", "notice": "polish_missing"])
-            return notice("dictation.toast.no_polish", action: { Dictation.getPolishModel(from: "island") })
+            return notice("dictation.toast.no_polish", button: "dictation.toast.no_model.get", action: { Dictation.getPolishModel(from: "island") })
         }
         // the recommended speech model isn't there: a weaker one ran (it may not know the user's words)
         // (not when the model that ran is the one the user chose)
         if let m = speechModels, m.weakerModelRan(r.asrModel), let used = r.asrModel, Dictation.onceADay("asr_fallback") {
             emit(["event": "dictation_notice", "notice": "asr_fallback", "model": used])
-            return notice("dictation.toast.weaker_asr", action: { Dictation.getSpeechModel(from: "island") })
+            return notice("dictation.toast.weaker_asr", button: "dictation.toast.no_model.action", action: { Dictation.getSpeechModel(from: "island") })
         }
         let chat = category == DictationAppCategory.chat.rawValue
         guard let tip = DictationTip.next(chat: chat, sendOn: Dictation.doubleTapSend, sent: sent || take.sendAfterPaste, shown: tips),
@@ -494,10 +519,11 @@ extension Dictation {
         }
     }
 
-    private func notice(_ key: String, action: @escaping () -> Void) {
+    /// `button`: "Download…" when it opens Settings, "Download" when the download just starts (the speech model).
+    private func notice(_ key: String, button: String, action: @escaping () -> Void) {
         // not a reply to what the user just did: it waits behind any reply (ToastQueue's passive lines)
         var t = Island.Toast(text: Loc.t(key, table: "Dictation"),
-                             actionTitle: Loc.t("dictation.toast.no_model.get", table: "Dictation"), action: action)
+                             actionTitle: Loc.t(button, table: "Dictation"), action: action)
         t.seconds = 6
         t.key = Dictation.noticeToastKey
         t.passive = true
@@ -515,21 +541,29 @@ extension Dictation {
 
     // MARK: models
 
-    /// The one way dictation gets its speech model: Settings → Speech → Dictation, the download started there
-    /// (DictationModels — Settings' own downloader) for what is missing (DictationSpeechModels.toGet): the configured
-    /// model when that one is missing, else the recommended one; only the VAD → the selected model's setup, which
-    /// brings it, without changing the choice.
+    /// The one way dictation gets its speech model (the island's Download, the welcome line, the Dictation page's
+    /// failed take, the weaker-model notice): one job in the app's one download manager (ModelDownloads) for what is
+    /// missing (DictationModels.dictationJob ← DictationSpeechModels.toGet): the configured model when that one is
+    /// missing, else the recommended one; only the VAD → the selected model's setup, which brings just that (0.6 MB),
+    /// without changing the choice. The island then says it started, with Show; once it is in, the key works and a
+    /// take that failed for it is offered again (modelArrived). Nothing known to get: the models' page.
     static func getSpeechModel(from source: String) {
-        let get = Dictation.shared.speechModels?.toGet
-        emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": get?.id ?? NSNull(),
-              "choose": get?.choose ?? true])
         MainActor.assumeIsolated {
-            SpeechPane.showDictationModels()
             let m = DictationModels.shared
             Task { @MainActor in
-                await m.load()
-                guard let g = get ?? m.recommendedASR.map({ ($0.id, true) }) else { return }
-                m.installASR(id: g.id, choose: g.choose)
+                if m.asr == nil { await m.load() }
+                guard let j = m.dictationJob else {
+                    emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": NSNull()])
+                    return SpeechPane.showDictationModels()
+                }
+                emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": j.id, "size_mb": j.sizeMB,
+                      "choose": j.select])
+                ModelDownloads.shared.download([j], via: "dictation")
+                island.toast(Loc.t("dictation.toast.model_started", table: "Dictation", modelSize(j.sizeMB), Dictation.keyShort),
+                             key: Dictation.modelToastKey, seconds: 5,
+                             actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) {
+                    ModelDownloads.showProgress()
+                }
             }
         }
     }

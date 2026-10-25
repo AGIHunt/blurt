@@ -456,25 +456,41 @@ struct PermissionRows: View {
         }
     }
 
+    /// One permission: the dot, its name and why, then one word or one button. Allowed: "Allowed" (quiet). Turned off
+    /// in System Settings: "Turned off" in attention ink, and System Settings… (macOS won't ask again, so the button
+    /// says where it goes). Never asked: just Allow… (the dot and the button already say it's missing; System
+    /// Settings' own pane is in its menu). Not needed for what Blurt does now (Input Monitoring once Accessibility
+    /// hears the dictation key): a neutral dot and "Not needed".
     func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
         let now = guide.running && guide.current == k
+        let notNeeded = st != .granted && guide.satisfied(k)
         return HStack(alignment: .center, spacing: lines ? 14 : 10) {
-            // granted: ok with a check; missing (not set or turned down): the attention dot (§3.4)
-            StatusDot(tone: st == .granted ? .good : .warn).frame(width: lines ? SettingsMetrics.leadingWidth : nil)
+            // granted: ok; missing: the attention dot (§3.4); not needed: neutral
+            StatusDot(tone: st == .granted ? .good : notNeeded ? .off : .warn).frame(width: lines ? SettingsMetrics.leadingWidth : nil)
             VStack(alignment: .leading, spacing: lines ? 3 : 2) {
                 Text(PermissionGuide.name(k)).font(lines ? .system(size: SettingsMetrics.titleSize) : .body)
                 Text(PermissionGuide.why(k)).font(lines ? .system(size: SettingsMetrics.detailSize) : .caption).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text(now ? T("settings.perm.now") : st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))
-                .foregroundStyle(st == .granted ? .secondary : .primary).font(.callout)
-            if st != .granted {
+            if now {
+                Text(T("settings.perm.now")).foregroundStyle(.secondary).font(.callout)
+            } else if st == .granted {
+                Text(T("settings.kit.allowed")).foregroundStyle(.secondary).font(.callout)
+            } else if notNeeded {
+                Text(T("settings.perm.not_needed")).foregroundStyle(.secondary).font(.callout)
+            } else if st == .denied {
+                // macOS won't ask again: the way back is System Settings, said on the button itself (the guide opens
+                // the exact pane, with its helper panel beside it)
+                Text(T("settings.kit.not_allowed")).foregroundStyle(Color.brandAttnInk).font(.callout)
+                Button(T("settings.kit.system_settings")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
+                    .accessibilityIdentifier("perm.\(k).open_settings")
+            } else {
                 Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
-                if paneLink {
-                    Button { Permissions.openPane(k) } label: { Image(nsImage: BlurtIcon.externalLink.symbolImage(pointSize: 12)) }
-                        .buttonStyle(.borderless).help(T("settings.kit.system_settings")).accessibilityLabel(T("settings.kit.system_settings"))
-                }
+                    .contextMenu {
+                        if paneLink { Button(T("settings.kit.system_settings")) { Permissions.openPane(k) } }
+                    }
+                    .help(paneLink ? T("settings.kit.allow_help") : "")
             }
         }
         .accessibilityElement(children: .combine)
@@ -500,12 +516,11 @@ struct PermissionSetupButton: View {
             VStack(alignment: .leading, spacing: 6) {
                 if banner { PermissionDoneBanner() }
                 if !missing.isEmpty {
+                    // the rows below name each one: the button alone
                     HStack(spacing: 10) {
                         Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
                             guide.start(flow, source: source)
                         }
-                        Text(missing.map(PermissionGuide.name).joined(separator: T("settings.perm.list_sep")))
-                            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(2)
                         Spacer()
                     }
                 }

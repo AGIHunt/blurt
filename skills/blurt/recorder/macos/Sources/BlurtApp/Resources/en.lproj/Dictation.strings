@@ -22,6 +22,9 @@
 "dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
 "dictation.toast.recording_busy" = "Recording — dictation is off while the recording has the microphone";
 "dictation.toast.voice_busy" = "A voice note is listening — finish it first";
+"dictation.toast.nothing.named" = "Didn’t catch anything (%@)";
+"dictation.toast.nothing.silent" = "No sound from %@";
+"dictation.toast.nothing.change" = "Change Mic…";
 "dictation.toast.nothing" = "Didn’t catch anything";
 "dictation.toast.copied" = "Copied — paste it with Command-V";
 "dictation.toast.pasted_unsure" = "Pasted";
@@ -129,9 +132,9 @@
 "dictation.vocab.ignore" = "Ignore";
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
-"dictation.vocab.context.detail" = "Names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
+"dictation.vocab.context.detail" = "On: names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
 "dictation.vocab.learn" = "Learn from my fixes";
-"dictation.vocab.learn.detail" = "When you fix a name Blurt got wrong, it learns the word.";
+"dictation.vocab.learn.detail" = "On: when you fix a name Blurt got wrong, it learns the word.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
 "dictation.mode.auto" = "Tap or hold";
@@ -477,13 +480,13 @@
 "dictation.toast.cancelled" = "Cancelled";
 "dictation.toast.limit" = "Stopped at the 5-minute limit";
 "dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
-"dictation.toast.no_model" = "No speech model yet";
+"dictation.toast.no_model" = "No speech model yet (%@)";
 "dictation.toast.no_model.get" = "Download…";
 "dictation.toast.no_model.kept" = "No speech model yet — the recording is kept";
 "dictation.toast.no_vad" = "The speech detection file is missing (under 1 MB)";
 "dictation.toast.no_vad.kept" = "The speech detection file is missing — the recording is kept";
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
-"dictation.toast.asr_failed" = "Couldn’t recognise that — the recording is kept";
+"dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
 "dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
 "dictation.toast.retry" = "Retry";
 "dictation.toast.retry_gone" = "That recording is gone";
@@ -499,8 +502,8 @@
 "dictation.tip.send" = "Double-tap %@ to send";
 "dictation.tip.list" = "Press ⇧ while you talk for a list";
 "dictation.tip.reformat" = "%@ tries another style";
-"dictation.history.failed" = "Not recognised";
-"dictation.history.failed.no_model" = "Not recognised: no speech model";
+"dictation.history.failed" = "Not recognized";
+"dictation.history.failed.no_model" = "Not recognized: no speech model";
 "dictation.history.retry" = "Retry";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
@@ -509,3 +512,15 @@
 "dictation.words.ignored" = "Ignored %@";
 "dictation.words.rename" = "Edit Spelling";
 "dictation.words.duplicate" = "%@ is already in your Words";
+
+/* the speech model through the download manager, the key with another Blurt (shell) */
+"dictation.mode.send_suffix" = "double-tap to send";
+"dictation.models.downloading" = "Downloading · %1$@ of %2$@";
+"dictation.status.other_instance" = "Another Blurt listens to the key (pid %@)";
+"dictation.status.other_instance.detail" = "This one takes over when that one quits.";
+"dictation.toast.model_downloading" = "The speech model is still downloading (%1$@ of %2$@)";
+"dictation.toast.model_downloading.action" = "Show";
+"dictation.toast.model_started" = "Downloading the speech model (%1$@) · %2$@ dictates once it’s in";
+"dictation.toast.no_model_plain" = "No speech model yet";
+"dictation.toast.no_model.settings" = "Models…";
+"dictation.toast.no_model.action" = "Download";

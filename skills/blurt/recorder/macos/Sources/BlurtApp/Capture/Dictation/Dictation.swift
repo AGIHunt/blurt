@@ -14,9 +14,10 @@
 //    (DictationTakes.swift). A slightly slow double tap (the stop tap within 0.8 s of the start, nothing heard) sends
 //    instead of saying "nothing heard". A start the app refuses (a recording has the mic, the mic failed, no speech
 //    model) resets the trigger but keeps the tap, so a second one sends.
-//  • no speech model (`transcribe.py dictation-models`, read at launch and whenever Settings reloads it): the key
-//    doesn't listen; the island says so, and its button opens Settings → Speech → Dictation with the download started
-//    (`Dictation.getSpeechModel`). A dictation never downloads a model itself (`--no-download`, `no_download`).
+//  • no speech model (`transcribe.py dictation-models`, read through DictationModels at launch, after every download
+//    and whenever Settings reloads it): the key doesn't listen; the island says so (with the size), and its button
+//    starts the download in the app's one download manager (`Dictation.getSpeechModel` → ModelDownloads; "Show" opens
+//    its progress). A dictation never downloads a model itself (`--no-download`, `no_download`).
 //  • a hands-free take nobody stops: "still listening" after 20 s without speech, the ear counts down from 4:30, and
 //    the 5-minute limit says so when it ends the take (BlurtCore's DictationRunaway); the tap right after is its stop.
 //  • the key needs Accessibility (the Fn filter, or the monitor) or Input Monitoring (the listen-only tap). Until it
@@ -30,8 +31,17 @@
 //    trigger decides, and closes again if the press becomes a shortcut; the island says "listening" once audio
 //    arrives. The models are warmed on key-down (offline-first spawns, WarmSpawn): `transcribe.py serve --preload
 //    --purpose dictation` and, with polish on, `polish.py serve --preload`; the speech model also a few seconds after
-//    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed). The servers end with Blurt (`--parent`)
-//    and after 10 idle minutes, which is what gives their memory back.
+//    launch (`prewarm`: dictation on, key heard, ≥ 16 GB, model installed) and as soon as the download manager brings
+//    dictation's model in. The servers end with Blurt (`--parent`) and after 10 idle minutes, which is what gives their
+//    memory back. A key press never downloads anything: the servers and the CLI run with BLURT_NO_DOWNLOAD /
+//    --no-download, and without a recogniser to run on (`speechModels.ready`: the selected model and the VAD) the key
+//    starts nothing — the island says the model is still downloading (Show) or offers to download it through the
+//    app's one download manager (App/ModelDownloads.swift; `noSpeechModel`, DictationTakes.swift).
+//  • nothing heard: the island names the mic it listened with and offers Change Mic… ("No sound from AirPods" when
+//    its level never left the floor: BlurtCore NothingHeard).
+//  • two running Blurts: the first that hears the key keeps it (HotkeyCenter.dictationOwner — an instance publishes
+//    the key only while its listener is in, so a deaf one never holds it); the other one listens once
+//    it quits.
 //  • text: DictationStream cuts the audio at pauses while the user talks and transcribes + polishes each piece as it
 //    completes (the warm servers; a model still loading gets record.dictation.load_budget_ms, never counted against
 //    polish_timeout_ms); at key-up only the last piece is left. Any fall-back = that piece's raw text.
@@ -269,12 +279,13 @@ final class Dictation {
         }
     }
 
-    /// `transcribe.py dictation-models` → `speechModels` (off the main thread; `then` on the main thread).
+    /// `transcribe.py dictation-models` → `speechModels`: read once, through DictationModels (Settings' rows, the
+    /// download manager's sizes and the key all go by the same answer; `then` on the main thread).
     func refreshSpeechModels(then: (() -> Void)? = nil) {
-        Task.detached(priority: .utility) {
-            let r = try? await ScriptRunner.shared.json("transcribe.py", ["dictation-models"], timeout: 60)
-            await MainActor.run {
-                if let r = r { self.setSpeechModels(r) }
+        MainActor.assumeIsolated {
+            Task { @MainActor in
+                await DictationModels.shared.load()
+                if let a = DictationModels.shared.asr { self.setSpeechModels(a.dictionary) }
                 then?()
             }
         }
@@ -338,19 +349,26 @@ final class Dictation {
         trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
         keys.watchedKeyCodes = trigger.key.keyCodes
         keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
-        if Dictation.enabled {
+        // another running Blurt (a release next to a dev build) already listens to this key: it keeps it — two
+        // listeners would both type — and this one takes over when that one quits (App.otherInstancesChanged)
+        let hk = Hotkeys.shared
+        hk.testBuild = DictationInsert.testMode
+        deferredTo = Dictation.enabled && hk.resident ? hk.dictationOwner(trigger.key.rawValue) : nil
+        if Dictation.enabled && deferredTo == nil {
             // DictationKeys polls (and listens for Blurt being activated) until the key is heard everywhere; test
             // builds only simulate macOS, and only when a test says something about it
             keys.start()
+            hk.dictationKey = keys.installed ? trigger.key.rawValue : nil     // published only while it is heard
         } else {
             keys.stop()
+            hk.dictationKey = nil
             if busy { cancel() }
         }
         lastAccess = access
         emit(["event": "dictation_keys", "enabled": Dictation.enabled, "tap": keys.installed, "listener": keys.kind.rawValue,
               "key": trigger.key.rawValue, "filter": keys.filtering,
               "mode": trigger.mode.rawValue, "double_tap": trigger.doubleTap, "double_tap_window": trigger.doubleTapWindow, "input_monitoring": DictationKeys.inputMonitoring, "accessibility": DictationKeys.accessibility,
-              "test_mode": DictationInsert.testMode])
+              "test_mode": DictationInsert.testMode, "deferred_to": deferredTo.map { Int($0) } ?? NSNull()])
     }
 
     /// The key is heard in other apps (a tap made with Input Monitoring, or the Accessibility monitor).
@@ -381,6 +399,14 @@ final class Dictation {
 
     /// The listener changed (a poll, Blurt activated, a tap made again): say once that dictation works now.
     private func listenerChanged() {
+        // the key is heard now: unless another Blurt already hears it (then that one keeps it, this one stops
+        // listening), publish it; not heard any more: unpublish, so another instance that can hear it takes over
+        let hk = Hotkeys.shared
+        if Dictation.enabled, hk.resident, deferredTo == nil {
+            let heard = keys.installed ? trigger.key.rawValue : nil
+            if heard != nil, hk.dictationKey == nil, hk.dictationOwner(trigger.key.rawValue) != nil { return checkOwner(via: "heard") }
+            hk.dictationKey = heard
+        }
         let now = access
         if let before = lastAccess, DictationAccess.confirm(before: before, after: now) { confirmOn() }
         lastAccess = now
@@ -388,8 +414,22 @@ final class Dictation {
 
     /// What the cues go by: on, and is the key heard (the tap, not a permission check).
     var access: DictationAccess { DictationAccess(enabled: Dictation.enabled, tapInstalled: keys.installed) }
-    /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder.
-    var needsSetup: Bool { access.needsSetup }
+    /// On but deaf: the menu row, Settings → Dictation's warning, the island's reminder. Not while another Blurt has
+    /// the key (nothing to set up here).
+    var needsSetup: Bool { deferredTo == nil && access.needsSetup }
+    /// The pid of the other running Blurt that listens to the dictation key instead of this one.
+    private(set) var deferredTo: pid_t?
+
+    /// Another Blurt started or quit: listen again if the key is free now (or leave it, if one has it).
+    func checkOwner(via why: String) {
+        guard Dictation.enabled else { return }
+        let before = deferredTo
+        let owner = Hotkeys.shared.dictationOwner(trigger.key.rawValue)
+        guard owner != before else { return }
+        apply()
+        emit(["event": "dictation_owner", "via": why, "deferred_to": deferredTo.map { Int($0) } ?? NSNull(),
+              "before": before.map { Int($0) } ?? NSNull()])
+    }
 
     /// "Dictation is on: tap right Option to talk" — once, when the key starts being heard.
     private func confirmOn() {
@@ -620,7 +660,8 @@ final class Dictation {
         }
     }
 
-    /// Not while recording (it owns the mic) or while a voice note listens.
+    /// Not while recording (it owns the mic) or while a voice note listens. (Without a speech model the key-down and the
+    /// start already refused: `speechModelMissing`.)
     private func canListen(toast: Bool) -> Bool {
         if (NSApp.delegate as? App)?.rec != nil {
             if toast { island.toast(Loc.t("dictation.toast.recording_busy", table: "Dictation"), key: Dictation.toastKey) }
@@ -871,7 +912,12 @@ final class Dictation {
         pressReturn(after: after)
     }
 
+    /// How many times a double tap asked for Return (pressed or not — Blurt's own window never gets one): the setup
+    /// assistant's Try-it step watches it to see the send gesture was tried.
+    private(set) var sendAttempts = 0
+
     func pressReturn(after: String) {
+        sendAttempts += 1
         let r = DictationInsert.pressReturn()
         emit(["event": "dictation_send", "result": r.result, "why": r.why ?? NSNull(), "after": after])
         if r.pressed {
@@ -897,7 +943,7 @@ final class Dictation {
         listening = false
         LiveTranscript.shared.end(session: liveSession)
         updatePhase()
-        if !quietly { island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), key: Dictation.toastKey) }
+        if !quietly { toastNothing() }
     }
 
     /// The silence watch while a take listens: a reminder after 20 s without speech, the countdown from 4:30.
@@ -929,6 +975,33 @@ final class Dictation {
         island.toast(t)
     }
 
+    /// "Didn't catch anything (AirPods) · Change Mic…" / "No sound from AirPods" (BlurtCore NothingHeard): the mic it
+    /// listened with, and the way to another — Settings → Dictation's microphone.
+    func toastNothing(levels: [Float]? = nil) {
+        let levels = levels ?? self.levels
+        let why = NothingHeard.why(levels: levels)
+        let name = micName
+        emit(["event": "dictation_nothing", "why": why.rawValue, "mic": name ?? NSNull(),
+              "peak": Double(levels.max() ?? 0)])
+        // about the last take (Dictation.toastKey): the next take's start drops it
+        island.toast(Loc.t(NothingHeard.key(why, hasName: name != nil), table: "Dictation", name ?? ""), key: Dictation.toastKey,
+                     actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
+            AppEnvironment.settings?.show(pane: "dictation/mic")
+        }
+    }
+
+    /// The microphone dictation listens with: the Mac's own (when it uses it) or the default input; a test build's
+    /// stand-in wav by its file name. nil = not known.
+    var micName: String? {
+        if DictationInsert.testMode {
+            let env = ProcessInfo.processInfo.environment
+            return (testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]).map { URL(fileURLWithPath: $0).lastPathComponent }
+        }
+        let useBuiltInMic = Dictation.useBuiltInMic
+        let id = useBuiltInMic ? AudioDevices.builtInInput() : AudioDevices.defaultInput
+        return id.flatMap { d in AudioDevices.inputs().first { $0.id == d }?.name }
+    }
+
     // MARK: the words
 
     /// The take stops listening: it joins the takes on their way (DictationTakes.swift), and the key is free for the
@@ -948,7 +1021,7 @@ final class Dictation {
             try? FileManager.default.removeItem(at: url)
             LiveTranscript.shared.end(session: liveSession)
             updatePhase()
-            return island.toast(Loc.t("dictation.toast.nothing", table: "Dictation"), key: Dictation.toastKey)
+            return toastNothing()
         }
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
@@ -957,6 +1030,7 @@ final class Dictation {
                                  wav: url, context: polish ? context : nil, polishTried: polish, keyUp: keyUp,
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
+        take.levels = levels
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
               "pending": queue.count])
         enqueue(take)
@@ -1101,11 +1175,13 @@ enum WarmSpawn {
             return nil
         }
         let args = args.first == "serve" && !args.contains("--parent") ? args + ["--parent", "\(getpid())"] : args
-        let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1"]) { _ in }
+        // BLURT_NO_DOWNLOAD: a server started by a key press never downloads a model (the download manager does that,
+        // when the user asks); a request for a missing model is answered "model_missing"
+        let p = try? ScriptRunner.shared.spawn(script, args, env: ["UV_OFFLINE": "1", "BLURT_NO_DOWNLOAD": "1"]) { _ in }
         p?.terminationHandler = { proc in
             guard proc.terminationStatus != 0, !WarmServer.running(server) else { return }
             emit(["event": "warm_spawn_online", "script": script, "status": Int(proc.terminationStatus)])
-            DispatchQueue.main.async { _ = try? ScriptRunner.shared.spawn(script, args) { _ in } }
+            DispatchQueue.main.async { _ = try? ScriptRunner.shared.spawn(script, args, env: ["BLURT_NO_DOWNLOAD": "1"]) { _ in } }
         }
         return p
     }

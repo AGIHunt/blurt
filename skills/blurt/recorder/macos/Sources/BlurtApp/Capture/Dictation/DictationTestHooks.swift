@@ -179,6 +179,17 @@ extension App {
                   "selection": c?.selection.count ?? 0, "title": c?.title ?? NSNull(), "app": c?.app ?? NSNull()])
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
         case "polish": MainActor.assumeIsolated { DictationModels.shared.testCommand(rest) }    // the model rows' buttons
+        case "downloads": MainActor.assumeIsolated { ModelDownloads.shared.testCommand(rest) }  // the one download manager
+        case "models":              // models reload | state: dictation's recogniser as the key sees it
+            MainActor.assumeIsolated {
+                Task { @MainActor in
+                    if rest == "reload" { await DictationModels.shared.load() }
+                    let d = DictationModels.shared
+                    emit(["event": "dictation_models_state", "ready": d.dictationReady.map { $0 as Any } ?? NSNull(),
+                          "selected": d.selectedASR?.id ?? NSNull(), "recommended": d.recommendedASR?.id ?? NSNull(),
+                          "owner": Dictation.shared.deferredTo.map { Int($0) } ?? NSNull()])
+                }
+            }
         case "history":
             let a = rest.split(separator: " ", maxSplits: 1).map(String.init)
             MainActor.assumeIsolated {

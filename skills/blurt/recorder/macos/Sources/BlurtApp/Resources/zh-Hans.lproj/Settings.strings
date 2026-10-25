@@ -51,13 +51,13 @@
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.collect" = "收集系统截图（⌘⇧3/4/5）";
-"settings.general.collect.hint" = "用 macOS 自带快捷键截的图也会挂成卡片。";
+"settings.general.collect.hint" = "打开后，用 macOS 自带快捷键截的图也会挂成卡片。";
 "settings.general.drag_copy_note" = "拖进去后备注没贴上时，复制到剪贴板";
 "settings.general.drag_copy_note.hint" = "口喷鸡没法把备注贴在图片后面时（没有「辅助功能」权限、上面的开关关了、应用没到前台，或者拖进了访达），备注会放进剪贴板，⌘V 就能贴上。会替换剪贴板里原来的内容；点岛上的「撤销」可以还原。";
 "settings.general.drag_note_file.hint" = "拖进聊天应用或访达时，再附一个只写着备注的 Markdown 小文件（截图-153012-备注.md）。终端总会拿到这个文件的路径，方便 Claude Code、Codex 读到备注。";
 "settings.general.drag_note_file" = "同时附上备注的 .md 文件";
 "settings.general.drag_caption" = "拖出图片时把备注印在图片下方";
-"settings.general.drag_caption.hint" = "拖出去的是一份在下方加了备注条的副本，给只收一张图片的应用用；原来的截图不变。";
+"settings.general.drag_caption.hint" = "打开后，拖出去的是一份在下方加了备注条的副本，给只收一张图片的应用用；原来的截图不变。";
 "settings.general.smart_paste" = "聊天应用：先放图片，再贴备注";
 "settings.general.smart_paste.hint" = "浏览器、Claude、飞书、Slack、微信、QQ 这类聊天应用，拖入或粘贴的内容里只要有图片，就只收图片。打开后，把卡片拖进去时先放下图片，口喷鸡接着把备注贴进同一个输入框；点卡片复制后的 2 分钟内，在这些应用里按 ⌘V 会先贴图片、再贴备注（多张卡片就一张图一段备注依次贴上），之后剪贴板里还是这份卡片，可以再贴。备忘录、邮件、文本编辑这类应用一次就能连图带字收下；终端和访达保持原样。需要「辅助功能」权限。";
 "settings.general.about" = "关于";
@@ -76,7 +76,7 @@
 "settings.kit.input_monitoring" = "输入监控";
 "settings.kit.microphone" = "麦克风";
 "settings.kit.needed_record_snap" = "录屏和截图都需要";
-"settings.kit.not_allowed" = "未允许";
+"settings.kit.not_allowed" = "已关闭";
 "settings.kit.not_set" = "未设置";
 "settings.kit.privacy" = "隐私";
 "settings.kit.screen_recording" = "屏幕录制";
@@ -94,12 +94,12 @@
 "settings.privacy.cancel" = "取消";
 "settings.privacy.clean_up" = "清理";
 "settings.privacy.data" = "数据";
-"settings.privacy.deleted_by_default_once" = "默认在转写完成后删除：录屏文件里已经有同样的声音。";
+"settings.privacy.deleted_by_default_once" = "关闭时，转写完成后就删除：录屏文件里已经有同样的声音。";
 "settings.privacy.freed" = "释放了 ";
 "settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
 "settings.privacy.items_appear_spotlight" = "条目出现在 Spotlight 里";
 "settings.privacy.keep_raw_live_caption" = "保留实时转写的原始音频（live/audio.pcm）";
-"settings.privacy.local_speech_recognition_only" = "只用本地语音识别";
+"settings.privacy.local_speech_recognition_only" = "不用云端语音识别";
 "settings.privacy.macos_applies_screen_recording" = "录屏权限改了之后，macOS 要重新打开口喷鸡才生效。";
 "settings.privacy.move_trash" = "移到废纸篓";
 "settings.privacy.move_trash_2" = "移到废纸篓？";
@@ -149,8 +149,9 @@
 "settings.perm.done.some" = "先到这里，剩下的随时可以在这里开启。";
 "onboarding.permissions_detail" = "听写要用麦克风，还要「辅助功能」把字打到光标处。口喷鸡会帮你打开「系统设置」里对应的开关。";
 "onboarding.dictation_key" = "听写键";
-"onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。以后可以在设置里改。";
+"onboarding.dictation_key.fn" = "按一下 Fn 开始听写，再按一下结束；也可以按住说话，松开结束。";
 "onboarding.dictation_key.other" = "按一下%@开始听写，再按一下结束；也可以按住说话，松开结束。";
+"onboarding.dictation_key.send" = "说完连按两下%@：文字填进去并发送（回车）。";
 "settings.perm.not_needed" = "不需要";
 "settings.general.dictation_lab" = "显示听写测试台（开发者用）";
 "settings.general.dictation_lab.hint" = "给开发者打磨听写效果用：照稿朗读、对比模型、标注错误、重跑保存的案例。在主窗口的「听写」页。";
@@ -165,7 +166,7 @@
 "onboarding.use.voice" = "语音备注";
 "onboarding.use.record" = "录屏";
 "onboarding.use.hint" = "快捷键可以在设置里改。";
-"onboarding.skip_for_now" = "以后再说";
+"onboarding.skip_for_now" = "跳过这一步";
 "onboarding.permissions.screen_later" = "截图和录屏要用的「录屏」权限，第一次用时再开。";
 "onboarding.models" = "语音模型";
 "onboarding.models.detail" = "在这台 Mac 上把你说的话转成整理好的文字，不上传。";
@@ -177,7 +178,7 @@
 "onboarding.models.total" = "共 %@，只存在这台 Mac 上";
 "onboarding.models.progress" = "%@ / %@";
 "onboarding.models.background" = "可以先往下走，下载会在后台继续。";
-"onboarding.models.ready" = "模型已就绪";
+"onboarding.models.ready" = "都在这台 Mac 上了。";
 "onboarding.models.ready_toast" = "语音模型下载好了";
 "onboarding.models.failed" = "下载中断了。检查一下网络再试。";
 "onboarding.models.retry" = "重试";
@@ -186,7 +187,7 @@
 "onboarding.warm.failed" = "语音工具没装好。检查一下网络再试。";
 "onboarding.models.stop" = "停止";
 "onboarding.models.failed_toast" = "模型下载中断了";
-"onboarding.models.failed_open" = "查看";
+"onboarding.models.failed_open" = "重试…";
 "onboarding.models.later" = "以后可以在设置的「听写」和「语音」里换模型。";
 "onboarding.uv.needed" = "口喷鸡要用一个小工具 uv 来运行语音模型。";
 "onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
@@ -197,6 +198,14 @@
 "onboarding.try.needs_permissions" = "听写要先开好权限。";
 "onboarding.try.downloading" = "模型还在下载，下载好再试。";
 "onboarding.login.detail" = "这样听写键随时都能用。";
+"onboarding.try.asr_downloading" = "语音模型还在下载，下载好就能试。";
+"onboarding.try.no_model" = "听写要先下载语音模型。";
+"onboarding.try.polish_coming" = "听写已经能用了；润色模型下载完后文字会更顺（还剩 %@）。";
+"onboarding.try.send_next" = "再试试发送：说完连按两下%@，而不是按一下。";
+"onboarding.try.sent" = "这就是发送：在别的 App 里，文字填进去后会按回车。";
+"onboarding.try.send" = "想直接发送就连按两下：文字填进去并按回车。";
+"onboarding.use.dictation.detail" = "按一下说，再按一下停 · 连按两下发送";
+"onboarding.use.dictation.detail_plain" = "按一下说，再按一下停";
 "settings.storage.dictation_history" = "历史";
 "settings.storage.dictation_audio" = "保留的录音";
 "settings.storage.dictation_lab" = "测试台";
@@ -233,6 +242,7 @@
 "settings.export.ready" = "可用";
 "settings.export.not_set_up" = "未设置";
 "settings.export.footer" = "让 Agent 导出就行，比如「把待办导出到 GitHub」。重复导出不会产生重复记录。";
+"settings.export.url_invalid" = "这不是飞书或 Lark 多维表格的链接";
 
 /* 设置窗口：侧栏分组、搜索、每行下面较短的说明（长说明放在这一行的提示里），以及每行（settings.kw.<id>）和每个面板
    （settings.kw.pane.<pane>）的搜索关键词：逗号分隔，两种语言都会匹配（SettingsCatalog）。 */
@@ -257,6 +267,8 @@
 "settings.general.help.detail" = "口喷鸡能做的事和对应的快捷键。";
 "settings.general.assistant.title" = "设置助手";
 "settings.general.assistant.detail" = "权限、模型和第一次试用，四步完成。";
+"settings.general.language.relaunch" = "现在重新打开";
+"settings.kit.allow_help" = "按住 Control 点按可打开「系统设置」";
 "settings.privacy.spotlight.detail" = "在 Spotlight（⌘空格）里按标题找到条目。";
 "settings.shortcuts.restore" = "恢复";
 
@@ -333,3 +345,12 @@
 "settings.kw.storage.choose_models" = "选择模型, 换模型, 下载模型";
 "settings.kw.storage.files" = "缓存, 索引, 运行记录, 任务, 临时文件";
 "settings.kw.storage.live_audio" = "实时音频, pcm, 清理";
+"settings.perm.done.no_model" = "权限好了。下一步下载语音模型，之后按%@ 就能随处听写。";
+"settings.privacy.local_asr.off_keys" = "已设置 %@：自动选择时可能把录音发到那里识别。";
+"settings.privacy.local_asr.off_none" = "没有设置云端的 API key，语音都在这台 Mac 上识别。打开后，以后设置了 key 也不会用云端。";
+"settings.privacy.local_asr.on" = "即使设置了云端的 API key，语音也只在这台 Mac 上识别。";
+"settings.storage.trashed" = "「%@」已移到废纸篓";
+"settings.storage.undo_failed" = "「%@」没能放回原处";
+"settings.storage.undo_failed_many" = "%d 项没能放回原处";
+"settings.storage.undo" = "撤销";
+"settings.storage.videos.trashed" = "%1$@（%2$@）已移到废纸篓";

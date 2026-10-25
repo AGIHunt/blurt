@@ -294,8 +294,18 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   short steps: what Blurt does and its keys; the permissions dictation needs (the microphone and Accessibility, with
   the permission guide below); *Download Recommended Models* — speech recognition, polish and voice notes picked for
   this Mac, one progress bar, carrying on in the background (if it fails, *Small Model Only* gets SenseVoice Small,
-  228 MB); and a box to try it in, with *Open Blurt at login* (on, so the key always works). Screen Recording isn't
+  228 MB); and a box to try it in — once a dictation lands, it asks you to try sending with a double tap — with *Open
+  Blurt at login* (on, so the key always works). Screen Recording isn't
   asked there: the first snap or recording asks for it. Connecting an agent is in Settings → Agents.
+- **Model downloads.** Every model download — the assistant's, *Settings → Speech*'s, the dictation key's — goes
+  through one queue: one model at a time, never the same one twice. While it runs, the menu-bar menu's first row
+  shows it ("Downloading speech models · 2.1 of 6.1 GB", with *Show* and *Stop*) and Settings → Speech shows the bar
+  on the model's row ("Queued" for the next ones, "Unpacking…" after an archive came down). Quitting or restarting
+  Blurt doesn't lose it: the next launch carries on where it stopped. A model that fails to download stops only what
+  it was asked for with (its row says so, with *Try Again*); models you asked for elsewhere carry on. Dictation works as soon as its own model is in, even while polish is still
+  coming, and that model is loaded at once so the first Fn isn't slow. Without a speech model the Fn key starts
+  nothing: the island says so and offers *Download* (or shows how far the download is) — a key press never starts a
+  download by itself.
 - **Tap Fn** (🌐, alone), talk, **tap it again**. Or **hold Fn** while you talk and let go to stop: anything held
   longer than about 0.3 s is push-to-talk. The island's ears show a keyboard and a mint level while it listens, then
   a few dots while it transcribes and polishes. `Esc` cancels — while you talk, and also while the text is still on
@@ -316,10 +326,11 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   island says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down (−0:30), and at the
   limit the island says the dictation stopped there and types what you said. A tap right after that doesn't start a
   new one.
-- **No speech model yet.** Fn doesn't listen; the island says *No speech model yet* (or, when only the small speech
-  detection file is missing, says that) with **Download…**, which opens Settings → Speech → Dictation with the
-  download already started — the model you picked in Settings if that's the one missing. A dictation never downloads
-  a model by itself. If recognising a dictation fails anyway, the recording is kept and the island says so with
+- **No speech model yet.** Fn doesn't listen; the island says *No speech model yet* with its size (or, when only the
+  small speech detection file is missing, says that) and **Download**, which starts it in the download queue above —
+  the island says it started, *Show* shows how far it is — the model you picked in Settings if that's the one
+  missing. While it is already coming down, the island says how far it is instead. A dictation never downloads a
+  model by itself. If recognizing a dictation fails anyway, the recording is kept and the island says so with
   **Retry**; once the model is there, the island offers Retry for it again. The Dictation page lists it too, with
   Retry. It never says "didn't catch anything" for that.
 - **Dictating into the middle of a sentence.** Blurt looks at the text on both sides of the cursor and inserts only
@@ -338,6 +349,9 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   island says why not. For your first few dictations in a chat app, a quiet line after the text reminds you:
   *Double-tap Fn to send*. It works with whichever key you set, never types into Blurt itself or a password field,
   and can be turned off in *Settings → Dictation* (*Double-tap Fn to send (Return)*).
+- **Nothing heard?** The island names the microphone it listened with — "Didn't catch anything (AirPods)", or "No
+  sound from AirPods" when that mic gave only silence (muted, the wrong input, a headset still connecting) — and
+  *Change Mic…* opens *Settings → Dictation*'s microphone.
 - *Settings → Dictation* (or the setup assistant) switches the key to **right Option** or **either Option key** (left
   or right, still only when tapped alone), and the mode to **tap to start, tap to stop** or **hold to talk** only. If
   you never picked a key before, you now have Fn; a key you chose stays.
@@ -487,14 +501,29 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
   space (about 9 MB a minute): *Delete* removes the videos of organized recordings older than 30, 90 or 180 days, or
   all of them, and *Delete videos automatically* does it for you (it asks first if that would delete videos right
   away). It is off by default — Blurt never deletes what you made unless you ask. Only the video goes, to the Trash: items, frames and transcripts stay.
-- **Privacy** has the one full list of permissions, local-only speech recognition and Spotlight. Blurt's own data
-  (`~/.blurt`, `~/Blurt`) can only be read by your macOS account.
+  *Move to Trash* happens at once, like in Finder, with *Undo* in the island (and ⌘Z); only turning on automatic
+  deletion asks first. If something can't come back (the Trash was emptied), the island says so.
+- **Shortcuts** can be changed from the keyboard too: Tab to a field, Space to record, Delete to remove it, ⌘Z to undo
+  any change. Blurt refuses keys that belong to every app — ⌘ with any letter or key (⌘C Copy, ⌘Q, ⌘W, ⌘Space), the
+  standard ⇧⌘ ones (⇧⌘Z Redo, ⇧⌘Q Log Out, ⇧⌘S…) and ⌃⌘Q, ⌃⌘F, ⌥⌘H, ⌥⌘W, ⌥⌘M — and says why; macOS's own
+  shortcuts (⇧⌘3 and the other screenshot keys) are named as macOS's. Other ⇧⌘ keys (⇧⌘1, ⇧⌘2…) are fine. Keys
+  another action already has: Blurt asks first, and *Swap* gives that action this one's keys in exchange.
+- **Privacy** has the one full list of permissions, Spotlight, and *Never use cloud speech recognition*: with no
+  cloud API key set, speech is recognized on your Mac anyway; turn it on to keep it that way after you set one. A
+  permission Blurt doesn't need right now (Input Monitoring once Accessibility hears the Fn key) says *Not needed*;
+  one you turned off says so, with *System Settings…* (macOS won't ask again).
+  Blurt's own data (`~/.blurt`, `~/Blurt`) can only be read by your macOS account.
+- **Two Blurts at once** (a release and a development build): the first one keeps the shortcuts, and the dictation
+  key stays with the one that can hear it (a build macOS hasn't given the permission to never holds it); the other
+  takes them over when that one quits.
 
 ### 9. Updating
 
 The Mac app updates itself (*Check for Updates…* in the menu and in *Settings → General*). The agent skill updates
 with the command you installed it with, for example `npx skills add AGIHunt/blurt`. The app runs the skill's scripts,
-so the two must speak the same version: when one is older than the other, the island says which one to update, once.
+so the two must speak the same version: when one is older than the other, the island says which one to update, and
+the menu-bar menu and *Settings → General* keep saying so until they match. A Blurt you built yourself updates with
+`uv run skills/blurt/scripts/record.py build` in your checkout.
 
 ---
 
@@ -661,18 +690,20 @@ so the two must speak the same version: when one is older than the other, the is
 
 听写把你说的话打进**当前有焦点的 App**：聊天框、邮件、编辑器、终端都行。它和语音备注是两回事：`⌥⇧V` 把说的话存进口喷鸡，听写把它打在你正在输入的地方。
 
-- **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下，还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
+- **设置。** 设置助手（第一次打开时出现，也可以从「设置 → 通用」再打开）用四小步把听写准备好：口喷鸡能做什么、各自的按键；听写需要的权限（麦克风和辅助功能，用下面的权限向导）；「下载推荐模型」——按这台 Mac 选好的语音识别、润色和语音备注模型，一个进度条，可以在后台继续下载（下载失败时可以「只下载小模型」，即 228 MB 的 SenseVoice Small）；最后一个输入框让你试一下（听写成功后，会再请你试一次用连按两下发送），还有「登录时打开口喷鸡」（默认打开，这样听写键随时都能用）。录屏权限不在这里问，第一次截图或录屏时再问。接入 Agent 在「设置 → Agent」里。
+- **模型下载。** 所有模型下载——设置助手的、「设置 → 语音」的、听写键提示里的——都排在同一个队列里：一次下一个，同一个模型不会下两遍。下载时菜单栏菜单第一行显示进度（「正在下载语音模型 · 2.1 / 6.1 GB」，可以「查看」或「停止」），「设置 → 语音」里那个模型的行上有进度条（后面的显示「排队中」，压缩包下完后显示「正在解压…」）。退出或重启口喷鸡不会丢：下次打开接着下。某个模型下载失败，只停掉和它一起要下的那几个（它们的行上会写明，可以「重试」），别处要下的模型照常继续。听写自己的模型一到就能用（润色还在下也不影响），而且马上加载，第一下 Fn 不用等。还没有识别模型时，按 Fn 不会开始听写：岛上会说明，并给「下载」（或者显示下载到哪了）——按键本身从不悄悄开始下载。
 - **按一下 Fn**（🌐 键，单独按），说话，**再按一下**结束。也可以**按住 Fn** 说话，松开就结束：按住超过约 0.3 秒就是按住说话。听的时候岛的两侧显示键盘和薄荷色的音量条，转写和润色时变成几个跳动的点。`Esc` 取消：说话时可以，文字还在处理时也可以（那段话就不会输入；几秒内可以点岛上的「撤销」找回来，免得按给别的 App 的 `Esc` 把它丢掉）。Fn 和别的键一起用（Fn 加方向键、Fn 加功能键等）时不会开始听写。说话时，已经识别出的文字显示在岛下方，大约比你慢一秒：还在说的部分是浅灰色（之后可能还会变），这一段说完就变成白色。按下结束后，这里会显示真正输入的文字（润色过的，或者排好的清单）约一秒半，后面带一个小对勾，也就是双击会发送出去的内容。它不会让粘贴变慢。（内存小于 16 GB 的 Mac 上不显示灰色的部分，文字在每次停顿后出现；`record.dictation.live_partial` 设为 true / false 可以改变这个默认。）
 - **马上说下一段。** 刚结束就再按一下 Fn（隔半秒以上，免得算成双击），下一段马上开始听，上一段还在输入也不影响；几段按你说的先后顺序输入。
 - **只输入到原来的地方。** 文字只会输入到你开始说话时所在的 App。等文字好了你已经换到别的 App（说得很长、模型还在加载），就改成复制，岛上提示「已复制，⌘V 粘贴」；这时双击也不会按回车。
 - **忘了结束的听写。** 单按开始的听写最长 5 分钟。超过 20 秒没说话，岛上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间倒数（−0:30），到上限时岛上会说明听写已结束，并输入你说的内容。紧接着按的那一下不会开始新的一段。
-- **还没有识别模型。** 按 Fn 不会开始听，岛上提示「还没有识别模型」（只缺那个很小的语音检测文件时，就说缺这个文件）和**下载…**，点它会打开「设置 → 语音 → 听写」并开始下载；如果你在设置里选了某个模型而它不在，下载的就是那个。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，岛上说明原因并给出**重试**；模型下载好以后，岛上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
+- **还没有识别模型。** 按 Fn 不会开始听，岛上提示「还没有识别模型（大小）」（只缺那个很小的语音检测文件时，就说缺这个文件）和**下载**，点它就在上面的下载队列里开始下载，岛上会说开始了，点「查看」看进度；如果你在设置里选了某个模型而它不在，下载的就是那个。已经在下载时，岛上显示下载到哪了。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，岛上说明原因并给出**重试**；模型下载好以后，岛上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。
 - **双击 Fn 发送。** 快速连按两下，就是在前台 App 里按回车。有两种用法：
   - **先看再发：** 按一下结束，看一眼文字（输入框里，或岛下方的面板），再双击发送；要改就先改。
   - **直接发：** 把结束的那一下换成连按两下：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后连按两下。）
 
   双击稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时连按两下，会等文字填进去再发送。刘海右侧会显示一个对勾和「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了），岛上会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「双击 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「双击 Fn 发送（回车）」。
+- **没听到？** 岛上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单按），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 语音 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
@@ -708,9 +739,11 @@ so the two must speak the same version: when one is older than the other, the is
 
 - **Agent**：口喷鸡用来整理录屏和截图、自动归类、AI 补全的 Agent，按顺序用：第一个能用的来干活，没登录或额度用完时自动换下一个。用不到的取消勾选。只有会让口喷鸡用不了的问题才标红；「连接…」（给这个 Agent 装上 blurt skill 和 MCP）只在还没装时出现，装之前先列出要改的地方。
 - **导出**：你让 Agent 导出时条目发到哪（飞书、GitHub Issues、Markdown 和 CSV），以及哪些已经可用。重复导出不会产生重复记录。
-- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。
-- **隐私**：完整的权限列表、只用本地语音识别、Spotlight 都在这里。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。
+- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，岛上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），岛上会说。
+- **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
+- **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API key 时，语音本来就只在你的 Mac 上识别；打开它，以后设置了 key 也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。
+- **同时开着两个口喷鸡**（正式版和开发版）：先打开的那个负责快捷键；听写键交给能听到它的那个（macOS 没给权限的版本不会占着它）；它退出后，另一个接管。
 
 ### 9. 更新
 
-Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。Agent skill 用你安装时的命令更新，比如 `npx skills add AGIHunt/blurt`。App 会调用 skill 里的脚本，两边的版本要对得上：哪边旧了，刘海里会提示一次该更新哪边。
+Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。Agent skill 用你安装时的命令更新，比如 `npx skills add AGIHunt/blurt`。App 会调用 skill 里的脚本，两边的版本要对得上：哪边旧了，刘海里会提示该更新哪边，菜单栏菜单和「设置 → 通用」也会一直写着，直到对上为止。自己编译的口喷鸡，在代码目录里运行 `uv run skills/blurt/scripts/record.py build` 更新。

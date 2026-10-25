@@ -33,6 +33,16 @@ final class ModelBundleTests: XCTestCase {
         XCTAssertNil(ModelBundle.plan(dictation: qwen, polish: gemma, polishRuns: true, note: nil))
     }
 
+    func testOneSizeFormatEverywhere() {
+        // the assistant said 6.11 GB and Settings 5.7 GB for the same set (GB vs GiB): decimal, one decimal, everywhere
+        let en = Locale(identifier: "en_US")
+        XCTAssertEqual(ModelBundle.size(228, locale: en), "228 MB")
+        XCTAssertEqual(ModelBundle.size(2468, locale: en), "2.5 GB")
+        XCTAssertEqual(ModelBundle.size(2468 + 3415 + 228, locale: en), "6.1 GB")
+        XCTAssertEqual(ModelBundle.size(999.6, locale: en), "1.0 GB")
+        XCTAssertEqual(ModelBundle.size(0, locale: en), "0 MB")
+    }
+
     func testMirror() {
         // never set: the region decides
         XCTAssertTrue(ModelBundle.mirror(setting: nil, region: "CN"))

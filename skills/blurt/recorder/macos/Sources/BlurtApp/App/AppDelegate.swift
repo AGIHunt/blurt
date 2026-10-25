@@ -228,14 +228,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
         // the setup assistant greets a first run itself: no second hello next to it
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
+        MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
+        watchOtherInstances()
         if recordConfig()["welcomed"] == nil, !assisted {
-            setRecordConfig("welcomed", true)
-            // where Blurt lives, and the two things to try first: dictation and a snap
-            var t = Island.Toast(text: Dictation.enabled ? T("app.toast.welcome", Dictation.keyShort, hk(.snap))
-                                                         : T("app.toast.welcome_no_dictation", hk(.snap), hk(.toggleRecord)),
-                                 actionTitle: nil, action: nil)
-            t.seconds = 6
-            LaunchMessages.shared.post(.welcome, t)
+            postWelcome()
         } else {
             // a shortcut another app holds: the first line, and the way to change it (the reason is in Settings)
             Hotkeys.shared.warnOnce { text in
@@ -257,6 +253,78 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else if !args.contains("--background") && !App.launchedAtLogin {
             openFromLaunch()
         }
+    }
+
+    /// The first launch's line (BlurtCore WelcomeLine): where Blurt lives and only keys that work now — dictation's key
+    /// once it is heard and has a model (else how to get there, with its button), the snap / record keys when they are
+    /// registered, and a shortcut that doesn't work named on the same line. Marked welcomed once it was seen.
+    func postWelcome() {
+        Task { @MainActor in
+            await DictationModels.shared.load()         // has dictation a speech model?
+            let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
+                : DictationModels.shared.asr == nil ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
+            func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
+            let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
+            let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
+                                           record: working(.toggleRecord), conflicts: conflicts)
+            let text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
+            // one line, one button: with a more urgent button (turn dictation on, download its model) the shortcut
+            // conflicts aren't squeezed in — those keys aren't advertised, and their own line comes at a later launch
+            let saysConflicts = line.action == .changeShortcut
+            var t: Island.Toast
+            switch line.action {
+            case .turnOnDictation?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_setup.action")) { Dictation.shared.openSetup(from: "welcome") }
+            case .downloadModel?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.welcome_no_model.action")) { Dictation.getSpeechModel(from: "welcome") }
+            case .changeShortcut?:
+                t = Island.Toast(text: text, actionTitle: T("app.toast.change_shortcut")) {
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                }
+            case nil:
+                t = Island.Toast(text: text, actionTitle: nil, action: nil)
+            }
+            t.seconds = 7
+            emit(["event": "welcome_line", "key": line.key, "dictation": "\(d)", "conflicts": line.conflicts])
+            LaunchMessages.shared.post(.welcome, t) {
+                setRecordConfig("welcomed", true)
+                if saysConflicts { Hotkeys.shared.markWarned() }     // named here: no second line for them
+            }
+        }
+    }
+
+    /// Another Blurt (a dev build next to a release, `open -n`) quitting: its hotkeys and the dictation key come over
+    /// to this one. Again 3 s after launch, for one that started at the same moment and hadn't published yet.
+    func watchOtherInstances() {
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil,
+                                                          queue: .main) { n in
+            guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  FileManager.default.fileExists(atPath: HotkeyCenter.registryDir.appendingPathComponent("\(app.processIdentifier).json").path)
+                    || app.bundleIdentifier == Bundle.main.bundleIdentifier else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { App.otherInstancesChanged("quit \(app.processIdentifier)") }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { App.otherInstancesChanged("launch") }
+        // a background app's end isn't always announced: while another instance holds something of ours, look every
+        // few seconds whether it is still there (its registry entry still live: HotkeyCenter.isLive) — and whether the
+        // one that has the dictation key still hears it (it unpublishes the key when its listener goes)
+        let t = Timer(timeInterval: 3, repeats: true) { _ in
+            var holders = Set(Hotkeys.shared.states.values.compactMap { s -> pid_t? in if case .taken(let p) = s { return p }; return nil })
+            let deferred = Dictation.shared.deferredTo
+            if let p = deferred { holders.insert(p) }
+            guard !holders.isEmpty else { return }
+            let alive = Set(Hotkeys.shared.otherInstances().map(\.pid))
+            if holders.contains(where: { !alive.contains($0) }) { App.otherInstancesChanged("gone") }
+            else if let p = deferred, Hotkeys.shared.dictationOwner(Dictation.key.rawValue) != p { App.otherInstancesChanged("owner") }
+        }
+        t.tolerance = 1
+        RunLoop.main.add(t, forMode: .common)
+    }
+
+    static func otherInstancesChanged(_ why: String) {
+        let before = Hotkeys.shared.states
+        Hotkeys.shared.apply()
+        Dictation.shared.checkOwner(via: why)
+        if before != Hotkeys.shared.states { emit(["event": "hotkeys_reapplied", "why": why, "taken": Hotkeys.shared.conflicts.map(\.rawValue)]) }
     }
 
     /// Opening the app (Finder, Dock, Spotlight, a second launch) shows the main window; recording starts from the
@@ -344,6 +412,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard resident else { return }
         stopOrganisers()
         Housekeeping.atQuit()
+        MainActor.assumeIsolated { ModelDownloads.shared.atQuit() }   // the setup ends now; the next launch carries on
         Hotkeys.shared.unpublish()
         let f = blurtHome.appendingPathComponent("app.json")
         if let d = try? Data(contentsOf: f), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
@@ -607,6 +676,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if #available(macOS 14.4, *) { d.subtitle = T("dictation.menu.turn_on.subtitle", Dictation.keyInline) }
             menu.addItem(.separator())
         }
+        // a model download runs: where it is (live while the menu is open), with Show and Stop
+        if let title = MainActor.assumeIsolated({ ModelDownloads.shared.menuTitle }) {
+            let it = add(title, nil)
+            it.image = App.menuSymbol("arrow.down.circle")
+            let sub = NSMenu()
+            add(T("app.models.show"), #selector(mShowDownloads), to: sub)
+            add(T("app.models.stop"), #selector(mStopDownloads), to: sub)
+            it.submenu = sub
+            downloadItem = it
+            menu.addItem(.separator())
+        }
+        // the skill and the app don't speak the same contract: says so until it's fixed (Settings → General too)
+        if let m = SkillContract.check(skill: SkillContract.skillVersion()) {
+            let it = add(T(m.appIsOlder ? "app.contract.app_older" : "app.contract.skill_older"), #selector(mContractHelp))
+            it.image = App.warningImage
+            it.toolTip = T("app.contract.how")
+            menu.addItem(.separator())
+        }
         // Kept short, like other menu-bar apps: capture, what waits for you, the current project, Settings, Quit.
         // After-recording, the agent order, countdown, system audio, open at login, shortcuts and help live in Settings.
         let record = add(T("app.menu.record"), #selector(mStart))
@@ -702,6 +789,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mOpenJob(_ it: NSMenuItem) { (it.representedObject as? String).map { AppEnvironment.mainWindow?.reveal(job: $0) } }
     @objc func mSettings() { AppEnvironment.settings?.show(pane: nil) }
     @objc func mDictationSetup() { Dictation.shared.openSetup(from: "menu") }
+    @objc func mShowDownloads() { MainActor.assumeIsolated { ModelDownloads.showProgress() } }
+    @objc func mStopDownloads() { MainActor.assumeIsolated { ModelDownloads.shared.stop() } }
+    @objc func mContractHelp() { Housekeeping.contractHelp() }
+    /// The menu's download row while the menu is open (its title follows the progress).
+    weak var downloadItem: NSMenuItem?
 
     /// The menu row's small warning sign (BlurtIcon.warning), in attention amber so it stands out from the rows.
     static let warningImage: NSImage = {

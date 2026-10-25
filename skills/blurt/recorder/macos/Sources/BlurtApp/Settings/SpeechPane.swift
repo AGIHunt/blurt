@@ -7,9 +7,12 @@
 // comparison of the models that run here — accuracy for the user's languages, speed, memory, download
 // size — measured on this Mac when the user asks (`transcribe.py bench`), reference numbers otherwise. Resource caps
 // (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
-// stored or shown: only whether each variable is set), recognition language and the download mirror.
+// stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
+// here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
+// for the next, never a second copy of a model the assistant is already fetching.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
+import Combine
 import SwiftUI
 import BlurtCore
 
@@ -160,13 +163,11 @@ final class SpeechModel: ObservableObject {
     @Published var models: [ASRModel] = []
     @Published var loading = false
     @Published var error: String?
-    @Published var download: [String: (done: Double, total: Double, text: String)] = [:]   // model id → progress
-    @Published var failed: [String: String] = [:]                                          // model id → why the download stopped
     @Published var benching: Set<String> = []
     @Published var bench: [String: BenchResult] = [:]                                      // model id → last run
     @Published var language = "auto"
     @Published var mirror = false
-    var procs: [String: Process] = [:]
+    private var sub: AnyCancellable?
 
     var localOnly: Bool { Config.shared["privacy.local_asr"] as? Bool ?? false }
     var auto: Bool { state?.auto ?? true }
@@ -175,7 +176,22 @@ final class SpeechModel: ObservableObject {
     init() {
         language = Config.shared["asr.language"] as? String ?? "auto"
         mirror = ModelBundle.mirror
+        // downloads are the app's one manager's (App/ModelDownloads.swift): its progress shows in these rows
+        sub = ModelDownloads.shared.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
     }
+
+    /// A model's download as its bar shows it: the running one's "N of M", "Queued" while it waits; nil otherwise.
+    func download(_ id: String) -> (done: Double, total: Double, text: String)? {
+        let dl = ModelDownloads.shared
+        if let p = dl.progress(id) {
+            if dl.isUnpacking(id) { return (p.total, p.total, S("speech.download.unpacking")) }
+            return (p.done, p.total, p.done == 0 ? S("speech.download.preparing") : S("speech.download.progress", mb(p.done), mb(p.total)))
+        }
+        if dl.isQueued(id) { return (0, model(id)?.sizeMB ?? 1, S("speech.download.queued")) }
+        return nil
+    }
+    /// Why the model's last download stopped on an error (nil: it didn't).
+    func failed(_ id: String) -> String? { ModelDownloads.shared.failed[id] == nil ? nil : S("speech.download.failed") }
 
     func model(_ id: String?) -> ASRModel? { id.flatMap { i in models.first { $0.id == i } } }
     func selected(_ p: ASRPurpose) -> ASRModel? { model(state?.selected[p.rawValue] ?? nil) }
@@ -230,40 +246,14 @@ final class SpeechModel: ObservableObject {
     var onBattery: String { Config.shared["asr.on_battery"] as? String ?? "lighter" }
     func setOnBattery(_ lighter: Bool) { Config.shared.set("asr.on_battery", lighter ? nil : "same"); objectWillChange.send() }
 
-    /// `transcribe.py setup --model-id ID` (it adds its own packages through uv). Progress from its stderr.
-    func startDownload(_ m: ASRModel, then: (() -> Void)? = nil) {
-        guard procs[m.id] == nil else { return }
-        failed[m.id] = nil
-        download[m.id] = (0, m.sizeMB, S("speech.download.preparing"))
-        var env: [String: String] = [:]
-        if mirror { env["BLURT_HF_MIRROR"] = "1" }
-        do {
-            procs[m.id] = try SkillCLI.shared.spawn("transcribe.py", ["setup", "--model-id", m.id], env: env,
-                                                     onLine: { [weak self] line, _ in self?.progress(m, line) },
-                                                     onExit: { [weak self] st in
-                guard let self = self else { return }
-                self.procs[m.id] = nil
-                self.download[m.id] = nil
-                if st != 0 && st != 15 { self.failed[m.id] = S("speech.download.failed") }
-                emit(["event": "asr_download", "model": m.id, "status": Int(st)])
-                Task { await self.reapply(); then?() }
-            })
-        } catch { download[m.id] = nil; failed[m.id] = S("speech.download.failed") }
+    /// `transcribe.py setup --model-id ID` through the download manager (the voice-note / recording models; reapplied
+    /// for this Mac once it is in).
+    func startDownload(_ m: ASRModel) {
+        ModelDownloads.shared.download([.init(id: m.id, kind: .note, name: m.title, sizeMB: m.sizeMB)], via: "settings")
     }
 
-    private func progress(_ m: ASRModel, _ line: String) {
-        let t = line.trimmingCharacters(in: .whitespaces)
-        if let r = t.range(of: #"^(\d+)/(\d+) MB"#, options: .regularExpression) {
-            let parts = t[r].replacingOccurrences(of: " MB", with: "").split(separator: "/")
-            if parts.count == 2, let a = Double(parts[0]), let b = Double(parts[1]), b > 0 {
-                download[m.id] = (a, b, S("speech.download.progress", mb(a), mb(b)))
-            }
-        } else if t.hasPrefix("unpacking ") {
-            download[m.id] = (download[m.id]?.total ?? m.sizeMB, download[m.id]?.total ?? m.sizeMB, S("speech.download.unpacking"))
-        }
-    }
-
-    func cancelDownload(_ m: ASRModel) { procs[m.id]?.terminate() }
+    /// Stop: the running download ends, a queued one leaves the queue (never "failed").
+    func cancelDownload(_ m: ASRModel) { ModelDownloads.shared.stop(m.id) }
 
     /// `transcribe.py bench --model-id ID`: spoken samples in the user's languages (macOS `say`), measured here.
     func runBench(_ m: ASRModel) async {
@@ -450,13 +440,13 @@ struct SpeechPane: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 12)
-                if m.download[x.id] == nil {
+                if m.download(x.id) == nil {
                     Button(S("speech.suggest.download", modelSize(x.sizeMB))) { m.startDownload(x) }
                         .disabled(!(x.runsHere ?? true))
                 }
             }
-            if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 36) }
-            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 36) }
+            if let d = m.download(x.id) { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 36) }
+            if let f = m.failed(x.id) { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 36) }
         }
         }
     }
@@ -539,8 +529,8 @@ struct SpeechPane: View {
             .padding(.leading, 17)
             Text(coverage(x)).font(.caption).foregroundStyle(.secondary).padding(.leading, 17)
                 .fixedSize(horizontal: false, vertical: true)
-            if let d = m.download[x.id] { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 17) }
-            if let f = m.failed[x.id] { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
+            if let d = m.download(x.id) { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 17) }
+            if let f = m.failed(x.id) { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
             if let b = m.bench[x.id], let e = b.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
         }
     }
@@ -563,7 +553,7 @@ struct SpeechPane: View {
                         .controlSize(.small)
                         .help(S("speech.bench.help"))
                 }
-            } else if m.download[x.id] == nil {
+            } else if m.download(x.id) == nil {
                 Button(S("speech.download.button")) { m.startDownload(x) }.controlSize(.small)
             }
             if m.canRemove(x) && !inUse {
@@ -658,10 +648,11 @@ private struct MachineRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: hw.gpu.kind == "apple" ? "cpu" : "memorychip")
+                // a hardware fact, not Blurt acting: neutral, never brand mint (system.md §1.1, §9)
                 .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(Color.brandInk)
+                .foregroundStyle(.secondary)
                 .frame(width: 34, height: 34)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.brandTint))
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(hw.chip ?? S("speech.machine.unknown")).font(.headline)

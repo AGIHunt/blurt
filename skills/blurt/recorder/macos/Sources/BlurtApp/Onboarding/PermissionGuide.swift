@@ -10,7 +10,10 @@
 //   4. poll every 0.5 s; when the step is satisfied, the next one. Input Monitoring or Accessibility arriving makes
 //      dictation's listener again at once (the tap made before the grant only hears Blurt).
 // At the end the panel closes, Blurt comes back to the front where the walk started, with a check mark: "Done —
-// dictation works in every app now." Nothing in System Settings is ever clicked or changed by Blurt.
+// dictation works in every app now." — only once a speech model is there too; before that: "Permissions are set.
+// Next, the speech model — then Fn dictates anywhere." Nothing in System Settings is ever clicked or changed by Blurt.
+// The step count ("1 of 3") is the walk's live list: a step satisfied on the way (Input Monitoring, once Accessibility
+// hears the key) leaves the count.
 // Re-add (`reauthorize`, v0.9): macOS lists Blurt as allowed but ScreenCaptureKit refuses — the grant was made for an
 // older build (ScreenHelp, BlurtCore ScreenGrant.stale). The Screen Recording step then isn't satisfied by the switch
 // being on: the panel says to remove Blurt with − and add it again, and Restart Blurt is what finishes it.
@@ -152,7 +155,9 @@ final class PermissionGuide: ObservableObject {
 
     private func next() {
         guard running else { return }
+        let done = steps.prefix { $0 != current } + (current.map { [$0] } ?? [])
         let rest = steps.drop { $0 != current }.dropFirst().filter { !satisfied($0) }
+        steps = Array(done) + rest           // what got satisfied on the way leaves the count ("2 of 2", not "2 of 3")
         if let n = rest.first { go(n) } else { finish(already: false) }
     }
 
@@ -193,12 +198,17 @@ final class PermissionGuide: ObservableObject {
     private func finish(already: Bool) {
         stop()
         let everything = PermissionPlan.steps(flow, satisfied: satisfiedSet).isEmpty
-        let dictationWorks = Dictation.enabled && Dictation.shared.tapInstalled
-        let msg = (flow == .dictation || source == .menu || source == .island) && dictationWorks
-            ? T("settings.perm.done.dictation") : everything ? T("settings.perm.done.all") : T("settings.perm.done.some")
+        let heard = Dictation.enabled && Dictation.shared.tapInstalled
+        // "dictation works in every app" only when it does: the key is heard and a speech model is there
+        let model = DictationModels.shared.dictationReady != false
+        let dictationWorks = heard && model
+        let aboutDictation = flow == .dictation || source == .menu || source == .island
+        let msg = aboutDictation && dictationWorks ? T("settings.perm.done.dictation")
+            : aboutDictation && heard ? T("settings.perm.done.no_model", Dictation.keyInline)
+            : everything ? T("settings.perm.done.all") : T("settings.perm.done.some")
         finished = msg
         finishedAt = Date()
-        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "dictation_works": dictationWorks,
+        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "dictation_works": dictationWorks, "model": model,
               "missing": PermissionPlan.steps(flow, satisfied: satisfiedSet).map(\.rawValue)])
         HelperPanel.shared.showDone(msg, after: already ? 0 : 0.2)
         bringBack()

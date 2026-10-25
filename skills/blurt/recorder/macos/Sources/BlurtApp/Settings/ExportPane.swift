@@ -2,7 +2,9 @@
 // same key the skill's exporters read; SKILL reference/export-*.md), or globally for ~/Blurt (config export). One row
 // per destination in plain words — Feishu / Lark, GitHub Issues, Markdown and CSV — each Ready, Checking or Not set up
 // with the one command that sets it up; which tool it uses (lark-cli or a Feishu app, gh) is in the row's tooltip.
-// Never shows a credential.
+// Never shows a credential. The Feishu / Lark table link is saved on Return, on leaving the field and on leaving the
+// pane — a link that can't be a table's (BlurtCore FeishuLink) says so under the field and isn't saved. Choose… is a
+// sheet on the Settings window.
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -49,19 +51,37 @@ final class ExportModel: ObservableObject {
         if let ws = ws { ProjectConfig.set(ws, "export", key, value) } else { Config.shared.set("export.\(key)", value) }
     }
     func setTarget(_ t: String) { target = t; set("target", t == "ask" ? nil : t) }
-    func commitURL() { set("url", url.isEmpty ? nil : url) }
+    /// Saved on Return, when the field loses focus and when the pane goes — a link that isn't a table's is kept in
+    /// the field (with the reason under it) but not saved.
+    func commitURL() {
+        let u = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ExportModel.urlProblem(u) == nil else { return }
+        set("url", u.isEmpty ? nil : u)
+        emit(["event": "export_url", "saved": !u.isEmpty])
+    }
+
+    /// Why a pasted link can't be a Feishu / Lark table (nil: it can, or the field is empty).
+    static func urlProblem(_ s: String) -> String? {
+        FeishuLink.plausible(s) ? nil : T("settings.export.url_invalid")
+    }
+
     func chooseOut() {
         let p = NSOpenPanel()
         p.canChooseDirectories = true; p.canChooseFiles = false; p.canCreateDirectories = true
         p.prompt = T("settings.export.choose")
-        guard p.runModal() == .OK, let u = p.url else { return }
-        outDir = u.path
-        set("out", u.path)
+        let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
+            guard r == .OK, let u = p.url else { return }
+            self?.outDir = u.path
+            self?.set("out", u.path)
+        }
+        // a sheet on the Settings window, not an app-wide modal panel
+        if let w = NSApp.keyWindow { p.beginSheetModal(for: w, completionHandler: done) } else { done(p.runModal()) }
     }
 }
 
 struct ExportPane: View {
     @StateObject var m = ExportModel()
+    @FocusState private var urlFocused: Bool
 
     var body: some View {
         SettingsPage(.export) {
@@ -81,8 +101,15 @@ struct ExportPane: View {
                         VStack(alignment: .leading, spacing: 6) {
                             TextField(T("settings.export.table_url"), text: $m.url, prompt: Text("https://….feishu.cn/base/…?table=…"))
                                 .textFieldStyle(.roundedBorder)
+                                .focused($urlFocused)
                                 .onSubmit { m.commitURL() }
-                            Hint(T("settings.export.open_table_browser_copy"))
+                                .onChange(of: urlFocused) { f in if !f { m.commitURL() } }
+                                .onDisappear { m.commitURL() }
+                            if let p = ExportModel.urlProblem(m.url) {
+                                Text(p).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk)
+                            } else {
+                                Hint(T("settings.export.open_table_browser_copy"))
+                            }
                         }
                     }
                 }

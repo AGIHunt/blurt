@@ -186,6 +186,12 @@ final class ShellDataTests: XCTestCase {
         XCTAssertEqual(m["duration"] as? Double, 42.5)
         XCTAssertEqual(m["author"] as? String, "A")
         XCTAssertTrue(VideoRetention.isRecording(s))
+        // Undo in Settings → Storage put the video back: the session no longer says it was removed, still a recording
+        XCTAssertTrue(VideoRetention.unstampRemoved(s))
+        let back = try JSONSerialization.jsonObject(with: Data(contentsOf: s.appendingPathComponent("meta.json"))) as! [String: Any]
+        XCTAssertNil(back["video_removed"])
+        XCTAssertEqual(back["duration"] as? Double, 42.5)
+        XCTAssertTrue(VideoRetention.isRecording(s))
     }
 
     // MARK: ModelUsage

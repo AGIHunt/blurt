@@ -22,6 +22,9 @@
 "dictation.toast.on.hold" = "听写已开启：按住%@ 说话";
 "dictation.toast.recording_busy" = "正在录屏，麦克风归录屏用，听写暂不可用";
 "dictation.toast.voice_busy" = "语音备注正在听，先结束它";
+"dictation.toast.nothing.named" = "没听到内容（%@）";
+"dictation.toast.nothing.silent" = "%@ 没有声音";
+"dictation.toast.nothing.change" = "换麦克风…";
 "dictation.toast.nothing" = "没听到内容";
 "dictation.toast.copied" = "已复制，可粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
@@ -129,9 +132,9 @@
 "dictation.vocab.ignore" = "忽略";
 "dictation.vocab.remove" = "移除";
 "dictation.vocab.context" = "参考光标附近的文字";
-"dictation.vocab.context.detail" = "名字照文档里的写法。只在开始说话时读，不保存，不读密码框。";
+"dictation.vocab.context.detail" = "打开后，名字照文档里的写法。只在开始说话时读，不保存，不读密码框。";
 "dictation.vocab.learn" = "从我的修改中学习";
-"dictation.vocab.learn.detail" = "你改正口喷鸡打错的名字时，它会记下这个词。";
+"dictation.vocab.learn.detail" = "打开后，你改正口喷鸡打错的名字时，它会记下这个词。";
 
 /* Fn 作为听写键：自动模式、不让 macOS 响应 Fn、macOS 的 🌐 键设置 */
 "dictation.mode.auto" = "按一下或按住";
@@ -477,7 +480,7 @@
 "dictation.toast.cancelled" = "已取消";
 "dictation.toast.limit" = "已到 5 分钟上限，听写已结束";
 "dictation.toast.still_listening" = "还在听 · 按%@ 结束 · Esc 取消";
-"dictation.toast.no_model" = "还没有识别模型";
+"dictation.toast.no_model" = "还没有识别模型（%@）";
 "dictation.toast.no_model.get" = "下载…";
 "dictation.toast.no_model.kept" = "还没有识别模型，录音还在";
 "dictation.toast.no_vad" = "还缺语音检测文件（不到 1 MB）";
@@ -509,3 +512,15 @@
 "dictation.words.ignored" = "已忽略 %@";
 "dictation.words.rename" = "改写法";
 "dictation.words.duplicate" = "%@ 已在词库里";
+
+/* the speech model through the download manager, the key with another Blurt (shell) */
+"dictation.mode.send_suffix" = "连按两下发送";
+"dictation.models.downloading" = "正在下载 · %1$@ / %2$@";
+"dictation.status.other_instance" = "听写由另一个口喷鸡负责（pid %@）";
+"dictation.status.other_instance.detail" = "那个口喷鸡退出后，这里会接手。";
+"dictation.toast.model_downloading" = "识别模型还在下载（%1$@ / %2$@）";
+"dictation.toast.model_downloading.action" = "查看";
+"dictation.toast.model_started" = "开始下载识别模型（%1$@）· 下载好就能按%2$@ 听写";
+"dictation.toast.no_model_plain" = "还没有识别模型";
+"dictation.toast.no_model.settings" = "查看模型…";
+"dictation.toast.no_model.action" = "下载";

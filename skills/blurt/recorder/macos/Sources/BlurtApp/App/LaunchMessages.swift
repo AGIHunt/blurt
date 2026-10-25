@@ -3,17 +3,19 @@
 // carried-over project question, a skill that doesn't match the app, jobs the last run left unfinished, a better
 // speech model — and they used to arrive in the same second, each replacing the last before it could be read.
 // Each one is posted here with its rank (LaunchRank, lowest first: a model suggestion, an unfinished job, the project
-// question, dictation's permission, a skill that doesn't match, a shortcut, the welcome, settings that can't be
-// saved). For the first 3 s they are held; then the highest goes up and the rest are dropped (each comes back on a
-// later launch, or lives in the menu and Settings anyway — dictation's row in the menu, the job in the main window,
-// the model in Settings → Speech). Until 90 s after launch, a launch message that arrives once one has been shown is
+// question, dictation's permission, a shortcut, the welcome, model downloads carrying on, a skill that doesn't match
+// — it breaks things, so it outranks the welcome —, settings that can't be saved). For the first 3 s they are held;
+// then the highest goes up and the rest are dropped (each comes back on a later launch — the model suggestion stays
+// pending until it was seen —, or lives in the menu and Settings anyway — dictation's row and the skill mismatch in
+// the menu and Settings → General, the job in the main window, the model in Settings → Speech, the download in the
+// menu). Until 90 s after launch, a launch message that arrives once one has been shown is
 // dropped too. Outside that window post() is just the island's toast; ordinary toasts (what the user just did) never
 // come through here. The rule itself is BlurtCore's LaunchQueue.
 import AppKit
 import BlurtCore
 
 enum LaunchRank: Int, Comparable {
-    case model = 1, job, project, permission, skill, shortcuts, welcome, config
+    case model = 1, job, project, permission, shortcuts, welcome, models, skill, config
     static func < (a: LaunchRank, b: LaunchRank) -> Bool { a.rawValue < b.rawValue }
 }
 

@@ -337,8 +337,15 @@ struct DictationPane: View {
     // MARK: models (chosen in Settings → Speech)
 
     @ViewBuilder var modelRows: some View {
-        SettingRow("dictation.asr_model") {
-            modelControl(value: models.selectedASR.map { $0.name ?? $0.id }, loading: models.asr == nil)
+        // the recogniser as the key sees it: in use, coming down (its bar), or not there yet (Download…)
+        let asr = models.selectedASR
+        let job = models.dictationJob
+        let coming = job.flatMap { j in ModelDownloads.shared.queue.contains(j.id) ? j : nil }
+        SettingRow("dictation.asr_model", detail: coming.map { j in
+            let p = models.progress(j.id) ?? (0, j.sizeMB)
+            return T("dictation.models.downloading", modelSize(p.done), modelSize(max(p.total, j.sizeMB)))
+        }) {
+            modelControl(value: asr?.installed == true ? asr.map { $0.name ?? $0.id } : nil, loading: models.asr == nil)
         }
         if m.style != .verbatim {
             SettingRow("dictation.polish_model") {
@@ -385,9 +392,14 @@ struct DictationPane: View {
 
     /// Only when the key isn't heard (the event tap, not the permission rows: they can say "allowed" while the tap
     /// still isn't there, and the other way round).
-    var keyStatus: some View {
-        statusLine(T("dictation.status.off", Dictation.keyInline(m.key)), T("dictation.status.off.detail")) {
-            Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") }
+    @ViewBuilder var keyStatus: some View {
+        if let pid = Dictation.shared.deferredTo {
+            // another Blurt has the key: nothing to set up here (this one takes over when that one quits)
+            statusLine(T("dictation.status.other_instance", "\(pid)"), T("dictation.status.other_instance.detail"), tone: .off) { EmptyView() }
+        } else {
+            statusLine(T("dictation.status.off", Dictation.keyInline(m.key)), T("dictation.status.off.detail")) {
+                Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") }
+            }
         }
     }
 

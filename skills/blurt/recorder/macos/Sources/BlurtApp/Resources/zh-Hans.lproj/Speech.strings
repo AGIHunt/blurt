@@ -121,3 +121,4 @@
 "speech.dictation.progress" = "%1$@ / %2$@";
 "speech.dictation.no_words" = "不参考词库";
 "speech.dictation.footer" = "两个模型都在本机运行。点「下载」之前不会下载任何东西。";
+"speech.download.queued" = "排队中";

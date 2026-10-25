@@ -61,6 +61,16 @@ public enum VideoRetention {
         return (try? d.write(to: f, options: .atomic)) != nil
     }
 
+    /// The video came back from the Trash (Undo in Settings → Storage): the session no longer says it was removed.
+    @discardableResult
+    public static func unstampRemoved(_ session: URL) -> Bool {
+        let f = session.appendingPathComponent("meta.json")
+        guard var m = (try? JSONSerialization.jsonObject(with: Data(contentsOf: f))) as? [String: Any] else { return false }
+        m.removeValue(forKey: "video_removed")
+        guard let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) else { return false }
+        return (try? d.write(to: f, options: .atomic)) != nil
+    }
+
     /// Whether a session is a screen recording by its meta.json, whether or not its video is still there.
     public static func isRecording(_ session: URL) -> Bool {
         guard let d = try? Data(contentsOf: session.appendingPathComponent("meta.json")),

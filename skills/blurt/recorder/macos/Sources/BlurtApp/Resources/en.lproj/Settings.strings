@@ -11,9 +11,9 @@
 
 "onboarding.permissions" = "Permissions";
 
-"onboarding.set_up_blurt" = "Set up Blurt";
+"onboarding.set_up_blurt" = "Set Up Blurt";
 
-"onboarding.skip_setup" = "Skip setup";
+"onboarding.skip_setup" = "Skip Setup";
 
 "onboarding.step" = "Step %@ · ";
 
@@ -51,13 +51,13 @@
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.system_audio" = "Also record system audio";
 "settings.general.collect" = "Collect macOS screenshots (⌘⇧3/4/5)";
-"settings.general.collect.hint" = "Screenshots taken with macOS’s own shortcuts hang as cards too.";
+"settings.general.collect.hint" = "On: screenshots taken with macOS’s own shortcuts hang as cards too.";
 "settings.general.drag_copy_note" = "If the note didn’t go in with a drop, copy it";
 "settings.general.drag_copy_note.hint" = "When Blurt can’t paste the note after the picture (no Accessibility, the setting above off, the app didn’t come forward, or it was the Finder), the note goes on the clipboard so ⌘V pastes it. This replaces what’s on the clipboard; Undo in the island puts it back.";
 "settings.general.drag_note_file.hint" = "A card dragged into a chat app or the Finder also brings its note as a small Markdown file (Screenshot-153012-note.md). Terminals always get that file’s path, so Claude Code or Codex can read the note.";
 "settings.general.drag_note_file" = "Also attach the note as a .md file";
 "settings.general.drag_caption" = "Add the note under the picture when dragging";
-"settings.general.drag_caption.hint" = "The dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
+"settings.general.drag_caption.hint" = "On: the dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else. The snap itself stays clean.";
 "settings.general.smart_paste" = "Chat apps: the picture, then the note";
 "settings.general.smart_paste.hint" = "Browsers, Claude, Feishu, Slack, WeChat, QQ and other chat apps keep only the picture when a drop or a paste has one. With this on, a card dragged into them drops its picture and then Blurt pastes the note into the same message box; and for 2 minutes after you click (copy) a card, ⌘V there pastes the picture and then the note — for several cards, each picture then its note — and the copy stays on the clipboard for the next ⌘V. Notes, Mail, TextEdit and the like take both in one go; terminals and the Finder are left as they are. Needs Accessibility.";
 "settings.general.about" = "About";
@@ -76,7 +76,7 @@
 "settings.kit.input_monitoring" = "Input Monitoring";
 "settings.kit.microphone" = "Microphone";
 "settings.kit.needed_record_snap" = "Needed to record and to snap";
-"settings.kit.not_allowed" = "Not allowed";
+"settings.kit.not_allowed" = "Turned off";
 "settings.kit.not_set" = "Not set";
 "settings.kit.privacy" = "Privacy";
 "settings.kit.screen_recording" = "Screen Recording";
@@ -94,12 +94,12 @@
 "settings.privacy.cancel" = "Cancel";
 "settings.privacy.clean_up" = "Clean up";
 "settings.privacy.data" = "Data";
-"settings.privacy.deleted_by_default_once" = "Deleted by default once the transcript exists — recording.mp4 has the same audio.";
+"settings.privacy.deleted_by_default_once" = "Off: deleted once the transcript exists — recording.mp4 has the same audio.";
 "settings.privacy.freed" = "Freed ";
 "settings.privacy.index_can_be_deleted" = "The index can be rebuilt any time.";
 "settings.privacy.items_appear_spotlight" = "Items appear in Spotlight";
 "settings.privacy.keep_raw_live_caption" = "Keep the raw live-caption audio (live/audio.pcm)";
-"settings.privacy.local_speech_recognition_only" = "Local speech recognition only";
+"settings.privacy.local_speech_recognition_only" = "Never use cloud speech recognition";
 "settings.privacy.macos_applies_screen_recording" = "macOS applies a Screen Recording change after Blurt restarts.";
 "settings.privacy.move_trash" = "Move to Trash";
 "settings.privacy.move_trash_2" = "Move to the Trash?";
@@ -149,8 +149,9 @@
 "settings.perm.done.some" = "Done for now — allow the rest here any time.";
 "onboarding.permissions_detail" = "Dictation needs the microphone, and Accessibility to type at the cursor. Blurt opens each switch in System Settings for you.";
 "onboarding.dictation_key" = "Dictation key";
-"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk. You can change it later in Settings.";
+"onboarding.dictation_key.fn" = "Tap Fn to dictate hands-free and tap again to stop, or hold it and talk.";
 "onboarding.dictation_key.other" = "Tap %@ to dictate hands-free and tap again to stop, or hold it and talk.";
+"onboarding.dictation_key.send" = " Double-tap %@ when you’re done to send it (Return).";
 "settings.perm.not_needed" = "Not needed";
 "settings.general.dictation_lab" = "Show the Dictation Lab (for developers)";
 "settings.general.dictation_lab.hint" = "A testing bench for dictation: read prompts, compare models, mark mistakes, re-run saved cases. In the Dictation page.";
@@ -165,7 +166,7 @@
 "onboarding.use.voice" = "Voice Note";
 "onboarding.use.record" = "Record";
 "onboarding.use.hint" = "You can change these shortcuts in Settings.";
-"onboarding.skip_for_now" = "Skip for Now";
+"onboarding.skip_for_now" = "Skip This Step";
 "onboarding.permissions.screen_later" = "Screen Recording is asked the first time you snap or record.";
 "onboarding.models" = "Speech models";
 "onboarding.models.detail" = "They turn your speech into tidy text on this Mac. Nothing is uploaded.";
@@ -177,7 +178,7 @@
 "onboarding.models.total" = "%@ in all, kept on this Mac";
 "onboarding.models.progress" = "%@ of %@";
 "onboarding.models.background" = "You can go on: the download carries on in the background.";
-"onboarding.models.ready" = "Models ready";
+"onboarding.models.ready" = "All on this Mac.";
 "onboarding.models.ready_toast" = "Speech models are ready";
 "onboarding.models.failed" = "The download stopped. Check your connection and try again.";
 "onboarding.models.retry" = "Try Again";
@@ -186,7 +187,7 @@
 "onboarding.warm.failed" = "Blurt couldn’t finish setting up its speech tools. Check your connection and try again.";
 "onboarding.models.stop" = "Stop";
 "onboarding.models.failed_toast" = "The model download stopped";
-"onboarding.models.failed_open" = "Show";
+"onboarding.models.failed_open" = "Try Again…";
 "onboarding.models.later" = "You can change models later in Settings, under Dictation and Speech.";
 "onboarding.uv.needed" = "Blurt needs a small helper, uv, to run its speech models.";
 "onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
@@ -197,6 +198,14 @@
 "onboarding.try.needs_permissions" = "Dictation needs its permissions first.";
 "onboarding.try.downloading" = "The models are still downloading. Try it once they’re in.";
 "onboarding.login.detail" = "So the dictation key always works.";
+"onboarding.try.asr_downloading" = "The speech model is still downloading. Try it once it’s in.";
+"onboarding.try.no_model" = "Dictation needs its speech model first.";
+"onboarding.try.polish_coming" = "Dictation works now. The polish model is still coming (%@ to go); then the text reads smoother.";
+"onboarding.try.send_next" = "Now try sending: when you finish, double-tap %@ instead of tapping once.";
+"onboarding.try.sent" = "That’s sending: in other apps the text goes in, then Return is pressed.";
+"onboarding.try.send" = " Or double-tap it to type the text and press Return.";
+"onboarding.use.dictation.detail" = "Tap to talk · tap again to stop · double-tap to send";
+"onboarding.use.dictation.detail_plain" = "Tap to talk · tap again to stop";
 "settings.storage.dictation_history" = "History";
 "settings.storage.dictation_audio" = "Kept audio";
 "settings.storage.dictation_lab" = "Lab";
@@ -233,6 +242,7 @@
 "settings.export.ready" = "Ready";
 "settings.export.not_set_up" = "Not set up";
 "settings.export.footer" = "Ask your agent to export, for example “export the to-dos to GitHub”. Exporting again never makes duplicates.";
+"settings.export.url_invalid" = "That isn’t a Feishu or Lark table link";
 
 /* The Settings window: sidebar groups, search, the shorter descriptions under each row (the long text is the row's
    tooltip), and search keywords per row (settings.kw.<id>) and per pane (settings.kw.pane.<pane>): comma-separated
@@ -258,6 +268,8 @@
 "settings.general.help.detail" = "Everything Blurt does, with its shortcuts.";
 "settings.general.assistant.title" = "Setup Assistant";
 "settings.general.assistant.detail" = "Permissions, models and a first try, in four steps.";
+"settings.general.language.relaunch" = "Relaunch Now";
+"settings.kit.allow_help" = "Control-click for the System Settings pane";
 "settings.privacy.spotlight.detail" = "Find items by their title from Spotlight (⌘Space).";
 "settings.shortcuts.restore" = "Restore";
 
@@ -334,3 +346,12 @@
 "settings.kw.storage.choose_models" = "choose model, change model, download model";
 "settings.kw.storage.files" = "cache, index, runs, jobs, temporary";
 "settings.kw.storage.live_audio" = "live audio, pcm, clean up";
+"settings.perm.done.no_model" = "Permissions are set. Next, the speech model — then %@ dictates anywhere.";
+"settings.privacy.local_asr.off_keys" = "%@ is set up: the automatic choice may send audio there.";
+"settings.privacy.local_asr.off_none" = "No cloud API key is set, so speech is recognized on this Mac. Turn on to keep it that way after you set one.";
+"settings.privacy.local_asr.on" = "Speech is recognized on this Mac only, even with a cloud API key set.";
+"settings.storage.trashed" = "“%@” moved to the Trash";
+"settings.storage.undo_failed" = "Couldn’t put “%@” back";
+"settings.storage.undo_failed_many" = "%d items couldn’t be put back";
+"settings.storage.undo" = "Undo";
+"settings.storage.videos.trashed" = "%1$@ (%2$@) moved to the Trash";

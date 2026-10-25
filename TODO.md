@@ -168,6 +168,33 @@
       `Config.set` share) and never overwrite a config.json that doesn't parse (copy it to `config.json.bad-<time>`, say
       so once) — BlurtCore/Config.swift
 - [ ] `blurt://record` / `blurt://snap` from outside: ask in the app first unless it is in front (Mac: App.confirmFromURL)
+- [ ] One model download manager (Mac v0.9: App/ModelDownloads.swift + BlurtCore ModelDownloadQueue, desktop-app.md
+      §2.2 "Models"): every download (onboarding, Settings → Speech, the dictation key) through one queue — one at a
+      time, never the same model twice, its progress in the tray menu and on the model's row ("Queued" for the rest),
+      `$BLURT_HOME/model-downloads.json` so a quit or crash carries on at the next launch (one launch line), Stop /
+      SIGTERM (143) never "failed", `setup --parent <pid>`, terminate the setup on quit, warm the dictation model when
+      it lands. The scripts' side (lock per model, Range resume, the ModelScope manifest + marker) is shared already.
+- [ ] Dictation key without a model: start nothing, say "no speech model yet · Download" / "still downloading · Show";
+      spawn the warm server and the CLI fallback with `BLURT_NO_DOWNLOAD=1` (Mac: Dictation.speechModelMissing → noSpeechModel, WarmSpawn)
+- [ ] Shortcuts: refuse Ctrl+letter combos every app uses (Ctrl+C, Ctrl+V, Ctrl+Z, Alt+F4…; Mac: KeyCombo.reserved
+      refuses ⌘ / ⇧⌘ + a typing key) with the reason inline; a key another action has asks to swap; undo; keyboard
+      operable fields. Two running instances: the first keeps the dictation key and hotkeys, the other takes over
+      when it quits (Mac: the registry's `dictation` / `started`, HotkeyCenter.dictationOwner, the 3 s liveness look)
+- [ ] First-run line only with working keys (Mac: BlurtCore WelcomeLine); the permission guide's done line promises
+      dictation only with a model; Input Monitoring "Not needed" when the key is heard another way; the skill
+      contract mismatch persistent (tray menu row + Settings → General) and ranked above the welcome; a dropped model
+      suggestion stays pending (`app.model_suggest_pending`) until seen
+- [ ] Storage: Move to Trash at once with Undo (only the auto-delete policy asks); Privacy's "Never use cloud speech
+      recognition" says what it does where things stand; Settings → General's language change offers Relaunch Now
+- [ ] After the v0.9 shell review (Mac counterparts): a failed model ends only its own request (ModelDownloadQueue
+      `group` / `ended`), Stop-all spares a model asked for while stopping, "Unpacking…" on the row and tray item,
+      "Stop" everywhere; a model counts as installed only with the VAD (`dictation-models` `files` / `vad`) and the
+      HF snapshot check (`transcribe.py _snapshot_complete`, shared); "nothing heard" names the mic with Change Mic…
+      (BlurtCore NothingHeard); the Try-it step's second exercise (double tap = send); the Shortcuts swap is an
+      exchange ("Move Here" when there's nothing to give); registry entries count only while their pid's start time
+      matches (HotkeyCenter.isLive), and the dictation key goes to the instance that hears it; a denied permission's
+      button says System Settings…; Storage Undo merges into a recreated folder and says what couldn't come back;
+      toggle help phrased by state ("On: …" / "Off: …"); Feishu links on a private domain with a /base/ path
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)

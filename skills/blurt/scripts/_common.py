@@ -410,6 +410,113 @@ def write_text_atomic(path: Path, text: str) -> None:
             time.sleep(0.05)
 
 
+# ------------------------------------------------------------------ model downloads (transcribe.py / polish.py setup)
+# The Mac app's one download manager (BlurtApp/App/ModelDownloads.swift) runs `setup` one model at a time; these
+# helpers make each download safe to repeat, to cut short and to run twice:
+#   complete    a folder we fill file by file (the ModelScope mirror) is installed only when it is complete: a
+#               `.blurt-downloading` marker goes in before the first file and comes out after the last, and
+#               `.blurt-manifest.json` lists every file with its size (folder_complete checks each one). A folder from an
+#               older Blurt (no manifest) falls back to the caller's own test.
+#   resumable   a partial file (<name>.part) is continued with an HTTP Range request, not started again from byte 0.
+#   one at a time  download_lock: a second `setup` of the same model waits for the first, then finds it installed.
+#   its app     watch_parent: a setup started by the app ends when the app is gone (quit, crash) instead of running on
+#               as an orphan; what came down stays for the next try.
+DOWNLOAD_MARKER = ".blurt-downloading"
+DOWNLOAD_MANIFEST = ".blurt-manifest.json"
+DOWNLOAD_LOCK_TIMEOUT = 6 * 3600     # a 3 GB model on a slow line; the waiting setup just waits
+
+
+def download_lock(model_id: str):
+    """One download of `model_id` at a time, across processes ($BLURT_HOME/run/download-<id>.lock)."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", model_id)
+    return file_lock(blurt_home() / "run" / f"download-{safe}.lock", timeout=DOWNLOAD_LOCK_TIMEOUT)
+
+
+def safetensors_complete(d: Path) -> bool:
+    """Every shard a model.safetensors.index.json names is there (a folder without an index: its one file is)."""
+    idx = load_json(d / "model.safetensors.index.json", None)
+    if not isinstance(idx, dict):
+        return any(d.glob("*.safetensors"))
+    return all((d / f).is_file() for f in set((idx.get("weight_map") or {}).values()))
+
+
+def folder_complete(d: Path, legacy=None) -> bool:
+    """A model folder we downloaded file by file is complete: no download marker, and every file of its manifest at
+    its size. Without a manifest (an older Blurt's download), `legacy(d)` decides (False when not given)."""
+    if not d.is_dir() or (d / DOWNLOAD_MARKER).exists():
+        return False
+    man = load_json(d / DOWNLOAD_MANIFEST, None)
+    if isinstance(man, list):
+        for f in man:
+            p = d / f["path"]
+            if not p.is_file() or (f.get("size") and p.stat().st_size != f["size"]):
+                return False
+        return True
+    return bool(legacy(d)) if legacy else False
+
+
+def begin_download(d: Path, files: list[dict]) -> None:
+    """Before the first file: the marker (the folder isn't a model until end_download) and the manifest
+    ([{"path", "size"}])."""
+    d.mkdir(parents=True, exist_ok=True)
+    (d / DOWNLOAD_MARKER).write_text(str(os.getpid()))
+    write_text_atomic(d / DOWNLOAD_MANIFEST, json.dumps([{"path": f["path"], "size": f.get("size")} for f in files]))
+
+
+def end_download(d: Path) -> None:
+    """After the last file went through os.replace."""
+    (d / DOWNLOAD_MARKER).unlink(missing_ok=True)
+
+
+def fetch(url: str, tmp: Path, size: int | None = None, progress=None, timeout: float = 60) -> int:
+    """GET `url` into `tmp`, continuing what is already there (HTTP Range; a server that ignores it sends it all and
+    we start over). `progress(have, total)` per chunk. Returns the bytes now in `tmp`."""
+    import urllib.error
+    import urllib.request
+    have = tmp.stat().st_size if tmp.exists() else 0
+    if size and have > size:
+        tmp.unlink()
+        have = 0
+    if size and have == size:
+        return have
+    headers = {"User-Agent": "blurt"}
+    if have:
+        headers["Range"] = f"bytes={have}-"
+    try:
+        r = urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout)
+    except urllib.error.HTTPError as e:
+        if e.code == 416 and have:          # nothing past what we have: it is all there
+            return have
+        raise
+    with r:
+        if have and getattr(r, "status", None) != 206:
+            have = 0
+        length = int(r.headers.get("content-length") or 0)
+        total = size or (have + length if length else 0)
+        tmp.parent.mkdir(parents=True, exist_ok=True)
+        with open(tmp, "ab" if have else "wb") as o:
+            while chunk := r.read(1 << 20):
+                o.write(chunk)
+                have += len(chunk)
+                if progress:
+                    progress(have, total)
+    return have
+
+
+def watch_parent(pid: int | None, interval: float = 1.0) -> None:
+    """A setup started by an app (`--parent PID`) ends when that app is gone, at once (what came down stays: the next
+    setup continues it) — not orphaned, and not dying later on a closed stderr."""
+    if not pid:
+        return
+
+    def run():
+        while parent_alive(pid):
+            time.sleep(interval)
+        os._exit(143)
+
+    threading.Thread(target=run, daemon=True, name="watch-parent").start()
+
+
 # ------------------------------------------------------------------ identities (contract C1, unchanged in v3)
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 

@@ -998,7 +998,7 @@ struct DictationDetailView: View {
             Text(DictationHistoryModel.failedText(e)).font(.system(size: 13)).foregroundStyle(.secondary)
             Spacer(minLength: 8)
             if e.reason == "asr_failed:model_missing" {
-                Button(T("dictation.toast.no_model.get")) { Dictation.getSpeechModel(from: "page") }
+                Button(T("dictation.toast.no_model.action")) { Dictation.getSpeechModel(from: "page") }     // starts it in the download manager
             }
             if DictationHistoryModel.canRetry(e) {
                 Button(T("dictation.history.retry")) { m.retry(e) }.keyboardShortcut("r", modifiers: .command)

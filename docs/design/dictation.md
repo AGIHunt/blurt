@@ -650,11 +650,16 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   with nothing downloaded: the selected model (local and on this Mac, or a cloud one with its key — judged by itself,
   not by being one of the Settings rows) **and** the VAD every take goes through (`silero_vad.onnx`, 0.6 MB, in
   `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). `missing` lists what a
-  download would bring. Not ready: the key doesn't listen (no mic, no warm-up) and the island says "还没有识别模型 ·
-  下载…" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）· 下载…". The button calls
-  `Dictation.getSpeechModel` — the one entry for a dictation's model download: Settings → Speech → Dictation, the
-  download started there for `DictationSpeechModels.toGet`: the configured model when that is the one missing, else
-  the recommended one; only the VAD → the selected model's `setup` (which brings it) without changing the choice.
+  download would bring. `transcribe.py dictation-models` is read once, by `DictationModels` (Settings' rows, the
+  download manager's sizes, `dictationReady` for the welcome line and the assistant), and Dictation follows its
+  `$asr` — one answer for every surface. Not ready: the key doesn't listen (no mic, no warm-up) and the island says
+  "还没有识别模型（2.5 GB）· 下载" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）·
+  下载"; while that download runs, "识别模型还在下载（1.2 / 2.5 GB）· 查看"; the list unreadable: "还没有识别模型 ·
+  查看模型…". The button calls `Dictation.getSpeechModel` — the one entry for a dictation's model download: one job
+  in the app's one download manager (`ModelDownloads`; `DictationModels.dictationJob`) for
+  `DictationSpeechModels.toGet`: the configured model when that is the one missing, else the recommended one; only the
+  VAD → the selected model's `setup` (which brings just it, 0.6 MB) — never pinning the choice. The island says it
+  started ("开始下载识别模型（2.5 GB）· 下载好就能按 Fn 听写 · 查看").
   A take that fails with model_missing asks `dictation-models` again (never assumes), and when the model (or VAD) is
   there later, the island offers **Retry** for the newest such take ("识别模型好了，刚才那段录音还在") — it is never
   pasted by itself minutes later.
@@ -706,7 +711,19 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   between requests, so a CLI or agent request in flight is answered first, and a crash counts too), and on
   `{"cmd": "exit"}`. The next key-down starts it again (offline, `WarmSpawn`); the speech model is also warmed a few
   seconds after launch (`Dictation.prewarm`: dictation on, key heard, ≥ 16 GB, the dictation model installed — the
-  first dictation took 5.9 s of ASR on a cold model, newc008), which costs its memory for those 10 minutes only;
+  first dictation took 5.9 s of ASR on a cold model, newc008), and as soon as the app's download manager brings
+  dictation's model in (`ModelDownloads`: the Try-it moment after the assistant's download isn't cold), which costs its
+  memory for those 10 minutes only;
+- never downloads: the servers and the CLI fallback run with `BLURT_NO_DOWNLOAD=1` (a missing model is `model_missing`,
+  never a three-minute hidden download behind a key press), and without a recogniser to run on
+  (`DictationSpeechModels.ready`, §No speech model) the key starts nothing — the island says "no speech model yet
+  (2.5 GB) · Download" or "still downloading (1.2 of 2.5 GB) · Show" instead of a false "nothing heard" (a model
+  counts only with its VAD, `silero_vad.onnx`; when that is all that's missing, the offer is just it); while that
+  isn't known yet (the list not read, or unreadable) the take goes ahead, and a `model_missing` answer fails the take
+  (its recording kept, Retry once the model is in: §Recognition failed);
+- says which mic when nothing was heard: "Didn't catch anything (AirPods) · Change Mic…", or "No sound from AirPods"
+  when the level never left the floor the whole take (muted, the wrong input, a headset still connecting —
+  `BlurtCore/NothingHeard`); Change Mic… opens Settings → Dictation's microphone;
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
 
