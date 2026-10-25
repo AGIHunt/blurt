@@ -18,7 +18,11 @@ struct AgentSessionRow: Identifiable {
     let items: [SessionItemLabel]
 
     var id: String { job.id }
-    var status: AgentSessionStatus { job.isActive ? agent.status : (agent.status == .error || job.state == .failed ? .error : .exited) }
+    /// Once the user decided (merged, restarted, discarded…), a failure is past news: the quiet mark of an ended one.
+    var status: AgentSessionStatus {
+        if agent.finishAction != nil { return .exited }
+        return job.isActive ? agent.status : (agent.status == .error || job.state == .failed ? .error : .exited)
+    }
     var alive: Bool { job.isActive }
     /// "BA-12, BA-13" — the tmux window's name, else the item ids
     var label: String {
@@ -44,9 +48,14 @@ struct AgentSessionRow: Identifiable {
     }
     /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
     /// there is something to review).
-    var stateText: String {
-        switch outcome {
-        case .live(let st): return st.title
+    var stateText: String { Self.stateText(job) }
+
+    /// The one wording of a session's state, wherever it shows (the list, the pane header, the ended card's row, the
+    /// job detail's line): its live status — "No response" once the watchdog gave up on it — else how it ended.
+    static func stateText(_ job: Job) -> String {
+        guard let agent = job.agent else { return "" }
+        switch SessionOutcome.of(job) {
+        case .live(let st): return agent.stalled ? TL("row.no_response") : st.title
         case .review: return TL("row.ready_to_review")
         case .failed(let atStart): return atStart ? TL("row.failed_start") : TL("row.failed")
         case .noChanges: return TL("row.no_changes")

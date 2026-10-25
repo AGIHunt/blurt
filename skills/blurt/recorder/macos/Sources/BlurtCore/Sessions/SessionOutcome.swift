@@ -43,20 +43,28 @@ public enum SessionOutcome: Equatable {
     }
 }
 
-/// The item banner of an item handed to a session: its tone and buttons (action ids the banner sends), the first
-/// one the primary. `brand` while the agent works for you (system.md §1.1), `attn` when it needs you, `neutral` once
-/// the session is over and the user decides.
+/// The item banner of an item handed to a session: its tone, its inline buttons (action ids the banner sends; the
+/// first one the primary — two at most, so the line keeps its words at a detail's width) and the rest in its ⋯ menu.
+/// `brand` while the agent works for you (system.md §1.1), `attn` when it needs you, `neutral` once the session is
+/// over and the user decides.
 public struct SessionBannerPlan: Equatable {
     public enum Tone: Equatable { case brand, attn, neutral }
     public let tone: Tone
     public let actions: [String]
+    /// What the ⋯ menu beside the buttons offers.
+    public let more: [String]
 
-    public init(tone: Tone, actions: [String]) { self.tone = tone; self.actions = actions }
+    public static let maxInline = 2
 
-    /// `work`: the item's session (WorkSession.of); `outcome`: its job's (nil when the job is gone).
-    public static func plan(_ work: WorkSession, outcome: SessionOutcome?) -> SessionBannerPlan {
+    public init(tone: Tone, actions: [String], more: [String] = []) { self.tone = tone; self.actions = actions; self.more = more }
+
+    /// `work`: the item's session (WorkSession.of); `outcome`: its job's (nil when the job is gone); `stalled`: the
+    /// watchdog says it isn't responding (AgentInfo.stalled).
+    public static func plan(_ work: WorkSession, outcome: SessionOutcome?, stalled: Bool = false) -> SessionBannerPlan {
         switch work {
         case .live(let st):
+            // no response for a minute: look at it, or start it again
+            if stalled { return SessionBannerPlan(tone: .attn, actions: ["session", "restart"], more: ["take_back"]) }
             return SessionBannerPlan(tone: st == .waitingInput ? .attn : .brand, actions: ["session"])
         case .gone:
             return SessionBannerPlan(tone: .neutral, actions: ["take_back", "done"])
@@ -64,13 +72,14 @@ public struct SessionBannerPlan: Equatable {
             switch outcome {
             case .failed?:
                 // it couldn't start or crashed with nothing done: start it again, or take the items back
-                return SessionBannerPlan(tone: .neutral, actions: ["restart", "take_back", "session"])
+                return SessionBannerPlan(tone: .neutral, actions: ["restart", "take_back"], more: ["session"])
             case .review?:
-                return SessionBannerPlan(tone: .neutral, actions: ["review", "take_back", "done"])
+                return SessionBannerPlan(tone: .neutral, actions: ["review", "take_back"], more: ["done"])
             default:
                 // it ended without saying the items are done: see what it did first, then decide
-                return SessionBannerPlan(tone: .neutral, actions: outcome?.canRestart == true ? ["session", "restart", "done", "take_back"]
-                                                                                             : ["session", "done", "take_back"])
+                return outcome?.canRestart == true
+                    ? SessionBannerPlan(tone: .neutral, actions: ["session", "restart"], more: ["done", "take_back"])
+                    : SessionBannerPlan(tone: .neutral, actions: ["session", "done"], more: ["take_back"])
             }
         }
     }

@@ -101,7 +101,8 @@ final class EmptyStateView: NSView {
     let title = NSTextField(labelWithString: "")
     let message = NSTextField(wrappingLabelWithString: "")
     let buttons = NSStackView()
-    let spinner = NSProgressIndicator()
+    /// the brand arc, as every "AI at work" spinner (JobRow, the item banner), not the system one
+    let spinner = BrandSpinner()
     var onButton: ((Int) -> Void)?
     /// tags whose button is never the primary (they undo a filter rather than move on)
     static let secondaryTags: Set<Int> = [2]
@@ -117,9 +118,8 @@ final class EmptyStateView: NSView {
         message.preferredMaxLayoutWidth = EmptyState.messageWidth
         icon.symbolConfiguration = .init(pointSize: 34, weight: .light)
         icon.contentTintColor = .tertiaryLabelColor
-        spinner.style = .spinning
-        spinner.controlSize = .regular
-        spinner.isDisplayedWhenStopped = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([spinner.widthAnchor.constraint(equalToConstant: 22), spinner.heightAnchor.constraint(equalToConstant: 22)])
         buttons.orientation = .horizontal
         buttons.spacing = 8
         for v in [icon, mark, spinner, title, message, buttons] as [NSView] { stack.addArrangedSubview(v) }
@@ -146,8 +146,7 @@ final class EmptyStateView: NSView {
         icon.isHidden = icon.image == nil || busy
         mark.isHidden = !showMark || busy
         icon.setAccessibilityElement(false); icon.cell?.setAccessibilityElement(false)      // decoration (an SF Symbol's own name, e.g. "split view", says nothing here)
-        busy ? spinner.startAnimation(nil) : spinner.stopAnimation(nil)
-        spinner.isHidden = !busy                // a stopped spinner draws nothing but would still take its room
+        busy ? spinner.startAnimation() : spinner.stopAnimation()     // stopped, it is hidden: it takes no room
         title.stringValue = t
         message.stringValue = m
         message.isHidden = m.isEmpty

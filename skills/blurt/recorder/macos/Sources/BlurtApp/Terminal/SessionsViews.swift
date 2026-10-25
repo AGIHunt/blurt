@@ -135,7 +135,8 @@ struct SessionHeader: View {
                             Text(r.projectName).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
                         }
                         HStack(spacing: 5) {
-                            Text(r.stateText).foregroundStyle(r.status == .running ? Color.secondary : r.status.color)
+                            // the user's own decision (merged, restarted…) is past news: no status colour
+                            Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
                             Text("·").foregroundStyle(.tertiary)
                             Text(r.agentName)
                             if r.agent.finishAction == nil, let b = r.agent.branch {
@@ -194,6 +195,8 @@ struct SessionHeader: View {
                 if r.alive {
                     Button(TL("header.interrupt")) { actions?.interrupt(r.id) }
                     Button(TL("header.end")) { actions?.end(r.id) }
+                    // no response for a minute (the watchdog): start it again from here
+                    if r.agent.stalled { Button(TL("overlay.restart")) { actions?.restart(r.id) } }
                     Divider()
                 } else if pane.attach != .attached, r.hasOutput {
                     Button(TL("overlay.show_output")) { actions?.showOutput(r.id) }
@@ -245,6 +248,7 @@ enum ExternalTerminals {
 struct SessionOverlay: View {
     @ObservedObject var model: SessionsModel
     @ObservedObject var pane: PaneState
+    @ObservedObject var recovering = SessionRecovery.busy
     weak var actions: SessionActions?
 
     var body: some View {
@@ -325,21 +329,24 @@ struct SessionOverlay: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         let output = r.hasOutput
+        let inFlight = recovering.contains(r.id)     // a Restart / Take Back already on its way: not twice
         HStack(spacing: 8) {
             switch outcome {
             case .review:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
                 Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
             case .failed, .noChanges, .ended:
-                if Self.itemsWithIt(r) { Button(TL("overlay.take_back")) { actions?.takeBack(r.id) } }
+                if Self.itemsWithIt(r) { Button(TL("overlay.take_back")) { actions?.takeBack(r.id) }.disabled(inFlight) }
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
                 if Self.itemsWithIt(r) {
                     if case .failed = outcome {
                         Button(TL("overlay.restart")) { actions?.restart(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                            .disabled(inFlight)
                     } else {
-                        Button(TL("overlay.restart")) { actions?.restart(r.id) }
+                        Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)
                     }
                 }
+                if inFlight { ProgressView().controlSize(.small) }
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }
@@ -364,7 +371,7 @@ struct SessionOverlay: View {
     static func endedTitle(_ r: AgentSessionRow) -> String {
         switch r.outcome {
         case .failed(let atStart): return TL(atStart ? "overlay.failed_start.title" : "overlay.failed.title", r.agentName)
-        case .review: return TL("overlay.ended.title")
+        case .review: return TL("overlay.review.title")
         case .noChanges: return TL("overlay.no_changes.title")
         case .ended, .live: return TL("overlay.ended.title")
         case .finished: return r.stateText
@@ -381,6 +388,8 @@ struct SessionOverlay: View {
     static func endedHint(_ r: AgentSessionRow) -> String? {
         if r.outcome == .review { return TL("overlay.ended.review_hint") }
         if case .failed = r.outcome { return nil }
+        // restarted, merged, discarded…: its items went on elsewhere (a new session, To Do) — nothing to say here
+        if case .finished(let f) = r.outcome, f != "keep" { return nil }
         let states = r.job.items.compactMap { IndexLookup.item(uid: $0)?.state }
         if states.contains(where: { $0 == "handed_off" || $0 == "in_progress" }) { return TL("overlay.ended.unreported_hint") }
         if states.contains("to_verify") { return TL("overlay.ended.verify_hint") }

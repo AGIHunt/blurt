@@ -3,14 +3,22 @@
 // do this: a child's own children otherwise outlive the app, unseen, still spending tokens (dogfood v0.9).
 //
 //   let p = try ProcessGroup.spawn("/bin/zsh", ["-c", cmd], env: env, cwd: dir, output: fh) { status in … }
-//   p.pgid                      → record it in the job ("agent_pgid") so a later launch can find it
+//   p.pgid, p.started           → record both in the job ("agent_pgid", "agent_pgid_start") so a later launch can
+//                                 find it — and tell it from an unrelated group that got the same number since
 //   ProcessGroup.stop(pgid)     → SIGTERM the group, SIGKILL whatever is left after a grace period
+//   ProcessGroup.isOurs(pgid, started:) → before stopping a group a previous run recorded: its leader is still the
+//                                 process that was started (same start time), or, the leader gone, what is left all
+//                                 started after it. A number reused by the user's shell or editor after a reboot is
+//                                 never ours.
+import Darwin
 import Foundation
 
 public final class ProcessGroup {
     public let pgid: pid_t
+    /// The leader's start time (µs since 1970, from the kernel), nil if it couldn't be read.
+    public let started: UInt64?
 
-    private init(pgid: pid_t) { self.pgid = pgid }
+    private init(pgid: pid_t) { self.pgid = pgid; started = Self.startTime(pgid) }
 
     public enum SpawnError: Error, CustomStringConvertible {
         case failed(Int32, String)
@@ -62,6 +70,44 @@ public final class ProcessGroup {
             DispatchQueue.main.async { onExit(code) }
         }
         return ProcessGroup(pgid: pid)
+    }
+
+    /// A process's start time in µs since 1970 (proc_pidinfo PROC_PIDTBSDINFO), nil when it doesn't exist.
+    public static func startTime(_ pid: pid_t) -> UInt64? {
+        bsdInfo(pid).map { UInt64($0.pbi_start_tvsec) * 1_000_000 + UInt64($0.pbi_start_tvusec) }
+    }
+
+    private static func bsdInfo(_ pid: pid_t) -> proc_bsdinfo? {
+        guard pid > 0 else { return nil }
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size ? info : nil
+    }
+
+    /// The pids in process group `pgid` (sysctl KERN_PROC_PGRP).
+    public static func members(_ pgid: pid_t) -> [pid_t] {
+        guard pgid > 1 else { return [] }
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PGRP, pgid]
+        var size = 0
+        guard sysctl(&mib, 4, nil, &size, nil, 0) == 0, size > 0 else { return [] }
+        var procs = [kinfo_proc](repeating: kinfo_proc(), count: size / MemoryLayout<kinfo_proc>.stride + 4)
+        size = procs.count * MemoryLayout<kinfo_proc>.stride
+        guard sysctl(&mib, 4, &procs, &size, nil, 0) == 0 else { return [] }
+        return procs.prefix(size / MemoryLayout<kinfo_proc>.stride).map { $0.kp_proc.p_pid }.filter { $0 > 0 }
+    }
+
+    /// Is `pgid` still the group this app started at `started` (its leader's start time)? With its leader alive:
+    /// the same start time. With the leader gone: what is left of the group (the agent and its tools) all started
+    /// after it — a group id is only ever reused by a new leader of that pid, which would be there. Without a
+    /// recorded start time (a job from an older build) nothing can be told, so nothing is ours. (A process's
+    /// environment — BLURT_JOB — can't be read: macOS withholds it from KERN_PROCARGS2.)
+    public static func isOurs(_ pgid: pid_t, started: UInt64?) -> Bool {
+        guard pgid > 1, pgid != getpgrp(), let s = started else { return false }
+        if let leader = bsdInfo(pgid) {
+            return UInt64(leader.pbi_start_tvsec) * 1_000_000 + UInt64(leader.pbi_start_tvusec) == s && leader.pbi_pgid == UInt32(pgid)
+        }
+        let left = members(pgid)
+        return !left.isEmpty && left.allSatisfy { (startTime($0) ?? 0) >= s }
     }
 
     /// Is anything of the group still running?

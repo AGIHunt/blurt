@@ -52,6 +52,8 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     func setting(_ key: String) -> Bool { Config.shared["notify.\(key)"] as? Bool ?? true }
 
     private func event(_ j: Job, before: String?) {
+        // a session that stopped at its agent's login screen: the next dispatch panel knows without asking again
+        if j.type == .agent, j.error?.code == "auth", let a = j.agent?.agent { AgentHub.shared.invalidate(a, as: .loggedOut) }
         guard !recording, j.type != .agent else { return }
         let ran = (j.ended ?? Date()).timeIntervalSince(j.started ?? j.created)
         switch (j.type, j.state) {

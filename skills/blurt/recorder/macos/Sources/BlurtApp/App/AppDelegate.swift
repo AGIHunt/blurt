@@ -293,8 +293,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Quitting while an agent organises a recording stops it (it would go on spending tokens unseen and write items
     /// after the app said it failed): ask first, as a Mac app asks before it drops work in progress.
+    /// Not on a logout, restart or shutdown (the quit Apple Event carries kAEQuitReason): a modal would hold the Mac
+    /// up behind it; the organisers stop all the same and their jobs say so.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard resident, !organisers.isEmpty, !quitBySignal else { return .terminateNow }
+        guard resident, !organisers.isEmpty, !quitBySignal, !Self.quitBySystem else { return .terminateNow }
         let jobs = organisers.keys.compactMap { JobStore.shared.job($0) }
         let a = NSAlert()
         a.messageText = jobs.count == 1 ? T("app.quit.organizing.title", JobLook.title(jobs[0])) : T("app.quit.organizing.title_n", jobs.count)
@@ -303,6 +305,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         a.addButton(withTitle: T("action.cancel"))
         activateApp()
         return a.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
+    /// The quit comes from a logout, restart or shutdown.
+    static var quitBySystem: Bool {
+        guard let e = NSAppleEventManager.shared().currentAppleEvent, e.eventClass == kCoreEventClass,
+              e.eventID == kAEQuitApplication else { return false }
+        return e.attributeDescriptor(forKeyword: kAEQuitReason) != nil
     }
 
     /// Every organiser still running stops with the app — together, one grace period — and its job says so.

@@ -196,9 +196,12 @@ item's context menu.
 
 When a session ends, its terminal shows how it ended rather than the dead window: *Codex couldn't start* with the
 agent's last words (an expired login, an error), *Ready to review* when its branch has changes, or *Ended · no
-changes*. **Restart Session** runs the same items with the same agent again; **Take Back** returns them to *To do*;
-**Show Output** shows what the agent left on screen. An agent that isn't logged in can't be picked in the hand-off
-panel — it says what to run, and offers the other agent.
+changes*. **Restart Session** runs the same items with the same agent again (once — the button is off while it
+starts); **Take Back** returns them to *To do*; **Show Output** shows what the agent left on screen. The item's
+banner keeps two buttons and puts the rest under **⋯**. An agent that says nothing for a minute after it starts
+reads *No response*: look at its window, or restart it. An agent that isn't logged in can't be picked in the
+hand-off panel — it says what to run, and offers the other agent; agents handing work off from the command line get
+the same answer.
 
 **Review Changes…** shows what changed on the session's branch. **Merge** (`⌘↩`) brings it into your project folder;
 when the agent left its work uncommitted (Codex can't commit inside a worktree), the button reads **Commit and
@@ -513,9 +516,10 @@ so the two must speak the same version: when one is older than the other, the is
 点「**打开会话**」看看它做了什么，再「**重新开始会话**」「**标为完成**」或「**收回**」。「条目」菜单和右键菜单里也有「打开会话」。
 
 会话结束后，终端那里说的是它怎么结束的，而不是一个死掉的窗口：「Codex 启动失败」并附上 Agent 最后说的话（登录失效、报错），
-分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些条目再跑一遍；
-「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。没登录的 Agent 在「交给 Agent」面板里选不了：
-面板会写明要运行什么，并给出另一个 Agent。
+分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些条目再跑一遍
+（只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。条目上方的提示条
+最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
+没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
 
 「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
 里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。

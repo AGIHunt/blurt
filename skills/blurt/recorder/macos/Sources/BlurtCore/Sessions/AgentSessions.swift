@@ -119,10 +119,13 @@ public final class AgentSessions {
 
     // MARK: K5 CLI
 
-    /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to.
+    /// `model`: the agent's model (Agents.models); nil / "" = whatever the CLI is set to. `loginChecked`: the caller
+    /// already knows the agent is logged in (the dispatch panel won't start otherwise) — sessions.py skips its own
+    /// login check (--force); without it, a logged-out agent fails with code auth.
     public func dispatch(items: [String], agent: String?, mode: DispatchMode, worktree: WorktreeChoice, dryRun: Bool,
-                         model: String? = nil) async throws -> DispatchResult {
+                         model: String? = nil, loginChecked: Bool = false) async throws -> DispatchResult {
         var args = ["dispatch", "--items"] + items + ["--mode", mode.rawValue, "--worktree", worktree.rawValue, "--lang", lang]
+        if loginChecked && !dryRun { args.append("--force") }
         if let a = agent, !a.isEmpty { args += ["--agent", a] }
         if let m = model, !m.isEmpty { args += ["--model", m] }
         if dryRun { args.append("--dry-run") }

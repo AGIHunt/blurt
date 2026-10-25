@@ -83,7 +83,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>Blurt 会先在这个分支上提交 %ld 处未提交的改动。</string>
+			<string>口喷鸡会先在这个分支上提交 %ld 处未提交的改动。</string>
 		</dict>
 	</dict>
 	<key>list.live</key>

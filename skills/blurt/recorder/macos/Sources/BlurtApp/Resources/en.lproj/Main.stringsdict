@@ -146,6 +146,38 @@
 			<string>In progress · %ld</string>
 		</dict>
 	</dict>
+	<key>main.jobs.failed</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld failed</string>
+			<key>other</key>
+			<string>%ld failed</string>
+		</dict>
+	</dict>
+	<key>main.jobs.header.failed_only</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Failed · %ld</string>
+			<key>other</key>
+			<string>Failed · %ld</string>
+		</dict>
+	</dict>
 	<key>main.jobs.more</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>

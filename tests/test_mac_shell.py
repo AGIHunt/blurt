@@ -171,6 +171,57 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertIn("process_already_running", hub)
         hk = self.src("App/Housekeeping.swift")
         self.assertIn("ProcessGroup.stop(g)", hk)
+        # review: a recorded group is stopped only while it is still that run's (its leader's start time)
+        self.assertIn('ProcessGroup.isOurs(g, started: (raw?["agent_pgid_start"]', hk)
+        self.assertEqual(hub.count('job.set("agent_pgid_start"'), 2)
+        # no modal on logout / restart / shutdown, and the Mac's words for the button
+        self.assertIn("!Self.quitBySystem", app)
+        self.assertIn("kAEQuitReason", app)
+
+    def test_restart_and_take_back_run_once(self):
+        rec = self.src("Terminal/SessionRecovery.swift")
+        self.assertIn("guard busy.begin(job) else { return }", rec)
+        self.assertIn("guard busy.begin(jobID) else { return }", rec)
+        views = self.src("Terminal/SessionsViews.swift")
+        self.assertIn('Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)', views)
+        self.assertIn('actions?.takeBack(r.id) }.disabled(inFlight)', views)
+        web = self.src("WebHost/WebHostController.swift")
+        self.assertIn('if a == "restart" || a == "take_back" { b.isEnabled = false }', web)
+
+    def test_banner_keeps_two_buttons_and_review_opens_the_sheet(self):
+        web = self.src("WebHost/WebHostController.swift")
+        self.assertIn("if !plan.more.isEmpty { moreButton(plan.more) }", web)
+        self.assertIn("FinishPanel.show(job: j, over: view.window)", web)
+        self.assertIn('T("main.banner.no_response")', web)
+
+    def test_one_wording_per_session_state(self):
+        jv = self.src("MainWindow/JobViews.swift")
+        self.assertIn("AgentSessionRow.stateText(j)", jv)
+        self.assertNotIn('T("session.\\(a.status.rawValue)")', jv)
+        self.assertIn("static func headerText(", jv)                   # failures aren't "in progress"
+        zh = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj/Terminal.strings").read_text()
+        self.assertIn('"row.failed_start" = "启动失败";', zh)
+        self.assertIn('"overlay.failed_start.title" = "%@ 启动失败";', zh)
+        for f in ("Main.strings", "Terminal.stringsdict"):
+            text = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj" / f).read_text()
+            for line in text.splitlines():
+                if "quit.organizing" in line or "stopped_at_quit" in line or "未提交的改动" in line:
+                    self.assertNotIn("Blurt", line)
+
+    def test_finish_sheet_primary_and_no_destructive_default(self):
+        fin = self.src("Terminal/FinishPanel.swift")
+        self.assertIn(".buttonStyle(.brand)\n                    .keyboardShortcut(.return, modifiers: .command)", fin)
+        self.assertIn('Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)', fin)
+        self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
+
+    def test_primaries_use_the_brand_style(self):
+        d = self.src("Terminal/DispatchPanel.swift")
+        self.assertIn('Button(TL("dispatch.start"))', d)
+        self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
+        self.assertIn("loginChecked: loginVerified", d)
+        ilc = self.src("MainWindow/ItemListController.swift")
+        self.assertIn("let spinner = BrandSpinner()", ilc)
+        self.assertNotIn("NSProgressIndicator()", ilc)
 
 
 if __name__ == "__main__":

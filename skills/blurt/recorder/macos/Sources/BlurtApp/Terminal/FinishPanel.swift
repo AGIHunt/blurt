@@ -2,7 +2,8 @@
 // +/−, uncommitted work), then merge it into the base branch, open a pull request, discard it, or keep it for later.
 // Nothing is pushed until the user clicks "Open Pull Request", and never a branch with no changes. Work the agent
 // left uncommitted (a sandboxed agent can't commit in a worktree) is committed by Blurt first: "Commit and Merge".
-// Keys: Esc cancels in every phase; ⌘Return merges (Return alone does nothing destructive). After a merge or a PR
+// Keys: Esc cancels in every phase; ⌘Return merges — the brand primary — and Return alone does nothing destructive
+// (an empty branch has no default; Discard's confirmation defaults to Cancel). After a merge or a PR
 // the sheet's primary shows the items now waiting to be verified; after Discard they are back in To Do.
 import AppKit
 import SwiftUI
@@ -160,8 +161,9 @@ struct FinishView: View {
         .frame(width: 520)
         .task { await m.load() }
         .alert(TL("finish.discard.confirm.title"), isPresented: $confirmDiscard) {
+            // Return keeps the work: Cancel is the default, Discard has to be clicked
             Button(TL("finish.discard"), role: .destructive) { Task { await m.run("discard") } }
-            Button(TL("common.cancel"), role: .cancel) {}
+            Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)
         } message: { Text(TL("finish.discard.confirm.body", m.branch)) }
     }
 
@@ -218,21 +220,18 @@ struct FinishView: View {
                 Text(TL("finish.help", m.base)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 8) {
-                if m.empty {
-                    // nothing to keep: discarding is the way out (it asks first)
-                    Button(TL("finish.discard"), role: .destructive) { confirmDiscard = true }.disabled(busy != nil)
-                        .keyboardShortcut(.defaultAction)
-                } else {
-                    Button(TL("finish.discard"), role: .destructive) { confirmDiscard = true }.disabled(busy != nil)
-                }
+                // nothing to keep: discarding is the way out (it asks first) — never on a bare Return
+                Button(TL("finish.discard"), role: .destructive) { confirmDiscard = true }.disabled(busy != nil)
                 Button(TL("finish.keep")) { Task { await m.run("keep") } }.disabled(busy != nil).help(TL("finish.keep.help"))
                 Spacer()
                 if let b = busy { ProgressView().controlSize(.small).help(TL("finish.working.\(b)")) }
                 Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction).disabled(busy != nil)
                 Button(TL("finish.pr")) { Task { await m.run("pr") } }.disabled(busy != nil || m.empty).help(TL("finish.pr.help"))
+                // the primary, drawn as one (brand) — on ⌘↩, not a bare Return, since it changes the base branch
                 Button(TL(m.uncommitted > 0 ? "finish.commit_merge" : "finish.merge")) { Task { await m.run("merge") } }
+                    .buttonStyle(.brand)
                     .keyboardShortcut(.return, modifiers: .command).disabled(busy != nil || m.empty)
-                    .help(TL("finish.merge.help", m.base))
+                    .help(TL("finish.merge.help", m.base) + "  ⌘↩")
             }
         }
     }

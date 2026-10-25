@@ -45,6 +45,8 @@ final class DispatchModel: ObservableObject {
     @Published var phase: Phase = .idle
     /// The sign-in check has answered (or 3 s passed): until then Start waits, so it never starts a logged-out agent.
     @Published var loginChecked = false
+    /// The full login check came back (not just the 3 s wait): sessions.py needn't check again (--force).
+    private(set) var loginVerified = false
     /// The session the items are already with (sessions.py already_dispatched): the failure offers to open it.
     @Published var busyJob: String?
     private var checkGen = 0
@@ -127,6 +129,7 @@ final class DispatchModel: ObservableObject {
         }
         defer { loginChecked = true }
         if let full = try? await Agents.shared.detect(login: true) {
+            loginVerified = true
             let out = Dictionary(full.agents.filter { $0.state == "logged_out" }.map { ($0.id, $0.fix) }) { a, _ in a }
             agents = agents.map { var a = $0; a.loggedOut = out[a.id] != nil; a.fix = out[a.id] ?? ""; return a }
             if !agentTouched, out[agent] != nil,
@@ -205,7 +208,7 @@ final class DispatchModel: ObservableObject {
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent, mode: mode,
                                                             worktree: mode == .parallel ? .on : (worktree == .auto ? (worktreeOn ? .on : .off) : worktree),
-                                                            dryRun: false, model: model)
+                                                            dryRun: false, model: model, loginChecked: loginVerified)
             for l in r.launch { AppRunner.shared.launch(l) }
             emit(["event": "dispatch", "jobs": r.jobs, "warnings": r.warnings.map(\.code), "app_runner": r.launch.count,
                   "agent": agent, "model": model.isEmpty ? NSNull() : model])
@@ -323,7 +326,7 @@ struct DispatchView: View {
                 // while the concurrent-edit reminder is up, its two buttons are the choice
                 if !(m.concurrent != nil && !m.worktreeOn) {
                     Button(TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
-                        .keyboardShortcut(.defaultAction)
+                        .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                         .disabled(!m.canStart)
                 }
             }

@@ -543,7 +543,8 @@ extension App {
             return
         }
         organisers[job.id] = group.pgid
-        job.set("agent_pgid", Int(group.pgid))     // a later launch stops it if this one crashes
+        job.set("agent_pgid", Int(group.pgid))     // a later launch stops it if this one crashes…
+        if let t = group.started { job.set("agent_pgid_start", NSNumber(value: t)) }  // …and it is still this group
     }
 
     /// What one organising run left: its items, or the reason it failed (and the next agent, for a reason another
@@ -664,6 +665,7 @@ extension App {
             if let g = started {
                 self.organisers[job.id] = g.pgid
                 job.set("agent_pgid", Int(g.pgid))
+                if let t = g.started { job.set("agent_pgid_start", NSNumber(value: t)) }
             } else {
                 job.finish(.failed, error: JobError(code: "unknown", message: "\(a.def.name) couldn't start"))
             }

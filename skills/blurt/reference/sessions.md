@@ -55,6 +55,10 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
   way until its first hook: its workspace-trust dialog fires none (→ *waiting for you*), and
   `interactive.error_patterns` ("Not logged in · Please run /login") make the session an `error` with that line as
   `job.error`, its window left open to read.
+- The watchdog: an agent with hooks whose hooks never spoke and whose window has been still for a minute since it
+  started (a screen nothing recognises — an update notice, a login page) becomes `waiting_input` with
+  `status_source: "watchdog"` and its last lines in `agent.last_output`; the app says *No response* and offers
+  Restart Session. Any new output or hook takes it back to running.
 - When an agent exits, its window's last lines are kept as `agent.last_output`; a non-zero exit becomes `job.error`
   (`agent_exit`, or the class its words fit: `auth`, `quota`…, message = the last line). A worktree session's
   `agent.changes` = `{ahead, dirty}` once it ended ("ready to review" only when there is something).
@@ -86,8 +90,15 @@ sessions.py restart JOB
 ```
 
 The same items, agent, model and worktree choice in a fresh session, for one that ended without changes (it
-couldn't start, or stopped at once); one that left changes is refused (`has_changes`). The old window, worktree and
-branch go; the old job's `agent.finish` = `{action: "restart", result: {jobs: [new]}}`.
+couldn't start, or stopped at once) or that the watchdog gave up on; one that left changes is refused
+(`has_changes`). Once per job: a job already restarted (or merged, discarded…) is refused with `finished` (and the
+new jobs) before anything is touched — the new session reuses the old worktree path and branch name. Everything is
+checked first (the items, the agent's login), under the dispatch lock; then the old window, worktree and branch go
+(only when no other session records them) and the old job's `agent.finish` = `{action: "restart", result: {jobs:
+[new]}}`.
+
+`dispatch` (and `restart`) refuse an agent its own status command reports logged out: code `auth`, with `agent` and
+its `fix`. `--force` skips that check when the caller already made it (the app's hand-off panel does).
 
 ## Other commands
 

@@ -1,7 +1,8 @@
 // BlurtCore/Sessions/SessionOutcome.swift, the job fold's reported error, closed steps and ProcessGroup (dogfood v0.9):
 // a session that failed at start says so and offers Restart, "Ready to review" only with changes, the ended banner
 // is neutral with Open Session first, failed organising stays listed until retried or dismissed, and an organiser
-// started in its own process group stops with everything it started.
+// started in its own process group stops with everything it started — and a later launch stops a recorded group
+// only while it is still that run's.
 import Foundation
 import XCTest
 @testable import BlurtCore
@@ -41,12 +42,32 @@ final class SessionOutcomeTests: XCTestCase {
         typealias P = SessionBannerPlan
         XCTAssertEqual(P.plan(.live(.running), outcome: nil), P(tone: .brand, actions: ["session"]))
         XCTAssertEqual(P.plan(.live(.waitingInput), outcome: nil), P(tone: .attn, actions: ["session"]))
-        // ended without reporting back: neutral, Open Session first, never Mark Done as the primary
-        XCTAssertEqual(P.plan(.ended(.exited), outcome: .noChanges), P(tone: .neutral, actions: ["session", "restart", "done", "take_back"]))
-        XCTAssertEqual(P.plan(.ended(.exited), outcome: .finished("keep")), P(tone: .neutral, actions: ["session", "done", "take_back"]))
-        XCTAssertEqual(P.plan(.ended(.error), outcome: .failed(atStart: true)), P(tone: .neutral, actions: ["restart", "take_back", "session"]))
-        XCTAssertEqual(P.plan(.ended(.exited), outcome: .review), P(tone: .neutral, actions: ["review", "take_back", "done"]))
+        // ended without reporting back: neutral, Open Session first, never Mark Done as the primary; two buttons
+        // inline at most, the rest in the ⋯ menu
+        XCTAssertEqual(P.plan(.ended(.exited), outcome: .noChanges),
+                       P(tone: .neutral, actions: ["session", "restart"], more: ["done", "take_back"]))
+        XCTAssertEqual(P.plan(.ended(.exited), outcome: .finished("keep")),
+                       P(tone: .neutral, actions: ["session", "done"], more: ["take_back"]))
+        XCTAssertEqual(P.plan(.ended(.error), outcome: .failed(atStart: true)),
+                       P(tone: .neutral, actions: ["restart", "take_back"], more: ["session"]))
+        XCTAssertEqual(P.plan(.ended(.exited), outcome: .review), P(tone: .neutral, actions: ["review", "take_back"], more: ["done"]))
         XCTAssertEqual(P.plan(.gone, outcome: nil), P(tone: .neutral, actions: ["take_back", "done"]))
+        // the watchdog gave up on it: it needs you, and it can start again
+        XCTAssertEqual(P.plan(.live(.waitingInput), outcome: .live(.waitingInput), stalled: true),
+                       P(tone: .attn, actions: ["session", "restart"], more: ["take_back"]))
+        for w in [WorkSession.live(.running), .ended(.exited), .ended(.error), .gone] {
+            for o in [SessionOutcome.review, .noChanges, .failed(atStart: true), .ended, .finished("keep")] {
+                XCTAssertLessThanOrEqual(P.plan(w, outcome: o).actions.count, P.maxInline)
+            }
+        }
+    }
+
+    func testStalledIsTheWatchdogs() {
+        var o: [String: Any] = ["id": "j-s", "type": "agent", "state": "running", "created": "2026-10-25T10:00:00+08:00",
+                                "agent": ["id": "codex", "status": "waiting_input", "status_source": "watchdog", "cwd": "/tmp"]]
+        XCTAssertTrue(JobFold.job(o)!.agent!.stalled)
+        o["agent"] = ["id": "codex", "status": "waiting_input", "status_source": "tty", "cwd": "/tmp"]
+        XCTAssertFalse(JobFold.job(o)!.agent!.stalled)
     }
 
     func testReportedErrorIsFolded() {
@@ -102,6 +123,39 @@ final class SessionOutcomeTests: XCTestCase {
         XCTAssertEqual(status, 128 + SIGTERM)
         XCTAssertFalse(ProcessGroup.alive(p.pgid))
         XCTAssertNotEqual(kill(child, 0), 0)
+    }
+
+    /// A group a previous run recorded is stopped only while it is still that run's: a reused number is left alone.
+    func testProcessGroupIsOursOnlyWhileItIsTheSameGroup() throws {
+        let exited = expectation(description: "exit")
+        let p = try ProcessGroup.spawn("/bin/sh", ["-c", "sleep 30 & wait"], env: ["PATH": "/usr/bin:/bin", "BLURT_JOB": "j-pg"],
+                                       cwd: URL(fileURLWithPath: "/"), output: nil) { _ in exited.fulfill() }
+        usleep(150_000)
+        XCTAssertNotNil(p.started)
+        XCTAssertEqual(ProcessGroup.startTime(p.pgid), p.started)
+        XCTAssertTrue(ProcessGroup.members(p.pgid).contains(p.pgid))
+        XCTAssertTrue(ProcessGroup.isOurs(p.pgid, started: p.started))
+        XCTAssertFalse(ProcessGroup.isOurs(p.pgid, started: nil))                 // an older job: can't tell, leave it
+        XCTAssertFalse(ProcessGroup.isOurs(p.pgid, started: p.started! - 5_000_000))   // same number, another group
+        XCTAssertFalse(ProcessGroup.isOurs(getpgrp(), started: ProcessGroup.startTime(getpgrp())))   // never the app's own
+        ProcessGroup.stop(p.pgid, grace: 1)
+        wait(for: [exited], timeout: 5)
+        XCTAssertFalse(ProcessGroup.isOurs(p.pgid, started: p.started))                   // gone
+    }
+
+    /// The leader (zsh) gone, the agent it started still running: that is still the run's group.
+    func testProcessGroupWithoutItsLeaderIsStillOurs() throws {
+        let exited = expectation(description: "exit")
+        let p = try ProcessGroup.spawn("/bin/sh", ["-c", "sleep 30 >/dev/null 2>&1 & exit 0"], env: ["PATH": "/usr/bin:/bin"],
+                                       cwd: URL(fileURLWithPath: "/"), output: nil) { _ in exited.fulfill() }
+        wait(for: [exited], timeout: 5)
+        for _ in 0..<50 where ProcessGroup.startTime(p.pgid) != nil { usleep(20_000) }
+        XCTAssertNil(ProcessGroup.startTime(p.pgid))
+        XCTAssertTrue(ProcessGroup.alive(p.pgid))
+        XCTAssertTrue(ProcessGroup.isOurs(p.pgid, started: p.started))
+        XCTAssertFalse(ProcessGroup.isOurs(p.pgid, started: UInt64(Date().timeIntervalSince1970 * 1_000_000) + 60_000_000))
+        ProcessGroup.stop(p.pgid, grace: 1)
+        XCTAssertFalse(ProcessGroup.alive(p.pgid))
     }
 
     func testProcessGroupExitStatus() throws {

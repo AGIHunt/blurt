@@ -442,5 +442,9 @@
 "main.banner.ended_review" = "Session ended, ready to review";
 "app.quit.organizing.title" = "Blurt is still organizing “%@”.";
 "app.quit.organizing.title_n" = "Blurt is still organizing %ld batches.";
-"app.quit.organizing.detail" = "Quitting stops it. You can organize it again from In Progress.";
-"app.quit.organizing.quit" = "Quit";
+"app.quit.organizing.detail" = "Quitting stops it. You can retry it from the jobs above the list.";
+"app.quit.organizing.quit" = "Quit Anyway";
+
+// dogfood v0.9 review
+"main.banner.no_response" = "No response for a minute";
+"main.banner.more" = "More";

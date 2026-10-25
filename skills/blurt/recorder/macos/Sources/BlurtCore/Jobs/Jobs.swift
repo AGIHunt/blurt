@@ -64,6 +64,10 @@ public struct AgentInfo {
     public let started: Bool
     public let model: String?
 
+    /// sessions.py's watchdog gave up on it: no hook and nothing new in its window for a minute since it started
+    /// (a screen nothing recognises). It reads "No response" and offers Restart Session beside Open Session.
+    public var stalled: Bool { statusSource == "watchdog" }
+
     /// A worktree session ended with something to merge, turn into a PR or discard (unknown counts as something).
     public var hasChanges: Bool { worktree != nil && (changes.map { $0.ahead + $0.dirty > 0 } ?? true) }
 }

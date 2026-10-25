@@ -129,9 +129,15 @@
       Take Back and Show Output; the item banner by `SessionBannerPlan` (neutral once ended, never Mark as Done as the
       primary); the review sheet's Commit and Merge, no PR / merge of an empty branch, Esc everywhere, ⌘/Ctrl+Enter to
       merge; the hand-off panel refuses a logged-out agent inline and offers the other one. The Rust job fold: a
-      finish event's `detail.error` becomes `error` (jobs.py / BlurtCore JobFold do).
+      finish event's `detail.error` becomes `error` (jobs.py / BlurtCore JobFold do). Review follow-ups: Restart /
+      Take Back off while one runs (`sessions.py restart` already refuses a second one: code `finished`); the banner
+      shows two buttons and a ⋯ menu (`SessionBannerPlan.more`), its Review Changes… opens the sheet; the watchdog's
+      *No response* (`status_source: "watchdog"`) with Restart; the panel passes `--force` only after its own login
+      check; one state wording everywhere (`AgentSessionRow.stateText`).
 - [ ] Organising runs: start the agent in its own process group / job object (Mac: BlurtCore `ProcessGroup`), record
-      `agent_pgid`, stop it on quit (ask first) and stop a leftover one at launch; one organiser per recording, checked
+      `agent_pgid` and its leader's start time (`agent_pgid_start`), stop it on quit (ask first — not on logout /
+      shutdown) and stop a leftover one at launch only while it is still that group (`ProcessGroup.isOurs`; a reused
+      id is left alone); one organiser per recording, checked
       against the job files; failed organising stays in the jobs list with Retry / Dismiss (`dismissed: true`) —
       `JobFailures` in BlurtCore.
 - [ ] Settings like the Mac's v0.9 window (docs/design/desktop-app.md §2.3): a sidebar with a search field and the

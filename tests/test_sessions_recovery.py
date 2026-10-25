@@ -153,3 +153,82 @@ def test_an_empty_branch_is_never_pushed_or_merged(p2):
     assert p2.run("sessions.py", "finish", j["id"], "--action", "merge", ok=False)["code"] == "nothing"
     assert not subprocess.run(["git", "-C", str(bare), "branch"], capture_output=True, text=True).stdout.strip()
     assert p2.get(it["uid"])["state"] in ("handed_off", "in_progress")  # nothing claimed
+
+
+def test_a_second_restart_of_the_same_session_touches_nothing(p2):
+    """Review: a second Restart on the old job (a double click, the card and the banner before the list refreshed)
+    removed the new session's worktree and branch — the new one reuses the old path and branch name."""
+    flag = p2.tmp / "early"
+    flag.write_text("timed out discarding buffered terminal input")
+    p2.env["FAKE_EARLY_FILE"] = str(flag)
+    proj = p2.project(p2.repo())
+    it = p2.item(proj["id"])
+    jid = dispatch(p2, it["uid"], agent="codex")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "error" and p2.job(jid)["agent"].get("closed"), what="failed at start")
+    flag.unlink()
+    (new,) = p2.run("sessions.py", "restart", jid)["jobs"]
+    p2.wait(lambda: p2.status(new["id"]) == "waiting_input", what="the new session runs")
+    again = p2.run("sessions.py", "restart", jid, ok=False)
+    assert again["code"] == "finished" and again["jobs"] == [new["id"]]
+    wt = Path(new["worktree"])
+    assert wt.is_dir()
+    repo = Path(p2.job(new["id"])["agent"]["worktree"]["repo"])
+    assert new["branch"] in subprocess.run(["git", "-C", str(repo), "branch", "--list"], capture_output=True,
+                                           text=True).stdout
+    item = p2.get(it["uid"])
+    assert item["state"] in ("handed_off", "in_progress") and item["work"]["job"] == new["id"]
+    assert p2.status(new["id"]) == "waiting_input"
+
+
+def test_a_logged_out_agent_is_refused_on_every_path(p2):
+    """Review: only the app's panel blocked a logged-out agent; `sessions.py dispatch` (agents, MCP) started one that
+    sat at its login screen."""
+    p2.env["FAKE_AUTH_OUT"] = "1"
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    out = dispatch(p2, it["uid"], agent="claude", ok=False)
+    assert out["code"] == "auth" and out["agent"] == "claude" and "fix" in out
+    assert p2.get(it["uid"])["state"] in ("new", "todo")
+    assert not [j for j in p2.run("sessions.py", "list", "--all")["sessions"] if it["uid"] in j.get("items", [])]
+    # the caller already checked (the app's panel): --force goes ahead
+    jid = dispatch(p2, it["uid"], agent="claude", force=True)["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "waiting_input", what="started")
+
+
+def test_an_agent_that_says_nothing_is_not_running_for_good(p2):
+    """work#32: no hook and a still window — a screen nothing recognises — said Running for good. After the
+    watchdog's minute (shortened here) it needs you, and Restart is a way out even though its window is open."""
+    p2.env["FAKE_SILENT"] = "1"
+    p2.env["BLURT_SESSION_STALL"] = "2"
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = dispatch(p2, it["uid"], agent="claude")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "waiting_input", what="no response", timeout=20)
+    job = p2.job(jid)
+    assert job["agent"]["status_source"] == "watchdog"
+    assert any("Something new to read" in ln for ln in job["agent"]["last_output"])
+    del p2.env["FAKE_SILENT"]
+    (new,) = p2.run("sessions.py", "restart", jid)["jobs"]
+    assert p2.job(jid)["state"] == "cancelled"
+    p2.wait(lambda: p2.status(new["id"]) == "waiting_input" and p2.job(new["id"])["agent"]["status_source"] == "hook",
+            what="the new one works")
+
+
+def test_restart_removes_its_own_worktree_after_an_earlier_session_on_the_same_path(p2):
+    """Live run: an item discarded once, handed off again (the same freed path), failed, restarted — the earlier,
+    discarded job still recorded the path, so the restart left the old worktree behind and the new one became -2."""
+    proj = p2.project(p2.repo())
+    it = p2.item(proj["id"])
+    first = dispatch(p2, it["uid"], agent="claude")["jobs"][0]
+    p2.run("sessions.py", "stop", first["id"], "--kill")
+    p2.run("sessions.py", "finish", first["id"], "--action", "discard")
+    flag = p2.tmp / "early"
+    flag.write_text("timed out discarding buffered terminal input")
+    p2.env["FAKE_EARLY_FILE"] = str(flag)
+    second = dispatch(p2, it["uid"], agent="codex")["jobs"][0]
+    assert second["worktree"] == first["worktree"]
+    p2.wait(lambda: p2.status(second["id"]) == "error" and p2.job(second["id"])["agent"].get("closed"), what="failed")
+    flag.unlink()
+    (new,) = p2.run("sessions.py", "restart", second["id"])["jobs"]
+    assert new["worktree"] == second["worktree"] and new["branch"] == second["branch"]  # the old one went first
+    assert not Path(second["worktree"] + "-2").exists()

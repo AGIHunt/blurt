@@ -238,7 +238,7 @@
 "agents.state.logged_out" = "未登录";
 
 /* Sessions that end without the work (v0.9 dogfood) */
-"row.failed_start" = "没能启动";
+"row.failed_start" = "启动失败";
 "row.failed" = "出错停下了";
 "row.no_changes" = "已结束 · 没有改动";
 "finish.state.keep" = "已保留";
@@ -262,3 +262,8 @@
 "dispatch.use_agent" = "改用 %@";
 "dispatch.checking_login" = "正在检查登录…";
 "dispatch.open_session" = "打开那个会话";
+
+// dogfood v0.9 review: one wording per state; the watchdog
+"overlay.review.title" = "会话已结束 · 可以查看改动";
+"row.no_response" = "没有反应";
+"overlay.more" = "更多";

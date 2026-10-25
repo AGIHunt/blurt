@@ -51,10 +51,10 @@ enum JobLook {
         return Loc.has(key, table: "Main") ? T(key) : e.message
     }
 
-    /// What it is doing now: the agent's status, else the current step.
+    /// What it is doing now: a session in the session list's words (AgentSessionRow.stateText), else the current step.
     static func status(_ j: Job) -> String {
+        if j.agent != nil { return AgentSessionRow.stateText(j) }
         if j.state == .failed { return T("job.state.failed") }
-        if let a = j.agent { return T("session.\(a.status.rawValue)") }
         if let s = j.currentStep { return T("job.step.\(s.id)") }
         return T("job.state.\(j.state.rawValue)")
     }
@@ -111,6 +111,14 @@ final class JobsSection: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
+    /// "In progress · 2", "In progress · 2 · 1 failed", "Failed · 1": the failures it lists (JobFailures) aren't in
+    /// progress.
+    static func headerText(_ jobs: [Job]) -> String {
+        let failed = jobs.filter { !$0.isActive }.count, active = jobs.count - failed
+        if active == 0 { return TP("main.jobs.header.failed_only", failed) }
+        return TP("main.jobs.header", active) + (failed > 0 ? " · " + TP("main.jobs.failed", failed) : "")
+    }
+
     /// The job the detail shows: its row stays highlighted.
     var selected: String? { didSet { rows.forEach { $0.value.selected = $0.key == selected } } }
 
@@ -118,7 +126,7 @@ final class JobsSection: NSView {
         isHidden = jobs.isEmpty
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
-        header.stringValue = TP("main.jobs.header", jobs.count)
+        header.stringValue = Self.headerText(jobs)
         setAccessibilityLabel(header.stringValue)
         let h = NSStackView(views: [header])
         h.edgeInsets = NSEdgeInsets(top: 0, left: 6, bottom: 2, right: 0)
@@ -302,8 +310,9 @@ final class JobDetailView: NSView {
         var parts = j.type == .agent ? [T("job.type.agent")] : []
         if let p = projectName { parts.append(p) }
         parts.append(Loc.relative(j.started ?? j.created))
-        if let a = j.agent { parts.append(T("session.\(a.status.rawValue)")) }
-        if let b = j.agent?.branch { parts.append(b) }
+        // the session list's words for it (couldn't start, ready to review, merged…), not the agent's raw status
+        if j.agent != nil { parts.append(AgentSessionRow.stateText(j)) }
+        if let b = j.agent?.branch, j.agent?.finishAction == nil { parts.append(b) }
         if let u = j.usage { parts.append(JobDetailView.usageText(u)) }
         sub.stringValue = parts.joined(separator: "  ·  ")
         steps.arrangedSubviews.forEach { $0.removeFromSuperview() }

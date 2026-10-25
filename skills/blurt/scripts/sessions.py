@@ -5,9 +5,10 @@
 socket (one tmux session per project, one window per dispatch), or in the app's own pty when there is no tmux.
 
   sessions.py dispatch --items REF … [--agent ID] [--mode together|parallel] [--worktree on|off|auto]
-                       [--runner tmux|app|auto] [--dry-run] [--lang en|zh] [--model M]
+                       [--runner tmux|app|auto] [--dry-run] [--lang en|zh] [--model M] [--force]
                        --model: the agent's model (agents.py models ID), passed with its model_args; omitted /
-                       "default" = whatever the CLI is set to
+                       "default" = whatever the CLI is set to. An agent its status command reports logged out is
+                       refused (code auth, with its fix) unless --force (the caller checked)
   sessions.py list [--project ID] [--all]
   sessions.py attach-cmd JOB                 → {"ok","argv","env"}: a grouped view on the job's window
   sessions.py open-external JOB [--terminal auto|terminal|iterm|ghostty|wezterm|kitty|gnome-terminal|konsole|wt]
@@ -17,7 +18,8 @@ socket (one tmux session per project, one window per dispatch), or in the app's 
                        merge / pr commit what the agent left uncommitted in its worktree first ("Commit and Merge":
                        a sandboxed agent can't commit there); discard takes the items back to To Do
   sessions.py restart JOB                    the same items, agent and model in a fresh session (the old one ended
-                                             without changes: its window, worktree and branch go)
+                                             without changes: its window, worktree and branch go); once per job
+                                             (code finished after that)
   sessions.py hook --job J --agent A         an agent's hooks call this (stdin or last argv = their JSON)
   sessions.py event --job J --event pane-dead --exit N     the app runner reports an exit
   sessions.py monitor [--once] [--interval 1.0] [--job J]
@@ -47,6 +49,14 @@ import jobs  # noqa: E402
 MIN_TMUX = (3, 2)
 EXIT_DEP = 4
 IDLE_TURN_DONE = 8.0
+STALL = 60.0  # an agent with hooks: no hook and a silent window this long after it started = "no response"
+
+
+def _stall() -> float:
+    try:
+        return float(os.environ.get("BLURT_SESSION_STALL") or STALL)  # tests shorten it
+    except ValueError:
+        return STALL
 TTY_BOTTOM = 6  # waiting_patterns are looked for in the last non-empty lines of the window
 TAIL_LINES = 15  # what a dead window last showed, kept on the job (agent.last_output) and shown by the app
 LIVE = ("running", "waiting_input", "turn_done")
@@ -413,11 +423,18 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
     if hit and hooks and a.get("hooks_live") and a.get("status_source") != "tty" and w["activity"] <= since:
         hit = False  # drawn before the hooks' latest word (an approval they already reported): not a new question
     status = a.get("status")
+    started = jobs.parse_iso(job.get("started") or job.get("created")) or since
     if hit:
         if status != "waiting_input":
             _set_status(job, "waiting_input", "tty")
-    elif status == "waiting_input" and a.get("status_source") == "tty" and w["activity"] > since:
+    elif status == "waiting_input" and a.get("status_source") in ("tty", "watchdog") and w["activity"] > since:
         _set_status(job, "running", "tty")
+    elif hooks and not a.get("hooks_live") and status == "running" and a.get("status_source") in (None, "app") \
+            and now - started >= _stall() and now - w["activity"] >= _stall():
+        # the watchdog: its hooks never spoke and its window has been still for a minute — a screen nothing here
+        # recognises (an update notice, a login page, a question). Never "Running" for good: it needs a look
+        a["last_output"] = pane_tail(w["pane"])
+        _set_status(job, "waiting_input", "watchdog")
     elif hooks is None:  # nothing reports a finished turn: 8 s without output
         if status == "running" and now - w["activity"] >= IDLE_TURN_DONE and now - since >= IDLE_TURN_DONE:
             _set_status(job, "turn_done", "tty")
@@ -737,8 +754,25 @@ def _new_window(session: str, name: str, cwd: str, env: dict, argv: list[str]) -
     return p.stdout.strip().splitlines()[-1]
 
 
+def login_gate(agent_id: str, project: dict, lang: str | None = None) -> None:
+    """An agent whose own status command says it isn't logged in would only sit at its login screen: refuse with
+    code auth and its fix (agents.json fix) — every caller, not just the app's panel (which checks on its own and
+    passes --force). Unknown / can't verify: let it try."""
+    import agents
+    defn = agents.definitions(agents.config(project.get("path"))).get(agent_id) or {}
+    if not (defn.get("status") or {}):
+        return
+    lg = "zh" if (lang or "").startswith("zh") else "en"
+    r = agents.check(defn, agents.clean_env(None), lg)
+    if r.get("state") == "logged_out":
+        raise SessionError("auth", f"{r.get('name') or agent_id} isn't logged in" + (f" — {r['fix']}" if r.get("fix") else ""),
+                           agent=agent_id, fix=r.get("fix") or "")
+
+
 def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", worktree: str = "auto",
-             runner: str = "auto", dry_run: bool = False, lang: str | None = None, model: str | None = None) -> dict:
+             runner: str = "auto", dry_run: bool = False, lang: str | None = None, model: str | None = None,
+             force: bool = False) -> dict:
+    """force: skip the login check (the caller checked, as the app's dispatch panel does)."""
     if dry_run:
         pl = plan(refs, agent, mode, worktree, runner)
         return {"ok": True, "dry_run": True, "agent": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"],
@@ -746,7 +780,10 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
     # one dispatch at a time, from the check to the items marked handed off: two clicks (or the app and an agent)
     # never start two sessions on one item
     with jobs.file_lock(jobs.home() / "run" / "dispatch.lock", timeout=60):
-        return _dispatch(plan(refs, agent, mode, worktree, runner), mode, lang, model)
+        pl = plan(refs, agent, mode, worktree, runner)
+        if not force:
+            login_gate(pl["agent"], pl["project"], lang)
+        return _dispatch(pl, mode, lang, model)
 
 
 def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
@@ -1210,33 +1247,60 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
 def restart(job_id: str, lang: str | None = None) -> dict:
     """Start the session again: the same items, agent, model and worktree choice, in a fresh window (and worktree).
     For a session that ended without changes — it failed to start, or stopped at once; one that left changes is
-    reviewed first (code has_changes). The old one's window, worktree and branch go; its items go back to To Do and
-    straight on to the new session."""
+    reviewed first (code has_changes). Once only: a session already restarted (or merged, discarded…) says
+    `finished`, before anything is touched — a second Restart must never reach the new session's worktree, which
+    reuses the old path and branch name. Everything is checked first; only then do the old window, worktree and
+    branch go (only if no other session records them), and its items go back to To Do and straight on to the new
+    session. Held under the dispatch lock, so two presses can't race."""
+    with jobs.file_lock(jobs.home() / "run" / "dispatch.lock", timeout=60):
+        return _restart(job_id, lang)
+
+
+def _restart(job_id: str, lang: str | None) -> dict:
     import handoff
     job = _job(job_id)
     a = job.get("agent") or {}
+    if a.get("finish"):
+        raise SessionError("finished", f"this session was already finished ({a['finish'].get('action')})",
+                           action=a["finish"].get("action"), jobs=(a["finish"].get("result") or {}).get("jobs") or [])
     wins = panes()
-    if job.get("state") in ("running", "queued") and is_alive(job, wins) and a.get("status") != "error":
+    stuck = a.get("status") == "error" or a.get("status_source") == "watchdog"  # still open, but going nowhere
+    if job.get("state") in ("running", "queued") and is_alive(job, wins) and not stuck:
         raise SessionError("running", "the session is still running — stop it first")
     wt = a.get("worktree")
     if wt and Path(wt.get("path") or "").is_dir():
         ch = changes(wt)
         if ch["ahead"] or ch["dirty"]:
             raise SessionError("has_changes", "the session left changes — review them first", **ch)
+    # what can start again: its items still with it, or already back in To Do — and nothing given to another session
+    again = []
+    for u in job.get("items") or []:
+        try:
+            it = handoff.item(u)
+        except handoff.CliError:
+            continue
+        mine = (it.get("work") or {}).get("job") == job_id
+        if it.get("state") in ("new", "todo") or (mine and it.get("state") in ("handed_off", "in_progress")):
+            again.append(u)
+    if not again:
+        raise SessionError("nothing", "the session's items have moved on")
     try:
-        _take_back(job_id, job.get("items") or [])
+        project = handoff.project(job.get("project")) if job.get("project") else None
+    except handoff.CliError:
+        project = None
+    if a.get("id") and project:  # still logged out: say so now, while the old session is still there to look at
+        login_gate(a["id"], project, lang)
+    try:
+        _take_back(job_id, again)
     except handoff.CliError as e:
         raise SessionError(e.code, str(e)) from None
     w = wins.get(job_id)
     if w:
         tmux("kill-window", "-t", w["window"], check=False)
-    if wt:
+    if wt and not _shared_worktree(job, wt):
         root = Path(wt["repo"])
         git(root, "worktree", "remove", "--force", wt["path"], check=False)
         git(root, "branch", "-D", wt["branch"], check=False)
-    again = _items_in(job.get("items") or [], ("new", "todo"))
-    if not again:
-        raise SessionError("nothing", "the session's items have moved on")
 
     def ended(j):
         if j.get("state") in ("running", "queued"):
@@ -1244,11 +1308,24 @@ def restart(job_id: str, lang: str | None = None) -> dict:
             j["state"] = "cancelled"
         j.setdefault("agent", {})["finish"] = {"action": "restart", "at": jobs.now_iso(), "result": {}}
     jobs.update(job_id, ended)
-    out = dispatch(again, agent=a.get("id"), mode="together", worktree="on" if wt else "off",
-                   runner=a.get("runner") or "auto", lang=lang, model=a.get("model"))
+    pl = plan(again, a.get("id"), "together", "on" if wt else "off", a.get("runner") or "auto")
+    out = _dispatch(pl, "together", lang, a.get("model"))
     new = [r["id"] for r in out.get("jobs", [])]
     jobs.update(job_id, lambda j: j["agent"]["finish"]["result"].update(jobs=new))
     return {**out, "restarted": job_id}
+
+
+def _shared_worktree(job: dict, wt: dict) -> bool:
+    """A later session records the same worktree path or branch (it took the freed path and name): not ours to
+    remove. An earlier one that recorded it had let it go — the path was free when this job got it."""
+    t0 = jobs.parse_iso(job.get("created")) or 0
+    for j in agent_jobs():
+        o = (j.get("agent") or {}).get("worktree") or {}
+        if j["id"] == job["id"] or (jobs.parse_iso(j.get("created")) or 0) < t0:
+            continue
+        if o.get("path") == wt.get("path") or (o.get("branch") == wt.get("branch") and o.get("repo") == wt.get("repo")):
+            return True
+    return False
 
 
 def doctor() -> dict:
@@ -1298,6 +1375,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("--dry-run", action="store_true")
     s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
     s.add_argument("--model", help="the agent's model (agents.py models ID); default = the CLI's own setting")
+    s.add_argument("--force", action="store_true", help="skip the login check (the caller checked)")
     s = sub.add_parser("list")
     s.add_argument("--project")
     s.add_argument("--all", action="store_true")
@@ -1335,7 +1413,7 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if a.cmd == "dispatch":
             emit(dispatch(a.items, a.agent, a.mode, a.worktree, a.runner, a.dry_run, a.lang,
-                          None if a.model in (None, "", "default") else a.model))
+                          None if a.model in (None, "", "default") else a.model, a.force))
         elif a.cmd == "list":
             emit(list_sessions(a.project, a.all))
         elif a.cmd == "attach-cmd":

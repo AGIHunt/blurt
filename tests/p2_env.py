@@ -27,8 +27,8 @@ TMUX = shutil.which("tmux") or "tmux"
 FAKE_CLAUDE = r'''
 import json, os, subprocess, sys
 a = sys.argv[1:]
-if a[:2] == ["auth", "status"]:
-    print('{"loggedIn": true}'); sys.exit(0)
+if a[:2] == ["auth", "status"]:  # FAKE_AUTH_OUT: what `claude auth status --json` says with no login
+    print(json.dumps({"loggedIn": not os.environ.get("FAKE_AUTH_OUT")})); sys.exit(0)
 if a[:2] == ["mcp", "get"]:
     sys.exit(0 if os.environ.get("FAKE_MCP", "1") == "1" else 1)
 if a[:1] == ["--version"]:
@@ -43,6 +43,9 @@ def fire(ev, **kw):
             subprocess.run(h["command"], shell=True, input=json.dumps({"session_id": "fake-claude-1", "cwd": os.getcwd(),
                            "hook_event_name": ev, **kw}), text=True, timeout=h.get("timeout", 5))
 print("fake claude in", os.getcwd(), "job", os.environ.get("BLURT_JOB"), flush=True)
+if os.environ.get("FAKE_SILENT"):  # a screen nothing recognises (an update notice…): no hook, nothing more drawn
+    print("Something new to read before we start", flush=True)
+    input(); sys.exit(0)
 if os.environ.get("FAKE_TRUST"):  # the workspace-trust dialog: no hook fires before it is answered
     print("Do you trust the files in this folder?", flush=True)
     print(" ❯ 1. Yes, proceed", flush=True)

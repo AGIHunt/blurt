@@ -166,9 +166,15 @@ enum Housekeeping {
         for id in stale {
             // the last run crashed with an organiser still at work: stop it before anything can start a second one on
             // the same recording (its process group, recorded when it started)
-            if let g = (JobStore.shared.job(id)?.raw["agent_pgid"] as? NSNumber)?.int32Value, ProcessGroup.alive(g) {
-                ProcessGroup.stop(g)
-                emit(["event": "orphan_organiser_stopped", "job": id, "pgid": Int(g)])
+            // — only when the group is still that run's (the number may belong to another group of the user's now)
+            let raw = JobStore.shared.job(id)?.raw
+            if let g = (raw?["agent_pgid"] as? NSNumber)?.int32Value, ProcessGroup.alive(g) {
+                if ProcessGroup.isOurs(g, started: (raw?["agent_pgid_start"] as? NSNumber)?.uint64Value) {
+                    ProcessGroup.stop(g)
+                    emit(["event": "orphan_organiser_stopped", "job": id, "pgid": Int(g)])
+                } else {
+                    emit(["event": "orphan_organiser_not_ours", "job": id, "pgid": Int(g)])
+                }
             }
             markInterrupted(id, hint: "main.job.hint.interrupted")
         }

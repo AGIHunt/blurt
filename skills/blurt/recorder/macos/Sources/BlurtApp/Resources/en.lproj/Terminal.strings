@@ -262,3 +262,8 @@
 "dispatch.use_agent" = "Use %@";
 "dispatch.checking_login" = "Checking sign-in…";
 "dispatch.open_session" = "Open Its Session";
+
+// dogfood v0.9 review: one wording per state; the watchdog
+"overlay.review.title" = "Session ended · ready to review";
+"row.no_response" = "No response";
+"overlay.more" = "More";
