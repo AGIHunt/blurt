@@ -316,12 +316,12 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
-"main.project.description.note" = "What this project is about. When a snap or recording without a project is organized, this helps suggest where it goes.";
+"main.project.description.note" = "Blurt reads the description to file unassigned snaps and recordings here.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
-"main.project.key.invalid" = "2–5 letters or digits, starting with a letter (IN is taken).";
-"main.project.key.note" = "Items are numbered %1$@-1, %1$@-2…";
-"main.project.key.locked" = "Items are already numbered %1$@-1, %1$@-2…, so the key stays.";
+"main.project.key.invalid" = "Use 2–5 letters or digits, letter first.";
+"main.project.key.note" = "Used in item IDs: %1$@-1, %1$@-2…";
+"main.project.key.locked" = "Items already use this key, so it can’t change.";
 "main.project.name" = "Name";
 "main.project.open_as" = "Open as Project";
 "main.project.remove" = "Remove from Blurt";
@@ -333,12 +333,17 @@
 "main.project.save_failed" = "Couldn’t save the project";
 "main.project.use_failed" = "Couldn’t switch the project";
 "main.project.settings" = "Project Settings…";
-"main.project.settings.title" = "%@ Settings";
 "main.project.use" = "Make Current Project";
 "main.project.use.tip" = "New recordings, snaps and voice notes go to the current project";
-"main.project.worktree" = "Give each hand-off its own worktree";
-"main.project.worktree.no_git" = "Not a git repository: agents work in the folder itself.";
-"main.project.worktree.note" = "The agent works on a branch beside your checkout; you merge, open a PR or discard it.";
+"main.project.worktree" = "Separate branch for each hand-off";
+"main.project.worktree.no_git" = "Not a git repository, so agents edit the folder directly.";
+"main.project.worktree.note" = "Changes go to a git worktree; you merge, open a PR or discard.";
+"main.project.agent.default_named" = "Default (%@)";
+"main.project.description.keys" = "Return adds a line; ⌘Return saves.";
+"main.project.key.taken" = "IN is used by Unassigned.";
+"main.project.section.handoff" = "Hand-off";
+"main.project.section.project" = "Project";
+"main.project.settings.subtitle" = "Project settings";
 
 "main.rename.title" = "Rename Item";
 

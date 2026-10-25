@@ -313,15 +313,16 @@
 "main.place.project" = "项目";
 "main.place.session" = "批次";
 
+/* 「Agent」是中文界面的固定用词（设置里的「Agent」、交给 Agent），不翻译；见 tests/test_ui_copy.py */
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
-"main.project.description.note" = "这个项目是做什么的。没选项目的截图和录屏整理时会参考它，建议归到哪个项目。";
+"main.project.description.note" = "整理未归类的截图和录屏时，口喷鸡会参考描述归到这里。";
 "main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
-"main.project.key.invalid" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
-"main.project.key.note" = "条目编号为 %1$@-1、%1$@-2…";
-"main.project.key.locked" = "条目已经编号为 %1$@-1、%1$@-2…，前缀不再改。";
+"main.project.key.invalid" = "用 2–5 个字母或数字，字母开头。";
+"main.project.key.note" = "用在条目编号里：%1$@-1、%1$@-2…";
+"main.project.key.locked" = "已有条目用了这个前缀，所以不能再改。";
 "main.project.name" = "名称";
 "main.project.open_as" = "作为项目打开";
 "main.project.remove" = "从口喷鸡移除";
@@ -333,12 +334,17 @@
 "main.project.save_failed" = "没能保存项目";
 "main.project.use_failed" = "没能切换项目";
 "main.project.settings" = "项目设置…";
-"main.project.settings.title" = "「%@」设置";
 "main.project.use" = "设为当前项目";
 "main.project.use.tip" = "新的录屏、截图和语音备注都归当前项目";
-"main.project.worktree" = "每次交给 Agent 都用单独的 worktree";
-"main.project.worktree.no_git" = "不是 git 仓库：Agent 直接在文件夹里改。";
-"main.project.worktree.note" = "Agent 在你工作区旁边的分支上改，之后由你合并、开 PR 或丢弃。";
+"main.project.worktree" = "每次交给 Agent 都用单独的分支";
+"main.project.worktree.no_git" = "不是 git 仓库，Agent 会直接改文件夹里的文件。";
+"main.project.worktree.note" = "改动放在旁边的 git worktree 里，由你合并、开 PR 或丢弃。";
+"main.project.agent.default_named" = "默认（%@）";
+"main.project.description.keys" = "↩ 换行，⌘↩ 保存。";
+"main.project.key.taken" = "IN 已用于未归类。";
+"main.project.section.handoff" = "交给 Agent";
+"main.project.section.project" = "项目";
+"main.project.settings.subtitle" = "项目设置";
 
 "main.rename.title" = "改标题";
 

@@ -372,6 +372,9 @@ enum SelfTests {
                  "empty": c.list.empty.isHidden ? NSNull() : (c.list.empty.accessibilityLabel() ?? "") as Any])
         case "mainproject":             // mainproject ID: its settings sheet
             MainWindowController.shared.projectSettings(arg)
+        case "mainprojectset":          // mainprojectset key|description VALUE: type into the open settings sheet
+            let f = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            out(ProjectSettingsSheet.testSet(f.first ?? "", f.count > 1 ? f[1] : ""))
         case "mainstate", "mainmove":   // mainstate ACTION (K3: keep, done, back, …) / mainmove PROJECT: on the selection
             let c = MainWindowController.shared
             if parts[0] == "mainstate" {
