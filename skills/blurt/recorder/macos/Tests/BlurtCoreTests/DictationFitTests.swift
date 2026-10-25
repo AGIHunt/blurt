@@ -108,4 +108,13 @@ final class DictationFitTests: XCTestCase {
         _ = DictationFit.fit("hello world", before: String(repeating: "长", count: 500), after: String(repeating: "后", count: 500))
         _ = DictationFit.fit("😀😀", before: String(repeating: "😀", count: 300), after: "")
     }
+
+    func testATakeAfterAListItemStartsItsOwnParagraph() {
+        // a take dictated right after a structured one (the next take while the last was typed) ran into item 3
+        XCTAssertTrue(DictationFit.endsInListItem(before: "这次要做三件事：\n1. 修好登录\n2. 改价格页\n3. 更新文档", after: ""))
+        XCTAssertTrue(DictationFit.endsInListItem(before: "- milk\n- eggs", after: "\nnext"))
+        XCTAssertFalse(DictationFit.endsInListItem(before: "1. 修好登录\n然后", after: ""))          // prose after the list
+        XCTAssertFalse(DictationFit.endsInListItem(before: "3. 更新", after: "文档"))                // mid-item
+        XCTAssertFalse(DictationFit.endsInListItem(before: "版本 1.2 已经发布", after: ""))
+    }
 }

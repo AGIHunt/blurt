@@ -62,7 +62,8 @@
       the front app (pasteboard saved and restored) → history (search, raw text, turn into item)
 - [ ] **Windows** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
       `LCtrl` that AltGr layouts inject, ignore it as a modifier exactly like the macOS state machine — port
-      `DictationTrigger` with its v0.9 rules: `busy` while a take is typed, the double-tap window from the system's
+      `DictationTrigger` with its v0.9 rules: `pending` while a take is typed (a tap past the double-tap window starts
+      the next take, Esc cancels the one on its way, a third tap after a send is a bounce, `endedByItself`, `miss`), the double-tap window from the system's
       double-click time (`GetDoubleClickTime`, clamped 0.3–0.5 s), push-to-talk → release, double tap, the near miss,
       events stamped with their own time; `DictationTriggerTests` are the spec), and start the warm servers with
       `--parent <app pid>` so they end with the app), insert with `SendInput` Ctrl+V after saving / restoring the clipboard (all formats);
@@ -72,6 +73,24 @@
       listening for normal apps: evdev (`/dev/input`, needs the `input` group) or a compositor shortcut that runs
       `blurt dictate toggle`; insert with `wtype` / `ydotool` (needs uinput) or the clipboard + a toast; terminals
       want Ctrl+Shift+V. Detect the session type and say what works in Settings.
+- [ ] **Windows / Linux: the v0.9 dictation dogfood fixes** (macOS done; docs/design/dictation.md §Takes in flight,
+      BlurtCore `DictationTakeFlow` + `DictationTakeFlowTests` are the spec): takes in flight pasted in order
+      (`DictationPasteQueue`), paste only into the app the take started in (foreground window's process at key-down vs
+      at paste; else copy + "Copied — paste with Ctrl+V", Return dropped), Esc cancels a take on its way, the typed
+      text shown in the live panel for 1.5 s after the stop, no-model refusal + `getSpeechModel` (one downloader entry),
+      `no_download` on every dictation request and `note --no-server --no-download` as the CLI fallback, recognition
+      failures keep the wav + a history row + Retry, the server timeout scaled to the audio and a hung server ended,
+      the forgotten hands-free take (`DictationRunaway`: 20 s reminder, countdown from 4:30, the limit said), skipped
+      Return / wrong-mode press / model fallback notices, first-takes tips (`DictationTip`), reformat toasts bound to
+      their take, Clear History keeping live audio, learning once at the watch's end (`DictationLearn.EditWatch`),
+      split fixes + no punctuation in terms, Save Correction suggesting with Add / Undo / ⌘Z, the Words tab's keyboard,
+      Undo, rename and "a, b, c" adding. `dictation_vocab.py` already has the Python side of the learning rules.
+      Review round: readiness from `dictation-models`' `ready` / `missing` (`DictationSpeechModels`: the VAD counts, a
+      cloud model is judged by itself, the configured model is what Download… gets), Retry offered once the model
+      arrives, Undo on "Cancelled" for takes stopped on their way (audio kept 5 s), ⌥⇧L bound to its take
+      (`DictationReformatAfterPaste`), a miss reported once (`takeMiss`), a given-up server by pid and not ended while a
+      voice note waits on it, the typed check in the live panel, the top line's fade, the aura after the double-tap
+      window (`DictationGlow`).
 - [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
       welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
       "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.

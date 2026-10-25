@@ -47,6 +47,8 @@ final class NoteVoice {
     /// the first audio arrived: the microphone really listens now (dictation shows "listening" only from here)
     var onFirstAudio: (() -> Void)?
     var speaking: Bool { vad.speaking }
+    /// how long nobody has talked (dictation's "still listening" reminder)
+    var quietSeconds: Double { vad.quietSeconds }
     private(set) var running = false
     /// seconds from start() to the first buffer (nil until then)
     private(set) var firstAudioAfter: Double?

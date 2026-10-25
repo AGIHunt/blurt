@@ -4,7 +4,9 @@
 //     setting, does the history keep them);
 //   • after the text is typed: the same field, every 1.5 s for 60 s, to see whether the user fixed a word. Only a few
 //     dozen characters around the typed text are held while it is watched, then dropped; what is learned is the
-//     word pair (DictationLearn → DictationVocabulary), never the text around it.
+//     word pair (DictationLearn → DictationVocabulary), never the text around it — once, when the watch ends (its
+//     minute, the focus or the text moving away), from what was typed to what the field says then: never a state in
+//     the middle of an edit.
 // Password fields (AXSecureTextField, or secure input on) are skipped entirely. Accessibility is needed (it is for
 // pasting anyway). Test builds never read another app: their field is the test pad, a window of this app.
 import AppKit
@@ -197,8 +199,8 @@ final class DictationWatch {
     private var field: DictationField?
     private var prefix = "", suffix = ""
     private var near = 0
-    private var baseline = ""
-    private var lastSeen = ""
+    /// typed → the field's latest state of it (BlurtCore's DictationLearn.EditWatch: one diff, at the end)
+    private var edit: DictationLearn.EditWatch?
     private var until = Date()
     private(set) var watching = false
     /// a fix was turned into a word (the island says so; tests read it)
@@ -208,7 +210,7 @@ final class DictationWatch {
 
     /// `location`: where the cursor was when the text went in (UTF-16), read just before pasting.
     func start(field: DictationField, inserted: String, location: Int) {
-        stop()
+        finish("next")              // the next dictation: what the user did to the last one is learned now
         guard let (text, _) = field.read() else { return }
         let ns = text as NSString, len = (inserted as NSString).length
         // the typed text where the cursor was, else nearby (a field that trims or reflows it)
@@ -222,8 +224,7 @@ final class DictationWatch {
         let end = at + len
         suffix = ns.substring(with: NSRange(location: end, length: min(DictationWatch.anchor, ns.length - end)))
         near = at
-        baseline = inserted
-        lastSeen = inserted
+        edit = DictationLearn.EditWatch(typed: inserted)
         self.field = field
         until = Date().addingTimeInterval(DictationWatch.seconds)
         watching = true
@@ -231,34 +232,40 @@ final class DictationWatch {
         timer = Timer.scheduledTimer(withTimeInterval: DictationWatch.every, repeats: true) { [weak self] _ in self?.tick() }
     }
 
+    /// `why` "cleared" (the history went) and "reformat" (the text is being replaced) learn nothing.
     func stop(_ why: String? = nil) {
         timer?.invalidate()
         timer = nil
         if watching, let w = why { emit(["event": "dictation_watch", "state": "stop", "why": w]) }
         watching = false
         field = nil
-        prefix = ""; suffix = ""; baseline = ""; lastSeen = ""   // nothing of the document stays
+        prefix = ""; suffix = ""; edit = nil                     // nothing of the document stays
+    }
+
+    /// The watch ends and learns what the user changed: its time, the focus or the text moved, the next dictation.
+    private func finish(_ why: String) {
+        if watching, let e = edit?.end() { learn(e.typed, e.edited) }
+        stop(watching ? why : nil)
     }
 
     private func tick() {
-        guard let f = field else { return stop("gone") }
-        if Date() > until { learn(lastSeen); return stop("time") }
-        guard f.isFocused(), let (text, _) = f.read() else { learn(lastSeen); return stop("focus") }
-        let maxLen = (baseline as NSString).length * 3 + 200
+        guard let f = field, let typed = edit?.typed else { return stop("gone") }
+        if Date() > until { return finish("time") }
+        guard f.isFocused(), let (text, _) = f.read() else { return finish("focus") }
+        let maxLen = (typed as NSString).length * 3 + 200
         guard let now = DictationLearn.locate(in: text, prefix: prefix, suffix: suffix, near: near, maxLength: maxLen) else {
-            learn(lastSeen)
-            return stop("moved")
+            return finish("moved")
         }
-        // an edit is taken once it has stood still for one tick (the user stopped typing)
-        if now == lastSeen && now != baseline { learn(now) }
-        lastSeen = now
+        // nothing is learned mid-edit: a pause while typing isn't the user's final word (Kubernetes → Kuberneetes →
+        // K8s once taught "Kuberneetes" and never K8s). The watch learns once, when it ends.
+        edit?.saw(now)
     }
 
-    private func learn(_ edited: String) {
-        guard edited != baseline, !edited.isEmpty else { return }
-        if DictationReformat.reverted(typed: baseline, edited: edited) { onReverted?() }
-        let fixes = DictationLearn.fixes(typed: baseline, edited: edited, isCommonWord: DictationLearn.isCommonWord)
-        baseline = edited
+    /// typed → the field's last state, once.
+    private func learn(_ typed: String, _ edited: String) {
+        if DictationReformat.reverted(typed: typed, edited: edited) { onReverted?() }
+        let fixes = DictationLearn.fixes(typed: typed, edited: edited, isCommonWord: DictationLearn.isCommonWord)
+        emit(["event": "dictation_watch", "state": "learn", "fixes": fixes.count])
         for fx in fixes {
             let r = DictationVocabulary.shared.learn(heard: fx.heard, fixed: fx.fixed)
             emit(["event": "dictation_learn", "heard": fx.heard, "fixed": fx.fixed, "kind": fx.kind.rawValue,

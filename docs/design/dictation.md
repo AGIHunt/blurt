@@ -117,8 +117,13 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     another app in front (never Blurt), secure input off, Accessibility granted (the Fn filter already needs it).
     The island's right ear says 「已发送」 / "Sent" with the ok check for 1.6 s (`Island.dictationSent`: no toast, the
     island doesn't grow for one word); while a queued Return waits for the paste the ear shows the working dots.
-    Dictation's other toasts share one key (`Dictation.toastKey`): a newer one replaces the one showing at once, and a
-    new take clears them (BlurtCore `ToastQueue`). A toast's Undo and the ≡ chip's "Make a list" act on the take they
+    Dictation's toasts about the last take (reformat's Undo, the ≡ chip, "nothing heard", "copied", why a Return
+    wasn't sent) share one key (`Dictation.toastKey`, "dictation"): a newer one replaces the one showing at once, and
+    a new take clears them (BlurtCore `ToastQueue`). The rest have their own keys, so they don't take each other's
+    place and a new take doesn't drop them: ⇧'s line (`dictation.style`), "Cancelled · Undo" (`dictation.cancel`), a
+    failed take's Retry (`dictation.failed.<id>`, one per take), "no model · Download…" / "model ready · Retry"
+    (`dictation.model`); the forgotten-take reminder, the once-a-day notices and the first takes' tips are passive
+    lines (they wait behind replies). Every toast stays at least 5 s (`ToastQueue.minSeconds`). A toast's Undo and the ≡ chip's "Make a list" act on the take they
     were shown for (`reformat(lp, …)`): after a newer take they do nothing (`dictation_reformat` result `stale`), never
     rewrite the newer text. ⇧'s line ("Structured: tidied into a list when you finish · ⇧ to go back") shows the first
     two times ever (`DictationStyleToggleHint`, `record.dictation.style_hint_shown`); after that the ear's list mark
@@ -572,7 +577,13 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    - secure event input is on (`IsSecureEventInputEnabled()`: a password field anywhere), or the focused element is an
      `AXSecureTextField` (role or subrole);
    - Accessibility isn't granted (a posted ⌘V wouldn't arrive).
-4. Restore the old pasteboard 0.6 s later, unless something else has changed it since.
+4. Restore the old pasteboard 0.6 s later, unless something else has changed it since. While pastes overlap (a
+   reformat right after a dictation) one snapshot is held: the last paste to finish puts it back, so the user's
+   clipboard is never replaced by dictated text (v0.9 dogfood #27).
+5. Only into the app the take started in: when the app in front isn't the one at the key-down (compared by pid), the
+   policy says `copy(app_changed)` — "已复制，⌘V 粘贴" / "Copied — paste with ⌘V" — and a queued Return is dropped.
+   Test builds compare a simulated front app (`dictation front NAME`) and use a private pasteboard
+   (`BLURT_TEST_PASTEBOARD`, else one of their own): a test never touches the user's clipboard.
 
 **Fitting at the cursor** (before step 1; BlurtCore `DictationFit`, `DictationFitTests`), like Typeless. The field
 holds 「我知道你就是▮的。」 and the user says 「就是从老家回来的。」: pasted as it came, the field became
@@ -608,6 +619,79 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
 - **Test builds never post an event or create a tap.** A test build is one with `BLURT_TEST_COMMANDS=1` *or* a bundle
   id other than `dev.blurt.recorder`. In a test build the text goes only into the app's own test pad;
   `dictation paste-policy front=other text=unknown …` reports what the policy would decide.
+
+## Takes in flight (v0.9 dogfood fixes)
+
+What happens between a take's stop and its text being in (`Capture/Dictation/DictationTakes.swift`; the rules are
+BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
+
+- **The key is free at the stop.** Each stopped take is a `DictationTake` with everything its text needs (the app and
+  pid at the key-down, the style decision, the context, its stream). A tap once the double-tap window of the stop has
+  passed starts the next take while the last is still transcribing or structuring (before: `trigger.busy` swallowed
+  it, and what the user said next was lost). `DictationPasteQueue` pastes the takes in the order they were said, one
+  at a time, whichever finishes first. The trigger is told `pending`: a tap within the window is still the double
+  tap's second one (Return after the paste); a third tap right after a send is a bounce and starts nothing.
+- **Esc cancels a take on its way** (and the menu's Cancel): never pasted, its Return dropped, the island says
+  "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
+  the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
+  for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
+  the app they started in, else copied). Esc while listening says "已取消" too (it used to vanish silently; nothing is
+  kept — the take was in front of the user). A paste already under way (the 0.6 s of ⌘V) can't be taken back.
+- **Check before send.** After the stop the live panel shows the text actually typed — polished, structured — for
+  1.5 s (`LiveTranscript.showTyped`), instead of disappearing 0.6 s after the paste with the raw transcript in it.
+  Two ways to send are taught (guide, the setting's detail, a quiet tip for the first five takes in chat apps):
+  tap to stop → check → double-tap; or double-tap instead of the stop tap. The near-miss double tap (≤ 0.8 s, nothing
+  heard) still sends (product decision). While the panel shows the typed text, the caret after the words becomes the
+  ok check (the design system's done shape): that is what is in. A top line that continues text above it fades in
+  from its left edge (28 pt), so it reads as continued rather than cut mid-sentence. A tap-started take's listening
+  aura waits out the double-tap window (`DictationGlow`), so an idle double tap (a send) never flashes it.
+- **No speech model.** `transcribe.py dictation-models` is read at launch and whenever Settings reloads its model
+  list (`DictationModels.$asr`); BlurtCore's `DictationSpeechModels` reads it. Its `ready` says whether a take can run
+  with nothing downloaded: the selected model (local and on this Mac, or a cloud one with its key — judged by itself,
+  not by being one of the Settings rows) **and** the VAD every take goes through (`silero_vad.onnx`, 0.6 MB, in
+  `$BLURT_HOME/models`; a model in the Hugging Face cache counts as installed without it). `missing` lists what a
+  download would bring. Not ready: the key doesn't listen (no mic, no warm-up) and the island says "还没有识别模型 ·
+  下载…" — or, with the model there and only the VAD missing, "还缺语音检测文件（不到 1 MB）· 下载…". The button calls
+  `Dictation.getSpeechModel` — the one entry for a dictation's model download: Settings → Speech → Dictation, the
+  download started there for `DictationSpeechModels.toGet`: the configured model when that is the one missing, else
+  the recommended one; only the VAD → the selected model's `setup` (which brings it) without changing the choice.
+  A take that fails with model_missing asks `dictation-models` again (never assumes), and when the model (or VAD) is
+  there later, the island offers **Retry** for the newest such take ("识别模型好了，刚才那段录音还在") — it is never
+  pasted by itself minutes later.
+- **Nothing is downloaded for a dictation.** Every dictation request carries `no_download` (finals and interims);
+  the server also treats any `purpose: dictation` request that way; the CLI fallback runs `note --no-server
+  --no-download`; dictation's preload is `serve --no-download` (a missing model stays unloaded). Before: an interim
+  request loaded a missing model and began a 241 MB download mid-take, and the text came 110 s later.
+- **Recognition failed.** `Dictation.transcribe` always answers — `ok`, or `code` (model_missing, timeout, …) — and
+  `DictationStream.Result.asrError` carries it; an empty text is silence only when recognition worked. A failed take
+  keeps its wav and a history row (`insert: none`, `reason: asr_failed:<code>`), and the island says what failed
+  with **Retry** (no model: "还没有识别模型，录音还在" with **Download…**). Retry (the island, the Dictation page) runs
+  the whole recording again and pastes like any take (from the page: copied). Before: "没听到内容", the audio
+  deleted, nothing in the history.
+- **A hung or slow server.** A server call gets `15 s + 1.5 × the audio` (`DictationASRFailure.serverTimeout`), not
+  a flat minute; a server that doesn't answer in that time is given up on for a minute — that server, by its pid
+  (`DictationServerGiveUp`): a fresh one started by the next key-down is used as soon as it is up — and, when Blurt
+  started it, ended (the Python server, then `uv`), except while a voice note is waiting on it (it may only be busy
+  with that note; the note has its own timeout and CLI fallback); the CLI no longer asks that same server first. Measured with the scratch
+  app's server stopped (SIGSTOP): 25 s from the stop to the text for a 6 s take (before: 243 s).
+- **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
+  "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
+  分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 2 s
+  (`DictationTrigger.endedByItself`) is taken as the stop that came late, not a new take.
+- **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
+  "文字已复制，没有发送"); a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
+  tap mode) says how this mode starts, once a day — reported once (`DictationTrigger.takeMiss`), not again on every
+  key and click that follows; a polish model or the recommended speech model missing says so once a day with
+  Download… (not when the model that ran is the one the user chose in Settings).
+- **Reformat and its toasts belong to a take.** ⌥⇧L while a take is on its way waits for it — the take said last,
+  bound by id (`DictationReformatAfterPaste`): when that take is cancelled, fails or hears nothing, the request goes
+  with it, and it never runs for a later take; the list
+  chip and Undo act on the `DictationLastPaste` they were shown for, carry the key `dictation` (`Dictation.toastKey`)
+  and go when the next take starts (`Island.dropToasts`). A reformat replaced in the field writes its `text` (and `before`) to the
+  history, so the page shows the text as it stands, the first version under it.
+- **Clear History** (Settings) never deletes the audio of a take still listening or on its way
+  (`DictationHistory.liveIDs`), and posts `DictationHistory.changed`: reformat-last and the after-typing watch forget
+  the cleared (or deleted) takes.
 
 ## Polish
 
@@ -842,7 +926,7 @@ polish above — stays the default everywhere and never restructures. Which styl
   cursor doesn't end in a line break; a structured paragraph is fitted like Light.
 - **⇧ during the take / Fn+⇧ / the island** (§Trigger): `Dictation.toggleStyle` flips Structured ↔ the take's own
   style (`DictationStyleRouter.toggled`); the island's right ear shows a list mark beside the clock while Structured
-  (quotes while Verbatim, nothing for light), and a one-line toast names the switch. A take whose app is Verbatim stays
+  (quotes while Verbatim, nothing for light), and the first two times a one-line toast says what Structured does (`DictationStyleToggleHint`). A take whose app is Verbatim stays
   unpolished when ⇧ makes it Structured (polish was decided at the key-down); the structuring pass runs on the
   transcript (its prompt also tidies hesitations and punctuation).
 - **Reformat-last** (`⌥⇧L`, `record.hotkeys.reformat`, configurable in Settings → Shortcuts; no clash with Blurt's
@@ -1178,15 +1262,20 @@ After a paste, `DictationWatch` follows the same AX element (the one focused jus
 1.5 s:
 - It finds the typed text again between 40-character anchors taken around it, nearest to where it went in. Only the
   anchors are held, in memory, and dropped when the watch ends.
-- It stops when the focus moves to another element, the anchors vanish or the time is up, and learns from the last
-  version it saw. An edit that stood still for one tick is learned right away.
+- It stops when the focus moves to another element, the anchors vanish, the time is up or the next dictation goes in,
+  and learns once, then, from what was typed to the last version it saw (`DictationLearn.EditWatch`). Nothing is
+  learned mid-edit: a pause while typing used to be taken as the user's word (Kubernetes → Kuberneetes → K8s taught
+  "Kuberneetes", and K8s was never learned).
 - `DictationLearn.fixes` diffs typed against edited text (LCS over words, numbers and single CJK characters) and keeps
   replaced spans of ≤ 3 words / 4 characters (≤ 4 / 6 after the fix), at most 3, when at least half of the text
   survived. A pair counts when it's alike: same letters ignoring case / spaces / hyphens, normalised edit distance
   ≤ 50 %, cut short (op → option), the same consonant skeleton (cloud → Claude), or close in toneless pinyin
   (口喷机 → 口喷鸡, 克劳德 → Claude). One changed CJK character is learned with the unchanged ones before it. A fix
   to one ordinary word is learned as a phrase with its unchanged neighbour (pool request → pull request); fixes on
-  function words (there → their) are grammar, not vocabulary.
+  function words (there → their) are grammar, not vocabulary. A replaced run is cut where the edited text has
+  punctuation or changes script, and the typed tokens are shared out so each part pairs with what sounds like it
+  (绘画 BA 三 → 会话，BA-3 is 绘画 → 会话, and BA 三 → BA-3 on its own); a term never has sentence punctuation in it
+  (`DictationVocabulary.hasSentencePunctuation`, also refused by `learn`).
 - `DictationVocabulary.learn` learns words, never replacements: a known word gains the sounds-like (a relevance hint,
   §Custom words); a new one is a suggestion, accepted the second time
   the same fix is seen, or at once when it is only case or spacing. The first time a word becomes active, the
@@ -1202,12 +1291,14 @@ rewrite teaches nothing):
 
 - **The Dictation page**: the typed text has **Correct** (改正); it opens an editor with **Save Correction** (保存改正,
   ⌘↩) and Cancel. Saving appends `{"op":"correct","id","text"}` to the history (the entry keeps `text` and gains
-  `corrected`; the page, copy, search and *Turn into item* use the correction) and learns every fix in it at once —
-  `DictationVocabulary.learnCorrection` → `learn(…, explicit: true)`: the user did it on purpose, so a new word is
-  active immediately (no second sighting), a known one gains what was heard as a sounds-like, a rejected or removed
-  one stays out. The page says 「已保存改正 · 记住了 Anthropic」 / "Correction saved · learned Anthropic". Test hooks:
-  `dictation history edit [ID]`, `dictation history correct ID TEXT` (event `dictation_history` action `correct`
-  with the fixes and their results).
+  `corrected`; the page, copy, search and *Turn into item* use the correction) and offers every fix in it —
+  `DictationVocabulary.learnCorrection` → `learn(…, explicit: false)`: a new word is a suggestion (v0.9: a fix of two
+  words side by side had become one active junk term), a known one gains what was heard as a sounds-like, a rejected
+  or removed one stays out. The note says 「已保存改正 · 发现 Anthropic」 with **加入词库** / "Add to Words" (then
+  「已把 Anthropic 加入词库 · 撤销」); `⌘Z` puts the text back (`{"op":"correct","text":null}`) and forgets the words the
+  correction suggested. The editor has the caret on open; `E` / `Return` on the list starts it, `Esc` cancels,
+  `⌘Return` saves. Test hooks: `dictation history edit [ID]`, `dictation history correct ID TEXT`, `dictation history
+  note add|undo` (event `dictation_history` action `correct` with the fixes and their results).
 - **For tools outside the app** (the Dictation Lab): `scripts/dictation_vocab.py`, the same rules ported to Python
   (pinyin through macOS's own `CFStringTransform` via ctypes, as the app; `pypinyin` elsewhere when installed):
   - `learn(raw, corrected, explicit=True, path=None, dry_run=False)` → `{"ok", "fixes": [{"heard", "fixed",
@@ -1489,6 +1580,10 @@ recordings live in `dictation/lab/` and are never touched.
 | `suggest_lists` | `true`: after a light take of ≥ 24 units, the structuring pass runs in the background (after the paste); when the model made it a list, the island offers *Make a List* |
 | `learn_styles` | `true`: suggest an app's style from the user's switches (asks once; never switches by itself) |
 | `style_asked` | the suggestions already asked (`BUNDLE\|STYLE`), whatever the answer |
+| `style_hint_shown` | how often ⇧ → Structured was explained on the island (`DictationStyleToggleHint`: twice, then the ear's list mark alone) |
+
+App state (not settings): `app.dictation_tips` (`{"takes", "send", "list", "reformat"}`: the first takes' tips shown,
+§Takes in flight), `app.dictation_notices` (the day each once-a-day notice was last said).
 
 ## Lab
 

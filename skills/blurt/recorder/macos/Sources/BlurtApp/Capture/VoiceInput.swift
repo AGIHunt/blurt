@@ -206,8 +206,44 @@ final class VoiceInput {
             return
         }
         if let s = server, s.isRunning { return }
-        server = WarmSpawn.start("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation"] : []), server: "asr-serve")
+        // dictation's preload never downloads a model (no model: the server waits unloaded; Dictation says so)
+        server = WarmSpawn.start("transcribe.py", ["serve", "--preload"] + (dictation ? ["--purpose", "dictation", "--no-download"] : []),
+                                 server: "asr-serve")
     }
+
+    /// Dictation gave up on a server that stopped answering: the one Blurt started goes (SIGKILL: a stopped process
+    /// doesn't take SIGTERM), so the next key-down starts a fresh one. A server someone else started is left alone.
+    static func endUnresponsiveServer() {
+        guard let s = server, s.isRunning else { return }
+        // the server itself is `uv run`'s child (or grandchild): it goes first, while it can still be told from a
+        // stranger's by its ancestry (killing only `uv` left it orphaned and running)
+        if let d = try? Data(contentsOf: WarmServer.infoURL("asr-serve")),
+           let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let pid = (o["pid"] as? NSNumber)?.int32Value,
+           descends(pid, from: s.processIdentifier) {
+            kill(pid, SIGKILL)
+        }
+        kill(s.processIdentifier, SIGKILL)
+        server = nil
+        emit(["event": "asr_server_ended", "why": "unresponsive"])
+    }
+
+    /// `pid`'s parent, grandparent … (up to 4) include `ancestor`.
+    private static func descends(_ pid: pid_t, from ancestor: pid_t) -> Bool {
+        var p = pid
+        for _ in 0..<4 {
+            var info = proc_bsdinfo()
+            guard proc_pidinfo(p, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { return false }
+            p = pid_t(info.pbi_ppid)
+            if p == ancestor { return true }
+            if p <= 1 { return false }
+        }
+        return false
+    }
+
+    /// Voice-note pieces waiting on the speech server now (dictation doesn't end a server a note is using).
+    private static let notesLock = NSLock()
+    private static var notesInFlight = 0
+    static var notesWaiting: Int { notesLock.lock(); defer { notesLock.unlock() }; return notesInFlight }
 
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).
     static var serverStarting: Bool { server?.isRunning == true && !WarmServer.running("asr-serve") }
@@ -215,6 +251,8 @@ final class VoiceInput {
     /// One piece of a voice note → its words: the warm server (`note`, the voice-note model), else the CLI (which
     /// asks the server itself, or loads the model). Blocking: off the main thread.
     static func transcribePiece(_ wav: URL, prior: String) -> [String: Any]? {
+        notesLock.lock(); notesInFlight += 1; notesLock.unlock()
+        defer { notesLock.lock(); notesInFlight -= 1; notesLock.unlock() }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto"]
         if !prior.isEmpty { req["prior"] = String(prior.suffix(200)) }
         let until = Date().addingTimeInterval(15)

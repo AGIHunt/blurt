@@ -18,6 +18,13 @@ public enum WarmServer {
 
     public static func running(_ name: String) -> Bool { info(name) != nil }
 
+    /// The process that wrote the server's file (nil: no file, or none named) — which server an answer came from.
+    public static func pid(_ name: String) -> Int32? {
+        guard let d = try? Data(contentsOf: infoURL(name)),
+              let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return nil }
+        return (o["pid"] as? NSNumber)?.int32Value
+    }
+
     /// One request → the server's answer; nil when there is no server, it refused, or `timeout` (s) passed.
     public static func call(_ name: String, _ req: [String: Any], timeout: Double) -> [String: Any]? {
         guard let (port, token) = info(name) else { return nil }

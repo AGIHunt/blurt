@@ -98,7 +98,7 @@ final class Island: NSObject, IslandHosting {
     private let clip = FlippedView()
     private var driver: MotionDriver?
     /// The listening aura (gradient.glow) under the island while dictation or a voice note listens: fades in over
-    /// 200 ms and out when it stops, breathes ±10 % with the level (no faster than 0.6 s). Never while recording (red
+    /// 200 ms (a tap-started dictation's only after the double-tap window: `Dictation.glowOn`) and out when it stops, breathes ±10 % with the level (no faster than 0.6 s). Never while recording (red
     /// owns that moment) or idle; none with Reduce Transparency; no breathing with Reduce Motion.
     private var glow: CALayer?
     private var glowAmount: CGFloat = 0
@@ -493,7 +493,7 @@ final class Island: NSObject, IslandHosting {
 
     /// Dictation or a voice note hears you (not while the mic is still starting, not while recording).
     private var listening: Bool {
-        !isRecording && (VoiceInput.shared.active || (Dictation.shared.phase == .listening && Dictation.shared.micLive))
+        !isRecording && (VoiceInput.shared.active || Dictation.shared.glowOn)
     }
 
     /// The listening aura: centred on the island's bottom edge (inside a transaction without actions).
@@ -568,7 +568,7 @@ final class Island: NSObject, IslandHosting {
             case .listening:
                 left.set(.dictation(Dictation.shared.levels))
                 // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default)
-                let clock = Island.clock(Dictation.shared.elapsed)
+                let clock = Dictation.shared.earClock       // from 4:30 the time left before the 5-minute limit
                 switch Dictation.shared.listeningStyle {
                 case .structured?: right.set(.iconText(.list, clock))
                 case .verbatim?: right.set(.iconText(.quote, clock))

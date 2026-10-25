@@ -171,6 +171,26 @@ final class NoteEndpointerTests: XCTestCase {
         XCTAssertLessThan(r.ended?.1 ?? 99, 1.5 + 2.4)
     }
 
+    func testQuietSecondsWhenSilenceNeverEnds() {
+        // dictation hands-free: silence never ends the take, so `speaking` stays on — `quietSeconds` still says how
+        // long nobody has talked (the "still listening" reminder goes by it)
+        var e = NoteEndpointer(sampleRate: Self.sr)
+        e.silenceToEnd = .infinity
+        e.noSpeechTimeout = .infinity
+        e.maxLength = .infinity
+        _ = e.feed(Self.talk(2, db: -20))
+        XCTAssertTrue(e.speaking)
+        XCTAssertLessThan(e.quietSeconds, 0.5)
+        _ = e.feed([Float](repeating: 0, count: Int(25 * Self.sr)))
+        XCTAssertTrue(e.speaking)
+        XCTAssertGreaterThan(e.quietSeconds, 24)
+        // before anyone spoke: the whole time
+        var q = NoteEndpointer(sampleRate: Self.sr)
+        q.noSpeechTimeout = .infinity
+        _ = q.feed([Float](repeating: 0, count: Int(3 * Self.sr)))
+        XCTAssertEqual(q.quietSeconds, 3, accuracy: 0.05)
+    }
+
     // MARK: what isn't speech
 
     func testTheRoomAloneIsNoSpeech() {

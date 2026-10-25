@@ -7,6 +7,7 @@ backends stand in.
 """
 from __future__ import annotations
 
+import os
 import tempfile
 import threading
 import time
@@ -110,6 +111,50 @@ class Interim(unittest.TestCase):
                 self.stop(th)
         self.assertEqual((r["ok"], r["code"]), (False, "interim_unsupported"))
         self.assertTrue(f["ok"])
+
+
+class SeesNoDownload(A.FakeBackend):
+    """Records whether a download would have been refused while it loads and decodes."""
+    seen: list = []
+
+    def __init__(self, a):
+        SeesNoDownload.seen.append(("load", os.environ.get("BLURT_NO_DOWNLOAD")))
+        super().__init__(a)
+
+    def transcribe(self, x):
+        SeesNoDownload.seen.append(("decode", os.environ.get("BLURT_NO_DOWNLOAD")))
+        return super().transcribe(x)
+
+
+class DictationNeverDownloads(unittest.TestCase):
+    """A dictation request — final or interim, with or without "no_download" — never starts a download in the server
+    (dogfood: an interim request loaded a missing model and began a 241 MB download mid-take)."""
+    setUp = Interim.setUp
+    tearDown = Interim.tearDown
+    serve = Interim.serve
+    stop = Interim.stop
+    note = Interim.note
+
+    def test_dictation_requests_refuse_downloads_and_others_still_may(self):
+        os.environ.pop("BLURT_NO_DOWNLOAD", None)
+        SeesNoDownload.seen = []
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(SeesNoDownload)
+            try:
+                i = self.note(1.0, purpose="dictation", interim=True)
+                d = self.note(1.0, purpose="dictation")     # no "no_download" key: an older client
+                v = self.note(1.0)                          # a voice note: as before
+            finally:
+                self.stop(th)
+        self.assertTrue(v["ok"])
+        self.assertTrue(d["ok"], d)
+        self.assertEqual(i.get("code"), "interim_unsupported")
+        decodes = [e for k, e in SeesNoDownload.seen if k == "decode"]
+        self.assertEqual(decodes[0], "1")                  # the dictation's decode: no download possible
+        loads_during_dictation = [e for k, e in SeesNoDownload.seen[1:] if k == "load"]
+        self.assertTrue(all(e == "1" for e in loads_during_dictation), SeesNoDownload.seen)
+        self.assertEqual(decodes[-1], None)                # the voice note's decode: downloads allowed again
+        self.assertNotIn("BLURT_NO_DOWNLOAD", os.environ)
 
 
 class QwenStops(unittest.TestCase):

@@ -8,7 +8,10 @@
 //   • there is no app in front;
 //   • Blurt itself is in front (its own text views get a paste: action instead; panels get nothing);
 //   • secure event input is on (IsSecureEventInputEnabled: a password field anywhere), or the focus is a secure field;
-//   • Accessibility isn't granted (a posted ⌘V wouldn't arrive).
+//   • Accessibility isn't granted (a posted ⌘V wouldn't arrive);
+//   • the app in front isn't the one the take started in (`appChanged`: a slow take — a cold model, the 5-minute
+//     limit — whose user moved on): the text goes to the clipboard ("Copied — paste with ⌘V"), never into whatever
+//     happens to be in front by then, and a queued Return is dropped.
 // The user's clipboard is put back after the paste either way.
 import Foundation
 
@@ -31,16 +34,20 @@ public enum DictationPastePolicy {
         public var focusSecure: Bool
         /// the focused element is a text field as far as Accessibility can tell (nil: no element could be read)
         public var focusIsText: Bool?
+        /// the app in front now isn't the one the take started in
+        public var appChanged: Bool
 
         public init(hasFrontApp: Bool, frontIsBlurt: Bool, secureInput: Bool, accessibility: Bool, focusSecure: Bool = false,
-                    focusIsText: Bool? = nil) {
+                    focusIsText: Bool? = nil, appChanged: Bool = false) {
             self.hasFrontApp = hasFrontApp; self.frontIsBlurt = frontIsBlurt; self.secureInput = secureInput
             self.accessibility = accessibility; self.focusSecure = focusSecure; self.focusIsText = focusIsText
+            self.appChanged = appChanged
         }
     }
 
     public static func decide(_ s: Situation) -> Decision {
         guard s.hasFrontApp else { return .copy(reason: "no_front_app") }
+        if s.appChanged { return .copy(reason: "app_changed") }
         if s.frontIsBlurt { return .own }
         if s.secureInput || s.focusSecure { return .copy(reason: "secure_input") }
         guard s.accessibility else { return .copy(reason: "no_accessibility") }

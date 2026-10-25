@@ -175,8 +175,7 @@ final class DictationHistoryModel: ObservableObject {
     }
 
     func copy(_ s: String, from id: String? = nil) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(s, forType: .string)
+        DictationInsert.copy(s)             // the general clipboard (a test build's own pasteboard)
         emit(["event": "dictation_history", "action": "copy"])
         copied = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in if self?.copied == id { self?.copied = nil } }
@@ -252,8 +251,15 @@ final class DictationHistoryModel: ObservableObject {
     /// The dictation whose text is being edited, and the text so far.
     @Published var editing: String?
     @Published var draft = ""
-    /// After a save: the words learned from it (empty: saved, nothing to learn), shown under the text for a while.
-    @Published var savedNote: (id: String, learned: [String])?
+    /// After a save, shown under the text for a while: the words it found — `offered` (new: suggestions until the
+    /// note's Add), `known` (already on the list) — and, once added, `added` (the note's Undo takes them back).
+    struct SavedNote: Equatable {
+        var id: String
+        var offered: [String] = []
+        var known: [String] = []
+        var added: [String] = []
+    }
+    @Published var savedNote: SavedNote?
 
     func beginEdit(_ e: DictationEntry) {
         draft = e.finalText
@@ -263,31 +269,91 @@ final class DictationHistoryModel: ObservableObject {
 
     func cancelEdit() { editing = nil }
 
-    /// Saves the user's corrected text (history `correct`) and learns what they fixed — at once, since they did it on
-    /// purpose (DictationVocabulary.learnCorrection). Returns the words learned.
+    /// Saves the user's corrected text (history `correct`) and offers the words they fixed: a new word is a suggestion
+    /// the note adds with one click (DictationVocabulary.learnCorrection; never a fragment with punctuation in it).
+    /// ⌘Z (the window's undo) puts the text back and takes the words this correction made away. Returns the words.
     @discardableResult
     func saveCorrection(_ e: DictationEntry, _ text: String) -> [String] {
         let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
         editing = nil
         guard !t.isEmpty, t != e.finalText else { return [] }
-        let before = e.finalText
+        let before = e.finalText, previous = e.corrected
         DictationHistory.shared.correct(e.id, text: t)
         let results = DictationVocabulary.shared.learnCorrection(typed: before, corrected: t)
-        var learned: [String] = []
+        var note = SavedNote(id: e.id)
         for r in results {
             switch r.result {
-            case .learned(let w)?, .known(let w)?, .suggested(let w)?: if !learned.contains(w) { learned.append(w) }
+            case .suggested(let w)?, .learned(let w)?: if !note.offered.contains(w) { note.offered.append(w) }
+            case .known(let w)?: if !note.known.contains(w) { note.known.append(w) }
             case nil: break
             }
         }
         reload()
-        savedNote = (e.id, learned)
-        emit(["event": "dictation_history", "action": "correct", "id": e.id, "learned": learned,
+        savedNote = note
+        let made = note.offered
+        let undo = DictationHistoryWindow.shared.undoManager
+        undo?.registerUndo(withTarget: self) { m in
+            DictationHistory.shared.correct(e.id, text: previous)
+            for w in made { DictationVocabulary.shared.forget(w) }
+            m.savedNote = nil
+            m.reload()
+            emit(["event": "dictation_history", "action": "correct_undo", "id": e.id, "forgot": made])
+        }
+        undo?.setActionName(T("main.dictation.correct.undo_name"))
+        emit(["event": "dictation_history", "action": "correct", "id": e.id, "learned": note.offered + note.known,
+              "offered": note.offered, "known": note.known,
               "fixes": results.map { ["heard": $0.fix.heard, "fixed": $0.fix.fixed, "kind": $0.fix.kind.rawValue,
                                       "result": $0.result.map { "\($0)" } ?? "ignored"] }])
-        let id = e.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in if self?.savedNote?.id == id { self?.savedNote = nil } }
-        return learned
+        holdNote(e.id, seconds: note.offered.isEmpty ? 6 : 12)
+        return note.offered + note.known
+    }
+
+    /// The note's Add: the words found are in use from now on.
+    func addOffered() {
+        guard var n = savedNote, !n.offered.isEmpty else { return }
+        for w in n.offered { DictationVocabulary.shared.accept(w) }
+        n.added = n.offered
+        n.offered = []
+        savedNote = n
+        emit(["event": "dictation_history", "action": "correct_add", "id": n.id, "added": n.added])
+        holdNote(n.id, seconds: 6)
+    }
+
+    /// The note's Undo after Add: the words go again.
+    func undoAdded() {
+        guard var n = savedNote, !n.added.isEmpty else { return }
+        for w in n.added { DictationVocabulary.shared.forget(w) }
+        emit(["event": "dictation_history", "action": "correct_add_undo", "id": n.id, "forgot": n.added])
+        n.added = []
+        savedNote = n
+        holdNote(n.id, seconds: 3)
+    }
+
+    private var noteToken = 0
+    private func holdNote(_ id: String, seconds: Double) {
+        noteToken += 1
+        let tok = noteToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            if self?.noteToken == tok, self?.savedNote?.id == id { self?.savedNote = nil }
+        }
+    }
+
+    /// A dictation whose speech recognition failed (its audio kept): again, the text copied when it is in.
+    func retry(_ e: DictationEntry) {
+        emit(["event": "dictation_history", "action": "retry", "id": e.id])
+        Dictation.shared.retry(e.id, via: "history")
+    }
+
+    /// It failed and can be tried again (its audio is still there).
+    static func canRetry(_ e: DictationEntry) -> Bool {
+        e.text.isEmpty && (e.reason ?? "").hasPrefix("asr_failed") && e.audio.map {
+            FileManager.default.fileExists(atPath: DictationHistory.shared.resolve($0).path)
+        } ?? false
+    }
+
+    /// What the list shows for a dictation that wasn't recognised.
+    static func failedText(_ e: DictationEntry) -> String {
+        e.reason == "asr_failed:model_missing" ? T("dictation.history.failed.no_model") : T("dictation.history.failed")
     }
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
@@ -627,6 +693,7 @@ struct DictationListView: View {
         .listStyle(.inset)
         .background(ListWash())
         .onDeleteCommand { m.delete(m.selected, undo: undo) }        // ⌫
+        .modifier(EditKeys { if let e = m.current { m.beginEdit(e) } })  // E or Return: correct the selected one
         .onCopyCommand {                                             // ⌘C
             m.copySelection()
             return []
@@ -667,9 +734,14 @@ struct DictationRow: View {
                 Spacer(minLength: 6)
                 Text(DictationHistoryModel.time(e.time)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.tertiary)
             }
-            Text(m.shownText(e).trimmingCharacters(in: .whitespacesAndNewlines))
-                .font(.system(size: 13)).lineLimit(2).truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            if e.text.isEmpty, (e.reason ?? "").hasPrefix("asr_failed") {
+                Text(DictationHistoryModel.failedText(e)).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                Text(m.shownText(e).trimmingCharacters(in: .whitespacesAndNewlines))
+                    .font(.system(size: 13)).lineLimit(2).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -736,6 +808,65 @@ struct DictationEmptyView: View {
     }
 }
 
+/// E or Return on the list: start correcting the selected dictation (macOS 14's key presses; on 13, the Correct
+/// button).
+struct EditKeys: ViewModifier {
+    let edit: () -> Void
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content
+                .onKeyPress(.return) { edit(); return .handled }
+                .onKeyPress(characters: CharacterSet(charactersIn: "eE"), phases: .down) { p in
+                    guard p.modifiers.isEmpty else { return .ignored }
+                    edit()
+                    return .handled
+                }
+        } else {
+            content
+        }
+    }
+}
+
+/// The correction's text view: the caret is in it, at the end, as soon as it opens (no click first); Esc cancels and
+/// ⌘Return saves (the buttons' shortcuts), ⌘Z inside undoes typing.
+struct CorrectionEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        scroll.hasVerticalScroller = true
+        let tv = scroll.documentView as! NSTextView   // swiftlint:disable:this force_cast
+        tv.font = .systemFont(ofSize: 14)
+        tv.isRichText = false
+        tv.allowsUndo = true
+        tv.drawsBackground = false
+        tv.textContainerInset = NSSize(width: 0, height: 2)
+        tv.string = text
+        tv.delegate = context.coordinator
+        DispatchQueue.main.async {
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+            emit(["event": "dictation_history", "action": "editor_focus", "focused": tv.window?.firstResponder === tv])
+        }
+        return scroll
+    }
+
+    func updateNSView(_ v: NSScrollView, context: Context) {
+        guard let tv = v.documentView as? NSTextView, tv.string != text else { return }
+        tv.string = text
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        let parent: CorrectionEditor
+        init(_ p: CorrectionEditor) { parent = p }
+        func textDidChange(_ n: Notification) {
+            if let tv = n.object as? NSTextView { parent.text = tv.string }
+        }
+    }
+}
+
 // MARK: - the detail
 
 struct DictationDetailView: View {
@@ -750,9 +881,10 @@ struct DictationDetailView: View {
                 one(e)
             } else if m.selection.count > 1 {
                 several(m.selected)
+            } else if m.entries.isEmpty {
+                Color.clear         // the list column's empty state says it once, with the app's mark
             } else {
-                placeholder(m.entries.isEmpty ? T("main.dictation.none.empty") : T("main.dictation.none"),
-                            m.entries.isEmpty ? T("main.dictation.none.empty.detail") : T("main.dictation.none.detail"))
+                placeholder(T("main.dictation.none"), T("main.dictation.none.detail"))
             }
         }
         .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
@@ -794,7 +926,11 @@ struct DictationDetailView: View {
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                     .accessibilityLabel(T("main.dictation.mode.label"))
                 }
-                texts(e, differs: differs)
+                if e.text.isEmpty, (e.reason ?? "").hasPrefix("asr_failed") {
+                    failed(e)
+                } else {
+                    texts(e, differs: differs)
+                }
                 if e.fellBack {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         glyph(.undo, 11).foregroundStyle(Color.brandAttnInk)
@@ -846,17 +982,53 @@ struct DictationDetailView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
         }
-        if let n = m.savedNote, n.id == e.id {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                glyph(.check, 11).foregroundStyle(Color.brandOk)
-                Text(n.learned.isEmpty ? T("main.dictation.correct.saved")
-                     : T("main.dictation.correct.learned", n.learned.joined(separator: T("main.dictation.correct.sep"))))
-                    .font(.system(size: 12)).foregroundStyle(.secondary)
-            }
+        // reformat-last replaced it in the field: the text above is what is there now; the first version under it
+        if let first = e.typedFirst, first != e.text, m.mode != .raw {
+            card(first, label: T("main.dictation.before_reformat"), secondary: true, copyID: "detail-first")
         }
+        if let n = m.savedNote, n.id == e.id { savedNote(n) }
     }
 
     func typedLabel(_ e: DictationEntry) -> String { e.corrected != nil ? T("main.dictation.corrected") : T("main.dictation.typed") }
+
+    /// A take the speech model couldn't recognise: what failed, and Retry while its recording is there.
+    func failed(_ e: DictationEntry) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Circle().fill(Color.brandAttn).frame(width: 6, height: 6)
+            Text(DictationHistoryModel.failedText(e)).font(.system(size: 13)).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            if e.reason == "asr_failed:model_missing" {
+                Button(T("dictation.toast.no_model.get")) { Dictation.getSpeechModel(from: "page") }
+            }
+            if DictationHistoryModel.canRetry(e) {
+                Button(T("dictation.history.retry")) { m.retry(e) }.keyboardShortcut("r", modifiers: .command)
+            }
+        }
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(nsColor: .textBackgroundColor).opacity(0.6)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+    }
+
+    /// After Save Correction: saved, and the words it found — new ones to add with one click (then Undo), known ones.
+    @ViewBuilder func savedNote(_ n: DictationHistoryModel.SavedNote) -> some View {
+        let sep = T("main.dictation.correct.sep")
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            glyph(.check, 11).foregroundStyle(Color.brandOk)
+            // the note is quiet; its one action reads as a link (brand ink), not as more of the sentence
+            if !n.added.isEmpty {
+                Text(T("main.dictation.correct.added", n.added.joined(separator: sep))).foregroundStyle(.secondary)
+                Button(T("dictation.toast.undo")) { m.undoAdded() }.buttonStyle(.plain).foregroundStyle(Color.brandInk)
+            } else if !n.offered.isEmpty {
+                Text(T("main.dictation.correct.found", n.offered.joined(separator: sep))).foregroundStyle(.secondary)
+                Button(T("main.dictation.correct.add")) { m.addOffered() }.buttonStyle(.plain).foregroundStyle(Color.brandInk)
+            } else if !n.known.isEmpty {
+                Text(T("main.dictation.correct.known", n.known.joined(separator: sep))).foregroundStyle(.secondary)
+            } else {
+                Text(T("main.dictation.correct.saved")).foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: 12))
+    }
 
     /// A block of text with its label and its own copy button; `edit`: the text can be corrected here ("Correct" →
     /// an editor with "Save correction", which also learns the misheard words).
@@ -873,10 +1045,8 @@ struct DictationDetailView: View {
     func editor(_ e: DictationEntry, label: String) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-            TextEditor(text: $m.draft)
-                .font(.system(size: 14))
+            CorrectionEditor(text: $m.draft)
                 .frame(minHeight: 80)
-                .scrollContentBackground(.hidden)
                 .accessibilityLabel(T("main.dictation.correct"))
             HStack(spacing: 8) {
                 Text(T("main.dictation.correct.hint")).font(.system(size: 11)).foregroundStyle(.tertiary)
@@ -1174,6 +1344,12 @@ final class DictationHistoryWindow: NSObject {
         m.select(e.id)
         m.beginEdit(e)
         emit(["event": "dictation_history", "action": "edit", "id": e.id, "draft": m.draft])
+    }
+    @MainActor func testNote(_ what: String) {
+        let m = page.model
+        if what == "undo" { m.undoAdded() } else { m.addOffered() }
+        emit(["event": "dictation_history", "action": "note", "what": what, "offered": m.savedNote?.offered ?? [],
+              "added": m.savedNote?.added ?? []])
     }
     @MainActor func testCorrect(_ id: String?, text: String) {
         let m = page.model

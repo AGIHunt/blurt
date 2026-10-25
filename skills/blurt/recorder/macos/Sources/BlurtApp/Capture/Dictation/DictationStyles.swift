@@ -12,8 +12,10 @@
 //    sentence; code: one line);
 //  • reformat-last (⌥⇧L, the island's suggestion chip): the last take in the next style — verbatim → light →
 //    structured → verbatim — with the same model passes (made on demand, off the dictation's path), replacing it in the
-//    field only while it is exactly as it was typed (else the clipboard), with Undo. History: the style, the router's
-//    inputs, every reformat / undo / revert / suggestion;
+//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥⇧L while a take is on its way waits
+//    for it (it means the take said last; cancelled, failed or empty, the request goes with it); the chip and Undo act on the take they were shown for, never on a newer one, and
+//    go when the next take starts. History: the style, the router's inputs, every reformat / undo / revert /
+//    suggestion, and the text now in the field;
 //  • the list chip: after a light take long enough to hold a list, the structuring pass runs in the background (after
 //    the paste); when the model made it a list, the island offers it;
 //  • learning only suggests: ≥ 3 consistent signals in an app → the island asks once.
@@ -110,12 +112,15 @@ extension Dictation {
         styleToggles += 1
         routeStyle()
         emit(["event": "dictation_style", "action": "toggle", "via": via.rawValue, "style": to.rawValue, "id": entryID])
+        noteUsed(.list)
         // the ear's chip says which style it is; the line explains Structured the first couple of times only
+        // (DictationStyleToggleHint — every toast stays ≥ 5 s, so a line on every ⇧ would be noise), "Back to …" too
         let shown = Dictation.settings["style_hint_shown"] as? Int ?? 0
         guard DictationStyleToggleHint.says(shown: shown) else { return }
         if to == .structured { Dictation.set("style_hint_shown", shown + 1) }
+        // its own key: a second ⇧ replaces the first's line, and it never takes the place of the last take's Undo
         island.toast(Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
-                           table: "Dictation", Dictation.styleName(to)), key: Dictation.toastKey)
+                           table: "Dictation", Dictation.styleName(to)), key: Dictation.styleToastKey, seconds: 3)
     }
 
     static func styleName(_ s: DictationStyle) -> String { Loc.t("dictation.style.\(s.rawValue)", table: "Dictation") }
@@ -124,14 +129,14 @@ extension Dictation {
 
     /// The take's text in its style, and the record for the history: the structured text Structured asked for (made at
     /// key-up by the stream), the category's variant.
-    func styleText(_ r: DictationStream.Result) -> (text: String, record: DictationStyleRecord, ms: Int) {
+    func styleText(_ r: DictationStream.Result, take: DictationTake) -> (text: String, record: DictationStyleRecord, ms: Int) {
         let t0 = CACurrentMediaTime()
-        let d = styleDecision ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: styleBundle)
+        let d = take.style ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: take.bundle)
         let pick = d.style.pick(light: r.text, structured: r.structured)
         let v = DictationStyleVariant.apply(pick.text, category: d.category, structured: pick.list)
         let rec = DictationStyleRecord(style: d.style.rawValue, source: d.source.rawValue, category: d.category.rawValue,
-                                       base: d.base.rawValue, explicit: explicitStyle?.style.rawValue,
-                                       toggles: styleToggles, rendered: pick.list, variant: v.changes)
+                                       base: d.base.rawValue, explicit: take.explicit?.style.rawValue,
+                                       toggles: take.toggles, rendered: pick.list, variant: v.changes)
         return (v.text, rec, Int((CACurrentMediaTime() - t0) * 1000))
     }
 
@@ -141,6 +146,8 @@ extension Dictation {
             let b = before.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
             return !b.isEmpty && !b.hasSuffix("\n") ? ("\n" + text, ["list_line"]) : (text, [])
         }
+        // right after a list item: the take starts a paragraph of its own
+        if DictationFit.endsInListItem(before: before, after: after) { return ("\n\n" + text, ["after_list"]) }
         let fit = DictationFit.fit(text, before: before, after: after)
         return fit.trimmed ? (fit.text, fit.changes) : (text, [])
     }
@@ -173,7 +180,7 @@ extension Dictation {
         // runs after the paste, so the dictation never waits for it.
         if Dictation.suggestLists, result != .none, original == .light, DictationStitch.units(lp.light ?? lp.raw).count >= Dictation.chipMinUnits {
             withStructured(lp) { [weak self] in
-                guard let self = self, self.lastPaste === lp, self.phase == .idle, lp.current == .light,
+                guard let self = self, self.lastPaste === lp, !self.listening, lp.current == .light,
                       let s = lp.structured, DictationStitch.listLines(s) >= 2 else { return }
                 DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: "suggest", from: "light", to: "structured", replaced: false))
                 let key = hk(.reformat)
@@ -193,7 +200,14 @@ extension Dictation {
 
     /// ⌥⇧L (and the test hook): the last take in the next style of the cycle that reads differently.
     func reformatLast(via: String) {
-        guard phase == .idle else { return }            // a take is under way: its own paste comes first
+        guard !listening else { return }                // talking: ⇧ is the style key now
+        // a take is being pasted (or the last one is still on its way): this is about the take said last — once it
+        // is in, and only that one (cancelled, failed or empty: the request goes with it)
+        guard !inserting, queue.isEmpty else {
+            let id = reformatAfterPaste.request(last: queue.last, via: via)
+            return emit(["event": "dictation_reformat", "result": "after_paste", "via": via, "for": id ?? NSNull()])
+        }
+        noteUsed(.reformat)
         guard let lp = lastPaste else {
             island.toast(Loc.t("dictation.style.reformat.nothing", table: "Dictation"), key: Dictation.toastKey)
             emit(["event": "dictation_reformat", "result": "nothing", "via": via])
@@ -212,13 +226,13 @@ extension Dictation {
         }
     }
 
-    /// The suggestion chip (structured) and Undo (the original style), for the take `lp` they were shown for: when a
-    /// newer take has come since, they do nothing (they never rewrite the newer text — dogfood #29: the toast read the
-    /// last take at click time, not its own).
+    /// The suggestion chip (structured) and Undo (the original style), for the take `lp` they were shown for, never
+    /// whichever is newest when clicked: when a newer take has come since, they do nothing (they never rewrite the
+    /// newer text — dogfood #29: the toast read the last take at click time, not its own; the toasts went with the
+    /// newer take's start).
     func reformat(_ lp: DictationLastPaste, to style: DictationStyle, action: String, via: String) {
-        guard phase == .idle, lastPaste === lp else {
-            emit(["event": "dictation_reformat", "result": "stale", "via": via, "id": lp.id])
-            return
+        guard !listening, !inserting, lastPaste === lp else {
+            return emit(["event": "dictation_reformat", "result": "stale", "via": via, "id": lp.id])
         }
         withLight(lp) { [weak self] in
             self?.withStructured(lp) { [weak self] in
@@ -269,10 +283,13 @@ extension Dictation {
     private func apply(_ lp: DictationLastPaste, to style: DictationStyle, text: String, action: String, via: String) {
         let t0 = CACurrentMediaTime()
         let from = lp.current
+        let typedBefore = lp.typed
         func done(_ replaced: Bool, _ why: String?) {
             lp.current = style
             lp.currentVersion = text
-            DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: action, from: from.rawValue, to: style.rawValue, replaced: replaced))
+            DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: action, from: from.rawValue, to: style.rawValue,
+                                                                           replaced: replaced, text: replaced ? lp.typed : nil,
+                                                                           before: replaced ? typedBefore : nil))
             DictationHistoryWindow.shared.reloadIfOpen()
             emit(["event": "dictation_reformat", "result": replaced ? "replaced" : "copied", "why": why ?? NSNull(), "via": via,
                   "id": lp.id, "from": from.rawValue, "to": style.rawValue, "action": action, "text": text,
@@ -291,10 +308,11 @@ extension Dictation {
                                      self?.reformat(lp, to: original, action: "undo", via: "toast")
                                  } : nil)
             }
-            // one toast about the last take: a second ⌥⇧L replaces the first at once, with its own Undo; the ok check
-            // when the field really changed ("copied, paste with ⌘V" is not done yet)
+            if replaced { t.icon = .check }      // the ok check when the field really changed ("copied" is not done yet)
+            t.seconds = replaced && action != "undo" ? 5 : 2.4
+            // one toast about the last take: a second ⌥⇧L replaces the first at once (its Undo is then for the new
+            // version), and the next take's start drops it
             t.key = Dictation.toastKey
-            if replaced { t.icon = .check }
             island.toast(t)
             if action != "undo" || replaced { checkStyleSuggestion(bundle: lp.bundle) }
         }

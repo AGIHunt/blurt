@@ -117,14 +117,19 @@ final class DictationVocabularyTests: XCTestCase {
         XCTAssertEqual(v.load().first { $0.term == "Codex" }?.soundsLike, ["codec"])
     }
 
-    func testAnExplicitCorrectionIsLearnedAtOnce() {
-        // the Dictation page's "Save correction": the user fixed it on purpose, no second sighting needed
-        XCTAssertEqual(v.learn(heard: "Asopic", fixed: "Anthropic", explicit: true), .learned("Anthropic"))
-        XCTAssertEqual(v.active().first?.soundsLike, ["Asopic"])
+    func testASavedCorrectionSuggestsAndAnExplicitOneIsUsedAtOnce() {
+        // the Dictation page's "Save correction": the words found are offered (its note adds them with one click)
         let r = v.learnCorrection(typed: "后来他去了Tipless做产品", corrected: "后来他去了Typeless做产品")
         XCTAssertEqual(r.map(\.fix.heard), ["Tipless"])
-        XCTAssertEqual(r.first?.result, .learned("Typeless"))
+        XCTAssertEqual(r.first?.result, .suggested("Typeless"))
+        XCTAssertFalse(v.active().map(\.term).contains("Typeless"))
+        XCTAssertEqual(v.suggestions().map(\.term), ["Typeless"])
+        // the note's "Add": in use at once
+        XCTAssertEqual(v.learnCorrection(typed: "后来他去了Tipless做产品", corrected: "后来他去了Typeless做产品", activate: true)
+            .first?.result, .learned("Typeless"))
         XCTAssertTrue(v.active().map(\.term).contains("Typeless"))
+        XCTAssertEqual(v.learn(heard: "Asopic", fixed: "Anthropic", explicit: true), .learned("Anthropic"))
+        XCTAssertEqual(v.active().first { $0.term == "Anthropic" }?.soundsLike, ["Asopic"])
         // a rewrite teaches nothing
         XCTAssertTrue(v.learnCorrection(typed: "今天下午开会", corrected: "明天上午我们一起去公司吃饭然后开会").isEmpty)
         // a suggestion waiting for its second sighting is taken by an explicit one
@@ -133,6 +138,40 @@ final class DictationVocabularyTests: XCTestCase {
         // a word the user rejected stays rejected
         v.reject("Kimi")
         XCTAssertNil(v.learn(heard: "Kimmy", fixed: "Kimi", explicit: true))
+    }
+
+    func testTheWordsTabsEdits() {
+        // pasting "a, b, c" adds three; a word already there is flagged, not added twice
+        XCTAssertEqual(DictationVocabulary.entries("Claude Code, tmux、Kimi；\n tmux"), ["Claude Code", "tmux", "Kimi"])
+        v.add("tmux")
+        XCTAssertTrue(v.isActive("tmux"))
+        XCTAssertFalse(v.isActive("Kimi"))
+        // remove → Undo puts it back exactly (source, sounds-likes, hits)
+        _ = v.learn(heard: "cloud", fixed: "Claude", explicit: true)
+        v.recordHits(["Claude"])
+        let before = v.load().first { $0.term == "Claude" }!
+        v.remove("Claude")
+        XCTAssertEqual(v.load().first { $0.term == "Claude" }?.state, .rejected)
+        v.restore(before)
+        XCTAssertEqual(v.load().first { $0.term == "Claude" }, before)
+        // double-click → a new spelling keeps the word's history
+        XCTAssertTrue(v.rename("Claude", to: "Claude AI"))
+        XCTAssertEqual(v.load().first { $0.term == "Claude AI" }?.hits, before.hits)
+        XCTAssertFalse(v.rename("Claude AI", to: "tmux"))                  // another word already
+        XCTAssertFalse(v.rename("Claude AI", to: "a, b"))
+    }
+
+    func testTwoFixesSideBySideAreTwoWordsNeverOneWithAComma() {
+        // dogfood d54: 绘画 BA 三 → 会话，BA-3 learned "会话，BA-3" as one active word
+        let r = v.learnCorrection(typed: "我们先看绘画 BA 三的进度", corrected: "我们先看会话，BA-3的进度", activate: true)
+        XCTAssertFalse(r.contains { DictationVocabulary.hasSentencePunctuation($0.fix.fixed) })
+        XCTAssertEqual(r.map(\.fix.fixed), ["会话"])
+        XCTAssertFalse(v.load().contains { $0.term.contains("，") })
+        // and the store refuses one whatever asks
+        XCTAssertNil(v.learn(heard: "a b", fixed: "Alpha, Beta", explicit: true))
+        XCTAssertTrue(DictationVocabulary.hasSentencePunctuation("会话，BA-3"))
+        XCTAssertFalse(DictationVocabulary.hasSentencePunctuation("BA-3"))
+        XCTAssertFalse(DictationVocabulary.hasSentencePunctuation("Node.js"))
     }
 
     func testLearnSuggestThenAcceptOnTheSecondFix() {
@@ -216,6 +255,25 @@ final class DictationLearnTests: XCTestCase {
         // one changed character is learned with the unchanged ones before it
         XCTAssertEqual(fixes("口喷机现在支持了", "口喷鸡现在支持了"), [.init(heard: "口喷机", fixed: "口喷鸡", kind: .sound)])
         XCTAssertEqual(fixes("我用克劳德写代码", "我用Claude写代码").first?.fixed, "Claude")
+    }
+
+    func testTheWatchLearnsTheFinalEditNotAPauseInIt() {
+        // dogfood d48: Kubernetes → Kuberneetes (a pause) → K8s taught "Kuberneetes" and never K8s
+        var w = DictationLearn.EditWatch(typed: "deploy it to cooper netties today")
+        w.saw("deploy it to Kuberneetes today")          // a still tick mid-edit: nothing learned yet
+        w.saw("deploy it to Kubernetes today")
+        let e = try? XCTUnwrap(w.end())
+        XCTAssertEqual(e?.typed, "deploy it to cooper netties today")   // always from what was typed
+        XCTAssertEqual(e?.edited, "deploy it to Kubernetes today")
+        XCTAssertNil(DictationLearn.EditWatch(typed: "same").end())     // untouched: nothing
+    }
+
+    func testARunIsCutAtPunctuationAndScript() {
+        // two fixes side by side: each part pairs with what sounds like it, the comma never inside a term
+        XCTAssertEqual(fixes("先看绘画 BA 三的进度", "先看会话，BA-3的进度"), [.init(heard: "绘画", fixed: "会话", kind: .sound)])
+        XCTAssertEqual(fixes("ask cloud, code it", "ask Claude; Codex it").map(\.fixed), ["Claude", "Codex"])
+        // a name with a space or a hyphen stays one run
+        XCTAssertEqual(fixes("open cloud code in tmux", "open Claude Code in tmux").map(\.fixed), ["Claude Code"])
     }
 
     func testNotRecognitionFixes() {

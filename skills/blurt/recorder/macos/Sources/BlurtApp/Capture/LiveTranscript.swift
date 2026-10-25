@@ -5,7 +5,11 @@
 //    transcripts (committed, 92 % white) comes the piece still being said, decoded about once a second (pending,
 //    60 %: provisional until its piece's own transcript replaces it). Seeing it is how the user decides between
 //    fixing it by hand and double-tapping to send. A take's panel doesn't jump: it keeps the height it reached, and
-//    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor).
+//    the lines showing aren't re-wrapped as the text grows (LiveTextLines' anchor). When the take stops and its text
+//    goes in, the panel shows that text — the polished or structured version actually typed, not the transcript —
+//    for about 1.5 s (`showTyped`), the caret after the words turned into the ok check (it is in): the moment to check
+//    before a double tap sends it. When there is text above the top line, that line's start fades in from the left
+//    edge, so a line that begins mid-sentence reads as continued, not cut.
 //
 //  • It is the island's lower half, not a second pop-up (v0.9 dogfood: a 460 pt grey glass card under a 297 pt black
 //    notch read as two unrelated things): the island's own black, 6 pt under it, in its width family — exactly the
@@ -65,6 +69,7 @@ final class LiveTranscript {
         hideToken += 1
         view.reset()
         view.setListening(true)
+        view.setTyped(false)
         if shown { hide(animated: false) }
         return session
     }
@@ -92,6 +97,24 @@ final class LiveTranscript {
         emit(["event": "live_text", "source": source?.rawValue ?? "", "chars": c.count + q.count, "pending": q.count,
               "session": s])
         if !shown { show() } else { place(animated: true) }
+    }
+
+    /// Dictation's text went in: the panel shows what was actually typed (polished, structured — what a double tap
+    /// now sends) in place of the transcript, for `seconds`, then goes. Only while it is still this take's panel.
+    func showTyped(_ typed: String, session s: Int, seconds: Double) {
+        guard s == session, LiveTranscript.enabled else { return }
+        let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return end(session: s) }
+        view.setListening(false)
+        view.setTyped(true)
+        if t != text || !pending.isEmpty {
+            text = t
+            pending = ""
+            view.show(committed: t, pending: "", animated: !reduceMotion)
+        }
+        emit(["event": "live_typed", "chars": t.count, "session": s, "seconds": seconds])
+        if !shown { show() } else { place(animated: true) }
+        end(session: s, after: seconds)
     }
 
     /// The take is over: the panel goes after `after` seconds (now: at once).
@@ -230,6 +253,7 @@ final class LiveTranscript {
         }
         emit(["event": "live_state", "enabled": LiveTranscript.enabled, "shown": shown, "source": source?.rawValue ?? NSNull(),
               "text": text, "pending": pending, "lines": view.shownLines, "bottom": bottom, "frame": frameDump,
+              "typed": view.typed, "continued": view.continued,
               "session": session])
     }
 }
@@ -264,6 +288,11 @@ final class LiveTextView: NSView {
     func setListening(_ on: Bool) {
         text.listening = on
     }
+    /// The text shown is what was typed (the check after it).
+    func setTyped(_ on: Bool) { text.typed = on }
+    var typed: Bool { text.typed }
+    /// the top line continues text above it (its start fades in)
+    var continued: Bool { text.continued }
 
     /// the lines drawn now (tests)
     var shownLines: [String] { text.lines }
@@ -300,6 +329,12 @@ final class LiveTextLines: NSView {
     private(set) var pendingText = ""
     /// the take listens: a flat 2 pt mint caret after the last word (steady: the island's level moves)
     var listening = false { didSet { if listening != oldValue { needsDisplay = true } } }
+    /// the text is what was typed: the ok check after the last word, where the caret was
+    var typed = false { didSet { if typed != oldValue { needsDisplay = true } } }
+    /// there is text above the top line shown (tests)
+    private(set) var continued = false
+    /// the top line's start fades in over this much when it continues text above
+    static let continueFade: CGFloat = 28
 
     override var isFlipped: Bool { true }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -398,8 +433,10 @@ final class LiveTextLines: NSView {
     }
 
     override func draw(_ dirty: NSRect) {
-        let shown = Array(layout(width: bounds.width).suffix(LiveTextLines.maxLines))
+        let all = layout(width: bounds.width)
+        let shown = Array(all.suffix(LiveTextLines.maxLines))
         lines = shown.map(\.1)
+        continued = (shown.first?.0.location ?? 0) > 0
         let ink = NSColor(white: 1, alpha: 0.92), dim = NSColor(white: 1, alpha: 0.6)      // neutral, never brand
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byClipping
@@ -425,12 +462,33 @@ final class LiveTextLines: NSView {
             let y = LiveTextLines.pad.height + CGFloat(row) * LiveTextLines.lineH + 1
             s.draw(with: NSRect(x: LiveTextLines.pad.width, y: y, width: room, height: LiveTextLines.lineH),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-            if listening && i == shown.count - 1 {
+            // a top line that continues text above: its start fades in from the edge (it doesn't look cut off)
+            if i == 0, continued, let ctx = NSGraphicsContext.current,
+               let g = NSGradient(starting: NSColor(white: 0, alpha: 1), ending: NSColor(white: 0, alpha: 0)) {
+                ctx.saveGraphicsState()
+                ctx.compositingOperation = .destinationOut
+                g.draw(in: NSRect(x: LiveTextLines.pad.width - 1, y: y - 1, width: LiveTextLines.continueFade, height: LiveTextLines.lineH),
+                       angle: 0)
+                ctx.restoreGraphicsState()
+            }
+            if (listening || typed) && i == shown.count - 1 {
                 let tw = min(room, ceil(s.size().width))
-                BrandColor.Island.fill.setFill()
-                NSBezierPath(roundedRect: NSRect(x: LiveTextLines.pad.width + tw + 1.5, y: y + 1, width: 2, height: LiveTextLines.lineH - 3),
-                             xRadius: 1, yRadius: 1).fill()
+                if listening {
+                    BrandColor.Island.fill.setFill()
+                    NSBezierPath(roundedRect: NSRect(x: LiveTextLines.pad.width + tw + 1.5, y: y + 1, width: 2, height: LiveTextLines.lineH - 3),
+                                 xRadius: 1, yRadius: 1).fill()
+                } else if let c = LiveTextLines.check {
+                    // typed: the ok check (the design system's done shape), where the caret was
+                    let x = min(LiveTextLines.pad.width + tw + 5, bounds.width - LiveTextLines.pad.width / 2 - c.size.width)
+                    c.draw(in: NSRect(x: x, y: y + (LiveTextLines.lineH - c.size.height) / 2 - 1, width: c.size.width, height: c.size.height),
+                           from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+                }
             }
         }
     }
+
+    /// SF checkmark, 11 pt semibold, in the island's ok.
+    private static let check: NSImage? = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
+        .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+            .applying(NSImage.SymbolConfiguration(paletteColors: [BrandColor.Island.ok])))
 }

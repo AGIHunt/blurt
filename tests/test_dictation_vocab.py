@@ -525,6 +525,19 @@ class LearnFromCorrection(unittest.TestCase):
         self.assertEqual(V.fixes("今天下午开会", "明天上午我们一起去公司吃饭然后开会"), [])   # a rewrite
         self.assertEqual(V.fixes("same text", "same text"), [])
 
+    def test_two_fixes_side_by_side_are_two_never_one_with_a_comma(self):
+        # dogfood d54: 绘画 BA 三 → 会话，BA-3 was learned as one active word "会话，BA-3" (the app's rule, ported)
+        self.assertEqual(V.fixes("先看绘画 BA 三的进度", "先看会话，BA-3的进度"),
+                         [{"heard": "绘画", "fixed": "会话", "kind": "sound"}])
+        self.assertEqual([f["fixed"] for f in V.fixes("ask cloud, code it", "ask Claude; Codex it")], ["Claude", "Codex"])
+        self.assertEqual([f["fixed"] for f in V.fixes("open cloud code in tmux", "open Claude Code in tmux")], ["Claude Code"])
+        with tempfile.TemporaryDirectory() as d:
+            doc: dict = {}
+            self.assertIsNone(V.learn_fix(doc, "a b", "Alpha, Beta"))
+            self.assertTrue(V.has_sentence_punctuation("会话，BA-3"))
+            self.assertFalse(V.has_sentence_punctuation("Node.js"))
+            self.assertFalse((Path(d) / "vocabulary.json").exists())
+
     def test_learn_writes_the_apps_file_and_the_next_dictation_uses_it(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "dictation" / "vocabulary.json"

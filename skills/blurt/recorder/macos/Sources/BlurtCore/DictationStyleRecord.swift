@@ -17,13 +17,21 @@ public struct DictationReformatRecord: Hashable {
     /// the field's text was replaced (false: the new version went to the clipboard)
     public var replaced: Bool
     public var time: Date
+    /// what the field holds now (replaced), and what it held before: the history shows the text as it stands
+    public var text: String?
+    public var before: String?
 
-    public init(action: String, from: String, to: String, replaced: Bool, time: Date = Date()) {
+    public init(action: String, from: String, to: String, replaced: Bool, time: Date = Date(), text: String? = nil,
+                before: String? = nil) {
         self.action = action; self.from = from; self.to = to; self.replaced = replaced; self.time = time
+        self.text = text; self.before = before
     }
 
     public var json: [String: Any] {
-        ["action": action, "from": from, "to": to, "replaced": replaced, "t": DictationEntry.iso.string(from: time)]
+        var o: [String: Any] = ["action": action, "from": from, "to": to, "replaced": replaced, "t": DictationEntry.iso.string(from: time)]
+        if let t = text { o["text"] = t }
+        if let b = before { o["before"] = b }
+        return o
     }
 
     public init?(json o: [String: Any]) {
@@ -33,6 +41,8 @@ public struct DictationReformatRecord: Hashable {
         to = o["to"] as? String ?? ""
         replaced = o["replaced"] as? Bool ?? false
         time = (o["t"] as? String).flatMap { DictationEntry.iso.date(from: $0) } ?? Date(timeIntervalSince1970: 0)
+        text = o["text"] as? String
+        before = o["before"] as? String
     }
 }
 

@@ -88,7 +88,7 @@
 "dictation.history.search" = "Search dictations";
 "dictation.history.clear_search" = "Clear search";
 "dictation.history.empty.title" = "No dictations yet";
-"dictation.history.empty.body" = "Press %@ in any app, talk, and press it again: what you said is typed there, and kept here.";
+"dictation.history.empty.body" = "Press %@ in any app, talk, press it again: the text goes in at the cursor and is kept here.";
 "dictation.history.no_match" = "Nothing matches";
 "dictation.history.today" = "Today";
 "dictation.history.yesterday" = "Yesterday";
@@ -159,7 +159,7 @@
 /* double tap = Return */
 "dictation.toast.sent" = "Sent";
 "dictation.settings.double_tap" = "Double-tap %@ to send (Return)";
-"dictation.settings.double_tap.detail" = "Tap twice when you finish: the text goes in, then it’s sent.";
+"dictation.settings.double_tap.detail" = "Tap to stop, check the text, then double-tap to send. Or double-tap instead of the stop tap.";
 
 /* Dictation Lab (the Dictation page's Lab tab; MainWindow/DictationLab*.swift) */
 "dictation.lab.tab.history" = "History";
@@ -212,7 +212,7 @@
 "dictation.lab.status.starting" = "Opening the microphone…";
 "dictation.lab.status.recording" = "Listening";
 "dictation.lab.status.processing" = "Working on it…";
-"dictation.lab.status.done" = "Done — record again for a new take";
+"dictation.lab.status.done" = "Recorded · record another";
 "dictation.lab.mic.default" = "Default microphone";
 "dictation.lab.mic.tip" = "The microphone for lab takes";
 "dictation.lab.error.mic" = "The microphone isn't available.";
@@ -253,9 +253,9 @@
 "dictation.lab.scenario.speed.normal" = "Normal";
 "dictation.lab.scenario.speed.fast" = "Fast";
 "dictation.lab.stages" = "Each stage";
-"dictation.lab.stage.raw" = "Heard (stitched)";
+"dictation.lab.stage.raw" = "Heard";
 "dictation.lab.stage.polished" = "Polished";
-"dictation.lab.stage.final" = "Typed (fitted)";
+"dictation.lab.stage.final" = "Typed";
 "dictation.lab.stage.polish_off" = "Polish off";
 "dictation.lab.ms" = "%ld ms";
 "dictation.lab.ms.total" = "%ld ms after release";
@@ -377,7 +377,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto";
-"dictation.style.toast.structured" = "%@: tidied into a list when you finish · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: becomes a list when you finish · ⇧ to go back";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
@@ -471,3 +471,41 @@
 "dictation.style.by_app.detail" = "Chat, code, mail and notes can each have their own.";
 "dictation.history.saved" = "Saved dictations";
 "dictation.history.saved.detail" = "Every dictation, its text before and after polish.";
+
+/* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
+"dictation.style.toast.structured.first" = "%@: becomes a list when you finish, keeping only what you settled on · ⇧ to go back";
+"dictation.toast.cancelled" = "Cancelled";
+"dictation.toast.limit" = "Stopped at the 5-minute limit";
+"dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
+"dictation.toast.no_model" = "No speech model yet";
+"dictation.toast.no_model.get" = "Download…";
+"dictation.toast.no_model.kept" = "No speech model yet — the recording is kept";
+"dictation.toast.no_vad" = "The speech detection file is missing (under 1 MB)";
+"dictation.toast.no_vad.kept" = "The speech detection file is missing — the recording is kept";
+"dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
+"dictation.toast.asr_failed" = "Couldn’t recognise that — the recording is kept";
+"dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
+"dictation.toast.retry" = "Retry";
+"dictation.toast.retry_gone" = "That recording is gone";
+"dictation.toast.copied_app" = "Copied — paste with ⌘V";
+"dictation.toast.not_sent" = "Not sent";
+"dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
+"dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
+"dictation.toast.not_sent.copied" = "Copied, not sent";
+"dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
+"dictation.toast.tap_mode" = "Tap %@ to start talking";
+"dictation.toast.no_polish" = "No polish model yet — typed as you said it";
+"dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may come out wrong";
+"dictation.tip.send" = "Double-tap %@ to send";
+"dictation.tip.list" = "Press ⇧ while you talk for a list";
+"dictation.tip.reformat" = "%@ tries another style";
+"dictation.history.failed" = "Not recognised";
+"dictation.history.failed.no_model" = "Not recognised: no speech model";
+"dictation.history.retry" = "Retry";
+
+/* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
+"dictation.words.removed" = "Removed %@";
+"dictation.words.accepted" = "Added %@";
+"dictation.words.ignored" = "Ignored %@";
+"dictation.words.rename" = "Edit Spelling";
+"dictation.words.duplicate" = "%@ is already in your Words";

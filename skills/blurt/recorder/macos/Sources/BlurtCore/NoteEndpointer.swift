@@ -41,6 +41,9 @@ public struct NoteEndpointer {
     public private(set) var ended: End?
     /// the last frame's level (dBFS), for tests and logs
     public private(set) var lastDB: Float = -120
+    /// How long it has been quiet: since the last talking stretch, or since the start when nobody has spoken yet
+    /// (dictation's "still listening" reminder; `speaking` stays true through any pause when silence never ends a take).
+    public var quietSeconds: Double { speaking ? quietFor : heard }
 
     static let startWindow = 12, startLoud = 8, lookback = 50, talkWindow = 6, talkLoud = 4
 
