@@ -1014,19 +1014,20 @@ struct DictationDetailView: View {
         let sep = T("main.dictation.correct.sep")
         HStack(alignment: .firstTextBaseline, spacing: 6) {
             glyph(.check, 11).foregroundStyle(Color.brandOk)
+            // the note is quiet; its one action reads as a link (brand ink), not as more of the sentence
             if !n.added.isEmpty {
-                Text(T("main.dictation.correct.added", n.added.joined(separator: sep)))
-                Button(T("dictation.toast.undo")) { m.undoAdded() }.buttonStyle(.link)
+                Text(T("main.dictation.correct.added", n.added.joined(separator: sep))).foregroundStyle(.secondary)
+                Button(T("dictation.toast.undo")) { m.undoAdded() }.buttonStyle(.plain).foregroundStyle(Color.brandInk)
             } else if !n.offered.isEmpty {
-                Text(T("main.dictation.correct.found", n.offered.joined(separator: sep)))
-                Button(T("main.dictation.correct.add")) { m.addOffered() }.buttonStyle(.link)
+                Text(T("main.dictation.correct.found", n.offered.joined(separator: sep))).foregroundStyle(.secondary)
+                Button(T("main.dictation.correct.add")) { m.addOffered() }.buttonStyle(.plain).foregroundStyle(Color.brandInk)
             } else if !n.known.isEmpty {
-                Text(T("main.dictation.correct.known", n.known.joined(separator: sep)))
+                Text(T("main.dictation.correct.known", n.known.joined(separator: sep))).foregroundStyle(.secondary)
             } else {
-                Text(T("main.dictation.correct.saved"))
+                Text(T("main.dictation.correct.saved")).foregroundStyle(.secondary)
             }
         }
-        .font(.system(size: 12)).foregroundStyle(.secondary)
+        .font(.system(size: 12))
     }
 
     /// A block of text with its label and its own copy button; `edit`: the text can be corrected here ("Correct" →
