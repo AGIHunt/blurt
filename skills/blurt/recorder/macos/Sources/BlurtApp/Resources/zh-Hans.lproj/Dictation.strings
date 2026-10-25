@@ -466,3 +466,8 @@
 "dictation.words.info.used.value" = "%ld 次";
 "dictation.words.info.heard" = "常被听成";
 "dictation.words.info.added" = "添加时间";
+"dictation.settings.enable.detail" = "开口说话，文字就打在光标所在的地方。";
+"dictation.style.default" = "默认风格";
+"dictation.style.by_app.detail" = "聊天、代码、邮件、笔记可以各用各的风格。";
+"dictation.history.saved" = "已保存的听写";
+"dictation.history.saved.detail" = "每次听写的文字，润色前后都在。";

@@ -1,7 +1,9 @@
 // blurt:// URLs (C7), handed over by AppDelegate (AppEnvironment.openURL):
 //   blurt://item/<uid>                     → the item in the main window, else its file in Finder
 //   blurt://session/<abs-path-encoded>     → the batch in the main window, else its folder in Finder
-//   blurt://settings[/<pane>]              → Settings (general, shortcuts, speech, agents, export, privacy, storage)
+//   blurt://settings[/<pane>[/<row>]]      → Settings (general, dictation, speech, shortcuts, agents, export, privacy,
+//                                            storage); a row or section of the pane (SettingsCatalog id without the
+//                                            pane, e.g. speech/dictation, general/login) is scrolled to and flashed
 //   blurt://onboarding                     → the setup assistant
 //   blurt://open                           → the main window (same as the menu's "Open Blurt"; the Tauri app has it too)
 //   blurt://record, blurt://snap           → not handled here (false): the shell starts them — from a link (Blurt not

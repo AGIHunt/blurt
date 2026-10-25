@@ -1,4 +1,4 @@
-// Settings → Agents: which coding agents Blurt uses — organizing recordings and snaps, auto-sort, AI fill-in —
+// Settings → Agents (a page of SettingsKit lines; its sections are in SettingsCatalog): which coding agents Blurt uses — organizing recordings and snaps, auto-sort, AI fill-in —
 // (record.agents, in order — drag to reorder, untick to leave one out) and which can run in Blurt's sessions
 // (sessions.py doctor), each one's state (agents.py detect). The rows are there at once (agents.json, "Checking…"),
 // then a quick look, then the sign-in check. Only what stops Blurt is red; the command that fixes an agent shows only
@@ -8,6 +8,7 @@
 // (projects.json default_agent); a test run. Agents without a command line (ZCode) are listed apart.
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import BlurtCore
 
 @MainActor
@@ -217,34 +218,30 @@ final class AgentsModel: ObservableObject {
 
 struct AgentsPane: View {
     @ObservedObject var m = AgentsModel.shared
+    /// the agent being dragged to a new place in the order
+    @State var dragging: String?
 
     var body: some View {
-        PaneFrame {
-            Section {
-                ForEach(m.headless) { a in agentRow(a, ordered: true) }
-                    .onMove { m.move(from: $0, to: $1) }
-            } header: {
-                HStack {
-                    Text(TL("agents.header"))
-                    Spacer()
-                    if m.loading { ProgressView().controlSize(.mini) }
-                    Button { Task { m.connected = [:]; await m.load(); await m.checkConnected() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
-                        .help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
+        SettingsPage(.agents) {
+            SettingsGroup("agents.list", footer: TL("agents.footer"), content: {
+                ForEach(m.headless) { a in
+                    agentRow(a, ordered: true)
+                        .onDrag { dragging = a.id; return NSItemProvider(object: a.id as NSString) }
+                        .onDrop(of: [.text], delegate: AgentDrop(target: a.id, m: m, dragging: $dragging))
                 }
-            } footer: {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(TL("agents.footer"))
-                    if let e = m.error { Text(e).foregroundStyle(Color.brandErr) }
-                }.font(.caption).foregroundStyle(.secondary)
-            }
+                if let e = m.error { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr).padding(.top, 6) }
+            }, accessory: {
+                if m.loading { ProgressView().controlSize(.mini) }
+                Button { Task { m.connected = [:]; await m.load(); await m.checkConnected() } } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless)
+                    .help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
+            })
 
             sessionsSection
 
             if !m.manual.isEmpty {
-                Section {
+                SettingsGroup("agents.manual", footer: TL("agents.manual.footer")) {
                     ForEach(m.manual) { a in agentRow(a, ordered: false) }
-                } header: { Text(TL("agents.manual.header")) } footer: {
-                    Text(TL("agents.manual.footer")).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -256,34 +253,46 @@ struct AgentsPane: View {
 
     @ViewBuilder
     var sessionsSection: some View {
-        Section {
-            HStack(spacing: 8) {
-                StatusDot(tone: AgentSessions.shared.tmuxAvailable ? .good : .warn)
-                VStack(alignment: .leading, spacing: 1) {
-                    if let v = AgentSessions.shared.tmuxVersion, AgentSessions.shared.tmuxAvailable {
-                        Text(TL("agents.tmux.ok", v)).fontWeight(.medium)
-                        Text(TL("agents.tmux.ok.detail")).font(.caption).foregroundStyle(.secondary)
-                    } else {
-                        Text(TL(AgentSessions.shared.tmuxPath == nil ? "agents.tmux.missing" : "agents.tmux.old")).fontWeight(.medium)
-                        Text(TL("agents.tmux.missing.detail")).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+        SettingsGroup("agents.sessions") {
+            SettingsLine {
+                HStack(spacing: 14) {
+                    StatusDot(tone: AgentSessions.shared.tmuxAvailable ? .good : .warn).frame(width: SettingsMetrics.leadingWidth)
+                    VStack(alignment: .leading, spacing: 3) {
+                        if let v = AgentSessions.shared.tmuxVersion, AgentSessions.shared.tmuxAvailable {
+                            Text(TL("agents.tmux.ok", v)).font(.system(size: SettingsMetrics.titleSize))
+                            Text(TL("agents.tmux.ok.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text(TL(AgentSessions.shared.tmuxPath == nil ? "agents.tmux.missing" : "agents.tmux.old")).font(.system(size: SettingsMetrics.titleSize))
+                            Text(TL("agents.tmux.missing.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                }
-                Spacer()
-                if !AgentSessions.shared.tmuxAvailable {
-                    CommandText(text: "brew install tmux")
-                    Button { AgentSessions.shared.refreshTmux(); Task { await m.load(login: false) } } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
+                    Spacer()
+                    if !AgentSessions.shared.tmuxAvailable {
+                        CommandText(text: "brew install tmux")
+                        Button { AgentSessions.shared.refreshTmux(); Task { await m.load(login: false) } } label: { Image(systemName: "arrow.clockwise") }
+                            .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
+                    }
                 }
             }
             if let p = m.project {
-                Picker(TL("agents.project_agent", p.name), selection: Binding(get: { m.projectAgent }, set: { m.setProjectAgent($0) })) {
-                    Text(TL("agents.project_agent.default")).tag("")
-                    ForEach(m.rows.filter { m.sessions($0) && $0.installed }) { Text($0.name).tag($0.id) }
+                SettingsLine {
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(TL("agents.project_agent", p.name)).font(.system(size: SettingsMetrics.titleSize))
+                            Text(TL("agents.project_agent.hint")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        RowPicker(label: TL("agents.project_agent", p.name), selection: Binding(get: { m.projectAgent }, set: { m.setProjectAgent($0) })) {
+                            Text(TL("agents.project_agent.default")).tag("")
+                            ForEach(m.rows.filter { m.sessions($0) && $0.installed }) { Text($0.name).tag($0.id) }
+                        }
+                    }
                 }
-                Hint(TL("agents.project_agent.hint"))
             }
-        } header: { Text(TL("agents.sessions.header")) }
+        }
     }
 
     /// Red only for a problem that stops Blurt: a ticked agent that can't run while no agent can. An agent the user
@@ -310,6 +319,7 @@ struct AgentsPane: View {
     @ViewBuilder
     func agentRow(_ a: CoreAgent, ordered: Bool) -> some View {
         let on = m.enabled.contains(a.id)
+        SettingsLine {
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 8) {
                 if ordered {
@@ -319,14 +329,14 @@ struct AgentsPane: View {
                 StatusDot(tone: tone(a))
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
-                        Text(a.name).fontWeight(.medium).foregroundStyle(on || !ordered ? .primary : .secondary)
+                        Text(a.name).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).foregroundStyle(on || !ordered ? .primary : .secondary)
                         if let v = a.version { Text(shortVersion(v)).font(.caption).foregroundStyle(.tertiary) }
                         if ordered && a.id == m.pick { badge(TL("agents.runs_first"), nil) }
                         if a.installed && m.sessions(a) {
                             badge(TL("agents.sessions_badge"), Color.secondary).help(TL("agents.sessions_badge.help"))
                         }
                     }
-                    Text(stateText(a)).font(.caption).foregroundStyle(.secondary)
+                    Text(stateText(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if a.state == "checking" { ProgressView().controlSize(.mini) }
@@ -349,14 +359,14 @@ struct AgentsPane: View {
             }
             if ordered, a.installed, let ms = m.models[a.id] { processingRow(a, ms) }
             if a.id == "codex" && a.installed {
-                Text(TL("agents.codex_trust")).font(.caption).foregroundStyle(.tertiary).padding(.leading, ordered ? 44 : 17)
+                Text(TL("agents.codex_trust")).font(.caption).foregroundStyle(.secondary).padding(.leading, ordered ? 44 : 17)
             }
             if let t = m.tests[a.id] {
                 Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                     .font(.caption).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr).padding(.leading, ordered ? 44 : 17)
             }
         }
-        .padding(.vertical, 2)
+        }
         .contextMenu {
             if ordered { Button(TL("agents.move_up")) { m.moveUp(a.id) } }
         }
@@ -500,6 +510,24 @@ struct InstallSheet: View {
 extension InstallChange {
     /// The localized one-liner (Settings → Agents, the self-test channel).
     var summary: String { InstallSheet.summary(self) }
+}
+
+/// Drag an agent onto another to put it there (the order Blurt tries them in).
+struct AgentDrop: DropDelegate {
+    let target: String
+    let m: AgentsModel
+    @Binding var dragging: String?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+    func performDrop(info: DropInfo) -> Bool {
+        defer { dragging = nil }
+        return MainActor.assumeIsolated {
+            guard let d = dragging, d != target, let from = m.headless.firstIndex(where: { $0.id == d }),
+                  let to = m.headless.firstIndex(where: { $0.id == target }) else { return false }
+            m.move(from: IndexSet(integer: from), to: to > from ? to + 1 : to)
+            return true
+        }
+    }
 }
 
 /// "2.1.259 (Claude Code)" / "codex-cli 0.157.0" → "2.1.259" / "0.157.0"

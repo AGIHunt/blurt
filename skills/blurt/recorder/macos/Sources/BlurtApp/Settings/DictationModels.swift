@@ -2,7 +2,8 @@
 // it can use (`transcribe.py dictation-models`) and the polish models (`polish.py models`), their downloads (only when
 // the user asks; progress from the scripts' "N/M MB" lines), the choice, the recommended pair with its total size, and
 // their names (the Dictation page's history shows names, not ids). Settings → Speech lists and picks them
-// (`DictationModelsSection`); Settings → Dictation shows the current choice with a link there.
+// (`DictationModelsSection`, the "speech.dictation" group); Settings → Dictation shows the current choice with a link
+// there (show(pane: "speech/dictation")).
 // One verb per state: Download (not on this Mac) / Use (on this Mac) / the selected one is marked. Sizes come from
 // the catalogues' size_mb, formatted by `modelSize`.
 // Strings: Resources/*.lproj/Speech.strings ("speech.dictation.*").
@@ -232,48 +233,56 @@ struct DictationModelsSection: View {
     @ObservedObject var m = DictationModels.shared
 
     var body: some View {
-        Section {
+        SettingsGroup("speech.dictation", footer: S("speech.dictation.footer")) {
             if m.asr == nil && m.polish == nil {
-                HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.dictation.loading")).foregroundStyle(.secondary) }
+                SettingsLine {
+                    HStack(spacing: 8) { ProgressView().controlSize(.small); Text(S("speech.dictation.loading")).foregroundStyle(.secondary) }
+                }
             } else {
                 recommended
                 if let a = m.asr {
                     subheading(S("speech.dictation.asr"))
                     let (main, more) = split(a.models) { $0.id == a.selected || $0.recommended || $0.installed || m.asrDownload[$0.id] != nil }
-                    ForEach(main) { asrRow($0, selected: a.selected == $0.id) }
+                    ForEach(main) { x in modelLine { asrRow(x, selected: a.selected == x.id) } }
                     if !more.isEmpty {
-                        DisclosureGroup(S("speech.dictation.more", more.count)) {
-                            ForEach(more) { asrRow($0, selected: a.selected == $0.id) }
+                        modelLine {
+                            DisclosureGroup(S("speech.dictation.more", more.count)) {
+                                ForEach(more) { asrRow($0, selected: a.selected == $0.id) }
+                            }
                         }
                     }
                 }
                 if let p = m.polish {
                     subheading(S("speech.dictation.polish"))
                     if !p.supported {
-                        Text(S("speech.dictation.polish.unsupported")).font(.callout).foregroundStyle(.secondary)
+                        SettingsLine { Text(S("speech.dictation.polish.unsupported")).foregroundStyle(.secondary) }
                     } else {
                         let sorted = p.models.sorted { ($0.recommended ? 0 : 1, $0.sizeMB) < ($1.recommended ? 0 : 1, $1.sizeMB) }
                         let (main, more) = split(sorted) { $0.id == p.selected || $0.recommended || $0.installed || m.download[$0.id] != nil }
-                        ForEach(main) { polishRow($0, selected: p.selected == $0.id) }
+                        ForEach(main) { x in modelLine { polishRow(x, selected: p.selected == x.id) } }
                         if !more.isEmpty {
-                            DisclosureGroup(S("speech.dictation.more", more.count)) {
-                                ForEach(more) { polishRow($0, selected: p.selected == $0.id) }
+                            modelLine {
+                                DisclosureGroup(S("speech.dictation.more", more.count)) {
+                                    ForEach(more) { polishRow($0, selected: p.selected == $0.id) }
+                                }
                             }
                         }
                     }
                 }
             }
-        } header: { Text(S("speech.section.dictation")) } footer: {
-            Text(S("speech.dictation.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .id("dictation")
         .task { await m.load() }
     }
 
+    /// A model's line: tighter than a setting's, the choice card brings its own padding.
+    private func modelLine<C: View>(@ViewBuilder _ c: () -> C) -> some View { SettingsLine(padding: 6) { c() } }
+
     private func split<T>(_ xs: [T], _ keep: (T) -> Bool) -> ([T], [T]) { (xs.filter(keep), xs.filter { !keep($0) }) }
 
+    /// Recognition / Polish: a small label inside the group, over the models it names.
     private func subheading(_ s: String) -> some View {
-        Text(s).font(.callout.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 2)
+        Text(s).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).padding(.top, 14).padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     /// "Recommended: Qwen3-ASR 1.7B + Gemma 4 E2B · 5.7 GB" with one Download for what's missing.
@@ -281,8 +290,9 @@ struct DictationModelsSection: View {
         let names = [m.recommendedASR?.name, m.recommendedPolish?.name].compactMap { $0 }
         if !names.isEmpty {
             let mb = m.recommendedMB
-            HStack(alignment: .center, spacing: 10) {
-                StatusDot(tone: mb.missing == 0 ? .good : .off)
+            SettingsLine {
+            HStack(alignment: .center, spacing: 14) {
+                StatusDot(tone: mb.missing == 0 ? .good : .off).frame(width: SettingsMetrics.leadingWidth)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(S("speech.dictation.recommended", names.joined(separator: " + ")))
                     Text(mb.missing == 0 ? S("speech.dictation.recommended.ready", modelSize(mb.total))
@@ -295,6 +305,7 @@ struct DictationModelsSection: View {
                 }
             }
             .accessibilityElement(children: .combine)
+            }
         }
     }
 

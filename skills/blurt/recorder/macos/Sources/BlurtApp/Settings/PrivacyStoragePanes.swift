@@ -1,5 +1,6 @@
 // Settings → Privacy (live permission state — the one full list of them —, local-only speech recognition, what is
-// kept, Spotlight) and Settings → Storage (what takes space, model by model and folder by folder, and cleaning what
+// kept, Spotlight) and Settings → Storage (rows from SettingsCatalog; the folders, models and files are lines of their
+// groups) (what takes space, model by model and folder by folder, and cleaning what
 // can safely go: videos of organized recordings, unused models, caches — always to the Trash, never by default).
 import AppKit
 import SwiftUI
@@ -82,31 +83,25 @@ struct PrivacyPane: View {
     @StateObject var m = PrivacyModel()
 
     var body: some View {
-        PaneFrame {
-            Section {
+        SettingsPage(.privacy) {
+            SettingsGroup("privacy.permissions", content: {
                 PermissionSetupButton(flow: .all, source: .privacy, p: perms)
-                PermissionRows(p: perms, source: .privacy)
-            } header: { Text(T("settings.privacy.permissions_live")) } footer: {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(T("settings.privacy.macos_applies_screen_recording"))
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    // Screen Recording allowed while Blurt runs: some macOS versions apply it only after a relaunch
-                    if perms.screen != .granted || Permissions.askedScreen {
-                        Button(T("settings.perm.restart")) { SystemAccess.relaunch() }.controlSize(.small)
+                PermissionRows(p: perms, source: .privacy, lines: true)
+                SettingsLine {
+                    HStack(alignment: .firstTextBaseline) {
+                        Hint(T("settings.privacy.macos_applies_screen_recording"))
+                        Spacer()
+                        // Screen Recording allowed while Blurt runs: some macOS versions apply it only after a relaunch
+                        if perms.screen != .granted || Permissions.askedScreen {
+                            Button(T("settings.perm.restart")) { SystemAccess.relaunch() }
+                        }
                     }
                 }
-            }
-            Section {
-                Toggle(T("settings.privacy.local_speech_recognition_only"), isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
-                Hint(T("settings.privacy.audio_never_goes_cloud"))
-                Toggle(T("settings.privacy.keep_raw_live_caption"),
-                       isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
-                Hint(T("settings.privacy.deleted_by_default_once"))
-                Toggle(T("settings.privacy.items_appear_spotlight"), isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
-            } header: { Text(T("settings.privacy.data")) } footer: {
-                Text(T("settings.privacy.recordings_screenshots_items_stay"))
-                    .font(.caption).foregroundStyle(.secondary)
+            })
+            SettingsGroup("privacy.data", footer: T("settings.privacy.recordings_screenshots_items_stay")) {
+                SettingToggle("privacy.local_asr", isOn: Binding(get: { m.localASR }, set: { m.setLocal($0) }))
+                SettingToggle("privacy.keep_live", isOn: Binding(get: { m.keepLive }, set: { m.setKeep($0) }))
+                SettingToggle("privacy.spotlight", isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
             }
         }
         .onAppear { m.reload(); perms.start() }
@@ -306,48 +301,49 @@ struct StoragePane: View {
     @State var ask: Ask?
 
     var body: some View {
-        PaneFrame {
-            Section {
-                if m.rows.isEmpty && !m.busy { Text(T("settings.privacy.no_recordings")).foregroundStyle(.secondary) }
+        SettingsPage(.storage) {
+            SettingsGroup("storage.recordings", content: {
+                if m.rows.isEmpty && !m.busy {
+                    SettingsLine { Text(T("settings.privacy.no_recordings")).foregroundStyle(.secondary) }
+                }
                 ForEach(m.rows) { r in
                     row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) }
                 }
                 videosRow
-                Picker(T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) })) {
-                    Text(T("settings.storage.videos.never")).tag(0)
-                    ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
+                SettingRow("storage.auto_delete") {
+                    RowPicker(label: T("settings.storage.videos.auto"), selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) })) {
+                        Text(T("settings.storage.videos.never")).tag(0)
+                        ForEach(VideoRetention.choices, id: \.self) { d in Text(T("settings.storage.videos.after", d)).tag(d) }
+                    }
                 }
-            } header: {
-                HStack { Text(T("settings.privacy.recordings_screenshots")); Spacer(); if m.busy { ProgressView().controlSize(.mini) } }
-            } footer: {
-                Text(T("settings.storage.videos.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
+            }, accessory: { if m.busy { ProgressView().controlSize(.mini) } })
 
-            Section {
-                if m.models.isEmpty && !m.busy { Text(T("settings.storage.model.none")).foregroundStyle(.secondary) }
-                ForEach(m.models) { r in modelRow(r) }
-            } header: {
-                HStack { Text(T("settings.storage.models")); Spacer(); if m.checkingModels { ProgressView().controlSize(.mini) } }
-            } footer: {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(T("settings.storage.model.footer")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue) }.controlSize(.small)
-                    Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue) }.controlSize(.small)
+            SettingsGroup("storage.models", footer: T("settings.storage.model.footer"), content: {
+                if m.models.isEmpty && !m.busy {
+                    SettingsLine { Text(T("settings.storage.model.none")).foregroundStyle(.secondary) }
                 }
-            }
+                ForEach(m.models) { r in modelRow(r) }
+                SettingsLine {
+                    HStack {
+                        Spacer()
+                        Button(T("settings.kit.speech")) { AppEnvironment.settings?.show(pane: SettingsPane.speech.rawValue) }
+                        Button(T("dictation.settings.tab")) { AppEnvironment.settings?.show(pane: SettingsPane.dictation.rawValue) }
+                    }
+                }
+            }, accessory: { if m.checkingModels { ProgressView().controlSize(.mini) } })
 
             if !m.dictation.isEmpty {
-                Section {
+                SettingsGroup("storage.dictation", footer: T("settings.storage.dictation.footer")) {
                     ForEach(m.dictation) { r in row(r.name, detail: r.detail, bytes: r.bytes) { reveal(r.path) } }
-                } header: { Text(T("dictation.settings.tab")) } footer: {
-                    Text(T("settings.storage.dictation.footer")).font(.caption).foregroundStyle(.secondary)
                 }
             }
 
-            Section {
-                row(T("settings.privacy.raw_live_caption_audio"), detail: TP("settings.privacy.live_audio", m.liveAudio.count), bytes: m.liveAudio.bytes) {
-                    Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
+            SettingsGroup("storage.files", footer: T("settings.privacy.index_can_be_deleted")) {
+                SettingRow("storage.live_audio", detail: TP("settings.privacy.live_audio", m.liveAudio.count)) {
+                    HStack(spacing: 10) {
+                        Text(byteString(m.liveAudio.bytes)).monospacedDigit().foregroundStyle(.secondary)
+                        Button(T("settings.privacy.clean_up")) { Task { await m.dropLive() } }.disabled(m.liveAudio.count == 0)
+                    }
                 }
                 ForEach(m.app) { r in
                     row(r.name, detail: r.detail, bytes: r.bytes) {
@@ -357,9 +353,7 @@ struct StoragePane: View {
                         revealButton(r.path)
                     }
                 }
-                if let msg = m.message { Text(msg).font(.caption).foregroundStyle(.secondary) }
-            } header: { Text(T("settings.privacy.blurt_own_files")) } footer: {
-                Text(T("settings.privacy.index_can_be_deleted")).font(.caption).foregroundStyle(.secondary)
+                if let msg = m.message { Text(msg).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).padding(.top, 6) }
             }
         }
         .task { await m.load() }
@@ -402,38 +396,40 @@ struct StoragePane: View {
 
     /// The videos of organized recordings: how much they take, and a menu to send the older ones to the Trash.
     var videosRow: some View {
-        row(T("settings.storage.videos"), detail: TP("settings.storage.videos.count", m.videos.count), bytes: m.videoBytes) {
-            Menu(T("settings.storage.videos.delete")) {
-                ForEach(VideoRetention.choices, id: \.self) { d in
-                    let c = m.videos(olderThan: d)
-                    Button(T("settings.storage.videos.older", d) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + ")") { ask = .videos(d) }
-                        .disabled(c.isEmpty)
+        SettingRow("storage.videos", detail: TP("settings.storage.videos.count", m.videos.count), help: T("settings.storage.videos.footer")) {
+            HStack(spacing: 10) {
+                Text(byteString(m.videoBytes)).monospacedDigit().foregroundStyle(.secondary)
+                Menu(T("settings.storage.videos.delete")) {
+                    ForEach(VideoRetention.choices, id: \.self) { d in
+                        let c = m.videos(olderThan: d)
+                        Button(T("settings.storage.videos.older", d) + " (" + byteString(c.reduce(0) { $0 + $1.bytes }) + ")") { ask = .videos(d) }
+                            .disabled(c.isEmpty)
+                    }
+                    Divider()
+                    Button(T("settings.storage.videos.all")) { ask = .videos(nil) }
                 }
-                Divider()
-                Button(T("settings.storage.videos.all")) { ask = .videos(nil) }
+                .fixedSize()
+                .disabled(m.videos.isEmpty)
             }
-            .fixedSize()
-            .disabled(m.videos.isEmpty)
         }
     }
 
     func modelRow(_ r: StorageModel.Row) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(r.name)
-                    if r.inUse {
-                        Text(T("settings.storage.model.in_use")).font(.caption2.weight(.semibold)).padding(.horizontal, 5).padding(.vertical, 1)
-                            .foregroundStyle(Color.brandInk).background(Capsule().fill(Color.brandTint))
+        SettingsLine {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(r.name).font(.system(size: SettingsMetrics.titleSize))
+                        if r.inUse { Badge(T("settings.storage.model.in_use")) }
                     }
+                    Text([r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · "))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
-                Text([r.family, r.detail.isEmpty ? nil : r.detail].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Spacer()
+                Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)
+                if r.removable { Button(T("settings.privacy.move_trash")) { ask = .trash(r) } }
+                revealButton(r.path)
             }
-            Spacer()
-            Text(byteString(r.bytes)).monospacedDigit().foregroundStyle(.secondary)
-            if r.removable { Button(T("settings.privacy.move_trash")) { ask = .trash(r) } }
-            revealButton(r.path)
         }
     }
 
@@ -446,14 +442,16 @@ struct StoragePane: View {
     }
 
     func row<A: View>(_ name: String, detail: String, bytes: Int64, @ViewBuilder action: () -> A) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name)
-                Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+        SettingsLine {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name).font(.system(size: SettingsMetrics.titleSize))
+                    Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                }
+                Spacer()
+                Text(byteString(bytes)).monospacedDigit().foregroundStyle(.secondary)
+                action()
             }
-            Spacer()
-            Text(byteString(bytes)).monospacedDigit().foregroundStyle(.secondary)
-            action()
         }
     }
 }

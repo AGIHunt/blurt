@@ -1,5 +1,8 @@
-// Shared pieces of the Settings panes and the setup assistant: status dots, the live permission model, config
-// helpers, a project-config reader/writer.
+// Shared pieces of the Settings panes and the setup assistant: the one look of every pane — SettingsPage (the pane's
+// title, its groups, scrolling to a row a search or a link asked for), SettingsGroup (a section), SettingsLine (one line
+// over a hairline), SettingRow / SettingToggle (a setting: title and one-line description from SettingsCatalog on the
+// left, the control on the right) —, status dots, the live permission model and its rows, config helpers, a
+// project-config reader/writer.
 import AppKit
 import AVFoundation
 import ApplicationServices
@@ -55,21 +58,267 @@ extension View {
     }
 }
 
-/// A pane's frame: every pane has the same size, so switching panes doesn't make the window jump.
-struct PaneFrame<Content: View>: View {
+// MARK: - Page, groups, rows: the one look of every pane
+
+enum SettingsMetrics {
+    static let pageWidth: CGFloat = 680         // the column's widest; the window's extra width goes to the margins
+    static let gutter: CGFloat = 32
+    static let rowPadding: CGFloat = 11
+    static let titleSize: CGFloat = 13
+    static let detailSize: CGFloat = 12
+    static let groupGap: CGFloat = 28
+    static let leadingWidth: CGFloat = 22       // an icon or a status dot before a row's title
+}
+
+/// A pane's page: its title (and an optional line under it), then its groups, scrolling. It scrolls to the row or the
+/// section a search, a link or `show(pane: "speech/dictation")` asked for and flashes it (SettingsNavigator.request).
+struct SettingsPage<Content: View>: View {
+    let pane: SettingsPane
+    var subtitle: String?
     @ViewBuilder var content: Content
+    @ObservedObject private var nav = SettingsNavigator.shared
+
+    init(_ pane: SettingsPane, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+        self.pane = pane
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
     var body: some View {
-        Form { content }
-            .formStyle(.grouped)
-            .frame(width: 660, height: 560)
+        ScrollViewReader { proxy in
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(pane.title).font(.system(size: 22, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    if let s = subtitle {
+                        Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).padding(.top, 5)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    content
+                }
+                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 22).padding(.bottom, 44)
+                .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
+            }
+            .onAppear { go(proxy) }
+            .onReceive(nav.$request) { _ in go(proxy) }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
+
+    /// A page that has just appeared lays itself out over a few passes (and loads into it): the scroll is repeated
+    /// until that settles; a repeat where it already is moves nothing. A row that isn't shown (its condition is off)
+    /// leaves the page at its section.
+    private func go(_ proxy: ScrollViewProxy) {
+        guard let r = nav.request, r.pane == pane.rawValue else { return }
+        let section = SettingsCatalog.entry(r.id)?.section
+        for (i, delay) in [0.05, 0.2, 0.45, 0.8].enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard nav.request == r else { return }
+                if let s = section, s != r.id { proxy.scrollTo(s, anchor: .top) }
+                proxy.scrollTo(r.id, anchor: section == r.id || SettingsCatalog.section(r.id) != nil ? .top : UnitPoint(x: 0.5, y: 0.25))
+                if i == 0 { nav.flashRow(r.id) }
+                if i == 3 { nav.request = nil }
+            }
+        }
     }
 }
 
+/// A section: a small heading (with an optional accessory at its right, like a spinner or a refresh button), its
+/// rows, each over a hairline, and an optional footnote. `id` is a catalogue section (SettingsCatalog.sections).
+struct SettingsGroup<Content: View, Accessory: View>: View {
+    var id: String?
+    var title: String?
+    var footer: String?
+    var accessory: Accessory
+    var content: Content
+    @ObservedObject private var nav = SettingsNavigator.shared
+
+    init(_ id: String, title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+        self.id = id
+        let t = title ?? SettingsCatalog.section(id).flatMap { SettingsCatalog.text($0.title) }
+        // a section named like its page (Dictation → Dictation) needs no heading of its own under the page's title
+        self.title = t == SettingsCatalog.section(id).flatMap({ SettingsPane(rawValue: $0.pane)?.title }) ? nil : t
+        self.footer = footer
+        self.accessory = accessory()
+        self.content = content()
+    }
+    /// Untitled: rows that close the page (Restore defaults).
+    init(footer: String? = nil, @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
+        self.footer = footer
+        self.accessory = accessory()
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let t = title {
+                HStack(spacing: 8) {
+                    Text(t).font(.system(size: 14, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                    Spacer(minLength: 8)
+                    accessory
+                }
+                .frame(minHeight: 20)
+                .padding(.bottom, 6)
+                .background(FlashWash(on: id != nil && nav.flash == id))
+            }
+            content
+            if let f = footer {
+                Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
+        }
+        .padding(.top, SettingsMetrics.groupGap)
+        .id(id ?? "")
+    }
+}
+
+extension SettingsGroup where Accessory == EmptyView {
+    init(_ id: String, title: String? = nil, footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(id, title: title, footer: footer, content: content) { EmptyView() }
+    }
+    init(footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.init(footer: footer, content: content) { EmptyView() }
+    }
+}
+
+/// One line of a group: the hairline above it and the row's padding. Content that isn't a setting of its own (a
+/// project, a model, a permission) uses it directly; settings use SettingRow.
+struct SettingsLine<Content: View>: View {
+    var flashID: String?
+    var padding: CGFloat = SettingsMetrics.rowPadding
+    @ViewBuilder var content: Content
+    @ObservedObject private var nav = SettingsNavigator.shared
+    @Environment(\.displayScale) private var scale
+
+    var body: some View {
+        content
+            .padding(.vertical, padding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).allowsHitTesting(false)
+            }
+            .background(FlashWash(on: flashID != nil && nav.flash == flashID))
+    }
+}
+
+/// A setting: its title and one-line description on the left (from the catalogue: SettingsCatalog.entry(id)), the
+/// control on the right. `title` / `detail` override the catalogue's text where it depends on state (the dictation
+/// key, the chosen mode); `help` is the longer explanation, as a tooltip (the catalogue's `more` by default).
+/// `detailBelow` puts the description under the whole row, for a wide control (the style's segmented choice).
+struct SettingRow<Control: View>: View {
+    let id: String
+    var title: String?
+    var detail: String?
+    var help: String?
+    var icon: String?
+    var detailBelow = false
+    /// a description that is a warning (a shortcut's conflict): attention ink
+    var detailColor: Color?
+    var control: Control
+    @Environment(\.isEnabled) private var enabled
+
+    init(_ id: String, title: String? = nil, detail: String? = nil, help: String? = nil, icon: String? = nil, detailBelow: Bool = false,
+         detailColor: Color? = nil, @ViewBuilder control: () -> Control) {
+        self.id = id
+        self.title = title
+        self.detail = detail
+        self.help = help
+        self.icon = icon
+        self.detailBelow = detailBelow
+        self.detailColor = detailColor
+        self.control = control()
+    }
+
+    var entry: SettingsEntry? { SettingsCatalog.entry(id) }
+    var titleText: String { title ?? entry.map(SettingsCatalog.title) ?? id }
+    var detailText: String? { detail ?? entry.flatMap(SettingsCatalog.detail) }
+    var helpText: String? { help ?? entry?.more.flatMap { SettingsCatalog.text($0) } }
+
+    var body: some View {
+        SettingsLine(flashID: id) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .center, spacing: 14) {
+                    if let i = icon {
+                        Image(systemName: i).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                            .frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
+                    }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    control
+                }
+                if detailBelow, let d = detailText, !d.isEmpty { detailView(d) }
+            }
+        }
+        .id(id)
+        .help(helpText ?? "")
+        .accessibilityElement(children: .contain)
+    }
+
+    private func detailView(_ d: String) -> some View {
+        Text(d).font(.system(size: SettingsMetrics.detailSize))
+            .foregroundStyle(detailColor.map { AnyShapeStyle($0) } ?? AnyShapeStyle(enabled ? .secondary : .tertiary))
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A setting that is a switch (native, in the app's accent).
+struct SettingToggle: View {
+    let id: String
+    var isOn: Binding<Bool>
+    var title: String?
+    var detail: String?
+    var help: String?
+
+    init(_ id: String, isOn: Binding<Bool>, title: String? = nil, detail: String? = nil, help: String? = nil) {
+        self.id = id
+        self.isOn = isOn
+        self.title = title
+        self.detail = detail
+        self.help = help
+    }
+
+    var body: some View {
+        SettingRow(id, title: title, detail: detail, help: help) {
+            Toggle(title ?? SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id, isOn: isOn)
+                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+        }
+    }
+}
+
+/// A menu of choices on a row's right, sized to its longest choice.
+struct RowPicker<Value: Hashable, Choices: View>: View {
+    var label: String
+    var selection: Binding<Value>
+    @ViewBuilder var choices: Choices
+    var body: some View {
+        Picker(label, selection: selection) { choices }.labelsHidden().fixedSize()
+    }
+}
+
+/// The brief brand wash on the row a search or a link landed on (§3.3: the selection colour), fading out.
+struct FlashWash: View {
+    var on: Bool
+    var body: some View {
+        RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.brandTint)
+            .padding(.horizontal, -10)
+            .opacity(on ? 1 : 0)
+            .animation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeOut(duration: on ? 0.15 : 0.7), value: on)
+            .allowsHitTesting(false)
+    }
+}
+
+/// A plain line inside a group (a condition, a how-to), without a setting of its own.
 struct Hint: View {
     var text: String
     init(_ t: String) { text = t }
     var body: some View {
-        Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        Text(text).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -170,22 +419,25 @@ struct PermissionRows: View {
     var source: PermissionGuide.Source
     var kinds: [PermissionKind] = [.screen, .microphone, .accessibility, .inputMonitoring]
     var paneLink = true
+    /// Settings: each one a line of its group (SettingsLine); the assistant stacks them in its box.
+    var lines = false
     @ObservedObject var guide = PermissionGuide.shared
 
     var body: some View {
         ForEach(kinds, id: \.self) { k in
-            row(k, p.state(k))
+            if lines { SettingsLine { row(k, p.state(k)) } } else { row(k, p.state(k)) }
         }
     }
 
     func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
         let now = guide.running && guide.current == k
-        return HStack(alignment: .center, spacing: 10) {
+        return HStack(alignment: .center, spacing: lines ? 14 : 10) {
             // granted: ok with a check; missing (not set or turned down): the attention dot (§3.4)
-            StatusDot(tone: st == .granted ? .good : .warn)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(PermissionGuide.name(k))
-                Text(PermissionGuide.why(k)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            StatusDot(tone: st == .granted ? .good : .warn).frame(width: lines ? SettingsMetrics.leadingWidth : nil)
+            VStack(alignment: .leading, spacing: lines ? 3 : 2) {
+                Text(PermissionGuide.name(k)).font(lines ? .system(size: SettingsMetrics.titleSize) : .body)
+                Text(PermissionGuide.why(k)).font(lines ? .system(size: SettingsMetrics.detailSize) : .caption).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text(now ? T("settings.perm.now") : st == .granted ? T("settings.kit.allowed") : st == .denied ? T("settings.kit.not_allowed") : T("settings.kit.not_set"))
@@ -202,7 +454,8 @@ struct PermissionRows: View {
     }
 }
 
-/// "Set Up Permissions": the guide through everything still missing, with the done line once it has run.
+/// "Set Up Permissions": the guide through everything still missing, with the done line once it has run; one line of
+/// its group.
 struct PermissionSetupButton: View {
     var flow: PermissionFlowKind
     var source: PermissionGuide.Source
@@ -216,16 +469,18 @@ struct PermissionSetupButton: View {
         let _ = p.screen                // re-evaluated as the states change
         // nothing to say (all granted, no fresh done line): no row at all, not an empty one in the form
         if (banner && guide.finished != nil) || !missing.isEmpty {
-        VStack(alignment: .leading, spacing: 6) {
-            if banner { PermissionDoneBanner() }
-            if !missing.isEmpty {
-                HStack(spacing: 10) {
-                    Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
-                        guide.start(flow, source: source)
+        SettingsLine {
+            VStack(alignment: .leading, spacing: 6) {
+                if banner { PermissionDoneBanner() }
+                if !missing.isEmpty {
+                    HStack(spacing: 10) {
+                        Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
+                            guide.start(flow, source: source)
+                        }
+                        Text(missing.map(PermissionGuide.name).joined(separator: T("settings.perm.list_sep")))
+                            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(2)
+                        Spacer()
                     }
-                    Text(missing.map(PermissionGuide.name).joined(separator: T("settings.perm.list_sep")))
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                    Spacer()
                 }
             }
         }

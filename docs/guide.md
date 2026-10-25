@@ -10,7 +10,9 @@ Blurt turns what you say, snap and record into items — bugs, ideas, notes, tas
 and hands them to a coding agent. On a Mac it also types what you say wherever your cursor is (**dictation**, `Fn`).
 This page covers everything you do in the app; *Help → Blurt User Guide* and *Settings → General → User Guide* open
 it. Shortcuts are the macOS defaults; on Windows and Linux read `⌥` as `Alt` and `⇧` as `Shift`. Every shortcut can be
-changed in *Settings → Shortcuts*.
+changed in *Settings → Shortcuts*. Settings (`⌘,`) lists its panes in a sidebar with a search field on top: type what you
+are looking for (`⌘F`), in English or Chinese — "login", "mirror", "快捷键" — and pick a result (or press `↩`) to jump
+to that setting.
 
 **First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through the permissions
 (Screen Recording, Microphone, Accessibility, Input Monitoring) and a speech model; after that, try `Fn` in any text
@@ -394,7 +396,8 @@ so the two must speak the same version: when one is older than the other, the is
 口喷鸡把你说的、截的、录的整理成一条条事情——问题、想法、笔记、任务——归到对应的项目，再交给写代码的 Agent 去做。
 在 Mac 上，它还能把你说的话直接打在光标处（**听写**，按 `Fn`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
 「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。
-所有快捷键都能在「设置 → 快捷键」里改。
+所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
+——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
 **第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好权限（录屏、麦克风、辅助功能、输入监控）、下好语音模型；
 之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。

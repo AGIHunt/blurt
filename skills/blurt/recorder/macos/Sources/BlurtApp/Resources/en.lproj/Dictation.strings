@@ -466,3 +466,8 @@
 "dictation.words.info.used.value" = "%ld";
 "dictation.words.info.heard" = "Heard as";
 "dictation.words.info.added" = "Added";
+"dictation.settings.enable.detail" = "Talk, and the text is typed where your cursor is.";
+"dictation.style.default" = "Default style";
+"dictation.style.by_app.detail" = "Chat, code, mail and notes can each have their own.";
+"dictation.history.saved" = "Saved dictations";
+"dictation.history.saved.detail" = "Every dictation, its text before and after polish.";

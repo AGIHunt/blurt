@@ -1,14 +1,16 @@
-// Settings → Dictation (docs/design/dictation.md): the essentials on one short page —
+// Settings → Dictation (docs/design/dictation.md): the essentials on one page of rows (SettingsKit; titles and
+// descriptions from SettingsCatalog) —
 //   Dictation   on / off, the key (Fn first, right ⌥, either ⌥), how it works (auto / tap / hold: the one how-to line),
 //               double tap = Return, with Fn: keeping Fn from macOS and macOS's own "Press Globe key to" setting (only
 //               when it clashes), other Fn dictation apps running; a status row only when the key can't be heard
 //   Style       one choice: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key and
 //               the styles' default); per kind of app, apps set on their own, list suggestions, learning and the
-//               polish time limit folded under "By kind of app"
+//               polish time limit folded under "By kind of app" (unfolded when a search lands in it)
 //   Models      the speech and polish model in use, with Change… / Download… → Settings → Speech, where they are chosen
 //               (DictationModels.swift)
 //   Words       a one-line summary with Manage… → the Dictation page's Words tab; reading the context and learning
 //   History     retention, keeping audio, opening and clearing it
+//   (the voice-note line — what to use to keep what you say — is the first group's footnote)
 //   Microphone  the Mac's own mic, the start sound
 //   Permissions folded to one line when all are allowed (with the listener and when the key was last heard in another
 //               app); otherwise the rows with Allow and "Set Up Permissions"
@@ -182,95 +184,76 @@ struct DictationPane: View {
     @State var showPermissions = false
     @State var showByApp = false
 
+    @ObservedObject var nav = SettingsNavigator.shared
+
     var body: some View {
-        ScrollViewReader { proxy in PaneFrame {
-            Section {
-                PermissionDoneBanner()          // the permission guide just finished: the first thing seen
-                Toggle(T("dictation.settings.enable"), isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) }))
+        SettingsPage(.dictation) {
+            if guide.finished != nil { PermissionDoneBanner().padding(.top, 12) }   // the permission guide just finished
+            SettingsGroup("dictation.main",
+                          footer: T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice))) {
+                SettingToggle("dictation.enable", isOn: Binding(get: { m.enabled }, set: { m.setEnabled($0) }))
                 if m.enabled && !m.tap { keyStatus }
-                Picker(T("dictation.settings.key"), selection: Binding(get: { m.key }, set: { m.setKey($0) })) {
-                    ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }    // Fn first
-                }
-                .disabled(!m.enabled)
-                if m.key == .eitherOption { Hint(T("dictation.settings.either_hint")) }
-                Picker(T("dictation.settings.mode"), selection: Binding(get: { m.mode }, set: { m.setMode($0) })) {
-                    ForEach(DictationTrigger.Mode.allCases, id: \.self) { md in Text(T("dictation.mode.\(md.rawValue)")).tag(md) }
-                }
-                .disabled(!m.enabled)
-                Hint(T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key)))
-                Toggle(isOn: Binding(get: { m.doubleTap }, set: { m.setDoubleTap($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(T("dictation.settings.double_tap", Dictation.keyShort(m.key)))
-                        Text(T("dictation.settings.double_tap.detail")).font(.caption).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
+                SettingRow("dictation.key", detail: m.key == .eitherOption ? T("dictation.settings.either_hint") : nil) {
+                    RowPicker(label: T("dictation.settings.key"), selection: Binding(get: { m.key }, set: { m.setKey($0) })) {
+                        ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }    // Fn first
                     }
                 }
                 .disabled(!m.enabled)
-                if m.key == .fn && m.enabled { fnRows }
-                Hint(T("dictation.settings.voice_note_hint", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice)))
-            } header: { Text(T("dictation.settings.section")) }
-
-            Section {
-                styleRows
-            } header: { Text(T("dictation.style.section")) }
-            .id("style")
-
-            Section {
-                modelRows
-            } header: { Text(T("dictation.models.section")) }
-            .id("models")
-
-            Section {
-                wordRows
-            } header: { Text(T("dictation.vocab.section")) }
-            .id("words")
-
-            Section {
-                Picker(T("dictation.history.keep"), selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
-                    Text(T("dictation.history.days", 7)).tag(7)
-                    Text(T("dictation.history.days", 30)).tag(30)
-                    Text(T("dictation.history.days", 90)).tag(90)
-                    Text(T("dictation.history.days", 365)).tag(365)
-                }
-                Toggle(isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(T("dictation.history.keep_audio"))
-                        Text(T("dictation.history.keep_audio.detail")).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-                HStack {
-                    Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
-                    Spacer()
-                    Button(T("dictation.history.clear"), role: .destructive) { confirmClear = true }
-                        .disabled(m.historyCount == 0)
-                }
-            } header: { Text(T("dictation.history.section")) }
-            .id("history")
-
-            Section {
-                Toggle(isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) })) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(T("dictation.mic.builtin"))
-                        Text(T("dictation.mic.builtin.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                SettingRow("dictation.mode", detail: T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key))) {
+                    RowPicker(label: T("dictation.settings.mode"), selection: Binding(get: { m.mode }, set: { m.setMode($0) })) {
+                        ForEach(DictationTrigger.Mode.allCases, id: \.self) { md in Text(T("dictation.mode.\(md.rawValue)")).tag(md) }
                     }
                 }
                 .disabled(!m.enabled)
-                Toggle(T("dictation.mic.start_sound"), isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+                SettingToggle("dictation.double_tap", isOn: Binding(get: { m.doubleTap }, set: { m.setDoubleTap($0) }),
+                              title: T("dictation.settings.double_tap", Dictation.keyShort(m.key)))
                     .disabled(!m.enabled)
-            } header: { Text(T("dictation.mic.section")) }
+                if m.key == .fn && m.enabled { fnRows }
+            }
 
-            Section {
-                permissionRows
-            } header: { Text(T("dictation.perm.section")) }
-            .id("permissions")
+            SettingsGroup("dictation.style") { styleRows }
+            SettingsGroup("dictation.models") { modelRows }
+            SettingsGroup("dictation.words") { wordRows }
+
+            SettingsGroup("dictation.history") {
+                SettingRow("dictation.history_keep") {
+                    RowPicker(label: T("dictation.history.keep"), selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
+                        Text(T("dictation.history.days", 7)).tag(7)
+                        Text(T("dictation.history.days", 30)).tag(30)
+                        Text(T("dictation.history.days", 90)).tag(90)
+                        Text(T("dictation.history.days", 365)).tag(365)
+                    }
+                }
+                SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }))
+                SettingRow("dictation.history_saved") {
+                    HStack(spacing: 8) {
+                        Button(T("dictation.history.open")) { DictationHistoryWindow.shared.show() }
+                        Button(T("dictation.history.clear"), role: .destructive) { confirmClear = true }
+                            .disabled(m.historyCount == 0)
+                    }
+                }
+            }
+
+            SettingsGroup("dictation.mic") {
+                SettingToggle("dictation.builtin_mic", isOn: Binding(get: { m.builtInMic }, set: { m.setBuiltInMic($0) }))
+                    .disabled(!m.enabled)
+                SettingToggle("dictation.start_sound", isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+                    .disabled(!m.enabled)
+            }
+
+            SettingsGroup("dictation.permissions") { permissionRows }
         }
         // tests: `dictation settings-scroll style|models|words|history|permissions`
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             guard let id = n.object as? String else { return }
-            if id == "permissions" { showPermissions = true }
             if id == "style" { showByApp = true }
-            DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
+            nav.reveal("dictation.\(id)")
         }
+        // a search or a link landing on a row that is folded away: unfold it first
+        .onReceive(nav.$request) { r in
+            guard let id = r?.id else { return }
+            if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
+            if id == "dictation.permissions" { showPermissions = true }
         }
         .onAppear { m.start(); perms.start() }
         .onDisappear { m.stop(); perms.stop() }
@@ -284,85 +267,98 @@ struct DictationPane: View {
 
     /// The one choice with a line on what it does; per kind of app and the rest folded under "By kind of app".
     @ViewBuilder var styleRows: some View {
-        Picker(T("dictation.style.section"), selection: Binding(get: { m.style }, set: { m.setStyle($0) })) {
-            ForEach([DictationStyle.verbatim, .light, .structured, .auto], id: \.self) { s in Text(Dictation.styleName(s)).tag(s) }
+        SettingRow("dictation.default_style", detail: T("dictation.style.\(m.style.rawValue).detail"), detailBelow: true) {
+            Picker(T("dictation.style.default"), selection: Binding(get: { m.style }, set: { m.setStyle($0) })) {
+                ForEach([DictationStyle.verbatim, .light, .structured, .auto], id: \.self) { s in Text(Dictation.styleName(s)).tag(s) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
         }
-        .pickerStyle(.segmented)
         .disabled(!m.enabled)
-        Hint(T("dictation.style.\(m.style.rawValue).detail"))
         if m.style != .verbatim {
-            DisclosureGroup(T("dictation.style.by_app"), isExpanded: $showByApp) { byApp }
-                .disabled(!m.enabled)
+            SettingRow("dictation.by_app") {
+                Button { withAnimation(.easeOut(duration: 0.15)) { showByApp.toggle() } } label: {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showByApp ? 90 : 0))
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(T("dictation.style.by_app"))
+                .accessibilityValue(showByApp ? "1" : "0")
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showByApp.toggle() } }
+            .disabled(!m.enabled)
+            if showByApp {
+                VStack(alignment: .leading, spacing: 0) { byApp }
+                    .padding(.leading, 20)
+                    .disabled(!m.enabled)
+            }
         }
     }
 
     @ViewBuilder var byApp: some View {
         ForEach(DictationAppCategory.allCases, id: \.self) { c in
-            Picker(selection: Binding(get: { m.styles.categories[c] }, set: { m.setStyle($0, for: c) })) {
-                Text(T("dictation.style.follow", Dictation.styleName(m.style))).tag(DictationStyle?.none)
-                ForEach(DictationStyle.allCases, id: \.self) { s in Text(Dictation.styleName(s)).tag(Optional(s)) }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(T("dictation.style.cat.\(c.rawValue)"))
-                    Text(T("dictation.style.cat.\(c.rawValue).detail")).font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            SettingRow("dictation.cat.\(c.rawValue)") {
+                RowPicker(label: T("dictation.style.cat.\(c.rawValue)"), selection: Binding(get: { m.styles.categories[c] }, set: { m.setStyle($0, for: c) })) {
+                    Text(T("dictation.style.follow", Dictation.styleName(m.style))).tag(DictationStyle?.none)
+                    ForEach(DictationStyle.allCases, id: \.self) { s in Text(Dictation.styleName(s)).tag(Optional(s)) }
                 }
             }
         }
         if !m.styles.apps.isEmpty {
-            Text(T("dictation.style.apps")).font(.callout).foregroundStyle(.secondary)
+            SettingsLine(padding: 8) { Hint(T("dictation.style.apps")) }
             ForEach(m.styles.apps.keys.sorted(), id: \.self) { b in
-                HStack(spacing: 8) {
-                    Text(m.appName(b))
-                    if m.styles.learned.contains(b) { Badge(T("dictation.style.learned")) }
-                    Spacer()
-                    Text(Dictation.styleName(m.styles.apps[b] ?? .light)).foregroundStyle(.secondary)
-                    Button(T("dictation.style.reset")) { m.resetApp(b) }.controlSize(.small).help(T("dictation.style.reset.help"))
+                SettingsLine(padding: 8) {
+                    HStack(spacing: 8) {
+                        Text(m.appName(b)).font(.system(size: SettingsMetrics.titleSize))
+                        if m.styles.learned.contains(b) { Badge(T("dictation.style.learned")) }
+                        Spacer()
+                        Text(Dictation.styleName(m.styles.apps[b] ?? .light)).foregroundStyle(.secondary)
+                        Button(T("dictation.style.reset")) { m.resetApp(b) }.controlSize(.small).help(T("dictation.style.reset.help"))
+                    }
+                    .accessibilityElement(children: .combine)
                 }
-                .accessibilityElement(children: .combine)
             }
         }
-        Toggle(T("dictation.style.suggest"), isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
-        Toggle(isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.style.learn_toggle"))
-                Text(T("dictation.style.learn_toggle.detail")).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        Stepper(value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5) {
-            HStack {
-                Text(T("dictation.polish.timeout"))
-                Spacer()
+        SettingToggle("dictation.suggest_lists", isOn: Binding(get: { m.suggestLists }, set: { m.setSuggestLists($0) }))
+        SettingToggle("dictation.learn_styles", isOn: Binding(get: { m.learnStyles }, set: { m.setLearnStyles($0) }))
+        SettingRow("dictation.polish_timeout",
+                   detail: hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat))) {
+            HStack(spacing: 6) {
                 Text(T("dictation.polish.seconds", seconds(m.timeout))).foregroundStyle(.secondary).monospacedDigit()
+                Stepper(T("dictation.polish.timeout"), value: Binding(get: { m.timeout }, set: { m.setTimeout($0) }), in: 1...10, step: 0.5)
+                    .labelsHidden()
             }
         }
-        Hint(hk(.reformat).isEmpty ? T("dictation.style.keys.no_hotkey") : T("dictation.style.keys", hk(.reformat)))
     }
 
     // MARK: models (chosen in Settings → Speech)
 
     @ViewBuilder var modelRows: some View {
-        modelRow(T("dictation.models.asr"), value: models.selectedASR.map { $0.name ?? $0.id }, loading: models.asr == nil)
+        SettingRow("dictation.asr_model") {
+            modelControl(value: models.selectedASR.map { $0.name ?? $0.id }, loading: models.asr == nil)
+        }
         if m.style != .verbatim {
-            if let p = models.polish, !p.supported {
-                LabeledContent(T("dictation.models.polish")) { Text(T("dictation.models.unsupported")).foregroundStyle(.secondary) }
-            } else {
-                modelRow(T("dictation.models.polish"), value: models.selectedPolish?.name, loading: models.polish == nil)
+            SettingRow("dictation.polish_model") {
+                if let p = models.polish, !p.supported {
+                    Text(T("dictation.models.unsupported")).foregroundStyle(.secondary)
+                } else {
+                    modelControl(value: models.selectedPolish?.name, loading: models.polish == nil)
+                }
             }
         }
     }
 
-    /// "Recognition model   Qwen3-ASR 1.7B   Change…" — or "Not downloaded yet   Download…"
-    func modelRow(_ title: String, value: String?, loading: Bool) -> some View {
-        LabeledContent(title) {
-            HStack(spacing: 8) {
-                if loading {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Text(value ?? T("dictation.models.none")).foregroundStyle(.secondary)
-                    Button(value == nil ? T("dictation.models.get") : T("dictation.models.change")) { SpeechPane.showDictationModels() }
-                        .controlSize(.small)
-                }
+    /// "Qwen3-ASR 1.7B   Change…" — or "Not downloaded yet   Download…" (chosen in Settings → Speech)
+    @ViewBuilder func modelControl(value: String?, loading: Bool) -> some View {
+        HStack(spacing: 8) {
+            if loading {
+                ProgressView().controlSize(.small)
+            } else {
+                Text(value ?? T("dictation.models.none")).foregroundStyle(.secondary)
+                Button(value == nil ? T("dictation.models.get") : T("dictation.models.change")) { SpeechPane.showDictationModels() }
             }
         }
     }
@@ -370,27 +366,11 @@ struct DictationPane: View {
     // MARK: words (managed on the Dictation page)
 
     @ViewBuilder var wordRows: some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.vocab.summary.title"))
-                Text(wordSummary).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
+        SettingRow("dictation.word_list", detail: wordSummary) {
             Button(T("dictation.vocab.manage")) { DictationHistoryWindow.shared.showWords() }
         }
-        .accessibilityElement(children: .combine)
-        Toggle(isOn: Binding(get: { m.contextOn }, set: { m.setContext($0) })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.vocab.context"))
-                Text(T("dictation.vocab.context.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        Toggle(isOn: Binding(get: { m.learnOn }, set: { m.setLearn($0) })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.vocab.learn"))
-                Text(T("dictation.vocab.learn.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        SettingToggle("dictation.context", isOn: Binding(get: { m.contextOn }, set: { m.setContext($0) }))
+        SettingToggle("dictation.learn", isOn: Binding(get: { m.learnOn }, set: { m.setLearn($0) }))
     }
 
     /// "Yours: 12 · Built-in: 19 · To review: 3"
@@ -406,16 +386,25 @@ struct DictationPane: View {
     /// Only when the key isn't heard (the event tap, not the permission rows: they can say "allowed" while the tap
     /// still isn't there, and the other way round).
     var keyStatus: some View {
-        HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: .warn)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.status.off", Dictation.keyInline(m.key)))
-                Text(T("dictation.status.off.detail")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
+        statusLine(T("dictation.status.off", Dictation.keyInline(m.key)), T("dictation.status.off.detail")) {
             Button(T("dictation.status.fix")) { Dictation.shared.openSetup(from: "dictation") }
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    /// A state that needs you: the attention dot, what and why, the one thing to do.
+    func statusLine<A: View>(_ title: String, _ detail: String, tone: Tone = .warn, @ViewBuilder action: () -> A) -> some View {
+        SettingsLine {
+            HStack(alignment: .center, spacing: 14) {
+                StatusDot(tone: tone).frame(width: SettingsMetrics.leadingWidth)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.system(size: SettingsMetrics.titleSize))
+                    Text(detail).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                action()
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     /// Which listener runs, and the one thing only the user can prove: the key heard while another app is in front.
@@ -427,11 +416,21 @@ struct DictationPane: View {
 
     @ViewBuilder var permissionRows: some View {
         if m.allAllowed {
-            DisclosureGroup(isExpanded: $showPermissions) {
-                permissionList
-            } label: {
-                HStack(spacing: 10) { StatusDot(tone: .good); Text(T("dictation.perm.all_set")) }
+            SettingsLine {
+                HStack(spacing: 14) {
+                    StatusDot(tone: .good).frame(width: SettingsMetrics.leadingWidth)
+                    Text(T("dictation.perm.all_set")).font(.system(size: SettingsMetrics.titleSize))
+                    Spacer()
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(showPermissions ? 90 : 0)).frame(width: 22, height: 22)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { showPermissions.toggle() } }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { showPermissions.toggle() }
             }
+            if showPermissions { VStack(alignment: .leading, spacing: 0) { permissionList }.padding(.leading, 20) }
         } else {
             if !guide.missing(.dictation).isEmpty {
                 PermissionSetupButton(flow: .dictation, source: .dictation, p: perms, banner: false)
@@ -446,8 +445,8 @@ struct DictationPane: View {
                       T(m.key == .fn && m.fnFiltering ? "dictation.perm.input_monitoring.why_fn" : "dictation.perm.input_monitoring.why", Dictation.keyInline(m.key)),
                       granted: m.inputMonitoring || (m.key == .fn && m.fnFiltering), notNeeded: !m.inputMonitoring && m.key == .fn && m.fnFiltering)
         permissionRow(.microphone, T("settings.perm.microphone"), T("dictation.perm.microphone.why"), granted: m.mic == .granted)
-        if m.enabled && m.inputMonitoring && m.listener != .tap { Hint(T("dictation.perm.restart_hint")) }
-        if m.enabled { Text(listenerLine).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        if m.enabled && m.inputMonitoring && m.listener != .tap { SettingsLine { Hint(T("dictation.perm.restart_hint")) } }
+        if m.enabled { SettingsLine { Hint(listenerLine) } }
     }
 
     private func heardTime(_ d: Date) -> String {
@@ -469,36 +468,25 @@ struct DictationPane: View {
     /// live; shown only when it would react too — Fix… walks the user there with the helper panel, Blurt never changes
     /// it), other Fn dictation apps running.
     @ViewBuilder var fnRows: some View {
-        Toggle(isOn: Binding(get: { m.fnCapture }, set: { m.setFnCapture($0) })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(T("dictation.fn.capture"))
-                Text(T(m.fnCapture ? (m.fnFiltering ? "dictation.fn.capture.on" : "dictation.fn.capture.needs_ax") : "dictation.fn.capture.detail"))
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        SettingToggle("dictation.fn_capture", isOn: Binding(get: { m.fnCapture }, set: { m.setFnCapture($0) }),
+                      detail: T(m.fnCapture ? (m.fnFiltering ? "dictation.fn.capture.on" : "dictation.fn.capture.needs_ax") : "dictation.fn.capture.detail"))
         if FnUsage.clashes(m.fnUsage) {
-            HStack(alignment: .center, spacing: 10) {
-                StatusDot(tone: .warn)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(T("dictation.fn.usage", T("dictation.fn_usage.\(m.fnUsage.map { "\($0.rawValue)" } ?? "default")")))
-                    Text(T("dictation.fn.usage.clash")).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
+            statusLine(T("dictation.fn.usage", T("dictation.fn_usage.\(m.fnUsage.map { "\($0.rawValue)" } ?? "default")")), T("dictation.fn.usage.clash")) {
                 Button(T("dictation.fn.usage.fix")) { PermissionGuide.shared.start(.dictation, only: [.fnKey], source: .dictation) }
             }
-            .accessibilityElement(children: .combine)
         }
         if !m.fnApps.isEmpty {
-            Hint(T("dictation.settings.fn_clash", m.fnApps.joined(separator: T("settings.perm.list_sep"))))
+            SettingsLine { Hint(T("dictation.settings.fn_clash", m.fnApps.joined(separator: T("settings.perm.list_sep")))) }
         }
     }
 
     func permissionRow(_ k: PermissionKind, _ title: String, _ why: String, granted: Bool, notNeeded: Bool = false) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            StatusDot(tone: granted ? .good : .warn)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        SettingsLine {
+        HStack(alignment: .center, spacing: 14) {
+            StatusDot(tone: granted ? .good : .warn).frame(width: SettingsMetrics.leadingWidth)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.system(size: SettingsMetrics.titleSize))
+                Text(why).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text(notNeeded ? T("settings.perm.not_needed") : granted ? T("settings.kit.allowed") : T("settings.kit.not_set"))
@@ -510,6 +498,7 @@ struct DictationPane: View {
             }
         }
         .accessibilityElement(children: .combine)
+        }
     }
 }
 
