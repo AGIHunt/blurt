@@ -156,6 +156,22 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 4, soundSeconds: 0.2), .drop(toast: .nothing))
     }
 
+    /// dogfood v0.9-2: 13 s of quiet speech in fan noise, ended with the key, was deleted ("Didn't hear anything")
+    /// although the stream's segmenter had cut a piece of it and offline ASR found words.
+    func testQuietSpeechTheUserEndedIsNeverDeletedInSilence() {
+        // the segmenter heard speech: kept (the speech model decides)
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, streamHeard: true,
+                                        peakDB: -21.5), .keep(toast: .none))
+        // nothing heard by either, but a real input: ask ("Didn't hear anything · Keep")
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, peakDB: -21.5), .unsure)
+        XCTAssertEqual(VoiceKeep.decide(.maxed, heardSpeech: false, seconds: 600, soundSeconds: 0, peakDB: -40), .unsure)
+        // digital silence, or a slip of the key: nothing to keep, nothing to ask
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 13, soundSeconds: 0, peakDB: -80), .drop(toast: .nothing))
+        XCTAssertEqual(VoiceKeep.decide(.user, heardSpeech: false, seconds: 0.8, soundSeconds: 0, peakDB: -20), .drop(toast: .nothing))
+        // Esc after the segmenter heard speech: discarded with Undo, as after the endpointer did
+        XCTAssertEqual(VoiceKeep.decide(.cancel, heardSpeech: false, seconds: 5, soundSeconds: 0, streamHeard: true), .undoable)
+    }
+
     func testANoteThatHeardNothingSaysToCheckTheMic() {
         XCTAssertEqual(VoiceKeep.decide(.noSpeech, heardSpeech: false, seconds: 20, soundSeconds: 0), .drop(toast: .checkMic))
         XCTAssertEqual(VoiceKeep.decide(.noMic, heardSpeech: false, seconds: 0, soundSeconds: 0), .drop(toast: .none))

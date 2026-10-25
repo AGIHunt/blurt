@@ -222,6 +222,7 @@
 "capture.voice.no_mic" = "The microphone isn’t available";
 "capture.voice.no_words" = "No words recognized";
 "capture.voice.nothing" = "Didn’t hear anything";
+"capture.voice.keep_anyway" = "Keep";
 "capture.voice.recording_busy" = "A screen recording is using the microphone";
 
 /* dictation styles (docs/design/dictation-styles.md) */

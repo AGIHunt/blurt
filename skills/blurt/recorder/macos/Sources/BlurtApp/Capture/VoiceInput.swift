@@ -32,7 +32,10 @@
 //  • what is kept (BlurtCore VoiceKeep, v0.9): a note the user ends (the key, Done, letting go, quitting) is kept when
 //    it lasted 1.5 s and held a sound above the room, even if the room hid the speech from the endpointer — the speech
 //    model decides; no words → a card that says "No words recognized" with Retry (with a project too: it is filed
-//    there once Retry has words, never as an empty item). A fan or a hum alone is "Didn't hear anything". Nothing
+//    there once Retry has words, never as an empty item). The stream's segmenter hearing speech counts as heard. A
+//    take the user ended in which neither heard anything (a fan, a hum, very quiet speech) is never deleted in
+//    silence: "Didn't hear anything · Keep" for the Undo window (v0.9-fix2); only a slip of the key or digital
+//    silence goes at once. Nothing
 //    heard for the whole wait: "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone
 //    mid-note (a headset out, the input switched: NoteVoice's watchdog) ends it with what was said.
 //  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
@@ -307,14 +310,16 @@ final class VoiceInput {
         // hid the speech from the endpointer — the speech model decides (no words → kept as audio, "Retry")
         let how: VoiceKeep.Ended = via == "esc" ? .cancel : via == "no_mic" ? .noMic : via == "noSpeech" ? .noSpeech
             : via == "mic_lost" ? .micLost : via == "silence" ? .silence : via == "maxed" ? .maxed : .user
-        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, soundSeconds: v.soundSeconds)
-        var kept = false, undoable = false, toast = VoiceKeep.Toast.none
+        let decision = VoiceKeep.decide(how, heardSpeech: heardSpeech, seconds: dur, soundSeconds: v.soundSeconds,
+                                        streamHeard: stream?.heardSpeech ?? false, peakDB: Double(v.peakDB))
+        var kept = false, undoable = false, unsure = false, toast = VoiceKeep.Toast.none
         switch decision {
         case .keep(let t): kept = true; toast = t
         case .undoable: undoable = true             // Esc after something was said: kept a moment longer, for Undo
+        case .unsure: undoable = true; unsure = true // nothing heard in a take the user ended: "… · Keep", never gone in silence
         case .drop(let t): toast = t
         }
-        if !ended { v.stop(keep: kept || undoable) } else if !kept { v.stop(keep: false) }
+        if !ended { v.stop(keep: kept || undoable) } else if !kept && !undoable { v.stop(keep: false) }
         let st = stream
         voice = nil
         stream = nil
@@ -324,7 +329,7 @@ final class VoiceInput {
         releaseEsc()
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),
-              "sound": (v.soundSeconds * 100).rounded() / 100,
+              "sound": (v.soundSeconds * 100).rounded() / 100, "stream_heard": st?.heardSpeech ?? false, "unsure": unsure,
               "wall": Date().timeIntervalSince1970])
         VoiceInput.say(toast)
         let project = snapper.target
@@ -341,7 +346,8 @@ final class VoiceInput {
         } else if undoable {
             LiveTranscript.shared.end(session: live)
             st?.onText = nil
-            discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url)
+            discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url,
+                      unsure: unsure)
         } else {
             st?.cancel()
             LiveTranscript.shared.end(session: live)
@@ -376,14 +382,18 @@ final class VoiceInput {
     }
 
     /// A cancelled voice note: "Voice note discarded · Undo" for `undoSeconds` — Undo files it as if it had been
-    /// finished (Snapper.voiceFinished); else its audio goes.
-    private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL) {
+    /// finished (Snapper.voiceFinished); else its audio goes. `unsure`: a take the user ended in which nothing was
+    /// heard — "Didn't hear anything · Keep", the same wait; Keep files it and the speech model decides (no words: a
+    /// card that says "No words recognized" with Retry).
+    private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL,
+                           unsure: Bool = false) {
         var settled = false
         // waiting for its Undo under another name: a quit or a crash now never brings it back as a note
         let parked = VoiceDiscard.parked(wav)
         let moved = (try? FileManager.default.moveItem(at: wav, to: parked)) != nil
         emit(["event": "voice_discarded", "n": n, "undo_seconds": VoiceInput.undoSeconds, "parked": moved])
-        var t = Island.Toast(text: Loc.t("capture.voice.discarded", table: "Capture"), actionTitle: Loc.t("capture.undo", table: "Capture")) {
+        var t = Island.Toast(text: Loc.t(unsure ? "capture.voice.nothing" : "capture.voice.discarded", table: "Capture"),
+                             actionTitle: Loc.t(unsure ? "capture.voice.keep_anyway" : "capture.undo", table: "Capture")) {
             guard !settled else { return }
             settled = true
             if moved { try? FileManager.default.moveItem(at: parked, to: wav) }
@@ -480,6 +490,8 @@ final class VoiceNoteStream {
     }
 
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
+    /// The segmenter heard speech in some piece of this take (a looser test than NoteEndpointer's: VoiceKeep).
+    var heardSpeech: Bool { queued > 0 || segmenter.pieceHasSpeech }
 
     // MARK: the work (q)
 

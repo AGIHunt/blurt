@@ -222,6 +222,7 @@
 "capture.voice.no_mic" = "麦克风用不了";
 "capture.voice.no_words" = "没识别出文字";
 "capture.voice.nothing" = "没听到声音";
+"capture.voice.keep_anyway" = "留下";
 "capture.voice.recording_busy" = "录屏正在使用麦克风";
 
 /* dictation styles (docs/design/dictation-styles.md) */

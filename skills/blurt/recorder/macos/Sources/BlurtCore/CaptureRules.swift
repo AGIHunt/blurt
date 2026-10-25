@@ -18,7 +18,10 @@
 //  • VoiceKeep — whether a ⌥⇧V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
 //    lasted and held a sound above the room (`soundSeconds`: NoteEndpointer's held sound 6 dB over the noise floor),
 //    even if the room hid the speech from the endpointer — the speech model decides, and a take with no words stays as
-//    audio ("No words recognized · Retry"). A fan, a hum or a muted input alone is not a note.
+//    audio ("No words recognized · Retry"). The stream's segmenter hearing speech counts too (v0.9-fix2: 13 s of quiet
+//    speech in fan noise was deleted while the segmenter had cut a piece of it). A take the user ended that neither
+//    heard is never deleted outright unless it is a slip of the key or digital silence: "Didn't hear anything · Keep"
+//    (`unsure`) keeps its audio for the Undo window, and Keep files it (the speech model then decides).
 //  • VoiceDiscard — a voice note cancelled with Esc waits for its Undo as NNN.discarded.wav, which a quit or a crash
 //    never brings back (CaptureRestore ignores it; the next launch sweeps it).
 //  • RecordingNotes — a recording's snap notes pause the take once per note session, however often the bubble
@@ -194,6 +197,8 @@ public enum VoiceKeep: Equatable {
     case keep(toast: Toast)
     /// discarded with "Voice note discarded · Undo"
     case undoable
+    /// nothing was heard in a take the user ended: "Didn't hear anything · Keep" — the audio waits for the answer
+    case unsure
     case drop(toast: Toast)
 
     /// A take shorter than this the user ended is a slip of the key, not a note.
@@ -201,18 +206,25 @@ public enum VoiceKeep: Equatable {
     /// A take with less held sound above the room than this is the room alone (a fan, a hum, a muted input) — not a
     /// note the endpointer missed. Quiet speech in a café holds 0.7 s in 9 s; steady noise holds none.
     public static let minSoundSeconds = 0.4
+    /// Below this peak a take is digital silence (a muted input, a virtual device with nothing on it): nothing to keep.
+    public static let silencePeakDB = -60.0
 
     /// `heardSpeech`: the endpointer heard speech; `soundSeconds`: how long the take held a sound above the room
-    /// (NoteEndpointer.soundSeconds).
-    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double) -> VoiceKeep {
+    /// (NoteEndpointer.soundSeconds); `streamHeard`: the stream's segmenter heard speech in a piece (it cuts and
+    /// transcribes pieces with a looser test than the endpointer's); `peakDB`: the take's loudest moment.
+    public static func decide(_ ended: Ended, heardSpeech: Bool, seconds: Double, soundSeconds: Double,
+                              streamHeard: Bool = false, peakDB: Double = -.infinity) -> VoiceKeep {
+        let heard = heardSpeech || streamHeard
         let sound = seconds >= minUserSeconds && soundSeconds >= minSoundSeconds
+        // the user ended it after a while and it isn't digital silence: ask, never delete in silence
+        let ask = seconds >= minUserSeconds && peakDB > silencePeakDB
         switch ended {
-        case .cancel: return heardSpeech ? .undoable : .drop(toast: .none)
+        case .cancel: return heard ? .undoable : .drop(toast: .none)
         case .noMic: return .drop(toast: .none)
         case .noSpeech: return .drop(toast: .checkMic)
-        case .user: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
-        case .silence, .maxed: return heardSpeech || sound ? .keep(toast: .none) : .drop(toast: .nothing)
-        case .micLost: return heardSpeech || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
+        case .user, .maxed: return heard || sound ? .keep(toast: .none) : ask ? .unsure : .drop(toast: .nothing)
+        case .silence: return heard || sound ? .keep(toast: .none) : .drop(toast: .nothing)
+        case .micLost: return heard || sound ? .keep(toast: .micLost) : .drop(toast: .micGone)
         }
     }
 }
