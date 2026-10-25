@@ -10,7 +10,9 @@
 //   drawer      switcher (⌥⇧O): Auto, recent projects (≤ 8, "More…", type to filter), Open Folder… ⌘O
 //               drop (a card dragged in): recent projects, Unassigned, Let AI sort
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on the island's mint tint
-//   toast       one quiet line (K4), optionally with art (the mascot: done, fixed) and an action
+//   toast       one quiet line (K4), optionally with art (the mascot: done, fixed), the ok check and an action — spanning
+//               the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's number, a lone
+//               line centred
 // Dark on black in both appearances (it is the notch); white text at 92 / 60 / 40 %.
 
 import AppKit
@@ -23,17 +25,26 @@ private let ink3 = NSColor(white: 1, alpha: 0.38)
 /// A control on the island: a round icon button, or a pill with a title. The island's primary actions ("Hand to AI",
 /// AI sort, Done, a question's suggested answer) take `gradient` (BrandGradient.buttonStops) with a white title: hover is
 /// a white film (×1.04), pressed a black one (×0.92). `fg`: the title and symbol colour.
+/// Composed of layers (wantsUpdateLayer), never drawn: while the island grows, AppKit draws a drawn view piece by piece
+/// as the clip uncovers it, and the seams of those pieces showed as dark scanlines and stair-step ghosts through the
+/// gradient (dogfood: 排成清单 / Undo / 在访达中显示 for most of the grow animation). Layers are whole at every frame.
 final class IslandButton: NSView {
     var action: () -> Void
     var symbol: String { didSet { needsDisplay = true } }
-    var title: String?
-    var fill: NSColor?
+    var title: String? { didSet { needsDisplay = true } }
+    var fill: NSColor? { didSet { needsDisplay = true } }
     var gradient: [(UInt32, CGFloat)]? { didSet { needsDisplay = true } }
     var fg: NSColor = .white { didSet { needsDisplay = true } }
     var tip: String
     /// A project's key badge before the title — the current-project chip.
-    var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize) } }
+    var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
     private var hover = false, pressed = false
+    private let gradientLayer = CAGradientLayer()
+    private let film = CALayer()             // hover / pressed
+    private let highlight = CALayer()        // the 1 pt inner highlight along the top of a gradient pill
+    private let iconLayer = CALayer()
+    private let titleLayer = CATextLayer()
+    private let badgeLayer = CALayer()
 
     init(symbol: String, title: String? = nil, tip: String, fill: NSColor? = nil, gradient: [(UInt32, CGFloat)]? = nil,
          fg: NSColor = .white, action: @escaping () -> Void) {
@@ -45,6 +56,19 @@ final class IslandButton: NSView {
         self.fg = fg
         self.action = action
         super.init(frame: .zero)
+        wantsLayer = true
+        layerContentsRedrawPolicy = .onSetNeedsDisplay
+        if let l = layer {
+            l.masksToBounds = true
+            for sub in [gradientLayer, film, highlight, badgeLayer, iconLayer, titleLayer] as [CALayer] {
+                sub.actions = IslandButton.noActions
+                l.addSublayer(sub)
+            }
+        }
+        highlight.backgroundColor = NSColor(white: 1, alpha: 0.18).cgColor
+        iconLayer.contentsGravity = .resizeAspect
+        titleLayer.contentsScale = 2
+        badgeLayer.contentsScale = 2
         toolTip = tip
         setFrameSize(intrinsicContentSize)
         setAccessibilityElement(true)
@@ -55,6 +79,11 @@ final class IslandButton: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     static let titleFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    /// No implicit animations on the parts: a state change is instant (no cross-fade of one title over another).
+    static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
+                                                "hidden": NSNull(), "backgroundColor": NSNull(), "colors": NSNull(),
+                                                "frame": NSNull(), "foregroundColor": NSNull(), "locations": NSNull(),
+                                                "startPoint": NSNull(), "endPoint": NSNull()]
 
     override var intrinsicContentSize: NSSize {
         guard let t = title else { return NSSize(width: 30, height: 30) }
@@ -63,7 +92,10 @@ final class IslandButton: NSView {
         return NSSize(width: ceil(tw) + (symbol.isEmpty ? 26 : 44), height: 28)
     }
     override var isFlipped: Bool { true }
+    override var wantsUpdateLayer: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func setFrameSize(_ s: NSSize) { super.setFrameSize(s); needsDisplay = true }
+    override func viewDidChangeBackingProperties() { super.viewDidChangeBackingProperties(); needsDisplay = true }
     override func mouseEntered(with e: NSEvent) { hover = true; needsDisplay = true }
     override func mouseExited(with e: NSEvent) { hover = false; pressed = false; needsDisplay = true }
     override func mouseDown(with e: NSEvent) { pressed = true; needsDisplay = true }
@@ -75,55 +107,67 @@ final class IslandButton: NSView {
     }
     override func accessibilityPerformPress() -> Bool { action(); return true }
 
-    override func draw(_ dirty: NSRect) {
-        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let shape = NSBezierPath(roundedRect: r, xRadius: r.height / 2, yRadius: r.height / 2)
-        if let g = gradient, let ctx = NSGraphicsContext.current?.cgContext {
-            NSGraphicsContext.saveGraphicsState()
-            shape.addClip()
-            BrandGradient.draw(g, in: r, ctx: ctx, .diagonal, flipped: true)
-            if pressed {
-                NSColor(white: 0, alpha: 1 - BrandGradient.buttonPressed).setFill()
-                shape.fill()
-            } else if hover {
-                NSColor(white: 1, alpha: BrandGradient.buttonHover - 1).setFill()
-                shape.fill()
-            }
-            NSColor(white: 1, alpha: 0.18).setFill()             // the 1 pt inner highlight along the top
-            NSRect(x: r.minX + r.height * 0.3, y: r.minY, width: r.width - r.height * 0.6, height: 1).fill()
-            NSGraphicsContext.restoreGraphicsState()
+    override func updateLayer() {
+        guard let l = layer else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let scale = window?.backingScaleFactor ?? 2
+        let b = bounds
+        l.cornerRadius = b.height / 2
+        if let g = gradient {
+            BrandGradient.layer(g, .diagonal, flipped: true, into: gradientLayer)
+            gradientLayer.frame = b
+            gradientLayer.isHidden = false
+            l.backgroundColor = nil
+            film.backgroundColor = pressed ? NSColor(white: 0, alpha: 1 - BrandGradient.buttonPressed).cgColor
+                : hover ? NSColor(white: 1, alpha: BrandGradient.buttonHover - 1).cgColor : nil
+            highlight.frame = CGRect(x: b.height * 0.3, y: 0, width: max(0, b.width - b.height * 0.6), height: 1)
+            highlight.isHidden = false
         } else {
+            gradientLayer.isHidden = true
+            highlight.isHidden = true
             let base = fill ?? NSColor(white: 1, alpha: 0.1)
             let c = pressed ? base.blended(withFraction: 0.3, of: .white) ?? base : hover ? base.blended(withFraction: 0.16, of: .white) ?? base : base
-            c.setFill()
-            shape.fill()
+            l.backgroundColor = c.cgColor
+            film.backgroundColor = nil
         }
+        film.frame = b
         var x: CGFloat = title == nil ? 0 : 14
-        if !symbol.isEmpty, let img = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .semibold).applying(.init(paletteColors: [fg]))) {
-            let s = img.size
-            let ix = title == nil ? (bounds.width - s.width) / 2 : x
-            img.draw(in: NSRect(x: ix, y: (bounds.height - s.height) / 2, width: s.width, height: s.height))
+        iconLayer.isHidden = true
+        if !symbol.isEmpty, let img = symbolImage(symbol, size: 12, weight: .semibold, color: fg) {
+            let s = CGSize(width: CGFloat(img.width) / 2, height: CGFloat(img.height) / 2)
+            let ix = title == nil ? (b.width - s.width) / 2 : x
+            iconLayer.contents = img
+            iconLayer.contentsScale = 2
+            iconLayer.frame = CGRect(x: ix.rounded(), y: ((b.height - s.height) / 2).rounded(), width: s.width, height: s.height)
+            iconLayer.isHidden = false
             x = ix + s.width + 6
         }
+        titleLayer.isHidden = title == nil
+        badgeLayer.isHidden = badge == nil
         if let t = title {
-            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont, .foregroundColor: fg]
-            let tx = symbol.isEmpty ? 13 : x
-            guard let b = badge else {
-                let a = NSAttributedString(string: t, attributes: attrs)
-                a.draw(at: NSPoint(x: tx, y: (bounds.height - a.size().height) / 2))
-                return
+            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont]
+            var tx = symbol.isEmpty ? 13 : x
+            var room = b.width - tx - 8
+            if let bd = badge {
+                // the key leads (it carries the project's colour); the name gives way to it when room is short
+                let bs = ProjectLook.badgeSize(bd.text)
+                let img = NSImage(size: bs, flipped: true) { r in ProjectLook.drawBadge(bd.text, color: bd.color, in: r); return true }
+                badgeLayer.contents = img.layerContents(forContentsScale: scale)
+                badgeLayer.contentsScale = scale
+                badgeLayer.frame = CGRect(x: 7, y: ((b.height - bs.height) / 2).rounded(), width: bs.width, height: bs.height)
+                tx = 7 + bs.width + 7
+                room = b.width - tx - (subviews.isEmpty ? 12 : 22)
             }
-            // the key leads (it carries the project's colour); the name gives way to it when room is short
-            let bs = ProjectLook.badgeSize(b.text)
-            ProjectLook.drawBadge(b.text, color: b.color, in: NSRect(x: 7, y: (bounds.height - bs.height) / 2, width: bs.width, height: bs.height))
-            let nx = 7 + bs.width + 7
-            let room = bounds.width - nx - (subviews.isEmpty ? 12 : 22)
             var name = t
             while !name.isEmpty && ((name + (name == t ? "" : "…")) as NSString).size(withAttributes: attrs).width > room { name.removeLast() }
-            let a = NSAttributedString(string: name == t ? t : name + "…", attributes: attrs)
-            a.draw(at: NSPoint(x: nx, y: (bounds.height - a.size().height) / 2))
+            let shown = name == t ? t : name + "…"
+            let sz = (shown as NSString).size(withAttributes: attrs)
+            HangingCards.setText(titleLayer, shown, font: IslandButton.titleFont, color: fg)
+            titleLayer.contentsScale = scale
+            titleLayer.frame = CGRect(x: tx, y: ((b.height - ceil(sz.height)) / 2).rounded(), width: ceil(sz.width) + 1, height: ceil(sz.height))
         }
+        CATransaction.commit()
     }
 }
 
@@ -297,6 +341,8 @@ final class IslandContent: NSView {
     private weak var voiceText: NSTextField?
     private weak var spotted: NSTextField?
     private weak var pauseBtn: IslandButton?
+    /// The pen was latched when the recording row was built (it changes from the key, ⌥⇧D): rebuilt when it differs.
+    private var penShown = false
 
     private func label(_ s: String, size: CGFloat = 13, weight: NSFont.Weight = .regular, color: NSColor = ink, mono: Bool = false) -> NSTextField {
         let l = NSTextField(labelWithString: s)
@@ -508,7 +554,10 @@ final class IslandContent: NSView {
         guard let i = island, let rec = i.rec else { return 0 }
         var y: CGFloat = top + 6
         if i.isConfirmingDiscard {
-            let q = label(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .medium)
+            // the stills taken meanwhile go with it: the question says so
+            let stills = rec.snaps?.count ?? 0
+            let q = label(stills > 0 ? Loc.plural("capture.rec.discard_q_stills", table: "Capture", count: stills)
+                          : Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .medium)
             place(q, x: 18, y: y + 7)
             var bx = w - 12
             let items: [(String, NSColor?, () -> Void)] = [
@@ -544,14 +593,28 @@ final class IslandContent: NSView {
         addSubview(lv)
         level = lv
         y += 42
-        var hint = Loc.t("capture.rec.paused", table: "Capture")
-        if !paused {
-            hint = rec.penKey.map { Loc.t("capture.rec.pen_hint", table: "Capture", $0.1) } ?? ""
+        // the state the recording is in, in words: paused (amber), the pen latched (it takes the clicks and Esc), or
+        // how to draw — the modifier as a keycap, so "⌃" never reads as "^"
+        penShown = rec.penSticky
+        var hintEnd: CGFloat = 18
+        if paused {
+            let h = label(Loc.t("capture.rec.paused", table: "Capture"), size: 11.5, weight: .medium, color: BrandColor.Island.attn)
+            place(h, x: 18, y: y + 7, w: min(h.frame.width, w - 230))
+            hintEnd = h.frame.maxX
+        } else if rec.penSticky {
+            let pen = IslandButton(symbol: "pencil.tip", title: Loc.t("capture.rec.pen_on", table: "Capture"),
+                                   tip: Loc.t("capture.rec.pen_off_tip", table: "Capture"), fill: BrandColor.Island.tint) { rec.togglePen() }
+            pen.fg = BrandColor.Island.fill
+            pen.setFrameSize(NSSize(width: pen.frame.width, height: 24))
+            place(pen, x: 12, y: y + 3)
+            hintEnd = pen.frame.maxX
+        } else if let key = rec.penKey?.1 {
+            let h = keyHint(Loc.string("capture.rec.pen_hint", table: "Capture"), key: key, maxWidth: w - 230)
+            place(h, x: 18, y: y + 6)
+            hintEnd = h.frame.maxX
         }
-        let h = label(hint, size: 11.5, color: paused ? BrandColor.Island.attn : ink2)
-        place(h, x: 18, y: y + 7, w: min(h.frame.width, w - 230))
         let sp = label("", size: 11.5, color: ink3)
-        place(sp, x: h.frame.maxX + (hint.isEmpty ? 0 : 10), y: y + 7, w: 140)
+        place(sp, x: hintEnd + (hintEnd > 18 ? 10 : 0), y: y + 7, w: 160)
         spotted = sp
         if (NSApp.delegate as? App)?.resident == true {     // a recording started from the chat has its session already
             let c = chip(w, small: true)
@@ -559,6 +622,37 @@ final class IslandContent: NSView {
         }
         y += 34
         return y + 6
+    }
+
+    /// A one-line hint with a key in it ("Hold [⌃] and drag to draw"): the format's %@ becomes a small keycap.
+    private func keyHint(_ format: String, key: String, maxWidth: CGFloat) -> NSView {
+        let v = FlippedView()
+        let parts = format.components(separatedBy: "%@")
+        var x: CGFloat = 0
+        for (k, part) in parts.enumerated() {
+            if !part.isEmpty {
+                let l = label(part, size: 11.5, color: ink2)
+                l.frame.origin = NSPoint(x: x, y: 1)
+                v.addSubview(l)
+                x += l.frame.width - 4          // (a label's cell inset on each side)
+            }
+            if k < parts.count - 1 {
+                let cap = label(key, size: 10.5, weight: .semibold, color: ink)
+                cap.alignment = .center
+                cap.wantsLayer = true
+                cap.layer?.cornerRadius = 4
+                cap.layer?.borderWidth = 1
+                cap.layer?.borderColor = NSColor(white: 1, alpha: 0.28).cgColor
+                cap.frame = NSRect(x: x + 2, y: 0, width: max(18, cap.frame.width + 4), height: 17)
+                v.addSubview(cap)
+                x = cap.frame.maxX + 2
+            }
+        }
+        v.frame = NSRect(x: 0, y: 0, width: min(maxWidth, x + 4), height: 18)
+        v.setAccessibilityElement(true)
+        v.setAccessibilityRole(.staticText)
+        v.setAccessibilityLabel(String(format: format, key))
+        return v
     }
 
     // MARK: voice input
@@ -580,8 +674,9 @@ final class IslandContent: NSView {
         }
         // Esc cancels only in the note's first seconds (VoiceInput.escSeconds): then it is the other apps' again
         if v.escCancels { s += " · " + Loc.t("capture.voice.esc_hint", table: "Capture") }
-        let left = v.maxSeconds - v.elapsed
-        if v.active, left <= 60 { s += " · " + Loc.t("capture.voice.time_left", table: "Capture", Island.clock(max(0, left))) }
+        // rounded up, so it adds up with the clock in the ear ("0:37" · "0:03 left" on a 40 s limit)
+        let left = IslandLayout.timeLeft(limit: v.maxSeconds, elapsed: v.elapsed)
+        if v.active, left <= 60 { s += " · " + Loc.t("capture.voice.time_left", table: "Capture", Island.clock(Double(left))) }
         return s
     }
 
@@ -778,7 +873,26 @@ final class IslandContent: NSView {
         // (the Claude Code fallback notice read "…organizing with Codex inste…")
         let l = label(t.text, size: 13, weight: .medium)
         let tw = ceil(l.frame.width)
-        var x: CGFloat = 18
+        // what goes before the text: the chick (from the left edge), a done check, a project's key badge
+        var lead: CGFloat = t.art == nil ? 0 : 64
+        let iconW: CGFloat = 18, iconGap: CGFloat = 6
+        if t.icon != nil { lead += iconW + iconGap }
+        let badgeSize = t.badge.map { ProjectLook.badgeSize($0.text, height: 18) }
+        if let s = badgeSize { lead += s.width + 8 }
+        var btn: IslandButton?
+        if let a = t.actionTitle, let act = t.action {
+            btn = IslandButton(symbol: "", title: a, tip: a, gradient: BrandGradient.buttonStops) { [weak self] in
+                act(); self?.island?.dismissToast()
+            }
+        }
+        // the content spans the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's
+        // number, a line with nothing beside it centred
+        let fit = IslandLayout.toast(text: tw, lead: lead, art: t.art != nil, button: btn?.frame.width,
+                                     floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW)
+        toastWidth = fit.width
+        // text, icon, key badge and button share one centre line (the row is 46 high)
+        let mid = top + 23
+        var x = fit.leadX
         if let art = t.art {
             art.frame = NSRect(x: 10, y: top - 9, width: 50, height: 50)   // the chick's foot sits on the text's baseline
             addSubview(art)
@@ -787,29 +901,15 @@ final class IslandContent: NSView {
         if let i = t.icon {
             let im = NSImageView(image: i.symbolImage(pointSize: 13, weight: .semibold))
             im.contentTintColor = i == .check ? BrandColor.Island.ok : ink
-            place(im, x: x, y: top + 14, w: 18, h: 18)
-            x += 24
+            place(im, x: x, y: (mid - iconW / 2).rounded(), w: iconW, h: iconW)
+            x += iconW + iconGap
         }
-        if let b = t.badge {
-            let s = ProjectLook.badgeSize(b.text, height: 18)
-            let v = BadgeView(text: b.text, color: b.color)
-            place(v, x: x, y: top + 14, w: s.width, h: s.height)
+        if let b = t.badge, let s = badgeSize {
+            place(BadgeView(text: b.text, color: b.color), x: x, y: (mid - s.height / 2).rounded(), w: s.width, h: s.height)
             x += s.width + 8
         }
-        var right: CGFloat = 18
-        var btn: IslandButton?
-        if let a = t.actionTitle, let act = t.action {
-            let b = IslandButton(symbol: "", title: a, tip: a, gradient: BrandGradient.buttonStops) { [weak self] in
-                act(); self?.island?.dismissToast()
-            }
-            btn = b
-            right += b.frame.width + 10
-        }
-        toastWidth = min(Island.openW, max(240, x + tw + right))
-        // text, key badge and button share one centre line (the row is 46 high)
-        let mid = top + 23
-        place(l, x: x, y: (mid - l.frame.height / 2).rounded(), w: min(tw, toastWidth - x - right))
-        if let b = btn { place(b, x: toastWidth - 14 - b.frame.width, y: (mid - b.frame.height / 2).rounded()) }
+        place(l, x: x, y: (mid - l.frame.height / 2).rounded(), w: fit.textWidth)
+        if let b = btn, let bx = fit.buttonX { place(b, x: bx, y: (mid - b.frame.height / 2).rounded()) }
         return top + 46
     }
 
@@ -846,9 +946,11 @@ final class IslandContent: NSView {
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
             level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
-            let n = i.spottedCount
-            spotted?.stringValue = n > 0 ? Loc.plural("capture.rec.spotted", table: "Capture", count: n) : ""
-            if pauseBtn != nil, (pauseBtn?.symbol == "play.fill") != rec.isPaused { rebuild() }
+            let n = i.spottedCount, markers = rec.snaps?.markers ?? 0
+            spotted?.stringValue = [n > 0 ? Loc.plural("capture.rec.spotted", table: "Capture", count: n) : nil,
+                                    markers > 0 ? Loc.plural("capture.rec.markers", table: "Capture", count: markers) : nil]
+                .compactMap { $0 }.joined(separator: " · ")
+            if pauseBtn != nil, (pauseBtn?.symbol == "play.fill") != rec.isPaused || penShown != rec.penSticky { rebuild() }
         } else if VoiceInput.shared.active {
             wave?.values = VoiceInput.shared.levels
             time?.stringValue = Island.clock(VoiceInput.shared.elapsed)

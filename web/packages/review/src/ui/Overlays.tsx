@@ -6,7 +6,8 @@ export function Toast() {
   const s = useStore();
   const t = s.toast;
   return (
-    <div className={cx("toast", t?.show && "show")} id="toast" role="status">
+    <div className={cx("toast", t?.show && "show")} id="toast" role="status"
+         onMouseEnter={() => s.holdToast(true)} onMouseLeave={() => s.holdToast(false)}>
       {t?.icon && <Icon name={t.icon} size={15} className={"ti ti-" + t.icon} />}
       <span id="toastMsg">{t?.msg}</span>
       {t?.undo && (

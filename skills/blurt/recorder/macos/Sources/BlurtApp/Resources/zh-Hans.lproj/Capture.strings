@@ -134,7 +134,9 @@
 "capture.rec.mic_level" = "麦克风音量";
 "capture.rec.pause" = "暂停";
 "capture.rec.paused" = "已暂停";
-"capture.rec.pen_hint" = "按住 %@ 拖动即可画笔";
+"capture.rec.pen_hint" = "按住 %@ 拖动来画";
+"capture.rec.pen_off_tip" = "关掉画笔";
+"capture.rec.pen_on" = "画笔已开 · Esc 关掉";
 "capture.rec.restart" = "重录";
 "capture.rec.resume" = "继续";
 "capture.rec.snap_note" = "截图并写备注（会暂停）";

@@ -15,6 +15,8 @@
 //                 poll {etag, scope?} → {etag} | {doc, etag}   items.py poll … --etag E
 //                 sendOps {ops, confirm, scope?} → {ok, etag, doc}   items.py user-ops … --stdin [--confirm]
 //                 handoff {uids, what} → {id, path, text}  handoff.py create --items … --mark (copied to the clipboard)
+//                 toast {msg, undo, icon} → "undo" | "shown"   the page's line goes up on the island — the main window's
+//                 toasts have one place (and one timing: ≥ 5 s, held while pointed at); "undo" when its Undo is clicked
 //   notifications reveal {path|rel}, quickLook {path|rel}, openCode {ref}, dispatch {uids}, openSession {job} (older
 //                 pages: jobId), registerDragRects {rects}, download {path|rel}, confirmed {scope} (a batch confirmed:
 //                 review.py, if it asked for this batch, hears it — ReviewHandoff)
@@ -119,7 +121,7 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
 
     /// The optional host methods we implement.
     var methods: [String] {
-        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl"]
+        ["reveal", "quickLook", "openCode", "registerDragRects", "download", "dispatch", "handoff", "openSession", "fileUrl", "toast"]
     }
 
     /// sessionBanner only in item mode: the banner above the page exists only there, so a batch keeps the panel's own.
@@ -345,6 +347,18 @@ final class WebHostController: NSViewController, WKScriptMessageHandler, WKNavig
         case "download":
             if let f = file() { Self.download(f) }
             reply(nil, nil)
+        case "toast":
+            // one place for the main window's toasts: the island (its Undo answers the page, which undoes its step)
+            let text = p["msg"] as? String ?? ""
+            let undo = p["undo"] as? Bool ?? false
+            let done = ["check", "copy"].contains(p["icon"] as? String ?? "")
+            guard !text.isEmpty else { return reply("shown", nil) }
+            guard island.started else { appDelegate?.toast(text, icon: done ? .check : nil); return reply("shown", nil) }
+            var answered = false
+            island.toast(text, key: "main.page", icon: done ? .check : nil,
+                         actionTitle: undo ? Loc.t("capture.undo", table: "Capture") : nil,
+                         action: undo ? { if !answered { answered = true; reply("undo", nil) } } : nil)
+            if !undo { reply("shown", nil) }
         case "confirmed":
             actions?.webWrote()
             if case .session(let u)? = scope(p) { ReviewHandoff.confirmed(session: u) }

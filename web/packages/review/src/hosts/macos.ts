@@ -125,5 +125,7 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000): BlurtH
   if (info.sessionBanner) host.sessionBanner = true;
   if (has.has("registerDragRects")) host.registerDragRects = (rects: DragRect[]) => notify("registerDragRects", { rects });
   if (has.has("download")) host.download = (path) => notify("download", { path });
+  // the answer comes when its Undo is clicked; a toast that went without one just times out (→ "gone")
+  if (has.has("toast")) host.toast = (t) => call<string>("toast", { ...t }).catch(() => "gone");
   return host;
 }

@@ -319,6 +319,20 @@ extension App {
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             if a.count == 2, AgentHub.shared.def(a[0]) != nil { process(URL(fileURLWithPath: a[1]), only: a[0]) } else { process(URL(fileURLWithPath: arg)) }
         case "toast": toast(arg.replacingOccurrences(of: "\\n", with: "\n"))
+        case "islandtoast":                             // islandtoast KEY|ACTION|ICON|passive|TEXT ("-" = none): one island toast
+            let a = arg.components(separatedBy: "|")
+            guard a.count >= 5 else { return }
+            func v(_ i: Int) -> String? { a[i] == "-" || a[i].isEmpty ? nil : a[i] }
+            var t = Island.Toast(text: a[4...].joined(separator: "|"), actionTitle: v(1), action: v(1).map { title in
+                { emit(["event": "island_toast_action", "title": title]) }
+            })
+            t.key = v(0)
+            t.icon = v(2).flatMap(BlurtIcon.init(rawValue:))
+            t.passive = a[3] == "passive"
+            island.toast(t)
+        case "islandsent": island.dictationSent()      // the ear's "Sent" moment after a double tap
+        case "toaststate":                              // what the island says now, and what waits
+            emit(["event": "toast_state", "current": island.currentToast?.text ?? NSNull(), "waiting": island.waitingToasts])
         case "axcards":
             let els = hanging.accessibilityElements().map { e -> [String: Any] in
                 let r = toCG(e.accessibilityFrame())

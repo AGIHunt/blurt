@@ -166,6 +166,8 @@ export interface HandoffResult {
   text: string;
 }
 
+export type ToastIcon = "check" | "x" | "copy" | "folder";
+
 export interface BlurtHost {
   host: Host;
   /** the scope the host serves (load / poll / sendOps are about it); undefined = the session review.py was started on */
@@ -194,6 +196,9 @@ export interface BlurtHost {
   download?(path: string): void;
   /** the review was confirmed */
   confirmed?(): void;
+  /** the host shows the page's toast itself (the Mac app: on the island, the one place for the main window's toasts);
+      resolves "undo" when its Undo was clicked, anything else when it went without one */
+  toast?(t: { msg: string; undo: boolean; icon?: ToastIcon }): Promise<string>;
 
   // browser only: hand-written items.json without ids is saved whole, as review.py has always accepted
   saveDoc?(doc: ReviewDoc, confirm?: boolean): Promise<void>;

@@ -1,6 +1,8 @@
-// What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time, counts
-// with an SF Symbol, the mic level, a voice waveform, the hatching egg (the mascot: it wobbles while captures are
-// organised, then cracks and the chick pops out — Icons/Mascot.swift), an alert marker.
+// What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
+// bars when paused), counts with an SF Symbol (the cards' with a mint clasp), the mic level, a voice waveform, the
+// hatching egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out —
+// Icons/Mascot.swift), an alert marker, "Sent" with the ok check. No implicit animations: a new state replaces the old at once, never
+// drawn over it.
 import AppKit
 import BlurtCore
 import QuartzCore
@@ -41,7 +43,11 @@ final class EarSlot {
     enum Content: Equatable {
         case none
         case recording(paused: Bool, time: String)
+        /// a count with an SF Symbol; `tint` colours both (a quieter count: white at 60 %)
         case count(symbol: String, n: Int, tint: NSColor?)
+        /// the hanging cards waiting (the left ear): the cards glyph with the cards' own mint clasp, so it never reads
+        /// like the inbox's tray beside it
+        case cards(Int)
         case level(Float)
         case wave([Float])
         case text(String, mono: Bool)
@@ -56,12 +62,15 @@ final class EarSlot {
         case dots
         /// one of our icons before a short text: dictation's style chip with the clock (list = Structured)
         case iconText(BlurtIcon, String)
+        /// the ok check before a short text: a moment that worked ("Sent", after a double tap)
+        case done(String)
 
         /// Same kind of thing (so a changing number doesn't rebuild the layers)
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
-            case (.none, .none), (.recording, .recording), (.count, .count), (.level, .level), (.wave, .wave), (.text, .text),
-                 (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots): return true
+            case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
+                 (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
+                 (.done, .done): return true
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _), .iconText(let b, _)): return a == b
             default: return false
@@ -86,6 +95,11 @@ final class EarSlot {
     private var pulseAt: CFTimeInterval = 0
     private(set) var width: CGFloat = 0
     static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+    static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
+                                                "hidden": NSNull(), "opacity": NSNull(), "frame": NSNull(), "path": NSNull(),
+                                                "transform": NSNull(), "backgroundColor": NSNull(), "foregroundColor": NSNull(),
+                                                "anchorPoint": NSNull(), "sublayerTransform": NSNull(), "strokeColor": NSNull(),
+                                                "fillColor": NSNull(), "lineWidth": NSNull()]
 
     init() {
         label.contentsScale = 2
@@ -101,6 +115,10 @@ final class EarSlot {
         levelMask.lineCap = .round
         level.mask = levelMask
         for l in [icon, label, dot, bars, level, chick] { layer.addSublayer(l); l.isHidden = true }
+        // nothing changes by itself: a CATextLayer renders its new string at the next display pass, outside the
+        // transaction that disabled actions, so its implicit 0.25 s "contents" fade drew the new number over the old
+        // one ("15" over "0:02" right after a take)
+        for l in [layer, icon, label, dot, bars, level, levelMask, chick] { l.actions = EarSlot.noActions }
         icon.contentsGravity = .resizeAspect
         icon.contentsScale = 2
         chick.backdrop = .dark                 // the island is always black
@@ -132,6 +150,8 @@ final class EarSlot {
             l.opacity = 1
             l.setAffineTransform(.identity)
         }
+        dot.cornerRadius = 4
+        dot.borderWidth = 0
         switch c {
         case .egg, .cracking: break
         default: chick.stop(); chick.isHidden = true; chick.contents = nil
@@ -163,13 +183,30 @@ final class EarSlot {
         switch c {
         case .none: break
         case .recording(let paused, let time):
-            dot.backgroundColor = (paused ? BrandColor.Island.attn : BrandColor.Island.rec).cgColor
-            dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
-            dot.isHidden = false
+            if paused {
+                // paused says so in shape too, not only in colour: the pause bars where the red dot was
+                icon.contents = BlurtIcon.pauseFill.cgImage(size: 10, scale: 2, color: BrandColor.Island.attn.cgColor)
+                icon.frame = CGRect(x: -1, y: -5, width: 10, height: 10)
+                icon.isHidden = false
+            } else {
+                dot.backgroundColor = BrandColor.Island.rec.cgColor
+                dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
+                dot.isHidden = false
+            }
             x = 13
             text(time, color: paused ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.95))
         case .count(let symbol, let n, let tint):
             sym(symbol, 11, color: tint ?? NSColor(white: 1, alpha: 0.8))
+            text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
+        case .cards(let n):
+            sym("rectangle.stack.fill", 11, color: NSColor(white: 1, alpha: 0.85))
+            // the clasp: a mint dot ringed in the island's black on the glyph's top edge
+            dot.backgroundColor = BrandColor.Island.fill.cgColor
+            dot.borderColor = NSColor.black.cgColor
+            dot.borderWidth = 1
+            dot.cornerRadius = 2.5
+            dot.frame = CGRect(x: icon.frame.midX - 2.5, y: icon.frame.minY - 2.5, width: 5, height: 5)
+            dot.isHidden = false
             text(Loc.number(n))
         case .level(let v):
             drawLevel(v)
@@ -208,6 +245,12 @@ final class EarSlot {
             x = 20
         case .iconText(let ic, let s):
             icon.contents = ic.cgImage(size: 12, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.2)
+            icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
+            icon.isHidden = false
+            x = 16
+            text(s)
+        case .done(let s):
+            icon.contents = BlurtIcon.check.cgImage(size: 12, scale: 2, color: BrandColor.Island.ok.cgColor, weight: 1.3)
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
             icon.isHidden = false
             x = 16

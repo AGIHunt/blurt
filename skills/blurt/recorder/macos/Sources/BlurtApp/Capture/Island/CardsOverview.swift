@@ -284,6 +284,9 @@ final class OverviewTile: NSView, NSDraggingSource {
         layer?.addSublayer(face)
         if s.kind == .shot {
             face.contents = s.markedThumb ?? s.thumb
+            // a toolbar or a sidebar is shown whole on the tile's surface, never as a slice of its middle (CardShape)
+            if let t = s.markedThumb ?? s.thumb,
+               !CardShape.fills(picture: CGSize(width: t.width, height: t.height), box: sz) { face.contentsGravity = .resizeAspect }
         } else {
             // a voice note is its words, on the card's own surface, with the small mic mark (colours: restyle())
             let words = NSTextField(wrappingLabelWithString: s.words ?? HangingCards.statusText(s.note.status) ?? "")

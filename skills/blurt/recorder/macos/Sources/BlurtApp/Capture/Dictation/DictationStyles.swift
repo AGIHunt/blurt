@@ -110,10 +110,8 @@ extension Dictation {
         styleToggles += 1
         routeStyle()
         emit(["event": "dictation_style", "action": "toggle", "via": via.rawValue, "style": to.rawValue, "id": entryID])
-        var t = Island.Toast(text: Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
-                                         table: "Dictation", Dictation.styleName(to)), actionTitle: nil, action: nil)
-        t.seconds = 1.4
-        island.toast(t)
+        island.toast(Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
+                           table: "Dictation", Dictation.styleName(to)), key: Dictation.toastKey)
     }
 
     static func styleName(_ s: DictationStyle) -> String { Loc.t("dictation.style.\(s.rawValue)", table: "Dictation") }
@@ -175,12 +173,11 @@ extension Dictation {
                       let s = lp.structured, DictationStitch.listLines(s) >= 2 else { return }
                 DictationHistory.shared.restyle(lp.id, DictationReformatRecord(action: "suggest", from: "light", to: "structured", replaced: false))
                 let key = hk(.reformat)
-                var t = Island.Toast(text: Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
-                                     actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self] in
+                island.toast(Loc.t(key.isEmpty ? "dictation.style.chip" : "dictation.style.chip.key", table: "Dictation", key),
+                             key: Dictation.toastKey, seconds: 6,
+                             actionTitle: Loc.t("dictation.style.chip.action", table: "Dictation"), action: { [weak self] in
                     self?.reformat(to: .structured, action: "reformat", via: "chip")
                 })
-                t.seconds = 6
-                island.toast(t)
                 emit(["event": "dictation_style", "action": "suggest_list", "id": id, "lines": DictationStitch.listLines(s)])
             }
         }
@@ -193,7 +190,7 @@ extension Dictation {
     func reformatLast(via: String) {
         guard phase == .idle else { return }            // a take is under way: its own paste comes first
         guard let lp = lastPaste else {
-            island.toast(Loc.t("dictation.style.reformat.nothing", table: "Dictation"), actionTitle: nil, action: nil)
+            island.toast(Loc.t("dictation.style.reformat.nothing", table: "Dictation"), key: Dictation.toastKey)
             emit(["event": "dictation_reformat", "result": "nothing", "via": via])
             return
         }
@@ -204,7 +201,7 @@ extension Dictation {
                 for s in order {
                     if let t = lp.version(s), t != lp.currentVersion { return self.apply(lp, to: s, text: t, action: "reformat", via: via) }
                 }
-                island.toast(Loc.t("dictation.style.reformat.same", table: "Dictation"), actionTitle: nil, action: nil)
+                island.toast(Loc.t("dictation.style.reformat.same", table: "Dictation"), key: Dictation.toastKey)
                 emit(["event": "dictation_reformat", "result": "same", "via": via, "id": lp.id])
             }
         }
@@ -281,7 +278,10 @@ extension Dictation {
                                  actionTitle: replaced ? Loc.t("dictation.toast.undo", table: "Dictation") : nil,
                                  action: replaced ? { [weak self] in self?.reformat(to: original, action: "undo", via: "toast") } : nil)
             }
-            t.seconds = replaced && action != "undo" ? 5 : 2.4
+            // one toast about the last take: a second ⌥⇧L replaces the first at once, with its own Undo; the ok check
+            // when the field really changed ("copied, paste with ⌘V" is not done yet)
+            t.key = Dictation.toastKey
+            if replaced { t.icon = .check }
             island.toast(t)
             if action != "undo" || replaced { checkStyleSuggestion(bundle: lp.bundle) }
         }
@@ -343,7 +343,7 @@ extension Dictation {
             c.learned.insert(s.bundle)
             Dictation.setStyleConfig(c)
             emit(["event": "dictation_style", "action": "learned", "bundle": s.bundle, "style": s.style.rawValue])
-            island.toast(Loc.t("dictation.style.learn.done", table: "Dictation"), actionTitle: nil, action: nil)
+            island.toast(Loc.t("dictation.style.learn.done", table: "Dictation"), key: nil, icon: .check)
         })
         t.secondTitle = Loc.t("dictation.style.learn.no", table: "Dictation")
         t.second = { emit(["event": "dictation_style", "action": "declined", "bundle": s.bundle, "style": s.style.rawValue]) }
