@@ -1,7 +1,8 @@
 // ⌘K: one field for every action, place and item. Commands and places match by fuzzy subsequence; items come from
 // the index (same search as the toolbar field, top 8), each with its ID, project, state (past To do) and the search
-// hit when it isn't just the title again (on one line, ending where index.db cut it: SearchHit.shown). ↑/↓ choose,
-// ↩ runs, Esc closes. The list shows whole rows only (up to 9).
+// hit when it isn't just the title again (on one line, ending where index.db cut it: SearchHit.shown). An item's id
+// ("AW-11") puts that item on top, discarded or not. ↑/↓ choose, ↩ runs, Esc closes. The list shows whole rows only
+// (up to 9).
 import AppKit
 import BlurtCore
 
@@ -191,7 +192,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         ranked.sort { $0.0 > $1.0 }
         entries = ranked.map(\.1)
         if !q.isEmpty, let r = controller.model.reader {
-            let rows = (try? r.items(ItemQuery(text: q, limit: 8))) ?? []
+            // an id ("AW-11") is that item, wherever it is — a discarded one too — and it goes on top
+            let byID = q.split(separator: " ").count == 1 && ItemQuery.isItemID(q)
+            let rows = (try? r.items(ItemQuery(text: q, states: byID ? Lifecycle.states : [], limit: 8))) ?? []
             let items = rows.map { it in
                 let title = it.title.isEmpty ? it.itemID : it.title
                 let hit = SearchHit.adds(it.snippet, to: title) ? it.snippet.map { SearchHit.unmarked(SearchHit.shown($0)) } : nil
@@ -202,8 +205,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                     self?.controller.reveal(uid: it.uid)
                 }
             }
-            // a few strong command matches first, then items
-            entries = Array(entries.prefix(4)) + items + Array(entries.dropFirst(4))
+            // a few strong command matches first, then items (the item itself first when its id was typed)
+            let exact = byID && rows.first?.itemID.uppercased() == q.uppercased()
+            entries = exact ? items + entries : Array(entries.prefix(4)) + items + Array(entries.dropFirst(4))
         }
         table.reloadData()
         resize()

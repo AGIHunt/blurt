@@ -453,6 +453,9 @@ WHERE items_fts MATCH ?1 AND i.status != 'deleted' [AND i.kind IN (…)] ORDER B
 - **查询词**：QUERY 按空白切成多个词，全部要命中（AND）。≥ 3 个字符的词交给 FTS5，作为带引号的短语
   （`"` 写成 `""`，所以用户输入里的 FTS 语法只当普通文字）；1–2 个字符的词用
   `(i.title LIKE ? ESCAPE '\' OR i.quote LIKE ? ESCAPE '\' OR i.body LIKE ? ESCAPE '\')`，`%` `_` `\` 要转义。
+  长得像条目编号的词（`KEY-n`，大小写不限，如 `AW-11`）= `(upper(i.item_id) = ? OR i.rowid IN (SELECT rowid FROM items_fts
+  WHERE items_fts MATCH ?))`，这一条排在最前（`CASE WHEN upper(i.item_id) = 'AW-11' THEN 0 ELSE 1 END` 放在排序最前）；
+  条目移走后的旧编号（`aliases`）在 `body` 里，所以旧编号也搜得到。Mac（IndexReader）、`index.py`、MCP 同一套。
   snippet：走 FTS 时用 `snippet(items_fts, -1, '[', ']', '…', 12)`；只有短词时由宿主自己截（`index.py` 截命中处前后约 20 字）。
   Mac 上显示成一行（`SearchHit.shown`）：多行用 ` · ` 连起来，截断处的 `…` 保留；最后一行被截成不到 4 个字的碎片（不含命中）时去掉，止于 ` …`。
 - **筛选**：`--kind` / `--status` / `--fix-state` 都可以重复给；不带 `--status` 时排除 `deleted`；`--fix-state none` = `fix_state IS NULL`。

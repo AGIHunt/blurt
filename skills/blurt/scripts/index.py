@@ -24,8 +24,11 @@ Search, for every host (macOS app, Tauri, mcp_server.py) — run the same querie
   QUERY is split on whitespace; each term must match (AND). A term of ≥ 3 characters goes to FTS5 (trigram,
   so Chinese works without word segmentation) as a quoted phrase ("" doubles a quote); a 1–2 character term
   can't use trigram and becomes `(i.title LIKE ?1 OR i.quote LIKE ?1 OR i.body LIKE ?1)` with ?1 = '%term%'
-  (LIKE escapes % _ \\ with ESCAPE '\\'). State defaults to "everything but discarded"; the inbox ("needs you")
-  is state IN ('new', 'to_verify') in every app.
+  (LIKE escapes % _ \\ with ESCAPE '\\'). A term shaped like an item id (KEY-n, any case) becomes
+  `(upper(i.item_id) = ?1 OR i.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?2))` (?1 the term
+  upper-cased, ?2 its quoted phrase; an item's old ids are in its `body`), and that item sorts first
+  (`CASE WHEN upper(i.item_id) = 'KEY-N' THEN 0 ELSE 1 END` before the sort). State defaults to "everything but
+  discarded"; the inbox ("needs you") is state IN ('new', 'to_verify') in every app.
 
     SELECT i.*, p.name AS project_name, p.key AS project_key, s.dir AS session_dir,
            snippet(items_fts, -1, '[', ']', '…', 12) AS snippet
@@ -181,7 +184,7 @@ SESSION_MARKERS = ("meta.json", "items.json", "batch.json", "recording.mp4", "sh
 NOT_BODY = {"schema", "id", "uid", "kind", "title", "quote", "tags", "state", "restore_to", "status", "severity",
             "owner", "module",
             "confidence", "time", "frames", "clip", "exported", "_user", "fix", "fix_history", "work", "work_history",
-            "merged_from", "merged_into", "aliases", "t", "project", "project_by", "project_confidence",
+            "merged_from", "merged_into", "t", "project", "project_by", "project_confidence",
             "suggested_project", "created", "updated", "source", "language", "assignee", "code_refs"}
 ITEM_ROW = ("uid", "project_id", "project_name", "project_key", "session_id", "session_dir", "path", "item_id", "kind",
             "title", "state", "work_to", "work_agent", "severity", "primary_frame", "created", "updated", "snippet",
@@ -683,6 +686,14 @@ def ensure_index() -> Path:
 
 
 # ------------------------------------------------------------------ search
+def is_item_id(term: str) -> bool:
+    """An item's id as printed on every row ("AW-11", "ba-3"): a project key, a dash, a number. Its own syntax, not
+    language: such a term finds that item first (it, an alias in its text, then text that mentions it)."""
+    key, dash, n = term.partition("-")
+    return bool(dash) and key[:1].isascii() and key[:1].isalpha() and key.isascii() and key.isalnum() \
+        and n.isascii() and n.isdigit()
+
+
 def _like(term: str) -> str:
     return "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
@@ -730,12 +741,20 @@ def search(query: str | None = None, kind=None, status=None, work=None, project:
     con = con or connect(readonly=True)
     try:
         terms = [t for t in (query or "").split() if t]
-        fts = [t for t in terms if len(t) >= 3]
-        short = [t for t in terms if len(t) < 3]
+        ids = [t.upper() for t in terms if is_item_id(t)]
+        plain = [t for t in terms if not is_item_id(t)]
+        fts = [t for t in plain if len(t) >= 3]
+        short = [t for t in plain if len(t) < 3]
         where, args = [], []
+
+        def phrase(t: str) -> str:
+            return '"' + t.replace('"', '""') + '"'
         if fts:
             where.append("items_fts MATCH ?")
-            args.append(" AND ".join('"' + t.replace('"', '""') + '"' for t in fts))
+            args.append(" AND ".join(phrase(t) for t in fts))
+        for t in ids:  # an id: that item (its id now, or an old one in its text), or the text that mentions it
+            where.append("(upper(i.item_id) = ? OR i.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?))")
+            args += [t, phrase(t)]
         for t in short:
             where.append("(i.title LIKE ? ESCAPE '\\' OR i.quote LIKE ? ESCAPE '\\' OR i.body LIKE ? ESCAPE '\\')")
             args += [_like(t)] * 3
@@ -763,7 +782,8 @@ def search(query: str | None = None, kind=None, status=None, work=None, project:
             args.append(resolve_session(con, session))
         join = "JOIN items_fts f ON f.rowid = i.rowid " if fts else ""
         snip = "snippet(items_fts, -1, '[', ']', '…', 12)" if fts else "NULL"
-        order = {"updated": "i.updated DESC", "created": "i.created DESC", "t_start": "i.t_start, i.created DESC",
+        order = "".join(f"CASE WHEN upper(i.item_id) = '{t}' THEN 0 ELSE 1 END, " for t in ids) + {  # typed id first
+                 "updated": "i.updated DESC", "created": "i.created DESC", "t_start": "i.t_start, i.created DESC",
                  "title": "i.title COLLATE NOCASE"}.get(sort, "i.updated DESC")
         base = (f"FROM items i {join}JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id "
                 f"WHERE {' AND '.join(where)}")
