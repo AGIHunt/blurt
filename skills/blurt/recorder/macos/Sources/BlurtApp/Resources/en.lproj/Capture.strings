@@ -82,7 +82,7 @@
 "capture.keys.restore" = "Restore defaults";
 "capture.keys.state_off" = "Off";
 "capture.keys.system" = "Clashes with a macOS system shortcut";
-"capture.keys.taken" = "Taken by another Blurt (pid %@)";
+"capture.keys.taken" = "Used by another copy of Blurt";
 "capture.keys.taken_or_twice" = "taken by another app or used twice";
 "capture.keys.title" = "Shortcuts";
 "capture.keys.type" = "Type a shortcut…";

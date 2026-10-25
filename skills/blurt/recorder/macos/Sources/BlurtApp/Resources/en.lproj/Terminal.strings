@@ -138,7 +138,7 @@
 "notify.title.error" = "Session failed · %@";
 "notify.title.running" = "Working · %@";
 "notify.more" = "and %ld more";
-"notify.exit" = "Exit code %ld";
+"notify.exit" = "It stopped with an error";
 
 /* An item reached "to verify" (the chicken pecks it) */
 "verify.by" = "%@ says it’s fixed";

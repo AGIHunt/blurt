@@ -138,7 +138,7 @@
 "notify.title.error" = "会话出错 · %@";
 "notify.title.running" = "运行中 · %@";
 "notify.more" = "等 %ld 条";
-"notify.exit" = "退出码 %ld";
+"notify.exit" = "它出错停止了";
 
 /* 条目到了「待验证」（鸡来啄一下） */
 "verify.by" = "%@ 说已经修好";

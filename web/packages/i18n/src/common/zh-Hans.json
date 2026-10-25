@@ -2,7 +2,7 @@
   "kind.issue": "问题",
   "kind.idea": "想法",
   "kind.note": "笔记",
-  "kind.task": "任务",
+  "kind.task": "待办",
   "state.new": "新",
   "state.todo": "要做",
   "state.handed_off": "已交给 Agent",

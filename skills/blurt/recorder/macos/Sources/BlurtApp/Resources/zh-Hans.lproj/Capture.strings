@@ -82,7 +82,7 @@
 "capture.keys.restore" = "恢复默认";
 "capture.keys.state_off" = "已关闭";
 "capture.keys.system" = "和 macOS 系统快捷键冲突";
-"capture.keys.taken" = "被另一个口喷鸡（pid %@）占用";
+"capture.keys.taken" = "被另一个口喷鸡占用";
 "capture.keys.taken_or_twice" = "被别的 App 占用或互相重复";
 "capture.keys.title" = "快捷键";
 "capture.keys.type" = "按下新的快捷键…";

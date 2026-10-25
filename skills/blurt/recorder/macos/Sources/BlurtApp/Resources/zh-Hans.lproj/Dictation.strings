@@ -516,7 +516,7 @@
 /* the speech model through the download manager, the key with another Blurt (shell) */
 "dictation.mode.send_suffix" = "连按两下发送";
 "dictation.models.downloading" = "正在下载 · %1$@ / %2$@";
-"dictation.status.other_instance" = "听写由另一个口喷鸡负责（pid %@）";
+"dictation.status.other_instance" = "另一个口喷鸡正在使用听写键";
 "dictation.status.other_instance.detail" = "那个口喷鸡退出后，这里会接手。";
 "dictation.toast.model_downloading" = "语音模型还在下载（%1$@ / %2$@）";
 "dictation.toast.model_downloading.action" = "查看";
