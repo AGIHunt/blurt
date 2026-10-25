@@ -422,10 +422,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         Scripts.state(items.map(\.uid), action: action) { [weak self] r in
             switch r {
             case .success:
-                self?.wrote(items)
-                if !redoing { self?.registerStateUndo(action, items) }
+                guard let self = self else { return }
+                self.wrote(items)
+                guard !redoing else { return }
+                self.registerStateUndo(action, items)
+                // where it went, and the way back — the row may just have left the list (like the review page's toast)
+                let to = StateMenu.target(action, items)
+                let what = items.count == 1 ? items[0].itemID : TP("main.items.count", items.count)
+                appDelegate?.toast(T("main.state.toast", Look.stateName(to), what),
+                                   icon: ["todo", "done"].contains(to) ? .check : nil, undo: self.undoToast(StateMenu.title(action)))
             case .failure(let f): self?.alert(T("main.error.save_title"), f.localized)
             }
+        }
+    }
+
+    /// Why a key does nothing for the selection: a discarded item has to be restored first; otherwise the state's
+    /// own menu (S) has what can be done from there.
+    func notHere(_ key: String, _ items: [ItemRow]) -> String? {
+        switch Lifecycle.refusal(forKey: key, states: items.filter { !$0.legacy }.map(\.state)) {
+        case .discarded: return T("main.state.restore_first")
+        case .state(let s): return T("main.state.not_here", s.map(Look.stateName) ?? T("main.state.these"))
+        case nil: return nil
         }
     }
 
@@ -466,7 +483,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func act(key: String) {
         let byAction = Dictionary(grouping: list.selectedItems.filter { !$0.legacy }) { Lifecycle.action(forKey: key, state: $0.state) ?? "" }
         let runs = byAction.filter { !$0.key.isEmpty }
-        guard !runs.isEmpty else { NSSound.beep(); return }
+        guard !runs.isEmpty else {
+            NSSound.beep()
+            if let why = notHere(key, list.selectedItems) { appDelegate?.toast(why) }
+            return
+        }
         for a in Lifecycle.actions where runs[a] != nil { apply(a, to: runs[a]!) }
     }
 
@@ -605,19 +626,66 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// Items to a project (or "inbox" = Unassigned), as the user's choice (items.py move --by user).
-    func move(uids: [String], to project: String) {
+    /// Items to a project (or "inbox" = Unassigned), as the user's choice (items.py move --by user) — from the toolbar,
+    /// the menus, the palette, a drop on the sidebar or the banner's suggestion. ⌘Z (or the toast's Undo) sends each
+    /// item back to the project it came from, with its old id.
+    func move(uids: [String], to project: String) { move(uids: uids, to: project, undoable: true) }
+
+    private func move(uids: [String], to project: String, undoable: Bool, done: (() -> Void)? = nil) {
         let items = model.items(uids: uids).filter { $0.projectID != project && !$0.legacy }
         guard !items.isEmpty else { return }
+        let before = items.map { (uid: $0.uid, project: $0.projectID) }
         Scripts.move(items.map(\.uid), to: project) { [weak self] r in
             switch r {
             case .success(let o):
+                guard let self = self else { return }
                 let n = (o["moved"] as? [Any])?.count ?? items.count
-                let name = project == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: project)?.name ?? project
-                appDelegate?.toast(TP("main.move.done", n, name), icon: .check)
-                self?.wrote(items)
+                self.wrote(items)
+                if undoable {
+                    self.registerMoveUndo(before, to: project)
+                    appDelegate?.toast(TP("main.move.done", n, Self.projectName(project)), icon: .check, undo: self.undoToast(self.moveUndoName(project)))
+                }
+                done?()
             case .failure(let f): self?.alert(T("main.move.failed"), f.localized)
             }
+        }
+    }
+
+    static func projectName(_ id: String) -> String {
+        id == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: id)?.name ?? id
+    }
+    private func moveUndoName(_ project: String) -> String { T("main.move.undo_name", Self.projectName(project)) }
+
+    /// ⌘Z: each item back where it was; registered inside the undo, ⇧⌘Z moves them again.
+    private func registerMoveUndo(_ before: [(uid: String, project: String)], to project: String) {
+        guard let um = window?.undoManager else { return }
+        um.registerUndo(withTarget: self) { c in c.undoMove(before, to: project) }
+        um.setActionName(moveUndoName(project))
+    }
+
+    private func undoMove(_ before: [(uid: String, project: String)], to project: String) {
+        if let um = window?.undoManager {
+            um.registerUndo(withTarget: self) { c in
+                c.registerMoveUndo(before, to: project)       // inside the redo: ⌘Z again after ⇧⌘Z
+                c.move(uids: before.map(\.uid), to: project, undoable: false)
+            }
+            um.setActionName(moveUndoName(project))
+        }
+        for step in MoveBack.plan(before, movedTo: project) {
+            move(uids: step.uids, to: step.project, undoable: false) { [weak self] in
+                // back in this list (moved out of the project on show): selected again
+                guard let self = self else { return }
+                self.model.reloadAll()
+                if step.uids.contains(where: { self.model.row(of: $0) != nil }) { self.list.reload(keep: step.uids) }
+            }
+        }
+    }
+
+    /// A toast's Undo: the window's ⌘Z, as long as the step it names is still the one ⌘Z would take back.
+    func undoToast(_ name: String) -> () -> Void {
+        { [weak self] in
+            guard let um = self?.window?.undoManager, um.canUndo, um.undoActionName == name else { NSSound.beep(); return }
+            um.undo()
         }
     }
 

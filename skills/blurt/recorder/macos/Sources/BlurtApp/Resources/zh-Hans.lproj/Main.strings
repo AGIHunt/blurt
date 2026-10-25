@@ -145,6 +145,10 @@
 "main.error.save_title" = "没能保存";
 "main.error.timeout" = "等太久了，稍后再试。";
 "main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
+"main.state.toast" = "%1$@ · %2$@";
+"main.state.not_here" = "「%@」状态下不能这样改，按 S 看看能做什么。";
+"main.state.restore_first" = "它在已丢弃里，先按 R 恢复。";
+"main.state.these" = "这些状态";
 
 "main.filter.kind" = "按种类筛选";
 "main.filter.live" = "全部（不含已丢弃）";
@@ -221,6 +225,7 @@
 "main.misc.task" = "待办";
 
 "main.move.failed" = "没能移动条目";
+"main.move.undo_name" = "移到「%@」";
 
 "main.open.failed" = "没能打开「%@」";
 "main.open.message" = "选一个文件夹：代码仓库，或者任何放笔记的文件夹。口喷鸡把条目放在它的 .blurt 里，不会进 git。";

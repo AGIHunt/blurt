@@ -145,6 +145,10 @@
 "main.error.save_title" = "Couldn’t save";
 "main.error.timeout" = "It took too long. Try again in a moment.";
 "main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
+"main.state.toast" = "%1$@ · %2$@";
+"main.state.not_here" = "Can’t do that from %@. Press S to see what you can do.";
+"main.state.restore_first" = "It’s in Discarded. Press R to restore it first.";
+"main.state.these" = "these states";
 
 "main.filter.kind" = "Filter by kind";
 "main.filter.live" = "All but Discarded";
@@ -221,6 +225,7 @@
 "main.misc.task" = "Task";
 
 "main.move.failed" = "Couldn’t move the items";
+"main.move.undo_name" = "Move to %@";
 
 "main.open.failed" = "Couldn’t open “%@”";
 "main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder’s .blurt, which never goes into git.";

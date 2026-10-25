@@ -268,6 +268,15 @@ enum SelfTests {
                 return ["\(String(repeating: " ", count: depth))\(type(of: v)) \(v.frame) hidden=\(v.isHidden)"] + v.subviews.flatMap { dump($0, depth + 1) }
             }
             out(["views": dump(d.jobView, 0)])
+        case "maindetail":              // the item the detail page shows (uid, id, title) — never another than the selected one
+            let c = MainWindowController.shared
+            let js = "(() => { const s = window.blurtReview && window.blurtReview.store; const i = s && s.item;"
+                + " return JSON.stringify({uid: i ? i.uid : null, id: i ? i.id : null, title: i ? i.title : null, missing: s ? s.missing : null,"
+                + " loaded: s ? s.loaded : false}); })()"
+            c.detail.web.evaluateJavaScript(js) { r, e in
+                out(["page": (r as? String) ?? "\(e.map { "\($0)" } ?? "nil")", "selected": c.list.selectedIDs,
+                     "shown": c.detail.currentItem?.uid ?? NSNull()])
+            }
         case "mainsearch":
             let c = MainWindowController.shared
             c.searchItem?.searchField.stringValue = arg
