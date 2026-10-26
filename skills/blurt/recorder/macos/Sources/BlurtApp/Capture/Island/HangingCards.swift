@@ -954,11 +954,21 @@ final class HangingCards: NSObject {
             p.addRect(CGRect(x: dir < 0 ? x : x - rad, y: y0 - rad, width: rad, height: rad + 0.5))
             if fil > 0.3 {
                 let ox = x + dir * fil
+                // both fillets wind the same way as the band they overlap (the layer fills non-zero: a mirrored
+                // fillet wound the other way cancelled the band's top 1 pt on the right, a sliver of the screen
+                // showing between the island's corner and the band)
                 let q = CGMutablePath()
-                q.move(to: CGPoint(x: x, y: y0 - fil))
-                q.addLine(to: CGPoint(x: x, y: y0 + 0.5))
-                q.addLine(to: CGPoint(x: ox, y: y0 + 0.5))
-                q.addArc(center: CGPoint(x: ox, y: y0 - fil), radius: fil, startAngle: .pi / 2, endAngle: dir < 0 ? 0 : .pi, clockwise: dir < 0)
+                if dir < 0 {
+                    q.move(to: CGPoint(x: x, y: y0 - fil))
+                    q.addLine(to: CGPoint(x: x, y: y0 + 0.5))
+                    q.addLine(to: CGPoint(x: ox, y: y0 + 0.5))
+                    q.addArc(center: CGPoint(x: ox, y: y0 - fil), radius: fil, startAngle: .pi / 2, endAngle: 0, clockwise: true)
+                } else {
+                    q.move(to: CGPoint(x: ox, y: y0 + 0.5))
+                    q.addLine(to: CGPoint(x: x, y: y0 + 0.5))
+                    q.addLine(to: CGPoint(x: x, y: y0 - fil))
+                    q.addArc(center: CGPoint(x: ox, y: y0 - fil), radius: fil, startAngle: .pi, endAngle: .pi / 2, clockwise: true)
+                }
                 q.closeSubpath()
                 p.addPath(q)
             }
