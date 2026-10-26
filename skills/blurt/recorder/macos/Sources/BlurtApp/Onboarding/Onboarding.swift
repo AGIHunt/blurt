@@ -1,43 +1,47 @@
 // The setup assistant (docs/design/desktop-app.md §2.2), dictation first — four steps, every one skippable:
-//   1. welcome — one line for the three uses (dictate anywhere, snap and voice notes as cards, record and let an Agent
-//      fix it) and their keys;
-//   2. permissions — what dictation needs: the microphone and Accessibility, live, and "Set Up Permissions" (the brand
-//      button while anything is missing): the permission guide's dictation walk (PermissionGuide.swift) with the
-//      helper panel next to System Settings; Input Monitoring shows only when it is needed (still missing with
-//      Accessibility on or after a walk, or a key other than Fn); with Fn the 🌐 key's row shows (the walk asks for it). The step moves on by itself when the
-//      walk ends with everything on. The dictation key (Fn first) is picked here too. Screen Recording is not asked
-//      here: the first snap or recording asks for it (the toast's Allow… / the alert start the guide for it);
-//   3. models — one "Download recommended models" for this Mac (ModelSetup.swift: dictation, polish, voice notes) with
-//      the total size and one progress bar (and Stop); it carries on in the background. uv is found, or — one sentence
-//      and a button — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
+//   1. welcome — the four uses (dictation, snap, voice note, record), each a row with what it makes and its key as
+//      keycaps; a link to Settings → Shortcuts;
+//   2. dictation — the key first (a pop-up; it decides which lines the list below has, so changing it never moves the
+//      control under the pointer), with Fn macOS's own Fn-key setting as a line of the key (not a permission), then
+//      the permissions it needs: the microphone and Accessibility, live; Input Monitoring only when it is needed
+//      (still missing with Accessibility on or after a walk, or a key other than Fn). "Set Up Permissions…" is the
+//      footer's primary while anything is missing: the permission guide's dictation walk (PermissionGuide.swift) with
+//      the helper panel next to System Settings; a row's own Allow… shows under the pointer. The step moves on by
+//      itself when the walk ends with everything on. Screen Recording is not asked here: the first snap or recording
+//      asks for it (the toast's Allow… / the alert start the guide for it);
+//   3. models — the three models for this Mac (ModelSetup.swift: dictation, polish, voice notes) as plain rows (what
+//      each does; the model's name is the tooltip), the total to download, then one progress bar (and Stop); it
+//      carries on in the background. "Download Models" is the footer's primary; offline it waits, and a line says the
+//      Mac is offline before anything was tried (NetworkWatch). uv is found, or — one sentence, Install uv as the
+//      primary — installed into ~/.blurt/bin with the user's consent (the official installer); the scripts'
 //      dependencies are warmed up in the background as soon as uv is there. Speech tools that didn't install and a
 //      model list that couldn't be read are one state (BlurtCore SpeechSetup .blocked — offline, a proxy): one
-//      sentence and one Try Again (the warm-up, the list, then the download), Next becomes Skip for Now, and it is
-//      tried again by itself when the Mac comes back online (NetworkWatch). Its sentence blames the network only when
-//      macOS says the Mac is offline (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows
-//      Checking… for at least a second with the footer kept, and a retry still blocked says when it tried;
-//   4. try it — a text box ("tap Fn and say something … or double-tap to send it"; "once dictation is set up, try it
-//      here" while it can't be tried yet, so the instruction never sits above the reason) that shows a check once the first
-//      dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the double tap
-//      came (Dictation.sendAttempts; no Return goes into Blurt's own window); it waits only while dictation's own
-//      recogniser is still coming down (its bar) — with it in and
-//      polish still downloading it says dictation works already — and offers the download when there is a model to
-//      download, else (blocked) the models step's Try Again — never a button that does nothing;
-//      and "Open Blurt at login" (on the first time: dictation needs Blurt running; reopened later, as it is now);
-//      Done applies it and closes.
-// The big gradient headline is the welcome on the first step, then the step's own name and line (the four bars say
-// which step it is). Wherever the dictation key is explained, so is the double tap (it presses Return). The models'
-// downloads are the app's one download manager's (App/ModelDownloads.swift): closing the assistant mid-download says
-// they carry on, and where to see them. Sizes: modelSize, as everywhere.
+//      notice and Try Again as the primary (the warm-up, the list, then the download), tried again by itself when the
+//      Mac comes back online. Its sentence blames the network only when macOS says the Mac is offline
+//      (SpeechSetup.Cause; online it points at a proxy or VPN), Try Again shows Checking… for at least a second with
+//      the footer kept, and a retry still blocked says when it tried;
+//   4. try it — a practice card: the key as a keycap and what to do with it, the box the words land in, a check once
+//      the first dictation lands, then (double-tap send on) a second exercise: double-tap to send, checked once the
+//      double tap came (Dictation.sendAttempts; no Return goes into Blurt's own window). While dictation can't be
+//      tried, the card is a notice that says why (permissions, the recogniser still coming down with its bar, no
+//      model, the tools) and the footer's primary is the fix — never a button that does nothing; with the recogniser
+//      in and polish still downloading it says dictation works already. "Open Blurt at login" is the step's last row
+//      (on the first time: dictation needs Blurt running; reopened later, as it is now); Done applies it and closes.
+// The headline is the welcome on the first step, then the step's own name and one line. Wherever the dictation key is
+// explained, so is the double tap (it presses Return). The models' downloads are the app's one download manager's
+// (App/ModelDownloads.swift): closing the assistant mid-download says they carry on, and where to see them. Sizes:
+// modelSize, as everywhere.
 // Connecting agents (the blurt skill + MCP) is not in the assistant: Settings → Agents.
 // Shown once on first launch (config app.onboarded), again from Settings → General or blurt://onboarding.
 //
 // Look (docs/design/system.md §3.4): a fixed-width hero panel on the left — the field (light) / deep (dark) with grain,
 // a soft still spectrum glow behind the mascot (none with Reduce Transparency; the one place the spectrum appears) —
-// then the steps: the welcome title in gradient text, step bars in brand ink, one brand primary per step (the step's
-// own action while it is still to do, with "Skip for Now" in the footer; else Next / Done). Done closes (the chick is
-// already happy on the last step; no bloom). The window is sized before it is centred (it opened against the menu
-// bar, its left edge on the screen's middle, when centred at zero size).
+// then the steps: the title in gradient text and one line, the step's rows (OnboardingKit.swift: one row language,
+// rows over hairlines as in Settings, a neutral glyph column, one trailing element on one right edge), and the footer:
+// the step dots, Skip Setup (neutral; the one skip — none per step), Back, and one brand primary: the step's own
+// action while it is still to do (Next / Done beside it, plain, goes on without it), else Next / Done. Done closes
+// (the chick is already happy on the last step; no bloom). The window is sized before it is centred (it opened
+// against the menu bar, its left edge on the screen's middle, when centred at zero size).
 // Test builds never register a login item (an event says what would have happened) and never ask macOS for anything
 // (SystemAccess.swift); BLURT_TEST_WARM_FAIL names a script that stands in for the warm-up's first one (a failure).
 import AppKit
@@ -72,6 +76,23 @@ final class OnboardingModel: ObservableObject {
     private var sendBaseline = 0
     private var tryTimer: Timer?
     private var tryBaseline: String?
+    /// what macOS says of the network (NetworkWatch, read every second while the window shows): offline, the models'
+    /// download can't start — the step says so before the button is pressed, not after it failed
+    @Published var online: Bool? = NetworkWatch.shared.isOnline
+    private var netTimer: Timer?
+
+    func watchNetwork() {
+        online = NetworkWatch.shared.isOnline
+        netTimer?.invalidate()
+        netTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                let now = NetworkWatch.shared.isOnline
+                if now != self.online { self.online = now }
+            }
+        }
+    }
+    func stopNetwork() { netTimer?.invalidate(); netTimer = nil }
 
     func setKey(_ k: DictationTrigger.Key) {
         dictationKey = k
@@ -93,10 +114,6 @@ final class OnboardingModel: ObservableObject {
         }
     }
 
-    /// The Try-it line for the key and mode: tap (and auto) — tap, talk, tap; hold — hold, talk, let go.
-    static func tryDetail(key: String, mode: DictationTrigger.Mode) -> String {
-        mode == .hold ? T("onboarding.try.detail.hold", key) : T("onboarding.try.detail", key)
-    }
     let steps = 4
     var close: () -> Void = {}
     func finish() {
@@ -122,7 +139,7 @@ final class OnboardingModel: ObservableObject {
 
     static let heroWidth: CGFloat = 200
     static let contentWidth: CGFloat = 640
-    static let height: CGFloat = 600
+    static let height: CGFloat = 560
 
     static let uvInstallCommand = "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=\"$HOME/.blurt/bin\" UV_NO_MODIFY_PATH=1 sh"
 
@@ -284,8 +301,8 @@ struct OnboardingView: View {
                 .frame(width: OnboardingModel.contentWidth)
         }
         .frame(width: OnboardingModel.heroWidth + OnboardingModel.contentWidth, height: OnboardingModel.height)
-        .onAppear { perms.start(); models.shown = true; m.appear() }
-        .onDisappear { perms.stop(); models.shown = false; m.stopTry() }
+        .onAppear { perms.start(); models.shown = true; m.appear(); m.watchNetwork() }
+        .onDisappear { perms.stop(); models.shown = false; m.stopTry(); m.stopNetwork() }
         .onChange(of: guide.finished) { f in
             // the walk ended with everything dictation needs: on to the models
             guard f != nil, m.step == 1, guide.missing(.dictation).isEmpty else { return }
@@ -297,34 +314,67 @@ struct OnboardingView: View {
         .onChange(of: models.finished.count) { _ in if m.warm == "failed" { m.warm = nil; m.warmUp() } }
     }
 
-    /// The step's own action is still to do: it is the primary, and the footer offers "Skip for Now" instead of Next.
-    var pending: Bool {
+    /// The step's own action is still to do: it is the footer's one primary (Return), and Next / Done sits beside it,
+    /// plain — going on without it. The footer never has a second skip.
+    var pending: Bool { action != nil }
+
+    /// The step's own action, while it is still to do (nil: the step is done, Next / Done is the primary).
+    struct StepAction {
+        var title: String
+        var enabled = true
+        var help: String?
+        var run: () -> Void
+    }
+
+    var action: StepAction? {
         switch m.step {
-        case 1: return !guide.missing(.dictation).isEmpty
-        case 2: return SpeechSetup.pending(m.speechStep, settled: models.settled, retrying: m.retrying)
-        default: return false
+        case 1:
+            guard !guide.missing(.dictation).isEmpty else { return nil }
+            return StepAction(title: guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) { startWalk() }
+        case 2:
+            guard SpeechSetup.pending(m.speechStep, settled: models.settled, retrying: m.retrying) else { return nil }
+            switch m.speechStep {
+            case .needsUV:
+                return StepAction(title: T("onboarding.install_uv"), enabled: !m.installingUV, help: OnboardingModel.uvInstallCommand) { m.installUV() }
+            case .offer:
+                // offline, the download can't start: the line above says so and the button waits for the network
+                return StepAction(title: T("onboarding.models.download"), enabled: m.online != false) { models.start() }
+            default:
+                return StepAction(title: T("onboarding.models.retry"), enabled: !m.retrying) { m.retrySetup(via: "models") }
+            }
+        case 3:
+            switch tryBlock {
+            case .permissions?: return StepAction(title: T("settings.perm.setup")) { startWalk() }
+            case .noModel?: return StepAction(title: T("onboarding.try.download"), enabled: m.online != false) { models.start() }
+            case .tools?: return StepAction(title: T("onboarding.models.retry")) { m.step = 2; m.retrySetup(via: "try") }
+            default: return nil
+            }
+        default:
+            return nil
         }
     }
 
+    func startWalk() {
+        m.walked = true
+        guide.start(.dictation, source: .onboarding)
+    }
+
+    var last: Bool { m.step == m.steps - 1 }
+
+    func advance() { if last { m.done() } else { m.step += 1 } }
+
     var content: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 3) {
-                    // a large headline: gradient text (flat brand ink with Increase Contrast) — the welcome on the first
-                    // step, then the step's own name (the bars below already say which step it is)
-                    let h = heading
-                    Text(h.title).font(.system(size: 24, weight: .bold)).brandGradientText()
-                    Text(h.detail).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
+            // a large headline in gradient text (flat brand ink with Increase Contrast) and one line under it
+            let h = heading
+            VStack(alignment: .leading, spacing: 6) {
+                Text(h.title).font(.system(size: 24, weight: .bold)).brandGradientText()
+                    .accessibilityAddTraits(.isHeader)
+                Text(h.detail).font(.system(size: 13)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 28).padding(.top, 24).padding(.bottom, 16)
-
-            HStack(spacing: 6) {
-                ForEach(0..<m.steps, id: \.self) { i in
-                    Capsule().fill(i <= m.step ? Color.brandInk : Color(nsColor: .quaternaryLabelColor)).frame(height: 4)
-                }
-            }.padding(.horizontal, 28)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, OnbMetrics.inset).padding(.top, 22)
 
             Group {
                 switch m.step {
@@ -335,139 +385,166 @@ struct OnboardingView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .padding(.horizontal, 28).padding(.vertical, 18)
+            .padding(.horizontal, OnbMetrics.inset).padding(.top, 20).padding(.bottom, 16)
 
             Divider()
-            HStack {
-                // on the last step Done says the same: one way out
-                if m.step < m.steps - 1 {
-                    Button(T("onboarding.skip_setup")) { m.finish() }.buttonStyle(.link).foregroundStyle(Color.brandInk)
-                }
-                Spacer()
-                if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
-                if pending {
-                    Button(T("onboarding.skip_for_now")) { m.step += 1 }
-                } else {
-                    // the one primary: the brand button
-                    Button(m.step == m.steps - 1 ? T("onboarding.done") : T("onboarding.next")) {
-                        if m.step == m.steps - 1 { m.done() } else { m.step += 1 }
-                    }
-                    .buttonStyle(.brand)
-                    .keyboardShortcut(.defaultAction)
-                }
-            }
-            .padding(.horizontal, 28).padding(.vertical, 14)
+            footer
         }
+    }
+
+    /// Where you are (the dots), the one way out of the whole assistant, Back, and the one primary.
+    var footer: some View {
+        HStack(spacing: 8) {
+            StepDots(step: m.step, count: m.steps)
+            Spacer(minLength: 12)
+            // on the last step Done says the same: one way out
+            if !last {
+                Button(T("onboarding.skip_setup")) { m.finish() }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                    .padding(.trailing, 8)
+            }
+            if m.step > 0 { Button(T("onboarding.back")) { m.step -= 1 } }
+            let nextTitle = last ? T("onboarding.done") : T("onboarding.next")
+            if let a = action {
+                Button(nextTitle) { advance() }
+                Button(a.title) { a.run() }
+                    .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                    .disabled(!a.enabled).help(a.help ?? "")
+            } else {
+                Button(nextTitle) { advance() }
+                    .buttonStyle(.brand).keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(.horizontal, OnbMetrics.inset).padding(.top, 14).padding(.bottom, 18)
     }
 
     /// The headline and its line for the step showing.
     var heading: (title: String, detail: String) {
-        let key = Dictation.keyShort(m.dictationKey)
         switch m.step {
-        case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle", key))
-        case 1: return (T("onboarding.permissions"), T("onboarding.permissions_detail"))
+        case 0: return (T("onboarding.welcome_blurt"), T("onboarding.subtitle"))
+        case 1:
+            return (T("onboarding.dictation.title"),
+                    T(guide.missing(.dictation).isEmpty ? "onboarding.dictation.detail_done" : "onboarding.dictation.detail"))
         case 2: return (T("onboarding.models"), T("onboarding.models.detail"))
-        default:
-            // dictation can't be tried yet (permissions, its speech tools or model): no "tap Fn and say something"
-            // above the line that says why
-            if !canTryNow { return (T("onboarding.try"), T("onboarding.try.detail_later")) }
-            return (T("onboarding.try"), OnboardingModel.tryDetail(key: key, mode: m.dictationMode)
-                        + (Dictation.doubleTapSend ? T("onboarding.try.send", key) : ""))
+        default: return (T("onboarding.try"), T("onboarding.try.subtitle"))
         }
-    }
-
-    /// The Try-it step's instruction holds: dictation's permissions are on and its recogniser is in (or not known yet —
-    /// the list is still being read).
-    var canTryNow: Bool {
-        if m.tried { return true }
-        if !guide.missing(.dictation).isEmpty { return false }
-        if models.dictationReady { return true }
-        return !(models.loaded || m.speechStep == .blocked)
     }
 
     func check(_ text: String) -> some View {
         HStack(spacing: 8) {
-            Image(nsImage: BlurtIcon.check.symbolImage(pointSize: 13, weight: .semibold)).foregroundStyle(Color.brandOk)
-            Text(text).fixedSize(horizontal: false, vertical: true)
+            StatusDot(tone: .good)
+            Text(text).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
     }
 
     // MARK: 1 welcome
 
-    var welcome: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GroupBox {
-                VStack(spacing: 12) {
-                    use(T("onboarding.use.dictation"), Dictation.keyShort(m.dictationKey),
-                        detail: T(Dictation.doubleTapSend ? "onboarding.use.dictation.detail" : "onboarding.use.dictation.detail_plain"))
-                    Divider()
-                    use(T("onboarding.use.snap"), hk(.snap))
-                    Divider()
-                    use(T("onboarding.use.voice"), hk(.voice))
-                    Divider()
-                    use(T("onboarding.use.record"), hk(.toggleRecord))
-                }.padding(8)
-            }
-            Hint(T("onboarding.use.hint"))
+    /// The dictation key as keycaps.
+    static func dictationCaps(_ k: DictationTrigger.Key) -> [String] {
+        switch k {
+        case .fn: return ["fn"]
+        case .rightOption: return [T("onboarding.cap.right_option")]
+        case .eitherOption: return ["⌥"]
         }
     }
 
-    func use(_ what: String, _ key: String, detail: String? = nil) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(what)
-                if let d = detail { Text(d).font(.caption).foregroundStyle(.secondary) }
-            }
-            Spacer()
-            Text(key.trimmingCharacters(in: .whitespaces)).foregroundStyle(.secondary)     // zh short names lead with a space
+    var welcome: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            feature(.keyboard, T("onboarding.use.dictation"),
+                    T(Dictation.doubleTapSend ? "onboarding.use.dictation.detail" : "onboarding.use.dictation.detail_plain"),
+                    OnboardingView.dictationCaps(m.dictationKey), first: true)
+            feature(.snap, T("onboarding.use.snap"), T("onboarding.use.snap.detail"), KeyCaps.split(hk(.snap)))
+            feature(.mic, T("onboarding.use.voice"), T("onboarding.use.voice.detail"), KeyCaps.split(hk(.voice)))
+            feature(.record, T("onboarding.use.record"), T("onboarding.use.record.detail"), KeyCaps.split(hk(.toggleRecord)))
+            Spacer(minLength: 12)
+            Button(T("onboarding.use.change")) { AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue) }
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.brandInk)
+                .onHover { NSCursor.pointingHand.set(); if !$0 { NSCursor.arrow.set() } }
         }
+    }
+
+    func feature(_ icon: BlurtIcon, _ title: String, _ detail: String, _ caps: [String], first: Bool = false) -> some View {
+        OnbRow(image: GlyphTile.brand(icon), title: title, detail: detail, first: first) {
+            if caps.isEmpty {
+                Text(T("settings.kit.not_set")).font(.system(size: 12)).foregroundStyle(.secondary)
+            } else {
+                KeyCaps(caps)
+            }
+        }
+        .frame(minHeight: 62)
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: 2 permissions
+    // MARK: 2 dictation: the key, then the permissions
 
     /// The microphone and Accessibility; Input Monitoring only when dictation needs it: a key other than Fn, or it still
     /// isn't satisfied once Accessibility is on or a walk got past it (with Fn, Accessibility alone hears the key —
-    /// Input Monitoring is what's left when Accessibility was turned down or its tap was refused). With Fn, the 🌐 key's
-    /// row too. So whatever the walk still asks for has its row here.
+    /// Input Monitoring is what's left when Accessibility was turned down or its tap was refused). The 🌐 key (with
+    /// Fn) is the key's own line above, not a permission. So whatever the walk still asks for has its row here.
     var permissionKinds: [PermissionKind] {
         let pastAccessibility = (m.walked || perms.accessibility == .granted) && !(guide.running && guide.current == .accessibility)
         let im = !guide.satisfied(.inputMonitoring) && (m.dictationKey != .fn || pastAccessibility)
-        return [.microphone, .accessibility] + (im ? [.inputMonitoring] : []) + (m.dictationKey == .fn ? [.fnKey] : [])
+        return [.microphone, .accessibility] + (im ? [.inputMonitoring] : [])
     }
 
-    var setupButton: some View {
-        Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
-            m.walked = true
-            guide.start(.dictation, source: .onboarding)
+    /// The picker's names, all of one form ("Fn", "Right Option", "Either Option").
+    static func keyLabel(_ k: DictationTrigger.Key) -> String {
+        switch k {
+        case .fn: return T("onboarding.key.fn")
+        case .rightOption: return T("onboarding.key.right_option")
+        case .eitherOption: return T("onboarding.key.either_option")
         }
+    }
+
+    var keyGesture: String {
+        let send = Dictation.doubleTapSend ? T("onboarding.key.gesture_send") : ""
+        return (m.dictationMode == .hold ? T("onboarding.key.gesture_hold") : T("onboarding.key.gesture")) + send
     }
 
     var permissions: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            PermissionDoneBanner()
-            if !guide.missing(.dictation).isEmpty {
-                setupButton.buttonStyle(.brand).keyboardShortcut(.defaultAction)
-            }
-            GroupBox { VStack(spacing: 10) { PermissionRows(p: perms, source: .onboarding, kinds: permissionKinds, paneLink: false) }.padding(4) }
-            HStack(spacing: 10) {
-                Text(T("onboarding.dictation_key"))
-                Picker("", selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) })) {
-                    ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(Dictation.keyName(k)).tag(k) }
+        VStack(alignment: .leading, spacing: 0) {
+            // the key first: it decides which lines the permissions below have, so changing it never moves this row
+            OnbRow(image: GlyphTile.brand(.keyboard), title: T("onboarding.dictation_key"), detail: keyGesture, first: true) {
+                Picker(T("onboarding.dictation_key"), selection: Binding(get: { m.dictationKey }, set: { m.setKey($0) })) {
+                    ForEach(DictationTrigger.Key.allCases, id: \.self) { k in Text(OnboardingView.keyLabel(k)).tag(k) }
                 }
-                .labelsHidden().pickerStyle(.segmented).fixedSize()
-                Spacer()
+                .labelsHidden().pickerStyle(.menu).fixedSize()
             }
-            // the step's footnotes in one style (Hint); attention ink only for the Fn clash
-            Hint((m.dictationKey == .fn ? T("onboarding.dictation_key.fn") : T("onboarding.dictation_key.other", Dictation.keyInline(m.dictationKey)))
-                 + (Dictation.doubleTapSend ? T("onboarding.dictation_key.send", Dictation.keyInline(m.dictationKey)) : ""))
-            if m.dictationKey == .fn, !SystemAccess.fnClashApps.isEmpty {
-                Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
-                    .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+            if m.dictationKey == .fn {
+                // macOS's own 🌐 key setting: not a permission, a line of the key (the walk sets it with the rest)
+                OnbRow(image: GlyphTile.symbol("globe"), title: T("onboarding.fn.title"), detail: T("onboarding.fn.detail")) {
+                    if guide.running && guide.current == .fnKey {
+                        waiting
+                    } else if guide.satisfied(.fnKey) {
+                        StateLabel(tone: .good, text: T("onboarding.fn.set"))
+                    } else {
+                        StateLabel(tone: .warn, text: T("settings.kit.not_set"), color: .brandAttnInk)
+                    }
+                }
+                if !SystemAccess.fnClashApps.isEmpty {
+                    Text(T("dictation.settings.fn_clash", SystemAccess.fnClashApps.joined(separator: T("settings.perm.list_sep"))))
+                        .font(.system(size: 12)).foregroundStyle(Color.brandAttnInk).fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, OnbMetrics.glyph + OnbMetrics.rowGap).padding(.bottom, 6)
+                }
             }
-            Hint(T("onboarding.permissions.screen_later"))
+
+            OnbHeading(text: T("onboarding.permissions")).padding(.top, OnbMetrics.sectionGap)
+            ForEach(Array(permissionKinds.enumerated()), id: \.element) { i, k in
+                OnbPermissionRow(kind: k, state: perms.state(k), first: i == 0)
+            }
+            Text(T("onboarding.permissions.screen_later")).font(.system(size: 12)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 8)
         }
+    }
+
+    var waiting: some View {
+        HStack(spacing: 6) {
+            BrandSpinnerView(size: 10)
+            Text(T("onboarding.perm.waiting")).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+        .fixedSize()
     }
 
     // MARK: 3 models
@@ -476,182 +553,324 @@ struct OnboardingView: View {
     func size(_ mb: Double) -> String { modelSize(mb) }
 
     var modelsStep: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            GroupBox {
-                VStack(alignment: .leading, spacing: 10) {
-                    switch m.speechStep {
-                    case .needsUV:
-                        Text(T("onboarding.uv.needed")).fixedSize(horizontal: false, vertical: true)
-                        HStack {
-                            Button(T("onboarding.install_uv")) { m.installUV() }
-                                .buttonStyle(.brand).keyboardShortcut(.defaultAction)
-                                .disabled(m.installingUV).help(OnboardingModel.uvInstallCommand)
-                            if m.installingUV { BrandSpinnerView() }
-                        }
-                        if m.uvFailed { Text(T("onboarding.uv.failed")).font(.caption).foregroundStyle(Color.brandErr) }
-                    case .checking:
-                        HStack { BrandSpinnerView(); Text(T("onboarding.models.checking")).foregroundStyle(.secondary) }
-                    case .blocked:
-                        // the tools or the list: one cause, one sentence, one Try Again (the rows wait for it)
-                        let offline = m.blockedCause == .offline
-                        Text(T(offline ? "onboarding.setup.blocked" : "onboarding.setup.blocked_error"))
-                            .foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
-                        if let at = m.retriedAt {
-                            Text(T(offline ? "onboarding.setup.retried_offline" : "onboarding.setup.retried_error",
-                                   at.formatted(date: .omitted, time: .shortened)))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.primary(true)
-                    default:
-                        modelRows
+        VStack(alignment: .leading, spacing: 0) {
+            switch m.speechStep {
+            case .needsUV:
+                OnbNotice(kind: .attention, title: T("onboarding.uv.title"), detail: T("onboarding.uv.needed")) {
+                    if m.installingUV {
+                        HStack(spacing: 6) { BrandSpinnerView(size: 10); Text(T("onboarding.uv.installing")).font(.system(size: 12)).foregroundStyle(.secondary) }
+                            .padding(.top, 2)
+                    }
+                    if m.uvFailed { Text(T("onboarding.uv.failed")).font(.system(size: 12)).foregroundStyle(Color.brandErr) }
+                }
+            case .checking:
+                OnbNotice(kind: .working, title: T("onboarding.models.checking"), detail: nil)
+            case .blocked:
+                // the tools or the list: one cause, one sentence; the footer's Try Again (the rows wait for it)
+                let offline = m.blockedCause == .offline
+                OnbNotice(kind: offline ? .offline : .error,
+                          title: T(offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title"),
+                          detail: T(offline ? "onboarding.setup.blocked" : "onboarding.setup.blocked_error")) {
+                    if let at = m.retriedAt {
+                        Text(T(offline ? "onboarding.setup.retried_offline" : "onboarding.setup.retried_error",
+                               at.formatted(date: .omitted, time: .shortened)))
+                            .font(.system(size: 12)).foregroundStyle(.secondary)
                     }
                 }
-                .padding(6)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            default:
+                modelRows
+                modelStatus.padding(.top, 14)
             }
-            Hint(T("onboarding.models.later"))
+            Spacer(minLength: 12)
+            Text(T("onboarding.models.later")).font(.system(size: 12)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    func kindIcon(_ k: ModelBundle.Kind) -> NSImage {
+        switch k {
+        case .dictation: return GlyphTile.brand(.keyboard)
+        case .polish: return GlyphTile.brand(.wand)
+        case .note: return GlyphTile.brand(.mic)
+        }
+    }
+
+    /// A model's role in plain words and what it does (its own name is the row's tooltip).
+    func kindWords(_ k: ModelBundle.Kind) -> (title: String, what: String) {
+        switch k {
+        case .dictation: return (T("onboarding.models.kind.dictation"), T("onboarding.models.what.dictation"))
+        case .polish: return (T("onboarding.models.kind.polish"), T("onboarding.models.what.polish"))
+        case .note: return (T("onboarding.models.kind.note"), T("onboarding.models.what.note"))
         }
     }
 
     @ViewBuilder var modelRows: some View {
-        ForEach(models.parts, id: \.id) { p in
+        ForEach(Array(models.parts.enumerated()), id: \.element.id) { i, p in
             let have = p.installed || models.finished.contains(p.id)
-            HStack(spacing: 10) {
-                // in: ok; coming down now: a small spinner; waiting its turn: quiet; missing while idle: attention
-                if models.current == p.id {
-                    BrandSpinnerView(size: 10).frame(width: StatusDot.size, height: StatusDot.size)     // the dot's column
-                } else {
-                    StatusDot(tone: have ? .good : models.downloading ? .off : .warn)
-                }
-                Text(T("onboarding.models.kind.\(p.kind.rawValue)"))
-                Text(p.name).foregroundStyle(.secondary)
-                Spacer()
-                // only what is still to come down has a size (the total counts just these)
-                if !have { Text(size(p.sizeMB)).foregroundStyle(.secondary).monospacedDigit() }
+            // the model's own name is detail: the tooltip, not the row
+            let words = kindWords(p.kind)
+            OnbRow(image: kindIcon(p.kind), title: words.title, detail: words.what, first: i == 0, help: p.name) {
+                modelState(p, have: have)
             }
             .accessibilityElement(children: .combine)
         }
+        // what is still to come down, in the sizes' column
+        if !models.ready, !models.downloading, models.totalMB > 0 {
+            HStack(spacing: 8) {
+                Spacer()
+                Text(T("onboarding.models.total_label")).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(size(models.totalMB)).font(.system(size: 12, weight: .semibold).monospacedDigit())
+            }
+            .padding(.top, 8)
+            .overlay(alignment: .top) { Divider() }
+        }
+    }
+
+    /// One trailing element per model: its size while it is to come, a spinner while it comes down, a check once in.
+    @ViewBuilder func modelState(_ p: ModelBundle.Part, have: Bool) -> some View {
+        if have {
+            StateLabel(tone: .good, text: T("onboarding.models.installed"))
+        } else if models.current == p.id {
+            HStack(spacing: 6) {
+                BrandSpinnerView(size: 10)
+                Text(size(p.sizeMB)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            .fixedSize()
+        } else {
+            Text(size(p.sizeMB)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Under the rows: the one bar while the set downloads, the done line, a stop that failed, the Mac offline.
+    @ViewBuilder var modelStatus: some View {
         if models.downloading {
             let pr = models.progress
-            HStack(alignment: .bottom, spacing: 10) {
-                ProgressView(value: pr.done, total: max(pr.total, 1)) {
-                    Text(T("onboarding.models.progress", size(pr.done), size(pr.total))).font(.caption).monospacedDigit()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 12) {
+                    ProgressView(value: min(pr.done, pr.total), total: max(pr.total, 1)).tint(Color.brandInk)
+                    Text(T("onboarding.models.progress", size(pr.done), size(pr.total)))
+                        .font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary).fixedSize()
+                    Button(T("onboarding.models.stop")) { models.cancel() }.controlSize(.small)
                 }
-                Button(T("onboarding.models.stop")) { models.cancel() }.controlSize(.small)
+                Text(T("onboarding.models.background")).font(.system(size: 12)).foregroundStyle(.secondary)
             }
-            Text(T("onboarding.models.background")).font(.caption).foregroundStyle(.secondary)
         } else if models.ready {
-            // the rows' checks already say it: a quiet caption, not a fourth check
-            Text(T("onboarding.models.ready")).font(.caption).foregroundStyle(.secondary)
+            check(T("onboarding.models.ready"))
         } else if models.failed {
-            Text(T("onboarding.models.failed")).font(.callout).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button(T("onboarding.models.retry")) { m.retrySetup(via: "models") }.primary(pending)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(T("onboarding.models.failed")).font(.system(size: 12)).foregroundStyle(Color.brandErr)
+                    .fixedSize(horizontal: false, vertical: true)
                 if let f = models.fallback {
                     Button(T("onboarding.models.small", size(f.sizeMB))) { models.start(only: [f]) }
-                        .help(T("onboarding.models.small.help"))
+                        .controlSize(.small).help(T("onboarding.models.small.help"))
                 }
             }
-        } else {
-            HStack(spacing: 10) {
-                // after the small model alone: still on offer, no longer the step's primary
-                Button(T("onboarding.models.download")) { models.start() }.primary(pending)
-                Text(T("onboarding.models.total", size(models.totalMB))).font(.callout).foregroundStyle(.secondary)
-            }
+        } else if m.online == false {
+            OnbNotice(kind: .offline, title: T("onboarding.models.offline.title"), detail: T("onboarding.models.offline"))
+        } else if models.settled {
+            // the small model is in: the full set stays on offer, no longer the step's primary
+            Button(T("onboarding.models.download")) { models.start() }
         }
     }
 
     // MARK: 4 try it
 
+    /// Why dictation can't be tried yet (nil: it can).
+    enum TryBlock { case permissions, downloading(done: Double, total: Double), noModel, tools }
+
+    var tryBlock: TryBlock? {
+        if m.tried { return nil }
+        if !guide.missing(.dictation).isEmpty { return .permissions }
+        // only the recogniser itself blocks trying it: its own bar
+        if let p = models.dictationProgress { return .downloading(done: p.done, total: p.total) }
+        if models.dictationReady { return nil }
+        guard models.loaded || m.speechStep == .blocked else { return nil }        // the list is still being read
+        switch SpeechSetup.tryState(dictationReady: false, dictationDownloading: false, step: m.speechStep,
+                                    pendingDownloads: !models.pending.isEmpty) {
+        case .download: return .noModel
+        default: return .tools
+        }
+    }
+
     var tryIt: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
-                .lineLimit(3...5)
-                .textFieldStyle(.roundedBorder)
-                .focused($tryFocused)
-            if m.tried {
-                check(T("onboarding.try.works"))
-                // the second exercise: the double tap that sends (taught here, before it surprises in a chat)
-                if Dictation.doubleTapSend {
-                    if m.sendTried { check(T("onboarding.try.sent")) }
-                    else { Text(T("onboarding.try.send_next", Dictation.keyShort(m.dictationKey))).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true) }
-                }
-            } else if !guide.missing(.dictation).isEmpty {
-                HStack(spacing: 10) {
-                    Text(T("onboarding.try.needs_permissions")).foregroundStyle(.secondary)
-                    setupButton
-                }
-            } else if let p = models.dictationProgress {
-                // only the recogniser itself blocks trying it: its own bar
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(T("onboarding.try.asr_downloading")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    ProgressView(value: min(p.done, p.total), total: max(p.total, 1)) {
-                        Text(T("onboarding.models.progress", size(p.done), size(p.total))).font(.caption).monospacedDigit()
-                    }
-                }
-            } else if models.downloading && models.dictationReady {
-                // dictation works already; polish (and the voice-note model) are still coming
-                Text(T("onboarding.try.polish_coming", size(models.restMB))).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else if (models.loaded || m.speechStep == .blocked) && !models.dictationReady {
-                switch SpeechSetup.tryState(dictationReady: false, dictationDownloading: false, step: m.speechStep,
-                                            pendingDownloads: !models.pending.isEmpty) {
-                case .download:
-                    HStack(spacing: 10) {
-                        Text(T("onboarding.try.no_model")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button(T("onboarding.models.download")) { models.start() }
-                    }
-                default:
-                    // nothing to download until the tools are in: the models step's Try Again, where its progress shows
-                    HStack(spacing: 10) {
-                        Text(T("onboarding.try.blocked")).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        Button(T("onboarding.models.retry")) { m.step = 2; m.retrySetup(via: "try") }
-                    }
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            // one place for the practice: the card, or (while it can't be tried) why, in the card's own size
+            if let b = tryBlock {
+                tryNotice(b).frame(height: OnboardingView.tryHeight)
+            } else {
+                practice
             }
-            Spacer().frame(height: 6)
-            Toggle(isOn: $m.openAtLogin) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(T("settings.general.login"))
-                    Text(T("onboarding.login.detail")).font(.caption).foregroundStyle(.secondary)
-                }
+            if tryBlock == nil, !m.tried, models.downloading, models.dictationReady {
+                // dictation works already; polish (and the voice-note model) are still coming
+                Text(T("onboarding.try.polish_coming", size(models.restMB))).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
+            }
+            Spacer(minLength: 16)
+            OnbRow(image: GlyphTile.symbol("power"), title: T("settings.general.login"), detail: T("onboarding.login.detail")) {
+                Toggle(T("settings.general.login"), isOn: $m.openAtLogin).labelsHidden().toggleStyle(.switch).controlSize(.small)
             }
         }
         .onAppear {
             m.startTry()
-            DispatchQueue.main.async { tryFocused = true }
+            if tryBlock == nil { DispatchQueue.main.async { tryFocused = true } }
         }
         .onDisappear { m.stopTry() }
     }
+
+    static let tryHeight: CGFloat = 224
+
+    @ViewBuilder func tryNotice(_ b: TryBlock) -> some View {
+        switch b {
+        case .permissions:
+            let names = ListFormatter.localizedString(byJoining: guide.missing(.dictation).map(PermissionGuide.name))
+            OnbNotice(kind: .attention, title: T("onboarding.try.needs_permissions"), detail: T("onboarding.try.needs_permissions.detail", names),
+                      centered: true)
+        case .downloading(let done, let total):
+            OnbNotice(kind: .working, title: T("onboarding.try.asr_downloading"), detail: T("onboarding.try.asr_downloading.detail"),
+                      centered: true) {
+                HStack(spacing: 12) {
+                    ProgressView(value: min(done, total), total: max(total, 1)).tint(Color.brandInk)
+                    Text(T("onboarding.models.progress", size(done), size(total))).font(.system(size: 12).monospacedDigit())
+                        .foregroundStyle(.secondary).fixedSize()
+                }
+                .padding(.top, 4)
+            }
+        case .noModel:
+            OnbNotice(kind: .attention, title: T("onboarding.try.no_model"), detail: T("onboarding.try.no_model.detail"), centered: true)
+        case .tools:
+            OnbNotice(kind: .error, title: T("onboarding.try.blocked"), detail: T("onboarding.try.blocked.detail"), centered: true)
+        }
+    }
+
+    /// The practice card: the key as a keycap and what to do with it, the box the words land in, then the checks.
+    var practice: some View {
+        let key = Dictation.keyShort(m.dictationKey).trimmingCharacters(in: .whitespaces)
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                KeyCaps(OnboardingView.dictationCaps(m.dictationKey), size: 13)
+                Text(T(m.dictationMode == .hold ? "onboarding.try.how.hold" : "onboarding.try.how"))
+                    .font(.system(size: 13)).foregroundStyle(.secondary)
+            }
+            TextField(T("onboarding.try.placeholder"), text: $m.tryText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15))
+                .lineLimit(3...5)
+                .focused($tryFocused)
+            if m.tried {
+                VStack(alignment: .leading, spacing: 6) {
+                    check(T("onboarding.try.works"))
+                    // the second exercise: the double tap that sends (taught here, before it surprises in a chat)
+                    if Dictation.doubleTapSend {
+                        if m.sendTried { check(T("onboarding.try.sent")) }
+                        else {
+                            Text(T("onboarding.try.send_next", key)).font(.system(size: 12)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.leading, StatusDot.size + 8)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: OnboardingView.tryHeight, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)         // its own height, never stretched to the login row
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .strokeBorder(tryFocused ? Color.brandAccent : Color.primary.opacity(0.12), lineWidth: tryFocused ? 1.5 : 0.5))
+        .contentShape(Rectangle())
+        .onTapGesture { tryFocused = true }
+    }
 }
 
-private extension View {
-    /// The step's own action as the one brand primary (Return presses it), or a plain button.
-    @ViewBuilder func primary(_ on: Bool) -> some View {
-        if on { buttonStyle(.brand).keyboardShortcut(.defaultAction) } else { self }
+/// One permission of the dictation step: its glyph, name and why, then one trailing element — Allowed (with the ok
+/// dot), Not allowed (the attention dot; Allow… under the pointer: the footer's Set Up Permissions… is the way for
+/// all of them), Turned off with System Settings… (macOS won't ask again), Not needed, or the guide waiting on it.
+struct OnbPermissionRow: View {
+    var kind: PermissionKind
+    var state: Permissions.State
+    var first: Bool
+    @ObservedObject var guide = PermissionGuide.shared
+    @State private var hover = false
+
+    var symbol: String {
+        switch kind {
+        case .microphone: return "mic"
+        case .accessibility: return "accessibility"
+        case .inputMonitoring: return "keyboard"
+        case .screen: return "rectangle.dashed"
+        case .fnKey: return "globe"
+        }
+    }
+
+    var why: String {
+        switch kind {
+        case .microphone: return T("onboarding.perm.why.microphone")
+        case .accessibility: return T("onboarding.perm.why.accessibility")
+        case .inputMonitoring: return T("onboarding.perm.why.input_monitoring", Dictation.keyInline)
+        case .screen: return T("onboarding.perm.why.screen")
+        case .fnKey: return T("onboarding.fn.detail")
+        }
+    }
+
+    var missing: Bool { state != .granted && !guide.satisfied(kind) }
+
+    func allow() { PermissionGuide.shared.start(.all, only: [kind], source: .onboarding) }
+
+    var body: some View {
+        OnbRow(image: GlyphTile.symbol(symbol), title: PermissionGuide.name(kind), detail: why, first: first) {
+            trailing.frame(minWidth: 96, alignment: .trailing)
+        }
+        .onHover { hover = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: T("settings.kit.allow")) { if missing { allow() } }
+    }
+
+    @ViewBuilder var trailing: some View {
+        if guide.running && guide.current == kind {
+            HStack(spacing: 6) {
+                BrandSpinnerView(size: 10)
+                Text(T("onboarding.perm.waiting")).font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .fixedSize()
+        } else if state == .granted {
+            StateLabel(tone: .good, text: T("settings.kit.allowed"))
+        } else if guide.satisfied(kind) {
+            StateLabel(tone: .off, text: T("settings.perm.not_needed"))
+        } else if state == .denied {
+            // macOS won't ask again: the way back is System Settings, said on the button itself
+            HStack(spacing: 8) {
+                Text(T("settings.kit.not_allowed")).font(.system(size: 12)).foregroundStyle(Color.brandAttnInk)
+                Button(T("settings.kit.system_settings")) { allow() }.controlSize(.small)
+            }
+            .fixedSize()
+        } else if hover {
+            Button(T("settings.kit.allow")) { allow() }.controlSize(.small)
+        } else {
+            StateLabel(tone: .warn, text: T("onboarding.perm.missing"), color: .brandAttnInk)
+        }
     }
 }
 
 /// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it — the only place
 /// the spectrum appears. Flat field (no grain, no glow) with Reduce Transparency. The chick hatches to say hello and
-/// hops on the last step.
+/// hops on the last step. It sits a little above the middle, where the eye puts the centre.
 struct OnboardingHero: View {
     @ObservedObject var m: OnboardingModel
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        ZStack {
-            BrandField()
-            VStack(spacing: 0) {
-                Spacer()
+        GeometryReader { g in
+            ZStack {
+                BrandField()
                 ZStack {
-                    SpectrumGlow(size: 150, opacity: 0.5)
-                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 96, backdrop: .light)
-                        .frame(width: 96, height: 96)
+                    // light: a bloom that lightens the field (screen), never a darker smudge on it
+                    SpectrumGlow(size: 176, opacity: scheme == .dark ? 0.5 : 0.7)
+                        .blendMode(scheme == .dark ? .normal : .screen)
+                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 108, backdrop: .light)
+                        .frame(width: 108, height: 108)
                 }
-                .frame(width: 128, height: 128)
-                Spacer()
-                Spacer()
+                .frame(width: 140, height: 140)
+                .position(x: g.size.width / 2, y: g.size.height * 0.45)
             }
         }
         .clipped()
@@ -749,6 +968,8 @@ final class Onboarding: NSObject, NSWindowDelegate {
         case "small": if let f = ModelSetup.shared.fallback { ModelSetup.shared.start(only: [f]) }
         case "reload": Task { await ModelSetup.shared.load() }
         case "login": m.openAtLogin = a.count > 1 && a[1] == "on"
+        // tried [TEXT…]: as if the first dictation had landed in the Try-it box (TEXT: what it typed there)
+        case "tried": m.tried = true; m.tryText = a.dropFirst().joined(separator: " ")
         case "done": m.done()
         default: break
         }

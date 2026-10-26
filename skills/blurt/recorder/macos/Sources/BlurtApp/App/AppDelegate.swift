@@ -601,10 +601,21 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if event["event"] as? String == "error" {
                 // the reason in words (BlurtCore RecordingFailure); the raw message is in the log already. Refused by
                 // macOS: the way to System Settings, as every other permission question in the app offers it
-                let refused = RecordingFailure(rawValue: event["reason"] as? String ?? "") == .permission
-                alert(T("app.record.failed"), App.failureText(event), also: refused ? (T("settings.perm.open_settings"), {
-                    if let u = URL(string: PermissionKind.screen.paneURL) { NSWorkspace.shared.open(u) }
-                }) : nil)
+                // nothing of the take was kept: a loss (critical). Refused: Open System Settings is the way out (the
+                // default, Not Now beside it); a take that failed on its own: Record Again beside OK
+                let reason = RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown
+                switch reason {
+                case .permission:
+                    alert(T("app.record.failed"), App.failureText(event), also: (T("settings.perm.open_settings"), {
+                        if let u = URL(string: PermissionKind.screen.paneURL) { NSWorkspace.shared.open(u) }
+                    }), primary: true, cancel: T("app.alert.not_now"), critical: true)
+                case .diskFull:
+                    alert(T("app.record.failed"), App.failureText(event), critical: true)
+                case .stopped, .noFrames, .unknown:
+                    alert(T("app.record.failed"), App.failureText(event), also: (T("app.record.again"), { [weak self] in
+                        self?.startRecording(useLast: true)
+                    }), critical: true)
+                }
             }
         }
     }
@@ -815,7 +826,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             it.toolTip = T("app.contract.how")
             menu.addItem(.separator())
         }
-        // Kept short, like other menu-bar apps: capture, what waits for you, the current project, Settings, Quit.
+        // Kept short, like other menu-bar apps, in four groups: the capture verbs (each with its key, in one column),
+        // what waits for you (Open Blurt with the inbox's counts as its badge and subtitle, the cards, Recently Dragged
+        // Out, Dictation History, running jobs), where new captures go, then the app (Settings, updates; Quit apart).
         // After-recording, the agent order, countdown, system audio, open at login, shortcuts and help live in Settings.
         let record = add(T("app.menu.record"), #selector(mStart))
         record.showHotkey(.toggleRecord)
@@ -831,33 +844,56 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         addSnapMenuItems(menu, recording: false)
         menu.addItem(.separator())
 
-        // what waits for you, and what is running — each opens the main window there (nothing opens by itself)
+        // what waits for you, and what is running — each opens the main window there (nothing opens by itself). One
+        // row opens Blurt: with new items or items to verify it opens the inbox, the new count as its badge and the
+        // verify count under it ("6 to verify") — never a second row that opens the same window.
         if AppEnvironment.mainWindow != nil {
-            add(T("app.menu.open"), #selector(mOpenMain)).showHotkey(.openMain)
-            // the inbox in one row: "Inbox · 9 new · 6 to verify"
             let badge = MenuBadge.shared
-            let counts = (badge.new > 0 ? [T("main.inbox.new", badge.new)] : []) + (badge.verify > 0 ? [T("main.inbox.verify", badge.verify)] : [])
-            if !counts.isEmpty { add(([T("main.place.inbox")] + counts).joined(separator: " · "), #selector(mOpenInbox)) }
+            let waiting = badge.new > 0 || badge.verify > 0
+            let open = add(T("app.menu.open"), waiting ? #selector(mOpenInbox) : #selector(mOpenMain))
+            open.showHotkey(.openMain)
+            open.image = App.menuSymbol("macwindow")
+            if #available(macOS 14.4, *) {
+                if badge.new > 0 { open.badge = NSMenuItemBadge(string: T("main.inbox.new", badge.new)) }     // the window's own words ("9 new"), not the system's
+                if badge.verify > 0 { open.subtitle = T("main.inbox.verify", badge.verify) }
+            } else if waiting {
+                // (macOS 13–14.3: no subtitle) the counts in the title, as the window's subtitle says them
+                let counts = (badge.new > 0 ? [T("main.inbox.new", badge.new)] : []) + (badge.verify > 0 ? [T("main.inbox.verify", badge.verify)] : [])
+                open.title = ([T("app.menu.open")] + counts).joined(separator: " · ")
+            }
+        }
+        addWaitingMenuItems(menu)
+        if AppEnvironment.mainWindow != nil {
             for j in JobStore.shared.active.prefix(5) {
                 let i = add("\(JobLook.title(j)) · \(JobLook.status(j))", #selector(mOpenJob(_:)), obj: j.id)
                 i.image = App.menuSymbol(j.agent?.status == .waitingInput ? "exclamationmark.bubble" : JobLook.symbol(j))
             }
-            menu.addItem(.separator())
         }
+        menu.addItem(.separator())
 
-        // the current project (K2): where new captures go — the user's pick (recently used first), or none
+        // the current project (K2): where new captures go — the user's pick (recently used first), or none. The row
+        // is the project itself (its folder, or Unassigned's tray) under a small "Project" heading; Unassigned leads
+        // its submenu, then the projects, then the two ways to more.
         let store = ProjectStore.shared
-        let pItem = NSMenuItem(title: T("app.menu.project", store.current?.name ?? T("project.inbox")), action: nil, keyEquivalent: "")
+        let current = store.current
+        let pItem: NSMenuItem
+        if #available(macOS 14.0, *) {
+            menu.addItem(NSMenuItem.sectionHeader(title: T("app.menu.project_header")))
+            pItem = NSMenuItem(title: current?.name ?? T("project.inbox"), action: nil, keyEquivalent: "")
+        } else {
+            pItem = NSMenuItem(title: T("app.menu.project", current?.name ?? T("project.inbox")), action: nil, keyEquivalent: "")
+        }
+        pItem.image = App.menuSymbol(current == nil ? "tray.2" : current?.exists == false ? "questionmark.folder" : "folder")
         let pMenu = NSMenu()
+        let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
+        none.toolTip = T("app.menu.project.none_tip")
+        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
+        if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
             let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
             i.image = App.menuSymbol(p.exists ? "folder" : "questionmark.folder")
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
-        if !store.projects.isEmpty { pMenu.addItem(.separator()) }
-        let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
-        none.toolTip = T("app.menu.project.none_tip")
-        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
         pMenu.addItem(.separator())
         add(Loc.t("capture.menu.switch_project", table: "Capture"), #selector(mSwitchProject), to: pMenu).showHotkey(.project)
         _ = add(T("project.open_folder"), #selector(mOpenFolder), to: pMenu)
@@ -886,12 +922,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let symbols = [
             "mStart": "record.circle", "mStartLast": "record.circle", "mStop": "stop.circle", "mPause": "playpause",
             "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
-            "mLiveCaption": "captions.bubble", "mDictationHistory": "character.cursor.ibeam", "mShowCards": "rectangle.stack",
+            "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
             "mShowTaken": "clock.arrow.circlepath", "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",
         ]
         for it in menu.items where !it.isSeparatorItem && it.image == nil {
+            if #available(macOS 14.0, *), it.isSectionHeader { continue }     // a heading sits at the edge, as macOS sets it
             if it.submenu != nil { it.image = menuSymbol("folder"); continue }      // Project: …
             if let a = it.action, let s = symbols[NSStringFromSelector(a)] { it.image = menuSymbol(s) }
             if it.image == nil { it.image = blankSymbol }   // a row no symbol names still starts where the others do
@@ -1038,15 +1075,30 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    /// `also`: a second button (the first is OK) and what it does.
-    func alert(_ title: String, _ text: String, also: (String, () -> Void)? = nil) {
+    /// A native alert. `also`: a second button (the first is OK) and what it does. `primary`: that button is the way
+    /// out instead (the default, ↩), with `cancel` as the plain second (Esc) — "Open System Settings" / "Not Now".
+    /// `critical`: something was lost (the caution badge on the app icon), not just said. Shown key, so its default
+    /// button is drawn as the default.
+    func alert(_ title: String, _ text: String, also: (String, () -> Void)? = nil, primary: Bool = false, cancel: String? = nil,
+               critical: Bool = false) {
         let a = NSAlert()
         a.messageText = title
         a.informativeText = text
-        a.addButton(withTitle: T("action.ok"))
-        if let b = also { a.addButton(withTitle: b.0) }
-        emit(["event": "alert", "title": title, "text": text, "buttons": [T("action.ok")] + (also.map { [$0.0] } ?? [])])
+        a.alertStyle = critical ? .critical : .warning
+        var titles: [String] = []
+        if let b = also, primary {
+            titles = [b.0, cancel ?? T("action.cancel")]
+        } else {
+            titles = [T("action.ok")] + (also.map { [$0.0] } ?? [])
+        }
+        for t in titles { a.addButton(withTitle: t) }
+        if titles.count > 1 { a.buttons[1].keyEquivalent = "\u{1b}" }      // the second is Esc
+        emit(["event": "alert", "title": title, "text": text, "buttons": titles])
         activateApp()
-        if a.runModal() == .alertSecondButtonReturn { also?.1() }
+        a.layout()
+        a.window.makeKeyAndOrderFront(nil)
+        let r = a.runModal()
+        if primary { if r == .alertFirstButtonReturn { also?.1() } }
+        else if r == .alertSecondButtonReturn { also?.1() }
     }
 }
