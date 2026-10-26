@@ -250,12 +250,14 @@ def test_brand_effects_stay_restrained():
 def test_capture_lists_draw_designed_tiles():
     """docs/design/system.md §3.2 (v0.9): Recently Dragged Out and the island menu show captures as CaptureThumb tiles
     — a voice note is a brand-tint tile with the waveform in brand ink, never the mic glyph scaled up to the tile — and
-    a row's one primary (Copy) is a BrandButton; done toasts carry the ok check."""
+    a row's actions are the cards' one cluster ([···][Copy], CardChrome.CardActions — v0.9.2: no gradient button on a
+    row, the same cluster as an overview tile); done toasts carry the ok check."""
     app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
     taken = (app / "Capture/TakenPanel.swift").read_text()
     thumb = (app / "Capture/CaptureThumb.swift").read_text()
     assert "CaptureThumb.draw(" in taken and "CaptureThumb.image(" in taken
-    assert "BrandButton(" in taken and "bezelStyle = .rounded" not in taken
+    assert "CardActions(" in taken and "BrandButton(" not in taken and "bezelStyle = .rounded" not in taken
+    assert "CardActions(" in (app / "Capture/Island/CardsOverview.swift").read_text()
     assert not re.search(r"BlurtIcon\.mic\.image\(size: *height", taken)
     assert "BrandColor.tint" in thumb and "BlurtIcon.waveform" in thumb and "BrandColor.ink" in thumb
     assert "BrandColor.Island.ok" in (app / "Capture/Island/IslandContent.swift").read_text()

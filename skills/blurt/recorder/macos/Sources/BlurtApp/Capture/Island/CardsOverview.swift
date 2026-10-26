@@ -12,16 +12,15 @@
 // (never in the middle of a drag out of it or a click's pending copy: that waits until they are done) and closes itself
 // when none are left. It never activates Blurt.
 //
-// The look (v0.9.1, the same family as Recently Dragged Out, docs/design/system.md §3.2): no window title in inactive
-// grey and no dead minimise / zoom — a transparent title bar with only the close button, and the panel's own heading in
-// it ("Cards  7", ink; "···" on the right with what concerns every card: Copy All, Organize All, Delete All). A grid that
-// fits its count (≤ 4 in one row, then 3 a row, then 4 with a scroll), tiles as wide as a card can be (148 × 100),
-// pictures cropped from their top-left (where a window's title is), on the card's opaque surface with a hairline. Under
-// each: one line of what it is (the note, or "Snap · 19:03") and one quiet line of when ("5 min ago"; "Couldn't
-// transcribe" in attention ink). The tile under the pointer gets the brand-tint wash and its actions — Copy (the one
-// primary) and a quiet "···" — no other tile shows any; the keyboard's tile the same wash plus the accent ring. A
-// hairline, then one hint line: how to use a tile, or the keys while the panel has the keyboard. "Copied" is the done
-// pill with the ok check.
+// The look (v0.9.2, the same family as Recently Dragged Out, docs/design/system.md §3.2; the parts in CardChrome.swift):
+// one header row — "Cards  7" left-aligned, "···" (what concerns every card: Copy All, Organize All, Delete All) and a
+// real × on the right, no traffic light. A grid with no orphan (CardGrid: 7 = 4 + 3), 148 × 100 tiles cropped from
+// their top-left on the card's opaque surface. Under a tile: its note in 13 pt medium, up to two lines of whole words
+// (a third fades out — never an "…"), then the time it was taken in 11 pt tertiary ("18:27"); a snap without a note
+// only the time (the picture says what it is). The tile under the pointer — or the keyboard's — gets a neutral wash
+// and the card's actions in its top-right corner ([···][Copy], CardActions, the same cluster as a Recently Dragged
+// Out row); the keyboard's also the accent ring. The footer: that tile's whole note (nothing needs an ellipsis to be
+// read) or how to use a tile, and the keys as keycaps (KeyHint) while the panel has the keyboard.
 
 import AppKit
 import BlurtCore
@@ -38,23 +37,23 @@ final class OverviewPanel: NSPanel {
 final class CardsOverview: NSObject, NSWindowDelegate {
     static let shared = CardsOverview()
     static let tile = CGSize(width: 148, height: 100)
-    /// the two caption lines under a tile: what it is, then when
-    static let caption: CGFloat = 38
     static let gap: CGFloat = 14
     static let pad: CGFloat = 16
-    static let footerH: CGFloat = 36
+    static let footerH: CGFloat = 50
 
-    /// Columns for `n` cards: one row up to 4, then 3 a row (5–9: no holes in 6 or 9), then 4 and a scroll.
-    static func columns(_ n: Int) -> Int { n <= 4 ? max(1, n) : n <= 9 ? 3 : 4 }
+    /// Columns for `n` cards (BlurtCore CardGrid): one row up to 4, then half a row each (7 = 4 + 3), at most 4.
+    static func columns(_ n: Int) -> Int { CardGrid.columns(n) }
 
     private var window: OverviewPanel?
     private let grid = FlippedView()
     private let scroll = NSScrollView()
-    private let heading = NSTextField(labelWithString: "")
-    private let countLabel = NSTextField(labelWithString: "")
+    private var header: PanelHeader?
     private let more = ClosureButton("", {})
     private let rule = NSBox()
-    private let hint = NSTextField(labelWithString: "")
+    /// the footer: the pointed-at (or keyboard's) tile's whole note, else how to use a tile; the keys on the right
+    private let hint = NSTextField(wrappingLabelWithString: "")
+    private let keys = KeyHintView()
+    private var hovered: OverviewTile?
     private(set) var tiles: [OverviewTile] = []
     private var selected: Int?
     private var click = DeferredClick<ObjectIdentifier>()
@@ -138,23 +137,12 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         w.sharingType = chromeSharing
         w.delegate = self
         w.onKey = { [weak self] e in self?.key(e) ?? false }
-        // only the close button: a panel that can't be minimised or zoomed doesn't show those (they read as disabled)
+        // no traffic lights: the header row has its own title, "···" and a real × (CardChrome.PanelHeader) — a lone grey
+        // close button read as an inactive window
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
-        w.standardWindowButton(.miniaturizeButton)?.isHidden = true
-        w.standardWindowButton(.zoomButton)?.isHidden = true
-        titleBar = max(24, w.frame.height - w.contentLayoutRect.height)
+        for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { w.standardWindowButton(b)?.isHidden = true }
         let root = NSView()
-        // the heading, in the title bar's row and centred like a window title — but drawn by the panel, in ink, so it
-        // never reads as an inactive window
-        heading.font = .systemFont(ofSize: 13, weight: .semibold)
-        heading.textColor = .labelColor
-        heading.stringValue = Loc.t("capture.cards.overview_heading", table: "Capture")
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 13, weight: .regular)
-        countLabel.textColor = .secondaryLabelColor
-        let head = NSStackView(views: [heading, countLabel])
-        head.spacing = 6
-        head.translatesAutoresizingMaskIntoConstraints = false
         let moreTitle = Loc.t("capture.taken.more", table: "Capture")
         more.image = Look.symbol("ellipsis", moreTitle, size: 13, weight: .medium)
         more.imagePosition = .imageOnly
@@ -164,6 +152,11 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         more.setAccessibilityLabel(moreTitle)
         more.set { [weak self] in self?.popAllMenu() }
         more.translatesAutoresizingMaskIntoConstraints = false
+        more.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        more.heightAnchor.constraint(equalToConstant: 22).isActive = true
+        let head = PanelHeader(title: Loc.t("capture.cards.overview_heading", table: "Capture"), accessory: more) { [weak self] in self?.hide() }
+        header = head
+        titleBar = PanelHeader.height
         scroll.documentView = grid
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
@@ -171,17 +164,20 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         scroll.translatesAutoresizingMaskIntoConstraints = false
         rule.boxType = .separator
         rule.translatesAutoresizingMaskIntoConstraints = false
-        hint.font = .systemFont(ofSize: 11)
+        hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabelColor
-        hint.lineBreakMode = .byTruncatingTail
+        hint.maximumNumberOfLines = 2
+        hint.lineBreakMode = .byWordWrapping
         hint.translatesAutoresizingMaskIntoConstraints = false
-        for v in [head, more, scroll, rule, hint] as [NSView] { root.addSubview(v) }
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        keys.translatesAutoresizingMaskIntoConstraints = false
+        keys.setContentHuggingPriority(.required, for: .horizontal)
+        keys.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [head, scroll, rule, hint, keys] as [NSView] { root.addSubview(v) }
         NSLayoutConstraint.activate([
-            head.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            head.centerYAnchor.constraint(equalTo: root.topAnchor, constant: titleBar / 2),
-            more.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
-            more.centerYAnchor.constraint(equalTo: head.centerYAnchor),
-            more.widthAnchor.constraint(equalToConstant: 24), more.heightAnchor.constraint(equalToConstant: 22),
+            head.topAnchor.constraint(equalTo: root.topAnchor),
+            head.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            head.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: root.topAnchor, constant: titleBar),
             scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
@@ -190,8 +186,11 @@ final class CardsOverview: NSObject, NSWindowDelegate {
             rule.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -CardsOverview.pad),
             rule.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -CardsOverview.footerH),
             hint.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: CardsOverview.pad),
-            hint.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -CardsOverview.pad),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: keys.leadingAnchor, constant: -16),
             hint.centerYAnchor.constraint(equalTo: root.bottomAnchor, constant: -CardsOverview.footerH / 2),
+            keys.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -CardsOverview.pad),
+            keys.centerYAnchor.constraint(equalTo: hint.centerYAnchor),
+            keys.heightAnchor.constraint(equalToConstant: KeyHint.capH),
         ])
         w.contentView = root
         window = w
@@ -211,18 +210,23 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         // newest first, the order they hang in
         tiles = snapper.cards.reversed().map { OverviewTile($0, overview: self) }
         let cols = CardsOverview.columns(tiles.count), sz = CardsOverview.tile, g = CardsOverview.gap, pad = CardsOverview.pad
-        let cellH = sz.height + CardsOverview.caption
-        for (i, t) in tiles.enumerated() {
-            t.frame = NSRect(x: pad + CGFloat(i % cols) * (sz.width + g), y: pad + CGFloat(i / cols) * (cellH + g), width: sz.width, height: cellH)
-            grid.addSubview(t)
-        }
+        // each row as tall as its tallest caption (a row of bare pictures doesn't keep two empty lines under them)
         let rows = max(1, (tiles.count + cols - 1) / cols)
+        let rowH = (0..<rows).map { r in sz.height + (tiles[min(tiles.count, r * cols)..<min(tiles.count, (r + 1) * cols)].map(\.captionHeight).max() ?? 6) }
+        var y = pad
+        for r in 0..<rows {
+            for (k, t) in tiles[min(tiles.count, r * cols)..<min(tiles.count, (r + 1) * cols)].enumerated() {
+                t.frame = NSRect(x: pad + CGFloat(k) * (sz.width + g), y: y, width: sz.width, height: rowH[r])
+                grid.addSubview(t)
+            }
+            y += rowH[r] + g
+        }
         let width = pad * 2 + CGFloat(cols) * sz.width + CGFloat(cols - 1) * g
-        let full = pad * 2 + CGFloat(rows) * cellH + CGFloat(rows - 1) * g
+        let full = pad * 2 + rowH.reduce(0, +) + CGFloat(rows - 1) * g
         grid.frame = NSRect(x: 0, y: 0, width: width, height: full)
-        let shown = pad * 2 + CGFloat(min(rows, 3)) * cellH + CGFloat(min(rows, 3) - 1) * g
-        // the heading and "···" need room too: never narrower than 300
-        let contentW = max(300, width), contentH = titleBar + shown + 1 + CardsOverview.footerH
+        let shown = pad * 2 + rowH.prefix(3).reduce(0, +) + CGFloat(min(rows, 3) - 1) * g
+        // the header and the footer's keys need room too: never narrower than 360
+        let contentW = max(360, width), contentH = titleBar + shown + 1 + CardsOverview.footerH
         var f = w.frame
         let dh = contentH - f.height
         f.size.width = contentW
@@ -230,7 +234,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         f.origin.y -= dh
         w.setFrame(f, display: true)
         grid.frame.origin.x = (contentW - width) / 2
-        countLabel.stringValue = Loc.number(tiles.count)
+        header?.count.stringValue = Loc.number(tiles.count)
         w.title = Loc.plural("capture.cards.overview_title", table: "Capture", count: tiles.count)
         w.setAccessibilityLabel(w.title)
         selected = was.flatMap { s in tiles.firstIndex { $0.shot === s } } ?? selected.map { min($0, tiles.count - 1) }
@@ -239,10 +243,25 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         updateHint()
     }
 
-    /// The footer's one line: how to use a tile, or the keys while the panel has the keyboard.
+    /// The footer: the pointed-at tile's — else the keyboard's — whole note (or its name), else how to use a tile; the
+    /// keys as keycaps on the right while the panel has the keyboard (the same KeyHint as the row's hover note).
     private func updateHint() {
-        hint.stringValue = Loc.t(hasKeyboard ? "capture.cards.overview_keys" : "capture.cards.overview_hint", table: "Capture")
         for t in tiles { t.keyboard = hasKeyboard }
+        keys.items = hasKeyboard ? KeyHint.cards : []
+        keys.isHidden = !hasKeyboard
+        let focus = hovered ?? selected.flatMap { $0 < tiles.count ? tiles[$0] : nil }
+        if let t = focus {
+            hint.attributedStringValue = OverviewTile.footerLine(t.shot)
+        } else {
+            hint.stringValue = Loc.t("capture.cards.overview_hint", table: "Capture")
+            hint.textColor = .secondaryLabelColor
+        }
+    }
+
+    /// A tile is pointed at (nil: none): the footer says what it is.
+    fileprivate func pointed(_ t: OverviewTile, _ on: Bool) {
+        if on { hovered = t } else if hovered === t { hovered = nil }
+        updateHint()
     }
 
     // MARK: actions
@@ -250,6 +269,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
     fileprivate func select(_ i: Int?) {
         selected = i.map { min(max($0, 0), tiles.count - 1) }
         for (k, t) in tiles.enumerated() { t.selected = k == selected }
+        updateHint()
         if let i = selected {
             tiles[i].scrollToVisible(tiles[i].bounds)
             NSAccessibility.post(element: tiles[i], notification: .focusedUIElementChanged)
@@ -338,7 +358,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         case "click": if let t = tile(1) { clicked(t, count: 1) }
         case "double": if let t = tile(1) { clicked(t, count: 1); clicked(t, count: 2) }
         case "delete": if let t = tile(1) { snapper.delete(t.shot) }
-        case "hover": for t in tiles { t.hovering = t === tile(1) }
+        case "hover": for t in tiles { t.hovering = t === tile(1) }; hovered = tiles.first { $0.hovering }; updateHint()
         case "copied": tile(1)?.flashCopied()
         case "menu": if let t = tile(1) { emit(["event": "overview_menu", "items": menu(for: t).items.filter { !$0.isSeparatorItem }.map(\.title)]) }
         case "key":
@@ -364,15 +384,17 @@ final class OverviewTile: NSView, NSDraggingSource {
     private let ring = CALayer()
     /// "✓ Copied" over the tile for a moment: the ok check and the word on the dark done pill
     private let copiedPill = NSView(), copiedText = NSTextField(labelWithString: ""), copiedCheck = NSImageView()
-    private let actions = NSStackView()
-    private var copyRun: ClosureButton?
+    private var actions: CardActions!
+    private let title = NSTextField(wrappingLabelWithString: "")
+    /// how much room its caption takes under the picture (the grid gives a row its tallest)
+    private(set) var captionHeight: CGFloat = 6
     private var downAt: NSPoint?
     private var cardDrag: CardDrag?
 
-    /// the selected tile (a click, the arrows): the wash; with the keyboard on the panel, the accent ring too
+    /// the selected tile (a click, the arrows): the wash; with the keyboard on the panel, the accent ring and its actions too
     var selected = false { didSet { restate() } }
     var keyboard = false { didSet { restate() } }
-    var hovering = false { didSet { restate() } }
+    var hovering = false { didSet { if hovering != oldValue { restate(); overview?.pointed(self, hovering) } } }
 
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -385,7 +407,7 @@ final class OverviewTile: NSView, NSDraggingSource {
         wantsLayer = true
         layer?.masksToBounds = false
         let sz = CardsOverview.tile
-        wash.frame = CGRect(x: -6, y: -6, width: sz.width + 12, height: sz.height + CardsOverview.caption + 8)
+        wash.frame = CGRect(x: -6, y: -6, width: sz.width + 12, height: sz.height + 12)
         wash.cornerRadius = 10
         wash.isHidden = true
         layer?.addSublayer(wash)
@@ -425,39 +447,62 @@ final class OverviewTile: NSView, NSDraggingSource {
         }
         ring.frame = face.frame.insetBy(dx: -4, dy: -4)
         ring.cornerRadius = 11
-        ring.borderWidth = 2.5
+        ring.borderWidth = 2
         ring.isHidden = true
         layer?.addSublayer(ring)
-        // what it is (its note, else "Snap · 19:03"), then when — one line each, flush with the picture's edge
-        let title = NSTextField(labelWithString: OverviewTile.line(s))
-        title.font = .systemFont(ofSize: 12, weight: s.words != nil ? .medium : .regular)
-        title.textColor = .labelColor
-        title.lineBreakMode = .byTruncatingTail
-        title.toolTip = s.words
-        title.frame = NSRect(x: -2, y: sz.height + 6, width: sz.width + 4, height: 16)
-        addSubview(title)
-        let meta = NSTextField(labelWithAttributedString: OverviewTile.meta(s))
-        meta.lineBreakMode = .byTruncatingTail
-        meta.frame = NSRect(x: -2, y: sz.height + 22, width: sz.width + 4, height: 15)
-        addSubview(meta)
-        // the hovered tile's actions: Copy (the one primary) and "···", over the picture's bottom-right corner
-        let run = ClosureButton("", { [weak self] in if let self { self.overview?.copy(self, .click) } })
-        copyRun = run
-        let b = BrandButton(title: Loc.t("capture.taken.copy", table: "Capture"), target: run, action: #selector(ClosureButton.fire))
-        b.fontSize = 11.5
-        b.hPad = 10
-        b.radius = 6
-        let moreTitle = Loc.t("capture.taken.more", table: "Capture")
-        let mb = GlassButton(symbol: "ellipsis", label: moreTitle)
-        mb.set { [weak self, weak mb] in
-            guard let self, let mb, let m = self.overview?.menu(for: self) else { return }
-            m.popUp(positioning: nil, at: NSPoint(x: 0, y: mb.bounds.height + 3), in: mb)
+        // its note: up to two lines of whole words (13 pt medium) — when there is more, the second line's last word fades
+        // out (never an "…"; the footer has every word). No time under every tile (seven "19:05"s said nothing): the
+        // footer says when, for the tile pointed at. A note that couldn't be transcribed says so, in attention ink.
+        let f = NSFont.systemFont(ofSize: 13, weight: .medium)
+        let tw = sz.width + 2, textW = tw - 4
+        let lineH = ceil(NSLayoutManager().defaultLineHeight(for: f))
+        var lines: CGFloat = 0
+        if let note = OverviewTile.note(s) {
+            let band = CardBand.clamp(note) { OverviewTile.lineWidths($0, font: f, width: textW).count <= 2 }
+            let widths = OverviewTile.lineWidths(band.text, font: f, width: textW)
+            lines = CGFloat(max(1, widths.count))
+            title.stringValue = band.text
+            title.toolTip = band.clipped ? note : nil
+            title.font = f
+            title.textColor = .labelColor
+            title.maximumNumberOfLines = 2
+            title.lineBreakMode = .byWordWrapping
+            title.frame = NSRect(x: -2, y: sz.height + 8, width: tw, height: lines * lineH + 2)
+            if band.clipped, let last = widths.last {
+                title.wantsLayer = true
+                let m = CALayer()
+                let solid = CALayer()
+                solid.backgroundColor = NSColor.black.cgColor
+                solid.frame = CGRect(x: 0, y: 0, width: tw, height: (lines - 1) * lineH + 1)
+                let fade = CAGradientLayer()
+                fade.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+                fade.startPoint = CGPoint(x: 0, y: 0.5)
+                fade.endPoint = CGPoint(x: 1, y: 0.5)
+                let end = min(tw, last + 3)
+                fade.locations = [0, NSNumber(value: Double(max(0, end - 30) / tw)), NSNumber(value: Double(end / tw))]
+                fade.frame = CGRect(x: 0, y: (lines - 1) * lineH + 1, width: tw, height: lineH + 1)
+                m.addSublayer(solid)
+                m.addSublayer(fade)
+                m.frame = CGRect(x: 0, y: 0, width: tw, height: lines * lineH + 2)
+                title.layer?.mask = m
+            }
+            addSubview(title)
         }
-        actions.addArrangedSubview(mb)
-        actions.addArrangedSubview(b)
-        actions.spacing = 6
+        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) {
+            let status = NSTextField(labelWithString: st)
+            status.font = .systemFont(ofSize: 11)
+            status.textColor = BrandColor.attnInk
+            status.frame = NSRect(x: -2, y: sz.height + 8 + lines * lineH + (lines > 0 ? 3 : 0), width: sz.width + 4, height: 15)
+            addSubview(status)
+            lines += 1
+        }
+        captionHeight = lines == 0 ? 6 : 8 + lines * lineH + 6
+        // the card's actions, in the picture's top-right corner: [···][Copy] — the same cluster as a Recently Dragged
+        // Out row; shown on hover and on the keyboard's tile
+        actions = CardActions(menu: { [weak self] in self.flatMap { $0.overview?.menu(for: $0) } },
+                              copy: { [weak self] in if let self { self.overview?.copy(self, .click) } })
         actions.alphaValue = 0
-        actions.frame = NSRect(x: 0, y: 0, width: 10, height: 24)
+        actions.translatesAutoresizingMaskIntoConstraints = true
         addSubview(actions)
         copiedText.font = .systemFont(ofSize: 11.5, weight: .semibold)
         copiedText.textColor = .white
@@ -483,8 +528,12 @@ final class OverviewTile: NSView, NSDraggingSource {
 
     override func layout() {
         super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        wash.frame = CGRect(x: -6, y: -6, width: bounds.width + 12, height: bounds.height + 6)
+        CATransaction.commit()
         let sz = CardsOverview.tile, fit = actions.fittingSize
-        actions.frame = NSRect(x: sz.width - fit.width - 6, y: sz.height - fit.height - 6, width: fit.width, height: fit.height)
+        actions.frame = NSRect(x: sz.width - fit.width - 6, y: 6, width: fit.width, height: fit.height)
     }
 
     /// The picture cropped to the tile's shape from its top-left corner (a window's title and tabs stay in view).
@@ -503,7 +552,8 @@ final class OverviewTile: NSView, NSDraggingSource {
             face.borderColor = HangingCards.hairline(dark: dark).cgColor
             face.backgroundColor = (shot.kind == .shot ? HangingCards.surface(dark: dark) : NSColor.controlBackgroundColor).cgColor
             ring.borderColor = BrandColor.accent.cgColor
-            wash.backgroundColor = BrandColor.tint.cgColor
+            // a neutral wash (no brand tint behind every pointed-at tile)
+            wash.backgroundColor = NSColor(white: dark ? 1 : 0, alpha: dark ? 0.08 : 0.05).cgColor
         }
     }
     override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); restyle() }
@@ -515,9 +565,11 @@ final class OverviewTile: NSView, NSDraggingSource {
         wash.isHidden = !(hovering || selected)
         ring.isHidden = !(selected && keyboard)
         CATransaction.commit()
+        // the actions: under the pointer, and on the keyboard's tile (as a focused Recently Dragged Out row)
+        let show = hovering || (selected && keyboard)
         NSAnimationContext.runAnimationGroup { c in
             c.duration = 0.12
-            actions.animator().alphaValue = hovering ? 1 : 0
+            actions.animator().alphaValue = show ? 1 : 0
         }
     }
 
@@ -531,27 +583,38 @@ final class OverviewTile: NSView, NSDraggingSource {
 
     override func accessibilityPerformPress() -> Bool { overview?.copy(self, .click); return true }
 
-    /// What it is: its note (one line); a snap without one, "Snap · 19:03" (as its card's name); a voice note "Voice
-    /// note · 19:03" (its words are on the tile already).
-    static func line(_ s: Shot) -> String {
-        if s.kind == .shot, let w = s.words { return w.replacingOccurrences(of: "\n", with: " · ") }
-        return s.plainName
+    /// A snap's note (its line breaks as spaces); nil for a snap without one and for a voice note (its words are on
+    /// the tile already).
+    static func note(_ s: Shot) -> String? {
+        guard s.kind == .shot, let w = s.words, !w.isEmpty else { return nil }
+        return w.replacingOccurrences(of: "\n", with: " ")
     }
 
-    /// When, quietly: "5 min ago"; a snap whose note couldn't be transcribed says so instead, in attention ink.
-    static func meta(_ s: Shot) -> NSAttributedString {
-        let f = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        if s.kind == .shot, s.note.needsYou, let st = HangingCards.statusText(s.note.status) {
-            return NSAttributedString(string: st, attributes: [.font: f, .foregroundColor: BrandColor.attnInk])
+
+    /// The widths of the lines `text` wraps into at `width` (the tile's caption).
+    static func lineWidths(_ text: String, font: NSFont, width: CGFloat) -> [CGFloat] {
+        let storage = NSTextStorage(string: text, attributes: [.font: font])
+        let lm = NSLayoutManager()
+        let tc = NSTextContainer(size: NSSize(width: width, height: 10_000))
+        tc.lineFragmentPadding = 2
+        lm.addTextContainer(tc)
+        storage.addLayoutManager(lm)
+        var out: [CGFloat] = []
+        lm.enumerateLineFragments(forGlyphRange: lm.glyphRange(for: tc)) { _, used, _, _, _ in out.append(ceil(used.maxX)) }
+        return out
+    }
+
+    /// The footer's line for the tile pointed at: its whole note in ink and, quieter, when it was taken ("19:05"); a
+    /// snap without a note its name ("Snap · 19:05").
+    static func footerLine(_ s: Shot) -> NSAttributedString {
+        let f = NSFont.systemFont(ofSize: 12)
+        guard let w = s.words?.replacingOccurrences(of: "\n", with: " "), !w.isEmpty else {
+            return NSAttributedString(string: s.plainName, attributes: [.font: f, .foregroundColor: NSColor.labelColor])
         }
-        let ago = RelativeDateTimeFormatter()
-        ago.locale = Loc.locale
-        ago.unitsStyle = .full
-        let now = Date(timeIntervalSince1970: Snapper.now)
-        let when = Date(timeIntervalSince1970: min(s.wall, Snapper.now))
-        var text = now.timeIntervalSince(when) < 60 ? Loc.t("time.just_now") : ago.localizedString(for: when, relativeTo: now)
-        text = text.prefix(1).uppercased() + text.dropFirst()
-        return NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: NSColor.secondaryLabelColor])
+        let out = NSMutableAttributedString(string: w, attributes: [.font: f, .foregroundColor: NSColor.labelColor])
+        out.append(NSAttributedString(string: "  " + s.takenAt, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+                                                                             .foregroundColor: NSColor.tertiaryLabelColor]))
+        return out
     }
 
     /// "✓ Copied" over the tile for a moment: the done pill (the ok check), as on a card on its thread.
@@ -643,30 +706,4 @@ final class OverviewTile: NSView, NSDraggingSource {
         let n = NSWindow.windowNumber(at: p, belowWindowWithWindowNumber: 0)
         return n > 0 && NSApp.windows.contains { $0.windowNumber == n && !($0 is CardsPanel) }   // (the cards take no drops)
     }
-}
-
-/// A quiet round "···" over a picture: a small disc of the window's surface with a hairline, so it reads on any
-/// picture (the overview's tiles).
-final class GlassButton: ClosureButton {
-    convenience init(symbol: String, label: String) {
-        self.init("", {})
-        image = Look.symbol(symbol, label, size: 11, weight: .semibold)
-        imagePosition = .imageOnly
-        isBordered = false
-        contentTintColor = .secondaryLabelColor
-        toolTip = label
-        setAccessibilityLabel(label)
-        wantsLayer = true
-        layer?.cornerRadius = 12
-        layer?.borderWidth = 0.5
-        translatesAutoresizingMaskIntoConstraints = false
-        widthAnchor.constraint(equalToConstant: 24).isActive = true
-        heightAnchor.constraint(equalToConstant: 24).isActive = true
-    }
-    override func updateLayer() {
-        super.updateLayer()
-        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.94).cgColor
-        layer?.borderColor = NSColor.separatorColor.cgColor
-    }
-    override var wantsUpdateLayer: Bool { true }
 }

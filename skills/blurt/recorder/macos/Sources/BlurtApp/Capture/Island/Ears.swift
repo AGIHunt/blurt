@@ -49,7 +49,8 @@ final class EarSlot {
         /// a count with one of our line glyphs; `tint` colours both (a quieter count: white at 60 %)
         case count(icon: BlurtIcon, n: Int, tint: NSColor?)
         /// the hanging cards waiting (the left ear): the hanging-card glyph and its count in one tone (white at 92 %),
-        /// brighter than the inbox's tray count beside it (white at 60 %); no mint at rest
+        /// brighter than the inbox's tray count beside it (white at 60 %); no mint at rest. 0: the glyph alone (on a
+        /// notch the count goes to the right ear, a symmetric pair round the sensor)
         case cards(Int)
         case level(Float)
         case wave([Float])
@@ -179,9 +180,9 @@ final class EarSlot {
             x += size + 4
         }
         // a count's glyph: the line family at the ears' one weight (as `iconText` and `done`), in the count's colour
-        func line(_ ic: BlurtIcon, color: NSColor) {
+        func line(_ ic: BlurtIcon, color: NSColor, weight: CGFloat = 1.2) {
             let size = EarSlot.countGlyph
-            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.2)
+            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: weight)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
             x += size + 4
@@ -207,8 +208,10 @@ final class EarSlot {
         case .cards(let n):
             // one token in one tone (v0.9.1): a resting count is not blurt in the act, so no mint — the clasp of the
             // card just caught carries that; brighter than the inbox's 60 %, as what a click takes
-            line(.cards, color: NSColor(white: 1, alpha: 0.92))
-            text(Loc.number(n), color: NSColor(white: 1, alpha: 0.92))
+            // (the cards glyph a little heavier: at the ear's weight its thin stack read lighter than the numeral)
+            // n == 0: the glyph alone — on a notch the count is in the right ear (Island.cardsSplit)
+            line(.cards, color: NSColor(white: 1, alpha: 0.92), weight: 1.45)
+            if n > 0 { text(Loc.number(n), color: NSColor(white: 1, alpha: 0.92)) } else { x -= 4 }
         case .level(let v):
             drawLevel(v)
             x = 22

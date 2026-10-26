@@ -215,6 +215,9 @@ final class Island: NSObject, IslandHosting {
         return NSRect(x: p.frame.minX + geo.cx - w.value / 2, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
     }
 
+    /// The shape's corner radius now (the hanging cards' lip joins its bottom corners).
+    var cornerRadiusNow: CGFloat { r.value }
+
     /// The pointer is on the island (the hanging cards stay down meanwhile).
     var pointerInside: Bool { hoverSince != nil }
     /// …and has rested there CardReveal.dwell: the cards come down (brushing past the notch drops nothing).
@@ -242,7 +245,15 @@ final class Island: NSObject, IslandHosting {
     }
 
     /// A click there goes to the island itself (not to the open content growing over it): see clicked(at:).
-    func earHit(_ p: NSPoint) -> Bool { (leftEarRect?.contains(p) ?? false) || (rightEarRect?.contains(p) ?? false) }
+    func earHit(_ p: NSPoint) -> Bool {
+        (leftEarRect?.contains(p) ?? false) || (rightEarRect?.contains(p) ?? false) || (cardsSplit && rightEarCards(p))
+    }
+
+    /// The right ear while it shows the cards' count (cardsSplit).
+    private func rightEarCards(_ p: NSPoint) -> Bool {
+        guard geo.notch, !isRecording, !VoiceInput.shared.active, right.layer.opacity > 0.5, ears.opacity > 0.3 else { return false }
+        return CGRect(x: geo.cx + geo.notchW / 2, y: geo.top, width: earSpan, height: geo.row).contains(p)
+    }
 
     // MARK: setup
 
@@ -388,8 +399,13 @@ final class Island: NSObject, IslandHosting {
 
     private var earsWanted: (left: Bool, right: Bool) {
         if isRecording || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment { return (true, true) }
-        return (cardCount > 0, !hatches.isEmpty || reviewCount > 0 || agentAlert != nil)
+        return (cardCount > 0, !hatches.isEmpty || reviewCount > 0 || agentAlert != nil || cardsSplit)
     }
+
+    /// v0.9.2: on a notch with nothing else for the right ear, the cards' token splits round the sensor like Dynamic
+    /// Island's compact pair — the glyph leading, the count trailing — instead of a glyph and a number on one side and
+    /// an empty black ear on the other.
+    private var cardsSplit: Bool { geo.notch && cardCount > 0 && hatches.isEmpty && reviewCount == 0 && agentAlert == nil }
 
     /// The shape's target: (width, height, corner radius). `toast`: false — what it would be without the toast
     /// showing (the live-text panel's width goes by that).
@@ -609,7 +625,7 @@ final class Island: NSObject, IslandHosting {
             right.set(.done(Loc.t("dictation.toast.sent", table: "Dictation")))
         } else {
             sentUntil = 0
-            left.set(e.left ? .cards(cardCount) : .none)
+            left.set(e.left ? .cards(cardsSplit ? 0 : cardCount) : .none)
             let processing = hatches.filter { $0.ended == nil }.reduce(0) { $0 + max(1, $1.captures.count) }
             if let h = hatches.first(where: { $0.ended != nil }), let end = h.ended {
                 right.set(.cracking(since: end.at, ok: end.ok, n: end.items))
@@ -620,6 +636,8 @@ final class Island: NSObject, IslandHosting {
             } else if reviewCount > 0 {
                 // quieter than the cards' count: it says what waits in the inbox, the cards' count is what a click takes
                 right.set(.count(icon: .inbox, n: reviewCount, tint: NSColor(white: 1, alpha: 0.6)))
+            } else if cardsSplit {
+                right.set(.text(Loc.number(cardCount), mono: true))
             } else {
                 right.set(.none)
             }
@@ -736,7 +754,7 @@ final class Island: NSObject, IslandHosting {
         // a voice note's right ear (its clock / list mark): Structured on or off
         if let r = rightEarRect, r.contains(p) { VoiceInput.shared.toggleStructured(via: "ear"); return }
         // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
-        if earHit(p) { hanging.reveal(via: "ear"); return }
+        if earHit(p) || (cardsSplit && rightEarCards(p)) { hanging.reveal(via: "ear"); return }
         // a toast's body: a line without a button (a peck's "open the item") is its own button; one with a button acts
         // only through it — a click meant to open the island never runs an Undo, forgets a word or undoes a page step
         if let t = toastNow, let a = t.action,

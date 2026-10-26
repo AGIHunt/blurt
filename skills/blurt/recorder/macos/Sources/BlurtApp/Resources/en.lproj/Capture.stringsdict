@@ -116,6 +116,24 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 selected</string><key>other</key><string>%d selected</string></dict>
   </dict>
+  <key>capture.time.minutes_ago</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 min ago</string><key>other</key><string>%d min ago</string></dict>
+  </dict>
+  <key>capture.time.hours_ago</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 hr ago</string><key>other</key><string>%d hr ago</string></dict>
+  </dict>
+  <key>capture.time.days_ago</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 day ago</string><key>other</key><string>%d days ago</string></dict>
+  </dict>
   <key>capture.cards.overview_title</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
