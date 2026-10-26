@@ -188,21 +188,25 @@ final class CardFilesTests: XCTestCase {
     func testCaptureTimeFollowsTheLocaleAndSaysTheDayBeforeToday() {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
-        let now = cal.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 22, minute: 0))!
-        let today = cal.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 19, minute: 3))!
-        let yesterday = cal.date(from: DateComponents(year: 2026, month: 10, day: 24, hour: 19, minute: 3))!
-        let earlier = cal.date(from: DateComponents(year: 2026, month: 10, day: 20, hour: 19, minute: 3))!
+        // (anchored to the real day: DateFormatter's "Yesterday" is relative to the clock, not to `now`)
+        let day = cal.startOfDay(for: Date())
+        let now = cal.date(byAdding: .hour, value: 22, to: day)!
+        let today = cal.date(byAdding: .minute, value: 19 * 60 + 3, to: day)!
+        let yesterday = cal.date(byAdding: .day, value: -1, to: today)!
+        let earlier = cal.date(byAdding: .day, value: -5, to: today)!
+        let earlierDay = cal.component(.day, from: earlier), earlierMonth = cal.component(.month, from: earlier)
+        let usMonth = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US"); return f.shortMonthSymbols[earlierMonth - 1] }()
         let us = Locale(identifier: "en_US"), gb = Locale(identifier: "en_GB"), zh = Locale(identifier: "zh_Hans_CN")
         // (CardName.when: the user's 12/24-hour choice is passed in — a locale built from identifiers doesn't carry it)
         let t = CardName.when(taken: today, now: now, locale: us, uses24Hour: false, calendar: cal)
         XCTAssertTrue(t.contains("7:03") && t.contains("PM"), t)                 // a 12-hour Mac
-        XCTAssertFalse(t.contains("Oct"), t)                                       // today: the time alone
+        XCTAssertFalse(t.contains(usMonth), t)                                     // today: the time alone
         XCTAssertEqual(CardName.when(taken: today, now: now, locale: gb, uses24Hour: true, calendar: cal), "19:03")
         let y = CardName.when(taken: yesterday, now: now, locale: us, uses24Hour: false, calendar: cal)
         XCTAssertTrue(y.contains("Yesterday") && y.contains("7:03"), y)            // before today: the day too
         let e = CardName.when(taken: earlier, now: now, locale: us, uses24Hour: false, calendar: cal)
-        XCTAssertTrue(e.contains("Oct") && e.contains("20") && e.contains("7:03"), e)
+        XCTAssertTrue(e.contains(usMonth) && e.contains("\(earlierDay)") && e.contains("7:03"), e)
         let z = CardName.when(taken: earlier, now: now, locale: zh, uses24Hour: true, calendar: cal)
-        XCTAssertTrue(z.contains("10月20日"), z)
+        XCTAssertTrue(z.contains("\(earlierMonth)月\(earlierDay)日"), z)
     }
 }
