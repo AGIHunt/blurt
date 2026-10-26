@@ -459,24 +459,24 @@
 "main.dictation.mark.terms" = "Words used: %@";
 "main.dictation.mode.label" = "Show";
 "main.dictation.mode.polished" = "Polished";
-"main.dictation.mode.raw" = "As Heard";
-"main.dictation.mode.compare" = "Side by Side";
+"main.dictation.mode.raw" = "As Spoken";
+"main.dictation.mode.compare" = "Changes";
 "main.dictation.typed" = "Typed";
 "main.dictation.heard" = "Heard";
 "main.dictation.same" = "polish changed nothing";
 "main.dictation.copied" = "Copied";
 "main.dictation.corrected" = "Corrected";
 "main.dictation.correct" = "Correct";
-"main.dictation.correct.tip" = "Fix what was misheard; the names you fix can go into your Words";
+"main.dictation.correct.tip" = "Fix what was misheard; the names you fix can go into Words";
 "main.dictation.correct.hint" = "⌘↩ to save · Esc to cancel";
-"main.dictation.correct.save" = "Save Correction";
+"main.dictation.correct.save" = "Save";
 "main.dictation.correct.cancel" = "Cancel";
 "main.dictation.correct.saved" = "Correction saved";
 "main.dictation.correct.sep" = ", ";
 "main.dictation.correct.found" = "Correction saved · found %@";
 "main.dictation.correct.add" = "Add to Words";
-"main.dictation.correct.added" = "Added %@ to your Words";
-"main.dictation.correct.known" = "Correction saved · %@ already in your Words";
+"main.dictation.correct.added" = "Added %@ to Words";
+"main.dictation.correct.known" = "Correction saved · %@ already in Words";
 "main.dictation.correct.undo_name" = "Correction";
 "main.dictation.before_reformat" = "Before reformatting";
 "main.dictation.show_item" = "Show Item %@";
@@ -494,10 +494,10 @@
 "main.dictation.info.language" = "Language";
 "main.dictation.info.terms" = "Words used";
 "main.dictation.info.context" = "Context";
-"main.dictation.info.context.yes" = "Used";
+"main.dictation.info.context.yes" = "Polish read the text around the cursor";
 "main.dictation.info.model.other" = "Another model";
 "main.dictation.none" = "No dictation selected";
-"main.dictation.none.detail" = "Pick one on the left. ↑↓ to move, ⌘C to copy, ⌫ to delete.";
+"main.dictation.none.detail" = "Select one on the left to see it here.";
 "main.dictation.copy_all" = "Copy All";
 
 /* The Dictation page's detail: what polish did */
@@ -563,3 +563,37 @@
 "app.menu.key_off" = "%@ isn’t working";
 "app.alert.not_now" = "Not Now";
 "app.record.again" = "Record Again";
+
+/* The Dictation page (v0.9 redesign, round 1) */
+"main.dictation.changes.removed" = "Removed";
+"main.dictation.changes.added" = "Added or changed";
+"main.dictation.count_of" = "%ld of %@";
+"main.dictation.none.keys" = "↑↓ Move    ⌘C Copy    ⌫ Delete";
+"main.dictation.banner.no_model" = "Dictation needs a speech model";
+"main.dictation.banner.no_model.detail" = "Nothing can be typed until one is downloaded · %@";
+"main.dictation.banner.no_model.detail_plain" = "Nothing can be typed until one is set up.";
+"main.dictation.banner.permission" = "Dictation can’t hear its key yet";
+"main.dictation.banner.downloading" = "The speech model is downloading";
+"main.dictation.banner.downloading.detail" = "%1$@ of %2$@ · dictation works once it’s in";
+"main.dictation.chip.copied" = "Copied";
+"main.dictation.details" = "Details";
+"main.dictation.details.open" = "Expanded";
+"main.dictation.details.closed" = "Collapsed";
+"main.dictation.reveal_audio" = "Show Recording in Finder";
+"main.dictation.info.model.gone" = "%@ · no longer on this Mac";
+"main.dictation.info.polish.gone" = "A model no longer on this Mac";
+"main.dictation.info.model.choose" = "Choose…";
+"main.dictation.correct.title" = "Correct the text";
+"main.dictation.correct.save.tip" = "Save the correction (⌘↩)";
+"main.dictation.correct.cancel.tip" = "Discard the changes (Esc)";
+"main.dictation.correct.caption" = "After you save, you can add the names you fixed to Words.";
+"main.dictation.correct.caption.none" = "No misheard words found";
+"main.dictation.correct.caption.found" = "Words found:";
+
+/* The Dictation page (v0.9 redesign, round 2) */
+"main.dictation.chip.copied_raw" = "Copied · as spoken";
+"main.dictation.status.copied" = "Copied to the clipboard, not typed: no text field had the focus.";
+"main.dictation.status.copied_raw" = "Copied as spoken, not typed: no text field had the focus, and %@.";
+"main.dictation.status.raw" = "Typed as spoken: %@.";
+"main.dictation.changes.key" = "Struck-through words were left out; underlined words were added or respelled.";
+"main.dictation.banner.download" = "Download Model";

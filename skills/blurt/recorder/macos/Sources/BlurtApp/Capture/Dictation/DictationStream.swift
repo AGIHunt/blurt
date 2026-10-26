@@ -143,6 +143,10 @@ final class DictationStream {
     private let asrQ = DispatchQueue(label: "blurt.dictation.asr", qos: .userInitiated)
     private let polishQ = DispatchQueue(label: "blurt.dictation.polish", qos: .userInitiated)
     private var cancelled = false
+    /// Esc while polishing (skipPolish): no more polish windows; the result is handed over once (`delivered`), through
+    /// `finished` (finish's `done`) — lock
+    private var skipped = false, delivered = false
+    private var finished: ((Result) -> Void)?
     private var keyUp: CFTimeInterval = 0
     /// the pause after each piece (DictationSegmenter.pauses, copied on the main thread as it learns them)
     private var pauses: [Double?] = []
@@ -183,6 +187,50 @@ final class DictationStream {
     }
 
     var segments: Int { lock.lock(); defer { lock.unlock() }; return pieces.count }
+
+    /// Esc while it is still polishing ("Still polishing… Esc types it as spoken"): what was heard goes in as it is, as
+    /// soon as the transcripts are in — the polish under way (or a model still loading) is not waited for, and its
+    /// answer, when it comes, is dropped. The take falls back the way a refused polish does (reason "skipped").
+    func skipPolish() {
+        lock.locked { skipped = true }
+        asrQ.async {
+            guard !self.cancelled, let r = self.spokenResult() else { return }
+            emit(["event": "dictation_polish_skipped", "id": self.id])
+            self.deliver(r)
+        }
+    }
+
+    /// Hands the take's result over once: the polished one, or the one Esc asked for, whichever is first.
+    private func deliver(_ r: Result) {
+        let done: ((Result) -> Void)? = lock.locked {
+            if delivered { return nil }
+            delivered = true
+            return finished
+        }
+        guard let d = done else { return }
+        DispatchQueue.main.async { d(r) }
+    }
+
+    /// The transcripts joined as a refused polish types them (a comma where a boundary was heard); nil when a piece
+    /// failed to transcribe (the safety path then decides, as without Esc).
+    private func spokenResult() -> Result? {
+        let ps = lock.locked { pieces }
+        guard !ps.isEmpty, !ps.contains(where: \.asrFailed) else { return nil }
+        let gaps = lock.locked { pauses }
+        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps)
+        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps)
+        let text = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps)
+        var terms: [String] = []
+        for p in ps { for t in p.asr?["terms"] as? [String] ?? [] where !terms.contains(t) { terms.append(t) } }
+        let first = ps.first { $0.asr != nil }?.asr ?? [:]
+        var r = Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: nil, fellBack: true,
+                       reason: "skipped", model: nil, asrModel: first["model"] as? String, language: first["language"] as? String,
+                       biased: first["biased"] as? Bool ?? false, terms: terms, contextUsed: false, repaired: [],
+                       segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+        r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
+        r.tags = ps.compactMap { $0.asr?["tag"] as? [String: Any] }
+        return r
+    }
 
     func cancel() {
         cancelled = true
@@ -261,7 +309,7 @@ final class DictationStream {
     /// window. After a long pause the carried clause keeps the mark it ended in: the pause may have ended a sentence,
     /// and the model decides with both sides in view (no stop-word list does).
     private func polish(_ p: Piece) {
-        guard !cancelled else { return }
+        guard !cancelled, !lock.locked({ skipped }) else { return }
         // without polish the transcripts are joined with the seam rule at the end (assemble)
         guard opt.polish, !p.raw.isEmpty else { return }
         let core = p.last ? p.raw : DictationStitch.splitTrailing(p.raw).core
@@ -402,6 +450,7 @@ final class DictationStream {
     /// through the polish model's structuring pass once. `done` runs on the main queue.
     func finish(keyUp: CFTimeInterval, structure: Bool = false, _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
+        lock.locked { finished = done; delivered = false }
         live.stop()             // no more interim requests: an answer under way still shows until its piece is in
         lock.locked { finalCounts = (interimSent, interimShown) }
         let n = lock.locked { pieces.count }
@@ -415,10 +464,10 @@ final class DictationStream {
         asrQ.async {
             if self.opt.polish || structure { DispatchQueue.main.async { self.onStage?("polish") } }
             self.polishQ.async {
-                guard !self.cancelled else { return }
+                guard !self.cancelled, !self.lock.locked({ self.delivered }) else { return }
                 var r = self.assemble()
-                if structure, !r.empty { self.structure(&r) }
-                DispatchQueue.main.async { done(r) }
+                if structure, !r.empty, !self.lock.locked({ self.skipped }) { self.structure(&r) }
+                self.deliver(r)
             }
         }
     }

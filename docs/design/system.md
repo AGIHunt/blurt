@@ -372,11 +372,53 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 
 ### 3.5a Dictation page and Lab
 
-- Today's stats: neutral; the digits semibold (v2.1: no gradient text).
+- **One header band (v0.9 redesign)** at the top of the list column, nothing else above the list: History | Words |
+  Lab as a native segmented control with a **neutral** selected segment (a view is where you are, never a brand fill;
+  every segment one width, so the control keeps its shape in both languages), on the rows' leading edge (16 pt), and
+  on the right only the view's own commands (the Lab's New Take, Read a Script, Run All Cases, ⋯). The detail column's first
+  row is a band of the same height (the app and when; the word; New Take), so the two columns read as one header.
+  The toolbar's search field is History's: on Words (whose one field finds and adds) and the Lab it leaves the toolbar.
+- **One count (round 2)**: the window subtitle is the page's only count and follows the tab and the search — "9
+  dictations", "3 of 9 dictations", "26 words", "1 case". Headings never carry counts; today's numbers are the Today
+  heading's tooltip.
+- What stops dictation (no speech model, the key not heard, off, the model downloading) is one card above the list:
+  its `StatusDot` (or the spinner), plain words, and — when it is the next step — the view's one **B** primary
+  (Download Model; Choose Model… plain when nothing can be fetched); the detail's Turn into Item is plain meanwhile.
+  Never amber link text.
+- Rows: the app's icon (a neutral initial tile for an app not on this Mac, never the blank document), app name and time
+  in secondary — the time always there — and the text as typed, one paragraph clamped to two lines. One neutral chip
+  for how it went in when that wasn't simply polished at the cursor, in the same words as the detail's line ("As
+  spoken", "Copied", "Copied · as spoken" / 原话, 仅复制, 仅复制 · 原话); the item it became is a link on the trailing
+  side (its key, monospaced, ↗), never a chip. No per-row glyphs, no separators, day headings without a rule. While
+  searching, the matched words are semibold (never brand). A row the AI writes an item from: the `brand.working`
+  hairline only — the spinner is the detail button's (one spinner per job).
+- Detail: the app as an 18 pt label beside its name and time; the text at 17 pt (a step over the 13 pt rows) straight
+  on the pane, Copy and Correct on hover; Polished | As Spoken | Changes is the detail's own (the list always reads as
+  typed), a small neutral segmented control. Changes: words polish left out struck through in `err`, words it added or
+  respelled underlined in `attn` — a line, not a fill — in one text, punctuation-only changes unmarked, with a
+  plain-words key. One line under the text says how it went in, with the reason ("Typed as spoken: polish took too
+  long."). Turn into Item as the primary ("Writing Item…" with the spinner inside the same button at the same width);
+  "⋯" for the rest (Delete last, red); then the facts as quiet rows under a hairline, always shown, labels in one
+  fixed leading column. Correcting happens in place in a field a step off the pane (never a dark well), with the
+  system focus ring; what saving teaches on its own line; Save (⌘↩ in the hint line and the tooltip, never a keycap
+  inside the button) is the moment's **B**, Cancel plain.
+- A search with no results: the shared empty state (the app's mark), the query said back, one hint, a plain Clear
+  Search; the detail column folds away until something matches.
+- Words: one field that finds as you type and adds on Return (the line under it says which); the words to review as
+  plain rows chosen first (the list's tint only), whose Add (`brand.ink`, ⌘↩) and × show on the chosen row and on
+  hover — the one place that decision is made; the detail only tells (why it was suggested, when it was found).
+  Names: 词库 / Words everywhere (加入词库 / Add to Words). The projects' words one chip per project: its name, and its
+  key set as the sidebar sets it. One heading form for every group (name, count in secondary), Built-in folded.
+- The Lab: a case opens on its result (the scores on one row of neutral numbers, the done check only for an exact
+  take, then the diff), each stage on its own full-width line with its name never cut (stages that wrote the same text
+  merged), the facts in plain words (Speech, Safety check, At the cursor), then the recorder: a neutral disc at rest,
+  red with a stop square only while it records. Move to Trash in the case's ⋯. The content fades out over 18 pt above
+  the pinned Save bar. The command bar labels every button (New Take, Read a Script, Run All Cases) or none.
 - The Lab score: 30 pt semibold, neutral (v2.1: no gradient, no bloom).
 - The Lab's Run / Save / Next: **B**. While a take is processed the recorder card carries the `brand.working` hairline;
-  Compare and Run All show their spinner (no rim). Make Item on the Dictation page: the spinner beside it.
-- Diff: deletions `err`, additions `attn` @ 28 %; stars `attn`; chosen check and level bars `brand.ink`.
+  Compare and Run All show their spinner (no rim).
+- Diff: deletions `err` struck through, additions `attn` underlined; stars `attn`; chosen check and level bars
+  `brand.ink`.
 
 ### 3.6 Menu-bar icon
 

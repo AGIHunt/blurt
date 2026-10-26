@@ -459,8 +459,8 @@
 "main.dictation.mark.terms" = "用到的词：%@";
 "main.dictation.mode.label" = "显示";
 "main.dictation.mode.polished" = "润色后";
-"main.dictation.mode.raw" = "识别原文";
-"main.dictation.mode.compare" = "对照";
+"main.dictation.mode.raw" = "原话";
+"main.dictation.mode.compare" = "改动";
 "main.dictation.typed" = "输入的文字";
 "main.dictation.heard" = "识别原文";
 "main.dictation.same" = "润色没有改动";
@@ -469,7 +469,7 @@
 "main.dictation.correct" = "改正";
 "main.dictation.correct.tip" = "改正听错的地方；改过的名字可以加入词库";
 "main.dictation.correct.hint" = "⌘↩ 保存 · Esc 取消";
-"main.dictation.correct.save" = "保存改正";
+"main.dictation.correct.save" = "保存";
 "main.dictation.correct.cancel" = "取消";
 "main.dictation.correct.saved" = "已保存改正";
 "main.dictation.correct.sep" = "、";
@@ -492,12 +492,12 @@
 "main.dictation.info.polish.off" = "关闭";
 "main.dictation.info.asr" = "语音模型";
 "main.dictation.info.language" = "语言";
-"main.dictation.info.terms" = "用到的词";
+"main.dictation.info.terms" = "来自词库";
 "main.dictation.info.context" = "上下文";
-"main.dictation.info.context.yes" = "已使用";
+"main.dictation.info.context.yes" = "润色时参考了光标附近的文字";
 "main.dictation.info.model.other" = "其他模型";
 "main.dictation.none" = "没有选中听写";
-"main.dictation.none.detail" = "在左边选一条。↑↓ 切换，⌘C 复制，⌫ 删除。";
+"main.dictation.none.detail" = "在左边选一条，就会显示在这里。";
 "main.dictation.copy_all" = "全部复制";
 
 /* 听写页详情：润色做了什么 */
@@ -563,3 +563,37 @@
 "app.menu.key_off" = "%@ 用不了";
 "app.alert.not_now" = "以后再说";
 "app.record.again" = "重新录";
+
+/* The Dictation page (v0.9 redesign, round 1) */
+"main.dictation.changes.removed" = "删掉的";
+"main.dictation.changes.added" = "加上或改过的";
+"main.dictation.count_of" = "%ld / %@";
+"main.dictation.none.keys" = "↑↓ 切换    ⌘C 复制    ⌫ 删除";
+"main.dictation.banner.no_model" = "听写需要一个语音模型";
+"main.dictation.banner.no_model.detail" = "下载之前，听写打不出文字 · %@";
+"main.dictation.banner.no_model.detail_plain" = "设置好之前，听写打不出文字。";
+"main.dictation.banner.permission" = "听写还听不到它的快捷键";
+"main.dictation.banner.downloading" = "语音模型正在下载";
+"main.dictation.banner.downloading.detail" = "%1$@ / %2$@ · 下载完就能听写";
+"main.dictation.chip.copied" = "仅复制";
+"main.dictation.details" = "详细信息";
+"main.dictation.details.open" = "已展开";
+"main.dictation.details.closed" = "已收起";
+"main.dictation.reveal_audio" = "在访达中显示录音";
+"main.dictation.info.model.gone" = "%@ · 这台 Mac 上已经没有了";
+"main.dictation.info.polish.gone" = "这台 Mac 上已经没有的模型";
+"main.dictation.info.model.choose" = "选择…";
+"main.dictation.correct.title" = "改正文字";
+"main.dictation.correct.save.tip" = "保存改正（⌘↩）";
+"main.dictation.correct.cancel.tip" = "放弃修改（Esc）";
+"main.dictation.correct.caption" = "保存后，可以把改过的名字加入词库。";
+"main.dictation.correct.caption.none" = "没找到听错的词";
+"main.dictation.correct.caption.found" = "发现的词：";
+
+/* The Dictation page (v0.9 redesign, round 2) */
+"main.dictation.chip.copied_raw" = "仅复制 · 原话";
+"main.dictation.status.copied" = "只复制到了剪贴板，没有打出：当时没有可输入的地方。";
+"main.dictation.status.copied_raw" = "原话只复制到了剪贴板，没有打出：当时没有可输入的地方，而且%@。";
+"main.dictation.status.raw" = "打出的是原话：%@。";
+"main.dictation.changes.key" = "删除线是去掉的词，下划线是加上或改写的词。";
+"main.dictation.banner.download" = "下载模型";

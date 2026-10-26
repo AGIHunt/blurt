@@ -343,12 +343,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func updateTitle() {
         window?.title = model.scopeTitle
         if model.scope == .dictation {
-            if let p = page, p.model.tab == .lab {
-                window?.subtitle = T("dictation.lab.subtitle", T("dictation.lab.cases", p.lab.cases.count))
-                return
-            }
-            let n = page?.model.entries.count ?? 0
-            window?.subtitle = n > 0 ? TP("main.dictation.count", n) : ""
+            window?.subtitle = page?.subtitle ?? ""          // the page's one count, following its tab and search
             return
         }
         window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)

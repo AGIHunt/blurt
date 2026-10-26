@@ -415,7 +415,8 @@ It is separate from the voice note: `⌥⇧V` keeps what you say in Blurt, and d
   send. It doesn't slow the paste down. (On Macs with less than 16 GB the grey part is
   left out and the words appear after each pause; `record.dictation.live_partial` true / false overrides that.)
 - **When it's slow.** If the text isn't in 3 seconds after you stop (a model still loading), the notch says *Still
-  recognizing… Esc to cancel* (or *Still polishing…*). A speech model that has stopped answering — even one an
+  recognizing… Esc to cancel*, or *Still polishing… Esc types it as spoken*: Esc then types what was heard without
+  waiting for polish (the history marks it *As spoken*). A speech model that has stopped answering — even one an
   earlier Blurt left behind — is noticed and replaced on the next key press, so you aren't left waiting.
 - **The next thought right away.** Tap Fn again as soon as you've stopped (after half a second, so it isn't a double
   tap) and the next dictation starts listening while the last one is still being typed; they go in in the order you
