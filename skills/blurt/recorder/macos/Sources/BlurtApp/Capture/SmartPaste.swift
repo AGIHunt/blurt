@@ -469,7 +469,7 @@ enum DragNoteFollowUp {
         }
         let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
-        let window = AXProbe.element(app, at: p).flatMap { AXProbe.element($0, kAXWindowAttribute) }
+        let window = AXProbe.element(app, at: p).flatMap(AXProbe.window)
         if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
             if let w = window {
                 AXUIElementPerformAction(w, kAXRaiseAction as CFString)
@@ -522,7 +522,11 @@ enum DragNoteFollowUp {
             g.focusSecure = a.secure
             // a composer we just focused: its old caret may be anywhere — "can't tell" puts it at the end
             g.selection = moved ? nil : a.selection
-            if let w = window, let fw = AXProbe.element(el, kAXWindowAttribute) { g.sameWindow = CFEqual(w, fw) }
+            // the window it was dropped on, or one of the app's windows over the drop point (FollowUpFocus.sameWindow)
+            let fw = AXProbe.window(el)
+            let top = NSScreen.screens.first?.frame.maxY ?? 0
+            g.sameWindow = FollowUpFocus.sameWindow(identical: window.flatMap { w in fw.map { CFEqual(w, $0) } },
+                                                    focusedFrame: fw.map(AXProbe.frame), drop: CGPoint(x: p.x, y: top - p.y))
             return g
         }
         let now = read(false)
@@ -583,6 +587,11 @@ enum AXProbe {
     }
 
     static func same(_ a: AXUIElement, _ b: AXUIElement) -> Bool { CFEqual(a, b) }
+
+    /// The window `el` is in — `el` itself when it is one (the element at a point over a window's bare area can be).
+    static func window(_ el: AXUIElement) -> AXUIElement? {
+        string(el, kAXRoleAttribute) == (kAXWindowRole as String) ? el : element(el, kAXWindowAttribute)
+    }
 
     /// `el` as a composer: a text area / field itself, or the editable root it is inside (a web contenteditable).
     static func composer(_ el: AXUIElement) -> AXUIElement? {

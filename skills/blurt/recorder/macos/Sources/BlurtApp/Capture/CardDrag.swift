@@ -26,6 +26,9 @@
 //  • A race is still possible (an app reads before the rewrite reaches it); the drop's end compares the layout for
 //    the app it landed in with the one last written: only a drop that got the chat layout gets the note pasted after
 //    it (a rich layout read by mistake already had the note in it), and the toast only claims what it knows.
+// v0.9 — the layout follows the app's composer too (BlurtCore DragLanding): WeChat / QQ get the rich item they put
+// the picture in their composer from (the picture alone was a bare file URL to them: a file to send), and a voice
+// card over a web composer carries no words when Blurt can paste them (Feishu took a text drop and put nothing in).
 // Tests (BLURT_TEST_COMMANDS=1): `droptarget map PID=BUNDLE,…` gives our stand-in processes the bundle ids of the apps
 // they stand in for (the decision still goes through the window owner's pid); BLURT_TEST_DROP_TARGET=BUNDLE (or
 // `droptarget fixed BUNDLE`) does it for every window that isn't ours.
@@ -131,8 +134,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     let tag: String?
     /// record.drag_note_file when the drag started: the .md rides along into chat apps and the Finder too
     let attachNote = CardExport.attachNoteFile
-    /// the class the drag pasteboard holds now
-    private(set) var written: DropClass
+    /// the app the drag pasteboard was written for now (its class, its composer; BlurtCore DragLanding)
+    private(set) var written: DragLanding
     private(set) var target: DropTarget?
     weak var session: NSDraggingSession?
     /// our lazily provided items → their index in the layout written with them
@@ -147,12 +150,22 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         rich = CardRich([part])
         tag = CardExport.tag(s)
         target = DropProbe.target()
-        written = target?.cls ?? .chat
+        written = DragLanding(cls: .chat)
         super.init()
+        written = landing(target)
         report("card_drag_target")
     }
 
-    func layout(_ c: DropClass) -> [CardPasteboard.Item] { CardPasteboard.drag(for: c, card: card, attachNote: attachNote) }
+    /// What a drag over `t` is written for: its class and composer, and for a voice card whether Blurt pastes the words
+    /// there itself (then the drag leaves them off: VoiceCardDrop.withholdsWords). Nothing under the pointer: chat.
+    func landing(_ t: DropTarget?) -> DragLanding {
+        guard let t else { return DragLanding(cls: .chat) }
+        return DragLanding(cls: t.cls, kind: t.kind,
+                           wordsWithheld: isVoice && VoiceCardDrop.withholdsWords(cls: t.cls, kind: t.kind,
+                                                                                  canPaste: SmartPaste.enabled && SmartPaste.accessibility))
+    }
+
+    func layout(_ l: DragLanding) -> [CardPasteboard.Item] { CardPasteboard.drag(into: l, card: card, attachNote: attachNote) }
 
     /// The items for `written`, every type lazily provided; at least one (the capture's tag) so a drag can start.
     func pasteboardItems() -> [NSPasteboardItem] {
@@ -257,13 +270,14 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         guard let t = under else { return }     // over our own windows: as it was
         let changedApp = t.pid != target?.pid
         target = t
-        // the same layout for another class (chat ↔ finder): no rewrite
-        guard layout(t.cls) != layout(written), let pb = session?.draggingPasteboard else {
-            if t.cls != written { written = t.cls }
+        let l = landing(t)
+        // the same layout for another app (chat ↔ finder): no rewrite
+        guard layout(l) != layout(written), let pb = session?.draggingPasteboard else {
+            if l != written { written = l }
             if changedApp { report("card_drag_target") }
             return
         }
-        written = t.cls
+        written = l
         pb.clearContents()
         let ok = pb.writeObjects(pasteboardItems())
         report("card_drag_target", ["rewritten": ok])
@@ -273,9 +287,10 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// written for another kind of app). `noteFile`: the .md was among it.
     func delivered(at p: NSPoint) -> DropClass? {
         let t = DropProbe.target(at: p)
-        let got: DropClass? = t.flatMap { layout($0.cls) == layout(written) ? $0.cls : nil }
+        let got: DropClass? = t.flatMap { layout(landing($0)) == layout(written) ? $0.cls : nil }
         emit(["event": "card_drag_end", "n": shot.n, "bundle": t?.bundleID ?? NSNull(), "class": t?.cls.rawValue ?? NSNull(),
-              "kind": t?.kind.rawValue ?? NSNull(), "written": written.rawValue, "delivered": got?.rawValue ?? NSNull(),
+              "kind": t?.kind.rawValue ?? NSNull(), "written": written.cls.rawValue, "written_kind": written.kind?.rawValue ?? NSNull(),
+              "words_withheld": written.wordsWithheld, "delivered": got?.rawValue ?? NSNull(),
               "note_file": got.map(noteFile(_:)) ?? false])
         return got
     }
@@ -287,12 +302,20 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return t
     }
 
-    /// The .md is in the layout for `c`.
-    func noteFile(_ c: DropClass) -> Bool { card.noteFile.map { f in layout(c).contains { $0.file == f } } ?? false }
+    /// A voice card let go of over `t`: its words were kept off the drag there (Blurt pastes them itself, whatever the
+    /// app answered: VoiceCardDrop.plan).
+    func wordsWithheld(at t: DropTarget) -> Bool { isVoice && landing(t).wordsWithheld }
+
+    /// The .md is in what an app of class `c` got (the layout last written, when it was written for that class).
+    func noteFile(_ c: DropClass) -> Bool {
+        let l = written.cls == c ? written : DragLanding(cls: c)
+        return card.noteFile.map { f in layout(l).contains { $0.file == f } } ?? false
+    }
 
     private func report(_ event: String, _ extra: [String: Any] = [:]) {
         var o: [String: Any] = ["event": event, "n": shot.n, "pid": Int(target?.pid ?? 0), "bundle": target?.bundleID ?? NSNull(),
-                                "class": target?.cls.rawValue ?? NSNull(), "written": written.rawValue,
+                                "class": target?.cls.rawValue ?? NSNull(), "written": written.cls.rawValue,
+                                "kind": target?.kind.rawValue ?? NSNull(), "words_withheld": written.wordsWithheld,
                                 "items": layout(written).map { CardDrag.types($0, tag: tag != nil).map(\.rawValue) }]
         for (k, v) in extra { o[k] = v }
         emit(o)
@@ -305,7 +328,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// it — then that app's layout, as far as this item's declared types go.
     func pasteboard(_ pasteboard: NSPasteboard?, item: NSPasteboardItem, provideDataForType type: NSPasteboard.PasteboardType) {
         guard let i = index[ObjectIdentifier(item)] else { return }
-        let now = DropProbe.target()?.cls ?? written
+        let now = DropProbe.target().map(landing) ?? written
         let lay = layout(now)
         guard i < lay.count else { return }
         let it = lay[i]
@@ -316,7 +339,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
             item.setData(d, forType: type)
             given = true
         }
-        emit(["event": "card_drag_provide", "n": shot.n, "item": i + 1, "type": type.rawValue, "class": now.rawValue,
-              "written": written.rawValue, "given": given])
+        emit(["event": "card_drag_provide", "n": shot.n, "item": i + 1, "type": type.rawValue, "class": now.cls.rawValue,
+              "written": written.cls.rawValue, "given": given])
     }
 }

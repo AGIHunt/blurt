@@ -182,7 +182,8 @@ What you can do with a card:
   | Drop it on | You get |
   | --- | --- |
   | Notes, TextEdit, Mail, Messages, Pages, Keynote | the picture and the note together, in one go |
-  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app), Feishu/Lark, Slack, Notion, other Electron apps, WeChat, QQ, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
+  | Chrome, Safari and other browsers (DeepSeek, ChatGPT, Claude…), Claude (desktop app), Feishu/Lark, Slack, Notion, other Electron apps, any other app | the picture as an attachment, then Blurt pastes the note into the same message box (needs Accessibility) |
+  | WeChat, QQ | the picture in the message box, then Blurt pastes the note after it (needs Accessibility) |
   | VS Code, Cursor, Windsurf, Zed, Xcode, JetBrains IDEs and other code editors | the picture; the note goes on the clipboard (*⌘V to paste the note*) — Blurt never pastes into a code editor by itself, where the cursor may be in your code |
   | Terminal, iTerm2, Ghostty, Warp, kitty, WezTerm, Alacritty | the paths of the picture and of a small Markdown file with the note (`Screenshot-153012-note.md`), so Claude Code or Codex can see the picture and read the note (the note itself is never typed into the shell) |
   | Finder or the Desktop | the picture file |
@@ -744,7 +745,8 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
   | 拖到 | 得到 |
   | --- | --- |
   | 备忘录、文本编辑、邮件、信息、Pages、Keynote | 图片和备注，一次一起进去 |
-  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版）、飞书/Lark、Slack、Notion、其他 Electron App、微信、QQ、其他 App | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
+  | Chrome、Safari 等浏览器（DeepSeek、ChatGPT、Claude…）、Claude（桌面版）、飞书/Lark、Slack、Notion、其他 Electron App、其他 App | 图片作为附件放进去，然后口喷鸡把备注贴进同一个输入框（需要「辅助功能」权限） |
+  | 微信、QQ | 图片放进输入框，然后口喷鸡把备注贴在图片后面（需要「辅助功能」权限） |
   | VS Code、Cursor、Windsurf、Zed、Xcode、JetBrains 系 IDE 等代码编辑器 | 图片；备注放进剪贴板（「⌘V 可粘贴」）——口喷鸡不会自己往代码编辑器里粘贴，光标可能正停在你的代码里 |
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 图片和一个写着备注的 Markdown 小文件（`截图-153012-备注.md`）的路径，Claude Code、Codex 能看到图片、读到备注（备注文字本身不会打进命令行） |
   | 访达或桌面 | 图片文件 |

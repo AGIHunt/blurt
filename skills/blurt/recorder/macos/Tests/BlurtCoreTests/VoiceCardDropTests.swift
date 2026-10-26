@@ -8,9 +8,11 @@ final class VoiceCardDropTests: XCTestCase {
     let words = "把登录页的按钮再调大一点\n然后发给设计看看"
 
     func plan(_ cls: DropClass?, _ kind: ComposerKind?, accepted: Bool = false, words: String? = nil, enabled: Bool = true,
-              ax: Bool = true, secure: Bool = false) -> VoiceCardDrop.Plan {
-        VoiceCardDrop.plan(cls: cls, kind: kind, accepted: accepted, words: words ?? self.words, enabled: enabled,
-                           accessibility: ax, secureInput: secure)
+              ax: Bool = true, secure: Bool = false, withheld: Bool? = nil) -> VoiceCardDrop.Plan {
+        // what the drag did over that window when it was let go of: words left off where Blurt can paste them
+        let w = withheld ?? (cls.map { c in kind.map { VoiceCardDrop.withholdsWords(cls: c, kind: $0, canPaste: enabled && ax) } ?? false } ?? false)
+        return VoiceCardDrop.plan(cls: cls, kind: kind, accepted: accepted, words: words ?? self.words, enabled: enabled,
+                                  accessibility: ax, secureInput: secure, wordsWithheld: w)
     }
 
     func testChatAppsWithAWebOrQtComposerAreTargets() {
@@ -30,9 +32,28 @@ final class VoiceCardDropTests: XCTestCase {
         XCTAssertEqual(plan(.chat, .qt), .paste(words))
     }
 
-    func testADropTheAppTookIsLeftAlone() {
-        // the composer itself took the text: pasting as well would put the words in twice
-        XCTAssertEqual(plan(.chat, .web, accepted: true), .none("app_took_it"))
+    func testADropWeChatTookIsLeftAlone() {
+        // WeChat / QQ put a text drop in their composer: pasting as well would put the words in twice
+        XCTAssertEqual(plan(.chat, .qt, accepted: true), .none("app_took_it"))
+        XCTAssertEqual(plan(.chat, .qt, accepted: true, ax: false), .none("app_took_it"))
+    }
+
+    /// v0.9, the report: a voice card dragged into Feishu did nothing. Feishu takes a text drop on its chat area and
+    /// puts nothing in; Blurt took "taken" to mean done. Over a web composer the drag now carries no words where Blurt
+    /// can paste them, and Blurt pastes them taken or not.
+    func testAWebAppsYesToADropProvesNothing() {
+        XCTAssertTrue(VoiceCardDrop.withholdsWords(cls: .chat, kind: .web, canPaste: true))
+        XCTAssertFalse(VoiceCardDrop.withholdsWords(cls: .chat, kind: .web, canPaste: false), "then a drop on the box is the only way in")
+        XCTAssertFalse(VoiceCardDrop.withholdsWords(cls: .chat, kind: .qt, canPaste: true), "WeChat's own text drop works")
+        for k in [ComposerKind.native, .editor] { XCTAssertFalse(VoiceCardDrop.withholdsWords(cls: .chat, kind: k, canPaste: true), "\(k)") }
+        for c in [DropClass.rich, .terminal, .finder] { XCTAssertFalse(VoiceCardDrop.withholdsWords(cls: c, kind: .web, canPaste: true), "\(c)") }
+
+        XCTAssertEqual(plan(.chat, .web, accepted: true), .paste(words), "the drag had no words for it to take")
+        XCTAssertEqual(plan(.chat, .web, accepted: false), .paste(words))
+        // can't paste: the words were on the drag; whether a web app that took them put them in, nobody knows
+        XCTAssertEqual(plan(.chat, .web, accepted: true, ax: false), .copy(words))
+        XCTAssertEqual(plan(.chat, .web, accepted: true, enabled: false), .copy(words))
+        XCTAssertEqual(plan(.chat, .web, accepted: true, secure: true, withheld: true), .copy(words))
     }
 
     func testTextNativeAppsKeepTheNormalTextDrop() {

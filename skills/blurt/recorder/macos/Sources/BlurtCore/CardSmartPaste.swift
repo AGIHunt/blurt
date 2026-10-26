@@ -26,6 +26,7 @@
 //     drag_copy_note safety net) and the toast says "⌘V to paste the note".
 // Both need Accessibility (the posted ⌘V). Test builds never post an event: the app routes each key to a stand-in.
 
+import CoreGraphics
 import Foundation
 
 /// WeChat and QQ (Qt): their composer takes one thing per paste or drop — a picture or text, never both (the picture
@@ -302,6 +303,16 @@ public enum FollowUpFocus {
     public enum Decision: Equatable {
         case paste(caret: [CaretKey])
         case skip(String)
+    }
+
+    /// Facts.sameWindow from what Accessibility says: the focus's window is the one the card was dropped on
+    /// (`identical`, nil: can't tell), or a window of that app that covers the drop point (`focusedFrame`, top-left
+    /// screen coordinates, like `drop`) — the drop went to whatever window was there, so a window over that point is
+    /// where it landed (an app may draw its composer, or what a drop opens, in a window of its own).
+    public static func sameWindow(identical: Bool?, focusedFrame: CGRect?, drop: CGPoint) -> Bool? {
+        if identical == true { return true }
+        if let f = focusedFrame, f.width > 1, f.height > 1, f.contains(drop) { return true }
+        return identical
     }
 
     public static func decide(_ f: Facts) -> Decision {

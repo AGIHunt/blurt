@@ -74,6 +74,9 @@
 //      chat      browsers, Electron apps, WeChat, QQ,   the picture as the only file;      picture, then note (several
 //                any app no table names                 then the note pasted into the      cards: picture, note,
 //                                                       composer that received the drop    picture, note…)
+//                                                       (WeChat / QQ: the rich item, which
+//                                                       their composer puts the picture in
+//                                                       from — v0.9, BlurtCore DragLanding)
 //      terminal  Terminal, iTerm2, Ghostty, Warp…       the picture's path and the .md's   untouched
 //                                                       path (Claude Code / Codex read
 //                                                       it) — never the note's text
@@ -132,6 +135,9 @@
 //    image says "松手粘贴到 Claude" (CardDrag draws the hint under the card; a refused drop doesn't fly back), and let
 //    go of anywhere there, Blurt pastes the words into that window's composer (Snapper.takeOutVoice → the shot cards'
 //    DragNoteFollowUp). Notes, TextEdit, terminals: the normal text drop (one line; never a Return).
+//    v0.9 — over a browser / Electron / Feishu window, when Blurt can paste, the drag carries no words at all (only the
+//    capture's tag): Feishu took a text drop and put nothing in. Blurt pastes them there taken or not; WeChat / QQ
+//    keep their own text drop (BlurtCore VoiceCardDrop.withholdsWords).
 //  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
 //    into the island, which swallows it with a small bump.
 //  • 12 pt apart, tilted ±2° in turn (the row itself: above).
@@ -1898,9 +1904,9 @@ final class HangingCards: NSObject {
         cards.first { $0.shot.n == n }.map { cardMenu($0.shot) { _ in }.items.filter { !$0.isSeparatorItem }.map(\.title) } ?? []
     }
     /// Tests: what a drag of capture N into an app of class `target` carries, written to `pb`.
-    func testDrag(n: Int, for target: DropClass, to pb: NSPasteboard) -> [[String]] {
+    func testDrag(n: Int, into landing: DragLanding, to pb: NSPasteboard) -> [[String]] {
         guard let s = cards.first(where: { $0.shot.n == n })?.shot else { return [] }
-        let items = CardExport.dragItems(s, for: target)
+        let items = CardExport.dragItems(s, into: landing)
         pb.clearContents()
         pb.writeObjects(items)
         return items.map { $0.types.map(\.rawValue) }
@@ -2019,7 +2025,7 @@ final class HangingCards: NSObject {
         // the app took the drop (its message box itself) or refused it (VoiceCardDrop)
         if !ourWindow(at: p), let t = drag?.voiceTarget(at: p) {
             emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue), "voice_target": t.bundleID ?? ""])
-            snapper.takeOutVoice(c.shot, landed: t, at: p, accepted: !operation.isEmpty)
+            snapper.takeOutVoice(c.shot, landed: t, at: p, accepted: !operation.isEmpty, wordsWithheld: drag?.wordsWithheld(at: t) ?? false)
             show(peek: 1.0)
             return
         }
