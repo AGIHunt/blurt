@@ -80,4 +80,35 @@ final class PermissionFlowTests: XCTestCase {
         XCTAssertEqual(p.side, .right)
         XCTAssertEqual(p.origin.x, -1300 + 700 + 12)
     }
+
+    /// Under the list first: as wide as the list column (the window right of its sidebar) less its insets, centred on
+    /// it, the notch's tip just under the window; beside it only when there is no room below.
+    func testDockingUnderTheList() {
+        let screen = CGRect(x: 0, y: 0, width: 1800, height: 1100)
+        // System Settings at its usual 715 pt: a 222 pt sidebar, a 493 pt list → a 453 pt card (+ the notch's room)
+        let t = CGRect(x: 300, y: 300, width: 715, height: 640)
+        let list = HelperDock.listColumn(t)
+        XCTAssertEqual(list.minX, 300 + 715 * 0.31, accuracy: 0.01)
+        XCTAssertEqual(list.maxX, t.maxX, accuracy: 0.01)
+        var d = HelperDock.dock(height: 110, target: t, screen: screen, notch: 8)
+        XCTAssertEqual(d.side, .below)
+        XCTAssertEqual(d.frame.width - 16, list.width - 40, accuracy: 0.01)
+        XCTAssertEqual(d.frame.midX, list.midX, accuracy: 0.01)                   // centred on the list, not the window
+        XCTAssertEqual(d.frame.maxY, t.minY - 2, accuracy: 0.01)                  // right under it
+        // a narrow window: never under 340; a wide one: never over 460
+        d = HelperDock.dock(height: 110, target: CGRect(x: 300, y: 300, width: 500, height: 600), screen: screen, notch: 8)
+        XCTAssertEqual(d.frame.width, 340 + 16)
+        d = HelperDock.dock(height: 110, target: CGRect(x: 100, y: 300, width: 1400, height: 600), screen: screen, notch: 8)
+        XCTAssertEqual(d.frame.width, 460 + 16)
+        // no room below (the window at the screen's foot): beside it, at the side width
+        d = HelperDock.dock(height: 110, target: CGRect(x: 300, y: 60, width: 715, height: 640), screen: screen, notch: 8)
+        XCTAssertEqual(d.side, .right)
+        XCTAssertEqual(d.frame.width, HelperDock.sideWidth + 16)
+        XCTAssertEqual(d.frame.minX, 300 + 715 + 12)
+        // no window: the screen's top right
+        XCTAssertEqual(HelperDock.dock(height: 110, target: nil, screen: screen).side, .free)
+        // near a screen edge it stays on that screen
+        d = HelperDock.dock(height: 110, target: CGRect(x: 1500, y: 400, width: 715, height: 600), screen: screen, notch: 8)
+        XCTAssertLessThanOrEqual(d.frame.maxX, screen.maxX)
+    }
 }

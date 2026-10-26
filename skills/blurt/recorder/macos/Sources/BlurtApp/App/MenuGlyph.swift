@@ -75,7 +75,8 @@ final class MenuGlyph {
     }()
 
     /// How high the hop goes (pt) and how much it stretches (a fraction of the height, about the foot). The tuft's top
-    /// is 2.5 pt below the frame's top: lift + 16.5 × stretch must stay under that or the tuft clips.
+    /// is 2.8 pt below the frame's top (the chick is 16.2 pt tall, foot at 17 of its 18 pt box): lift + 16.2 × stretch must
+    /// stay under that or the tuft clips.
     static let hopHeight: CGFloat = 1.5
     static let hopStretch: CGFloat = 0.05
     /// The arcs' opacity at the dim end of a pulse.

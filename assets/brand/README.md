@@ -21,7 +21,7 @@ SVG below. The icon tile's colour is not in it: `chick.swift` reads `gradient.fi
 | `app-icon-16.svg` | The 16 px slot: no arcs, chunkier line, eyes and beak; the same plain linear tile. |
 | `app-icon-dark.svg` | The master on `gradient.deep`: the icon's optional dark appearance. Not shipped yet (see the last editing note). |
 | `logo.svg` | The logo: the app icon's chick without the tile, on a white sticker edge so the black line and arcs read on dark pages too (GitHub dark). |
-| `glyph.svg` | The macOS menu-bar icon (an 18 pt template image) and the tray glyph (v0.9): the chick as **one bold filled silhouette** — body, the three-bump tuft and the wing nubs — with the eyes (2.3 pt) and the beak knocked out, 16.5 pt tall and 17 wide in its 18 pt box, foot on a whole point. No arcs at rest. One layer, in the family's 24 grid. `assets/icons/blurt.svg` is a copy of it (`build.py` copies it and regenerates the family). See "The menu-bar icon" below. |
+| `glyph.svg` | The macOS menu-bar icon (an 18 pt template image) and the tray glyph (v0.9): the chick as **one bold filled silhouette** — body, the three-bump tuft and the wing nubs — with the eyes (2.3 pt) and the beak knocked out. It is the app icon's chick as it looks filled, scaled uniformly (`glyphWidth`: 17.2 pt wide with its wings, 16.2 tall with its tuft, in its 18 pt box), so its body keeps the logo's proportions; foot on a whole point. No arcs at rest. One layer, in the family's 24 grid. `assets/icons/blurt.svg` is a copy of it (`build.py` copies it and regenerates the family). See "The menu-bar icon" below. |
 | `…/BlurtApp/App/MenuGlyphGeometry.swift` | The menu bar's two sound arcs (generated): centre, radii, angles and their 2 pt line in the glyph's 18 pt box. They sit to the right of the box, so they are not in `glyph.svg`. |
 | `build.py` | Renders every bitmap below. |
 | `…/BlurtApp/Icons/MascotGeometry.swift` | The mascot's drawing for the mac app (generated): the master and small chicks' outline as a path, their wings, eyes, glints, beak and arcs as numbers, and the mascot palette. |
@@ -66,6 +66,12 @@ silhouette, (b) a 2 pt line chick with one arc, (c) the head alone, larger) the 
 ink weight as the filled icons around it at 1x and 2x, and the chick still reads by its outline alone (three-bump
 tuft, round body, wing nubs) with the eyes and beak cut out; the line versions stayed busy and greyer at 1x.
 
+- Proportions: the logo's body and wings, exactly — the master's outline and wings grown by half the icon's line,
+  then one scale for x and y. The first v0.9 glyph was drawn on its own (16.5 pt tall on a 13 pt body, 0.79 wide for
+  its height against the logo's 0.91) and read thin and tall beside the logo. Only what a silhouette loses is drawn
+  for the size: the tuft as bold as the 16 px icon's, its bumps further apart and higher (at the logo's size, filled
+  in, they melt into the dome at 1x and 2x), 2.3 pt eye holes, a filled beak. The family's safe-area lint measures the curves themselves, so the wing nubs can reach
+  0.4 pt from the box's sides.
 - At rest: the silhouette alone (`glyph.svg`, the 18 pt image). The arcs are a state, not decoration.
 - Listening (voice input): the two sound arcs (2 pt, `MenuGlyphGeometry.swift`) appear to the right and pulse
   outward, inner then outer. The image is then 24 pt wide (`MenuGlyph.listenWidth`), so the count moves over once

@@ -1,12 +1,15 @@
-// The permission guide's helper panel (PermissionGuide.swift): a small floating panel docked next to the System
-// Settings window while the user flips Blurt's switch there.
+// The permission guide's helper panel (PermissionGuide.swift): a small floating strip docked under the System
+// Settings window's list while the user flips Blurt's switch there (or drags Blurt in).
 //   • where: the System Settings window's frame from CGWindowListCopyWindowInfo — only its bounds, owner pid and layer
 //     are read (no title, no contents) — re-read every 0.25 s so the panel follows when the window moves; placement is
-//     BlurtCore's HelperDock (right of it, else left, else inside its lower right corner; no window = top right);
-//   • what: the walk's dots and the permission's name ("Accessibility · 2 of 3"), one headline ("Turn on Blurt in
-//     the list"), one line of why, a Blurt icon to drag into the list when Blurt isn't listed (an NSDraggingSource
-//     carrying the app bundle's file URL), Skip, and a close button that stops the walk; a notch on the card's edge
-//     points at the System Settings window (no arrow in the text);
+//     BlurtCore's HelperDock.dock: under the window, as wide as its list (the column right of the sidebar, less the
+//     list's insets) and centred on it, its notch pointing up at the list; with no room below, beside the window
+//     (right, else left, else inside its lower right corner); no window = the screen's top right;
+//   • what, compact: the walk's dots and the permission's name ("Accessibility · 2 of 3"), Skip and a close button
+//     that stops the walk on one line; then the Blurt tile to drag into the list (an NSDraggingSource carrying the
+//     app bundle's file URL) beside the headline ("Turn on Blurt in the list"), why, and the drag hint. Once the
+//     permission is on, the step's check shows for a moment and the next permission opens; after the last one the
+//     panel closes by itself;
 //   • a non-activating panel: clicking it never takes the focus from System Settings, and it stays up while Blurt
 //     isn't the active app.
 // Test builds can dock it to a stand-in window of their own (`perm standin …`) instead of System Settings.
@@ -23,9 +26,6 @@ final class HelperPanel {
     private var follow: Timer?
     private(set) var lastTarget: CGRect?
     private var hideWork: DispatchWorkItem?
-
-    /// the card (314) and the notch's room on each side (HelperPanelView.notch)
-    static let width: CGFloat = 330
 
     var isShown: Bool { panel?.isVisible == true }
     var frame: NSRect? { panel?.frame }
@@ -49,16 +49,19 @@ final class HelperPanel {
         emit(["event": "perm_panel", "shown": false])
     }
 
-    /// The last word ("Done — …") for a moment, then away.
+    /// The last word ("Done — …") for a moment, then away by itself.
     func showDone(_ text: String, after: Double) {
         guard panel?.isVisible == true else { return }
         let w = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.hide() } }
         hideWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + after + 1.6, execute: w)
+        DispatchQueue.main.asyncAfter(deadline: .now() + after + HelperPanel.doneFor, execute: w)
     }
 
+    /// How long the last "Done" stays before the panel closes by itself.
+    static let doneFor: Double = 1.2
+
     private func build() {
-        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: HelperPanel.width, height: 200),
+        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: HelperDock.sideWidth + 2 * HelperPanelView.notch, height: 120),
                         styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.isFloatingPanel = true
         p.level = .floating
@@ -82,19 +85,25 @@ final class HelperPanel {
         host = h
     }
 
-    /// Follows the System Settings window (or the stand-in), and fits the content's height.
-    func reposition(animated: Bool) {
+    /// Follows the System Settings window (or the stand-in), and fits the content's height. Docking under the list
+    /// sets the card's width (and the notch's edge), which can change the height: then it measures once more.
+    func reposition(animated: Bool, again: Bool = true) {
         guard let p = panel, let h = host else { return }
-        let size = NSSize(width: HelperPanel.width, height: ceil(h.fittingSize.height))
         let target = HelperPanel.targetFrame()
         let g = PermissionGuide.shared
         if (target == nil) != g.noWindow { g.noWindow = target == nil }
         let ns = target.map(toNS)
         let screen = (ns.flatMap { r in NSScreen.screens.first { $0.frame.contains(NSPoint(x: r.midX, y: r.midY)) } } ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let (o, side) = HelperDock.place(panel: size, target: ns, screen: screen)
-        if side != g.dock { g.dock = side }
-        let f = NSRect(origin: o, size: size)
+        let (f, side) = HelperDock.dock(height: ceil(h.fittingSize.height), target: ns, screen: screen, notch: HelperPanelView.notch)
+        let card = f.width - 2 * HelperPanelView.notch
+        if side != g.dock || card != g.cardWidth {
+            g.dock = side
+            g.cardWidth = card
+            // the view takes the new width on its next pass: measure again then, not 0.25 s later
+            if again { DispatchQueue.main.async { [weak self] in self?.reposition(animated: animated, again: false) } }
+        }
+        let size = f.size
         if f.integral != p.frame.integral {
             p.setFrame(f, display: true, animate: false)
             if size != lastSize { lastSize = size; p.invalidateShadow() }
@@ -151,10 +160,7 @@ final class HelperPanel {
                                      backing: .buffered, defer: false)
                     w.title = "System Settings (stand-in)"
                     w.isReleasedWhenClosed = false
-                    let label = NSTextField(labelWithString: "Stand-in for the System Settings window (test build)")
-                    label.frame = NSRect(x: 24, y: 560, width: 600, height: 20)
-                    label.textColor = .secondaryLabelColor
-                    w.contentView?.addSubview(label)
+                    w.contentView = StandInView()
                     window = w
                 }
                 if nums.count == 4 { window?.setFrame(toNS(CGRect(x: nums[0], y: nums[1], width: nums[2], height: nums[3])), display: true) }
@@ -167,17 +173,50 @@ final class HelperPanel {
     }
 }
 
+/// The stand-in's content (test builds): a sidebar and a permission list where HelperDock expects them, so a test can
+/// see the panel line up with the list it points at.
+final class StandInView: NSView {
+    override var isFlipped: Bool { true }
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.windowBackgroundColor.setFill()
+        bounds.fill()
+        let list = HelperDock.listColumn(bounds)
+        NSColor.secondaryLabelColor.withAlphaComponent(0.08).setFill()
+        NSRect(x: 0, y: 0, width: list.minX, height: bounds.height).fill()
+        let box = NSRect(x: list.minX + 20, y: 70, width: list.width - 40, height: 4 * 36)
+        NSColor.textBackgroundColor.setFill()
+        let path = NSBezierPath(roundedRect: box, xRadius: 8, yRadius: 8)
+        path.fill()
+        NSColor.separatorColor.setStroke()
+        path.stroke()
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
+        NSColor.separatorColor.setFill()
+        for (i, name) in ["App A", "App B", "App C", "App D"].enumerated() {
+            (name as NSString).draw(at: NSPoint(x: box.minX + 12, y: box.minY + CGFloat(i) * 36 + 10), withAttributes: attrs)
+            if i > 0 { NSRect(x: box.minX + 12, y: box.minY + CGFloat(i) * 36, width: box.width - 24, height: 1).fill(using: .sourceOver) }
+        }
+        ("Stand-in for System Settings (test build)" as NSString).draw(at: NSPoint(x: list.minX + 20, y: 30),
+            withAttributes: [.font: NSFont.systemFont(ofSize: 15, weight: .semibold), .foregroundColor: NSColor.secondaryLabelColor])
+    }
+}
+
 // MARK: - the content
 
-/// The panel: where you are (the walk's dots, the permission's name, "2 of 3"), what to do (one headline, one line of
-/// why), the thing to drag when Blurt isn't listed, and the way out (Skip). An opaque card (panel / raise surfaces,
-/// §2.4) so its contrast never depends on what is behind it, with a notch on the edge that faces the System Settings
-/// window instead of an arrow in the text.
+/// The panel, compact: where you are and the way out on one line (the walk's dots, the permission's name, "2 of 3",
+/// Skip, close), then what to do — the Blurt tile to drag beside the headline, why, and the drag hint. An opaque card
+/// (panel / raise surfaces, §2.4) so its contrast never depends on what is behind it, with a notch on the edge that
+/// faces the System Settings list (docked under it: the top edge, over the tile) instead of an arrow in the text.
 struct HelperPanelView: View {
     @ObservedObject var g = PermissionGuide.shared
     static let notch: CGFloat = 8
-    /// the notch's centre, from the card's top: level with the headline
-    static let notchY: CGFloat = 52
+    /// beside the window: the notch's centre from the card's top, level with the headline
+    static let notchY: CGFloat = 50
+    /// under the list: the notch's centre from the card's left, over the tile
+    static let notchX: CGFloat = pad + tile / 2
+    static let pad: CGFloat = 14
+    static let tile: CGFloat = 44
+
+    var below: Bool { g.dock == .below }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -188,11 +227,12 @@ struct HelperPanelView: View {
                 doneView(f, detail: g.finishedDetail)
             }
         }
-        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 14)
-        .frame(width: HelperPanel.width - 2 * HelperPanelView.notch, alignment: .leading)
-        .background(NotchedCard(side: g.dock).fill(HelperPanelView.surface).padding(.horizontal, -HelperPanelView.notch))
-        .overlay(NotchedCard(side: g.dock).stroke(Color.primary.opacity(0.12), lineWidth: 0.5).padding(.horizontal, -HelperPanelView.notch))
-        .padding(.horizontal, HelperPanelView.notch).padding(.vertical, 1)      // the hairline inside the window
+        .padding(.horizontal, HelperPanelView.pad).padding(.top, 10).padding(.bottom, 12)
+        .frame(width: g.cardWidth, alignment: .leading)
+        .background(NotchedCard(side: g.dock).fill(HelperPanelView.surface).padding(NotchedCard.room))
+        .overlay(NotchedCard(side: g.dock).stroke(Color.primary.opacity(0.12), lineWidth: 0.5).padding(NotchedCard.room))
+        // the window: the notch's room on the sides (and above, docked under the list), the hairline inside it
+        .padding(.horizontal, HelperPanelView.notch).padding(.top, below ? HelperPanelView.notch : 1).padding(.bottom, 1)
     }
 
     /// panel white (light) / #2A2A2A (dark), as the app's popovers
@@ -206,6 +246,10 @@ struct HelperPanelView: View {
             Text(progress).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
+            if g.running && !g.stepDone {
+                Button(T("onboarding.guide.skip")) { g.skip() }
+                    .buttonStyle(.borderless).foregroundStyle(.secondary).font(.system(size: 12))
+            }
             Button { g.running ? g.cancel() : HelperPanel.shared.hide() } label: {
                 Image(nsImage: BlurtIcon.x.symbolImage(pointSize: 10, weight: .semibold))
                     .frame(width: 18, height: 18).contentShape(Rectangle())
@@ -225,49 +269,48 @@ struct HelperPanelView: View {
         if g.stepDone {
             doneView(g.headline(k), detail: nil)
         } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(g.headline(k)).font(.system(size: 15, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                Text(g.guideWhy(k)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.top, 12)
             // re-adding a stale Screen Recording grant: the tile is its second step, not a "not in the list?" aside
             let readd = k == .screen && g.reauthorize
-            if k.acceptsDrop {
-                HStack(spacing: 12) {
-                    AppTile().frame(width: 36, height: 36)
+            HStack(alignment: .center, spacing: 12) {
+                if k.acceptsDrop {
+                    AppTile().frame(width: HelperPanelView.tile - 8, height: HelperPanelView.tile - 8)
                         .padding(4)
-                        .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color.primary.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])))
                         .help(T("settings.perm.drag_hint"))
-                    VStack(alignment: .leading, spacing: 2) {
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(g.headline(k)).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                    Text(g.guideWhy(k)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    if k.acceptsDrop {
                         if readd {
-                            Text(T("settings.perm.screen.readd_drag")).font(.system(size: 12, weight: .medium))
-                            Text(T("settings.perm.screen.readd_drag_detail")).font(.system(size: 12)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
+                            Text(T("settings.perm.screen.readd_drag") + " · " + T("settings.perm.screen.readd_drag_detail"))
+                                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         } else {
-                            Text(T("onboarding.guide.drag")).font(.system(size: 12)).foregroundStyle(.secondary)
+                            Text(T("onboarding.guide.drag")).font(.system(size: 12)).foregroundStyle(.tertiary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
                 }
-                .padding(.top, 14)
+                Spacer(minLength: 0)
             }
+            .padding(.top, 10)
             if k == .screen && g.suggestRestart && !readd {
                 Text(T("settings.perm.restart_hint")).font(.system(size: 11)).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true).padding(.top, 10)
+                    .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
-            Divider().padding(.top, 14).padding(.bottom, 10)
-            HStack(spacing: 8) {
-                if g.noWindow && !(k == .microphone && SystemAccess.state(.microphone) == .notAsked) {
-                    Button(T("settings.perm.open_settings")) { g.reopenPane() }.controlSize(.small)
+            // what's needed only sometimes: System Settings closed, or Screen Recording's restart
+            let reopen = g.noWindow && !(k == .microphone && SystemAccess.state(.microphone) == .notAsked)
+            if reopen || k == .screen {
+                HStack(spacing: 8) {
+                    Spacer()
+                    if reopen { Button(T("settings.perm.open_settings")) { g.reopenPane() }.controlSize(.small) }
+                    if k == .screen {
+                        Button(T("settings.perm.restart")) { g.restartForScreen() }.controlSize(.small)
+                            .help(T("settings.perm.restart_hint"))
+                    }
                 }
-                if k == .screen {
-                    Button(T("settings.perm.restart")) { g.restartForScreen() }.controlSize(.small)
-                        .help(T("settings.perm.restart_hint"))
-                }
-                Spacer()
-                Button(T("onboarding.guide.skip")) { g.skip() }
-                    .buttonStyle(.borderless).foregroundStyle(.secondary)
+                .padding(.top, 10)
             }
         }
     }
@@ -283,8 +326,9 @@ struct HelperPanelView: View {
                     Text(d).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
+            Spacer(minLength: 0)
         }
-        .padding(.top, 12)
+        .padding(.top, 10)
         .accessibilityElement(children: .combine)
     }
 }
@@ -312,22 +356,31 @@ struct GuideDots: View {
     }
 }
 
-/// The card's outline: a rounded rectangle with a small notch on the edge that faces System Settings (docked right of
-/// its window: the left edge; docked left: the right edge; inside it or with no window: none). `rect` includes the
-/// notch's room on both sides.
+/// The card's outline: a rounded rectangle with a small notch on the edge that faces System Settings (docked under its
+/// list: the top edge, over the tile; right of its window: the left edge; left of it: the right edge; inside it or with
+/// no window: none). `rect` is the card plus the notch's room (`room`) on the sides and above.
 struct NotchedCard: Shape {
+    var top: Bool
     /// the notch on the left edge (docked right of the window) / on the right edge (docked left of it)
     var left: Bool
     var right: Bool
     var radius: CGFloat = 12
 
-    init(side: HelperDock.Side) { left = side == .right; right = side == .left }
+    init(side: HelperDock.Side) { top = side == .below; left = side == .right; right = side == .left }
+
+    /// what the shape's rect adds around the card
+    static let room = EdgeInsets(top: -HelperPanelView.notch, leading: -HelperPanelView.notch, bottom: 0, trailing: -HelperPanelView.notch)
 
     func path(in rect: CGRect) -> Path {
-        let n = HelperPanelView.notch, r = radius, y = HelperPanelView.notchY
-        let b = rect.insetBy(dx: n, dy: 0)
+        let n = HelperPanelView.notch, r = radius, y = HelperPanelView.notchY, x = HelperPanelView.notchX
+        let b = CGRect(x: rect.minX + n, y: rect.minY + n, width: rect.width - 2 * n, height: rect.height - n)
         var p = Path()
         p.move(to: CGPoint(x: b.minX + r, y: b.minY))
+        if top {
+            p.addLine(to: CGPoint(x: b.minX + x - n, y: b.minY))
+            p.addLine(to: CGPoint(x: b.minX + x, y: b.minY - n))
+            p.addLine(to: CGPoint(x: b.minX + x + n, y: b.minY))
+        }
         p.addLine(to: CGPoint(x: b.maxX - r, y: b.minY))
         p.addArc(tangent1End: CGPoint(x: b.maxX, y: b.minY), tangent2End: CGPoint(x: b.maxX, y: b.minY + r), radius: r)
         if right {

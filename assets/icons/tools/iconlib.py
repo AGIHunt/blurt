@@ -341,6 +341,28 @@ def load_all() -> list[Icon]:
     return [load(p) for p in sorted(ICONS_DIR.glob("*.svg"), key=lambda p: p.stem)]
 
 
+def _cubic_extrema(p0: float, p1: float, p2: float, p3: float) -> list[float]:
+    """The values a cubic Bézier coordinate takes at its ends and where its derivative is 0 (t in 0…1)."""
+    a = -p0 + 3 * p1 - 3 * p2 + p3
+    b = 2 * (p0 - 2 * p1 + p2)
+    c = p1 - p0
+    ts = []
+    if abs(a) < 1e-12:
+        if abs(b) > 1e-12:
+            ts.append(-c / b)
+    else:
+        disc = b * b - 4 * a * c
+        if disc >= 0:
+            r = disc ** 0.5
+            ts += [(-b + r) / (2 * a), (-b - r) / (2 * a)]
+    out = [p0, p3]
+    for t in ts:
+        if 0 < t < 1:
+            u = 1 - t
+            out.append(u ** 3 * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t ** 3 * p3)
+    return out
+
+
 def bbox(icon: Icon):
     """Rough painted bounds (control points included, strokes padded by half the width)."""
     xs, ys = [], []
@@ -353,11 +375,36 @@ def bbox(icon: Icon):
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def extent(icon: Icon):
+    """Exact painted bounds: the curves' own extremes (not their control points, which a round shape's stick out past
+    it), strokes padded by half the width. The safe-area lint uses these."""
+    xs, ys = [], []
+    for L in icon.layers:
+        pad = STROKE / 2 if L.mode == "stroke" else 0
+        cur = start = (0.0, 0.0)
+        for c, a in L.segs:
+            if c == "C":
+                px = _cubic_extrema(cur[0], a[0], a[2], a[4])
+                py = _cubic_extrema(cur[1], a[1], a[3], a[5])
+                cur = (a[4], a[5])
+            elif c in ("M", "L"):
+                px, py = [cur[0], a[0]] if c == "L" else [a[0]], [cur[1], a[1]] if c == "L" else [a[1]]
+                cur = (a[0], a[1])
+                if c == "M":
+                    start = cur
+            else:  # Z
+                cur = start
+                continue
+            xs += [v - pad for v in px] + [v + pad for v in px]
+            ys += [v - pad for v in py] + [v + pad for v in py]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
 def lint(icon: Icon) -> list[str]:
     errs = []
     if not icon.layers:
         errs.append(f"{icon.name}: empty")
-    x0, y0, x1, y1 = bbox(icon)
+    x0, y0, x1, y1 = extent(icon)
     if x0 < 0.5 or y0 < 0.5 or x1 > 23.5 or y1 > 23.5:
         errs.append(f"{icon.name}: geometry outside the 24 grid's safe area ({fmt(x0)},{fmt(y0)})–({fmt(x1)},{fmt(y1)})")
     if not re.fullmatch(r"[a-z0-9]+(-[a-z0-9]+)*", icon.name):

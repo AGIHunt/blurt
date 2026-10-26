@@ -5,10 +5,12 @@
 //   1. register Blurt in the list (SystemAccess.register: macOS's own prompt the first time), so the user only flips
 //      a switch; the microphone just asks with macOS's dialog;
 //   2. open the exact pane;
-//   3. show the helper panel (HelperPanel.swift) docked next to the System Settings window: one line ("Turn on Blurt
-//      here"), a draggable Blurt tile for when it isn't listed, why it's needed, every step's state live;
-//   4. poll every 0.5 s; when the step is satisfied, the next one. Input Monitoring or Accessibility arriving makes
-//      dictation's listener again at once (the tap made before the grant only hears Blurt).
+//   3. show the helper panel (HelperPanel.swift) docked under the System Settings window's list (beside the window
+//      when there's no room below): the Blurt tile to drag into the list, one line ("Turn on Blurt in the list"), why
+//      it's needed, every step's state live;
+//   4. poll every 0.25 s; when the step is satisfied, the next one (after the last: the done line, then the panel
+//      closes by itself). Input Monitoring or Accessibility arriving makes dictation's listener again at once (the tap
+//      made before the grant only hears Blurt).
 // At the end the panel closes, Blurt comes back to the front where the walk started, with a check mark: "Done —
 // dictation works in every app now." — only once a speech model is there too; before that: "Permissions are set.
 // Next, the speech model — then Fn dictates anywhere." Nothing in System Settings is ever clicked or changed by Blurt.
@@ -40,8 +42,10 @@ final class PermissionGuide: ObservableObject {
     /// ("Permissions are set"), and what comes next, if anything, as a quieter line under it (`finishedDetail`)
     @Published private(set) var finished: String?
     @Published private(set) var finishedDetail: String?
-    /// the panel's side of the System Settings window (its arrow points that way)
+    /// the panel's side of the System Settings window (its notch points that way): under its list, or beside it
     @Published var dock: HelperDock.Side = .free
+    /// the panel's card width: the list's width under it, a fixed one beside it (HelperDock.dock)
+    @Published var cardWidth: CGFloat = HelperDock.sideWidth
     /// System Settings has no window on screen (the panel offers to open the pane again)
     @Published var noWindow = false
     /// Screen Recording's step has waited a while: maybe macOS wants Blurt restarted
@@ -107,7 +111,7 @@ final class PermissionGuide: ObservableObject {
         lastIM = SystemAccess.granted(.inputMonitoring)
         go(walk[0])
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.poll() }
         }
     }
@@ -142,7 +146,7 @@ final class PermissionGuide: ObservableObject {
         }
     }
 
-    /// Every 0.5 s while a walk runs: the states, and the next step once this one is satisfied.
+    /// Every 0.25 s while a walk runs: the states, and the next step once this one is satisfied.
     func poll() {
         guard running, let k = current else { return }
         let ax = SystemAccess.granted(.accessibility), im = SystemAccess.granted(.inputMonitoring)
@@ -158,14 +162,17 @@ final class PermissionGuide: ObservableObject {
         guard after.contains(k), !stepDone else { return }
         stepDone = true
         emit(["event": "perm_guide", "op": "granted", "kind": k.rawValue])
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+        // a step with more to come shows its check for a moment, then the next one opens; the last one goes straight
+        // to the done line, and the panel closes by itself after it (HelperPanel.doneFor)
+        let last = upcoming().rest.isEmpty
+        DispatchQueue.main.asyncAfter(deadline: .now() + (last ? 0 : 0.8)) { [weak self] in
             MainActor.assumeIsolated { self?.next() }
         }
     }
 
-    private func next() {
-        guard running else { return }
-        let done = steps.prefix { $0 != current } + (current.map { [$0] } ?? [])
+    /// The steps done so far (the current one included) and the ones still to come.
+    private func upcoming() -> (done: [PermissionKind], rest: [PermissionKind]) {
+        let done = Array(steps.prefix { $0 != current } + (current.map { [$0] } ?? []))
         var rest = Array(steps.drop { $0 != current }.dropFirst().filter { !satisfied($0) })
         // what the walk didn't plan but now needs (Input Monitoring when the Fn filter still can't hear the key with
         // Accessibility on) joins it, in the plan's order
@@ -175,7 +182,13 @@ final class PermissionGuide: ObservableObject {
                 rest.insert(k, at: rest.firstIndex { a in (planned.firstIndex(of: a) ?? 0) > (planned.firstIndex(of: k) ?? 0) } ?? rest.endIndex)
             }
         }
-        steps = Array(done) + rest           // what got satisfied on the way leaves the count ("2 of 2", not "2 of 3")
+        return (done, rest)
+    }
+
+    private func next() {
+        guard running else { return }
+        let (done, rest) = upcoming()
+        steps = done + rest           // what got satisfied on the way leaves the count ("2 of 2", not "2 of 3")
         if let n = rest.first { go(n) } else { finish(already: false) }
     }
 

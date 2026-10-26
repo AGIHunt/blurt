@@ -449,10 +449,13 @@ struct AgentsPane: View {
         ordered && a.installed && on(a, ordered: true) && a.state == "logged_out"
     }
 
+    /// One line per agent: the mark, the name (and In Use) on the left; its state in a word or two and its version on
+    /// the right, before the fix and the switch. What a state means at length (can't check the sign-in, an app's own
+    /// setup) is behind a ⓘ after it, on hover — never a second line.
     @ViewBuilder
     func agentRow(_ a: CoreAgent, ordered: Bool) -> some View {
         let hover = m.hovered == a.id
-        SettingsLine(padding: 8) {
+        SettingsLine(padding: 6) {
             HStack(alignment: .center, spacing: 14) {
                 HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
                     StatusDot(tone: tone(a, ordered: ordered)).frame(width: SettingsMetrics.iconSlot)
@@ -460,13 +463,10 @@ struct AgentsPane: View {
                         HStack(spacing: 6) {
                             Text(a.name).font(.system(size: SettingsMetrics.titleSize, weight: .medium))
                                 .foregroundStyle(on(a, ordered: ordered) && (a.installed || a.state == "checking") ? .primary : .secondary)
-                                .help(a.version.map { TL("agents.details.version", shortVersion($0)) } ?? "")
+                                .lineLimit(1)
                                 .gridProbe(.iconText, a.name)
                             if ordered && a.id == m.pick && checked { Badge(TL("agents.in_use")) }
                         }
-                        // the state in words, neutral: the mark carries the colour, the button the fix
-                        Text(subtitle(a, ordered: ordered)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                            .lineLimit(1)
                         if let t = m.tests[a.id] {
                             Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(t.ok ? Color.brandOk : Color.brandErr)
@@ -477,9 +477,9 @@ struct AgentsPane: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { if hasDetails(a) { m.details = a.id } }
-                trailing(a, ordered: ordered, hover: hover).gridProbe(.trailing, a.name)
+                trailing(a, ordered: ordered, hover: hover).fixedSize().gridProbe(.trailing, a.name)   // never cut: the name gives way
             }
-            .frame(minHeight: 32)
+            .frame(minHeight: 28)
         }
         // the handle in the page's margin, on hover only: every name stays at one x
         .overlay(alignment: .leading) {
@@ -497,10 +497,23 @@ struct AgentsPane: View {
         .accessibilityLabel(a.name)
     }
 
-    /// The state in words, one neutral line ("Not signed in", "Off · Signed in").
-    func subtitle(_ a: CoreAgent, ordered: Bool) -> String {
-        if ordered && !on(a, ordered: true) && a.installed { return TL("agents.state.off") + " · " + stateText(a) }
-        return stateText(a)
+    /// The state at the row's right end, neutral (the mark carries the colour, the button the fix): a word or two, the
+    /// version after it, and a ⓘ when the state needs explaining.
+    @ViewBuilder
+    func stateLabel(_ a: CoreAgent) -> some View {
+        let state = Text(AgentFix.shortState(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            .lineLimit(1)
+        HStack(spacing: 4) {
+            state
+            if let v = a.version.map(shortVersion), !v.isEmpty, a.installed {
+                Text(v).font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .padding(.leading, 2)
+                    .help(TL("agents.details.version", v))
+            }
+            if let h = AgentFix.stateHelp(a) { InfoButton(title: a.name, text: h) }
+        }
+        .fixedSize()            // the state never truncates: the name gives way first
     }
 
     /// The row's one fix, a small plain button before its switch: Sign In… (a popover with the command), Install… /
@@ -530,8 +543,8 @@ struct AgentsPane: View {
         }
     }
 
-    /// At rest the fix (when there is one) and the switch; on hover the ⋯ menu before them, its slot kept so nothing
-    /// moves. Every row's controls end at the page's trailing edge.
+    /// At rest the state, the fix (when there is one) and the switch; on hover the ⋯ menu before them, its slot kept so
+    /// nothing moves. Every row's controls end at the page's trailing edge.
     @ViewBuilder
     func trailing(_ a: CoreAgent, ordered: Bool, hover: Bool) -> some View {
         HStack(spacing: 10) {
@@ -540,6 +553,7 @@ struct AgentsPane: View {
             } else {
                 RowMenu(label: TL("agents.more.named", a.name), visible: hover) { menuItems(a, ordered: ordered) }
             }
+            stateLabel(a)
             fixButton(a, ordered: ordered)
             if ordered && (a.installed || a.state == "checking") {
                 Toggle(TL("agents.use", a.name), isOn: Binding(get: { m.enabled.contains(a.id) }, set: { m.toggle(a.id, $0) }))
@@ -629,9 +643,10 @@ struct AgentsPane: View {
             // whether sessions outlive Blurt (tmux): a switch like every other on/off, on and fixed while tmux is
             // there (the line says why it can't be turned off); off, with how to get tmux, while it isn't
             let version = s.tmuxAvailable ? s.tmuxVersion : nil
+            // working: one line, how behind its ⓘ; tmux missing or too old: the line under it says what to do
             SettingRow("agents.keep_sessions",
-                       detail: version.map { TL("agents.keep_sessions.ok", $0) }
-                           ?? TL(s.tmuxPath == nil ? "agents.keep_sessions.missing" : "agents.keep_sessions.old"),
+                       detail: version == nil ? TL(s.tmuxPath == nil ? "agents.keep_sessions.missing" : "agents.keep_sessions.old") : nil,
+                       help: version.map { TL("agents.keep_sessions.ok", $0) },
                        detailColor: version == nil ? .brandAttnInk : nil) {
                 HStack(spacing: 8) {
                     if version == nil {
@@ -657,7 +672,7 @@ struct AgentsPane: View {
                 // Where an agent's hand-offs start (Claude): Blurt's terminal (recommended, said inside the menu so the
                 // closed button stays short) or its desktop app — config sessions.target, the key the sheet remembers.
                 SettingRow("agents.handoff", title: TL("agents.handoff_target", a.name),
-                           detail: installed ? TL("agents.handoff_target.hint") : TL("agents.handoff_target.no_app", DesktopApp.name(a.id))) {
+                           help: installed ? TL("agents.handoff_target.hint") : TL("agents.handoff_target.no_app", DesktopApp.name(a.id))) {
                     // the recommended one first, said in its own words inside the menu so the closed button stays short
                     ChoicePopup(label: TL("agents.handoff_target", a.name),
                                 choices: [(HandoffTarget.terminal, TL("agents.handoff.terminal")),
@@ -965,6 +980,25 @@ enum AgentFix {
         case "configured": return TL("agents.state.configured")
         case "logged_out": return TL("agents.state.logged_out")
         default: return a.why.isEmpty ? TL("agents.state.unknown") : a.why
+        }
+    }
+
+    /// The state in a word or two, for the row's right end (Signed in, Not signed in, Can't check sign-in, Installed).
+    static func shortState(_ a: CoreAgent) -> String {
+        if !a.headless { return TL(a.installed ? "agents.state.installed" : "agents.state.not_installed") }
+        switch a.state {
+        case "unknown", "configured": return TL("agents.state.unchecked")
+        default: return stateText(a)
+        }
+    }
+
+    /// What the short state leaves out, for its ⓘ: why a sign-in can't be checked, or how an app of its own gets blurt.
+    static func stateHelp(_ a: CoreAgent) -> String? {
+        guard a.installed else { return nil }
+        if !a.headless { return TL("agents.state.manual.help") }
+        switch a.state {
+        case "unknown", "configured": return TL("agents.state.unchecked.help")
+        default: return nil
         }
     }
 

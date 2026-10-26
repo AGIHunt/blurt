@@ -93,9 +93,11 @@ def test_blurt_glyph_is_a_bold_silhouette_with_arcs_for_listening():
     to the right of the box, inner then outer."""
     icon = next(i for i in iconlib.load_all() if i.name == "blurt")
     assert [L.mode for L in icon.layers] == ["fill"]
-    x0, y0, x1, y1 = iconlib.bbox(icon)
+    x0, y0, x1, y1 = iconlib.extent(icon)
     assert 0.5 <= x0 and 0.5 <= y0 and x1 <= 23.5 and y1 <= 23.5
     assert (y1 - y0) * 0.75 >= 16 and (x1 - x0) * 0.75 >= 15, (x0, y0, x1, y1)
+    # the logo's proportions (v0.9.x): wider than tall with its wings, never the thin, tall chick the first v0.9 had
+    assert (x1 - x0) / (y1 - y0) >= 1.04, (x0, y0, x1, y1)
     assert abs(y1 * 0.75 - round(y1 * 0.75)) < 0.01                 # the foot on a whole point
     assert icon.layers[0].d.count("M") >= 4                        # outline + two eye holes + the beak hole
     geo = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/MenuGlyphGeometry.swift").read_text()

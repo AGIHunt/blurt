@@ -263,17 +263,22 @@ Raycast or Loom do (`BlurtCore/PermissionFlow.swift` + `Onboarding/PermissionGui
   `Privacy_Microphone` / `Privacy_Accessibility` / `Privacy_ListenEvent`, and
   `x-apple.systempreferences:com.apple.Keyboard-Settings.extension` for the 🌐 key. All five open the right page on
   macOS 26.5 (checked by window title and screenshots of the System Settings window).
-- **The helper panel**: a non-activating floating `NSPanel` docked next to the System Settings window. Its frame comes
-  from `CGWindowListCopyWindowInfo` — only bounds, owner pid (`com.apple.systempreferences`) and layer are read —
-  every 0.25 s, so the panel follows the window. `HelperDock`: right of the window if it fits on that screen, else left,
-  else inside its lower right corner; no window = the screen's top right with *Open System Settings*. It shows: step
-  N of M and the name, one line ("Turn on Blurt here"; the 🌐 step: 「把『按下 🌐 键时』设为『不执行任何操作』」; the
-  microphone: "Click Allow in macOS's prompt"), an arrow toward the window, why it's needed, a **Blurt tile to drag
-  into the list** (an `NSDraggingSource` whose pasteboard item is the app bundle's file URL, as Finder's drag of an app
-  — for the "+" lists), every step with its live state, *Skip* and a close button.
-- **Detect, then move on**: every 0.5 s while the panel shows. Accessibility or Input Monitoring changing re-plans
-  dictation's listener at once (the tap made before the grant is made again). A satisfied step shows its check for
-  0.8 s, then the next one opens. At the end the panel says "Done — …" for a moment and goes; Blurt is activated and
+- **The helper panel**: a non-activating floating `NSPanel`, a compact strip docked **under the System Settings
+  window's list** (v0.9.x, after Doubao's, without its offset and bulk). Its frame comes from
+  `CGWindowListCopyWindowInfo` — only bounds, owner pid (`com.apple.systempreferences`) and layer are read — every
+  0.25 s, so the panel follows the window. `HelperDock.dock`: under the window, its card as wide as the list column
+  (the window right of its sidebar — 31 % of the window, 190–260 pt — less the list's 20 pt insets, 340–460 pt) and
+  centred on it, the notch's tip 2 pt under the window and over the tile; no room below on that screen → right of the
+  window (340 pt), else left, else inside its lower right corner; no window = the screen's top right with *Open
+  System Settings*. It shows, in about 110 pt: the walk's dots, step N of M and the name, *Skip* and close on one
+  line; then the **Blurt tile to drag into the list** (an `NSDraggingSource` whose pasteboard item is the app
+  bundle's file URL, as Finder's drag of an app — for the "+" lists) beside the headline ("Turn on Blurt in the
+  list"; the 🌐 step: 「把『按下 🌐 键时』设为『不执行任何操作』」; the microphone: "Click Allow in macOS's prompt"), why
+  it's needed, and the drag hint. *Open System Settings* / *Restart Blurt* only when they apply.
+- **Detect, then move on**: every 0.25 s while the panel shows. Accessibility or Input Monitoring changing re-plans
+  dictation's listener at once (the tap made before the grant is made again). A satisfied step with more to come shows
+  its check for 0.8 s, then the next one opens; the last one goes straight to "Done — …", and the panel closes by
+  itself 1.4 s later (about 1.5 s from the switch flipping to the panel gone); Blurt is activated and
   the window the walk started from comes back (`orderFrontRegardless`, also when macOS keeps the focus on System
   Settings) with a check-mark line: "Done — dictation works in every app now." (dictation works) / "Done — Blurt has
   every permission it needs." / "Done for now — allow the rest here any time." (something skipped).

@@ -53,7 +53,7 @@ public enum ShellEnv {
     public static let path: String = {
         let home = NSHomeDirectory()
         let extra = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.bun/bin", "\(home)/.npm-global/bin",
-                     "\(home)/.cargo/bin", "\(home)/.volta/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+                     "\(home)/.cargo/bin", "\(home)/.volta/bin", "\(home)/.grok/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
                      BlurtPaths.home.appendingPathComponent("bin").path]
         let found = (loginShell["PATH"] ?? "").split(separator: ":").map(String.init)
         var seen = Set<String>()
