@@ -22,7 +22,7 @@
 //   onboardingtest step N|setup|download|small|retry|reload|login on|off|done|state   the assistant's buttons → onboarding_state
 //   network [online|offline|real] as if the Mac just came back online (NetworkWatch's handlers run) / reads offline
 //   mainempty KIND               one main-window empty state (ItemListController.testEmpty: first | inbox_zero | …)
-//   mainfakejob process|route|record [SESSION] | done | clear   a running job in the list's jobs section (the AI-working
+//   mainfakejob process|route|record [SESSION] | items UIDS | done | failed | clear   a running job in the list's jobs section (the AI-working
 //                                hairline on process / route; SESSION: the "organising" banner over that batch's items)
 //   dictationworking ID|off      the Dictation page's "Make Item" for ID as if the AI were writing it (the spinner)
 //   toastdone TEXT               the small toast with the done check (ok)
@@ -102,18 +102,33 @@ enum SelfTests {
         case "mainempty":
             let c = MainWindowController.shared
             c.show()
-            c.list.testEmpty(arg)
+            c.list.testEmpty(arg) { c.go($0) }
             out(["empty": arg])
         case "mainfakejob":
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             switch a.first ?? "process" {
             case "done": fakeJobs.forEach { $0.finish(.done) }; fakeJobs = []
+            case "failed": fakeJobs.forEach { $0.finish(.failed, error: JobError(code: "auth", message: "test")) }; fakeJobs = []
             case "clear": fakeJobs.forEach { $0.finish(.cancelled) }; fakeJobs = []
+            case "items":               // items UID,UID…: the last fake job has written these
+                let uids = a.count > 1 ? a[1].split(separator: ",").map(String.init) : []
+                fakeJobs.last?.setItems(uids)
+                out(["items": uids.count])
             default:
                 let type = JobType(rawValue: a.first ?? "process") ?? .process
-                let j = JobWriter(type: type, project: ProjectStore.shared.currentID, session: a.count > 1 ? URL(fileURLWithPath: a[1]) : nil,
-                                  title: "Test \(type.rawValue)")
-                if let first = jobSteps[type]?.first { j.step(first, .running, progress: 0.4) }
+                let session = a.count > 1 ? URL(fileURLWithPath: a[1]) : nil
+                // with a recording: a run 72 s in, its first step done, the next one going (as a real one looks)
+                let j = JobWriter(type: type, project: ProjectStore.shared.currentID, session: session,
+                                  title: session == nil ? "Test \(type.rawValue)" : nil)
+                if session != nil, let ids = jobSteps[type], ids.count > 1 {
+                    let at = { (s: Double) in ISO8601DateFormatter().string(from: Date().addingTimeInterval(-s)) }
+                    j.set("created", at(72))
+                    j.set("started", at(72))
+                    j.set("steps", ids.enumerated().map { k, id -> [String: Any] in
+                        k == 0 ? ["id": id, "state": "done", "started": at(72), "ended": at(61)]
+                            : k == 1 ? ["id": id, "state": "running", "started": at(61), "progress": 0.4]
+                            : ["id": id, "state": "pending"] })
+                } else if let first = jobSteps[type]?.first { j.step(first, .running, progress: 0.4) }
                 fakeJobs.append(j)
                 out(["job": j.id])
             }
@@ -294,6 +309,8 @@ enum SelfTests {
         case "main":                    // main SCOPE (inbox | progress | unassigned | all | project:<id>): go there
             let c = MainWindowController.shared
             c.show()
+            // a test empty state ends when the test goes somewhere: the real world comes back
+            if c.model.testEmpty != nil || c.model.testMissing != nil || c.model.testEmptyProject != nil { c.list.testEmpty("off") { c.go($0) } }
             if let s = Scope(key: arg) { c.go(s) }
             out(["scope": c.model.scope.key, "rows": c.model.rowCount, "jobs": c.model.jobs.count, "ms": c.model.lastReloadMS])
         case "mainsel":                 // mainsel N[,M…]: select those rows of the list
@@ -304,8 +321,11 @@ enum SelfTests {
             out(["selected": c.list.selectedIDs])
         case "mainselid":               // mainselid UID[,UID…]: select those items in the current list
             let c = MainWindowController.shared
-            let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) })
+            // a uid, or an item's id as the list shows it ("AW-12")
+            let byID = { (id: String) -> Int? in (0..<c.model.rowCount).first { c.model.item(at: $0)?.itemID == id } }
+            let rows = IndexSet(arg.split(separator: ",").compactMap { c.model.row(of: String($0)) ?? byID(String($0)) })
             c.list.table.selectRowIndexes(rows, byExtendingSelection: false)
+            if let f = rows.first { c.list.table.scrollRowToVisible(f) }
             c.window?.makeFirstResponder(c.list.table)
             out(["selected": c.list.selectedIDs, "states": c.list.selectedItems.map(\.state)])
         case "maincounts":              // what the sidebar and the menu-bar badge say
@@ -339,10 +359,20 @@ enum SelfTests {
             if a.count == 2, let w = MainWindowController.shared.window, let sc = w.screen?.visibleFrame {
                 w.setFrame(NSRect(x: sc.midX - a[0] / 2, y: sc.midY - a[1] / 2, width: a[0], height: a[1]), display: true)
             }
+        case "mainfront":               // mainfront on | off: the window above others without activating (screenshots
+                                        // of a popover, whose blur shows what is behind it), then back behind them
+            if let w = MainWindowController.shared.window { arg == "off" ? w.orderBack(nil) : w.orderFrontRegardless() }
         case "mainsplit":               // the three columns' frames and the table's columns
             let c = MainWindowController.shared
             out(["columns": c.split.splitViewItems.map { "\($0.viewController.view.frame)" },
                  "table": c.list.table.tableColumns.map { "\($0.identifier.rawValue)=\(Int($0.width))\($0.isHidden ? "h" : "")" }])
+        case "mainselection":           // the several-selected detail: title, summary, buttons, ⋯ menu, rows; "click ID" presses one
+            let d = MainWindowController.shared.detail
+            if arg.hasPrefix("click ") {
+                let id = String(arg.dropFirst(6))
+                d.selection.button(id)?.performClick(nil)
+            }
+            out(["shown": d.showsSelection].merging(d.selection.testDescription) { a, _ in a })
         case "mainviews":               // frames of the detail's views (layout checks)
             let d = MainWindowController.shared.detail
             func dump(_ v: NSView, _ depth: Int) -> [String] {
@@ -383,12 +413,20 @@ enum SelfTests {
                 out(["projects": c.model.projects.map { "\($0.name) \($0.key)" }, "go": c.shortcutProjects.map(\.name),
                      "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
             }
-        case "mainshortcuts":           // the ? panel, kept up for a screenshot of a build launched in the background
-            let c = MainWindowController.shared
-            c.showShortcuts()
+        case "mainshortcuts":           // mainshortcuts [QUERY | @end]: the ? panel, kept up for a screenshot of a build launched in
+            let c = MainWindowController.shared   // the background; QUERY is typed into its search field
+            if ShortcutsSheet.panel?.isVisible != true { c.showShortcuts() }
             ShortcutsSheet.panel?.hidesOnDeactivate = false
             ShortcutsSheet.panel?.orderFrontRegardless()
-            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? ""])
+            if let p = ShortcutsSheet.panel {
+                if arg == "@end" { p.scrollToEnd() } else {
+                    p.field.stringValue = arg
+                    p.field.currentEditor()?.selectedRange = NSRange(location: (arg as NSString).length, length: 0)
+                    p.search(arg)
+                }
+            }
+            out(["shown": ShortcutsSheet.panel?.isVisible ?? false, "title": ShortcutsSheet.panel?.title ?? "",
+                 "size": ShortcutsSheet.panel.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" } ?? ""])
         case "mainjs":                  // mainjs EXPR: run EXPR in the detail page (as the page's own UI would), its value back
             MainWindowController.shared.detail.web.evaluateJavaScript("JSON.stringify((() => { return \(arg); })())") { r, e in
                 out(["value": (r as? String) ?? NSNull(), "error": e.map { "\($0)" } ?? NSNull()])
@@ -412,6 +450,9 @@ enum SelfTests {
                  "empty": c.list.empty.isHidden ? NSNull() : (c.list.empty.accessibilityLabel() ?? "") as Any])
         case "mainproject":             // mainproject ID: its settings sheet
             MainWindowController.shared.projectSettings(arg)
+        case "mainprojectset":          // mainprojectset key|description VALUE: type into the open settings sheet
+            let f = arg.split(separator: " ", maxSplits: 1).map(String.init)
+            out(ProjectSettingsSheet.testSet(f.first ?? "", f.count > 1 ? f[1] : ""))
         case "mainstate", "mainmove":   // mainstate ACTION (K3: keep, done, back, …) / mainmove PROJECT: on the selection
             let c = MainWindowController.shared
             if parts[0] == "mainstate" {
@@ -430,20 +471,33 @@ enum SelfTests {
             case "close": pal.close()
             default:
                 if !pal.isOpen { pal.open() }
-                pal.field.stringValue = arg
-                pal.refresh()
+                pal.setQuery(arg)
             }
-            out(["open": pal.isOpen, "selected": pal.table.selectedRow,
-                 "rows": pal.entries.prefix(12).map { "\($0.title)\($0.enabled ? "" : " (off)")" }, "count": pal.entries.count])
+            // rows as shown: "# Section" for a header; selected = the chosen row's title
+            let shown: [String] = pal.rows.prefix(16).map {
+                switch $0 {
+                case .header(let s, _): return "# \(s)"
+                case .note(let s): return "~ \(s)"
+                case .entry(let e): return e.kind == .item ? "\(e.itemID) \(e.title)" : e.title
+                }
+            }
+            let k = pal.table.selectedRow
+            var chosen = ""
+            if k >= 0, k < pal.rows.count, case .entry(let e) = pal.rows[k] { chosen = e.title }
+            out(["open": pal.isOpen, "selected": k, "chosen": chosen, "scope": pal.scope.map(\.itemID),
+                 "rows": shown, "count": pal.entries.count])
         case "maindrag":                // maindrag ROW: what dragging that row out carries (Finder, Terminal, a project)
             let c = MainWindowController.shared
             let w = Int(arg).flatMap { c.list.tableView(c.list.table, pasteboardWriterForRow: $0) } as? NSPasteboardItem
             out(["types": w?.types.map(\.rawValue) ?? [], "file": w?.string(forType: .fileURL) ?? NSNull()])
-        case "mainringclick":           // mainringclick ROW: a click on that row's state ring (selects it, opens the state menu)
+        case "mainringclick":           // mainringclick ROW [front]: a click on that row's state ring (selects it, opens the
+                                        // state menu); front: the window key first, as after a real click (screenshots)
             let c = MainWindowController.shared
-            let b = Int(arg).flatMap { c.list.ringView(row: $0) } as? NSButton
-            out(["found": b != nil])
-            DispatchQueue.main.async { b?.performClick(nil) }
+            let a = arg.split(separator: " ").map(String.init)
+            if a.contains("front") { NSApp.activate(ignoringOtherApps: true); c.window?.makeKeyAndOrderFront(nil) }
+            let b = a.first.flatMap(Int.init).flatMap { c.list.ringView(row: $0) } as? NSButton
+            out(["found": b != nil, "ring": b.map { "\($0.convert($0.bounds, to: nil))" } ?? ""])
+            DispatchQueue.main.asyncAfter(deadline: .now() + (a.contains("front") ? 0.3 : 0)) { b?.performClick(nil) }
         case "mainsearchkey", "mainlistkey":   // CHAR typed into the search field / the list, through NSApp (menus first)
             let c = MainWindowController.shared
             if parts[0] == "mainsearchkey" { c.focusSearch() } else { c.window?.makeFirstResponder(c.list.table) }
@@ -494,7 +548,7 @@ enum SelfTests {
             default: c.movePopover?.type(arg)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                out(["open": c.movePopover != nil, "shown": c.movePopover?.shownIDs ?? []])
+                out(["open": c.movePopover != nil, "shown": c.movePopover?.shownIDs ?? [], "selected": c.movePopover?.selectedID ?? ""])
             }
         case "mainchord":               // mainchord cmd+delete: ⌘⌫ on the list, through NSApp (the menus get it first)
             let c = MainWindowController.shared
@@ -512,21 +566,26 @@ enum SelfTests {
             let c = MainWindowController.shared
             let w = arg.split(separator: " ").map(String.init)
             let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
-            if w.first == "captures" { c.list.captures.set(count: n) } else { c.list.taken.set(count: n) }
+            if w.first == "captures" { c.list.captures.set(count: n) } else { c.sidebar.testTaken = n > 0 ? n : nil; c.sidebar.rebuild() }
             out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
         case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
             let c = MainWindowController.shared
             out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
                  "banner": c.focusedBanner ?? NSNull(), "job": c.shownJob ?? NSNull()])
+        case "mainkinds":               // mainkinds issue,idea|all: the Filter menu's kinds
+            let c = MainWindowController.shared
+            c.model.kinds = arg == "all" || arg.isEmpty ? [] : Set(arg.split(separator: ",").map(String.init))
+            c.list.filtersChanged()
+            out(["kinds": c.model.kinds.sorted(), "rows": c.model.rowCount, "line": FilterBar.describe(c.model) ?? NSNull()])
         case "mainfilter":              // mainfilter STATE|inbox|all: the State filter
             let c = MainWindowController.shared
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg
             c.model.reload()
             out(["state": c.model.state ?? NSNull(), "rows": c.model.rowCount])
-        case "mainpopup":               // mainpopup filter|context: open the State filter / the selection's context menu
+        case "mainpopup":               // mainpopup filter|context: open the toolbar's Filter menu / the selection's context menu
             let c = MainWindowController.shared
             DispatchQueue.main.async {
-                if arg == "filter" { c.list.bar.state.performClick(nil); return }
+                if arg == "filter" { c.showFilterMenu(); return }
                 guard let r = c.list.table.selectedRowIndexes.first, let m = c.contextMenu(for: c.list.table.selectedRowIndexes) else { return }
                 let rect = c.list.table.rect(ofRow: r)
                 m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 160, y: rect.midY), in: c.list.table)

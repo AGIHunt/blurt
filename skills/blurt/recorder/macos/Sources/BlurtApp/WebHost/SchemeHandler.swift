@@ -150,6 +150,9 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         h["Content-Type"] = mime
         h["Content-Length"] = "\(body.count)"
         h["Cache-Control"] = "no-store"
+        // the page (blurt-app://ui) reads a voice note's wav with fetch to draw its waveform: another host of the
+        // scheme, so it needs to be told it may (only this web view ever reaches the scheme)
+        if url.host == "file" || url.host == "session" { h["Access-Control-Allow-Origin"] = "*" }
         task.didReceive(HTTPURLResponse(url: url, statusCode: code, httpVersion: "HTTP/1.1", headerFields: h)!)
         if !body.isEmpty { task.didReceive(body) }
         task.didFinish()

@@ -1,10 +1,12 @@
 // Moving items to a project in the main window, cheaply (K2, v0.9 — the user moves items; Blurt never does):
 //
 //   ProjectPopover     M (or Move to Project… in the palette, the toolbar's Move ▸ Other…): a small popover at the
-//                      selection — type to filter (ProjectPick: key, name, a word of it), ↑↓, ↩ moves, Esc closes.
-//                      Projects recently used first, then a line and Unassigned (last, as in every project picker);
-//                      the place the items are in is checked. The highlighted row uses the accent selection, as in
-//                      Spotlight — the field keeps the keys, the list still reads as the one in use.
+//                      selection — "Move BA-1 to…" / "Move 3 items to…"; type to filter (ProjectPick: key, name, a word
+//                      of it; the typed letters in semibold), ↑↓ or the pointer, ↩ moves, Esc closes. Projects recently
+//                      used first, then a line and Unassigned (last, as in every project picker). Where the items are
+//                      now says "Current" and is never the default (↩ on it just closes). The chosen row is the
+//                      brand-tint wash of the ⌘K palette and the lists; the rows look like the sidebar's (an outline
+//                      folder, the key). No match: one line saying so, then Open Folder… (that folder, then the move).
 //   SuggestChip        an Unassigned row an organizing run suggested a project for: "Looks like Atlas Web · Move" at
 //                      the end of its title — one click moves it (⌘Z / the toast's Undo moves it back).
 //   SuggestionsBanner  above the Unassigned list, one line per suggested project: "Looks like Atlas Web"
@@ -15,38 +17,66 @@ import BlurtCore
 
 // MARK: - the Move popover
 
-final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSPopoverDelegate {
-    struct Entry { let id: String; let name: String; let key: String; let color: NSColor; let inbox: Bool }
+final class ProjectPopover: NSViewController, NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate, NSPopoverDelegate {
+    enum Kind { case project, inbox, none, open }
+    struct Entry { let id: String; let name: String; let key: String; let kind: Kind }
 
     private let projects: [Project]
     private let checked: String?
+    private let subject: String
     private let choose: (String) -> Void
+    private let openFolder: (() -> Void)?
     private var shown: [Entry] = []
-    private let field = NSSearchField()
+    private var query = ""
+    private let field = NSTextField()
     private let table = NSTableView()
-    private let none = NSTextField(labelWithString: T("project.no_match"))
     // held while it shows (it holds us as its content): let go in popoverDidClose
     private var popover: NSPopover?
     private var listHeight: NSLayoutConstraint!
 
-    /// `checked`: where the items are now (all of them), "inbox" for Unassigned; `choose` gets a project id or "inbox".
-    init(checked: String?, choose: @escaping (String) -> Void) {
+    /// `checked`: where the items are now (all of them), "inbox" for Unassigned. `subject`: what moves, for the field
+    /// ("Move BA-1 to…", "Move 3 items to…"). `choose` gets a project id or "inbox"; `openFolder` (no project matches):
+    /// opens a folder as a project and moves the items there.
+    init(checked: String?, subject: String, choose: @escaping (String) -> Void, openFolder: (() -> Void)? = nil) {
         projects = ProjectStore.shared.projects
         self.checked = checked
+        self.subject = subject
         self.choose = choose
+        self.openFolder = openFolder
         super.init(nibName: nil, bundle: nil)
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    static let rowHeight: CGFloat = 26
+    // One grid (docs/design/system.md §3.3, the palette's chosen row): 12 pt from the popover's edge to the glyph
+    // column (16 pt: the field's magnifier, the folders, the tray), 8 pt more to the text (the field's text and the
+    // names start on one vertical), 12 pt from the trailing edge. The chosen row is the brand-tint wash, inset 6 pt.
+    static let rowHeight: CGFloat = 28
     static let maxRows = 9
+    static let inset: CGFloat = 12
+    static let glyph: CGFloat = 16
+    static var textX: CGFloat { inset + glyph + 8 }
+    static let minWidth: CGFloat = 300, maxWidth: CGFloat = 360
+    static let nameFont = NSFont.systemFont(ofSize: 13)
+    static let keyFont = NSFont.monospacedSystemFont(ofSize: 10, weight: .regular)      // the sidebar's key
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 200))
-        field.placeholderString = T("main.move.placeholder")
-        field.delegate = self
+        let width = Self.width(for: projects)
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 200))
+        let glass = NSImageView(image: Look.symbol("magnifyingglass", "", size: 13) ?? NSImage())
+        glass.contentTintColor = .secondaryLabelColor
+        // one surface: a borderless field on the popover itself, a hairline under it, the list
+        field.isBordered = false
+        field.isBezeled = false
+        field.drawsBackground = false
         field.focusRingType = .none
-        field.setAccessibilityLabel(T("main.move.placeholder"))
+        field.font = .systemFont(ofSize: 13)
+        field.cell?.isScrollable = true
+        field.cell?.wraps = false
+        field.placeholderString = subject
+        field.delegate = self
+        field.setAccessibilityLabel(subject)
+        let line = NSBox()
+        line.boxType = .separator
         let col = NSTableColumn(identifier: .init("p"))
         col.resizingMask = .autoresizingMask
         table.addTableColumn(col)
@@ -66,28 +96,46 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
         scroll.drawsBackground = false
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        none.textColor = .secondaryLabelColor
-        none.font = .systemFont(ofSize: 12)
-        none.isHidden = true
-        for v in [field, scroll, none] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        scroll.automaticallyAdjustsContentInsets = false
+        scroll.contentInsets = NSEdgeInsetsZero
+        for v in [glass, field, line, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         listHeight = scroll.heightAnchor.constraint(equalToConstant: Self.rowHeight * 4)
         NSLayoutConstraint.activate([
-            root.widthAnchor.constraint(equalToConstant: 280),
-            field.topAnchor.constraint(equalTo: root.topAnchor, constant: 10),
-            field.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 10),
-            field.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -10),
-            scroll.topAnchor.constraint(equalTo: field.bottomAnchor, constant: 8),
-            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 4),
-            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -4),
+            root.widthAnchor.constraint(equalToConstant: width),
+            glass.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.inset),
+            glass.widthAnchor.constraint(equalToConstant: Self.glyph),
+            glass.centerYAnchor.constraint(equalTo: root.topAnchor, constant: 21),
+            // a borderless field draws its text at its edge: on the names' vertical
+            field.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.textX),
+            field.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.inset),
+            field.centerYAnchor.constraint(equalTo: glass.centerYAnchor),
+            line.topAnchor.constraint(equalTo: root.topAnchor, constant: 41),
+            line.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            line.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            scroll.topAnchor.constraint(equalTo: line.bottomAnchor, constant: 5),
+            scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scroll.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -6),
             listHeight,
-            none.centerXAnchor.constraint(equalTo: scroll.centerXAnchor), none.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
         ])
         view = root
+        table.addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
         refresh()
     }
 
-    /// Shows it under `rect` of `view` (the selected row), the field taking the keys.
+    /// Wide enough for the longest name and its key (or "Current"), between 300 and 360 pt; a longer name gives way in
+    /// the middle, so the end that tells two projects apart stays (the whole name is the row's tooltip).
+    static func width(for ps: [Project]) -> CGFloat {
+        let here = (T("main.move.current") as NSString).size(withAttributes: [.font: Look.subFont]).width + 15
+        let need = ps.map { p -> CGFloat in
+            let n = (p.name as NSString).size(withAttributes: [.font: nameFont]).width
+            let k = (p.key as NSString).size(withAttributes: [.font: keyFont]).width
+            return ceil(n + 12 + max(k, here))
+        }.max() ?? 0
+        return min(maxWidth, max(minWidth, textX + need + inset))
+    }
+
+    /// Shows it under `rect` of `view` (the start of the selected row's title), the field taking the keys.
     func show(relativeTo rect: NSRect, of v: NSView) {
         let p = NSPopover()
         p.behavior = .transient
@@ -97,7 +145,7 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
         popover = p
         p.show(relativeTo: rect, of: v, preferredEdge: .maxY)
         view.window?.makeFirstResponder(field)
-        emit(["event": "move_popover", "shown": shown.map(\.id)])
+        emit(["event": "move_popover", "shown": shown.map(\.id), "selected": selectedID])
     }
 
     func popoverDidClose(_ notification: Notification) {
@@ -108,18 +156,32 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
     func close() { popover?.close() }
 
     private func refresh() {
-        let q = field.stringValue
+        query = field.stringValue.trimmingCharacters(in: .whitespaces)
         // the rows every project picker shows: recent projects, then Unassigned last (it matches its own name too)
-        shown = ProjectPick.choices(projects, query: q, unassigned: T("project.inbox")).map { c in
-            c.project.map { Entry(id: $0.id, name: $0.name, key: $0.key, color: ProjectLook.color($0), inbox: false) }
-                ?? Entry(id: "inbox", name: T("project.inbox"), key: "", color: .systemGray, inbox: true)
+        shown = ProjectPick.choices(projects, query: query, unassigned: T("project.inbox")).map { c in
+            c.project.map { Entry(id: $0.id, name: $0.name, key: $0.key, kind: .project) }
+                ?? Entry(id: "inbox", name: T("project.inbox"), key: "", kind: .inbox)
+        }
+        // no project matches: one line saying so, and the way to add the one that's missing
+        if shown.isEmpty {
+            shown = [Entry(id: "none", name: T("project.no_match"), key: "", kind: .none)]
+            if openFolder != nil { shown.append(Entry(id: "open", name: T("project.open_folder"), key: "", kind: .open)) }
         }
         table.reloadData()
-        none.isHidden = !shown.isEmpty
-        listHeight.constant = Self.rowHeight * CGFloat(min(max(shown.count, 2), Self.maxRows))
-        let start = q.isEmpty ? (shown.firstIndex { $0.id != checked } ?? 0) : 0
-        if !shown.isEmpty { table.selectRowIndexes([start], byExtendingSelection: false); table.scrollRowToVisible(start) }
+        // as tall as its rows: no empty band under a single result
+        listHeight.constant = shown.indices.prefix(Self.maxRows).reduce(CGFloat(0)) { $0 + rowHeight($1) }
+        // the place the items already are is never the default: ↩ goes somewhere else, or nowhere
+        if let start = shown.indices.first(where: { selectable($0) && shown[$0].id != checked }) {
+            table.selectRowIndexes([start], byExtendingSelection: false)
+            table.scrollRowToVisible(start)
+        } else {
+            table.deselectAll(nil)
+        }
     }
+
+    private func selectable(_ row: Int) -> Bool { shown[row].kind != .none }
+    private func lineAbove(_ row: Int) -> Bool { row > 0 && [.inbox, .open].contains(shown[row].kind) }
+    private func rowHeight(_ row: Int) -> CGFloat { Self.rowHeight + (lineAbove(row) ? PickRowView.gap : 0) }
 
     func controlTextDidChange(_ obj: Notification) { refresh() }
 
@@ -136,96 +198,183 @@ final class ProjectPopover: NSViewController, NSSearchFieldDelegate, NSTableView
     }
 
     private func step(_ d: Int) {
-        guard !shown.isEmpty else { return }
-        let n = max(0, min(shown.count - 1, table.selectedRow + d))
+        let rows = shown.indices.filter(selectable)
+        guard !rows.isEmpty else { return }
+        let at = rows.firstIndex(of: table.selectedRow) ?? (d > 0 ? -1 : rows.count)
+        let n = rows[max(0, min(rows.count - 1, at + d))]
         table.selectRowIndexes([n], byExtendingSelection: false)
         table.scrollRowToVisible(n)
     }
 
-    @objc private func clicked() { pick(table.clickedRow) }
+    @objc private func clicked() { if table.clickedRow >= 0 { pick(table.clickedRow) } }
+
+    override func mouseMoved(with event: NSEvent) {
+        // the row under the pointer becomes the keyboard's choice: only one row is ever highlighted
+        let r = table.row(at: table.convert(event.locationInWindow, from: nil))
+        if r >= 0, r < shown.count, selectable(r), r != table.selectedRow { table.selectRowIndexes([r], byExtendingSelection: false) }
+    }
 
     private func pick(_ row: Int) {
-        guard row >= 0, row < shown.count else { NSSound.beep(); return }
-        let id = shown[row].id
+        let valid = row >= 0 && row < shown.count
+        if valid, !selectable(row) { return }
+        // nothing chosen (only where the items already are matched), or that place itself: close quietly, no move
+        guard valid, shown[row].id != checked else {
+            popover?.close()
+            emit(["event": "move_popover_pick", "project": ""])
+            return
+        }
+        let e = shown[row]
         popover?.close()
-        emit(["event": "move_popover_pick", "project": id])
-        choose(id)
+        emit(["event": "move_popover_pick", "project": e.id])
+        if e.kind == .open { openFolder?() } else { choose(e.id) }
     }
 
     // MARK: rows
 
     func numberOfRows(in tableView: NSTableView) -> Int { shown.count }
+    func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat { rowHeight(row) }
+    func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool { selectable(row) }
 
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? {
         let r = PickRowView()
-        r.lineAbove = shown[row].inbox && row > 0
+        r.lineAbove = lineAbove(row)
         return r
     }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let e = shown[row]
+        let here = e.id == checked && e.kind != .none
         let c = PickCell()
-        let icon = NSImageView(image: Look.symbol(e.inbox ? "tray.2" : "folder.fill", e.name, size: 12) ?? NSImage())
-        icon.contentTintColor = e.inbox ? .secondaryLabelColor : e.color
-        let name = NSTextField(labelWithString: e.name)
-        name.lineBreakMode = .byTruncatingTail
-        name.font = .systemFont(ofSize: 13)
-        let key = NSTextField(labelWithString: e.key)
-        key.font = Look.monoSub
-        key.textColor = .secondaryLabelColor
-        let check = NSImageView(image: Look.symbol("checkmark", T("main.move.here"), size: 11, weight: .semibold) ?? NSImage())
-        check.contentTintColor = BrandColor.ink
-        check.isHidden = e.id != checked
-        for v in [icon, name, key, check] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; c.addSubview(v) }
+        let top = lineAbove(row) ? PickRowView.gap : 0
+        // the sidebar's glyphs in its secondary ink: an outline folder, the tray for Unassigned (no project colours)
+        let symbol: String?
+        switch e.kind {
+        case .project: symbol = "folder"
+        case .inbox: symbol = "tray.2"
+        case .open: symbol = "folder.badge.plus"
+        case .none: symbol = nil
+        }
+        let icon = NSImageView(image: symbol.flatMap { Look.symbol($0, "", size: 13) } ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
+        let name = NSTextField(labelWithString: "")
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingMiddle
+        let ink: NSColor = e.kind == .none || here ? .secondaryLabelColor : .labelColor
+        let s = NSMutableAttributedString(string: e.name, attributes: [.font: Self.nameFont, .foregroundColor: ink, .paragraphStyle: p])
+        // the typed letters in semibold, so it shows why a row is here
+        if e.kind == .project || e.kind == .inbox, let r = Self.match(e.name, query) {
+            s.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(r, in: e.name))
+        }
+        // the current project (where new captures go) wears the same mark as in the sidebar
+        if e.kind == .project, e.id == ProjectStore.shared.currentID, let img = SourceCell.currentImage {
+            let a = NSTextAttachment()
+            let tinted = img.copy() as! NSImage
+            tinted.isTemplate = true
+            a.image = tinted
+            a.bounds = NSRect(x: 0, y: -1, width: img.size.width, height: img.size.height)
+            s.append(NSAttributedString(string: "  "))
+            let m = NSMutableAttributedString(attachment: a)
+            m.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: NSRange(location: 0, length: m.length))
+            s.append(m)
+        }
+        name.attributedStringValue = s
+        name.toolTip = e.kind == .project && e.id == ProjectStore.shared.currentID ? T("main.project.current_mark") : nil
+        name.lineBreakMode = .byTruncatingMiddle
         name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // trailing: the key, as in the sidebar; where the items are now, a check and "Here now" instead
+        let trail: NSView
+        if here {
+            let check = NSImageView(image: Look.symbol("checkmark", "", size: 10, weight: .semibold) ?? NSImage())
+            check.contentTintColor = BrandColor.ink
+            let word = NSTextField(labelWithString: T("main.move.current"))
+            word.font = Look.subFont
+            word.textColor = .secondaryLabelColor
+            let st = NSStackView(views: [check, word])
+            st.spacing = 4
+            st.alignment = .centerY
+            trail = st
+        } else {
+            let key = NSTextField(labelWithString: e.key)
+            let typed = !query.isEmpty && e.key.range(of: query, options: [.anchored, .caseInsensitive, .widthInsensitive]) != nil
+            key.font = typed ? .monospacedSystemFont(ofSize: 10, weight: .semibold) : Self.keyFont
+            key.textColor = .secondaryLabelColor
+            trail = key
+        }
+        trail.setContentCompressionResistancePriority(.required, for: .horizontal)
+        for v in [icon, name, trail] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; c.addSubview(v) }
         NSLayoutConstraint.activate([
-            check.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: 6), check.centerYAnchor.constraint(equalTo: c.centerYAnchor),
-            check.widthAnchor.constraint(equalToConstant: 12),
-            icon.leadingAnchor.constraint(equalTo: check.trailingAnchor, constant: 4), icon.centerYAnchor.constraint(equalTo: c.centerYAnchor),
-            name.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 7), name.centerYAnchor.constraint(equalTo: c.centerYAnchor),
-            key.leadingAnchor.constraint(greaterThanOrEqualTo: name.trailingAnchor, constant: 8),
-            key.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -8), key.centerYAnchor.constraint(equalTo: c.centerYAnchor),
+            icon.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: Self.inset), icon.widthAnchor.constraint(equalToConstant: Self.glyph),
+            icon.centerYAnchor.constraint(equalTo: c.centerYAnchor, constant: top / 2),
+            name.leadingAnchor.constraint(equalTo: c.leadingAnchor, constant: Self.textX),
+            name.centerYAnchor.constraint(equalTo: c.centerYAnchor, constant: top / 2),
+            trail.leadingAnchor.constraint(greaterThanOrEqualTo: name.trailingAnchor, constant: 12),
+            trail.trailingAnchor.constraint(equalTo: c.trailingAnchor, constant: -Self.inset),
+            here ? trail.centerYAnchor.constraint(equalTo: name.centerYAnchor) : trail.firstBaselineAnchor.constraint(equalTo: name.firstBaselineAnchor),
         ])
-        c.textField = name
-        c.icon = icon; c.key = key; c.check = check
-        c.iconTint = icon.contentTintColor
-        c.setAccessibilityLabel(e.id == checked ? "\(e.name), \(T("main.move.here"))" : e.name)
+        c.name = name
+        c.full = e.name
+        c.setAccessibilityLabel(here ? "\(e.name), \(T("main.move.here"))" : e.name)
         return c
     }
 
-    /// Tests (wp6 `movepopover`): the rows as shown.
+    /// Where `query` sits in `name` (case, accents and width ignored): at the start of a word when it is there too.
+    static func match(_ name: String, _ query: String) -> Range<String.Index>? {
+        guard !query.isEmpty else { return nil }
+        let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        var first: Range<String.Index>?
+        var from = name.startIndex
+        while from < name.endIndex, let r = name.range(of: query, options: opts, range: from..<name.endIndex) {
+            if first == nil { first = r }
+            if r.lowerBound == name.startIndex { return r }
+            let before = name[name.index(before: r.lowerBound)]
+            if !before.isLetter && !before.isNumber { return r }
+            from = name.index(after: r.lowerBound)
+        }
+        return first
+    }
+
+    /// Tests (wp6 `mainmovepop`): the rows as shown, and the one ↩ would choose ("" for none).
     var shownIDs: [String] { shown.map(\.id) }
-    func type(_ s: String) { field.stringValue = s; refresh() }
+    var selectedID: String { table.selectedRow >= 0 && table.selectedRow < shown.count ? shown[table.selectedRow].id : "" }
+    func type(_ s: String) {
+        field.stringValue = s
+        field.currentEditor()?.selectedRange = NSRange(location: (s as NSString).length, length: 0)    // as if typed
+        refresh()
+    }
     /// Tests: ↩ on the selected row.
     func testPick() { pick(table.selectedRow) }
 }
 
-/// The popover's row: always drawn with the accent ("emphasized") selection — the search field keeps first responder,
-/// which would otherwise grey the highlight out — and a hairline above Unassigned.
+/// The popover's row: the chosen one is the brand-tint wash of the ⌘K palette and the lists (§3.3; r 6, inset 6 pt from
+/// the popover's edges), never the accent block, and the text on it stays ink. Drawn whoever has first responder (the
+/// field keeps it). A row after the projects (Unassigned, Open Folder…) has a hairline above it, on the 12 pt grid.
 private final class PickRowView: NSTableRowView {
+    static let gap: CGFloat = 9
     var lineAbove = false
-    override var isEmphasized: Bool { get { true } set {} }
+    override var isEmphasized: Bool { get { false } set {} }
+    override var interiorBackgroundStyle: NSView.BackgroundStyle { .normal }
+    override func drawSelection(in dirtyRect: NSRect) {
+        BrandColor.tint.setFill()
+        var r = bounds
+        if lineAbove { r.origin.y += Self.gap; r.size.height -= Self.gap }
+        NSBezierPath(roundedRect: r.insetBy(dx: 6, dy: 1), xRadius: 6, yRadius: 6).fill()
+    }
     override func drawBackground(in dirtyRect: NSRect) {
-        super.drawBackground(in: dirtyRect)
         guard lineAbove else { return }
         NSColor.separatorColor.setFill()
-        NSRect(x: 8, y: 0, width: bounds.width - 16, height: 1).fill()
+        let px = 1 / (window?.backingScaleFactor ?? 2)
+        NSRect(x: ProjectPopover.inset, y: floor(Self.gap / 2), width: bounds.width - 2 * ProjectPopover.inset, height: px).fill()
     }
 }
 
-/// Its cell: the key, the check and a project's colour turn white on the accent selection, like a menu item.
+/// Its cell: a name cut in the middle has the whole name as its tooltip.
 private final class PickCell: NSTableCellView {
-    weak var icon: NSImageView?
-    weak var key: NSTextField?
-    weak var check: NSImageView?
-    var iconTint: NSColor?
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet {
-            let on = backgroundStyle == .emphasized
-            icon?.contentTintColor = on ? .alternateSelectedControlTextColor : iconTint
-            key?.textColor = on ? .alternateSelectedControlTextColor : .secondaryLabelColor
-            check?.contentTintColor = on ? .alternateSelectedControlTextColor : BrandColor.ink
-        }
+    weak var name: NSTextField?
+    var full = ""
+    override func layout() {
+        super.layout()
+        guard let n = name else { return }
+        n.toolTip = n.attributedStringValue.size().width > n.frame.width + 0.5 ? full : nil
     }
 }
 

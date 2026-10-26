@@ -141,6 +141,40 @@ public extension Loc {
         return f.localizedString(for: date, relativeTo: now)
     }
 
+    /// A list row's date, the way Mail sets it: the time today ("10:42"), "Yesterday", the weekday this week ("Mon"),
+    /// "Oct 24" this year, a short date before that. One short token at a fixed width, never "1 min. ago" on every row.
+    static func listDate(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        var cal = calendar
+        cal.locale = locale
+        let key = locale.identifier + "|" + cal.timeZone.identifier
+        if listFormatters.key != key { listFormatters = (key, [:]) }
+        func f(_ name: String, _ make: (DateFormatter) -> Void) -> DateFormatter {
+            if let d = listFormatters.cache[name] { return d }
+            let d = DateFormatter()
+            d.locale = locale
+            d.calendar = cal
+            d.timeZone = cal.timeZone
+            make(d)
+            listFormatters.cache[name] = d
+            return d
+        }
+        if cal.isDate(date, inSameDayAs: now) || date > now {
+            return f("time") { $0.dateStyle = .none; $0.timeStyle = .short }.string(from: date)
+        }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: date), to: cal.startOfDay(for: now)).day ?? 99
+        if days == 1 {
+            // the system's own word for it ("Yesterday" / "昨天"): a relative formatter says it of the real yesterday
+            return f("yesterday") { $0.dateStyle = .medium; $0.timeStyle = .none; $0.doesRelativeDateFormatting = true }
+                .string(from: Date().addingTimeInterval(-86_400))
+        }
+        if days < 7 { return f("weekday") { $0.setLocalizedDateFormatFromTemplate("EEE") }.string(from: date) }
+        if cal.component(.year, from: date) == cal.component(.year, from: now) {
+            return f("monthday") { $0.setLocalizedDateFormatFromTemplate("MMMd") }.string(from: date)
+        }
+        return f("short") { $0.dateStyle = .short; $0.timeStyle = .none }.string(from: date)
+    }
+    private static var listFormatters: (key: String, cache: [String: DateFormatter]) = ("", [:])
+
     /// Medium date + short time, "Today" / "Yesterday" where it applies.
     static func dateTime(_ date: Date) -> String {
         let f = DateFormatter()

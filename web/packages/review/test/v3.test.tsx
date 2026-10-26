@@ -281,7 +281,9 @@ describe("v3 UI", () => {
     expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
     expect(el.querySelector("#workSession")).not.toBeNull();
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
-    expect(el.querySelector("#provenance")?.textContent).toContain("Captured in this project");
+    // one footer line (how · when · who); captured in its own project says nothing the breadcrumb doesn't: not repeated
+    expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/^Screen recording at 0:12·.+·by max$/);
+    expect(el.querySelector("#provenance")?.textContent).not.toContain("Captured in this project");
     expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
     expect(el.querySelector("#handoffRow")).toBeNull(); // to verify: nothing to hand off
     // the pill's menu: only what to-verify allows, hand off not among them
@@ -311,7 +313,10 @@ describe("v3 UI", () => {
     expect(keys()).toEqual(["actual", "module", "source"]);
     expect([...el.querySelectorAll(".fields [placeholder]")].map((f) => f.getAttribute("placeholder"))).not.toContain("—");
     const add = el.querySelector("#addField") as HTMLSelectElement;
-    expect([...add.options].slice(1).map((o) => o.value)).toEqual(["owner", "expected", "steps", "tags"]);
+    // the fields, then (an issue without a type) the types: an unset type is no chip of its own
+    expect([...add.options].slice(1).map((o) => o.value)).toEqual(["owner", "expected", "steps", "tags",
+      ...s.types.map((t) => "type:" + t)]);
+    expect(el.querySelector("#typeChip")).toBeNull();
     // picking one shows it, focused; emptied or not, it stays while this item is showing
     await act(async () => {
       add.value = "expected";
@@ -332,6 +337,64 @@ describe("v3 UI", () => {
     expect(el.querySelector('[data-k="summary"]')?.getAttribute("placeholder")).toBe("What’s the idea?");
     expect(el.querySelector("#typeChip")).toBeNull();
     el.remove();
+    done();
+  });
+
+  it("to verify: one card that asks — one brand primary, Send Back… with a note, the rest under ⋯, no amber elsewhere", async () => {
+    const reviewChanges = vi.fn();
+    const { el, s, done } = await mount(<Inspector />, { openSession: vi.fn(), reviewChanges });
+    document.body.appendChild(el);
+    await act(async () => s.go(0)); // BA-12: Claude says it's fixed, with a session and a commit
+    const card = el.querySelector("#workRow")!;
+    // exactly one primary in the whole inspector, and it is the brand button (never the old flat `ok` keep button)
+    expect(el.querySelectorAll(".btn.primary")).toHaveLength(1);
+    expect(card.querySelector("#workDone")?.classList.contains("primary")).toBe(true);
+    expect(el.querySelector(".btn.keep")).toBeNull();
+    // state glyphs are not verbs: no rings inside the buttons; the card leads with the to-verify disc
+    expect(card.querySelectorAll("button .sring")).toHaveLength(0);
+    expect(card.querySelector(":scope > .sring.s-to_verify")).not.toBeNull();
+    expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
+    expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
+    expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
+    // ⋯: Review Changes… (a session) and Won't Do
+    const more = [...(card.querySelector("#workMore") as HTMLSelectElement).options].slice(1).map((o) => o.value);
+    expect(more).toEqual(["review", "wontfix"]);
+    await act(async () => {
+      const m = card.querySelector("#workMore") as HTMLSelectElement;
+      m.value = "review";
+      m.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(reviewChanges).toHaveBeenCalledWith("j-20261022-101500-ab12");
+    // severity is neutral (bars), never the attention hue
+    expect(el.querySelector("#sevChip")?.parentElement?.querySelector(".sevbars")).not.toBeNull();
+    // the history's two entries and the provenance sit in one Activity disclosure at the end
+    expect(el.querySelector("#provenance")).not.toBeNull();
+    expect(el.querySelectorAll(".worklog li")).toHaveLength(2);
+    // Send Back…: a note field in place; Esc closes it, the button sends the note with the step
+    const spy = vi.spyOn(s, "act");
+    await act(async () => (card.querySelector("#workBack") as HTMLButtonElement).click());
+    const note = el.querySelector("#workBackNote") as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(note);
+    expect(el.querySelectorAll(".btn.primary")).toHaveLength(1); // the composer's Send Back is the one primary now
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(note, "  Still grey on Safari  ");
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => (el.querySelector("#workBackSend") as HTMLButtonElement).click());
+    expect(spy).toHaveBeenCalledWith([s.data.items[0]], "send_back", { note: "Still grey on Safari" });
+    expect(s.stateOf(s.data.items[0])).toBe("todo");
+    el.remove();
+    done();
+  });
+
+  it("to verify: one history entry is not a History section", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    const i = s.data.items[0];
+    delete i.work_history;
+    await act(async () => s.go(1));
+    await act(async () => s.go(0));
+    expect(el.querySelector(".worklog")).toBeNull();
+    expect(el.querySelector("#provenance")).not.toBeNull();
     done();
   });
 

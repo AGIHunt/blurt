@@ -253,7 +253,8 @@ class SessionRecoveryWiring(unittest.TestCase):
         start = d[d.index("func start() async"):d.index("struct DispatchView")]
         self.assertNotIn("checkFailed = true", start)
         ilc = self.src("MainWindow/ItemListController.swift")
-        self.assertIn("let spinner = BrandSpinner(", ilc)       # the brand arc (one BrandSpinner, sized for the empty state)
+        # the brand arc (BrandSpinner, or TrackedSpinner: the same arc on its faint track), sized for the empty state
+        self.assertRegex(ilc, r"let spinner = (BrandSpinner|TrackedSpinner)\(")
         self.assertNotIn("NSProgressIndicator()", ilc)
 
 

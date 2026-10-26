@@ -6,6 +6,8 @@
 //   discarded   ring + an ×, tertiary text colour
 // Drawn, not glyphs: the "!", the check and the × are paths. Same geometry and colours as web/packages/ui (kinds.ts
 // ringShapes, base.css .sring). The image carries the localized state (`state.<state>`) for VoiceOver.
+// `tint`: the shape in one colour and one line — the state menu's targets (where an action leads, not a state anything
+// is in): the "!" and the check in a ring, not on a filled disc, so no entry reads as already picked.
 import AppKit
 import BlurtCore
 
@@ -31,9 +33,9 @@ enum StatusRing {
     }
 
     /// A colour (not template) image; dynamic colours resolve when it draws, so light / dark both work.
-    static func image(_ state: String, size: CGFloat) -> NSImage {
+    static func image(_ state: String, size: CGFloat, tint: NSColor? = nil) -> NSImage {
         let im = NSImage(size: NSSize(width: size, height: size), flipped: true) { r in
-            draw(state, in: r)
+            draw(state, in: r, tint: tint)
             return true
         }
         im.accessibilityDescription = Loc.t("state.\(state)")
@@ -41,7 +43,7 @@ enum StatusRing {
     }
 
     /// Draws in a flipped (y-down) rect, exactly the web geometry for `r.width`.
-    static func draw(_ state: String, in r: NSRect) {
+    static func draw(_ state: String, in r: NSRect, tint: NSColor? = nil) {
         let size = r.width, c = size / 2, u = size / 14, lw: CGFloat = 1.5
         let R = c - 0.75 - 0.5
         let o = NSPoint(x: r.minX, y: r.minY)
@@ -55,7 +57,7 @@ enum StatusRing {
             p.lineJoinStyle = .round
             p.stroke()
         }
-        color(state).set()
+        (tint ?? color(state)).set()
         let ring = disc(c, c, R)
         switch state {
         case "new":
@@ -81,16 +83,14 @@ enum StatusRing {
             half.close()
             half.fill()
         case "to_verify":
-            disc(c, c, R + 0.75).fill()
-            attentionGlyph.set()
+            if tint == nil { disc(c, c, R + 0.75).fill(); attentionGlyph.set() } else { stroke(ring) }
             let bar = NSBezierPath()
             bar.move(to: pt(c, c - 3 * u))
             bar.line(to: pt(c, c + 0.6 * u))
             stroke(bar)
             disc(c, c + 2.85 * u, 0.95 * u).fill()
         case "done":
-            disc(c, c, R + 0.75).fill()
-            keepGlyph.set()
+            if tint == nil { disc(c, c, R + 0.75).fill(); keepGlyph.set() } else { stroke(ring) }
             let p = NSBezierPath()
             p.move(to: pt(c - 2.9 * u, c + 0.1 * u))
             p.line(to: pt(c - 0.9 * u, c + 2 * u))

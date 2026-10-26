@@ -48,6 +48,19 @@ enum KindStyle {
         return im
     }
 
+    /// A voice note's mark in lists: the waveform (the recording's own glyph, §3.2) in the note's colour, so the kind
+    /// column keeps one hue per kind and a spoken note still reads as one.
+    static func voiceImage(size: CGFloat = rowSize) -> NSImage {
+        let c = color("note")
+        let im = NSImage(size: NSSize(width: size, height: size), flipped: true) { r in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            BlurtIcon.waveform.draw(in: ctx, rect: r, color: c.cgColor, flipped: true)
+            return true
+        }
+        im.accessibilityDescription = T("main.kind.voice_note")
+        return im
+    }
+
     // ---------------------------------------------------------------- custom lenses (kinds.ts customKindColor)
     /// h = (h·31 + UTF-16 code unit) mod 360 — the JS hash, so a lens has the same hue on every platform.
     static func hue(_ kind: String) -> Int {

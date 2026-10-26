@@ -25,13 +25,14 @@
 "state.done" = "完成";
 "state.wontfix" = "不做";
 "state.discarded" = "已丢弃";
+"state.menu.now" = "现在：%@";
 "state.menu" = "更改状态";
 
 /* 每个状态下能做的：动词，和一句说明 */
-"action.keep" = "要做";
-"action.keep.hint" = "留下，放进要做";
+"action.keep" = "放进要做";
+"action.keep.hint" = "移出待处理，记为要做";
 "action.hand_off" = "交给 Agent…";
-"action.hand_off.hint" = "在口喷鸡里交给 Agent，或复制指令";
+"action.hand_off.hint" = "在口喷鸡里运行，或复制指令";
 "action.done" = "标为完成";
 "action.done.hint" = "已经处理好了";
 "action.done.hint_verify" = "确认已修好";
@@ -41,10 +42,10 @@
 "action.take_back.hint" = "不等 Agent 了，回到要做";
 "action.reopen" = "重新打开";
 "action.reopen.hint" = "回到要做";
-"action.wontfix" = "不做了";
-"action.wontfix.hint" = "留个记录，不再出现在待处理";
+"action.wontfix" = "不做";
+"action.wontfix.hint" = "关闭，仍可在全部条目里找到";
 "action.discard" = "丢弃";
-"action.discard.hint" = "放进已丢弃，可以恢复";
+"action.discard.hint" = "可以恢复";
 "action.restore" = "恢复";
 "action.restore.hint" = "放回丢弃前的状态";
 
@@ -77,11 +78,11 @@
 "job.step.capture" = "采集";
 "job.step.finalize" = "保存";
 "job.step.listen" = "收音";
-"job.step.transcribe" = "转写";
+"job.step.transcribe" = "转写语音";
 "job.step.file" = "归档";
-"job.step.prepare" = "准备";
-"job.step.write" = "写条目";
-"job.step.frames" = "挑截图";
+"job.step.prepare" = "准备工作";
+"job.step.write" = "写入条目";
+"job.step.frames" = "挑选截图";
 "job.step.route" = "归类";
 "job.step.launch" = "启动";
 "job.step.work" = "处理中";

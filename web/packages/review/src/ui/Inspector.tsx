@@ -165,13 +165,14 @@ function Field({ i, k, label, type = "area", cls, title, placeholder, onFocus }:
   );
 }
 
-/** A chip that opens a menu of its values (kind, severity, type) with the current one checked — a native <select>
-    under the chip, so the host draws its own menu (arrow keys, Return picks, Esc closes). A pick is one undoable step. */
+/** A property (kind, severity, type): a quiet button — its icon and value — that opens a menu of its values with the
+    current one checked. A native <select> under it, so the host draws its own menu (arrow keys, Return picks, Esc
+    closes). A pick is one undoable step. The chevron shows on hover only. */
 function ChipSelect({ id, cls, label, value, options, onPick, children }: {
   id: string; cls?: string; label: string; value: string; options: [string, string][]; onPick: (v: string) => void; children: React.ReactNode;
 }) {
   return (
-    <label className={cx("chip chip-pick", cls)} title={label}>
+    <label className={cx("prop chip-pick", cls)} title={label}>
       {children}
       <Icon name="chevron-down" size={11} className="pick-ch" />
       <select id={id} value={value} aria-label={label} onChange={(e) => onPick(e.target.value)}>
@@ -185,6 +186,130 @@ function ChipSelect({ id, cls, label, value, options, onPick, children }: {
   );
 }
 
+/** Severity as a glyph: one, two or three bars, the shape saying how bad (grayscale-safe); only High is coloured. */
+export function SevBars({ sev }: { sev: string }) {
+  const n = sev === "high" ? 3 : sev === "low" ? 1 : 2;
+  return (
+    <span className={cx("sevbars", "b-" + n)} aria-hidden="true">
+      <i />
+      <i />
+      <i />
+    </span>
+  );
+}
+
+/** A voice note's recording: a session's shots/NNN.wav (source.session + source.shot), as the app writes it. */
+export function voiceAudio(i: Item): string | null {
+  const src = i.source;
+  if (!src || src.type !== "voice" || !src.session || src.shot == null) return null;
+  return `${String(src.session).replace(/[\\/]+$/, "")}/shots/${String(src.shot).padStart(3, "0")}.wav`;
+}
+
+/** Voice Memos' row for the recording itself: play, the waveform as a scrubber (brand ink: blurt's own capture), the
+    length in tabular digits, and a ⋯ menu (Show in Finder, Download). The waveform is read from the wav; until then
+    (or where it can't be read) a flat line holds its place — never a made-up shape. */
+function VoiceCard({ rel }: { rel: string }) {
+  const s = useStore();
+  const h = s.host;
+  const src = h.fileUrl(rel);
+  const audio = useRef<HTMLAudioElement>(null);
+  const [dur, setDur] = useState<number | null>(null);
+  const [at, setAt] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [peaks, setPeaks] = useState<number[] | null>(null);
+  const [gone, setGone] = useState(false);
+  useEffect(() => {
+    let off = false;
+    const AC = typeof window !== "undefined" ? window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext : undefined;
+    if (!AC || typeof fetch === "undefined") return;
+    (async () => {
+      try {
+        const r = await fetch(src);
+        if (!r.ok) return;
+        const ctx = new AC();
+        const data = await ctx.decodeAudioData(await r.arrayBuffer());
+        void ctx.close?.();
+        const ch = data.getChannelData(0);
+        const N = 72;
+        const step = Math.max(1, Math.floor(ch.length / N));
+        const out: number[] = [];
+        for (let b = 0; b < N; b++) {
+          let sum = 0;
+          for (let x = b * step; x < Math.min(ch.length, (b + 1) * step); x++) sum += ch[x] * ch[x];
+          out.push(Math.sqrt(sum / step));
+        }
+        const max = Math.max(...out, 1e-4);
+        if (!off) {
+          setPeaks(out.map((v) => Math.max(0.08, Math.min(1, v / max))));
+          setDur((d) => d ?? data.duration);
+        }
+      } catch {
+        /* the flat line stays */
+      }
+    })();
+    return () => {
+      off = true;
+    };
+  }, [src]);
+  if (gone) return null;
+  const total = dur ?? 0;
+  const frac = total > 0 ? Math.min(1, at / total) : 0;
+  const toggle = () => {
+    const a = audio.current;
+    if (!a) return;
+    if (a.paused) void a.play().catch(() => setPlaying(false));
+    else a.pause();
+  };
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    const a = audio.current;
+    if (!a || !total) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    a.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * total;
+    setAt(a.currentTime);
+  };
+  const bars = peaks ?? Array.from({ length: 72 }, () => 0.08);
+  const reveal = h.reveal ? (h.host === "macos" ? s.label("media.reveal_mac") : s.label("media.reveal")) : null;
+  const dl = h.download || h.downloadUrl ? s.label("media.download") : null;
+  return (
+    <div className={cx("voice", playing && "playing")} id="voiceCard" role="group" aria-label={s.t("voice.label")}>
+      <button className="vplay" id="voicePlay" onClick={toggle} aria-label={s.t(playing ? "voice.pause" : "voice.play")} title={s.t(playing ? "voice.pause" : "voice.play")}>
+        <Icon name={playing ? "pause-fill" : "play-fill"} size={14} />
+      </button>
+      <div className="vwave" onClick={seek} role="slider" aria-label={s.t("voice.position")} aria-valuemin={0}
+        aria-valuemax={Math.round(total)} aria-valuenow={Math.round(at)} aria-valuetext={s.clock(at)} tabIndex={-1}>
+        {bars.map((v, k) => (
+          <i key={k} className={k / bars.length < frac ? "on" : undefined} style={{ height: `${Math.round(v * 100)}%` }} />
+        ))}
+      </div>
+      <span className="vtime">{dur == null ? "" : playing || at > 0 ? `${s.clock(at)} / ${s.clock(total)}` : s.clock(total)}</span>
+      {(reveal || dl) && (
+        <label className="pick vmore" title={s.t("voice.more")}>
+          <Icon name="more" size={16} />
+          <select id="voiceMore" value="" aria-label={s.t("voice.more")} onChange={(e) => {
+            const v = e.target.value;
+            e.target.value = "";
+            if (v === "reveal") h.reveal?.(rel);
+            else if (v === "download") {
+              if (h.download) h.download(rel);
+              else if (h.downloadUrl) window.open(h.downloadUrl(rel), "_blank");
+            }
+          }}>
+            <option value="" disabled>{s.t("voice.more")}</option>
+            {reveal && <option value="reveal">{reveal}</option>}
+            {dl && <option value="download">{dl}</option>}
+          </select>
+        </label>
+      )}
+      <audio ref={audio} src={src} preload="metadata"
+        onLoadedMetadata={(e) => Number.isFinite(e.currentTarget.duration) && setDur(e.currentTarget.duration)}
+        onTimeUpdate={(e) => setAt(e.currentTarget.currentTime)}
+        onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
+        onEnded={(e) => { setPlaying(false); e.currentTarget.currentTime = 0; setAt(0); }}
+        onError={() => setGone(true)} />
+    </div>
+  );
+}
+
 const shortSha = (c?: string | null) => (c ? String(c).slice(0, 7) : "");
 const pct = (s: ReviewStore, x: number | null | undefined) => (x == null ? "" : s.i18n.formatNumber(x, { style: "percent", maximumFractionDigits: 0 }));
 
@@ -195,15 +320,43 @@ function fixAsWork(f: FixRecord): WorkRecord {
     by: f.agent === "human" ? "user" : "agent" };
 }
 
-/** What happened with the work (K3 `work`): who and when, commit, PR, what the agent claims, its note — and, when an
-    agent says it's finished, the two answers right there (the state pill's menu has every action). */
+/** A borderless ⋯ with the panel's other actions: a native select under it, so the host draws its own menu. */
+function MoreMenu({ id, label, options, onPick }: { id: string; label: string; options: [string, string][]; onPick: (v: string) => void }) {
+  if (!options.length) return null;
+  return (
+    <label className="more-btn" title={label}>
+      <Icon name="more" size={15} />
+      <select id={id} value="" aria-label={label} onChange={(e) => e.target.value && onPick(e.target.value)}>
+        <option value="" disabled>
+          {label}
+        </option>
+        {options.map(([v, t]) => (
+          <option key={v} value={v}>
+            {t}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** What happened with the work (K3 `work`): who and when, commit, PR, the agent's note — and, when an agent says it's
+    finished, a card that asks: one sentence ("Codex says it's fixed"), the evidence on one quiet line, the answer as
+    the view's one primary, Send Back… with an optional note for the agent, the rest under ⋯ (the state pill's menu
+    has every action). */
 function WorkPanel({ i }: { i: Item }) {
   const s = useStore();
   const st = s.stateOf(i);
   const rec = i.work ?? (i.fix ? fixAsWork(i.fix) : undefined);
+  const [back, setBack] = useState<string | null>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    if (back !== null) autosize(noteRef.current, 160);
+  }, [back]);
   if (!rec || st === "new" || st === "discarded") return null;
-  const who = rec.by === "user" ? s.t("work.by_you") : rec.agent && rec.agent !== "human" ? s.t("work.by", { who: agentName(s, rec.agent) }) : "";
-  const when = rec.at ? s.i18n.formatRelative(rec.at) : "";
+  const agent = rec.agent && rec.agent !== "human" ? agentName(s, rec.agent) : null;
+  const who = rec.by === "user" ? s.t("work.by_you") : agent ? s.t("work.by", { who: agent }) : "";
+  const when = rec.at ? s.ago(rec.at) : "";
   // one Open Session per item: while it is with the agent a host banner may have it (the Mac app), else it is here
   const banner = s.host.sessionBanner && (st === "handed_off" || st === "in_progress");
   const session = rec.to === "session" && rec.job && s.host.openSession && st !== "done" && st !== "wontfix" && !banner ? rec.job : null;
@@ -212,84 +365,185 @@ function WorkPanel({ i }: { i: Item }) {
   if (!meta && !verify && !rec.note && !session) return null;
   // the host's banner already says who has it and when: a card with only that line would repeat it
   if (banner && !verify && !rec.note && !rec.commit && !rec.pr) return null;
-  return (
-    <div className={cx("work", "s-" + st)} id="workRow">
-      {meta && (
+  const evidence = (
+    <>
+      {rec.commit ? (
+        <code className="sha" title={rec.commit}>
+          {shortSha(rec.commit)}
+        </code>
+      ) : null}
+      {rec.pr ? (
+        <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
+          {s.t("work.pr")}
+        </a>
+      ) : null}
+      {session ? (
+        <button className="linkbtn" id="workSession" onClick={() => s.openSession(session)}>
+          {s.t("work.open_session")}
+        </button>
+      ) : null}
+    </>
+  );
+  if (!verify)
+    return (
+      <div className={cx("work", "s-" + st)} id="workRow">
         <div className="work-h">
           {(who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
-          {rec.commit ? <code title={rec.commit}>{shortSha(rec.commit)}</code> : null}
-          {rec.pr ? (
-            <a className="linkbtn" href={rec.pr} target="_blank" rel="noreferrer">
-              <Icon name="git-pull-request" size={13} /> {s.t("work.pr")}
-            </a>
-          ) : null}
+          {evidence}
         </div>
-      )}
-      {verify && rec.claim && <p className="work-claim">{s.t(rec.claim === "wontfix" ? "work.claim.wontfix" : "work.claim.fixed")}</p>}
-      {rec.note ? <p className="work-note">{rec.note}</p> : null}
-      {(verify || session) && (
+        {rec.note ? <p className="work-note">{rec.note}</p> : null}
+      </div>
+    );
+  // the agent's claim decides the primary: "fixed" → Mark as Done; "won't fix" → Won't Do (the other one waits in ⋯)
+  const wont = rec.claim === "wontfix";
+  const primary: "done" | "wontfix" = wont ? "wontfix" : "done";
+  // the agent by its name when the doc knows it ("Codex says it’s fixed"); else the plain sentence, never "Agent says"
+  const named = (rec.agent && rec.agent !== "human" && s.data.agents?.[rec.agent]?.name) || null;
+  const headline = named
+    ? s.t(wont ? "work.verify.wontfix" : "work.verify.fixed", { agent: named })
+    : s.t(wont ? "work.verify.wontfix.generic" : "work.verify.fixed.generic");
+  const more: [string, string][] = [
+    ...(session && s.host.reviewChanges ? [["review", s.t("work.review_changes")] as [string, string]] : []),
+    [wont ? "done" : "wontfix", s.label(wont ? "action.done" : "action.wontfix")],
+  ];
+  const sendBack = () => {
+    const note = (back ?? "").trim();
+    setBack(null);
+    s.act([i], "send_back", note ? { note } : {});
+  };
+  // the headline names the agent: the line under it is when, then the evidence
+  const timeLine = named && rec.by !== "user" ? when : [who, when].filter(Boolean).join(" · ");
+  return (
+    <div className="work verify s-to_verify" id="workRow" role="group" aria-label={headline}>
+      <StatusRing state="to_verify" size={16} className="work-ic" />
+      <div className="work-b">
+        <p className="work-claim">{headline}</p>
+        {(timeLine || rec.commit || rec.pr || session) && (
+          <div className="work-m">
+            {timeLine && <span>{timeLine}</span>}
+            {evidence}
+          </div>
+        )}
+        {rec.note ? <p className="work-note">{rec.note}</p> : null}
+      </div>
+      {back === null ? (
         <div className="work-a">
-          {verify && (
-            <>
-              <button className="btn sm keep" id="workDone" onClick={() => s.act([i], "done")}>
-                <StatusRing state="done" size={14} /> {s.label("action.done")}
-              </button>
-              <button className="btn sm" id="workBack" onClick={() => s.act([i], "send_back")}>
-                <StatusRing state="todo" size={14} /> {s.label("action.send_back")}
-              </button>
-            </>
-          )}
-          {session && (
-            <button className="btn sm" id="workSession" onClick={() => s.openSession(session)}>
-              <Icon name="terminal" size={14} /> {s.t("work.open_session")}
+          <button className="btn sm" id="workBack" aria-haspopup="dialog" title={s.t("work.back.hint")} onClick={() => setBack("")}>
+            {s.t("work.back")}
+          </button>
+          <button className="btn sm primary" id="workDone" data-action={primary} title={s.label(wont ? "action.wontfix" : "action.done") + " · " + (wont ? "W" : "D")}
+            aria-keyshortcuts={wont ? "w" : "d"} onClick={() => s.act([i], primary)}>
+            {s.label(wont ? "action.wontfix" : "action.done")}
+          </button>
+          <MoreMenu id="workMore" label={s.t("work.more")} options={more}
+            onPick={(v) => (v === "review" ? session && s.host.reviewChanges?.(session) : s.act([i], v as "done" | "wontfix"))} />
+        </div>
+      ) : (
+        <div className="work-back">
+          <textarea ref={noteRef} id="workBackNote" rows={2} autoFocus value={back} placeholder={s.t("work.back.prompt")}
+            aria-label={s.t("work.back.prompt")}
+            onChange={(e) => {
+              setBack(e.target.value);
+              autosize(e.currentTarget, 160);
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setBack(null);
+              } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && isEnter(e)) {
+                e.preventDefault();
+                e.stopPropagation();
+                sendBack();
+              }
+            }} />
+          <div className="work-a">
+            <span className="work-hint">{s.t("work.back.note_hint")}</span>
+            <button className="btn sm" id="workBackCancel" onClick={() => setBack(null)}>
+              {s.t("action.cancel")}
             </button>
-          )}
+            <button className="btn sm primary" id="workBackSend" onClick={sendBack}>
+              {s.label("action.send_back")}
+              <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>
+            </button>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-/** K6: hand the item to an agent — inside Blurt (dispatch), or a copied instruction / full text for your own agent */
+/** K6: hand the item to an agent — inside Blurt (dispatch, the one primary), or copy it for your own agent: one Copy
+    button (the instruction) with a menu beside it for the other forms (the full hand-off note). The key is in the
+    tooltip, never a keycap inside the button. */
 function HandoffPanel({ i }: { i: Item }) {
   const s = useStore();
   const h = s.host;
   if (!h.dispatch && !s.canHandoff) return null;
   if (!canDo("hand_off", s.stateOf(i))) return null;
+  const key = isMacLike() ? "⌘⏎" : "Ctrl+⏎";
+  const unfiled = s.mode === "item" && s.canMove && (i.project || "inbox") === "inbox";
   return (
-    <div className="handoff" id="handoffRow" aria-label={s.t("handoff.title")}>
-      {h.dispatch && (
-        <button className="btn sm primary" id="dispatchBtn" title={s.t("handoff.dispatch.hint")} onClick={() => s.dispatch([i])}>
-          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
-          {s.mode === "item" && <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>}
-        </button>
-      )}
+    <div className="handoff" id="handoffRow" role="group" aria-label={s.t("handoff.title")}>
       {s.canHandoff && (
-        <>
+        <div className="split">
           <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff([i], "instruction")}>
-            <Icon name="copy" size={14} /> {s.label("handoff.copy_instruction")}
+            <Icon name="copy" size={14} /> {s.label("media.copy")}
           </button>
-          <button className="btn sm ghost" id="copyFull" title={s.t("handoff.copy_full.hint")} onClick={() => void s.handoff([i], "full")}>
-            {s.label("handoff.copy_full")}
-          </button>
-        </>
+          <label className="btn sm split-more" title={s.t("handoff.copy_more")}>
+            <Icon name="chevron-down" size={12} />
+            <select id="copyMenu" value="" aria-label={s.t("handoff.copy_more")}
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.value = "";
+                if (v === "instruction" || v === "full") void s.handoff([i], v);
+              }}>
+              <option value="" disabled>
+                {s.label("media.copy")}
+              </option>
+              <option value="instruction" title={s.t("handoff.copy_instruction.hint")}>
+                {s.label("handoff.copy_instruction")}
+              </option>
+              <option value="full" title={s.t("handoff.copy_full.hint")}>
+                {s.label("handoff.copy_full")}
+              </option>
+            </select>
+          </label>
+        </div>
+      )}
+      {/* an item in no project is there to be filed: an agent works in a project's folder, so the one primary is
+          Move to Project… until it has one (hand-off stays in the menus and ⌘⏎, which say why it can't go yet) */}
+      {unfiled && <MovePicker items={[i]} id="fileBtn" primary />}
+      {h.dispatch && !unfiled && (
+        <button className="btn sm primary" id="dispatchBtn"
+          title={s.mode === "item" ? `${s.t("handoff.dispatch.hint")} (${key})` : s.t("handoff.dispatch.hint")}
+          aria-keyshortcuts={s.mode === "item" ? (isMacLike() ? "Meta+Enter" : "Control+Enter") : undefined}
+          onClick={() => s.dispatch([i])}>
+          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
+        </button>
       )}
     </div>
   );
 }
 
-function WorkHistory({ i }: { i: Item }) {
-  const s = useStore();
-  // work_history holds each earlier step (the state it was in); the newest row is the item now
-  const rows: WorkRecord[] = i.work
+/** work_history holds each earlier step (the state it was in); the newest row is the item now */
+function historyRows(s: ReviewStore, i: Item): WorkRecord[] {
+  return i.work
     ? [...(i.work_history || []), { ...i.work, state: s.stateOf(i) }]
     : i.fix
       ? [...(i.fix_history || []), i.fix].map(fixAsWork)
       : [];
-  if (rows.length < 2 && !(rows[0]?.state && rows[0].state !== "todo" && rows[0].state !== "new")) return null;
+}
+
+function WorkHistory({ i }: { i: Item }) {
+  const s = useStore();
+  const rows = historyRows(s, i);
+  // one entry is the item now: the state pill (and the work card) already say it
+  if (rows.length < 2) return null;
   return (
     <div className="f worklog">
-      <label>{s.t("work.history")}</label>
+      <label className="sec-h">{s.t("work.history")}</label>
       <ol>
         {[...rows].reverse().map((f, n) => (
           <li key={n} className={"s-" + (f.state ?? "todo")}>
@@ -323,16 +577,31 @@ export function sessionWhen(s: ReviewStore, dir: string): string | null {
   return s.i18n.formatDate(d.toISOString(), { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** where the item came from and how it got into this project (K1 source, K2 project_by / suggestion) */
+/** Where the item came from and how it got into this project (K1 source, K2 project_by / suggestion), as a quiet footer:
+    one line — how it was made, when, by whom — then, only when there is more, label / value rows that share one value
+    column. "Captured in this project" isn't said: the breadcrumb already names the project. */
 function Provenance({ i }: { i: Item }) {
   const s = useStore();
   const src = i.source || {};
-  const rows: [string, React.ReactNode][] = [];
   const type = src.type;
   const p = s.project(i.project);
   const sug = i.suggested_project && s.project(i.suggested_project.id);
-  if (i.created) rows.push([s.t("source.captured"), <span title={s.i18n.formatDate(i.created, { dateStyle: "full", timeStyle: "short" })}>{s.i18n.formatDate(i.created)}</span>]);
-  if (src.by) rows.push([s.t("source.by"), String(src.by)]);
+  const line: React.ReactNode[] = [];
+  if (type)
+    line.push(
+      <span key="t">
+        {s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}
+        {type === "recording" && i.time?.start != null ? ` ${s.t("source.at", { time: s.clock(i.time.start) })}` : ""}
+      </span>,
+    );
+  if (i.created)
+    line.push(
+      <span key="c" title={s.i18n.formatDate(i.created, { dateStyle: "full", timeStyle: "short" })}>
+        {s.i18n.formatDate(i.created)}
+      </span>,
+    );
+  if (src.by) line.push(<span key="b">{s.t("source.by_who", { who: String(src.by) })}</span>);
+  const rows: [string, React.ReactNode][] = [];
   if (src.app) rows.push([s.t("source.app"), appLabel(String(src.app))]);
   if (src.url)
     rows.push([s.t("source.page"), <a href={String(src.url)} target="_blank" rel="noreferrer" className="trunc">{String(src.url).replace(/^https?:\/\//, "")}</a>]);
@@ -341,7 +610,7 @@ function Provenance({ i }: { i: Item }) {
     const when = sessionWhen(s, String(src.session)) ?? s.t("source.session.unnamed");
     rows.push([s.t("source.session"), s.host.reveal ? (
       <button className="linkbtn trunc" onClick={() => s.host.reveal!(String(src.session))} title={s.t("source.session.reveal")}>
-        <Icon name="folder" size={12} /> {when}
+        {when}
       </button>
     ) : <span className="trunc">{when}</span>]);
   }
@@ -353,27 +622,15 @@ function Provenance({ i }: { i: Item }) {
     const parts = other ? [...known, s.plural("source.merged_earlier", other)] : known;
     rows.push([s.t("source.merged_from"), s.i18n.formatList(parts)]);
   }
-  // "captured in this project" says nothing on an item that has no project (Unassigned)
-  const by = i.project_by && p && !(i.project_by === "capture" && (i.project || "inbox") === "inbox") ? i.project_by : null;
-  if (!type && !rows.length && !by) return null;
+  // how it got into this project — only when it wasn't simply captured there (the breadcrumb already says where it is)
+  const by = i.project_by && i.project_by !== "capture" && p ? i.project_by : null;
+  if (by) rows.push([s.t("source.project"), s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })]);
+  const offer = sug && (i.project || "inbox") === "inbox" && s.canMove;
+  if (!line.length && !rows.length && !offer) return null;
   return (
-    <section className="prov" id="provenance" aria-label={s.t("source.title")}>
-      <h4>{s.t("source.title")}</h4>
-      {type && (
-        <div className="prov-t">
-          <Icon name={SOURCE_ICON[type] ?? "info"} size={14} />
-          <span>{s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}</span>
-          {type === "recording" && i.time?.start != null ? <span className="mute">· {s.t("source.at", { time: s.clock(i.time.start) })}</span> : null}
-        </div>
-      )}
-      {by && (
-        <div className="prov-t">
-          <Icon name={by === "ai" ? "spark" : by === "user" ? "pencil" : by === "migrate" ? "restart" : "folder"} size={14} />
-          <span>{s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })}</span>
-        </div>
-      )}
+    <footer className="prov" id="provenance" aria-label={s.t("source.title")}>
       {/* an Unassigned item's suggestion from its organizing run: only a suggestion, one click moves it (K2) */}
-      {sug && (i.project || "inbox") === "inbox" && s.canMove && (
+      {offer && (
         <div className="prov-sug" title={
             i.suggested_project!.reason
               ? s.t("project.suggested.hint", { reason: i.suggested_project!.reason })
@@ -386,6 +643,12 @@ function Provenance({ i }: { i: Item }) {
           </button>
         </div>
       )}
+      {line.length > 0 && (
+        <p className="prov-line">
+          {type && <Icon name={SOURCE_ICON[type] ?? "info"} size={13} />}
+          {line.flatMap((x, n) => (n ? [<span key={"s" + n} className="prov-dot" aria-hidden="true">·</span>, x] : [x]))}
+        </p>
+      )}
       {rows.length > 0 && (
         <dl>
           {rows.map(([k, v]) => (
@@ -396,7 +659,7 @@ function Provenance({ i }: { i: Item }) {
           ))}
         </dl>
       )}
-    </section>
+    </footer>
   );
 }
 
@@ -440,15 +703,21 @@ function specsOf(i: Item, kind: string, s: ReviewStore): { body: Spec; prompt: s
   return { body, prompt, rest };
 }
 
-/** The empty fields, as a quiet menu at the end: picking one shows it, focused. */
-function AddField({ specs, onAdd }: { specs: Spec[]; onAdd: (k: string) => void }) {
+/** The empty fields, as a quiet menu at the end: picking one shows it, focused. An issue without a type lists the
+    types here too (one pick sets it; the type chip appears then). */
+function AddField({ specs, types, onAdd, onType }: { specs: Spec[]; types: [string, string][]; onAdd: (k: string) => void; onType: (t: string) => void }) {
   const s = useStore();
-  if (!specs.length) return null;
+  if (!specs.length && !types.length) return null;
   return (
     <label className="pick btn sm ghost addf">
       <Icon name="plus" size={14} />
       <span className="pick-l">{s.t("field.add")}</span>
-      <select id="addField" value="" aria-label={s.t("field.add")} onChange={(e) => e.target.value && onAdd(e.target.value)}>
+      <select id="addField" value="" aria-label={s.t("field.add")}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v.startsWith("type:")) onType(v.slice(5));
+          else if (v) onAdd(v);
+        }}>
         <option value="" disabled>
           {s.t("field.add")}
         </option>
@@ -457,12 +726,24 @@ function AddField({ specs, onAdd }: { specs: Spec[]; onAdd: (k: string) => void 
             {f.label}
           </option>
         ))}
+        {types.length > 0 && (
+          <optgroup label={s.t("chip.type")}>
+            {types.map(([v, t]) => (
+              <option key={"type:" + v} value={"type:" + v}>
+                {t}
+              </option>
+            ))}
+          </optgroup>
+        )}
       </select>
     </label>
   );
 }
 
-export function Inspector() {
+/** The item as a document: breadcrumb (and, in the app's detail pane, its actions), title, one row of properties, what
+    was said, the kind's fields, `media` (the app's detail pane puts the screenshots here, inline), history, where it came
+    from. */
+export function Inspector({ media }: { media?: React.ReactNode } = {}) {
   const s = useStore();
   const side = useRef<HTMLElement>(null);
   const i = s.item;
@@ -489,6 +770,10 @@ export function Inspector() {
   if (!i) return <aside className="side insp scroll" id="side" ref={side} />;
   const sev = (SEV as readonly string[]).includes(String(i.severity)) ? String(i.severity) : "medium";
   const kind = kindOf(i);
+  // a voice note: its recording and its words are the body (Voice Memos), not a quote under a heading
+  const voice = i.source?.type === "voice";
+  const said = voice && !!(i.quote || "").trim();
+  const audio = voiceAudio(i);
   const F = (f: Spec, placeholder?: string) => (
     <Field key={ik + f.k} i={i} k={f.k} label={f.label} type={f.type} cls={f.cls} placeholder={placeholder} onFocus={() => open(f.k)} />
   );
@@ -496,7 +781,11 @@ export function Inspector() {
   const { body: main, prompt, rest } = specsOf(i, kind, s);
   const kept = opened.ik === ik ? opened.keys : [];
   const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
-  const body: React.ReactNode[] = [F(main, prompt)];
+  // the kind's body field waits empty (with its prompt) only on an item that has nothing else yet; once it has what
+  // was said, a recording or a picture, an empty Summary / Actual is no content: it waits in Add Field like the rest
+  const bare = !said && !(i.quote || "").trim() && s.mediaItems(i).length === 0;
+  const mainShown = bare || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
+  const body: React.ReactNode[] = mainShown ? [F(main, prompt)] : [];
   if (kind === "issue" && (i.code_refs || []).length)
     body.push(
       <div className="f" key="code">
@@ -525,13 +814,61 @@ export function Inspector() {
       n++;
     } else body.push(F(f));
   }
-  body.push(<AddField key="add" specs={rest.filter((f) => !shown.includes(f))} onAdd={(k) => open(k, true)} />);
+  const typeChoices: [string, string][] = kind === "issue" && !i.type ? s.types.map((t) => [t, s.typeLabel(t)]) : [];
+  body.push(<AddField key="add" specs={[...(mainShown ? [] : [main]), ...rest.filter((f) => !shown.includes(f))]} types={typeChoices} onAdd={(k) => open(k, true)} onType={s.setType} />);
 
+  const item = s.mode === "item";
+  const props = (
+    <div className="props" role="group" aria-label={s.t("chip.properties")}>
+      <StateControl i={i} id="statePill" shortcuts controlled />
+      <ChipSelect id="kindChip" cls="kind-chip" label={s.t("chip.kind")} value={kind} onPick={s.setKind}
+        options={[...KINDS, ...(KINDS.includes(kind as never) ? [] : [kind])].map((k) => [k, s.kindLabel(k)])}>
+        {/* a spoken note wears the recording's mark, in the note's colour */}
+        {voice && kind === "note" ? (
+          <span className="kind-ic k-note"><Icon name="waveform" size={16} /></span>
+        ) : (
+          <KindIcon kind={kind} size={16} />
+        )}
+        <span className="prop-l">{voice && kind === "note" ? s.t("source.type.voice") : s.kindLabel(kind)}</span>
+      </ChipSelect>
+      {kind === "issue" && (
+        <>
+          <ChipSelect id="sevChip" cls={"sev-" + sev} label={s.t("chip.severity")} value={sev} onPick={s.setSev}
+            options={SEV.map((v) => [v, s.t("severity." + v)])}>
+            <SevBars sev={sev} />
+            <span className="prop-l">{s.t("severity." + sev)}</span>
+          </ChipSelect>
+          {/* the issue's type (Bug, UI, Copy…) is optional: unset, it waits in Add Field under the fields */}
+          {i.type ? (
+            <ChipSelect id="typeChip" cls="type-chip" label={s.t("chip.type")} value={String(i.type)} onPick={s.setType}
+              options={[...[...new Set([...s.types, String(i.type)])].map((t): [string, string] => [t, s.typeLabel(t)]), ["", s.t("chip.type_none")]]}>
+              <Icon name="tag" size={15} />
+              <span className="prop-l">{s.typeLabel(String(i.type))}</span>
+            </ChipSelect>
+          ) : null}
+        </>
+      )}
+      {i.confidence === "low" && (
+        <span className="prop static low" title={s.t("chip.low_confidence.hint")}>
+          <Icon name="help-circle" size={15} />
+          <span className="prop-l">{s.t("chip.low_confidence")}</span>
+        </span>
+      )}
+    </div>
+  );
   return (
-    <aside className="side insp scroll" id="side" ref={side}>
+    <aside className="side insp scroll" id="side" ref={side}
+      // scrolled under the window's toolbar: a hairline at the top edge, as a Mac scroll view shows one
+      onScroll={item ? (e) => e.currentTarget.classList.toggle("scrolled", e.currentTarget.scrollTop > 2) : undefined}>
       <div className="idrow">
         <span className="iid">{i.id || ""}</span>
-        {s.canMove && <MovePicker items={[i]} id="projectPick" current={i.project || "inbox"} />}
+        {s.canMove && (
+          <>
+            <span className="crumb-dot" aria-hidden="true">·</span>
+            <MovePicker items={[i]} id="projectPick" current={i.project || "inbox"} />
+          </>
+        )}
+        {item && <HandoffPanel i={i} />}
         {s.mode === "review" && (
           <>
             <span className="pos">
@@ -549,33 +886,11 @@ export function Inspector() {
         )}
       </div>
       <Field key={ik + ":title"} i={i} k="title" title />
-      <div className="chips">
-        <StateControl i={i} id="statePill" shortcuts controlled />
-        <ChipSelect id="kindChip" cls="kind-chip" label={s.t("chip.kind")} value={kind} onPick={s.setKind}
-          options={[...KINDS, ...(KINDS.includes(kind as never) ? [] : [kind])].map((k) => [k, s.kindLabel(k)])}>
-          <KindIcon kind={kind} size={16} /> {s.kindLabel(kind)}
-        </ChipSelect>
-        {kind === "issue" && (
-          <>
-            <ChipSelect id="sevChip" cls={"sev-" + sev} label={s.t("chip.severity")} value={sev} onPick={s.setSev}
-              options={SEV.map((v) => [v, s.t("severity." + v)])}>
-              <span className="sw" />
-              {s.t("severity." + sev)}
-            </ChipSelect>
-            <ChipSelect id="typeChip" label={s.t("chip.type")} value={String(i.type ?? "")} onPick={s.setType}
-              options={[["", s.t("chip.type")], ...s.types.map((t): [string, string] => [t, s.typeLabel(t)])]}>
-              {i.type ? s.typeLabel(String(i.type)) : s.t("chip.type")}
-            </ChipSelect>
-          </>
-        )}
-        {i.confidence === "low" && (
-          <span className="chip low" title={s.t("chip.low_confidence.hint")}>
-            <Icon name="help-circle" /> {s.t("chip.low_confidence")}
-          </span>
-        )}
-      </div>
+      {props}
       <WorkPanel i={i} />
-      <HandoffPanel i={i} />
+      {!item && <HandoffPanel i={i} />}
+      {voice && audio && <VoiceCard key={audio} rel={audio} />}
+      {said && <p className="transcript" id="transcript">{i.quote}</p>}
       {(i.questions || []).length > 0 && (
         <div className="ask">
           <div className="h">
@@ -589,22 +904,24 @@ export function Inspector() {
           <Field key={ik + ":answer"} i={i} k="answer" type="text" placeholder={s.t("field.answer")} />
         </div>
       )}
-      {i.quote && (
-        <div className="quote">
-          <Icon name="quote" className="qmark" />
-          <span className="ql">{s.t("field.quote")}</span>
-          {i.quote}
-          <div className="meta">
-            {i.time && i.time.start != null ? `${s.clock(i.time.start)} – ${s.clock(i.time.end)}` : ""}
-            {s.hasVideo(i) && (
-              <button className="linkbtn" id="origBtn" onClick={s.playOrig}>
-                <Icon name="play" size={12} /> {s.t("media.play_original")} <kbd>O</kbd>
-              </button>
-            )}
-          </div>
-        </div>
+      {i.quote && !said && (
+        <section className="quote">
+          <h4 className="sec-h">{s.t("field.quote")}</h4>
+          <blockquote>{i.quote}</blockquote>
+          {((i.time && i.time.start != null) || s.hasVideo(i)) && (
+            <div className="meta">
+              {i.time && i.time.start != null ? <span className="tnum">{`${s.clock(i.time.start)} – ${s.clock(i.time.end)}`}</span> : null}
+              {s.hasVideo(i) && (
+                <button className="linkbtn" id="origBtn" onClick={s.playOrig} title={s.t("media.play_original") + " · O"}>
+                  <Icon name="play" size={12} /> {s.t("media.play_original")}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
       )}
       <div className="fields">{body}</div>
+      {media}
       <WorkHistory i={i} />
       <Provenance i={i} />
     </aside>

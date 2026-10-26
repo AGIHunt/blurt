@@ -148,8 +148,8 @@ the notch when you're not looking (the number on its left counts them) and come 
   so `⌘V` pastes it where you were. `↩` on **+N** opens every card with the keyboard in that window (the same keys;
   `Esc` closes it). Typing anything else hands the keyboard back.
   VoiceOver reads each card as a button.
-- In the main window, the Inbox shows **Unfiled cards: N** while there are cards; click it to bring them
-  all down.
+- In the main window, the Inbox shows **N captures are waiting for a project** while there are cards; click it (or
+  **Choose Projects…**) to bring them all down and pick a project for each.
 
 What you can do with a card:
 
@@ -731,7 +731,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 - **鼠标在刘海上停一下**（或者打开刘海）：所有卡片跟着刘海的详情一起垂下来，刘海展开时跟着刘海一起往下走。只是路过刘海去点菜单，卡片不会掉下来。鼠标在刘海上、卡片上或卡片的线上时一直显示，离开后很快收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
 - **点刘海左边的数字**、按 **`⌥⇧H`**（「显示卡片」），或者用菜单里的「显示 N 张卡片」：卡片放下来并一直显示，直到你把鼠标移过来再移走（一直没移过来的话，10 秒后收起），或者鼠标在卡片上、或刚放下来的几秒内按 `Esc`（给别的 App 的 `Esc` 不会被拦下）。
 - **用键盘**：按 `⌥⇧H` 后键盘就在最新的那张卡片上。`←` `→`（或 `Tab`）在卡片和「+N」之间移动，`⌫` 删除，`Esc` 收起。`↩` 或 `⌘C` 复制这张卡片，并马上把键盘还给原来的 App，接着按 `⌘V` 就能粘贴。在「+N」上按 `↩` 会打开全部卡片的窗口，键盘也跟过去（按键相同，`Esc` 关闭）。打别的字就把键盘还给原来的 App。旁白（VoiceOver）会把每张卡片读成一个按钮。
-- 主窗口「待处理」的顶部会显示「**未归类的卡片 N 张**」，点一下就把它们全部放下来。
+- 主窗口「待处理」的顶部会显示「**N 条新记下的内容还没选项目**」，点一下（或点「**选项目…**」）就把它们全部放下来，逐条选项目。
 
 卡片能做的事：
 

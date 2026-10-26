@@ -447,7 +447,8 @@ body {
 .th .lbl {
   position: absolute;
   inset: auto 0 0 0;
-  font: 600 10px/1.6 var(--mono);
+  font: 600 10px/1.6 var(--font);
+  font-variant-numeric: tabular-nums;
   color: #fff;
   background: linear-gradient(transparent, rgba(0, 0, 0, 0.75));
   text-align: center;
@@ -563,22 +564,60 @@ body {
   overflow: auto;
   padding: 20px 24px 90px;
   background: var(--bg);
+  container: insp / inline-size;
 }
+/* one section heading everywhere in the inspector: You said, the fields, History, Where it came from, Activity */
+.sec-h,
+.f label {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--mute);
+}
+/* the breadcrumb: "BA-1 · billing-api", set in the UI face with tabular figures, the way the list sets the same ID */
 .idrow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   color: var(--mute);
-  font: 600 12px/1 var(--mono);
+  font: 500 12px/1 var(--font);
+  font-variant-numeric: tabular-nums;
   margin-bottom: 10px;
   min-height: 26px;
+}
+.idrow .iid {
+  white-space: nowrap;
+}
+.idrow .crumb-dot {
+  color: var(--faint);
+}
+.idrow .pick.proj {
+  font-weight: 500;
+  color: var(--mute);
+  padding: 0 4px 0 6px;
+  margin-left: -6px;
+  min-width: 0;
+}
+.idrow .pick.proj > .ico:first-child {
+  display: none;
+}
+.idrow .pick.proj .pick-ch {
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.idrow .pick.proj:hover .pick-ch,
+.idrow .pick.proj:focus-within .pick-ch {
+  opacity: 1;
+}
+/* in the app's detail pane the actions sit at the breadcrumb's right end, the primary last (the Mac order) */
+.idrow .handoff {
+  margin: 0 0 0 auto;
+  flex-wrap: nowrap;
+  font-size: 12.5px;
 }
 .idrow .pos {
   margin-left: auto;
   font-variant-numeric: tabular-nums;
-}
-.idrow .pick.proj {
-  margin-left: -2px;
 }
 .idrow .nav {
   display: flex;
@@ -662,14 +701,90 @@ body {
 button.chip:hover {
   color: var(--ink);
 }
-/* a chip with a menu of its values (kind, severity, type): a native select laid over it */
-.chip-pick {
-  position: relative;
-  cursor: pointer;
-  gap: 5px;
+.chip code {
+  font: 600 11px/1 var(--mono);
+  opacity: 0.8;
 }
-.chip-pick:hover {
+
+/* the item's properties (state, kind, severity, type): one row of the same quiet button — icon + value in ink, a
+   neutral wash and the chevron only on hover. Colour lives in the glyphs (the state ring, the kind icon, the
+   severity bars), never as a tinted pill. Pulled left so the first icon lines up with the title. */
+.props {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin: 0 0 18px -8px;
+}
+.prop,
+.props .spill {
+  position: relative;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border-radius: var(--r-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs);
+  font-weight: 500;
   color: var(--ink);
+  background: transparent;
+  box-shadow: none;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+}
+.props .spill.s-to_verify {
+  background: transparent;
+  box-shadow: none;
+}
+.props .spill .spill-l {
+  color: var(--ink);
+}
+.props .spill.s-wontfix .spill-l,
+.props .spill.s-discarded .spill-l {
+  color: var(--mute);
+}
+.prop.static {
+  padding-right: 8px;
+}
+/* the chevron appears on hover without moving the next property: the wash grows into the gap instead */
+.props {
+  gap: 4px;
+}
+.prop.chip-pick,
+.props .spill {
+  padding-right: 8px;
+}
+.prop.chip-pick .pick-ch,
+.props .spill .spill-ch {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  margin-top: -5.5px;
+}
+.prop.chip-pick:not(.prop-add):hover,
+.prop.chip-pick:not(.prop-add):focus-within,
+.props .spill:hover,
+.props .spill.open,
+.props .spill:focus-visible {
+  padding-right: 20px;
+  margin-right: -12px;
+  z-index: 1;
+}
+.prop:hover,
+.props button.spill:hover,
+.props .spill.open,
+.prop:focus-within {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.prop-l {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* a property with a menu of its values: a native select laid over it */
+.chip-pick {
+  cursor: pointer;
 }
 .chip-pick select {
   position: absolute;
@@ -679,64 +794,94 @@ button.chip:hover {
   font: inherit;
   width: 100%;
 }
-.chip-pick .pick-ch {
+.chip-pick .pick-ch,
+.props .spill-ch {
   width: 11px;
   height: 11px;
-  opacity: 0.7;
-  color: currentColor;
+  color: var(--mute);
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.chip-pick:hover .pick-ch,
+.chip-pick:focus-within .pick-ch,
+.props .spill:hover .spill-ch,
+.props .spill.open .spill-ch,
+.props .spill:focus-visible .spill-ch {
+  opacity: 1;
 }
 .chip-pick:has(select:focus-visible) {
   outline: 3px solid var(--focus-soft);
   box-shadow: 0 0 0 1px var(--focus);
 }
-.chip .sw {
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-  background: currentColor;
+/* an unset property (an issue's type): a faint "+ Type" that shows while the row is pointed at or focused */
+.prop.prop-add {
+  color: var(--mute);
+  opacity: 0;
+  transition: opacity 0.12s, background-color 0.12s;
 }
-.chip.sev-high {
-  color: var(--kind-issue);
-  background: color-mix(in srgb, var(--kind-issue) 12%, transparent);
+.props:hover .prop-add,
+.prop.prop-add:focus-within {
+  opacity: 1;
 }
-.chip.sev-medium {
-  color: var(--attn-ink);
-  background: var(--attn-soft);
+.prop.prop-add .pick-ch {
+  display: none;
 }
-.chip.sev-low {
-  color: var(--info);
-  background: color-mix(in srgb, var(--info) 13%, transparent);
+.prop .ico {
+  color: var(--mute);
 }
-.chip code {
-  font: 600 11px/1 var(--mono);
-  opacity: 0.8;
+.prop.low .ico {
+  color: var(--attn);
+}
+/* severity: three bars, as many filled as it is bad; only High takes a colour (the issue's own) */
+.sevbars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 2px 1px 3px;
+  flex: none;
+}
+.sevbars i {
+  width: 3px;
+  border-radius: 1px;
+  background: var(--line-2);
+}
+[data-theme="dark"] .sevbars i {
+  background: rgba(255, 255, 255, 0.2);
+}
+.sevbars i:nth-child(1) {
+  height: 5px;
+}
+.sevbars i:nth-child(2) {
+  height: 8px;
+}
+.sevbars i:nth-child(3) {
+  height: 11px;
+}
+.sevbars.b-1 i:nth-child(1),
+.sevbars.b-2 i:nth-child(-n + 2),
+.sevbars.b-3 i {
+  background: var(--ink-2);
+}
+.sevbars.b-3 i,
+[data-theme="dark"] .sevbars.b-3 i {
+  background: var(--kind-issue);
+}
+[data-theme="dark"] .sevbars.b-1 i:nth-child(1),
+[data-theme="dark"] .sevbars.b-2 i:nth-child(-n + 2) {
+  background: var(--ink-2);
 }
 
-.chip.low {
-  color: var(--attn-ink);
-  background: var(--attn-soft);
-}
-.chip.kind-chip .kind-ic {
-  margin-left: -2px;
-}
-
-/* what happened with the work (K3 `work`): who / when / commit / PR, the agent's claim, the answers */
+/* what happened with the work (K3 `work`): who / when / commit / PR, the agent's note — a quiet line, no card */
 .work {
-  margin: -6px 0 14px;
-  padding: 10px 12px;
-  border-radius: var(--r);
-  background: var(--panel-2);
-}
-.work.s-to_verify {
-  background: var(--attn-soft);
-}
-.work.s-done {
-  background: var(--ok-soft);
+  margin: -4px 0 18px;
+  font-size: 12.5px;
 }
 .work-h {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px 10px;
   flex-wrap: wrap;
   min-height: 22px;
 }
@@ -744,44 +889,173 @@ button.chip:hover {
   color: var(--mute);
   font-size: 12px;
 }
-.work-h code {
-  font: 600 11px/1 var(--mono);
+.work code.sha {
+  font: 500 11.5px/1 var(--mono);
   color: var(--ink-2);
-  padding: 3px 5px;
-  border-radius: 5px;
-  background: var(--panel-2);
 }
-.work-h .linkbtn {
-  margin: -4px 0;
+.work .linkbtn {
+  font-size: 12px;
+  margin: -4px -6px;
 }
-.work-claim,
 .work-note {
-  margin: 6px 0 0;
-  font-size: 12.5px;
+  margin: 4px 0 0;
   color: var(--ink-2);
+  line-height: 1.5;
 }
-.work-h + .work-claim,
-.work-h + .work-note {
-  margin-top: 4px;
+/* an agent says it's finished: a neutral card that asks (Claude's permission card, System Settings' notices) — the
+   to-verify disc leads, one sentence in semibold, the evidence on one secondary line, the answer as the view's one
+   primary (the brand button), Send Back… plain, the rest under ⋯. The state pill keeps the only amber wash. */
+.work.verify {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 2px 12px;
+  margin: -2px 0 22px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--r);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
-.work > :first-child {
-  margin-top: 0;
+.work.verify .work-ic {
+  margin-top: 2px;
+}
+.work-b {
+  min-width: 0;
+}
+.work-claim {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.work.verify .work-m {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  margin-top: 1px;
+  line-height: 18px;
+}
+.work.verify .work-note {
+  margin-top: 6px;
+  font-size: 12.5px;
 }
 .work-a {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: 6px;
-  margin: 10px 0 0;
 }
-.btn.keep .sring {
-  color: var(--on-ok);
-  --ring-cut: var(--ok);
+.work.verify > .work-a {
+  align-self: center;
+}
+/* narrow: the actions go under the words, left-aligned with them */
+@container insp (max-width: 520px) {
+  .work.verify {
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+  .work.verify > .work-a {
+    grid-column: 2;
+    justify-content: flex-start;
+    margin-top: 8px;
+  }
+}
+/* Send Back…: the note for the agent, in place (Esc cancels, ⌘⏎ sends) */
+.work-back {
+  grid-column: 2 / -1;
+  margin-top: 10px;
+}
+.work-back textarea {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  resize: none;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--ctl-border);
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.5;
+}
+.work-back textarea:focus {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 3px var(--focus-soft);
+}
+.work-back textarea::placeholder {
+  color: var(--faint);
+}
+.work-back .work-a {
+  margin-top: 8px;
+}
+.work-hint {
+  margin-right: auto;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+/* ⋯: a borderless button over a native select (the host draws the menu) */
+.more-btn {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  color: var(--mute);
+  cursor: pointer;
+}
+.more-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.more-btn select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.more-btn:has(select:focus-visible) {
+  box-shadow: 0 0 0 3px var(--focus-soft);
 }
 .handoff {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   margin: 0 0 16px;
+}
+/* Copy: one bordered split button — the instruction on the left, the other forms in the chevron's menu */
+.split {
+  display: inline-flex;
+}
+.split > .btn:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.split .btn.split-more {
+  position: relative;
+  margin-left: -1px;
+  padding: 0 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--mute);
+  cursor: pointer;
+}
+.split .split-more select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font: inherit;
+  width: 100%;
+}
+.split .split-more:has(select:focus-visible) {
+  outline: 3px solid var(--focus-soft);
+  z-index: 1;
 }
 .btn.sm {
   height: calc(var(--ctl-h) - 2px);
@@ -806,18 +1080,12 @@ button.chip:hover {
   background: var(--hover);
   color: var(--ink);
 }
-.btn.keep {
-  background: var(--ok);
-  border-color: transparent;
-  color: var(--on-ok);
-  box-shadow: none;
-}
-.btn.keep:hover {
-  filter: brightness(1.06);
+.worklog {
+  margin-bottom: 0;
 }
 .worklog ol {
   list-style: none;
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   padding: 0;
   display: flex;
   flex-direction: column;
@@ -876,30 +1144,30 @@ button.chip:hover {
   color: var(--ink-2);
 }
 
-/* provenance: where it came from, how it got into this project */
+/* provenance: a quiet footer — one line (how, when, who), then label / value rows sharing one value column */
 .prov {
-  margin-top: 6px;
-  padding-top: 14px;
+  margin-top: 24px;
+  padding-top: 12px;
   border-top: 1px solid var(--line);
-  font-size: 12.5px;
-  color: var(--ink-2);
-}
-.prov h4 {
-  margin: 0 0 8px;
   font-size: 12px;
+  line-height: 1.5;
   color: var(--mute);
 }
-.prov-t {
+.prov-line {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 7px;
-  margin-bottom: 5px;
+  gap: 2px 6px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
-.prov-t .ico {
-  color: var(--mute);
+.prov-line .ico {
+  width: 13px;
+  height: 13px;
+  margin-right: 1px;
 }
-.prov .mute {
-  color: var(--mute);
+.prov-dot {
+  color: var(--faint);
 }
 .prov-sug {
   display: flex;
@@ -920,9 +1188,9 @@ button.chip:hover {
 }
 .prov dl {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 4px 14px;
-  margin: 10px 0 0;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 8px 0 0;
 }
 .prov dl > div {
   display: contents;
@@ -933,10 +1201,20 @@ button.chip:hover {
 .prov dd {
   margin: 0;
   min-width: 0;
+  color: var(--ink-2);
 }
+/* the capture folder is a quiet link in the footer (underlined under the pointer), never a brand-coloured word */
 .prov .linkbtn {
   margin: -4px -8px;
   font-size: inherit;
+  font-weight: 400;
+  color: var(--ink-2);
+}
+.prov .linkbtn:hover {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--brand-ink);
+  text-underline-offset: 2px;
 }
 .trunc {
   display: inline-block;
@@ -1012,25 +1290,27 @@ button.chip:hover {
   grid-template-columns: 1fr 1fr;
   gap: 0 22px;
 }
-.fields {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-}
+/* the body is one column with one left edge; sections are set apart by space alone, never by rules */
 .f {
-  margin-bottom: 12px;
+  margin-bottom: 16px;
 }
-/* the empty fields wait in this quiet menu (only filled ones are rows) */
+/* the empty fields wait in this quiet menu (only filled ones are rows), at the column's edge */
 .fields .addf {
-  margin: -2px 0 6px -10px;
+  margin: -6px 0 0 -10px;
+  color: var(--mute);
+  font-weight: 500;
 }
+/* one heading style for every section of the body: what you said, each field, the history */
+.sec-h,
 .f label {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.4;
   color: var(--mute);
-  margin: 0 0 1px;
+  margin: 0 0 2px;
 }
 .f label .pen {
   width: 11px;
@@ -1080,50 +1360,35 @@ button.chip:hover {
 .search::placeholder {
   color: var(--faint);
 }
-.f.exp label::before,
-.f.act-f label::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 9px;
-  background: var(--ok);
-}
-.f.act-f label::before {
-  background: var(--drop);
-}
 .f.big textarea {
   font-size: calc(var(--fs) + 2px);
   line-height: 1.65;
 }
+/* what you said: a plain quote — a 2 pt neutral rule at the column's edge, the words beside it */
 .quote {
-  position: relative;
-  margin: 0 0 18px;
-  padding: 2px 0 2px 26px;
+  margin: 0 0 20px;
+}
+.quote .sec-h {
+  margin-bottom: 6px;
+}
+.quote blockquote {
+  margin: 0;
+  padding: 1px 0 1px 12px;
+  border-left: 2px solid var(--line-2);
   color: var(--ink-2);
-  font-size: 13.5px;
-}
-.quote .ql {
-  display: block;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--mute);
-  margin-bottom: 1px;
-}
-.quote .qmark {
-  position: absolute;
-  left: 0;
-  top: 3px;
-  width: 16px;
-  height: 16px;
-  color: var(--mute);
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 .quote .meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 12px;
+  margin: 6px 0 0 14px;
   color: var(--mute);
-  font: 600 11.5px/1 var(--mono);
+  font-size: 12px;
+}
+.tnum {
+  font-variant-numeric: tabular-nums;
 }
 .linkbtn {
   color: var(--brand-ink);
@@ -1967,29 +2232,170 @@ button.chip:hover {
   color: var(--faint);
 }
 
-/* ---------- item mode (the main window's detail pane): no queue, no triage bar; one column when narrow ---------- */
+/* ---------- item mode (the main window's detail pane): one document on one surface ----------
+   The item reads top to bottom like an issue: breadcrumb and actions, title, one row of properties, what was said,
+   the fields, then its pictures inline — never a picture band above the title. One column with one left edge (24 pt
+   in, centred once the pane is wider than the column). The surface is the list's (white in light, the window's
+   ground in dark), so the pane and the list read as one window, without a seam of a second grey. */
 .focus.item-mode {
+  display: block;
   height: var(--vh);
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: clamp(280px, 52vh, 620px) auto;
-  overflow: auto;
+  overflow: hidden;
+  background: var(--panel);
 }
-.item-mode .stage {
-  border-radius: 0;
-  min-height: 260px;
+[data-theme="dark"] .focus.item-mode {
+  background: var(--bg);
 }
-.focus.item-mode.bare {
-  grid-template-rows: auto;
+html.mode-item,
+html.mode-item body {
+  background: var(--panel);
 }
-.item-mode .slide {
-  padding: 14px 14px 8px;
+html.mode-item[data-theme="dark"],
+html.mode-item[data-theme="dark"] body {
+  background: var(--bg);
 }
-.item-mode .media.has-strip {
-  --below: 118px;
+/* the Mac app paints the pane with the list's own colour behind the page (wallpaper tinting included): no second
+   surface on top */
+html.mode-item[data-host="macos"],
+html.mode-item[data-host="macos"] body,
+[data-host="macos"] .focus.item-mode {
+  background: transparent;
 }
 .item-mode .side {
-  overflow: visible;
-  padding: 18px 20px 40px;
+  height: 100%;
+  overflow: auto;
+  background: transparent;
+  padding: 16px max(24px, calc((100% - 720px) / 2)) 40px;
+}
+.focus.item-mode {
+  position: relative;
+}
+.focus.item-mode::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: var(--line);
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 3;
+  pointer-events: none;
+}
+.focus.item-mode:has(.side.scrolled)::before {
+  opacity: 1;
+}
+.item-mode .title {
+  font-size: calc(var(--fs-title) + 2px);
+  font-weight: 650;
+  line-height: 1.28;
+  margin-bottom: 10px;
+}
+.item-mode .f input,
+.item-mode .f textarea,
+.item-mode .quote blockquote {
+  font-size: calc(var(--fs) + 1px);
+}
+.item-mode .props {
+  margin-bottom: 22px;
+}
+/* the detail's picture carries its own line: the time in a small capsule on it, the file's actions on hover — never a
+   band under it that only holds a number (main.item-to-verify r1) */
+.shotwrap {
+  position: relative;
+  max-width: 100%;
+}
+.cap.over {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  margin: 0;
+  max-width: none;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  line-height: 1;
+}
+.cap.over > * {
+  pointer-events: auto;
+}
+.cap.over .tm {
+  font: 600 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  padding: 4px 7px;
+  border-radius: var(--r-pill);
+  background: rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.cap.over .cap-sp {
+  flex: 1;
+  pointer-events: none;
+}
+.cap.over .dl,
+.cap.over .dl + .dl {
+  margin: 0;
+  width: 26px;
+  height: 26px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.55);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cap.over .dl:hover {
+  background: rgb(0 0 0 / 0.72);
+  color: #fff;
+}
+.shotwrap:hover .cap.over .dl,
+.cap.over:focus-within .dl {
+  opacity: 1;
+}
+.cap-t {
+  margin: 8px 0 0;
+  max-width: min(100cqw, 780px);
+  color: var(--mute);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+/* one column (the usual detail width): the picture sits on the page, as wide as the words and at most ~30 % of the
+   height, left-aligned with them — no grey stage band around it */
+@media (max-width: 979.98px) {
+  .focus.item-mode {
+    grid-template-rows: auto auto;
+  }
+  .item-mode .stage {
+    background: transparent;
+    min-height: auto;
+    overflow: visible;
+  }
+  .item-mode .slide {
+    position: relative;
+    inset: auto;
+    padding: 18px 20px 0;
+  }
+  .item-mode .media {
+    display: block;
+    flex: none;
+    min-height: auto;
+    container-type: inline-size;
+  }
+  .item-mode .frame {
+    align-items: flex-start;
+  }
+  .item-mode .shot {
+    width: min(100cqw, calc(min(30vh, 220px) * var(--ar, 1.6)));
+  }
+  .item-mode .strip {
+    margin: 10px 0 0;
+  }
+  .item-mode .side {
+    padding-top: 16px;
+  }
 }
 .item-saved {
   position: fixed;
@@ -1997,19 +2403,159 @@ button.chip:hover {
   bottom: 10px;
   z-index: 20;
 }
-@media (min-width: 980px) {
-  .focus.item-mode {
-    grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: var(--vh);
-    overflow: hidden;
-  }
-  .item-mode .side {
-    overflow: auto;
-  }
-  .focus.item-mode.bare {
-    grid-template-columns: minmax(0, 720px);
-    justify-content: center;
-  }
+
+/* the item's pictures, inline: a card at most ~260 pt tall on the page's own ground, a hairline, r 8 */
+.attach {
+  container-type: inline-size;
+  margin: 8px 0 0;
+}
+.att-card {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+.attach .shot {
+  width: min(100cqw, calc(260px * var(--ar, 1.6)));
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px var(--line);
+}
+[data-theme="dark"] .attach .shot {
+  box-shadow: 0 0 0 1px var(--line-2);
+}
+.att-time,
+.att-tools {
+  position: absolute;
+  background: rgba(22, 22, 22, 0.66);
+  -webkit-backdrop-filter: blur(10px) saturate(1.4);
+  backdrop-filter: blur(10px) saturate(1.4);
+  color: rgba(255, 255, 255, 0.94);
+}
+/* where the picture is in the recording */
+.att-time {
+  left: 8px;
+  bottom: 8px;
+  padding: 0 8px;
+  border-radius: var(--r-pill);
+  font: 500 11px/20px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+/* Quick Look / Show in Finder / Download: shown while the card is pointed at or one of them has the focus */
+.att-tools {
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.att-card:hover .att-tools,
+.att-tools:focus-within {
+  opacity: 1;
+}
+.att-tools .dl {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: inherit;
+}
+.att-tools .dl:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.att-cap {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--mute);
+}
+.strip.att-strip {
+  margin: 8px 0 0;
+  width: auto;
+  max-width: 100%;
+}
+
+/* a voice note's recording: Voice Memos' row — play, the waveform in brand ink (blurt's own capture), the length */
+.voice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 52px;
+  padding: 0 10px 0 10px;
+  margin: 0 0 14px;
+  border-radius: 12px;
+  background: var(--brand-tint);
+}
+.vplay {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--brand-ink);
+  color: var(--on-brand-ink);
+}
+.vplay:hover {
+  filter: brightness(1.06);
+}
+.vplay .ico {
+  width: 14px;
+  height: 14px;
+  margin-left: 1px;
+}
+.voice.playing .vplay .ico {
+  margin-left: 0;
+}
+.vwave {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  cursor: pointer;
+}
+.vwave i {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--brand-ink) 42%, transparent);
+}
+.vwave i.on {
+  background: var(--brand-ink);
+}
+.vtime {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font: 500 12px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+}
+.vmore {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+}
+.vmore:hover,
+.vmore:focus-within {
+  background: color-mix(in srgb, var(--brand-ink) 12%, transparent);
+  color: var(--ink);
+}
+/* what was said: the note's body, in ink at reading size */
+.transcript {
+  margin: 0 0 16px;
+  font-size: calc(var(--fs) + 1px);
+  line-height: 1.65;
+  color: var(--ink);
+  white-space: pre-wrap;
+  user-select: text;
 }
 
 /* ---------- narrow windows ---------- */

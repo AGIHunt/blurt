@@ -42,7 +42,7 @@ describe("messages", () => {
   it("merges the common words under every catalog", () => {
     expect(en.t("state.to_verify")).toBe("To verify");
     expect(zh.t("state.handed_off.session", { agent: "Claude Code" })).toBe("已交给 Claude Code");
-    expect(zh.t("job.step.frames")).toBe("补截图");
+    expect(zh.t("job.step.frames")).toBe("挑选截图");      // the same words as the Mac app's job steps
   });
 });
 

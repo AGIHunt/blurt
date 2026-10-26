@@ -25,13 +25,14 @@
 "state.done" = "Done";
 "state.wontfix" = "Won’t do";
 "state.discarded" = "Discarded";
+"state.menu.now" = "Now: %@";
 "state.menu" = "Change state";
 
 /* What you can do from a state: the verb, and one line saying what it does */
-"action.keep" = "Keep";
-"action.keep.hint" = "Add it to To do";
+"action.keep" = "Accept";
+"action.keep.hint" = "Leaves the inbox as To do";
 "action.hand_off" = "Hand off to agent…";
-"action.hand_off.hint" = "Hand it to an agent in Blurt, or copy an instruction";
+"action.hand_off.hint" = "Run it in Blurt, or copy the instruction";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";
 "action.done.hint_verify" = "You checked — it’s fixed";
@@ -42,9 +43,9 @@
 "action.reopen" = "Reopen";
 "action.reopen.hint" = "Back to To do";
 "action.wontfix" = "Won’t do";
-"action.wontfix.hint" = "Keep a record, out of your inbox";
+"action.wontfix.hint" = "Closes it; it stays in All Items";
 "action.discard" = "Discard";
-"action.discard.hint" = "Move to Discarded — you can restore it";
+"action.discard.hint" = "You can restore it";
 "action.restore" = "Restore";
 "action.restore.hint" = "Put it back where it was";
 

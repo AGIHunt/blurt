@@ -14,14 +14,20 @@ final class SidebarNode: NSObject {
     var children: [SidebarNode] = []
     var accessibility: String?
     var dimmed = false
-    var detail: String?          // the project key, quiet
+    var current = false
+    var detail: String?          // quiet text after the name (unused by the places and projects today)
+    var tip: String?             // the row's tooltip: a project's name and its id prefix
+    /// the current project (where new recordings and snaps go): the scope mark after its name — the same mark the
+    /// Move popover, ⌘K and the project's heading use
     /// counts of what needs you are tinted (attention), plain counts aren't
     var alert = false
 
     init(_ title: String, scope: Scope?, symbol: String? = nil, count: Int? = nil, children: [SidebarNode] = []) {
         self.title = title; self.scope = scope; self.symbol = symbol; self.count = count; self.children = children
     }
-    var isGroup: Bool { scope == nil }
+    /// a row that does something instead of going somewhere (Recently Dragged Out opens its panel): never selected
+    var action: (() -> Void)?
+    var isGroup: Bool { scope == nil && action == nil }
 }
 
 protocol SidebarActions: AnyObject {
@@ -56,6 +62,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     private(set) var renaming: InlineRename?
     private var rebuildAfterRename = false
     var roots: [SidebarNode] = []
+    /// Tests (wp6 `mainbanner taken N`): the Recently Dragged Out row with N cards, none needed
+    var testTaken: Int?
     weak var actions: SidebarActions?
     private var reloading = false
 
@@ -89,17 +97,20 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.target = self
+        outline.action = #selector(clicked)
         outline.doubleAction = #selector(doubleClicked)
         outline.onReturn = { [weak self] in self?.renameSelected() ?? false }
+        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.rebuild() }
         scroll.documentView = outline
 
-        let open = NSButton(title: T("project.open_folder"), image: Look.symbol("folder.badge.plus", "", size: 13) ?? NSImage(),
+        // Notes' "New Folder": a plus and the words, in the rows' own size and ink (secondary), not a faint caption
+        let open = NSButton(title: " " + T("project.open_folder"), image: Look.symbol("plus", "", size: 12, weight: .medium) ?? NSImage(),
                             target: self, action: #selector(openTapped))
         open.bezelStyle = .recessed
         open.isBordered = false
         open.imagePosition = .imageLeading
         open.contentTintColor = .secondaryLabelColor
-        open.font = .systemFont(ofSize: 12)
+        open.font = .systemFont(ofSize: 13)
         open.toolTip = T("main.sidebar.open_folder.tip")
         open.setAccessibilityLabel(T("project.open_folder"))   // not the symbol's own name ("New Folder")
         let root = NSView()
@@ -107,7 +118,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         NSLayoutConstraint.activate([
             scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: open.topAnchor, constant: -6),
-            open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            open.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             open.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -10),
         ])
         view = root
@@ -148,22 +159,39 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             node.accessibility = ax
             return node
         }
-        // not items: what was dictated into other apps — a page of its own (DictationPage.swift)
-        // the same mark as Settings → Dictation (text typed at a cursor); the keyboard is Shortcuts'
+        // not items: what was dictated into other apps — a page of its own (DictationPage.swift); text typed at a cursor, as
+        // Settings → Dictation, the menu bar and ⌘K mark it (the mic is a voice note's)
         let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
+        // Recently Dragged Out: a place of its own while it holds cards (Photos' Recently Deleted), not a banner over
+        // the list — a click opens its panel (copy, drag out again, put back); the menu bar and the island reach it too
+        let takenCount = testTaken ?? (AppEnvironment.island == nil ? 0 : snapper.recentlyTaken.count)
+        let taken: [SidebarNode] = takenCount > 0 ? [{
+            // short enough for the sidebar; the panel's own name (Recently Dragged Out) is its tooltip and VoiceOver label
+            let n = SidebarNode(T("main.sidebar.taken"), scope: nil, symbol: "arrow.up.right.square", count: takenCount)
+            n.action = { [weak self] in
+                let w = self?.view.window
+                TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
+            }
+            n.tip = [Loc.t("capture.taken.title", table: "Capture"), T("main.captures.taken.tip")].joined(separator: "\n")
+            n.accessibility = Loc.t("capture.taken.title", table: "Capture")
+            return n
+        }()] : []
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
             place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
             dictation,
-        ]
+        ] + taken
         let projectNodes = model.projects.map { p -> SidebarNode in
+            // a project's count is plain secondary digits: the one mint pill is the Inbox's (what's new for you, §3.3),
+            // so the brand marks on screen stay few. The key ("AW", its ids' prefix) is the row's tooltip, not text.
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
                                 count: p.inbox > 0 ? p.inbox : nil)
-            n.alert = p.inbox > 0
-            n.detail = p.key
+            n.alert = false
+            n.tip = p.key.isEmpty ? p.name : T("main.sidebar.project_tip", p.name, p.key)
             n.dimmed = !p.registered || !p.exists
+            n.current = ProjectStore.shared.currentID == p.id
             let path = (p.path.path as NSString).abbreviatingWithTildeInPath
             n.accessibility = [p.name, path, !p.exists ? T("main.sidebar.missing") : nil, !p.registered ? T("main.sidebar.not_opened") : nil]
                 .compactMap { $0 }.joined(separator: ", ")
@@ -180,6 +208,12 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
 
     var selectedScope: Scope? { (outline.item(atRow: outline.selectedRow) as? SidebarNode)?.scope }
+
+    /// A click on an action row (Recently Dragged Out): do it; the selection stays where it was.
+    @objc func clicked() {
+        guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? SidebarNode, let a = n.action else { return }
+        a()
+    }
 
     func select(_ scope: Scope) {
         func find(_ nodes: [SidebarNode]) -> SidebarNode? {
@@ -204,7 +238,10 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     }
     func outlineView(_ o: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? SidebarNode)?.isGroup ?? false }
     func outlineView(_ o: NSOutlineView, isGroupItem item: Any) -> Bool { (item as? SidebarNode)?.isGroup ?? false }
-    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool { !((item as? SidebarNode)?.isGroup ?? true) }
+    func outlineView(_ o: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        guard let n = item as? SidebarNode else { return false }
+        return !n.isGroup && n.action == nil
+    }
     func outlineView(_ o: NSOutlineView, shouldShowOutlineCellForItem item: Any) -> Bool { true }
 
     func outlineView(_ o: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
@@ -244,11 +281,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     // MARK: drags: projects reorder (Finder's Favorites); folders open as projects; items move
 
     func outlineView(_ o: NSOutlineView, pasteboardWriterForItem item: Any) -> NSPasteboardWriting? {
-        guard let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
+        // the projects keep the one order every list uses (pinned, then the most recently used: Pin to Top in their
+        // menu), so a project isn't dragged into an order of its own
+        guard Self.reorderByDrag, let n = item as? SidebarNode, case .project(let id)? = n.scope, model.project(id: id)?.registered == true else { return nil }
         let pb = NSPasteboardItem()
         pb.setString(id, forType: .blurtProject)
         return pb
     }
+
+    static let reorderByDrag = false
 
     /// The projects group node (where a dragged project lands).
     private var projectsGroup: SidebarNode? { roots.first(where: \.isGroup) }
@@ -359,12 +400,19 @@ final class SourceCell: NSTableCellView, InlineEditable {
     }
     let key = NSTextField(labelWithString: "")
     let badge = CountPill()
+    /// the current project's mark (SidebarNode.current)
+    let mark = NSImageView()
 
     init(id: NSUserInterfaceItemIdentifier) {
         super.init(frame: .zero)
         identifier = id
-        for v in [icon, title, key, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
-        title.lineBreakMode = .byTruncatingTail
+        for v in [icon, title, key, mark, badge] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
+        mark.image = SourceCell.currentImage
+        mark.contentTintColor = .secondaryLabelColor
+        mark.isHidden = true
+        mark.setContentCompressionResistancePriority(.required, for: .horizontal)
+        // a long project name keeps both ends ("口喷鸡 iOS…截断）"): the tooltip has it whole
+        title.lineBreakMode = .byTruncatingMiddle
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         key.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
         key.textColor = .secondaryLabelColor
@@ -383,7 +431,9 @@ final class SourceCell: NSTableCellView, InlineEditable {
             title.centerYAnchor.constraint(equalTo: centerYAnchor),
             key.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 5),
             key.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            badge.leadingAnchor.constraint(greaterThanOrEqualTo: key.trailingAnchor, constant: 6),
+            mark.leadingAnchor.constraint(equalTo: key.trailingAnchor, constant: 5),
+            mark.centerYAnchor.constraint(equalTo: centerYAnchor),
+            badge.leadingAnchor.constraint(greaterThanOrEqualTo: mark.trailingAnchor, constant: 6),
             badge.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -6),
             badge.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
@@ -410,11 +460,17 @@ final class SourceCell: NSTableCellView, InlineEditable {
         key.isHidden = n.detail == nil
         icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.alphaValue = 1
+        toolTip = n.current ? [n.tip, T("main.project.current_mark")].compactMap { $0 }.joined(separator: "\n") : n.tip
+        mark.isHidden = !n.current
         applyInk()
         badge.text = n.count.map { $0 > 0 ? Loc.number($0) : "" } ?? ""
         badge.mint = n.alert
-        setAccessibilityLabel([n.accessibility ?? n.title, badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
+        setAccessibilityLabel([n.accessibility ?? n.title, n.current ? T("main.project.current_mark") : nil,
+                               badge.text.isEmpty ? nil : badge.text].compactMap { $0 }.joined(separator: ", "))
     }
+
+    /// The current project's mark: the scope (a target), small and quiet — "Make Current Project" uses the same glyph.
+    static let currentImage = Look.symbol("scope", T("main.project.current_mark"), size: 11, weight: .medium)
 }
 
 /// A count at the end of a sidebar row. What's new for you (the Inbox, a project's inbox) is a mint pill with

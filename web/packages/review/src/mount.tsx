@@ -27,6 +27,7 @@ export function mountReview(el: HTMLElement, host: BlurtHost, opts: MountOptions
   const accent = (window as { blurtHostInfo?: { accent?: string } }).blurtHostInfo?.accent;
   if (accent) setSystemAccent(accent, html);
   if (host.inApp) html.classList.add("in-app");
+  html.dataset.host = host.host; // the Mac app draws the detail pane's surface itself (item mode): the page leaves it clear
   if (opts.mode === "item") html.classList.add("mode-item");
   el.classList.add("rv-root");
   if (opts.embedded) el.classList.add("rv-embedded");

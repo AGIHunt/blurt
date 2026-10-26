@@ -173,6 +173,21 @@ public enum JobFold {
         }
     }
 
+    /// The owner ends its job (JobWriter.finish), with whatever others reported already folded in. A job the user
+    /// stopped (an event set it cancelled: the detail's Stop) stays stopped — the run's own end (its killed agent's
+    /// exit, items it wrote anyway) never turns it into a failure or a success; its steps are closed all the same.
+    public static func finishing(_ d: inout [String: Any], state: JobState, error: JobError?, at: String) {
+        let stopped = d["state"] as? String == JobState.cancelled.rawValue && state != .cancelled
+        d["ended"] = at
+        if !stopped {
+            d["state"] = state.rawValue
+            if let e = error {
+                d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull(), "reason": e.reason ?? NSNull()] as [String: Any]
+            }
+        }
+        if state != .done || stopped { d["steps"] = closeSteps(d["steps"] as? [[String: Any]] ?? [], at: at) }
+    }
+
     /// Apply one events.jsonl line to a job dictionary.
     public static func apply(_ ev: [String: Any], to job: inout [String: Any]) {
         if let st = ev["step"] as? [String: Any], let sid = st["id"] as? String {
@@ -491,14 +506,7 @@ public final class JobWriter {
     /// A job that ends without finishing closes its steps: the running one failed, the pending ones skipped — never
     /// a step that keeps saying it runs on a finished job.
     public func finish(_ state: JobState, error: JobError? = nil) {
-        mutate { d in
-            d["state"] = state.rawValue
-            d["ended"] = JobFold.now()
-            if let e = error {
-                d["error"] = ["code": e.code, "message": e.message, "hint_key": e.hintKey ?? NSNull(), "reason": e.reason ?? NSNull()] as [String: Any]
-            }
-            if state != .done { d["steps"] = JobFold.closeSteps(d["steps"] as? [[String: Any]] ?? [], at: d["ended"] as? String ?? JobFold.now()) }
-        }
+        mutate { d in JobFold.finishing(&d, state: state, error: error, at: JobFold.now()) }
     }
 
     /// Any other field of the job (the organiser's process group: "agent_pgid").

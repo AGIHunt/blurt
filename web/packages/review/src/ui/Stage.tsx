@@ -89,18 +89,22 @@ function MediaBox({ items, k }: { items: Media[]; k: number }) {
   );
 }
 
-function Caption({ m }: { m: Media | undefined }) {
+/** The frame's line: its time (or Clip / Recording · 0:12), its caption, and what you can do with the file. In the
+    main window's detail (`over`) it sits on the picture instead — the time in a small capsule, the file actions on
+    hover — so the picture is never followed by a band that only holds a number; the caption goes under it. */
+function Caption({ m, over = false }: { m: Media | undefined; over?: boolean }) {
   const s = useStore();
   const h = s.host;
-  if (!m || m.kind === "wait") return <div className="cap" id="mediaCap" />;
+  if (!m || m.kind === "wait") return <div className={cx("cap", over && "over")} id="mediaCap" />;
   const rel = m.rel || "";
   return (
-    <div className="cap" id="mediaCap">
+    <div className={cx("cap", over && "over", m.kind !== "img" && "vid")} id="mediaCap">
       <span className="tm">
         {m.label}
         {m.kind === "orig" && m.start != null ? ` · ${s.clock(m.start)}` : ""}
       </span>
-      {m.cap ? <span className="ct">{m.cap}</span> : null}
+      {m.cap && !over ? <span className="ct">{m.cap}</span> : null}
+      {over && <span className="cap-sp" />}
       {h.downloadUrl ? (
         <a className="dl" href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
           <Icon name="download" />
@@ -164,6 +168,93 @@ function useDragRects(root: React.RefObject<HTMLElement | null>, deps: unknown[]
   }, deps);
 }
 
+/** The item's pictures inline in the detail document (item mode), the way an attachment sits in an issue: one card on
+    the page's own ground, at most ~260 pt tall, a hairline and r 8. Over the picture: where it is in the recording
+    (bottom left) and, on hover or focus, Quick Look / Show in Finder / Download (top right). A click opens Quick Look
+    (the lightbox where the host has none). Several pictures: thumbnails under it. */
+export function Attachment() {
+  const s = useStore();
+  const i = s.item;
+  const ref = useRef<HTMLElement>(null);
+  const items = s.mediaItems(i);
+  const k = s.mediaIndex(items);
+  useDragRects(ref, [s.cur, k, items.length, s.slideKey]);
+  if (!i || !items.length) return null;
+  const m = items[k];
+  const h = s.host;
+  const rel = m.rel || "";
+  const look = h.quickLook && m.kind === "img" ? () => h.quickLook!(rel) : m.kind === "img" ? () => s.openLightbox(m.src) : null;
+  const at = m.kind === "img" && /^\d+:\d\d/.test(m.label) ? m.label : null;
+  const reveal = s.t(h.host === "macos" ? "media.reveal_mac" : "media.reveal");
+  const tools = m.kind !== "wait" && (h.quickLook || h.reveal || h.download || h.downloadUrl);
+  return (
+    <section ref={ref} className="attach" id="attachment" aria-label={s.t("media.title")}>
+      <div className="att-card">
+        <div className="att-pic" onClickCapture={(e) => {
+            if (look && (e.target as HTMLElement).tagName === "IMG") {
+              e.preventDefault();
+              e.stopPropagation();
+              look();
+            }
+          }}>
+          <MediaBox items={items} k={k} />
+        </div>
+        {at && (
+          <span className="att-time" title={s.t("media.at.hint")}>
+            {s.t("media.at", { time: at })}
+          </span>
+        )}
+        {tools && (
+          <div className="att-tools" id="mediaCap">
+            {h.quickLook && m.kind === "img" && (
+              <button className="dl" onClick={() => h.quickLook!(rel)} title={s.t("media.quick_look")} aria-label={s.t("media.quick_look")}>
+                <Icon name="eye" size={15} />
+              </button>
+            )}
+            {h.reveal && (
+              <button className="dl" onClick={() => h.reveal!(rel)} title={reveal} aria-label={reveal}>
+                <Icon name="reveal" size={15} />
+              </button>
+            )}
+            {h.downloadUrl ? (
+              <a className="dl" href={h.downloadUrl(rel)} download title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </a>
+            ) : h.download ? (
+              <button className="dl" onClick={() => h.download!(rel)} title={s.t("media.download")} aria-label={s.t("media.download")}>
+                <Icon name="download" size={15} />
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+      {m.cap ? <p className="att-cap">{m.cap}</p> : null}
+      {items.length >= 2 && (
+        <div className="strip att-strip scroll">
+          {items.map((x, n) =>
+            x.kind === "img" ? (
+              <button key={x.src} className={cx("th", n === k && "on", s.fresh.has(x.src) && "fresh")} data-m={n} data-rel={x.rel} onClick={() => s.selectMedia(x.src)}
+                aria-label={x.label} aria-pressed={n === k}>
+                <img src={x.src} alt="" />
+                <span className="lbl">{x.label}</span>
+              </button>
+            ) : x.kind === "wait" ? (
+              <button key={x.src} className={cx("th shim", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)}>
+                <span className="lbl">…</span>
+              </button>
+            ) : (
+              <button key={x.src + x.kind} className={cx("th vid", n === k && "on")} data-m={n} onClick={() => s.selectMedia(x.src)} aria-pressed={n === k}>
+                <Icon name={x.kind === "clip" ? "film" : "video"} className="ic" />
+                {x.label}
+              </button>
+            ),
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function Slide() {
   const s = useStore();
   const i = s.item;
@@ -177,8 +268,20 @@ export function Slide() {
     <div ref={ref} key={`${s.keyOf(i)}:${s.slideKey}`} className={cx("slide", anim && (s.dir === "up" ? "in-up" : "in-down"))}>
       <div className={cx("media", items.length >= 2 && "has-strip")}>
         <div className="frame">
-          <MediaBox items={items} k={k} />
-          <Caption m={items[k]} />
+          {s.mode === "item" ? (
+            <>
+              <div className="shotwrap">
+                <MediaBox items={items} k={k} />
+                <Caption m={items[k]} over />
+              </div>
+              {items[k]?.cap ? <p className="cap-t">{items[k].cap}</p> : null}
+            </>
+          ) : (
+            <>
+              <MediaBox items={items} k={k} />
+              <Caption m={items[k]} />
+            </>
+          )}
           {items.length >= 2 && (
             <div className="strip scroll">
               {items.map((m, n) =>

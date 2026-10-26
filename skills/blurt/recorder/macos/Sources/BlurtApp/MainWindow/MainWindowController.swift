@@ -1,5 +1,7 @@
 // Blurt's main window: sidebar (places + projects) | items | detail in an NSSplitViewController, a unified toolbar
-// (Record, Snap, Hand Off, Move to Project, search; on the Dictation page search only), ⌘K command palette, context
+// (the place's title and counts, Record and Snap, Filter, search; on the Dictation page the title and search only —
+// moving and handing off belong to the selection: the detail, the Item menu, the context menu, M / ⌘↩, ⌘K), a
+// command palette, context
 // menus, Quick Look, a blank detail while there are no items at all (the list's first-run state speaks), window state
 // restored from $BLURT_HOME/ui/main-window.json (not UserDefaults: test builds share the bundle id with the user's
 // real app and must not disturb its state).
@@ -7,7 +9,7 @@
 // Reads come from index.db (MainModel / IndexReader v3), projects.json (ProjectStore) and $BLURT_HOME/jobs
 // (JobStore). Every write goes through the CLIs (Scripts): items.py user-ops / state / move, projects.py,
 // handoff.py, sessions.py (AppEnvironment.dispatch, P3); Export Hand-off Bundle… (Item menu, context menu, the Hand Off
-// toolbar menu, ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet ("Packing…" on the island, the action
+// ⌘K) runs export_local.py bundle into a .zip picked in a Save sheet ("Packing…" on the island, the action
 // off, until it is done). The index follows (items.py updates it in-process, FSEvents
 // + `index.py update` catch everything else) and the model reloads when index.db's data_version moves. The writes run
 // one after another (writes: SerialWork), and each undoable one is on the window's NSUndoManager from the moment it is
@@ -85,6 +87,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         w.tabbingMode = .disallowed
         w.titlebarSeparatorStyle = .automatic
         w.toolbarStyle = .unified
+        // the place's name is ours: the list's heading (ListHeading), which keeps its weight in a window that isn't
+        // key — the title still names the window (Window menu, Mission Control); the Dictation page's is a bar item
+        w.titleVisibility = .hidden
         w.collectionBehavior.insert(.fullScreenPrimary)
         w.delegate = self
         w.setAccessibilityLabel(T("main.window.label"))
@@ -116,6 +121,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         w.toolbar = tb
 
         list.actions = self
+        list.bar.makeMenu = { [weak self] in self?.filterMenu() }
         detail.actions = self
         sidebar.actions = self
         model.onReload = { [weak self] in
@@ -125,11 +131,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             // the same item still selected, but its row changed under it (a state, a move, a renamed folder)
             if self.shownJob == nil, self.list.selectedIDs.count == 1, let it = self.list.selectedItems.first {
                 self.detail.refresh(item: it, projects: self.model.projects)
-            } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.model.isEmptyWorld,
+            } else if self.shownJob == nil, self.list.selectedIDs.count > 1, self.detail.showsSelection {
+                self.showSelectionSummary()     // a state or a move changed what the buttons can do
+            } else if self.shownJob == nil, self.list.selectedIDs.isEmpty, self.detail.showsQuietNothing != self.quietDetail,
                       self.detail.showsNothing {
                 self.listSelectionChanged()     // the first item arrived (or the last one went): "Nothing selected" or blank
             }
             self.updateTitle()
+            self.fitDetailToPlace()
             self.scheduleSave()
         }
         model.onSidebar = { [weak self] in self?.sidebar.rebuild(); self?.updateWatcher() }
@@ -138,6 +147,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             guard let self = self else { return }
             self.list.reload()
             self.updateTitle()
+            self.syncIndexChrome()
+            self.fitDetailToPlace()
             if self.model.indexState == .ready, self.list.table.selectedRow < 0, self.model.rowCount > 0 {
                 self.list.table.selectRowIndexes([0], byExtendingSelection: false)
             }
@@ -155,8 +166,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: MainWindowHosting
 
+    /// Search follows the index: off (with a placeholder that says when it comes) while nothing is listed yet. A
+    /// window that finds no index starts reading one by itself — there is nothing to ask.
+    func syncIndexChrome() {
+        guard let f = searchItem?.searchField, model.scope != .dictation else { return }
+        let ready = !model.nothingListed
+        if f.isEnabled != ready {
+            if !ready, window?.firstResponder === f.currentEditor() { window?.makeFirstResponder(list.table) }
+            f.isEnabled = ready
+        }
+        f.placeholderString = ready ? T("main.search.placeholder") : T("main.search.placeholder_wait")
+        if window?.isVisible == true { model.startFirstScan() }
+    }
+
     func show() {
         if !restored { restoreState(); restored = true } else { model.reloadAll() }
+        defer { syncIndexChrome() }
         becomeRegular()
         activateApp()
         window?.makeKeyAndOrderFront(nil)
@@ -341,13 +366,67 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
 
     func updateTitle() {
-        window?.title = model.scopeTitle
+        defer {
+            titleView.set(title: window?.title ?? "", subtitle: window?.subtitle ?? "")
+            list.heading.set(title: window?.title ?? "", counts: window?.subtitle ?? "")
+            syncFilterItem()
+        }
+        let q = model.text.trimmingCharacters(in: .whitespaces)
+        // a search is a mode of its own: the heading says what it looks for, the counts how much of the place it found
+        window?.title = q.isEmpty || model.scope == .dictation ? model.scopeTitle : T("main.search.title", q)
         if model.scope == .dictation {
             window?.subtitle = page?.subtitle ?? ""          // the page's one count, following its tab and search
             return
         }
-        window?.subtitle = model.indexState != .ready ? "" : model.scope == .inbox && !model.filtered ? needsYou : TP("main.items.count", model.rowCount)
+        window?.subtitle = listSubtitle
     }
+
+    /// What the heading says beside the place's name: nothing while the empty state speaks; "Updating…" over a rescan;
+    /// "12 of 52" (and where) while a search or a filter narrows the place; the Inbox's "3 new · 2 to verify"; a
+    /// project's count, and that it is the current one (where new captures go) — the one mark of it everywhere.
+    var listSubtitle: String {
+        // nothing listed, or no rows: the empty state speaks
+        if model.indexState != .ready || model.rowCount == 0 { return "" }
+        if model.rescanning { return T("main.updating") }
+        let searching = !model.text.trimmingCharacters(in: .whitespaces).isEmpty
+        if model.filtered {
+            let of = T("main.items.of", Loc.number(model.rowCount), Loc.number(model.placeTotal))
+            return searching ? T("main.items.of_in", of, model.scopeTitle) : of
+        }
+        if model.scope == .inbox { return needsYou }
+        if case .project(let p) = model.scope, ProjectStore.shared.currentID == p {
+            return T("main.project.current_count", TP("main.items.count", model.rowCount))
+        }
+        return TP("main.items.count", model.rowCount)
+    }
+
+    /// An empty place (no rows, no search or filter emptied it) or nothing listed yet: the detail column steps aside, so
+    /// the empty state is the window's one focus; it comes back at its width with the first row (or a job shown). A
+    /// detail the user hides or shows (⌥⌘I) is theirs.
+    private(set) var foldedForEmpty = false
+    func forgetFold() { foldedForEmpty = false }
+    private var detailWidthBeforeFold = 0.0
+    func fitDetailToPlace() {
+        let items = split.splitViewItems
+        guard items.count == 3 else { return }
+        let d = items[2]
+        let fold = model.scope != .dictation && shownJob == nil && (model.placeIsEmpty || model.nothingListed)
+        if fold, !d.isCollapsed {
+            detailWidthBeforeFold = Double(d.viewController.view.frame.width)
+            foldedForEmpty = true
+            d.isCollapsed = true
+        } else if !fold, foldedForEmpty {
+            foldedForEmpty = false
+            d.isCollapsed = false
+        }
+    }
+
+    /// The detail stays blank (no placeholder pointing at rows that aren't there) while the list has no rows or there
+    /// is nothing listed at all: the list's empty state is the window's one focus.
+    var quietDetail: Bool { model.isEmptyWorld || model.nothingListed || model.rowCount == 0 }
+
+    /// The Dictation page's title in the toolbar (the item places have the list's heading instead).
+    let titleView = ToolbarTitle()
 
     /// The inbox's subtitle (K3): "3 new · 2 to verify" under the title "Inbox" — the same words as the menu bar
     /// menu's rows; a zero part left out; nothing when both are zero (the empty state says it).
@@ -373,10 +452,111 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if shownJob != nil { return }
         if items.count == 1, let it = items.first {
             detail.show(item: it, projects: model.projects)
+        } else if items.count > 1 {
+            showSelectionSummary()
         } else {
-            detail.showNothing(items.count, quiet: items.isEmpty && model.isEmptyWorld)
+            detail.showNothing(quiet: quietDetail)
         }
         scheduleSave()
+    }
+
+    // MARK: several selected (SelectionView)
+
+    func showSelectionSummary() {
+        let items = list.selectedItems
+        guard items.count > 1 else { return }
+        detail.showSelection(items, plan: selectionPlan(items))
+    }
+
+    /// The agent the hand-off panel will start with, when it is already decided (the last one used, the project's,
+    /// the global default) — the primary names it; nil: "Hand Off…" and the panel picks.
+    func handOffAgentName(_ items: [ItemRow]) -> String? {
+        let projects = Set(items.map(\.projectID))
+        let project = projects.count == 1 ? projects.first.flatMap { ProjectStore.shared.project(id: $0) }?.defaultAgent : nil
+        let ids = [Config.shared["sessions.agent"] as? String, project, Config.shared["record.default_agent"] as? String]
+        return ids.compactMap { $0 }.lazy.compactMap { AgentHub.shared.def($0)?.name }.first
+    }
+
+    /// What the selection summary offers. Inline: Hand Off…, Move to Project… and the one state action that moves the
+    /// batch on (Keep for new items, Mark as Done for those in work, Reopen / Restore for closed ones); everything else
+    /// in ⋯ — the same entries the state menu and the Item menu have. The primary is the one that can go: Hand Off when
+    /// HandOffCheck lets it, else the way out of what blocks it (Move to Project… for Unassigned or mixed projects,
+    /// Reopen, Restore), with the reason on one line under the buttons.
+    func selectionPlan(_ items: [ItemRow]) -> SelectionPlan {
+        var p = SelectionPlan()
+        let writable = Scripts.canWrite && items.contains { !$0.readOnly }
+        let block = dispatchBlock(items)
+        let n = items.count
+        let agent = handOffAgentName(items)
+        let handOff = SelectionPlan.Action(
+            id: "hand_off", title: agent.map { T("main.selection.hand_off_to", $0) } ?? T("main.selection.hand_off"),
+            tip: block.map(Self.blockText) ?? TP("main.selection.hand_off.tip", n),
+            enabled: block == nil && writable && AppEnvironment.dispatch != nil)
+        let move = SelectionPlan.Action(id: "move", title: T("main.selection.move"), tip: TP("main.selection.move.tip", n),
+                                        enabled: writable)
+        let states = writable ? StateMenu.actions(for: items, canHandOff: false) : []
+        var way: String?
+        switch block {
+        case .finished?: way = states.contains("reopen") ? "reopen" : nil
+        case .discarded?: way = states.contains("restore") ? "restore" : nil
+        default: break
+        }
+        let state = way ?? states.first { $0 != "discard" }
+        p.actions = [handOff, move]
+        if let a = state {
+            let valid = StateMenu.valid(a, items).count
+            let title = StateMenu.title(a) + (valid < n ? " (\(Loc.number(valid)))" : "")
+            let (k, mods) = StateMenu.key(a)
+            let key = k.isEmpty ? "" : " (\(mods.contains(.command) ? "⌘" : "")\(k == "\u{8}" ? "⌫" : k.uppercased()))"
+            p.actions.append(.init(id: a, title: title, tip: StateMenu.hint(a, items) + key))
+        }
+        switch block {
+        case nil: p.primary = handOff.enabled ? "hand_off" : nil
+        case .needsProject?, .mixedProjects?: p.primary = writable ? "move" : nil
+        default: p.primary = way
+        }
+        if let b = block, writable {
+            // under the buttons the line says why Hand Off is off and what the primary does about it
+            switch b {
+            case .mixedProjects: p.blocked = T("main.selection.blocked.mixed")
+            case .needsProject: p.blocked = T("main.selection.blocked.needs_project")
+            case .finished: p.blocked = T("main.selection.blocked.finished")     // about the batch, not "this item"
+            default: p.blocked = Self.blockText(b)
+            }
+        }
+        // the primary leads the row
+        if let pr = p.primary, let i = p.actions.firstIndex(where: { $0.id == pr }) { p.actions.insert(p.actions.remove(at: i), at: 0) }
+        p.more = selectionMoreMenu(items, inline: Set(p.actions.map(\.id)), states: states)
+        return p
+    }
+
+    /// ⋯: the state actions not inline (StateMenu's entries, "(n)" where they apply to some), then the Item menu's
+    /// actions without the two already inline (Hand Off, Move to Project).
+    func selectionMoreMenu(_ items: [ItemRow], inline: Set<String>, states: [String]) -> NSMenu {
+        let m = NSMenu()
+        m.autoenablesItems = true
+        let rest = states.filter { !inline.contains($0) }
+        for a in rest {
+            if a == "discard", !m.items.isEmpty { m.addItem(.separator()) }
+            m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self))
+        }
+        if !rest.isEmpty { m.addItem(.separator()) }
+        itemActions(into: m, items: items, inSelection: true)
+        return m
+    }
+
+    func selectionAction(_ id: String, from v: NSView) {
+        let items = list.selectedItems
+        switch id {
+        case "hand_off": handOffSelection()
+        case "move": pickProject(from: v)
+        default: apply(id, to: items)
+        }
+    }
+
+    func deselect(uid: String) {
+        guard let row = model.row(of: uid) else { return }
+        list.table.deselectRow(row)
     }
 
     /// The rows above the list from the keyboard (micro 15): the "Unfiled captures" and "Recently dragged out"
@@ -423,11 +603,14 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         shownJob = id
         list.jobs.selected = id
         detail.show(job: j, projectName: j.project.flatMap { ProjectStore.shared.project(id: $0) }?.name)
+        fitDetailToPlace()          // a job shown over an empty place brings the detail back
     }
 
     /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
     func openSelection() {
         if let b = focusedBanner { (b == "captures" ? list.captures.onClick : list.taken.onClick)?(); return }
+        // ↩ on a list with no rows: the empty state's primary (Open Folder…, Record, Locate Folder…)
+        if model.rowCount == 0, list.empty.pressPrimary() { return }
         guard !detail.web.isHidden else { return }
         window?.makeFirstResponder(detail.web)
         detail.web.evaluateJavaScript("window.blurtReview && window.blurtReview.focusTitle && window.blurtReview.focusTitle()")
@@ -565,8 +748,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
         let m = StateMenu.menu(for: items, canHandOff: true, selector: #selector(mState(_:)), target: self)
         guard !m.items.isEmpty else { NSSound.beep(); return }
-        if let v = view ?? row.flatMap(list.ringView(row:)), v.window != nil {
-            m.popUp(positioning: nil, at: NSPoint(x: -4, y: v.isFlipped ? v.bounds.height + 3 : -3), in: v)
+        if let r = row ?? list.table.selectedRowIndexes.first, let v = view ?? list.ringView(row: r), v.window != nil {
+            StateMenu.popUp(m, from: v, in: list.table, row: r)
         } else if let r = row ?? list.table.selectedRowIndexes.first {
             let rect = list.table.rect(ofRow: r)
             m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 40, y: rect.maxY), in: list.table)
@@ -632,6 +815,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case 6: if case .project(let p) = model.scope { useProject(p) }
         case 7: if case .project(let p) = model.scope { locateFolder(p) }
         case 8: list.elsewhereUID.map(reveal(uid:))
+        case 9: go(.all)                // the search stays: the same words over every item
+        case 10: if case .project(let p) = model.scope { removeProject(p) }
+        case 11: go(.inbox)
         default: break
         }
     }
@@ -664,23 +850,28 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     // MARK: projects
 
-    @objc func openFolder() {
+    @objc func openFolder() { pickFolder(then: nil) }
+
+    /// `then` (the Move popover's Open Folder…): one folder, and what to do with its project once it is open.
+    func pickFolder(then: ((Project) -> Void)?) {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
-        panel.allowsMultipleSelection = true
+        panel.allowsMultipleSelection = then == nil
         panel.canCreateDirectories = true
         panel.prompt = T("main.open.prompt")
         panel.message = T("main.open.message")
         let done: (NSApplication.ModalResponse) -> Void = { [weak self] r in
             guard r == .OK else { return }
-            self?.openFolders(panel.urls)
+            self?.openFolders(panel.urls, then: then)
         }
         if let w = window, w.isVisible { panel.beginSheetModal(for: w, completionHandler: done) } else { activateApp(); done(panel.runModal()) }
     }
 
-    /// Registers the folders as projects (projects.py add) and shows the last one.
-    func openFolders(_ urls: [URL]) {
+    /// Registers the folders as projects (projects.py add) and shows the last one (or hands it to `then`).
+    func openFolders(_ urls: [URL]) { openFolders(urls, then: nil) }
+
+    func openFolders(_ urls: [URL], then: ((Project) -> Void)?) {
         Task { @MainActor in
             var last: Project?
             for u in urls {
@@ -689,7 +880,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             }
             if let p = last {
                 model.reloadSidebar()
-                reveal(project: p.id)
+                if let then = then { then(p) } else { reveal(project: p.id) }
             }
         }
     }
@@ -880,6 +1071,27 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     @objc func mRevealShownProject() { shownProject.flatMap { model.project(id: $0) }.map { NSWorkspace.shared.activateFileViewerSelecting([$0.path]) } }
     @objc func mRemoveShownProject() { shownProject.map(removeProject) }
+    /// Pin to Top / Unpin (the sidebar's project menu): ⌘Z puts it back.
+    @objc func mPinProject(_ i: NSMenuItem) {
+        guard let id = i.representedObject as? String, let p = ProjectStore.shared.project(id: id) else { return }
+        setPinned(id, !p.pinned)
+    }
+
+    func setPinned(_ id: String, _ on: Bool) {
+        let step = UndoStep<Bool>()
+        register(T("main.project.pin.undo_name"), step) { c, s in c.setPinned(id, s.value ?? !on) }
+        writes.run { [weak self] in
+            guard let self = self else { return }
+            guard let p = ProjectStore.shared.project(id: id), p.pinned != on else { return self.drop(step) }
+            step.value = p.pinned
+            do { try await ProjectStore.shared.update(id, ["pinned": on]) }
+            catch {
+                self.drop(step)
+                self.alert(T("main.project.save_failed"), Self.projectFailure(error))
+            }
+        }
+    }
+
     @objc func mRenameProject(_ i: NSMenuItem) {
         guard let p = i.representedObject as? String else { return }
         sidebar.select(.project(p))
@@ -1056,45 +1268,72 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         guard !items.isEmpty else { return nil }
         let m = NSMenu()
         m.autoenablesItems = true
-        // what you can do from here (K3); handing off has its own section below
-        let states = StateMenu.actions(for: items, canHandOff: false)
-        if !states.isEmpty, Scripts.canWrite {
-            m.addItem(menuHeader(T("state.menu")))
-            for a in states { m.addItem(StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self)) }
+        // the primary verb first (the detail's one primary button, ⌘↩)
+        handOffActions(into: m, items: items)
+        // what you can do from the items' state (K3), one line a row: no header and no hints (the rings say what each
+        // leads to; the hint is the tooltip, and the ring's own menu, S, shows it in full). Discard waits for the end.
+        let states = Scripts.canWrite ? StateMenu.actions(for: items, canHandOff: false) : []
+        func state(_ a: String) -> NSMenuItem { StateMenu.item(a, items: items, selector: #selector(mState(_:)), target: self, hints: false) }
+        let lead = states.filter { $0 != "discard" }
+        if !lead.isEmpty {
             m.addItem(.separator())
+            lead.forEach { m.addItem(state($0)) }
         }
+        m.addItem(.separator())
         itemActions(into: m, items: items)
+        // the one destructive verb last, on its own (as in StateMenu.menu and the Item menu)
+        if states.contains("discard") {
+            m.addItem(.separator())
+            m.addItem(state("discard"))
+        }
         return m
     }
 
-    /// The item actions after the state section — one builder for the context menu and the menu bar's Item menu, so
-    /// both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are all
-    /// there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
-    func itemActions(into m: NSMenu, items: [ItemRow]?) {
+    /// The first group of the context menu and the menu bar's Item menu: Hand Off to Agent, and the agent session it
+    /// started when there is one to open. `items` nil: the menu bar.
+    func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
         let one = items.map { $0.count == 1 } ?? true
-        let bar = items == nil
         _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
-        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.doc", key: "c", mods: [.command, .shift])
-        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
-        _ = add(m, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
-        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "sparkles")
-        if bar || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
+        if items == nil || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
             _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
         }
-        m.addItem(.separator())
-        m.addItem(submenu(T("main.menu.move_to"), "folder", moveMenu()))
+    }
+
+    /// The item actions between the state rows and Discard — one builder for the context menu and the menu bar's Item
+    /// menu, so both have the same entries in the same order with the same titles, symbols and keys (the menu bar's are
+    /// all there and enabled per selection; the context menu leaves out what doesn't apply). `items` nil: the menu bar.
+    /// Three groups: change the item, take it out of Blurt (every copy in one Copy submenu), look at its files. One
+    /// symbol per action (system.md §2.7): `folder` only for projects, `sparkles` only for Organise.
+    /// `inSelection`: the selection summary's ⋯ menu, which has its own Move to Project… button.
+    func itemActions(into m: NSMenu, items: [ItemRow]?, inSelection: Bool = false) {
+        let one = items.map { $0.count == 1 } ?? true
+        let bar = items == nil
+        if !inSelection { m.addItem(submenu(T("main.menu.move_to"), "arrow.turn.up.right", moveMenu())) }
         m.addItem(submenu(T("main.menu.kind"), "tag", kindMenu(items ?? [])))
         if bar || one { _ = add(m, T("main.menu.rename"), #selector(mRename), "pencil", key: "e", mods: []) }
+        _ = add(m, T("main.menu.enrich"), #selector(mEnrich), "text.badge.plus")
+        m.addItem(.separator())
+        m.addItem(submenu(T("menu.copy"), "doc.on.doc", copyMenu()))
+        _ = add(m, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
+        m.addItem(.separator())
+        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
+        _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "arrow.up.forward.app", key: "r", mods: [.command, .shift])
+        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
         if bar || (one && items?.first?.sessionURL != nil) {
             _ = add(m, T("main.menu.review_batch"), #selector(mReviewBatch), "rectangle.stack")
         }
-        m.addItem(.separator())
-        _ = add(m, T("main.menu.quick_look"), #selector(mQuickLook), "eye", key: "y")
-        _ = add(m, T("action.reveal_in_finder"), #selector(mReveal), "folder", key: "r", mods: [.command, .shift])
-        _ = add(m, T("action.copy_path"), #selector(mCopyPath), "doc.on.doc", key: "c", mods: [.command, .option])
-        _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink), "link")
-        if one, let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenInEditor), "chevron.left.forwardslash.chevron.right") }
+    }
+
+    /// Copy ▸: the instruction for your own agent first (⇧⌘C), then the item's text, its link and its file's path
+    /// (⌥⌘C). Words only — the parent row carries the copy glyph.
+    func copyMenu() -> NSMenu {
+        let m = NSMenu()
+        _ = add(m, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), key: "c", mods: [.command, .shift])
+        _ = add(m, T("main.cmd.copy_full"), #selector(mCopyFull))
+        _ = add(m, T("main.menu.copy_link"), #selector(mCopyLink))
+        _ = add(m, T("action.copy_path"), #selector(mCopyPath), key: "c", mods: [.command, .option])
+        return m
     }
 
     @discardableResult
@@ -1127,9 +1366,25 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// M (and Move to Project… in the palette): a small popover at the selection — type to filter, ↩ moves every
     /// selected item there (one ⌘Z for all of them). Nothing selected, or items that can't move: a beep.
-    func pickProject() {
+    func pickProject() { pickProject(from: nil) }
+
+    /// `anchor`: hang the popover from that view (the selection summary's button) instead of the selected rows.
+    func pickProject(from anchor: NSView?) {
         let items = list.selectedItems.filter { !$0.readOnly }
         guard !items.isEmpty, Scripts.canWrite else { NSSound.beep(); return }
+        let here = Set(items.map(\.projectID))
+        let uids = items.map(\.uid)
+        // what moves, in the field: "Move BA-1 to…", "Move 3 items to…"
+        let subject = items.count == 1 && !items[0].itemID.isEmpty ? T("main.move.placeholder.one", items[0].itemID)
+            : TP("main.move.placeholder.many", items.count)
+        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil, subject: subject,
+                               choose: { [weak self] pid in self?.move(uids: uids, to: pid) },
+                               openFolder: { [weak self] in self?.pickFolder { self?.move(uids: uids, to: $0.id) } })
+        movePopover = p
+        if let v = anchor {         // the selection summary's Move to Project… button: the popover hangs from it
+            p.show(relativeTo: v.bounds, of: v)
+            return
+        }
         let t = list.table
         let rows = t.selectedRowIndexes
         let visible = rows.filter { t.rows(in: t.visibleRect).contains($0) }
@@ -1137,13 +1392,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if visible.isEmpty { t.scrollRowToVisible(anchor) }
         var r = t.rect(ofRow: anchor)
         if let col = t.tableColumns.firstIndex(where: { $0.identifier.rawValue == "title" }) {
+            // the arrow points at the start of the title: the popover hangs from the item it moves
             r = r.intersection(t.rect(ofColumn: col))
-            r.size.width = min(r.width, 120)
+            r.size.width = min(r.width, 24)
         }
-        let here = Set(items.map(\.projectID))
-        let uids = items.map(\.uid)
-        let p = ProjectPopover(checked: here.count == 1 ? here.first : nil) { [weak self] pid in self?.move(uids: uids, to: pid) }
-        movePopover = p
         p.show(relativeTo: r, of: t)
     }
     /// the Move popover on show (wp6 tests read it)
@@ -1152,7 +1404,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func moveMenu() -> NSMenu {
         let m = NSMenu()
         let here = Set(list.selectedItems.map(\.projectID))
-        for p in ProjectStore.shared.ordered {
+        for p in ProjectStore.shared.projects {         // the one order: pinned, then the most recently used
             let i = add(m, p.name, #selector(mMove(_:)), "folder", obj: p.id)
             i.state = here == [p.id] ? .on : .off
         }
@@ -1188,10 +1440,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         let cur = ProjectStore.shared.currentID == id
         let use = add(m, cur ? T("main.project.use_none") : T("main.project.use"), #selector(mUseProject(_:)), "scope", obj: cur ? nil : id)
         use.toolTip = T("main.project.use.tip")
+        // the projects' one order is pinned, then the most recently used: pinning is how one stays on top
+        _ = add(m, p.pinned ? T("main.project.unpin") : T("main.project.pin"), #selector(mPinProject(_:)), p.pinned ? "pin.slash" : "pin", obj: id)
         _ = add(m, T("main.project.rename"), #selector(mRenameProject(_:)), "pencil", obj: id)
         _ = add(m, T("main.project.settings"), #selector(mProjectSettings(_:)), "slider.horizontal.3", obj: id)
         m.addItem(.separator())
-        _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "folder", obj: p.path)
+        _ = add(m, T("action.reveal_in_finder"), #selector(mRevealURL(_:)), "arrow.up.forward.app", obj: p.path)
         if let e = Editor.preferred { _ = add(m, T("main.menu.open_in", e.name), #selector(mOpenURLInEditor(_:)), "chevron.left.forwardslash.chevron.right", obj: p.path) }
         _ = add(m, T("action.copy_path"), #selector(mCopyURL(_:)), "doc.on.doc", obj: p.path)
         m.addItem(.separator())
@@ -1361,6 +1615,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
                 do { try await AgentSessions.shared.openExternal(job: job.id, terminal: nil) }
                 catch { appDelegate?.toast(sessionsErrorText(error)) }
             }
+        case let a where a.hasPrefix("item:"):          // an item the job wrote, from its detail
+            reveal(uid: String(a.dropFirst(5)))
+        case "stop" where job.type != .agent:            // an organising run: Stop in its detail (⌘.)
+            JobStop.stop(job)
         case "stop":
             Task { @MainActor in
                 do { try await AgentSessions.shared.stop(job: job.id, kill: false) }
@@ -1409,16 +1667,18 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: toolbar
 
     static let recordID = NSToolbarItem.Identifier("record"), snapID = NSToolbarItem.Identifier("snap")
-    static let handOffID = NSToolbarItem.Identifier("handoff"), moveID = NSToolbarItem.Identifier("move")
+    static let filterID = NSToolbarItem.Identifier("filter"), titleID = NSToolbarItem.Identifier("title")
     static let searchID = NSToolbarItem.Identifier("search")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(dictation: false) }
 
-    /// The items' toolbar: Record, Snap, Move, Hand Off and search. The Dictation page has its own: search only (its
-    /// header links to Dictation Settings) — none of the items' actions apply to dictations.
+    /// The items' toolbar: Record and Snap (the capture pair), Filter and search; the place's name is the list's
+    /// heading. Moving and handing off act on the selection, so they live with it (the detail, the Item and context
+    /// menus, M / ⌘↩, ⌘K) — not twice on screen. The Dictation page has its own: its title and search (its header
+    /// links to Dictation Settings).
     static func toolbarItems(dictation: Bool) -> [NSToolbarItem.Identifier] {
-        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, searchID]
-                  : [.toggleSidebar, .sidebarTrackingSeparator, recordID, snapID, .flexibleSpace, moveID, handOffID, searchID]
+        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, titleID, .flexibleSpace, searchID]
+                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID, .space, filterID, searchID]
     }
 
     /// Swap the toolbar's items for the page's (the search item and the sidebar button stay as they are).
@@ -1462,10 +1722,19 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return button(T("main.action.record"), "record.circle", #selector(record), tip: T("main.toolbar.record.tip", hk(.toggleRecord)))
         case Self.snapID:
             return button(T("main.action.snap"), "camera.viewfinder", #selector(snap), tip: T("main.toolbar.snap.tip", hk(.snap)))
-        case Self.handOffID:
-            return menuItem(T("main.toolbar.handoff"), "paperplane", tip: T("main.toolbar.handoff.tip"), tag: 1)
-        case Self.moveID:
-            return menuItem(T("main.toolbar.move"), "folder", tip: T("main.toolbar.move.tip"), tag: 2)
+        case Self.filterID:
+            let i = menuItem(T("main.toolbar.filter"), "line.3.horizontal.decrease.circle", tip: T("main.toolbar.filter.tip"), tag: 3)
+            (i as? NSMenuToolbarItem)?.showsIndicator = false
+            filterItem = i as? NSMenuToolbarItem
+            return i
+        case Self.titleID:
+            let i = NSToolbarItem(itemIdentifier: id)
+            i.view = titleView
+            i.label = T("main.toolbar.title")
+            i.paletteLabel = i.label
+            i.isBordered = false
+            i.visibilityPriority = .high
+            return i
         case Self.searchID:
             let s = NSSearchToolbarItem(itemIdentifier: id)
             s.searchField.placeholderString = T("main.search.placeholder")
@@ -1473,30 +1742,107 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             s.searchField.sendsSearchStringImmediately = true
             s.searchField.sendsWholeSearchString = false
             s.searchField.setAccessibilityLabel(T("main.search.label"))
-            s.preferredWidthForSearchField = 240
+            s.searchField.toolTip = T("main.search.tip")
+            s.preferredWidthForSearchField = 220
+            // a fixed field (Mail's, Linear's), not one that takes a third of the window
+            let cap = s.searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
+            cap.priority = .required
+            cap.isActive = true
             searchItem = s
             return s
         default: return nil
         }
     }
 
-    /// The two toolbar menus, built when they open (the selection decides what is enabled).
+    /// The toolbar's Filter menu, built when it opens (the counts are the place's, now).
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         switch menu.identifier?.rawValue {
-        case "toolbar-1":
-            let n = list.selectedItems.count
-            _ = add(menu, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
-            menu.addItem(.separator())
-            menu.addItem(menuHeader(T("main.toolbar.handoff.own")))
-            _ = add(menu, T("main.cmd.copy_instruction"), #selector(mCopyInstruction), "doc.on.doc", key: "c", mods: [.command, .shift])
-            _ = add(menu, T("main.cmd.copy_full"), #selector(mCopyFull), "text.alignleft")
-            menu.addItem(.separator())
-            _ = add(menu, T("main.menu.export_bundle"), #selector(mExportBundle), "archivebox")
-        case "toolbar-2":
-            for it in moveMenu().items { it.menu?.removeItem(it); menu.addItem(it) }
+        case "toolbar-3":
+            for it in filterMenu().items { it.menu?.removeItem(it); menu.addItem(it) }
         default: break
         }
+    }
+
+    // MARK: the filter (toolbar Filter, View ▸ Filter, the filter line above the list)
+
+    private(set) var filterItem: NSMenuToolbarItem?
+
+    /// Kinds (any number; none = all, each with its count here) and, where the place has one, the State filter; then
+    /// Clear Filters. The same menu everywhere it opens.
+    func filterMenu() -> NSMenu {
+        let m = NSMenu()
+        m.autoenablesItems = false
+        m.addItem(menuHeader(T("main.filter.kind_header")))
+        let all = add(m, T("main.filter.all_kinds"), #selector(mFilterKind(_:)), obj: "")
+        all.state = model.kinds.isEmpty ? .on : .off
+        let counts = model.kindCounts()
+        for k in KindStyle.builtIn {
+            let i = add(m, Look.kindPlural(k), #selector(mFilterKind(_:)), obj: k)
+            i.image = Look.kindImage(k, size: KindStyle.smallSize)
+            i.state = model.kinds.contains(k) ? .on : .off
+            if let n = counts[k] {
+                if #available(macOS 14.0, *) { i.badge = NSMenuItemBadge(string: Loc.number(n)) }
+                else { i.title += "  \(Loc.number(n))" }
+            }
+        }
+        if PlaceFilters.showsState(model.scope.key) {
+            m.addItem(.separator())
+            m.addItem(menuHeader(T("main.filter.state_header")))
+            func st(_ title: String, _ value: String?, ring: String?, symbol: String? = nil) {
+                let i = add(m, title, #selector(mFilterState(_:)), obj: value ?? "")
+                i.image = ring.map { Look.ring($0, size: 14) } ?? symbol.flatMap { Look.symbol($0, "", size: 12) }
+                i.state = model.state == value ? .on : .off
+            }
+            st(T("main.filter.live"), nil, ring: nil)
+            // "needs you" is a place (the Inbox), not a state: an old saved filter that says it still works
+            if model.state == "inbox" { st(T("main.filter.needs_you"), "inbox", ring: nil, symbol: "tray") }
+            for s in Lifecycle.live { st(Look.stateName(s), s, ring: s) }
+            st(Look.stateName("discarded"), "discarded", ring: "discarded")
+        }
+        // the order lives here too (and in View ▸ Sort By): the list has no column header to click
+        m.addItem(.separator())
+        let sort = NSMenu()
+        for (key, title) in Self.sortKeys {
+            let i = add(sort, title, #selector(mSort(_:)), obj: key)
+            i.state = model.sort == key ? .on : .off
+        }
+        m.addItem(submenu(T("menu.sort_by"), "arrow.up.arrow.down", sort))
+        m.addItem(.separator())
+        let clear = add(m, T("main.empty.clear_filters"), #selector(mClearKindAndState))
+        clear.isEnabled = !model.kinds.isEmpty || model.shownState != nil
+        return m
+    }
+
+    /// The Filter menu at the top of the list (tests and View ▸ Filter…; the toolbar button opens its own).
+    @objc func showFilterMenu() {
+        // under the toolbar's Filter button (it sits just before the search field), as a click on it opens it
+        if let f = searchItem?.searchField, let sv = f.superview, f.window != nil {
+            filterMenu().popUp(positioning: nil, at: NSPoint(x: f.frame.minX - 44, y: sv.isFlipped ? f.frame.maxY + 6 : f.frame.minY - 6), in: sv)
+            return
+        }
+        let v = list.view
+        filterMenu().popUp(positioning: nil, at: NSPoint(x: 16, y: v.isFlipped ? 8 : v.bounds.maxY - 8), in: v)
+    }
+
+    @objc func mFilterKind(_ i: NSMenuItem) {
+        guard let k = i.representedObject as? String else { return }
+        if k.isEmpty { model.kinds = [] } else if model.kinds.contains(k) { model.kinds.remove(k) } else { model.kinds.insert(k) }
+        list.filtersChanged()
+    }
+    @objc func mFilterState(_ i: NSMenuItem) {
+        guard let v = i.representedObject as? String else { return }
+        model.state = v.isEmpty ? nil : v
+        list.filtersChanged()
+    }
+    @objc func mClearKindAndState() { list.clearKindAndState() }
+
+    /// The Filter button says when a filter is on: the filled glyph in brand ink.
+    func syncFilterItem() {
+        guard let i = filterItem else { return }
+        let on = !model.kinds.isEmpty || model.shownState != nil
+        i.image = Look.symbol(on ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", T("main.toolbar.filter"), size: 15)
+        i.toolTip = on ? (FilterBar.describe(model) ?? T("main.toolbar.filter.tip")) : T("main.toolbar.filter.tip")
     }
 
     func controlTextDidChange(_ n: Notification) {
@@ -1578,7 +1924,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.frame = w.frameDescriptor
         s.sidebar = items[0].isCollapsed ? nil : Double(items[0].viewController.view.frame.width)
         s.sidebarCollapsed = items[0].isCollapsed
-        s.detail = Double(items[2].viewController.view.frame.width)
+        s.detail = foldedForEmpty ? detailWidthBeforeFold : Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
         s.filters = model.allFilters
         s.quitHint = quitHintShown ? true : nil
@@ -1677,5 +2023,58 @@ final class ColumnController: NSViewController {
         view.addSubview(v)
         NSLayoutConstraint.activate([v.topAnchor.constraint(equalTo: view.topAnchor), v.bottomAnchor.constraint(equalTo: view.bottomAnchor),
                                      v.leadingAnchor.constraint(equalTo: view.leadingAnchor), v.trailingAnchor.constraint(equalTo: view.trailingAnchor)])
+    }
+}
+
+/// The Dictation page's toolbar title: its name in 17 pt semibold (system.md §7, window titles 17–20), its count under
+/// it in 11 pt secondary (the item places name themselves in the list's heading, ListHeading).
+final class ToolbarTitle: NSView {
+    /// a label drawn as itself over the toolbar's material (not the vibrant, washed-out text of a bar item)
+    final class Label: NSTextField {
+        override var allowsVibrancy: Bool { false }
+    }
+    let title = Label(labelWithString: "")
+    let subtitle = Label(labelWithString: "")
+    override var allowsVibrancy: Bool { false }
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        title.font = .systemFont(ofSize: 17, weight: .semibold)
+        title.textColor = .labelColor
+        subtitle.font = .systemFont(ofSize: 11)
+        subtitle.textColor = .secondaryLabelColor
+        for t in [title, subtitle] {
+            t.lineBreakMode = .byTruncatingTail
+            t.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+            t.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(t)
+        }
+        NSLayoutConstraint.activate([
+            title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            subtitle.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            subtitle.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor),
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: -1),
+        ])
+        setAccessibilityElement(true)
+        setAccessibilityRole(.staticText)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+
+    private var centred: NSLayoutConstraint?
+    func set(title t: String, subtitle s: String) {
+        title.stringValue = t
+        subtitle.stringValue = s
+        subtitle.isHidden = s.isEmpty
+        // without counts the title sits in the middle on its own
+        centred?.isActive = false
+        centred = title.centerYAnchor.constraint(equalTo: centerYAnchor, constant: s.isEmpty ? 0 : -7)
+        centred?.isActive = true
+        setAccessibilityLabel([t, s].filter { !$0.isEmpty }.joined(separator: ", "))
+        invalidateIntrinsicContentSize()
+    }
+    override var intrinsicContentSize: NSSize {
+        let w = max(title.intrinsicContentSize.width, subtitle.isHidden ? 0 : subtitle.intrinsicContentSize.width) + 8
+        return NSSize(width: min(320, ceil(w)), height: 38)
     }
 }
