@@ -68,14 +68,19 @@ final class ProjectChip: NSButton {
     override func mouseEntered(with event: NSEvent) { hovering = true }
     override func mouseExited(with event: NSEvent) { hovering = false }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
+    /// Tests: the pointer on the chip (its fill, its name in full ink).
+    func testHover(_ on: Bool) { hovering = on }
 
-    /// The place's glyph, as the list draws it (16 pt column).
+    /// The place's glyph, as the list draws it (16 pt column). Unassigned is a real place: tray.2 in secondary ink on
+    /// every layer (r1 gave the palette one colour for a two-layer symbol: its back tray came out tertiary, disabled-
+    /// looking next to the coloured folders).
     static func glyph(_ p: Place) -> NSImage? {
         let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
         switch p {
         case .unassigned:
+            let ink = NSColor.labelColor.withAlphaComponent(0.62)
             return NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)?
-                .withSymbolConfiguration(cfg.applying(.init(paletteColors: [.secondaryLabelColor])))
+                .withSymbolConfiguration(cfg.applying(.init(paletteColors: [ink, ink, ink])))
         case .project(let pr):
             return NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
                 .withSymbolConfiguration(cfg.applying(.init(paletteColors: [ProjectLook.color(pr)])))
@@ -96,7 +101,8 @@ final class ProjectChip: NSButton {
         }
         let p = NSMutableParagraphStyle()
         p.lineBreakMode = .byTruncatingMiddle
-        let ink: NSColor = { if case .missing = place { return .secondaryLabelColor }; return .labelColor }()
+        // the name is quieter than the words it serves: secondary at rest, full ink under the pointer or open
+        let ink: NSColor = { if case .missing = place { return .secondaryLabelColor }; return hovering || open ? .labelColor : .secondaryLabelColor }()
         let s = NSAttributedString(string: label, attributes: [.font: ProjectChip.font, .foregroundColor: ink, .paragraphStyle: p])
         let x = ProjectChip.lead + 16 + 8
         let maxText = bounds.width - x - 5 - 9 - 7
@@ -113,7 +119,9 @@ final class ProjectChip: NSButton {
 }
 
 /// The chip's list, inside the bubble under the chip: a hairline, the filter line (the magnifier on the glyph column),
-/// a hairline, up to six projects and Unassigned. Its width is the bubble's; the grid is the bubble's.
+/// a hairline, up to six projects and Unassigned, and — the first few times — one faint row of its keys under them
+/// (Raycast's action bar, not the filter line). The bubble widens for a long name (`wantWidth`, up to
+/// NoteBubble.maxInner); the grid is the bubble's.
 final class ProjectPickView: NSView, NSTextFieldDelegate {
     let filter = NSTextField()
     private let glass = NSImageView()
@@ -122,8 +130,12 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
     private(set) var selected = 0
     private var rowViews: [PickRow] = []
     private let none = NSTextField(labelWithString: "")
-    /// the list's keys, at the right of the filter line (Raycast's place for them), set as the bubble's footer sets keys
+    /// the list's keys, one faint row under the rows (the first few times only)
     private let keys = NSTextField(labelWithString: "")
+    var showsKeys = false { didSet { keys.isHidden = !showsKeys } }
+    static let keysH: CGFloat = 24
+    /// the width its longest row needs, with the trailing check column (the bubble widens to it, up to its cap)
+    private(set) var wantWidth: CGFloat = 0
     /// the capture's project now (its row carries the check)
     var current: String?
     var onPick: ((Project?) -> Void)?
@@ -160,7 +172,7 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
         none.stringValue = Loc.t("project.no_match")
         addSubview(none)
         keys.attributedStringValue = NoteBubble.keyLine(Loc.t("capture.note.st_pick", table: "Capture"))
-        keys.alignment = .right
+        keys.isHidden = true
         addSubview(keys)
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -170,7 +182,7 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
     /// The height it needs for its rows now.
     var height: CGFloat {
         let gaps = rows.enumerated().contains { $0.element == nil && $0.offset > 0 } ? ProjectPickView.gap : 0
-        return listTop + CGFloat(max(1, rows.count)) * ProjectPickView.rowH + gaps + 2
+        return listTop + CGFloat(max(1, rows.count)) * ProjectPickView.rowH + gaps + 2 + (showsKeys ? ProjectPickView.keysH : 0)
     }
 
     func reload() {
@@ -181,7 +193,7 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
         if !q.isEmpty { selected = 0 }
         rowViews.forEach { $0.removeFromSuperview() }
         rowViews = rows.enumerated().map { i, p in
-            let r = PickRow(project: p, checked: p?.id == current && current != nil || (p == nil && current == nil))
+            let r = PickRow(project: p, checked: p?.id == current && current != nil || (p == nil && current == nil), query: q)
             r.lineAbove = p == nil && i > 0
             r.onClick = { [weak self] in self?.pick(i) }
             r.onHover = { [weak self] in self?.select(i) }
@@ -189,6 +201,9 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
             return r
         }
         none.isHidden = !rows.isEmpty
+        let i = ProjectPickView.inset
+        wantWidth = ceil(max(rowViews.map { ProjectPickView.textX + $0.textWidth + PickRow.trailing + i }.max() ?? 0,
+                             ProjectPickView.textX + keys.attributedStringValue.size().width + i + 4))
         needsLayout = true
         layoutRows()
     }
@@ -200,10 +215,8 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
         let i = ProjectPickView.inset
         glass.frame = NSRect(x: i, y: 1 + (ProjectPickView.searchH - 16) / 2, width: 16, height: 16)
         // (the field's cell draws its text 2 pt in: the text starts on the text column)
-        let kw = ceil(keys.attributedStringValue.size().width) + 8
-        keys.frame = NSRect(x: bounds.width - i - kw, y: 1 + (ProjectPickView.searchH - 15) / 2, width: kw, height: 15)
         filter.frame = NSRect(x: ProjectPickView.textX - 2, y: 1 + (ProjectPickView.searchH - 18) / 2,
-                              width: keys.frame.minX - 8 - ProjectPickView.textX + 2, height: 18)
+                              width: bounds.width - i - ProjectPickView.textX + 2, height: 18)
         var y = listTop
         for (k, r) in rowViews.enumerated() {
             let h = ProjectPickView.rowH + (r.lineAbove ? ProjectPickView.gap : 0)
@@ -212,6 +225,10 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
             y += h
         }
         none.frame = NSRect(x: ProjectPickView.textX, y: listTop + 6, width: bounds.width - ProjectPickView.textX - i, height: 16)
+        // the keys: under the last row, on the text column
+        let kh = ceil(keys.attributedStringValue.size().height)
+        keys.frame = NSRect(x: ProjectPickView.textX, y: bounds.height - ProjectPickView.keysH + (ProjectPickView.keysH - kh) / 2 - 2,
+                            width: bounds.width - ProjectPickView.textX - i, height: kh)
     }
 
     override func layout() { super.layout(); layoutRows() }
@@ -262,15 +279,20 @@ final class ProjectPickView: NSView, NSTextFieldDelegate {
 final class PickRow: NSView {
     let project: Project?
     let checked: Bool
+    /// what is typed in the filter: those letters of the name in semibold (as the Move popover)
+    let query: String
+    /// the trailing column the check sits in, kept on every row: a name is cut before it, never runs into it
+    static let trailing: CGFloat = 28
     var lineAbove = false
     var selected = false { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     var onHover: (() -> Void)?
     override var isFlipped: Bool { true }
 
-    init(project: Project?, checked: Bool) {
+    init(project: Project?, checked: Bool, query: String = "") {
         self.project = project
         self.checked = checked
+        self.query = query
         super.init(frame: .zero)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
@@ -297,6 +319,26 @@ final class PickRow: NSView {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func accessibilityPerformPress() -> Bool { onClick?(); return true }
 
+    /// The name (and Unassigned's caption) as drawn.
+    private var text: NSAttributedString {
+        let p = NSMutableParagraphStyle()
+        p.lineBreakMode = .byTruncatingMiddle
+        let s = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13),
+                                                                       .foregroundColor: missing ? NSColor.secondaryLabelColor : NSColor.labelColor,
+                                                                       .paragraphStyle: p])
+        if let r = ProjectPopover.match(title, query) {
+            s.addAttribute(.font, value: NSFont.systemFont(ofSize: 13, weight: .semibold), range: NSRange(r, in: title))
+        }
+        let caption = missing ? Loc.t("capture.project.missing_short", table: "Capture")
+                    : project == nil ? Loc.t("capture.note.unassigned_caption", table: "Capture") : nil
+        if let c = caption {
+            s.append(NSAttributedString(string: "  " + c, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+                                                                       .paragraphStyle: p]))
+        }
+        return s
+    }
+    var textWidth: CGFloat { ceil(text.size().width) }
+
     override func draw(_ dirty: NSRect) {
         let i = ProjectPickView.inset
         var body = bounds
@@ -317,19 +359,9 @@ final class PickRow: NSView {
             img.draw(in: NSRect(x: i + (16 - s.width) / 2, y: body.midY - s.height / 2, width: s.width, height: s.height))
         }
         let x = ProjectPickView.textX
-        let p = NSMutableParagraphStyle()
-        p.lineBreakMode = .byTruncatingMiddle
-        let s = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13),
-                                                                       .foregroundColor: missing ? NSColor.secondaryLabelColor : NSColor.labelColor,
-                                                                       .paragraphStyle: p])
-        let caption = missing ? Loc.t("capture.project.missing_short", table: "Capture")
-                    : project == nil ? Loc.t("capture.note.unassigned_caption", table: "Capture") : nil
-        if let c = caption {
-            s.append(NSAttributedString(string: "  " + c, attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor]))
-        }
-        let trailing: CGFloat = checked ? 16 + 8 : 0
+        let s = text
         let h = s.size().height
-        s.draw(in: NSRect(x: x, y: body.midY - h / 2, width: bounds.width - x - i - trailing, height: h))
+        s.draw(in: NSRect(x: x, y: body.midY - h / 2, width: bounds.width - x - i - PickRow.trailing, height: h))
         if checked, let img = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 11, weight: .semibold).applying(.init(paletteColors: [BrandColor.ink]))) {
             img.draw(in: NSRect(x: bounds.width - i - 16 + (16 - img.size.width) / 2, y: body.midY - img.size.height / 2,

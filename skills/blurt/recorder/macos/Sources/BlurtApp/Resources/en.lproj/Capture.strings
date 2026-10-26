@@ -110,10 +110,6 @@
 "capture.note.keep_tip" = "Keep (⏎)";
 "capture.note.listening" = "Say it or type…";
 "capture.note.next" = "Next snap";
-"capture.note.no_mic" = "Mic unavailable · ⏎ save · Esc discard";
-"capture.note.mic_gone" = "Mic disconnected · type a note · ⏎ save";
-"capture.note.no_mic_done" = "Mic unavailable · ⏎ done";
-"capture.note.mic_gone_done" = "Mic disconnected · ⏎ done";
 "capture.note.paused" = "Paused · ⏎ save & resume · Esc resume";
 "capture.note.pen_hint" = "Drag to draw · ⇧ box · ⌥ ellipse";
 "capture.note.placeholder" = "Write a note";
@@ -121,10 +117,8 @@
 "capture.note.placeholder_shot" = "Add a line about this snap (optional)";
 "capture.note.play" = "Play the voice note";
 "capture.note.prev" = "Previous snap";
-"capture.note.recording_new" = "recording a new voice note…";
 "capture.note.rerecord" = "Record again";
 "capture.note.said" = "said %@";
-"capture.note.save_cancel" = "⏎ save · Esc cancel";
 "capture.note.saved" = "Saved";
 "capture.note.undo" = "Undo the last stroke (⌘Z)";
 "capture.note.done" = "Done";
@@ -137,10 +131,12 @@
 "capture.note.ph_mic_gone" = "Mic disconnected. Type a note";
 "capture.note.ph_no_mic" = "Mic unavailable. Type a note";
 "capture.note.st_pause" = "%@ · pause to finish";
-"capture.note.st_undo" = "⌘Z undo";
-"capture.note.st_esc_discard" = "Esc discards";
-"capture.note.st_esc_clear" = "Esc clears the text";
 "capture.note.st_pick" = "↑↓ choose · ↩ pick · Esc back";
+"capture.note.stage_hint" = "Drag to draw · ⇧ box · ⌥ ellipse · Esc discards";
+"capture.note.save" = "Save";
+"capture.note.save_tip" = "Save the note (⏎). Esc puts it back as it was.";
+"capture.note.record" = "Record a voice note";
+"capture.note.st_rerecord" = "%@ · recording again";
 "capture.peck.done_one" = "Done: %@";
 "capture.peck.verify_one" = "Ready to verify: %@";
 "capture.picker.cancel" = "Cancel";

@@ -7,9 +7,10 @@
 //    still at the end snaps a rough shape clean, ⌘Z takes the last stroke back. One markup colour, a soft shadow, the
 //    width of the display (InkStyle).
 //  • its edge (FrozenEdge): the picker's gradient line, now solid and closed — dashed while choosing, solid once frozen
-//    — over a dark keyline, the picture lifted off the dim on a soft shadow.
-//  • a faint one-line hint above the picture, "Drag to draw · ⇧ box · ⌥ ellipse", the first few times only
-//    (record.ink_hint_shown counts them; BlurtCore InkHint); it goes when the first stroke starts.
+//    — 2 pt between two 1 pt dark keylines, the picture lifted off the dim on a shadow you can see.
+//  • a faint one-line hint above the picture, "Drag to draw · ⇧ box · ⌥ ellipse · Esc discards", the first few times
+//    only (record.ink_hint_shown counts them; BlurtCore InkHint); it goes when the first stroke starts. It is the one
+//    place Esc is taught: the bubble's footer holds state only (the bin's tooltip names Esc too).
 //  • a click on the dimmed part outside the picture is "done" (the bubble saves); Esc and ⏎ are the bubble's.
 //  • the words of a spoken note are in ("Saved"): the dim lifts at once (`lift`) — only the picture and the bubble
 //    stay for the short correction window (v0.9-fix2: a 1 s sentence kept the whole screen dimmed for ~4 s).
@@ -53,30 +54,34 @@ final class StageView: NSView {
     override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
 }
 
-/// The frozen picture's edge (r1): committed, not being chosen. The picker's dashes say "still choosing"; once the
-/// picture freezes the same gradient line goes solid (dashed vs solid: the shape twin of chosen vs frozen), 1.5 pt
-/// just outside the picture, over a dark keyline so it reads on a dark title bar as on white, and the picture lifts
-/// off the dim on a soft shadow — a stage, not a cut-out. Corners are closed (one rectangle, no dash phase).
+/// The frozen picture's edge (r2): committed, not being chosen. The picker's dashes say "still choosing"; once the
+/// picture freezes the same gradient line goes solid (dashed vs solid: the shape twin of chosen vs frozen) — 2 pt,
+/// just outside the picture, between two 1 pt black 40 % keylines so it holds on a light title bar and on a dark
+/// desktop alike — and the picture lifts off the dim on a shadow you can see at a glance (black 55 %, 24 pt, 8 pt
+/// down). Corners are closed (one rectangle, no dash phase). (r1: 1.5 pt over one keyline and an 18 pt shadow — gone
+/// at a normal viewing size on a dark desktop.)
 final class FrozenEdge: NSView {
     private let lift = CALayer()
     private let keyline = CAShapeLayer()
     private let line = CAGradientLayer()
     private let mask = CAShapeLayer()
+    /// the band outside the picture: keyline 1 · gradient 2 · keyline 1
+    static let band: CGFloat = 4
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
         lift.shadowColor = NSColor.black.cgColor
-        lift.shadowOpacity = 0.45
-        lift.shadowRadius = 18
-        lift.shadowOffset = CGSize(width: 0, height: -6)
+        lift.shadowOpacity = 0.55
+        lift.shadowRadius = 24
+        lift.shadowOffset = CGSize(width: 0, height: -8)
         keyline.fillColor = nil
-        keyline.strokeColor = NSColor(white: 0, alpha: 0.35).cgColor
-        keyline.lineWidth = 1
+        keyline.strokeColor = NSColor(white: 0, alpha: 0.40).cgColor
+        keyline.lineWidth = FrozenEdge.band
         BrandGradient.layer(BrandGradient.linearStops, .diagonal, flipped: false, into: line)
         mask.fillColor = nil
         mask.strokeColor = NSColor.black.cgColor
-        mask.lineWidth = 1.5
+        mask.lineWidth = 2
         line.mask = mask
         for l in [lift, keyline, line] as [CALayer] { layer?.addSublayer(l) }
     }
@@ -90,14 +95,15 @@ final class FrozenEdge: NSView {
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         lift.frame = bounds
-        lift.shadowPath = CGPath(rect: sel, transform: nil)
+        lift.shadowPath = CGPath(rect: sel.insetBy(dx: -FrozenEdge.band, dy: -FrozenEdge.band), transform: nil)
         lift.isHidden = !lifted
-        let edge = sel.insetBy(dx: -0.75, dy: -0.75)              // the line's inner edge on the picture's edge
+        // both centred 2 pt out: the keyline's 4 pt band runs 0…4 pt from the picture, the gradient's 2 pt 1…3 pt
+        let mid = sel.insetBy(dx: -FrozenEdge.band / 2, dy: -FrozenEdge.band / 2)
         keyline.frame = bounds
-        keyline.path = CGPath(rect: sel.insetBy(dx: -2, dy: -2), transform: nil)
-        line.frame = sel.insetBy(dx: -3, dy: -3)
+        keyline.path = CGPath(rect: mid, transform: nil)
+        line.frame = sel.insetBy(dx: -FrozenEdge.band - 1, dy: -FrozenEdge.band - 1)
         mask.frame = line.bounds
-        mask.path = CGPath(rect: edge.offsetBy(dx: -line.frame.minX, dy: -line.frame.minY), transform: nil)
+        mask.path = CGPath(rect: mid.offsetBy(dx: -line.frame.minX, dy: -line.frame.minY), transform: nil)
     }
 
     func setLifted(_ on: Bool) { lift.isHidden = !on }
@@ -205,7 +211,7 @@ final class InkStage {
         hint.alphaValue = 1
         guard !hint.isHidden else { return }
         setRecordConfig("ink_hint_shown", shown + 1)
-        hintLabel.stringValue = Loc.t("capture.note.pen_hint", table: "Capture")
+        hintLabel.stringValue = Loc.t("capture.note.stage_hint", table: "Capture")
         hintLabel.sizeToFit()
         let w = hintLabel.frame.width + 24, h: CGFloat = 22
         hintLabel.frame.origin = NSPoint(x: 12, y: (h - hintLabel.frame.height) / 2)

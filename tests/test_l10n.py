@@ -268,16 +268,17 @@ class Tables(unittest.TestCase):
 
     def test_the_whole_source_scan_catches_a_key_held_in_a_variable(self):
         # the dogfood bug's shape: the key is chosen into a variable, and a table lacks it
-        src = {"NoteBubble.swift": 'let key = micGone ? (staged ? "capture.note.mic_gone_done" : "capture.note.mic_gone")\n'
-                                   '    : (staged ? "capture.note.no_mic_done" : "capture.note.no_mic")\n'
+        # (the keys are live ones: r2 of the note bubble put these states in its placeholder)
+        src = {"NoteBubble.swift": 'let key = micGone ? (busy ? "capture.note.ph_voice_busy" : "capture.note.ph_mic_gone")\n'
+                                   '    : (staged ? "capture.note.ph_no_mic" : "capture.note.placeholder_optional")\n'
                                    'status.stringValue = Loc.t(key, table: "Capture")\n'
                                    'let icon = NSImage(systemSymbolName: "list.bullet.rectangle", accessibilityDescription: nil)\n'
                                    'let id = "dictation.style"   // a settings id, not a key\n'}
         have = table_keys()
         self.assertEqual(unknown_keys(src, have), [])
         for lang in LANGS:
-            gone = {l: set(k) - ({"capture.note.no_mic_done"} if l == lang else set()) for l, k in have.items()}
-            self.assertEqual(unknown_keys(src, gone), [f"NoteBubble.swift: capture.note.no_mic_done ({lang})"])
+            gone = {l: set(k) - ({"capture.note.ph_no_mic"} if l == lang else set()) for l, k in have.items()}
+            self.assertEqual(unknown_keys(src, gone), [f"NoteBubble.swift: capture.note.ph_no_mic ({lang})"])
 
     def test_the_build_ships_the_tables(self):
         src = (ROOT / "skills" / "blurt" / "scripts" / "record.py").read_text()

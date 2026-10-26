@@ -362,6 +362,8 @@ extension App {
             NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5, mods: mods)
         case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
         case "notehover": NoteBubble.shared.testHover(arg != "off")                 // notehover [off]: the pointer on the bubble
+        case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
+        case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the words came in (Saved)
         case "notechip": NoteBubble.shared.testChip(arg)                            // notechip open|close|type T|down|up|return|pick ID|inbox
         case "stage":                                   // stage [click]: the in-place markup stage; click = outside the picture
             if arg == "click" { InkStage.shared.testClickOutside() }

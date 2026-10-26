@@ -83,7 +83,9 @@ final class BrandButton: NSButton {
         let fg: NSColor = isEnabled ? .white : .tertiaryLabelColor
         let p = NSMutableParagraphStyle()
         p.alignment = .center
-        let t = NSMutableAttributedString(string: title, attributes: [
+        // (`title` reads back the attributed title, key and all: a redraw — isEnabled flipping — never adds it twice)
+        let base = keyHint.map { k in title.hasSuffix("  " + k) ? String(title.dropLast(k.count + 2)) : title } ?? title
+        let t = NSMutableAttributedString(string: base, attributes: [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold), .foregroundColor: fg, .paragraphStyle: p])
         if let k = keyHint {
             t.append(NSAttributedString(string: "  " + k, attributes: [
