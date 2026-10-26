@@ -50,13 +50,27 @@ final class IslandLayoutTests: XCTestCase {
         XCTAssertEqual(IslandLayout.earOrigin(.right, width: 30, outer: 300, inner: nil), 256)
     }
 
-    /// "没听到内容" on a notched Mac: the content spans the whole shape and the line is centred in it.
-    func testAShortLineIsCentredInTheWholeShape() {
+    /// "没听到内容" on a notched Mac: the content spans the whole shape, and the line starts on the text column like
+    /// every other toast's (never centred: "Recording saved" looked different in its one- and two-line forms).
+    func testAShortLineStartsOnTheTextColumn() {
         let floor = IslandLayout.toastFloor(notchWidth: notch)
         XCTAssertEqual(floor, islandW)
-        let t = IslandLayout.toast(text: 70, lead: 0, button: nil, floor: floor, maxWidth: 480)
+        let t = IslandLayout.toast(text: 70, button: nil, floor: floor, maxWidth: 480)
         XCTAssertEqual(t.width, islandW, "the content box is the shape, not a narrower box centred in it")
-        XCTAssertEqual(t.leadX + t.textWidth / 2, islandW / 2, accuracy: 0.5)
+        XCTAssertEqual(t.leadX, IslandLayout.toastInset)
+        XCTAssertEqual(t.leadX + (IslandLayout.textColumn - IslandLayout.toastInset), IslandLayout.textColumn)
+        let long = IslandLayout.toast(text: 200, button: nil, floor: floor, maxWidth: 480)
+        XCTAssertEqual(long.leadX, t.leadX, "one leading edge for every length")
+    }
+
+    /// "✓ Sent" in the right ear: the left ear keeps its own 56 pt (the keyboard doesn't drift 13 pt out), and the
+    /// shape moves right by half the difference so the notch stays covered.
+    func testEachEarIsAsWideAsItsOwnContent() {
+        let l = IslandLayout.earNeed(content: 20, shown: true), r = IslandLayout.earNeed(content: 70, shown: true)
+        XCTAssertEqual(l, IslandLayout.earWidth)
+        XCTAssertEqual(r, 70 + IslandLayout.earInset + 2)
+        XCTAssertEqual(IslandLayout.earShift(left: l, right: r), (r - l) / 2)
+        XCTAssertEqual(IslandLayout.earNeed(content: 20, shown: false), 0)
     }
 
     /// "这条像清单 [排成清单]": text at 18 pt, the button's right edge 14 pt in (under the right ear's number).

@@ -588,6 +588,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process(dir, project: project?.id)
             // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
             Refile.offerRecording(dir, project: project?.id)
+        } else if island.started {
+            island.doneMoment(T("app.ear.saved", Island.clock(dur)), lead: .record, toast: T("app.toast.saved", Island.clock(dur)))
         } else {
             toast(T("app.toast.saved", Island.clock(dur)), icon: .check)
         }
@@ -718,10 +720,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let why = App.failureReason(event)
         let line = video.map { T("app.record.partial_title") + "\n" + why + " · " + T("app.record.partial_kept", Island.clock($0)) }
             ?? T("app.record.not_saved_title") + "\n" + why + " · " + TP("app.record.kept", stills)
-        var t = Island.Toast(text: line,
-                             actionTitle: T("app.record.organize")) { [weak self] in
-            self?.process(dir, project: project?.id)
-        }
+        // what the user wants next: the part that was kept — the video's start goes to be organized; a take with only
+        // its snaps shows them (not "Organize" right after "not saved")
+        var t = video != nil
+            ? Island.Toast(text: line, actionTitle: T("app.record.organize")) { [weak self] in self?.process(dir, project: project?.id) }
+            : Island.Toast(text: line, actionTitle: TP("app.record.show_snaps", stills)) {
+                AppEnvironment.mainWindow?.reveal(session: dir)
+            }
         t.icon = .warning
         t.seconds = 12
         island.toast(t)

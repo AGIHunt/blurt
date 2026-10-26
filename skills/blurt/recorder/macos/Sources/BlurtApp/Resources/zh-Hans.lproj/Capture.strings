@@ -327,7 +327,10 @@
 "capture.keys.none" = "未设置";
 "capture.keys.swap.ask_outcome" = "与「%1$@」互换？它改用 %2$@。";
 "capture.keys.move.ask_outcome" = "把 %1$@ 从「%2$@」移过来？它将没有快捷键。";
-"capture.drawer.type_to_filter" = "输入名称筛选";
+"capture.drawer.type_to_filter" = "筛选项目";
 "capture.peck.state_done" = "已完成";
 "capture.peck.state_verify" = "已修好 · 待验证";
 "capture.peck.open_inbox" = "点按查看";
+"capture.island.no_project" = "无项目";
+"capture.drawer.add_project" = "添加项目…";
+"capture.peck.open" = "打开";

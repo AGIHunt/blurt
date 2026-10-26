@@ -1,7 +1,9 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
-// bars when paused), counts with one of our line glyphs (the cards' stack with its count in mint, the cards' clasp
-// colour; the stills' snap frame, the markers' flag), "+3" with the inbox's tray for a few seconds when new captures
-// land (news, never a standing backlog: the menu bar and the open island keep the count), the mic level, a voice waveform, the hatching
+// bars when paused), counts with one of our line glyphs (every count one way: the glyph at 60 %, white digits — the
+// cards' stack, the stills' snap frame, the markers' flag), "+3" with the inbox's tray for a few seconds when new captures
+// land (news, never a standing backlog: the menu bar and the open island keep the count). A standing thing alone is
+// told across the notch, as a live activity is: its glyph on the left, its value on the right (`mark` | `text`). The
+// launch hello (the chick hops in the right ear, then goes), the mic level, a voice waveform, the hatching
 // egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out — Icons/Mascot.swift),
 // an alert marker, "Sent" with the ok check. Every glyph in the ears is the BlurtIcon line family at one weight —
 // the dogfood found filled SF Symbols (tray.full.fill, rectangle.stack.fill, camera.fill) opposite dictation's line
@@ -49,10 +51,12 @@ final class EarSlot {
         case recording(paused: Bool, time: String)
         /// a count with one of our line glyphs; `tint` colours both (a quieter count: white at 60 %)
         case count(icon: BlurtIcon, n: Int, tint: NSColor?)
-        /// the hanging cards waiting (the left ear): the cards glyph and its count in mint (the cards' clasp colour),
-        /// so it never reads like the inbox's tray count beside it (white at 60 %) — a mint dot on the glyph's top edge
-        /// read as a jar's lid at 11 pt
+        /// the hanging cards waiting (the left ear): the cards glyph at 60 % and its count in white, as every count
         case cards(Int)
+        /// a count's glyph alone (60 %): the leading half of a thing told across the notch (its value in the other ear)
+        case mark(BlurtIcon)
+        /// the launch hello: the chick (no sound arcs) hops in the ear, then goes (Island.hello)
+        case hello
         case level(Float)
         case wave([Float])
         /// `attn`: in the attention colour (dictation's clock counting down to the 5-minute limit)
@@ -78,7 +82,8 @@ final class EarSlot {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
                  (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
-                 (.done, .done), (.news, .news): return true
+                 (.done, .done), (.news, .news), (.hello, .hello): return true
+            case (.mark(let a), .mark(let b)): return a == b
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
             default: return false
@@ -109,6 +114,10 @@ final class EarSlot {
     static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     /// A count's glyph (cards, tray, snap, flag): 13 pt, the family's floor (docs/design/system.md §2.6).
     static let countGlyph: CGFloat = 13
+    /// Every count's glyph is this quiet, its digits white: two counts of the same kind never differ in colour.
+    static let countGlyphColor = NSColor(white: 1, alpha: 0.6)
+    /// The launch hello: the chick's hops, then it goes.
+    static let helloSeconds: Double = 1.2
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
                                                 "hidden": NSNull(), "opacity": NSNull(), "frame": NSNull(), "path": NSNull(),
                                                 "transform": NSNull(), "backgroundColor": NSNull(), "foregroundColor": NSNull(),
@@ -143,6 +152,7 @@ final class EarSlot {
         case .recording(let p, _): return !p && !reduceMotion
         case .wave, .level: return true
         case .egg: return false            // the mascot runs its own timer
+        case .hello: return CACurrentMediaTime() - since < EarSlot.helloSeconds + 0.1
         case .cracking(let s, _, _): return CACurrentMediaTime() - s < EarSlot.hatchSeconds + 0.3
         case .alert: return CACurrentMediaTime() - pulseAt < 1
         case .dictation, .dots: return true
@@ -167,9 +177,10 @@ final class EarSlot {
         dot.cornerRadius = 4
         dot.borderWidth = 0
         switch c {
-        case .egg, .cracking: break
+        case .egg, .cracking, .hello: break
         default: chick.stop(); chick.isHidden = true; chick.contents = nil
         }
+        chick.quiet = c == .hello
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {
             guard let line = TextImage.line(s, font: EarSlot.font, color: color.cgColor, scale: 2) else {
@@ -185,7 +196,9 @@ final class EarSlot {
         // dictation's glyphs: mint while blurt works for you (transcribing, polishing: they pulse); white while it
         // listens — the gradient bars beside it are the one brand mark then — and quiet once it has stopped (Sent)
         func glyph(_ ic: BlurtIcon, _ size: CGFloat, color: NSColor = BrandColor.Island.fill) {
-            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.1)
+            // (record: the island's ring and dot at one stroke, as on its home)
+            icon.contents = ic == .record ? IslandGlyph.record.cgImage(size: size, color: color.cgColor, weight: 1.1)
+                : ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.1)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
             x += size + 3
@@ -214,11 +227,18 @@ final class EarSlot {
             x = 13
             text(time, color: paused ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.95))
         case .count(let ic, let n, let tint):
-            line(ic, color: tint ?? NSColor(white: 1, alpha: 0.85))
+            line(ic, color: tint ?? EarSlot.countGlyphColor)
             text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
         case .cards(let n):
-            line(.cards, color: NSColor(white: 1, alpha: 0.85))
-            text(Loc.number(n), color: BrandColor.Island.fill)
+            line(.cards, color: EarSlot.countGlyphColor)
+            text(Loc.number(n))
+        case .mark(let ic):
+            line(ic, color: EarSlot.countGlyphColor)
+            x -= 3
+        case .hello:
+            placeChick()
+            if chick.clip != .happy || !chick.isPlaying { chick.play(.happy) }
+            x = EarSlot.chickSize - 2
         case .level(let v):
             drawLevel(v)
             x = 22
@@ -267,7 +287,7 @@ final class EarSlot {
             x = 15
             text(s)
         case .news(let n):
-            line(.inbox, color: NSColor(white: 1, alpha: 0.6))
+            line(.inbox, color: EarSlot.countGlyphColor)
             text("+" + Loc.number(n), color: NSColor(white: 1, alpha: 0.92))
         }
         width = x
@@ -375,6 +395,11 @@ final class EarSlot {
             dot.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
         case .glyph(_, let pulse):
             icon.opacity = pulse && !reduce ? Float(0.5 + 0.5 * (0.5 + 0.5 * cos(t * 2 * .pi * 0.9))) : 1
+        case .hello:
+            // in for the hops, then away: it fades and slips 6 pt out (Reduce Motion: the still chick, then a fade)
+            let k = CGFloat(max(0, min(1, (t - (EarSlot.helloSeconds - 0.3)) / 0.3)))
+            chick.opacity = Float(1 - k)
+            chick.setAffineTransform(reduce ? .identity : CGAffineTransform(translationX: 6 * Ease.outCubic(k), y: 0))
         case .dots:
             drawDots(t: t)
         default: break
@@ -383,6 +408,7 @@ final class EarSlot {
 
     private func placeChick() {
         let z = EarSlot.chickSize
+        chick.setAffineTransform(.identity)
         chick.frame = CGRect(x: -2, y: -z / 2 - 1, width: z, height: z)
         chick.isHidden = false
         chick.opacity = 1

@@ -277,7 +277,7 @@
 "capture.keys.undo_set" = "Change Shortcut";
 "capture.voice.hint_key" = "%@ to finish";
 "capture.voice.hint_done" = "Click Done to finish";
-"capture.voice.esc_hint" = "Esc discard";
+"capture.voice.esc_hint" = "Esc to discard";
 "capture.voice.done" = "Done";
 "capture.voice.done_tip" = "Finish the voice note";
 "capture.voice.sound_settings" = "Sound Settings";
@@ -327,7 +327,10 @@
 "capture.keys.none" = "Not set";
 "capture.keys.swap.ask_outcome" = "Swap with %1$@? It gets %2$@.";
 "capture.keys.move.ask_outcome" = "Take %1$@ from %2$@? It’s left without one.";
-"capture.drawer.type_to_filter" = "Type to filter";
+"capture.drawer.type_to_filter" = "Filter projects";
 "capture.peck.state_done" = "Done";
-"capture.peck.state_verify" = "Fixed · ready to verify";
+"capture.peck.state_verify" = "Fixed · check it";
 "capture.peck.open_inbox" = "Click to see them";
+"capture.island.no_project" = "No project";
+"capture.drawer.add_project" = "Add Project…";
+"capture.peck.open" = "Open";

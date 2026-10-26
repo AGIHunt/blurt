@@ -481,9 +481,9 @@
 "dictation.toast.still_listening" = "Still listening · %@ to finish · Esc to cancel";
 "dictation.toast.no_model" = "No speech model yet (%@)";
 "dictation.toast.no_model.get" = "Download…";
-"dictation.toast.no_model.kept" = "No speech model yet · the recording is kept";
-"dictation.toast.no_vad" = "The speech detection file is missing (under 1 MB)";
-"dictation.toast.no_vad.kept" = "Speech detection file missing · the recording is kept";
+"dictation.toast.no_model.kept" = "Speech model not installed · recording kept";
+"dictation.toast.no_vad" = "Speech model not installed";
+"dictation.toast.no_vad.kept" = "Speech model not installed · recording kept";
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
 "dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
 "dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
@@ -607,3 +607,4 @@
 "dictation.lab.detail.pieces" = "Pieces";
 "dictation.lab.result" = "Result";
 "dictation.lab.metric.exact" = "Exact";
+"dictation.toast.no_model.action_size" = "Download (%@)";

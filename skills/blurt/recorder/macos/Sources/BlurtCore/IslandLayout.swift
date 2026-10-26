@@ -9,11 +9,17 @@
 //    island's rounded corner while the clock beside it kept 14. The other ear's content stays where it was
 //    (IslandLayout.earReach: measured from the notch by its own need), the extra black outside it — a glyph never
 //    jumps because the ear across the notch grew.
+//  • one grid for the open island (v0.9-island r2): every leading glyph — a row's icon, the project chip's, a toast's
+//    status mark — is centred on `iconColumn` (26 pt in), and every line of text starts on `textColumn` (42 pt in),
+//    so a row, the chip and a toast line up whatever they say.
 //  • a toast (IslandLayout.toast): its content box is never narrower than the shape it shows in (the notch plus both
-//    ears, or 260 pt on a capsule), so the text starts 18 pt in — the island rows' side inset — and an action button
-//    ends `earInset` from the right edge, under the right ear's number; a line with nothing beside it is centred.
+//    ears, or 260 pt on a capsule); the mark in the leading slot, the text on the text column, and an action button
+//    ending `earInset` from the right edge, under the right ear's number. Nothing is centred: like a list row, a
+//    toast's line starts at the same x every time.
 //    A line too long for the open width wraps — up to three lines (`wraps`, `toastLines`, `toastHeight`) — instead of
 //    ending in "…" mid-word: the lines that explain a failure are the long ones.
+//  • the ears (IslandLayout.earNeed): each side as wide as its own content needs — a "✓ Sent" in the right ear never
+//    widens the left one, whose keyboard keeps its place and its 56 pt.
 //  • time left (IslandLayout.timeLeft): rounded up, so the clock and the time left always add up to the limit.
 //  • the live-text panel (IslandLayout.livePanelWidth): the island's lower half, not a second pop-up — as wide as
 //    the island when it is open (a voice note), else a little wider than its ears, in one width family; the width
@@ -39,6 +45,11 @@ public enum IslandLayout {
     public static let toastInset: CGFloat = 18
     /// A toast on a capsule (no notch) is at least this wide.
     public static let capsuleToastWidth: CGFloat = 260
+    /// The open island's one icon column (the centre of every leading glyph) and text column.
+    public static let iconColumn: CGFloat = 26
+    public static let textColumn: CGFloat = 42
+    /// The open voice / recording body's side edges: the ears' content lines up with them while it is open.
+    public static let bodyInset: CGFloat = 18
 
     public enum Side { case left, right }
 
@@ -63,6 +74,13 @@ public enum IslandLayout {
     public static func earSpan(left: CGFloat, right: CGFloat) -> CGFloat {
         max(earWidth(content: left), earWidth(content: right))
     }
+
+    /// One ear's width beside the notch: 0 when it says nothing, else what its own content needs (the other side's
+    /// content never widens it).
+    public static func earNeed(content width: CGFloat, shown: Bool) -> CGFloat { shown ? earWidth(content: width) : 0 }
+
+    /// The shape's centre offset from the notch's with ears `left` and `right` wide (each side its own).
+    public static func earShift(left: CGFloat, right: CGFloat) -> CGFloat { (right - left) / 2 }
 
     /// How far from the notch an ear's content measures its outer edge, while the shape's ear is `shape` wide (as it
     /// springs): its own need (`earWidth(content:)`), never more — so when the *other* ear widens ("✓ Sent", a clock
@@ -102,16 +120,15 @@ public enum IslandLayout {
         return min(toastMaxLines, max(1, Int(((wrapped - line) / toastLineHeight).rounded()) + 1))
     }
 
-    /// `lead`: the width of what goes before the text (the chick's art, an icon, a key badge, with their gaps);
-    /// `art`: the lead is the mascot (drawn from the left edge, so the line is never centred).
-    public static func toast(text: CGFloat, lead: CGFloat, art: Bool = false, button: CGFloat?, floor: CGFloat,
-                             maxWidth: CGFloat, buttonGap: CGFloat = 10) -> Toast {
+    /// `lead`: the leading slot's width (from `leadX` to the text); `art`: the slot holds the mascot (drawn from the
+    /// left edge). Every toast has its slot filled — a status mark, the spinner, the chick — and nothing is centred:
+    /// the text starts at `leadX + lead` whatever its length.
+    public static func toast(text: CGFloat, lead: CGFloat = textColumn - toastInset, art: Bool = false, button: CGFloat?,
+                             floor: CGFloat, maxWidth: CGFloat, buttonGap: CGFloat = 10) -> Toast {
         let right = button.map { earInset + $0 + buttonGap } ?? toastInset
-        let start = art ? 0 : toastInset
-        let want = start + lead + text + right
+        let leadX = art ? 0 : toastInset
+        let want = leadX + lead + text + right
         let width = min(maxWidth, max(floor, want))
-        var leadX = start
-        if button == nil, !art { leadX = max(toastInset, ((width - lead - text) / 2).rounded()) }    // nothing beside it: centred
         let room = max(0, width - leadX - lead - right)
         return Toast(width: width, leadX: leadX, textWidth: min(text, room), buttonX: button.map { width - earInset - $0 },
                      wraps: text > room + 0.5)

@@ -51,7 +51,7 @@ final class MascotLibrary {
     /// room on every side, as a fraction of `points` (the image grows, the chick keeps its size), for the moments that
     /// reach past the square (a landing squash, the flying egg cap, the pounce).
     func image(_ c: MascotClip, at time: Double? = nil, points: CGFloat, scale: CGFloat = 2, dark: Bool = false,
-               backdrop: CGColor? = nil, sticker: Bool = false, bleed: CGFloat = 0) -> CGImage? {
+               backdrop: CGColor? = nil, sticker: Bool = false, bleed: CGFloat = 0, quiet: Bool = false) -> CGImage? {
         let px = Int((points * scale).rounded()), pad = Int((points * scale * bleed).rounded())
         guard px > 0, let ctx = CGContext(data: nil, width: px + 2 * pad, height: px + 2 * pad, bitsPerComponent: 8, bytesPerRow: 0,
                                           space: CGColorSpace(name: CGColorSpace.sRGB)!,
@@ -59,8 +59,9 @@ final class MascotLibrary {
         if let b = backdrop { ctx.setFillColor(b); ctx.fill(CGRect(x: 0, y: 0, width: px + 2 * pad, height: px + 2 * pad)) }
         var style = MascotStyle.forSize(points, dark: dark, scale: scale)
         style.sticker = sticker
-        MascotArt.draw(ctx, in: CGRect(x: pad, y: pad, width: px, height: px),
-                       pose: MascotArt.pose(c, at: time ?? MascotArt.timing(c).still), style: style)
+        var pose = MascotArt.pose(c, at: time ?? MascotArt.timing(c).still)
+        if quiet { pose.arcs = [0, 0] }        // no sound arcs: they say "listening", and this chick isn't
+        MascotArt.draw(ctx, in: CGRect(x: pad, y: pad, width: px, height: px), pose: pose, style: style)
         return ctx.makeImage()
     }
 
@@ -102,6 +103,8 @@ final class MascotLayer: CALayer {
     /// Set by MascotView from its effective appearance, for `.auto`.
     var appearsDark: Bool? { didSet { if oldValue != appearsDark { redraw() } } }
     var isPlaying: Bool { MascotDriver.shared.has(self) }
+    /// Without the sound arcs (they are the listening sign): the island's done / to-verify chick, the launch hello.
+    var quiet = false { didSet { if oldValue != quiet { redraw() } } }
 
     override init() {
         super.init()
@@ -178,7 +181,7 @@ final class MascotLayer: CALayer {
         guard let c = clip, bounds.width >= 1 else { return }
         let side = min(bounds.width, bounds.height)
         let b = Self.bleed
-        let img = MascotLibrary.shared.image(c, at: shown, points: side, scale: max(1, contentsScale), dark: dark, bleed: b)
+        let img = MascotLibrary.shared.image(c, at: shown, points: side, scale: max(1, contentsScale), dark: dark, bleed: b, quiet: quiet)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         art.contentsScale = contentsScale

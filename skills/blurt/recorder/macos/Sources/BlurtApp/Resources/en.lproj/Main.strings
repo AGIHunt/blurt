@@ -58,7 +58,7 @@
 "app.record.failed.writer" = "Writing the video file failed partway, so nothing from this take was kept. Recording again usually works; the exact error is in the log.";
 "app.record.reason.display_gone" = "The recorded display was disconnected";
 "app.record.reason.interrupted" = "Sleep or the lock screen stopped the recording";
-"app.record.reason.writer" = "Writing the video file failed";
+"app.record.reason.writer" = "Couldn’t write the video file";
 "app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
 "app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
 "app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
@@ -712,3 +712,4 @@
 "app.record.not_saved_title" = "Recording not saved";
 "app.record.partial_title" = "Recording stopped early";
 "app.record.partial_kept" = "the first %@ is kept";
+"app.ear.saved" = "Saved %@";

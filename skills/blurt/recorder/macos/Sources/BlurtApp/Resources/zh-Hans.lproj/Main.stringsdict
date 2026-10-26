@@ -251,7 +251,21 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 张截图留着</string>
+			<string>%ld 张截图已保留</string>
+		</dict>
+	</dict>
+	<key>app.record.show_snaps</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>other</key>
+			<string>查看截图</string>
 		</dict>
 	</dict>
 	<key>main.dictation.words_count</key>
