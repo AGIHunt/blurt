@@ -623,19 +623,33 @@ struct SettingRow<Control: View>: View {
     }
 }
 
-/// ⓘ after a row's title: the longer explanation in a popover (a click, or Space when it has the focus), so the row
-/// keeps its one-line description.
+/// ⓘ after a row's title (or after a list row's state): the longer explanation in a popover — on hover (a short pause,
+/// gone when the pointer leaves), a click, or Space when it has the focus — so the row keeps to one line.
 struct InfoButton: View {
     var title: String
     var text: String
     @State private var shown = false
+    @State private var hoverWork: DispatchWorkItem?
+    /// shown by hovering (closes when the pointer leaves), not by a click (stays until dismissed)
+    @State private var byHover = false
     var body: some View {
-        Button { shown.toggle() } label: {
+        Button { hoverWork?.cancel(); byHover = false; shown.toggle() } label: {
             Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
-        .help(T("settings.kit.more_info"))
         .accessibilityLabel(T("settings.kit.more_info"))
+        .onHover { inside in
+            hoverWork?.cancel()
+            if inside {
+                guard !shown else { return }
+                let w = DispatchWorkItem { byHover = true; shown = true }
+                hoverWork = w
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: w)
+            } else if byHover {
+                shown = false
+                byHover = false
+            }
+        }
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .semibold))

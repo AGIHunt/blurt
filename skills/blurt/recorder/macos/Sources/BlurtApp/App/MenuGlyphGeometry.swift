@@ -5,12 +5,14 @@
 import CoreGraphics
 
 extension MenuGlyph {
-    static let arcCentre = CGPoint(x: 15.6, y: 7)
+    static let arcCentre = CGPoint(x: 15.906, y: 7.255)
     /// Inner, then outer.
     static let arcs: [(r: CGFloat, from: CGFloat, to: CGFloat)] = [(r: 3.1, from: -60, to: 30), (r: 6, from: -56, to: 26)]
     static let arcLine: CGFloat = 2
     /// Where the outer arc's line ends on the right, in pt from the box's left edge.
-    static let arcsRight: CGFloat = 22.601
+    static let arcsRight: CGFloat = 22.907
     /// The chick's foot, in pt from the box's top.
     static let foot: CGFloat = 17
+    /// The chick's ink (wings and tuft included), in the box's points: the hop and the crouch keep it inside the frame.
+    static let ink = CGRect(x: 0.4, y: 0.758, width: 17.2, height: 16.242)
 }

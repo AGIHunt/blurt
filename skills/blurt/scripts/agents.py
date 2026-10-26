@@ -116,9 +116,14 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
         except ValueError:
             pass
     home = home or Path.home()
+    env = os.environ if env is None else env
+
+    def at(f: str) -> Path:  # ${VAR:-default} first (grok: ${GROK_HOME:-~/.grok}), then ~/ against `home`
+        f = _subst(f, env)
+        return home / f[2:] if f.startswith("~/") else Path(os.path.expanduser(f))
     cj = st.get("creds_json")
     if isinstance(cj, dict) and cj.get("path"):
-        f = home / cj["path"][2:] if cj["path"].startswith("~/") else Path(cj["path"])
+        f = at(cj["path"])
         try:
             creds = json.loads(f.read_text(encoding="utf-8"))
             if isinstance(creds, dict) and not any(creds.get(k) for k in cj.get("keys", [])):
@@ -131,10 +136,9 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
         return "ready"
     if st.get("configured_if") and re.search(st["configured_if"], text or "", re.I):
         return "configured"
-    env = os.environ if env is None else env
     if any(env.get(k) for k in st.get("env_any", [])):
         return "configured"
-    if any((home / f[2:] if f.startswith("~/") else Path(f)).exists() for f in st.get("files_any", [])):
+    if any(at(f).exists() for f in st.get("files_any", [])):
         return "configured"
     if st.get("otherwise") == "logged_out" and (code is not None or "args" not in st):
         return "logged_out"
@@ -239,15 +243,17 @@ def config(repo: str | Path | None = None) -> dict:
     return cfg
 
 
-def expand(path: str, env: dict | None = None) -> Path:
-    """~ and ${VAR:-default} / $VAR."""
-    env = os.environ if env is None else env
-
+def _subst(path: str, env: dict) -> str:
+    """${VAR:-default} / $VAR, leaving ~ alone."""
     def sub(m):
         name, default = m.group(1) or m.group(3), m.group(2)
         return env.get(name) or (default if default is not None else "")
-    s = re.sub(r"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)", sub, path)
-    return Path(os.path.expanduser(s))
+    return re.sub(r"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)", sub, path)
+
+
+def expand(path: str, env: dict | None = None) -> Path:
+    """~ and ${VAR:-default} / $VAR."""
+    return Path(os.path.expanduser(_subst(path, os.environ if env is None else env)))
 
 
 def sandbox_uv_cache() -> Path:
@@ -471,24 +477,29 @@ _CHEAP = re.compile(r"\b(affordable|cheap|cheapest|fast|efficient|mini|nano|smal
 
 
 def _toml_top(path: Path, key: str) -> str | None:
-    """A top-level string setting of a TOML file (before the first [table]) — enough for `model = "…"`."""
+    """A string setting of a TOML file — enough for codex's top-level `model = "…"` and grok's models.default (a dotted
+    key: `default = "…"` under `[models]`, or `models.default = "…"` at the top)."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
         return None
+    table, _, name = key.rpartition(".")
+    current = ""
     for ln in text.splitlines():
         s = ln.strip()
         if s.startswith("["):
-            break
-        m = re.match(rf'{re.escape(key)}\s*=\s*"([^"]*)"', s)
-        if m:
-            return m.group(1)
+            current = s.strip("[] ")
+            continue
+        for want, k in ((table, name), ("", key)):
+            m = re.match(rf'{re.escape(k)}\s*=\s*"([^"]*)"', s) if current == want else None
+            if m:
+                return m.group(1)
     return None
 
 
 def models(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict:
     """The models an agent's CLI offers, best first: a fixed list in agents.json (Claude Code's aliases) or the CLI's
-    own model cache (Codex: models_cache.json, models it shows in its picker). cli_default = the model the CLI uses
+    own model cache (Codex, Grok: models_cache.json, the models it shows in its picker). cli_default = the model the CLI uses
     when none is passed (its config), when it can be read. Spends nothing: no network, no agent run.
     → {"id", "models": [{id, name, description, cheap}], "cheapest": id|None, "cli_default", "efforts": [...]}"""
     d = definitions(cfg if cfg is not None else config()).get(agent)
@@ -507,14 +518,24 @@ def models(agent: str, cfg: dict | None = None, env: dict | None = None) -> dict
             raw = json.loads(expand(spec["cache"], env).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             raw = {}
-        listed = [m for m in (raw.get("models") if isinstance(raw, dict) else None) or []
-                  if isinstance(m, dict) and m.get("slug") and m.get("visibility", "list") == "list"]
-        listed.sort(key=lambda m: m.get("priority") if isinstance(m.get("priority"), (int, float)) else 999)
-        for m in listed:
-            desc = str(m.get("description") or "")
-            rows.append({"id": m["slug"], "name": m.get("display_name") or m["slug"], "description": desc,
-                         "cheap": bool(_CHEAP.search(desc))})
-    cli_default = _toml_top(expand(spec["config"], env), "model") if spec.get("config") else None
+        found = raw.get("models") if isinstance(raw, dict) else None
+        if spec.get("format") == "grok" and isinstance(found, dict):
+            # grok: {id: {"info": {name, description, hidden}}} in its picker's order; none counts as cheap (its fast
+            # model costs more), so "cheapest" falls back to the CLI's own default
+            for mid, m in found.items():
+                info = m.get("info") if isinstance(m, dict) else None
+                if isinstance(info, dict) and not info.get("hidden"):
+                    rows.append({"id": info.get("id") or mid, "name": info.get("name") or mid,
+                                 "description": str(info.get("description") or ""), "cheap": False})
+        else:
+            listed = [m for m in (found if isinstance(found, list) else [])
+                      if isinstance(m, dict) and m.get("slug") and m.get("visibility", "list") == "list"]
+            listed.sort(key=lambda m: m.get("priority") if isinstance(m.get("priority"), (int, float)) else 999)
+            for m in listed:
+                desc = str(m.get("description") or "")
+                rows.append({"id": m["slug"], "name": m.get("display_name") or m["slug"], "description": desc,
+                             "cheap": bool(_CHEAP.search(desc))})
+    cli_default = _toml_top(expand(spec["config"], env), spec.get("config_key") or "model") if spec.get("config") else None
     efforts = list(EFFORTS) if (d.get("model_args") or {}).get("effort") else []
     return {"id": agent, "models": rows, "cheapest": next((m["id"] for m in rows if m["cheap"]), None),
             "cli_default": cli_default, "efforts": efforts}

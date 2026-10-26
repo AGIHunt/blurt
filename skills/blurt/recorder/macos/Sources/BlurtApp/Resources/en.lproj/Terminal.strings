@@ -198,6 +198,10 @@
 "agents.state.ready" = "Signed in";
 "agents.state.not_installed" = "Not installed";
 "agents.state.manual" = "Installed · import blurt in its settings";
+"agents.state.installed" = "Installed";
+"agents.state.unchecked" = "Can’t check sign-in";
+"agents.state.unchecked.help" = "Blurt can’t ask it whether it’s signed in without spending tokens. You’ll find out the first time it organizes something: if it isn’t, Blurt moves on to the next agent and says so here.";
+"agents.state.manual.help" = "It’s an app of its own, so Blurt doesn’t hand work to it by itself. Import blurt in its Settings → Skills / MCP, or click Connect… to see what that takes.";
 "agents.manual.header" = "Other agent apps";
 "agents.manual.footer" = "Blurt can’t run these. Copy Instruction hands items to them.";
 "agents.sessions.header" = "Sessions";
@@ -346,7 +350,6 @@
 /* Settings → Agents (v0.9 redesign) */
 "agents.lead" = "Blurt uses the first agent that works, from the top.";
 "agents.in_use" = "In use";
-"agents.state.off" = "Off";
 "agents.state.skipped" = "skipped";
 "agents.use" = "Use %@";
 "agents.use.on.help" = "On: Blurt tries it in this order";

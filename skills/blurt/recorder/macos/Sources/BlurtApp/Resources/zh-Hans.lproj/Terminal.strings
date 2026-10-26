@@ -198,6 +198,10 @@
 "agents.state.ready" = "已登录";
 "agents.state.not_installed" = "未安装";
 "agents.state.manual" = "已安装 · 在它的设置里导入 blurt";
+"agents.state.installed" = "已安装";
+"agents.state.unchecked" = "无法确认登录";
+"agents.state.unchecked.help" = "不花 token 就问不到它有没有登录。第一次用它整理时就知道了：没登录的话，口喷鸡会换下一个 Agent，并在这里提示。";
+"agents.state.manual.help" = "它是一个单独的 App，口喷鸡不会自动把活交给它。在它的设置 → Skills / MCP 里导入 blurt，或者点「连接…」看要做什么。";
 "agents.manual.header" = "其他 Agent 应用";
 "agents.manual.footer" = "口喷鸡不能直接运行它们，用「复制指令」把条目交给它们。";
 "agents.sessions.header" = "会话";
@@ -346,7 +350,6 @@
 /* Settings → Agents (v0.9 redesign) */
 "agents.lead" = "口喷鸡从上往下，用第一个能用的 Agent。";
 "agents.in_use" = "正在用";
-"agents.state.off" = "已关闭";
 "agents.state.skipped" = "已跳过";
 "agents.use" = "使用 %@";
 "agents.use.on.help" = "开启：口喷鸡按顺序尝试它";

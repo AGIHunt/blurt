@@ -80,10 +80,46 @@ public enum FnUsage: Int, Equatable {
 }
 
 public enum HelperDock {
-    public enum Side: String { case right, left, inside, free }
+    public enum Side: String { case below, right, left, inside, free }
 
-    /// Where the helper panel goes (Cocoa coordinates, y up). `target` = the System Settings window, `screen` = the
-    /// visible frame of the screen it is on (or the main screen when there is no window).
+    /// The card's width docked beside the window (or with no window), and its range docked under the list.
+    public static let sideWidth: CGFloat = 340
+    public static let belowWidth: ClosedRange<CGFloat> = 340...460
+    /// System Settings' sidebar, as a share of its window and in pt: the list is the column right of it.
+    static let sidebarShare: CGFloat = 0.31
+    static let sidebarWidth: ClosedRange<CGFloat> = 190...260
+    /// The list's own inset in its column (the rows start this far in).
+    static let listInset: CGFloat = 20
+
+    /// The column that holds the permission's list: the window right of its sidebar (Cocoa or CG; only x and width).
+    public static func listColumn(_ t: CGRect) -> CGRect {
+        let sidebar = min(max(t.width * sidebarShare, sidebarWidth.lowerBound), sidebarWidth.upperBound)
+        return CGRect(x: t.minX + sidebar, y: t.minY, width: max(t.width - sidebar, 0), height: t.height)
+    }
+
+    /// The helper panel's frame (Cocoa coordinates, y up) for a card of `height` (the window's height: the card and
+    /// the notch's room above it when docked below). Under the System Settings window first — as wide as its list less
+    /// the list's insets and centred on it, so the card lines up with the list it points at, the notch's tip 2 pt under
+    /// the window — when there is room on that screen; else beside the window (`place`). `notch` = the room the window
+    /// keeps on each side of the card for the notch.
+    public static func dock(height: CGFloat, target: CGRect?, screen: CGRect, notch: CGFloat = 8) -> (frame: CGRect, side: Side) {
+        if let t = target, t.width > 40, t.height > 40 {
+            let list = listColumn(t)
+            let card = min(max(list.width - 2 * listInset, belowWidth.lowerBound), belowWidth.upperBound)
+            let w = card + 2 * notch
+            let y = t.minY - 2 - height
+            if y >= screen.minY + 4 {
+                let x = min(max(list.midX - w / 2, screen.minX + 4), screen.maxX - w - 4)
+                return (CGRect(x: x, y: y, width: w, height: height), .below)
+            }
+        }
+        let size = CGSize(width: sideWidth + 2 * notch, height: height)
+        let (o, side) = place(panel: size, target: target, screen: screen)
+        return (CGRect(origin: o, size: size), side)
+    }
+
+    /// Beside the window (Cocoa coordinates, y up): `target` = the System Settings window, `screen` = the visible frame
+    /// of the screen it is on (or the main screen when there is no window).
     public static func place(panel: CGSize, target: CGRect?, screen: CGRect, gap: CGFloat = 12) -> (origin: CGPoint, side: Side) {
         func clamp(_ p: CGPoint) -> CGPoint {
             CGPoint(x: min(max(p.x, screen.minX + 4), screen.maxX - panel.width - 4),

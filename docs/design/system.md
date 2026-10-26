@@ -446,7 +446,7 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 ### 3.6 Menu-bar icon
 
 No colour. `glyph.svg` is a template image: since v0.9 the chick as a bold filled silhouette (face knocked out),
-16.5 pt tall, with no arcs at rest; while voice input listens two sound arcs appear to its right and pulse (still under
+the logo's chick scaled uniformly (17.2 × 16.2 pt in its 18 pt box: the logo's body and wings, a bolder tuft), with no arcs at rest; while voice input listens two sound arcs appear to its right and pulse (still under
 Reduce Motion). The recording status item shows a `rec` dot and the time, or `attn` while paused.
 
 ### 3.7 Review page and overlays (web)

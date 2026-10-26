@@ -75,7 +75,8 @@ final class MenuGlyph {
     }()
 
     /// How high the hop goes (pt) and how much it stretches (a fraction of the height, about the foot). The tuft's top
-    /// is 2.5 pt below the frame's top: lift + 16.5 × stretch must stay under that or the tuft clips.
+    /// is 2.8 pt below the frame's top (the chick is 16.2 pt tall, foot at 17 of its 18 pt box). pose() caps the stretch
+    /// and the crouch's widening (GlyphPose.scales) so the tuft and the wing nubs keep half a point of air.
     static let hopHeight: CGFloat = 1.5
     static let hopStretch: CGFloat = 0.05
     /// The arcs' opacity at the dim end of a pulse.
@@ -134,8 +135,9 @@ final class MenuGlyph {
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             let r = CGRect(x: 0, y: (barHeight - box) / 2, width: box, height: box)      // the glyph's box, y up
             let foot = r.maxY - MenuGlyph.foot
+            let k = GlyphPose.scales(squash: squash, lift: lift, ink: ink, foot: MenuGlyph.foot, box: box, barHeight: barHeight)
             ctx.translateBy(x: r.midX, y: foot + lift)
-            ctx.scaleBy(x: 1 + squash, y: 1 - squash)
+            ctx.scaleBy(x: k.x, y: k.y)
             ctx.translateBy(x: -r.midX, y: -foot)
             draw(in: ctx, rect: r, arcs: arcs)
             return true

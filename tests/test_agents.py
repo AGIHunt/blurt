@@ -46,6 +46,14 @@ case "$1" in
   --version) echo "0.36.0";;
   provider) echo "managed:kimi-code  models=3";;
 esac""",
+    # grok: `grok models` says whether it is signed in (no tokens spent); a marker file signs it out
+    "grok": """
+case "$1" in
+  --version) echo "grok 1.0.70 (f50904eaee6c)";;
+  models) if [ -f "$HOME/.grok-offline" ]; then echo "error sending request for url (https://api.x.ai/v1/models)" >&2; exit 1; fi
+          if [ -f "$HOME/.grok-signed-out" ]; then echo "Not logged in. Run grok login to sign in." >&2; exit 1; fi
+          printf 'You are logged in with grok.com.\\n\\nDefault model: grok-4.7\\n';;
+esac""",
 }
 
 
@@ -62,13 +70,14 @@ def env(tmp_path, monkeypatch):
     (home / ".kimi-code" / "credentials" / "kimi-code.json").write_text(
         json.dumps({"access_token": "", "refresh_token": "", "expires_at": 0}))
     for k in list(os.environ):
-        if k.startswith(("CLAUDE", "CODEX_", "KIMI_")):
+        if k.startswith(("CLAUDE", "CODEX_", "KIMI_", "GROK_", "XAI_")):
             monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("BLURT_HOME", str(bh))
     monkeypatch.setenv("PATH", f"{bin_}:/usr/bin:/bin")
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
     monkeypatch.setenv("KIMI_CODE_HOME", str(tmp_path / "kimi-home"))
+    monkeypatch.setenv("GROK_HOME", str(tmp_path / "grok-home"))
     return {"home": home, "bh": bh, "tmp": tmp_path}
 
 
@@ -195,6 +204,53 @@ def test_command_headless(env, tmp_path):
     assert k["argv"][1:3] == ["-p", "p"] and k["events"] == "kimi-stream-json"
     bad = cli("command", "zcode", "headless", "--prompt", "p", "--repo", tmp_path, ok=False)
     assert bad["ok"] is False
+
+
+def test_grok(env, tmp_path):
+    """Grok (xAI's CLI): signed in or not from `grok models` (no tokens), a least-privilege unattended run, its models
+    from its own cache (a map, no cheap one) and its default from [models] default in config.toml."""
+    rows = {r["id"]: r for r in cli("detect", "--ids", "grok")["agents"]}
+    assert rows["grok"]["state"] == "ready" and rows["grok"]["version"].startswith("grok 1.0.70")
+    (env["home"] / ".grok-signed-out").write_text("")
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "logged_out"
+    a = cli("command", "grok", "headless", "--prompt", "p", "--repo", tmp_path)["argv"]
+    assert a[1:3] == ["-p", "p"] and a[a.index("--permission-mode") + 1] == "dontAsk"   # nothing it isn't allowed
+    allowed = [a[i + 1] for i, x in enumerate(a) if x == "--allow"]
+    assert "Edit(./**)" in allowed and not {"Bash", "Edit", "*", "Write"} & set(allowed)
+    assert all(x.startswith(f"Bash(uv run {SCRIPTS}/") for x in allowed if x.startswith("Bash"))
+    assert "--always-approve" not in a and a[-2:] == ["--output-format", "streaming-json"]
+    # grok searches and fetches the web without asking in every mode, dontAsk included: an unattended run gets neither
+    assert "--disable-web-search" in a and "--no-auto-update" in a
+    gh = Path(os.environ["GROK_HOME"])
+    gh.mkdir()
+    # `grok models` needs the network: offline (or too slow) it says neither way, so auth.json decides
+    (env["home"] / ".grok-signed-out").unlink()
+    (env["home"] / ".grok-offline").write_text("")
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "logged_out"      # no credentials on disk
+    (gh / "auth.json").write_text("{}")
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "configured"      # under $GROK_HOME, not ~/.grok
+    (env["home"] / ".grok-offline").unlink()
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "ready"
+    grok = next(d for d in agents.registry()["agents"] if d["id"] == "grok")
+    genv = {"GROK_HOME": str(gh)}
+    assert agents.parse_status(grok, None, "", genv, env["home"]) == "configured"     # timed out, signed in before
+    (gh / "auth.json").unlink()
+    assert agents.parse_status(grok, None, "", genv, env["home"]) == "unknown"        # timed out, nothing to go on
+    (gh / "models_cache.json").write_text(json.dumps({"models": {
+        "grok-4.7": {"info": {"id": "grok-4.7", "name": "Grok 4.7", "description": "latest", "hidden": False}},
+        "grok-4.7-build-fast": {"info": {"id": "grok-4.7-build-fast", "name": "Grok 4.7 Fast",
+                                          "description": "Fast variant. 2x the price.", "hidden": False}},
+        "grok-old": {"info": {"id": "grok-old", "name": "Old", "hidden": True}}}}))
+    (gh / "config.toml").write_text('[cli]\ninstaller = "internal"\n\n[models]\ndefault = "grok-4.6"\n')
+    m = cli("models", "grok")
+    assert [x["id"] for x in m["models"]] == ["grok-4.7", "grok-4.7-build-fast"] and m["cheapest"] is None
+    assert m["cli_default"] == "grok-4.6" and m["processing"]["cards"] == {"model": None, "effort": "low"}
+    p = cli("command", "grok", "headless", "--prompt", "p", "--repo", tmp_path, "--processing", "cards")["argv"]
+    assert "-m" not in p and p[p.index("--effort") + 1] == "low"   # "cheapest" with none known: grok's own default
+    assert agents._toml_top(gh / "config.toml", "installer") is None    # a table's key is not a top-level one
+    (gh / "config.toml").write_text('model = "x"\nmodels.default = "grok-4.5"\n')
+    assert agents._toml_top(gh / "config.toml", "models.default") == "grok-4.5"
+    assert agents._toml_top(gh / "config.toml", "model") == "x"
 
 
 def test_command_interactive(env, tmp_path):

@@ -93,9 +93,11 @@ def test_blurt_glyph_is_a_bold_silhouette_with_arcs_for_listening():
     to the right of the box, inner then outer."""
     icon = next(i for i in iconlib.load_all() if i.name == "blurt")
     assert [L.mode for L in icon.layers] == ["fill"]
-    x0, y0, x1, y1 = iconlib.bbox(icon)
+    x0, y0, x1, y1 = iconlib.extent(icon)
     assert 0.5 <= x0 and 0.5 <= y0 and x1 <= 23.5 and y1 <= 23.5
     assert (y1 - y0) * 0.75 >= 16 and (x1 - x0) * 0.75 >= 15, (x0, y0, x1, y1)
+    # the logo's proportions (v0.9.x): wider than tall with its wings, never the thin, tall chick the first v0.9 had
+    assert (x1 - x0) / (y1 - y0) >= 1.04, (x0, y0, x1, y1)
     assert abs(y1 * 0.75 - round(y1 * 0.75)) < 0.01                 # the foot on a whole point
     assert icon.layers[0].d.count("M") >= 4                        # outline + two eye holes + the beak hole
     geo = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/App/MenuGlyphGeometry.swift").read_text()
@@ -104,6 +106,10 @@ def test_blurt_glyph_is_a_bold_silhouette_with_arcs_for_listening():
     assert len(radii) == 2 and radii[0] < radii[1]
     right = float(re.search(r"arcsRight: CGFloat = ([\d.]+)", geo).group(1))
     assert 18 < right <= 24                                         # past the box, and the image stays narrow
+    # the ink MenuGlyph's hop and crouch keep inside the frame (GlyphPose.scales; GlyphPoseTests uses these numbers)
+    ink = [float(v) for v in re.search(r"static let ink = CGRect\(x: ([\d.]+), y: ([\d.]+), width: ([\d.]+), height: ([\d.]+)\)", geo).groups()]
+    assert ink == [0.4, 0.758, 17.2, 16.242], "the chick changed: update GlyphPoseTests.swift's ink too"
+    assert abs(ink[0] - x0 * 0.75) < 0.05 and abs(ink[1] - y0 * 0.75) < 0.05 and abs(ink[0] + ink[2] - x1 * 0.75) < 0.05
 
 
 def test_brand_sources_are_generated_and_rendered():
