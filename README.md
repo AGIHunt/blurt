@@ -4,9 +4,8 @@
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
 <a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
 
-https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
-
-<p align="center"><sub>Sound on</sub></p>
+<p align="center"><a href="https://blurt.agihunt.info/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
+<p align="center"><sub>Watch the 2-minute film, sound on · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">Download for Mac</a></sub></p>
 
 ---
 
@@ -16,18 +15,23 @@ no agent of its own and doesn't replace yours.
 
 ## What it does
 
-**Dictation (`Fn`).** Press `Fn` in any app, talk, and press it again (or hold `Fn` while you talk). The words are
-typed where your cursor is. A local model removes fillers and stutters and adds punctuation; it doesn't rewrite,
-summarize or translate. The words show under the notch as you talk. Double-tap `Fn` to send, press `⇧` while talking
-for a list, and `⌥⇧L` reformats the last dictation.
+**Dictation (`Fn`).** Tap `Fn` in any app, talk, and tap it again. The words are typed where your cursor is. Finish
+with a double tap instead and it's sent too (Return). Speech recognition runs on your Mac with open-source models, so
+no internet is needed once they're downloaded; after a minute of talking the text is in about 0.4 s. A local model
+removes fillers and stutters and adds punctuation; it doesn't rewrite, summarize or translate. The words show under
+the notch as you talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to
+switch back; `⌥⇧L` reformats the last dictation. Holding `Fn` while you talk works too.
 
-**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong. The snap becomes a card
-under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
+**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong; the note opens right
+beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
+undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
 your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
 **Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
-that is probably involved. You go through them with the keyboard, then hand them to an agent or export them.
+that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
+5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
+hand them to an agent, or pack them into one `.zip` for a teammate.
 
 Snaps, voice notes and recordings go into the current project (a folder you open in Blurt). Without one, recordings
 go to Unassigned and snaps stay as cards until you pick a project. Every shortcut can be changed in Settings.
@@ -36,8 +40,10 @@ go to Unassigned and snaps stay as cards until you pick a project. Every shortcu
 
 You need macOS 13 or later. Dictation and the recommended speech models need Apple silicon.
 
-A signed DMG will be on [GitHub Releases](https://github.com/AGIHunt/blurt/releases) soon. Until then, install Blurt
-through its agent skill:
+**[Download Blurt for Mac](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)** (signed and
+notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app.
+
+Or let your agent install it through the Blurt skill:
 
 ```bash
 npx skills add AGIHunt/blurt
@@ -72,7 +78,7 @@ Agents report back through the MCP server: an item moves to *In progress*, then 
 always means *to verify* until you mark it done.
 
 Recordings are organized by the first agent that is installed and signed in: Claude Code, then Codex, Kimi Code,
-OpenCode and Gemini CLI. You can change the order in *Settings → Agents*.
+OpenCode, Gemini CLI and Grok. You can change the order in *Settings → Agents*.
 
 **No connectors, by design.** Your agent already has tools for Slack, Linear, GitHub, Notion, Jira and Feishu/Lark.
 Blurt writes files (Markdown, CSV and the hand-off bundle) and leaves delivery to the agent. To send items somewhere,

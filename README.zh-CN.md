@@ -4,9 +4,8 @@
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>
 <a href="https://blurt.agihunt.info">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a></p>
 
-https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
-
-<p align="center"><sub>请打开声音</sub></p>
+<p align="center"><a href="https://blurt.agihunt.info/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
+<p align="center"><sub>两分钟介绍视频，请打开声音 · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">下载 Mac 版</a></sub></p>
 
 ---
 
@@ -15,16 +14,19 @@ https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
 ## 能做什么
 
-**听写（`Fn`）。** 在任意 App 里按一下 `Fn`，说话，再按一下（也可以按住 `Fn` 说话）。说的话会打在光标所在的位置。
-本机的模型会去掉语气词和口吃、加上标点，但不改写、不概括、不翻译。说话时，识别出的文字显示在刘海下方。
-连按两下 `Fn` 发送；说话时按一下 `⇧` 排成清单；`⌥⇧L` 重排上一条听写。
+**听写（`Fn`）。** 在任意 App 里按一下 `Fn`，说话，再按一下，字就打在光标处。结束时改成连按两下，会顺便发送出去（回车）。
+语音识别用开源模型在你的 Mac 本地运行，模型下载好后无需联网；说话一分钟，停下后约 0.4 秒处理完。本机的模型会去掉语气词和口吃、
+加上标点，但不改写、不概括、不翻译。说话时，识别出的文字显示在刘海下方。说话时按一下 `⇧` 切换到「结构化」（你在列举时排成清单），
+再按一下切回来；`⌥⇧L` 重排上一条听写。也可以按住 `Fn` 说话。
 
-**截图（`⌥⇧A`）和语音备注（`⌥⇧V`）。** 框选屏幕的一块区域，说一句哪里不对，截图就变成刘海下方的一张卡片。
+**截图（`⌥⇧A`）和语音备注（`⌥⇧V`）。** 框选屏幕的一块区域，备注框就出现在选区旁边，说一句哪里不对。说话时可以直接在图上画：
+拖动是自由画线，`⇧` 画方框，`⌥` 画椭圆，`⌘Z` 撤销。截图随后变成刘海下方的一张卡片。
 把卡片拖进 Claude、ChatGPT、Slack、飞书，或运行着 Claude Code、Codex 的终端，图片和备注会一起进去；也可以点一下复制，
 再按 `⌘V`。语音备注也一样，只是没有图片。
 
 **录屏（`⌥⇧R`）。** 一边录屏一边讲：演示产品、浏览网页、讲一个想法都可以。你的 coding agent 会把录屏整理成条目
-（问题、想法、笔记、任务），每条都带截图、标出的位置、复现步骤和可能有关的代码。你用键盘逐条审核，再交给 Agent 或导出。
+（问题、想法、笔记、任务），每条都带截图、标出的位置、复现步骤和可能有关的代码。录屏时实时语音转写，录屏结束后约一分钟即可处理完成；
+一次 5 分钟的走查整理出了 52 条事项，每条都有原话和时间点。你用键盘逐条审核，再交给 Agent，或打成一个 `.zip` 发给同事。
 
 截图、语音备注和录屏都会放进当前项目（在口喷鸡里打开的文件夹）。没有当前项目时，录屏放进「未归类」，截图作为卡片
 留在刘海下方，等你选项目。所有快捷键都可以在设置里改。
@@ -33,7 +35,9 @@ https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
 需要 macOS 13 或更新版本。听写和推荐的语音模型需要 Apple 芯片。
 
-签名的 DMG 安装包很快会发布在 [GitHub Releases](https://github.com/AGIHunt/blurt/releases)。在那之前，请通过 skill 安装：
+**[下载 Mac 版](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)**（已签名并经过 Apple 公证），打开后把口喷鸡拖进「应用程序」。之后的更新在 App 里完成。
+
+也可以让你的 Agent 通过 skill 安装：
 
 ```bash
 npx skills add AGIHunt/blurt
@@ -63,7 +67,7 @@ npx skills add AGIHunt/blurt
 
 Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待验证」。Agent 说「修好了」，在你标为完成之前一律只算「待验证」。
 
-录屏由第一个已安装并登录的 Agent 整理：依次是 Claude Code、Codex、Kimi Code、OpenCode、Gemini CLI。顺序可以在
+录屏由第一个已安装并登录的 Agent 整理：依次是 Claude Code、Codex、Kimi Code、OpenCode、Gemini CLI、Grok。顺序可以在
 「设置 → Agent」里调整。
 
 **刻意不做连接器。** 你的 Agent 已经有 Slack、Linear、GitHub、Notion、Jira、飞书等工具。口喷鸡只写文件（Markdown、CSV
