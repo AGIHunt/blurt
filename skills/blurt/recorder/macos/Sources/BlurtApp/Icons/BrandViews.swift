@@ -38,6 +38,8 @@ final class BrandButton: NSButton {
     var radius: CGFloat? = 7 { didSet { needsLayout = true } }
     var fontSize: CGFloat = 13 { didSet { updateTitle(); invalidateIntrinsicContentSize() } }
     var hPad: CGFloat = 14 { didSet { invalidateIntrinsicContentSize() } }
+    /// a key after the title, lighter (white 70 %, regular): "Done ↩" — the shortcut said once, on the button
+    var keyHint: String? { didSet { updateTitle(); invalidateIntrinsicContentSize() } }
     private var hovering = false { didSet { updateShade() } }
 
     convenience init(title: String, target: AnyObject?, action: Selector?) {
@@ -81,8 +83,16 @@ final class BrandButton: NSButton {
         let fg: NSColor = isEnabled ? .white : .tertiaryLabelColor
         let p = NSMutableParagraphStyle()
         p.alignment = .center
-        attributedTitle = NSAttributedString(string: title, attributes: [
+        // (`title` reads back the attributed title, key and all: a redraw — isEnabled flipping — never adds it twice)
+        let base = keyHint.map { k in title.hasSuffix("  " + k) ? String(title.dropLast(k.count + 2)) : title } ?? title
+        let t = NSMutableAttributedString(string: base, attributes: [
             .font: NSFont.systemFont(ofSize: fontSize, weight: .semibold), .foregroundColor: fg, .paragraphStyle: p])
+        if let k = keyHint {
+            t.append(NSAttributedString(string: "  " + k, attributes: [
+                .font: NSFont.systemFont(ofSize: fontSize - 1, weight: .regular),
+                .foregroundColor: isEnabled ? NSColor(white: 1, alpha: 0.7) : NSColor.tertiaryLabelColor, .paragraphStyle: p]))
+        }
+        attributedTitle = t
     }
 
     private func updateShade() {

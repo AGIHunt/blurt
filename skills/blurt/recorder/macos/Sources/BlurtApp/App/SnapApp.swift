@@ -366,6 +366,9 @@ extension App {
             if a.contains("option") { mods.insert(.option) }
             NoteBubble.shared.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5, mods: mods)
         case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
+        case "notehover": NoteBubble.shared.testHover(arg != "off")                 // notehover [off]: the pointer on the bubble
+        case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
+        case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the words came in (Saved)
         case "notechip": NoteBubble.shared.testChip(arg)                            // notechip open|close|type T|down|up|return|pick ID|inbox
         case "stage":                                   // stage [click]: the in-place markup stage; click = outside the picture
             if arg == "click" { InkStage.shared.testClickOutside() }
@@ -423,7 +426,9 @@ extension App {
         case "commit": NoteBubble.shared.commit()
         case "cancel": NoteBubble.shared.cancel()
         case "edit":
-            if let n = Int(arg), let s = snapper.cards.first(where: { $0.n == n }) { NoteBubble.shared.begin(s, mode: .edit) }
+            if let s = arg == "last" ? snapper.cards.last : Int(arg).flatMap({ n in snapper.cards.first(where: { $0.n == n }) }) {
+                NoteBubble.shared.begin(s, mode: .edit)                             // edit N | edit last
+            }
         case "peck":
             let a = arg.split(separator: " ", maxSplits: 1).map(String.init)
             let state = ["to_verify", "done"].contains(a.first ?? "") ? a[0] : "to_verify"
