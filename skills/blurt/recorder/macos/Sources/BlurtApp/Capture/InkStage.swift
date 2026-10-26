@@ -6,6 +6,8 @@
 //  • the pen: InkCanvas (InkView.swift) at the selection's size — a plain drag freehand, ⇧ a box, ⌥ an ellipse, holding
 //    still at the end snaps a rough shape clean, ⌘Z takes the last stroke back. One markup colour, a soft shadow, the
 //    width of the display (InkStyle).
+//  • its edge (FrozenEdge): the picker's gradient line, now solid and closed — dashed while choosing, solid once frozen
+//    — over a dark keyline, the picture lifted off the dim on a soft shadow.
 //  • a faint one-line hint above the picture, "Drag to draw · ⇧ box · ⌥ ellipse", the first few times only
 //    (record.ink_hint_shown counts them; BlurtCore InkHint); it goes when the first stroke starts.
 //  • a click on the dimmed part outside the picture is "done" (the bubble saves); Esc and ⏎ are the bubble's.
@@ -51,6 +53,56 @@ final class StageView: NSView {
     override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
 }
 
+/// The frozen picture's edge (r1): committed, not being chosen. The picker's dashes say "still choosing"; once the
+/// picture freezes the same gradient line goes solid (dashed vs solid: the shape twin of chosen vs frozen), 1.5 pt
+/// just outside the picture, over a dark keyline so it reads on a dark title bar as on white, and the picture lifts
+/// off the dim on a soft shadow — a stage, not a cut-out. Corners are closed (one rectangle, no dash phase).
+final class FrozenEdge: NSView {
+    private let lift = CALayer()
+    private let keyline = CAShapeLayer()
+    private let line = CAGradientLayer()
+    private let mask = CAShapeLayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        lift.shadowColor = NSColor.black.cgColor
+        lift.shadowOpacity = 0.45
+        lift.shadowRadius = 18
+        lift.shadowOffset = CGSize(width: 0, height: -6)
+        keyline.fillColor = nil
+        keyline.strokeColor = NSColor(white: 0, alpha: 0.35).cgColor
+        keyline.lineWidth = 1
+        BrandGradient.layer(BrandGradient.linearStops, .diagonal, flipped: false, into: line)
+        mask.fillColor = nil
+        mask.strokeColor = NSColor.black.cgColor
+        mask.lineWidth = 1.5
+        line.mask = mask
+        for l in [lift, keyline, line] as [CALayer] { layer?.addSublayer(l) }
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override var isFlipped: Bool { false }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    /// `sel` in this view's coordinates. `lifted`: the shadow (off once the dim lifts — the screen is given back).
+    func update(_ sel: NSRect, lifted: Bool = true) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        lift.frame = bounds
+        lift.shadowPath = CGPath(rect: sel, transform: nil)
+        lift.isHidden = !lifted
+        let edge = sel.insetBy(dx: -0.75, dy: -0.75)              // the line's inner edge on the picture's edge
+        keyline.frame = bounds
+        keyline.path = CGPath(rect: sel.insetBy(dx: -2, dy: -2), transform: nil)
+        line.frame = sel.insetBy(dx: -3, dy: -3)
+        mask.frame = line.bounds
+        mask.path = CGPath(rect: edge.offsetBy(dx: -line.frame.minX, dy: -line.frame.minY), transform: nil)
+    }
+
+    func setLifted(_ on: Bool) { lift.isHidden = !on }
+}
+
 final class InkStage {
     static let shared = InkStage()
     private(set) var shot: Shot?
@@ -58,7 +110,7 @@ final class InkStage {
     private let view = StageView()
     /// the pen on the frozen picture, at the selection's size (1:1)
     let canvas = InkCanvas(frame: .zero, corner: 0)
-    private let outline = SelectionOutline()
+    private let outline = FrozenEdge()
     private let hint = NSView()                 // the pill
     private let hintLabel = NSTextField(labelWithString: "")
     /// the frozen selection, global AppKit points
@@ -66,6 +118,8 @@ final class InkStage {
     private(set) var screen: NSScreen?
     private var generation = 0
     var onClickOutside: (() -> Void)?
+    /// this snap is one of the first few: the hint showed (the bubble names its keys then too)
+    private(set) var hintShown = false
 
     var isOpen: Bool { shot != nil }
     /// where the bubble may go: the selection's screen, minus the menu bar and the Dock
@@ -109,7 +163,7 @@ final class InkStage {
         canvas.strokes = s.strokes
         canvas.editable = true
         outline.frame = view.bounds
-        outline.update(local, handles: [], marching: false)
+        outline.update(local)
         placeHint(local)
         p.orderFrontRegardless()
         emit(["event": "ink_stage", "open": true, "n": s.n, "selection": [sel.minX, sel.minY, sel.width, sel.height],
@@ -129,8 +183,8 @@ final class InkStage {
         p.acceptsMouseMovedEvents = true
         view.wantsLayer = true
         p.contentView = view
+        view.addSubview(outline)               // (under the picture: its lift shadow)
         view.addSubview(canvas)
-        view.addSubview(outline)
         // faint: quieter than the picture and the bubble — a soft glass tint, regular weight (never a banner)
         hintLabel.font = .systemFont(ofSize: 12, weight: .regular)
         hintLabel.textColor = NSColor(white: 1, alpha: 0.65)
@@ -147,6 +201,7 @@ final class InkStage {
     private func placeHint(_ local: NSRect) {
         let shown = recordConfig()["ink_hint_shown"] as? Int ?? 0
         hint.isHidden = !InkHint.shows(alreadyShown: shown)
+        hintShown = !hint.isHidden
         hint.alphaValue = 1
         guard !hint.isHidden else { return }
         setRecordConfig("ink_hint_shown", shown + 1)
@@ -169,6 +224,7 @@ final class InkStage {
         emit(["event": "ink_stage_lift", "n": shot?.n ?? 0])
         lifting?.invalidate()
         let from = view.dimAlpha, t0 = CACurrentMediaTime(), d = reduceMotion ? 0.0 : 0.2
+        outline.setLifted(false)
         guard d > 0 else { view.dimAlpha = 0; return }
         lifting = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] t in
             let k = min(1, (CACurrentMediaTime() - t0) / d)

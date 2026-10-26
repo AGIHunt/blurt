@@ -7,7 +7,7 @@
 //    (⌥⇧V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
 //  • the words while they are said (v0.9): the voice note's live text (VoiceNoteStream, interim decodes about once a
 //    second) in the field's place, secondary, the part still being said quieter. When the pause ends it, the final
-//    words go into the field in label colour with "✓ Saved · Goes to …" for `savedSeconds` (at most `wordsWait` for
+//    words go into the field in label colour with the ok check and "Saved" for `savedSeconds` (at most `wordsWait` for
 //    them), then it tucks away — not while the pointer is over it (NoteHold.hovering); a click into the words or a key
 //    that moves the caret pins it open until ⏎ / Esc (the user is fixing a word), and a change to them is an edit
 //    (NoteEdit: it replaces them). The stream goes to Snapper, so the card has its words as it lands, not
@@ -32,11 +32,15 @@
 //  • in place (v0.9-next): a fresh snap's picture stays frozen where it was taken and the pen is on it (InkStage); the
 //    bubble docks beside it (BlurtCore BubbleDock: never over it, flipped near the screen's edges, the selection's
 //    display), its caret pointing at it. A plain drag draws, ⇧ a box, ⌥ an ellipse, holding still snaps a rough shape
-//    clean, ⌘Z (or the undo button by the bin, shown while there are strokes) takes the last stroke back
-//    (InkView.swift); the status line says "⏎ done", the button's word. Done (⏎, the Done button, a click outside): the
+//    clean, ⌘Z (or the undo button by the bin, shown with it while the pointer is over the bubble) takes the last stroke
+//    back (InkView.swift). Done (⏎, the "Done ↩" button, a click outside): the
 //    marked picture flies from the selection to the notch and becomes the card. The ink is burnt into
 //    shots/NNN.marked.png (what a copy or a drag hands out); shots/NNN.png stays unmarked, the strokes stay editable.
-//  • the "Goes to X" chip (ProjectChip.swift): a click, or Tab from the field, lists the recent projects in the bubble;
+//  • r1 of the overlays redesign: a composer of two zones on one grid (`layout`): the words full width on top, the mic
+//    (filling with the voice) in the glyph column before them; one footer — the place, a quiet line, "Done ↩" — and
+//    the bin (and the stroke undo) only under the pointer. No sentence repeats a button; keys are named where no
+//    button carries them (⌘Z with ink, the list's keys, Esc in the first few bubbles).
+//  • the place chip (ProjectChip.swift): a click, or Tab from the field, lists the recent projects in the bubble;
 //    typing filters, ↩ picks — this capture goes there instead (Snapper.retarget), the island's project stays. While
 //    the list is open the bubble never closes (NoteHold.picking, apart from `pinned`: closing it keeps the words pinned).
 //  • ⌥⇧A while it is open saves the note and takes the next shot. Listening starts the warm speech server
@@ -540,21 +544,28 @@ enum AudioDevices {
 
 // MARK: - Small views
 
-final class LevelBars: NSView {
-    var level: Float = 0 { didSet { needsDisplay = true } }
-    var active = true { didSet { needsDisplay = true } }
-    private var phase: CGFloat = 0
+/// The bubble's listening mark (r1): one mic glyph in brand ink that fills from the bottom as the voice gets louder —
+/// a shape that says "the mic is on" at silence too (v0.9 drew five ink dots there, read as a password mask or "…").
+/// The same 16 pt column shows the check once the words are saved and mic.slash when it doesn't listen.
+final class MicLevel: NSView {
+    /// 0…1, as the microphone hears it; shown a little smoothed (it falls slower than it rises)
+    var level: Float = 0 { didSet { shown = max(CGFloat(level), shown * 0.82); needsDisplay = true } }
+    private var shown: CGFloat = 0
+    func decay() { if shown > 0.01 { shown *= 0.86; needsDisplay = true } }
     override func draw(_ dirty: NSRect) {
-        phase += 0.6
-        let n = 5, w: CGFloat = 3, gap: CGFloat = 2.5
-        let x0 = (bounds.width - CGFloat(n) * w - CGFloat(n - 1) * gap) / 2
-        for i in 0..<n {
-            let wob = (sin(phase + CGFloat(i) * 1.3) + 1) / 2
-            let h = active ? 4 + (bounds.height - 6) * CGFloat(level) * (0.55 + 0.45 * wob) : 4
-            let r = NSRect(x: x0 + CGFloat(i) * (w + gap), y: (bounds.height - h) / 2, width: w, height: h)
-            (active ? BrandColor.ink : NSColor.tertiaryLabelColor).setFill()      // listening (the bubble is light or dark)
-            NSBezierPath(roundedRect: r, xRadius: 1.5, yRadius: 1.5).fill()
-        }
+        let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular).applying(.init(paletteColors: [BrandColor.ink]))
+        guard let line = NSImage(systemSymbolName: "mic", accessibilityDescription: nil)?.withSymbolConfiguration(cfg),
+              let full = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) else { return }
+        let sz = line.size
+        let r = NSRect(x: (bounds.width - sz.width) / 2, y: (bounds.height - sz.height) / 2, width: sz.width, height: sz.height)
+        line.draw(in: r)
+        let k = reduceMotion ? (shown > 0.15 ? 1 : 0) : min(1, shown * 1.25)
+        guard k > 0.02 else { return }
+        NSGraphicsContext.saveGraphicsState()
+        // (the view isn't flipped: the fill rises from the glyph's foot)
+        NSBezierPath(rect: NSRect(x: r.minX, y: r.minY, width: r.width, height: r.height * (0.36 + 0.64 * k))).addClip()
+        full.draw(in: r)
+        NSGraphicsContext.restoreGraphicsState()
     }
 }
 
@@ -563,7 +574,7 @@ final class SymbolButton: NSButton {
     convenience init(_ symbol: String, tip: String, size: CGFloat = 26, _ click: @escaping () -> Void) {
         self.init(frame: NSRect(x: 0, y: 0, width: size, height: size))
         image = NSImage(systemSymbolName: symbol, accessibilityDescription: tip)?
-            .withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
+            .withSymbolConfiguration(.init(pointSize: 13, weight: .regular))
         imagePosition = .imageOnly
         isBordered = false
         bezelStyle = .regularSquare
@@ -574,7 +585,30 @@ final class SymbolButton: NSButton {
         action = #selector(fire)
     }
     @objc func fire() { onClick?() }
-    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    /// the glyph's colour while the pointer is on it (the bin: red), a faint wash behind it either way
+    var hoverTint: NSColor?
+    private var restTint: NSColor?
+    private var over = false { didSet { needsDisplay = true } }
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) {
+        over = true
+        if let h = hoverTint { restTint = contentTintColor; contentTintColor = h }
+    }
+    override func mouseExited(with event: NSEvent) {
+        over = false
+        if hoverTint != nil, let r = restTint { contentTintColor = r }
+    }
+    override func draw(_ dirty: NSRect) {
+        if over || isHighlighted {
+            NSColor.labelColor.withAlphaComponent(isHighlighted ? 0.12 : 0.07).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), xRadius: 6, yRadius: 6).fill()
+        }
+        super.draw(dirty)
+    }
 }
 
 /// Key-able, but doesn't activate the app: typing works, the app the user was in stays in front.
@@ -613,40 +647,58 @@ final class BubbleBackground: NSView {
         }
     }
 
+    /// One outline: the card and its caret traced as one path (r1: the caret was a triangle appended to the card, so
+    /// the card's own edge ran across the caret's base — a drawn-on notch in light mode).
     func shape() -> NSBezierPath {
-        let c = BubbleBackground.caret, i = insets
-        let body = NSRect(x: 0.5 + i.left, y: 0.5 + i.top, width: bounds.width - 1 - i.left - i.right,
-                          height: bounds.height - 1 - i.top - i.bottom)
-        let p = NSBezierPath(roundedRect: body, xRadius: 14, yRadius: 14)
-        let t = NSBezierPath()
-        let x = min(max(caretAt, 26), bounds.width - 26), y = min(max(caretAt, 24), bounds.height - 24)
-        switch caret {
-        case .up:
-            t.move(to: NSPoint(x: x - c - 2, y: c + 0.5)); t.line(to: NSPoint(x: x, y: 0.5)); t.line(to: NSPoint(x: x + c + 2, y: c + 0.5))
-        case .down:
-            t.move(to: NSPoint(x: x - c - 2, y: bounds.height - c - 0.5)); t.line(to: NSPoint(x: x, y: bounds.height - 0.5))
-            t.line(to: NSPoint(x: x + c + 2, y: bounds.height - c - 0.5))
-        case .left:
-            t.move(to: NSPoint(x: c + 0.5, y: y - c - 2)); t.line(to: NSPoint(x: 0.5, y: y)); t.line(to: NSPoint(x: c + 0.5, y: y + c + 2))
-        case .right:
-            t.move(to: NSPoint(x: bounds.width - c - 0.5, y: y - c - 2)); t.line(to: NSPoint(x: bounds.width - 0.5, y: y))
-            t.line(to: NSPoint(x: bounds.width - c - 0.5, y: y + c + 2))
-        case .none:
-            return p
+        let c = BubbleBackground.caret, i = insets, r: CGFloat = 14, half = c + 2
+        let b = NSRect(x: 0.5 + i.left, y: 0.5 + i.top, width: bounds.width - 1 - i.left - i.right,
+                       height: bounds.height - 1 - i.top - i.bottom)
+        let x = min(max(caretAt, b.minX + r + half), b.maxX - r - half)
+        let y = min(max(caretAt, b.minY + r + half), b.maxY - r - half)
+        let p = NSBezierPath()
+        // (flipped: y grows down) the top edge left to right, the right edge down, the bottom right to left, the left up
+        p.move(to: NSPoint(x: b.minX + r, y: b.minY))
+        if caret == .up {
+            p.line(to: NSPoint(x: x - half, y: b.minY)); p.line(to: NSPoint(x: x, y: b.minY - c)); p.line(to: NSPoint(x: x + half, y: b.minY))
         }
-        t.close()
-        p.append(t)
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.minY), to: NSPoint(x: b.maxX, y: b.maxY), radius: r)
+        if caret == .right {
+            p.line(to: NSPoint(x: b.maxX, y: y - half)); p.line(to: NSPoint(x: b.maxX + c, y: y)); p.line(to: NSPoint(x: b.maxX, y: y + half))
+        }
+        p.appendArc(from: NSPoint(x: b.maxX, y: b.maxY), to: NSPoint(x: b.minX, y: b.maxY), radius: r)
+        if caret == .down {
+            p.line(to: NSPoint(x: x + half, y: b.maxY)); p.line(to: NSPoint(x: x, y: b.maxY + c)); p.line(to: NSPoint(x: x - half, y: b.maxY))
+        }
+        p.appendArc(from: NSPoint(x: b.minX, y: b.maxY), to: NSPoint(x: b.minX, y: b.minY), radius: r)
+        if caret == .left {
+            p.line(to: NSPoint(x: b.minX, y: y + half)); p.line(to: NSPoint(x: b.minX - c, y: y)); p.line(to: NSPoint(x: b.minX, y: y - half))
+        }
+        p.appendArc(from: NSPoint(x: b.minX, y: b.minY), to: NSPoint(x: b.maxX, y: b.minY), radius: r)
+        p.close()
+        p.lineJoinStyle = .round
         return p
     }
 
+    /// The pointer is over the card: its quiet actions show (the bin, the stroke undo).
+    var onHover: ((Bool) -> Void)?
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach(removeTrackingArea)
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
+
     /// The card and its caret only: the window's own shadow (NotePanel.hasShadow) follows that shape. (v0.9: a shadow
-    /// drawn here was cut off at the window's edge — a grey rectangle behind the rounded card.)
+    /// drawn here was cut off at the window's edge — a grey rectangle behind the rounded card.) Dark: the raised
+    /// surface (#303030) with a white 14 % hairline, so it holds on a dimmed screen; light: near-white, a black 12 %
+    /// hairline and the window's shadow.
     override func draw(_ dirty: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let p = shape()
-        (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.98)).setFill()
+        (dark ? NSColor(calibratedWhite: 0.19, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.985)).setFill()
         p.fill()
-        (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.10)).setStroke()
+        (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.12)).setStroke()
         p.lineWidth = 1
         p.stroke()
         // the shape changed (size, caret): the window's shadow is worked out again from what was drawn
@@ -667,7 +719,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var canvas = InkCanvas(frame: .zero)
     private var field = NSTextField()
     private var status = NSTextField(labelWithString: "")
-    private var bars = LevelBars(frame: NSRect(x: 0, y: 0, width: 26, height: 22))
+    private var bars = MicLevel(frame: NSRect(x: 0, y: 0, width: 16, height: 16))
+    /// the pointer is over the bubble: the quiet actions (the bin, the stroke undo) show
+    private var hovering = false
+    /// the first few bubbles also name their keys in the footer (Esc), as the pen hint does (InkHint)
+    private var firstTimes = false
     private var icon = NSImageView()
     private var undoBtn: SymbolButton!
     private var micBtn: SymbolButton!
@@ -783,7 +839,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         voiceBusy = false
         micGone = false
         // the pen hint, the first few times only (InkHint; the stage counts them)
-        penHintGone = !InkHint.shows(alreadyShown: recordConfig()["ink_hint_shown"] as? Int ?? 0)
+        let hintsShown = recordConfig()["ink_hint_shown"] as? Int ?? 0
+        penHintGone = !InkHint.shows(alreadyShown: hintsShown)
+        // (in place the stage has counted this snap already: its hint showing is the answer)
+        firstTimes = inPlace != nil && InkStage.shared.shot === s ? InkStage.shared.hintShown : InkHint.shows(alreadyShown: hintsShown)
+        hovering = false
         penHint.alphaValue = 1
         inkUndoFirst = false
         picking = false
@@ -833,15 +893,17 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         canvas.onStrokeMoved = { [weak self] in self?.voice?.activity(grace: NoteHold.inkGrace) }
         canvas.onStrokeEnded = { [weak self] in self?.strokeEnded() }
         root.addSubview(canvas)
-        penHint.font = .systemFont(ofSize: 11, weight: .semibold)
-        penHint.textColor = .white
+        // the pen hint on the enlarged picture (Edit Note): the stage's one hint component (§3.1: 12 pt regular,
+        // white 65 % on black 42 %, r 11), never a second style
+        penHint.font = .systemFont(ofSize: 12, weight: .regular)
+        penHint.textColor = NSColor(white: 1, alpha: 0.65)
         penHint.wantsLayer = true
         penHint.drawsBackground = true
-        penHint.backgroundColor = NSColor(white: 0.08, alpha: 0.78)     // readable on a light screenshot too
-        penHint.layer?.cornerRadius = 9
+        penHint.backgroundColor = NSColor(white: 0.06, alpha: 0.42)
+        penHint.layer?.cornerRadius = 11
         penHint.alignment = .center
         root.addSubview(penHint)
-        undoBtn = SymbolButton("arrow.uturn.backward", tip: Loc.t("capture.note.undo", table: "Capture")) { [weak self] in self?.undoInk() }
+        undoBtn = SymbolButton("arrow.uturn.backward", tip: Loc.t("capture.note.undo", table: "Capture"), size: 24) { [weak self] in self?.undoInk() }
         root.addSubview(undoBtn)
         chip = ProjectChip { [weak self] in self?.togglePick() }
         root.addSubview(chip)
@@ -850,11 +912,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         pick.onCancel = { [weak self] in self?.closePick() }
         pick.onFilterChange = { [weak self] in self?.layout() }
         root.addSubview(pick)
+        // the one primary, with its key on it ("Done ↩"): no second line saying the same
         doneBtn = BrandButton(title: Loc.t("capture.note.done", table: "Capture"), target: self, action: #selector(doneClicked))
         doneBtn.fontSize = 12
-        doneBtn.hPad = 11
+        doneBtn.hPad = 10
+        doneBtn.keyHint = "↩"
         doneBtn.toolTip = Loc.t("capture.note.done_tip", table: "Capture")
         root.addSubview(doneBtn)
+        root.onHover = { [weak self] on in self?.hover(on) }
         icon.imageScaling = .scaleProportionallyDown
         root.addSubview(icon)
         root.addSubview(bars)
@@ -868,17 +933,20 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         field.lineBreakMode = .byWordWrapping
         field.usesSingleLineMode = false
         root.addSubview(field)
-        status.font = .systemFont(ofSize: 11, weight: .medium)
+        // the footer's quiet line: what the bubble is doing now, never a sentence about the buttons
+        status.font = .systemFont(ofSize: 11, weight: .regular)
         status.textColor = .secondaryLabelColor
         status.lineBreakMode = .byTruncatingTail
         root.addSubview(status)
-        micBtn = SymbolButton("mic.fill", tip: Loc.t("capture.note.rerecord", table: "Capture")) { [weak self] in self?.rerecord() }
-        playBtn = SymbolButton("play.fill", tip: Loc.t("capture.note.play", table: "Capture")) { [weak self] in self?.play() }
-        prevBtn = SymbolButton("chevron.left", tip: Loc.t("capture.note.prev", table: "Capture")) { [weak self] in self?.step(-1) }
-        nextBtn = SymbolButton("chevron.right", tip: Loc.t("capture.note.next", table: "Capture")) { [weak self] in self?.step(1) }
+        micBtn = SymbolButton("mic", tip: Loc.t("capture.note.rerecord", table: "Capture"), size: 24) { [weak self] in self?.rerecord() }
+        playBtn = SymbolButton("play", tip: Loc.t("capture.note.play", table: "Capture"), size: 24) { [weak self] in self?.play() }
+        prevBtn = SymbolButton("chevron.left", tip: Loc.t("capture.note.prev", table: "Capture"), size: 24) { [weak self] in self?.step(-1) }
+        nextBtn = SymbolButton("chevron.right", tip: Loc.t("capture.note.next", table: "Capture"), size: 24) { [weak self] in self?.step(1) }
         keepBtn = SymbolButton("checkmark.circle.fill", tip: Loc.t("capture.note.keep_tip", table: "Capture")) { [weak self] in self?.commit() }
         keepBtn.contentTintColor = BrandColor.ink           // the bubble's primary: brand ink (light / dark / contrast)
-        discardBtn = SymbolButton("trash", tip: Loc.t("capture.note.discard_tip", table: "Capture")) { [weak self] in self?.cancel() }
+        // the bin: a quiet action, shown while the pointer is over the bubble (Esc does it too, with Undo)
+        discardBtn = SymbolButton("trash", tip: Loc.t("capture.note.discard_tip", table: "Capture"), size: 24) { [weak self] in self?.cancel() }
+        discardBtn.hoverTint = .systemRed
         [micBtn, playBtn, prevBtn, nextBtn, keepBtn, discardBtn].forEach { root.addSubview($0!) }
         // the user went to another app: a bubble that isn't listening any more saves a moment later (a popover's
         // click-outside), so it never floats over every app waiting for ⏎
@@ -922,90 +990,102 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         return NSSize(width: max(140, w.rounded()), height: max(90, h.rounded()))
     }
 
+    /// The bubble's grid (r1, the main window's Move popover's): 12 pt to a 16 pt glyph column — the mic, the saved
+    /// check, the chip's place, the list's folders — then 8 pt to the text column — the note, the chip's name, the
+    /// list's names. Two zones: the words on top, full width; one footer row under them — the place on the left, what
+    /// the bubble is doing in a quiet line after it, the one primary on the right with its key on it, and the quiet
+    /// actions (the bin, the stroke undo) beside it only while the pointer is over the bubble.
+    static let inset: CGFloat = 12
+    static let footH: CGFloat = 24
+
     private func layout() {
         let pic = showsPicture
         let pv = pic ? previewSize() : .zero
-        let pad: CGFloat = 12
+        let m = NoteBubble.inset
         let c = BubbleBackground.caret
         let ins = bg.insets
-        let inner = max(mode == .recording ? 340 : staged ? 372 : 400, pv.width + pad * 2)
+        let fresh = mode == .listen
+        let inner = max(mode == .recording ? 340 : staged ? 352 : 400, pv.width + m * 2)
         let width = inner + ins.left + ins.right
         let x0 = ins.left, top = ins.top
-        let fieldH = fieldHeight(inner - pad * 2 - 40, max: pic ? 90 : 220)
-        let fresh = mode == .listen
-        let pickH = picking ? pick.height + 4 : 0
+        let glyphX = x0 + m, textX = x0 + m + 24, right = x0 + inner - m
+        // (the field's cell draws its text 2 pt in: the text starts on the text column)
+        let fieldW = right - textX + 2
+        let fieldH = fieldHeight(fieldW - 4, max: pic ? 90 : 220)
+        let footH = NoteBubble.footH
+        let pickH = picking ? pick.height : 0
         // (a caret up or down takes its height; one at the side, its width — the card keeps the same inner size)
-        let height = (ins.top + ins.bottom > 0 ? c : 0) + pad + (pic ? pv.height + 10 : 0) + fieldH + 4 + (fresh ? 20 : 16) + pickH + pad
+        let height = (ins.top + ins.bottom > 0 ? c : 0) + m + (pic ? pv.height + 10 : 0) + fieldH + 6 + footH
+            + (picking ? 4 + pickH : 0) + m - 2
         panel?.setContentSize(NSSize(width: width, height: height))
         bg.frame = NSRect(x: 0, y: 0, width: width, height: height)
         canvas.isHidden = !pic
-        canvas.frame = NSRect(x: x0 + (inner - pv.width) / 2, y: top + pad, width: pv.width, height: pv.height)
-        penHint.stringValue = mode == .recording ? "" : "  " + Loc.t("capture.note.pen_hint", table: "Capture") + "  "
+        canvas.frame = NSRect(x: x0 + (inner - pv.width) / 2, y: top + m, width: pv.width, height: pv.height)
+        penHint.stringValue = mode == .recording ? "" : "   " + Loc.t("capture.note.pen_hint", table: "Capture") + "   "
         penHint.sizeToFit()
-        penHint.frame = NSRect(x: canvas.frame.minX + 8, y: canvas.frame.maxY - 26, width: penHint.frame.width, height: 18)
+        penHint.frame = NSRect(x: canvas.frame.minX + 8, y: canvas.frame.maxY - 30, width: penHint.frame.width, height: 22)
         penHint.isHidden = !pic || mode == .recording || !canvas.strokes.isEmpty || penHintGone
-        undoBtn.frame.origin = NSPoint(x: canvas.frame.maxX - 32, y: canvas.frame.maxY - 32)
+        // the enlarged picture's undo sits on its corner while there are strokes (in place it is the footer's)
         undoBtn.isHidden = !pic || canvas.strokes.isEmpty
         undoBtn.wantsLayer = true
-        undoBtn.layer?.backgroundColor = NSColor(white: 1, alpha: 0.85).cgColor
-        undoBtn.layer?.cornerRadius = 13
-        let rowY = pic ? canvas.frame.maxY + 10 : top + pad
-        icon.frame = NSRect(x: x0 + pad + 2, y: rowY + 1, width: 22, height: 20)
-        bars.frame = NSRect(x: x0 + pad, y: rowY, width: 26, height: 22)
-        var bx = x0 + inner - pad - 26
+        undoBtn.layer?.cornerRadius = 12
+        undoBtn.layer?.backgroundColor = pic ? NSColor(white: 1, alpha: 0.85).cgColor : nil
+        undoBtn.frame.origin = NSPoint(x: canvas.frame.maxX - 30, y: canvas.frame.maxY - 30)
+        // row 1: the glyph column (how the note is being taken) and the words
+        let rowY = pic ? canvas.frame.maxY + 10 : top + m
+        icon.frame = NSRect(x: glyphX, y: rowY + 2, width: 16, height: 16)
+        bars.frame = icon.frame
+        field.frame = NSRect(x: textX - 2, y: rowY, width: fieldW, height: fieldH)
+        // the footer
+        let footY = rowY + fieldH + 6
+        let midY = footY + footH / 2
         for b in [nextBtn, prevBtn, micBtn, playBtn, keepBtn, discardBtn] { b?.isHidden = true }
-        doneBtn.isHidden = true
-        var fieldRight = x0 + inner - pad - 6
+        doneBtn.isHidden = !fresh
+        var bx = right
         if fresh {
-            // in place: Done (the one primary) and the bin on the field's row; else the check and the bin
-            if staged {
-                doneBtn.isHidden = false
-                let sz = doneBtn.intrinsicContentSize
-                doneBtn.frame = NSRect(x: x0 + inner - pad - sz.width, y: rowY - 1, width: sz.width, height: 22)
-                bx = doneBtn.frame.minX - 26 - 2
-                fieldRight = bx - 2
-            } else {
-                keepBtn.isHidden = false; keepBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
-            }
-            discardBtn.isHidden = false
-            discardBtn.frame.origin = staged ? NSPoint(x: bx, y: rowY - 3) : NSPoint(x: bx, y: rowY + fieldH - 2)
-            bx -= 26
-            // in place the picture is outside the bubble: its undo sits by the bin while there are strokes (⌘Z too)
+            let sz = doneBtn.intrinsicContentSize
+            doneBtn.frame = NSRect(x: right - sz.width, y: midY - 11, width: sz.width, height: 22)
+            doneBtn.alphaValue = picking ? 0.5 : 1         // the list is the one focus while it is open
+            bx = doneBtn.frame.minX - 8
+            // the quiet actions, while the pointer is over the bubble (and never over an open list)
+            let quiet = hovering && !picking
+            discardBtn.isHidden = !quiet
+            discardBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12)
+            if quiet { bx -= 24 + 2 }
             if staged, !ink.strokes.isEmpty {
-                undoBtn.isHidden = false
-                undoBtn.layer?.backgroundColor = nil
-                undoBtn.frame.origin = NSPoint(x: bx, y: rowY - 3)
-                bx -= 26
-                fieldRight = bx - 2
+                undoBtn.isHidden = !quiet
+                undoBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12)
+                if quiet { bx -= 24 + 2 }
             }
-        }
-        field.frame = NSRect(x: x0 + pad + 34, y: rowY + 1, width: fieldRight - (x0 + pad + 34), height: fieldH)
-        let buttons: CGFloat = mode == .recording && recordingShots.count > 1 ? 56 : mode == .edit || (fresh && !staged) ? 56 : 0
-        // a fresh shot: the chip leads the status row ("Goes to X ⌄"), the hint after it
-        chip.isHidden = !fresh
-        var statusX = x0 + pad + 34
-        let statusY = rowY + fieldH + (fresh ? 6 : 4)
-        if fresh {
-            chip.set(destination, maxWidth: min(200, inner * 0.5))
-            chip.frame.origin = NSPoint(x: x0 + pad + 32, y: statusY - 2)
-            statusX = chip.frame.maxX + 8
-        }
-        status.frame = NSRect(x: statusX, y: statusY, width: x0 + inner - pad - buttons - statusX, height: 15)
-        pick.isHidden = !picking
-        if picking {
-            pick.frame = NSRect(x: x0 + pad + 30, y: statusY + 20, width: inner - pad * 2 - 30, height: pick.height)
-            pick.layoutRows()
-        }
-        if mode == .recording, recordingShots.count > 1 {
-            nextBtn.isHidden = false; nextBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH); bx -= 26
-            prevBtn.isHidden = false; prevBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH); bx -= 26
         }
         if mode == .edit {
-            bx = x0 + inner - pad - 26
-            micBtn.isHidden = false; micBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
+            micBtn.isHidden = false; micBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12); bx -= 26
             if playURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
-                playBtn.isHidden = false; playBtn.frame.origin = NSPoint(x: bx, y: rowY + fieldH - 2); bx -= 26
+                playBtn.isHidden = false; playBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12); bx -= 26
             }
+        }
+        if mode == .recording, recordingShots.count > 1 {
+            nextBtn.isHidden = false; nextBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12); bx -= 26
+            prevBtn.isHidden = false; prevBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12); bx -= 26
+        }
+        // a fresh shot: the place leads the footer — its glyph on the glyph column, its name on the text column
+        chip.isHidden = !fresh
+        var statusX = textX
+        if fresh {
+            chip.set(place, maxWidth: min(200, inner * 0.56))
+            chip.open = picking
+            chip.frame.origin = NSPoint(x: glyphX - ProjectChip.lead, y: footY)
+            statusX = chip.frame.maxX + 8
+        }
+        let sh = ceil(status.attributedStringValue.size().height)
+        status.frame = NSRect(x: statusX, y: midY - max(15, sh) / 2, width: max(0, bx - 6 - statusX), height: max(15, sh))
+        // a line that doesn't fit beside the quiet actions steps aside while they show (never cut mid-word)
+        status.isHidden = ceil(status.attributedStringValue.size().width) + 4 > status.frame.width
+        pick.isHidden = !picking
+        if picking {
+            pick.frame = NSRect(x: x0, y: footY + footH + 4, width: inner, height: pick.height)
+            pick.layoutRows()
+            pick.needsDisplay = true
         }
         position()
     }
@@ -1365,83 +1445,118 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         field.placeholderAttributedString = a
     }
 
+    /// What the bubble says now (r1). The glyph column says how the note is taken: the mic (filling as the voice comes
+    /// in) while it listens, the ok check once the words are saved, mic.slash when it can't or doesn't listen any more,
+    /// nothing while it is typed (the caret says so). The placeholder says what to do. The footer's quiet line says
+    /// only what the rest of the bubble can't: the time and "pause to finish" while talking, "Saved", how long was
+    /// said; the keys only where they aren't on a button — ⌘Z once there is ink, the list's keys while it is open, and
+    /// Esc in the first few bubbles. Never "⏎ done" next to a button that says Done ↩.
     private func refreshStatus() {
         let listening = voice?.running == true
-        bars.isHidden = !listening
-        icon.isHidden = listening
         let saved = wordsInField != nil && !typed
-        let quietDone = staged && hold.voiceDone && !micGone       // in place, nothing said: typing is what is left
-        let sym = mode == .recording ? "note.text" : saved ? "checkmark" : (typed || mode == .edit || voiceBusy || quietDone ? "keyboard" : "mic.slash")
-        icon.image = NSImage(systemSymbolName: sym, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
-        icon.contentTintColor = saved ? BrandColor.ok : .secondaryLabelColor
-        status.textColor = .secondaryLabelColor
+        bars.isHidden = !listening || saved
+        var sym: String?
+        var tint: NSColor = .tertiaryLabelColor
         switch mode {
         case .listen:
-            // in place the one button says Done, so the line says "⏎ done" too (one name for one action); under the
-            // notch it stays "⏎ save"
-            // where it goes, in every state, is the chip before this line ("Goes to X ⌄"): with a project, straight
-            // into it (with a note or without); Auto: a card
-            let dest = ""
-            // (in place the line is shorter: the chip and Done sit beside it)
-            let next = staged ? "" : hkHint(.snap, "capture.note.next_hint").map { " · " + $0 } ?? ""
-            chip?.set(destination, maxWidth: min(200, (panel?.frame.width ?? 400) * 0.5))
+            if saved { sym = "checkmark"; tint = BrandColor.ok }
+            else if !listening && !typed { sym = "mic.slash" }
+        case .edit:
+            if saved { sym = "checkmark"; tint = BrandColor.ok }
+        case .recording:
+            sym = "note.text"; tint = .secondaryLabelColor
+        }
+        icon.isHidden = listening || sym == nil
+        icon.image = sym.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: saved ? .semibold : .regular)) }
+        icon.contentTintColor = tint
+        var line = ""
+        switch mode {
+        case .listen:
+            chip?.set(place, maxWidth: min(200, (panel?.frame.width ?? 352) * 0.56))
             if listening || (hold.voiceDone && voiceKept && wordsInField == nil) {
                 livePlaceholder(Loc.t("capture.note.listening", table: "Capture"))
+            } else if voiceBusy {
+                plainPlaceholder(Loc.t("capture.note.ph_voice_busy", table: "Capture"))
+            } else if micGone {
+                plainPlaceholder(Loc.t("capture.note.ph_mic_gone", table: "Capture"))
+            } else if !hold.voiceDone {
+                plainPlaceholder(Loc.t("capture.note.ph_no_mic", table: "Capture"))      // it never listened
             } else {
                 plainPlaceholder(Loc.t("capture.note.placeholder_optional", table: "Capture"))
             }
-            if saved {
-                // (the check is the row's icon: one mark, not two)
-                status.stringValue = Loc.t("capture.note.saved", table: "Capture")
-            } else if typed {
-                let said = voiceKept ? Loc.t("capture.note.said", table: "Capture", fmt(voiceSpeech)) + " · " : ""
-                status.stringValue = dest + said + Loc.t(staged ? "capture.note.done_clear" : "capture.note.save_clear", table: "Capture")
-            } else if voiceBusy {
-                status.stringValue = Loc.t(staged ? "capture.note.voice_busy_done" : "capture.note.voice_busy", table: "Capture")
+            if picking {
+                line = ""                               // (the list says its own keys, on its filter line)
+            } else if saved {
+                line = Loc.t("capture.note.saved", table: "Capture")
             } else if listening && speechStarted {
-                status.stringValue = fmt(voice?.elapsed ?? 0) + " · " + dest + Loc.t(staged ? "capture.note.listening_done" : "capture.note.listening_save", table: "Capture")
-            } else if listening {
-                status.stringValue = dest + Loc.t(staged ? "capture.note.done_discard" : "capture.note.keep_discard", table: "Capture") + next
-            } else if hold.voiceDone && voiceKept {
-                status.stringValue = dest + Loc.t(staged ? "capture.note.done_discard" : "capture.note.save_discard", table: "Capture")
-            } else if staged && hold.voiceDone && !micGone {
-                // in place, nothing said (the mic has stopped listening): it waits for ⏎, Done or a click outside
-                status.stringValue = Loc.t("capture.note.done_discard", table: "Capture")
-            } else {
-                // every key written out whole (tests/test_l10n.py checks each one exists in both languages)
-                let key = micGone ? (staged ? "capture.note.mic_gone_done" : "capture.note.mic_gone")
-                                  : (staged ? "capture.note.no_mic_done" : "capture.note.no_mic")
-                status.stringValue = dest + Loc.t(key, table: "Capture")
+                line = Loc.t("capture.note.st_pause", table: "Capture", fmt(voice?.elapsed ?? 0))
+            } else if typed && voiceKept {
+                line = Loc.t("capture.note.said", table: "Capture", fmt(voiceSpeech))
+            } else if !ink.strokes.isEmpty {
+                line = Loc.t("capture.note.st_undo", table: "Capture")
+            } else if firstTimes {
+                line = Loc.t(typed ? "capture.note.st_esc_clear" : "capture.note.st_esc_discard", table: "Capture")
             }
         case .edit:
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
-            if listening { status.stringValue = fmt(voice?.elapsed ?? 0) + " · " + Loc.t("capture.note.recording_new", table: "Capture") }
-            else { status.stringValue = Loc.t("capture.note.save_cancel", table: "Capture") }
+            line = listening ? fmt(voice?.elapsed ?? 0) + " · " + Loc.t("capture.note.recording_new", table: "Capture")
+                             : Loc.t("capture.note.save_cancel", table: "Capture")
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
             plainPlaceholder(Loc.t("capture.note.placeholder_shot", table: "Capture"))
             // the shot counter first: on a narrow bubble the hint's tail is what gets cut, not "2/2"
-            status.stringValue = (recordingShots.count > 1 ? "\(i)/\(recordingShots.count)  ·  " : "")
-                + Loc.t("capture.note.paused", table: "Capture")
+            line = (recordingShots.count > 1 ? "\(i)/\(recordingShots.count)  ·  " : "") + Loc.t("capture.note.paused", table: "Capture")
         }
+        status.attributedStringValue = NoteBubble.keyLine(line)
+        if status.frame.width > 0 { status.isHidden = ceil(status.attributedStringValue.size().width) + 4 > status.frame.width }
+    }
+
+    /// The footer line, the way macOS menus set their keys: the keys (⏎ ↩ ⌘Z ↑↓ Esc …) in medium, the words regular,
+    /// both secondary (a key hint is text that must be read: never tertiary), times in tabular figures.
+    static func keyLine(_ s: String) -> NSAttributedString {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        let a = NSMutableAttributedString(string: s, attributes: [.font: font, .foregroundColor: NSColor.secondaryLabelColor])
+        let keys = ["⌘Z", "↑↓", "⏎", "↩", "Esc", "Tab", "⇧", "⌥", "⌘←", "⌘→"]
+        let ns = s as NSString
+        for k in keys {
+            var r = ns.range(of: k)
+            while r.location != NSNotFound {
+                a.addAttribute(.font, value: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), range: r)
+                let from = r.location + r.length
+                r = ns.range(of: k, range: NSRange(location: from, length: ns.length - from))
+            }
+        }
+        return a
     }
 
     private func fmt(_ s: Double) -> String { String(format: "%d:%02d", Int(s) / 60, Int(s) % 60) }
 
-    /// "Goes to ordo-platform" for a fresh snap taken with a current project; "Stays as a card" without one — what
-    /// happens to it (it hangs under the notch until a project is picked), as the voice note's island line says it
-    /// (v0.9-fix2: a bare "Unassigned ⌄" didn't read as where the snap goes). The list's row is still "Unassigned".
-    private var destination: String {
+    /// Where this snap goes, by the name its list uses (one name for one choice): the project, or Unassigned — the
+    /// list's row and the chip's tooltip say what that means (it stays as a card until a project is picked). The
+    /// current project's folder is gone (MissingFolder): its name and "folder not found" (it stays a card meanwhile).
+    private var place: ProjectChip.Place {
         guard let pid = shot?.project, let p = ProjectStore.shared.project(id: pid) else {
-            // the current project's folder is gone (MissingFolder): say why it stays a card
-            if let m = ProjectStore.shared.missingCurrent { return Loc.t("capture.note.goes_missing", table: "Capture", m.name) }
-            return Loc.t("capture.note.stays_card", table: "Capture")
+            if let m = ProjectStore.shared.missingCurrent { return .missing(m.name) }
+            return .unassigned
         }
-        return Loc.t("capture.note.goes_to", table: "Capture", p.name)
+        return .project(p)
+    }
+
+    /// The pointer came onto the bubble or left it: the quiet actions fade in or out (0.12 s).
+    private func hover(_ on: Bool) {
+        guard hovering != on, isOpen else { return }
+        hovering = on
+        let quiet = [discardBtn, undoBtn].compactMap { $0 }
+        if on { quiet.forEach { $0.alphaValue = 0 } }
+        layout()
+        NSAnimationContext.runAnimationGroup { c in
+            c.duration = reduceMotion ? 0 : 0.12
+            quiet.forEach { $0.animator().alphaValue = 1 }
+        }
     }
 
     private func tick() {
-        bars.needsDisplay = true
+        bars.decay()
         if voice?.running == true && speechStarted { refreshStatus() }
         // the pen held still on the picture is still drawing: the pause doesn't end the note under it
         if ink.isDrawing { voice?.activity(grace: NoteHold.inkGrace) }
@@ -1522,6 +1637,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     }
 
     private func inkChanged() {
+        refreshStatus()                         // (⌘Z is named once there is ink)
         layout()
     }
 
@@ -1544,10 +1660,16 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         pick.current = s.project
         pick.filter.stringValue = ""
         pick.reload()
-        pick.select(max(0, pick.rows.firstIndex { $0?.id == s.project && s.project != nil } ?? 0))
+        pick.select(pick.currentIndex)          // the cursor opens on where it goes now: the wash and the check agree
         hold.picking = true                      // choosing: it doesn't close by itself under the list
         holdWork?.cancel()
+        refreshStatus()
         layout()
+        // the list unfolds from the chip (0.15 s): it comes from what was clicked
+        if !reduceMotion {
+            pick.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { c in c.duration = 0.15; pick.animator().alphaValue = 1 }
+        }
         panel?.makeFirstResponder(pick.filter)
         emit(["event": "note_chip", "open": true, "n": s.n, "rows": pick.rows.map { $0?.id ?? "inbox" }])
     }
@@ -1556,6 +1678,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         guard picking else { return }
         picking = false
         hold.picking = false                     // `pinned` (words being fixed, text just cleared) stays as it was
+        refreshStatus()
         layout()
         panel?.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
@@ -1703,6 +1826,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
               "chip": chip?.title ?? "", "project": shot?.project ?? NSNull()])
     }
 
+    /// The pointer on the bubble or off it, as its tracking area tells (the quiet actions show).
+    func testHover(_ on: Bool) {
+        hover(on)
+        emit(["event": "note_hover", "on": hovering, "discard": !(discardBtn?.isHidden ?? true), "undo": !(undoBtn?.isHidden ?? true)])
+    }
+
     /// The microphone stops delivering mid-note (a headset gone): the watchdog ends the note.
     func testStall() { voice?.testStall() }
 
@@ -1745,7 +1874,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.stop()
         ink.flush()                             // a stroke still being drawn is part of the note
         if picking { picking = false; pick.isHidden = true }
-        let savedLine = Loc.t("capture.note.saved", table: "Capture") + (mode == .listen ? " · " + destination : "")
+        // (the chip beside it already says where it goes)
+        let savedLine = Loc.t("capture.note.saved", table: "Capture")
         // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo
         let discard = !save && mode == .listen
         let rel = takeRel ?? canonicalVoice(s)
@@ -1856,12 +1986,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             icon.isHidden = false
             plainPlaceholder("")
             if !(heard.committed + heard.pending).isEmpty || wordsInField != nil { livePlaceholder("") }
-            icon.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+            icon.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
             // the same "Saved" as when the words are shown (wordsIn): the check in the brand's ok colour, the line
             // secondary — only shorter, as the user pressed ⏎ and is going on
             icon.contentTintColor = BrandColor.ok
-            status.stringValue = savedLine
-            status.textColor = .secondaryLabelColor
+            status.attributedStringValue = NoteBubble.keyLine(savedLine)
             let w = DispatchWorkItem { [weak self] in
                 guard let self = self, self.generation == g else { return }
                 self.fadeOut(p, generation: g, then: done)
