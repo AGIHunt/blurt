@@ -1301,7 +1301,7 @@ struct InstallMark: View {
     var agent: String
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            Image(nsImage: BrandMark.image).resizable().interpolation(.high).frame(width: 44, height: 44)
+            Image(nsImage: NSApp.applicationIconImage ?? NSImage()).resizable().interpolation(.high).frame(width: 44, height: 44)
             if let url = DesktopApp.appURL(agent) {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().interpolation(.high)
                     .frame(width: 22, height: 22).offset(x: 4, y: 3)

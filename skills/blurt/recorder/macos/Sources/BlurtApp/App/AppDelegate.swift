@@ -90,7 +90,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickLast: picker?.useLast()
         case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
-        // voice input started or stopped: the chick pulses now, not at the idle timer's next tick
+        // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
     }
 
@@ -166,6 +166,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         w.ignoresMouseEvents = false
         w.orderFrontRegardless()
         countdownWin = w
+        MenuGlyph.shared.countdown = true            // Peep listens in the menu bar too
         var left = n
         var fired = false
         v.n = left
@@ -177,6 +178,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             fired = true                 // a short beat after hiding so the countdown never lands in frame 1
             timer?.invalidate()
             w.orderOut(nil)
+            MenuGlyph.shared.countdown = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then() }
         }
         v.onSkip = go
@@ -736,7 +738,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         island.toast(t)
     }
 
-    /// The status item: the clock while recording, the chick (moving while voice input listens) and the count of what
+    /// The status item: the clock while recording, Peep (moving with what Blurt does: MenuGlyph) and the count of what
     /// waits for you otherwise. It only touches the button when something it shows changed, and its timer runs twice
     /// a second only while a recording's clock or voice input needs it — every 2 s otherwise (an idle menu-bar app
     /// shouldn't keep the CPU awake).
@@ -752,11 +754,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             tip = nil
             ax = T("app.name")
         } else {
-            MenuGlyph.shared.listening = VoiceInput.shared.active
+            MenuGlyph.shared.sync()          // Peep: talking while you dictate, listening to a voice note, thinking…
             image = MenuGlyph.shared.current ?? menuIcon
             let badge = MenuBadge.shared
             // K4: the count of what waits for you, next to the icon; nothing at all when there is nothing. No leading
-            // space: the button's own image–title gap is enough now that the chick fills its box (with the space the
+            // space: the button's own image–title gap is enough now that the glyph fills its box (with the space the
             // count sat 6 pt off, looking like a separate item)
             title = badge.count > 0
                 ? NSAttributedString(string: Loc.number(badge.count), attributes: [
@@ -789,7 +791,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusTimer = t
     }
 
-    /// The menu-bar icon at rest: the monochrome template chick (below), like every other menu-bar icon. The recording
+    /// The menu-bar icon at rest: Peep's monochrome template glyph (below), like every other menu-bar icon. The recording
     /// state (red dot / pause) replaces it.
     lazy var menuIcon: NSImage = App.makeMenuIcon()
 
@@ -799,12 +801,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshStatus()
     }
 
-    /// The `blurt` glyph (assets/icons/blurt.svg — the same mark as the Tauri tray): the 4A chick as a bold filled
-    /// silhouette with the face knocked out, 16.5 pt tall in its 18 pt box (assets/brand/chick.swift), as a monochrome
-    /// template image like every other menu-bar icon: macOS tints it for light, dark and highlighted bars, and it is
-    /// vector, so it is crisp at every scale. No arcs at rest: MenuGlyph adds them while voice input listens.
+    /// Peep at rest: the release package's menu-bar glyph (Resources/Peep, idle frame 0) — the sphere with the eye knocked
+    /// out and the beak shut, 18 pt, a monochrome template image like every other menu-bar icon: macOS tints it for light,
+    /// dark and highlighted bars, with pixels drawn for @1x and @2x. MenuGlyph moves it.
     static func makeMenuIcon() -> NSImage {
-        let img = BlurtIcon.blurt.image(size: 18)
+        let img = MenuGlyph.shared.frame(.idle, 0) ?? BlurtIcon.blurt.image(size: 18)
         img.isTemplate = true
         img.accessibilityDescription = T("app.name")
         return img

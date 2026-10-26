@@ -422,6 +422,8 @@
 "menu.help" = "Help";
 
 "menu.hide" = "Hide Blurt";
+"menu.about" = "About Blurt";
+"menu.about.credits" = "Free and open source · blurt.agihunt.info";
 
 "menu.item" = "Item";
 "menu.project" = "Project";

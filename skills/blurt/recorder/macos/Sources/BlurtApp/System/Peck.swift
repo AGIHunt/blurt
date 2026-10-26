@@ -1,15 +1,13 @@
-// The completion chick (K7 / K8): when an item reaches "to verify" (an agent says it's fixed) or "done" (you confirmed
-// it), the island shows one quiet line with the chick beside it — never a window of its own, never one per item: news
+// The completion line (K7 / K8): when an item reaches "to verify" (an agent says it's fixed) or "done" (you confirmed
+// it), the island shows one quiet line with Peep beside it — never a window of its own, never one per item: news
 // within 10 s of each other becomes one line ("3 items to verify"). Click = that item (or the inbox).
 //
-// The chick is the mascot, the brand's chick in colour (Icons/Mascot.swift, drawn and moved in code):
-//   to verify   it spots a bug, pounces on it, the bug goes in a sparkle, a happy hop back (`peck`)
-//   done        two happy hops, wings up, ^ ^ eyes, sparkles (`happy`)
-// Reduce Motion: the clip's still moment.
+// Peep (Icons/Mascot.swift) plays its done clip for both: a peep and a hop. The line's own mark says which (✓ done in
+// ok green, ⚠ to verify in attention amber). Reduce Motion: the clip's still moment (the happy eye).
 import AppKit
 import BlurtCore
 
-/// "Fixed" news: the chick in the island. One line per 10 s, however many items arrived in it.
+/// "Fixed" news: Peep in the island. One line per 10 s, however many items arrived in it.
 final class PeckCard: NSObject {
     static let shared = PeckCard()
     private var pending: [(title: String, uid: String, state: String)] = []
@@ -45,9 +43,8 @@ final class PeckCard: NSObject {
             text = Loc.plural(done ? "capture.peck.done_many" : "capture.peck.verify_many", table: "Capture", count: items.count)
                 + "\n" + Loc.t("capture.peck.open_inbox", table: "Capture")
         }
-        let clip: MascotClip = done ? .happy : .peck
+        let clip: MascotClip = .done
         let chick = MascotView(clip: clip, size: 28, backdrop: .dark)
-        chick.mascot.quiet = true          // no sound arcs: they say "listening", and this is news
         chick.show(clip, frame: 0)
         let uid = items.count == 1 ? items[0].uid : nil
         var t = Island.Toast(text: text, actionTitle: nil, action: {
@@ -59,12 +56,12 @@ final class PeckCard: NSObject {
         }
         t.seconds = max(3.4, (MascotLibrary.shared.clip(clip)?.duration ?? 2) + leadIn + 1)
         island.toast(t)
-        MenuGlyph.shared.hop()
+        MenuGlyph.shared.done()
         DispatchQueue.main.asyncAfter(deadline: .now() + leadIn) { chick.play(clip) }
     }
 
     /// The clip at 12 fps as 80 pt PNGs (× `scale` pixels) on a light or dark backdrop (docs / tests make GIFs of them).
-    static func renderFrames(to dir: URL, clip: MascotClip = .peck, scale: CGFloat = 2, dark: Bool = false) -> Int {
+    static func renderFrames(to dir: URL, clip: MascotClip = .done, scale: CGFloat = 2, dark: Bool = false) -> Int {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let bg = dark ? CGColor(srgbRed: 0.11, green: 0.11, blue: 0.12, alpha: 1) : CGColor(srgbRed: 0.97, green: 0.96, blue: 0.94, alpha: 1)
         let frames = MascotLibrary.shared.timelineFrames(clip, points: 80, scale: scale, dark: dark, backdrop: bg)

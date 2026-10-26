@@ -121,7 +121,7 @@ public enum IslandLayout {
     }
 
     /// `lead`: the leading slot's width (from `leadX` to the text); `art`: the slot holds the mascot (drawn from the
-    /// left edge). Every toast has its slot filled — a status mark, the spinner, the chick — and nothing is centred:
+    /// left edge). Every toast has its slot filled — a status mark, the spinner, Peep — and nothing is centred:
     /// the text starts at `leadX + lead` whatever its length.
     public static func toast(text: CGFloat, lead: CGFloat = textColumn - toastInset, art: Bool = false, button: CGFloat?,
                              floor: CGFloat, maxWidth: CGFloat, buttonGap: CGFloat = 10) -> Toast {

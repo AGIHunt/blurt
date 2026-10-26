@@ -1,7 +1,7 @@
 // "Hand to an agent" used to open a panel that ran the agent in the background (`-p`). That is gone (v0.7, K5): items
 // go to an interactive agent session in tmux through the dispatch panel (Terminal/DispatchPanel.swift). What stays here:
 //   FixRunner.announceFixed(…)     → an item reached "to verify": a notification that says only what the agent
-//                                    claimed, and the chick pecks it when it claimed something
+//                                    claimed, and Peep says so when it claimed something
 //   enum Notify                    → system notifications (unchanged)
 import AppKit
 import UserNotifications
@@ -13,7 +13,7 @@ final class FixRunner {
     // MARK: the "to verify" moment
 
     /// An item reached "to verify" (K3). `item` is the item's front-matter. Only what the agent claimed is said for
-    /// it: "fixed" / "won't fix" (and the chick pecks); a merge of its branch says so; anything else is neutral.
+    /// it: "fixed" / "won't fix" (and Peep peeps); a merge of its branch says so; anything else is neutral.
     func announceFixed(uid: String, item: [String: Any], session: URL) {
         let title = (item["title"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? item["id"] as? String ?? T("main.item.untitled")
         let work = item["work"] as? [String: Any] ?? [:]
@@ -53,7 +53,7 @@ enum Notify {
             n.title = title
             n.body = body
             n.userInfo = ["uid": uid]
-            n.attachments = MascotLibrary.shared.attachment(.peck)
+            n.attachments = MascotLibrary.shared.attachment(.done)
             c.add(UNNotificationRequest(identifier: "fixed-\(uid)-\(Int(Date().timeIntervalSince1970))", content: n, trigger: nil))
         }
     }

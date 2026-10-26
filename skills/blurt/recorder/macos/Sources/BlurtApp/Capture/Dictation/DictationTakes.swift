@@ -270,6 +270,7 @@ extension Dictation {
 
     /// "Recognition failed · recording kept" (or "too slow"), with Retry.
     private func toastFailed(_ id: String, _ f: DictationASRFailure) {
+        MenuGlyph.shared.error()          // Peep shakes its head in the menu bar: a real failure (the audio is kept)
         island.toast(Loc.t(f == .timedOut ? "dictation.toast.asr_slow" : "dictation.toast.asr_failed", table: "Dictation"),
                      key: Dictation.failedToastKey(id), seconds: 8,
                      actionTitle: Loc.t("dictation.toast.retry", table: "Dictation"), action: { [weak self] in

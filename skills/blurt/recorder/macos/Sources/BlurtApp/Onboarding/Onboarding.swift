@@ -40,7 +40,7 @@
 // rows over hairlines as in Settings, a neutral glyph column, one trailing element on one right edge), and the footer:
 // the step dots, Skip Setup (neutral; the one skip — none per step), Back, and one brand primary: the step's own
 // action while it is still to do (Next / Done beside it, plain, goes on without it), else Next / Done. Done closes
-// (the chick is already happy on the last step; no bloom). The window is sized before it is centred (it opened
+// (Peep already peeps and hops on the last step; no bloom). The window is sized before it is centred (it opened
 // against the menu bar, its left edge on the screen's middle, when centred at zero size).
 // Test builds never register a login item (an event says what would have happened) and never ask macOS for anything
 // (SystemAccess.swift); BLURT_TEST_WARM_FAIL names a script that stands in for the warm-up's first one (a failure).
@@ -852,8 +852,9 @@ struct OnbPermissionRow: View {
 }
 
 /// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it — the only place
-/// the spectrum appears. Flat field (no grain, no glow) with Reduce Transparency. The chick hatches to say hello and
-/// hops on the last step. It sits a little above the middle, where the eye puts the centre.
+/// the spectrum appears. Flat field (no grain, no glow) with Reduce Transparency. Peep (the paper clay renders) turns
+/// to say hello on the first steps, then idles (a breath and a blink), and peeps and hops on the last step. It sits a
+/// little above the middle, where the eye puts the centre.
 struct OnboardingHero: View {
     @ObservedObject var m: OnboardingModel
     @Environment(\.colorScheme) private var scheme
@@ -866,7 +867,7 @@ struct OnboardingHero: View {
                     // light: a bloom that lightens the field (screen), never a darker smudge on it
                     SpectrumGlow(size: 176, opacity: scheme == .dark ? 0.5 : 0.7)
                         .blendMode(scheme == .dark ? .normal : .screen)
-                    MascotImage(clip: m.step == m.steps - 1 ? .happy : .hatching, then: .idle, size: 108, backdrop: .light)
+                    MascotImage(clip: m.step == m.steps - 1 ? .done : .hello, then: .idle, size: 108, backdrop: .light)
                         .frame(width: 108, height: 108)
                 }
                 .frame(width: 140, height: 140)

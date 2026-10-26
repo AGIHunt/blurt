@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.png" width="132" alt="口喷鸡"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/peep-readme-dark.png"><img src="assets/peep-readme.png" width="132" alt="口喷鸡"></picture></p>
 <h1 align="center">口喷鸡 Blurt</h1>
 <p align="center"><b>Agent 时代的输入法</b><br>
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>

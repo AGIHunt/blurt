@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
-import { Logo, isMacLike } from "./TopBar";
+import { Logo, Thinking, isMacLike } from "./TopBar";
 
 export function Toast() {
   const s = useStore();
@@ -74,7 +74,7 @@ function Finish() {
       <p>{s.finishError ? s.t("finish.error") : s.t("finish.body", { k: c.k, d: c.d, p: c.p })}</p>
       {s.finishWarn && (
         <div className="warn">
-          <Icon name="hatch" className="hatching" />
+          <Thinking />
           <span>{s.t(back ? "finish.still_processing" : "finish.still_processing_app")}</span>
         </div>
       )}
@@ -137,7 +137,7 @@ export function Done() {
       <div>
         {!s.embedded && (
           <span className="cel">
-            <Logo className="big" />
+            <Logo className="big peep-done" />
           </span>
         )}
         <h2>{s.t(s.handsBack ? "done.title" : "done.title_app")}</h2>

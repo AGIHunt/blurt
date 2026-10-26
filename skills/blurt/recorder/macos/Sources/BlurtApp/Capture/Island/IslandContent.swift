@@ -20,8 +20,8 @@
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
 //               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord) · how many items were spotted
-//   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): the chick
-//               (no sound arcs: the bars say "heard"), the live waveform and Done (with the key held there is no Done:
+//   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): Peep
+//               listening (eye wide, swelling with the voice), the live waveform and Done (with the key held there is no Done:
 //               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
 //               view's one mint thing), how it ends ("⌥⇧V to finish · Esc to discard"; the time left in its last
 //               minute) and, on the right edge, where it will go — the words themselves hang under the island
@@ -34,7 +34,7 @@
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: the island's mint tint (r 8);
 //               a project's key shows on the row being chosen unless it is the current one (one trailing mark: the check)
 //   toast       one component, one layout: the leading slot always filled (✓ ok for done, the spinner for working, the
-//               amber ⚠ for needs you, the chick for a peck, the project's folder for a filing, else the quiet chick
+//               amber ⚠ for needs you, Peep for a done line, the project's folder for a filing, else Peep's quiet glyph
 //               glyph), the title (13 medium) and an optional detail (11.5, 60 %) on the text column, an optional quiet
 //               pill 14 pt from the right. Nothing centred. A detail line still at work leads with a small spinner, a
 //               peck's state with its ✓ / ⚠; a line that is its own button (a peck) ends in a chevron, "Open" beside
@@ -922,7 +922,7 @@ final class IslandContent: NSView {
     /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
     /// the picker say it: "⌥⇧V to finish · Esc discard" (the user's key; "Click Done to finish" without one), "Pause
     /// to finish" with record.voice.end_on_pause, "Let go to finish" while held — and in its last minute, the time
-    /// left. Not "Listening": the waveform and the chick say that.
+    /// left. Not "Listening": the waveform and Peep say that.
     static func voiceHint() -> String {
         let v = VoiceInput.shared
         var s: String
@@ -947,15 +947,14 @@ final class IslandContent: NSView {
         let v = VoiceInput.shared
         // the body's edges: the ears' mic and clock line up with them (Island.layoutEars), as a live activity's
         let L = IslandLayout.bodyInset, R = w - IslandLayout.bodyInset
-        // row 1: the chick (no sound arcs — the bars say "heard"), the live waveform — the one focal thing, the one
+        // row 1: Peep listening (eye wide, swelling with the voice), the live waveform — the one focal thing, the one
         // brand colour that moves — and Done (the view's one filled button) on the right edge. With the key held there
         // is no Done: letting go finishes it, and the hint under it says so
         var y: CGFloat = top + 4
         let rowH: CGFloat = 40
         let cs: CGFloat = 32
         let chick = MascotView(size: cs, backdrop: .dark)
-        chick.mascot.quiet = true
-        chick.frame.origin = NSPoint(x: L - 3, y: y + (rowH - cs) / 2)      // (the art has 2–3 pt of air in its square)
+        chick.frame.origin = NSPoint(x: L - 3, y: y + (rowH - cs) / 2)      // (Peep has a little air in its square)
         addSubview(chick)
         chick.play(.listening)
         let wx = L - 3 + cs + 8
@@ -1240,8 +1239,8 @@ final class IslandContent: NSView {
         return a
     }
 
-    /// The mark a toast leads with when it names none: the quiet chick glyph — blurt telling you something.
-    static let toastDefaultMark: BlurtIcon = .chicken
+    /// The mark a toast leads with when it names none: Peep's glyph at rest, quiet — Blurt telling you something.
+    static func toastDefaultMark(_ color: NSColor) -> NSImage { MenuGlyph.tinted(color, size: 15) }
 
     private func buildToast(_ t: Island.Toast, _ w: CGFloat, top: CGFloat) -> CGFloat {
         // one component, one layout: the leading slot (always filled) centred on the icon column, the headline (13
@@ -1278,7 +1277,7 @@ final class IslandContent: NSView {
         // "Open" beside it while the pointer is on the island
         let opens = btn == nil && t.action != nil && t.art != nil
         let hint = opens ? OpenHint() : nil
-        // the text column; a peck's chick (it pounces on a bug to its right, then hops back) gets 8 pt more room
+        // the text column; a done line's Peep (it hops) gets 8 pt more room
         let textX = IslandLayout.textColumn + (t.art == nil ? 0 : 8)
         let fit = IslandLayout.toast(text: textW, lead: textX - IslandLayout.toastInset, button: hint?.frame.width ?? btn?.frame.width,
                                      floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW,
@@ -1315,14 +1314,14 @@ final class IslandContent: NSView {
         }
         let rowH = IslandLayout.toastHeight(lines: lines)
         // the text block (headline, then the detail 1 pt under it) centred in the row; the mark on the headline's first
-        // line, the chick on the whole block, the button on the row
+        // line, Peep on the whole block, the button on the row
         let blockH = textH + (detailField == nil ? 0 : 1 + detailH)
         let rowMid = top + rowH / 2
         let textTop = (rowMid - blockH / 2).rounded()
         let mid = textTop + l.frame.height / 2
         let ic = IslandLayout.iconColumn
         if let art = t.art {
-            // the chick in the slot: its square from 12 pt in, its hops and its bug clear of the text
+            // Peep in the slot: its square from 12 pt in, its hop clear of the text
             let z: CGFloat = 28
             art.frame = NSRect(x: 12, y: (rowMid - z / 2).rounded() - 1, width: z, height: z)
             addSubview(art)
@@ -1330,17 +1329,18 @@ final class IslandContent: NSView {
             addSubview(IslandSpinner(frame: NSRect(x: ic - 6.5, y: (mid - 6.5).rounded(), width: 13, height: 13)))
         } else {
             // done = the ok check, needs you = the attention triangle (never colour alone: each has its shape), a
-            // filing = the project's folder in its colour, anything else the quiet chick glyph — one 15 pt slot
-            let (mark, color): (BlurtIcon, NSColor) = {
+            // filing = the project's folder in its colour, anything else Peep's quiet glyph — one 15 pt slot
+            let (mark, color): (BlurtIcon?, NSColor) = {
                 switch t.icon {
                 case .check?: return (.check, BrandColor.Island.ok)
                 case .warning?: return (.warning, BrandColor.Island.attn)
                 case let i?: return (i, ink2)
-                case nil: return (IslandContent.toastDefaultMark, ink2)
+                case nil: return (nil, ink2)
                 }
             }()
             let im = t.badge.flatMap { IslandGlyph.project($0.color).image(size: 15, color: ink) }
-                ?? mark.image(size: 15, color: color, weight: mark == .check ? 1.35 : 1.15)
+                ?? mark.map { $0.image(size: 15, color: color, weight: $0 == .check ? 1.35 : 1.15) }
+                ?? IslandContent.toastDefaultMark(color)
             place(NSImageView(image: im), x: ic - 7.5, y: (mid - 7.5).rounded(), w: 15, h: 15)
         }
         // (a label draws 2 pt inside its frame: its first letter on the text column, as a row's)

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DragRect } from "../host";
 import type { Media, ReviewStore } from "../store";
 import { Icon } from "./Icon";
+import { Thinking } from "./TopBar";
 import { cx, useStore } from "./ctx";
 
 function guessAR(s: ReviewStore) {
@@ -76,7 +77,7 @@ function MediaBox({ items, k }: { items: Media[]; k: number }) {
       <div id="mediaBox">
         <div className={cx("shot wait ready", !s.stalled && "shim")} style={{ ["--ar" as string]: guessAR(s) }}>
           <div className="wait-in">
-            <Icon name="hatch" className="hatching" />
+            <Thinking />
             <span>{s.stalled ? s.t("media.none") : s.t("media.adding")}</span>
           </div>
         </div>

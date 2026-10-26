@@ -59,16 +59,17 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
         switch (j.type, j.state) {
         case (.process, .done), (.route, .done):
             // a capture filed from its note (no agent) already said "Filed to …" in the island
-            if let u = j.usage, u.agent == nil { MenuGlyph.shared.hop(); return }
+            if let u = j.usage, u.agent == nil { MenuGlyph.shared.done(); return }
             let n = j.items.isEmpty ? nil : j.items.count
             let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
             let text = n.map { "\(what) · \(TP("app.menu.new", $0))" } ?? what
-            quiet(text, action: T("notify.open"), art: .happy) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
-            MenuGlyph.shared.hop()
+            quiet(text, action: T("notify.open"), art: .done) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
+            MenuGlyph.shared.done()
             if !frontmost, ran >= 20, setting("done") { post("done", title: text, body: JobLook.title(j), job: j) }
         case (_, .failed):
             let why = JobLook.errorText(j) ?? ""
-            quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show"),
+            MenuGlyph.shared.error()
+            quiet(T("notify.failed", JobLook.title(j)), action: T("notify.show"), art: .error,
                   launch: j.error?.hintKey == "main.job.hint.interrupted" ? .job : nil) { AppEnvironment.mainWindow?.reveal(job: j.id) }
             if !frontmost { post("failed", title: T("notify.failed", JobLook.title(j)), body: why, job: j) }
         default: break
@@ -79,7 +80,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
     /// `launch`: a launch message too (one at launch: LaunchMessages) — a job the last run left unfinished.
     private func quiet(_ text: String, action: String, art: MascotClip? = nil, launch: LaunchRank? = nil, _ run: @escaping () -> Void) {
         if AppEnvironment.island != nil, let clip = art {
-            // done: the chick hops beside the line (the mascot, Icons/Mascot.swift)
+            // Peep beside the line (Icons/Mascot.swift): a peep and a hop when done, a head shake when it failed
             let chick = MascotView(clip: clip, size: 50, backdrop: .dark)
             chick.show(clip, frame: 0)
             var t = Island.Toast(text: text, actionTitle: action, action: run)
@@ -131,7 +132,7 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             n.body = body
             n.userInfo = ["job": job.id]
             n.threadIdentifier = kind
-            if kind == "done" { n.attachments = MascotLibrary.shared.attachment(.happy) }
+            if kind == "done" { n.attachments = MascotLibrary.shared.attachment(.done) }
             c.add(UNNotificationRequest(identifier: "\(kind)-\(job.id)", content: n, trigger: nil))
         }
     }
