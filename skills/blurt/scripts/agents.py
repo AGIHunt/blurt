@@ -116,9 +116,14 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
         except ValueError:
             pass
     home = home or Path.home()
+    env = os.environ if env is None else env
+
+    def at(f: str) -> Path:  # ${VAR:-default} first (grok: ${GROK_HOME:-~/.grok}), then ~/ against `home`
+        f = _subst(f, env)
+        return home / f[2:] if f.startswith("~/") else Path(os.path.expanduser(f))
     cj = st.get("creds_json")
     if isinstance(cj, dict) and cj.get("path"):
-        f = home / cj["path"][2:] if cj["path"].startswith("~/") else Path(cj["path"])
+        f = at(cj["path"])
         try:
             creds = json.loads(f.read_text(encoding="utf-8"))
             if isinstance(creds, dict) and not any(creds.get(k) for k in cj.get("keys", [])):
@@ -131,10 +136,9 @@ def parse_status(defn: dict, code: int | None, text: str, env: dict | None = Non
         return "ready"
     if st.get("configured_if") and re.search(st["configured_if"], text or "", re.I):
         return "configured"
-    env = os.environ if env is None else env
     if any(env.get(k) for k in st.get("env_any", [])):
         return "configured"
-    if any((home / f[2:] if f.startswith("~/") else Path(f)).exists() for f in st.get("files_any", [])):
+    if any(at(f).exists() for f in st.get("files_any", [])):
         return "configured"
     if st.get("otherwise") == "logged_out" and (code is not None or "args" not in st):
         return "logged_out"
@@ -239,15 +243,17 @@ def config(repo: str | Path | None = None) -> dict:
     return cfg
 
 
-def expand(path: str, env: dict | None = None) -> Path:
-    """~ and ${VAR:-default} / $VAR."""
-    env = os.environ if env is None else env
-
+def _subst(path: str, env: dict) -> str:
+    """${VAR:-default} / $VAR, leaving ~ alone."""
     def sub(m):
         name, default = m.group(1) or m.group(3), m.group(2)
         return env.get(name) or (default if default is not None else "")
-    s = re.sub(r"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)", sub, path)
-    return Path(os.path.expanduser(s))
+    return re.sub(r"\$\{(\w+)(?::-([^}]*))?\}|\$(\w+)", sub, path)
+
+
+def expand(path: str, env: dict | None = None) -> Path:
+    """~ and ${VAR:-default} / $VAR."""
+    return Path(os.path.expanduser(_subst(path, os.environ if env is None else env)))
 
 
 def sandbox_uv_cache() -> Path:

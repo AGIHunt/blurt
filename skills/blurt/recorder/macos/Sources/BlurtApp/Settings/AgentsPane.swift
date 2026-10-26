@@ -320,6 +320,9 @@ struct AgentsPane: View {
     /// the agent being dragged to a new place in the order, and the row it is over (where the insertion line shows)
     @State var dragging: String?
     @State var dropTarget: String?
+    /// The widest fix button on the page (Sign In…, Install…, Connect…): every row keeps a slot this wide before its
+    /// switch, so the states end at one x whether a row has a fix or not.
+    @State var fixSlot: CGFloat = 0
 
     /// Dragged down the list, the agent lands after the row it's over; dragged up, before it.
     func insertsBelow(_ target: String) -> Bool {
@@ -369,6 +372,7 @@ struct AgentsPane: View {
 
             askNote
         }
+        .onPreferenceChange(AgentFixWidth.self) { fixSlot = $0 }
         .task { await m.open() }
         // Connect's preview; from the details sheet it opens over that sheet instead (AgentDetailSheet)
         .sheet(isPresented: Binding(get: { m.plan != nil && m.details == nil }, set: { if !$0 { m.plan = nil } })) {
@@ -554,13 +558,36 @@ struct AgentsPane: View {
                 RowMenu(label: TL("agents.more.named", a.name), visible: hover) { menuItems(a, ordered: ordered) }
             }
             stateLabel(a)
-            fixButton(a, ordered: ordered)
-            if ordered && (a.installed || a.state == "checking") {
-                Toggle(TL("agents.use", a.name), isOn: Binding(get: { m.enabled.contains(a.id) }, set: { m.toggle(a.id, $0) }))
-                    .labelsHidden().toggleStyle(.switch).controlSize(.small)
-                    .help(TL(m.enabled.contains(a.id) ? "agents.use.on.help" : "agents.use.off.help"))
+            if fixSlot > 0 || hasFix(a, ordered: ordered) {
+                // the slot, as wide as the widest fix on the page: the button sits at its right end
+                ZStack(alignment: .trailing) {
+                    Color.clear.frame(width: fixSlot, height: 0)
+                    fixButton(a, ordered: ordered).fixedSize()
+                        .background(GeometryReader { Color.clear.preference(key: AgentFixWidth.self, value: $0.size.width) })
+                }
+            }
+            let switched = ordered && (a.installed || a.state == "checking")
+            // a not-installed row shares the list with switched rows: the switch's room, empty, keeps its state in line
+            if switched || (!a.installed && a.state != "checking") {
+                ZStack(alignment: .trailing) {
+                    switchView(a, isOn: .constant(false)).hidden().accessibilityHidden(true)     // the room, the same in every row
+                    if switched {
+                        switchView(a, isOn: Binding(get: { m.enabled.contains(a.id) }, set: { m.toggle(a.id, $0) }))
+                            .help(TL(m.enabled.contains(a.id) ? "agents.use.on.help" : "agents.use.off.help"))
+                    }
+                }
             }
         }
+    }
+
+    func switchView(_ a: CoreAgent, isOn: Binding<Bool>) -> some View {
+        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
+    }
+
+    /// The row has a fix button (fixButton's cases).
+    func hasFix(_ a: CoreAgent, ordered: Bool) -> Bool {
+        needsSignIn(a, ordered: ordered) || (!a.installed && a.state != "checking")
+            || (!a.headless && a.installed && m.connected[a.id] != true)
     }
 
     func fixBinding(_ id: String) -> Binding<Bool> {
@@ -721,6 +748,12 @@ struct AgentsPane: View {
 }
 
 /// The Organizing columns' names, on the section heading's line: each over its pop-up's text, the heading's size.
+/// The widest fix button among the Agents rows (AgentsPane.fixSlot).
+struct AgentFixWidth: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
 struct AgentsColumnNames: View {
     var body: some View {
         // each over its pop-up's own text, not its edge

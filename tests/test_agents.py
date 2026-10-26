@@ -50,7 +50,8 @@ esac""",
     "grok": """
 case "$1" in
   --version) echo "grok 1.0.70 (f50904eaee6c)";;
-  models) if [ -f "$HOME/.grok-signed-out" ]; then echo "Not logged in. Run grok login to sign in." >&2; exit 1; fi
+  models) if [ -f "$HOME/.grok-offline" ]; then echo "error sending request for url (https://api.x.ai/v1/models)" >&2; exit 1; fi
+          if [ -f "$HOME/.grok-signed-out" ]; then echo "Not logged in. Run grok login to sign in." >&2; exit 1; fi
           printf 'You are logged in with grok.com.\\n\\nDefault model: grok-4.7\\n';;
 esac""",
 }
@@ -218,8 +219,23 @@ def test_grok(env, tmp_path):
     assert "Edit(./**)" in allowed and not {"Bash", "Edit", "*", "Write"} & set(allowed)
     assert all(x.startswith(f"Bash(uv run {SCRIPTS}/") for x in allowed if x.startswith("Bash"))
     assert "--always-approve" not in a and a[-2:] == ["--output-format", "streaming-json"]
+    # grok searches and fetches the web without asking in every mode, dontAsk included: an unattended run gets neither
+    assert "--disable-web-search" in a and "--no-auto-update" in a
     gh = Path(os.environ["GROK_HOME"])
     gh.mkdir()
+    # `grok models` needs the network: offline (or too slow) it says neither way, so auth.json decides
+    (env["home"] / ".grok-signed-out").unlink()
+    (env["home"] / ".grok-offline").write_text("")
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "logged_out"      # no credentials on disk
+    (gh / "auth.json").write_text("{}")
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "configured"      # under $GROK_HOME, not ~/.grok
+    (env["home"] / ".grok-offline").unlink()
+    assert cli("detect", "--ids", "grok")["agents"][0]["state"] == "ready"
+    grok = next(d for d in agents.registry()["agents"] if d["id"] == "grok")
+    genv = {"GROK_HOME": str(gh)}
+    assert agents.parse_status(grok, None, "", genv, env["home"]) == "configured"     # timed out, signed in before
+    (gh / "auth.json").unlink()
+    assert agents.parse_status(grok, None, "", genv, env["home"]) == "unknown"        # timed out, nothing to go on
     (gh / "models_cache.json").write_text(json.dumps({"models": {
         "grok-4.7": {"info": {"id": "grok-4.7", "name": "Grok 4.7", "description": "latest", "hidden": False}},
         "grok-4.7-build-fast": {"info": {"id": "grok-4.7-build-fast", "name": "Grok 4.7 Fast",

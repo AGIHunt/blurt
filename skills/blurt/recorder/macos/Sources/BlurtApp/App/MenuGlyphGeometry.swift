@@ -13,4 +13,6 @@ extension MenuGlyph {
     static let arcsRight: CGFloat = 22.907
     /// The chick's foot, in pt from the box's top.
     static let foot: CGFloat = 17
+    /// The chick's ink (wings and tuft included), in the box's points: the hop and the crouch keep it inside the frame.
+    static let ink = CGRect(x: 0.4, y: 0.758, width: 17.2, height: 16.242)
 }

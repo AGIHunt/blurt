@@ -106,6 +106,10 @@ def test_blurt_glyph_is_a_bold_silhouette_with_arcs_for_listening():
     assert len(radii) == 2 and radii[0] < radii[1]
     right = float(re.search(r"arcsRight: CGFloat = ([\d.]+)", geo).group(1))
     assert 18 < right <= 24                                         # past the box, and the image stays narrow
+    # the ink MenuGlyph's hop and crouch keep inside the frame (GlyphPose.scales; GlyphPoseTests uses these numbers)
+    ink = [float(v) for v in re.search(r"static let ink = CGRect\(x: ([\d.]+), y: ([\d.]+), width: ([\d.]+), height: ([\d.]+)\)", geo).groups()]
+    assert ink == [0.4, 0.758, 17.2, 16.242], "the chick changed: update GlyphPoseTests.swift's ink too"
+    assert abs(ink[0] - x0 * 0.75) < 0.05 and abs(ink[1] - y0 * 0.75) < 0.05 and abs(ink[0] + ink[2] - x1 * 0.75) < 0.05
 
 
 def test_brand_sources_are_generated_and_rendered():

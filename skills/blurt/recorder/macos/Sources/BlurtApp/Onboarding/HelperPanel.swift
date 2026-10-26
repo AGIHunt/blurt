@@ -217,6 +217,9 @@ struct HelperPanelView: View {
     static let tile: CGFloat = 44
 
     var below: Bool { g.dock == .below }
+    /// the step shows the Blurt tile: only then does the notch on the top edge (docked under the list) have something to
+    /// point from (the microphone step and "Done" have no tile, so the top edge stays plain)
+    var showsTile: Bool { g.current.map { $0.acceptsDrop && !g.stepDone } ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -229,8 +232,8 @@ struct HelperPanelView: View {
         }
         .padding(.horizontal, HelperPanelView.pad).padding(.top, 10).padding(.bottom, 12)
         .frame(width: g.cardWidth, alignment: .leading)
-        .background(NotchedCard(side: g.dock).fill(HelperPanelView.surface).padding(NotchedCard.room))
-        .overlay(NotchedCard(side: g.dock).stroke(Color.primary.opacity(0.12), lineWidth: 0.5).padding(NotchedCard.room))
+        .background(NotchedCard(side: g.dock, tile: showsTile).fill(HelperPanelView.surface).padding(NotchedCard.room))
+        .overlay(NotchedCard(side: g.dock, tile: showsTile).stroke(Color.primary.opacity(0.12), lineWidth: 0.5).padding(NotchedCard.room))
         // the window: the notch's room on the sides (and above, docked under the list), the hairline inside it
         .padding(.horizontal, HelperPanelView.notch).padding(.top, below ? HelperPanelView.notch : 1).padding(.bottom, 1)
     }
@@ -357,8 +360,8 @@ struct GuideDots: View {
 }
 
 /// The card's outline: a rounded rectangle with a small notch on the edge that faces System Settings (docked under its
-/// list: the top edge, over the tile; right of its window: the left edge; left of it: the right edge; inside it or with
-/// no window: none). `rect` is the card plus the notch's room (`room`) on the sides and above.
+/// list: the top edge, over the tile, and only while the tile shows; right of its window: the left edge; left of it: the
+/// right edge; inside it or with no window: none). `rect` is the card plus the notch's room (`room`) on the sides and above.
 struct NotchedCard: Shape {
     var top: Bool
     /// the notch on the left edge (docked right of the window) / on the right edge (docked left of it)
@@ -366,7 +369,7 @@ struct NotchedCard: Shape {
     var right: Bool
     var radius: CGFloat = 12
 
-    init(side: HelperDock.Side) { top = side == .below; left = side == .right; right = side == .left }
+    init(side: HelperDock.Side, tile: Bool = true) { top = side == .below && tile; left = side == .right; right = side == .left }
 
     /// what the shape's rect adds around the card
     static let room = EdgeInsets(top: -HelperPanelView.notch, leading: -HelperPanelView.notch, bottom: 0, trailing: -HelperPanelView.notch)

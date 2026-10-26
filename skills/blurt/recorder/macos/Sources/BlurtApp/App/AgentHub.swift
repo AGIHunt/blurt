@@ -358,8 +358,7 @@ final class AgentHub {
            let j = try? JSONSerialization.jsonObject(with: Data(text[s...e].utf8)) as? [String: Any], let b = j[key] as? Bool {
             return b ? .ready : .loggedOut
         }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        func expand(_ p: String) -> String { p.hasPrefix("~/") ? home.appendingPathComponent(String(p.dropFirst(2))).path : p }
+        func expand(_ p: String) -> String { AgentDef.expand(p, env: env) }  // ~ and ${VAR:-default} (grok: ${GROK_HOME:-~/.grok})
         // a credentials file whose tokens are all empty (kimi: provider listed, `kimi -p` fails "no credential configured")
         if let cj = st["creds_json"] as? [String: Any], let p = cj["path"] as? String,
            let d = FileManager.default.contents(atPath: expand(p)), let creds = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
