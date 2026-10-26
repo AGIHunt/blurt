@@ -373,12 +373,14 @@ extension App {
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
         case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
-        case "countdown":                               // countdown N X,Y,W,H [hold] | close: the 3-2-1 over that area
+        case "pickerlegend": picker?.toggleLegend()     // = ? in the area picker: the key legend back (or away)
+        case "countdown":                               // countdown N X,Y,W,H [hold] [of=T] | close: the 3-2-1 over that area
             if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; return }   // alone (no take); hold:
             let a = arg.split(separator: " ").map(String.init)                             // it stays at N
             let p = (a.count > 1 ? a[1] : "").split(separator: ",").compactMap { Double($0) }
             guard let n = Int(a.first ?? ""), p.count == 4 else { return }
-            countdown(n, over: CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), hold: a.contains("hold")) {
+            let of = a.first { $0.hasPrefix("of=") }.flatMap { Int($0.dropFirst(3)) }   // of=T: N's place in a T-second one
+            countdown(n, over: CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), hold: a.contains("hold"), of: of) {
                 emit(["event": "countdown_done"])
             }
         case "recwriterfail":                           // recwriterfail: the take's video writer fails at the next frame

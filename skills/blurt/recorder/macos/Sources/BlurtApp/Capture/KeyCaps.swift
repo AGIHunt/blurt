@@ -1,7 +1,10 @@
 // The pieces the capture chrome shares (docs/design/system.md §3.1): one surface — the island's black with a hairline
-// (the picker's hint and toolbar, its size and window labels, the countdown) — one way to show a key (a small keycap
-// followed by a plain word: "[F] Full screen", "Hold [⌃] to draw"), and a budget for teaching lines that only show the
-// first few times (the picker's key legend, the recording's pen hint).
+// (the picker's hint and toolbar, its size and window labels, the countdown) — one control fill (a secondary button is
+// white 10 % on it, in the picker's toolbar and on the island alike; the row's one primary is the only colour), one
+// way to show a key (a keycap, one per chord, then a plain word, 12 pt apart: "[F] Full screen  [esc] Cancel",
+// "[⌃] Hold for the pen  [⌃⇧] Box"; "esc" always lower case; a default button carries its "↩" after its title), and
+// a budget for teaching lines that only show the first few times (the picker's key legend and window label, the
+// recording's pen hint).
 import AppKit
 import BlurtCore
 
@@ -10,6 +13,10 @@ import BlurtCore
 enum CaptureGlass {
     static let fill = NSColor(white: 0, alpha: 0.88)
     static let rim = NSColor(white: 1, alpha: 0.14)
+    /// A secondary control on it (the toolbar's Cancel / Full screen / Last area, the island's pause, snap and ···):
+    /// white 10 %, 16 % under the pointer. Only the row's primary has a colour.
+    static let control = NSColor(white: 1, alpha: 0.1)
+    static let controlHover = NSColor(white: 1, alpha: 0.16)
     static func apply(_ l: CALayer?, radius: CGFloat, shadow: Bool = true) {
         guard let l = l else { return }
         l.backgroundColor = fill.cgColor
@@ -53,7 +60,7 @@ enum CaptureGlass {
     }
 }
 
-/// A line of words and keys: "[F] Full screen   [L] Last area   [esc] Cancel", "Hold [⌃] to draw · [⇧] box · [⌥] ellipse".
+/// A line of keys and words: "[F] Full screen  [L] Last area  [esc] Cancel", "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse".
 /// Keys are small caps (white 12 % fill, a 0.5 pt white 20 % hairline, radius 4, 10.5 pt semibold); words are plain
 /// labels (so the layout lint sees them and VoiceOver reads the line as one).
 final class KeyLine: NSView {
@@ -112,22 +119,13 @@ final class KeyLine: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    /// A hint written with the key as `%@` and modifier glyphs in its text ("Hold %@ to draw · ⇧ box · ⌥ ellipse"):
-    /// the key and every modifier become keycaps — all of them, so "⌃" never reads as "^".
-    static func runs(format: String, key: String) -> [Run] {
-        let modifiers: Set<Character> = ["⌃", "⌥", "⇧", "⌘"]
-        var runs: [Run] = []
-        for (k, part) in format.components(separatedBy: "%@").enumerated() {
-            if k > 0 { runs.append(.key(key)) }
-            var text = ""
-            for c in part {
-                guard modifiers.contains(c) else { text.append(c); continue }
-                if !text.isEmpty { runs.append(.text(text)); text = "" }
-                runs.append(.key(String(c)))
-            }
-            if !text.isEmpty { runs.append(.text(text)) }
-        }
-        return runs
+    /// One keycap for a chord: the pen key and a modifier held with it ("⌃" + "⇧" = "⌃⇧"), in the Mac's own order
+    /// (⌃⌥⇧⌘) — a chord is one cap, never two caps that read as two separate keys.
+    static func chord(_ key: String, _ extra: String) -> String {
+        let order: [Character] = ["⌃", "⌥", "⇧", "⌘"]
+        guard key.count == 1, let k = key.first, order.contains(k) else { return key + extra }
+        let held = Set(key + extra)
+        return String(order.filter { held.contains($0) })
     }
 
     /// "[F] Full screen   [esc] Cancel": key + word pairs, 12 pt apart.

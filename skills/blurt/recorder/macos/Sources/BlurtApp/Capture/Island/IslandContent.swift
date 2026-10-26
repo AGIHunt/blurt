@@ -4,14 +4,15 @@
 //               and ears are one family — BlurtIcon; the drawer's list rows keep SF Symbols, like any Mac list) · up to 3 jobs in progress (step,
 //               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Organize" the
 //               waiting cards (into the current project; with none, into Unassigned with a suggested project each)
-//   recording   one row: pause (paused: a labelled amber Resume) · snap + note (pauses) … ··· · Finish (the one
-//               filled thing); the ··· menu holds the rare things: the pen (⌥⇧D), a marker (⌥⇧M), Discard or Restart…
-//               (asks first: the question alone on its line, what goes with it — the snaps and the markers apart — on
-//               a quiet second line, then Discard · Restart · Keep Recording, the last where Finish was, so nothing
-//               destructive lands under the hand that stops; Keep is the default, filled, and ↩ chooses it). Then,
-//               only when it has something to say, one quiet line: "Pen on · Esc to stop", or (first three takes)
-//               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted · the
-//               project as quiet text (changeable; dimmed with questionmark.folder while its folder is gone)
+//   recording   on one grid with the ears (they ride out to the open shape's corners, 14 pt in): pause (paused: the
+//               same circle, Resume's play glyph in amber — nothing moves) · snap + note (pauses) … ··· · Finish (the one
+//               filled thing; paused, a neutral pill with its red stop square, so Resume leads); the ··· menu (dark,
+//               keys right-aligned) holds the rare things: the pen (⌥⇧D), a marker (⌥⇧M), where the take goes
+//               (Change…), Discard or Restart… (asks first: the question alone on its line, what goes with it — the
+//               snaps and the markers apart — on a quiet second line, then Discard · Restart · Keep Recording ↩, the
+//               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
+//               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
+//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord) · how many items were spotted
 //   voice       the listening chick (mascot), the live waveform, Done, the Structured chip (list glyph; on = the mint
 //               tint chip, as "Pen on"; ⇧ alone does the same), how it ends ("press ⌥⇧V again to finish · Esc to
 //               discard"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
@@ -52,6 +53,11 @@ final class IslandButton: NSView {
     var fill: NSColor? { didSet { needsDisplay = true } }
     var gradient: [(UInt32, CGFloat)]? { didSet { needsDisplay = true } }
     var fg: NSColor = .white { didSet { needsDisplay = true } }
+    /// The glyph's own colour when it differs from the title's (paused Finish: the red stop square, a white title).
+    var glyphColor: NSColor? { didSet { needsDisplay = true } }
+    /// The key that does the same, after the title in the title's colour at 60 % ("Keep Recording  ↩"): every default
+    /// answer on the capture surfaces carries its ↩, as the picker's primary does.
+    var key: String? { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
     var tip: String
     /// A project's key badge before the title — the current-project chip.
     var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
@@ -66,6 +72,7 @@ final class IslandButton: NSView {
     private let iconLayer = CALayer()
     private let titleLayer = CALayer()
     private let badgeLayer = CALayer()
+    private let keyLayer = CALayer()
 
     init(symbol: String = "", icon: BlurtIcon? = nil, title: String? = nil, tip: String, fill: NSColor? = nil,
          gradient: [(UInt32, CGFloat)]? = nil, fg: NSColor = .white, action: @escaping () -> Void) {
@@ -82,7 +89,7 @@ final class IslandButton: NSView {
         layerContentsRedrawPolicy = .onSetNeedsDisplay
         if let l = layer {
             l.masksToBounds = true
-            for sub in [gradientLayer, film, highlight, badgeLayer, iconLayer, titleLayer] as [CALayer] {
+            for sub in [gradientLayer, film, highlight, badgeLayer, iconLayer, titleLayer, keyLayer] as [CALayer] {
                 sub.actions = IslandButton.noActions
                 l.addSublayer(sub)
             }
@@ -101,6 +108,8 @@ final class IslandButton: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     static let titleFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
+    static let keyFont = NSFont.systemFont(ofSize: 12, weight: .medium)
+    private var keyWidth: CGFloat { key.map { ceil(($0 as NSString).size(withAttributes: [.font: IslandButton.keyFont]).width) + 7 } ?? 0 }
     /// No implicit animations on the parts: a state change is instant (no cross-fade of one title over another).
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
                                                 "hidden": NSNull(), "backgroundColor": NSNull(), "colors": NSNull(),
@@ -111,7 +120,7 @@ final class IslandButton: NSView {
         guard let t = title else { return NSSize(width: 30, height: 30) }
         let tw = (t as NSString).size(withAttributes: [.font: IslandButton.titleFont]).width
         if let b = badge { return NSSize(width: ceil(tw) + ProjectLook.badgeSize(b.text).width + Self.badgeInset + 7 + 13, height: 28) }
-        return NSSize(width: ceil(tw) + (hasGlyph ? 30 + symbolInset : 26), height: 28)
+        return NSSize(width: ceil(tw) + keyWidth + (hasGlyph ? 30 + symbolInset : 26), height: 28)
     }
     private var hasGlyph: Bool { icon != nil || !symbol.isEmpty }
     override var isFlipped: Bool { true }
@@ -159,8 +168,8 @@ final class IslandButton: NSView {
         iconLayer.isHidden = true
         // our glyph: 15 pt alone in a round button, 14 beside a title (docs/design/system.md §2.6), the family's line
         let glyph = icon.flatMap { ic -> CGImage? in
-            ic.cgImage(size: title == nil ? 15 : 14, scale: 2, color: fg.cgColor, weight: title == nil ? 1.1 : 1.2)
-        } ?? (symbol.isEmpty ? nil : symbolImage(symbol, size: 12, weight: .semibold, color: fg))
+            ic.cgImage(size: title == nil ? 15 : 14, scale: 2, color: (glyphColor ?? fg).cgColor, weight: title == nil ? 1.1 : 1.2)
+        } ?? (symbol.isEmpty ? nil : symbolImage(symbol, size: 12, weight: .semibold, color: glyphColor ?? fg))
         if let img = glyph {
             let s = CGSize(width: CGFloat(img.width) / 2, height: CGFloat(img.height) / 2)
             let ix = title == nil ? (b.width - s.width) / 2 : x
@@ -172,10 +181,11 @@ final class IslandButton: NSView {
         }
         titleLayer.isHidden = title == nil
         badgeLayer.isHidden = badge == nil
+        keyLayer.isHidden = key == nil || title == nil
         if let t = title {
             let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont]
             var tx = hasGlyph ? x : 13
-            var room = b.width - tx - 8
+            var room = b.width - tx - 8 - keyWidth
             if let bd = badge {
                 // the key leads (it carries the project's colour); the name gives way to it when room is short
                 let bs = ProjectLook.badgeSize(bd.text)
@@ -194,6 +204,12 @@ final class IslandButton: NSView {
                 titleLayer.contents = line.image
                 titleLayer.contentsScale = scale
                 titleLayer.frame = CGRect(x: tx, y: ((b.height - line.size.height) / 2).rounded(), width: line.size.width, height: line.size.height)
+                if let k = key, let kl = TextImage.line(k, font: IslandButton.keyFont, color: fg.withAlphaComponent(0.6).cgColor, scale: scale) {
+                    keyLayer.contents = kl.image
+                    keyLayer.contentsScale = scale
+                    keyLayer.frame = CGRect(x: titleLayer.frame.maxX + 7, y: ((b.height - kl.size.height) / 2).rounded(),
+                                            width: kl.size.width, height: kl.size.height)
+                }
             } else {
                 titleLayer.contents = nil
             }
@@ -617,88 +633,84 @@ final class IslandContent: NSView {
     /// Finish's red: the tape's `rec` a step deeper, so its white title clears 4.5 : 1 (#D92D20, 4.8 : 1; #FF453A was 3.3).
     static let finishRed = NSColor(srgbRed: 0.851, green: 0.176, blue: 0.125, alpha: 1)
 
-    /// The open island while recording — one row of controls and, only when it has something to say, one quiet line:
-    ///   [pause] [snap]                                   [···] [■ Finish]
-    ///   Hold [⌃] to draw · [⇧] box · [⌥] ellipse · 2 markers          AW Atlas Web ⌄
-    /// Finish is the one filled thing. Paused: a labelled amber Resume leads instead of the pause glyph (the ear's amber
-    /// pause bars and time say "paused" too). The rare things are in the ··· menu: the pen (⌥⇧D), a marker (⌥⇧M),
-    /// Discard or Restart… (the question below). The ear owns the one level meter; the row has none.
+    /// The open island while recording, on one grid: the ears ride out to the open shape's corners (Island.layoutEars:
+    /// the time over the pause circle, the right ear's glyph over Finish — as an expanded Live Activity lines its
+    /// regions up), and everything below starts and ends `earInset` (14 pt) in:
+    ///   ● 0:06                                                  ||||
+    ///   (pause) (snap)                                  (···) [■ Finish]
+    ///   [⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse  · 2 markers
+    /// The secondaries are one control (white 10 % circles); Finish is the one filled thing. Paused, the pause circle
+    /// becomes Resume in the same place and size — the play glyph in `attn` on its tint, the lead — and Finish quiets
+    /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
+    /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
+    /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen, a marker,
+    /// where the take goes (Change…), Discard or Restart… (the question below).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
         let y: CGFloat = top + 6
+        let inset = IslandLayout.earInset
         moreBtn = nil
         if i.isConfirmingDiscard { return buildDiscardQuestion(rec, w, top: y) }
         let paused = rec.isPaused
-        var x: CGFloat = 14
-        if paused {
-            let t = Loc.t("capture.rec.resume", table: "Capture")
-            let b = IslandButton(icon: .play, title: t, tip: tip("capture.rec.resume", .pause),
-                                 fill: BrandColor.Island.attn.withAlphaComponent(0.2), fg: BrandColor.Island.attn) { rec.togglePause() }
-            place(b, x: x, y: y + 1)
-            pauseBtn = b
-            x = b.frame.maxX + 8
-        } else {
-            // one family, one weight across the row: our line glyphs (pause, the snap frame, more, the stop square)
-            let b = IslandButton(icon: .pause, tip: tip("capture.rec.pause", .pause)) { rec.togglePause() }
-            place(b, x: x, y: y)
-            pauseBtn = b
-            x = b.frame.maxX + 8
+        // one family, one weight across the row: our line glyphs (pause / play, the snap frame, more, the stop square)
+        let pb = IslandButton(icon: paused ? .play : .pause, tip: tip(paused ? "capture.rec.resume" : "capture.rec.pause", .pause),
+                              fill: paused ? BrandColor.Island.attn.withAlphaComponent(0.22) : CaptureGlass.control,
+                              fg: paused ? BrandColor.Island.attn : .white) { rec.togglePause() }
+        place(pb, x: inset, y: y)
+        pauseBtn = pb
+        let sb = IslandButton(icon: .snap, tip: Loc.t("capture.rec.snap_note", table: "Capture"), fill: CaptureGlass.control) { [weak i] in
+            i?.snapWithNote()
         }
-        let sb = IslandButton(icon: .snap, tip: Loc.t("capture.rec.snap_note", table: "Capture")) { [weak i] in i?.snapWithNote() }
-        place(sb, x: x, y: y)
+        place(sb, x: pb.frame.maxX + 8, y: y)
         let fin = IslandButton(icon: .stop, title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
-                               fill: IslandContent.finishRed) { rec.stop() }      // Stop: the tape
-        place(fin, x: w - 14 - fin.frame.width, y: y + 1)
-        let more = IslandButton(icon: .more, tip: Loc.t("capture.rec.more_tip", table: "Capture"), fill: .clear) { [weak self] in
+                               fill: paused ? NSColor(white: 1, alpha: 0.14) : IslandContent.finishRed) { rec.stop() }      // Stop: the tape
+        if paused { fin.glyphColor = BrandColor.Island.rec }
+        place(fin, x: w - inset - fin.frame.width, y: y + 1)
+        let more = IslandButton(icon: .more, tip: Loc.t("capture.rec.more_tip", table: "Capture"), fill: CaptureGlass.control) { [weak self] in
             self?.showRecordingMenu()
         }
-        place(more, x: fin.frame.minX - 6 - more.frame.width, y: y)
+        place(more, x: fin.frame.minX - 8 - more.frame.width, y: y)
         moreBtn = more
         level = nil
         var bottom = y + 30
 
-        // the quiet line: the pen's state or how to draw (first takes only), what live.py spotted, where it goes
+        // the quiet line: the pen's state or its keys (first takes only), then what live.py spotted
         penShown = rec.penSticky
         let lineY = bottom + 10
-        var hintEnd: CGFloat = 18
+        var end = inset
         var any = false
         if rec.penSticky {
             let pen = IslandButton(icon: .pencil, title: Loc.t("capture.rec.pen_on", table: "Capture"),
                                    tip: Loc.t("capture.rec.pen_off_tip", table: "Capture"), fill: BrandColor.Island.tint) { rec.togglePen() }
             pen.fg = BrandColor.Island.fill
             pen.setFrameSize(NSSize(width: pen.frame.width, height: 24))
-            place(pen, x: 14, y: lineY)
-            hintEnd = pen.frame.maxX
+            place(pen, x: inset, y: lineY)
+            let k = KeyLine([.key("esc"), .text(Loc.t("capture.rec.pen_off", table: "Capture"))], size: 11.5, color: ink2)
+            place(k, x: pen.frame.maxX + 10, y: lineY + (24 - k.frame.height) / 2)
+            end = k.frame.maxX
             any = true
         } else if penHintThisTake, !paused, let key = rec.penKey?.1 {
-            // the snap's modifiers under the pen key: ⇧ box, ⌥ ellipse (⌃ when ⌥ is the pen key)
-            let fmt = rec.penKind == .option ? "capture.rec.pen_hint_opt" : "capture.rec.pen_hint"
-            let h = KeyLine(KeyLine.runs(format: Loc.string(fmt, table: "Capture"), key: key), size: 11.5, color: ink2,
-                            label: String(format: Loc.string(fmt, table: "Capture"), key))
-            place(h, x: 18, y: lineY + (24 - h.frame.height) / 2)
-            hintEnd = h.frame.maxX
+            // every key of the pen as one keycap per chord: the box and the ellipse are the pen key plus one more
+            let ell = rec.penKind == .option ? "⌃" : "⌥"
+            let h = KeyLine(KeyLine.pairs([(key, Loc.t("capture.rec.pen_hold", table: "Capture")),
+                                           (KeyLine.chord(key, "⇧"), Loc.t("capture.rec.pen_box", table: "Capture")),
+                                           (KeyLine.chord(key, ell), Loc.t("capture.rec.pen_ellipse", table: "Capture"))]),
+                            size: 11.5, color: ink2)
+            place(h, x: inset, y: lineY + (24 - h.frame.height) / 2)
+            end = h.frame.maxX
             any = true
         }
         let said = spottedText(rec)
         if !said.isEmpty {
             let sp = label(said, size: 11.5, color: ink2)
-            place(sp, x: hintEnd + (any ? 12 : 0), y: lineY + (24 - sp.frame.height) / 2, w: min(sp.frame.width + 8, 200))
+            place(sp, x: any ? end + 12 : inset - 2, y: lineY + (24 - sp.frame.height) / 2, w: min(sp.frame.width + 8, 200))
             spotted = sp
             any = true
         } else {
             spotted = nil
         }
-        if (NSApp.delegate as? App)?.resident == true {     // a recording started from the chat has its session already
-            // where the take goes, as quiet text with its key badge: a menu button, not a filled chip beside Finish
-            let c = chip(w, small: true)
-            if c.badge == nil { c.fg = ink2 }
-            c.fill = NSColor(white: 1, alpha: 0)
-            c.setFrameSize(NSSize(width: c.frame.width, height: 24))
-            place(c, x: w - 10 - c.frame.width, y: lineY)
-            any = true
-        }
         if any { bottom = lineY + 24 }
-        return bottom + 14
+        return bottom + inset
     }
 
     /// What the take has spotted and marked so far ("3 items spotted · 2 markers").
@@ -709,11 +721,13 @@ final class IslandContent: NSView {
             .compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// The ··· menu: the rare things, each with its key.
+    /// The ··· menu: the rare things, each with its key as the menu's own right-aligned key equivalent. Dark, as the
+    /// island it hangs from (never a pale system menu off the black).
     func showRecordingMenu() {
         guard let rec = island?.rec, let b = moreBtn else { return }
         let menu = NSMenu()
         menu.autoenablesItems = false
+        menu.appearance = NSAppearance(named: .darkAqua)
         let pen = ClosureMenuItem(Loc.t("capture.rec.menu_pen", table: "Capture")) { rec.togglePen() }
         pen.state = rec.penSticky ? .on : .off
         pen.showHotkey(.pen)
@@ -721,23 +735,41 @@ final class IslandContent: NSView {
         let mark = ClosureMenuItem(Loc.t("capture.rec.menu_marker", table: "Capture")) { rec.marker() }
         mark.showHotkey(.marker)
         menu.addItem(mark)
+        if (NSApp.delegate as? App)?.resident == true {      // a recording started from the chat has its session already
+            // where the take goes: the project, changeable (the switcher) — a rare change mid-take, so not on the row
+            menu.addItem(.separator())
+            let p = ProjectStore.shared.current
+            let goes = Loc.t("capture.rec.menu_goes_to", table: "Capture", p?.name ?? Loc.t("project.inbox"))
+            let item = ClosureMenuItem(goes) { [weak self] in self?.island?.showSwitcher() }
+            if let p = p {
+                let c = ProjectLook.color(p), bs = ProjectLook.badgeSize(p.key)
+                item.image = NSImage(size: bs, flipped: true) { r in ProjectLook.drawBadge(p.key, color: c, in: r); return true }
+            } else {
+                item.image = NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)
+            }
+            item.showHotkey(.project)
+            menu.addItem(item)
+        }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(Loc.t("capture.rec.discard_tip", table: "Capture")) { [weak self] in self?.island?.confirmDiscard(true) })
-        emit(["event": "rec_menu", "items": menu.items.filter { !$0.isSeparatorItem }.map(\.title)])
+        emit(["event": "rec_menu", "items": menu.items.filter { !$0.isSeparatorItem }.map(\.title),
+              "keys": menu.items.filter { !$0.isSeparatorItem }.map { $0.keyEquivalent.isEmpty ? "" : $0.keyEquivalent }])
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: b.frame.height + 6), in: b)
     }
 
     /// Discard's question, the way a Mac asks: the question alone on its line (13 semibold, never cut), what goes with
     /// it on a quiet second line, then the answers on the right — Discard furthest from the hand that stops, a neutral
     /// pill with its title in `err` (a destructive answer is never the one that stands out), Restart, and Keep Recording
-    /// where Finish was: the default, filled like every suggested answer in the island, chosen by ↩ (Island.key).
+    /// where Finish was: the default, filled like every suggested answer in the island, its "↩" after it (Island.key).
+    /// On the open island's grid: the question at the time's x, the answers ending at Finish's right edge.
     private func buildDiscardQuestion(_ rec: Recorder, _ w: CGFloat, top: CGFloat) -> CGFloat {
-        let q = wrapping(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .semibold, color: ink, width: w - 36)
-        place(q, x: 18, y: top + 4)
+        let inset = IslandLayout.earInset
+        let q = wrapping(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .semibold, color: ink, width: w - 2 * inset + 4)
+        place(q, x: inset - 2, y: top + 4)
         var y = q.frame.maxY
         if let lost = IslandContent.discardLost(rec) {
-            let l = wrapping(Loc.t("capture.rec.discard_also", table: "Capture", lost), size: 11.5, color: ink2, width: w - 36, lines: 2)
-            place(l, x: 18, y: y + 2)
+            let l = wrapping(Loc.t("capture.rec.discard_also", table: "Capture", lost), size: 11.5, color: ink2, width: w - 2 * inset + 4, lines: 2)
+            place(l, x: inset - 2, y: y + 2)
             y = l.frame.maxY
         }
         y += 12
@@ -751,16 +783,18 @@ final class IslandContent: NSView {
                 return IslandButton(title: t, tip: t, fill: NSColor(white: 1, alpha: 0.12)) { rec.stop(discard: true, restart: true) }
             case .keep:
                 let t = Loc.t("capture.rec.keep", table: "Capture")
-                return IslandButton(title: t, tip: t + "  ↩", gradient: BrandGradient.buttonStops) { [weak island] in island?.confirmDiscard(false) }
+                let k = IslandButton(title: t, tip: t, gradient: BrandGradient.buttonStops) { [weak island] in island?.confirmDiscard(false) }
+                k.key = "↩"
+                return k
             }
         }
-        var bx = w - 14
+        var bx = w - inset
         for b in buttons.reversed() {
             bx -= b.frame.width
             place(b, x: bx, y: y)
             bx -= 8
         }
-        return y + 28 + 14
+        return y + 28 + inset
     }
 
     /// What goes with a discarded take, as the island counts it — the snaps and the markers apart (BlurtCore

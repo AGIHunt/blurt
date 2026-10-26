@@ -30,11 +30,17 @@ final class PickerController {
     var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
     /// A drag is drawing / moving / resizing the selection: its dashes march.
     var dragging = false
+    /// A drag is drawing a new selection: no handles yet (they mean "adjust this", true only once it is let go — as
+    /// ⌘⇧4 shows only the crosshair and the size while it draws).
+    var drawing = false
+    /// Tests: the hovered window was set by BLURT_TEST_PICKER_HOVER and the real pointer doesn't move it.
+    var hoverPinned = false
     /// The snap was taken: the dim stays up (no hint, no toolbar, no handles, no pointer) until the in-place markup
     /// stage is there (InkStage) — `closeWindows()` — so the screen never flickers between the two.
     private(set) var frozen = false
-    /// The key legend beside the hint ([F] Full screen · [L] Last area · [esc] Cancel): the first few pickers only
-    /// (HintBudget), then just the one line and [esc]; "?" brings it back.
+    /// The key legend beside the hint ([F] Full screen  [L] Last area  [esc] Cancel) and the label on a hovered window
+    /// ("Click to snap this window"): the first few pickers only (HintBudget), then just the one line and [esc] — the
+    /// hint already says what a click does; "?" brings them back.
     var showsLegend = true
 
     /// Visual checks (test commands only), all global top-left points: BLURT_TEST_PICKER_SELECTION=X,Y,W,H opens the
@@ -51,8 +57,8 @@ final class PickerController {
             return v.count == 4 ? toNS(CGRect(x: v[0], y: v[1], width: v[2], height: v[3])) : nil
         }
         if let s = rect("BLURT_TEST_PICKER_SELECTION") { selection = s; snapped = false }
-        if selection == nil, let h = rect("BLURT_TEST_PICKER_HOVER") { hovered = h }
-        if env["BLURT_TEST_PICKER_DRAGGING"] == "1" { dragging = true }
+        if selection == nil, let h = rect("BLURT_TEST_PICKER_HOVER") { hovered = h; hoverPinned = true }
+        if env["BLURT_TEST_PICKER_DRAGGING"] == "1" { dragging = true; drawing = true }
     }
 
     func show(preselect: CGRect?) {
@@ -178,7 +184,7 @@ final class PickerView: NSView {
         layoutHint()
         guard let c = controller, window != nil else { outline.update(nil, handles: [], marching: false); return }
         let sel = c.selection.map(local)
-        outline.update(sel, handles: c.frozen ? [] : sel.map(handles) ?? [], marching: c.dragging)
+        outline.update(sel, handles: c.frozen || c.drawing ? [] : sel.map(handles) ?? [], marching: c.dragging)
     }
 
     override var acceptsFirstResponder: Bool { true }
@@ -203,9 +209,12 @@ final class PickerView: NSView {
     override func draw(_ dirty: NSRect) {
         guard let c = controller else { return }
         let hole = (c.selection ?? c.hovered).map(local)
+        // a hovered window keeps its own shape: its corner radius (none for one that fills the screen)
+        let radius: CGFloat = c.selection == nil ? windowRadius(hole) : 0
+        let holePath = { (r: NSRect) in NSBezierPath(roundedRect: r, xRadius: radius, yRadius: radius) }
         let dim = NSBezierPath(rect: bounds)
         if let h = hole {
-            dim.append(NSBezierPath(rect: h))
+            dim.append(holePath(h))
             dim.windingRule = .evenOdd
         }
         // the dim means "not in your shot": 42 % outside a hovered window or a selection; with nothing under the
@@ -215,7 +224,7 @@ final class PickerView: NSView {
         // Fully transparent pixels let clicks fall through to the app underneath — keep the hole a hair opaque.
         if let h = hole {
             NSColor(white: 0, alpha: 0.012).setFill()
-            NSBezierPath(rect: h).fill()
+            holePath(h).fill()
         }
 
         if c.frozen { return }      // taken: only the dim, until the stage is up
@@ -229,13 +238,19 @@ final class PickerView: NSView {
             if at.y + 30 > bounds.height - menuBand { at = NSPoint(x: sel.minX + 8, y: sel.maxY - 32) }
             CaptureGlass.pill(label, font: f, at: at, height: 22, pad: 8)
         } else if let h = hole {
-            // the window under the pointer: a flat mint tint inside, a 2 pt mint line; what a click does, centred on it
+            // the window under the pointer, in its own shape: a flat mint tint inside, a 2 pt mint line over the
+            // selection's dark under-stroke (so it holds on white as on black); what a click does, centred on it,
+            // only while the legend shows (the hint below says it too)
             BrandColor.Island.tint.setFill()
-            h.fill(using: .sourceOver)
+            holePath(h).fill()
+            let edge = NSBezierPath(roundedRect: h.insetBy(dx: 1.5, dy: 1.5), xRadius: max(0, radius - 1.5), yRadius: max(0, radius - 1.5))
+            BrandColor.Island.on.withAlphaComponent(0.6).setStroke()
+            edge.lineWidth = 4
+            edge.stroke()
             BrandColor.Island.fill.setStroke()
-            let b = NSBezierPath(rect: h.insetBy(dx: 1, dy: 1))
-            b.lineWidth = 2
-            b.stroke()
+            edge.lineWidth = 2
+            edge.stroke()
+            guard c.showsLegend else { return }
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
             let text = c.snapMode ? Loc.t("capture.picker.window_snap", table: "Capture") : Loc.t("capture.picker.window_record", table: "Capture")
             let pw = CaptureGlass.pillWidth(text, font: f, pad: 12, icon: true)
@@ -244,6 +259,13 @@ final class PickerView: NSView {
                                   icon: c.snapMode ? .snap : .record)
             }
         }
+    }
+
+    /// A hovered window's corner radius: a Mac window's (12 pt), none for one that fills its screen (a full-screen
+    /// app, the desktop) — its edges are the screen's.
+    func windowRadius(_ r: NSRect?) -> CGFloat {
+        guard let r = r else { return 0 }
+        return r.width >= bounds.width - 1 && r.height >= bounds.height - menuBand - 1 ? 0 : 12
     }
 
     /// The menu bar's band at the top of this screen (nothing of the picker's own goes under it).
@@ -280,7 +302,7 @@ final class PickerView: NSView {
     }
 
     override func mouseMoved(with e: NSEvent) {
-        guard let c = controller, c.selection == nil else { return }
+        guard let c = controller, c.selection == nil, !c.hoverPinned else { return }
         let r = windowRect(at: global(e))
         if r != c.hovered { c.hovered = r; c.refresh() }
     }
@@ -327,6 +349,7 @@ final class PickerView: NSView {
         switch mode {
         case .create(let s):
             guard hypot(p.x - s.x, p.y - s.y) > 4 else { return }
+            c.drawing = true
             drawRect(from: s, to: p, in: bounds)
         case .move(let s, let r):
             var n = r.offsetBy(dx: p.x - s.x, dy: p.y - s.y)
@@ -369,6 +392,7 @@ final class PickerView: NSView {
         if let s = c.selection, s.width < 16 || s.height < 16 { c.selection = nil }
         mode = .none
         c.dragging = false
+        c.drawing = false
         c.refresh()
         if c.snapMode, c.selection != nil { c.finish(true) }   // like ⌘⇧4: letting go takes the shot
     }
@@ -473,12 +497,14 @@ final class SelectionOutline: NSView {
     }
 }
 
-/// The primary action on the capture chrome (the picker's toolbar): `gradient` (BrandGradient.buttonStops) with a white
-/// semibold title — hover is a white film (×1.04), pressed a black one (×0.92). `icon`: one of our line glyphs before the
-/// title (Record leads with the island's record glyph in white, Snap with its snap frame). `key`: the key that does the
-/// same, after the title in white 60 % ("Snap  ↩").
+/// A button on the capture chrome (the picker's toolbar), title first and its key after it in white 60 % ("Snap  ↩",
+/// "Full screen  F", "Cancel  esc") — the action bar's one grammar, so no glyph has to be guessed. The primary takes
+/// `gradient` (BrandGradient.buttonStops) with a white semibold title — hover is a white film (×1.04), pressed a black
+/// one (×0.92) — and `icon`, one of our line glyphs before the title (Record leads with the island's record glyph,
+/// Snap with its snap frame). The others are the capture chrome's one secondary control: white 10 %, 16 % under the
+/// pointer (CaptureGlass.control), as the island's round buttons.
 final class PillButton: NSButton {
-    var fill: NSColor = NSColor(white: 1, alpha: 0.12)
+    var fill: NSColor = CaptureGlass.control
     var fg: NSColor = .white
     var gradient: [(UInt32, CGFloat)]?
     var icon: BlurtIcon?
@@ -487,7 +513,7 @@ final class PillButton: NSButton {
     private static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
     private static let keyFont = NSFont.systemFont(ofSize: 12, weight: .medium)
 
-    convenience init(_ title: String, icon: BlurtIcon? = nil, fill: NSColor = NSColor(white: 1, alpha: 0.1),
+    convenience init(_ title: String, icon: BlurtIcon? = nil, fill: NSColor = CaptureGlass.control,
                      gradient: [(UInt32, CGFloat)]? = nil, fg: NSColor = .white, key: String? = nil,
                      target: AnyObject, action: Selector) {
         self.init(frame: .zero)
@@ -532,7 +558,7 @@ final class PillButton: NSButton {
             NSRect(x: r.minX + r.height * 0.3, y: top, width: r.width - r.height * 0.6, height: 1).fill()
             NSGraphicsContext.restoreGraphicsState()
         } else {
-            (hovering ? fill.blended(withFraction: 0.18, of: .white) ?? fill : fill).setFill()
+            (isHighlighted ? NSColor(white: 1, alpha: 0.22) : hovering ? CaptureGlass.controlHover : fill).setFill()
             shape.fill()
         }
         let s = NSAttributedString(string: title, attributes: [.font: PillButton.font, .foregroundColor: fg])
@@ -551,43 +577,10 @@ final class PillButton: NSButton {
     }
 }
 
-/// A quiet round button on the capture chrome: a glyph only, no fill at rest (white 12 % under the pointer), its name
-/// and key in the tooltip — the toolbar's Cancel, Full screen and Last area.
-final class GhostButton: NSButton {
-    private var hovering = false { didSet { needsDisplay = true } }
-    private let glyph: String
-    init(symbol: String, tip: String, target: AnyObject, action: Selector) {
-        glyph = symbol
-        super.init(frame: NSRect(x: 0, y: 0, width: 32, height: 32))
-        title = ""
-        isBordered = false
-        toolTip = tip
-        self.target = target
-        self.action = action
-        setAccessibilityLabel(tip)
-        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override var allowsVibrancy: Bool { false }
-    override var isHighlighted: Bool { didSet { needsDisplay = true } }
-    override func mouseEntered(with event: NSEvent) { hovering = true }
-    override func mouseExited(with event: NSEvent) { hovering = false }
-    override func draw(_ dirty: NSRect) {
-        if hovering || isHighlighted {
-            NSColor(white: 1, alpha: isHighlighted ? 0.2 : 0.12).setFill()
-            NSBezierPath(ovalIn: bounds).fill()
-        }
-        guard let img = NSImage(systemSymbolName: glyph, accessibilityDescription: nil)?.withSymbolConfiguration(
-            NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold).applying(.init(paletteColors: [NSColor(white: 1, alpha: 0.85)]))) else { return }
-        let sz = img.size
-        img.draw(in: NSRect(x: ((bounds.width - sz.width) / 2).rounded(), y: ((bounds.height - sz.height) / 2).rounded(),
-                            width: sz.width, height: sz.height))
-    }
-}
-
-/// The picker's toolbar, under the selection: the chrome's one surface (CaptureGlass), one row — Cancel, Full screen and
-/// Last area as quiet round glyphs (their names and keys in the tooltips), a hairline, then the one primary: Snap /
-/// Start Recording with its ↩.
+/// The picker's toolbar, under the selection: the chrome's one surface (CaptureGlass), one row of labelled actions,
+/// each with its key after it — Cancel  esc · Full screen  F · Last area  L (when there is one) — a hairline, then the
+/// one primary: Snap / Start recording  ↩. Plain words at the moment they matter (the hint that taught the keys is
+/// gone once there is a selection), never a lone glyph to guess.
 final class PickerToolbar: NSView {
     weak var controller: PickerController?
     private var built = false
@@ -598,13 +591,14 @@ final class PickerToolbar: NSView {
         wantsLayer = true
         appearance = NSAppearance(named: .darkAqua)
         CaptureGlass.apply(layer, radius: 22)
-        func tip(_ k: String, _ key: String) -> String { Loc.t("capture.picker.tip_key", table: "Capture", Loc.t(k, table: "Capture"), key) }
-        var views: [NSView] = [GhostButton(symbol: "xmark", tip: tip("capture.picker.cancel", "esc"), target: self, action: #selector(cancel)),
-                               GhostButton(symbol: "arrow.up.left.and.arrow.down.right", tip: tip("capture.picker.full_screen", "F"),
-                                           target: self, action: #selector(full))]
-        if hasLast {
-            views.append(GhostButton(symbol: "clock.arrow.circlepath", tip: tip("capture.picker.last_area", "L"), target: self, action: #selector(last)))
+        func action(_ k: String, _ key: String, _ sel: Selector) -> PillButton {
+            let b = PillButton(Loc.t(k, table: "Capture"), key: key, target: self, action: sel)
+            b.toolTip = Loc.t("capture.picker.tip_key", table: "Capture", Loc.t(k, table: "Capture"), key)
+            return b
         }
+        var views: [NSView] = [action("capture.picker.cancel", "esc", #selector(cancel)),
+                               action("capture.picker.full_screen", "F", #selector(full))]
+        if hasLast { views.append(action("capture.picker.last_area", "L", #selector(last))) }
         let rule = NSView(frame: NSRect(x: 0, y: 0, width: 1, height: 18))
         rule.wantsLayer = true
         rule.layer?.backgroundColor = NSColor(white: 1, alpha: 0.16).cgColor
@@ -617,12 +611,12 @@ final class PickerToolbar: NSView {
         views.append(primary)
         var x: CGFloat = 6
         for v in views {
-            if v === rule || v === primary { x += 8 }
+            if v === rule || v === primary { x += 4 }
             v.setFrameOrigin(NSPoint(x: x, y: ((44 - v.frame.height) / 2).rounded()))
             addSubview(v)
-            x += v.frame.width + (v === rule ? 0 : 2)
+            x += v.frame.width + (v === rule ? 4 : 6)
         }
-        setFrameSize(NSSize(width: x - 2 + 6, height: 44))
+        setFrameSize(NSSize(width: x - 6 + 6, height: 44))
     }
     @objc func full() { controller?.fullScreen() }
     @objc func last() { controller?.useLast() }
@@ -653,7 +647,7 @@ final class PickerHint: NSView {
         var keys: [(key: String, word: String)] = []
         if legend {
             keys.append(("F", Loc.t("capture.picker.full_screen", table: "Capture")))
-            if snap && hasLast { keys.append(("L", Loc.t("capture.picker.last_area", table: "Capture"))) }
+            if hasLast { keys.append(("L", Loc.t("capture.picker.last_area", table: "Capture"))) }
         }
         keys.append(("esc", Loc.t("capture.picker.cancel", table: "Capture")))
         let line = KeyLine([.divider] + KeyLine.pairs(keys), size: 12, color: NSColor(white: 1, alpha: 0.62))

@@ -155,9 +155,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func countdown(_ n: Int, over region: CGRect, hold: Bool = false, then: @escaping () -> Void) {
+    func countdown(_ n: Int, over region: CGRect, hold: Bool = false, of total: Int? = nil, then: @escaping () -> Void) {
         guard n > 0 else { return then() }
         let v = CountdownView()
+        v.total = max(n, total ?? n)
         let r = toNS(region)
         let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: r.midX, y: r.midY)) })?.frame
         let w = overlayWindow(OverlayFit.frame(region: r, panel: v.panelSize, margin: CountdownView.panelMargin, screen: screen),

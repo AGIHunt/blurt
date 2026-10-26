@@ -4,22 +4,71 @@ import AppKit
 import BlurtCore
 
 /// The recorded area's frame: `rec` solid while the tape rolls, `attn` dashed while paused (the dashes are the shape
-/// twin of the colour: they still say "paused" in grayscale). Still in both states: stillness is the signal. A 1 pt
-/// black 35 % keyline just outside it (the twin of the selection outline's under-stroke) holds it on red, white and busy
-/// content alike; both stay outside the recorded pixels (the window is the area plus 4 pt a side).
+/// twin of the colour: they still say "paused" in grayscale). Still in both states: stillness is the signal. A black
+/// 35 % under-stroke, 0.75 pt wider each side on the same path (the twin of the selection outline's), holds it on red,
+/// white and busy content alike — under the dashes it is dashed too, never a solid line showing through the gaps. The
+/// dashes are fitted to each side so every corner is the same: a solid corner, then dashes that start and end on it.
+/// All of it stays outside the recorded pixels (the window is the area plus 4 pt a side).
 final class BorderView: NSView {
     var color: NSColor = BrandColor.Island.rec { didSet { if color != oldValue { needsDisplay = true } } }
     var dashed = false { didSet { if dashed != oldValue { needsDisplay = true } } }
     override func draw(_ dirty: NSRect) {
-        NSColor(white: 0, alpha: 0.35).setStroke()
-        let key = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
-        key.lineWidth = 1
-        key.stroke()
-        color.setStroke()
-        let b = NSBezierPath(roundedRect: bounds.insetBy(dx: 2.25, dy: 2.25), xRadius: 4, yRadius: 4)
-        b.lineWidth = 2.5
-        if dashed { b.setLineDash([10, 6], count: 2, phase: 0) }
-        b.stroke()
+        let r = bounds.insetBy(dx: 2, dy: 2)
+        for (c, w) in [(NSColor(white: 0, alpha: 0.35), CGFloat(4)), (color, CGFloat(2.5))] {
+            c.setStroke()
+            for p in dashed ? BorderView.dashedPieces(r, radius: 4) : [NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4)] {
+                p.lineWidth = w
+                p.lineCapStyle = dashed ? .butt : .square
+                p.stroke()
+            }
+        }
+    }
+
+    /// The paused frame as pieces: four solid corners (the arc and a 5 pt leg each way), and on each side between
+    /// them dashes of about 10 pt with 6 pt gaps, stretched a little so a whole number of them fits with a gap at
+    /// both ends — so all four corners look alike.
+    static func dashedPieces(_ r: NSRect, radius: CGFloat, leg: CGFloat = 5, dash: CGFloat = 10, gap: CGFloat = 6) -> [NSBezierPath] {
+        var out: [NSBezierPath] = []
+        let k = radius + leg
+        // corners: (centre of the arc, start angle) counter-clockwise from the bottom-left, AppKit coordinates
+        let corners: [(NSPoint, CGFloat)] = [(NSPoint(x: r.minX + radius, y: r.minY + radius), 180), (NSPoint(x: r.maxX - radius, y: r.minY + radius), 270),
+                                             (NSPoint(x: r.maxX - radius, y: r.maxY - radius), 0), (NSPoint(x: r.minX + radius, y: r.maxY - radius), 90)]
+        for (c, a) in corners {
+            let p = NSBezierPath()
+            let rad = a * .pi / 180
+            let start = NSPoint(x: c.x + radius * cos(rad), y: c.y + radius * sin(rad))
+            // the leg in, the arc, the leg out
+            let inDir = NSPoint(x: sin(rad), y: -cos(rad))        // back along the side the arc starts on
+            p.move(to: NSPoint(x: start.x + inDir.x * leg, y: start.y + inDir.y * leg))
+            p.line(to: start)
+            p.appendArc(withCenter: c, radius: radius, startAngle: a, endAngle: a + 90)
+            let endRad = (a + 90) * .pi / 180
+            let end = NSPoint(x: c.x + radius * cos(endRad), y: c.y + radius * sin(endRad))
+            let outDir = NSPoint(x: -sin(endRad), y: cos(endRad))
+            p.line(to: NSPoint(x: end.x + outDir.x * leg, y: end.y + outDir.y * leg))
+            out.append(p)
+        }
+        // sides, between the corners' legs
+        let sides: [(NSPoint, NSPoint)] = [(NSPoint(x: r.minX + k, y: r.minY), NSPoint(x: r.maxX - k, y: r.minY)),
+                                           (NSPoint(x: r.maxX, y: r.minY + k), NSPoint(x: r.maxX, y: r.maxY - k)),
+                                           (NSPoint(x: r.maxX - k, y: r.maxY), NSPoint(x: r.minX + k, y: r.maxY)),
+                                           (NSPoint(x: r.minX, y: r.maxY - k), NSPoint(x: r.minX, y: r.minY + k))]
+        for (a, b) in sides {
+            let len = hypot(b.x - a.x, b.y - a.y)
+            let n = max(0, Int(((len - gap) / (dash + gap)).rounded()))
+            guard n > 0 else { continue }
+            let u = len / (CGFloat(n) * dash + CGFloat(n + 1) * gap)
+            let d = dash * u, g = gap * u
+            let dx = (b.x - a.x) / len, dy = (b.y - a.y) / len
+            for i in 0..<n {
+                let s0 = g + CGFloat(i) * (d + g)
+                let p = NSBezierPath()
+                p.move(to: NSPoint(x: a.x + dx * s0, y: a.y + dy * s0))
+                p.line(to: NSPoint(x: a.x + dx * (s0 + d), y: a.y + dy * (s0 + d)))
+                out.append(p)
+            }
+        }
+        return out
     }
 }
 
@@ -28,10 +77,14 @@ final class BorderView: NSView {
 /// (`#000`, radius 24, the window's soft shadow), the number in a thin ring that drains once a second in `rec` — the
 /// recording is committed (system.md §3.1 / §4) — the 4A chick listening beside "Get ready", the keys that pause and
 /// finish (white 60 %), and "Start now" as the island's tint chip in mint. A click anywhere on it starts at once, as
-/// before. Restrained: the ring is the one thing that moves (linear, a second per number, the number itself swapped
-/// with a 0.14 s fade); Reduce Motion keeps the ring full and still. `hold` (tests): the ring stays part-drained.
+/// before. Restrained: the ring is the one thing that moves — it drains once over the whole countdown, on the number's
+/// own clock (the time left of `total`: at "3" of 3 it is between full and two thirds, at "2" between two thirds and
+/// one third), linear, the number swapped with a 0.14 s fade; Reduce Motion keeps the ring full and still. `hold`
+/// (tests): the clock stops part-way through the number's second.
 final class CountdownView: NSView {
     var n = 3 { didSet { if n != oldValue { numberChanged() } } }
+    /// The countdown's length (its first number): the ring is the time left of it.
+    var total = 3 { didSet { if total != oldValue { drain() } } }
     var onSkip: (() -> Void)?
     /// tests: the ring stays at this much (no animation)
     var held: CGFloat?
@@ -158,17 +211,24 @@ final class CountdownView: NSView {
         drain()
     }
 
-    /// The ring empties over this second (full and still with Reduce Motion; `held` in tests).
+    /// The time left as the ring shows it: `n - 1 + p` of `total` seconds, `p` the part of this second still to go.
+    static func ringLeft(n: Int, total: Int, p: CGFloat) -> CGFloat {
+        max(0, min(1, (CGFloat(n - 1) + max(0, min(1, p))) / CGFloat(max(1, total))))
+    }
+
+    /// The ring drains this second's share of the whole countdown (full and still with Reduce Motion; `held` in tests:
+    /// that far into the number's second).
     private func drain() {
         ring.removeAnimation(forKey: "drain")
-        if let h = held { ring.strokeEnd = h; return }
+        let from = CountdownView.ringLeft(n: n, total: total, p: 1), to = CountdownView.ringLeft(n: n, total: total, p: 0)
+        if let h = held { ring.strokeEnd = CountdownView.ringLeft(n: n, total: total, p: h); return }
         guard !reduceMotion else { ring.strokeEnd = 1; return }
         let a = CABasicAnimation(keyPath: "strokeEnd")
-        a.fromValue = 1
-        a.toValue = 0
+        a.fromValue = from
+        a.toValue = to
         a.duration = 1
         a.timingFunction = CAMediaTimingFunction(name: .linear)
-        ring.strokeEnd = 0
+        ring.strokeEnd = to
         ring.add(a, forKey: "drain")
     }
 
