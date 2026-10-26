@@ -58,19 +58,17 @@
 "app.record.failed.writer" = "视频文件写到一半出错了，这次录的内容没有留下。再录一次一般就好了；具体错误记在日志里。";
 "app.record.reason.display_gone" = "被录的显示器断开了";
 "app.record.reason.interrupted" = "睡眠或锁屏打断了录制";
-"app.record.reason.writer" = "视频文件写入出错";
+"app.record.reason.writer" = "视频文件没能写入";
 "app.record.recovered" = "录屏已保存 · 中途视频写入出错，已接着录下去";
 "app.record.recovered_lost" = "录屏已保存 · 中途视频写入出错，约 %@ 秒没录上";
 "app.record.recovered_parts" = "录屏已分段保存 · 中途视频写入出错";
-"app.record.not_saved" = "%@，录屏没能保存";
 "app.record.partial" = "%1$@，前 %2$@ 已保留";
-"app.record.failed_why" = "%1$@ · %2$@";
 "app.record.low_space" = "这块磁盘只剩 %@，长时间录屏可能放不下";
 "app.record.organize" = "整理";
 
 "app.status.ax_count" = "口喷鸡 · %@";
 
-"app.toast.saved" = "录屏已保存（%@）";
+"app.toast.saved" = "录屏已保存 · %@";
 "app.toast.welcome" = "口喷鸡在菜单栏里 · 按%1$@ 听写 · %2$@ 截图";
 
 "main.project.removed_name" = "已移除的项目";
@@ -712,3 +710,7 @@
 "main.project.pin.undo_name" = "置顶";
 "main.search.tip" = "搜索标题、原话和所有字段。⌘F 或 /";
 "main.sidebar.taken" = "最近拖走的";
+"app.record.not_saved_title" = "录屏没能保存";
+"app.record.partial_title" = "录屏中途停了";
+"app.record.partial_kept" = "前 %@ 已保留";
+"app.ear.saved" = "已保存 %@";

@@ -288,7 +288,7 @@ extension Dictation {
             // one at a time (Dictation.modelToastKey): the newest says what is true now, and the model arriving replaces it
             guard let j = DictationModels.shared.dictationJob else {
                 return island.toast(Loc.t("dictation.toast.no_model_plain", table: "Dictation"), key: Dictation.modelToastKey,
-                                    seconds: 6, actionTitle: Loc.t("dictation.toast.no_model.settings", table: "Dictation")) {
+                                    icon: .warning, seconds: 6, actionTitle: Loc.t("dictation.toast.no_model.settings", table: "Dictation")) {
                     SpeechPane.showDictationModels()
                 }
             }
@@ -304,8 +304,9 @@ extension Dictation {
             let text = kept ? Loc.t(vad ? "dictation.toast.no_vad.kept" : "dictation.toast.no_model.kept", table: "Dictation")
                 : vad ? Loc.t("dictation.toast.no_vad", table: "Dictation")
                 : Loc.t("dictation.toast.no_model", table: "Dictation", modelSize(j.sizeMB))
-            island.toast(text, key: Dictation.modelToastKey, seconds: 8,
-                         actionTitle: Loc.t("dictation.toast.no_model.action", table: "Dictation")) {
+            // needs you: the attention mark, as a failed take's; the button says what it brings and how big
+            island.toast(text, key: Dictation.modelToastKey, icon: .warning, seconds: 8,
+                         actionTitle: Loc.t("dictation.toast.no_model.action_size", table: "Dictation", modelSize(j.sizeMB))) {
                 Dictation.getSpeechModel(from: "island")
             }
         }

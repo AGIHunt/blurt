@@ -588,8 +588,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             process(dir, project: project?.id)
             // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
             Refile.offerRecording(dir, project: project?.id)
+        } else if island.started {
+            island.doneMoment(T("app.ear.saved", Island.clock(dur)), lead: .record, toast: T("app.toast.saved", Island.clock(dur)))
         } else {
-            toast(T("app.toast.saved", Loc.duration(dur)), icon: .check)
+            toast(T("app.toast.saved", Island.clock(dur)), icon: .check)
         }
         refreshStatus()
     }
@@ -714,13 +716,18 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
               "error": event["message"] as? String ?? NSNull(), "reason": event["reason"] as? String ?? NSNull(),
               "error_domain": event["error_domain"] ?? NSNull(), "error_code": event["error_code"] ?? NSNull(),
               "error_underlying": event["error_underlying"] ?? NSNull()])
+        // a headline and a detail line (the island's two-tier toast): what happened, then why and what is kept
         let why = App.failureReason(event)
-        let line = video.map { T("app.record.partial", why, Island.clock($0)) }
-            ?? T("app.record.failed_why", T("app.record.not_saved", why), TP("app.record.kept", stills))
-        var t = Island.Toast(text: line,
-                             actionTitle: T("app.record.organize")) { [weak self] in
-            self?.process(dir, project: project?.id)
-        }
+        let line = video.map { T("app.record.partial_title") + "\n" + why + " · " + T("app.record.partial_kept", Island.clock($0)) }
+            ?? T("app.record.not_saved_title") + "\n" + why + " · " + TP("app.record.kept", stills)
+        // what the user wants next: the part that was kept — the video's start goes to be organized; a take with only
+        // its snaps shows them (not "Organize" right after "not saved")
+        var t = video != nil
+            ? Island.Toast(text: line, actionTitle: T("app.record.organize")) { [weak self] in self?.process(dir, project: project?.id) }
+            : Island.Toast(text: line, actionTitle: TP("app.record.show_snaps", stills)) {
+                AppEnvironment.mainWindow?.reveal(session: dir)
+            }
+        t.icon = .warning
         t.seconds = 12
         island.toast(t)
     }
@@ -1030,8 +1037,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mShortcuts() { if let s = AppEnvironment.settings { s.show(pane: "shortcuts") } else { HotkeySettings.shared.show() } }
     @objc func mQuit() { NSApp.terminate(nil) }
 
-    /// One toast system: the island's quiet line (K4), whenever the island runs — one line, so several lines join
-    /// with " · ". The small HUD under the menu bar below is only for a build without the island (the one-shot
+    /// One toast system: the island's quiet line (K4), whenever the island runs — the first line the headline, the rest
+    /// one quieter detail line under it (joined with " · "). The small HUD under the menu bar below is only for a build without the island (the one-shot
     /// recorder a chat starts); there several lines are fine: the first is the headline, the rest a quieter detail.
     /// `icon: .check` is a done toast, in the island or the HUD: the check in ok green (§2.3).
     /// `undo`: the main window's "Moved … · Undo" — the button is a shortcut to that window's ⌘Z (the HUD has no
@@ -1039,7 +1046,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func toast(_ text: String, seconds: Double = 4.5, icon: BlurtIcon? = nil, undo: (() -> Void)? = nil) {
         if island.started {
             emit(["event": "toast", "text": text, "via": "island", "undo": undo != nil])
-            var t = Island.Toast(text: text.components(separatedBy: "\n").filter { !$0.isEmpty }.joined(separator: " · "),
+            let lines = text.components(separatedBy: "\n").filter { !$0.isEmpty }
+            var t = Island.Toast(text: lines.prefix(1).joined() + (lines.count > 1 ? "\n" + lines.dropFirst().joined(separator: " · ") : ""),
                                  actionTitle: undo == nil ? nil : T("action.undo"), action: undo)
             t.seconds = undo == nil ? seconds : max(seconds, 6)
             t.icon = icon

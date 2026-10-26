@@ -134,6 +134,11 @@ extension App {
             case "open": island.setOpen(true, sticky: true)
             case "close": island.setOpen(false); island.closeSwitcher()
             case "switcher": island.showSwitcher()
+            case "hello": island.hello()                    // the launch hello again (the chick hops in the ear)
+            case "transcribing", "polishing":               // dictation's working ears, held 3 s for a look
+                island.testWorkingEars(polishing: arg == "polishing", seconds: 3)
+            case let a where a.hasPrefix("filter "):        // filter TEXT: = typing TEXT into the open switcher
+                island.content.query = String(a.dropFirst(7)); island.content.rebuild(); island.wake()
             default: break
             }
             let f = toCG(island.frameOnScreen)
@@ -504,7 +509,7 @@ extension App {
             let a = arg.components(separatedBy: "|")
             guard a.count >= 5 else { return }
             func v(_ i: Int) -> String? { a[i] == "-" || a[i].isEmpty ? nil : a[i] }
-            var t = Island.Toast(text: a[4...].joined(separator: "|"), actionTitle: v(1), action: v(1).map { title in
+            var t = Island.Toast(text: a[4...].joined(separator: "|").replacingOccurrences(of: "\\n", with: "\n"), actionTitle: v(1), action: v(1).map { title in
                 { emit(["event": "island_toast_action", "title": title]) }
             })
             t.key = v(0)
@@ -512,6 +517,7 @@ extension App {
             t.passive = a[3] == "passive"
             island.toast(t)
         case "islandsent": island.dictationSent()      // the ear's "Sent" moment after a double tap
+        case "islandnews": island.announceInbox(Int(arg) ?? 3)   // islandnews N: "+N" in the ear, as when N captures land
         case "toaststate":                              // what the island says now, and what waits
             emit(["event": "toast_state", "current": island.currentToast?.text ?? NSNull(), "waiting": island.waitingToasts])
         case "axcards":

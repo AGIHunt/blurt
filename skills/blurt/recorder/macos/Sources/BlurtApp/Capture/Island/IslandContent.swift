@@ -1,29 +1,41 @@
 // The island, open (Island.swift draws the shape): what is under the ears row.
 //
-//   home        the current project (click = switch) · record / snap / voice (our line glyphs: the island's buttons
-//               and ears are one family — BlurtIcon; the drawer's list rows keep SF Symbols, like any Mac list) · up to 3 jobs in progress (step,
-//               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Organize" the
-//               waiting cards (into the current project; with none, into Unassigned with a suggested project each)
+// One grid (v0.9-island r2): every leading glyph — a row's icon, the project chip's, a toast's mark — is our line
+// family at 15 pt centred on one column (IslandLayout.iconColumn, 26 pt in), and every line of text starts on one
+// column (textColumn, 42 pt in); row titles 13 regular; chevrons and accessories at 45 % white (the line chevron).
+//
+//   home        the current project (click = switch: its folder in its colour, or "No project" with a dashed ring —
+//               the tray is only ever the Inbox) · record / snap / voice — quiet glyph buttons, a fill only under the
+//               pointer, one stroke (record is a ring and a dot drawn at the family's stroke) · up to 3 jobs in
+//               progress (a row on the grid: the spinner in the icon column, the title and its step, a 2 pt progress
+//               line under the text column) · agent sessions that need you (click = their terminal) · the cards
+//               waiting ("2 cards"), with "Organize" (the sparkle: the view's one filled button) · the Inbox row (its
+//               count as a quiet accessory, a chevron: the backlog lives here, not beside the notch)
 //   recording   pause / resume · snap + note (pauses) · discard (asks first, its question on its own line with what
 //               goes with it — the snaps and the markers apart — then Discard · Restart · Keep Recording, the last
 //               where Finish was, so nothing destructive lands under the hand that stops; Keep is the default,
 //               filled, and ↩ chooses it) · mic level · finish ·
 //               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted so far ·
-//               the project (changeable; dimmed with questionmark.folder while its folder is gone)
-//   voice       the listening chick (mascot), the live waveform, Done, the Structured chip (list glyph; on = the mint
-//               tint chip, as "Pen on"; ⇧ alone does the same), how it ends ("press ⌥⇧V again to finish · Esc to
-//               discard"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
-//               will go — the words themselves hang under the island (LiveTranscript.swift)
-//   drawer      switcher (⌥⇧O): Unassigned (no current project; tray.2, as in the sidebar — the tray is the Inbox),
-//               recent projects (≤ 8, "More…", type to filter; a project whose folder is gone shows so, dimmed, and
-//               choosing it asks where the folder is now instead of making it current: MissingFolder.locate —
-//               ProjectPick), Open Folder… ⌘O. Its pick form (Island.Pick: "Filed to X · Change") has the same rows and
-//               files that one thing instead of changing the current project.
+//               the project (changeable; dimmed while its folder is gone)
+//   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): the chick
+//               (no sound arcs: the bars say "heard"), the live waveform and Done (with the key held there is no Done:
+//               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
+//               view's one mint thing), how it ends ("⌥⇧V to finish · Esc to discard"; the time left in its last
+//               minute) and, on the right edge, where it will go — the words themselves hang under the island
+//   drawer      switcher (⌥⇧O): a filter field beside the notch (magnifier, placeholder, caret; typed text in white)
+//               and the title across it; recent projects (≤ 8, "More…"; a project whose folder is gone shows so,
+//               dimmed, and choosing it asks where the folder is now instead of making it current:
+//               MissingFolder.locate — ProjectPick), No project (the dashed ring), Add Project… ⌘O. Its pick form
+//               (Island.Pick: "Filed to X · Change") has the same rows and files that one thing instead.
 //               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
-//               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: ×1.02 on the island's mint tint
-//   toast       one quiet line (K4), optionally with art (the mascot: done, fixed), the ok check and an action — spanning
-//               the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's number, a lone
-//               line centred; a line too long for the open width wraps (up to three lines), never "…" mid-word
+//               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: the island's mint tint (r 8);
+//               a project's key shows on the row being chosen unless it is the current one (one trailing mark: the check)
+//   toast       one component, one layout: the leading slot always filled (✓ ok for done, the spinner for working, the
+//               amber ⚠ for needs you, the chick for a peck, the project's folder for a filing, else the quiet chick
+//               glyph), the title (13 medium) and an optional detail (11.5, 60 %) on the text column, an optional quiet
+//               pill 14 pt from the right. Nothing centred. A detail line still at work leads with a small spinner, a
+//               peck's state with its ✓ / ⚠; a line that is its own button (a peck) ends in a chevron, "Open" beside
+//               it while pointed at. A line too long for the open width wraps (up to three lines), never "…" mid-word
 // Dark on black in both appearances (it is the notch); white text at 92 / 60 / 40 %.
 
 import AppKit
@@ -32,6 +44,60 @@ import BlurtCore
 private let ink = NSColor(white: 1, alpha: 0.92)
 private let ink2 = NSColor(white: 1, alpha: 0.6)
 private let ink3 = NSColor(white: 1, alpha: 0.38)
+/// Chevrons and accessories (⌘O, a project's key): the line chevron at 45 % reads at about 40 % on black (the SF chevron
+/// at 38 % peaked at 14 %, too faint to say "this opens").
+private let inkAcc = NSColor(white: 1, alpha: 0.45)
+
+/// The island's glyphs that the line family doesn't have as such, drawn at the family's stroke (BlurtIcon.strokeWidth
+/// on a 24 grid) so they sit beside snap and mic at one weight.
+enum IslandGlyph {
+    case record, noProject
+    /// A project: the family's folder in the project's colour, its body washed at 28 % so the colour reads at 15 pt (a
+    /// red line alone came out brown on the black) — the one project identity (chip, switcher, drop drawer, filings).
+    case project(NSColor)
+
+    func cgImage(size: CGFloat, scale: CGFloat = 2, color: CGColor, weight: CGFloat) -> CGImage? {
+        let px = Int((size * scale).rounded(.up))
+        guard px > 0, let ctx = CGContext(data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let k = CGFloat(px) / 24
+        ctx.scaleBy(x: k, y: k)
+        ctx.setLineCap(.round)
+        ctx.setLineWidth(BlurtIcon.strokeWidth * weight)
+        ctx.setStrokeColor(color)
+        ctx.setFillColor(color)
+        switch self {
+        case .record:
+            // the ring as the family's record, the dot no heavier than a stroke's end (the filled 4.2 pt dot read bold)
+            ctx.strokeEllipse(in: CGRect(x: 3.5, y: 3.5, width: 17, height: 17))
+            ctx.fillEllipse(in: CGRect(x: 9.4, y: 9.4, width: 5.2, height: 5.2))
+        case .noProject:
+            // nothing chosen: a dashed ring (eight dashes) — never a second tray beside the Inbox's
+            ctx.setLineDash(phase: 0, lengths: [1.7, 4.58])
+            ctx.strokeEllipse(in: CGRect(x: 4, y: 4, width: 16, height: 16))
+        case .project(let c):
+            ctx.translateBy(x: 0, y: 24)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.setLineJoin(.round)
+            let cg = c.usingColorSpace(.sRGB) ?? c
+            for l in BlurtIcon.folder.layers {
+                ctx.addPath(l.path)
+                ctx.setFillColor(cg.withAlphaComponent(0.28).cgColor)
+                ctx.fillPath()
+                ctx.addPath(l.path)
+                ctx.setStrokeColor(cg.cgColor)
+                ctx.strokePath()
+            }
+        }
+        return ctx.makeImage()
+    }
+
+    func image(size: CGFloat, color: NSColor, weight: CGFloat = 1.1) -> NSImage? {
+        guard let cg = cgImage(size: size, color: color.cgColor, weight: weight) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: size, height: size))
+    }
+}
 
 /// A control on the island: a round icon button, or a pill with a title. The island's primary actions ("Hand to AI",
 /// AI sort, Done, a question's suggested answer) take `gradient` (BrandGradient.buttonStops) with a white title: hover is
@@ -42,15 +108,38 @@ private let ink3 = NSColor(white: 1, alpha: 0.38)
 /// The title is a picture of the line drawn with font smoothing (BlurtCore TextImage), not a CATextLayer: a text layer
 /// draws without smoothing, and the semibold title came out ~20 % lighter than the drawn button's.
 final class IslandButton: NSView {
+    /// A toast's action, a way back or a way on that isn't the view's primary (Undo, Organize after a failed take,
+    /// Download): a quiet pill — white 12 %, a medium title in the island's white, 24 pt.
+    static func quiet(_ title: String, tip: String? = nil, action: @escaping () -> Void) -> IslandButton {
+        let b = IslandButton(title: title, tip: tip ?? title, fill: NSColor(white: 1, alpha: 0.12), fg: NSColor(white: 1, alpha: 0.92), action: action)
+        b.titleWeight = .medium
+        b.setFrameSize(NSSize(width: b.intrinsicContentSize.width - 2, height: 24))
+        return b
+    }
+
     var action: () -> Void
     var symbol: String { didSet { needsDisplay = true } }
     /// One of our line glyphs in place of an SF Symbol (the island's own buttons: record, snap, mic, pause, trash, stop).
     var icon: BlurtIcon? { didSet { needsDisplay = true } }
+    /// A glyph drawn here at the family's stroke (home's record: a ring and a dot; the chip's "No project" ring).
+    var drawn: IslandGlyph? { didSet { needsDisplay = true } }
+    /// The glyph's own colour when it isn't the title's (the chip: the project's folder in its colour).
+    var iconColor: NSColor? { didSet { needsDisplay = true } }
+    /// The glyph's size beside a title (14; the chip's is the rows' 15, on their icon column).
+    var iconSize: CGFloat = 14 { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
+    /// From the glyph's right edge to the title (the chip: so its name lands on the rows' text column).
+    var titleGap: CGFloat = 6 { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
     var title: String? { didSet { needsDisplay = true } }
     var fill: NSColor? { didSet { needsDisplay = true } }
     var gradient: [(UInt32, CGFloat)]? { didSet { needsDisplay = true } }
     var fg: NSColor = .white { didSet { needsDisplay = true } }
     var tip: String
+    /// No fill at rest, the island's white film under the pointer: home's record / snap / voice and the project chip —
+    /// controls that are always there stay quiet until they are pointed at.
+    var ghost = false { didSet { needsDisplay = true } }
+    /// The title's weight: semibold on a filled (gradient) button, medium on a quiet one.
+    var titleWeight: NSFont.Weight = .semibold { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
+    var titleFont: NSFont { NSFont.systemFont(ofSize: 12.5, weight: titleWeight) }
     /// A project's key badge before the title — the current-project chip.
     var badge: (text: String, color: NSColor)? { didSet { setFrameSize(intrinsicContentSize); needsDisplay = true } }
     /// Where a titled button's symbol starts. The project chip sets it to the key badge's inset, so "Unassigned" (a
@@ -98,7 +187,6 @@ final class IslandButton: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    static let titleFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
     /// No implicit animations on the parts: a state change is instant (no cross-fade of one title over another).
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
                                                 "hidden": NSNull(), "backgroundColor": NSNull(), "colors": NSNull(),
@@ -107,11 +195,11 @@ final class IslandButton: NSView {
 
     override var intrinsicContentSize: NSSize {
         guard let t = title else { return NSSize(width: 30, height: 30) }
-        let tw = (t as NSString).size(withAttributes: [.font: IslandButton.titleFont]).width
+        let tw = (t as NSString).size(withAttributes: [.font: titleFont]).width
         if let b = badge { return NSSize(width: ceil(tw) + ProjectLook.badgeSize(b.text).width + Self.badgeInset + 7 + 13, height: 28) }
-        return NSSize(width: ceil(tw) + (hasGlyph ? 30 + symbolInset : 26), height: 28)
+        return NSSize(width: ceil(tw) + (hasGlyph ? iconSize + titleGap + 10 + symbolInset : 26), height: 28)
     }
-    private var hasGlyph: Bool { icon != nil || !symbol.isEmpty }
+    private var hasGlyph: Bool { icon != nil || drawn != nil || !symbol.isEmpty }
     override var isFlipped: Bool { true }
     override var wantsUpdateLayer: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -149,16 +237,19 @@ final class IslandButton: NSView {
             highlight.isHidden = true
             let base = fill ?? NSColor(white: 1, alpha: 0.1)
             let c = pressed ? base.blended(withFraction: 0.3, of: .white) ?? base : hover ? base.blended(withFraction: 0.16, of: .white) ?? base : base
-            l.backgroundColor = c.cgColor
+            l.backgroundColor = ghost ? (pressed ? NSColor(white: 1, alpha: 0.2) : hover ? NSColor(white: 1, alpha: 0.12) : nil)?.cgColor
+                : c.cgColor
             film.backgroundColor = nil
         }
         film.frame = b
         var x: CGFloat = title == nil ? 0 : symbolInset
         iconLayer.isHidden = true
         // our glyph: 15 pt alone in a round button, 14 beside a title (docs/design/system.md §2.6), the family's line
-        let glyph = icon.flatMap { ic -> CGImage? in
-            ic.cgImage(size: title == nil ? 15 : 14, scale: 2, color: fg.cgColor, weight: title == nil ? 1.1 : 1.2)
-        } ?? (symbol.isEmpty ? nil : symbolImage(symbol, size: 12, weight: .semibold, color: fg))
+        let gs = title == nil ? 15 : iconSize, gw: CGFloat = title == nil || iconSize >= 15 ? 1.1 : 1.2
+        let gc = (iconColor ?? fg).cgColor
+        let glyph = drawn.flatMap { $0.cgImage(size: gs, color: gc, weight: gw) }
+            ?? icon.flatMap { $0.cgImage(size: gs, scale: 2, color: gc, weight: gw) }
+            ?? (symbol.isEmpty ? nil : symbolImage(symbol, size: 12, weight: .semibold, color: fg))
         if let img = glyph {
             let s = CGSize(width: CGFloat(img.width) / 2, height: CGFloat(img.height) / 2)
             let ix = title == nil ? (b.width - s.width) / 2 : x
@@ -166,14 +257,14 @@ final class IslandButton: NSView {
             iconLayer.contentsScale = 2
             iconLayer.frame = CGRect(x: ix.rounded(), y: ((b.height - s.height) / 2).rounded(), width: s.width, height: s.height)
             iconLayer.isHidden = false
-            x = ix + s.width + 6
+            x = ix + s.width + titleGap
         }
         titleLayer.isHidden = title == nil
         badgeLayer.isHidden = badge == nil
         if let t = title {
-            let attrs: [NSAttributedString.Key: Any] = [.font: IslandButton.titleFont]
+            let attrs: [NSAttributedString.Key: Any] = [.font: titleFont]
             var tx = hasGlyph ? x : 13
-            var room = b.width - tx - 8
+            var room = b.width - tx - (subviews.isEmpty ? 8 : 22)     // (the chip's chevron)
             if let bd = badge {
                 // the key leads (it carries the project's colour); the name gives way to it when room is short
                 let bs = ProjectLook.badgeSize(bd.text)
@@ -188,7 +279,7 @@ final class IslandButton: NSView {
             while !name.isEmpty && ((name + (name == t ? "" : "…")) as NSString).size(withAttributes: attrs).width > room { name.removeLast() }
             let shown = name == t ? t : name + "…"
             // the line as AppKit draws it (smoothed: its full weight), measured from the picture itself so it centres
-            if let line = TextImage.line(shown, font: IslandButton.titleFont, color: fg.cgColor, scale: scale) {
+            if let line = TextImage.line(shown, font: titleFont, color: fg.cgColor, scale: scale) {
                 titleLayer.contents = line.image
                 titleLayer.contentsScale = scale
                 titleLayer.frame = CGRect(x: tx, y: ((b.height - line.size.height) / 2).rounded(), width: line.size.width, height: line.size.height)
@@ -200,22 +291,35 @@ final class IslandButton: NSView {
     }
 }
 
-/// A row: icon, title (+ subtitle), an accessory on the right, an optional progress line. Hover / selection wash.
+/// A row on the island's grid: the icon centred on the icon column (or the spinner, or an agent's dot), the title on
+/// the text column (13 regular; a job's step after it in secondary white, or a subtitle under it), an accessory on the
+/// right, an optional 2 pt progress line under the text column. Hover / selection wash.
 final class IslandRow: NSView {
     var icon: NSImage?
     var title: String
     var subtitle: String?
+    /// Said after the title on its own line, in secondary white: a job's step ("Organizing  Preparing").
+    var status: String?
     var accessory: String?
+    /// The accessory is a project's key: shown only on the row under the pointer / the selection (quiet otherwise),
+    /// and never beside the check (one trailing mark).
     var accessoryIsKey = false
+    /// A chevron at the right edge: the row opens a place (the Inbox).
+    var disclosure = false
+    /// Room kept free at the right for a control placed over the row (home's Organize).
+    var trailingReserve: CGFloat = 0
     var checked = false
     var progress: Double?
     var dot: NSColor?
     /// Not available as it is (a project whose folder is gone): the title in the island's secondary white.
     var dimmed = false
+    /// At work: the spinner in the icon column instead of a glyph (as a list shows a running command).
+    var working = false { didSet { placeSpinner() } }
     var action: (() -> Void)?
-    var selected = false { didSet { if selected != oldValue { needsDisplay = true; animateScale() } } }
+    var selected = false { didSet { if selected != oldValue { needsDisplay = true } } }
     var onHover: (() -> Void)?
     var target: IslandContent.Target?
+    private var spinner: IslandSpinner?
 
     init(icon: NSImage?, title: String, subtitle: String? = nil, height: CGFloat = 36, action: (() -> Void)? = nil) {
         self.icon = icon
@@ -236,71 +340,73 @@ final class IslandRow: NSView {
     override func mouseExited(with e: NSEvent) { if onHover == nil { selected = false } }
     override func mouseUp(with e: NSEvent) { if bounds.contains(convert(e.locationInWindow, from: nil)) { action?() } }
     override func accessibilityPerformPress() -> Bool { action?(); return action != nil }
+    override func setFrameSize(_ s: NSSize) { super.setFrameSize(s); placeSpinner() }
 
-    private func animateScale() {
-        guard let l = layer else { return }
-        let s: CGFloat = selected && !reduceMotion ? 1.02 : 1
-        l.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        l.position = CGPoint(x: frame.midX, y: frame.midY)
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(reduceMotion ? 0 : 0.14)
-        l.transform = CATransform3DMakeScale(s, s, 1)
-        CATransaction.commit()
+    static let lineH: CGFloat = 17, subH: CGFloat = 15
+    /// The text block (the title line, a subtitle, the progress line under them) centred in the row.
+    private var textTop: CGFloat {
+        let h = IslandRow.lineH + (subtitle == nil ? 0 : IslandRow.subH) + (progress == nil ? 0 : 6)
+        return ((bounds.height - h) / 2).rounded()
+    }
+    /// Where the icon column's glyph is centred: the title line's middle (the title with its subtitle when there is one).
+    private var iconMid: CGFloat { textTop + (subtitle == nil ? IslandRow.lineH / 2 : (IslandRow.lineH + IslandRow.subH) / 2) }
+
+    private func placeSpinner() {
+        if working, spinner == nil { let sp = IslandSpinner(frame: NSRect(x: 0, y: 0, width: 13, height: 13)); addSubview(sp); spinner = sp }
+        if !working { spinner?.removeFromSuperview(); spinner = nil }
+        spinner?.frame.origin = NSPoint(x: IslandLayout.iconColumn - 6.5, y: (iconMid - 6.5).rounded())
     }
 
     override func draw(_ dirty: NSRect) {
         if selected {
-            BrandColor.Island.tint.setFill()                     // brand.tint, island value (mint @ 20 %)
-            NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: 9, yRadius: 9).fill()
+            BrandColor.Island.tint.setFill()                     // brand.tint, island value (mint @ 20 %), the rows' r 8
+            NSBezierPath(roundedRect: bounds.insetBy(dx: 6, dy: 1), xRadius: 8, yRadius: 8).fill()
         }
-        var x: CGFloat = 18
+        let ic = IslandLayout.iconColumn, x = IslandLayout.textColumn, mid = iconMid
         if let d = dot {
             d.setFill()
-            NSBezierPath(ovalIn: NSRect(x: x + 3, y: bounds.midY - 4, width: 8, height: 8)).fill()
-            x += 24
-        } else if let im = icon {
+            NSBezierPath(ovalIn: NSRect(x: ic - 4, y: mid - 4, width: 8, height: 8)).fill()
+        } else if let im = icon, !working {
             let s = im.size
-            im.draw(in: NSRect(x: x + (16 - s.width) / 2, y: (bounds.height - s.height) / 2, width: s.width, height: s.height),
+            im.draw(in: NSRect(x: (ic - s.width / 2).rounded(), y: (mid - s.height / 2).rounded(), width: s.width, height: s.height),
                     from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
-            x += 26
         }
-        var right = bounds.width - 18
-        if checked, let c = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .bold).applying(.init(paletteColors: [BrandColor.Island.fill]))) {
-            right -= c.size.width
-            c.draw(in: NSRect(x: right, y: (bounds.height - c.size.height) / 2, width: c.size.width, height: c.size.height))
-            right -= 10
+        var right = bounds.width - 18 - trailingReserve
+        func mark(_ ic: BlurtIcon, size: CGFloat, color: NSColor, weight: CGFloat) {
+            let im = ic.image(size: size, color: color, weight: weight)
+            right -= size
+            im.draw(in: NSRect(x: right, y: (mid - size / 2).rounded(), width: size, height: size))
         }
-        if let a = accessory {
-            let f = accessoryIsKey ? NSFont.systemFont(ofSize: 10.5, weight: .semibold) : NSFont.systemFont(ofSize: 11.5)
-            let s = NSAttributedString(string: a, attributes: [.font: f, .foregroundColor: ink2])
+        // the current one: a white check in a column of its own (the wash under the pointer is the mint; the two never
+        // merge into one mark)
+        if checked { mark(.check, size: 14, color: ink, weight: 1.3); right -= 10 }
+        if disclosure { mark(.chevronRight, size: 13, color: inkAcc, weight: 1.35); right -= 6 }
+        // a project's key only on the row being chosen, never beside the check (one trailing mark); other accessories always
+        if let a = accessory, !accessoryIsKey || (selected && !checked) {
+            let f = accessoryIsKey ? NSFont.monospacedSystemFont(ofSize: 11, weight: .medium) : NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .regular)
+            let s = NSAttributedString(string: a, attributes: [.font: f, .foregroundColor: accessoryIsKey ? inkAcc : ink2])
             let sz = s.size()
-            if accessoryIsKey {
-                let r = NSRect(x: right - sz.width - 10, y: (bounds.height - 18) / 2, width: sz.width + 10, height: 18)
-                NSColor(white: 1, alpha: 0.22).setStroke()
-                let p = NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 5, yRadius: 5)
-                p.lineWidth = 1
-                p.stroke()
-                s.draw(at: NSPoint(x: r.minX + 5, y: r.midY - sz.height / 2))
-                right = r.minX - 10
-            } else {
-                s.draw(at: NSPoint(x: right - sz.width, y: (bounds.height - sz.height) / 2))
-                right -= sz.width + 10
-            }
+            s.draw(at: NSPoint(x: right - sz.width, y: (mid - sz.height / 2).rounded()))
+            right -= sz.width + 10
         }
-        let tf = NSFont.systemFont(ofSize: 13, weight: .medium)
         let ps = NSMutableParagraphStyle()
         ps.lineBreakMode = .byTruncatingTail
-        let t = NSAttributedString(string: title, attributes: [.font: tf, .foregroundColor: dimmed ? ink2 : ink, .paragraphStyle: ps])
+        let t = NSMutableAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: dimmed ? ink2 : ink,
+                                                                       .paragraphStyle: ps])
+        if let st = status {
+            t.append(NSAttributedString(string: "  " + st, attributes: [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: ink2, .paragraphStyle: ps]))
+        }
+        let top = textTop
+        t.draw(in: NSRect(x: x, y: top, width: max(0, right - x), height: IslandRow.lineH))
+        var bottom = top + IslandRow.lineH
         if let sub = subtitle {
             let st = NSAttributedString(string: sub, attributes: [.font: NSFont.systemFont(ofSize: 11.5), .foregroundColor: ink2, .paragraphStyle: ps])
-            t.draw(in: NSRect(x: x, y: bounds.midY - 17, width: right - x, height: 17))
-            st.draw(in: NSRect(x: x, y: bounds.midY + 1, width: right - x, height: 15))
-        } else {
-            t.draw(in: NSRect(x: x, y: (bounds.height - 17) / 2, width: right - x, height: 17))
+            st.draw(in: NSRect(x: x, y: bottom, width: max(0, right - x), height: IslandRow.subH))
+            bottom += IslandRow.subH
         }
         if let p = progress {
-            let track = NSRect(x: x, y: bounds.height - 4, width: bounds.width - x - 18, height: 2)
+            // under the text column, 4 pt below the text: the job's own line, inside its row
+            let track = NSRect(x: x, y: bottom + 4, width: bounds.width - x - 18 - trailingReserve, height: 2)
             NSColor(white: 1, alpha: 0.12).setFill()
             NSBezierPath(roundedRect: track, xRadius: 1, yRadius: 1).fill()
             BrandColor.Island.fill.setFill()
@@ -309,22 +415,29 @@ final class IslandRow: NSView {
     }
 }
 
-/// Bars that follow a level (recording: the mic) or a history (voice input: a scrolling waveform). The live bars are one
-/// vertical base gradient across the whole group (gradient.vertical: each bar shows the slice at its height); quiet
-/// ones are a faint white. `gradient` nil: flat `color`.
+/// Bars that follow a level (recording: the mic) or a history (voice input: a scrolling waveform, newest at the right).
+/// The live bars are one vertical base gradient across the whole group (gradient.vertical: each bar shows the slice at
+/// its height); quiet ones are a faint white. `gradient` nil: flat `color`. `track`: one empty mark for silence and
+/// for before any audio — a faint centre line under the bars, never a row of dots (the voice note's strip showed both).
 final class Bars: NSView {
     var values: [Float] = [] { didSet { needsDisplay = true } }
     var gradient: [(UInt32, CGFloat)]? = BrandGradient.linearStops
     var color: NSColor = BrandColor.Island.fill
     var bar: CGFloat = 3, gap: CGFloat = 2.5
+    var track = false
     override var isFlipped: Bool { true }
     override func draw(_ dirty: NSRect) {
         let n = max(1, Int((bounds.width + gap) / (bar + gap)))
         let vals = Array(values.suffix(n))
         let pad = n - vals.count
         let live = NSBezierPath(), quiet = NSBezierPath()
-        for i in 0..<n {
-            let v = i < pad ? 0 : CGFloat(vals[i - pad])
+        if track {
+            NSColor(white: 1, alpha: 0.16).setFill()
+            NSBezierPath(rect: NSRect(x: 0, y: (bounds.height - 1) / 2, width: CGFloat(n) * (bar + gap) - gap, height: 1)).fill()
+        }
+        for i in pad..<n {
+            let v = CGFloat(vals[i - pad])
+            if track && v <= 0.02 { continue }            // silence: the line shows through
             let hh = max(bar, v * bounds.height)
             let r = NSRect(x: CGFloat(i) * (bar + gap), y: (bounds.height - hh) / 2, width: bar, height: hh)
             (v > 0.02 ? live : quiet).appendRoundedRect(r, xRadius: bar / 2, yRadius: bar / 2)
@@ -378,6 +491,8 @@ final class IslandContent: NSView {
     private weak var pauseBtn: IslandButton?
     /// The pen was latched when the recording row was built (it changes from the key, ⌥⇧D): rebuilt when it differs.
     private var penShown = false
+    /// A peck's chevron: "Open" beside it while the pointer is on the island.
+    private weak var openHint: OpenHint?
 
     private func label(_ s: String, size: CGFloat = 13, weight: NSFont.Weight = .regular, color: NSColor = ink, mono: Bool = false) -> NSTextField {
         let l = NSTextField(labelWithString: s)
@@ -451,34 +566,39 @@ final class IslandContent: NSView {
         addSubview(v)
     }
 
+    /// Where the chip goes: its glyph centred on the rows' icon column, its name on their text column.
+    static let chipX: CGFloat = 11
+
     private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
         let p = ProjectStore.shared.current
-        let name = p?.name ?? Loc.t("project.inbox")
+        // one name for nothing chosen: "No project" with a dashed ring (the tray is only ever the Inbox — "Unassigned"
+        // above "Inbox", two trays, read as one place drawn twice)
+        let name = p?.name ?? Loc.t("capture.island.no_project", table: "Capture")
         // the current project's folder is gone: captures hang as cards meanwhile (Snapper.target) — the chip says so,
-        // dimmed with the folder-and-question-mark, and the switcher it opens offers Locate…
+        // dimmed, and the switcher it opens offers Locate…
         let gone = p.map { !$0.exists } ?? false
-        let b = IslandButton(symbol: gone ? "questionmark.folder" : p == nil ? "tray.2" : "", title: name,
-                             tip: gone ? Loc.t("capture.drawer.missing_sub", table: "Capture")
-                                       : tip("capture.island.switch_project", .project),
-                             fg: gone ? NSColor(white: 1, alpha: 0.6) : .white) { [weak self] in self?.island?.showSwitcher() }
-        // every capture with a note goes to the current project: its key in its colour leads, so it reads at a glance
-        if gone {
-            b.fill = NSColor(white: 1, alpha: 0.1)
-            b.symbolInset = IslandButton.badgeInset + 2
-        } else if let p = p {
-            let c = ProjectLook.color(p)
-            b.fill = c.withAlphaComponent(0.26)
-            b.badge = (p.key, c)
+        // a context, not a button-pill: no fill at rest (the white film under the pointer); a project is its folder in
+        // its colour (the one project identity: the chip, the switcher, the drop drawer), the name in the island's white
+        let b = IslandButton(title: name, tip: gone ? Loc.t("capture.drawer.missing_sub", table: "Capture")
+                                                    : tip("capture.island.switch_project", .project),
+                             fg: gone || p == nil ? ink2 : ink) { [weak self] in self?.island?.showSwitcher() }
+        if let p = p {
+            b.drawn = .project(gone ? ink3 : ProjectLook.color(p))
         } else {
-            b.fill = NSColor(white: 1, alpha: 0.1)
-            b.symbolInset = IslandButton.badgeInset + 2     // the tray where the key badge would start (its glyph has air)
+            b.drawn = .noProject
+            b.iconColor = ink2
         }
+        b.ghost = true
+        b.titleWeight = .medium
+        b.iconSize = 15
+        // the glyph on the icon column, the name on the text column (from wherever the chip itself sits)
+        b.symbolInset = small ? 10 : IslandLayout.iconColumn - 7.5 - IslandContent.chipX
+        b.titleGap = small ? 6 : IslandLayout.textColumn - IslandLayout.iconColumn - 7.5
         b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", gone ? name + ", " + T("main.sidebar.missing") : name))
         let maxW = small ? 200 : max(110, side(w) - 14)
-        b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 14), height: 26))
-        let chev = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)!
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 8.5, weight: .bold).applying(.init(paletteColors: [ink2])))!)
-        chev.frame = NSRect(x: b.frame.width - 18, y: 8, width: 10, height: 10)
+        b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 16), height: 26))
+        let chev = NSImageView(image: BlurtIcon.chevronDown.image(size: 11, color: inkAcc, weight: 1.35))
+        chev.frame = NSRect(x: b.frame.width - 19, y: 7.5, width: 11, height: 11)
         chev.setAccessibilityElement(false); chev.cell?.setAccessibilityElement(false)      // decoration: the button already says what it does
         b.addSubview(chev)
         return b
@@ -486,47 +606,46 @@ final class IslandContent: NSView {
 
     private func buildHome(_ w: CGFloat) -> CGFloat {
         guard let i = island else { return 0 }
-        // the ears row: the project on the left of the notch, record / snap / voice on its right
+        // the ears row: the project on the left of the notch, record / snap / voice on its right — quiet glyphs, a
+        // fill only under the pointer; the chip's glyph on the rows' icon column, its name on their text column
         let row = firstRow
         let rowY = (row - 26) / 2
         let c = chip(w)
-        place(c, x: 12, y: rowY)
-        // the brand actions in our own glyphs, one line weight (the mic that starts a voice note is the mic on its card)
-        let buttons: [(BlurtIcon, String, HotAction, () -> Void)] = [
-            (.record, "capture.island.record", .toggleRecord, { (NSApp.delegate as? App)?.startRecording(useLast: false) }),
-            (.snap, "capture.island.snap", .snap, { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } }),
-            (.mic, "capture.island.voice", .voice, { VoiceInput.shared.toggle() }),
+        place(c, x: IslandContent.chipX, y: rowY)
+        // the brand actions in one stroke: record a ring and a dot drawn at the family's weight (the family's record
+        // fills a heavy dot), the snap frame, the mic (the mic that starts a voice note is the mic on its card)
+        let buttons: [(BlurtIcon?, IslandGlyph?, String, HotAction, () -> Void)] = [
+            (nil, .record, "capture.island.record", .toggleRecord, { (NSApp.delegate as? App)?.startRecording(useLast: false) }),
+            (.snap, nil, "capture.island.snap", .snap, { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() } }),
+            (.mic, nil, "capture.island.voice", .voice, { VoiceInput.shared.toggle() }),
         ]
         var bx = w - 12
-        for (ic, key, act, f) in buttons.reversed() {
+        for (ic, dr, key, act, f) in buttons.reversed() {
             let b = IslandButton(icon: ic, tip: tip(key, act)) { [weak i] in i?.setOpen(false); f() }
+            b.drawn = dr
+            b.ghost = true
+            b.setAccessibilityLabel(Loc.t(key, table: "Capture"))
             b.setFrameSize(NSSize(width: 26, height: 26))
             bx -= 26
             place(b, x: bx, y: rowY)
-            bx -= 6
+            bx -= 4
         }
         var y = row + 4
         let jobs = i.activeJobs
-        if !jobs.isEmpty { y += 4 }
         for j in jobs {
+            // a job at work is a row on the grid: the spinner in the icon column (the sparkle is only ever "Organize"),
+            // its title and step on one line, its progress a 2 pt line under the text column — no box round it
             let step = j.steps.last { $0.state == .running } ?? j.steps.last { $0.state != .pending }
-            let r = IslandRow(icon: IslandContent.jobIcon(j.type), title: IslandContent.jobTitle(j),
-                              subtitle: step.map { Loc.t("job.step.\($0.id)") }, height: 42) { [weak i] in
+            let r = IslandRow(icon: nil, title: IslandContent.jobTitle(j), height: 36) { [weak i] in
                 i?.setOpen(false)
                 AppEnvironment.mainWindow?.reveal(job: j.id)
             }
-            r.progress = j.progress ?? step?.progress
-            place(r, x: 0, y: y, w: w, h: 42)
-            if j.type == .process {
-                // AI is working on the hand-off / sort: one static 1 pt hairline round its row (with the row's progress)
-                let g = WorkingOutline(frame: r.frame.insetBy(dx: 6, dy: 1))
-                g.cornerRadius = 9
-                g.island = true
-                addSubview(g, positioned: .above, relativeTo: r)
-                g.isHidden = false
-                g.alphaValue = 1
-            }
-            y += 42
+            r.status = step.map { Loc.t("job.step.\($0.id)") }
+            r.working = true
+            r.progress = j.progress ?? step?.progress ?? 0
+            r.setAccessibilityLabel([r.title, r.status].compactMap { $0 }.joined(separator: ", "))
+            place(r, x: 0, y: y, w: w, h: 36)
+            y += 36
         }
         for j in i.sessionsNeedingYou {
             guard let a = j.agent else { continue }
@@ -535,75 +654,64 @@ final class IslandContent: NSView {
             let ids = a.windowName?.replacingOccurrences(of: ",", with: ", ")
             let r = IslandRow(icon: nil, title: j.title ?? ids ?? Loc.t("job.type.agent"),
                               subtitle: [j.title == nil ? nil : ids, Loc.t("session.\(st.rawValue)"), AgentNames.name(a.agent)]
-                                  .compactMap { $0 }.joined(separator: " · "), height: 40) { [weak i] in
+                                  .compactMap { $0 }.joined(separator: " · "), height: 44) { [weak i] in
                 i?.setOpen(false)
                 AppEnvironment.mainWindow?.reveal(job: j.id)
             }
             r.dot = st == .waitingInput ? BrandColor.Island.attn : st == .error ? BrandColor.Island.err
                 : st == .running ? BrandColor.Island.fill : BrandColor.Island.ok
-            place(r, x: 0, y: y, w: w, h: 40)
-            y += 40
+            place(r, x: 0, y: y, w: w, h: 44)
+            y += 44
         }
         let review = i.toReview, cards = i.cardCount
-        if review > 0 || cards > 0 {
-            let sep = NSView(frame: NSRect(x: 18, y: y + 4, width: w - 36, height: 1))
-            sep.wantsLayer = true
-            sep.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
-            addSubview(sep)
-            y += 9
-            if review > 0 {
-                let r = IslandRow(icon: NSImage(systemSymbolName: "tray.full", accessibilityDescription: nil)?
-                    .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium).applying(.init(paletteColors: [ink2]))),
-                                  title: Loc.plural("capture.island.to_review", table: "Capture", count: review), height: 36) { [weak i] in
-                    i?.setOpen(false)
-                    AppEnvironment.mainWindow?.showInbox()
-                }
-                r.accessory = ""
-                place(r, x: 0, y: y, w: cards > 0 ? w - 150 : w, h: 36)
+        if cards > 0 {
+            // the cards waiting ("2 cards" — one noun; the Inbox is the row under it), and the view's one filled button,
+            // the sparkle: with a current project they are organised into it; with none, into Unassigned, each item
+            // with the project the run suggests (one agent run for all). A click on the row brings the cards down.
+            let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
+            let b = cur.map { p in
+                IslandButton(icon: .spark, title: Loc.t("capture.island.organize", table: "Capture"),
+                             tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
+                             gradient: BrandGradient.buttonStops) { snapper.handToAI(project: p.id) }
+            } ?? IslandButton(icon: .spark, title: Loc.t("capture.island.organize", table: "Capture"),
+                              tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
+                              gradient: BrandGradient.buttonStops) { snapper.handToAI() }
+            let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
+                              height: 36) { hanging.reveal(via: "island_row") }
+            r.trailingReserve = b.frame.width + 4
+            place(r, x: 0, y: y, w: w, h: 36)
+            b.frame.origin = NSPoint(x: w - 18 - b.frame.width, y: ((36 - b.frame.height) / 2).rounded())   // the rows' trailing edge
+            r.addSubview(b)                    // the row's own button (its wash runs under it, as a hovered list row's does)
+            y += 36
+        }
+        if review > 0 {
+            // the Inbox: its name, its count as a quiet accessory, a chevron — the backlog lives here (and in the menu
+            // bar), not beside the notch
+            let r = IslandRow(icon: IslandContent.lineIcon(.inbox), title: T("main.place.inbox"), height: 36) { [weak i] in
+                i?.setOpen(false)
+                AppEnvironment.mainWindow?.showInbox()
             }
-            if cards > 0 {
-                // with a current project the cards are organised into it; with none, into Unassigned, each item with
-                // the project the run suggests (the user moves it with a click). Either way one agent run for all.
-                let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
-                let b = cur.map { p in
-                    IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
-                                 tip: Loc.t("capture.island.organize_tip", table: "Capture", p.name),
-                                 gradient: BrandGradient.buttonStops) { snapper.handToAI(project: p.id) }
-                } ?? IslandButton(symbol: "sparkles", title: Loc.t("capture.island.organize", table: "Capture"),
-                                  tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
-                                  gradient: BrandGradient.buttonStops) { snapper.handToAI() }
-                place(b, x: w - 14 - b.frame.width, y: y + 4)
-                if review == 0 {
-                    let l = label(Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards), size: 12.5, color: ink2)
-                    place(l, x: 20, y: y + 9)
-                }
-            }
+            r.accessory = Loc.number(review)
+            r.disclosure = true
+            r.setAccessibilityLabel(T("main.place.inbox") + ", " + Loc.plural("capture.island.to_review", table: "Capture", count: review))
+            place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         }
         if jobs.isEmpty && i.sessionsNeedingYou.isEmpty && review == 0 && cards == 0 {
-            // nothing going on: what the keys do
+            // nothing going on: what the keys do, on the text column
             let hint = [hkHint(.snap, "capture.island.snap"), hkHint(.voice, "capture.island.voice"), hkHint(.project, "capture.island.switch_project")]
                 .compactMap { $0 }.joined(separator: "   ·   ")
             let l = label(hint, size: 11.5, color: ink3)
-            l.alignment = .center
-            place(l, x: 16, y: y + 2, w: w - 32)
-            y += 22
+            place(l, x: IslandLayout.textColumn - 2, y: y + 4, w: w - IslandLayout.textColumn - 16)
+            y += 26
         }
         return y + 8
     }
 
-    static func jobIcon(_ t: JobType) -> NSImage? {
-        let sym: String
-        switch t {
-        case .record: sym = "record.circle"
-        case .snap: sym = "camera.viewfinder"
-        case .voice: sym = "mic"
-        case .process: sym = "sparkles"
-        case .route: sym = "arrow.triangle.branch"
-        case .agent: sym = "terminal"
-        }
-        return NSImage(systemSymbolName: sym, accessibilityDescription: nil)?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12, weight: .medium).applying(.init(paletteColors: [ink2])))
+    /// One of our line glyphs as a row's icon: 15 pt on the icon column, in the rows' secondary white (or `color`).
+    static func lineIcon(_ ic: BlurtIcon, color: NSColor = ink2) -> NSImage? {
+        guard let cg = ic.cgImage(size: 15, scale: 2, color: color.cgColor, weight: 1.1) else { return nil }
+        return NSImage(cgImage: cg, size: NSSize(width: 15, height: 15))
     }
 
     static func jobTitle(_ j: Job) -> String { j.title ?? Loc.t("job.type.\(j.type.rawValue)") }
@@ -766,8 +874,9 @@ final class IslandContent: NSView {
     // MARK: voice input
 
     /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
-    /// the picker say it: "Listening · ⌥⇧V done · Esc discard" (the user's key; "click Done" without one), "pause to
-    /// finish" with record.voice.end_on_pause, "let go to finish" while held — and in its last minute, the time left.
+    /// the picker say it: "⌥⇧V to finish · Esc discard" (the user's key; "Click Done to finish" without one), "Pause
+    /// to finish" with record.voice.end_on_pause, "Let go to finish" while held — and in its last minute, the time
+    /// left. Not "Listening": the waveform and the chick say that.
     static func voiceHint() -> String {
         let v = VoiceInput.shared
         var s: String
@@ -790,71 +899,90 @@ final class IslandContent: NSView {
 
     private func buildVoice(_ w: CGFloat, top: CGFloat) -> CGFloat {
         let v = VoiceInput.shared
-        var y: CGFloat = top + 8
-        // the chick listens (head tilted, sound arcs) beside the live waveform
-        let chick = MascotView(size: 56, backdrop: .dark)
-        chick.frame.origin = NSPoint(x: 8, y: y - 13)
+        // the body's edges: the ears' mic and clock line up with them (Island.layoutEars), as a live activity's
+        let L = IslandLayout.bodyInset, R = w - IslandLayout.bodyInset
+        // row 1: the chick (no sound arcs — the bars say "heard"), the live waveform — the one focal thing, the one
+        // brand colour that moves — and Done (the view's one filled button) on the right edge. With the key held there
+        // is no Done: letting go finishes it, and the hint under it says so
+        var y: CGFloat = top + 4
+        let rowH: CGFloat = 40
+        let cs: CGFloat = 32
+        let chick = MascotView(size: cs, backdrop: .dark)
+        chick.mascot.quiet = true
+        chick.frame.origin = NSPoint(x: L - 3, y: y + (rowH - cs) / 2)      // (the art has 2–3 pt of air in its square)
         addSubview(chick)
         chick.play(.listening)
-        let wx: CGFloat = 8 + 56 + 4
+        let wx = L - 3 + cs + 8
         // Done: the voice note ends when you say so (v0.8.6) — this button, the key again, or letting go of it
         let done = IslandButton(icon: .check, title: Loc.t("capture.voice.done", table: "Capture"),
                                 tip: tip("capture.voice.done_tip", .voice), gradient: BrandGradient.buttonStops) { VoiceInput.shared.toggle() }
         done.isHidden = v.holding
-        let wv = Bars(frame: NSRect(x: wx, y: y, width: w - wx - 18 - (v.holding ? 0 : done.frame.width + 12), height: 34))
+        let we = v.holding ? R : R - done.frame.width - 14
+        let wv = Bars(frame: NSRect(x: wx, y: y + (rowH - 28) / 2, width: we - wx, height: 28))
         wv.bar = 3; wv.gap = 2.5                // the gradient across the group (Bars' default)
+        wv.track = true                         // one empty mark: the centre line (before audio, and in silence)
         addSubview(wv)
         wave = wv
-        place(done, x: w - 16 - done.frame.width, y: y + (34 - done.frame.height) / 2)
-        y += 44
-        // Structured, as dictation's (⇧ alone, or this chip): a quiet chip with the list glyph; on, the tint chip in
-        // mint like "Pen on" (click = off). Then how it ends — the words themselves show under the island (LiveTranscript)
+        place(done, x: R - done.frame.width, y: y + (rowH - done.frame.height) / 2)
+        y += rowH + 4
+        // row 2: Structured, as dictation's (⇧ alone, or this chip): a quiet chip with the list glyph; on, the tint chip
+        // in mint like "Pen on" (click = off) — the only place it shows (the ear keeps the plain clock). Then how it
+        // ends, and where it goes, on the right edge in secondary white
         let on = v.structured
         let st = IslandButton(icon: .list, title: Loc.t("capture.voice.structured", table: "Capture"),
                               tip: Loc.t(on ? "capture.voice.structured_off_tip" : "capture.voice.structured_tip", table: "Capture"),
                               fill: on ? BrandColor.Island.tint : NSColor(white: 1, alpha: 0.08)) { VoiceInput.shared.toggleStructured(via: "island") }
         st.fg = on ? BrandColor.Island.fill : ink2
+        st.titleWeight = .medium
         st.symbolInset = 10
-        st.setFrameSize(NSSize(width: st.frame.width, height: 24))
+        st.setFrameSize(NSSize(width: st.intrinsicContentSize.width, height: 24))
         st.setAccessibilityValue(on ? Loc.t("capture.voice.structured_ax_on", table: "Capture") : Loc.t("capture.voice.structured_ax_off", table: "Capture"))
-        // a row of its own under the chick's feet (the chick stands 56 pt tall from 13 pt above the waveform)
-        y += 2
-        place(st, x: 12, y: y)
+        place(st, x: L, y: y)
         structuredChip = st
-        let hx = st.frame.maxX + 10
-        let tx = label(IslandContent.voiceHint(), size: 12.5, color: ink2)
-        place(tx, x: hx, y: y + (24 - tx.frame.height) / 2, w: w - hx - 18)
-        voiceText = tx
-        y += 30
         let dest: String
         if let m = ProjectStore.shared.missingCurrent { dest = Loc.t("capture.project.missing_card", table: "Capture", m.name) }
         else if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {
             dest = Loc.t("capture.voice.goes_card", table: "Capture")
         }
-        let d = label(dest, size: 11.5, color: ink3)
-        place(d, x: 18, y: y, w: w - 36)
-        return y + 26
+        let hx = st.frame.maxX + 10
+        let tx = label(IslandContent.voiceHint(), size: 12, color: ink2)
+        let d = label(dest, size: 12, color: ink2)
+        d.alignment = .right
+        d.toolTip = dest                       // (cut short when the hint needs the room: the whole of it on hover)
+        let room = R - hx
+        let hintW = min(tx.frame.width, room)
+        let destW = min(d.frame.width, max(0, room - hintW - 14))
+        place(tx, x: hx, y: y + (24 - tx.frame.height) / 2, w: hintW)
+        voiceText = tx
+        // its right edge on the body's (a label's cell keeps 2 pt inside its frame)
+        if destW > 40 { place(d, x: R + 2 - destW, y: y + (24 - d.frame.height) / 2, w: destW) }
+        y += 24
+        return y + 12
     }
 
     // MARK: the drawer
 
     private func buildDrawer(_ d: Island.Drawer, _ w: CGFloat) -> CGFloat {
         let store = ProjectStore.shared
-        func ic(_ s: String, _ c: NSColor = ink2) -> NSImage? {
-            NSImage(systemSymbolName: s, accessibilityDescription: nil)?
-                .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 12.5, weight: .medium).applying(.init(paletteColors: [c])))
-        }
-        // the ears row: what this is on the left of the notch, the filter typed so far on its right
+        func folder(_ p: Project) -> NSImage? { IslandGlyph.project(p.exists ? ProjectLook.color(p) : ink3).image(size: 15, color: ink) }
+        let noProject = IslandGlyph.noProject.image(size: 15, color: ink2)
+        // the ears row: the filter field on the left of the notch (a real field: the magnifier on the icon column, the
+        // placeholder or what was typed on the text column, the caret after it), what this is across the notch
         let row = firstRow
         let pick = d == .switcher ? island?.pick : nil
         let headText = d == .drop ? Loc.t("capture.drawer.drop_title", table: "Capture")
             : pick?.title ?? Loc.t("capture.drawer.switch_title", table: "Capture")
-        let head = label(headText, size: 11, weight: .semibold, color: ink3)
-        place(head, x: 20, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 26))
-        if !query.isEmpty {
-            let q = label("\u{201C}\(query)\u{201D}", size: 12, weight: .medium, color: BrandColor.Island.fill)
-            q.alignment = .right
-            place(q, x: w - 20 - min(q.frame.width, side(w) - 26), y: (row - q.frame.height) / 2, w: min(q.frame.width, side(w) - 26))
+        let head = label(headText, size: 12, weight: .medium, color: ink3)
+        head.alignment = .right
+        let hw = min(head.frame.width, side(w) - 24)
+        if d == .switcher {
+            place(head, x: w - 18 - hw, y: (row - head.frame.height) / 2, w: hw)
+            let f = FilterField(text: query, placeholder: Loc.t("capture.drawer.type_to_filter", table: "Capture"),
+                                width: side(w) - 8)
+            place(f, x: 0, y: ((row - f.frame.height) / 2).rounded())
+        } else {
+            place(head, x: IslandLayout.textColumn - 2, y: (row - head.frame.height) / 2, w: min(head.frame.width, side(w) - 46))
+            head.alignment = .left
         }
         var y = row + 4
         func add(_ r: IslandRow, _ t: Target) {
@@ -878,8 +1006,7 @@ final class IslandContent: NSView {
             guard p.exists else {
                 // its folder is gone (moved, renamed, on a drive that isn't there): said, dimmed, and chosen = Locate…
                 // — as the sidebar, the menu bar and Settings show it
-                let r = IslandRow(icon: ic("questionmark.folder", ink3), title: p.name,
-                                  subtitle: Loc.t("capture.drawer.missing_sub", table: "Capture"), height: 44)
+                let r = IslandRow(icon: folder(p), title: p.name, subtitle: Loc.t("capture.drawer.missing_sub", table: "Capture"), height: 44)
                 r.accessory = p.key
                 r.accessoryIsKey = true
                 r.checked = d == .switcher && checkedID == p.id
@@ -887,24 +1014,25 @@ final class IslandContent: NSView {
                 add(r, .locate(p.id))
                 continue
             }
-            let r = IslandRow(icon: ic("folder.fill", ProjectLook.color(p)), title: p.name, height: 36)     // the project's colour
+            // the project's one identity: its folder in its colour (as the home chip shows it)
+            let r = IslandRow(icon: folder(p), title: p.name, height: 36)
             r.accessory = p.key
             r.accessoryIsKey = true
             r.checked = d == .switcher && checkedID == p.id
             add(r, .project(p.id))
         }
         if query.isEmpty && !showAll && matches.count > 8 {
-            add(IslandRow(icon: ic("ellipsis"), title: Loc.t("capture.drawer.more", table: "Capture"), height: 34), .more)
+            add(IslandRow(icon: IslandContent.lineIcon(.more), title: Loc.t("capture.drawer.more", table: "Capture"), height: 36), .more)
         }
         if store.projects.isEmpty {
             let l = label(Loc.t("capture.drawer.no_projects", table: "Capture"), size: 12, color: ink3)
-            place(l, x: 20, y: y + 6, w: w - 40)
+            place(l, x: IslandLayout.textColumn - 2, y: y + 6, w: w - IslandLayout.textColumn - 16)
             y += 30
         }
-        // Unassigned comes last, under a line, in every project picker (this one, the menu bar's, the main window's
-        // M popover, a card's Move To ▸): the same place each time
+        // No project / Unassigned comes last, under a line, in every project picker (this one, the menu bar's, the main
+        // window's M popover, a card's Move To ▸): the same place each time
         if d == .switcher && (none || pick == nil) {
-            let sep = NSView(frame: NSRect(x: 18, y: y + 4, width: w - 36, height: 1))
+            let sep = NSView(frame: NSRect(x: IslandLayout.textColumn, y: y + 4, width: w - IslandLayout.textColumn - 18, height: 1))
             sep.wantsLayer = true
             sep.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
             addSubview(sep)
@@ -912,23 +1040,28 @@ final class IslandContent: NSView {
         }
         if d == .switcher {
             if none {
-                // no current project: recordings go to Unassigned until the user picks one — never a guess
-                // Unassigned is tray.2 everywhere (the sidebar, the palette, the menu bar): the tray is the Inbox
-                let r = IslandRow(icon: ic("tray.2"), title: Loc.t("project.inbox"),
-                                  subtitle: Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture"), height: 44)
+                // no current project: recordings go to Unassigned until the user picks one — never a guess. Said as the
+                // chip says it ("No project", the dashed ring): the tray is only ever the Inbox. What it means is its
+                // tooltip (and VoiceOver's hint)
+                let r = IslandRow(icon: noProject, title: pick == nil ? Loc.t("capture.island.no_project", table: "Capture") : Loc.t("project.inbox"), height: 36)
+                r.toolTip = Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture")
+                r.setAccessibilityHelp(r.toolTip)
                 r.checked = checkedID == "inbox"
                 add(r, .none)
             }
             if pick == nil {
-                let r = IslandRow(icon: ic("folder.badge.plus"), title: Loc.t("project.open_folder"), height: 36)
+                let r = IslandRow(icon: IslandContent.lineIcon(.folderPlus), title: Loc.t("capture.drawer.add_project", table: "Capture"), height: 36)
                 r.accessory = "\u{2318}O"
                 add(r, .openFolder)
             }
         } else {
-            add(IslandRow(icon: ic("tray.2"), title: Loc.t("project.inbox"), subtitle: Loc.t("capture.drawer.inbox_sub", table: "Capture"), height: 44), .inbox)
+            let un = IslandRow(icon: noProject, title: Loc.t("project.inbox"), height: 36)
+            un.toolTip = Loc.t("capture.drawer.inbox_sub", table: "Capture")
+            un.setAccessibilityHelp(un.toolTip)
+            add(un, .inbox)
             // with no current project: one run for the cards, into Unassigned with a suggested project each
             let n = island?.dropCount ?? 1
-            add(IslandRow(icon: ic("sparkles", BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
+            add(IslandRow(icon: IslandContent.lineIcon(.spark, color: BrandColor.Island.fill), title: Loc.t("capture.island.organize", table: "Capture"),
                           subtitle: Loc.plural("capture.drawer.organize_sub", table: "Capture", count: n), height: 44), .organize)
         }
         if d == .switcher { select(rows.firstIndex { $0.checked } ?? 0) }
@@ -1051,63 +1184,141 @@ final class IslandContent: NSView {
 
     // MARK: toast
 
+    /// A toast's line: what it says, then — after the first " · " — the detail, in secondary white (one line, two
+    /// weights: "Recording saved · 0:42", "Copied, not sent · paste with ⌘V").
+    static func toastLine(_ s: String) -> NSAttributedString {
+        let a = NSMutableAttributedString(string: s, attributes: [.font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: ink])
+        if let r = s.range(of: " · ") {
+            a.addAttributes([.font: NSFont.systemFont(ofSize: 13), .foregroundColor: ink2], range: NSRange(r.lowerBound..<s.endIndex, in: s))
+        }
+        return a
+    }
+
+    /// The mark a toast leads with when it names none: the quiet chick glyph — blurt telling you something.
+    static let toastDefaultMark: BlurtIcon = .chicken
+
     private func buildToast(_ t: Island.Toast, _ w: CGFloat, top: CGFloat) -> CGFloat {
+        // one component, one layout: the leading slot (always filled) centred on the icon column, the headline (13
+        // medium) and a detail line (11.5, secondary white) on the text column, an optional quiet pill on the right
+        let parts = t.text.components(separatedBy: "\n")
+        var headline = parts[0]
+        var detail = parts.count > 1 ? parts[1...].joined(separator: " · ") : nil
+        // a passive line still at work ("Organizing 4 captures…"): the spinner in the slot says "at work", the text says
+        // what — no trailing dots to be read as text cut short
+        let working = t.passive && t.action == nil && headline.hasSuffix("…")
+        if working { headline = String(headline.dropLast()) }
+        // a detail line still at work ("Organizing it into items…" under "Recording saved"): a small spinner before it,
+        // the headline keeps its own mark
+        var detailWorking = false
+        if let d = detail, d.hasSuffix("…") { detail = String(d.dropLast()); detailWorking = true }
         // the label's own fitted width (its cell has an inset): at the string's measured width the field ended in "…"
         // (the Claude Code fallback notice read "…organizing with Codex inste…")
-        let l = label(t.text, size: 13, weight: .medium)
+        let l = label(headline, size: 13, weight: .medium)
+        l.attributedStringValue = IslandContent.toastLine(headline)
+        l.sizeToFit()
+        let dl = detail.map { label($0, size: 11.5, color: ink2) }
+        let detailLead: CGFloat = t.detailMark != nil || detailWorking ? 15 : 0
         let tw = ceil(l.frame.width)
-        // what goes before the text: the chick (from the left edge), a done check, a project's key badge
-        var lead: CGFloat = t.art == nil ? 0 : 64
-        let iconW: CGFloat = 18, iconGap: CGFloat = 6
-        if t.icon != nil { lead += iconW + iconGap }
-        let badgeSize = t.badge.map { ProjectLook.badgeSize($0.text, height: 18) }
-        if let s = badgeSize { lead += s.width + 8 }
+        let textW = max(tw, ceil(dl?.frame.width ?? 0) + detailLead)
         var btn: IslandButton?
         if let a = t.actionTitle, let act = t.action {
-            btn = IslandButton(symbol: "", title: a, tip: a, gradient: BrandGradient.buttonStops) { [weak self] in
+            // a toast's action is never the gradient: Undo takes a step back, the others move on from a line the user
+            // didn't ask for — a quiet pill (the gradient stays for the open island's primary and a question's answer)
+            btn = IslandButton.quiet(a) { [weak self] in
                 act(); self?.island?.dismissToast()
             }
         }
-        // the content spans the whole shape (IslandLayout.toast): text 18 pt in, the button under the right ear's
-        // number, a line with nothing beside it centred
-        let fit = IslandLayout.toast(text: tw, lead: lead, art: t.art != nil, button: btn?.frame.width,
-                                     floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW)
+        // a line with no button that is its own button (a peck's "open the item"): a chevron where a button would be,
+        // "Open" beside it while the pointer is on the island
+        let opens = btn == nil && t.action != nil && t.art != nil
+        let hint = opens ? OpenHint() : nil
+        // the text column; a peck's chick (it pounces on a bug to its right, then hops back) gets 8 pt more room
+        let textX = IslandLayout.textColumn + (t.art == nil ? 0 : 8)
+        let fit = IslandLayout.toast(text: textW, lead: textX - IslandLayout.toastInset, button: hint?.frame.width ?? btn?.frame.width,
+                                     floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW,
+                                     buttonGap: 16)
         toastWidth = fit.width
         // too long for one line at the open width: the text wraps (up to three lines; the row grows a line for each)
-        // instead of "Couldn't snap — macOS needs Screen Recording allo…"; the icon and badge keep to its first line
+        // instead of "Couldn't snap — macOS needs Screen Recording allo…"; the mark keeps to its first line
         var text: NSTextField = l
-        var rowH: CGFloat = 46
         var textH = l.frame.height
-        if fit.wraps {
-            let wl = wrapping(t.text, size: 13, weight: .medium, color: ink, width: fit.textWidth, lines: IslandLayout.toastMaxLines)
+        var lines = 1
+        if fit.wraps, l.frame.width > fit.textWidth + 0.5 {
+            let wl = wrapping(headline, size: 13, weight: .medium, color: ink, width: fit.textWidth,
+                              lines: detail == nil ? IslandLayout.toastMaxLines : 2)
+            wl.attributedStringValue = IslandContent.toastLine(headline)
             wl.cell?.truncatesLastVisibleLine = true
-            let lines = IslandLayout.toastLines(wrapped: wl.frame.height, line: l.frame.height)
-            rowH = IslandLayout.toastHeight(lines: lines)
+            lines = IslandLayout.toastLines(wrapped: wl.frame.height, line: l.frame.height)
             textH = min(wl.frame.height, l.frame.height + CGFloat(lines - 1) * IslandLayout.toastLineHeight + 2)
             text = wl
         }
-        // text, icon, key badge and button share one centre line (the row is 46 high; a wrapped line's first line)
+        var detailH: CGFloat = 0
+        var detailField = dl
+        if let d = dl {
+            let room = fit.textWidth - detailLead
+            if d.frame.width > room + 0.5, let s = detail {
+                let wd = wrapping(s, size: 11.5, color: ink2, width: room, lines: 2)
+                wd.cell?.truncatesLastVisibleLine = true
+                detailField = wd
+                detailH = wd.frame.height
+                if wd.frame.height > d.frame.height + 4 { lines += 1 }
+            } else {
+                detailH = d.frame.height
+            }
+            lines += 1
+        }
+        let rowH = IslandLayout.toastHeight(lines: lines)
+        // the text block (headline, then the detail 1 pt under it) centred in the row; the mark on the headline's first
+        // line, the chick on the whole block, the button on the row
+        let blockH = textH + (detailField == nil ? 0 : 1 + detailH)
         let rowMid = top + rowH / 2
-        let textTop = (rowMid - textH / 2).rounded()
-        let mid = fit.wraps ? textTop + l.frame.height / 2 : rowMid
-        var x = fit.leadX
+        let textTop = (rowMid - blockH / 2).rounded()
+        let mid = textTop + l.frame.height / 2
+        let ic = IslandLayout.iconColumn
         if let art = t.art {
-            art.frame = NSRect(x: 10, y: top - 9, width: 50, height: 50)   // the chick's foot sits on the text's baseline
+            // the chick in the slot: its square from 12 pt in, its hops and its bug clear of the text
+            let z: CGFloat = 28
+            art.frame = NSRect(x: 12, y: (rowMid - z / 2).rounded() - 1, width: z, height: z)
             addSubview(art)
-            x = 64
+        } else if working {
+            addSubview(IslandSpinner(frame: NSRect(x: ic - 6.5, y: (mid - 6.5).rounded(), width: 13, height: 13)))
+        } else {
+            // done = the ok check, needs you = the attention triangle (never colour alone: each has its shape), a
+            // filing = the project's folder in its colour, anything else the quiet chick glyph — one 15 pt slot
+            let (mark, color): (BlurtIcon, NSColor) = {
+                switch t.icon {
+                case .check?: return (.check, BrandColor.Island.ok)
+                case .warning?: return (.warning, BrandColor.Island.attn)
+                case let i?: return (i, ink2)
+                case nil: return (IslandContent.toastDefaultMark, ink2)
+                }
+            }()
+            let im = t.badge.flatMap { IslandGlyph.project($0.color).image(size: 15, color: ink) }
+                ?? mark.image(size: 15, color: color, weight: mark == .check ? 1.35 : 1.15)
+            place(NSImageView(image: im), x: ic - 7.5, y: (mid - 7.5).rounded(), w: 15, h: 15)
         }
-        if let i = t.icon {
-            let im = NSImageView(image: i.symbolImage(pointSize: 13, weight: .semibold))
-            im.contentTintColor = i == .check ? BrandColor.Island.ok : ink
-            place(im, x: x, y: (mid - iconW / 2).rounded(), w: iconW, h: iconW)
-            x += iconW + iconGap
+        // (a label draws 2 pt inside its frame: its first letter on the text column, as a row's)
+        place(text, x: textX - 2, y: textTop, w: fit.textWidth + 4, h: textH)
+        if let d = detailField {
+            var dx = textX
+            let dmid = (textTop + textH + 1 + min(detailH, 15) / 2).rounded()
+            if detailWorking {
+                addSubview(IslandSpinner(frame: NSRect(x: dx + 0.5, y: dmid - 5, width: 10, height: 10)))
+                dx += detailLead
+            } else if let m = t.detailMark {
+                // the state in shape and colour, the same marks as a toast's slot: ✓ done, ⚠ to verify
+                let im = m.icon.image(size: 11, color: m.color, weight: 1.4)
+                place(NSImageView(image: im), x: dx, y: dmid - 5.5, w: 11, h: 11)
+                dx += detailLead
+            }
+            place(d, x: dx - 2, y: textTop + textH + 1, w: min(d.frame.width, fit.textWidth + 4 - (dx - textX)), h: detailH)
         }
-        if let b = t.badge, let s = badgeSize {
-            place(BadgeView(text: b.text, color: b.color), x: x, y: (mid - s.height / 2).rounded(), w: s.width, h: s.height)
-            x += s.width + 8
-        }
-        place(text, x: x, y: textTop, w: fit.textWidth, h: textH)
         if let b = btn, let bx = fit.buttonX { place(b, x: bx, y: (rowMid - b.frame.height / 2).rounded()) }
+        if let h = hint, let bx = fit.buttonX {
+            place(h, x: bx, y: (rowMid - h.frame.height / 2).rounded())
+            openHint = h
+            h.hover = island?.pointerInside ?? false
+        }
         return top + rowH
     }
 
@@ -1141,6 +1352,7 @@ final class IslandContent: NSView {
 
     func tick(_ now: CFTimeInterval) {
         guard let i = island, i.open || i.currentToast != nil else { return }
+        openHint?.hover = i.pointerInside
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
             level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
@@ -1153,7 +1365,105 @@ final class IslandContent: NSView {
             wave?.values = VoiceInput.shared.levels
             time?.stringValue = Island.clock(VoiceInput.shared.elapsed)
             let hint = IslandContent.voiceHint()
-            if voiceText?.stringValue != hint { voiceText?.stringValue = hint }
+            if voiceText?.stringValue != hint { voiceText?.stringValue = hint; voiceText?.toolTip = hint }
         }
     }
+}
+
+/// A passive toast's "still at work": a quarter arc turning once every 1.1 s, in the island's secondary white (still
+/// with Reduce Motion — the arc alone says it). Layers only, like the island's buttons.
+final class IslandSpinner: NSView {
+    private let arc = CAShapeLayer()
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        let track = CAShapeLayer()
+        let r = bounds.insetBy(dx: 1, dy: 1)
+        track.path = CGPath(ellipseIn: r, transform: nil)
+        track.fillColor = nil
+        track.strokeColor = NSColor(white: 1, alpha: 0.16).cgColor
+        track.lineWidth = 1.6
+        arc.path = CGPath(ellipseIn: r, transform: nil)
+        arc.fillColor = nil
+        arc.strokeColor = NSColor(white: 1, alpha: 0.7).cgColor
+        arc.lineWidth = 1.6
+        arc.lineCap = .round
+        arc.strokeEnd = 0.28
+        arc.frame = bounds
+        layer?.addSublayer(track)
+        layer?.addSublayer(arc)
+        setAccessibilityElement(false)
+        guard !reduceMotion else { return }
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = -2 * Double.pi
+        spin.duration = 1.1
+        spin.repeatCount = .infinity
+        arc.add(spin, forKey: "spin")
+    }
+    required init?(coder: NSCoder) { fatalError() }
+}
+
+/// A peck's way in: the line chevron at 45 %, and "Open" (60 %) beside it while the pointer is on the island — the
+/// toast is its own button, and says so when pointed at. Its width is kept either way, so nothing moves.
+final class OpenHint: NSView {
+    private let word = NSTextField(labelWithString: Loc.t("capture.peck.open", table: "Capture"))
+    var hover = false { didSet { if hover != oldValue { word.isHidden = !hover } } }
+    init() {
+        word.font = .systemFont(ofSize: 11.5, weight: .medium)
+        word.textColor = ink2
+        word.sizeToFit()
+        super.init(frame: NSRect(x: 0, y: 0, width: ceil(word.frame.width) + 2 + 13, height: 18))
+        word.frame.origin = NSPoint(x: 0, y: (18 - word.frame.height) / 2)
+        word.isHidden = true
+        addSubview(word)
+        let chev = NSImageView(image: BlurtIcon.chevronRight.image(size: 13, color: inkAcc, weight: 1.35))
+        chev.frame = NSRect(x: frame.width - 13, y: 2.5, width: 13, height: 13)
+        addSubview(chev)
+        setAccessibilityElement(false)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override var isFlipped: Bool { true }
+}
+
+/// The switcher's filter, a real field in the ears row: the magnifier on the icon column, the placeholder (tertiary)
+/// or what was typed (white) on the text column, and the caret after it — typing filters, and the field says so
+/// before the first key. Drawn by the island (the panel takes the keys: IslandContent.key).
+final class FilterField: NSView {
+    init(text: String, placeholder: String, width: CGFloat) {
+        super.init(frame: NSRect(x: 0, y: 0, width: width, height: 20))
+        let mag = NSImageView(image: BlurtIcon.search.image(size: 15, color: ink2, weight: 1.1))
+        mag.frame = NSRect(x: IslandLayout.iconColumn - 7.5, y: 2.5, width: 15, height: 15)
+        addSubview(mag)
+        let tx = IslandLayout.textColumn
+        let l = NSTextField(labelWithString: text.isEmpty ? placeholder : text)
+        l.font = .systemFont(ofSize: 13, weight: text.isEmpty ? .regular : .medium)
+        l.textColor = text.isEmpty ? ink3 : ink
+        l.lineBreakMode = .byTruncatingHead
+        l.sizeToFit()
+        let lw = min(ceil(l.frame.width), width - tx - 6)
+        // the caret where the next letter goes: after the typed text, before the placeholder
+        let caretX = text.isEmpty ? tx : tx + lw - 2
+        l.frame = NSRect(x: text.isEmpty ? tx + 1 : tx - 2, y: (20 - l.frame.height) / 2, width: lw, height: l.frame.height)
+        addSubview(l)
+        let caret = NSView(frame: NSRect(x: caretX, y: 2, width: 1.5, height: 16))
+        caret.wantsLayer = true
+        caret.layer?.backgroundColor = BrandColor.Island.fill.cgColor        // the island's caret: flat mint, as live text's
+        caret.layer?.cornerRadius = 0.75
+        addSubview(caret)
+        if !reduceMotion {
+            let blink = CAKeyframeAnimation(keyPath: "opacity")
+            blink.values = [1, 1, 0, 0]
+            blink.keyTimes = [0, 0.5, 0.55, 1]
+            blink.duration = 1.06
+            blink.repeatCount = .infinity
+            caret.layer?.add(blink, forKey: "blink")
+        }
+        setAccessibilityElement(true)
+        setAccessibilityRole(.textField)
+        setAccessibilityLabel(placeholder)
+        setAccessibilityValue(text)
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override var isFlipped: Bool { true }
 }

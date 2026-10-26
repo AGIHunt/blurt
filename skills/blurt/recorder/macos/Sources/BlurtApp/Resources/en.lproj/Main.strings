@@ -58,19 +58,17 @@
 "app.record.failed.writer" = "Writing the video file failed partway, so nothing from this take was kept. Recording again usually works; the exact error is in the log.";
 "app.record.reason.display_gone" = "The recorded display was disconnected";
 "app.record.reason.interrupted" = "Sleep or the lock screen stopped the recording";
-"app.record.reason.writer" = "Writing the video file failed";
+"app.record.reason.writer" = "Couldn’t write the video file";
 "app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
 "app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
 "app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
-"app.record.not_saved" = "%@ — recording not saved";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
-"app.record.failed_why" = "%1$@ · %2$@";
 "app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";
 
-"app.toast.saved" = "Recording saved (%@)";
+"app.toast.saved" = "Recording saved · %@";
 "app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
 
 "main.project.removed_name" = "a removed project";
@@ -711,3 +709,7 @@
 "main.project.pin.undo_name" = "Pin";
 "main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
 "main.sidebar.taken" = "Dragged Out";
+"app.record.not_saved_title" = "Recording not saved";
+"app.record.partial_title" = "Recording stopped early";
+"app.record.partial_kept" = "the first %@ is kept";
+"app.ear.saved" = "Saved %@";

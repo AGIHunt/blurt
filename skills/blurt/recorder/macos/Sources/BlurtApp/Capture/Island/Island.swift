@@ -2,17 +2,23 @@
 // project, voice input, the capture counts and the work in progress. It replaces the recording HUD and the perch.
 //
 // Geometry — on a screen with a notch (safeAreaInsets.top > 0) the island *is* the notch: pure black, flush with the
-// top edge, 10 pt bottom corners, with concave shoulders into the screen edge. When there is something to show it grows
-// "ears" (56 pt each side; wider for content that needs it — IslandLayout.earSpan — both alike, so the shape stays
-// centred on the notch). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
+// top edge, 10 pt bottom corners, with concave shoulders into the screen edge. When there is something live to show it
+// grows "ears" (56 pt; each side wider only for its own content — IslandLayout.earNeed). Both ears grow when both have
+// something to say (recording, dictation, a voice note); a standing thing alone is told across the notch as a live
+// activity is — its glyph on the left, its value on the right (the cards waiting: stack | 2; captures just landed:
+// tray | +3); a moment grows its own side (the egg, an alert, the launch hello). At rest — nothing live — it is the
+// bare notch: the inbox's backlog is the menu bar's count and the open island's Inbox row, never a standing number
+// beside the notch. A short done state is said in the ears, not a toast: "✓ Sent" after a double tap, "✓ Saved 0:42"
+// after a take (earMoment). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
 // when idle and appears after the pointer rests 250 ms in the top-middle 320 × 8 pt. Hovering 180 ms (or a hotkey)
 // opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves it and
 // the hanging cards (HangingCards.swift), which drop after the same rest (CardReveal.dwell, 180 ms: a brush past the
 // notch drops nothing). Resting on the cards' count opens the island after 450 ms (the cards are down by then).
 //
 // Collapsed (ears)        left                         right
-//   idle                  cards waiting (n) — a click   hatching egg (the mascot) + n processing, else captures to review (n)
-//                         brings them down to stay
+//   idle                  cards waiting (n) — a click   hatching egg (the mascot) + n processing, else an agent that
+//                         brings them down to stay      waits on you (the alert dot), else "+n" for a few seconds as
+//                                                       new captures land in the inbox; nothing at all otherwise
 //   recording             red dot (1 Hz breath) + time  the pen while latched, else snaps (n, the snap frame), else
 //                         (paused: pause bars, amber)   markers (n, a flag), else the mic level
 //   voice input           live waveform (open: the mic  duration
@@ -101,7 +107,7 @@ final class Island: NSObject, IslandHosting {
     private let clip = FlippedView()
     private var driver: MotionDriver?
     /// The listening aura (gradient.glow) under the island while dictation or a voice note listens: fades in over
-    /// 200 ms (a tap-started dictation's only after the double-tap window: `Dictation.glowOn`) and out when it stops, breathes ±10 % with the level (no faster than 0.6 s). Never while recording (red
+    /// 200 ms (a tap-started dictation's only after the double-tap window: `Dictation.glowOn`) and out when it stops, follows the level — 60–100 % of its strength (no faster than 0.6 s). Never while recording (red
     /// owns that moment) or idle; none with Reduce Transparency; no breathing with Reduce Motion.
     private var glow: CALayer?
     private var glowAmount: CGFloat = 0
@@ -110,6 +116,8 @@ final class Island: NSObject, IslandHosting {
     private var w = Spring(200, response: 0.42, damping: 0.78)
     private var h = Spring(32, response: 0.42, damping: 0.78)
     private var r = Spring(10, response: 0.42, damping: 0.78)
+    /// How far the shape's centre sits right of the notch's: an ear on one side only grows that side (half its width).
+    private var dx = Spring(0, response: 0.42, damping: 0.78)
     private var vis = Spring(0, response: 0.3, damping: 1)       // capsule screens: shown or not
     private var bumpStart: CFTimeInterval = 0
     private var shapeMoving = false
@@ -129,6 +137,13 @@ final class Island: NSObject, IslandHosting {
     private var dropped = false
     private(set) var cardCount = 0
     private var reviewCount = 0
+    private var reviewLoaded = false
+    /// New captures landed in the inbox: "+n" in the right ear until then (news, not a standing count).
+    private var newsUntil: CFTimeInterval = 0
+    private var newsCount = 0
+    static let newsSeconds: CFTimeInterval = 4.5
+    /// The widest words a done moment says in the ear (≈ "✓ Copied", "✓ 已复制"); longer lines stay toasts.
+    static let earMomentMaxText: CGFloat = 96
     /// The toasts (BlurtCore ToastQueue: newest first, replaced by key, stale ones dropped, ≥ 5 s, paused while
     /// pointed at). The one showing is `toastNow`.
     private let toastQ: ToastQueue<Toast> = {
@@ -141,8 +156,14 @@ final class Island: NSObject, IslandHosting {
         return q
     }()
     private var toastNow: Toast? { toastQ.current?.payload }
-    /// The ear's "Sent" moment after a double tap (dictation): until then.
-    private var sentUntil: CFTimeInterval = 0
+    /// A short done moment in the ears ("✓ Sent" after a double tap, "✓ Saved 0:42"): the source's glyph on the left
+    /// (when it has one), the ok check and the words on the right — until then. No toast for a word or two.
+    private var momentUntil: CFTimeInterval = 0
+    private var moment: (lead: BlurtIcon?, text: String)?
+    /// The launch hello (the chick hops in the right ear, then goes): until then.
+    private var helloUntil: CFTimeInterval = 0
+    /// Tests: dictation's working ears held for a look (`testWorkingEars`).
+    private var testWorking: (polishing: Bool, until: CFTimeInterval)?
     private var hatches: [Hatch] = []
     private var lastAgentAlert: [String: String] = [:]
     private(set) var started = false
@@ -165,6 +186,9 @@ final class Island: NSObject, IslandHosting {
         var badge: (text: String, color: NSColor)?
         /// A small icon before the text: `.check` for a done toast (Saved, Copied), in the island's ok green (§2.3).
         var icon: BlurtIcon?
+        /// A small mark before the detail line (the text after its "\n"): a peck's state — the ✓ for done, the ⚠
+        /// for to verify, the same marks a toast leads with — in shape and colour.
+        var detailMark: (icon: BlurtIcon, color: NSColor)?
         /// Not a reply to what the user just did (a launch message, a job that finished, a reminder): it waits behind
         /// every reply instead of taking the slot (ToastQueue).
         var passive = false
@@ -212,7 +236,7 @@ final class Island: NSObject, IslandHosting {
             let s = NSScreen.main?.frame ?? .zero
             return NSRect(x: s.midX - 100, y: s.maxY - 32, width: 200, height: 32)
         }
-        return NSRect(x: p.frame.minX + geo.cx - w.value / 2, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
+        return NSRect(x: p.frame.minX + shapeMinX, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
     }
 
     /// The pointer is on the island (the hanging cards stay down meanwhile).
@@ -229,20 +253,29 @@ final class Island: NSObject, IslandHosting {
     private var leftEarRect: CGRect? {
         guard cardCount > 0, earsWanted.left, !isRecording, !VoiceInput.shared.active,
               left.layer.opacity > 0.5, ears.opacity > 0.3 else { return nil }
-        if geo.notch { return CGRect(x: geo.cx - geo.notchW / 2 - earSpan, y: geo.top, width: earSpan, height: geo.row) }
-        return CGRect(x: geo.cx - w.value / 2, y: geo.top, width: left.width + 28, height: geo.row)
+        if geo.notch { return CGRect(x: geo.cx - geo.notchW / 2 - earNeed.left, y: geo.top, width: earNeed.left, height: geo.row) }
+        return CGRect(x: shapeMinX, y: geo.top, width: left.width + 28, height: geo.row)
+    }
+
+    /// The cards told across the notch (their stack on the left, the count on the right): the count's ear is theirs too.
+    private var cardsValueRect: CGRect? {
+        guard left.content == .mark(.cards), leftEarRect != nil, right.layer.opacity > 0.5 else { return nil }
+        if geo.notch { return CGRect(x: geo.cx + geo.notchW / 2, y: geo.top, width: earNeed.right, height: geo.row) }
+        return CGRect(x: shapeMinX + w.value - right.width - 28, y: geo.top, width: right.width + 28, height: geo.row)
     }
 
     /// The right ear while a voice note listens (its clock, with the list mark while Structured): a click toggles
     /// Structured, as a click on the island does for dictation.
     private var rightEarRect: CGRect? {
         guard VoiceInput.shared.active, right.layer.opacity > 0.5, ears.opacity > 0.3 else { return nil }
-        if geo.notch { return CGRect(x: geo.cx + geo.notchW / 2, y: geo.top, width: earSpan, height: geo.row) }
-        return CGRect(x: geo.cx + w.value / 2 - right.width - 28, y: geo.top, width: right.width + 28, height: geo.row)
+        if geo.notch { return CGRect(x: geo.cx + geo.notchW / 2, y: geo.top, width: earNeed.right, height: geo.row) }
+        return CGRect(x: shapeMinX + w.value - right.width - 28, y: geo.top, width: right.width + 28, height: geo.row)
     }
 
     /// A click there goes to the island itself (not to the open content growing over it): see clicked(at:).
-    func earHit(_ p: NSPoint) -> Bool { (leftEarRect?.contains(p) ?? false) || (rightEarRect?.contains(p) ?? false) }
+    func earHit(_ p: NSPoint) -> Bool {
+        (leftEarRect?.contains(p) ?? false) || (rightEarRect?.contains(p) ?? false) || (cardsValueRect?.contains(p) ?? false)
+    }
 
     // MARK: setup
 
@@ -258,7 +291,26 @@ final class Island: NSObject, IslandHosting {
         }
         ProjectStore.shared.onChange = { [weak self] in self?.refresh() }
         refreshReviewCount()
-        Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.refreshReviewCount() }
+        // often enough that captures landing are news while they are new ("+3" in the ear)
+        Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refreshReviewCount() }
+        refresh()
+        // blurt is running: a short hello in the ear once the panel is up (Alcove and NotchNook say hello too)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.hello() }
+    }
+
+    /// Tests: dictation's working ears — the keyboard (transcribing) or the wand (polishing) in mint, pulsing, and the
+    /// dots — held `seconds` for a look: on a fast Mac a take's working moment lasts a tenth of a second.
+    func testWorkingEars(polishing: Bool, seconds: Double) {
+        testWorking = (polishing, CACurrentMediaTime() + seconds)
+        refresh()
+    }
+
+    /// The launch hello: the chick hops in the right ear for 1.2 s, then goes — the one sign at launch that blurt is
+    /// there (the island is the bare notch at rest). Not over something live.
+    func hello() {
+        guard !isRecording, !VoiceInput.shared.active, !Dictation.shared.busy, toastNow == nil, !open, drawer == nil else { return }
+        helloUntil = CACurrentMediaTime() + EarSlot.helloSeconds
+        emit(["event": "island_hello", "wall": Date().timeIntervalSince1970])
         refresh()
     }
 
@@ -346,8 +398,8 @@ final class Island: NSObject, IslandHosting {
         view.frame = NSRect(origin: .zero, size: f.size)
         if moved {
             let t = target()
-            w.value = t.w; h.value = t.h; r.value = t.r
-            w.snap(); h.snap(); r.snap()
+            w.value = t.w; h.value = t.h; r.value = t.r; dx.value = t.dx
+            w.snap(); h.snap(); r.snap(); dx.snap()
         }
         panel?.orderFrontRegardless()
         wake()
@@ -386,35 +438,49 @@ final class Island: NSObject, IslandHosting {
 
     // MARK: what the island should look like now
 
+    /// Only what is live: recording, listening, the cards waiting, processing, an agent waiting on you, captures that
+    /// just landed. The inbox's backlog is not live — it is the menu bar's count and the open island's Inbox row.
     private var earsWanted: (left: Bool, right: Bool) {
-        if isRecording || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment { return (true, true) }
-        return (cardCount > 0, !hatches.isEmpty || reviewCount > 0 || agentAlert != nil)
+        if isRecording || VoiceInput.shared.active || Dictation.shared.busy || Dictation.shared.sendQueued { return (true, true) }
+        if let tw = testWorking, CACurrentMediaTime() < tw.until { return (true, true) }
+        // what updateEars put there: a standing thing alone already takes both sides (glyph | value)
+        return (left.content != .none, right.content != .none)
     }
 
-    /// The shape's target: (width, height, corner radius). `toast`: false — what it would be without the toast
-    /// showing (the live-text panel's width goes by that).
-    private func target(toast: Bool = true) -> (w: CGFloat, h: CGFloat, r: CGFloat) {
+    /// Each ear's width beside the notch: its own content's need, 0 when it says nothing (IslandLayout.earNeed).
+    private var earNeed: (left: CGFloat, right: CGFloat) {
+        let e = earsWanted
+        return (IslandLayout.earNeed(content: left.width, shown: e.left), IslandLayout.earNeed(content: right.width, shown: e.right))
+    }
+
+    /// "+n" in the right ear: captures landed in the inbox in the last few seconds.
+    private var inboxNews: Bool { newsCount > 0 && CACurrentMediaTime() < newsUntil }
+
+    /// The shape's left edge in the panel (its centre is the notch's, moved by `dx` while one ear shows).
+    private var shapeMinX: CGFloat { geo.cx + dx.value - w.value / 2 }
+
+    /// The shape's target: (width, height, corner radius, centre offset). `toast`: false — what it would be without
+    /// the toast showing (the live-text panel's width goes by that).
+    private func target(toast: Bool = true) -> (w: CGFloat, h: CGFloat, r: CGFloat, dx: CGFloat) {
         let e = earsWanted
         let anyEar = e.left || e.right
         if open || drawer != nil {
-            return (content.preferredWidth, min(Island.maxH, content.fittingHeight), 22)
+            return (content.preferredWidth, min(Island.maxH, content.fittingHeight), 22, 0)
         }
         if toast, toastNow != nil {
-            return (min(Island.openW, max(toastFloor, content.toastWidth)), content.fittingHeight, 20)
+            return (min(Island.openW, max(toastFloor, content.toastWidth)), content.fittingHeight, 20, 0)
         }
         if geo.notch {
-            return (geo.notchW + (anyEar ? 2 * earSpan : 0), geo.notchH, 10)
+            // each side as wide as its own content: "✓ Sent" widens the right ear only; a moment on one side grows that side
+            let n = earNeed
+            return (geo.notchW + n.left + n.right, geo.notchH, 10, IslandLayout.earShift(left: n.left, right: n.right))
         }
         var cw = max(120, (e.left ? left.width + 24 : 0) + (e.right ? right.width + 24 : 0) + (anyEar ? 8 : 0))
         // live text hangs under it: the capsule takes the panel's width family (as the notch with its ears does), so
         // the two read as one shape, not a 340 pt panel under a 120 pt pill
         if anyEar, LiveTranscript.shared.shown { cw = max(cw, IslandLayout.liveCapsuleWidth()) }
-        return (anyEar || revealed ? max(cw, revealed && !anyEar ? 150 : 0) : 120, 30, 15)
+        return (anyEar || revealed ? max(cw, revealed && !anyEar ? 150 : 0) : 120, 30, 15, 0)
     }
-
-    /// Each ear's width beside the notch: 56 pt, or wider for content that needs it ("✓ 已发送" kept 4 pt from the
-    /// rounded corner when it had to fit 56) — both ears alike (IslandLayout.earSpan).
-    private var earSpan: CGFloat { IslandLayout.earSpan(left: left.width, right: right.width) }
 
     /// A toast's shape is never narrower than this: the notch with both ears, or the capsule's minimum — and its
     /// content spans all of it (IslandLayout.toast), so the text lines up with the island's edges.
@@ -445,30 +511,37 @@ final class Island: NSObject, IslandHosting {
         let now = CACurrentMediaTime()
         poll(now)
         tickToasts(now)
-        if isRecording || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment || sentUntil > 0 {
-            updateEars()        // the time, the level, the wave; the end of the "Sent" moment
+        if isRecording || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment || momentUntil > 0 {
+            updateEars()        // the time, the level, the wave; the end of a done moment
         }
+        if let tw = testWorking { if now < tw.until { updateEars() } else { testWorking = nil; updateEars() } }
+        if helloUntil > 0, now >= helloUntil {                                     // the hello is over: the bare notch
+            helloUntil = 0
+            updateEars()
+            emit(["event": "island_hello_end", "wall": Date().timeIntervalSince1970])
+        }
+        if newsUntil > 0, now >= newsUntil { newsUntil = 0; newsCount = 0; updateEars() }    // the news is old: the ear goes
         let t = target()
-        w.target = t.w; h.target = t.h; r.target = t.r
+        w.target = t.w; h.target = t.h; r.target = t.r; dx.target = t.dx
         vis.target = capsuleVisible ? 1 : 0
         let reduce = reduceMotion
         if reduce {
-            w.snap(); h.snap(); r.snap()
+            w.snap(); h.snap(); r.snap(); dx.snap()
             vis.value += (vis.target - vis.value) * min(1, dt / 0.2 * 1.2)
         } else {
-            _ = w.step(dt); _ = h.step(dt); _ = r.step(dt); _ = vis.step(dt)
+            _ = w.step(dt); _ = h.step(dt); _ = r.step(dt); _ = dx.step(dt); _ = vis.step(dt)
         }
         let bt = now - bumpStart
         let bump: CGFloat = reduce || bt > 0.25 ? 1 : 1 + 0.04 * (1 - Ease.outCubic(CGFloat(bt / 0.25)))
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let rect = CGRect(x: geo.cx - w.value / 2, y: geo.top, width: w.value, height: max(1, h.value))
+        let rect = CGRect(x: shapeMinX, y: geo.top, width: w.value, height: max(1, h.value))
         shape.path = Island.path(rect, radius: r.value, shoulders: geo.notch)
         shape.opacity = Float(max(0, min(1, vis.value)))
         let lifted = h.value > geo.row + 8
         shape.shadowOpacity = lifted ? Float(min(0.35, (h.value - geo.row) / 120)) : 0
         if bump != 1 {
-            let c = CGPoint(x: geo.cx, y: geo.top + h.value / 2)
+            let c = CGPoint(x: rect.midX, y: geo.top + h.value / 2)
             var tr = CATransform3DMakeTranslation(c.x, c.y, 0)
             tr = CATransform3DScale(tr, bump, bump, 1)
             tr = CATransform3DTranslate(tr, -c.x, -c.y, 0)
@@ -497,13 +570,14 @@ final class Island: NSObject, IslandHosting {
         content.tick(now)
         hanging.islandMoved()
         LiveTranscript.shared.islandMoved()
-        let moving = !w.resting || !h.resting || !r.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
+        let moving = !w.resting || !h.resting || !r.resting || !dx.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
         // While the shape grows, AppKit draws the open content piece by piece as the clip uncovers it; the seams of
         // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.
         if shapeMoving && !moving { content.redrawAll() }
         shapeMoving = moving
         return moving || left.animating || right.animating || toastNow != nil || !toastQ.waiting.isEmpty || isRecording
-            || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment || sentUntil > 0 || glowAmount > 0
+            || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment || momentUntil > 0 || glowAmount > 0 || newsUntil > 0
+            || helloUntil > 0 || testWorking != nil
     }
 
     /// Dictation or a voice note hears you (not while the mic is still starting, not while recording).
@@ -523,12 +597,13 @@ final class Island: NSObject, IslandHosting {
             let lvl = CGFloat((VoiceInput.shared.active ? VoiceInput.shared.levels.last : Dictation.shared.levels.last) ?? 0)
             glowBreath += (min(1, max(0, lvl)) - glowBreath) * min(1, dt / 0.6)
         }
-        let opacity = glowAmount * BrandGradient.glowOpacity * (0.9 + 0.2 * glowBreath)
+        // it follows the voice (quieter in a pause), so it says "heard", not "on"
+        let opacity = glowAmount * BrandGradient.glowOpacity * (0.6 + 0.4 * glowBreath)
         g.opacity = Float(opacity) * shape.opacity
         guard glowAmount > 0 else { return }
         let pad: CGFloat = 18 * 4
-        g.bounds = CGRect(x: 0, y: 0, width: rect.width * 0.92 + pad, height: 26 + pad)
-        g.position = CGPoint(x: geo.cx, y: rect.maxY + 6)
+        g.bounds = CGRect(x: 0, y: 0, width: rect.width * 0.8 + pad, height: 22 + pad)
+        g.position = CGPoint(x: rect.midX, y: rect.maxY + 4)
     }
 
     /// The island's outline: flush top (with small concave shoulders on a notch screen), rounded bottom corners;
@@ -560,7 +635,6 @@ final class Island: NSObject, IslandHosting {
     }
 
     func updateEars() {
-        let e = earsWanted
         if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
             // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
@@ -571,9 +645,9 @@ final class Island: NSObject, IslandHosting {
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
             left.set(open ? .glyph(.mic, pulse: false) : .wave(VoiceInput.shared.levels))
-            // Structured: dictation's list mark with the clock (a click on it toggles: clicked(at:))
-            let clock = Island.clock(VoiceInput.shared.elapsed)
-            right.set(VoiceInput.shared.structured ? .iconText(.list, clock) : .text(clock, mono: true))
+            // the clock alone: Structured is the open island's chip (one mint thing), never a second mark here; a click
+            // on the clock still toggles it (clicked(at:))
+            right.set(.text(Island.clock(VoiceInput.shared.elapsed), mono: true))
         } else if Dictation.shared.busy {
             // dictation never opens the island: ears only, so the app being typed into keeps the whole screen
             switch Dictation.shared.phase {
@@ -599,29 +673,47 @@ final class Island: NSObject, IslandHosting {
                 left.set(.glyph(.keyboard, pulse: true))
                 right.set(.dots)
             }
+        } else if let tw = testWorking, CACurrentMediaTime() < tw.until {
+            left.set(.glyph(tw.polishing ? .wand : .keyboard, pulse: true))
+            right.set(.dots)
         } else if Dictation.shared.sendQueued {
             // a double tap's Return waits for the paste to land (~0.6 s): sending, not idle
             left.set(.glyph(.keyboard, pulse: true))
             right.set(.dots)
-        } else if CACurrentMediaTime() < sentUntil {
-            // "Sent" in the ear: the moment says itself where the user is looking, without growing the island
-            left.set(.glyph(.keyboard, pulse: false))
-            right.set(.done(Loc.t("dictation.toast.sent", table: "Dictation")))
+        } else if let m = moment, CACurrentMediaTime() < momentUntil {
+            // a done moment says itself where the user is looking, without growing the island into a toast: the source's
+            // glyph (quiet) on the left, the ok check and the words on the right
+            left.set(m.lead.map { .glyph($0, pulse: false) } ?? .none)
+            right.set(.done(m.text))
         } else {
-            sentUntil = 0
-            left.set(e.left ? .cards(cardCount) : .none)
+            moment = nil
+            momentUntil = 0
             let processing = hatches.filter { $0.ended == nil }.reduce(0) { $0 + max(1, $1.captures.count) }
-            if let h = hatches.first(where: { $0.ended != nil }), let end = h.ended {
-                right.set(.cracking(since: end.at, ok: end.ok, n: end.items))
+            var r: EarSlot.Content = .none
+            if CACurrentMediaTime() < helloUntil {
+                r = .hello
+            } else if let h = hatches.first(where: { $0.ended != nil }), let end = h.ended {
+                r = .cracking(since: end.at, ok: end.ok, n: end.items)
             } else if processing > 0 {
-                right.set(.egg(n: processing))
+                r = .egg(n: processing)
             } else if agentAlert != nil {
-                right.set(.alert)
-            } else if reviewCount > 0 {
-                // quieter than the cards' count: it says what waits in the inbox, the cards' count is what a click takes
-                right.set(.count(icon: .inbox, n: reviewCount, tint: NSColor(white: 1, alpha: 0.6)))
+                r = .alert
+            } else if inboxNews {
+                // news, not a backlog: what just landed, for a few seconds — the count lives in the menu bar and the
+                // open island's Inbox row
+                r = .news(newsCount)
+            }
+            // a standing thing alone is told across the notch, as a live activity: its glyph left, its value right —
+            // never one black slab hanging off one side of the notch
+            if cardCount > 0, r == .none {
+                left.set(.mark(.cards))
+                right.set(.text(Loc.number(cardCount), mono: true))
+            } else if cardCount == 0, case .news(let n) = r {
+                left.set(.mark(.inbox))
+                right.set(.text("+" + Loc.number(n), mono: true))
             } else {
-                right.set(.none)
+                left.set(cardCount > 0 ? .cards(cardCount) : .none)
+                right.set(r)
             }
         }
     }
@@ -633,21 +725,33 @@ final class Island: NSObject, IslandHosting {
         if geo.notch {
             let l = geo.cx - geo.notchW / 2, r = geo.cx + geo.notchW / 2
             // the outer edge: 56 pt out, or — while an ear grows wider for its content — the shape's edge as it springs
-            // out (the content rides it rather than standing outside the black for a moment); an ear whose own content
-            // fits 56 keeps it there while the other one grows (IslandLayout.earReach: no glyph jumps)
-            let ear = max(Island.earW, min(earSpan, l - rect.minX))
-            let lo = IslandLayout.earReach(content: left.width, shape: ear), ro = IslandLayout.earReach(content: right.width, shape: ear)
-            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: l - lo, inner: l), y: y), now: now)
-            right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: r + ro, inner: r), y: y), now: now)
+            // out (the content rides it rather than standing outside the black for a moment); each side measures by
+            // its own content only (IslandLayout.earNeed / earReach: no glyph jumps because the other ear grew)
+            let need = earNeed
+            let earL = max(Island.earW, min(max(Island.earW, need.left), l - rect.minX))
+            let earR = max(Island.earW, min(max(Island.earW, need.right), rect.maxX - r))
+            let lo = IslandLayout.earReach(content: left.width, shape: earL), ro = IslandLayout.earReach(content: right.width, shape: earR)
+            var lx = IslandLayout.earOrigin(.left, width: left.width, outer: l - lo, inner: l)
+            var rx = IslandLayout.earOrigin(.right, width: right.width, outer: r + ro, inner: r)
+            if open && drawer == nil && !content.usesRow {
+                // the open island has a body under the ears (a voice note, a recording): the ears' content lines up with
+                // its edges, as a live activity's leading and trailing regions share its body's (riding the edge out)
+                lx = min(lx, rect.minX + IslandLayout.bodyInset - 2)       // (a 15 pt glyph's side bearing)
+                rx = max(rx, rect.maxX - IslandLayout.bodyInset - right.width)
+            }
+            left.place(leading: CGPoint(x: lx, y: y), now: now)
+            right.place(leading: CGPoint(x: rx, y: y), now: now)
         } else {
             left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: rect.minX, inner: nil), y: y), now: now)
             right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: rect.maxX, inner: nil), y: y), now: now)
         }
         let e = earsWanted
-        // ears only show while the shape is wide enough to hold them
-        let roomy = geo.notch ? w.value > geo.notchW + Island.earW : w.value > 110
-        left.layer.opacity = e.left && roomy ? 1 : 0
-        right.layer.opacity = e.right && roomy ? 1 : 0
+        // ears only show while the shape is wide enough to hold them (each side its own)
+        let half = Island.earW / 2
+        let roomyL = geo.notch ? geo.cx - geo.notchW / 2 - rect.minX > half : w.value > 110
+        let roomyR = geo.notch ? rect.maxX - (geo.cx + geo.notchW / 2) > half : w.value > 110
+        left.layer.opacity = e.left && roomyL ? 1 : 0
+        right.layer.opacity = e.right && roomyR ? 1 : 0
     }
 
     static func clock(_ t: Double) -> String {
@@ -658,7 +762,7 @@ final class Island: NSObject, IslandHosting {
     // MARK: pointer
 
     private func islandRect(margin: CGFloat) -> CGRect {
-        CGRect(x: geo.cx - w.value / 2, y: geo.top, width: w.value, height: h.value).insetBy(dx: -margin, dy: -margin)
+        CGRect(x: shapeMinX, y: geo.top, width: w.value, height: h.value).insetBy(dx: -margin, dy: -margin)
     }
 
     private func poll(_ now: CFTimeInterval) {
@@ -733,7 +837,7 @@ final class Island: NSObject, IslandHosting {
             if DictationInsert.testMode { Dictation.shared.handle(.islandClick(time: CACurrentMediaTime())) }   // no listener in tests
             return
         }
-        // a voice note's right ear (its clock / list mark): Structured on or off
+        // a voice note's right ear (its clock): Structured on or off
         if let r = rightEarRect, r.contains(p) { VoiceInput.shared.toggleStructured(via: "ear"); return }
         // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
         if earHit(p) { hanging.reveal(via: "ear"); return }
@@ -925,7 +1029,13 @@ final class Island: NSObject, IslandHosting {
     }
 
     func toast(_ t: Toast) {
-        emit(["event": "island_toast", "text": t.text, "key": t.key ?? NSNull(), "passive": t.passive])
+        // a short done line with nothing to do about it ("Copied") is a moment in the ears, like "Sent": a toast's
+        // 46 pt of black isn't spent on one word
+        let ear = t.icon == .check && t.action == nil && t.art == nil && t.badge == nil && !t.overOpen && !t.isQuestion
+            && !t.text.contains("\n") && !t.text.contains(" · ")
+            && (t.text as NSString).size(withAttributes: [.font: EarSlot.font]).width <= Island.earMomentMaxText
+        emit(["event": "island_toast", "text": t.text, "key": t.key ?? NSNull(), "passive": t.passive, "ear": ear])
+        if ear, earMoment(t.text, lead: nil) { return }
         let e = ToastQueue<Toast>.Entry(t, text: t.text, key: t.key, kind: t.passive ? .passive : .reply, seconds: t.seconds,
                                         actionable: t.action != nil, question: t.isQuestion)
         let shown = toastQ.current?.order
@@ -946,16 +1056,36 @@ final class Island: NSObject, IslandHosting {
         wake()
     }
 
-    /// The "Sent" moment after a double tap (dictation): the ok check and the word in the right ear for a moment —
-    /// no toast for one word; the ears widen just enough to keep it 14 pt from the edge (earSpan).
+    /// The "Sent" moment after a double tap (dictation): the keyboard on the left, the ok check and the word on the
+    /// right for 1.6 s — no toast for one word; only the right ear widens for it (earNeed).
     func dictationSent() {
-        sentUntil = CACurrentMediaTime() + 1.6
+        earMoment(Loc.t("dictation.toast.sent", table: "Dictation"), lead: .keyboard, seconds: 1.6)
         emit(["event": "island_sent"])
+    }
+
+    /// A short done state in the ears instead of a toast ("✓ Saved 0:42", "✓ Copied"): `lead` the source's glyph on
+    /// the left (quiet), the ok check and `text` on the right. False when the ears are taken by something live (a
+    /// recording, a voice note, a dictation): say it as a toast then.
+    @discardableResult
+    func earMoment(_ text: String, lead: BlurtIcon?, seconds: Double = 2.2) -> Bool {
+        guard !isRecording, !VoiceInput.shared.active, !Dictation.shared.busy || lead == .keyboard else { return false }
+        moment = (lead, text)
+        momentUntil = CACurrentMediaTime() + seconds
+        helloUntil = 0
+        emit(["event": "island_moment", "text": text])
         refresh()
+        return true
+    }
+
+    /// A take saved without processing: "✓ Saved 0:42" in the ears (the record glyph on the left), or — with the ears
+    /// busy — the done toast.
+    func doneMoment(_ ear: String, lead: BlurtIcon?, toast text: String) {
+        if earMoment(ear, lead: lead) { return }
+        toast(text, key: nil, icon: .check)
     }
 
     /// Dictation is still at work for the user after its take: sending (a queued Return) or saying "Sent".
-    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < sentUntil }
+    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < momentUntil }
 
     private func tickToasts(_ now: CFTimeInterval) {
         let before = toastQ.current?.order
@@ -968,7 +1098,7 @@ final class Island: NSObject, IslandHosting {
     var currentToast: Toast? { toastNow }
     /// Tests: what a click on the toast's line does — its leading edge, away from any button.
     func testClickToastLine() {
-        clicked(at: NSPoint(x: geo.cx - w.value / 2 + 24, y: geo.top + h.value - 23))
+        clicked(at: NSPoint(x: shapeMinX + 24, y: geo.top + h.value - 23))
         emit(["event": "island_clicked", "open": open, "toast": toastNow?.text ?? NSNull()])
     }
     /// The toasts waiting, in the order they'd go up (tests).
@@ -1031,11 +1161,24 @@ final class Island: NSObject, IslandHosting {
         DispatchQueue.global(qos: .utility).async {
             let n = (try? IndexReader().count(ItemQuery(inbox: true, limit: 0))) ?? 0
             DispatchQueue.main.async { [weak self] in
-                guard let self = self, n != self.reviewCount else { return }
+                guard let self = self else { return }
+                defer { self.reviewLoaded = true }
+                guard n != self.reviewCount else { return }
+                // more than before (not the first count at launch): that many just landed — said for a moment
+                if self.reviewLoaded, n > self.reviewCount { self.announceInbox(n - self.reviewCount) }
                 self.reviewCount = n
                 self.refresh()
             }
         }
+    }
+
+    /// "+n" with the tray in the right ear for a few seconds (a second batch within them adds to it): the inbox grew.
+    func announceInbox(_ n: Int) {
+        guard n > 0 else { return }
+        newsCount = inboxNews ? newsCount + n : n
+        newsUntil = CACurrentMediaTime() + Island.newsSeconds
+        emit(["event": "island_inbox_news", "n": newsCount])
+        refresh()
     }
 }
 

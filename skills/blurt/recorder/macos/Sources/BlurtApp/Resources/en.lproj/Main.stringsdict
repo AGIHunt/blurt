@@ -285,9 +285,25 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>its snap is kept</string>
+			<string>1 snap kept</string>
 			<key>other</key>
-			<string>its %ld snaps are kept</string>
+			<string>%ld snaps kept</string>
+		</dict>
+	</dict>
+	<key>app.record.show_snaps</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>Show Snap</string>
+			<key>other</key>
+			<string>Show Snaps</string>
 		</dict>
 	</dict>
 	<key>main.dictation.words_count</key>
