@@ -561,12 +561,16 @@ final class Island: NSObject, IslandHosting {
 
     func updateEars() {
         let e = earsWanted
-        if let rec = rec, rec.sessionStart.isValid {
+        if let done = RecordingDone.text {
+            // the take just ended: the dot and time turn into the ok check and its length for 1.6 s (IslandRecording)
+            left.set(.done(done))
+            right.set(.none)
+        } else if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
             // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
-            // while the pen is latched (⌥⇧D) it takes the clicks and Esc: the ear shows the pen instead
+            // while the pen is latched (⌥⇧D) it takes the clicks and Esc — or its key is held — the ear shows the pen
             let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
-            right.set(rec.penSticky ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
+            right.set(rec.penSticky || rec.inkOn ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
                 : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : .level(rec.isPaused ? 0 : rec.micLevel))
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
@@ -955,7 +959,8 @@ final class Island: NSObject, IslandHosting {
     }
 
     /// Dictation is still at work for the user after its take: sending (a queued Return) or saying "Sent".
-    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < sentUntil }
+    /// A moment the ears hold after the work ended: dictation's "Sent", a take's ✓ and length (RecordingDone).
+    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < sentUntil || RecordingDone.text != nil }
 
     private func tickToasts(_ now: CFTimeInterval) {
         let before = toastQ.current?.order

@@ -52,6 +52,7 @@
 //     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
+//     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
 //     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
 //     recwriterfail · recstreamstop CODE   a real take's writer fails (a new piece takes over) / its stream stops
 //                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
@@ -308,7 +309,7 @@ extension App {
         case "mascot":                                  // mascot CLIP [SIZE] | mascot close: the chick alone in a window
             MascotStage.show(arg)
         case "fakerecording":                           // fakerecording [stop]: the island's recording state without a capture stream
-            if arg == "stop" { rec = nil; island.recordingStopping(); return }
+            if arg == "stop" { let r = rec; rec = nil; island.recordingStopping(r); return }
             let r = Recorder(region: CGRect(x: 360, y: 260, width: 900, height: 560))
             rec = r
             r.sessionStart = hostNow()
@@ -346,7 +347,8 @@ extension App {
                 try? FileManager.default.copyItem(at: URL(fileURLWithPath: a[2]), to: dir.appendingPathComponent("recording.mp4"))
             }
             takeEnded(5, ev)
-        case "recask": island.confirmDiscard(arg != "off")       // the recording's trash button: the discard question
+        case "recask": island.confirmDiscard(arg != "off")       // the recording's Discard or Restart…: the question
+        case "recmore": DispatchQueue.main.async { island.content.showRecordingMenu() }   // the open recording island's ··· menu
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.organizeTarget)     // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble

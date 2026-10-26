@@ -275,16 +275,25 @@ final class EarSlot {
     }
     static let levelBox: CGFloat = 18
 
-    /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment.
+    /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment. In
+    /// silence (and while paused: 0) the bars rest at staggered heights in white 30 %, so they still read as a meter
+    /// and never as four mint dots (dictation's "working" dots); the gradient comes in with the voice.
     private func drawLevel(_ v: Float) {
         let p = CGMutablePath()
+        let rest: [CGFloat] = [3, 5, 4, 3]
+        let heard = v >= 0.2
         for i in 0..<4 {
             let th = Float(i + 1) / 5
-            let hh: CGFloat = v >= th ? CGFloat(5 + i * 3) : 3
+            let hh: CGFloat = v >= th ? CGFloat(5 + i * 3) : rest[i]
             let x = CGFloat(i) * 5 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
-        showLevel(p, width: 2.2)
+        if heard { showLevel(p, width: 2.2); return }
+        bars.path = p
+        bars.lineWidth = 2.2
+        bars.strokeColor = NSColor(white: 1, alpha: 0.3).cgColor
+        bars.fillColor = nil
+        bars.isHidden = false
     }
 
     /// The voice note's live waveform.
@@ -341,8 +350,9 @@ final class EarSlot {
         let reduce = reduceMotion
         switch content {
         case .recording(let paused, _):
-            // 1 Hz breath, still when paused or with Reduce Motion
-            dot.opacity = paused || reduce ? 1 : Float(0.55 + 0.45 * (0.5 + 0.5 * cos(t * 2 * .pi)))
+            // a shallow breath (1.6 s, never below 80 %: any frame still reads as live red), still when paused or
+            // with Reduce Motion
+            dot.opacity = paused || reduce ? 1 : Float(0.8 + 0.2 * (0.5 + 0.5 * cos(t * 2 * .pi / 1.6)))
         case .cracking(let s, let ok, _):
             if reduce || !ok {
                 let k = CGFloat(min(1, (now - s) / 0.6))

@@ -4,12 +4,14 @@
 //               and ears are one family — BlurtIcon; the drawer's list rows keep SF Symbols, like any Mac list) · up to 3 jobs in progress (step,
 //               progress) · agent sessions that need you (click = their terminal) · "5 to review" · "Organize" the
 //               waiting cards (into the current project; with none, into Unassigned with a suggested project each)
-//   recording   pause / resume · snap + note (pauses) · discard (asks first, its question on its own line with what
-//               goes with it — the snaps and the markers apart — then Discard · Restart · Keep Recording, the last
-//               where Finish was, so nothing destructive lands under the hand that stops; Keep is the default,
-//               filled, and ↩ chooses it) · mic level · finish ·
-//               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted so far ·
-//               the project (changeable; dimmed with questionmark.folder while its folder is gone)
+//   recording   one row: pause (paused: a labelled amber Resume) · snap + note (pauses) … ··· · Finish (the one
+//               filled thing); the ··· menu holds the rare things: the pen (⌥⇧D), a marker (⌥⇧M), Discard or Restart…
+//               (asks first: the question alone on its line, what goes with it — the snaps and the markers apart — on
+//               a quiet second line, then Discard · Restart · Keep Recording, the last where Finish was, so nothing
+//               destructive lands under the hand that stops; Keep is the default, filled, and ↩ chooses it). Then,
+//               only when it has something to say, one quiet line: "Pen on · Esc to stop", or (first three takes)
+//               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted · the
+//               project as quiet text (changeable; dimmed with questionmark.folder while its folder is gone)
 //   voice       the listening chick (mascot), the live waveform, Done, the Structured chip (list glyph; on = the mint
 //               tint chip, as "Pen on"; ⇧ alone does the same), how it ends ("press ⌥⇧V again to finish · Esc to
 //               discard"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
@@ -376,6 +378,8 @@ final class IslandContent: NSView {
     private(set) weak var structuredChip: IslandButton?
     private weak var spotted: NSTextField?
     private weak var pauseBtn: IslandButton?
+    /// the recording row's ··· (its menu: the pen, a marker, Discard or Restart…)
+    private(set) weak var moreBtn: IslandButton?
     /// The pen was latched when the recording row was built (it changes from the key, ⌥⇧D): rebuilt when it differs.
     private var penShown = false
 
@@ -610,157 +614,166 @@ final class IslandContent: NSView {
 
     // MARK: recording
 
+    /// Finish's red: the tape's `rec` a step deeper, so its white title clears 4.5 : 1 (#D92D20, 4.8 : 1; #FF453A was 3.3).
+    static let finishRed = NSColor(srgbRed: 0.851, green: 0.176, blue: 0.125, alpha: 1)
+
+    /// The open island while recording — one row of controls and, only when it has something to say, one quiet line:
+    ///   [pause] [snap]                                   [···] [■ Finish]
+    ///   Hold [⌃] to draw · [⇧] box · [⌥] ellipse · 2 markers          AW Atlas Web ⌄
+    /// Finish is the one filled thing. Paused: a labelled amber Resume leads instead of the pause glyph (the ear's amber
+    /// pause bars and time say "paused" too). The rare things are in the ··· menu: the pen (⌥⇧D), a marker (⌥⇧M),
+    /// Discard or Restart… (the question below). The ear owns the one level meter; the row has none.
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
-        var y: CGFloat = top + 6
-        if i.isConfirmingDiscard {
-            // what goes with it, as the island counts it — the snaps taken and the markers, apart (BlurtCore
-            // RecordingDiscard) — in the question itself, beside the answers when it fits, else on its own line above
-            // them (it never runs under them). Right to left: Keep Recording where Finish was (the hand that stops lands
-            // on keep, never on discard) — the default, filled like every suggested answer in the island, and ↩
-            // chooses it (Island.key) — then Restart, then Discard furthest from it, red but quieter than the default
-            // (a Mac sheet's destructive button is never the one that stands out)
-            let q = wrapping(IslandContent.discardQuestion(rec), size: 13, weight: .medium, color: ink, width: w - 36)
-            let buttons: [IslandButton] = RecordingDiscard.order.map { a in
-                switch a {
-                case .discard:
-                    let t = Loc.t("capture.rec.discard", table: "Capture")
-                    return IslandButton(title: t, tip: t, fill: NSColor.systemRed.withAlphaComponent(0.32)) { rec.stop(discard: true) }
-                case .restart:
-                    let t = Loc.t("capture.rec.restart", table: "Capture")
-                    return IslandButton(title: t, tip: t, fill: NSColor(white: 1, alpha: 0.12)) { rec.stop(discard: true, restart: true) }
-                case .keep:
-                    let t = Loc.t("capture.rec.keep", table: "Capture")
-                    return IslandButton(title: t, tip: t + "  ↩", gradient: BrandGradient.buttonStops) { [weak i] in i?.confirmDiscard(false) }
-                }
-            }
-            let row = buttons.reduce(0) { $0 + $1.frame.width } + 8 * CGFloat(buttons.count - 1)
-            let one = ceil((q.stringValue as NSString).size(withAttributes: [.font: q.font ?? .systemFont(ofSize: 13)]).width)   // on one line
-            var by = y + 2
-            if RecordingDiscard.ownLine(question: one, answers: row, width: w) {
-                place(q, x: 18, y: y + 4)
-                by = q.frame.maxY + 10
-            } else {
-                place(q, x: 18, y: y + 7, w: one + 2, h: q.frame.height)
-            }
-            var bx = w - 14
-            for b in buttons.reversed() {
-                bx -= b.frame.width
-                place(b, x: bx, y: by)
-                bx -= 8
-            }
-            return by + 28 + 12
-        }
+        let y: CGFloat = top + 6
+        moreBtn = nil
+        if i.isConfirmingDiscard { return buildDiscardQuestion(rec, w, top: y) }
         let paused = rec.isPaused
-        // one family, one weight across the row: our line glyphs (pause / play, the snap frame, the bin, the stop square)
-        let pb = IslandButton(icon: paused ? .play : .pause, tip: tip(paused ? "capture.rec.resume" : "capture.rec.pause", .pause)) {
-            rec.togglePause()
-        }
-        place(pb, x: 14, y: y + 3)
-        pauseBtn = pb
-        let sb = IslandButton(icon: .snap, tip: Loc.t("capture.rec.snap_note", table: "Capture")) { [weak i] in i?.snapWithNote() }
-        place(sb, x: 52, y: y + 3)
-        let db = IslandButton(icon: .trash, tip: Loc.t("capture.rec.discard_tip", table: "Capture")) { [weak i] in i?.confirmDiscard(true) }
-        place(db, x: 90, y: y + 3)
-        let fin = IslandButton(icon: .stop, title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
-                               fill: BrandColor.Island.rec.withAlphaComponent(0.92)) { rec.stop() }      // Stop: the tape
-        place(fin, x: w - 14 - fin.frame.width, y: y + 4)
-        let lv = Bars(frame: NSRect(x: 136, y: y + 8, width: 30, height: 20))
-        lv.bar = 3; lv.gap = 3
-        lv.setAccessibilityElement(true)
-        lv.setAccessibilityLabel(Loc.t("capture.rec.mic_level", table: "Capture"))
-        addSubview(lv)
-        level = lv
-        y += 42
-        // the state the recording is in, in words: paused (amber), the pen latched (it takes the clicks and Esc), or
-        // how to draw — the modifier as a keycap, so "⌃" never reads as "^"
-        penShown = rec.penSticky
-        var hintEnd: CGFloat = 18
+        var x: CGFloat = 14
         if paused {
-            let h = label(Loc.t("capture.rec.paused", table: "Capture"), size: 11.5, weight: .medium, color: BrandColor.Island.attn)
-            place(h, x: 18, y: y + 7, w: min(h.frame.width, w - 230))
-            hintEnd = h.frame.maxX
-        } else if rec.penSticky {
+            let t = Loc.t("capture.rec.resume", table: "Capture")
+            let b = IslandButton(icon: .play, title: t, tip: tip("capture.rec.resume", .pause),
+                                 fill: BrandColor.Island.attn.withAlphaComponent(0.2), fg: BrandColor.Island.attn) { rec.togglePause() }
+            place(b, x: x, y: y + 1)
+            pauseBtn = b
+            x = b.frame.maxX + 8
+        } else {
+            // one family, one weight across the row: our line glyphs (pause, the snap frame, more, the stop square)
+            let b = IslandButton(icon: .pause, tip: tip("capture.rec.pause", .pause)) { rec.togglePause() }
+            place(b, x: x, y: y)
+            pauseBtn = b
+            x = b.frame.maxX + 8
+        }
+        let sb = IslandButton(icon: .snap, tip: Loc.t("capture.rec.snap_note", table: "Capture")) { [weak i] in i?.snapWithNote() }
+        place(sb, x: x, y: y)
+        let fin = IslandButton(icon: .stop, title: Loc.t("capture.rec.finish", table: "Capture"), tip: tip("capture.rec.finish_tip", .finish),
+                               fill: IslandContent.finishRed) { rec.stop() }      // Stop: the tape
+        place(fin, x: w - 14 - fin.frame.width, y: y + 1)
+        let more = IslandButton(icon: .more, tip: Loc.t("capture.rec.more_tip", table: "Capture"), fill: .clear) { [weak self] in
+            self?.showRecordingMenu()
+        }
+        place(more, x: fin.frame.minX - 6 - more.frame.width, y: y)
+        moreBtn = more
+        level = nil
+        var bottom = y + 30
+
+        // the quiet line: the pen's state or how to draw (first takes only), what live.py spotted, where it goes
+        penShown = rec.penSticky
+        let lineY = bottom + 10
+        var hintEnd: CGFloat = 18
+        var any = false
+        if rec.penSticky {
             let pen = IslandButton(icon: .pencil, title: Loc.t("capture.rec.pen_on", table: "Capture"),
                                    tip: Loc.t("capture.rec.pen_off_tip", table: "Capture"), fill: BrandColor.Island.tint) { rec.togglePen() }
             pen.fg = BrandColor.Island.fill
             pen.setFrameSize(NSSize(width: pen.frame.width, height: 24))
-            place(pen, x: 12, y: y + 3)
+            place(pen, x: 14, y: lineY)
             hintEnd = pen.frame.maxX
-        } else if let key = rec.penKey?.1 {
+            any = true
+        } else if penHintThisTake, !paused, let key = rec.penKey?.1 {
             // the snap's modifiers under the pen key: ⇧ box, ⌥ ellipse (⌃ when ⌥ is the pen key)
             let fmt = rec.penKind == .option ? "capture.rec.pen_hint_opt" : "capture.rec.pen_hint"
-            let h = keyHint(Loc.string(fmt, table: "Capture"), key: key, maxWidth: w - 230)
-            place(h, x: 18, y: y + 6)
+            let h = KeyLine(KeyLine.runs(format: Loc.string(fmt, table: "Capture"), key: key), size: 11.5, color: ink2,
+                            label: String(format: Loc.string(fmt, table: "Capture"), key))
+            place(h, x: 18, y: lineY + (24 - h.frame.height) / 2)
             hintEnd = h.frame.maxX
+            any = true
         }
-        let sp = label("", size: 11.5, color: ink3)
-        place(sp, x: hintEnd + (hintEnd > 18 ? 10 : 0), y: y + 7, w: 160)
-        spotted = sp
+        let said = spottedText(rec)
+        if !said.isEmpty {
+            let sp = label(said, size: 11.5, color: ink2)
+            place(sp, x: hintEnd + (any ? 12 : 0), y: lineY + (24 - sp.frame.height) / 2, w: min(sp.frame.width + 8, 200))
+            spotted = sp
+            any = true
+        } else {
+            spotted = nil
+        }
         if (NSApp.delegate as? App)?.resident == true {     // a recording started from the chat has its session already
+            // where the take goes, as quiet text with its key badge: a menu button, not a filled chip beside Finish
             let c = chip(w, small: true)
-            place(c, x: w - 14 - c.frame.width, y: y + 2)
+            if c.badge == nil { c.fg = ink2 }
+            c.fill = NSColor(white: 1, alpha: 0)
+            c.setFrameSize(NSSize(width: c.frame.width, height: 24))
+            place(c, x: w - 10 - c.frame.width, y: lineY)
+            any = true
         }
-        y += 34
-        return y + 6
+        if any { bottom = lineY + 24 }
+        return bottom + 14
     }
 
-    /// "Discard this recording?" / "…and its 2 snaps?" / "…, with 1 snap and 2 markers?" (RecordingDiscard.lost).
-    static func discardQuestion(_ rec: Recorder) -> String {
+    /// What the take has spotted and marked so far ("3 items spotted · 2 markers").
+    private func spottedText(_ rec: Recorder) -> String {
+        let n = island?.spottedCount ?? 0, markers = rec.snaps?.markers ?? 0
+        return [n > 0 ? Loc.plural("capture.rec.spotted", table: "Capture", count: n) : nil,
+                markers > 0 ? Loc.plural("capture.rec.markers", table: "Capture", count: markers) : nil]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// The ··· menu: the rare things, each with its key.
+    func showRecordingMenu() {
+        guard let rec = island?.rec, let b = moreBtn else { return }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let pen = ClosureMenuItem(Loc.t("capture.rec.menu_pen", table: "Capture")) { rec.togglePen() }
+        pen.state = rec.penSticky ? .on : .off
+        pen.showHotkey(.pen)
+        menu.addItem(pen)
+        let mark = ClosureMenuItem(Loc.t("capture.rec.menu_marker", table: "Capture")) { rec.marker() }
+        mark.showHotkey(.marker)
+        menu.addItem(mark)
+        menu.addItem(.separator())
+        menu.addItem(ClosureMenuItem(Loc.t("capture.rec.discard_tip", table: "Capture")) { [weak self] in self?.island?.confirmDiscard(true) })
+        emit(["event": "rec_menu", "items": menu.items.filter { !$0.isSeparatorItem }.map(\.title)])
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: b.frame.height + 6), in: b)
+    }
+
+    /// Discard's question, the way a Mac asks: the question alone on its line (13 semibold, never cut), what goes with
+    /// it on a quiet second line, then the answers on the right — Discard furthest from the hand that stops, a neutral
+    /// pill with its title in `err` (a destructive answer is never the one that stands out), Restart, and Keep Recording
+    /// where Finish was: the default, filled like every suggested answer in the island, chosen by ↩ (Island.key).
+    private func buildDiscardQuestion(_ rec: Recorder, _ w: CGFloat, top: CGFloat) -> CGFloat {
+        let q = wrapping(Loc.t("capture.rec.discard_q", table: "Capture"), size: 13, weight: .semibold, color: ink, width: w - 36)
+        place(q, x: 18, y: top + 4)
+        var y = q.frame.maxY
+        if let lost = IslandContent.discardLost(rec) {
+            let l = wrapping(Loc.t("capture.rec.discard_also", table: "Capture", lost), size: 11.5, color: ink2, width: w - 36, lines: 2)
+            place(l, x: 18, y: y + 2)
+            y = l.frame.maxY
+        }
+        y += 12
+        let buttons: [IslandButton] = RecordingDiscard.order.map { a in
+            switch a {
+            case .discard:
+                let t = Loc.t("capture.rec.discard", table: "Capture")
+                return IslandButton(title: t, tip: t, fill: NSColor(white: 1, alpha: 0.12), fg: BrandColor.Island.err) { rec.stop(discard: true) }
+            case .restart:
+                let t = Loc.t("capture.rec.restart", table: "Capture")
+                return IslandButton(title: t, tip: t, fill: NSColor(white: 1, alpha: 0.12)) { rec.stop(discard: true, restart: true) }
+            case .keep:
+                let t = Loc.t("capture.rec.keep", table: "Capture")
+                return IslandButton(title: t, tip: t + "  ↩", gradient: BrandGradient.buttonStops) { [weak island] in island?.confirmDiscard(false) }
+            }
+        }
+        var bx = w - 14
+        for b in buttons.reversed() {
+            bx -= b.frame.width
+            place(b, x: bx, y: y)
+            bx -= 8
+        }
+        return y + 28 + 14
+    }
+
+    /// What goes with a discarded take, as the island counts it — the snaps and the markers apart (BlurtCore
+    /// RecordingDiscard): "2 snaps and 1 marker"; nil when nothing does.
+    static func discardLost(_ rec: Recorder) -> String? {
         switch RecordingDiscard.lost(stills: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0) {
-        case .nothing: return Loc.t("capture.rec.discard_q", table: "Capture")
-        case let .snaps(n): return Loc.plural("capture.rec.discard_q_stills", table: "Capture", count: n)
-        case let .markers(m):
-            return Loc.t("capture.rec.discard_q_with", table: "Capture", Loc.plural("capture.rec.markers", table: "Capture", count: m))
+        case .nothing: return nil
+        case let .snaps(n): return Loc.plural("capture.rec.snaps", table: "Capture", count: n)
+        case let .markers(m): return Loc.plural("capture.rec.markers", table: "Capture", count: m)
         case let .both(n, m):
-            let what = Loc.t("capture.rec.and", table: "Capture", Loc.plural("capture.rec.snaps", table: "Capture", count: n),
-                             Loc.plural("capture.rec.markers", table: "Capture", count: m))
-            return Loc.t("capture.rec.discard_q_with", table: "Capture", what)
+            return Loc.t("capture.rec.and", table: "Capture", Loc.plural("capture.rec.snaps", table: "Capture", count: n),
+                         Loc.plural("capture.rec.markers", table: "Capture", count: m))
         }
-    }
-
-    /// A one-line hint with keys in it ("Hold [⌃] to draw · [⇧] box · [⌥] ellipse"): the format's %@ (the pen key)
-    /// and every modifier glyph in its text become small keycaps — all of them, so the three modifiers look alike and
-    /// "⌃" never reads as "^".
-    private func keyHint(_ format: String, key: String, maxWidth: CGFloat) -> NSView {
-        let v = FlippedView()
-        let modifiers: Set<Character> = ["⌃", "⌥", "⇧", "⌘"]
-        // the hint as runs of text and keys, in order
-        var runs: [(text: String, key: Bool)] = []
-        for (k, part) in format.components(separatedBy: "%@").enumerated() {
-            if k > 0 { runs.append((key, true)) }
-            var text = ""
-            for c in part {
-                guard modifiers.contains(c) else { text.append(c); continue }
-                if !text.isEmpty { runs.append((text, false)); text = "" }
-                runs.append((String(c), true))
-            }
-            if !text.isEmpty { runs.append((text, false)) }
-        }
-        var x: CGFloat = 0
-        for run in runs {
-            if !run.key {
-                let l = label(run.text, size: 11.5, color: ink2)
-                l.frame.origin = NSPoint(x: x, y: 1)
-                v.addSubview(l)
-                x += l.frame.width - 4          // (a label's cell inset on each side)
-            } else {
-                let cap = label(run.text, size: 10.5, weight: .semibold, color: ink)
-                cap.alignment = .center
-                cap.wantsLayer = true
-                cap.layer?.cornerRadius = 4
-                cap.layer?.borderWidth = 1
-                cap.layer?.borderColor = NSColor(white: 1, alpha: 0.28).cgColor
-                cap.frame = NSRect(x: x + 2, y: 0, width: max(18, cap.frame.width + 4), height: 17)
-                v.addSubview(cap)
-                x = cap.frame.maxX + 2
-            }
-        }
-        v.frame = NSRect(x: 0, y: 0, width: min(maxWidth, x + 4), height: 18)
-        v.setAccessibilityElement(true)
-        v.setAccessibilityRole(.staticText)
-        v.setAccessibilityLabel(String(format: format, key))
-        return v
     }
 
     // MARK: voice input
@@ -1144,11 +1157,14 @@ final class IslandContent: NSView {
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
             level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
-            let n = i.spottedCount, markers = rec.snaps?.markers ?? 0
-            spotted?.stringValue = [n > 0 ? Loc.plural("capture.rec.spotted", table: "Capture", count: n) : nil,
-                                    markers > 0 ? Loc.plural("capture.rec.markers", table: "Capture", count: markers) : nil]
-                .compactMap { $0 }.joined(separator: " · ")
-            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != rec.penSticky { rebuild() }
+            // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
+            let said = spottedText(rec)
+            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != rec.penSticky || (spotted == nil) != said.isEmpty {
+                rebuild()
+            } else if let sp = spotted, sp.stringValue != said {
+                sp.stringValue = said
+                sp.frame.size.width = min(ceil(sp.intrinsicContentSize.width) + 8, 200)
+            }
         } else if VoiceInput.shared.active {
             wave?.values = VoiceInput.shared.levels
             time?.stringValue = Island.clock(VoiceInput.shared.elapsed)
