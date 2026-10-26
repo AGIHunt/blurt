@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blurt: the keyboard for the agent era</title>
-<meta name="description" content="Tap Fn and talk, tap again, and the words are typed at your cursor, in every app; speech recognition runs on your Mac. Snap, mark it, say a sentence: it becomes a card under the notch. Record while you talk: your agent turns it into items. Free and open source. macOS.">
+<meta name="description" content="Tap fn and talk, and the words are typed at your cursor in any app; speech is recognised on your Mac. Snap an area, say what’s wrong and drag it into Claude. Record while you talk and your agent turns it into items. Free and open source, for macOS.">
 <link rel="canonical" href="https://blurt.agihunt.info/en/">
 <link rel="alternate" hreflang="zh" href="https://blurt.agihunt.info/">
 <link rel="alternate" hreflang="en" href="https://blurt.agihunt.info/en/">
@@ -13,7 +13,7 @@
 <meta property="og:title" content="Blurt: the keyboard for the agent era">
 <meta property="og:description" content="The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.">
 <meta property="og:url" content="https://blurt.agihunt.info/en/">
-<meta property="og:image" content="https://blurt.agihunt.info/assets/og-en.png?v=0.9.0-5">
+<meta property="og:image" content="https://blurt.agihunt.info/assets/og-en.png?v=0.9.0-8">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
@@ -21,11 +21,11 @@
 <meta name="theme-color" content="#161616" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt: Blurt for AI agents">
-<link rel="icon" href="../assets/favicon.png?v=0.9.0-5">
-<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png?v=0.9.0-5">
-<link rel="preload" href="../fonts/serif-900.woff2?v=0.9.0-5" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="../fonts/serif-700.woff2?v=0.9.0-5" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../style.css?v=0.9.0-5">
+<link rel="icon" href="../assets/favicon.png?v=0.9.0-8">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png?v=0.9.0-8">
+<link rel="preload" href="../fonts/serif-900.woff2?v=0.9.0-8" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/serif-700.woff2?v=0.9.0-8" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../style.css?v=0.9.0-8">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
@@ -41,383 +41,474 @@
     <path fill="#17140F" d="M401.85 501.76C401.85 530.04 378.92 552.97 350.63 552.97C322.35 552.97 299.41 530.04 299.41 501.76C299.41 473.47 322.35 450.54 350.63 450.54C378.92 450.54 401.85 473.47 401.85 501.76ZM705.75 501.76C705.75 530.04 682.82 552.97 654.53 552.97C626.24 552.97 603.31 530.04 603.31 501.76C603.31 473.47 626.24 450.54 654.53 450.54C682.82 450.54 705.75 473.47 705.75 501.76Z"/>
   </symbol>
 </svg>
+<!-- LOCKED_COPY: title, lede, cta, cta_note, platforms and every section headline come from LOCKED_COPY in
+     blurt-media/site/src/build_pages7.py. Change styling freely; change these strings only with the founder. -->
+<div class="isl" id="isl" data-mode="idle" aria-hidden="true">
+  <span class="ear el"><svg class="chick-s" viewBox="0 0 940 800"><use href="#chick" width="940" height="800"/></svg><span class="lv"><i></i><i></i><i></i><i></i><i></i></span><span class="rd"></span></span>
+  <span class="ear er"><span class="tm num">0:03</span><span class="lm"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.5" cy="4" r="1"/><circle cx="2.5" cy="8" r="1"/><circle cx="2.5" cy="12" r="1"/></svg></span><span class="ok"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="vf">OR-21 To verify</span></span>
+  <span class="core"></span>
+  <div class="live"><p class="lt"></p></div>
+</div>
 
 <header class="top wrap">
-  <a class="brand" href="./" aria-label="Blurt home"><img src="../assets/logo.svg?v=0.9.0-5" width="30" height="30" alt=""><span><b>Blurt</b></span></a>
+  <a class="brand" href="./" aria-label="Blurt home"><img src="../assets/logo.svg?v=0.9.0-8" width="28" height="28" alt=""><span><b>Blurt</b></span></a>
   <nav class="top-r" aria-label="Site">
     <a href="#install">Download</a>
     <a href="../" hreflang="zh-CN" lang="zh-CN">中文</a>
-    <a href="https://github.com/AGIHunt/blurt">GitHub</a>
+    <a class="gh" href="https://github.com/AGIHunt/blurt">GitHub</a>
   </nav>
 </header>
 
 <main>
-
-<!-- Hero: the notch, the words, the send -->
 <section class="hero wrap" aria-labelledby="h-hero">
   <h1 id="h-hero">The keyboard for the agent <span class="nw">era.<span class="caret" aria-hidden="true"></span></span></h1>
-  <div class="hero-copy">
+  <div class="hero-b">
     <p class="lede">The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.</p>
-    <div class="dl"><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a><span class="dl-note">Free, macOS 13 or later</span></div>
-    <p class="fine">Dictation needs Apple silicon. No account, no Blurt server. Mac only today; Windows and Linux are coming soon.</p>
+    <div class="hero-act"><div class="dl "><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a></div><p class="fine">Free, macOS 13 or later. Windows and Linux are coming soon.</p></div>
   </div>
-  <figure class="stage" data-hero data-heard="Find out why the coupon drops when I change country" aria-label="Illustration: tap Fn and talk, the words show under the notch; a double-tap of Fn stops, types them into Claude Code and sends them, and Claude Code starts reading the code">
-    <div class="scr" aria-hidden="true">
-      <div class="mb"><span class="mb-l"><b>Terminal</b><span>File</span><span>Edit</span><span>View</span></span><span class="mb-r num">10:41</span></div>
-      <div class="notch">
-        <span class="ear l"><svg class="chick-s" viewBox="0 0 940 800"><use href="#chick" width="940" height="800"/></svg><span class="lv"><i></i><i></i><i></i><i></i><i></i></span></span>
-        <span class="ear r"><span class="timer num">0:03</span><span class="ok"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="sent"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg>Sent</span></span>
-      </div>
-      <div class="live"><p><span class="lt">Find out why the coupon drops when I change country.</span><span class="lcur"></span></p></div>
-      <div class="term">
-        <p class="t-h"><b>✻ Claude Code</b><span>~/code/orbit-web</span></p>
-        <p class="t-old"><span class="pr">&gt;</span>Run the cart tests</p>
-        <p class="t-old t-ok">⏺ 22 tests passed.</p>
-        <p class="t-msg"><span class="pr">&gt;</span>Find out why the coupon drops when I change country.</p>
-        <p class="t-work"><span class="spin">✻</span>Reading web/src/cart/reducer.ts…</p>
-        <p class="t-in"><span class="pr">&gt;</span><span class="typed">Find out why the coupon drops when I change country.</span><span class="cur"></span></p>
-      </div>
-    </div>
-  </figure>
-  <div class="score">
-    <p class="big"><span class="d">0.29</span><span class="u">s</span></p>
-    <div class="score-r">
-      <p class="score-l">From the tap that stops to the text at your cursor.</p>
-      <div class="axis" aria-hidden="true">
-        <div class="track"><span class="talk"></span><span class="lag"></span><span class="head"></span></div>
-        <ol class="marks">
-          <li class="m0"><kbd>fn</kbd><span>Tap, talk 3 s</span></li>
-          <li class="m2"><span class="k2"><kbd>fn</kbd><kbd>fn</kbd></span><span>Double-tap instead: stop, type, Return</span></li>
+</section>
+
+<section class="sc sc-dict on1 on2 on3 on4 on5" id="dictation" data-scene="dict" data-steps=".12 .16 .58 .68 .8" data-say="Find out why the coupon drops when I change country." aria-labelledby="h-dict">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"></span>
+    <div class="desk"><div class="lay">
+      <div class="copy">
+        <h2 id="h-dict"><span class="ph">Tap fn and talk.</span> <span class="ph">It types where</span> <span class="ph">your cursor is.</span></h2>
+        <ol class="steps">
+        <li data-k="1">Tap fn and start talking</li>
+        <li data-k="2">Your words show under the notch as you talk. Grey words may still change.</li>
+        <li data-k="3">Double-tap fn when you finish. It types the text and sends it.</li>
         </ol>
+        <div class="kk"><div class="caps k-fn" aria-hidden="true"><span class="cap cap-w">fn</span></div></div>
       </div>
-      <p class="score-note">A 3-second sentence on an Apple M5 Max (128 GB), models loaded, median of three takes. 10–30 seconds of speech: 0.35–0.54 s. To stop and check first, a single tap is enough. <button class="replay" type="button" data-replay hidden>Play again</button></p>
+      <div class="view">
+      <div class="win w-cc" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>orbit-web — claude</span></div>
+        <div class="cc">
+          <p class="t-h"><b>✻ Claude Code</b><span>~/code/orbit-web</span></p>
+          <p class="t-old"><span class="pr">&gt;</span>Add a promo code field to checkout</p>
+          <p class="t-old">⏺ Added web/src/checkout/PromoField.tsx and wired it to the cart.</p>
+          <p class="t-old"><span class="pr">&gt;</span>Run the cart tests</p>
+          <p class="t-old t-ok">⏺ 22 tests passed.</p>
+          <p class="t-msg"><span class="pr">&gt;</span>Find out why the coupon drops when I change country.</p>
+          <p class="t-work"><span class="spin">✻</span>Reading web/src/cart/reducer.ts…</p>
+          <div class="t-in" data-target><span class="pr">&gt;</span><span class="t-typed">Find out why the coupon drops when I change country.</span><span class="cur"></span></div>
+        </div>
+      </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+<p class="sc-tail wrap">Works in any app. In a terminal the text goes in as one line. You can also hold fn while you talk and let go to stop.</p>
+
+<section class="sc sc-speed on1 on2" id="speed" data-scene="speed" data-steps=".04 .7" data-clock="3.6" aria-labelledby="h-speed">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <div class="wrap sp-grid">
+      <div class="sp-copy">
+        <h2 id="h-speed"><span class="ph">Done in 0.39 s.</span> <span class="ph">No internet needed.</span> <span class="ph">It runs on your Mac.</span></h2>
+        <dl class="vs">
+          <div><dt>Where speech is recognised</dt><dd class="us">Your Mac</dd><dd>The other two: cloud</dd></div>
+          <div><dt>Price</dt><dd class="us">Free, no word limit</dd><dd>Typeless Pro from $12/month</dd></div>
+        </dl>
+      </div>
+      <figure class="race" aria-label="Talk for a minute, stop, until it’s done: Blurt 0.39 s, Wispr Flow about 1.5 s, Typeless about 3.0 s">
+        <figcaption>Talk for a minute, stop, until it’s done</figcaption>
+        <div class="rc">
+          <div class="ln us" data-at="0.39" style="--to:0.1083">
+            <p class="ln-n">Blurt</p>
+            <p class="ln-b"><i></i><span class="num">0.39 s</span></p>
+          </div>
+          <div class="ln " data-at="1.5" style="--to:0.4167">
+            <p class="ln-n">Wispr Flow</p>
+            <p class="ln-b"><i></i><span class="num">≈1.5 s</span></p>
+          </div>
+          <div class="ln " data-at="3.0" style="--to:0.8333">
+            <p class="ln-n">Typeless</p>
+            <p class="ln-b"><i></i><span class="num">≈3.0 s</span></p>
+          </div>
+          <div class="axis" aria-hidden="true"><span style="left:0.00%">0</span><span style="left:27.78%">1</span><span style="left:55.56%">2</span><span style="left:83.33%">3 s</span></div>
+          <div class="nowl" aria-hidden="true"><span class="num"><span data-clock-out>3.10</span> s</span></div>
+        </div>
+        <p class="src">Blurt: median of 3 takes on our test Mac. Wispr Flow and Typeless figures: <a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a></p>
+      </figure>
     </div>
   </div>
 </section>
 
-<!-- Film: compact -->
-<section class="film wrap" aria-labelledby="h-film">
-  <figure class="film-frame" data-film data-src="../assets/promo.mp4?v=0.9.0-5">
-    <img class="film-poster" src="../assets/poster.jpg?v=0.9.0-5" width="1600" height="900" alt="The film’s title card: Blurt, the keyboard for the agent era" loading="lazy">
-    <a class="film-play" href="../assets/promo.mp4?v=0.9.0-5" data-play><span class="i-play" aria-hidden="true"></span><span>Watch the film</span><span class="num fp-d">2:12</span></a>
+<section class="matrix wrap" aria-labelledby="h-mx">
+  <h3 id="h-mx">Compared with four dictation apps</h3>
+  <div class="mx-scroll">
+    <table class="mx">
+      <thead><tr><td></td><th scope="col" class="us">Blurt</th><th scope="col">Typeless</th><th scope="col">Wispr Flow</th><th scope="col">Superwhisper</th><th scope="col">Aqua Voice</th></tr></thead>
+      <tbody>
+          <tr><th scope="row">Where speech is recognised</th><td class="us">Your Mac</td><td>Cloud</td><td>Cloud</td><td>Local or cloud</td><td>Cloud</td></tr>
+          <tr><th scope="row">Price</th><td class="us"><span class="l2">Free</span><span class="l2">no word limit</span></td><td><span class="l2">Weekly limit</span><span class="l2">Pro from $12/mo</span></td><td><span class="l2">2,000 words a week</span><span class="l2">Pro from $12/mo</span></td><td><span class="l2">Free with local models</span><span class="l2">Pro $8.49/mo</span></td><td><span class="l2">1,000 words free</span><span class="l2">Pro from $10/mo</span></td></tr>
+          <tr><th scope="row">Stop talking to done</th><td class="us"><span class="num">0.39 s</span></td><td><span class="num">≈3.0 s</span></td><td><span class="num">≈1.5 s</span></td><td>Not published</td><td><span class="num">≈0.45 s</span></td></tr>
+          <tr><th scope="row">Snap and voice cards</th><td class="us"><span class="mk y" aria-label="Yes"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td></tr>
+          <tr><th scope="row">Recordings into items</th><td class="us"><span class="mk y" aria-label="Yes"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td><td><span class="mk n" aria-label="No"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="mx-acc">
+    <p class="mx-acc-h">Blurt’s recognition error rate, lower is better</p>
+    <dl>
+      <div><dt class="num">2.7%</dt><dd><b>Chinese and mixed Chinese–English</b>Character error rate (CER), 20 clips with product names, 90–97% of the names right</dd></div>
+      <div><dt class="num">1.9%</dt><dd><b>English</b>Word error rate (WER), the speech model alone</dd></div>
+    </dl>
+  </div>
+  <details class="how">
+    <summary>All accuracy figures and how we measured</summary>
+    <div class="how-in">
+      <table class="acc">
+        <caption class="sr">Blurt’s accuracy</caption>
+        <tbody>
+            <tr><th scope="row" class="num">CER 2.7%</th><td>Chinese and mixed Chinese–English, 20 clips with product names. 90–97% of the names right.</td></tr>
+            <tr><th scope="row" class="num">CER 26.7%</th><td>The same model on a harder set, 6 voices with room noise added. 38% of the names right.</td></tr>
+            <tr><th scope="row" class="num">WER 1.9%</th><td>English, the speech model alone. 7 product-feedback sentences, 2 voices each.</td></tr>
+            <tr><th scope="row" class="num">CER 10.8%</th><td>16–24 GB Macs, the 0.6B model with polish, Chinese and mixed. 86% of names right (measured on v0.8).</td></tr>
+        </tbody>
+      </table>
+      <p>None of the other four publish Chinese figures. English: Wispr Flow about 3.9% and Typeless about 7.9% (the same article also says about 20%), from <a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a>. Aqua Voice publishes an average WER of 6.24% on the OpenASR leaderboard.</p>
+      <p>Blurt’s numbers were measured on one Apple M5 Max (128 GB), with speech made by macOS say as the input. That is cleaner than a real microphone, so the error rates are optimistic. Real microphones, accents and smaller Macs were not measured. 0.39 s is after 60 s of speech, the median of 3 takes; 42–54 s takes with live text on took 0.51–1.55 s, median 0.64 s. Prices and policies checked on 2026-10-25.</p>
+    </div>
+  </details>
+</section>
+
+<section class="sc sc-struct on1 on2 on3 on4" id="structured" data-scene="struct" data-steps=".05 .4 .58 .76" data-say="For the release, we need three things. First, run all the tests. Second, update the docs, finally, tag the build and send it to the team." aria-labelledby="h-struct">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"></span>
+    <div class="desk"><div class="lay">
+      <div class="copy">
+        <h2 id="h-struct"><span class="ph">Tap Shift</span> <span class="ph">while you talk</span> <span class="ph">and get a list</span></h2>
+        <ol class="steps">
+        <li data-k="1">By default it removes the ums, adds punctuation and keeps your words</li>
+        <li data-k="3">⌥⇧L turns the last one into a list. Undo changes it back.</li>
+        <li data-k="4">Tap ⇧ while you talk to get the list straight away. If you correct yourself, only the correction stays.</li>
+        </ol>
+        <div class="kk"><div class="caps k-l" aria-hidden="true"><span class="cap">⌥</span><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span><span class="cap">L</span></div><div class="caps k-sh" aria-hidden="true"><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span></div></div>
+        <p class="fix" data-k="4"><s>Book the flight for Monday, I mean Tuesday morning.</s><span>Book the flight for Tuesday morning.</span></p>
+      </div>
+      <div class="view">
+      <div class="win w-chat" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>Slack — #release</span></div>
+        <div class="chat">
+          <aside class="ch-side"><p class="ch-ws">Orbit</p><p># general</p><p class="on"># release</p><p># web</p><p class="ch-dm"><img class="av sm" src="../assets/av/maya.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async">Maya</p><p class="ch-dm"><img class="av sm" src="../assets/av/leo.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async">Leo</p></aside>
+          <div class="ch-main">
+            <p class="ch-top"># release</p>
+            <div class="ch-msg"><img class="av" src="../assets/av/maya.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Maya <small>10:38</small></b>When can we ship 2.4?</p></div>
+            <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>10:41</small></b>
+              <p class="m-light">For the release, we need three things. First, run all the tests. Second, update the docs, finally, tag the build and send it to the team.</p>
+              <div class="m-list"><p>For the release, we need three things:</p><ol><li style="--i:0">Run all the tests</li><li style="--i:1">Update the docs</li><li style="--i:2">Tag the build and send it to the team</li></ol></div></div></div>
+            <div class="ch-box" data-target><span class="cur"></span><span class="ch-ph">Message #release</span></div>
+          </div>
+        </div>
+      </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<section class="sc sc-snap on1 on2 on3 on4 on5 on6 on7 on8 on9 on10 on11 on12" id="snap" data-scene="snap" data-steps=".03 .08 .14 .21 .28 .35 .41 .47 .55 .63 .71 .79" data-say="The total ignores the coupon after I switch to Canada." aria-labelledby="h-snap">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"></span>
+    <div class="desk"><div class="lay">
+      <div class="copy">
+        <h2 id="h-snap"><span class="ph">Snap.</span> <span class="ph">Talk.</span> <span class="ph">Drag.</span></h2>
+        <ol class="steps">
+        <li data-k="1"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>A</kbd> Drag over an area. That part of the screen freezes.</li>
+        <li data-k="3">A note opens beside the snap. Say what’s wrong and the words show up in it.</li>
+        <li data-k="4">Draw on the snap while you talk</li>
+        <li data-k="9">Stop for 2 seconds and it’s saved. The snap goes up to the notch as a card.</li>
+        <li data-k="11">Drag it into Claude. The picture becomes an attachment and your words go in the message box.</li>
+        </ol>
+        <div class="swap">
+        <ul class="draw" aria-label="Drawing on a snap"><li data-k="4"><span class="kc"><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span></span><span class="dl-l">Box</span></li><li data-k="5"><span class="kc"><span class="cap">⌥</span></span><span class="dl-l">Ellipse</span></li><li data-k="6"><span class="kc"><span class="gest"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 12.5c2-4 4-1 6-4.5s3.5-3 5-5"/></svg>Drag</span></span><span class="dl-l">Freehand</span></li><li data-k="7"><span class="kc"><span class="gest"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Rest 0.5 s</span></span><span class="dl-l">Straighten</span></li><li data-k="8"><span class="kc"><span class="cap">⌘</span><span class="cap">Z</span></span><span class="dl-l">Undo</span></li></ul>
+        <dl class="lands">
+          <div><dt>Chat, docs</dt><dd>Picture and words in one message</dd></div>
+          <div><dt>Terminals</dt><dd>File paths only; nothing runs</dd></div>
+          <div><dt>Cursor</dt><dd>The picture; words on the clipboard</dd></div>
+          <div><dt>Voice note</dt><dd><kbd>⌥</kbd><kbd>⇧</kbd><kbd>V</kbd> talk only, up to 10 minutes</dd></div>
+        </dl>
+        </div>
+      </div>
+      <div class="view">
+      <div class="win w-saf" aria-hidden="true">
+        <div class="wbar saf"><i></i><i></i><i></i><span>Orbit — Checkout</span></div>
+        <div class="saf-url"><span>orbit.test/checkout</span></div>
+        <div class="ob">
+          <div class="ob-nav"><b><i></i>Orbit</b><span>Shop</span><span>Pricing</span><span>Account</span></div>
+          <div class="ob-main">
+            <div class="ob-l">
+              <p class="ob-bc">Cart › Shipping › <b>Review</b></p>
+              <p class="ob-h">Review your order</p>
+              <p class="ob-lab">Ship to</p>
+              <p class="ob-sel">Canada<span>⌄</span></p>
+              <div class="ob-it"><i></i><p>Trail Runner 2<small>Size 42 · Slate</small></p><b>$89.00</b></div>
+              <div class="ob-it"><i class="b"></i><p>Merino Socks<small>2 pairs</small></p><b>$24.00</b></div>
+            </div>
+            <div class="ob-sum">
+              <p class="ob-st">Summary</p>
+              <p class="ob-r"><span>Subtotal</span><span>$113.00</span></p>
+              <p class="ob-r"><span>Shipping</span><span>$15.40</span></p>
+              <p class="ob-r ob-code"><span>SAVE10</span><span class="ob-ap">Applied</span></p>
+              <p class="ob-r ob-tot"><span>Total</span><span>$128.40</span></p>
+              <p class="ob-pay">Pay now</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="clip" aria-hidden="true"><div class="dim"></div><div class="sel">
+        <svg class="ink" viewBox="0 0 206 218" preserveAspectRatio="none">
+          <rect class="s-box" x="14" y="98" width="178" height="33" rx="3"/>
+          <ellipse class="s-ell" cx="103" cy="142" rx="96" ry="19"/>
+          <path class="s-free" pathLength="1" d="M132 75 C 139 80, 148 69, 158 76 S 176 71, 187 77"/>
+          <path class="s-line" d="M132 75.5 L187 75.5"/>
+        </svg>
+        <span class="pen"><svg class="ptr" viewBox="0 0 20 24" aria-hidden="true"><path d="M2 1.5v18.2l4.6-4.3 3 6.9 3.1-1.4-3-6.8h6.4z"/></svg></span>
+      </div></div>
+      <div class="bub" aria-hidden="true">
+        <div class="bub-row">
+          <span class="bars"><i></i><i></i><i></i><i></i><i></i></span>
+          <p class="bub-f"><span class="bub-ph">Say it or type…</span><span class="bub-w" data-bub></span><span class="bub-fin">The total ignores the coupon after I switch to Canada.</span></p>
+          <span class="bub-ic bub-undo"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4 3 7l3 3M3.5 7H10a3 3 0 0 1 0 6H8"/></svg></span><span class="bub-ic"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5"/></svg></span><span class="bub-done">Done</span>
+        </div>
+        <p class="bub-st"><span class="chip">Goes to Orbit ⌄</span><span class="bub-hint">pause to finish · ⏎ now</span><span class="bub-ok"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Saved</span></p>
+      </div>
+      <div class="ghost" aria-hidden="true"><div class="ob"><div class="ob-sum">
+              <p class="ob-st">Summary</p>
+              <p class="ob-r"><span>Subtotal</span><span>$113.00</span></p>
+              <p class="ob-r"><span>Shipping</span><span>$15.40</span></p>
+              <p class="ob-r ob-code"><span>SAVE10</span><span class="ob-ap">Applied</span></p>
+              <p class="ob-r ob-tot"><span>Total</span><span>$128.40</span></p>
+              <p class="ob-pay">Pay now</p>
+            </div></div><svg class="ink" viewBox="0 0 206 218" preserveAspectRatio="none"><rect class="s-box" x="14" y="98" width="178" height="33" rx="3"/><ellipse class="s-ell" cx="103" cy="142" rx="96" ry="19"/></svg></div>
+      <div class="win w-claude" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>Claude</span></div>
+        <div class="cl">
+          <p class="cl-h">Checkout bug</p>
+          <div class="cl-box" data-target>
+            <div class="cl-att"><span class="cl-thumb"></span><span>snap-1041.png</span></div>
+            <p class="cl-txt">The total ignores the coupon after I switch to Canada.</p>
+            <p class="cl-send">↑</p>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div class="hang" aria-hidden="true">
+        <div class="card c-snap"><span class="hand"><svg class="ptr" viewBox="0 0 20 24" aria-hidden="true"><path d="M2 1.5v18.2l4.6-4.3 3 6.9 3.1-1.4-3-6.8h6.4z"/></svg></span><span class="c-pic"><span class="c-in"><span class="ob"><div class="ob-sum">
+              <p class="ob-st">Summary</p>
+              <p class="ob-r"><span>Subtotal</span><span>$113.00</span></p>
+              <p class="ob-r"><span>Shipping</span><span>$15.40</span></p>
+              <p class="ob-r ob-code"><span>SAVE10</span><span class="ob-ap">Applied</span></p>
+              <p class="ob-r ob-tot"><span>Total</span><span>$128.40</span></p>
+              <p class="ob-pay">Pay now</p>
+            </div></span><svg class="ink" viewBox="0 0 206 218" preserveAspectRatio="none"><rect class="s-box" x="14" y="98" width="178" height="33" rx="3"/><ellipse class="s-ell" cx="103" cy="142" rx="96" ry="19"/></svg></span></span><p>The total ignores the coupon after I switch to Canada.</p></div>
+        <div class="card c-voice"><span class="c-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><p>Ask Leo if the receipt email needs the new logo.</p></div>
+      </div>
+    </div></div>
+  </div>
+</section>
+
+<section class="sc sc-rec on1 on2 on3 on4 on5 on6 on7" id="record" data-scene="rec" data-steps=".04 .2 .3 .5 .58 .64 .84" aria-labelledby="h-rec">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"></span>
+    <div class="desk"><div class="lay">
+      <div class="copy">
+        <h2 id="h-rec"><span class="ph">Record</span> <span class="ph">while you talk.</span> <span class="ph">Your agent writes</span> <span class="ph">the items.</span></h2>
+        <ol class="steps">
+        <li data-k="1"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd> Pick a window or an area, then use it and talk</li>
+        <li data-k="2"><kbd>⌃</kbd> Hold ⌃ and drag to circle a problem</li>
+        <li data-k="4">It transcribes while you record, so it’s ready about a minute after you stop<sup><a href="#n1" id="r1">1</a></sup></li>
+        <li data-k="5">Your coding agent writes it up as items, each with a frame, the steps and the code that’s likely at fault</li>
+        </ol>
+        <div class="fig52">
+          <p class="big"><span class="num" data-count="52">52</span><span class="u">items</span></p>
+          <p class="fig-l">From one 5-minute walkthrough, each with what was said and when</p>
+        </div>
+      </div>
+      <div class="view">
+      <div class="win w-saf" aria-hidden="true">
+        <div class="wbar saf"><i></i><i></i><i></i><span>Orbit — Checkout</span></div>
+        <div class="saf-url"><span>orbit.test/checkout</span></div>
+        <div class="ob">
+          <div class="ob-nav"><b><i></i>Orbit</b><span>Shop</span><span>Pricing</span><span>Account</span></div>
+          <div class="ob-main">
+            <div class="ob-l">
+              <p class="ob-bc">Cart › Shipping › <b>Review</b></p>
+              <p class="ob-h">Review your order</p>
+              <p class="ob-lab">Ship to</p>
+              <p class="ob-sel">Canada<span>⌄</span></p>
+              <div class="ob-it"><i></i><p>Trail Runner 2<small>Size 42 · Slate</small></p><b>$89.00</b></div>
+              <div class="ob-it"><i class="b"></i><p>Merino Socks<small>2 pairs</small></p><b>$24.00</b></div>
+            </div>
+            <div class="ob-sum">
+              <p class="ob-st">Summary</p>
+              <p class="ob-r"><span>Subtotal</span><span>$113.00</span></p>
+              <p class="ob-r"><span>Shipping</span><span>$15.40</span></p>
+              <p class="ob-r ob-code"><span>SAVE10</span><span class="ob-ap">Applied</span></p>
+              <p class="ob-r ob-tot"><span>Total</span><span>$128.40</span></p>
+              <p class="ob-pay">Pay now</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="recf" aria-hidden="true"><span class="ring"></span></div>
+      <div class="strip" aria-hidden="true"><i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i><i style="--i:4"></i><i style="--i:5"></i><i style="--i:6"></i><i style="--i:7"></i></div>
+      <div class="win w-rev" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>Blurt — Orbit walkthrough</span></div>
+        <div class="rev"><p class="rev-h"><b>Items</b><span class="num"><span data-count-out>52</span></span></p><ol><li class="k-issue" style="--i:0"><i></i><span class="num">OR-21</span><b>Total ignores coupon in Canada</b><em>Issue</em></li><li class="k-issue" style="--i:1"><i></i><span class="num">OR-22</span><b>Promo field loses focus on every keystroke</b><em>Issue</em></li><li class="k-idea" style="--i:2"><i></i><span class="num">OR-23</span><b>Remember the last shipping country</b><em>Idea</em></li><li class="k-issue" style="--i:3"><i></i><span class="num">OR-24</span><b>Tax line shows before an address is set</b><em>Issue</em></li><li class="k-note" style="--i:4"><i></i><span class="num">OR-25</span><b>Pay now sits under the banner on small screens</b><em>Note</em></li><li class="k-task" style="--i:5"><i></i><span class="num">OR-26</span><b>Ask Leo about the logo in the receipt email</b><em>Task</em></li><li class="k-idea" style="--i:6"><i></i><span class="num">OR-27</span><b>Show the saving next to the total</b><em>Idea</em></li></ol></div>
+      </div>
+      <article class="item" aria-label="An item">
+        <figure class="i-frame"><img src="../assets/rec-frame.jpg?v=0.9.0-8" width="1200" height="600" alt="The frame at 0:06: Orbit’s checkout in Canada, the total circled with ⌃" loading="lazy"><span class="num">0:06</span></figure>
+        <div class="i-body">
+          <p class="i-meta"><span class="num">OR-21</span><span class="i-kind">Issue</span></p>
+          <h3>Total ignores coupon in Canada</h3>
+          <p class="i-said">“And the total ignores the coupon when I pick Canada.”</p>
+          <ol class="i-steps"><li>Apply SAVE10: Total $117.10</li><li>Change the country to Canada</li><li>SAVE10 still says Applied; Total is $128.40</li></ol>
+          <div class="i-two"><p><span>Actual</span>SAVE10 shows Applied, but nothing comes off: $128.40.</p><p><span>Expected</span>SAVE10 takes 10% off the items ($11.30): $117.10.</p></div>
+          <p class="i-code"><code>web/src/cart/reducer.ts:88</code> <code>recalcTotals()</code></p>
+        </div>
+      </article>
+      </div>
+    </div></div>
+  </div>
+</section>
+<div class="notes wrap">
+    <p id="n1"><a href="#r1">1</a> Measured once for the README FAQ: a 5-minute, 12-item recording was ready to review 51 s after Finish. Organising uses your own agent; three real 7–20 minute sessions cost about $2–2.6 each at API prices.</p>
+  </div>
+
+<section class="sc sc-hand on1 on2 on3 on4 on5 on6 on7" id="handoff" data-scene="hand" data-steps=".04 .12 .2 .42 .54 .66 .8" aria-labelledby="h-hand">
+  <div class="stage">
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"></span>
+    <div class="desk"><div class="lay">
+      <div class="copy">
+        <div class="hswap">
+          <div class="hs-a"><h2 id="h-hand"><span class="ph">Hand items to</span> <span class="ph">Claude Code</span> <span class="ph">or Codex.</span> <span class="ph">Review, then merge.</span></h2><ol class="steps">
+        <li data-k="2"><kbd>⌘</kbd><kbd>↩</kbd> Select items and press ⌘↩. Claude Code or Codex starts on them, one git worktree each if you like.</li>
+        <li data-k="4">When the agent says it’s fixed, Blurt only marks it To verify</li>
+        <li data-k="5">You look over the change, then merge</li>
+          </ol></div>
+          <div class="hs-b"><h2><span class="ph">For a team,</span> <span class="ph">send one .zip</span></h2><ol class="steps">
+        <li data-k="6">Pack the items into one .zip for a teammate. It has a summary, every item and the screenshots.</li>
+        <li data-k="7">Or ask your agent to “bundle the checkout issues and post them to #web in Slack”</li>
+          </ol></div>
+        </div>
+      </div>
+      <div class="view">
+      <div class="win w-app" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>Blurt</span></div>
+        <div class="app">
+          <aside class="ap-side"><p>Inbox<span class="num">1</span></p><p>In progress<span class="num c-prog">2</span></p><p class="c-ver">To verify<span class="num">1</span></p><p>All items<span class="num">3</span></p><p class="ap-proj">Orbit</p></aside>
+          <div class="ap-list">
+            <p class="al sel1"><span class="st"></span><b>Total ignores coupon in Canada</b><span class="num">OR-21</span></p>
+            <p class="al sel2"><span class="st"></span><b>Promo field loses focus on every keystroke</b><span class="num">OR-22</span></p>
+            <p class="al"><span class="st idle"></span><b>Remember the last shipping country</b><span class="num">OR-23</span></p>
+          </div>
+          <div class="ap-sess"><div class="ss"><p class="ss-h"><b>OR-21</b><span>worktree or-21</span></p><p class="sl " style="--i:0">⏺ Read(web/src/cart/reducer.ts)</p><p class="sl " style="--i:1">⏺ Update(web/src/cart/reducer.ts)</p><p class="sl del" style="--i:2">88 -  return { ...state, country };</p><p class="sl add" style="--i:3">88 +  return recalcTotals({ ...state, country });</p><p class="sl " style="--i:4">⏺ Bash(npm test -- cart)  22 passed</p><p class="sl ok" style="--i:5">⏺ mark_fixed(OR-21)</p></div><div class="ss"><p class="ss-h"><b>OR-22</b><span>worktree or-22</span></p><p class="sl " style="--i:0">⏺ Read(web/src/checkout/PromoField.tsx)</p><p class="sl " style="--i:1">⏺ Update(web/src/checkout/PromoField.tsx)</p><p class="sl del" style="--i:2">31 -  key={value}</p><p class="sl add" style="--i:3">31 +  key="promo"</p><p class="sl " style="--i:4">⏺ Bash(npm test -- promo)</p></div></div>
+        </div>
+        <p class="merge">Merge</p>
+      </div>
+      <div class="win w-dm" aria-hidden="true">
+        <div class="wbar "><i></i><i></i><i></i><span>Slack — Alex</span></div>
+        <div class="dm">
+          <div class="ch-msg"><img class="av" src="../assets/av/alex.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Alex <small>11:02</small></b>Send me what you found in checkout?</p></div>
+          <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>11:03</small></b><p class="zip" data-target><span class="zi">ZIP</span><span>Orbit-checkout-3-items.zip<small>3 items, summary, screenshots</small></span></p></div></div>
+        </div>
+      </div>
+      </div>
+    </div></div>
+  </div>
+</section>
+<p class="sc-tail wrap mcp"><b>MCP</b><span>Any agent can read and update your items</span><span class="mcp-c"><code>search_items</code> <code>get_item</code> <code>update_item</code> <code>mark_fixed</code> <code>bundle_items</code></span></p>
+
+<section class="priv" id="privacy" aria-labelledby="h-priv">
+  <div class="wrap pv-grid">
+    <h2 id="h-priv"><span class="ph">No Blurt server.</span> <span class="ph">No account.</span></h2>
+    <div class="pv">
+      <div><p class="pv-t">Stays on your Mac</p><ul><li>Speech recognition and polish</li><li>Dictation audio, deleted after transcription unless you keep it</li><li>About 500 characters around the cursor, for that dictation only, never from password fields</li><li>Snaps, voice notes and recordings, in your folders</li></ul></div>
+      <div><p class="pv-t">Goes online only for</p><ul><li>Model downloads and update checks</li><li>Recordings with a cloud speech key, if you add one</li><li>When your agent organises a recording, the transcript and a few frames go to that agent’s provider</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="film wrap" id="film" aria-labelledby="h-film">
+  <figure class="film-frame" data-film data-src="../assets/promo.mp4?v=0.9.0-8">
+    <img class="film-poster" src="../assets/poster-6.jpg?v=0.9.0-8" width="1600" height="900" alt="From the film: two cards under the notch, a marked snap and a voice note" loading="lazy">
+    <a class="film-play" href="../assets/promo.mp4?v=0.9.0-8" data-play><span class="i-play" aria-hidden="true"></span><span>Watch the film</span><span class="num fp-d">2:12</span></a>
   </figure>
   <div class="film-t">
-    <h2 id="h-film"><span class="ph">Blurt</span> <span class="ph">in two minutes.</span></h2>
-    <p>Dictation, speed, lists, snap cards, a recording turned into items, then the hand-off to agents and teammates. English voice-over, Chinese and English subtitles.</p>
+    <h2 id="h-film"><span class="ph">Blurt</span> <span class="ph">in two minutes</span></h2>
+    <p>English voice-over, Chinese and English subtitles. Pick a chapter to start there.</p>
     <ol class="chap">
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=6.2" data-at="6.2"><span>Dictate</span><span class="num">0:06</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=32.7" data-at="32.7"><span>Speed</span><span class="num">0:32</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=43.1" data-at="43.1"><span>Local, free</span><span class="num">0:43</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=55.9" data-at="55.9"><span>Lists</span><span class="num">0:55</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=71.1" data-at="71.1"><span>Snaps, cards</span><span class="num">1:11</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=85.9" data-at="85.9"><span>Record</span><span class="num">1:25</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=101.6" data-at="101.6"><span>Hand off</span><span class="num">1:41</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-5#t=110.9" data-at="110.9"><span>Teams</span><span class="num">1:50</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=6.2" data-at="6.2"><span>Dictate</span><span class="num">0:06</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=32.7" data-at="32.7"><span>Speed</span><span class="num">0:32</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=43.1" data-at="43.1"><span>Local, free</span><span class="num">0:43</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=55.9" data-at="55.9"><span>Lists</span><span class="num">0:55</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=71.1" data-at="71.1"><span>Snaps, cards</span><span class="num">1:11</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=85.9" data-at="85.9"><span>Record</span><span class="num">1:25</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=101.6" data-at="101.6"><span>Hand off</span><span class="num">1:41</span></a></li>
+        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=110.9" data-at="110.9"><span>Teams</span><span class="num">1:50</span></a></li>
     </ol>
   </div>
 </section>
 
-<!-- Dictation -->
-<section class="dict wrap" id="dictation" aria-labelledby="h-dict">
-  <h2 id="h-dict"><span class="ph">Press <kbd class="hk">fn</kbd> and talk.</span> <span class="ph">The words land</span> <span class="ph">at your cursor.</span></h2>
-  <figure class="take">
-    <p class="say" data-say><span class="w">Check</span> <span class="w">how</span> <span class="w">the</span> <span class="w tw">cart reducer</span> <span class="w">recalculates</span> <span class="w">the</span> <span class="w">total.</span><span class="say-cur" aria-hidden="true"></span></p>
-    <figcaption>A take in Claude Code. Grey words are still settling; “cart reducer” comes from your Words list.</figcaption>
-  </figure>
-  <figure class="taps" aria-label="Tap Fn to start and tap again to stop; double-tap instead of the second tap to stop and send"><span class="tp-talk" aria-hidden="true"><i></i><span>talk</span></span><div class="tp tp-a"><span class="tp-k"><kbd>fn</kbd></span><b>Tap</b><span>Start listening</span></div><div class="tp tp-b"><span class="tp-k"><kbd>fn</kbd></span><b>Tap again</b><span>Stop: the text is typed at your cursor</span></div><div class="tp tp-c"><span class="tp-k"><kbd>fn</kbd><kbd>fn</kbd></span><b>Or double-tap</b><span>Stop, type and press Return in one go</span></div></figure>
-  <dl class="spec">
-      <div class="sp"><dt><span class="sp-k"><span class="fig num">~0.6 s</span></span><span class="sp-t">Live text</span></dt><dd>About 0.6 s in, words show under the notch; grey ones are still settling, about a second behind you. Macs under 16 GB show them after each pause.</dd></div>
-      <div class="sp"><dt><span class="sp-k"><span class="fig">Every app</span></span><span class="sp-t">Wherever your cursor is</span></dt><dd>Works in every app: Claude, ChatGPT, Slack, WeChat, mail, terminals, code editors. Never into a password field.</dd></div>
-      <div class="sp"><dt><span class="sp-k"><span class="fig">Local</span></span><span class="sp-t">On your Mac, free</span></dt><dd>Speech recognition runs on your Mac, with no internet needed after a one-time model download. Open-source models: Qwen3-ASR for speech, a small local model for polish. Free, private, fast, no word limit.</dd></div>
-      <div class="sp"><dt><span class="sp-k"><span class="fig">Words</span></span><span class="sp-t">Your names and terms</span></dt><dd>Project names, libraries, teammates. A word you fix twice is learned, with Undo. Words are hints, never replacements.</dd></div>
-      <div class="sp"><dt><span class="sp-k"><span class="fig mono">&gt;_</span></span><span class="sp-t">One line in terminals</span></dt><dd>In terminals and code editors the text stays on one line, so Claude Code doesn't fold it into “[Pasted N lines]”.</dd></div>
-      <div class="sp"><dt><span class="sp-k"><kbd>fn</kbd><span class="kx">hold</span></span><span class="sp-t">Or hold to talk</span></dt><dd>Hold Fn while you talk and let go to stop. Anything held over about 0.3 s counts as a hold.</dd></div>
-  </dl>
-</section>
-
-<!-- Structured: the same speech, side by side -->
-<section class="struct" id="structured" aria-labelledby="h-struct">
-  <div class="wrap">
-    <div class="s-head">
-      <h2 id="h-struct"><span class="ph">Tap <kbd class="hk hk-i" aria-label="Shift"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></kbd> while you talk.</span> <span class="ph">Get a list.</span></h2>
-      <p class="s-lede">⇧ is a switch. Tap it while you talk and the things you list become a numbered list, with only the version you settled on. Tap it again for Light, the default: fillers out, punctuation in, nothing rewritten. ⌥⇧L re-formats the last one.</p>
-    </div>
-    <figure class="npair" aria-label="The notch while you dictate: with Structured on, a list mark sits next to the time"><div><span class="mn"><span class="mn-l"><svg class="nk" viewBox="0 0 22 16" aria-hidden="true"><rect x="1" y="1.5" width="20" height="13" rx="2.5"/><path d="M5 6h1M8.5 6h1M12 6h1M15.5 6h1M6.5 10.5h9"/></svg><span class="lv"><i></i><i></i><i></i><i></i><i></i></span></span><span class="mn-r"><span class="num">0:04</span></span></span><figcaption>Light, the default</figcaption></div><span class="np-k" aria-hidden="true"><kbd>⇧</kbd></span><div><span class="mn on"><span class="mn-l"><svg class="nk" viewBox="0 0 22 16" aria-hidden="true"><rect x="1" y="1.5" width="20" height="13" rx="2.5"/><path d="M5 6h1M8.5 6h1M12 6h1M15.5 6h1M6.5 10.5h9"/></svg><span class="lv"><i></i><i></i><i></i><i></i><i></i></span></span><span class="mn-r"><svg class="nl" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.5" cy="4" r="1"/><circle cx="2.5" cy="8" r="1"/><circle cx="2.5" cy="12" r="1"/></svg><span class="num">0:04</span></span></span><figcaption>Structured: the list mark in the notch</figcaption></div></figure>
-    <table class="ba">
-      <caption class="sr">The same speech, two styles</caption>
-      <thead><tr><td></td><th scope="col">Light, the default</th><th scope="col" class="b-s">⇧ on: Structured</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">A correction</th><td class="b-l"><span class="m-k">Light, the default</span>Book the flight for Monday, I mean Tuesday morning.</td><td class="b-s"><span class="m-k">⇧ on: Structured</span>Book the flight for Tuesday morning.</td></tr>
-        <tr><th scope="row">A list</th><td class="b-l"><span class="m-k">Light, the default</span>For the release, we need three things. First, run all the tests. Second, update the docs, finally, tag the build and send it to the team.</td><td class="b-s"><span class="m-k">⇧ on: Structured</span>For the release, we need three things:<ol><li>Run all the tests</li><li>Update the docs</li><li>Tag the build and send it to the team</li></ol></td></tr>
-      </tbody>
-    </table>
-    <p class="s-note">Blurt’s output as typed, unedited. The speech was made with macOS say.</p>
-  </div>
-</section>
-
-<!-- Comparison -->
-<section class="compare wrap" id="compare" aria-labelledby="h-cmp">
-  <div class="c-head">
-    <h2 id="h-cmp"><span class="ph">Faster.</span> <span class="ph">On your Mac.</span> <span class="ph">Free.</span></h2>
-    <p class="c-lede">Blurt’s number is our own test; Wispr Flow’s and Typeless’s come from a comparison by VoiceDash, which makes a dictation app too. Different methods: a guide, not a direct comparison.</p>
-  </div>
-  <div class="race-wrap">
-    <figure class="race">
-      <figcaption>End of speech to text at the cursor</figcaption>
-      <div class="rb us"><span class="rb-n">Blurt</span><span class="rb-t"><i style="width:6.9%"></i><span class="rb-v num" style="left:6.9%">0.29 s</span></span><small>Own test: a 3-second sentence, Apple M5 Max</small></div>
-      <div class="rb "><span class="rb-n">Wispr Flow</span><span class="rb-t"><i style="width:35.7%"></i><span class="rb-v num" style="left:35.7%">about 1.5 s</span></span><small><a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a> comparison, a competing vendor</small></div>
-      <div class="rb "><span class="rb-n">Typeless</span><span class="rb-t"><i style="width:71.4%"></i><span class="rb-v num" style="left:71.4%">about 3.0 s</span></span><small>The same VoiceDash article</small></div>
-      <div class="rb-axis" aria-hidden="true"><span></span><span class="rb-ticks"><span style="left:0.0%">0</span><span style="left:23.8%">1</span><span style="left:47.6%">2</span><span style="left:71.4%">3</span><span style="left:95.2%">4 s</span></span></div>
-    </figure>
-    <dl class="vs">
-      <div><dt>Where speech is processed</dt><dd class="us">Your Mac</dd><dd>Typeless, Wispr Flow: the cloud</dd></div>
-      <div><dt>Price</dt><dd class="us">Free, no word limit</dd><dd>Typeless Pro: $12/month, billed yearly</dd></div>
-    </dl>
-  </div>
-  <h3 class="c-all">Next to four popular dictation apps</h3>
-  <div class="ctable">
-    <table>
-      <caption class="sr">Blurt next to four dictation apps</caption>
-      <thead><tr><td></td><th scope="col" class="us">Blurt</th><th scope="col">Typeless</th><th scope="col">Wispr Flow</th><th scope="col">Superwhisper</th><th scope="col">Aqua Voice</th></tr></thead>
-      <tbody>
-        <tr><th scope="row">Where speech is processed</th><td class="us">Your Mac</td><td>Cloud</td><td>Cloud</td><td>Local or cloud, your choice</td><td>Cloud</td></tr>
-        <tr><th scope="row">Price</th><td class="us">Free, open source, no word limit</td><td>Free with a weekly limit; Pro $12/month yearly</td><td>2,000 words a week free; Pro $12/month yearly</td><td>Free with local models; Pro $8.49/month</td><td>1,000 words free; Pro $10/month yearly</td></tr>
-        <tr><th scope="row">End of speech to text at the cursor</th><td class="us"><b class="num">0.29–0.54 s</b><small>3–30 s of speech, own test</small><b class="num">0.51–1.55 s</b><small>42–54 s takes with live text on, median 0.64 s, own test</small></td><td><span class="num">about 3.0 s</span><small><a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a>, a competing vendor</small></td><td><span class="num">about 1.5 s</span><small><a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a>, a competing vendor</small></td><td><span class="na">Not published</span></td><td><span class="num">about 0.45 s</span><small>the vendor's own claim</small></td></tr>
-        <tr><th scope="row">Snap and voice cards for your agents</th><td class="us"><b>Yes</b><small>Marked, spoken, dragged into any chat box</small></td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-        <tr><th scope="row">Screen recordings turned into items</th><td class="us"><b>Yes</b><small>With frames, repro steps and code pointers</small></td><td class="no">No</td><td class="no">No</td><td class="no">No</td><td class="no">No</td></tr>
-      </tbody>
-    </table>
-  </div>
-  <div class="mrows">
-    <section class="mrow"><h3>Where speech is processed</h3><dl><div class="us"><dt>Blurt</dt><dd>Your Mac</dd></div><div><dt>Typeless</dt><dd>Cloud</dd></div><div><dt>Wispr Flow</dt><dd>Cloud</dd></div><div><dt>Superwhisper</dt><dd>Local or cloud, your choice</dd></div><div><dt>Aqua Voice</dt><dd>Cloud</dd></div></dl></section>
-    <section class="mrow"><h3>Price</h3><dl><div class="us"><dt>Blurt</dt><dd>Free, open source, no word limit</dd></div><div><dt>Typeless</dt><dd>Free with a weekly limit; Pro $12/month yearly</dd></div><div><dt>Wispr Flow</dt><dd>2,000 words a week free; Pro $12/month yearly</dd></div><div><dt>Superwhisper</dt><dd>Free with local models; Pro $8.49/month</dd></div><div><dt>Aqua Voice</dt><dd>1,000 words free; Pro $10/month yearly</dd></div></dl></section>
-    <section class="mrow"><h3>End of speech to text at the cursor</h3><dl><div class="us"><dt>Blurt</dt><dd><b class="num">0.29–0.54 s</b><small>3–30 s of speech, own test</small><b class="num">0.51–1.55 s</b><small>42–54 s takes with live text on, median 0.64 s, own test</small></dd></div><div><dt>Typeless</dt><dd><span class="num">about 3.0 s</span><small><a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a>, a competing vendor</small></dd></div><div><dt>Wispr Flow</dt><dd><span class="num">about 1.5 s</span><small><a href="https://voicedash.ai/wispr-flow-vs-typeless/">VoiceDash</a>, a competing vendor</small></dd></div><div><dt>Superwhisper</dt><dd><span class="na">Not published</span></dd></div><div><dt>Aqua Voice</dt><dd><span class="num">about 0.45 s</span><small>the vendor's own claim</small></dd></div></dl></section>
-    <section class="mrow"><h3>Snap and voice cards for your agents</h3><dl><div class="us"><dt>Blurt</dt><dd><b>Yes</b><small>Marked, spoken, dragged into any chat box</small></dd></div><div><dt>The other four</dt><dd class="no">No</dd></div></dl></section>
-    <section class="mrow"><h3>Screen recordings turned into items</h3><dl><div class="us"><dt>Blurt</dt><dd><b>Yes</b><small>With frames, repro steps and code pointers</small></dd></div><div><dt>The other four</dt><dd class="no">No</dd></div></dl></section>
-  </div>
-  <div class="acc">
-    <h3>Accuracy</h3>
-    <div>
-      <table class="acc-t">
-        <caption class="sr">Blurt’s accuracy, own tests</caption>
-        <tbody>
-        <tr><th scope="row" class="num">CER 2.7%</th><td>Chinese and mixed Chinese–English, 20 clips with product names. 90–97% of the names right.</td></tr>
-        <tr><th scope="row" class="num">CER 26.7%</th><td>The same model on a harder set: 6 voices, room noise added. 38% of the names right.</td></tr>
-        <tr><th scope="row" class="num">WER 1.9%</th><td>English, the speech model alone: 7 product-feedback sentences, 2 voices each.</td></tr>
-        <tr><th scope="row" class="num">CER 10.8%</th><td>16–24 GB Macs: the full dictation path with the 0.6B model and polish, Chinese and mixed; 86% of names right (measured on v0.8).</td></tr>
-        </tbody>
-      </table>
-      <details class="acc-more">
-        <summary>The other four, and how these were measured</summary>
-        <p class="acc-them">None of the other four publish Chinese figures. Their English figures come from different tests: Wispr Flow about 3.9% and Typeless about 7.9% (the same article also says about 20%), both from VoiceDash, a competing vendor; Aqua Voice publishes its own average WER of 6.24% on the OpenASR leaderboard.</p>
-        <p class="method">Qwen3-ASR 1.7B, used on Macs with 32 GB or more; 16–24 GB Macs use the smaller 0.6B model. Blurt’s numbers are its own tests on one Apple M5 Max (128 GB), with speech made by macOS say fed in as the microphone: cleaner than a real mic, so error rates are optimistic. Real microphones, accents and smaller Macs were not measured. Prices and policies were checked on 2026-10-25 and change.</p>
+<section class="get wrap" id="install" aria-labelledby="h-get">
+  <div class="get-a">
+    <div class="get-l">
+    <h2 id="h-get"><span class="ph">Talk to your agents</span> <span class="ph">with Blurt</span></h2>
+  <div class="spec">
+      <dl class="figs">
+      <div><dt class="num">macOS 13+</dt><dd>Macs with Apple silicon</dd></div>
+      <div><dt class="num">4.4–5.9 GB</dt><dd>Local models, downloaded at setup</dd></div>
+      <div><dt class="num">30</dt><dd>languages; Chinese and English tested</dd></div>
+      <div><dt class="num">MIT</dt><dd>Open source on <a href="https://github.com/AGIHunt/blurt">GitHub</a></dd></div>
+      </dl>
+      <details class="more">
+        <summary>Requirements, models and permissions</summary>
+        <dl>
+        <div><dt>System</dt><dd>macOS 13 or later. Dictation and the recommended speech models need Apple silicon. Windows and Linux are coming soon. No phone app.</dd></div>
+        <div><dt>Models</dt><dd>Qwen3-ASR 1.7B with Gemma 4 E2B on 32 GB Macs and up, about 5.9 GB; the 0.6B model on 16–24 GB, about 4.4 GB. Nothing downloads until you press Download. Idle models unload after 10 minutes.</dd></div>
+        <div><dt>Languages</dt><dd>Dictation was tested in Chinese, English and the two mixed. The speech model lists 30 languages; the others weren’t measured. The app is in English and Simplified Chinese.</dd></div>
+        <div><dt>Words</dt><dd>Add project names, libraries and teammates. A word you fix twice is learned, with Undo. Words are hints, never replacements.</dd></div>
+        <div><dt>History</dt><dd>Every dictation stays in Dictation History for 30 days, with Copy. The mic opens on the key press, so the first word isn’t cut off.</dd></div>
+        <div><dt>Permissions</dt><dd>Microphone; Accessibility, to paste and hear fn; Input Monitoring, for the other keys; Screen Recording, asked the first time you snap or record</dd></div>
+        <div><dt>Typeless or Wispr Flow installed</dt><dd>They use fn too. Blurt tells you when it sees one, so you can quit it or move Blurt to Right Option.</dd></div>
+        </dl>
+        <p class="more-g"><a href="https://github.com/AGIHunt/blurt/blob/main/docs/guide.md">The full user guide</a></p>
       </details>
     </div>
-  </div>
-</section>
-
-<!-- Snap: the dark band -->
-<section class="snapband" id="snap" aria-labelledby="h-snap">
-  <div class="wrap sb-head">
-    <h2 id="h-snap"><span class="ph">Snap it.</span> <span class="ph">Say it.</span> <span class="ph">Drag it in.</span></h2>
-    <p class="sb-lede">Snaps and voice notes wait under the notch as cards, several at once. Drag one into Claude, ChatGPT, Slack or WeChat: the picture goes in, then your words in the same box. Drop it in a terminal and Claude Code gets both as files.</p>
-  </div>
-  <div class="wrap">
-    <figure class="loop loop-snap" data-clip>
-      <div class="bezel">
-        <video class="loop-v" muted playsinline loop preload="none" controls poster="../assets/loops/snap-en.jpg?v=0.9.0-5" data-poster-m="../assets/loops/snap-en-m.jpg?v=0.9.0-5" aria-label="Clip: a snap marked with a box and a circle, a spoken note, the card under the notch, dragged into Claude">
-          <source src="../assets/loops/snap-en-m.mp4?v=0.9.0-5" type="video/mp4" media="(max-width: 720px)">
-          <source src="../assets/loops/snap-en.mp4?v=0.9.0-5" type="video/mp4">
-        </video>
-        <span class="loop-bar" aria-hidden="true"><i></i></span>
-      </div>
-      <figcaption class="sr">Two cards under the notch: the marked snap and a voice note</figcaption>
-      <div class="under">
-      <ol class="steps">
-      <li data-t="0.90"><button type="button" tabindex="-1"><span class="n num">01</span><span class="ck"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>A</kbd></span><span class="st">Drag an area. The screen freezes.</span></button></li>
-      <li data-t="2.25"><button type="button" tabindex="-1"><span class="n num">02</span><span class="st">Draw on it: ⇧ box, ⌥ ellipse, rest to straighten.</span></button></li>
-      <li data-t="4.40"><button type="button" tabindex="-1"><span class="n num">03</span><span class="st">Say what's wrong. Stop for 2 s and it's saved.</span></button></li>
-      <li data-t="9.70"><button type="button" tabindex="-1"><span class="n num">04</span><span class="st">The marked picture flies up and waits under the notch as a card.</span></button></li>
-      <li data-t="12.60"><button type="button" tabindex="-1"><span class="n num">05</span><span class="st">Drag it into Claude: the picture, then your note.</span></button></li>
-      </ol>
-        <button class="loop-toggle" type="button" data-toggle data-play="Play" data-pause="Pause" hidden><span class="i-play" aria-hidden="true"></span><span class="sr">Play</span></button>
-      </div>
-    </figure>
-  </div>
-  <div class="wrap sb-more">
-    <div class="voice">
-      <p class="vk"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>V</kbd></p>
-      <p><b>Voice note</b>Press it and talk; pauses to think are fine. Press it again to finish, up to 10 minutes. The words show under the notch as you talk, and the note becomes a card, like a snap.</p>
     </div>
-    <table class="lands">
-      <caption>Where a card lands</caption>
-      <tbody>
-      <tr><th scope="row">Claude, ChatGPT, Slack, WeChat, Feishu, Notion</th><td>The picture as an attachment, then your note in the same message box.</td></tr>
-      <tr><th scope="row">Terminal, iTerm2, Ghostty, Warp</th><td>The paths of the picture and a Markdown note, so Claude Code or Codex reads both. Nothing runs in the shell.</td></tr>
-      <tr><th scope="row">Cursor, VS Code</th><td>The picture; your note goes on the clipboard for ⌘V.</td></tr>
-      <tr><th scope="row">A click on a card</th><td>Copies it for ⌘V. ⌘-click several to copy them together. Cards you dragged out stay findable for 7 days.</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<!-- Record → items -->
-<section class="rec" id="record" aria-labelledby="h-rec">
-  <div class="wrap r-head">
-    <svg class="lchick" viewBox="40 100 960 830" aria-hidden="true">
-  <g fill="none" stroke="currentColor" stroke-width="40" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M568.67 181.54C578.62 168.61 594.26 160.3 611.85 160.3C642.02 160.3 666.48 184.76 666.48 214.93C666.48 226.02 663.18 236.34 657.48 244.94C787.74 295.8 854.28 417.94 854.28 589.68C854.28 795.32 720.63 901.26 502.58 901.26C284.53 901.26 150.88 795.32 150.88 589.68C150.88 417.94 217.43 295.78 347.63 244.85C341.96 236.27 338.68 225.99 338.68 214.93C338.68 184.76 363.14 160.3 393.32 160.3C410.9 160.3 426.54 168.61 436.49 181.54C440.31 148.43 468.44 122.74 502.58 122.74C536.72 122.74 564.85 148.43 568.67 181.54Z"/>
-    <path d="M163.58 690.19C128.81 726.33 84.6 739.93 63.01 720.49C40.58 700.3 51.05 652.12 86.38 612.88C106.47 590.57 130.27 575.95 151.18 571.23M853.98 571.23C874.89 575.95 898.69 590.57 918.78 612.88C954.11 652.12 964.58 700.3 942.16 720.49C920.56 739.930 876.35 726.33 841.58 690.19"/>
-    <path d="M502.58 510.29L582.82 580.29L502.58 663.950L422.34 580.29ZM422.34 580.29L582.82 580.29"/>
-    <path class="arc a1" d="M805.56 233.98C858.46 237.68 901.06 278.82 906.61 331.56"/>
-    <path class="arc a2" d="M828.77 168.12C902.28 181.08 959.84 238.64 972.8 312.15"/>
-  </g>
-  <path fill="currentColor" d="M401.85 501.76C401.85 530.04 378.92 552.97 350.63 552.97C322.35 552.97 299.41 530.04 299.41 501.76C299.41 473.47 322.35 450.54 350.63 450.54C378.92 450.54 401.85 473.47 401.850 501.76ZM705.75 501.76C705.75 530.04 682.82 552.97 654.53 552.97C626.24 552.97 603.31 530.04 603.31 501.76C603.31 473.47 626.24 450.54 654.53 450.54C682.82 450.54 705.75 473.47 705.75 501.76Z"/>
-</svg>
-    <div>
-      <h2 id="h-rec"><span class="ph">Record it.</span> <span class="ph">Get items.</span> <span class="ph">Hand them off.</span></h2>
+    <div class="get-r">
+      <div class="dl "><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a><span class="dl-note">Free, macOS 13 or later</span></div>
+      <p class="alt-h">Or have your agent install it:</p>
+      <div class="install"><code class="cmd" id="cmd-get"><span class="dollar" aria-hidden="true">$</span>npx skills add AGIHunt/blurt</code><button class="btn" type="button" data-copy="cmd-get" data-done="Copied">Copy</button></div>
+      <p class="install-next">Run it in a terminal, then tell your agent “start blurt”. If the Xcode Command Line Tools or uv are missing, your agent asks before installing them.</p>
     </div>
   </div>
-  <div class="wrap r-body">
-    <div class="r-left">
-      <p class="r-lede">Click through your product and say what you see. The coding agent on your computer turns the recording into items, each with a frame.</p>
-      <ol class="r-steps">
-        <li><span class="ck"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd></span><p><b>Pick a window or an area. Use it and talk.</b>What you say is transcribed while you record. Press ⌥⇧R again, or Finish at the notch, to stop.</p></li>
-        <li><span class="ck"><kbd>⌃</kbd><span class="kx">drag</span></span><p><b>Hold ⌃ and drag to circle what’s wrong.</b>The circle is in the frame; on screen it fades after 3 s.</p></li>
-        <li><span class="ck ck-t">Finish</span><p><b>Your coding agent writes the items.</b>Bugs get repro steps, actual and expected, and the likely code; ideas keep the moment that sparked them.</p></li>
-      </ol>
-      <div class="r-stat">
-        <p class="r-big"><span class="num">52</span><span>items</span></p>
-        <p class="r-what">One 5-minute walkthrough became 52 items, each with what you said and when you said it.<sup><a href="#n2" id="r2">2</a></sup></p>
-        <p class="r-when">It transcribes while you record, and it’s ready about a minute after you stop.<sup><a href="#n1" id="r1">1</a></sup></p>
-      </div>
-      <div class="notes">
-        <p id="n1"><a href="#r1">1</a> Measured once in Blurt’s README FAQ: a 5-minute, 12-item recording was ready to review 51 s after Finish. Organising uses your own agent: three real 7–20 minute sessions cost about $2–2.6 each at API prices.</p>
-        <p id="n2"><a href="#r2">2</a> A teammate’s 5-minute walkthrough; how long that one took to be ready was not recorded.</p>
-      </div>
-    </div>
-    <article class="item" aria-label="An item">
-      <figure class="i-frame"><img src="../assets/rec-frame.jpg?v=0.9.0-5" width="1200" height="600" alt="The frame at 0:06: Orbit’s checkout in Canada, the total circled with ⌃" loading="lazy"><span class="num">0:06</span></figure>
-      <div class="i-body">
-        <p class="i-meta"><span class="num">OR-21 · Orbit</span><span class="i-kind">Issue</span></p>
-        <h3>Total ignores coupon in Canada</h3>
-        <p class="i-said"><span>You said</span>“And the total ignores the coupon when I pick Canada.”</p>
-        <div class="i-f"><span>Steps</span><ol><li>Apply SAVE10: Total $117.10</li><li>Change the country to Canada</li><li>SAVE10 still says Applied; Total is $128.40</li></ol></div>
-        <div class="i-two">
-          <div class="i-f"><span>Actual</span><p>SAVE10 shows Applied, but nothing is taken off: $128.40.</p></div>
-          <div class="i-f"><span>Expected</span><p>SAVE10 takes 10% off the items ($11.30): $117.10.</p></div>
-        </div>
-        <div class="i-f"><span>Suspected code</span><p class="i-code"><code>web/src/cart/reducer.ts:88</code> <code>recalcTotals()</code></p></div>
-        <p class="i-act"><span class="i-btn">Hand off to agent <kbd>⌘</kbd><kbd>↩</kbd></span></p>
-      </div>
-    </article>
-  </div>
-
-  <div class="wrap hand" id="handoff">
-    <div class="h-head">
-      <h2><span class="ph">Hand it off.</span> <span class="ph">You review,</span> <span class="ph">then merge.</span></h2>
-      <p>Select items and press ⌘↩: Claude Code or Codex starts in a terminal inside Blurt, optionally one git worktree per item. When an agent says it fixed something, Blurt marks it To verify, nothing more.</p>
-    </div>
-    <figure class="loop loop-hand" data-clip>
-      <div class="bezel">
-        <video class="loop-v" muted playsinline loop preload="none" controls poster="../assets/loops/hand-en.jpg?v=0.9.0-5" data-poster-m="../assets/loops/hand-en-m.jpg?v=0.9.0-5" aria-label="Clip: two items handed to Claude Code, a session each, OR-21 turns To verify, the change reviewed and merged, the total right">
-          <source src="../assets/loops/hand-en-m.mp4?v=0.9.0-5" type="video/mp4" media="(max-width: 720px)">
-          <source src="../assets/loops/hand-en.mp4?v=0.9.0-5" type="video/mp4">
-        </video>
-        <span class="loop-bar" aria-hidden="true"><i></i></span>
-      </div>
-      <figcaption class="sr">Two sessions side by side, OR-21 To verify in the notch</figcaption>
-      <div class="under">
-      <ol class="caps" aria-hidden="true">
-        <li data-t="0.00">Two items selected, ⌘↩: Claude Code, in parallel, one git worktree each.</li>
-        <li data-t="3.30">Two sessions run side by side in Blurt's terminal.</li>
-        <li data-t="6.20">OR-21 reports back. Blurt marks it To verify, not Done.</li>
-        <li data-t="8.60">You review the change, then merge.</li>
-        <li data-t="11.80">Orbit's checkout in Canada: SAVE10 comes off, $117.10.</li>
-      </ol>
-        <button class="loop-toggle" type="button" data-toggle data-play="Play" data-pause="Pause" hidden><span class="i-play" aria-hidden="true"></span><span class="sr">Play</span></button>
-      </div>
-    </figure>
-    <dl class="more">
-      <div><dt>MCP</dt><dd>Any agent can read and update your items: <code>search_items</code>, <code>get_item</code>, <code>update_item</code>, <code>mark_fixed</code>, <code>bundle_items</code>.</dd></div>
-    </dl>
-  </div>
-
-  <div class="wrap team" id="team">
-    <div class="tm-t">
-      <h2><span class="ph">Working with a team?</span> <span class="ph">Send one bundle.</span></h2>
-      <p>Pack the items into one hand-off bundle (.zip) and send it to a teammate: a summary, every item and its screenshots, relative paths only, so it opens on their computer.</p>
-      <p>Or ask your agent: “Bundle the checkout issues and post them to #web in Slack.” Blurt writes the files; your agent posts them wherever your team works, with the tools it already has.</p>
-    </div>
-    <figure class="tm-f"><img src="../assets/team.jpg?v=0.9.0-5" width="1100" height="760" alt="From the film: Blurt’s Export Hand-off Bundle…, and a 3-item zip sent in Slack" loading="lazy"></figure>
+  <div class="keys" aria-labelledby="h-keys">
+    <h3 id="h-keys">Six keys to know</h3>
+    <ul class="six">
+      <li><span class="k6"><span class="cap">fn</span></span><span>Tap to talk, tap again to stop</span></li>
+      <li><span class="k6"><span class="cap">fn</span><span class="cap">fn</span></span><span>Double-tap: stop and send</span></li>
+      <li><span class="k6"><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span></span><span>While talking: make it a list</span></li>
+      <li><span class="k6"><span class="cap">⌥</span><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span><span class="cap">A</span></span><span>Snap, draw on it, say it</span></li>
+      <li><span class="k6"><span class="cap">⌥</span><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span><span class="cap">V</span></span><span>Voice note</span></li>
+      <li><span class="k6"><span class="cap">⌥</span><span class="cap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 13h-5v7.5H8V13H3z"/></svg></span><span class="cap">R</span></span><span>Record</span></li>
+    </ul>
+    <p class="allk">The other keys (re-format, pause, review…) are in <a href="https://github.com/AGIHunt/blurt/blob/main/docs/guide.md">the user guide</a>. You can change each one in Settings.</p>
   </div>
 </section>
-
-<!-- Privacy -->
-<section class="privacy wrap" id="privacy" aria-labelledby="h-priv">
-  <h2 id="h-priv"><span class="ph">No Blurt server.</span> <span class="ph">No account.</span></h2>
-  <div class="p-two">
-    <p><b>Stays on your Mac:</b>recognition and polish for dictation, snap notes and voice notes; a dictation’s audio (deleted after transcription unless you keep it); about 500 characters around the cursor, used for that dictation only, never from password fields.</p>
-    <p><b>Goes online only for:</b>model downloads and update checks; a cloud speech key you add yourself, for recordings; and your agent organising a recording, which sends the transcript and a few frames to its provider.</p>
-  </div>
-</section>
-
-<!-- Install: plain -->
-<section class="get wrap" id="install" aria-labelledby="h-get">
-  <h2 id="h-get"><span class="ph">Next time you talk</span> <span class="ph">to an agent,</span> <span class="ph">press Fn.</span></h2>
-  <div class="get-r">
-    <div class="dl"><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a><span class="dl-note">Free, macOS 13 or later</span></div>
-    <p class="alt-h">Or have your agent install it:</p>
-    <div class="install" data-install>
-        <code class="cmd" id="cmd-get"><span class="dollar" aria-hidden="true">$</span>npx skills add AGIHunt/blurt</code>
-        <button class="btn" type="button" data-copy="cmd-get" data-done="Copied">Copy</button>
-      </div>
-    <p class="install-next">Run it in a terminal, then tell your agent “start blurt”. It needs the Xcode Command Line Tools and uv; your agent offers to install what’s missing.</p>
-    <dl class="reqs">
-      <div><dt>System</dt><dd>macOS 13 or later; dictation and the recommended speech models need Apple silicon. Windows and Linux are coming soon.</dd></div>
-      <div><dt>Models</dt><dd>Open-source, downloaded once during setup: about 5.9 GB on a 32 GB Mac, 4.4 GB on 16–24 GB. Nothing downloads until you press Download.</dd></div>
-      <div><dt>Source</dt><dd>MIT licensed, <a href="https://github.com/AGIHunt/blurt">github.com/AGIHunt/blurt</a>.</dd></div>
-    </dl>
-  </div>
-  <div class="keys" id="keys" aria-labelledby="h-keys">
-  <h3 id="h-keys">Six keys to start with</h3>
-  <ul class="six">
-    <li><span class="k6"><kbd>fn</kbd></span><span>Tap to talk, tap again to stop</span></li>
-    <li><span class="k6"><kbd>fn</kbd><kbd>fn</kbd></span><span>Instead of the second tap: stop and send</span></li>
-    <li><span class="k6"><kbd>⇧</kbd></span><span>While talking: Structured (lists) on or off</span></li>
-    <li><span class="k6"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>A</kbd></span><span>Snap, draw, say it</span></li>
-    <li><span class="k6"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>V</kbd></span><span>Voice note</span></li>
-    <li><span class="k6"><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd></span><span>Record</span></li>
-  </ul>
-  <details class="allkeys">
-    <summary>Every key</summary>
-    <div class="kgrid">
-      <section class="kgroup"><h3>Dictation</h3><dl><div><dt><kbd>fn</kbd></dt><dd>Tap to start, tap again to stop</dd></div><div><dt><kbd>fn</kbd><kbd>fn</kbd></dt><dd>Double-tap instead of the second tap: stop, type, Return</dd></div><div><dt><kbd>fn</kbd><span class="kx">hold</span></dt><dd>Or hold to talk, let go to stop</dd></div><div><dt><kbd>⇧</kbd></dt><dd>Tap while talking: Structured on or off</dd></div><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>L</kbd></dt><dd>Re-format the last one, with Undo</dd></div></dl></section>
-      <section class="kgroup"><h3>Snaps and cards</h3><dl><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>A</kbd></dt><dd>Snap: drag an area</dd></div><div><dt><kbd>⇧</kbd><kbd>⌥</kbd></dt><dd>While dragging: box, ellipse</dd></div><div><dt><span class="kchip num">0.5 s</span></dt><dd>Rest at the end of a stroke to straighten it</dd></div><div><dt><kbd>⌘</kbd><kbd>Z</kbd></dt><dd>Take the last stroke back</dd></div><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>V</kbd></dt><dd>Voice note, up to 10 minutes</dd></div><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>H</kbd></dt><dd>Bring the cards down for the keyboard</dd></div></dl></section>
-      <section class="kgroup"><h3>Recording and hand-off</h3><dl><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>R</kbd></dt><dd>Start or stop a recording</dd></div><div><dt><kbd>⌃</kbd><span class="kx">drag</span></dt><dd>Draw on the screen while recording</dd></div><div><dt><kbd>⌥</kbd><kbd>⇧</kbd><kbd>P</kbd></dt><dd>Pause the recording</dd></div><div><dt><kbd>A</kbd><kbd>X</kbd></dt><dd>Review: keep, discard</dd></div><div><dt><kbd>J</kbd><kbd>K</kbd></dt><dd>Next, previous</dd></div><div><dt><kbd>⌘</kbd><kbd>↩</kbd></dt><dd>Hand off to an agent</dd></div></dl></section>
-    </div>
-    <p>Each one can be changed in Settings. <a href="https://github.com/AGIHunt/blurt/blob/main/docs/guide.md">The user guide</a> covers every detail.</p>
-  </details>
-  </div>
-</section>
-
-<!-- FAQ -->
-<section class="faq wrap" id="faq" aria-labelledby="h-faq">
-  <h2 id="h-faq">Questions</h2>
-  <div class="faq-list">
-    <details><summary>Which models, and how big?</summary><p>Open-source models, downloaded once during setup and run locally from then on. 32 GB and up: Qwen3-ASR 1.7B for speech and Gemma 4 E2B for polish, about 5.9 GB together. 16–24 GB: Qwen3-ASR 0.6B with Gemma 4 E2B, about 4.4 GB. 8 GB Macs polish with Qwen3 1.7B. Idle models unload after 10 minutes.</p></details>
-    <details><summary>Which languages?</summary><p>Dictation was tested in Chinese, English and mixed Chinese and English. The speech model lists 30 languages; the others weren't measured. The app is in English and Simplified Chinese.</p></details>
-    <details><summary>What if a take gets lost?</summary><p>Every dictation stays in Dictation History for 30 days, with Copy. The mic opens on the key press, so the first word isn't cut off.</p></details>
-    <details><summary>Already using Typeless or Wispr Flow?</summary><p>They listen to Fn too. Blurt tells you when it sees one, so you can quit it or move Blurt to Right Option.</p></details>
-    <details><summary>Windows and Linux?</summary><p>Mac only today. Windows and Linux are coming soon. There is no phone app.</p></details>
-    <details><summary>Which permissions does it need?</summary><p>Microphone; Accessibility, to paste and to hear Fn; Input Monitoring, for other keys; Screen Recording, asked the first time you snap or record.</p></details>
-  </div>
-</section>
-
 </main>
 
 <footer class="foot wrap">
-  <img src="../assets/logo.svg?v=0.9.0-5" width="24" height="24" alt="">
+  <img src="../assets/logo.svg?v=0.9.0-8" width="24" height="24" alt="">
   <a href="https://github.com/AGIHunt/blurt/blob/main/LICENSE">MIT licensed</a>
   <a href="https://github.com/AGIHunt/blurt">GitHub</a>
   <a href="https://github.com/AGIHunt/blurt/blob/main/docs/guide.md">User guide</a>
@@ -425,6 +516,6 @@
   <a href="https://agihunt.info">Made by AGI Hunt</a>
 </footer>
 
-<script src="../main.js?v=0.9.0-5" defer></script>
+<script src="../main.js?v=0.9.0-8" defer></script>
 </body>
 </html>

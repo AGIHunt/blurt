@@ -1,144 +1,24 @@
-/* blurt.agihunt.info
-   1. the hero: one dictation at measured timings, in tap mode: tap, talk a 3 s sentence, then a double tap in place of
-      the second tap: the text is at the cursor 0.29 s later, Return goes, Claude Code starts reading
-   2. the dictation line: words arrive grey and settle to ink, like the live text under the notch
-   3. the loops: play while on screen; Snap's steps and the hand-off's caption line follow the time
-   4. the film: loads on click, chapters seek
-   5. copy the install command; the line chick's sound arcs while it is on screen
-   Every part leaves the page complete without JS: the hero rests on the sent state, the line is all ink,
-   the loops have native controls, every caption is listed. */
+/* blurt.agihunt.info, round 7 (round 6's scroll machinery)
+   1. scenes: each [data-scene] is a tall section with a sticky stage. Scroll progress p (0–1 while pinned) picks the
+      step (data-steps thresholds); steps are cumulative classes on1…onN, the CSS does the rest with transitions.
+      --p, --d (distance from pinned, in viewports; + below, − above) and --de drive the parallax layers.
+   2. the notch (#isl): fixed at the top centre; the active scene sets its mode and the live text under it. In the
+      snap the words go into the note bubble beside the selection instead, as in the app.
+   3. scrubbed values: the words as you talk, the speed clock and bars, the recording timer and transcript, the count.
+   4. the film: loads on click, chapters seek. 5. copy the install command.
+   Without JS or under reduced motion nothing here runs: the HTML has every step on, so each scene rests on its end
+   state and every caption is listed. */
 (() => {
+  const root = document.documentElement;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const phone = matchMedia("(max-width: 720px)");
-  const seen = (el, fn, threshold = 0.5) => new IntersectionObserver((es) => fn(es[0].isIntersecting), { threshold }).observe(el);
+  const isl = document.getElementById("isl");
+  const lt = isl && isl.querySelector(".lt");
+  const tm = isl && isl.querySelector(".tm");
+  const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+  const span = (p, a, b) => clamp((p - a) / (b - a));
+  const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-  /* ---------------------------------------------------------------- 1. hero */
-  const stage = document.querySelector("[data-hero]");
-  if (stage) {
-    const lt = stage.querySelector(".lt");
-    const finalText = lt.textContent;
-    const tokens = (stage.dataset.heard || "").split(" ").filter(Boolean);
-    const spaced = document.documentElement.lang === "en";
-    const head = stage.parentElement.querySelector(".track .head");
-    const track = stage.parentElement.querySelector(".track");
-    const timer = stage.querySelector(".timer");
-    const replay = stage.parentElement.querySelector("[data-replay]");
-    // ms on the axis: talk 3 s, double-tap at 3 s, text at 3.29 s, Return as soon as the text is in; the axis spans 4.4 s.
-    // style.css places the marks at TALK / TOTAL (68.2 %) and the lag bar over PASTE - TALK (6.6 %): keep them in step.
-    const TOTAL = 4400, TALK = 3000, PASTE = 3290, SEND = 3450, LAG = 650, FIRM = 1500;
-    const STATES = ["s-idle", "s-listen", "s-stop", "s-pasted", "s-sent"];
-    let raf = 0, t0 = 0, spans = [], playing = false, loops = 0, visible = false;
-
-    const setState = (s) => { stage.classList.remove(...STATES); if (s) stage.classList.add(s); };
-    const build = () => {
-      lt.textContent = "";
-      spans = tokens.map((w, i) => {
-        const s = document.createElement("span");
-        s.className = "w h";
-        s.textContent = w + (spaced && i < tokens.length - 1 ? " " : "");
-        lt.appendChild(s);
-        return s;
-      });
-    };
-    const frame = (now) => {
-      const t = now - t0;
-      head.style.transform = `translateX(${(Math.min(t, TOTAL) / TOTAL) * track.clientWidth}px)`;
-      if (t < PASTE) {
-        const step = TALK / tokens.length;
-        spans.forEach((s, i) => {
-          const said = i * step;
-          const shown = t >= said + LAG || (t >= TALK && t >= TALK + (i - tokens.length) * 20 + 160);
-          const firm = t >= said + FIRM || t >= TALK + 200;
-          s.classList.toggle("h", !shown);
-          s.classList.toggle("i", shown && !firm);
-        });
-        timer.textContent = `0:0${Math.floor(Math.min(t, TALK) / 1000)}`;
-      }
-      if (t >= TALK && stage.classList.contains("s-listen")) setState("s-stop");
-      if (t >= PASTE && stage.classList.contains("s-stop")) { lt.textContent = finalText; setState("s-pasted"); }
-      if (t >= SEND && stage.classList.contains("s-pasted")) setState("s-sent");
-      if (t < TOTAL + 3200) { raf = requestAnimationFrame(frame); return; }
-      playing = false; loops += 1;
-      if (loops < 3 && visible) start(); else { setState("s-sent"); replay.hidden = false; }
-    };
-    const start = () => {
-      cancelAnimationFrame(raf);
-      playing = true; replay.hidden = true;
-      build(); setState("s-idle");
-      head.style.transform = "translateX(0)";
-      setTimeout(() => { setState("s-listen"); t0 = performance.now(); raf = requestAnimationFrame(frame); }, 900);
-    };
-    if (!reduce) {
-      seen(stage, (v) => { visible = v; if (v && !playing && loops === 0) start(); }, 0.4);
-      replay.addEventListener("click", () => { loops = 0; start(); });
-    } else {
-      head.style.transform = `translateX(${track.clientWidth * (SEND / TOTAL)}px)`;
-    }
-  }
-
-  /* ---------------------------------------------------------------- 2. the dictation line */
-  const say = document.querySelector("[data-say]");
-  if (say && !reduce) {
-    const ws = [...say.querySelectorAll(".w")];
-    let done = false;
-    const run = () => {
-      done = true;
-      const STEP = 420, LAG = 600, FIRM = 1300;
-      const t0 = performance.now();
-      const tick = (now) => {
-        const t = now - t0;
-        const end = (ws.length - 1) * STEP + FIRM;
-        ws.forEach((w, i) => {
-          const at = i * STEP;
-          w.classList.toggle("h", t < at + LAG);
-          w.classList.toggle("i", t >= at + LAG && t < at + FIRM);
-        });
-        if (t < end + 50) requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    };
-    seen(say, (v) => { if (v && !done) run(); }, 0.9);
-  }
-
-  /* ---------------------------------------------------------------- 3. loops */
-  document.querySelectorAll("[data-clip]").forEach((fig) => {
-    const v = fig.querySelector("video");
-    const bar = fig.querySelector(".loop-bar i");
-    const toggle = fig.querySelector("[data-toggle]");
-    const items = [...fig.querySelectorAll(".steps li, .caps li")];
-    const marks = items.map((li) => parseFloat(li.dataset.t));
-    let userPaused = false, raf = 0;
-
-    v.removeAttribute("controls");
-    toggle.hidden = false;
-    items.forEach((li) => { const b = li.querySelector("button"); if (b) b.removeAttribute("tabindex"); });
-    if (phone.matches && v.dataset.posterM) v.poster = v.dataset.posterM;
-
-    const paint = () => {
-      const d = v.duration || 1, t = v.currentTime;
-      bar.style.width = `${(t / d) * 100}%`;
-      let k = 0;
-      marks.forEach((m, i) => { if (t + 0.05 >= m) k = i; });
-      items.forEach((li, i) => li.classList.toggle("on", i === k));
-      if (!v.paused) raf = requestAnimationFrame(paint);
-    };
-    const play = () => { const p = v.play(); if (p) p.catch(() => {}); };
-    const label = (k) => { toggle.querySelector(".sr").textContent = toggle.dataset[k]; };
-    v.addEventListener("play", () => { toggle.classList.add("is-playing"); label("pause"); cancelAnimationFrame(raf); raf = requestAnimationFrame(paint); });
-    v.addEventListener("pause", () => { toggle.classList.remove("is-playing"); label("play"); paint(); });
-    v.addEventListener("seeked", paint);
-    toggle.addEventListener("click", () => {
-      if (v.paused) { userPaused = false; play(); } else { userPaused = true; v.pause(); }
-    });
-    items.forEach((li, i) => {
-      const b = li.querySelector("button");
-      if (b) b.addEventListener("click", () => { v.currentTime = marks[i]; userPaused = false; play(); paint(); });
-    });
-    if (!reduce) seen(v, (on) => { if (on && !userPaused) play(); else if (!on) v.pause(); }, 0.45);
-    if (items[0]) items[0].classList.add("on");
-  });
-
-  /* ---------------------------------------------------------------- 4. the film */
+  /* ---------------------------------------------------------------- 4. film, 5. copy (no motion needed) */
   const film = document.querySelector("[data-film]");
   if (film) {
     let v = null;
@@ -149,7 +29,7 @@
         v.setAttribute("aria-label", film.querySelector("img").alt);
         film.appendChild(v); film.classList.add("playing");
       }
-      const go = () => { if (at) v.currentTime = at; const p = v.play(); if (p) p.catch(() => {}); };
+      const go = () => { if (at) v.currentTime = at; const pr = v.play(); if (pr) pr.catch(() => {}); };
       if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true });
       v.focus();
     };
@@ -158,8 +38,6 @@
       e.preventDefault(); open(parseFloat(a.dataset.at)); film.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
     }));
   }
-
-  /* ---------------------------------------------------------------- 5. copy, the chick */
   document.querySelectorAll("[data-copy]").forEach((b) => {
     const text0 = b.textContent;
     b.addEventListener("click", async () => {
@@ -175,6 +53,204 @@
       setTimeout(() => { b.textContent = text0; b.classList.remove("done"); }, 1800);
     });
   });
-  const lc = document.querySelector(".lchick");
-  if (lc && !reduce) seen(lc, (v) => lc.classList.toggle("on", v), 0.6);
+
+  if (reduce || !isl) return;
+  root.classList.add("motion");
+
+  /* ---------------------------------------------------------------- 2. the notch and its live text */
+  const spaced = root.lang === "en";
+  let liveOwner = null, liveSpans = [];
+  const setLive = (owner, words, f) => {
+    if (!owner) { isl.classList.remove("live-on"); return; }
+    if (liveOwner !== owner) {
+      liveOwner = owner; lt.textContent = "";
+      liveSpans = words.map((w, i) => {
+        const s = document.createElement("span");
+        s.className = "w h"; s.textContent = w + (spaced && i < words.length - 1 ? " " : "");
+        lt.appendChild(s); return s;
+      });
+    }
+    const shown = Math.round(f * liveSpans.length);
+    liveSpans.forEach((s, i) => {
+      s.classList.toggle("h", i >= shown);
+      s.classList.toggle("i", i < shown && i >= shown - 2 && f < 1);
+    });
+    isl.classList.add("live-on");
+  };
+  const mode = (m) => { if (isl.dataset.mode !== m) isl.dataset.mode = m; };
+
+  // the words leave the live panel and land in the field (transform and opacity only)
+  const fly = (to) => {
+    if (!to || !isl.classList.contains("live-on")) return;
+    const from = isl.querySelector(".live");
+    const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+    const f = document.createElement("div");
+    f.className = "flyer"; f.textContent = lt.textContent;
+    Object.assign(f.style, { left: a.left + "px", top: a.top + "px", width: a.width + "px" });
+    document.body.appendChild(f);
+    const s = clamp(b.width / a.width, .4, 1.2);
+    f.animate([{ transform: "none", opacity: 1 }, { transform: `translate(${b.left - a.left}px, ${b.top - a.top}px) scale(${s})`, opacity: .15 }],
+      { duration: 620, easing: "cubic-bezier(.4,0,.2,1)" }).onfinish = () => f.remove();
+  };
+
+  // while the hero is on screen the notch takes one dictation by itself, then waits and starts again
+  let heroT = 0, heroOn = false;
+  const heroTake = (s) => {
+    // below 1000 px the island and its live panel would cover the header's links: it waits for the scenes
+    if (heroOn || innerWidth < 1000) { if (!heroOn) mode("idle"); return; }
+    heroOn = true; mode("listen");
+    const t0 = performance.now() + 1200, n = s.say.length, STEP = 330, HOLD = 2600;
+    const tick = (now) => {
+      if (!heroOn) return;
+      if (now < t0) { mode("idle"); setLive(null); heroT = requestAnimationFrame(tick); return; }
+      const t = (now - t0) % (n * STEP + HOLD);
+      const f = Math.min(1, t / (n * STEP));
+      setLive(s, s.say, f); tm.textContent = mmss(Math.min(t, n * STEP) / 1000);
+      mode(f < 1 ? "listen" : "done");
+      heroT = requestAnimationFrame(tick);
+    };
+    heroT = requestAnimationFrame(tick);
+  };
+  const heroStop = () => { if (heroOn) { heroOn = false; cancelAnimationFrame(heroT); } };
+
+  // the words in the note bubble: what is heard so far, the last two words still provisional (lighter)
+  const bubble = (s, f) => {
+    if (!s.bub) return;
+    const n = Math.round(f * s.say.length);
+    if (n === s.bubN) return;
+    s.bubN = n;
+    const sep = spaced ? " " : "";
+    const firm = s.say.slice(0, Math.max(0, n - 2)).join(sep), pend = s.say.slice(Math.max(0, n - 2), n).join(sep);
+    s.bub.textContent = firm;
+    if (pend) { const sp = document.createElement("span"); sp.className = "p"; sp.textContent = (firm && spaced ? " " : "") + pend; s.bub.appendChild(sp); }
+  };
+
+  /* ---------------------------------------------------------------- 1 + 3. scenes */
+  const words = (el) => (el.dataset.say || "").split(" ").filter(Boolean);
+  const hooks = {
+    dict(s, p, k, prev) {
+      if (prev === 2 && k === 3) fly(s.el.querySelector("[data-target]"));
+      if (p < .08) { heroTake(s); return; }
+      heroStop();
+      if (k >= 1 && k < 3) {
+        mode("listen");
+        const f = span(p, s.th[1], s.th[2] - .03);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 3);
+      } else { setLive(null); mode(k === 3 ? "done" : p < .08 ? "idle" : "hello"); }
+    },
+    speed(s, p) {
+      const MAX = parseFloat(s.el.dataset.clock);
+      const t = span(p, s.th[0], .62) * 3.1;
+      s.clock.textContent = t.toFixed(2);
+      s.el.style.setProperty("--tf", (t / MAX).toFixed(4));
+      s.el.classList.toggle("done", t >= 3.05);
+      s.lanes.forEach((ln) => {
+        const at = parseFloat(ln.dataset.at);
+        ln.style.setProperty("--f", (Math.min(t, at) / MAX).toFixed(4));
+        ln.classList.toggle("got", t >= at);
+      });
+    },
+    struct(s, p, k, prev) {
+      if (prev === 1 && k === 2) fly(s.el.querySelector(".ch-me"));
+      if (k === 1) {
+        mode("listen");
+        const f = span(p, s.th[0] + .02, s.th[1] - .04);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 9);
+      } else if (k >= 4) {
+        mode("list"); setLive(null); tm.textContent = "0:04";
+      } else { setLive(null); mode(k >= 2 ? "done" : "hello"); }
+    },
+    snap(s, p, k) {
+      // the note bubble listens from the moment it opens (k 3) until the pause saves it (k 9); the words are its own
+      setLive(null);
+      mode(k >= 10 ? "hello" : "idle");
+      const f = k >= 9 ? 1 : k < 3 ? 0 : span(p, s.th[2] + .01, s.th[7] + .03);
+      bubble(s, f);
+      let cur = null;
+      s.draw.forEach((li) => { if (k <= 8 && +li.dataset.k <= k) cur = li; });
+      s.draw.forEach((li) => li.classList.toggle("now", li === cur));
+    },
+    rec(s, p, k) {
+      setLive(null);
+      const sec = span(p, s.th[0], s.th[3]) * 300;
+      if (k >= 1 && k < 4) { mode("rec"); tm.textContent = mmss(sec); }
+      else mode(k === 4 ? "done" : k >= 5 ? "hello" : "idle");
+      if (s.tick) s.tick.style.setProperty("--n", [6, 72, 160, 276].filter((x) => sec >= x).length);
+      if (s.count) s.count.textContent = Math.round(span(p, s.th[4] + .01, s.th[4] + .1) * 52);
+    },
+    hand(s, p, k) {
+      setLive(null);
+      mode(k === 4 || k === 5 ? "verify" : "hello");
+    },
+  };
+  const scenes = [...document.querySelectorAll("[data-scene]")].map((el) => {
+    const th = el.dataset.steps.trim().split(/\s+/).map(Number);
+    for (let i = 1; i <= th.length; i++) el.classList.remove(`on${i}`);
+    return {
+      el, th, k: -1, name: el.dataset.scene, say: words(el),
+      caps: [...el.querySelectorAll(".steps li")],
+      clock: el.querySelector("[data-clock-out]"), lanes: [...el.querySelectorAll(".ln")],
+      tick: el.querySelector(".tick"), count: el.querySelector("[data-count-out]"),
+      bub: el.querySelector("[data-bub]"), bubN: -1, draw: [...el.querySelectorAll(".draw li")],
+    };
+  });
+  const depthEls = [...document.querySelectorAll("[data-depth]")];
+
+  // the first scene's window starts below the hero's last line, however short the screen (it rises as the hero goes)
+  const hero = document.querySelector(".hero"), dictEl = document.querySelector(".sc-dict");
+  const fit = () => {
+    if (!hero || !dictEl) return;
+    const hb = hero.offsetTop + hero.offsetHeight;
+    const phone = innerWidth <= 720;
+    // where the window rests (its top in px): 9.5 desk ems on a desktop, 7.6 camera ems (3% of the width) on a phone
+    const top = phone ? 7.6 * innerWidth * .03 : 9.5 * Math.min(innerWidth, innerHeight * 1.6) / 100;
+    const want = Math.max(phone ? 0 : innerHeight * .54, hb + 32 - top);
+    dictEl.style.setProperty("--rise0", Math.round(want) + "px");
+  };
+  fit();
+
+  let queued = false;
+  const frame = () => {
+    queued = false;
+    const vh = innerHeight;
+    let active = null, onStage = scrollY < 40;
+    root.style.setProperty("--sy0", Math.min(scrollY, 1200).toFixed(0));
+    for (const s of scenes) {
+      const r = s.el.getBoundingClientRect();
+      const len = Math.max(1, r.height - vh);
+      const p = clamp(-r.top / len);
+      const d = r.top > 0 ? Math.min(r.top / vh, 1.2) : r.bottom < vh ? Math.max((r.bottom - vh) / vh, -1.2) : 0;
+      if (r.bottom > -vh && r.top < vh * 2) {
+        s.el.style.setProperty("--p", p.toFixed(4));
+        s.el.style.setProperty("--d", d.toFixed(4));
+        s.el.style.setProperty("--de", Math.max(0, d).toFixed(4));
+      }
+      const k = r.top >= vh * .35 ? 0 : s.th.filter((x) => p >= x).length;
+      if (k !== s.k) {
+        for (let i = 1; i <= s.th.length; i++) s.el.classList.toggle(`on${i}`, i <= k);
+        let cur = s.caps[0];
+        s.caps.forEach((li) => { if (+li.dataset.k <= k) cur = li; });
+        s.caps.forEach((li) => li.classList.toggle("now", li === cur));
+      }
+      if (r.top <= vh * .5 && r.bottom >= vh * .5) active = { s, p, k, prev: s.k };
+      if (r.top <= 1 && r.bottom >= 48) onStage = true;
+      s.k = k;
+      s.p = p;
+    }
+    for (const s of scenes) if (s.name === "speed") hooks.speed(s, s.p, s.k);
+    if (!active || active.s.name !== "dict") heroStop();
+    if (active && active.s.name !== "speed") hooks[active.s.name](active.s, active.p, active.k, active.prev);
+    else { setLive(null); mode(onStage ? "idle" : "off"); }
+    // between the scenes (the table, privacy, the film, install) the notch goes up out of the way
+    if (!onStage) { setLive(null); mode("off"); }
+    depthEls.forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.bottom < -200 || r.top > vh + 200) return;
+      el.style.setProperty("--py", (((r.top + r.height / 2) - vh / 2) * parseFloat(el.dataset.depth)).toFixed(1));
+    });
+  };
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(frame); } };
+  addEventListener("scroll", queue, { passive: true });
+  addEventListener("resize", () => { fit(); queue(); });
+  frame();
 })();
