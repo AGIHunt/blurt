@@ -193,7 +193,7 @@ public enum CardPasteboard {
     ///  • chat (browsers, Electron apps, WeChat, QQ, any other app) and the Finder: the picture alone (its file and
     ///    bytes) — no HTML, no RTFD, no text, so every composer ends up with the picture and nothing else; the note is
     ///    pasted after the drop (CardSmartPaste.swift). Then the note's .md only with `attachNote`
-    ///    (record.drag_note_file), else an inert item.
+    ///    (record.drag_note_file), else an inert item. (WeChat / QQ get the rich item: drag(into:).)
     ///  • terminal: the picture's path and the .md's path, nothing else (no text ever reaches a shell; Claude Code and
     ///    Codex read the .md).
     /// The number of items is fixed when the drag starts (the badge counts them), so a shot with a note always has two
@@ -214,6 +214,18 @@ public enum CardPasteboard {
         case .chat, .finder: return [first, attachNote ? md ?? Item(tag: true) : Item(tag: true)]
         case .rich: return [first, Item(tag: true)]
         }
+    }
+
+    /// One card dragged over the app `landing` describes (CardDropTarget.swift, DragLanding): its class's layout, but
+    /// WeChat / QQ (chat, Qt) get the rich item — the picture in their composer, the note pasted after it — and a
+    /// voice card whose words Blurt pastes itself carries only the capture's tag (the app has nothing to drop).
+    public static func drag(into landing: DragLanding, card: Card, attachNote: Bool = false) -> [Item] {
+        if card.image == nil {
+            let items = drag(for: landing.cls, card: card, attachNote: attachNote)
+            return landing.wordsWithheld ? items.map { _ in Item(tag: true) } : items
+        }
+        if landing.cls == .chat, landing.kind == .qt { return drag(for: .rich, card: card, attachNote: attachNote) }
+        return drag(for: landing.cls, card: card, attachNote: attachNote)
     }
 
     /// A copy (a click on a card, a ⌘-click selection, Copy All): one rich item with every card, in order — the first

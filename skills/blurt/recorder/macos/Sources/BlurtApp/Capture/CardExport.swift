@@ -133,11 +133,11 @@ enum CardExport {
                 CardRich.Part(image: f.image, note: s.copyText, scale: s.scale))
     }
 
-    /// What dragging `s` out into an app of class `target` carries (BlurtCore CardPasteboard.drag), written at once —
-    /// for tests (`carddrag`); a real drag is lazy and follows the pointer (CardDrag).
-    static func dragItems(_ s: Shot, for target: DropClass) -> [NSPasteboardItem] {
+    /// What dragging `s` out over the app `landing` describes carries (BlurtCore CardPasteboard.drag(into:)), written at
+    /// once — for tests (`carddrag`); a real drag is lazy and follows the pointer (CardDrag).
+    static func dragItems(_ s: Shot, into landing: DragLanding) -> [NSPasteboardItem] {
         let (c, part) = card(s)
-        let items = pasteboardItems(CardPasteboard.drag(for: target, card: c, attachNote: attachNoteFile), rich: CardRich([part]),
+        let items = pasteboardItems(CardPasteboard.drag(into: landing, card: c, attachNote: attachNoteFile), rich: CardRich([part]),
                                     copy: false, tag: tag(s))
         return items.isEmpty ? [{ let p = NSPasteboardItem(); if let t = tag(s) { p.setString(t, forType: capturePasteboardType) }; return p }()] : items
     }

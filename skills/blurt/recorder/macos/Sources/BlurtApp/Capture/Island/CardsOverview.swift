@@ -427,7 +427,7 @@ final class OverviewTile: NSView, NSDraggingSource {
         guard !filed, !OverviewTile.ourWindow(at: p) else { return }
         // a voice note over a chat app's window: its words go into that composer, wherever it was let go of
         if let t = drag?.voiceTarget(at: p) {
-            snapper.takeOutVoice(shot, landed: t, at: p, accepted: !operation.isEmpty)
+            snapper.takeOutVoice(shot, landed: t, at: p, accepted: !operation.isEmpty, wordsWithheld: drag?.wordsWithheld(at: t) ?? false)
             return
         }
         // taken by another app: off its thread, like a card dragged from the row ("Dragged out · Undo")

@@ -26,6 +26,7 @@
 //     drag_copy_note safety net) and the toast says "⌘V to paste the note".
 // Both need Accessibility (the posted ⌘V). Test builds never post an event: the app routes each key to a stand-in.
 
+import CoreGraphics
 import Foundation
 
 /// WeChat and QQ (Qt): their composer takes one thing per paste or drop — a picture or text, never both (the picture
@@ -292,10 +293,15 @@ public enum FollowUpFocus {
         public var editable: Bool?
         /// the focused text's selection length (nil: unknown)
         public var selection: Int?
+        /// paste only into text Accessibility confirms (needsText(bundleID:)): a web app whose focus after a drop may
+        /// be something else than its composer and that can't say
+        public var needsText: Bool
         public init(kind: ComposerKind, frontIsTarget: Bool = true, frontIsBlurt: Bool = false, secureInput: Bool = false,
-                    focusSecure: Bool = false, sameWindow: Bool? = nil, editable: Bool? = nil, selection: Int? = nil) {
+                    focusSecure: Bool = false, sameWindow: Bool? = nil, editable: Bool? = nil, selection: Int? = nil,
+                    needsText: Bool = false) {
             self.kind = kind; self.frontIsTarget = frontIsTarget; self.frontIsBlurt = frontIsBlurt; self.secureInput = secureInput
             self.focusSecure = focusSecure; self.sameWindow = sameWindow; self.editable = editable; self.selection = selection
+            self.needsText = needsText
         }
     }
 
@@ -303,6 +309,23 @@ public enum FollowUpFocus {
         case paste(caret: [CaretKey])
         case skip(String)
     }
+
+    /// Facts.sameWindow from what Accessibility says: the focus's window is the one the card was dropped on
+    /// (`identical`, nil: can't tell), or a window of that app that covers the drop point (`focusedFrame`, top-left
+    /// screen coordinates, like `drop`) — the drop went to whatever window was there, so a window over that point is
+    /// where it landed (an app may draw its composer, or what a drop opens, in a window of its own).
+    public static func sameWindow(identical: Bool?, focusedFrame: CGRect?, drop: CGPoint) -> Bool? {
+        if identical == true { return true }
+        if let f = focusedFrame, f.width > 1, f.height > 1, f.contains(drop) { return true }
+        return identical
+    }
+
+    /// Feishu / Lark (v0.9 report: a picture + note card left the picture alone there). The blind ⌘↓ ⌘V a web app
+    /// gets when Accessibility can't say what has the focus didn't put the note in: Feishu shows its web content to
+    /// Accessibility only for a screen reader, and a dropped picture may open something of its own (a send dialog)
+    /// rather than sit in the message box. So there the note is pasted only into text Accessibility confirms; else it
+    /// goes on the clipboard and the toast says "⌘V to paste" — never a paste into who knows what, never lost.
+    public static func needsText(bundleID: String?) -> Bool { DropTargets.isFeishu(bundleID) }
 
     public static func decide(_ f: Facts) -> Decision {
         if f.frontIsBlurt { return .skip("blurt_in_front") }
@@ -313,6 +336,7 @@ public enum FollowUpFocus {
         case .editor: return .skip("code_editor")
         case .qt: return .paste(caret: [.end])
         case .native where f.editable != true: return .skip("not_text")
+        case .web where f.needsText && f.editable != true: return .skip("not_text")
         case .native, .web: break
         }
         guard let n = f.selection else { return .paste(caret: [.end]) }

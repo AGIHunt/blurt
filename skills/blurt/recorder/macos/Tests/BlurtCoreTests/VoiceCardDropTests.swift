@@ -7,10 +7,15 @@ import XCTest
 final class VoiceCardDropTests: XCTestCase {
     let words = "把登录页的按钮再调大一点\n然后发给设计看看"
 
+    /// `bundle`: the app (nil: one no table names specially); what the drag did over that window when it was let go
+    /// of: words left off only over Feishu / Lark, where Blurt can paste them.
     func plan(_ cls: DropClass?, _ kind: ComposerKind?, accepted: Bool = false, words: String? = nil, enabled: Bool = true,
-              ax: Bool = true, secure: Bool = false) -> VoiceCardDrop.Plan {
-        VoiceCardDrop.plan(cls: cls, kind: kind, accepted: accepted, words: words ?? self.words, enabled: enabled,
-                           accessibility: ax, secureInput: secure)
+              ax: Bool = true, secure: Bool = false, bundle: String? = nil, withheld: Bool? = nil) -> VoiceCardDrop.Plan {
+        let w = withheld ?? (cls.map { c in kind.map { VoiceCardDrop.withholdsWords(bundleID: bundle, cls: c, kind: $0,
+                                                                                    canPaste: enabled && ax) } ?? false } ?? false)
+        return VoiceCardDrop.plan(cls: cls, kind: kind, accepted: accepted, words: words ?? self.words, enabled: enabled,
+                                  accessibility: ax, secureInput: secure,
+                                  swallows: VoiceCardDrop.swallowsTextDrop(bundleID: bundle), wordsWithheld: w)
     }
 
     func testChatAppsWithAWebOrQtComposerAreTargets() {
@@ -31,8 +36,36 @@ final class VoiceCardDropTests: XCTestCase {
     }
 
     func testADropTheAppTookIsLeftAlone() {
-        // the composer itself took the text: pasting as well would put the words in twice
-        XCTAssertEqual(plan(.chat, .web, accepted: true), .none("app_took_it"))
+        // the composer itself took the text: pasting as well would put the words in twice (WeChat, QQ, the browsers,
+        // Claude, Slack… — as before v0.9), with or without Accessibility, and nothing goes on the clipboard
+        for (k, id) in [(ComposerKind.qt, "com.tencent.xinWeChat"), (.web, "com.google.Chrome"), (.web, "com.anthropic.claudefordesktop"), (.web, nil)] {
+            XCTAssertEqual(plan(.chat, k, accepted: true, bundle: id), .none("app_took_it"), id ?? "?")
+            XCTAssertEqual(plan(.chat, k, accepted: true, ax: false, bundle: id), .none("app_took_it"), id ?? "?")
+            XCTAssertEqual(plan(.chat, k, accepted: true, enabled: false, bundle: id), .none("app_took_it"), id ?? "?")
+        }
+    }
+
+    /// v0.9, the report: a voice card dragged into Feishu did nothing. Feishu takes a text drop on its chat area and
+    /// puts nothing in; Blurt took "taken" to mean done. Over Feishu / Lark only, the drag now carries no words where
+    /// Blurt can paste them, and Blurt pastes them taken or not.
+    func testFeishusYesToADropProvesNothing() {
+        let lark = "com.electron.lark"
+        XCTAssertTrue(VoiceCardDrop.withholdsWords(bundleID: lark, cls: .chat, kind: .web, canPaste: true))
+        XCTAssertFalse(VoiceCardDrop.withholdsWords(bundleID: lark, cls: .chat, kind: .web, canPaste: false), "then a drop on the box is the only way in")
+        for id in ["com.tencent.xinWeChat", "com.google.Chrome", "com.anthropic.claudefordesktop", "com.tinyspeck.slackmacgap", "notion.id"] {
+            let k = DropTargets.composer(bundleID: id, appURL: nil)
+            XCTAssertFalse(VoiceCardDrop.withholdsWords(bundleID: id, cls: .chat, kind: k, canPaste: true), "\(id): its own text drop")
+        }
+        for c in [DropClass.rich, .terminal, .finder] { XCTAssertFalse(VoiceCardDrop.withholdsWords(bundleID: lark, cls: c, kind: .web, canPaste: true), "\(c)") }
+
+        XCTAssertEqual(plan(.chat, .web, accepted: true, bundle: lark), .paste(words), "the drag had no words for it to take")
+        XCTAssertEqual(plan(.chat, .web, accepted: false, bundle: lark), .paste(words))
+        // the drop beat the rewrite: the words were on the drag, Feishu said yes and put nothing in — paste anyway
+        XCTAssertEqual(plan(.chat, .web, accepted: true, bundle: lark, withheld: false), .paste(words))
+        // can't paste: the words were on the drag, and Feishu's yes says nothing — on the clipboard
+        XCTAssertEqual(plan(.chat, .web, accepted: true, ax: false, bundle: lark), .copy(words))
+        XCTAssertEqual(plan(.chat, .web, accepted: true, enabled: false, bundle: lark), .copy(words))
+        XCTAssertEqual(plan(.chat, .web, accepted: true, secure: true, bundle: lark, withheld: true), .copy(words))
     }
 
     func testTextNativeAppsKeepTheNormalTextDrop() {

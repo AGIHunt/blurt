@@ -470,7 +470,8 @@ final class TakenThumb: NSView, NSDraggingSource {
         cardDrag = nil
         // a voice note over a chat app's window: its words go into that composer, wherever it was let go of
         if let t = drag?.voiceTarget(at: p) {
-            snapper.takeOutVoice(shot, fromPanel: true, landed: t, at: p, accepted: !operation.isEmpty)
+            snapper.takeOutVoice(shot, fromPanel: true, landed: t, at: p, accepted: !operation.isEmpty,
+                                 wordsWithheld: drag?.wordsWithheld(at: t) ?? false)
             return
         }
         // taken again: its 7 days start over, and the note goes on the clipboard as after any drag-out

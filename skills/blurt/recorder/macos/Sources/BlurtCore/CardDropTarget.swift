@@ -16,7 +16,9 @@
 //              Slack, Notion…), WeChat, QQ, code editors,    then Blurt pastes the note in     sequence of pastes;
 //              and every app no table names                  after it — never in a code        several cards: image,
 //                                                            editor (see below); + the .md     note, image, note…)
-//                                                            if record.drag_note_file is on
+//                                                            if record.drag_note_file is on.
+//                                                            WeChat / QQ: the rich item (v0.9,
+//                                                            DragLanding), then the note
 //   terminal   Terminal, iTerm2, Ghostty, Warp, kitty,       the picture's path and the        untouched
 //              WezTerm, Alacritty, Hyper, Tabby              .md's path (Claude Code / Codex
 //                                                            read it) — never the note's text
@@ -98,8 +100,21 @@ public enum DropTargets {
         "com.kagi.kagimacOS",
         "com.tinyspeck.slackmacgap", "com.microsoft.VSCode", "com.microsoft.VSCodeInsiders", "com.todesktop.230313mzl4w4u92",
         "com.exafunction.windsurf", "notion.id", "com.hnc.Discord", "com.electron.lark", "com.bytedance.lark",
-        "com.electron.feishu", "com.bytedance.feishu", "md.obsidian", "com.figma.Desktop", "com.linear",
+        "com.electron.feishu", "com.bytedance.feishu", "com.bytedance.macos.feishu", "com.bytedance.macos.lark",
+        "md.obsidian", "com.figma.Desktop", "com.linear",
     ]
+
+    /// Feishu / Lark, every bundle id its builds have used (the installed Lark.app is com.electron.lark). Chromium
+    /// based but not Electron ("Lark Framework"), and it answers Accessibility for its web content only when a screen
+    /// reader asks (its framework knows AXEnhancedUserInterface, not AXManualAccessibility). v0.9 report: a text drop
+    /// on its chat area is taken and nothing goes in (VoiceCardDrop.swallowsTextDrop), and after a picture's drop the
+    /// note didn't arrive either (FollowUpFocus.Facts.needsText).
+    public static let feishu: Set<String> = [
+        "com.electron.lark", "com.bytedance.lark", "com.electron.feishu", "com.bytedance.feishu", "com.bytedance.macos.feishu",
+        "com.bytedance.macos.lark",
+    ]
+
+    public static func isFeishu(_ bundleID: String?) -> Bool { bundleID.map(feishu.contains) ?? false }
 
     /// Code editors: their focus after a drop may well be a source file (DragFollowUp never pastes there).
     public static let codeEditors: Set<String> = [
@@ -135,6 +150,34 @@ public enum DropTargets {
     /// An Electron app: its bundle carries Electron's framework.
     public static func isElectron(_ appURL: URL, fileManager: FileManager = .default) -> Bool {
         fileManager.fileExists(atPath: appURL.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
+    }
+}
+
+/// The app under a drag, as far as what the drag carries goes (CardPasteboard.drag(into:)): its class, its kind of
+/// composer, and whether Blurt pastes a voice card's words there itself (then the drag leaves them off).
+///  • a shot card into WeChat / QQ (chat, Qt): the rich item, as in v0.8.4 — their composer puts the picture in from
+///    it, then Blurt pastes the note. A file alone (the chat layout) is what v0.8.5 gave them, and from then on only
+///    the picture arrived (v0.9 report): WeChat 4 is Qt and reads no public.png, so a drag of the picture alone is a
+///    bare file URL to it — a file to send, not a picture in the message being typed.
+///  • a voice card over a Feishu / Lark window, when Blurt can paste (VoiceCardDrop.withholdsWords): no words on the
+///    drag, only the capture's tag. Feishu takes a text drop on its chat area and does nothing with it (v0.9 report),
+///    so there Blurt always pastes them itself. Every other app keeps its own text drop.
+public struct DragLanding: Equatable {
+    public var cls: DropClass
+    public var kind: ComposerKind?
+    public var wordsWithheld: Bool
+
+    public init(cls: DropClass, kind: ComposerKind? = nil, wordsWithheld: Bool = false) {
+        self.cls = cls; self.kind = kind; self.wordsWithheld = wordsWithheld
+    }
+
+    /// Where a drag over the app `bundleID` (`kind`: its composer) lands; `voice`: a voice card; `canPaste`: smart paste
+    /// is on and Accessibility granted (the follow-up paste can run).
+    public static func of(bundleID: String?, kind: ComposerKind, voice: Bool, canPaste: Bool) -> DragLanding {
+        let cls = DropTargets.classify(bundleID: bundleID)
+        return DragLanding(cls: cls, kind: kind,
+                           wordsWithheld: voice && VoiceCardDrop.withholdsWords(bundleID: bundleID, cls: cls, kind: kind,
+                                                                                canPaste: canPaste))
     }
 }
 

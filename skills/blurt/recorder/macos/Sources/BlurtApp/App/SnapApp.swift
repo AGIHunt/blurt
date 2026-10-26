@@ -8,7 +8,11 @@
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
 //                             a drag into that kind of app carries (rich chat terminal finder — or the old names web
-//                             text unknown — or a bundle id)
+//                             text unknown — or a bundle id: its composer counts too, WeChat / QQ get the rich item and
+//                             a voice card over Feishu / Lark no words when Blurt can paste them)
+//     voicedrop N PID [taken] [words] as if voice card N was let go of over process PID's window (a stand-in, `droptarget map`),
+//                             refused — or taken — by it: the words pasted through the test route, or copied;
+//                             `words`: the drop beat the rewrite that takes the words off over Feishu
 //     takeout N [CLASS [PID]] as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
 //                             toast; no CLASS: not sure which); PID: it landed in that process (a stand-in mapped to a
 //                             chat app gets the note pasted in after the picture, through the test route)
@@ -84,6 +88,15 @@ extension App {
 
     /// "web" / "text" / … or a bundle id (classified as a drag would)
     func testDropClass(_ s: String) -> DropClass { DropClass(legacy: s) ?? DropTargets.classify(bundleID: s) }
+
+    /// A drag over the app a test names: a class (rich chat terminal finder, or the old names) → that class alone; a
+    /// bundle id → its class and composer (WeChat / QQ: Qt; Feishu, browsers: web), and for a voice card whether the
+    /// words are kept off the drag (as smart paste and Accessibility say now).
+    func testLanding(_ s: String, for shot: Shot) -> DragLanding {
+        if let c = DropClass(legacy: s) { return DragLanding(cls: c) }
+        return DragLanding.of(bundleID: s, kind: DropTargets.composer(bundleID: s, appURL: nil), voice: shot.kind == .voice,
+                              canPaste: SmartPaste.enabled && SmartPaste.accessibility)
+    }
 
     func testCommand(_ cmd: String) {
         let parts = cmd.split(separator: " ", maxSplits: 1).map(String.init)
@@ -161,9 +174,11 @@ extension App {
         case "carddrag":                                // carddrag N PASTEBOARD [CLASS|BUNDLE]: what dragging card N out carries
             let a = arg.split(separator: " ").map(String.init)
             if a.count >= 2, let n = Int(a[0]) {
-                let target = a.count > 2 ? testDropClass(a[2]) : .chat
-                emit(["event": "card_drag", "n": n, "class": target.rawValue,
-                      "types": hanging.testDrag(n: n, for: target, to: NSPasteboard(name: .init(a[1])))])
+                let shot = snapper.cards.last(where: { $0.n == n })
+                let landing = a.count > 2 ? shot.map { testLanding(a[2], for: $0) } ?? DragLanding(cls: testDropClass(a[2])) : DragLanding(cls: .chat)
+                let types = hanging.testDrag(n: n, into: landing, to: NSPasteboard(name: .init(a[1])))
+                emit(["event": "card_drag", "n": n, "class": landing.cls.rawValue, "kind": landing.kind?.rawValue ?? NSNull(),
+                      "words_withheld": landing.wordsWithheld, "types": types])
             }
         case "takeout":                                 // takeout N [CLASS]: as if card N was dragged out and taken
             let a = arg.split(separator: " ").map(String.init)
@@ -175,6 +190,18 @@ extension App {
                 let md = cls.map { c in CardPasteboard.drag(for: c, card: card, attachNote: CardExport.attachNoteFile)
                     .contains { $0.file != nil && $0.file == card.noteFile } } ?? false
                 snapper.takeOut(s, delivered: cls, noteFile: md, landed: landed)
+            }
+        case "voicedrop":                               // voicedrop N PID [taken] [words]: as if voice card N was let go of over
+            let a = arg.split(separator: " ").map(String.init)      // process PID's window (its bundle from `droptarget
+            if a.count > 1, let n = Int(a[0]), let pid = pid_t(a[1]),  // map`), refused — or taken — by the app
+               let s = snapper.cards.last(where: { $0.n == n }) {
+                let t = DropProbe.target(pid: pid)
+                let canPaste = SmartPaste.enabled && SmartPaste.accessibility
+                // `… words`: the drop landed before the drag's rewrite took the words off (they were still on it)
+                let withheld = s.kind == .voice && !a.contains("words")
+                    && VoiceCardDrop.withholdsWords(bundleID: t.bundleID, cls: t.cls, kind: t.kind, canPaste: canPaste)
+                let at = NSPoint(x: NSScreen.main?.frame.midX ?? 0, y: NSScreen.main?.frame.midY ?? 0)
+                snapper.takeOutVoice(s, landed: t, at: at, accepted: a.count > 2 && a[2] == "taken", wordsWithheld: withheld)
             }
         case "droptarget": DropProbe.testCommand(arg)
         case "smartpaste": SmartPaste.shared.testCommand(arg)      // smartpaste key PID | state | set on|off | notefile on|off
@@ -195,7 +222,7 @@ extension App {
             case "drag":                                // taken drag N PASTEBOARD: what dragging it out again carries
                 if let s = find(1), a.count > 2 {
                     let pb = NSPasteboard(name: .init(a[2]))
-                    let items = CardExport.dragItems(s, for: a.count > 3 ? testDropClass(a[3]) : .chat)
+                    let items = CardExport.dragItems(s, into: a.count > 3 ? testLanding(a[3], for: s) : DragLanding(cls: .chat))
                     pb.clearContents()
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])
