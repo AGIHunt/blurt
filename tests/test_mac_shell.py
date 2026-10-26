@@ -214,7 +214,12 @@ class SessionRecoveryWiring(unittest.TestCase):
 
     def test_finish_sheet_primary_and_no_destructive_default(self):
         fin = self.src("Terminal/FinishPanel.swift")
-        self.assertIn(".buttonStyle(.brand)\n                    .keyboardShortcut(.return, modifiers: .command)", fin)
+        # a sheet's one default is the native filled button in the sheet accent (system.md §3.5), on ⌘⏎
+        self.assertIn(".panelDefault()\n                .keyboardShortcut(.return, modifiers: .command)", fin)
+        self.assertNotIn(".buttonStyle(.brand)", fin)
+        # the rare ways out are in the ⋯ menu, never buttons at rest; a gone session is an alert with one button
+        self.assertIn('Button(TL("review.discard"), role: .destructive) { confirmDiscard = true }', fin)
+        self.assertIn('static let gone: Set<String> = ["no_job", "gone", "no_worktree", "bad_job"]', fin)
         self.assertIn('Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)', fin)
         self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
 
@@ -246,7 +251,12 @@ class SessionRecoveryWiring(unittest.TestCase):
         d = self.src("Terminal/DispatchPanel.swift")
         self.assertIn('TL("dispatch.start"))', d)       # "Open in Claude" when the hand-off goes to the desktop app
         self.assertIn('TL("dispatch.start.desktop", DesktopApp.name(m.agent))', d)
-        self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
+        # a panel's default is the native filled button in the sheet accent (system.md §3.5: Hand Off is a dialog)
+        self.assertIn('.panelDefault().keyboardShortcut(.defaultAction)\n                    .disabled(!m.canStart)', d)
+        self.assertNotIn(".buttonStyle(.brand)", d)
+        # one signal for the sign-in check, in the Agent row; never a lone spinner in the footer
+        self.assertIn('BrandSpinnerView(size: 10); Text(TL("dispatch.checking_login"))', d)
+        self.assertNotIn("if m.phase == .checking || m.phase == .starting { BrandSpinnerView() }", d)
         self.assertIn("loginChecked: loginVerified", d)
         # a failed dry run keeps Start off; a failed real start leaves it on to try again
         self.assertIn("&& !checkFailed &&", d)
@@ -256,6 +266,26 @@ class SessionRecoveryWiring(unittest.TestCase):
         # the brand arc (BrandSpinner, or TrackedSpinner: the same arc on its faint track), sized for the empty state
         self.assertRegex(ilc, r"let spinner = (BrandSpinner|TrackedSpinner)\(")
         self.assertNotIn("NSProgressIndicator()", ilc)
+
+    def test_handoff_panels_tell_the_truth_and_block_one_way(self):
+        # panels r2: whatever stops Start is one notice under the items with the way out as the default; the footer
+        # counts all the items; the button says how many sessions start; a disabled default is the system's grey
+        d = self.src("Terminal/DispatchPanel.swift")
+        self.assertIn("enum Block: Equatable { case busy(String), loggedOut, noAgent, failed(String) }", d)
+        self.assertIn("PanelNotice(text: blockText(b))", d)
+        self.assertIn("if m.block != nil { return nil }", d)                    # no promise next to a missing Start
+        self.assertIn('TL("handoff.note.todo.count", m.count, todo)', d)
+        self.assertIn('TL("handoff.start.many", m.sessionsToStart)', d)
+        kit = self.src("Terminal/HandoffKit.swift")
+        self.assertIn("else { content.buttonStyle(.bordered) }", kit)
+        # sessions: a finished turn waiting on you is attention, never the ok check; one primary style per flow
+        style = self.src("Terminal/TerminalStyle.swift")
+        self.assertIn("case .waitingInput, .turnDone: return BrandColor.attn", style)
+        views = self.src("Terminal/SessionsViews.swift")
+        self.assertNotIn(".buttonStyle(.brand)", views)
+        self.assertIn('TL("overlay.gone.take_back")', views)
+        en = (MAC / "Sources/BlurtApp/Resources/en.lproj/Terminal.strings").read_text()
+        self.assertNotIn("`", "".join(l for l in en.splitlines() if l.startswith('"handoff.')))
 
 
 if __name__ == "__main__":

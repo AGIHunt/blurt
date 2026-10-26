@@ -10,12 +10,21 @@ struct SessionItemLabel: Hashable {
     let title: String
 }
 
+/// One mark per state, the same in the list, the header and the ended card (system.md §3.3, the island's rule): the
+/// spinner while the agent works; the attention "!" whenever it is the user's move — a question, a finished turn
+/// waiting for the next prompt, changes ready to review; the ok check only once it is merged or a pull request is
+/// open; the error "×" when it failed; a hollow ring when it is over with nothing to do; an outward arrow when it goes on
+/// in the agent's desktop app.
+enum SessionMark: Equatable { case working, waiting, done, failed, idle, elsewhere }
+
 struct AgentSessionRow: Identifiable {
     let job: Job
     let agent: AgentInfo
     let projectID: String
     let projectName: String
     let items: [SessionItemLabel]
+    /// Ready to review, but its worktree's folder is gone (deleted outside Blurt): nothing left to review.
+    var folderGone = false
 
     var id: String { job.id }
     /// Once the user decided (merged, restarted, discarded…), a failure is past news: the quiet mark of an ended one.
@@ -50,7 +59,37 @@ struct AgentSessionRow: Identifiable {
     }
     /// What the list and the header say about it: its live status, else how it ended ("Ready to review" only when
     /// there is something to review).
-    var stateText: String { Self.stateText(job) }
+    var stateText: String { folderGone ? TL("row.folder_gone") : Self.stateText(job) }
+
+    var mark: SessionMark {
+        if inDesktop && alive { return .elsewhere }
+        switch outcome {
+        case .live(let st):
+            if agent.stalled { return .waiting }
+            switch st {
+            case .running: return .working
+            case .waitingInput, .turnDone: return .waiting
+            case .error: return .failed
+            case .exited: return .idle
+            }
+        case .review: return .waiting
+        case .failed: return .failed
+        case .finished(let f): return f == "merge" || f == "pr" ? .done : .idle
+        case .noChanges, .ended: return .idle
+        }
+    }
+    /// It's the user's move (the attention mark) or it failed: never dimmed.
+    var needsYou: Bool { mark == .waiting || mark == .failed }
+
+    /// The words' ink: attention ink when it waits on you, the error ink when it failed, else secondary (never under
+    /// the readable floor, §2.4).
+    var stateColor: Color {
+        switch mark {
+        case .waiting: return .brandAttnInk
+        case .failed: return .brandErr
+        default: return .secondary
+        }
+    }
 
     /// The one wording of a session's state, wherever it shows (the list, the pane header, the ended card's row, the
     /// job detail's line): its live status — "No response" once the watchdog gave up on it — else how it ended.
@@ -159,7 +198,10 @@ final class SessionsModel: ObservableObject {
             guard keep else { continue }
             let pid = j.project ?? "inbox"
             let name = store.project(id: pid)?.name ?? (pid == "inbox" ? store.inbox.name : a.cwd.lastPathComponent)
-            out.append(AgentSessionRow(job: j, agent: a, projectID: pid, projectName: name, items: HandoffLabels.labels(a.handoff)))
+            guard !PaneMemory.removed().contains(j.id) else { continue }       // Remove Session (its folder was gone)
+            var row = AgentSessionRow(job: j, agent: a, projectID: pid, projectName: name, items: HandoffLabels.labels(a.handoff))
+            if row.outcome == .review, let wt = a.worktree { row.folderGone = !FileManager.default.fileExists(atPath: wt.path) }
+            out.append(row)
         }
         // live first (the one that needs you on top), then ended newest first
         out.sort { l, r in

@@ -52,7 +52,7 @@
 /* Agent session status */
 "session.running" = "Working";
 "session.waiting_input" = "Needs your input";
-"session.turn_done" = "Turn finished";
+"session.turn_done" = "Waiting for you";
 "session.exited" = "Exited";
 "session.error" = "Error";
 

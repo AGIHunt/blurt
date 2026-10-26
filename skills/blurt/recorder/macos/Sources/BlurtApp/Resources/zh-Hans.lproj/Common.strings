@@ -52,7 +52,7 @@
 /* agent 会话状态 */
 "session.running" = "运行中";
 "session.waiting_input" = "等你回答";
-"session.turn_done" = "本轮完成";
+"session.turn_done" = "等你继续";
 "session.exited" = "已退出";
 "session.error" = "出错";
 

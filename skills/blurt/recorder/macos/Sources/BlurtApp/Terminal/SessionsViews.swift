@@ -20,6 +20,8 @@ protocol SessionActions: AnyObject {
     func restart(_ job: String)
     /// its items back to To Do
     func takeBack(_ job: String)
+    /// out of the list for good (its folder was gone and nothing is left with it)
+    func remove(_ job: String)
     /// the ended session's terminal, as the agent left it
     func showOutput(_ job: String)
     /// the agent's desktop app comes forward (Go to Claude)
@@ -35,20 +37,22 @@ struct SessionsList: View {
     @ObservedObject var pane: PaneState
     var select: (String) -> Void
     var newSession: () -> Void
+    var toggle: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
+            // the column's own strip of the title bar (Mail's, Notes'): hide the list and compose, clear of the
+            // traffic lights, at the header's height
+            HStack(spacing: 4) {
+                Spacer()
+                SessionsChromeButtons(listShown: true, toggle: toggle, newSession: newSession)
+            }
+            .padding(.trailing, 10)
+            .frame(height: SessionHeader.height)
+            // no sessions: the list column steps aside (SessionsPaneController) and the detail's empty state is the
+            // one story; nothing is said here
             if model.rows.isEmpty {
-                // the terminal side tells the story; the list just says it's empty
-                VStack(spacing: 4) {
-                    Spacer()
-                    Text(TL("list.empty.title")).font(.callout.weight(.medium)).foregroundStyle(.secondary)
-                    Text(TL("list.empty.body")).font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                }
-                .padding(.horizontal, 22)
-                .frame(maxWidth: .infinity)
+                Spacer()
             } else {
                 List(selection: Binding(get: { pane.job }, set: { if let j = $0 { select(j) } })) {
                     ForEach(model.groups) { g in
@@ -61,34 +65,67 @@ struct SessionsList: View {
                 }
                 .listStyle(.sidebar)
             }
-            Divider()
-            HStack(spacing: 6) {
-                Button(action: newSession) {
-                    Label(TL("list.new"), systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help(TL("list.new.help"))
-                Spacer()
-                let live = Job.runningHere(model.alive.map(\.job))  // a desktop one runs elsewhere
-                if live > 0 {
-                    Text(Loc.plural("list.live", table: "Terminal", count: live)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }
+            // what the rows show, counted by the same marks: "1 working · 1 waiting on you"
+            if let c = countText {
+                Divider()
+                Text(c).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 32)
         }
         .frame(minWidth: 220)
+        // one surface under the list and its count: the sidebar material, as the list draws it
+        .background(SidebarMaterial().ignoresSafeArea())
     }
+
+    var countText: String? {
+        let working = model.rows.filter { $0.mark == .working }.count
+        let waiting = model.rows.filter { $0.mark == .waiting }.count
+        let parts = [working > 0 ? TL("list.count.working", working) : nil, waiting > 0 ? TL("list.count.waiting", waiting) : nil]
+            .compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// Show / hide the list and New Session: in the list's own title-bar strip while it shows, at the header's leading
+/// edge while it is hidden — never both.
+struct SessionsChromeButtons: View {
+    var listShown: Bool
+    var toggle: () -> Void
+    var newSession: () -> Void
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: toggle) { Image(systemName: "sidebar.left").frame(width: 24, height: 22) }
+                .buttonStyle(.borderless).help(TL(listShown ? "header.hide_list" : "header.show_list"))
+                .accessibilityLabel(TL(listShown ? "header.hide_list" : "header.show_list"))
+            // New Session sits with the window's chrome (Mail's, Notes' compose button), not in a footer bar
+            Button(action: newSession) { Image(systemName: "square.and.pencil").frame(width: 24, height: 22) }
+                .buttonStyle(.borderless).help(TL("list.new.help"))
+                .accessibilityLabel(TL("list.new"))
+        }
+        .foregroundStyle(.secondary)
+    }
+}
+
+/// The source-list material behind the whole sessions column (the count under the list included).
+struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .sidebar
+        v.blendingMode = .behindWindow
+        v.state = .followsWindowActiveState
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }
 
 struct AgentSessionRowView: View {
     let row: AgentSessionRow
 
     var body: some View {
-        let outcome = row.outcome
-        let needsYou: Bool = { if case .failed = outcome { return true }; return row.status == .waitingInput }()
         HStack(alignment: .top, spacing: 9) {
-            SessionStatusMark(status: row.status, elsewhere: row.inDesktop).padding(.top, 4)
+            SessionStatusMark(mark: row.mark).padding(.top, 4)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(row.label).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
@@ -98,11 +135,13 @@ struct AgentSessionRowView: View {
                         Text(Loc.relative(row.since)).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
                     }
                 }
+                // the first item's title, never cut: a long one wraps to a second line; the rest as "+1"
                 if !row.subtitle.isEmpty {
-                    Text(row.subtitle).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(row.subtitle).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 5) {
-                    Text(row.stateText).foregroundStyle(needsYou ? row.status.color : Color.secondary)
+                    Text(row.stateText).foregroundStyle(row.stateColor)
                     Text("·").foregroundStyle(.tertiary)
                     Text(row.agentName).foregroundStyle(.secondary)
                     if row.agent.branch != nil {
@@ -114,70 +153,84 @@ struct AgentSessionRowView: View {
             }
         }
         .padding(.vertical, 3)
-        .opacity(row.alive || row.awaitsFinish || needsYou ? 1 : 0.62)
+        .opacity(row.alive || row.needsYou ? 1 : 0.62)
         .accessibilityElement(children: .combine)
     }
 }
 
 // MARK: - Header
 
+/// Above the terminal: the session's mark and title, its state on the line under it, and on the right one stable set
+/// in every state — the Open in Terminal split button (its menu: the other terminal apps) and ⋯. Show / hide the list
+/// and New Session are the list's own (its title-bar strip) while it shows. With no sessions at all there is no header:
+/// the empty state is the whole window.
 struct SessionHeader: View {
     @ObservedObject var model: SessionsModel
     @ObservedObject var pane: PaneState
     weak var actions: SessionActions?
 
+    static let height: CGFloat = 52
+
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Button { actions?.toggleSidebar() } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
-                    .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
-                if let r = pane.job.flatMap({ model.row($0) }) {
-                    SessionStatusMark(status: r.status, size: 11, elsewhere: r.inDesktop)
-                    VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 6) {
-                            Text(r.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                            Text(r.projectName).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        HStack(spacing: 5) {
-                            // the user's own decision (merged, restarted…) is past news: no status colour
-                            // a desktop session's card says where it is: not again here
-                            if !r.inDesktop {
-                                Text(r.stateText).foregroundStyle(r.status == .running || r.agent.finishAction != nil ? Color.secondary : r.status.color)
-                                Text("·").foregroundStyle(.tertiary)
-                            }
-                            Text(r.agentName)
-                            if r.agent.finishAction == nil, let b = r.agent.branch {
-                                Text("·").foregroundStyle(.tertiary)
-                                Label(b, systemImage: "arrow.triangle.branch").labelStyle(.titleAndIcon)
-                                    .font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-                                    .help(TL("header.branch.help", b, r.agent.baseBranch ?? "HEAD"))
-                            }
-                            if r.isAppRunner {
-                                Text("·").foregroundStyle(.tertiary)
-                                Text(TL("header.app_runner")).foregroundStyle(Color.brandAttnInk).help(TL("header.app_runner.help"))
-                            }
-                        }
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+        if model.rows.isEmpty {
+            Color(nsColor: .windowBackgroundColor)      // one ground with the empty state under it: no title-bar band
+        } else {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    if !pane.listShown {
+                        SessionsChromeButtons(listShown: false, toggle: { actions?.toggleSidebar() },
+                                              newSession: { TerminalHost.shared.newSession(project: nil, items: []) })
+                            .padding(.trailing, 4)
                     }
-                    Spacer(minLength: 8)
-                    trailing(r).layoutPriority(1)       // the actions keep their size; the title truncates
-                } else {
-                    Text(TL("header.none")).font(.system(size: 13)).foregroundStyle(.secondary)
-                    Spacer()
+                    if let r = pane.job.flatMap({ model.row($0) }) {
+                        SessionStatusMark(mark: r.mark, size: 12)
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 6) {
+                                Text(r.label).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                                Text(r.projectName).font(.system(size: 12)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            HStack(spacing: 5) {
+                                // a desktop session's card says where it is: not again here
+                                if !r.inDesktop {
+                                    Text(r.stateText).foregroundStyle(r.stateColor)
+                                    Text("·").foregroundStyle(.tertiary)
+                                }
+                                Text(r.agentName)
+                                if r.agent.finishAction == nil, let b = r.agent.branch {
+                                    Text("·").foregroundStyle(.tertiary)
+                                    Label(b, systemImage: "arrow.triangle.branch").labelStyle(.titleAndIcon)
+                                        .font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                                        .help(TL("header.branch.help", b, r.agent.baseBranch ?? "HEAD"))
+                                }
+                                if r.isAppRunner {
+                                    Text("·").foregroundStyle(.tertiary)
+                                    Text(TL("header.app_runner")).foregroundStyle(Color.brandAttnInk).help(TL("header.app_runner.help"))
+                                }
+                            }
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        trailing(r).layoutPriority(1)       // the actions keep their size; the title truncates
+                    } else {
+                        Text(TL("header.none")).font(.system(size: 13)).foregroundStyle(.secondary)
+                        Spacer()
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.leading, pane.headerLead)
+                .frame(height: Self.height - 1)
+                Divider()
             }
-            .padding(.horizontal, 12)
-            .frame(height: 51)
-            Divider()
+            .background(.bar)
         }
-        .background(.bar)
     }
 
     @ViewBuilder
     func trailing(_ r: AgentSessionRow) -> some View {
+        let live = r.alive && !r.isAppRunner && !r.agent.isDesktop
+        let preferred = ExternalTerminals.installed.first { $0.id == ExternalTerminals.preferred }?.name ?? "Terminal"
         HStack(spacing: 8) {
             // the ended card has the primary Review Changes…; while its output is shown instead, a plain one here
             if r.awaitsFinish && !r.alive && pane.attach == .attached {
@@ -185,20 +238,19 @@ struct SessionHeader: View {
                     .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
-            if r.alive && !r.isAppRunner && !r.agent.isDesktop {
-                Menu {
-                    ForEach(ExternalTerminals.installed, id: \.id) { t in
-                        Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.forward.app")
-                } primaryAction: {
-                    actions?.openExternal(r.id, terminal: ExternalTerminals.preferred)
+            // one control, split: the click opens it in the preferred terminal app, the arrow lists the others
+            Menu {
+                ForEach(ExternalTerminals.installed, id: \.id) { t in
+                    Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
                 }
-                .menuStyle(.borderlessButton).menuIndicator(.visible).fixedSize()
-                .help(TL("header.open_external.help"))
-                .accessibilityLabel(TL("header.open_external.help"))
+            } label: {
+                Text(TL("header.open_in", preferred))
+            } primaryAction: {
+                actions?.openExternal(r.id, terminal: ExternalTerminals.preferred)
             }
+            .menuStyle(.button).controlSize(.small).fixedSize()
+            .disabled(!live)
+            .help(TL("header.open_external.help"))
             Menu {
                 if r.alive {
                     // the desktop card has Go to Claude as its primary; the menu has it too
@@ -304,9 +356,15 @@ struct SessionOverlay: View {
                 if !model.rows.isEmpty {
                     card { Text(TL("overlay.pick")).foregroundStyle(.secondary) }
                 } else {
-                    // first launch of the sessions window: the one empty state (§3.5)
-                    EmptyStateContent(title: TL("overlay.empty.title"), message: TL("overlay.empty.body")) {
-                        Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }.buttonStyle(.brand)
+                    // first launch of the sessions window: the one empty state (§3.5), its middle at about 40 % of the
+                    // pane (the space above two thirds of the space below)
+                    GeometryReader { g in
+                        EmptyStateContent(title: TL("overlay.empty.title"), message: TL("overlay.empty.body")) {
+                            // the flow's one primary style: the native default in the sheet accent, as the panel it opens
+                            Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }
+                                .panelDefault().controlSize(.large).keyboardShortcut(.defaultAction)
+                        }
+                        .padding(.bottom, g.size.height * 0.2)
                     }
                     .background(Color(nsColor: .windowBackgroundColor))
                 }
@@ -322,26 +380,21 @@ struct SessionOverlay: View {
             .background(Color(nsColor: .windowBackgroundColor))
     }
 
+    /// The ended card: its mark in the state's colour at 24 pt, how it ended as a sentence ("Ready to review"), the
+    /// items under it as the list draws them, one line on what waits, and the one next step as the native default (the
+    /// sheet it opens has the same). Its folder gone: says so, and offers Take Back Items (or Remove Session) instead of
+    /// a review that would fail.
     @ViewBuilder
     func endedSummary(_ r: AgentSessionRow) -> some View {
         let outcome = r.outcome
-        SessionStatusMark(status: r.status, size: 14, elsewhere: r.inDesktop)
-        Text(Self.endedTitle(r)).font(.headline).multilineTextAlignment(.center)
+        SessionStatusMark(mark: r.mark, size: 24).padding(.bottom, 2)
+        Text(Self.endedTitle(r)).font(.system(size: 15, weight: .semibold)).multilineTextAlignment(.center)
+        if !r.items.isEmpty { itemLines(r) }
         if case .failed = outcome, let why = JobLook.errorText(r.job), !r.agent.lastOutput.contains(why) {
             Text(why).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
                 .fixedSize(horizontal: false, vertical: true)
         }
         if case .failed = outcome, !r.agent.lastOutput.isEmpty { lastOutput(r.agent.lastOutput) }
-        if !r.items.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(r.items.prefix(5), id: \.self) { i in
-                    HStack(spacing: 6) {
-                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
-                        Text(i.title).lineLimit(1)
-                    }.font(.callout)
-                }
-            }
-        }
         if let hint = Self.endedHint(r) {
             Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 400)
                 .fixedSize(horizontal: false, vertical: true)
@@ -349,16 +402,25 @@ struct SessionOverlay: View {
         let output = r.hasOutput
         let inFlight = recovering.contains(r.id)     // a Restart / Take Back already on its way: not twice
         HStack(spacing: 8) {
+            if r.folderGone {
+                if Self.itemsWithIt(r) {
+                    Button(TL("overlay.gone.take_back")) { actions?.takeBack(r.id) }
+                        .panelDefault().keyboardShortcut(.defaultAction).disabled(inFlight)
+                } else {
+                    Button(TL("overlay.gone.remove")) { actions?.remove(r.id) }
+                        .panelDefault().keyboardShortcut(.defaultAction)
+                }
+            } else {
             switch outcome {
             case .review:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
-                Button(TL("header.review")) { actions?.review(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                Button(TL("header.review")) { actions?.review(r.id) }.panelDefault().keyboardShortcut(.defaultAction)
             case .failed, .noChanges, .ended:
                 if Self.itemsWithIt(r) { Button(TL("overlay.take_back")) { actions?.takeBack(r.id) }.disabled(inFlight) }
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
                 if Self.itemsWithIt(r) {
                     if case .failed = outcome {
-                        Button(TL("overlay.restart")) { actions?.restart(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+                        Button(TL("overlay.restart")) { actions?.restart(r.id) }.panelDefault().keyboardShortcut(.defaultAction)
                             .disabled(inFlight)
                     } else {
                         Button(TL("overlay.restart")) { actions?.restart(r.id) }.disabled(inFlight)
@@ -368,8 +430,24 @@ struct SessionOverlay: View {
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }
+            }
         }
-        .padding(.top, 4)
+        .controlSize(.large)
+        .padding(.top, 6)
+    }
+
+    /// A session's items as the list draws them: kind icon, id in tabular secondary, title (five at most).
+    func itemLines(_ r: AgentSessionRow) -> some View {
+        let kinds = r.job.items.map { IndexLookup.item(uid: $0)?.kind ?? "issue" }
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(r.items.prefix(5).enumerated()), id: \.offset) { n, i in
+                HStack(spacing: 8) {
+                    Image(nsImage: Look.kindImage(kinds.indices.contains(n) ? kinds[n] : "issue", size: KindStyle.smallSize))
+                    Text(i.id).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                    Text(i.title).font(.system(size: 13)).lineLimit(1)
+                }
+            }
+        }
     }
 
     /// A session in the agent's desktop app: nothing live here. Its items, what moves them (the agent's reports), and
@@ -384,21 +462,13 @@ struct SessionOverlay: View {
                 : r.agent.continuedFrom != nil ? "overlay.desktop.body_continued" : "overlay.desktop.body", app))
             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 420)
             .fixedSize(horizontal: false, vertical: true)
-        if !r.items.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(r.items.prefix(5), id: \.self) { i in
-                    HStack(spacing: 6) {
-                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
-                        Text(i.title).lineLimit(1)
-                    }.font(.callout)
-                }
-            }
-        }
+        if !r.items.isEmpty { itemLines(r) }
         HStack(spacing: 8) {
             if r.agent.worktree != nil { Button(TL("header.review")) { actions?.review(r.id) } }
-            Button(TL("header.go_desktop", app)) { actions?.goToDesktop(r.id) }.buttonStyle(.brand).keyboardShortcut(.defaultAction)
+            Button(TL("header.go_desktop", app)) { actions?.goToDesktop(r.id) }.panelDefault().keyboardShortcut(.defaultAction)
         }
-        .padding(.top, 4)
+        .controlSize(.large)
+        .padding(.top, 6)
     }
 
     /// What the agent said last, as it left its window: the reason in its own words.
@@ -414,8 +484,9 @@ struct SessionOverlay: View {
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color(nsColor: .separatorColor)))
     }
 
-    /// "Codex couldn’t start", "Session ended · no changes", "Merged"…
+    /// "Ready to review", "Codex couldn’t start", "Ended with no changes", "Merged"… — a sentence, never a log line.
     static func endedTitle(_ r: AgentSessionRow) -> String {
+        if r.folderGone { return TL("overlay.gone.title") }
         switch r.outcome {
         case .failed(let atStart): return TL(atStart ? "overlay.failed_start.title" : "overlay.failed.title", r.agentName)
         case .review: return TL("overlay.review.title")
@@ -433,6 +504,7 @@ struct SessionOverlay: View {
     /// What the session's items are waiting for now (an exit moves nothing; only the agent's report does): the
     /// review, still in progress (it never reported back), to verify, or nothing at all when they are done.
     static func endedHint(_ r: AgentSessionRow) -> String? {
+        if r.folderGone { return TL("overlay.gone.body") }
         if r.outcome == .review { return TL("overlay.ended.review_hint") }
         if case .failed = r.outcome { return nil }
         // restarted, merged, discarded…: its items went on elsewhere (a new session, To Do) — nothing to say here

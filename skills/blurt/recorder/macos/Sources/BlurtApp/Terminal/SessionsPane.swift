@@ -8,6 +8,7 @@
 // its card says so (Go to Claude, Review Changes…); Continue in Claude Desktop moves a terminal session there, asking
 // first — and, without the blurt MCP installed for Claude, saying the items then need marking by hand, with Install….
 import AppKit
+import Combine
 import SwiftUI
 import BlurtCore
 
@@ -16,9 +17,16 @@ final class PaneState: ObservableObject {
     @Published var job: String?
     @Published var attach: AttachState = .none
     @Published var listShown = true
+    /// the header's extra leading inset (clear of the traffic lights while the list is hidden)
+    @Published var headerLead: CGFloat = 0
     @Published var finishing: String?           // job whose worktree result is being reviewed (sheet)
     /// The ended session whose output the user asked to see (Show Output): its dead window stays attached.
     var outputShown: String?
+}
+
+/// The list | detail split: no divider line while the list is hidden (the empty state, the main window's pane).
+final class PaneSplitView: NSSplitView {
+    override var dividerThickness: CGFloat { arrangedSubviews.first?.isHidden == true ? 0 : super.dividerThickness }
 }
 
 @MainActor
@@ -26,10 +34,11 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     let state = PaneState()
     let model = SessionsModel.shared
     let surface = TerminalSurface(frame: NSRect(x: 0, y: 0, width: 760, height: 520))
-    private let split = NSSplitView()
+    private let split = PaneSplitView()
     private var listHost: NSHostingView<SessionsList>!
     private weak var overlay: NSView?
     private var token: UUID?
+    private var rowsWatch: AnyCancellable?
     let paneID: String
 
     init(paneID: String = "main") {
@@ -44,7 +53,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     override func loadView() {
         model.start()
         listHost = NSHostingView(rootView: SessionsList(model: model, pane: state, select: { [weak self] in self?.attach(job: $0) },
-                                                        newSession: { TerminalHost.shared.newSession(project: nil, items: []) }))
+                                                        newSession: { TerminalHost.shared.newSession(project: nil, items: []) },
+                                                        toggle: { [weak self] in self?.toggleList() }))
         let detail = NSView()
         let header = NSHostingView(rootView: SessionHeader(model: model, pane: state, actions: self))
         let overlay = NSHostingView(rootView: SessionOverlay(model: model, pane: state, actions: self))
@@ -55,10 +65,11 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
             header.heightAnchor.constraint(equalToConstant: 52),
             header.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            // the terminal runs to the window's edges (its own margin is inside it, in its own colour)
             surface.topAnchor.constraint(equalTo: header.bottomAnchor),
-            surface.leadingAnchor.constraint(equalTo: detail.leadingAnchor, constant: 10),
-            surface.trailingAnchor.constraint(equalTo: detail.trailingAnchor, constant: -4),
-            surface.bottomAnchor.constraint(equalTo: detail.bottomAnchor, constant: -6),
+            surface.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
+            surface.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            surface.bottomAnchor.constraint(equalTo: detail.bottomAnchor),
             overlay.topAnchor.constraint(equalTo: header.bottomAnchor),
             overlay.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
             overlay.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
@@ -66,6 +77,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         ])
         // the pane takes whatever size its host gives it: SwiftUI's ideal sizes must not shrink the window
         listHost.sizingOptions = []
+        if #available(macOS 13.3, *) { listHost.safeAreaRegions = [] }   // its own strip of the title bar, at the header's height
         header.sizingOptions = []
         if #available(macOS 13.3, *) { header.safeAreaRegions = [] }     // lines up with a 52 pt unified title bar
         overlay.sizingOptions = []
@@ -78,8 +90,18 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         listHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         listHost.widthAnchor.constraint(lessThanOrEqualToConstant: 340).isActive = true
         detail.widthAnchor.constraint(greaterThanOrEqualToConstant: paneID == "main" ? 360 : 420).isActive = true
-        listHost.isHidden = !state.listShown
+        listHost.isHidden = !state.listShown || model.rows.isEmpty
+        listVisibilityChanged()
         view = split
+        // no sessions: the list column steps aside, the detail's empty state is the one story; it comes back with the
+        // first session (where the user keeps it shown)
+        rowsWatch = model.$rows.map(\.isEmpty).removeDuplicates().receive(on: RunLoop.main).sink { [weak self] empty in
+            guard let self = self, self.state.listShown, self.listHost.isHidden != empty else { return }
+            self.listHost.isHidden = empty
+            self.listVisibilityChanged()
+            self.split.adjustSubviews()
+            if !empty { self.split.setPosition(250, ofDividerAt: 0); self.growIfCompact() }
+        }
         surface.onState = { [weak self] s in
             self?.state.attach = s
             self?.overlay?.isHidden = s == .attached       // out of the way of the terminal's clicks and scrolling
@@ -92,8 +114,23 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     override func viewDidAppear() {
         super.viewDidAppear()
         // setting the divider shows a hidden list again: only when it is meant to be seen
-        if state.listShown { split.setPosition(250, ofDividerAt: 0) }
+        if state.listShown && !model.rows.isEmpty { split.setPosition(250, ofDividerAt: 0) }
         if state.job == nil { attach(job: nil) }
+    }
+
+    /// The Sessions window opened compact on its empty state: the first session brings it to its working size, its
+    /// top-left corner kept.
+    private func growIfCompact() {
+        guard let w = view.window as? SessionsWindow, w.frame.width < SessionsWindowController.compact.width + 40 else { return }
+        let top = NSPoint(x: w.frame.minX, y: w.frame.maxY)
+        w.setContentSize(SessionsWindowController.full)
+        w.setFrameTopLeftPoint(top)
+    }
+
+    /// Without the list the header starts at the window's left edge: in a window of its own (not the main window's
+    /// pane) it keeps clear of the traffic lights.
+    private func listVisibilityChanged() {
+        state.headerLead = paneID != "main" && listHost.isHidden ? 80 : 0
     }
 
     deinit { if let t = token { JobStore.shared.removeObserver(t) } }
@@ -118,7 +155,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             ctx.allowsImplicitAnimation = true
-            listHost.isHidden = !state.listShown
+            listHost.isHidden = !state.listShown || model.rows.isEmpty
+            listVisibilityChanged()
             split.adjustSubviews()
             if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         }
@@ -248,6 +286,12 @@ extension SessionsPaneController: SessionActions {
 
     func takeBack(_ job: String) { SessionRecovery.takeBack(job) { [weak self] e in self?.presentError(e) } }
 
+    func remove(_ job: String) {
+        PaneMemory.remove(job)
+        model.rebuild()
+        if state.job == job { attach(job: model.preferred?.id) }
+    }
+
     func showOutput(_ job: String) {
         state.outputShown = job
         surface.attach(job, force: true, output: true)
@@ -272,13 +316,23 @@ enum PaneMemory {
         (try? Data(contentsOf: url)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
     }
     static func last(_ pane: String) -> String? { (read()["panes"] as? [String: String])?[pane] }
+    /// Sessions the user removed from the list (Remove Session, once its folder was gone): never listed again.
+    static func removed() -> Set<String> { Set(read()["removed"] as? [String] ?? []) }
+    static func remove(_ job: String) {
+        var o = read()
+        o["removed"] = Array(removed().union([job])).sorted()
+        write(o)
+    }
+    private static func write(_ o: [String: Any]) {
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if let d = try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: url, options: .atomic) }
+    }
     static func set(_ pane: String, _ job: String) {
         var o = read()
         var p = o["panes"] as? [String: String] ?? [:]
         guard p[pane] != job else { return }
         p[pane] = job
         o["panes"] = p
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if let d = try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]) { try? d.write(to: url, options: .atomic) }
+        write(o)
     }
 }
