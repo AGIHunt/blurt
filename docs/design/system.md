@@ -250,11 +250,12 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Selection outline | **G** stroke | 2 pt dashes (6 / 4), the gradient corner to corner across the selection, over a 2 pt `brand.on` @ 60 % solid under-stroke so it holds on white and black. The dashes march (10 pt/s) while dragging and stop with Reduce Motion. *The only thin gradient line in the system.* |
 | Handles | M | 9 × 9, r 2.5, 1.5 pt white ring, 1 pt shadow |
 | Size label | M | pill, `brand.on` monospaced digits |
-| Snap / Record button (picker toolbar) | **B** | white semibold title; a small `rec` dot before "Record" (`PillButton(gradient:fg:dot:)`) |
-| Hint pill, other toolbar buttons | — | dark glass, white text |
+| Snap / Record button (picker toolbar) | **B** | white semibold title led by the island's own line glyph in white — `record` before "Start recording", `snap` before "Snap" (`PillButton(icon:gradient:fg:)`, v0.9-userfix: the red dot on the gradient clashed, the SF camera wasn't our family) |
+| Picker toolbar | — | a piece of the island: black at 92 %, a 0.5 pt white 14 % hairline, radius 22 (v0.9-userfix: no longer a HUD glass that took the colour of what was under it); its other buttons white 10 % with white text |
+| Hint pill | — | dark glass, white text |
 | Dim outside the selection | — | black 42 % |
 | Window hover | M + T | 2 pt mint line, flat `brand.tint` (island, 20 %) inside, mint label pill with `brand.on` text (v2.1: the field wash went) |
-| Countdown ring | `rec` | the recording is committed |
+| Countdown | `rec` ring, M chip | v0.9-userfix: a piece of the island over the area (black, radius 24, the window's soft shadow, 0.5 pt white 12 % hairline): the number (44 semibold, monospaced digits, white 92 %) in a 3 pt ring on a white 12 % track that drains in `rec` — the recording is committed; the 4A chick (26 pt, `listening`) beside "Get ready" (14 semibold); the pause / finish keys (11.5 medium, white 60 %); *Start now* as the island's tint chip in mint (a click anywhere on the area starts too) |
 | Recording frame | `rec` | solid 2.5 pt. Paused: `attn` dashed. The switch from mint to red at the end of the countdown *is* the "now recording" signal. |
 | Snap while recording (`borderFlash`) | M | 3 pt flat mint ring, 450 ms, outside the red frame (v2.1: no halo) |
 | Standalone snap shutter | — | white flash |
@@ -269,6 +270,7 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | Listening (dictation, voice note): level bars | **G** vertical | one gradient across the bar group |
 | Listening aura | **glow** | `gradient.glow` under the notch at 35–55 %, fades in over 200 ms when listening starts and out when it stops. Only while listening or capturing; never while idle. |
 | Dictation keyboard glyph, voice mic glyph | M | |
+| Voice note Structured (v0.9-userfix) | T + M | the open island's chip under the chick: the `list` glyph and "Structured" — quiet (white 8 %, text 60 %) while off, the mint tint chip with mint text while on (as *Pen on*); the right ear then shows dictation's list mark before the time, and a click on the ear toggles too |
 | Recording ear | `rec` dot + white time | paused: the pause bars (not the dot) and the time in `attn` — never colour alone. The right ear: the stills taken (the snap frame), markers apart (a flag), the pen while it is latched (M). Discard asks first, the question on its own line with what goes with it (its snaps and its markers apart), then Discard · Restart · Keep Recording — Keep where Finish was, and the default: filled with the brand gradient like every suggested answer in the island, chosen by ↩ (the question takes the keyboard while it shows; Esc closes the island and keeps the take too); Discard furthest from it, its red quieter (32 %) than the default — a destructive button is never the one that stands out. The open island says *Paused*, or *Pen on · Esc to stop* (a tint chip, click = off), or the pen hint with the modifier as a keycap. The mic level bars there are **G** too (blurt hears you), but there is **no glow**: red owns that moment. |
 | Ears | — | each ear's content sits 14 pt from the island's **outer** edge (`IslandLayout.earOrigin`), so a glyph keeps one leading x and a number one trailing x through every state; content wider than 56 pt widens both ears (`IslandLayout.earSpan`) rather than giving up the inset ("✓ 已发送" sat 4 pt from the corner); the other ear's content stays where it was (`IslandLayout.earReach`: measured from the notch by its own need, the extra black outside it), so a glyph never jumps because the ear across the notch grew; content never cross-fades (no implicit layer actions). One live meter at a time: with the voice island open the left ear shows the mic glyph, the waveform is the row's. **Every ear glyph is our line family at one weight** (`BlurtIcon`, 13 pt for a count): the cards count is the `cards` stack with its number in mint (the cards' clasp colour); the inbox count is the `inbox` tray at 60 %; stills the `snap` frame, markers the `flag` — no filled SF Symbols beside dictation's line keyboard. Dictation's clock turns `attn` from 4:30, when it counts down to the limit (not only a minus sign) |
 | Island buttons | — | the round buttons and the glyphs in the island's pills are our line family too (`IslandButton(icon:)`: record / snap / mic on home, pause / snap / trash / stop while recording, the check on Done, the pencil on *Pen on*): the mic that starts a voice note is the mic on its card. The drawer's list rows keep SF Symbols, as any Mac list. Unassigned is `tray.2` everywhere (the chip, the switcher, the menu bar, the note's *Goes to*): the tray is the Inbox |
@@ -504,7 +506,7 @@ Reduce Motion: the still frame must still say the state.
 | Listening (dictation, voice note, mic test) | G bars + glow | Bars follow the level and settle to 2.5 pt dots in silence. The glow fades in over 200 ms and breathes ±10 % opacity with the level, never faster than 0.6 s. |
 | Choosing an area | G dashed stroke, M handles / label | Dashes march while dragging. |
 | Choosing a window | M line + 22 % wash | 120 ms cross-fade between windows |
-| Countdown | `rec` ring | The ring drains each second; at 0 the selection stroke cross-fades G → `rec` in 200 ms. |
+| Countdown | `rec` ring | The ring drains each second (linear; the only thing that moves — the chick's listening loop aside); the number swaps with a 0.14 s fade; at 0 the selection stroke cross-fades G → `rec` in 200 ms. Reduce Motion: the ring full and still. |
 | Recording | `rec` frame and dot | The island dot breathes (1.6 s); the frame is still. |
 | Paused | `attn` dashed | No motion: stillness is the signal. |
 | Snap | white shutter / M ring | 320 / 450 ms, once |
@@ -663,7 +665,7 @@ yellow and its bounce.
 | Section headings | 13.5–15 semibold | — |
 | Window / page titles | 17–20 semibold | `--fs-title` 20 px (21 GNOME) |
 | Numbers (times, sizes, counts) | `monospacedDigitSystemFont`, 11–12 medium / semibold | `font-variant-numeric: tabular-nums`, `--mono` |
-| Countdown | 64 bold | — |
+| Countdown | 44 semibold, monospaced digits | — |
 | Chinese | system fallback PingFang SC | `--font` lists PingFang SC / YaHei / Noto CJK |
 
 Rules: one family (the system face) in the app; weight, not colour, makes the hierarchy; brand colour never sets

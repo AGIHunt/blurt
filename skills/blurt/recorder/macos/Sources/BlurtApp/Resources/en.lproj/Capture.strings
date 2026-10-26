@@ -40,7 +40,8 @@
 "capture.countdown.finish" = "finish";
 "capture.countdown.pause" = "pause / resume";
 "capture.countdown.ready" = "Get ready";
-"capture.countdown.skip" = "click to skip";
+"capture.countdown.skip" = "Skip the countdown and start recording now";
+"capture.countdown.start_now" = "Start now";
 "capture.discarded" = "Discarded";
 "capture.drawer.drop_title" = "MOVE TO";
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
@@ -285,6 +286,14 @@
 "capture.voice.time_left" = "%@ left";
 "capture.voice.maxed" = "Reached %@ — the voice note is saved";
 "capture.voice.words_failed" = "Couldn’t transcribe the note";
+"capture.voice.structured" = "Structured";
+"capture.voice.structured_tip" = "When you finish: laid out as a list, with only your corrected wording (or press ⇧ on its own)";
+"capture.voice.structured_off_tip" = "Back to your own words (or press ⇧ on its own)";
+"capture.voice.structured_ax_on" = "on";
+"capture.voice.structured_ax_off" = "off";
+"capture.voice.structured_on" = "Structured: a list when you finish, with your corrections settled · ⇧ to go back";
+"capture.voice.structured_off" = "Back to your own words";
+"capture.voice.structure_failed" = "Couldn’t structure it — kept as you said it";
 "capture.live.ax" = "What you’ve said so far";
 "capture.live.more" = "… %ld more lines";
 "capture.voice_drop.hint_paste" = "Let go to paste into %@";

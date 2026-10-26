@@ -254,9 +254,15 @@ final class Snapper {
     /// with a project it is filed once they are transcribed; without words (or a project) it hangs as a card.
     /// `stream`: the pieces transcribed while it was said — its last piece is all that is left (else the whole wav).
     func voiceFinished(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream: VoiceNoteStream? = nil,
-                       heard: String? = nil) {
+                       heard: String? = nil, structured: Bool = false) {
         let s = b.addVoice(n: n, duration: duration, project: project)
         s.heard = heard         // the card shows the words already heard until its own are in
+        if structured {
+            // Structured (⇧ while it listened): its words go through the structuring pass once they are in (kept in
+            // shots.jsonl, so a retry or a restart does the same)
+            s.structure = true
+            b.save(s)
+        }
         if let st = stream { streamed[ObjectIdentifier(s)] = st }
         emit(["event": "voice", "n": n, "session": b.dir.path, "duration": duration, "project": project ?? NSNull(),
               "streamed": stream != nil])
@@ -286,7 +292,7 @@ final class Snapper {
         let take = wordsTake[key] ?? 0
         s.transcription = .pending
         hanging.update(s)
-        if let st = streamed.removeValue(forKey: key) {
+        if let st = streamed.removeValue(forKey: key), Snapper.testWords == nil {
             // a voice note transcribed while it was said: only its last piece is left
             let t0 = CACurrentMediaTime()
             st.finish { [weak self] text in
@@ -308,7 +314,7 @@ final class Snapper {
         let fail = Snapper.testFailWords()
         DispatchQueue.global(qos: .userInitiated).async {
             if let d = Snapper.testWordsDelay { Thread.sleep(forTimeInterval: d) }
-            let r = fail ? nil : VoiceInput.transcribePiece(wav, prior: "")
+            let r = fail ? nil : Snapper.testWords.map { ["ok": true, "text": $0] } ?? VoiceInput.transcribePiece(wav, prior: "")
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
             DispatchQueue.main.async { self.wordsArrived(s, text, key: key, take: take, via: "whole") }
         }
@@ -316,9 +322,12 @@ final class Snapper {
 
     /// The words of `s` are in (nil: transcription failed; "": no speech in it). `take`: which recording they are of
     /// (the words of a take since replaced by a re-record are dropped: voiceReplaced).
-    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String) {
+    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String, structured: Bool = false) {
         guard take == wordsTake[key] ?? 0 else {
             return emit(["event": "voice_text_stale", "n": s.n, "via": via])
+        }
+        if !structured, s.structure, !s.deleted, let t = text, !t.isEmpty {
+            return structureWords(s, t, key: key, take: take, via: via)
         }
         emit(["event": "voice_text", "n": s.n, "ok": text != nil, "empty": text?.isEmpty ?? false, "via": via,
               "wall": Date().timeIntervalSince1970])
@@ -346,6 +355,32 @@ final class Snapper {
             s.transcription = .idle
         }
         for f in pendingWords.removeValue(forKey: key) ?? [] { f(s.said) }
+    }
+
+    /// A Structured voice note's words → the polish model's structuring pass (Dictation.structure: the request
+    /// dictation's Structured makes — lists laid out, self-corrections settled, a paragraph left one). The card's note
+    /// is its text, the transcript stays as `said_raw` (BlurtCore VoiceNoteStructure); no model or a refusal: the
+    /// transcript, and the island says so.
+    private func structureWords(_ s: Shot, _ raw: String, key: ObjectIdentifier, take: Int, via: String) {
+        let vocab = DictationVocabulary.shared.payload()
+        let t0 = CACurrentMediaTime()
+        s.transcription = .pending
+        hanging.update(s)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
+                ?? Dictation.structure(raw, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab)
+            let fellBack = r == nil || r?["fell_back"] as? Bool == true
+            let text = fellBack ? nil : r?["text"] as? String
+            DispatchQueue.main.async {
+                let k = VoiceNoteStructure.keep(raw: raw, structured: text)
+                emit(["event": "voice_structure", "n": s.n, "ms": Int((CACurrentMediaTime() - t0) * 1000),
+                      "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? NSNull(),
+                      "changed": k.raw != nil])
+                s.saidRaw = k.raw
+                if r == nil { island.toast(Loc.t("capture.voice.structure_failed", table: "Capture"), key: "voice-style", seconds: 5) }
+                self.wordsArrived(s, k.said, key: key, take: take, via: via, structured: true)
+            }
+        }
     }
 
     /// "Couldn't turn the note into words · Retry" / "No words recognized · Retry".
@@ -405,6 +440,16 @@ final class Snapper {
     private static var testFailsLeft: Int = {
         let env = ProcessInfo.processInfo.environment
         return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_WORDS_FAIL"].flatMap(Int.init) ?? 0 : 0
+    }()
+    /// Scripted checks (test commands only): BLURT_TEST_WORDS=TEXT stands in for the speech model's answer (the whole
+    /// wav's), BLURT_TEST_STRUCTURE=TEXT for the polish model's structuring pass ("-": no answer — no model).
+    static let testWords: String? = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_WORDS"] : nil
+    }()
+    static let testStructure: String? = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" ? env["BLURT_TEST_STRUCTURE"] : nil
     }()
     private static func testFailWords() -> Bool {
         guard testFailsLeft > 0 else { return false }

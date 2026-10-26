@@ -53,6 +53,15 @@
 "app.record.reason.stopped" = "macOS stopped the recording";
 "app.record.reason.no_frames" = "No picture came in";
 "app.record.reason.unknown" = "Something went wrong";
+"app.record.failed.display_gone" = "The display being recorded was disconnected partway, so nothing from this take was kept. Connect it again, then record again.";
+"app.record.failed.interrupted" = "The Mac went to sleep, locked or started the screen saver partway, so nothing from this take was kept. Keep the Mac awake while you record.";
+"app.record.failed.writer" = "Writing the video file failed partway, so nothing from this take was kept. Recording again usually works; the exact error is in the log.";
+"app.record.reason.display_gone" = "The recorded display was disconnected";
+"app.record.reason.interrupted" = "Sleep or the lock screen stopped the recording";
+"app.record.reason.writer" = "Writing the video file failed";
+"app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
+"app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
+"app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
 "app.record.not_saved" = "%@ — recording not saved";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
 "app.record.failed_why" = "%1$@ · %2$@";

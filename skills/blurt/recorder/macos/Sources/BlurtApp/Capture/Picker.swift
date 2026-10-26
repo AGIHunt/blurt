@@ -431,19 +431,22 @@ final class SelectionOutline: NSView {
     }
 }
 
-/// A pill on the capture chrome (the picker's toolbar). Neutral glass by default; the primary action takes
-/// `gradient` (BrandGradient.buttonStops) with a white semibold title — hover is a white film (×1.04), pressed a black
-/// one (×0.92). `dot`: a small dot before the title (Record: `rec`).
+/// A pill on the capture chrome (the picker's toolbar). Neutral (white 10 % on the island's black) by default; the
+/// primary action takes `gradient` (BrandGradient.buttonStops) with a white semibold title — hover is a white film
+/// (×1.04), pressed a black one (×0.92). `icon`: one of our line glyphs before the title (v0.9-userfix: Record leads
+/// with the island's record glyph in white, Snap with its snap frame — the red dot on the gradient clashed with it,
+/// and the SF camera wasn't the island's family). `dot`: a small dot before the title (kept for callers).
 final class PillButton: NSButton {
     var fill: NSColor = NSColor(white: 1, alpha: 0.12)
     var fg: NSColor = .white
     var gradient: [(UInt32, CGFloat)]?
     var dot: NSColor?
+    var icon: BlurtIcon?
     var hovering = false { didSet { needsDisplay = true } }
     private static let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
     private static let dotSize: CGFloat = 9
 
-    convenience init(_ title: String, symbol: String? = nil, fill: NSColor = NSColor(white: 1, alpha: 0.1),
+    convenience init(_ title: String, symbol: String? = nil, icon: BlurtIcon? = nil, fill: NSColor = NSColor(white: 1, alpha: 0.1),
                      gradient: [(UInt32, CGFloat)]? = nil, fg: NSColor = .white, dot: NSColor? = nil,
                      target: AnyObject, action: Selector) {
         self.init(frame: .zero)
@@ -452,11 +455,12 @@ final class PillButton: NSButton {
         self.gradient = gradient
         self.fg = fg
         self.dot = dot
+        self.icon = icon
         self.target = target
         self.action = action
         isBordered = false
         if let s = symbol { image = NSImage(systemSymbolName: s, accessibilityDescription: title) }
-        let lead: CGFloat = dot != nil ? PillButton.dotSize + 6 : symbol != nil ? 18 : 0
+        let lead: CGFloat = dot != nil ? PillButton.dotSize + 6 : icon != nil ? 21 : symbol != nil ? 18 : 0
         let w = NSAttributedString(string: title, attributes: [.font: PillButton.font]).size().width + 28 + lead
         setFrameSize(NSSize(width: ceil(w), height: 32))
         addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
@@ -501,6 +505,11 @@ final class PillButton: NSButton {
             let ring = NSBezierPath(ovalIn: o.insetBy(dx: 0.5, dy: 0.5))
             ring.lineWidth = 1
             ring.stroke()
+        } else if let ic = icon {
+            let side: CGFloat = 15
+            x += (side + 6) / 2
+            ic.image(size: side, color: fg, weight: 1.15)
+                .draw(in: NSRect(x: x - 6 - side, y: (bounds.height - side) / 2, width: side, height: side))
         } else if let img = image?.withSymbolConfiguration(
             NSImage.SymbolConfiguration(pointSize: 12, weight: .bold).applying(.init(paletteColors: [fg]))) {
             x += 9
@@ -511,23 +520,22 @@ final class PillButton: NSButton {
     }
 }
 
-final class PickerToolbar: NSVisualEffectView {
+/// The picker's toolbar: a piece of the island (v0.9-userfix) — its black at 92 %, a 0.5 pt white 14 % hairline, radius
+/// 22 — rather than a grey HUD glass that took the colour of whatever was under it.
+final class PickerToolbar: NSView {
     weak var controller: PickerController?
     private var built = false
 
     func layoutButtons(hasLast: Bool) {
         if built { return }
         built = true
-        material = .hudWindow
-        blendingMode = .behindWindow
-        state = .active
-        appearance = NSAppearance(named: .vibrantDark)
         wantsLayer = true
+        appearance = NSAppearance(named: .darkAqua)
+        layer?.backgroundColor = NSColor(white: 0, alpha: 0.92).cgColor
         layer?.cornerRadius = 22
         layer?.borderWidth = 0.5
         layer?.borderColor = NSColor(white: 1, alpha: 0.14).cgColor
         layer?.masksToBounds = true
-        maskImage = roundedMask(22)     // clips the behind-window blur too
         var buttons: [NSButton] = []
         buttons.append(PillButton(Loc.t("capture.picker.full_screen", table: "Capture"), symbol: "arrow.up.left.and.arrow.down.right",
                                   fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(full)))
@@ -537,10 +545,10 @@ final class PickerToolbar: NSVisualEffectView {
         }
         buttons.append(PillButton(Loc.t("capture.picker.cancel", table: "Capture"), fill: NSColor(white: 1, alpha: 0.1), target: self, action: #selector(cancel)))
         let snap = controller?.snapMode == true
-        // the one primary action: the button gradient, a white title; Record leads with the red dot (the tape)
+        // the one primary action: the button gradient, a white title led by the island's own glyph (record / snap)
         buttons.append(PillButton(snap ? Loc.t("capture.picker.snap", table: "Capture") : Loc.t("capture.picker.start", table: "Capture"),
-                                  symbol: snap ? "camera.fill" : nil, gradient: BrandGradient.buttonStops, fg: .white,
-                                  dot: snap ? nil : BrandColor.Island.rec, target: self, action: #selector(start)))
+                                  icon: snap ? .snap : .record, gradient: BrandGradient.buttonStops, fg: .white,
+                                  target: self, action: #selector(start)))
         var x: CGFloat = 6
         for b in buttons {
             b.setFrameOrigin(NSPoint(x: x, y: 6))

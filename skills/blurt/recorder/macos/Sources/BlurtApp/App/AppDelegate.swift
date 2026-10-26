@@ -155,7 +155,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func countdown(_ n: Int, over region: CGRect, then: @escaping () -> Void) {
+    func countdown(_ n: Int, over region: CGRect, hold: Bool = false, then: @escaping () -> Void) {
         guard n > 0 else { return then() }
         let v = CountdownView()
         let w = overlayWindow(toNS(region), view: v)
@@ -176,6 +176,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { then() }
         }
         v.onSkip = go
+        if hold { v.hold(at: 0.62); return }    // tests: stays at n, its ring part-drained, until `countdown close`
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { t in
             left -= 1
             if left == 0 {
@@ -552,7 +553,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let dir = lastSession else { return }
         cleanupLive(dir)
         if code != 0 {
-            // a failed take keeps what was taken during it — the video up to its last fragment (Recorder writes 10 s
+            // a failed take keeps what was taken during it — the video up to its last fragment (Recorder writes 4 s
             // fragments), the stills, their notes, the live transcript (BlurtCore TakeEnd); only a cancelled or empty
             // one leaves no folder behind
             let video = dir.appendingPathComponent("recording.mp4")
@@ -573,9 +574,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "project": project?.id as Any? ?? NSNull(),
             "workspace": currentWorkspace().path,
         ]
-        if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
+        var m = meta
+        for k in App.errorKeys { if let x = event[k] { m[k] = x } }
+        if let e = event["ended_early"] { m["ended_early"] = e }
+        if let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
+        App.sayRecovered(event, duration: dur)
         if autoProcess {
             process(dir, project: project?.id)
             // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
@@ -584,6 +589,24 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             toast(T("app.toast.saved", Loc.duration(dur)), icon: .check)
         }
         refreshStatus()
+    }
+
+    /// A saved take that wasn't plain sailing, said once on the island (after its "saved" line): it ended before
+    /// Finish ("macOS stopped the recording — the first 3:12 is kept"), or a piece of it was lost while the writer was
+    /// replaced ("Saved · the video file failed partway, about 3 s is missing"). Nothing for a capture restarted
+    /// without loss.
+    static func sayRecovered(_ event: [String: Any], duration: Double) {
+        var line: String?
+        if let early = event["ended_early"] as? [String: Any] {
+            line = T("app.record.partial", App.failureReason(early), Island.clock(duration))
+        } else if (event["segments"] as? Int ?? 1) > 1 {
+            let lost = Int((event["lost_seconds"] as? Double ?? 0).rounded(.up))
+            line = event["stitch_error"] != nil ? T("app.record.recovered_parts")
+                : lost > 0 ? T("app.record.recovered_lost", Loc.number(lost)) : T("app.record.recovered")
+        }
+        guard let l = line else { return }
+        emit(["event": "take_recovered_said", "text": l])
+        island.toast(l, key: "record-recovered", seconds: 8)
     }
 
     private func failedTake(_ dir: URL, code: Int32, event: [String: Any], video: Double) {
@@ -611,7 +634,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }), primary: true, cancel: T("app.alert.not_now"), critical: true)
                 case .diskFull:
                     alert(T("app.record.failed"), App.failureText(event), critical: true)
-                case .stopped, .noFrames, .unknown:
+                case .stopped, .noFrames, .unknown, .displayGone, .interrupted, .writer:
                     alert(T("app.record.failed"), App.failureText(event), also: (T("app.record.again"), { [weak self] in
                         self?.startRecording(useLast: true)
                     }), critical: true)
@@ -629,6 +652,11 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return d.seconds
     }
 
+    /// What the recorder's events say about an error (RecordingFailure.detail) and what a take recovered from —
+    /// kept in meta.json as they are.
+    static let errorKeys = ["error_domain", "error_code", "error_underlying", "error_message", "error_failure_reason",
+                            "recovered", "segments", "lost_seconds", "stitch_error", "parts"]
+
     /// Why a take failed, for the alert (BlurtCore RecordingFailure; never the raw error).
     static func failureText(_ event: [String: Any]) -> String {
         switch RecordingFailure(rawValue: event["reason"] as? String ?? "") ?? .unknown {
@@ -636,6 +664,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .permission: return T("app.record.failed.permission")
         case .stopped: return T("app.record.failed.stopped")
         case .noFrames: return T("app.record.failed.no_frames")
+        case .displayGone: return T("app.record.failed.display_gone")
+        case .interrupted: return T("app.record.failed.interrupted")
+        case .writer: return T("app.record.failed.writer")
         case .unknown: return T("app.record.failed.unknown")
         }
     }
@@ -648,6 +679,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .permission: return T("app.record.reason.permission")
         case .stopped: return T("app.record.reason.stopped")
         case .noFrames: return T("app.record.reason.no_frames")
+        case .displayGone: return T("app.record.reason.display_gone")
+        case .interrupted: return T("app.record.reason.interrupted")
+        case .writer: return T("app.record.reason.writer")
         case .unknown: return T("app.record.reason.unknown")
         }
     }
@@ -665,12 +699,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             "project": project?.id as Any? ?? NSNull(), "workspace": currentWorkspace().path,
         ]
         if let v = video { meta["video"] = "recording.mp4"; meta["duration"] = v; meta["partial"] = true }
+        // what exactly went wrong (v0.9-userfix: a take kept only "这项操作无法完成" and reason "unknown")
+        for k in App.errorKeys { if let x = event[k] { meta[k] = x } }
+        meta["error_code_name"] = event["code"] ?? NSNull()
         if let d = try? JSONSerialization.data(withJSONObject: meta, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
         // (the raw error is in meta.json and the log: the island line says why, in words, and what is kept)
         emit(["event": "take_failed_kept", "session": dir.path, "code": code, "stills": stills, "video": video ?? NSNull(),
-              "error": event["message"] as? String ?? NSNull(), "reason": event["reason"] as? String ?? NSNull()])
+              "error": event["message"] as? String ?? NSNull(), "reason": event["reason"] as? String ?? NSNull(),
+              "error_domain": event["error_domain"] ?? NSNull(), "error_code": event["error_code"] ?? NSNull(),
+              "error_underlying": event["error_underlying"] ?? NSNull()])
         let why = App.failureReason(event)
         let line = video.map { T("app.record.partial", why, Island.clock($0)) }
             ?? T("app.record.failed_why", T("app.record.not_saved", why), TP("app.record.kept", stills))

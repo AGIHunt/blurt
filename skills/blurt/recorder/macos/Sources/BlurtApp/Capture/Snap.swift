@@ -8,7 +8,8 @@
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
 // {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
 // same n win key by key; {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
-// remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one,
+// remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one, a Structured voice note has
+// "structure": true and, once its words are in, "said" = the structured text and "said_raw" = the transcript,
 // {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
 // back: {"n","taken":null}). What a card hands out as files (the picture with its note inside, the note as .md) is
 // written to out/<NNN>/ next to shots/ (CardExport.swift) and goes with the capture.
@@ -185,7 +186,9 @@ final class Shot {
     var region: [Double]
     var voice: String?           // shots/NNN.wav: the note on a shot, or the voice note itself
     var text: String?            // typed note
-    var said: String?            // transcript of `voice` (voice notes)
+    var said: String?            // transcript of `voice` (voice notes) — Structured: the structured text
+    var saidRaw: String?         // Structured: the transcript as heard, when the structured text differs from it
+    var structure = false        // Structured (⇧ while the voice note listened): its words get the structuring pass
     var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
     var deleted = false
@@ -254,6 +257,8 @@ final class Shot {
                                 "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull()]
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
+        if structure { o["structure"] = true }
+        if let r = saidRaw { o["said_raw"] = r }
         if let a = assignedBy { o["assigned_by"] = a }
         if let p = intendedProject { o["intended_project"] = p }
         if let t = taken { o["taken"] = (t * 1000).rounded() / 1000 }
@@ -470,6 +475,8 @@ final class ShotBatch {
             s.voice = o["voice"] as? String
             s.text = o["text"] as? String
             s.said = o["said"] as? String
+            s.saidRaw = o["said_raw"] as? String
+            s.structure = o["structure"] as? Bool ?? false
             s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
             s.deleted = o["deleted"] as? Bool ?? false

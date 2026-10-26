@@ -40,7 +40,8 @@
 "capture.countdown.finish" = "完成";
 "capture.countdown.pause" = "暂停 / 继续";
 "capture.countdown.ready" = "准备开始";
-"capture.countdown.skip" = "点一下跳过倒计时";
+"capture.countdown.skip" = "不等倒计时，现在就开始录";
+"capture.countdown.start_now" = "现在开始";
 "capture.discarded" = "已丢弃";
 "capture.drawer.drop_title" = "放到";
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
@@ -285,6 +286,14 @@
 "capture.voice.time_left" = "还剩 %@";
 "capture.voice.maxed" = "已到 %@ 上限，语音备注已保存";
 "capture.voice.words_failed" = "没能转成文字";
+"capture.voice.structured" = "结构化";
+"capture.voice.structured_tip" = "说完排成清单，只留改正后的说法（也可以单按 ⇧）";
+"capture.voice.structured_off_tip" = "改回原话（也可以单按 ⇧）";
+"capture.voice.structured_ax_on" = "开";
+"capture.voice.structured_ax_off" = "关";
+"capture.voice.structured_on" = "结构化：说完会排成清单，只留改正后的说法 · 再按 ⇧ 切回";
+"capture.voice.structured_off" = "已切回原话";
+"capture.voice.structure_failed" = "没能整理成结构化，按原话记下了";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";
 "capture.voice_drop.hint_paste" = "松手粘贴到 %@";

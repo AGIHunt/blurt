@@ -38,6 +38,13 @@
 //    heard for the whole wait: "Didn't hear anything — check the microphone" (Sound Settings). The microphone gone
 //    mid-note (a headset out, the input switched: NoteVoice's watchdog) ends it with what was said.
 //  • Blurt quitting finishes it (finishForQuit); a snap's bubble opened meanwhile has Esc (yieldEsc).
+//  • Structured (v0.9-userfix, as dictation's): ⇧ pressed and let go on its own while it listens — or a click on the
+//    island's list mark — toggles it (BlurtCore LoneShift / VoiceNoteStructure). The right ear shows the list glyph
+//    while it is on. Once the note's words are in, the polish model's structuring pass (Dictation.structure, the same
+//    request dictation's Structured makes) lays out what was listed and settles self-corrections; the card's note is
+//    that text, the transcript as heard stays in shots.jsonl (`said_raw`). No model, or it refused: the transcript.
+//    The keys come from dictation's key listener when it runs (its filter keeps that ⇧ from the input method) and from
+//    this note's own monitors (Accessibility) otherwise; the same change from both counts once.
 // Tests: BLURT_TEST_MIC_WAV (or BLURT_NOTE_WAV) is fed through the same path instead of the microphone;
 // BLURT_TEST_NO_SERVERS=1 starts no warm server (the pieces go through the CLI: no local port is opened).
 
@@ -63,6 +70,10 @@ final class VoiceInput {
     private var heardSpeech = false
     /// this take's live transcript (LiveTranscript's session)
     private var liveSession = 0
+    /// Structured for this note (⇧ alone, or the island's list mark): its words go through the structuring pass
+    private(set) var structured = false
+    private var lone = LoneShift()
+    private var keyMonitors: [Any] = []
     /// Esc cancels (its hotkey is held): the first `escSeconds` of a voice note only
     private(set) var escCancels = false
     private var escTimer: Timer?
@@ -123,6 +134,58 @@ final class VoiceInput {
     /// Esc (its hotkey, held for the first `escSeconds`): the note is discarded, with Undo.
     func cancel() { if active { finish(keep: false, via: "esc") } }
 
+    // MARK: Structured
+
+    /// ⇧ alone while it listens, or the island's list mark: Structured for this note, or back. The island's ear says
+    /// which; a line explains it the first couple of times (record.voice.style_hint_shown).
+    func toggleStructured(via: String) {
+        guard active else { return }
+        structured.toggle()
+        emit(["event": "voice_style", "structured": structured, "via": via, "polish_model": Dictation.shared.polishModel ?? NSNull()])
+        if structured {
+            // the structuring pass needs the polish model: warmed now, loaded by the time the words are in
+            if Dictation.shared.polishModel == nil { Dictation.shared.refreshPolishModel { Dictation.shared.warmPolish() } }
+            else { Dictation.shared.warmPolish() }
+        }
+        island.refresh()
+        let shown = settings["style_hint_shown"] as? Int ?? 0
+        guard DictationStyleToggleHint.says(shown: shown) else { return }
+        if structured { Config.shared.set("record.voice.style_hint_shown", shown + 1) }
+        island.toast(Loc.t(structured ? "capture.voice.structured_on" : "capture.voice.structured_off", table: "Capture"),
+                     key: "voice-style", seconds: 3)
+    }
+
+    /// A key or mouse event while the note listens (dictation's listener, or this note's own monitors).
+    func keyEvent(_ e: DictationTrigger.Event) {
+        guard active else { return }
+        if lone.handle(e) { toggleStructured(via: "shift") }
+    }
+
+    /// While the note listens: ⇧, and what makes it not alone (another key, a click). AppKit hands key events to a
+    /// global monitor only when Accessibility is granted; without it the island's list mark still toggles. Test builds
+    /// install nothing (the `voice keys …` hook feeds the same path).
+    private func watchKeys() {
+        unwatchKeys()
+        guard !DictationInsert.testMode else { return }
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown, .leftMouseDown, .rightMouseDown, .otherMouseDown]
+        let feed: (NSEvent) -> Void = { [weak self] e in
+            let at = DictationTrigger.eventTime(seconds: e.timestamp, now: CACurrentMediaTime())
+            switch e.type {
+            case .flagsChanged:
+                self?.keyEvent(.flags(keyCode: Int(e.keyCode), flags: e.cgEvent?.flags.rawValue ?? UInt64(e.modifierFlags.rawValue), time: at))
+            case .keyDown: self?.keyEvent(.keyDown(keyCode: Int(e.keyCode), time: at))
+            default: self?.keyEvent(.mouseDown(time: at))
+            }
+        }
+        if let g = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: feed) { keyMonitors.append(g) }
+        if let l = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { feed($0); return $0 }) { keyMonitors.append(l) }
+    }
+
+    private func unwatchKeys() {
+        keyMonitors.forEach { NSEvent.removeMonitor($0) }
+        keyMonitors = []
+    }
+
     /// Esc back to the other apps (its time is up, or the note ended).
     private func releaseEsc() {
         escTimer?.invalidate()
@@ -180,8 +243,12 @@ final class VoiceInput {
         liveText = nil
         heardSpeech = false
         holding = false
+        structured = false
+        lone.reset()
         startedAt = Date()
         active = true
+        watchKeys()
+        Dictation.shared.updateShiftFilter()
         Self.warmSpeechModel()
         if !NoteBubble.shared.isOpen { registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0) }
         escCancels = true
@@ -192,6 +259,7 @@ final class VoiceInput {
             emit(["event": "voice_esc_released", "n": k])
         }
         emit(["event": "voice_start", "n": k, "session": b.dir.path, "end_on_pause": pauseEnds, "max_seconds": maxSeconds,
+              "monitors": keyMonitors.count,
               "stream": st != nil, "live_text": LiveTranscript.enabled, "wall": Date().timeIntervalSince1970])
         island.voiceChanged()
         v.start { [weak self] ok in
@@ -386,9 +454,13 @@ final class VoiceInput {
         active = false
         holding = false
         releaseEsc()
+        unwatchKeys()
+        Dictation.shared.updateShiftFilter()
+        let structure = structured
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),
               "sound": (v.soundSeconds * 100).rounded() / 100, "stream_heard": st?.heardSpeech ?? false, "unsure": unsure,
+              "structured": structure,
               "wall": Date().timeIntervalSince1970])
         VoiceInput.say(toast)
         let project = snapper.target
@@ -408,12 +480,12 @@ final class VoiceInput {
                 if st == nil { LiveTranscript.shared.end(session: live, after: 0.4) }
             }
             snapper.voiceFinished(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st,
-                                  heard: liveText)
+                                  heard: liveText, structured: structure)
         } else if undoable {
             LiveTranscript.shared.end(session: live)
             st?.onText = nil
             discarded(batch: b, n: n, duration: dur, project: project.isInbox ? nil : project.id, stream: st, wav: v.url,
-                      unsure: unsure)
+                      unsure: unsure, structured: structure)
         } else {
             st?.cancel()
             LiveTranscript.shared.end(session: live)
@@ -452,7 +524,7 @@ final class VoiceInput {
     /// heard — "Didn't hear anything · Keep", the same wait; Keep files it and the speech model decides (no words: a
     /// card that says "No words recognized" with Retry).
     private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL,
-                           unsure: Bool = false) {
+                           unsure: Bool = false, structured: Bool = false) {
         var settled = false
         // waiting for its Undo under another name: a quit or a crash now never brings it back as a note
         let parked = VoiceDiscard.parked(wav)
@@ -464,7 +536,7 @@ final class VoiceInput {
             settled = true
             if moved { try? FileManager.default.moveItem(at: parked, to: wav) }
             emit(["event": "voice_undo", "n": n])
-            snapper.voiceFinished(batch: b, n: n, duration: duration, project: project, stream: st)
+            snapper.voiceFinished(batch: b, n: n, duration: duration, project: project, stream: st, structured: structured)
         }
         t.seconds = VoiceInput.undoSeconds
         island.toast(t)

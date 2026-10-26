@@ -53,6 +53,15 @@
 "app.record.reason.stopped" = "macOS 中途停掉了录制";
 "app.record.reason.no_frames" = "没收到屏幕画面";
 "app.record.reason.unknown" = "出了点问题";
+"app.record.failed.display_gone" = "录到一半，被录的显示器断开了，这次录的内容没有留下。接好显示器后再录。";
+"app.record.failed.interrupted" = "录到一半，Mac 进入了睡眠、锁屏或屏幕保护程序，这次录的内容没有留下。录制时让 Mac 保持唤醒。";
+"app.record.failed.writer" = "视频文件写到一半出错了，这次录的内容没有留下。再录一次一般就好了；具体错误记在日志里。";
+"app.record.reason.display_gone" = "被录的显示器断开了";
+"app.record.reason.interrupted" = "睡眠或锁屏打断了录制";
+"app.record.reason.writer" = "视频文件写入出错";
+"app.record.recovered" = "录屏已保存 · 中途视频写入出错，已接着录下去";
+"app.record.recovered_lost" = "录屏已保存 · 中途视频写入出错，约 %@ 秒没录上";
+"app.record.recovered_parts" = "录屏已分段保存 · 中途视频写入出错";
 "app.record.not_saved" = "%@，录屏没能保存";
 "app.record.partial" = "%1$@，前 %2$@ 已保留";
 "app.record.failed_why" = "%1$@ · %2$@";
