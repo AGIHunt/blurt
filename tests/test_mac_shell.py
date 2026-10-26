@@ -214,7 +214,12 @@ class SessionRecoveryWiring(unittest.TestCase):
 
     def test_finish_sheet_primary_and_no_destructive_default(self):
         fin = self.src("Terminal/FinishPanel.swift")
-        self.assertIn(".buttonStyle(.brand)\n                    .keyboardShortcut(.return, modifiers: .command)", fin)
+        # a sheet's one default is the native filled button in the sheet accent (system.md §3.5), on ⌘⏎
+        self.assertIn(".panelDefault()\n                .keyboardShortcut(.return, modifiers: .command)", fin)
+        self.assertNotIn(".buttonStyle(.brand)", fin)
+        # the rare ways out are in the ⋯ menu, never buttons at rest; a gone session is an alert with one button
+        self.assertIn('Button(TL("review.discard"), role: .destructive) { confirmDiscard = true }', fin)
+        self.assertIn('static let gone: Set<String> = ["no_job", "gone", "no_worktree", "bad_job"]', fin)
         self.assertIn('Button(TL("common.cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)', fin)
         self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
 
@@ -246,7 +251,12 @@ class SessionRecoveryWiring(unittest.TestCase):
         d = self.src("Terminal/DispatchPanel.swift")
         self.assertIn('TL("dispatch.start"))', d)       # "Open in Claude" when the hand-off goes to the desktop app
         self.assertIn('TL("dispatch.start.desktop", DesktopApp.name(m.agent))', d)
-        self.assertIn('.buttonStyle(.brand).keyboardShortcut(.defaultAction)', d)
+        # a panel's default is the native filled button in the sheet accent (system.md §3.5: Hand Off is a dialog)
+        self.assertIn('.panelDefault().keyboardShortcut(.defaultAction)\n                    .disabled(!m.canStart)', d)
+        self.assertNotIn(".buttonStyle(.brand)", d)
+        # one signal for the sign-in check, in the Agent row; never a lone spinner in the footer
+        self.assertIn('BrandSpinnerView(size: 10); Text(TL("dispatch.checking_login"))', d)
+        self.assertNotIn("if m.phase == .checking || m.phase == .starting { BrandSpinnerView() }", d)
         self.assertIn("loginChecked: loginVerified", d)
         # a failed dry run keeps Start off; a failed real start leaves it on to try again
         self.assertIn("&& !checkFailed &&", d)

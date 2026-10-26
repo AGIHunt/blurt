@@ -38,17 +38,10 @@ struct SessionsList: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // no sessions: the list column steps aside (SessionsPaneController) and the detail's empty state is the
+            // one story; nothing is said here
             if model.rows.isEmpty {
-                // the terminal side tells the story; the list just says it's empty
-                VStack(spacing: 4) {
-                    Spacer()
-                    Text(TL("list.empty.title")).font(.callout.weight(.medium)).foregroundStyle(.secondary)
-                    Text(TL("list.empty.body")).font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                }
-                .padding(.horizontal, 22)
-                .frame(maxWidth: .infinity)
+                Spacer()
             } else {
                 List(selection: Binding(get: { pane.job }, set: { if let j = $0 { select(j) } })) {
                     ForEach(model.groups) { g in
@@ -61,24 +54,32 @@ struct SessionsList: View {
                 }
                 .listStyle(.sidebar)
             }
-            Divider()
-            HStack(spacing: 6) {
-                Button(action: newSession) {
-                    Label(TL("list.new"), systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help(TL("list.new.help"))
-                Spacer()
-                let live = Job.runningHere(model.alive.map(\.job))  // a desktop one runs elsewhere
-                if live > 0 {
-                    Text(Loc.plural("list.live", table: "Terminal", count: live)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-                }
+            // the live count only (New Session is the header's compose button): a footer while there is one to show
+            let live = Job.runningHere(model.alive.map(\.job))  // a desktop one runs elsewhere
+            if live > 0 {
+                Divider()
+                Text(Loc.plural("list.live", table: "Terminal", count: live)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 32)
         }
         .frame(minWidth: 220)
+        // one surface under the list and its count: the sidebar material, as the list draws it
+        .background(SidebarMaterial())
     }
+}
+
+/// The source-list material behind the whole sessions column (the count under the list included).
+struct SidebarMaterial: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let v = NSVisualEffectView()
+        v.material = .sidebar
+        v.blendingMode = .behindWindow
+        v.state = .followsWindowActiveState
+        return v
+    }
+    func updateNSView(_ v: NSVisualEffectView, context: Context) {}
 }
 
 struct AgentSessionRowView: View {
@@ -129,9 +130,15 @@ struct SessionHeader: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Button { actions?.toggleSidebar() } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
-                    .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
+                if !model.rows.isEmpty {
+                    Button { actions?.toggleSidebar() } label: { Image(systemName: "sidebar.left") }
+                        .buttonStyle(.borderless).help(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
+                        .accessibilityLabel(TL(pane.listShown ? "header.hide_list" : "header.show_list"))
+                }
+                // New Session sits with the window's chrome (Mail's, Notes' compose button), not in a footer bar
+                Button { TerminalHost.shared.newSession(project: nil, items: []) } label: { Image(systemName: "square.and.pencil") }
+                    .buttonStyle(.borderless).help(TL("list.new.help"))
+                    .accessibilityLabel(TL("list.new"))
                 if let r = pane.job.flatMap({ model.row($0) }) {
                     SessionStatusMark(status: r.status, size: 11, elsewhere: r.inDesktop)
                     VStack(alignment: .leading, spacing: 1) {
@@ -165,11 +172,13 @@ struct SessionHeader: View {
                     Spacer(minLength: 8)
                     trailing(r).layoutPriority(1)       // the actions keep their size; the title truncates
                 } else {
-                    Text(TL("header.none")).font(.system(size: 13)).foregroundStyle(.secondary)
+                    // "No session selected" only where there are sessions to select
+                    if !model.rows.isEmpty { Text(TL("header.none")).font(.system(size: 13)).foregroundStyle(.secondary) }
                     Spacer()
                 }
             }
             .padding(.horizontal, 12)
+            .padding(.leading, pane.headerLead)
             .frame(height: 51)
             Divider()
         }
@@ -304,9 +313,13 @@ struct SessionOverlay: View {
                 if !model.rows.isEmpty {
                     card { Text(TL("overlay.pick")).foregroundStyle(.secondary) }
                 } else {
-                    // first launch of the sessions window: the one empty state (§3.5)
-                    EmptyStateContent(title: TL("overlay.empty.title"), message: TL("overlay.empty.body")) {
-                        Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }.buttonStyle(.brand)
+                    // first launch of the sessions window: the one empty state (§3.5), its middle at about 40 % of the
+                    // pane (the space above two thirds of the space below)
+                    GeometryReader { g in
+                        EmptyStateContent(title: TL("overlay.empty.title"), message: TL("overlay.empty.body")) {
+                            Button(TL("list.new")) { TerminalHost.shared.newSession(project: nil, items: []) }.buttonStyle(.brand)
+                        }
+                        .padding(.bottom, g.size.height * 0.2)
                     }
                     .background(Color(nsColor: .windowBackgroundColor))
                 }
@@ -336,7 +349,7 @@ struct SessionOverlay: View {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(r.items.prefix(5), id: \.self) { i in
                     HStack(spacing: 6) {
-                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(i.id).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                         Text(i.title).lineLimit(1)
                     }.font(.callout)
                 }
@@ -388,7 +401,7 @@ struct SessionOverlay: View {
             VStack(alignment: .leading, spacing: 3) {
                 ForEach(r.items.prefix(5), id: \.self) { i in
                     HStack(spacing: 6) {
-                        Text(i.id).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
+                        Text(i.id).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
                         Text(i.title).lineLimit(1)
                     }.font(.callout)
                 }

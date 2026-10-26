@@ -47,6 +47,9 @@ final class TerminalHost: @preconcurrency TerminalHosting {
 }
 
 /// The Sessions window: a pane of its own, for when the main window isn't showing one (and "Open in New Window").
+/// The Sessions window's own class (the test key look patches this one, never every window).
+final class SessionsWindow: NSWindow {}
+
 @MainActor
 final class SessionsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SessionsWindowController(paneID: "window")
@@ -55,7 +58,7 @@ final class SessionsWindowController: NSWindowController, NSWindowDelegate {
 
     init(paneID: String) {
         pane = SessionsPaneController(paneID: paneID)
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 660),
+        let w = SessionsWindow(contentRect: NSRect(x: 0, y: 0, width: 1080, height: 660),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                          backing: .buffered, defer: true)
         w.title = TL("window.title")

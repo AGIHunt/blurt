@@ -8,6 +8,7 @@
 // its card says so (Go to Claude, Review Changes…); Continue in Claude Desktop moves a terminal session there, asking
 // first — and, without the blurt MCP installed for Claude, saying the items then need marking by hand, with Install….
 import AppKit
+import Combine
 import SwiftUI
 import BlurtCore
 
@@ -16,6 +17,8 @@ final class PaneState: ObservableObject {
     @Published var job: String?
     @Published var attach: AttachState = .none
     @Published var listShown = true
+    /// the header's extra leading inset (clear of the traffic lights while the list is hidden)
+    @Published var headerLead: CGFloat = 0
     @Published var finishing: String?           // job whose worktree result is being reviewed (sheet)
     /// The ended session whose output the user asked to see (Show Output): its dead window stays attached.
     var outputShown: String?
@@ -30,6 +33,7 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     private var listHost: NSHostingView<SessionsList>!
     private weak var overlay: NSView?
     private var token: UUID?
+    private var rowsWatch: AnyCancellable?
     let paneID: String
 
     init(paneID: String = "main") {
@@ -78,8 +82,18 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         listHost.widthAnchor.constraint(greaterThanOrEqualToConstant: 220).isActive = true
         listHost.widthAnchor.constraint(lessThanOrEqualToConstant: 340).isActive = true
         detail.widthAnchor.constraint(greaterThanOrEqualToConstant: paneID == "main" ? 360 : 420).isActive = true
-        listHost.isHidden = !state.listShown
+        listHost.isHidden = !state.listShown || model.rows.isEmpty
+        listVisibilityChanged()
         view = split
+        // no sessions: the list column steps aside, the detail's empty state is the one story; it comes back with the
+        // first session (where the user keeps it shown)
+        rowsWatch = model.$rows.map(\.isEmpty).removeDuplicates().receive(on: RunLoop.main).sink { [weak self] empty in
+            guard let self = self, self.state.listShown, self.listHost.isHidden != empty else { return }
+            self.listHost.isHidden = empty
+            self.listVisibilityChanged()
+            self.split.adjustSubviews()
+            if !empty { self.split.setPosition(250, ofDividerAt: 0) }
+        }
         surface.onState = { [weak self] s in
             self?.state.attach = s
             self?.overlay?.isHidden = s == .attached       // out of the way of the terminal's clicks and scrolling
@@ -92,8 +106,14 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
     override func viewDidAppear() {
         super.viewDidAppear()
         // setting the divider shows a hidden list again: only when it is meant to be seen
-        if state.listShown { split.setPosition(250, ofDividerAt: 0) }
+        if state.listShown && !model.rows.isEmpty { split.setPosition(250, ofDividerAt: 0) }
         if state.job == nil { attach(job: nil) }
+    }
+
+    /// Without the list the header starts at the window's left edge: in a window of its own (not the main window's
+    /// pane) it keeps clear of the traffic lights.
+    private func listVisibilityChanged() {
+        state.headerLead = paneID != "main" && listHost.isHidden ? 80 : 0
     }
 
     deinit { if let t = token { JobStore.shared.removeObserver(t) } }
@@ -118,7 +138,8 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.18
             ctx.allowsImplicitAnimation = true
-            listHost.isHidden = !state.listShown
+            listHost.isHidden = !state.listShown || model.rows.isEmpty
+            listVisibilityChanged()
             split.adjustSubviews()
             if state.listShown { split.setPosition(250, ofDividerAt: 0) }
         }

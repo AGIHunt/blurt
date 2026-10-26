@@ -12,9 +12,36 @@
 //                           its link is reported as event desktop_open)
 //   desktop-check AGENT yes|no|ask   what Continue in Claude Desktop's check says (yes / no: an override; ask: the CLI)
 //   continue-desktop JOB    what the header's Continue in Claude Desktop does after its confirmation
+//   keylook                 the hand-off panels and the Sessions window drawn as the key window (screenshots)
+//   panels-close            every hand-off panel and review sheet closes, as Cancel does
 import AppKit
 import SwiftTerm
 import BlurtCore
+
+/// Screenshots of a test build in the background (`keylook`): a hand-off panel or the Sessions window draws as the key
+/// window — its default button filled, switches in the accent — without taking the focus from the app the user is in.
+/// Patches only these windows' own classes, as SettingsTestKeyLook does for Settings.
+@MainActor
+enum PanelKeyLook {
+    private static var patched: Set<ObjectIdentifier> = []
+
+    static func apply(_ w: NSWindow) {
+        let cls: AnyClass = type(of: w)
+        if patched.insert(ObjectIdentifier(cls)).inserted {
+            let names = ["isKeyWindow", "isMainWindow", "_hasActiveAppearance", "_hasActiveAppearanceIgnoringKeyFocus", "_hasKeyAppearance",
+                         "_hasMainAppearance", "hasKeyAppearance", "hasMainAppearance", "_hasActiveControls"]
+            for sel in names.map(NSSelectorFromString) {
+                guard let m = class_getInstanceMethod(cls, sel) else { continue }
+                let yes: @convention(block) (AnyObject) -> Bool = { _ in true }
+                class_replaceMethod(cls, sel, imp_implementationWithBlock(yes), method_getTypeEncoding(m))
+            }
+        }
+        NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
+        NotificationCenter.default.post(name: NSWindow.didBecomeMainNotification, object: w)
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if let v = w.contentView?.superview ?? w.contentView { redraw(v) } }
+    }
+}
 
 @MainActor
 enum TerminalSelfTests {
@@ -54,13 +81,14 @@ enum TerminalSelfTests {
         case "dispatch":
             DispatchPanel.show(items: arg.split(separator: ",").map(String.init))
             out(["window": DispatchPanel.windowNumber ?? -1])
-        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off | agent ID | model ID|default
+        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off | agent ID | model ID|default | options open|closed
             guard let m = DispatchPanel.current?.model, words.count == 2 else { out(["error": "no panel"]); return }
             if words[0] == "mode" { m.mode = DispatchMode(rawValue: words[1]) ?? .together }
             if words[0] == "worktree" { m.worktree = WorktreeChoice(rawValue: words[1]) ?? .auto }
             if words[0] == "agent" { m.agent = words[1]; m.agentTouched = true }
             if words[0] == "model" { m.model = words[1] == "default" ? "" : words[1] }
             if words[0] == "target" { m.target = HandoffTarget(rawValue: words[1]) ?? .terminal }
+            if words[0] == "options" { UserDefaults.standard.set(words[1] == "open", forKey: "handoff.optionsOpen") }   // › Options
             out(["ok": true])
         case "dispatch-state":
             guard let m = DispatchPanel.current?.model else { out(["error": "no panel"]); return }
@@ -152,6 +180,14 @@ enum TerminalSelfTests {
                   let win = windows.indices.contains(n - 1) ? windows[n - 1].window : nil else { out(["error": "usage"]); return }
             win.setContentSize(NSSize(width: w, height: h))
             out(["pane": n, "size": [w, h]])
+        case "panels-close":            // every hand-off panel and review sheet closes (Cancel)
+            let ws = NSApp.windows.filter { $0 is HandoffWindow && $0.isVisible }
+            for w in ws { if let p = w.sheetParent { p.endSheet(w) } else { w.close() } }
+            out(["closed": ws.count])
+        case "keylook":                 // the panels and the Sessions window drawn as key though another app has the focus
+            let ws = NSApp.windows.filter { $0 is HandoffWindow || $0 is SessionsWindow }
+            ws.forEach(PanelKeyLook.apply)
+            out(["windows": ws.map(\.windowNumber)])
         case "windowid":
             switch words.first ?? "sessions" {
             case "dispatch": out(["window": DispatchPanel.windowNumber ?? -1])
