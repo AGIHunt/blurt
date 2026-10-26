@@ -51,7 +51,8 @@ final class EarSlot {
         case recording(paused: Bool, time: String)
         /// a count with one of our line glyphs; `tint` colours both (a quieter count: white at 60 %)
         case count(icon: BlurtIcon, n: Int, tint: NSColor?)
-        /// the hanging cards waiting (the left ear): the cards glyph at 60 % and its count in white, as every count
+        /// the hanging cards waiting (the left ear): the cards' stack at 60 % and its count in white, as every count;
+        /// no mint at rest (the clasp of the card just caught carries that)
         case cards(Int)
         /// a count's glyph alone (60 %): the leading half of a thing told across the notch (its value in the other ear)
         case mark(BlurtIcon)
@@ -116,6 +117,8 @@ final class EarSlot {
     static let countGlyph: CGFloat = 13
     /// Every count's glyph is this quiet, its digits white: two counts of the same kind never differ in colour.
     static let countGlyphColor = NSColor(white: 1, alpha: 0.6)
+    /// The cards' stack is drawn a little heavier than the ears' 1.2: its thin lines read lighter than the numeral.
+    static let cardsWeight: CGFloat = 1.45
     /// The launch hello: the chick's hops, then it goes.
     static let helloSeconds: Double = 1.2
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
@@ -204,9 +207,9 @@ final class EarSlot {
             x += size + 3
         }
         // a count's glyph: the line family at the ears' one weight (as `iconText` and `done`), in the count's colour
-        func line(_ ic: BlurtIcon, color: NSColor) {
+        func line(_ ic: BlurtIcon, color: NSColor, weight: CGFloat = 1.2) {
             let size = EarSlot.countGlyph
-            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.2)
+            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: weight)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
             x += size + 3         // glyph and number read as one token (4 pt + the digits' side bearing read as two)
@@ -230,10 +233,11 @@ final class EarSlot {
             line(ic, color: tint ?? EarSlot.countGlyphColor)
             text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
         case .cards(let n):
-            line(.cards, color: EarSlot.countGlyphColor)
+            // the cards glyph a little heavier: at the ear's weight its thin stack read lighter than the numeral
+            line(.cards, color: EarSlot.countGlyphColor, weight: EarSlot.cardsWeight)
             text(Loc.number(n))
         case .mark(let ic):
-            line(ic, color: EarSlot.countGlyphColor)
+            line(ic, color: EarSlot.countGlyphColor, weight: ic == .cards ? EarSlot.cardsWeight : 1.2)
             x -= 3
         case .hello:
             placeChick()

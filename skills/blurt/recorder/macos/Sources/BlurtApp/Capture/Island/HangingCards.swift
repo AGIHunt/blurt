@@ -1,6 +1,9 @@
 // The hanging cards (K7): every capture that has no project yet (no current project) hangs from the island on a thread,
-// a small clasp in the brand colour where it holds the card. A few cards read like a wind chime: one thread each,
-// lengths a little uneven. Replaces the v0.6 perch and its rope.
+// a small clasp where it holds the card (neutral; mint only on the live card: just caught, pointed at, holding the
+// keyboard, picked). v0.9.1: at rest the row is straight — every top on one line, no tilt, no uneven lengths; the sway
+// is motion only. v0.9.2: a row wider than the island hangs from the island's own lip — a 3 pt band of its black flush
+// under it (CardRow.lip) — every card straight down on an equal thread; no drawn rod, stems or elbows.
+// Replaces the v0.6 perch and its rope.
 //
 //  • a capture flies up while its thread drops out of the island (0.35 s ease-out) and catches it; the card sways on
 //    the thread and settles within about a second.
@@ -13,11 +16,11 @@
 //    coming back while they are still on their way up turns them round from where they are (no restart).
 //  • the row (v0.9, BlurtCore CardRow): newest first, left to right, centred under the island — at most 5 cards and
 //    never wider than 780 pt (voice cards are wider, so fewer of them); the rest wait behind a quiet "+N" tile at the
-//    row's end (the card surface, a second edge behind it, the count — no ghost picture). A snap's card takes its
+//    row's end (as tall as a card, narrower: "+3" and "Show all" in secondary ink, a second sheet under it). A snap's card takes its
 //    picture's shape (BlurtCore CardShape: 84 pt high, 84–150 wide; a toolbar or a sidebar shown whole). A click on the tile opens the overview
 //    of every card (CardsOverview.swift). Nothing pages or rotates: the order is always the time they were taken. The
-//    threads come out of the island's bottom edge straight above their cards, or — for a row wider than the island —
-//    spread along that edge in proportion (CardRow.threadX), so they hang near vertical instead of fanning out.
+//    threads come out of the island's bottom edge straight above their cards; a row wider than the island hangs from
+//    the island's lip, each card straight down from it (`origin`, `stepLip`) — never a fan, never a diagram.
 //  • the cards hang from the island's bottom edge and move with it, rigidly, on the island's own spring (carry): when
 //    it opens or a toast makes it taller they go down with it. (They used to follow on their own springs, lag behind
 //    an opening island, slide under it and fade as if reeled in, then drop out again: the flicker when the pointer
@@ -37,7 +40,8 @@
 //    is a button (its words, or "Snap · 19:03"; press = copy; actions: edit, move, organize, delete), then the
 //    tile ("Show all N cards", press = the overview, with the keyboard in it).
 //  • what a card says (v0.8, BlurtCore CardNote): a shot shows its note along the picture's bottom edge, white on a
-//    dark band — typed text first, then the words said ("typed · said", two lines at most). The mic mark (leading the
+//    slim dark band — typed text first, then the words said; v0.9.2: one line of whole words (CardBand), the last
+//    fading out when there is more, never an "…". The mic mark (leading the
 //    band's first line in white — the note's, or the status's when that is all there is; a small capsule bottom right
 //    only on a bare picture) when the note was spoken *and* its words are here, or it needs a retry (the audio is
 //    there to try again: CardNote.marksMic). A spoken note still being transcribed: a quiet "Transcribing…" under
@@ -45,12 +49,15 @@
 //    caption) and Retry Transcription in the right-click menu; a voice note the model found no words in (v0.9): "No
 //    words recognized", the same way (CardNote.needsYou). A spoken note with no speech in it (the room, a cough, abandoned
 //    for typing) is dropped by Snapper/NoteBubble — wav and mark gone, the typed text stays.
-//  • hover shortens the thread and lifts the card (its neighbours make room); its note, under the whole row (never over
-//    a neighbour), only adds what the card can't show (CardTip): the rest of a note cut short, the play button of a
-//    spoken one (mint, `brand.on` glyph) — else no note · click = copy (rich content, see below), once the
+//  • hover (v0.9.2) lifts the card 5 pt and grows it to 1.05x from its clasp, with the pop shadow (every item on each
+//    side steps 8 pt aside, the "+N" tile too: CardRow.stepAside), its note band steps away and its × shows over the
+//    top-left corner; its note, under the whole row (never over a neighbour), has the card's words (all of them) and
+//    the play button of a spoken one (mint, `brand.on` glyph), then what it is and when ("Snap · 19:03"), then how to
+//    use it until a card has been used once (record.cards_used) — or the keys as keycaps (KeyHint), with the keyboard
+//    on the row · click = copy (rich content, see below), once the
 //    double-click interval has passed (DeferredClick): double-click = edit the note, and never copies first · ⌘-click =
-//    add the card to a selection that is copied as one (a ring in the brand colour; a plain click or the cards going
-//    up ends it) — and moved as one: drag any card of it onto a project in the island, or Move N Cards To ▸ in its
+//    add the card to a selection that is copied as one (a neutral ring and an accent check in its corner, "✓ 2
+//    selected · Copied" under the row; a plain click or the cards going up ends it) — and moved as one: drag any card of it onto a project in the island, or Move N Cards To ▸ in its
 //    menu (withSelection) · right-click (HangingCards.cardMenu, this card or its selection): Copy Image / Copy Text
 //    (only with text), Copy All N Cards (more than one), Retry Transcription (after a failure), Edit Note…, Show in
 //    Finder, Move To ▸ (projects recently used first, then Unassigned), Organize (these cards: into Unassigned with a
@@ -140,7 +147,7 @@
 //    keep their own text drop (BlurtCore VoiceCardDrop.withholdsWords).
 //  • assigned (dropped on a project, a capture with a current project, "Let AI sort"): the thread reels the card up
 //    into the island, which swallows it with a small bump.
-//  • 12 pt apart, tilted ±2° in turn (the row itself: above).
+//  • 12 pt apart, straight (the row itself: above).
 //  • Reduce Motion: 0.2 s fades, no sway.
 // Window: a non-activating panel on all spaces, never captured, mouse-transparent except over a card; it lives on the
 // island's screen. The display link runs only while something moves, and stops before the panel is ordered out (an
@@ -167,15 +174,25 @@ final class HangingCard {
     /// shot cards with a caption: the marks (spoken, inked) inline before the note, never a capsule over the picture
     let captionMarks = CALayer()
     let close = CALayer()
-    let copied = CATextLayer()
+    /// the small dark pill under the card ("✓ Copied", a hint): its text, and the ok check before a done notice
+    let copied = CALayer(), copiedText = CATextLayer(), copiedCheck = CALayer()
     var size: CGSize
     /// where the thread holds the top edge, from the card's left: the middle (a picture, or a voice note's words)
     let gripX: CGFloat
     var x: Spring
     var grip: Spring                // y of the card's top edge (the thread's end), panel coordinates (y down)
     var theta: CGFloat = 0, omega: CGFloat = 0     // sway, degrees
-    let tilt: CGFloat
-    var slack: CGFloat = 0          // this card's extra thread length: the chime's uneven ends
+    /// v0.9.1: no resting tilt — the cards hang straight on one top line; they sway only while something moves them
+    let tilt: CGFloat = 0
+    /// the way it turns as it falls (deleted): alternate cards fall to alternate sides
+    let side: CGFloat
+    var slack: CGFloat = 0          // this card's extra thread length (0: every top on one line)
+    /// the clasp is mint until then: the card just caught (blurt in the act); hovered, focused or picked too
+    var liveUntil: CFTimeInterval = 0
+    var claspLive: Bool?
+    /// a ⌘-click selection: a ring in brand.accent outside the card and a check badge in its corner (never colour alone)
+    let pickRing = CALayer()
+    let pickBadge = CALayer()
     var opacity: CGFloat = 0
     var lift = Spring(0, response: 0.28, damping: 0.75)
     var hovered = false
@@ -202,13 +219,13 @@ final class HangingCard {
     /// the keyboard is on this card (⌥⇧H): a ring in brand.accent
     let focusRing = CALayer()
 
-    init(_ s: Shot, x: CGFloat, tilt: CGFloat) {
+    init(_ s: Shot, x: CGFloat, side: CGFloat) {
         shot = s
         size = s.kind == .voice ? HangingCards.voiceSize : HangingCards.shotFit(s).size
         gripX = size.width / 2
         self.x = Spring(x, response: 0.5, damping: 0.82)
         grip = Spring(-HangingCards.shotSize.height - 40, response: 0.55, damping: 0.72)
-        self.tilt = tilt
+        self.side = side
     }
 }
 
@@ -284,10 +301,23 @@ final class HangingCards: NSObject {
     static let voiceSize = CGSize(width: 168, height: 50)
     static let gap: CGFloat = 12
     static let edge: CGFloat = 12                  // the cards keep this far from the screen's edges
-    static let below: CGFloat = 18                 // the cards' top edge under the island (the shortest thread)
-    /// Extra thread per position, so the ends don't line up like a shelf (a wind chime, not a washing line).
-    static let slacks: [CGFloat] = [0, 9, 3, 12, 5, 10, 2]
-    static let claspSize: CGFloat = 7
+    static let below: CGFloat = 18                 // the cards' top edge under the island (every card's)
+    /// v0.9.2: a row wider than the island hangs from the island's own lip — a band of its black this thick, flush
+    /// under its bottom edge (`stepLip`), never a drawn rod with stems.
+    static let lipT: CGFloat = 3
+    /// The lifted card (hover, the keyboard): this much higher, 1.05 larger from its clasp, the pop shadow.
+    static let liftPt: CGFloat = 5
+    static let liftScale: CGFloat = 0.05
+    /// …and the items on each side of it step this far aside (the tile too): the gap beside it never drops under `gap`.
+    static let aside: CGFloat = 8
+    /// v0.9.1: no extra thread per position any more — uneven ends, a ±2° tilt and fanned threads read as jitter at
+    /// rest; every card's top is on one line, and a row wider than the island hangs from a rod (see `origin`).
+    static let slacks: [CGFloat] = [0]
+    static let claspSize: CGFloat = 5
+    /// The "+N" tile: as tall as a card, narrower — a quiet way into the overview, not the row's headline.
+    static let tileSize = CGSize(width: 72, height: 84)
+    /// Resting card shadow (light / dark) and how much a hovered card adds: one tight elevation for the row.
+    static let shadowLight: Float = 0.16, shadowDark: Float = 0.36, shadowLift: Float = 0.1
     static let voiceMicName = "voiceMic"
     static let panelH: CGFloat = 640
 
@@ -307,10 +337,29 @@ final class HangingCards: NSObject {
     private var leaving: [HangingCard] = []
     /// The "+N" tile at the row's end: the next card that doesn't hang (dimmed), a second edge behind it, and the count.
     private let stack = CALayer(), stackFace = CALayer(), stackBack = CALayer(), stackText = CATextLayer()
+    private let stackCaption = CATextLayer()
+    /// The keyboard on the tile: the same ring as on a card, 4 pt outside it.
+    private let tileRing = CALayer()
     private let stackThread = CAShapeLayer(), stackClasp = CALayer()
+    /// The island's lip a row wider than the island hangs from (v0.9.2): the island's own black, flush under it.
+    private let lip = CAShapeLayer()
+    /// Where the threads leave the lip (panel y) and how far the row is down (0…1: the lip grows out with it).
+    private var lipY: CGFloat = 0
+    private var lipK: CGFloat = 0
+    /// The "+N" tile's x: it steps aside with the cards, on a spring like theirs.
+    private var tileX = Spring(0, response: 0.5, damping: 0.82)
+    private var stackLive: Bool?
+    /// A ⌘-click selection's one line under the row: "2 selected · Copied".
+    private let selPill = CALayer(), selText = CATextLayer(), selCheck = CALayer()
+    private var pickedCopied = false
     /// The row as laid out last (CardRow.layout): which cards hang, newest first, and where the tile is.
     private var row = CardRow.Layout.empty
     private let tip = CALayer(), tipText = CATextLayer(), tipPlay = CALayer()
+    /// The hover note's quiet lines: what the card is and when ("Snap · 19:03"), then how to use it (until the
+    /// user has used a card once) or, with the keyboard on the row, its keys.
+    private let tipMeta = CATextLayer(), tipHint = CATextLayer()
+    /// The keys as keycaps (KeyHint), with the keyboard on the row.
+    private let tipKeys = CALayer()
     private var driver: MotionDriver?
     private(set) var screen: NSScreen?
     private var width: CGFloat = 1440
@@ -389,22 +438,53 @@ final class HangingCards: NSObject {
             l.shadowColor = NSColor.black.cgColor
             l.isHidden = true
         }
-        stack.shadowOpacity = 0.25
-        stack.shadowRadius = 10
-        stack.shadowOffset = CGSize(width: 0, height: 5)
-        stackBack.shadowOpacity = 0.12
-        stackBack.shadowRadius = 4
+        stack.shadowRadius = 8
+        stack.shadowOffset = CGSize(width: 0, height: 3)
+        stackBack.shadowOpacity = 0
         stackFace.cornerRadius = 7
         stackFace.masksToBounds = true
         stackFace.contentsGravity = .resizeAspectFill
         stack.addSublayer(stackFace)
         stackThread.isHidden = true
         stackClasp.isHidden = true
+        lip.zPosition = -1
+        lip.fillColor = NSColor.black.cgColor          // the island's own black (it is always black)
+        lip.strokeColor = nil
+        stage.addSublayer(lip)
         stage.addSublayer(stackThread)
         stage.addSublayer(stackClasp)
-        stackText.contentsScale = 2
-        stackText.alignmentMode = .center
-        stack.addSublayer(stackText)
+        for t in [stackText, stackCaption] {
+            t.contentsScale = 2
+            t.alignmentMode = .center
+            stack.addSublayer(t)
+        }
+        tileRing.frame = CGRect(origin: .zero, size: HangingCards.tileSize).insetBy(dx: -4, dy: -4)
+        tileRing.cornerRadius = 11
+        tileRing.borderWidth = 2
+        tileRing.isHidden = true
+        stack.addSublayer(tileRing)
+        selPill.zPosition = 10_001
+        selPill.cornerRadius = 12
+        selPill.isHidden = true
+        selPill.shadowOpacity = 0.2
+        selPill.shadowRadius = 8
+        selPill.shadowOffset = CGSize(width: 0, height: 3)
+        selPill.borderWidth = 0.5
+        selText.contentsScale = 2
+        selText.alignmentMode = .left
+        selPill.addSublayer(selText)
+        selCheck.contentsGravity = .resizeAspect
+        selPill.addSublayer(selCheck)
+        stage.addSublayer(selPill)
+        tipMeta.truncationMode = .end           // (plain strings: setText)
+        tipHint.truncationMode = .end
+        for l in [tipMeta, tipHint] {
+            l.contentsScale = 2
+            tip.addSublayer(l)
+        }
+        tipKeys.contentsScale = 2
+        tipKeys.contentsGravity = .resizeAspect
+        tip.addSublayer(tipKeys)
         stage.addSublayer(stackBack)
         stage.addSublayer(stack)
         // above every card (their zPosition is their index), so the piled ones go under it, not over "+N"
@@ -441,43 +521,80 @@ final class HangingCards: NSObject {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for c in cards { style(c) }
-        for l in [stack, stackBack] {
-            l.backgroundColor = (dark ? NSColor(calibratedWhite: 0.2, alpha: 0.97) : NSColor(calibratedWhite: 0.985, alpha: 0.98)).cgColor
-            l.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.1)).cgColor
+        // the "+N" tile: an opaque, quiet surface (in dark a step under the cards, never a grey translucent block)
+        // and no second sheet under it (a 4 pt sliver read as a doubled shadow)
+        stack.backgroundColor = HangingCards.tileSurface(dark: dark).cgColor
+        stack.borderColor = HangingCards.hairline(dark: dark).cgColor
+        stackBack.isHidden = true
+        stack.shadowOpacity = dark ? HangingCards.shadowDark : HangingCards.shadowLight
+        // the hover note and the selection line: one solid surface (a tip, radius 10) — the elevated #2A2A2A in dark,
+        // never a translucent grey that reads as disabled
+        for l in [tip, selPill] {
+            l.backgroundColor = HangingCards.tipSurface(dark: dark).cgColor
+            l.borderColor = HangingCards.hairline(dark: dark).cgColor
+            l.borderWidth = 0.5
         }
-        tip.backgroundColor = (dark ? NSColor(calibratedWhite: 0.16, alpha: 0.98) : NSColor(calibratedWhite: 1, alpha: 0.98)).cgColor
-        tip.borderColor = (dark ? NSColor(white: 1, alpha: 0.12) : NSColor(white: 0, alpha: 0.08)).cgColor
-        tip.borderWidth = 0.5
+        tip.shadowOpacity = dark ? 0.4 : 0.16
         tipPlay.backgroundColor = BrandColor.fill.cgColor                 // the note's play button: flat mint, dark glyph
         styleThread(stackThread, stackClasp)
+        stackLive = nil
+        updateSelection()
         CATransaction.commit()
         if !stack.isHidden { layout() }              // "+N" in the new colours
     }
 
     // MARK: building a card
 
-    /// A hairline that reads on any wallpaper (a soft halo of the opposite tone), and a brand-colour clasp ringed in
-    /// the card's own surface colour.
-    private func styleThread(_ t: CAShapeLayer, _ k: CALayer) {
+    /// The cards' opaque surface (a picture shown whole is letterboxed on it; the "+N" tile is made of it).
+    static func surface(dark: Bool) -> NSColor {
+        dark ? NSColor(calibratedWhite: 0.2, alpha: 0.98) : NSColor(calibratedWhite: 0.985, alpha: 0.99)
+    }
+    /// The "+N" tile's surface: opaque, a step quieter than a card's in dark.
+    static func tileSurface(dark: Bool) -> NSColor {
+        dark ? NSColor(calibratedWhite: 0.145, alpha: 1) : NSColor(calibratedWhite: 0.985, alpha: 1)
+    }
+    /// The hover note's and the selection line's surface: one solid elevated sheet (#2A2A2A in dark, white in light).
+    static func tipSurface(dark: Bool) -> NSColor {
+        dark ? NSColor(calibratedWhite: 0.165, alpha: 1) : NSColor(calibratedWhite: 1, alpha: 1)
+    }
+    /// The 0.5 pt edge every card, the tile and the tips share (it holds the edge where the shadow can't: dark mode,
+    /// a light picture on a light wallpaper).
+    static func hairline(dark: Bool) -> NSColor { dark ? NSColor(white: 1, alpha: 0.16) : NSColor(white: 0, alpha: 0.12) }
+
+    /// One hairline in both appearances: 1 pt of ink at about a third, with only a faint 0.5 pt halo of the opposite
+    /// tone (a wide halo turned dark mode's thread into a soft grey band).
+    private func styleLine(_ t: CAShapeLayer) {
         let dark = isDarkMode
-        t.strokeColor = (dark ? NSColor(white: 1, alpha: 0.55) : NSColor(white: 0, alpha: 0.42)).cgColor
+        t.strokeColor = (dark ? NSColor(white: 1, alpha: 0.42) : NSColor(white: 0, alpha: 0.34)).cgColor
         t.fillColor = nil
         t.lineWidth = 1
         t.lineCap = .round
         t.shadowColor = (dark ? NSColor.black : NSColor.white).cgColor
-        t.shadowOpacity = dark ? 0.5 : 0.7
-        t.shadowRadius = 1
+        t.shadowOpacity = 0.3
+        t.shadowRadius = 0.5
         t.shadowOffset = .zero
+    }
+
+    /// A thread and its clasp: a small neutral dot (the card surface, ringed in the thread's ink), just above the card's
+    /// top edge (it never covers the picture's own title); it turns mint only on the card just caught (`liveClasp`).
+    private func styleThread(_ t: CAShapeLayer, _ k: CALayer) {
+        let dark = isDarkMode
+        styleLine(t)
         let d = HangingCards.claspSize
         k.bounds = CGRect(x: 0, y: 0, width: d, height: d)
         k.cornerRadius = d / 2
-        k.backgroundColor = BrandColor.fill.cgColor                       // flat mint (one value light and dark)
-        k.borderWidth = 1.5
-        k.borderColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 1) : NSColor.white).cgColor
+        k.borderWidth = 1
         k.shadowColor = NSColor.black.cgColor
-        k.shadowOpacity = dark ? 0.45 : 0.22
-        k.shadowRadius = 1.5
+        k.shadowOpacity = dark ? 0.4 : 0.18
+        k.shadowRadius = 1
         k.shadowOffset = CGSize(width: 0, height: 0.5)
+        liveClasp(k, false, dark: dark)
+    }
+
+    private func liveClasp(_ k: CALayer, _ live: Bool, dark: Bool) {
+        k.backgroundColor = live ? BrandColor.fill.cgColor : HangingCards.surface(dark: dark).withAlphaComponent(1).cgColor
+        k.borderColor = live ? HangingCards.surface(dark: dark).withAlphaComponent(1).cgColor
+            : (dark ? NSColor(white: 1, alpha: 0.5) : NSColor(white: 0, alpha: 0.38)).cgColor
     }
 
     /// A plain string with the layer's own font and colour: an NSAttributedString in a CATextLayer with a truncation
@@ -493,11 +610,12 @@ final class HangingCards: NSObject {
     private func style(_ c: HangingCard) {
         let dark = isDarkMode
         styleThread(c.thread, c.clasp)
+        c.claspLive = nil
+        styleClose(c, dark: dark)
         let s = c.shot
         let note = s.note
         if s.kind == .voice {
             c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.17, alpha: 0.98) : NSColor(calibratedWhite: 0.995, alpha: 0.99)).cgColor
-            c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.08)).cgColor
             let f = NSFont.systemFont(ofSize: 12.5, weight: .medium)
             let words = s.words ?? note.text      // (note.text: the words heard while it was said, until its own are in)
             let dur = HangingCards.clock(s.duration ?? 0)
@@ -517,12 +635,11 @@ final class HangingCards: NSObject {
         } else {
             // the card's own opaque surface, as the "+N" tile and the overview tiles: a picture shown whole (a toolbar,
             // a sidebar) is letterboxed on it — a translucent grey picked up the wallpaper, half blue and half grey
-            c.card.backgroundColor = (dark ? NSColor(calibratedWhite: 0.2, alpha: 0.97) : NSColor(calibratedWhite: 0.985, alpha: 0.98)).cgColor
-            c.card.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.12)).cgColor
+            c.card.backgroundColor = HangingCards.surface(dark: dark).cgColor
             c.face.contents = s.markedThumb ?? s.thumb
             layoutCaption(c, note, marks: HangingCards.marks(s))
         }
-        c.card.shadowOpacity = dark ? 0.55 : 0.3
+        c.card.shadowOpacity = dark ? HangingCards.shadowDark : HangingCards.shadowLight
         stylePick(c)                    // a ⌘-click selection's ring survives a restyle (appearance, a new note)
         // the mic mark: these words were spoken (or the audio waits for a retry) — never on a card without them
         let marks = HangingCards.marks(s)
@@ -537,9 +654,8 @@ final class HangingCards: NSObject {
         c.badge.frame = CGRect(x: w - 6 - badgeW, y: h - 6 - 16, width: badgeW, height: 16)
         c.captionMarks.isHidden = marks.isEmpty || !banded
         if banded, !marks.isEmpty {
-            let first = c.caption.isHidden ? c.captionStatus.frame : c.caption.frame
             c.captionMarks.contents = HangingCards.inlineMarksImage(marks)
-            c.captionMarks.frame = CGRect(x: 7, y: first.minY + (c.caption.isHidden ? 1 : 1.5),
+            c.captionMarks.frame = CGRect(x: 7, y: c.caption.frame.midY - 5,
                                           width: HangingCards.inlineMarksWidth(marks.count), height: 10)
         }
     }
@@ -559,39 +675,47 @@ final class HangingCards: NSObject {
         }
     }
 
-    /// A shot card's note along its bottom edge, white on a dark band: up to two lines of it, or one line and the
-    /// quiet status under it.
+    /// v0.9.2: a shot card's note is one line on a slim band along its bottom edge (19 pt, 11 pt medium white): the
+    /// longest run of whole words that fits (CardBand.clamp), its end fading out when there is more — never an "…", and
+    /// never more than a fifth of the picture (the evidence stays in view). A note that needs you ("Couldn't
+    /// transcribe") takes the line instead, in the attention colour. The hover note has all of it; the band steps away
+    /// while the card is lifted (`place`), so the words never show twice.
+    static let bandH: CGFloat = 19
     private func layoutCaption(_ c: HangingCard, _ note: CardNote, marks: [BlurtIcon]) {
         let w = c.size.width, h = c.size.height
-        let f = NSFont.systemFont(ofSize: 10, weight: .semibold)
-        let sf = NSFont.systemFont(ofSize: 9.5, weight: .medium)
-        let lineH: CGFloat = 12.5
+        let f = NSFont.systemFont(ofSize: 11, weight: .medium)
         let status = HangingCards.statusText(note.status)
-        let text = note.text.map { $0.replacingOccurrences(of: "\n", with: " · ") }
-        c.caption.isHidden = text == nil
-        c.captionStatus.isHidden = status == nil
-        c.scrim.isHidden = text == nil && status == nil
-        c.truncated = false
-        guard !c.scrim.isHidden else { return }
-        // the marks lead the band's first line: the note's (both its lines start after them), else the status's
-        let lead = marks.isEmpty ? 0 : HangingCards.inlineMarksWidth(marks.count) + 3
-        let inner = w - 14 - (text == nil ? 0 : lead)
-        var lines: CGFloat = 0
-        if let t = text {
-            let hgt = (t as NSString).boundingRect(with: NSSize(width: inner, height: 400), options: [.usesLineFragmentOrigin],
-                                                   attributes: [.font: f]).height
-            lines = status == nil && hgt > lineH * 1.3 ? 2 : 1
-            c.truncated = hgt > lines * lineH + 2             // more than the card's one or two lines: the hover note has it
-            setText(c.caption, t, font: f, color: NSColor(white: 1, alpha: 0.96))
+        let text = note.text.map { $0.replacingOccurrences(of: "\n", with: " ") }
+        let needs = note.needsYou && status != nil
+        let line = needs ? status : (text ?? status)
+        c.caption.isHidden = line == nil
+        c.captionStatus.isHidden = true
+        c.scrim.isHidden = line == nil
+        c.truncated = text != nil
+        guard let l = line else { return }
+        let lead = marks.isEmpty ? 0 : HangingCards.inlineMarksWidth(marks.count) + 4
+        let inner = w - 14 - lead
+        let fits = { (t: String) in ceil((t as NSString).size(withAttributes: [.font: f]).width) <= inner }
+        let band = CardBand.clamp(l, fits: fits)
+        let color = needs ? BrandColor.Island.attn : (text == nil ? NSColor(white: 1, alpha: 0.75) : NSColor(white: 1, alpha: 0.96))
+        setText(c.caption, band.text, font: f, color: color)
+        let bh = HangingCards.bandH
+        c.caption.frame = CGRect(x: 7 + lead, y: h - bh + (bh - 14) / 2, width: inner, height: 14)
+        // more than fits: the line's end fades out (the last 16 pt), not an ellipsis
+        if band.clipped {
+            let m = (c.caption.mask as? CAGradientLayer) ?? CAGradientLayer()
+            m.colors = [NSColor.black.cgColor, NSColor.black.cgColor, NSColor.clear.cgColor]
+            m.startPoint = CGPoint(x: 0, y: 0.5)
+            m.endPoint = CGPoint(x: 1, y: 0.5)
+            // (the fade sits on the last word, wherever the line ends — not at the band's edge)
+            let end = min(inner, ceil((band.text as NSString).size(withAttributes: [.font: f]).width) + 2)
+            m.locations = [0, NSNumber(value: Double(max(0, end - 18) / inner)), NSNumber(value: Double(end / inner))]
+            m.frame = CGRect(origin: .zero, size: c.caption.frame.size)
+            c.caption.mask = m
+        } else {
+            c.caption.mask = nil
         }
-        // "Couldn't transcribe" needs you (the attention amber, §2.3); "Transcribing…" is quiet
-        if let st = status { setText(c.captionStatus, st, font: sf, color: note.needsYou ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.72)) }
-        let statusH: CGFloat = status == nil ? 0 : 12
-        let band = 5 + lines * lineH + statusH + 5
-        c.caption.frame = CGRect(x: 7 + lead, y: h - 5 - statusH - lines * lineH, width: inner, height: lines * lineH + 1)
-        let statusLead = text == nil ? lead : 0
-        c.captionStatus.frame = CGRect(x: 7 + statusLead, y: h - 5 - statusH, width: w - 14 - statusLead, height: statusH)
-        c.scrim.frame = CGRect(x: 0, y: h - band - 10, width: w, height: band + 10)
+        c.scrim.frame = CGRect(x: 0, y: h - bh - 6, width: w, height: bh + 6)
     }
 
     static func clock(_ t: Double) -> String { String(format: "%d:%02d", Int(t) / 60, Int(t) % 60) }
@@ -624,7 +748,7 @@ final class HangingCards: NSObject {
 
     private func makeCard(_ s: Shot, x: CGFloat) -> HangingCard {
         let i = cards.count + leaving.count
-        let c = HangingCard(s, x: x, tilt: i % 2 == 0 ? 2 : -2)
+        let c = HangingCard(s, x: x, side: i % 2 == 0 ? 1 : -1)
         let w = c.size.width, h = c.size.height
         // the thread lives in the stage (it never rotates); the card and its clasp hang from root
         c.grip.target = threadTop
@@ -637,8 +761,8 @@ final class HangingCards: NSObject {
         c.card.cornerRadius = s.kind == .voice ? 12 : 7
         c.card.borderWidth = 0.5
         c.card.shadowColor = NSColor.black.cgColor
-        c.card.shadowRadius = 12
-        c.card.shadowOffset = CGSize(width: 0, height: 6)
+        c.card.shadowRadius = 8
+        c.card.shadowOffset = CGSize(width: 0, height: 3)
         c.face.frame = c.card.bounds
         c.face.cornerRadius = c.card.cornerRadius
         c.face.masksToBounds = true
@@ -658,16 +782,17 @@ final class HangingCards: NSObject {
             c.card.addSublayer(mic)
         } else {
             // the note, on the picture's bottom edge (layoutCaption sizes it to what it says)
-            c.scrim.colors = [NSColor(white: 0, alpha: 0).cgColor, NSColor(white: 0, alpha: 0.6).cgColor, NSColor(white: 0, alpha: 0.82).cgColor]
-            c.scrim.locations = [0, 0.35, 1]
+            // a slim band: 6 pt of soft edge, then an even dark under the one line
+            c.scrim.colors = [NSColor(white: 0, alpha: 0).cgColor, NSColor(white: 0, alpha: 0.6).cgColor, NSColor(white: 0, alpha: 0.66).cgColor]
+            c.scrim.locations = [0, 0.28, 1]
             c.scrim.startPoint = CGPoint(x: 0.5, y: 0)
             c.scrim.endPoint = CGPoint(x: 0.5, y: 1)
             c.scrim.isHidden = true
             c.face.addSublayer(c.scrim)                  // (clipped to the card's corners with the picture)
             for line in [c.caption, c.captionStatus] {
                 line.contentsScale = 2
-                line.isWrapped = true
-                line.truncationMode = .end
+                line.isWrapped = false
+                line.truncationMode = .none
                 line.isHidden = true
                 line.shadowColor = NSColor.black.cgColor
                 line.shadowOpacity = 0.5
@@ -684,29 +809,50 @@ final class HangingCards: NSObject {
         c.captionMarks.contentsGravity = .left
         c.captionMarks.isHidden = true
         c.card.addSublayer(c.captionMarks)
-        c.close.frame = CGRect(x: -8, y: -8, width: 20, height: 20)
-        c.close.cornerRadius = 10
-        c.close.backgroundColor = NSColor(white: 0.12, alpha: 0.9).cgColor
-        c.close.borderColor = NSColor(white: 1, alpha: 0.85).cgColor
-        c.close.borderWidth = 1
-        let x = BlurtIcon.x.makeLayer(size: 11, color: NSColor.white.cgColor)
-        x.position = CGPoint(x: 10, y: 10)
-        c.close.addSublayer(x)
+        // × on hover: overhanging the top-left corner (never on the picture's own dark title bar), a small disc of the
+        // card's surface with a hairline — light in light mode, dark in dark (styleClose)
+        c.close.frame = CGRect(x: -7, y: -7, width: 18, height: 18)
+        c.close.cornerRadius = 9
+        c.close.borderWidth = 0.5
+        c.close.shadowColor = NSColor.black.cgColor
+        c.close.shadowOpacity = 0.22
+        c.close.shadowRadius = 2
+        c.close.shadowOffset = CGSize(width: 0, height: 1)
         c.close.opacity = 0
-        c.copied.contentsScale = 2
-        c.copied.alignmentMode = .center
+        // picked (⌘-click): a neutral ring hugging the card (1.5 pt, just outside it) and the check in its corner — the
+        // keyboard's accent ring sits outside that, so focus on a picked card is two rings, never ambiguous
+        c.pickRing.frame = CGRect(x: 0, y: 0, width: w, height: h).insetBy(dx: -2, dy: -2)
+        c.pickRing.cornerRadius = c.card.cornerRadius + 2
+        c.pickRing.borderWidth = 1.5
+        c.pickRing.isHidden = true
+        c.pickBadge.frame = CGRect(x: w - 22, y: h - 22, width: 17, height: 17)
+        c.pickBadge.cornerRadius = 8.5
+        c.pickBadge.borderWidth = 1.5
+        c.pickBadge.borderColor = NSColor.white.cgColor
+        c.pickBadge.isHidden = true
+        let check = BlurtIcon.check.makeLayer(size: 10, color: NSColor.white.cgColor)
+        check.position = CGPoint(x: 8.5, y: 8.5)
+        c.pickBadge.addSublayer(check)
+        c.copiedText.contentsScale = 2
+        c.copiedText.alignmentMode = .left
+        c.copied.addSublayer(c.copiedText)
+        c.copiedCheck.contents = BlurtIcon.check.cgImage(size: 11, scale: 2, color: BrandColor.Island.ok.cgColor, weight: 1.2)
+        c.copiedCheck.contentsGravity = .resizeAspect
+        c.copied.addSublayer(c.copiedCheck)
         c.copied.cornerRadius = 11
         c.copied.backgroundColor = NSColor(white: 0.08, alpha: 0.88).cgColor
         pill(c, Loc.t("capture.card.copied", table: "Capture"))
         c.copied.opacity = 0
         c.root.addSublayer(c.card)
-        c.clasp.position = CGPoint(x: c.gripX, y: 0.5)
+        c.clasp.position = CGPoint(x: c.gripX, y: -1)      // on the edge, holding it: at most 1.5 pt over the picture
         c.root.addSublayer(c.clasp)
+        c.root.addSublayer(c.pickRing)
+        c.root.addSublayer(c.pickBadge)
         c.root.addSublayer(c.close)
         c.root.addSublayer(c.copied)
         c.focusRing.frame = c.card.frame.insetBy(dx: -4, dy: -4)
         c.focusRing.cornerRadius = c.card.cornerRadius + 4
-        c.focusRing.borderWidth = 2.5
+        c.focusRing.borderWidth = 2
         c.focusRing.isHidden = true
         c.root.addSublayer(c.focusRing)
         stage.insertSublayer(c.root, below: stackBack)
@@ -714,15 +860,31 @@ final class HangingCards: NSObject {
         return c
     }
 
-    /// The small dark pill under a card — "Copied", or a hint — sized to its text.
-    private func pill(_ c: HangingCard, _ text: String) {
+    /// The small dark pill under a card — "Copied" (`done`: after the ok check, as every done notice), or a hint —
+    /// sized to its text.
+    private func pill(_ c: HangingCard, _ text: String, done: Bool = false) {
         let f = NSFont.systemFont(ofSize: 11.5, weight: .semibold)
-        let w = ceil((text as NSString).size(withAttributes: [.font: f]).width) + 24
+        let s = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: NSColor.white])
+        let tw = ceil(s.size().width), lead: CGFloat = done ? 11 + 4 : 0
+        let w = tw + lead + 24
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         c.copied.frame = CGRect(x: c.size.width / 2 - w / 2, y: c.size.height + 8, width: w, height: 22)
-        c.copied.string = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: NSColor.white])
+        c.copiedCheck.isHidden = !done
+        c.copiedCheck.frame = CGRect(x: 12, y: 5.5, width: 11, height: 11)
+        c.copiedText.frame = CGRect(x: 12 + lead, y: 3.5, width: tw + 2, height: 16)
+        c.copiedText.string = s
         CATransaction.commit()
+    }
+
+    /// The hover ×: the card's own surface and hairline, its glyph in secondary ink.
+    private func styleClose(_ c: HangingCard, dark: Bool) {
+        c.close.backgroundColor = (dark ? NSColor(calibratedWhite: 0.27, alpha: 1) : NSColor(calibratedWhite: 1, alpha: 1)).cgColor
+        c.close.borderColor = (dark ? NSColor(white: 1, alpha: 0.22) : NSColor(white: 0, alpha: 0.16)).cgColor
+        c.close.sublayers?.forEach { $0.removeFromSuperlayer() }
+        let x = BlurtIcon.x.makeLayer(size: 9, color: (dark ? NSColor(white: 1, alpha: 0.9) : NSColor(white: 0.25, alpha: 1)).cgColor)
+        x.position = CGPoint(x: 9, y: 9)
+        c.close.addSublayer(x)
     }
 
     // MARK: layout
@@ -733,21 +895,87 @@ final class HangingCards: NSObject {
     /// Where a card's thread comes out of the island's bottom edge (CardRow.threadX): straight above it while the row
     /// fits under the island, else the row mapped onto the edge in proportion — the threads keep their order and hang
     /// close to vertical, never a fan from the island's two corners (or from thin air beside a narrow pill).
-    private func threadX(_ x: CGFloat) -> CGFloat {
-        guard let s = screen else { return x }
+    private func threadX(_ x: CGFloat) -> CGFloat { CardRow.threadX(x, row: row.span, edge: edge) }
+
+    /// The part of the island's bottom edge a thread may leave from (panel x): inside its rounded corners.
+    private var edge: ClosedRange<CGFloat> {
+        guard let s = screen else { return 0...width }
         let f = island.frameOnScreen
         let inset = min(f.height / 2, f.width / 2)
-        let edge = (f.minX - s.frame.minX + inset)...max(f.minX - s.frame.minX + inset, f.maxX - s.frame.minX - inset)
-        return CardRow.threadX(x, row: row.span, edge: edge)
+        return (f.minX - s.frame.minX + inset)...max(f.minX - s.frame.minX + inset, f.maxX - s.frame.minX - inset)
     }
 
-    /// A card's resting top edge: the shortest thread plus its slack, shortened while hovered.
-    private func rest(_ c: HangingCard) -> CGFloat { anchor.y + c.slack - 6 * c.lift.value }
+    /// The row hangs from the island's lip: some card (or the tile) is not under the island's edge, so a thread to it
+    /// would run nearly flat (CardRow.rodded). Then every card hangs straight down from the lip.
+    private var rodded: Bool { CardRow.rodded(centres: row.centres + (row.tileX.map { [$0] } ?? []), edge: edge) }
 
-    /// 0 = reeled into the island, 1 = hanging at full length (drives the reel-in's scale and fade).
+    /// Where the thread of a card whose clasp is at `x` starts: straight above it on the lip, or on the island's
+    /// bottom edge (CardRow.threadX) when the whole row is under the island.
+    private func origin(_ x: CGFloat) -> CGPoint {
+        rodded ? CGPoint(x: x, y: lipY) : CGPoint(x: threadX(x), y: threadTop)
+    }
+
+    /// The island's bottom edge (panel y).
+    private var islandBottom: CGFloat { anchor.y - HangingCards.below }
+
+    /// v0.9.2 — the lip: the island grows a 3 pt band of its own black out of its bottom edge, centred on it and as wide
+    /// as the outermost clasps plus 8 (CardRow.lip), with its bottom corners filled square and a small concave fillet
+    /// where its sides meet the band, so island and lip read as one shape (as NotchNook's shelf and Dynamic Island's
+    /// expansion keep everything in one black material). It grows out with the cards and shrinks back into the island
+    /// as they reel in. No lip while the row fits under the island: each thread leaves the island itself.
+    private func stepLip() {
+        let items = shownCards.filter { !$0.flying }
+        guard rodded, let s = screen, !items.isEmpty || !stack.isHidden else {
+            lip.path = nil
+            lipY = threadTop
+            lipK = 0
+            return
+        }
+        var ks = items.map { reeled($0) }
+        var xs = items.map { $0.x.value - $0.size.width / 2 + $0.gripX }
+        if !stack.isHidden, row.more > 0, row.more <= cards.count {
+            ks.append(reeled(cards[row.more - 1]))
+            xs.append(tileX.value)
+        }
+        lipK = ks.max() ?? 0
+        let f = island.frameOnScreen
+        let il = f.minX - s.frame.minX, ir = f.maxX - s.frame.minX
+        guard lipK > 0.01, let full = CardRow.lip(clasps: xs, edge: edge, island: il...ir) else { lip.path = nil; lipY = threadTop; return }
+        let k = Ease.outCubic(min(1, lipK))
+        let l = il + (full.lowerBound - il) * k, r = ir + (full.upperBound - ir) * k
+        let y0 = islandBottom, t = HangingCards.lipT
+        lipY = y0 + t - 0.5
+        let p = CGMutablePath()
+        // the band, with round caps
+        p.addRoundedRect(in: CGRect(x: l, y: y0 - 0.5, width: r - l, height: t + 0.5), cornerWidth: min(t / 2, (r - l) / 2), cornerHeight: t / 2)
+        // the island's two bottom corners filled square, and a concave fillet out into the band on each side
+        let rad = min(island.cornerRadiusNow, f.height / 2), fil: CGFloat = 4 * k
+        for (x, dir) in [(il, CGFloat(-1)), (ir, CGFloat(1))] {
+            p.addRect(CGRect(x: dir < 0 ? x : x - rad, y: y0 - rad, width: rad, height: rad + 0.5))
+            if fil > 0.3 {
+                let ox = x + dir * fil
+                let q = CGMutablePath()
+                q.move(to: CGPoint(x: x, y: y0 - fil))
+                q.addLine(to: CGPoint(x: x, y: y0 + 0.5))
+                q.addLine(to: CGPoint(x: ox, y: y0 + 0.5))
+                q.addArc(center: CGPoint(x: ox, y: y0 - fil), radius: fil, startAngle: .pi / 2, endAngle: dir < 0 ? 0 : .pi, clockwise: dir < 0)
+                q.closeSubpath()
+                p.addPath(q)
+            }
+        }
+        lip.path = p
+        lip.opacity = Float(min(1, lipK * 1.6))
+    }
+
+    /// A card's resting top edge: under the island on the one top line, lifted while hovered.
+    private func rest(_ c: HangingCard) -> CGFloat { anchor.y + c.slack - HangingCards.liftPt * c.lift.value }
+
+    /// 0 = reeled into the island, 1 = hanging at full length (drives the reel-in's scale and fade). Measured against
+    /// where the card would hang unlifted: a lifted card is fully down (v0.9.1 measured it against the lifted rest, so a
+    /// hovered card came out 0.95 instead of 1.05).
     private func reeled(_ c: HangingCard) -> CGFloat {
         let top = threadTop, full = anchor.y + c.slack - top
-        return full > 0 ? min(1, max(0, (c.grip.value - top) / full)) : 1
+        return full > 0 ? min(1, max(0, (c.grip.value + HangingCards.liftPt * c.lift.value - top) / full)) : 1
     }
 
     /// The island's centre and the cards' top edge, in panel coordinates.
@@ -762,16 +990,15 @@ final class HangingCards: NSObject {
 
     /// Rest x for each card (the ones that don't hang: under the tile), and the tile's x (CardRow.layout).
     private func targets() -> (xs: [CGFloat], stackX: CGFloat?) {
-        row = CardRow.layout(widths: cards.map(\.size.width), tile: HangingCards.shotSize.width, gap: HangingCards.gap,
+        row = CardRow.layout(widths: cards.map(\.size.width), tile: HangingCards.tileSize.width, gap: HangingCards.gap,
                              centre: anchor.x, bounds: HangingCards.edge...max(HangingCards.edge, width - HangingCards.edge))
         let hi = hoverCard.flatMap { h in row.shown.firstIndex { cards[$0] === h } }
-        var xs = Array(repeating: row.tileX ?? anchor.x, count: cards.count)
-        for (j, i) in row.shown.enumerated() {
-            var cx = row.centres[j]
-            if let h = hi, j != h { cx += j < h ? -10 : 10 }        // neighbours make room
-            xs[i] = cx
-        }
-        return (xs, row.tileX)
+        // the lifted card's neighbours make room — every item on each side, the "+N" tile included (CardRow.stepAside)
+        let aside = CardRow.stepAside(items: row.shown.count + (row.tileX == nil ? 0 : 1), lifted: hi, by: HangingCards.aside)
+        let tx = row.tileX.map { $0 + (aside.last ?? 0) }
+        var xs = Array(repeating: tx ?? anchor.x, count: cards.count)
+        for (j, i) in row.shown.enumerated() { xs[i] = row.centres[j] + aside[j] }
+        return (xs, tx)
     }
 
     /// The cards in the order they were taken (oldest first; they hang newest first): a card put back or brought back
@@ -812,28 +1039,39 @@ final class HangingCards: NSObject {
         focus = CardFocus.clamp(focus, cards: row.shown.count, tile: row.more > 0)
         CATransaction.begin()
         CATransaction.setDisableActions(true)
+        let wasHidden = stack.isHidden
         stack.isHidden = t.stackX == nil
-        stackBack.isHidden = stack.isHidden
+        stackBack.isHidden = true
         if let sx = t.stackX {
             // the tile: the card surface, a second edge behind it, and how many wait there — no ghost of a picture
             // under the count (it competed with the faded text and ink of the next snap)
-            let sz = HangingCards.shotSize
+            // the tile: as tall as a card, narrower; the count in secondary ink and what a click does under it — a
+            // quiet way into the overview, never the loudest thing in the row; a second sheet peeks out under it
+            let sz = HangingCards.tileSize
             stack.bounds = CGRect(origin: .zero, size: sz)
-            stack.position = CGPoint(x: sx, y: 0)
+            if stack.isHidden != wasHidden || instant { tileX.value = sx; tileX.snap() }
+            tileX.target = sx
+            stack.position = CGPoint(x: tileX.value, y: stack.position.y)
             stack.anchorPoint = CGPoint(x: 0.5, y: 0)
-            stackBack.bounds = stack.bounds
+            stackBack.bounds = CGRect(origin: .zero, size: CGSize(width: sz.width - 10, height: sz.height))
             stackBack.anchorPoint = stack.anchorPoint
             stackFace.frame = stack.bounds
             stackFace.contents = nil
             stackFace.opacity = 0
             let dark = isDarkMode
-            let f = NSFont.systemFont(ofSize: 17, weight: .semibold)
-            stackText.string = NSAttributedString(string: "+\(row.more)", attributes: [.font: f, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
-            stackText.frame = CGRect(x: 0, y: (sz.height - 24) / 2, width: sz.width, height: 24)
-            stack.borderWidth = focus == row.shown.count ? 2.5 : 0.5
-            stack.borderColor = focus == row.shown.count ? HangingCards.cardColor(BrandColor.accent, dark: isDarkMode)
-                : (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.1)).cgColor
+            let f = NSFont.monospacedDigitSystemFont(ofSize: 15, weight: .semibold)
+            stackText.string = NSAttributedString(string: "+\(Loc.number(row.more))", attributes: [
+                .font: f, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.7) : NSColor(white: 0, alpha: 0.6)])
+            stackText.frame = CGRect(x: 0, y: sz.height / 2 - 17, width: sz.width, height: 20)
+            stackCaption.string = NSAttributedString(string: Loc.t("capture.cards.more_caption", table: "Capture"), attributes: [
+                .font: NSFont.systemFont(ofSize: 10.5), .foregroundColor: dark ? NSColor(white: 1, alpha: 0.45) : NSColor(white: 0, alpha: 0.42)])
+            stackCaption.frame = CGRect(x: 2, y: sz.height / 2 + 4, width: sz.width - 4, height: 14)
+            stack.borderWidth = 0.5
+            stack.borderColor = HangingCards.hairline(dark: dark).cgColor
+            tileRing.isHidden = focus != row.shown.count
+            tileRing.borderColor = HangingCards.cardColor(BrandColor.accent, dark: dark)
         }
+        if stack.isHidden { tileRing.isHidden = true }
         stackThread.isHidden = stack.isHidden
         stackClasp.isHidden = stack.isHidden
         for (j, c) in shownCards.enumerated() {
@@ -858,8 +1096,7 @@ final class HangingCards: NSObject {
         if hoverCard === c { hoverCard = nil; tip.isHidden = true }
         if how == .taken, visible {
             // the thread's free end: still stretched after the pointer, or already sprung back into the island
-            let tx = threadX(c.x.value - c.size.width / 2 + c.gripX)
-            let end = c.tether.flatMap { $0.snapped == nil ? $0.end : nil } ?? CGPoint(x: tx, y: threadTop)
+            let end = c.tether.flatMap { $0.snapped == nil ? $0.end : nil } ?? origin(c.x.value - c.size.width / 2 + c.gripX)
             c.tether = nil
             c.taken = true
             c.root.opacity = 0
@@ -924,6 +1161,7 @@ final class HangingCards: NSObject {
         c.flying = false
         c.opacity = 1
         c.omega += 30            // the catch sets it swaying
+        c.liveUntil = CACurrentMediaTime() + 2.4      // blurt just caught it: its clasp is mint a moment, then neutral
         popClasp(c)
         wake()
         if c.pullAfterCatch {    // a capture with a project: caught, a beat, then up into the island
@@ -1267,7 +1505,7 @@ final class HangingCards: NSObject {
         var moving = false
         for c in cards {
             // the thread's length: hanging when shown, reeled into the island when not
-            let rest = a.y + c.slack - 6 * c.lift.value
+            let rest = a.y + c.slack - HangingCards.liftPt * c.lift.value
             let hiddenY = threadTop
             if let r = c.reach {
                 let k = CGFloat(max(0, now - r.start) / 0.35)
@@ -1301,21 +1539,25 @@ final class HangingCards: NSObject {
                 left -= h
             }
             if reduce { c.theta = 0; c.omega = 0; c.x.snap(); c.lift.snap() }
-            place(c, now: now)
             if !c.x.resting || !c.grip.resting || !c.lift.resting || abs(c.theta) > 0.12 || abs(c.omega) > 0.4
-                || c.unreel != nil || c.tether != nil || c.flying || now < c.copiedUntil + 0.1 { moving = true }
+                || c.unreel != nil || c.tether != nil || c.flying || now < c.copiedUntil + 0.1 || now < c.liveUntil + 0.1 { moving = true }
         }
+        _ = tileX.step(dt)
+        if reduce { tileX.snap() }
+        if !tileX.resting { moving = true }
+        stepLip()
+        for c in cards { place(c, now: now) }
         if row.more > 0, row.more <= cards.count, !stack.isHidden {
-            // the tile hangs where the cards behind it would (they reel in and out with the others)
+            // the tile hangs where the cards behind it would (they reel in and out with the others), on the same line
             let first = cards[row.more - 1]
-            stack.position = CGPoint(x: stack.position.x, y: first.grip.value)
-            stackBack.position = CGPoint(x: stack.position.x + 4, y: first.grip.value + 4)
+            let y = first.grip.value + HangingCards.liftPt * first.lift.value
+            stack.position = CGPoint(x: tileX.value, y: y)
             let k = reeled(first)
             stack.opacity = Float(k)
-            stackBack.opacity = Float(k)
-            drawThread(stackThread, from: CGPoint(x: threadX(stack.position.x), y: threadTop), to: CGPoint(x: stack.position.x, y: first.grip.value))
-            stackClasp.position = CGPoint(x: stack.position.x, y: first.grip.value + 0.5)
+            drawThread(stackThread, from: origin(stack.position.x), to: CGPoint(x: stack.position.x, y: y - 3))
+            stackClasp.position = CGPoint(x: stack.position.x, y: y - 1)
             stackClasp.opacity = Float(k)
+            if stackLive != false { stackLive = false; liveClasp(stackClasp, false, dark: styledDark) }
         }
         for c in leaving { stepLeaving(c, now) }
         leaving.removeAll { c in
@@ -1384,18 +1626,18 @@ final class HangingCards: NSObject {
     private func place(_ c: HangingCard, now: CFTimeInterval) {
         let y = c.grip.value
         let reduce = reduceMotion
-        let swing = reduce ? 0 : c.theta + c.tilt * (1 - c.lift.value)
+        let swing = reduce ? 0 : c.theta + c.tilt
         let gx = c.x.value - c.size.width / 2 + c.gripX
-        let top = threadTop
-        // a pendulum: the clasp sways on the thread around the point where it comes out of the island
-        let len = max(0, y - top)
+        let o = origin(gx)
+        // a pendulum: the clasp sways on the thread around the point where it starts (the island's edge, the rod)
+        let len = max(0, y - o.y)
         let th = (reduce ? 0 : c.theta) * .pi / 180
         let clasp = CGPoint(x: gx + len * sin(th) * 0.6, y: y)
         c.root.position = clasp
         // reeled in (hidden): the card shrinks a little and fades as it goes up into the island
         let k = reeled(c)
         var t = CATransform3DMakeRotation(swing * .pi / 180, 0, 0, 1)
-        let sc = (1 + 0.04 * c.lift.value) * (0.7 + 0.3 * k)
+        let sc = (1 + HangingCards.liftScale * c.lift.value) * (0.7 + 0.3 * k)
         t = CATransform3DScale(t, sc, sc, 1)
         c.root.transform = t
         // piled behind the stack: gone once it is under it (only the stack's own thread shows)
@@ -1403,8 +1645,7 @@ final class HangingCards: NSObject {
         c.root.opacity = Float(c.flying || c.dragging ? 0 : c.opacity * min(1, k * 1.4) * (1 - under))
         c.thread.opacity = Float(1 - under)
         // the thread: from inside the island to the clasp — or after the dragged card, springing back once it snapped
-        let tx = threadX(gx)
-        var end = CGPoint(x: clasp.x, y: y + 0.5)
+        var end = CGPoint(x: clasp.x, y: y - 3)          // into the clasp on the card's edge
         var show: CGFloat = 1
         if let u = c.unreel {
             let f = CGFloat((now - u.start) / u.duration)
@@ -1415,20 +1656,31 @@ final class HangingCards: NSObject {
             if let snapped = tt.snapped {
                 let f = CGFloat((now - snapped) / 0.32)
                 let back = Ease.outBack(f, 1.2)
-                end = CGPoint(x: tt.from.x + (tx - tt.from.x) * back, y: tt.from.y + (top - tt.from.y) * back)
-                if f >= 1 { c.tether = nil; end = CGPoint(x: tx, y: top) }
+                end = CGPoint(x: tt.from.x + (o.x - tt.from.x) * back, y: tt.from.y + (o.y - tt.from.y) * back)
+                if f >= 1 { c.tether = nil; end = o }
             } else {
                 end = tt.end
             }
         } else if c.dragging {
-            end = CGPoint(x: tx, y: top)
+            end = o
         }
-        drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: tx + (end.x - tx) * show, y: top + (end.y - top) * show))
+        drawThread(c.thread, from: o, to: CGPoint(x: o.x + (end.x - o.x) * show, y: o.y + (end.y - o.y) * show))
         c.clasp.opacity = c.dragging || show < 0.98 ? 0 : 1
-        c.card.shadowRadius = 12 + 6 * c.lift.value
-        c.card.shadowOffset = CGSize(width: 0, height: 6 + 4 * c.lift.value)
-        c.close.opacity = c.hovered && !c.dragging ? 1 : 0
+        // one tight elevation at rest; the card under the pointer (or the keyboard) rises to a pop shadow
+        let l = c.lift.value
+        c.card.shadowRadius = 8 + 8 * l
+        c.card.shadowOffset = CGSize(width: 0, height: 3 + 5 * l)
+        c.card.shadowOpacity = (styledDark ? HangingCards.shadowDark : HangingCards.shadowLight) + HangingCards.shadowLift * Float(l)
+        c.close.opacity = c.hovered && !c.dragging && focus == nil ? 1 : 0
         c.copied.opacity = now < c.copiedUntil ? 1 : 0
+        // the note's band steps away while the card is lifted: the hover note under the row has all of it
+        let band = Float(1 - min(1, l * 1.25))
+        c.scrim.opacity = band
+        c.caption.opacity = band
+        c.captionMarks.opacity = band
+        // the clasp: mint only on the card just caught (blurt in the act); hovered, focused and picked stay neutral
+        let live = now < c.liveUntil
+        if c.claspLive != live { c.claspLive = live; liveClasp(c.clasp, live, dark: styledDark) }
     }
 
     private func stepLeaving(_ c: HangingCard, _ now: CFTimeInterval) {
@@ -1439,14 +1691,13 @@ final class HangingCards: NSObject {
             c.thread.opacity = Float(1 - raw)
             return
         }
-        let top = threadTop
         if c.taken {
             // taken: the card is in the other app already; its thread lets go — the free end springs back up into
             // the island (a small overshoot) and fades as it settles
             c.root.opacity = 0
-            let tx = threadX(l.from.x)
+            let o = origin(l.from.x)
             let back = Ease.outBack(min(1, raw / 0.64), 1.2)
-            drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: l.from.x + (tx - l.from.x) * back, y: l.from.y + (top - l.from.y) * back))
+            drawThread(c.thread, from: o, to: CGPoint(x: l.from.x + (o.x - l.from.x) * back, y: l.from.y + (o.y - l.from.y) * back))
             c.thread.opacity = Float(1 - Ease.inCubic(raw))
             return
         }
@@ -1458,19 +1709,20 @@ final class HangingCards: NSObject {
             let s = 1 - 0.8 * k
             c.root.transform = CATransform3DScale(CATransform3DMakeRotation(c.theta * (1 - k) * .pi / 180, 0, 0, 1), s, s, 1)
             c.root.opacity = Float(raw > 0.8 ? (1 - raw) / 0.2 : 1)
-            drawThread(c.thread, from: CGPoint(x: threadX(p.x), y: top), to: CGPoint(x: p.x, y: max(top, p.y)))
+            let o = origin(p.x)
+            drawThread(c.thread, from: o, to: CGPoint(x: p.x, y: max(o.y, p.y)))
         } else {
             // the thread lets go: the card drops with a turn and a fade; the empty thread springs back up
             let e = raw * raw
-            let angle = c.tilt + c.theta + (c.tilt >= 0 ? 1 : -1) * 28 * e
+            let angle = c.tilt + c.theta + c.side * 28 * e
             var t = CATransform3DMakeTranslation(0, 560 * e, 0)
             t = CATransform3DRotate(t, angle * .pi / 180, 0, 0, 1)
             c.root.transform = t
             c.root.opacity = Float(1 - raw)
             c.clasp.opacity = 0                 // the clasp stays on the thread
             let back = Ease.outCubic(min(1, raw * 1.8))
-            let tx = threadX(l.from.x)
-            drawThread(c.thread, from: CGPoint(x: tx, y: top), to: CGPoint(x: l.from.x + (tx - l.from.x) * back, y: l.from.y + (top - l.from.y) * back))
+            let o = origin(l.from.x)
+            drawThread(c.thread, from: o, to: CGPoint(x: l.from.x + (o.x - l.from.x) * back, y: l.from.y + (o.y - l.from.y) * back))
         }
     }
 
@@ -1494,7 +1746,7 @@ final class HangingCards: NSObject {
             CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value, width: c.size.width, height: c.size.height)
         }
         if !stack.isHidden {
-            let sz = HangingCards.shotSize
+            let sz = HangingCards.tileSize
             rects.append(CGRect(x: stack.position.x - sz.width / 2, y: stack.position.y, width: sz.width + 4, height: sz.height + 4))
         }
         for r in rects {
@@ -1576,7 +1828,7 @@ final class HangingCards: NSObject {
 
     private func card(at p: NSPoint) -> HangingCard? {
         for c in shownCards.reversed() where !c.flying && !c.dragging {
-            let r = CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value - 8, width: c.size.width, height: c.size.height + 8).insetBy(dx: -4, dy: -4)
+            let r = CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value - 8, width: c.size.width, height: c.size.height + 8).insetBy(dx: -5, dy: -4)
             if r.contains(p) { return c }
         }
         return nil
@@ -1590,57 +1842,154 @@ final class HangingCards: NSObject {
 
     /// What the hovered card's note adds (CardTip): the whole note when the card cuts it short, the play button when
     /// there is a recording — nil when the card already says everything.
+    /// The hover note (v0.9.1): every hovered card gets one — the rest of a note cut short and the play button of a
+    /// spoken one (CardTip, only what the card can't show), then a quiet line saying what it is and when ("Snap ·
+    /// 19:03"), and how to use it until a card has been used once (or, with the keyboard on the row, its keys).
     private func tipContent(_ c: HangingCard) -> CardTip.Content? {
         let playable = c.shot.voiceURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
-        return CardTip.content(truncated: c.truncated && c.shot.words != nil, playable: playable)
+        return CardTip.content(truncated: c.truncated && c.shot.words != nil, playable: playable) ?? CardTip.Content(text: false, play: false)
     }
 
+    /// The user has copied or dragged out a card once: the hover note stops explaining clicks and drags.
+    private lazy var cardsUsed: Bool = recordConfig()["cards_used"] as? Bool ?? false
+    private func markUsed() {
+        guard !cardsUsed else { return }
+        cardsUsed = true
+        setRecordConfig("cards_used", true)
+    }
+
+    /// The hint line under a hovered card: how to use a card, until one has been used (with the keyboard on the row the
+    /// note shows the keys instead, as keycaps: KeyHint.cards).
+    private func tipHintText(_ c: HangingCard) -> String? {
+        cardsUsed ? nil : Loc.t("capture.card.tip_hint", table: "Capture")
+    }
+
+    /// The keyboard is on this card: the note ends with the keys (the same keycaps as the overview's footer).
+    private func tipShowsKeys(_ c: HangingCard) -> Bool { focus != nil && focusCard === c }
+
     private func positionTip(_ now: CFTimeInterval) {
-        // (it steps aside while the card says "Copied" — that sits where the note would)
+        positionSelection()
+        // (it steps aside while the card says "Copied" — that sits where the note would — and while a ⌘-click
+        // selection has the line under the row)
         let copying = (hoverCard?.copiedUntil ?? 0) > now
         guard let c = hoverCard, !c.dragging, now - hoverSince > 0.35, !NoteBubble.shared.isOpen, !copying,
-              tipNeed != nil else {
+              tipNeed != nil, picked.isEmpty else {
             if !tip.isHidden { tip.isHidden = true }
             return
         }
-        if tip.isHidden || tipFor !== c { buildTip(c) }
+        if tip.isHidden || tipFor !== c || tipKeyed != (focus != nil) { buildTip(c) }
         tip.isHidden = false
-        // under the whole row, never over a neighbour (their threads are uneven, so under the lowest of them)
+        // under the whole row, never over a neighbour, centred under its card (kept on the screen)
         let w = tip.bounds.width
-        let bottom = shownCards.map { $0.grip.value + $0.size.height * 1.04 }.max() ?? c.grip.value + c.size.height
-        tip.position = CGPoint(x: min(max(c.x.value, w / 2 + 12), width - w / 2 - 12), y: bottom + 10 + tip.bounds.height / 2)
+        let bottom = rowBottom ?? c.grip.value + c.size.height
+        tip.position = CGPoint(x: min(max(c.x.value, w / 2 + 12), width - w / 2 - 12), y: bottom + 12 + tip.bounds.height / 2)
     }
 
+    /// The lowest card edge of the row at rest (the hovered card's lift and scale not counted: the note doesn't jump).
+    private var rowBottom: CGFloat? {
+        let items = shownCards.filter { !$0.flying }.map { $0.grip.value + HangingCards.liftPt * $0.lift.value + $0.size.height }
+        return (items + (stack.isHidden ? [] : [stack.position.y + HangingCards.tileSize.height + 4])).max()
+    }
+
+    private var tipKeyed = false
+
+    /// The hover note (v0.9.2): one solid sheet with a clear hierarchy — the card's words in ink (all of them: the band
+    /// on the card steps away meanwhile), or, for a card without words, its name ("Snap · 19:03") as the title in ink;
+    /// under the words the name in secondary; then, quieter, how to use a card (tertiary) — or the keys as keycaps
+    /// while the keyboard is on the row.
     private func buildTip(_ c: HangingCard) {
         tipFor = c
+        tipKeyed = focus != nil
         let what = tipNeed ?? CardTip.Content(text: false, play: false)
         let dark = isDarkMode
+        let ink = dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)
+        let secondary = dark ? NSColor(white: 1, alpha: 0.6) : NSColor(white: 0, alpha: 0.55)
+        let tertiary = dark ? NSColor(white: 1, alpha: 0.42) : NSColor(white: 0, alpha: 0.4)
         let text = what.text ? c.shot.words ?? "" : ""
-        let w: CGFloat = text.isEmpty ? 46 : 260
-        let tf = NSFont.systemFont(ofSize: 12.5)
-        let attr = NSAttributedString(string: text, attributes: [
-            .font: tf, .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
+        let meta = c.shot.plainName
+        let keys = tipShowsKeys(c)
+        let hint = keys ? nil : tipHintText(c)
+        let tf = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+        let mf = NSFont.systemFont(ofSize: text.isEmpty ? 12.5 : 11, weight: text.isEmpty ? .medium : .regular)
+        let hf = NSFont.systemFont(ofSize: 11)
+        func width(_ s: String, _ f: NSFont) -> CGFloat { ceil((s as NSString).size(withAttributes: [.font: f]).width) }
+        let keysImg = keys ? KeyHint.image(KeyHint.cards, dark: dark) : nil
+        let keysW = keys ? KeyHint.size(KeyHint.cards).width : 0
+        let pad: CGFloat = 12
+        let w: CGFloat = min(320, max(text.isEmpty ? 0 : 260, width(meta, mf), hint.map { width($0, hf) } ?? 0, keysW, 46) + pad * 2)
+        let attr = NSAttributedString(string: text, attributes: [.font: tf, .foregroundColor: ink])
         // at most 6 whole lines: a height between lines left a blank band above the play button once the text was cut
         let lineH = ceil(NSLayoutManager().defaultLineHeight(for: tf))
-        let measured = ceil(attr.boundingRect(with: NSSize(width: w - 24, height: 400), options: [.usesLineFragmentOrigin]).height)
+        let measured = ceil(attr.boundingRect(with: NSSize(width: w - pad * 2, height: 400), options: [.usesLineFragmentOrigin]).height)
         let th = text.isEmpty ? 0 : min(measured, 6 * lineH) + 2
-        let h = 12 + th + (what.play ? (th > 0 ? 8 : 0) + 22 : 0) + 12
-        tip.bounds = CGRect(x: 0, y: 0, width: w, height: h)
-        tipText.frame = CGRect(x: 12, y: 12, width: w - 24, height: th)
-        setText(tipText, text, font: tf,
-                color: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1))
+        var y: CGFloat = 10
+        tipText.frame = CGRect(x: pad, y: y, width: w - pad * 2, height: th)
+        setText(tipText, text, font: tf, color: ink)
+        if th > 0 { y += th + 4 }
         tipPlay.isHidden = !what.play
         if what.play {
-            tipPlay.frame = CGRect(x: 12, y: 12 + th + (th > 0 ? 8 : 0), width: 22, height: 22)
+            tipPlay.frame = CGRect(x: pad, y: y, width: 22, height: 22)
             if tipPlay.sublayers == nil {
                 // the glyph in brand.on: white on flat mint was 1.9 : 1 (system.md §3.2)
                 let play = BlurtIcon.playFill.makeLayer(size: 10, color: BrandColor.Island.on.cgColor)
                 play.position = CGPoint(x: 11.6, y: 11)
                 tipPlay.addSublayer(play)
             }
+            y += 22 + 6
         }
-        emit(["event": "card_tip", "n": c.shot.n, "text": what.text, "play": what.play, "width": Double(w)])
+        // the name: the title (ink) when there are no words, else a quiet line under them
+        let mh: CGFloat = text.isEmpty ? 17 : 15
+        setText(tipMeta, meta, font: mf, color: text.isEmpty ? ink : secondary)
+        tipMeta.frame = CGRect(x: pad, y: y, width: w - pad * 2, height: mh)
+        y += mh
+        tipHint.isHidden = hint == nil
+        tipKeys.isHidden = !keys
+        if let h = hint {
+            setText(tipHint, h, font: hf, color: tertiary)
+            tipHint.frame = CGRect(x: pad, y: y + 2, width: w - pad * 2, height: 15)
+            y += 17
+        } else if let img = keysImg {
+            tipKeys.contents = img
+            tipKeys.frame = CGRect(x: pad, y: y + 7, width: keysW, height: KeyHint.capH)
+            y += 7 + KeyHint.capH
+        }
+        tip.bounds = CGRect(x: 0, y: 0, width: w, height: y + 10)
+        emit(["event": "card_tip", "n": c.shot.n, "text": what.text, "play": what.play, "width": Double(w), "hint": hint ?? NSNull(), "keys": keys])
     }
+
+    // MARK: the ⌘-click selection's line
+
+    /// "2 selected · Copied" under the row while a ⌘-click selection is on (it replaces the per-card "Copied").
+    private func updateSelection() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+        guard !picked.isEmpty else { selPill.isHidden = true; return }
+        let dark = isDarkMode
+        var line = Loc.plural("capture.cards.selected", table: "Capture", count: picked.count)
+        if pickedCopied { line += " · " + Loc.t("capture.card.copied", table: "Capture") }
+        let s = NSAttributedString(string: line, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                                                              .foregroundColor: dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)])
+        // the ok check before it once the selection is on the clipboard (a done notice, as everywhere)
+        let tw = ceil(s.size().width), lead: CGFloat = pickedCopied ? 12 + 5 : 0
+        let w = tw + lead + 28
+        selPill.bounds = CGRect(x: 0, y: 0, width: w, height: 26)
+        selCheck.isHidden = !pickedCopied
+        selCheck.contents = BlurtIcon.check.cgImage(size: 12, scale: 2, color: HangingCards.cardColor(BrandColor.ok, dark: dark), weight: 1.2)
+        selCheck.frame = CGRect(x: 14, y: 7, width: 12, height: 12)
+        selText.frame = CGRect(x: 14 + lead, y: 4.5, width: tw + 2, height: 17)
+        selText.string = s
+        selPill.isHidden = false
+    }
+
+    private func positionSelection() {
+        guard !selPill.isHidden else { return }
+        let xs = picked.map(\.x.value)
+        let cx = xs.isEmpty ? anchor.x : (xs.min()! + xs.max()!) / 2
+        let w = selPill.bounds.width
+        selPill.position = CGPoint(x: min(max(cx, w / 2 + 12), width - w / 2 - 12), y: (rowBottom ?? anchor.y + 84) + 12 + 13)
+    }
+
 
     // MARK: mouse
 
@@ -1649,7 +1998,7 @@ final class HangingCards: NSObject {
         down = (p, c, e, false)
         if let c = c {
             let local = CGPoint(x: p.x - (c.x.value - c.size.width / 2), y: p.y - c.grip.value)
-            if c.hovered, local.x < 16, local.y < 16 {          // ×
+            if c.hovered, focus == nil, local.x < 12, local.y < 12 {          // × (it overhangs the top-left corner)
                 down = nil
                 snapper.delete(c.shot)
                 return
@@ -1759,7 +2108,8 @@ final class HangingCards: NSObject {
     }
 
     private func copied(_ c: HangingCard, _ text: String) {
-        pill(c, text)
+        pill(c, text, done: true)
+        markUsed()
         c.copiedUntil = CACurrentMediaTime() + 1.2
         if c.shot.kind == .shot { c.omega += 30 }
         wake()
@@ -1775,35 +2125,45 @@ final class HangingCards: NSObject {
         let on = !picked.contains { $0 === c }
         setPicked(on ? picked + [c] : picked.filter { $0 !== c })
         guard !picked.isEmpty else { return }
-        copyCards(picked, pill: c)
+        // the line under the row says how many and that they are copied (no "Copied" pill on the card as well)
+        pickedCopied = copyCards(picked, pill: nil, quiet: true)
+        if pickedCopied { markUsed() }
+        updateSelection()
+        wake()
     }
 
     private func setPicked(_ cs: [HangingCard]) {
         picked = cards.reversed().filter { k in cs.contains { $0 === k } }       // the order they hang in: newest first
+        if picked.isEmpty { pickedCopied = false }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         for k in cards { stylePick(k) }
         CATransaction.commit()
+        updateSelection()
+        wake()
     }
 
+    /// Picked: a neutral ink ring just outside the card and the accent check badge in its bottom-right corner — a shape
+    /// twin, never only a coloured border; no mint (the clasp stays neutral), and never the keyboard's accent ring.
     private func stylePick(_ c: HangingCard) {
-        guard picked.contains(where: { $0 === c }) else {
-            c.card.borderWidth = 0.5
-            c.card.borderColor = (isDarkMode ? NSColor(white: 1, alpha: c.shot.kind == .voice ? 0.14 : 0.22)
-                                             : NSColor(white: 0, alpha: c.shot.kind == .voice ? 0.08 : 0.12)).cgColor
-            return
-        }
-        c.card.borderWidth = 2.5
-        c.card.borderColor = BrandColor.fill.cgColor                     // thin: flat mint, never the gradient
+        let dark = isDarkMode
+        c.card.borderWidth = 0.5
+        c.card.borderColor = HangingCards.hairline(dark: dark).cgColor
+        let on = picked.contains { $0 === c }
+        c.pickRing.isHidden = !on
+        c.pickBadge.isHidden = !on
+        c.pickRing.borderColor = (dark ? NSColor(white: 1, alpha: 0.85) : NSColor(white: 0, alpha: 0.72)).cgColor
+        c.pickBadge.backgroundColor = HangingCards.cardColor(BrandColor.accent, dark: dark)
     }
 
-    /// `cs` (in this order) on the clipboard as one rich copy; "Copied N cards" on `pill`, or in the island.
+    /// `cs` (in this order) on the clipboard as one rich copy; "Copied N cards" on `pill`, or in the island (`quiet`:
+    /// neither — the ⌘-click selection's own line says it).
     @discardableResult
-    func copyCards(_ cs: [HangingCard], pill on: HangingCard?) -> Bool {
+    func copyCards(_ cs: [HangingCard], pill on: HangingCard?, quiet: Bool = false) -> Bool {
         guard !cs.isEmpty, let items = CardExport.copy(cs.map(\.shot)) else { return false }
         let text = cs.count == 1 ? Loc.t("capture.card.copied", table: "Capture")
                                  : Loc.plural("capture.card.copied_n", table: "Capture", count: cs.count)
-        if let c = on { copied(c, text) } else { island.toast(text, actionTitle: nil, action: nil) }
+        if quiet {} else if let c = on { copied(c, text) } else { island.toast(text, key: "cards_copied", icon: .check) }
         emit(["event": "card_copied", "n": cs.map(\.shot.n), "what": on == nil ? "all" : "picked",
               "items": items.map { $0.types.map(\.rawValue) }])
         return true
@@ -1942,7 +2302,28 @@ final class HangingCards: NSObject {
               "keyboard": keyboard, "tip": tip.isHidden ? NSNull() : ["for": tipFor?.shot.n ?? -1, "text": !tipText.frame.isEmpty,
                                                                       "play": !tipPlay.isHidden, "frame": [tip.frame.minX, tip.frame.minY, tip.frame.width, tip.frame.height]],
               "span": [row.span.lowerBound, row.span.upperBound], "tile_x": row.tileX ?? NSNull(),
-              "threads": shownCards.map { Double(threadX($0.x.target).rounded()) }])
+              "threads": shownCards.map { Double(origin($0.x.target).x.rounded()) }, "lip": rodded,
+              "geometry": rowGeometry()])
+    }
+
+    /// Tests and the layout lint: every hanging item's frame as drawn now (panel points, its scale included), each
+    /// card's scale against its resting size, the gaps between neighbours (left to right), the lip's extent and the
+    /// island's — so a lifted card that shrinks or a gap that closes up is caught by numbers, not by eye.
+    func rowGeometry() -> [String: Any] {
+        func r(_ f: CGRect) -> [Double] { [f.minX, f.minY, f.width, f.height].map { Double(($0 * 10).rounded() / 10) } }
+        var items: [(String, CGRect, Double)] = shownCards.filter { !$0.flying }.map { c in
+            ("\(c.shot.n)", c.card.convert(c.card.bounds, to: stage), Double(c.card.convert(c.card.bounds, to: stage).width / c.size.width))
+        }
+        if !stack.isHidden { items.append(("tile", stack.frame, Double(stack.frame.width / HangingCards.tileSize.width))) }
+        items.sort { $0.1.minX < $1.1.minX }
+        let gaps = zip(items.dropFirst(), items).map { Double((($0.1.minX - $1.1.maxX) * 10).rounded() / 10) }
+        let f = island.frameOnScreen
+        let sx = screen?.frame.minX ?? 0
+        return ["items": items.map { ["id": $0.0, "frame": r($0.1), "scale": ($0.2 * 1000).rounded() / 1000] },
+                "gaps": gaps, "min_gap": gaps.min() ?? NSNull(),
+                "lifted": hoverCard.map { "\($0.shot.n)" } ?? NSNull(),
+                "lip": lip.path.map { r($0.boundingBoxOfPath) } ?? NSNull(),
+                "island": [Double(f.minX - sx), Double(f.maxX - sx)]]
     }
 
     func rightMouseDown(_ e: NSEvent, at p: NSPoint) {
@@ -1998,7 +2379,7 @@ final class HangingCards: NSObject {
         guard let c = dragging, let f = panel?.frame, var t = c.tether, t.snapped == nil else { return }
         // the drag image's top edge, where the thread still holds it
         let end = CGPoint(x: p.x - f.minX, y: f.maxY - p.y - c.size.height / 2)
-        let top = CGPoint(x: threadX(c.x.value - c.size.width / 2 + c.gripX), y: threadTop)
+        let top = origin(c.x.value - c.size.width / 2 + c.gripX)
         if hypot(end.x - top.x, end.y - top.y) > (anchor.y + c.slack - top.y) + 44 || reduceMotion {
             t.snapped = CACurrentMediaTime()       // stretched as far as it goes: it snaps and springs back
             t.from = t.end
@@ -2032,6 +2413,7 @@ final class HangingCards: NSObject {
         // dropped in another app, which took it: the card has done its job — it leaves (restorable: "Dragged out · Undo")
         if !operation.isEmpty, !ourWindow(at: p) {
             emit(["event": "card_taken_out", "n": c.shot.n, "operation": Int(operation.rawValue)])
+            markUsed()
             let got = drag?.delivered(at: p)
             snapper.takeOut(c.shot, delivered: got, noteFile: got.map { drag?.noteFile($0) ?? false } ?? false,
                             landed: DropProbe.target(at: p), at: p)

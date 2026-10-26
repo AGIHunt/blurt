@@ -30,6 +30,7 @@
 //    Undo brings back every card deleted while it was offered.
 
 import CoreGraphics
+import Foundation
 
 public enum CardRow {
     /// At most this many cards hang side by side; the others wait behind the "+N" tile.
@@ -96,6 +97,13 @@ public enum CardRow {
         islandBottom - (cardsHang ? band : 0) - gap
     }
 
+    /// Whether the row hangs from a rod (v0.9.1): some card's (or the tile's) clasp, at `centres`, is not under the
+    /// island's `edge` — a thread to it would run nearly flat from the island (the fan the judges read as tent ropes).
+    /// Then a short rod under the island spans the row, held by two stems, and every card hangs straight down from it.
+    public static func rodded(centres: [CGFloat], edge: ClosedRange<CGFloat>, tolerance: CGFloat = 1) -> Bool {
+        centres.contains { $0 < edge.lowerBound - tolerance || $0 > edge.upperBound + tolerance }
+    }
+
     /// Where the thread of a card at `x` comes out of the island's bottom edge (`edge`: the part of it a thread may
     /// leave from), given the whole row's `span`.
     public static func threadX(_ x: CGFloat, row: ClosedRange<CGFloat>, edge: ClosedRange<CGFloat>) -> CGFloat {
@@ -103,6 +111,72 @@ public enum CardRow {
         guard rw > ew, rw > 0 else { return min(max(x, edge.lowerBound), edge.upperBound) }
         let k = (x - row.lowerBound) / rw
         return min(max(edge.lowerBound + k * ew, edge.lowerBound), edge.upperBound)
+    }
+}
+
+/// v0.9.2: the row hangs from the island itself, never from a drawn diagram (the stems-and-rod read as an org chart).
+public extension CardRow {
+    /// The lip (a row wider than the island): a 3 pt band of the island's own black, flush under its bottom edge,
+    /// centred on the island, as wide as the outermost clasps plus `overhang` each side (never narrower than the
+    /// island). nil while every clasp is under the island's `edge`: then each thread leaves the island itself.
+    static func lip(clasps: [CGFloat], edge: ClosedRange<CGFloat>, island: ClosedRange<CGFloat>, overhang: CGFloat = 8) -> ClosedRange<CGFloat>? {
+        guard rodded(centres: clasps, edge: edge), !clasps.isEmpty else { return nil }
+        let centre = (island.lowerBound + island.upperBound) / 2
+        let half = max((island.upperBound - island.lowerBound) / 2, clasps.map { abs($0 - centre) }.max()! + overhang)
+        return (centre - half)...(centre + half)
+    }
+
+    /// Making room for a lifted card (hovered, or holding the keyboard): every item left of it moves `by` to the left,
+    /// every item right of it — the "+N" tile included (it is the last item) — `by` to the right, so the lifted card's
+    /// growth comes out of a reserved budget and no gap anywhere drops below the row's own.
+    static func stepAside(items: Int, lifted: Int?, by: CGFloat) -> [CGFloat] {
+        (0..<max(0, items)).map { i in
+            guard let h = lifted, h < items, i != h else { return 0 }
+            return i < h ? -by : by
+        }
+    }
+}
+
+/// The overview's grid (v0.9.2): one row up to 4 cards, then half of them a row (rounded up), at most 4 — 5 = 3 + 2,
+/// 6 = 3 + 3, 7 = 4 + 3, never a lone orphan under two full rows.
+public enum CardGrid {
+    public static func columns(_ n: Int) -> Int { n <= 4 ? max(1, n) : min(4, (n + 1) / 2) }
+}
+
+/// A one-line band (a card's note): the longest run of whole words that fits — never cut mid-word and never an "…";
+/// the band fades out its end when there is more (the hover note has all of it).
+public enum CardBand {
+    /// `fits`: whether a string fits the band. Returns the text to draw and whether some of it was left out.
+    public static func clamp(_ text: String, fits: (String) -> Bool) -> (text: String, clipped: Bool) {
+        let t = text.replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
+        if fits(t) { return (t, false) }
+        var ends: [String.Index] = []
+        t.enumerateSubstrings(in: t.startIndex..<t.endIndex, options: [.byWords, .substringNotRequired]) { _, r, _, _ in ends.append(r.upperBound) }
+        var best: String?
+        for e in ends {
+            let s = String(t[..<e]).trimmingCharacters(in: .whitespaces)
+            if fits(s) { best = s } else { break }
+        }
+        if let b = best, !b.isEmpty { return (b, true) }
+        // one word longer than the band (a URL): as many characters as fit
+        var out = ""
+        for ch in t { if fits(out + String(ch)) { out.append(ch) } else { break } }
+        return (out, true)
+    }
+}
+
+/// How long ago, for the cards' panels (v0.9.2: one formatter for the overview and Recently Dragged Out): "Just now"
+/// under a minute, then minutes, hours, "Yesterday", days — never a live count of seconds.
+public enum CardAgo: Equatable {
+    case justNow, minutes(Int), hours(Int), yesterday, days(Int)
+
+    public static func of(_ seconds: Double) -> CardAgo {
+        let s = max(0, seconds)
+        if s < 60 { return .justNow }
+        if s < 3600 { return .minutes(Int(s / 60)) }
+        if s < 86_400 { return .hours(Int(s / 3600)) }
+        let d = Int(s / 86_400)
+        return d == 1 ? .yesterday : .days(d)
     }
 }
 

@@ -1,4 +1,4 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
   <title>Cards — captures hanging under the notch</title>
-  <rect x="3.5" y="8.5" width="13" height="12" rx="2.5"/><path d="M7.5 8.5V6a2.5 2.5 0 0 1 2.5-2.5h8A2.5 2.5 0 0 1 20.5 6v8a2.5 2.5 0 0 1-2.5 2.5h-1.5"/>
+  <path d="M6.5 4.5h11"/><rect x="3.5" y="8" width="17" height="12" rx="2.5"/>
 </svg>

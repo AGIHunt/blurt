@@ -239,6 +239,9 @@ final class Island: NSObject, IslandHosting {
         return NSRect(x: p.frame.minX + shapeMinX, y: p.frame.maxY - geo.top - h.value, width: w.value, height: h.value)
     }
 
+    /// The shape's corner radius now (the hanging cards' lip joins its bottom corners).
+    var cornerRadiusNow: CGFloat { r.value }
+
     /// The pointer is on the island (the hanging cards stay down meanwhile).
     var pointerInside: Bool { hoverSince != nil }
     /// …and has rested there CardReveal.dwell: the cards come down (brushing past the notch drops nothing).

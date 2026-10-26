@@ -53,6 +53,68 @@ final class CardRowTests: XCTestCase {
         XCTAssertEqual(CardRow.threadX(600, row: 560...700, edge: 620...820), 620, "clamped to the island's edge")
     }
 
+    func testARowWiderThanTheIslandHangsFromARod() {
+        XCTAssertFalse(CardRow.rodded(centres: [660, 720, 800], edge: 620...820), "every clasp under the island: own threads")
+        XCTAssertTrue(CardRow.rodded(centres: [480, 600, 720, 840, 940], edge: 620...820), "outer cards: a rod, no fan")
+        XCTAssertFalse(CardRow.rodded(centres: [], edge: 620...820))
+        XCTAssertFalse(CardRow.rodded(centres: [619.5, 820.5], edge: 620...820), "a hair outside the edge is still under it")
+    }
+
+    func testTheLipIsCentredOnTheIslandAndOnlyAsWideAsTheRow() {
+        let edge: ClosedRange<CGFloat> = 630...810, island: ClosedRange<CGFloat> = 620...820
+        XCTAssertNil(CardRow.lip(clasps: [680, 760], edge: edge, island: island), "a row under the island: no lip")
+        let lip = CardRow.lip(clasps: [470, 600, 720, 840, 950], edge: edge, island: island)!
+        XCTAssertEqual((lip.lowerBound + lip.upperBound) / 2, 720, "centred on the island, not on the clasps")
+        XCTAssertEqual(lip.lowerBound, 470 - 8, "the outermost clasp plus 8")
+        XCTAssertEqual(lip.upperBound, 720 + 258, "symmetric about the island")
+        let narrow = CardRow.lip(clasps: [628, 700], edge: edge, island: island)!
+        XCTAssertEqual(narrow, island, "never narrower than the island")
+    }
+
+    func testSteppingAsideMovesEveryItemOnEachSide() {
+        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: nil, by: 8), [0, 0, 0, 0, 0])
+        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: 1, by: 8), [-8, 0, 8, 8, 8], "the tile (last) moves with the cards")
+        XCTAssertEqual(CardRow.stepAside(items: 3, lifted: 7, by: 8), [0, 0, 0])
+        // the lifted card grows 5 % (150 pt: 3.75 a side); the gap beside it never drops under the row's 12
+        let gap: CGFloat = 12, grow: CGFloat = 150 * 0.05 / 2
+        XCTAssertGreaterThanOrEqual(gap + 8 - grow, 12)
+    }
+
+    func testTheOverviewGridLeavesNoOrphan() {
+        XCTAssertEqual((1...4).map(CardGrid.columns), [1, 2, 3, 4])
+        XCTAssertEqual(CardGrid.columns(5), 3)
+        XCTAssertEqual(CardGrid.columns(6), 3)
+        XCTAssertEqual(CardGrid.columns(7), 4, "7 = 4 + 3")
+        XCTAssertEqual(CardGrid.columns(8), 4)
+        XCTAssertEqual(CardGrid.columns(20), 4)
+        XCTAssertEqual(CardGrid.columns(0), 1)
+    }
+
+    func testTheBandKeepsWholeWords() {
+        let fits = { (s: String) in s.count <= 20 }
+        XCTAssertEqual(CardBand.clamp("Sign in stays grey", fits: fits).clipped, false)
+        let c = CardBand.clamp("The onboarding sheet jumps when the keyboard opens", fits: fits)
+        XCTAssertEqual(c.text, "The onboarding sheet")
+        XCTAssertTrue(c.clipped)
+        XCTAssertFalse(c.text.hasSuffix("…"))
+        let zh = CardBand.clamp("引导页会跳一下，登录按钮被键盘挡住", fits: { $0.count <= 9 })
+        XCTAssertTrue(zh.clipped)
+        XCTAssertLessThanOrEqual(zh.text.count, 9)
+        XCTAssertTrue("引导页会跳一下，登录按钮被键盘挡住".hasPrefix(zh.text))
+        XCTAssertEqual(CardBand.clamp("Supercalifragilisticexpialidocious", fits: fits).text.count, 20, "one long word: characters")
+    }
+
+    func testOneRelativeTimeNeverCountsSeconds() {
+        XCTAssertEqual(CardAgo.of(6), .justNow)
+        XCTAssertEqual(CardAgo.of(59), .justNow)
+        XCTAssertEqual(CardAgo.of(61), .minutes(1))
+        XCTAssertEqual(CardAgo.of(3599), .minutes(59))
+        XCTAssertEqual(CardAgo.of(7200), .hours(2))
+        XCTAssertEqual(CardAgo.of(90_000), .yesterday)
+        XCTAssertEqual(CardAgo.of(3 * 86_400 + 5), .days(3))
+        XCTAssertEqual(CardAgo.of(-3), .justNow)
+    }
+
     func testWideRowMapsOntoTheEdgeInOrder() {
         let row: ClosedRange<CGFloat> = 350...1090, edge: ClosedRange<CGFloat> = 620...820
         let xs: [CGFloat] = [406, 530, 654, 778, 902, 1034]
