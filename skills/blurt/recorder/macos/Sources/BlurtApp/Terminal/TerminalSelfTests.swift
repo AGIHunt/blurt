@@ -38,7 +38,13 @@ enum PanelKeyLook {
         }
         NotificationCenter.default.post(name: NSWindow.didBecomeKeyNotification, object: w)
         NotificationCenter.default.post(name: NSWindow.didBecomeMainNotification, object: w)
-        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        // the window's buttons (the traffic lights) follow the key state through their own message, not a redraw
+        let changed = NSSelectorFromString("_windowChangedKeyState")
+        func redraw(_ v: NSView) {
+            if v.responds(to: changed) { v.perform(changed) }
+            v.needsDisplay = true
+            v.subviews.forEach(redraw)
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { if let v = w.contentView?.superview ?? w.contentView { redraw(v) } }
     }
 }
@@ -81,7 +87,7 @@ enum TerminalSelfTests {
         case "dispatch":
             DispatchPanel.show(items: arg.split(separator: ",").map(String.init))
             out(["window": DispatchPanel.windowNumber ?? -1])
-        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off | agent ID | model ID|default | options open|closed
+        case "dispatch-set":            // dispatch-set mode together|parallel | worktree on|off | agent ID | model ID|default | options open|closed | items open|closed | chosen N
             guard let m = DispatchPanel.current?.model, words.count == 2 else { out(["error": "no panel"]); return }
             if words[0] == "mode" { m.mode = DispatchMode(rawValue: words[1]) ?? .together }
             if words[0] == "worktree" { m.worktree = WorktreeChoice(rawValue: words[1]) ?? .auto }
@@ -89,6 +95,8 @@ enum TerminalSelfTests {
             if words[0] == "model" { m.model = words[1] == "default" ? "" : words[1] }
             if words[0] == "target" { m.target = HandoffTarget(rawValue: words[1]) ?? .terminal }
             if words[0] == "options" { UserDefaults.standard.set(words[1] == "open", forKey: "handoff.optionsOpen") }   // › Options
+            if words[0] == "items" { m.itemsOpen = words[1] == "open" }                 // "6 items" opened
+            if words[0] == "chosen", let n = Int(words[1]) { m.chosen = Set(m.candidates.prefix(n).map(\.uid)) }   // New Session
             out(["ok": true])
         case "dispatch-state":
             guard let m = DispatchPanel.current?.model else { out(["error": "no panel"]); return }
@@ -183,6 +191,7 @@ enum TerminalSelfTests {
         case "panels-close":            // every hand-off panel and review sheet closes (Cancel)
             let ws = NSApp.windows.filter { $0 is HandoffWindow && $0.isVisible }
             for w in ws { if let p = w.sheetParent { p.endSheet(w) } else { w.close() } }
+            SessionsModel.shared.rebuild()      // as the gone alert's Close: the card behind says so
             out(["closed": ws.count])
         case "keylook":                 // the panels and the Sessions window drawn as key though another app has the focus
             let ws = NSApp.windows.filter { $0 is HandoffWindow || $0 is SessionsWindow }

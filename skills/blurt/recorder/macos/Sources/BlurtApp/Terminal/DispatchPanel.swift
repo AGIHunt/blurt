@@ -2,9 +2,9 @@
 // session — which agent, together (one conversation) or in parallel (a window each), in a worktree or in the project
 // folder. Every change re-runs `sessions.py dispatch --dry-run`, which says what would happen (branch, folder) and
 // warns — never blocks — when another session is already editing the same folder without a worktree (K5 wording).
-// What does block, said next to the choice instead of after it: an agent that isn't logged in (its fix, and the
-// other agent to use; Start waits up to 3 s for the sign-in check after a launch), and items already with a session
-// that is still going (Open Its Session).
+// What does block — an agent that isn't signed in (Start waits up to 3 s for the sign-in check after a launch), items
+// already in a running session, no agent, a check that failed — is said once, under the items, and the way out takes
+// Start's place as the default (Use Codex / Sign In…, Open Its Session, Open Agents Settings…, Try Again).
 // Where it runs, for an agent with a desktop app that is installed (Claude): Blurt's terminal (recommended) or the
 // desktop app, remembered per agent (HandoffTarget, config sessions.target) — a rare choice, under Options with the
 // model. The desktop app still gets Blurt's worktree; Start opens its claude:// link (DesktopApp) and the footer says
@@ -37,6 +37,8 @@ final class DispatchModel: ObservableObject {
     @Published var projectID: String?
     @Published var candidates: [DispatchItem] = []
     @Published var chosen = Set<String>()
+    /// Several items: the list under "6 items" is open.
+    @Published var itemsOpen = false
     @Published var loadingCandidates = false
     @Published var candidatesError: String?
 
@@ -66,8 +68,9 @@ final class DispatchModel: ObservableObject {
     @Published private(set) var checkFailed = false
     /// The sign-in check has answered (or 3 s passed): until then Start waits, so it never starts a logged-out agent.
     @Published var loginChecked = false
-    /// The full login check came back (not just the 3 s wait): sessions.py needn't check again (--force).
-    private(set) var loginVerified = false
+    /// The full login check came back (not just the 3 s wait): sessions.py needn't check again (--force); the Agent
+    /// row then says "signed in".
+    @Published private(set) var loginVerified = false
     /// The session the items are already with (sessions.py already_dispatched): the failure offers to open it.
     @Published var busyJob: String?
     private var checkGen = 0
@@ -129,6 +132,27 @@ final class DispatchModel: ObservableObject {
     var chosenAgent: AgentChoice? { agents.first { $0.id == agent } }
     /// Another agent that can take over from a logged-out one.
     var alternative: AgentChoice? { agents.first { $0.id != agent && !$0.loggedOut } }
+    /// Why Start can't go, said once under the items with its way out as the footer's default (one pattern for every
+    /// reason): the items already with a running session, the agent not signed in, no agent at all, a dry run that
+    /// failed. A real start that failed is not a block: Start stays, to try again.
+    enum Block: Equatable { case busy(String), loggedOut, noAgent, failed(String) }
+    var block: Block? {
+        if case .failed(let why) = phase {
+            if let j = busyJob { return .busy(j) }
+            if checkFailed { return .failed(why) }
+        }
+        if agentsLoaded && agents.isEmpty { return .noAgent }
+        if !desktop, loginChecked, chosenAgent?.loggedOut == true { return .loggedOut }
+        return nil
+    }
+    /// How many of the selected items are still unreviewed: Start moves them to To Do (sessions.py draft_confirmed).
+    var toTodo: Int {
+        guard let w = warnings.first(where: { $0.code == "draft_confirmed" }) else { return 0 }
+        return max(w.items.filter { selected.contains($0) }.count, count == 1 ? 1 : 0)
+    }
+    /// One session per item: Start says how many.
+    var sessionsToStart: Int { mode == .parallel && count > 1 ? count : 1 }
+
     var canStart: Bool {
         // the desktop app signs in on its own: the CLI's login only matters in the terminal. A dry run that failed
         // would fail the same way: Start stays off until a choice changes and the check passes.
@@ -174,6 +198,15 @@ final class DispatchModel: ObservableObject {
                 agent = better
             }
         }
+    }
+
+    /// Sign In… → Check Again: the full sign-in check once more (the Agent row and the block follow it).
+    func recheckLogin() async {
+        guard let full = try? await Agents.shared.detect(login: true) else { return }
+        loginVerified = true
+        loginChecked = true
+        let out = Dictionary(full.agents.filter { $0.state == "logged_out" }.map { ($0.id, $0.fix) }) { a, _ in a }
+        agents = agents.map { var a = $0; a.loggedOut = out[a.id] != nil; a.fix = out[a.id] ?? ""; return a }
     }
 
     private var modelKey: String { projectID ?? "_" }
@@ -267,31 +300,34 @@ final class DispatchModel: ObservableObject {
     }
 }
 
-/// The panel (HandoffKit's family): a 15 pt title over one secondary line, the items as the list draws them, one box of
-/// settings rows (Agent, Sessions when there are several items, Separate branch), the rare ones (where it runs, the
-/// model) behind "› Options", a notice only when something needs reading first, and a footer: one quiet line on the
-/// left (what Start will do, or the spinner and what it is doing), Cancel and the one default on the right. The
-/// sign-in check lives in the Agent row only; the model in use is that row's description.
+/// The panel (HandoffKit's family): the 15 pt title with the project at its right, one line of what goes — the item
+/// as the list draws it, or "6 items" with each kind's count and a disclosure that lists them (no box around one item:
+/// it isn't a field) — then, when Start can't go or something must be read first, one notice; one box of settings rows
+/// (Agent, Sessions when there are several items, Separate branch), the rare ones (where it runs, the model) behind
+/// "› Options", and a footer: one quiet line on the left (what Start will do to all the items, or the spinner and what
+/// it is doing), Cancel and the one default on the right — Start, named after what it starts, or, while Start can't
+/// go, the way out (Open Its Session, Use Codex, Sign In…). Every row's description is one line.
 struct DispatchView: View {
     @ObservedObject var m: DispatchModel
     @ObservedObject var agentsModel = AgentsModel.shared
     /// This sheet asked for the installer (the blurt MCP for the desktop app): its sheet shows here, not in Settings.
     @State var installAsked = false
-    /// Several items: the first three, then "N more" opens the rest.
-    @State private var allItems = false
+    /// Sign In…'s popover (the command, then Check Again): from the Agent row or from the footer's default.
+    @State private var signInFrom: String?
+    @State private var hovered: String?
     @AppStorage("handoff.optionsOpen") private var optionsOpen = false
     var close: () -> Void
     var started: (DispatchResult) -> Void
 
-    static let shownItems = 3
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
-            Group { if m.pickItems { picker } else { itemsBox } }.padding(.top, PanelMetrics.gap)
+            what.padding(.top, 6)
+            if m.pickItems { picker.padding(.top, PanelMetrics.gap) }
+            else if m.itemsOpen && m.items.count > 1 { itemsBox.padding(.top, 10).transition(.opacity.combined(with: .move(edge: .top))) }
+            notices
             settingsBox.padding(.top, PanelMetrics.gap)
             if hasOptions { options.padding(.top, 14) }
-            notices
             footer.padding(.top, 20)
         }
         .padding(.horizontal, PanelMetrics.side)
@@ -320,56 +356,65 @@ struct DispatchView: View {
     /// What the panel animates with: a notice coming or going, a row appearing (Sessions with a second item).
     private var changeKey: [String] {
         [m.count > 1 ? "many" : "one", "\(m.phase)", m.concurrent != nil && !m.worktreeOn ? "concurrent" : "",
-         m.desktop ? "desktop" : "", m.desktopMCP == false ? "nomcp" : "", allItems ? "all" : "", m.busyJob ?? ""]
+         m.desktop ? "desktop" : "", m.desktopMCP == false ? "nomcp" : "", m.itemsOpen ? "all" : "", m.busyJob ?? "",
+         m.block.map { "\($0)" } ?? ""]
     }
 
     // MARK: header and items
 
+    /// The title and, at its right, whose items these are: the project's name, or New Session's project pop-up.
     var header: some View {
-        PanelHeader(title: TL(m.pickItems ? "handoff.title.new" : "dispatch.title"), subtitle: subtitle)
+        HStack(alignment: .center, spacing: 12) {
+            Text(TL(m.pickItems ? "handoff.title.new" : "dispatch.title"))
+                .font(.system(size: PanelMetrics.titleSize, weight: .semibold)).lineLimit(1)
+                .accessibilityAddTraits(.isHeader)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if m.pickItems { projectMenu } else if !m.projectName.isEmpty {
+                Text(m.projectName).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    .lineLimit(1).truncationMode(.middle).help(m.projectName)
+            }
+        }
+        .frame(minHeight: 22)
     }
 
-    var subtitle: String {
-        if m.pickItems { return m.count == 0 ? TL("dispatch.subtitle.none") : TL("handoff.pick.count", m.count) }
-        return m.projectName
+    /// The line under the title: what goes. One item as the list draws it; several as "6 items" (each kind's icon and
+    /// count) whose disclosure lists them; New Session: what is chosen.
+    @ViewBuilder var what: some View {
+        if m.pickItems {
+            Text(m.count == 0 ? TL("dispatch.subtitle.none") : TL("handoff.pick.count", m.count))
+                .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+        } else if m.items.count == 1, let i = m.items.first {
+            HandoffItemLine(item: i)
+        } else {
+            PanelDisclosure(title: TL("handoff.items.count", m.items.count), open: $m.itemsOpen, inset: 0, size: 13) {
+                KindSummary(items: m.items)
+            }
+        }
     }
 
     var itemsBox: some View {
-        let shown = allItems || m.items.count <= Self.shownItems + 1 ? m.items : Array(m.items.prefix(Self.shownItems))
         let w = HandoffItemLine.refWidth(m.items)
         let rows = VStack(spacing: 0) {
-            ForEach(shown) { i in
+            ForEach(m.items) { i in
                 SettingsLine(padding: PanelMetrics.rowPadding) { HandoffItemLine(item: i, refWidth: w) }
             }
         }
         return PanelBox {
             // past seven rows the list scrolls inside the box
-            if shown.count > 7 { ScrollView { rows }.frame(height: 7 * Self.rowHeight) } else { rows }
-            if m.items.count > shown.count || allItems && m.items.count > Self.shownItems + 1 {
-                SettingsLine(padding: PanelMetrics.rowPadding) {
-                    Button {
-                        withAnimation(PanelMetrics.change) { allItems.toggle() }
-                    } label: {
-                        Text(allItems ? TL("handoff.items.fewer") : TL("handoff.items.more", m.items.count - Self.shownItems))
-                            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandInk)
-                            .padding(.leading, KindStyle.smallSize + 8)
-                            .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            if m.items.count > 7 { ScrollView { rows }.frame(height: 7 * Self.rowHeight) } else { rows }
         }
     }
 
     /// A row of the items box: 13 pt text with 6 pt above and below, and the hairline.
     static let rowHeight: CGFloat = 29
 
-    /// New Session: the project as a pull-down on the title's line, the list with a check per row (the whole row is
-    /// the target) and Select All over its right end.
+    /// New Session: the project's To Do under a heading with Select All at its right. A row is the target: its kind
+    /// icon at rest, the checkbox in the same slot while the pointer is over it or once it is chosen (Linear's list) —
+    /// one leading glyph, never a column of grey squares.
     var picker: some View {
         let w = HandoffItemLine.refWidth(m.candidates)
         let all = !m.candidates.isEmpty && m.chosen.count == m.candidates.count
-        return PanelBox(heading: AnyView(projectMenu)) {
+        return PanelBox(heading: AnyView(Text(TL("handoff.pick.heading")))) {
             ScrollView {
                 VStack(spacing: 0) {
                     if m.loadingCandidates && m.candidates.isEmpty {
@@ -386,56 +431,55 @@ struct DispatchView: View {
                     }
                     ForEach(m.candidates) { c in
                         let on = m.chosen.contains(c.uid)
-                        SettingsLine(padding: 4) {
+                        SettingsLine(padding: PanelMetrics.rowPadding) {
                             HStack(spacing: 8) {
-                                Toggle("", isOn: Binding(get: { on }, set: { pick(c.uid, $0) })).toggleStyle(.checkbox).labelsHidden()
-                                    .accessibilityLabel("\(c.ref) \(c.title)")
-                                HandoffItemLine(item: c, refWidth: w)
+                                ZStack {
+                                    if on || hovered == c.uid {
+                                        Toggle("", isOn: Binding(get: { on }, set: { pick(c.uid, $0) })).toggleStyle(.checkbox).labelsHidden()
+                                            .tint(Color.settingsDefault)
+                                    } else {
+                                        Image(nsImage: Look.kindImage(c.kind, size: KindStyle.smallSize))
+                                    }
+                                }
+                                .frame(width: KindStyle.smallSize, height: KindStyle.smallSize)
+                                Text(c.ref).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
+                                    .frame(width: w, alignment: .leading)
+                                Text(c.title.isEmpty ? TL("dispatch.untitled") : c.title).font(.system(size: 13)).lineLimit(1)
+                                    .frame(maxWidth: .infinity, alignment: .leading).help(c.title)
                             }
                             .contentShape(Rectangle())
                             .onTapGesture { pick(c.uid, !on) }
+                            .onHover { hovered = $0 ? c.uid : (hovered == c.uid ? nil : hovered) }
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("\(Look.kindName(c.kind)) \(c.ref) \(c.title)")
+                            .accessibilityValue(on ? "1" : "0")
+                            .accessibilityAddTraits(.isButton)
+                            .accessibilityAction { pick(c.uid, !on) }
                         }
                     }
                 }
             }
-            .frame(height: CGFloat(min(max(m.candidates.count, 3), 7)) * Self.pickRow)
+            .frame(height: CGFloat(min(max(m.candidates.count, 3), 7)) * Self.rowHeight)
         } accessory: {
             if !m.candidates.isEmpty {
-                Button(TL(all ? "handoff.pick.none" : "handoff.pick.all")) {
+                TextLinkButton(TL(all ? "handoff.pick.none" : "handoff.pick.all")) {
                     m.chosen = all ? [] : Set(m.candidates.map(\.uid))
                 }
-                .buttonStyle(.plain).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandInk)
+                .font(.system(size: SettingsMetrics.detailSize))
             }
         }
     }
-
-    /// A picker row (a checkbox's height and 4 pt above and below); the list shows three to seven, then scrolls.
-    static let pickRow: CGFloat = 24
 
     func pick(_ uid: String, _ on: Bool) {
         if on { m.chosen.insert(uid) } else { m.chosen.remove(uid) }
     }
 
+    /// New Session's project: the kit's pop-up (ChoicePopup) at the title's right, like every other choice.
     var projectMenu: some View {
-        let name = m.projectID.flatMap { ProjectStore.shared.project(id: $0)?.name } ?? TL("dispatch.project")
-        return Menu {
-            ForEach(ProjectStore.shared.projects) { p in
-                Button { m.projectID = p.id } label: {
-                    if p.id == m.projectID { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
-                }
-            }
-        } label: {
-            // the list's heading: whose items these are, and where to pick another project
-            HStack(spacing: 5) {
-                Image(systemName: "folder")
-                Text(name).lineLimit(1).truncationMode(.middle)
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .frame(maxWidth: 300, alignment: .leading)
-        .help(name)
-        .accessibilityLabel(TL("dispatch.project"))
-        .accessibilityValue(name)
+        ChoicePopup(label: TL("dispatch.project"),
+                    choices: ProjectStore.shared.projects.map { ($0.id, $0.name) },
+                    selection: Binding(get: { m.projectID ?? "" }, set: { m.projectID = $0 }))
+            .help(m.projectID.flatMap { ProjectStore.shared.project(id: $0)?.name } ?? "")
     }
 
     // MARK: settings
@@ -456,9 +500,18 @@ struct DispatchView: View {
         }
     }
 
+    /// Sign In… sits before the pop-up (Settings' fix pattern) while the footer's default is another way out (Use
+    /// Codex); when it is the only way out it is the default itself, not said twice.
+    var signInInRow: Bool { m.block == .loggedOut && m.alternative != nil }
+
     var agentRow: some View {
         SettingRow("handoff.agent", title: TL("dispatch.agent"), detailContent: AnyView(agentDetail)) {
-            Group {
+            HStack(spacing: 8) {
+                if signInInRow {
+                    Button(TL("agents.sign_in")) { signInFrom = "row" }.controlSize(.small).fixedSize()
+                        .popover(isPresented: Binding(get: { signInFrom == "row" }, set: { if !$0 { signInFrom = nil } }),
+                                 arrowEdge: .bottom) { signInPopover }
+                }
                 if !m.agents.isEmpty {
                     ChoicePopup(label: TL("dispatch.agent"),
                                 choices: m.agents.map { a in (a.id, a.loggedOut && a.id != m.agent ? Loc.t("dispatch.agent.logged_out", table: "Terminal", a.name) : a.name) },
@@ -468,55 +521,91 @@ struct DispatchView: View {
         }
     }
 
-    /// One signal, in its row: checking (the spinner and the words), not signed in (what to run, in attention ink),
-    /// else what the session will run: the model, or the desktop app it opens in.
+    /// One signal, on one line: checking (the spinner and the words), not signed in (the "!" disc and the words in
+    /// attention ink), else what the session will run: the model and that the agent is signed in, or the desktop app.
     @ViewBuilder var agentDetail: some View {
         Group {
             if !m.agentsLoaded || (!m.agents.isEmpty && !m.loginChecked && !m.desktop) {
                 HStack(spacing: 5) { BrandSpinnerView(size: 10); Text(TL("dispatch.checking_login")) }
                     .foregroundStyle(.secondary)
             } else if m.agents.isEmpty {
-                Text(TL("dispatch.agent.none")).foregroundStyle(Color.brandAttnInk)
+                attention(TL("handoff.agent.none"))
             } else if let a = m.chosenAgent, a.loggedOut, !m.desktop {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(a.fix.isEmpty ? TL("dispatch.logged_out", a.name) : TL("dispatch.logged_out.fix", a.name, a.fix))
-                        .foregroundStyle(Color.brandAttnInk).textSelection(.enabled)
-                    // the way on from here: the other agent, as a text button in brand ink (Settings' link look)
-                    if let other = m.alternative {
-                        Button(TL("dispatch.use_agent", other.name)) { m.agent = other.id; m.agentTouched = true }
-                            .buttonStyle(.plain).foregroundStyle(Color.brandInk)
-                    }
-                }
+                attention(TL("handoff.agent.signed_out"))
             } else if m.desktop {
                 Text(TL("handoff.agent.desktop", DesktopApp.name(m.agent))).foregroundStyle(.secondary)
             } else {
-                Text(modelSummary).foregroundStyle(.secondary)
+                Text(agentSummary).foregroundStyle(.secondary)
             }
         }
         .font(.system(size: SettingsMetrics.detailSize))
-        .fixedSize(horizontal: false, vertical: true)
+        .lineLimit(1)
     }
 
-    var modelSummary: String {
+    func attention(_ text: String) -> some View {
+        HStack(spacing: 5) {
+            StatusDot(tone: .warn)
+            Text(text).foregroundStyle(Color.brandAttnInk)
+        }
+    }
+
+    /// The model in use, by name (the one picked, else the CLI's own setting), and "signed in" once the check said so.
+    var modelName: String? {
         if !m.model.isEmpty { return m.models.first { $0.id == m.model }?.name ?? m.model }
-        return m.cliDefault.map { TL("handoff.agent.model_default_named", $0) } ?? TL("handoff.agent.model_default")
+        return m.cliDefault.map { d in m.models.first { $0.id == d }?.name ?? d }
+    }
+
+    var agentSummary: String {
+        switch (modelName, m.loginVerified) {
+        case (let n?, true): return TL("handoff.agent.model_signed_in", n)
+        case (let n?, false): return n
+        case (nil, true): return TL("handoff.agent.signed_in")
+        case (nil, false): return TL("handoff.agent.ready")
+        }
+    }
+
+    /// How to sign in: the agent's own words and its command (copyable), then Check Again — Settings' Sign In….
+    var signInPopover: some View {
+        let a = m.chosenAgent
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(TL("agents.fix.sign_in_title", a?.name ?? "")).font(.headline)
+            if let a = a {
+                let text = a.fix.isEmpty ? AgentHub.shared.def(a.id)?.fixText ?? "" : a.fix
+                if !text.isEmpty {
+                    Text(AgentFix.sentence(text)).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
+                }
+                if let c = AgentFix.signInCommand(a.id, fallback: a.fix) { CommandText(text: c) }
+            }
+            Text(TL("agents.fix.then")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button(TL("agents.check_again")) { signInFrom = nil; Task { await m.recheckLogin() } }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(16)
+        .frame(width: 320)
     }
 
     var noGit: Bool { m.warnings.contains { $0.code == "no_git" } }
+    var branchLocked: Bool { m.mode == .parallel && m.count > 1 }
 
+    /// One sentence per state, the same on every screen; the branch's name only in the tooltip (a slug cut mid-phrase
+    /// says less than none). Locked on (one session per item), it says why.
     var branchRow: some View {
         let detail: String = {
             if noGit { return TL("handoff.branch.no_git") }
-            if m.mode == .parallel && m.count > 1 { return TL("handoff.branch.parallel") }
-            if m.worktreeOn { return m.branchPreview.map { TL("handoff.branch.on.named", $0) } ?? TL("handoff.branch.on") }
-            return TL("handoff.branch.off")
+            if branchLocked { return TL("handoff.branch.locked") }
+            return TL(m.worktreeOn ? "handoff.branch.on" : "handoff.branch.off")
         }()
-        return SettingRow("handoff.branch", title: TL("handoff.branch"), detail: detail) {
+        let help = m.worktreeOn && !noGit && !branchLocked
+            ? (m.branchPreview.map { $0 + "\n" } ?? "") + TL("handoff.branch.help") : TL("handoff.branch.help")
+        return SettingRow("handoff.branch", title: TL("handoff.branch"), detail: detail, help: help) {
             Toggle(TL("handoff.branch"), isOn: Binding(get: { m.worktreeOn && !noGit }, set: { m.worktree = $0 ? .on : .off }))
-                .labelsHidden().toggleStyle(.switch).controlSize(.small)
-                .disabled(m.mode == .parallel && m.count > 1 || noGit)
+                .labelsHidden().panelSwitch()
+                .disabled(branchLocked || noGit)
         }
-        .help(TL("handoff.branch.help"))
+        .help(help)
     }
 
     // MARK: options (rare: where it runs, the model)
@@ -531,7 +620,7 @@ struct DispatchView: View {
                     if m.desktopAvailable {
                         let app = DesktopApp.name(m.agent)
                         SettingRow("handoff.run_in", title: TL("handoff.run_in"),
-                                   detail: m.desktop ? TL("dispatch.desktop.send", app) : TL("handoff.run_in.terminal.detail")) {
+                                   detail: m.desktop ? TL("handoff.run_in.desktop.detail") : TL("handoff.run_in.terminal.detail")) {
                             ChoicePopup(label: TL("handoff.run_in"),
                                         choices: [(HandoffTarget.terminal, TL("handoff.run_in.terminal")),
                                                   (.desktop, TL("handoff.run_in.desktop", app))],
@@ -541,7 +630,7 @@ struct DispatchView: View {
                     if !m.models.isEmpty && !m.desktop {
                         SettingRow("handoff.model", title: TL("dispatch.model")) {
                             ChoicePopup(label: TL("dispatch.model"),
-                                        choices: [("", m.cliDefault.map { TL("handoff.model.default_named", $0) } ?? TL("handoff.model.default"))]
+                                        choices: [("", m.cliDefault.map { d in TL("handoff.model.default_named", m.models.first { $0.id == d }?.name ?? d) } ?? TL("handoff.model.default"))]
                                             + m.models.map { ($0.id, $0.name) },
                                         selection: $m.model, dividers: [1])
                         }
@@ -552,25 +641,22 @@ struct DispatchView: View {
         }
     }
 
-    // MARK: notices
+    // MARK: notices: under the items, above the settings
 
-    /// Only what has to be read before Start: why it can't start (and the way out), the concurrent-edit choice, the
-    /// desktop app without the blurt MCP, items taken back from an ended session, no tmux. One notice look (Settings').
+    /// Only what has to be read before Start, in one place: why it can't start (its way out is the footer's
+    /// default), a start that failed, the concurrent-edit choice, the desktop app without the blurt MCP, items taken
+    /// back from an ended session, no tmux.
     @ViewBuilder var notices: some View {
-        if case .failed(let why) = m.phase {
-            SettingsNotice(title: why, tone: .warn) {
-                if let j = m.busyJob {
-                    Button(TL("dispatch.open_session")) { close(); TerminalModule.reveal(job: j) }.controlSize(.small)
-                }
-            }
-            .padding(.top, 14).transition(.opacity)
+        if let b = m.block {
+            PanelNotice(text: blockText(b)).padding(.top, 14).transition(.opacity)
+        } else if case .failed(let why) = m.phase {
+            PanelNotice(text: why).padding(.top, 14).transition(.opacity)
         }
         if m.concurrent != nil && !m.worktreeOn {
-            SettingsNotice(title: TL("warning.concurrent_edit", m.projectName), tone: .warn) { EmptyView() }
-                .padding(.top, 14).transition(.opacity)
+            PanelNotice(text: TL("warning.concurrent_edit", m.projectName)).padding(.top, 14).transition(.opacity)
         }
         if m.desktop && m.desktopMCP == false {
-            SettingsNotice(title: TL("dispatch.desktop.no_mcp", DesktopApp.name(m.agent)), tone: .off) {
+            PanelNotice(text: TL("dispatch.desktop.no_mcp", DesktopApp.name(m.agent)), tone: .off) {
                 if agentsModel.installing == m.agent { BrandSpinnerView(size: 10) }
                 else {
                     Button(TL("dispatch.desktop.install")) {
@@ -587,23 +673,34 @@ struct DispatchView: View {
         // draft_confirmed the footer's
         ForEach(m.warnings.filter { !["concurrent_edit", "no_git", "draft_confirmed"].contains($0.code) && TL($0.noteKey) != $0.noteKey },
                 id: \.code) { w in
-            SettingsNotice(title: TL(w.noteKey), tone: .off) { EmptyView() }.padding(.top, 14)
+            PanelNotice(text: TL(w.noteKey), tone: .off).padding(.top, 14)
+        }
+    }
+
+    func blockText(_ b: DispatchModel.Block) -> String {
+        switch b {
+        case .busy, .failed:
+            if case .failed(let why) = m.phase { return why }
+            return TL("error.already_dispatched")
+        case .loggedOut: return TL("handoff.block.logged_out", m.chosenAgent?.name ?? "")
+        case .noAgent: return TL("handoff.block.no_agent")
         }
     }
 
     // MARK: footer
 
+    /// What Start will do to all the items: one item by its id, several by count ("6 items · 1 moves to To Do").
     var footnote: String? {
+        if m.block != nil { return nil }           // never a promise next to a Start that isn't there
         if m.pickItems && m.count == 0 { return TL("handoff.pick.hint") }
         if m.desktop { return TL("dispatch.desktop.send", DesktopApp.name(m.agent)) }
-        if let w = m.warnings.first(where: { $0.code == "draft_confirmed" }) {
-            let refs = w.items.compactMap { uid in (m.pickItems ? m.candidates : m.items).first { $0.uid == uid }?.ref }
-            if m.count == 1 || refs.count == 1, let r = refs.first ?? (m.count == 1 ? m.items.first?.ref : nil) {
-                return TL("handoff.note.todo.one", r)
-            }
-            return TL("handoff.note.todo.many")
+        let todo = m.toTodo
+        if m.count == 1 {
+            let ref = (m.pickItems ? m.candidates.first { m.chosen.contains($0.uid) } : m.items.first)?.ref ?? ""
+            return todo > 0 && !ref.isEmpty ? TL("handoff.note.todo.one", ref) : nil
         }
-        return nil
+        guard m.count > 1 else { return nil }
+        return todo > 0 ? TL("handoff.note.todo.count", m.count, todo) : TL("handoff.items.count", m.count)
     }
 
     var footer: some View {
@@ -611,17 +708,45 @@ struct DispatchView: View {
         return HStack(spacing: 8) {
             PanelFootnote(text: footnote, busy: m.phase == .starting ? TL("handoff.starting") : nil)
             Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction)
-            if concurrentAsk {
+            if let b = m.block {
+                wayOut(b)
+            } else if concurrentAsk {
                 // the reminder's two answers are the footer's buttons while it is up
                 Button(TL("warning.concurrent_edit.continue")) { Task { if let r = await m.start() { started(r) } } }
                     .disabled(!m.canStart)
                 Button(TL("warning.concurrent_edit.use_worktree")) { m.worktree = .on }
                     .panelDefault().keyboardShortcut(.defaultAction)
             } else {
-                Button(m.desktop ? TL("dispatch.start.desktop", DesktopApp.name(m.agent)) : TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
+                Button(m.desktop ? TL("dispatch.start.desktop", DesktopApp.name(m.agent)) : m.sessionsToStart > 1 ? TL("handoff.start.many", m.sessionsToStart) : TL("dispatch.start")) { Task { if let r = await m.start() { started(r) } } }
                     .panelDefault().keyboardShortcut(.defaultAction)
                     .disabled(!m.canStart)
             }
+        }
+    }
+
+    /// While Start can't go, the default is the way out (Claude desktop's permission prompts): the session the items
+    /// are with, the other agent, how to sign in, Settings → Agents, or the check once more.
+    @ViewBuilder func wayOut(_ b: DispatchModel.Block) -> some View {
+        switch b {
+        case .busy(let j):
+            Button(TL("dispatch.open_session")) { close(); TerminalModule.reveal(job: j) }
+                .panelDefault().keyboardShortcut(.defaultAction)
+        case .loggedOut:
+            if let other = m.alternative {
+                Button(TL("dispatch.use_agent", other.name)) { m.agent = other.id; m.agentTouched = true }
+                    .panelDefault().keyboardShortcut(.defaultAction)
+            } else {
+                Button(TL("agents.sign_in")) { signInFrom = "footer" }
+                    .panelDefault().keyboardShortcut(.defaultAction)
+                    .popover(isPresented: Binding(get: { signInFrom == "footer" }, set: { if !$0 { signInFrom = nil } }),
+                             arrowEdge: .bottom) { signInPopover }
+            }
+        case .noAgent:
+            Button(TL("handoff.open_agents")) { close(); AppEnvironment.settings?.show(pane: "agents") }
+                .panelDefault().keyboardShortcut(.defaultAction)
+        case .failed:
+            Button(TL("overlay.retry")) { Task { await m.check() } }
+                .panelDefault().keyboardShortcut(.defaultAction)
         }
     }
 }

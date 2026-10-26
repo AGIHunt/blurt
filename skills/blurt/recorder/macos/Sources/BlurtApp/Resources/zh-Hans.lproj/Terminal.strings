@@ -32,8 +32,7 @@
 "list.empty.title" = "还没有会话";
 "list.empty.body" = "交给 Agent 的条目会在这里以会话的形式运行，按项目分组。";
 "row.ready_to_review" = "可以查看改动";
-"session.items.more" = "%1$@ 等 %2$ld 条";
-
+"session.items.more" = "%1$@ +%2$ld";
 /* 终端上方的标题栏 */
 "header.none" = "没有选中会话";
 "header.hide_list" = "隐藏会话列表";
@@ -46,7 +45,7 @@
 "header.interrupt" = "中断（Control-C）";
 "header.end" = "结束会话…";
 "header.review" = "查看改动…";
-"header.review.help" = "看看分支上改了什么，再选择合并、开 PR 或丢弃";
+"header.review.help" = "看看分支上改了什么，再选择合并、创建 PR 或丢弃";
 "header.pop_out" = "在新窗口中打开";
 "header.reveal_folder" = "在访达中显示文件夹";
 "header.open_handoff" = "打开交接说明";
@@ -67,9 +66,9 @@
 "overlay.elsewhere.body" = "这个会话在口喷鸡里运行，正显示在另一个窗口中。";
 "overlay.pick" = "选择一个会话来查看它的终端。";
 "overlay.empty.title" = "Agent 在这里工作";
-"overlay.empty.body" = "把条目交给 Claude Code 或 Codex，\n每个都在自己的终端里工作，需要你时口喷鸡会提醒。";
+"overlay.empty.body" = "把条目交给 Claude Code 或 Codex 处理，\n它们各自在终端里工作，需要你时会提醒。";
 "overlay.ended.title" = "会话已结束";
-"overlay.ended.review_hint" = "Agent 在单独的分支上工作。查看改动后，可以合并、开 PR 或丢弃。";
+"overlay.ended.review_hint" = "Agent 的改动在单独的分支上，等你查看。";
 "overlay.ended.verify_hint" = "相关条目现在等你验证，确认没问题后标为完成。";
 "overlay.ended.unreported_hint" = "Agent 没有报告做完，条目还在进行中。看过之后，在条目上标为完成或收回。";
 
@@ -85,9 +84,9 @@
 "dispatch.mode.together.help" = "一个对话按顺序处理全部条目。";
 "dispatch.worktree" = "位置";
 "dispatch.worktree.toggle" = "在单独的分支上做";
-"dispatch.worktree.on" = "在项目旁边建一个 git worktree。做完后由你选择合并、开 PR 或丢弃。";
-"dispatch.worktree.on.branch" = "在分支 %@ 上做，worktree 放在项目旁边。做完后由你选择合并、开 PR 或丢弃。";
-"dispatch.worktree.on.parallel" = "每条各在自己的分支上做，worktree 放在项目旁边。哪条做完了，由你选择合并、开 PR 或丢弃。";
+"dispatch.worktree.on" = "在项目旁边建一个 git worktree。做完后由你选择合并、创建 PR 或丢弃。";
+"dispatch.worktree.on.branch" = "在分支 %@ 上做，worktree 放在项目旁边。做完后由你选择合并、创建 PR 或丢弃。";
+"dispatch.worktree.on.parallel" = "每条各在自己的分支上做，worktree 放在项目旁边。哪条做完了，由你选择合并、创建 PR 或丢弃。";
 "dispatch.worktree.off" = "直接改 %@ 里的文件，Agent 不会提交。";
 "dispatch.project" = "项目";
 "dispatch.pick.empty" = "这个项目里没有待处理的条目。";
@@ -106,13 +105,13 @@
 "finish.title" = "查看改动";
 "finish.subtitle" = "%1$@ → %2$@";
 "finish.loading" = "正在和基础分支比较…";
-"finish.open_patch" = "打开 diff";
+"finish.open_patch" = "打开差异";
 "finish.no_changes" = "这个分支上没有改动。";
-"finish.help" = "合并会把分支并进项目文件夹里的 %@。只有开 PR 时才会推送。";
+"finish.help" = "合并会把分支并进项目文件夹里的 %@。只有创建 PR 时才会推送。";
 "finish.merge" = "合并";
 "finish.end_and.merge" = "结束会话并合并";
 "finish.merge.help" = "合并进 %@，并删除 worktree";
-"finish.pr" = "开 PR";
+"finish.pr" = "创建 PR";
 "finish.pr.help" = "推送分支并创建 PR";
 "finish.keep" = "先保留";
 "finish.keep.help" = "分支和 worktree 原样保留";
@@ -127,7 +126,7 @@
 "finish.done.pr" = "PR 已创建。";
 "finish.done.discard" = "已丢弃。";
 "finish.done.keep" = "已保留，之后可以在会话里再次查看。";
-"finish.done.pushed" = "分支已推送到 origin，但没有自动开 PR，请到你的 Git 托管平台上开。";
+"finish.done.pushed" = "分支已推送到 origin，但没有自动创建 PR，请到你的 Git 托管平台上创建。";
 "finish.done.compare" = "分支已推送，在浏览器里完成 PR：";
 "finish.done.verify" = "相关条目在等你验证。";
 
@@ -163,11 +162,11 @@
 "error.bad_agent" = "这个 Agent 还不能用来跑会话。";
 "error.tmux" = "tmux 没能启动这个会话。";
 "error.git" = "git 没能准备好 worktree。";
-"error.conflict" = "合并遇到冲突，已经撤回，分支没有变化。可以在 worktree 里解决冲突，或者开 PR。";
+"error.conflict" = "合并遇到冲突，已经撤回，分支没有变化。可以在 worktree 里解决冲突，或者创建 PR。";
 "error.dirty" = "项目文件夹里有未提交的改动，先提交或暂存，再合并。";
 "error.wrong_branch" = "项目文件夹不在这项工作开始时的分支上，切回去后再合并。";
 "error.push" = "推送分支失败，检查网络和远程仓库的权限。";
-"error.no_remote" = "这个仓库没有可以开 PR 的远程仓库。";
+"error.no_remote" = "这个仓库没有可以创建 PR 的远程仓库。";
 "error.no_worktree" = "这个会话没有用 worktree。";
 "error.app_runner" = "这个会话在口喷鸡里运行，请在口喷鸡自己的窗口中打开。";
 "error.bad_args" = "会话命令的调用方式不对。";
@@ -252,7 +251,7 @@
 "install.row.manual.mcp" = "需要你自己添加口喷鸡 MCP 服务";
 "install.row.manual.none" = "这里改不了 %@ 的这项设置，请按它自己的说明文档操作。";
 "finish.state.merge" = "已合并";
-"finish.state.pr" = "已开 PR";
+"finish.state.pr" = "已创建 PR";
 "finish.state.pushed" = "已推送";
 "finish.state.discard" = "已丢弃";
 "agents.install.help" = "把 blurt skill 和 MCP 装进这个 Agent，装之前先列出要改的地方";
@@ -276,13 +275,13 @@
 "overlay.restart" = "重新开始会话";
 "overlay.failed_start.title" = "%@ 启动失败";
 "overlay.failed.title" = "%@ 出错停下了";
-"overlay.no_changes.title" = "会话已结束 · 没有改动";
+"overlay.no_changes.title" = "已结束，没有改动";
 "finish.commit_merge" = "提交并合并";
 "finish.show_item" = "查看 %@";
 "finish.show_items" = "查看条目";
 "error.commit" = "提交 Agent 的改动失败，可能被 git hook 拒绝了。在 worktree 里提交后再试。";
 "error.has_changes" = "这个会话留下了改动，先查看改动。";
-"error.already_dispatched" = "这些条目已经交给了一个还在进行的会话。";
+"error.already_dispatched" = "这些条目已经在进行中的会话里。";
 "dispatch.logged_out" = "%@ 还没登录。";
 "dispatch.logged_out.fix" = "%1$@ 还没登录：%2$@。";
 "dispatch.use_agent" = "改用 %@";
@@ -290,7 +289,7 @@
 "dispatch.open_session" = "打开那个会话";
 
 // dogfood v0.9 review: one wording per state; the watchdog
-"overlay.review.title" = "会话已结束 · 可以查看改动";
+"overlay.review.title" = "可以查看改动";
 "row.no_response" = "没有反应";
 // 在口喷鸡终端以外交给 Agent：Agent 的桌面端（Claude）
 "dispatch.run_in" = "会话";
@@ -335,7 +334,7 @@
 "error.auth.fix" = "%1$@ 还没登录：%2$@。登录后再开始。";
 "error.bad_transition" = "这些条目在等你验证或已经做完，先重新打开，才能再交给 Agent。";
 "error.finished" = "这个会话已经处理过了。";
-"error.already_dispatched.named" = "%@ 已经在一个还在进行的会话里。";
+"error.already_dispatched.named" = "%@ 已经在一个进行中的会话里。";
 "error.io" = "口喷鸡没能读写需要的文件，请再试一次。";
 "error.unparseable" = "有条目的文件读不出来，先在编辑器里改好它。";
 "error.not_found" = "找不到这些条目了，可能已经被移走或删除。";
@@ -422,17 +421,17 @@
 "handoff.agent.model_default_named" = "默认模型 · %@";
 "handoff.agent.desktop" = "在 %@ 桌面端打开";
 "handoff.branch" = "单独的分支";
-"handoff.branch.on" = "改动放在新分支上，你检查后再合并。";
+"handoff.branch.on" = "改动放在单独的分支上，合并前不进项目。";
 "handoff.branch.on.named" = "放在 %@ 上，你检查后再合并。";
 "handoff.branch.parallel" = "每条都有自己的分支。";
 "handoff.branch.off" = "直接改项目文件夹里的文件，Agent 不会提交。";
-"handoff.branch.no_git" = "这个文件夹不是 git 仓库，Agent 会直接改里面的文件。";
-"handoff.branch.help" = "在项目旁边建一个 git worktree。做完后由你选择合并、开 PR 或丢弃。";
+"handoff.branch.no_git" = "不是 git 仓库，Agent 会直接改文件。";
+"handoff.branch.help" = "在项目旁边建一个 git worktree。做完后由你选择合并、创建 PR 或丢弃。";
 "handoff.options" = "更多选项";
 "handoff.run_in" = "运行位置";
 "handoff.run_in.terminal" = "口喷鸡终端";
 "handoff.run_in.desktop" = "%@ 桌面端";
-"handoff.run_in.terminal.detail" = "推荐。口喷鸡在这里跟进进度。";
+"handoff.run_in.terminal.detail" = "推荐，进度显示在这里";
 "handoff.model.default" = "默认";
 "handoff.model.default_named" = "默认（%@）";
 "handoff.note.todo.one" = "%@ 会标为待办。";
@@ -441,9 +440,40 @@
 "review.more" = "更多";
 "review.discard" = "丢弃…";
 "review.gone.title" = "这个会话已经不在了";
-"review.gone.body" = "它已被移除，或者它的文件夹已被删除，没有可以查看的改动。";
+"review.gone.body" = "它已被移除，没有可查看的改动。";
 "review.failed.diff" = "没能读取改动";
 "review.failed.merge" = "没能合并";
-"review.failed.pr" = "没能开 PR";
+"review.failed.pr" = "没能创建 PR";
 "review.failed.discard" = "没能丢弃这个分支";
 "review.failed.keep" = "没能保留这个分支";
+"handoff.items.count" = "%ld 条";
+"handoff.pick.heading" = "待办";
+"handoff.agent.none" = "没有可用的 Agent";
+"handoff.agent.signed_out" = "未登录";
+"handoff.agent.model_signed_in" = "%@ · 已登录";
+"handoff.agent.signed_in" = "已登录";
+"handoff.agent.ready" = "使用它自己的默认模型";
+"handoff.branch.locked" = "每条一个会话时必须开。";
+"handoff.run_in.desktop.detail" = "进度来自 Agent 的报告";
+"handoff.block.logged_out" = "%@ 还没登录，没法开始。";
+"handoff.block.no_agent" = "没有装能运行会话的 Agent。";
+"handoff.open_agents" = "打开 Agent 设置…";
+"handoff.note.todo.count" = "%1$ld 条 · %2$ld 条会标为待办";
+"handoff.start.many" = "开始 %ld 个会话";
+"list.count.working" = "%ld 个运行中";
+"list.count.waiting" = "%ld 个等你处理";
+"row.folder_gone" = "文件夹已不在";
+"overlay.gone.title" = "它的文件夹已不在";
+"overlay.gone.body" = "分支所在的文件夹已被删除，没有可查看的改动了。";
+"overlay.gone.take_back" = "收回条目";
+"overlay.gone.remove" = "移除会话";
+"header.open_in" = "在 %@ 中打开";
+"review.folder_gone.title" = "它的文件夹已不在";
+"review.folder_gone.body" = "文件夹已被删除，没有可查看的改动了。";
+"review.no_worktree.title" = "没有可查看的改动";
+"review.no_worktree.body" = "这个会话直接改的项目文件夹。";
+"mark.working" = "运行中";
+"mark.waiting" = "等你处理";
+"mark.done" = "完成";
+"mark.failed" = "出错";
+"mark.idle" = "已结束";

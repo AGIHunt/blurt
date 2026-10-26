@@ -32,8 +32,7 @@
 "list.empty.title" = "No sessions yet";
 "list.empty.body" = "Items you hand off to an agent run here as sessions, grouped by project.";
 "row.ready_to_review" = "Ready to review";
-"session.items.more" = "%1$@ and %2$ld more";
-
+"session.items.more" = "%1$@ +%2$ld";
 /* Header above the terminal */
 "header.none" = "No session selected";
 "header.hide_list" = "Hide Sessions";
@@ -69,7 +68,7 @@
 "overlay.empty.title" = "Your agents work here";
 "overlay.empty.body" = "Hand items to Claude Code or Codex. Each works in its own terminal, and Blurt tells you when one needs you.";
 "overlay.ended.title" = "Session ended";
-"overlay.ended.review_hint" = "The agent worked on its own branch. Review the changes to merge them, open a pull request or discard them.";
+"overlay.ended.review_hint" = "The agent’s changes are on their own branch, waiting for you.";
 "overlay.ended.verify_hint" = "Its items are now waiting for you to verify. Mark them done once you’ve checked.";
 "overlay.ended.unreported_hint" = "The agent didn’t report back, so its items are still in progress. Once you’ve looked, mark them done or take them back.";
 
@@ -276,13 +275,13 @@
 "overlay.restart" = "Restart Session";
 "overlay.failed_start.title" = "%@ couldn’t start";
 "overlay.failed.title" = "%@ stopped with an error";
-"overlay.no_changes.title" = "Session ended · no changes";
+"overlay.no_changes.title" = "Ended with no changes";
 "finish.commit_merge" = "Commit and Merge";
 "finish.show_item" = "Show %@";
 "finish.show_items" = "Show Items";
 "error.commit" = "Committing the agent’s changes failed — a git hook may have refused them. Commit them in the worktree, then try again.";
 "error.has_changes" = "This session left changes. Review them first.";
-"error.already_dispatched" = "These items are already with a session that is still going.";
+"error.already_dispatched" = "These items are already in a running session.";
 "dispatch.logged_out" = "%@ isn’t signed in.";
 "dispatch.logged_out.fix" = "%1$@ isn’t signed in: %2$@.";
 "dispatch.use_agent" = "Use %@";
@@ -290,7 +289,7 @@
 "dispatch.open_session" = "Open Its Session";
 
 // dogfood v0.9 review: one wording per state; the watchdog
-"overlay.review.title" = "Session ended · ready to review";
+"overlay.review.title" = "Ready to review";
 "row.no_response" = "No response";
 // hand-offs outside Blurt's terminal: the agent's desktop app (Claude)
 "dispatch.run_in" = "Session";
@@ -335,7 +334,7 @@
 "error.auth.fix" = "%1$@ isn’t signed in: %2$@. Then start again.";
 "error.bad_transition" = "These items are waiting to be verified or are done. Reopen them to hand them off again.";
 "error.finished" = "This session has already been dealt with.";
-"error.already_dispatched.named" = "%@ is already with a session that is still going.";
+"error.already_dispatched.named" = "%@ is already in a running session.";
 "error.io" = "Blurt couldn’t read or write a file it needs. Try again.";
 "error.unparseable" = "An item’s file can’t be read. Fix it in an editor first.";
 "error.not_found" = "These items can’t be found any more. They may have been moved or deleted.";
@@ -422,17 +421,17 @@
 "handoff.agent.model_default_named" = "Default model · %@";
 "handoff.agent.desktop" = "Opens in %@ desktop";
 "handoff.branch" = "Separate branch";
-"handoff.branch.on" = "You merge the changes once you’ve checked them.";
+"handoff.branch.on" = "Changes stay on a branch until you merge them.";
 "handoff.branch.on.named" = "On %@ until you merge it.";
 "handoff.branch.parallel" = "Each item gets its own branch.";
 "handoff.branch.off" = "Edits the project folder directly. The agent won’t commit.";
-"handoff.branch.no_git" = "This folder isn’t a git repository, so the agent edits it directly.";
+"handoff.branch.no_git" = "Not a git repository, so the agent edits it directly.";
 "handoff.branch.help" = "A git worktree next to the project. When it’s done, you merge it, open a pull request or discard it.";
 "handoff.options" = "Options";
 "handoff.run_in" = "Runs in";
 "handoff.run_in.terminal" = "Blurt’s terminal";
 "handoff.run_in.desktop" = "%@ desktop";
-"handoff.run_in.terminal.detail" = "Recommended. Blurt follows its progress here.";
+"handoff.run_in.terminal.detail" = "Recommended — live progress";
 "handoff.model.default" = "Default";
 "handoff.model.default_named" = "Default (%@)";
 "handoff.note.todo.one" = "%@ will be marked To Do.";
@@ -441,9 +440,40 @@
 "review.more" = "More";
 "review.discard" = "Discard…";
 "review.gone.title" = "This session no longer exists";
-"review.gone.body" = "It was removed, or its folder was deleted, so there are no changes to review.";
+"review.gone.body" = "It was removed, so there are no changes to review.";
 "review.failed.diff" = "Couldn’t load the changes";
 "review.failed.merge" = "Couldn’t merge";
 "review.failed.pr" = "Couldn’t open a pull request";
 "review.failed.discard" = "Couldn’t discard the branch";
 "review.failed.keep" = "Couldn’t keep the branch";
+"handoff.items.count" = "%ld items";
+"handoff.pick.heading" = "To Do";
+"handoff.agent.none" = "No agent installed";
+"handoff.agent.signed_out" = "Not signed in";
+"handoff.agent.model_signed_in" = "%@ · signed in";
+"handoff.agent.signed_in" = "Signed in";
+"handoff.agent.ready" = "Uses its own default model";
+"handoff.branch.locked" = "Required when items run side by side.";
+"handoff.run_in.desktop.detail" = "Progress comes from the agent’s reports";
+"handoff.block.logged_out" = "%@ isn’t signed in, so it can’t start.";
+"handoff.block.no_agent" = "No agent that can run a session is installed.";
+"handoff.open_agents" = "Open Agents Settings…";
+"handoff.note.todo.count" = "%1$ld items · %2$ld will be marked To Do";
+"handoff.start.many" = "Start %ld Sessions";
+"list.count.working" = "%ld working";
+"list.count.waiting" = "%ld waiting on you";
+"row.folder_gone" = "Folder is gone";
+"overlay.gone.title" = "Its folder is gone";
+"overlay.gone.body" = "The branch’s folder was deleted, so there’s nothing left to review.";
+"overlay.gone.take_back" = "Take Back Items";
+"overlay.gone.remove" = "Remove Session";
+"header.open_in" = "Open in %@";
+"review.folder_gone.title" = "Its folder is gone";
+"review.folder_gone.body" = "It was deleted, so there are no changes left to review.";
+"review.no_worktree.title" = "Nothing to review";
+"review.no_worktree.body" = "This session worked in the project folder directly.";
+"mark.working" = "Working";
+"mark.waiting" = "Waiting for you";
+"mark.done" = "Done";
+"mark.failed" = "Failed";
+"mark.idle" = "Ended";

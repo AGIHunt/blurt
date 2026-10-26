@@ -55,6 +55,10 @@ final class SessionsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SessionsWindowController(paneID: "window")
     private static var extra: [SessionsWindowController] = []
     let pane: SessionsPaneController
+    /// With no sessions the window opens compact on its empty state (no list column, no toolbar line), and takes its
+    /// working size with the first session.
+    static let compact = NSSize(width: 640, height: 420)
+    static let full = NSSize(width: 1080, height: 660)
 
     init(paneID: String) {
         pane = SessionsPaneController(paneID: paneID)
@@ -64,12 +68,13 @@ final class SessionsWindowController: NSWindowController, NSWindowDelegate {
         w.title = TL("window.title")
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
-        w.minSize = NSSize(width: 680, height: 380)
+        w.minSize = NSSize(width: 600, height: 380)
         w.isReleasedWhenClosed = false
         w.tabbingMode = .disallowed         // "Open in New Window" means a window: two terminals side by side
         let tb = NSToolbar(identifier: "BlurtSessions")      // empty: a 52 pt unified title bar the header lines up with
         w.toolbar = tb
         w.toolbarStyle = .unified
+        w.titlebarSeparatorStyle = .none     // the header draws its own line, and none over the empty state
         if let appearance = ProcessInfo.processInfo.environment["BLURT_APPEARANCE"] {
             w.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
         }
@@ -89,7 +94,10 @@ final class SessionsWindowController: NSWindowController, NSWindowDelegate {
             if let f = window?.frame { c.window?.setFrameTopLeftPoint(NSPoint(x: f.minX + 32, y: f.maxY - 32)) }
             return
         }
-        if window?.isVisible != true { window?.center() }
+        if window?.isVisible != true {
+            window?.setContentSize(SessionsModel.shared.rows.isEmpty ? Self.compact : Self.full)
+            window?.center()
+        }
         NSApp.setActivationPolicy(.regular)
         activateApp()
         window?.makeKeyAndOrderFront(nil)

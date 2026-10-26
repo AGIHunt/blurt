@@ -142,12 +142,20 @@ final class TerminalSurface: NSView, LocalProcessTerminalViewDelegate {
         borrowed = false
     }
 
+    /// The text's margin inside the surface (the surface itself runs to the window's edges in the terminal's colour).
+    static let margin = NSEdgeInsets(top: 8, left: 14, bottom: 8, right: 8)
+
     private func install(_ t: BlurtTerminalView, borrowed: Bool) {
         term = t
         self.borrowed = borrowed
-        t.frame = bounds
+        let m = Self.margin
+        t.frame = NSRect(x: m.left, y: m.bottom, width: max(0, bounds.width - m.left - m.right),
+                         height: max(0, bounds.height - m.top - m.bottom))
         t.autoresizingMask = [.width, .height]
         addSubview(t)
+        // tmux keeps the scrollback (the mouse scrolls it): SwiftTerm's own scroller would only be a still track at the
+        // edge. A borrowed app-runner view keeps it — its scrollback is SwiftTerm's.
+        if !borrowed { for case let sc as NSScroller in t.subviews { sc.isHidden = true } }
     }
 
     /// The pty's environment: the user's login environment plus what attach-cmd asked for, in a UTF-8 locale (tmux

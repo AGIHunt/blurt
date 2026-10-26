@@ -37,12 +37,12 @@ extension AgentSessionStatus {
     /// K10 common words: Working / Needs your input / Turn finished / Exited / Error
     var title: String { Loc.t("session.\(rawValue)") }
 
-    /// Running brand ink, waiting attention, done ok, error err (docs/design/system.md A.1).
+    /// Running brand ink; waiting for you — a question or a finished turn waiting for the next prompt — attention;
+    /// error err (docs/design/system.md A.1). The ok colour is for merged / done only, never a turn that waits on you.
     var nsColor: NSColor {
         switch self {
         case .running: return BrandColor.ink
-        case .waitingInput: return BrandColor.attn
-        case .turnDone: return BrandColor.ok
+        case .waitingInput, .turnDone: return BrandColor.attn
         case .exited: return .tertiaryLabelColor
         case .error: return BrandColor.err
         }
@@ -72,59 +72,60 @@ extension NSColor {
     }
 }
 
-/// The status mark of a session, one shape per state (readable without colour): a turning arc while the agent works,
-/// an attention disc with "!" that breathes once when it needs you, an ok disc with a check when the turn is done, an
-/// error disc with "×" when it failed (never a bare red dot), a hollow ring once it has exited. Reduced motion: no
-/// turning, no breathing.
+/// The status mark of a session, one shape per state (SessionMark; readable without colour): a turning arc while the
+/// agent works, an attention disc with "!" whenever it is the user's move (it breathes once when it becomes so), an ok
+/// disc with a check once merged or a pull request is open, an error disc with "×" when it failed (never a bare red
+/// dot), a hollow ring once it is over with nothing to do, an outward arrow when it goes on in the agent's desktop
+/// app. Reduced motion: no turning, no breathing.
 struct SessionStatusMark: View {
-    var status: AgentSessionStatus
+    var mark: SessionMark
     var size: CGFloat = 10
-    /// It goes on elsewhere (the agent's desktop app) and Blurt doesn't see it live: a still ring with a dot, never the
-    /// spinner.
-    var elsewhere: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var spin = false
     @State private var pulse = false
 
     var body: some View {
         ZStack {
-            if elsewhere {
-                // out of here, to the agent's app: an outward arrow, never the handed-off ring's dot
+            switch mark {
+            case .elsewhere:
+                // out of here, to the agent's app: an outward arrow, never the spinner
                 Image(systemName: "arrow.up.right.circle").resizable().scaledToFit().fontWeight(.medium)
-                    .foregroundStyle(AgentSessionStatus.running.color)
-            } else {
-            switch status {
-            case .running:
-                Circle().stroke(status.color.opacity(0.22), lineWidth: 1.6)
+                    .foregroundStyle(Color.brandInk)
+            case .working:
+                Circle().stroke(Color.brandInk.opacity(0.22), lineWidth: max(1.6, size / 8))
                 Circle().trim(from: 0, to: 0.28)
-                    .stroke(status.color, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                    .stroke(Color.brandInk, style: StrokeStyle(lineWidth: max(1.6, size / 8), lineCap: .round))
                     .rotationEffect(.degrees(spin ? 360 : 0))
                     .animation(reduceMotion ? nil : .linear(duration: 1.1).repeatForever(autoreverses: false), value: spin)
-            case .waitingInput:
-                Circle().fill(status.color.opacity(0.28)).scaleEffect(pulse ? 1.9 : 1).opacity(pulse ? 0 : 1)
+            case .waiting:
+                Circle().fill(Color.brandAttn.opacity(0.28)).scaleEffect(pulse ? 1.9 : 1).opacity(pulse ? 0 : 1)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.9).repeatCount(2, autoreverses: false), value: pulse)
-                disc("exclamationmark.circle.fill")
-            case .turnDone:
-                disc("checkmark.circle.fill")
-            case .error:
+                StatusDot(tone: .warn, diameter: size)
+            case .done:
+                StatusDot(tone: .good, diameter: size)
+            case .failed:
                 // never a bare red dot: that is the recording dot (system.md §2.3)
-                disc("xmark.circle.fill")
-            case .exited:
-                Circle().strokeBorder(status.color, lineWidth: 1.4)
-            }
+                StatusDot(tone: .bad, diameter: size)
+            case .idle:
+                Circle().strokeBorder(Color(nsColor: .tertiaryLabelColor), lineWidth: max(1.4, size / 9))
             }
         }
         .frame(width: size, height: size)
-        .onAppear { spin = true; pulse = status == .waitingInput }
-        .onChange(of: status) { s in pulse = false; DispatchQueue.main.async { pulse = s == .waitingInput } }
+        .onAppear { spin = true; pulse = mark == .waiting }
+        .onChange(of: mark) { s in pulse = false; DispatchQueue.main.async { pulse = s == .waiting } }
         .accessibilityElement()
-        .accessibilityLabel(elsewhere ? TL("mark.elsewhere") : status.title)
+        .accessibilityLabel(TL("mark.\(Self.name(mark))"))
     }
 
-    /// A filled disc with its state's sign cut out: each coloured state has a shape twin (system.md §1.5), so waiting,
-    /// done and failed differ in grayscale too.
-    private func disc(_ symbol: String) -> some View {
-        Image(systemName: symbol).resizable().scaledToFit().foregroundStyle(.white, status.color)
+    static func name(_ m: SessionMark) -> String {
+        switch m {
+        case .working: return "working"
+        case .waiting: return "waiting"
+        case .done: return "done"
+        case .failed: return "failed"
+        case .idle: return "idle"
+        case .elsewhere: return "elsewhere"
+        }
     }
 }
 
