@@ -185,14 +185,45 @@ final class DictationHistoryModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in if self?.copied == id { self?.copied = nil } }
     }
 
-    /// The text the list and ⌘C go by: what was heard while the detail shows the original, else what was typed.
-    func shownText(_ e: DictationEntry) -> String { mode == .raw ? e.raw : e.finalText }
+    /// What ⌘C copies of one dictation: what the detail shows of it (the Polished | As Spoken switch is the detail's
+    /// own — the list always reads what was typed).
+    func shownText(_ e: DictationEntry) -> String { mode == .raw && DictationHistoryModel.differs(e) ? e.raw : e.finalText }
 
-    /// The selection's text, newest first, one per paragraph.
+    /// The selection's text, newest first, one per paragraph: one dictation as the detail shows it, several as typed.
     func copySelection() {
         let es = selected
         guard !es.isEmpty else { return }
-        copy(es.map(shownText).joined(separator: "\n\n"), from: es.count == 1 ? es[0].id : nil)
+        copy(es.count == 1 ? shownText(es[0]) : es.map(\.finalText).joined(separator: "\n\n"), from: es.count == 1 ? es[0].id : nil)
+    }
+
+    /// The page's one count, in the window's subtitle: "9 dictations", "3 of 9 dictations" while searching.
+    var subtitle: String {
+        guard !entries.isEmpty else { return "" }
+        let all = TP("main.dictation.count", entries.count)
+        return query.trimmingCharacters(in: .whitespaces).isEmpty ? all : T("main.dictation.count_of", filtered.count, all)
+    }
+
+    /// The search's words, for marking them in the rows (several words: each).
+    var queryTerms: [String] {
+        query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init).filter { !$0.isEmpty }
+    }
+
+    /// How a dictation went in, when it didn't simply go in polished at the cursor: one fact for the row's chip and
+    /// the same fact, with its reason, for the detail — one wording in both places.
+    struct Exception: Equatable {
+        var chip: String
+        var line: String
+    }
+
+    static func exception(_ e: DictationEntry) -> Exception? {
+        let copied = e.insert == "copied", raw = e.fellBack
+        let why = reasonText(e.reason)
+        switch (copied, raw) {
+        case (true, true): return Exception(chip: T("main.dictation.chip.copied_raw"), line: T("main.dictation.status.copied_raw", why))
+        case (true, false): return Exception(chip: T("main.dictation.chip.copied"), line: T("main.dictation.status.copied"))
+        case (false, true): return Exception(chip: T("dictation.history.badge.fell_back"), line: T("main.dictation.status.raw", why))
+        default: return nil
+        }
     }
 
     /// ⌘Z — or the island's "Deleted · Undo" — puts them back: the text, the item link and a recording kept with them
@@ -388,6 +419,8 @@ final class DictationHistoryModel: ObservableObject {
 
     // MARK: words for the views
 
+    /// Why polish didn't run or wasn't kept, as a clause ("polish took too long"): the detail and the Lab put it in
+    /// their sentence.
     static func reasonText(_ r: String?) -> String {
         let k = "dictation.history.reason.\(r ?? "error")"
         return T(k) == k ? T("dictation.history.reason.error") : T(k)
@@ -463,11 +496,62 @@ final class DictationPage {
                     if t == .words { self.words.reload(); self.words.selectFirstIfNone() }
                     if self.visible { self.searchFollows(t) }
                     MainWindowController.shared.updateTitle()
+                    self.syncDetailColumn()
                     emit(["event": "dictation_page", "tab": t.rawValue])
                 }
             }
         }
+        // the subtitle and the detail column follow what the tab shows: the search, the words, the cases
+        countWatch = Publishers.Merge4(model.$query.map { _ in () }, model.$entries.map { _ in () },
+                                       words.$mine.map { _ in () }, lab.$cases.map { _ in () })
+            .merge(with: words.$projects.map { _ in () }, words.$builtIn.map { _ in () })
+            .sink { [weak self] _ in
+                DispatchQueue.main.async {
+                    MainActor.assumeIsolated {
+                        guard let self = self, self.visible else { return }
+                        MainWindowController.shared.updateTitle()
+                        self.syncDetailColumn()
+                    }
+                }
+            }
     }
+    private var countWatch: AnyCancellable?
+
+    /// The window's subtitle while the page shows: one live count in one form, following the tab and the search —
+    /// "9 dictations", "3 of 9 dictations", "26 words", "1 case". Headings never carry counts.
+    var subtitle: String {
+        switch model.tab {
+        case .history: return model.subtitle
+        case .words:
+            let n = words.mine.count + words.projects.count + words.builtIn.count
+            return n > 0 ? TP("main.dictation.words_count", n) : ""
+        case .lab: return TP("main.dictation.cases_count", lab.cases.count)
+        }
+    }
+
+    /// A search that found nothing (or no dictation at all) leaves no dictation to show: the detail column folds away,
+    /// so the empty state stands alone in the middle of the window instead of beside a blank pane; it comes back with
+    /// the first match.
+    func syncDetailColumn() {
+        let c = MainWindowController.shared
+        guard c.split.splitViewItems.count > 2 else { return }
+        let item = c.split.splitViewItems[2]
+        let fold = visible && model.tab == .history && model.filtered.isEmpty
+        guard item.isCollapsed != fold else { return }
+        if fold {
+            detailWidth = item.viewController.view.frame.width
+            item.isCollapsed = true
+        } else {
+            item.isCollapsed = false
+            // back at the width it had: unfolding alone hands it a sliver
+            if let w = detailWidth, w > 0 {
+                let sv = c.split.splitView
+                sv.layoutSubtreeIfNeeded()
+                sv.setPosition(sv.bounds.width - w - sv.dividerThickness, ofDividerAt: 1)
+            }
+        }
+    }
+    private var detailWidth: CGFloat?
 
     /// The Lab tab (the Go menu's "Dictation Lab", the palette, the test hooks).
     func showLab() {
@@ -513,6 +597,7 @@ final class DictationPage {
         model.reload()
         model.selectFirstIfNone()
         words.reload()
+        syncDetailColumn()
         DictationModels.shared.loadIfNeeded()          // the models' names in the detail
         // granting Input Monitoring needs no restart: the header and the empty state follow it; a word learned
         // meanwhile shows up in the Words tab
@@ -527,6 +612,7 @@ final class DictationPage {
 
     func didHide() {
         visible = false
+        syncDetailColumn()               // the items' detail is never folded away
         searchFollows(.history)          // the items' pages search with it
         lab.visible = false
         accessTimer?.invalidate()
@@ -818,28 +904,24 @@ struct DictationListView: View {
         .onAppear { m.reload() }
     }
 
-    /// The first heading's note: while searching, how many of all matched; else, on Today, today's numbers.
-    func headingNote(_ day: Date) -> String? {
-        if !m.query.trimmingCharacters(in: .whitespaces).isEmpty {
-            return T("main.dictation.count_of", m.filtered.count, TP("main.dictation.count", m.entries.count))
-        }
+    /// Today's numbers, on the Today heading's tooltip (the page's one count is the window's subtitle; headings carry
+    /// none): dictations, words, and roughly the minutes it saved over typing.
+    func todayTip(_ day: Date) -> String? {
         guard Calendar.current.isDateInToday(day) else { return nil }
         let s = m.today
         var parts = [TP("main.dictation.stat.count", s.count), TP("main.dictation.stat.words", s.words)]
         if s.savedMinutes >= 1 { parts.append(T("main.dictation.stat.saved", s.savedMinutes)) }
-        return parts.joined(separator: " · ")
+        return parts.joined(separator: " · ") + (s.savedMinutes >= 1 ? "\n" + T("main.dictation.stat.saved.tip") : "")
     }
 
-    /// Days as quiet headings (no rule under them), rows without separators: the spacing groups them, as in
+    /// Days as quiet headings (no rule under them, no counts), rows without separators: the spacing groups them, as in
     /// "Recently Dragged Out"; the selection is the brand wash.
     var list: some View {
         List(selection: $m.selection) {
             ForEach(Array(m.days.enumerated()), id: \.element.day) { n, group in
                 // the day as a plain, untagged (so never selectable) row: a section header would bring the table's
                 // own rule under it, a second line over every group
-                DayHeading(title: DictationHistoryModel.dayTitle(group.day), first: n == 0,
-                           trailing: n == 0 ? headingNote(group.day) : nil,
-                           tip: m.query.isEmpty && m.today.savedMinutes >= 1 ? T("main.dictation.stat.saved.tip") : nil)
+                DayHeading(title: DictationHistoryModel.dayTitle(group.day), first: n == 0, tip: todayTip(group.day))
                 ForEach(group.rows) { e in
                     DictationRow(m: m, e: e).tag(e.id)
                         .listRowBackground(RowWash(on: m.selection.contains(e.id), working: m.working.contains(e.id)))
@@ -868,22 +950,18 @@ struct DictationListView: View {
     }
 }
 
-/// A day over its dictations: secondary semibold, no rule; 18 pt above it between days (4 above the first). The first
-/// heading carries the page's one count on its right: today's numbers, or while searching how many matched.
+/// A day over its dictations: secondary semibold, no rule, no count; 18 pt above it between days (4 above the first).
+/// Today's numbers are its tooltip.
 private struct DayHeading: View {
     let title: String
     let first: Bool
-    var trailing: String? = nil
     var tip: String? = nil
     var body: some View {
         let t = HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
+                .help(tip ?? "")
             Spacer(minLength: 8)
-            if let s = trailing {
-                Text(s).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                    .help(tip ?? "")
-            }
         }
         .padding(.top, first ? 4 : 18).padding(.bottom, 2)
         .listRowSeparator(.hidden)
@@ -891,35 +969,18 @@ private struct DayHeading: View {
     }
 }
 
-/// A search that found nothing. A filter state, not a friendly one (system.md §3.5): the quiet magnifying glass in
-/// place of the app's mark, the query said back (cut in the middle when long), where search looks, and one plain way
-/// out — never brand, never ↩. The detail column stays empty meanwhile, so this is the one thing on the page.
+/// A search that found nothing: the shared empty state (the app's mark, system.md §3.5 "no results"), the query said
+/// back (cut in the middle when long), where search looks, and one plain way out — never brand, never ↩. The detail
+/// column folds away meanwhile (DictationPage.syncDetailColumn), so this stands alone in the window.
 struct DictationNoResultsView: View {
     let query: String
     let clear: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            Image(systemName: "magnifyingglass").font(.system(size: 30, weight: .light)).foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-                .padding(.bottom, EmptyState.markToTitle)
-            Text(T("dictation.history.no_match", Self.shortQuery(query)))
-                .font(.system(size: EmptyState.titleSize, weight: .semibold))
-                .multilineTextAlignment(.center).lineLimit(2)
-                .frame(maxWidth: EmptyState.messageWidth)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(T("dictation.history.no_match.hint"))
-                .font(.system(size: EmptyState.messageSize)).foregroundStyle(.secondary)
-                .multilineTextAlignment(.center).frame(maxWidth: 260)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, EmptyState.titleToMessage)
-            Button(T("dictation.history.clear_search"), action: clear)
-                .controlSize(.regular)
-                .padding(.top, EmptyState.messageToButtons)
+        EmptyStateContent(title: T("dictation.history.no_match", Self.shortQuery(query)), message: T("dictation.history.no_match.hint")) {
+            Button(T("dictation.history.clear_search"), action: clear).controlSize(.regular)
         }
-        .padding(24)
-        .padding(.bottom, 40 + DictationPageHeader.height)      // a little above the middle of the window's content
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.bottom, DictationPageHeader.height)      // the window's middle, not the column's under the header
         .accessibilityElement(children: .contain)
     }
 
@@ -1007,7 +1068,7 @@ struct DictationStatusBanner: View {
             Button(T("dictation.menu.turn_on")) { m.turnOn() }.buttonStyle(.brand)
         case .noModel:
             if models.dictationJob != nil {
-                Button(T("dictation.toast.no_model.action")) { Dictation.getSpeechModel(from: "page") }.buttonStyle(.brand)
+                Button(T("main.dictation.banner.download")) { Dictation.getSpeechModel(from: "page") }.buttonStyle(.brand)
             } else {
                 Button(T("dictation.toast.no_model.settings")) { SpeechPane.showDictationModels() }
             }
@@ -1019,8 +1080,10 @@ struct DictationStatusBanner: View {
     }
 }
 
-/// A row: the app it went into and its time, at most one quiet chip for an exception; then the text as one
-/// paragraph, two lines at most — the same for every row.
+/// A row: the app it went into, one quiet chip when it didn't simply go in polished (the same words as the detail's
+/// line: "Copied · as spoken"), the item it became as a link on the trailing side, and its time — always there, also
+/// while the AI writes an item from it (the row's working hairline says that; the spinner is the detail's button's).
+/// Then the text as typed, one paragraph, two lines at most, the search's words in semibold.
 struct DictationRow: View {
     @ObservedObject var m: DictationHistoryModel
     let e: DictationEntry
@@ -1030,38 +1093,69 @@ struct DictationRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 DictationAppIcon(bundle: e.bundle, name: app, size: 16)
-                Text(app).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
-                if let mk = e.rowMark { DictationRow.chip(mk, e) }
+                Text(DictationRow.marked(app, m.queryTerms)).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
+                    .lineLimit(1)
+                if let x = DictationHistoryModel.exception(e) { DictationChip(text: x.chip, tip: x.line) }
                 Spacer(minLength: 8)
-                // the time keeps its column while the spinner stands in for it (the AI writing an item from this
-                // dictation): nothing in the row moves, and the work stays in sight when the selection moves on
-                let busy = m.working.contains(e.id)
+                if let it = e.item, !it.isEmpty { ItemLink(key: it, uid: e.itemUID) }
                 Text(DictationHistoryModel.time(e.time)).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary)
-                    .opacity(busy ? 0 : 1)
-                    .overlay(alignment: .trailing) {
-                        if busy { BrandSpinnerView(size: 10, label: T("dictation.history.making_item")) }
-                    }
+                    .fixedSize()
             }
             if e.text.isEmpty, (e.reason ?? "").hasPrefix("asr_failed") {
                 Text(DictationHistoryModel.failedText(e)).font(.system(size: 13)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Text(DictationEntry.preview(m.shownText(e)))
+                Text(DictationRow.marked(DictationEntry.preview(e.finalText), m.queryTerms))
                     .font(.system(size: 13)).lineLimit(2).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, 5)
         .accessibilityElement(children: .combine)
+        .accessibilityValue(m.working.contains(e.id) ? T("dictation.history.making_item") : "")
     }
 
-    /// the item it became · only copied · not polished — one, in the same neutral chip
-    static func chip(_ mk: DictationRowMark, _ e: DictationEntry) -> DictationChip {
-        switch mk {
-        case .item(let it): return DictationChip(text: it, tip: T("dictation.history.item_exists", it))
-        case .copiedOnly: return DictationChip(text: T("main.dictation.chip.copied"), tip: T("main.dictation.info.copied"))
-        case .notPolished: return DictationChip(text: T("dictation.history.badge.fell_back"), tip: DictationHistoryModel.reasonText(e.reason))
+    /// The text with every occurrence of the search's words in semibold (Settings' search does the same; never brand).
+    static func marked(_ s: String, _ terms: [String]) -> AttributedString {
+        var out = AttributedString(s)
+        guard !terms.isEmpty else { return out }
+        let ns = s as NSString
+        for t in terms {
+            var r = NSRange(location: 0, length: ns.length)
+            while true {
+                let f = ns.range(of: t, options: [.caseInsensitive, .diacriticInsensitive], range: r)
+                guard f.location != NSNotFound, f.length > 0 else { break }
+                if let rr = Range(f, in: s), let a = Range(rr, in: out) {
+                    out[a].inlinePresentationIntent = .stronglyEmphasized
+                    out[a].foregroundColor = Color.primary
+                }
+                let next = f.location + f.length
+                r = NSRange(location: next, length: ns.length - next)
+            }
         }
+        return out
+    }
+}
+
+/// The item a dictation became, on the row's trailing side: its key as a link (it opens the item), never a status chip.
+private struct ItemLink: View {
+    let key: String
+    let uid: String?
+    @State private var hover = false
+    var body: some View {
+        Button { if let u = uid { AppEnvironment.mainWindow?.reveal(uid: u) } } label: {
+            HStack(spacing: 2) {
+                Text(key).font(.system(size: 11, weight: .medium, design: .monospaced))
+                Image(systemName: "arrow.up.right").font(.system(size: 8, weight: .semibold))
+            }
+            .foregroundStyle(hover ? Color.primary : Color.secondary)
+            .underline(hover, color: Color.brandInk)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(T("main.dictation.show_item", key))
+        .accessibilityLabel(T("main.dictation.show_item", key))
     }
 }
 
@@ -1266,17 +1360,6 @@ struct CorrectionEditor: NSViewRepresentable {
     }
 }
 
-/// A shortcut drawn as a small keycap inside a primary button (white on the button gradient).
-private struct KeyCap: View {
-    let keys: String
-    var body: some View {
-        Text(keys).font(.system(size: 10.5, weight: .medium))
-            .padding(.horizontal, 4).padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.white.opacity(0.2)))
-            .accessibilityHidden(true)
-    }
-}
-
 // MARK: - what changed
 
 /// What polish (and a correction) changed between what was heard and what was typed, for the Changes view: one text,
@@ -1423,8 +1506,10 @@ enum DictationChanges {
         return !(c.isLetter || c.isNumber || c.isWhitespace)
     }
 
-    /// The runs as one text: removed words struck through in `err`, added ones on `attn` @ 28 % (the Lab's diff,
-    /// system.md §3.5a); spaces at a change's edges stay plain, and a change that is only spaces is left out.
+    /// The runs as one text: removed words struck through in `err`, added ones underlined in `attn` (a line, not a
+    /// fill: a fill on one full-width "，" read as a rendering glitch, and went muddy in dark mode); spaces at a
+    /// change's edges stay plain, a change that is only spaces is left out, and one that is only punctuation reads as
+    /// the typed text (a comma polish put in is not news).
     static func attributed(_ runs: [Run]) -> AttributedString {
         var out = AttributedString()
         var last: Character?
@@ -1435,25 +1520,35 @@ enum DictationChanges {
         }
         for r in runs {
             let core = r.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            if r.op == .same || core.isEmpty {
+            if r.op == .same || core.isEmpty || isPunctuation(core) {
                 if r.op != .removed { plain(r.text) }
                 continue
             }
             let lead = String(r.text.prefix { $0.isWhitespace })
             let trail = String(r.text.reversed().prefix { $0.isWhitespace }.reversed())
             if let l = last, !l.isWhitespace { plain(lead) }
-            var a = AttributedString(core)
-            if r.op == .removed {
-                a.strikethroughStyle = .single
-                a.foregroundColor = Color.brandErr
-            } else {
-                a.backgroundColor = Color.brandAttn.opacity(0.28)      // a diff is not brand
-            }
-            out += a
+            out += mark(core, removed: r.op == .removed)
             last = core.last
             plain(trail)
         }
         return out
+    }
+
+    /// One changed word as the Changes view, the correction's line and the Lab draw it.
+    static func mark(_ s: String, removed: Bool) -> AttributedString {
+        var a = AttributedString(s)
+        if removed {
+            a.strikethroughStyle = Text.LineStyle(pattern: .solid, color: Color.brandErr)
+            a.foregroundColor = Color.brandErr
+        } else {
+            a.underlineStyle = Text.LineStyle(pattern: .solid, color: Color.brandAttn)      // a diff is not brand
+        }
+        return a
+    }
+
+    /// Only punctuation and symbols (，。！? "…").
+    static func isPunctuation(_ s: String) -> Bool {
+        !s.isEmpty && s.allSatisfy { !($0.isLetter || $0.isNumber) }
     }
 }
 
@@ -1469,8 +1564,6 @@ struct DictationDetailView: View {
     @ObservedObject var models = DictationModels.shared
     @ObservedObject var downloads = ModelDownloads.shared
     @Environment(\.undoManager) private var undo
-    /// Details stays as the user left it (closed at first)
-    @AppStorage("DictationDetailsOpen") private var detailsOpen = false
     /// the correction editor's height: its text plus one line (CorrectionEditor measures it)
     @State private var editorHeight: CGFloat = 2 * CorrectionEditor.lineHeight
     /// the editor's focus ring shows while the window is key, as the system's own
@@ -1538,15 +1631,15 @@ struct DictationDetailView: View {
                 } else {
                     texts(e, differs: differs)
                 }
-                if e.fellBack, !editing {
-                    // why it went in as heard: a fact, in secondary (never the attention colour)
-                    Text(DictationHistoryModel.reasonText(e.reason)).font(.system(size: 12)).foregroundStyle(.secondary)
+                if let x = DictationHistoryModel.exception(e), !editing {
+                    // how it went in, in the row chip's words with the reason: a fact, in secondary (never attention)
+                    Text(x.line).font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 10)
                 }
                 if !editing {
                     actions(e).padding(.top, 22)
-                    details(e).padding(.top, 22)
+                    info(e).padding(.top, 26)
                 }
             }
             .padding(.horizontal, DictationDetailView.inset).padding(.bottom, 28)
@@ -1560,9 +1653,10 @@ struct DictationDetailView: View {
         let app = AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")
         var when = "\(DictationHistoryModel.dayTitle(e.time)) \(DictationHistoryModel.time(e.time)) · \(DictationHistoryModel.duration(e.duration))"
         if e.corrected != nil { when += " · " + T("main.dictation.corrected") }
-        return HStack(alignment: .center, spacing: 10) {
-            DictationAppIcon(bundle: e.bundle, name: app, size: 24)
-            VStack(alignment: .leading, spacing: 1) {
+        return HStack(alignment: .center, spacing: 8) {
+            // the app as the list draws it, one size up: a label for the text below, not the pane's loudest object
+            DictationAppIcon(bundle: e.bundle, name: app, size: 18)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(app).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 Text(when).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
             }
@@ -1598,24 +1692,20 @@ struct DictationDetailView: View {
         if let n = m.savedNote, n.id == e.id { savedNote(n).padding(.top, 12) }
     }
 
-    /// What polish changed, in one text that reads at the pane's width: what was heard and left out struck through,
-    /// what it added or re-spelled tinted (the Lab's diff), and a one-line key under it.
+    /// What polish changed, in one text that reads at the pane's width: the words it left out struck through, the
+    /// words it added or re-spelled underlined (punctuation alone is not a change worth marking), and a one-line key
+    /// in plain words under it.
     func changes(_ e: DictationEntry) -> some View {
         let runs = DictationChanges.runs(heard: e.raw, typed: e.finalText)
         return VStack(alignment: .leading, spacing: 10) {
             Text(DictationChanges.attributed(runs))
-                .font(.system(size: DictationTextBlock.size)).lineSpacing(4)
+                .font(.system(size: DictationTextBlock.size)).lineSpacing(5)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 6)
-            HStack(spacing: 12) {
-                Text(T("main.dictation.changes.removed")).strikethrough(color: Color.brandErr).foregroundStyle(Color.brandErr)
-                Text(T("main.dictation.changes.added")).padding(.horizontal, 3)
-                    .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color.brandAttn.opacity(0.28)))
-            }
-            .font(.system(size: 11.5))
-            .accessibilityElement(children: .combine)
+                .padding(.vertical, 8)
+            Text(T("main.dictation.changes.key")).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(T("main.dictation.mode.compare"))
@@ -1670,44 +1760,40 @@ struct DictationDetailView: View {
     /// primary. The views above are off and the actions and details step aside until it is saved or cancelled.
     func editor(_ e: DictationEntry) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 8) {
             CorrectionEditor(text: $m.draft, height: $editorHeight)
                 .frame(height: editorHeight)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(shape.fill(Color(nsColor: .textBackgroundColor).opacity(0.7)))
+                // a field a step off the pane in both modes (the text background went near-black in dark mode)
+                .background(shape.fill(Color.primary.opacity(0.045)))
                 .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
                 // the system's focus ring (AccentColor), just outside the field, as round any focused text field
                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .strokeBorder(Color(nsColor: .keyboardFocusIndicatorColor), lineWidth: 3).padding(-3)
                             .opacity(active == .key ? 1 : 0))
-                .padding(.leading, -10)         // the text keeps the column's edge, as the reading block's
+                .padding(.horizontal, -10)      // the text keeps the column's edge, as the reading block's
                 .accessibilityLabel(T("main.dictation.correct.title"))
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                // the caption only where it fits on one line; a narrow pane keeps just the buttons
-                ViewThatFits(in: .horizontal) {
-                    learnLine(e)
-                    Color.clear.frame(width: 0, height: 0)
-                }
-                Spacer(minLength: 0)
-                Button { m.cancelEdit() } label: {
-                    Text(T("main.dictation.correct.cancel")).padding(.horizontal, 4).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .keyboardShortcut(.cancelAction)
-                .help(T("main.dictation.correct.cancel.tip"))
-                Button { m.saveCorrection(e, m.draft) } label: {
-                    HStack(spacing: 6) {
-                        Text(T("main.dictation.correct.save"))
-                        KeyCap(keys: "⌘↩")
-                    }
-                }
-                .buttonStyle(.brand)
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(m.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .help(T("main.dictation.correct.save.tip"))
+            // what saving will teach, on its own line under the field (only where it fits on one)
+            ViewThatFits(in: .horizontal) {
+                learnLine(e)
+                Color.clear.frame(width: 0, height: 0)
             }
-            .font(.system(size: 13))
+            .padding(.top, 2)
+            HStack(spacing: 10) {
+                Button(T("main.dictation.correct.save")) { m.saveCorrection(e, m.draft) }
+                    .buttonStyle(.brand)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(m.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help(T("main.dictation.correct.save.tip"))
+                Button(T("main.dictation.correct.cancel")) { m.cancelEdit() }
+                    .keyboardShortcut(.cancelAction)
+                    .help(T("main.dictation.correct.cancel.tip"))
+                Text(T("main.dictation.correct.hint")).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                    .padding(.leading, 4)
+                Spacer(minLength: 0)
+            }
+            .controlSize(.regular)
+            .padding(.top, 12)
         }
     }
 
@@ -1728,12 +1814,9 @@ struct DictationDetailView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(T("main.dictation.correct.caption.found"))
                     ForEach(Array(fixes.prefix(3).enumerated()), id: \.offset) { _, f in
-                        HStack(alignment: .firstTextBaseline, spacing: 4) {
-                            Text(f.heard).strikethrough(color: Color.brandErr).foregroundStyle(Color.brandErr)
-                            Text(f.fixed).foregroundStyle(.primary)
-                                .padding(.horizontal, 3)
-                                .background(RoundedRectangle(cornerRadius: 3, style: .continuous).fill(Color.brandAttn.opacity(0.28)))
-                        }
+                        Text(DictationChanges.mark(f.heard, removed: true) + AttributedString(" ")
+                             + DictationChanges.mark(f.fixed, removed: false))
+                            .foregroundStyle(.primary)
                     }
                 }
                 .accessibilityElement(children: .ignore)
@@ -1777,11 +1860,6 @@ struct DictationDetailView: View {
             .foregroundStyle(.secondary)
             .help(T("dictation.history.more"))
             .accessibilityLabel(T("dictation.history.more"))
-            if busy {
-                Text(T("dictation.history.making_item.note")).font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    .lineLimit(1).truncationMode(.tail)
-                    .transition(.opacity)
-            }
             Spacer(minLength: 0)
         }
         .controlSize(.regular)
@@ -1829,52 +1907,31 @@ struct DictationDetailView: View {
         }
     }
 
-    /// The facts the header doesn't say, closed until asked for; the chevron hangs in the margin so the word — and the
-    /// rows under it — start on the text's edge.
-    func details(_ e: DictationEntry) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { detailsOpen.toggle() }
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
-                        .rotationEffect(.degrees(detailsOpen ? 90 : 0))
-                        .frame(width: 10)
-                    Text(T("main.dictation.details")).font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(.secondary)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.leading, -15)
-            .accessibilityLabel(T("main.dictation.details"))
-            .accessibilityValue(detailsOpen ? T("main.dictation.details.open") : T("main.dictation.details.closed"))
-            if detailsOpen {
-                info(e).padding(.top, 10)
-            }
-        }
-    }
-
+    /// The facts the header doesn't say, as a few quiet rows under a hairline (Raycast's detail metadata): always
+    /// there, nothing to open — the models by name, the style that ran, the language, the words and context it used.
+    /// How it went in is the line under the text, said once.
     func info(_ e: DictationEntry) -> some View {
         let x = m.extras[e.id]
-        return Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 7) {
-            // how it went in, only when it didn't simply go in at the cursor
-            if e.insert != "pasted" {
-                row(T("main.dictation.info.result"), e.insert == "copied" ? T("main.dictation.info.copied") : T("main.dictation.info.not_typed"))
+        return VStack(alignment: .leading, spacing: 12) {
+            Divider()
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 7) {
+                if e.insert == "none" { row(T("main.dictation.info.result"), T("main.dictation.info.not_typed")) }
+                if let a = e.asrModel { row(T("main.dictation.info.asr"), asrName(a)) }
+                polishRow(e)
+                if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
+                    // the style the text is in (what ran, not only what was asked for), and how often reformat-last
+                    // changed it (dictation-styles.md)
+                    let n = s.reformats.filter { $0.action == "reformat" }.count
+                    row(T("dictation.style.section"), Dictation.styleName(ran) + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
+                }
+                if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
+                if let t = x?.terms, !t.isEmpty { row(T("main.dictation.info.terms"), t.joined(separator: T("main.dictation.correct.sep"))) }
+                if let c = x?.context { row(T("main.dictation.info.context"), c) }
             }
-            if let a = e.asrModel { row(T("main.dictation.info.asr"), asrName(a)) }
-            polishRow(e)
-            if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
-                // the style the text is in (what ran, not only what was asked for), and how often reformat-last
-                // changed it (dictation-styles.md)
-                let n = s.reformats.filter { $0.action == "reformat" }.count
-                row(T("dictation.style.section"), Dictation.styleName(ran) + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
-            }
-            if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
-            if let t = x?.terms, !t.isEmpty { row(T("main.dictation.info.terms"), t.joined(separator: T("main.dictation.correct.sep"))) }
-            if let c = x?.context { row(T("main.dictation.info.context"), c) }
+            .font(.system(size: 12))
         }
-        .font(.system(size: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(T("main.dictation.details"))
     }
 
     /// A model by name; one this Mac no longer has says so (the page may be saying "no speech model" above).
@@ -1930,7 +1987,8 @@ struct DictationDetailView: View {
 /// The detail's text, at reading size, straight on the pane: Copy and Correct appear while the pointer is over it
 /// (and stay a moment after a copy, its check); VoiceOver gets both as actions.
 struct DictationTextBlock: View {
-    static let size: CGFloat = 15
+    /// a step over the list's 13 pt rows: the dictation in focus reads first
+    static let size: CGFloat = 17
     @ObservedObject var m: DictationHistoryModel
     let text: String
     var size: CGFloat = DictationTextBlock.size
@@ -2049,6 +2107,11 @@ final class DictationHistoryWindow: NSObject {
         let page = self.page
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
+        if k == "front" {               // only the window key, the list focused (screenshots of the active window)
+            if let table = page.table { w.makeFirstResponder(table) }
+            emit(["event": "dictation_history", "action": "key", "key": k, "key_window": w.isKeyWindow])
+            return
+        }
         if k != "cmd+f", k != "esc", let table = page.table { w.makeFirstResponder(table) }
         let (code, chars, mods): (UInt16, String, NSEvent.ModifierFlags) = {
             switch k {

@@ -581,6 +581,14 @@
 "main.dictation.correct.title" = "改正文字";
 "main.dictation.correct.save.tip" = "保存改正（⌘↩）";
 "main.dictation.correct.cancel.tip" = "放弃修改（Esc）";
-"main.dictation.correct.caption" = "改过的名字可以加入词库";
+"main.dictation.correct.caption" = "保存后，可以把改过的名字加入词库。";
 "main.dictation.correct.caption.none" = "没找到听错的词";
 "main.dictation.correct.caption.found" = "发现的词：";
+
+/* The Dictation page (v0.9 redesign, round 2) */
+"main.dictation.chip.copied_raw" = "仅复制 · 原话";
+"main.dictation.status.copied" = "只复制到了剪贴板，没有打出：当时没有可输入的地方。";
+"main.dictation.status.copied_raw" = "原话只复制到了剪贴板，没有打出：当时没有可输入的地方，而且%@。";
+"main.dictation.status.raw" = "打出的是原话：%@。";
+"main.dictation.changes.key" = "删除线是去掉的词，下划线是加上或改写的词。";
+"main.dictation.banner.download" = "下载模型";

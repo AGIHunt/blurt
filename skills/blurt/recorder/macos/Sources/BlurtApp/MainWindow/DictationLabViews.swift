@@ -1,9 +1,10 @@
 // The Dictation Lab's two columns (DictationLab.swift has the model): the cases, with a few commands in the page's
-// header band beside the views (LabCommandBar: +, Read a Script, Run All Cases once there is a case, ⋯ for Import /
-// Export / keeping audio), and the workbench — the record
-// button first, what you meant, the optional text around the cursor (closed) and the scenario pills, every stage side
-// by side with its milliseconds, the diff, Compare, the marks — over a pinned bar with Save, or the regression run's
-// table. Colours are BrandColor tokens (light, dark, Increase Contrast; docs/design/system.md A.4), icons BlurtIcon /
+// header band beside the views (LabCommandBar: New Take, Read a Script, Run All Cases once there is a case, ⋯ for
+// Import / Export / keeping audio), and the workbench. A case opens on its result — the scores and what it typed
+// against what you meant — then each stage on its own full-width line (stages that wrote the same text merged), the
+// facts in plain words, the recorder (a neutral disc that turns red only while it records), what you meant, the
+// optional parts, your marks and Compare; a new take opens on the recorder. Everything sits over a pinned bar with
+// Save, the content fading out under it. Or the regression run's table. Colours are BrandColor tokens (light, dark, Increase Contrast; docs/design/system.md A.4), icons BlurtIcon /
 // SF Symbols, words T("dictation.lab.*"). The one primary per view is the brand button (Save, in the pinned bar);
 // while a take is processed the recorder card carries the AI-working hairline (`.aiWorking`); Compare and the
 // regression run show a spinner. Nothing blooms or glows. The list's selection is the brand wash (ListWash / RowWash,
@@ -21,9 +22,11 @@ private let cardFill = Color(nsColor: .textBackgroundColor).opacity(0.6)
 private let chipFill = Color(nsColor: .quaternaryLabelColor).opacity(0.4)
 private let okColor = Color.brandOk
 
+/// A rate as a percentage: whole when it is whole ("0 %", "12 %"), one decimal otherwise ("12.5 %").
 private func pct(_ v: Double?) -> String {
     guard let v = v else { return "—" }
-    return String(format: "%.1f%%", v * 100)
+    let x = v * 100
+    return abs(x - x.rounded()) < 0.05 ? String(format: "%.0f%%", x) : String(format: "%.1f%%", x)
 }
 
 /// The scenario tags a case can carry (case.json "scenario"), with their choices.
@@ -114,7 +117,7 @@ struct LabCommandBar: View {
 
     func buttons(titled: Bool) -> some View {
         HStack(spacing: 2) {
-            LabBarButton(icon: .plus, help: T("dictation.lab.new_take.tip"), on: false) { lab.newTake() }
+            LabBarButton(icon: .plus, title: titled ? T("dictation.lab.new_take") : nil, help: T("dictation.lab.new_take.tip"), on: false) { lab.newTake() }
                 .disabled(lab.phase != .idle)
                 .accessibilityLabel(T("dictation.lab.new_take"))
             LabBarButton(icon: .document, title: titled ? T("dictation.lab.script") : nil, help: scriptHelp, on: lab.pane == .script) { lab.startScript() }
@@ -211,16 +214,31 @@ struct LabCaseRow: View {
                 if !c.errors.isEmpty {
                     Text(T("dictation.lab.errors.count", c.errors.count)).font(.system(size: 10.5)).foregroundStyle(Color.brandAttnInk)
                 }
-                if let w = wer {
-                    Text(T("dictation.lab.metric.wer.short", pct(w))).font(.system(size: 10.5, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(w == 0 ? okColor : .secondary)
-                }
+                if let w = wer { LabWordErrors(wer: w) }
             }
             Text((c.truth ?? c.finalText ?? T("dictation.lab.untitled")).trimmingCharacters(in: .whitespacesAndNewlines))
                 .font(.system(size: 13)).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A case's word errors on its row: a neutral number; a take that typed exactly what was meant says so with the done
+/// check (system.md §2.3: `ok` always with a check), never a green number.
+struct LabWordErrors: View {
+    let wer: Double
+    var body: some View {
+        if wer == 0 {
+            HStack(spacing: 3) {
+                labGlyph(.check, 9).foregroundStyle(okColor)
+                Text(T("dictation.lab.metric.exact")).foregroundStyle(.secondary)
+            }
+            .font(.system(size: 10.5, weight: .medium))
+        } else {
+            Text(T("dictation.lab.metric.wer.short", pct(wer))).font(.system(size: 10.5, weight: .medium)).monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
     }
 }
 
@@ -275,6 +293,7 @@ private struct LabScenarioPill: View {
     var body: some View {
         let name = T("dictation.lab.scenario.\(key)")
         let on = !value.isEmpty
+        // the system's pull-down button (the shape every other menu on the page has), not a capsule of our own
         Menu {
             Picker(selection: Binding(get: { value }, set: set)) {
                 Text(T("dictation.lab.scenario.none")).tag("")
@@ -284,48 +303,14 @@ private struct LabScenarioPill: View {
             .pickerStyle(.inline).labelsHidden()
         } label: {
             Text(on ? T("dictation.lab.scenario.pill", name, T("dictation.lab.scenario.\(key).\(value)")) : name)
+                .foregroundStyle(on ? Color.primary : Color.secondary)
         }
-        .menuStyle(.borderlessButton).fixedSize()
-        .font(.system(size: 12))
-        .padding(.leading, 10).padding(.trailing, 6).frame(height: 24)
-        .background(Capsule().fill(on ? chipFill : Color.clear))
-        .overlay(Capsule().strokeBorder(Color(nsColor: on ? .clear : .separatorColor), lineWidth: 1))
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .fixedSize()
         .accessibilityLabel(name)
         .accessibilityValue(on ? T("dictation.lab.scenario.\(key).\(value)") : T("dictation.lab.scenario.none"))
-    }
-}
-
-/// A block of text with a label and a caption (milliseconds, a note).
-private struct StageCard: View {
-    let label: String
-    let text: String?
-    var caption: String? = nil
-    var empty: String = "—"
-    var warn: String? = nil
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text(label).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 4)
-                if let c = caption {
-                    // the time keeps its line: the label gives way
-                    Text(c).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.tertiary).lineLimit(1).fixedSize()
-                }
-            }
-            if let t = text, !t.isEmpty {
-                Text(t).font(.system(size: 13)).lineSpacing(2).textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                Text(empty).font(.system(size: 12)).foregroundStyle(.tertiary)
-            }
-            if let w = warn {
-                HStack(spacing: 4) { labGlyph(.undo, 10); Text(w) }.font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 9).fill(cardFill))
-        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
     }
 }
 
@@ -345,45 +330,38 @@ struct LabDiffText: View {
             case .equal:
                 out += AttributedString(c.hyp)
             case .insert, .replace:
-                if c.op == .replace {
-                    var d = AttributedString(c.ref)
-                    d.strikethroughStyle = .single
-                    d.foregroundColor = Color.brandErr
-                    out += d
-                }
-                var a = AttributedString(c.hyp)
-                a.backgroundColor = Color.brandAttn.opacity(0.28)      // a diff is not brand
-                out += a
+                // the history's Changes marks (struck through / underlined): one diff look in the app
+                if c.op == .replace { out += DictationChanges.mark(c.ref, removed: true) }
+                out += DictationChanges.mark(c.hyp, removed: false)
             case .delete:
-                var d = AttributedString(c.ref)
-                d.strikethroughStyle = .single
-                d.foregroundColor = Color.brandErr
-                out += d
+                out += DictationChanges.mark(c.ref, removed: true)
             }
         }
         return out
     }
 }
 
-/// WER / CER / punctuation / terms, small and side by side.
-private struct MetricBadges: View {
+/// The case's scores on one line that wraps as a whole (word errors, character errors, punctuation, terms): neutral
+/// numbers — a score is not a status. (The done check for an exact take is the section heading's, LabExact.)
+private struct MetricRow: View {
     let s: LabMetrics.Score
+    static func exact(_ s: LabMetrics.Score) -> Bool { s.wer == 0 && s.cer == 0 && (s.terms.map { $0.hit == $0.expected } ?? true) }
     var body: some View {
-        HStack(spacing: 6) {
-            badge(T("dictation.lab.metric.wer"), pct(s.wer), s.wer == 0)
-            badge(T("dictation.lab.metric.cer"), pct(s.cer), s.cer == 0)
-            badge(T("dictation.lab.metric.punct"), pct(s.punct), s.punct == 0)
-            if let t = s.terms { badge(T("dictation.lab.metric.terms"), "\(t.hit)/\(t.expected)", t.hit == t.expected) }
+        LabFlowLayout(spacing: 16) {
+            metric(T("dictation.lab.metric.wer"), pct(s.wer))
+            metric(T("dictation.lab.metric.cer"), pct(s.cer))
+            metric(T("dictation.lab.metric.punct"), pct(s.punct))
+            if let t = s.terms { metric(T("dictation.lab.metric.terms"), "\(t.hit)/\(t.expected)") }
         }
+        .font(.system(size: 12))
     }
-    func badge(_ k: String, _ v: String, _ good: Bool) -> some View {
-        HStack(spacing: 4) {
+    func metric(_ k: String, _ v: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
             Text(k).foregroundStyle(.secondary)
-            Text(v).fontWeight(.semibold).monospacedDigit().foregroundStyle(good ? okColor : .primary)
+            Text(v).fontWeight(.semibold).monospacedDigit()
         }
-        .font(.system(size: 11))
-        .padding(.horizontal, 7).padding(.vertical, 3)
-        .background(Capsule().fill(chipFill))
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -417,18 +395,20 @@ struct LabWorkbench: View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 22) {
+                    VStack(alignment: .leading, spacing: 24) {
                         if lab.pane == .script { LabScriptCard(lab: lab).id("top") } else { title.id("top") }
-                        recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
-                        if lab.pane != .script {
-                            LabSection(title: T("dictation.lab.reference")) {
-                                TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
-                                    .textFieldStyle(.roundedBorder).lineLimit(3...8)
-                            }
-                            cursor
-                            scenario
+                        if !lab.isNew && lab.pane != .script {
+                            // a saved case: what it came to first, how it got there, then the take and the inputs
+                            result.id("result")
+                            if let take = lab.draft.take { stages(take).id("stages") }
+                            recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
+                            inputs
+                        } else {
+                            recorder.aiWorking(lab.phase == .processing, cornerRadius: 12)
+                            if lab.pane != .script { inputs }
+                            result.id("result")
+                            if let take = lab.draft.take { stages(take).id("stages") }
                         }
-                        if let take = lab.draft.take { stages(take).id("stages") }
                         if lab.draft.take != nil || (lab.draft.truth != nil && lab.pane != .script) { markup.id("markup") }
                         if !lab.learned.isEmpty { learned }
                         if !lab.isNew && lab.draft.hasAudio { compare.id("compare") }
@@ -437,20 +417,35 @@ struct LabWorkbench: View {
                     .frame(maxWidth: 900, alignment: .leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
+                // the content fades out over 18 pt above the pinned bar (as Settings' pages under the title bar):
+                // nothing is sliced by a hard line
+                .mask(VStack(spacing: 0) {
+                    Color.black
+                    LinearGradient(colors: [.black, .black.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: 18)
+                })
                 .onChange(of: lab.scrollTarget) { t in
                     guard let t = t else { return }
                     withAnimation { proxy.scrollTo(t, anchor: .top) }
                     DispatchQueue.main.async { lab.scrollTarget = nil }
                 }
             }
-            Divider()
             saveBar
         }
         .onAppear { if !lab.before.isEmpty || !lab.after.isEmpty { showContext = true } }
         .onChange(of: lab.draft.id) { _ in if !lab.before.isEmpty || !lab.after.isEmpty { showContext = true } }
     }
 
-    /// The take's (or the case's) name, the one promise of the page, and Move to Trash for a saved case.
+    /// What you meant, the text around the cursor (closed) and the scenario.
+    @ViewBuilder var inputs: some View {
+        LabSection(title: T("dictation.lab.reference")) {
+            TextField(T("dictation.lab.reference.placeholder"), text: text({ $0.reference }, { $0.reference = $1 }), axis: .vertical)
+                .textFieldStyle(.roundedBorder).lineLimit(2...8)
+        }
+        cursor
+        scenario
+    }
+
+    /// The take's (or the case's) name, the one promise of the page; a saved case's rare Move to Trash in its ⋯.
     var title: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
@@ -464,31 +459,40 @@ struct LabWorkbench: View {
             }
             Spacer()
             if !lab.isNew {
-                Button(role: .destructive) { lab.delete(lab.draft.id) } label: {
-                    HStack(spacing: 4) { labGlyph(.trash, 11); Text(T("dictation.lab.delete")) }
+                Menu {
+                    Button(T("dictation.lab.delete"), role: .destructive) { lab.delete(lab.draft.id) }
+                        .help(T("dictation.lab.delete.tip"))
+                } label: {
+                    labGlyph(.more, 13).accessibilityLabel(T("dictation.lab.more"))
                 }
-                .help(T("dictation.lab.delete.tip"))
+                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                .foregroundStyle(.secondary)
+                .help(T("dictation.lab.more"))
+                .accessibilityLabel(T("dictation.lab.more"))
             }
         }
     }
 
     // MARK: record
 
-    /// The record button (the page's loudest thing), what it is doing, and the microphone (Sound → Input's popup,
-    /// borderless, the device's whole name). Importing a file is in the list's ⋯.
+    /// The record button, what it is doing, and the microphone (Sound → Input's popup, borderless, the device's whole
+    /// name). At rest the disc is neutral — a developer page's control, not its loudest thing — and only while it
+    /// records is it the recording red with a stop square (system.md §2.3 `rec`). Importing a file is in the list's ⋯.
     var recorder: some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .center, spacing: 14) {
             Button { lab.toggleRecord() } label: {
+                let rec = lab.phase == .recording
                 ZStack {
-                    Circle().fill(lab.phase == .recording ? Color.brandRec : Color.brandInk)
+                    Circle().fill(rec ? Color.brandRec : Color.primary.opacity(0.07))
+                    Circle().strokeBorder(rec ? Color.clear : Color.primary.opacity(0.12), lineWidth: 0.5)
                     if lab.phase == .processing || lab.phase == .starting {
-                        ProgressView().controlSize(.small).tint(lab.phase == .recording ? .white : Color(nsColor: BrandColor.onInk))
+                        BrandSpinnerView(size: 14, label: status)
                     } else {
-                        labGlyph(lab.phase == .recording ? .stopFill : .mic, 20)
-                            .foregroundStyle(lab.phase == .recording ? .white : Color(nsColor: BrandColor.onInk))
+                        labGlyph(rec ? .stopFill : .mic, 17).foregroundStyle(rec ? Color.white : Color.primary)
                     }
                 }
-                .frame(width: 56, height: 56)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .disabled(lab.phase == .processing)
@@ -502,7 +506,8 @@ struct LabWorkbench: View {
                             .font(.system(size: 11.5)).foregroundStyle(.secondary)
                     }
                 } else {
-                    Text(T("dictation.lab.record.hint", Dictation.keyShort)).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    Text(T(lab.draft.take == nil ? "dictation.lab.record.hint" : "dictation.lab.record.again", Dictation.keyShort))
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
                         .lineLimit(1).truncationMode(.tail)
                 }
                 if let e = lab.error { Text(e).font(.system(size: 11.5)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true) }
@@ -510,7 +515,7 @@ struct LabWorkbench: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16).padding(.vertical, 14)
+        .padding(.horizontal, 14).padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 12).fill(cardFill))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
     }
@@ -586,7 +591,7 @@ struct LabWorkbench: View {
 
     /// The scenario tags: one row of property pills (Linear's), each its name until set, then "Name: value".
     var scenario: some View {
-        LabSection(title: T("dictation.lab.scenario"), caption: T("dictation.lab.scenario.tip")) {
+        LabSection(title: T("dictation.lab.scenario")) {
             LabFlowLayout(spacing: 6) {        // wraps in a narrow detail column instead of running past its edges
                 ForEach(LabScenario.keys, id: \.key) { k in
                     LabScenarioPill(key: k.key, values: k.values, value: lab.draft.scenario[k.key] ?? "") { v in
@@ -595,6 +600,7 @@ struct LabWorkbench: View {
                 }
             }
         }
+        .help(T("dictation.lab.scenario.tip"))
     }
 
     // MARK: the stages
@@ -613,26 +619,81 @@ struct LabWorkbench: View {
         }
     }
 
+    /// One stage of the take: its name (never cut), what it wrote, its time.
+    struct Stage {
+        var label: String
+        var text: String?
+        var ms: Int
+        var tip: String? = nil
+        var empty: String = "—"
+        var warn: String? = nil
+    }
+
+    /// The stages that wrote the same text become one line ("Polished · Typed"), so nothing is shown twice.
+    static func merged(_ ss: [Stage]) -> [Stage] {
+        var out: [Stage] = []
+        for st in ss {
+            if var l = out.last, let a = l.text, let b = st.text, !a.isEmpty,
+               a.trimmingCharacters(in: .whitespacesAndNewlines) == b.trimmingCharacters(in: .whitespacesAndNewlines) {
+                l.label += " · " + st.label
+                l.ms = st.ms
+                l.tip = st.tip ?? l.tip
+                l.warn = l.warn ?? st.warn
+                out[out.count - 1] = l
+            } else {
+                out.append(st)
+            }
+        }
+        return out
+    }
+
+    /// Every stage on its own full-width line (the history's Changes lesson: a narrow card column wraps Chinese into
+    /// ragged scraps): the name in a column that sizes to the longest name, the text, and its milliseconds.
     @ViewBuilder func stages(_ take: [String: Any]) -> some View {
         let t = take["timings"] as? [String: Any] ?? [:]
         let polished = take["polished"] as? String
         let fellBack = take["fell_back"] as? Bool ?? false
         let pieces = take["segments"] as? [[String: Any]] ?? []
+        let total = ms(t, "total_ms") ?? 0
+        let lines = LabWorkbench.merged([
+            Stage(label: T("dictation.lab.stage.raw"), text: take["raw"] as? String, ms: ms(t, "asr_ms_all") ?? ms(t, "asr_ms") ?? 0),
+            Stage(label: T("dictation.lab.stage.polished"), text: polished, ms: ms(t, "polish_ms_all") ?? ms(t, "polish_ms") ?? 0,
+                  empty: T("dictation.lab.stage.polish_off"),
+                  warn: fellBack ? T("dictation.lab.fell_back", DictationHistoryModel.reasonText(take["reason"] as? String)) : nil),
+            Stage(label: T("dictation.lab.stage.final"), text: take["fitted"] as? String ?? take["text"] as? String, ms: total,
+                  tip: T("dictation.lab.ms.total", total)),
+        ])
         LabSection(title: T("dictation.lab.stages")) {
-            HStack(alignment: .top, spacing: 10) {
-                StageCard(label: T("dictation.lab.stage.raw"), text: take["raw"] as? String,
-                          caption: T("dictation.lab.ms", ms(t, "asr_ms_all") ?? ms(t, "asr_ms") ?? 0))
-                StageCard(label: T("dictation.lab.stage.polished"), text: polished,
-                          caption: T("dictation.lab.ms", ms(t, "polish_ms_all") ?? ms(t, "polish_ms") ?? 0),
-                          empty: T("dictation.lab.stage.polish_off"),
-                          warn: fellBack ? T("dictation.lab.fell_back", DictationHistoryModel.reasonText(take["reason"] as? String)) : nil)
-                StageCard(label: T("dictation.lab.stage.final"), text: take["fitted"] as? String ?? take["text"] as? String,
-                          caption: T("dictation.lab.ms.total", ms(t, "total_ms") ?? 0))
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 14, verticalSpacing: 0) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { i, st in
+                    GridRow {
+                        Text(st.label).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
+                            .fixedSize().gridColumnAlignment(.leading)
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let x = st.text, !x.isEmpty {
+                                Text(x).font(.system(size: 13)).lineSpacing(2).textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else {
+                                Text(st.empty).font(.system(size: 12)).foregroundStyle(.secondary)
+                            }
+                            if let w = st.warn {
+                                Text(w).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(T("dictation.lab.ms", st.ms)).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
+                            .fixedSize().help(st.tip ?? "")
+                    }
+                    .padding(.vertical, 9)
+                    if i < lines.count - 1 { Divider().gridCellUnsizedAxes(.horizontal) }
+                }
             }
-            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12).padding(.vertical, 2)
+            .background(RoundedRectangle(cornerRadius: 9).fill(cardFill))
+            .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
             tagLine(take)
             if pieces.count > 0 { piecesTable(pieces) }
-            details(take, t)
+            details(take, t).padding(.top, 6)
         }
     }
 
@@ -693,14 +754,19 @@ struct LabWorkbench: View {
             }
             GridRow {
                 label(T("dictation.lab.detail.models"))
-                Text([take["asr_model"] as? String, take["polish_model"] as? String].compactMap { $0 }.joined(separator: " · "))
+                // by name, as the history's details (the ids are the tooltip)
+                Text([(take["asr_model"] as? String).map { DictationModels.shared.asrName($0) },
+                      (take["polish_model"] as? String).map { DictationModels.shared.polishName($0) }].compactMap { $0 }.joined(separator: " · "))
                     .textSelection(.enabled)
+                    .help([take["asr_model"] as? String, take["polish_model"] as? String].compactMap { $0 }.joined(separator: " · "))
             }
             GridRow {
                 label(T("dictation.lab.detail.timings"))
-                Text(T("dictation.lab.timings", ms(t, "asr_ms") ?? 0, ms(t, "polish_ms") ?? 0, ms(t, "load_ms") ?? 0, ms(t, "total_ms") ?? 0,
-                       ms(t, "segments") ?? 1))
-                    .monospacedDigit()
+                Text(T("dictation.lab.timings", ms(t, "asr_ms") ?? 0, ms(t, "polish_ms") ?? 0, ms(t, "load_ms") ?? 0, ms(t, "total_ms") ?? 0))
+                    .monospacedDigit().fixedSize(horizontal: false, vertical: true)
+            }
+            if let n = ms(t, "segments"), n > 1 {
+                GridRow { label(T("dictation.lab.detail.pieces")); Text("\(n)").monospacedDigit() }
             }
         }
         .font(.system(size: 12))
@@ -713,25 +779,31 @@ struct LabWorkbench: View {
 
     // MARK: mark up
 
-    var markup: some View {
-        LabSection(title: T("dictation.lab.markup")) {
-            if let truth = lab.truth, let out = lab.finalText {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(T("dictation.lab.against", lab.draft.corrected != nil ? T("dictation.lab.corrected.short") : T("dictation.lab.reference.short")))
-                            .font(.system(size: 11)).foregroundStyle(.secondary)
-                        Spacer()
-                        if let s = lab.score { MetricBadges(s: s) }
-                    }
+    /// What the take came to: the scores on one line, then what it typed against what you meant (the history's
+    /// marks), and the terms it missed.
+    @ViewBuilder var result: some View {
+        if let truth = lab.truth, let out = lab.finalText {
+            LabSection(title: T("dictation.lab.result"),
+                       caption: T("dictation.lab.against", lab.draft.corrected != nil ? T("dictation.lab.corrected.short") : T("dictation.lab.reference.short")),
+                       trailing: lab.score.map { MetricRow.exact($0) } == true ? AnyView(LabWordErrors(wer: 0)) : nil) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let s = lab.score { MetricRow(s: s) }
                     LabDiffText(ref: truth, hyp: out)
                     if let m = lab.score?.terms?.missed, !m.isEmpty {
                         Text(T("dictation.lab.terms.missed", m.joined(separator: ", "))).font(.system(size: 11.5)).foregroundStyle(Color.brandAttnInk)
                     }
                 }
-                .padding(12)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 9).fill(cardFill))
                 .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
             }
+        }
+    }
+
+    /// Your marks on the take: the corrected text, what went wrong, a note, a rating.
+    var markup: some View {
+        LabSection(title: T("dictation.lab.markup")) {
             HStack(alignment: .firstTextBaseline) {
                 Text(T("dictation.lab.corrected")).font(.system(size: 11.5, weight: .medium))
                 Spacer()
@@ -779,7 +851,7 @@ struct LabWorkbench: View {
 
     var learned: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            labGlyph(.spark, 11).foregroundStyle(okColor)
+            labGlyph(.check, 11).foregroundStyle(okColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(T("dictation.lab.learned")).font(.system(size: 12, weight: .medium))
                 Text(lab.learned.map(\.summary).joined(separator: "; ")).font(.system(size: 12)).foregroundStyle(.secondary)
@@ -839,8 +911,7 @@ struct LabWorkbench: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             VStack(alignment: .trailing, spacing: 2) {
                 if let s = lab.score(of: r.text) {
-                    Text(T("dictation.lab.metric.wer.short", pct(s.wer))).font(.system(size: 11, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(s.wer == 0 ? okColor : .primary)
+                    LabWordErrors(wer: s.wer)
                     if let t = s.terms { Text(T("dictation.lab.metric.terms.short", t.hit, t.expected)).font(.system(size: 10.5)).foregroundStyle(.secondary) }
                 }
                 Text(T("dictation.lab.ms", r.ms)).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.tertiary)
@@ -1003,8 +1074,7 @@ struct LabScriptCard: View {
                             HStack(spacing: 6) {
                                 if c.id == lab.draft.id { labGlyph(.check, 10).foregroundStyle(Color.brandInk) }
                                 Text(DictationHistoryModel.time(c.created)).monospacedDigit()
-                                Text(T("dictation.lab.metric.wer.short", pct(c.metrics?["wer"] as? Double))).monospacedDigit()
-                                    .foregroundStyle((c.metrics?["wer"] as? Double) == 0 ? okColor : .secondary)
+                                if let w = c.metrics?["wer"] as? Double { LabWordErrors(wer: w) }
                                 Text(c.finalText ?? "").lineLimit(1).foregroundStyle(.secondary)
                             }
                         }

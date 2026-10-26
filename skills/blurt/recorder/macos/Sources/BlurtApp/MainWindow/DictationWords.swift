@@ -1,13 +1,14 @@
 // The Dictation page's Words tab (词库; docs/design/dictation.md §Custom words): the one place the custom words are
 // managed. The list column: one field that finds as you type and adds on Return (pasting "a, b, c" adds three; a word
 // already there is said under it), what the words are for in one line under it, then the words learned once and
-// waiting for the user (待确认: Add, or × to ignore), the user's own words as chips that wrap (added, learned), their
-// projects' names and keys under their own heading (so nobody wonders whether they added them), and the built-in words
-// folded under the same kind of heading with a disclosure chevron. The chips take the keyboard: Tab enters them, ← →
-// move, ⌫ removes, Return or a double-click edits the spelling; the × shows on the chosen chip and on hover, over the
-// chip's corner (nothing reflows). Remove, Add and Ignore say so on the island with Undo (⌘Z too). The detail column:
-// the chosen word — where it came from, how often dictation used it, what it was heard as — with its actions; a word
-// waiting for review is chosen first, so the column opens on the one thing that needs the user.
+// waiting for the user (待确认) as plain rows whose Add and × show on the chosen row and on hover — the only place that
+// decision is made — the words the user added as chips that wrap, their projects' words one chip per project (the name,
+// and the key the way the sidebar sets it), and the built-in words folded under the same kind of heading with a
+// disclosure chevron. The chips take the keyboard: Tab enters them, ← → move, ⌫ removes, Return or a double-click
+// edits the spelling; the × shows on the chosen chip and on hover, over the chip's corner (nothing reflows). Remove, Add
+// and Ignore say so on the island with Undo (⌘Z too). The detail column only tells: the chosen word, where it came
+// from, how often dictation used it, what it was heard as (Edit Spelling and Remove in its ⋯); a word waiting for
+// review is chosen first, so the column opens on the one thing that needs the user.
 // The words are hints to the models, never replacements (BlurtCore/DictationVocabulary.swift).
 // Settings → Dictation shows a one-line summary with "Manage…", which opens this tab.
 import AppKit
@@ -123,6 +124,66 @@ final class DictationWordsModel: ObservableObject {
             if selected == t.term { selected = nil }
         }
     }
+
+    /// A project's words (its chip's ×): all of them go, with one Undo that brings them all back.
+    func remove(_ ts: [VocabTerm]) {
+        guard ts.count > 1 else { if let t = ts.first { remove(t) }; return }
+        let all = DictationVocabulary.shared.load()
+        let before = ts.map { t in all.first { $0.term == t.term } ?? t }
+        for t in ts { DictationVocabulary.shared.remove(t.term) }
+        if let s = selected, ts.contains(where: { $0.term == s }) { selected = nil }
+        reload()
+        let names = ts.map(\.term).joined(separator: T("dictation.vocab.list_sep"))
+        emit(["event": "dictation_vocab", "op": "remove", "term": names, "terms": ts.map(\.term)])
+        let undo = { [weak self] in
+            for b in before { DictationVocabulary.shared.restore(b) }
+            self?.reload()
+            self?.selected = before.first?.term
+            emit(["event": "dictation_vocab", "op": "undo_remove", "term": names])
+        }
+        let um = DictationHistoryWindow.shared.undoManager
+        um?.registerUndo(withTarget: self) { _ in undo() }
+        um?.setActionName(T("dictation.words.removed", names))
+        var toast = Island.Toast(text: T("dictation.words.removed", names), actionTitle: T("dictation.toast.undo"), action: {
+            undo()
+            _ = um.map { $0.removeAllActions(withTarget: self) }
+        })
+        toast.overOpen = true
+        toast.key = "dictation.words"
+        toast.seconds = 4
+        island.toast(toast)
+    }
+
+    /// The projects' words, one group per project (its name and its key, as the project made them), so a key like
+    /// "BA" reads as billing-api's and not as a stray word; words of a project that is gone stand alone.
+    struct ProjectWords: Identifiable, Equatable {
+        var id: String
+        var name: String
+        var key: String
+        var terms: [VocabTerm]
+        var nameIsWord: Bool { terms.contains { $0.term == name } }
+        var keyWord: VocabTerm? { key.isEmpty ? nil : terms.first { $0.term == key } }
+    }
+
+    var projectGroups: [ProjectWords] {
+        var left = projects
+        var out: [ProjectWords] = []
+        for p in ProjectStore.shared.projects where !p.isInbox {
+            let ws = left.filter { $0.term == p.name || $0.term == p.key }
+            guard !ws.isEmpty else { continue }
+            left.removeAll { t in ws.contains(t) }
+            out.append(ProjectWords(id: p.id, name: p.name, key: p.key, terms: ws.sorted { a, _ in a.term == p.name }))
+        }
+        out += left.map { ProjectWords(id: "word:" + $0.term, name: $0.term, key: "", terms: [$0]) }
+        return out.sorted { a, b in
+            a.name.compare(b.name, options: [.caseInsensitive, .numeric], range: nil, locale: Locale(identifier: "en_US_POSIX")) == .orderedAscending
+        }
+    }
+
+    /// The project a word came from (the detail says it).
+    func project(of t: VocabTerm) -> String? {
+        projectGroups.first { g in !g.id.hasPrefix("word:") && g.terms.contains(t) }?.name
+    }
     /// After Add or Ignore, the next word waiting for review is chosen (the review goes on), else the added word.
     func accept(_ t: VocabTerm) {
         let next = suggestions.first { $0.term != t.term }?.term
@@ -232,8 +293,9 @@ struct DictationWordsList: View {
                 }
             }
             .padding(.horizontal, 8).frame(height: 28)
-            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color(nsColor: .separatorColor), lineWidth: 0.5))
+            // a field a step off the pane in both modes (the text background was a near-black well in dark mode)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(Color.primary.opacity(0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 7, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
             hint
                 .font(.system(size: 11.5)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -255,18 +317,17 @@ struct DictationWordsList: View {
         }
     }
 
-    /// Learned once from a fix and waiting for the user: a quiet card, each word with its one action (Add, in brand
-    /// ink) and an × to ignore it; the chosen one is open in the detail with the reason it was learned.
+    /// Learned once from a fix and waiting for the user: plain rows on the list's edge (no card), each with Add and ×
+    /// on the chosen row and on hover; the chosen one is open in the detail with where it came from.
     var review: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             WordsHeading(title: T("dictation.words.suggested"), count: w.suggestions.count)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(w.matching(w.suggestions)) { t in
                     ReviewRow(w: w, t: t)
                 }
             }
-            .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+            .padding(.horizontal, -10)          // the rows' text on the headings' edge, their wash past it
         }
     }
 
@@ -288,12 +349,12 @@ struct DictationWordsList: View {
     /// The projects' names and keys: their own heading (where they come from is its tooltip), so nobody wonders
     /// whether they added them (v0.9 dogfood: "Atlas Web, AW, BA" under "Your words").
     @ViewBuilder var projects: some View {
-        let shown = w.matching(w.projects)
-        if !shown.isEmpty {
+        let groups = w.projectGroups.filter { g in !w.filtering || !w.matching(g.terms).isEmpty }
+        if !groups.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 WordsHeading(title: T("dictation.words.projects"), count: w.projects.count)
                     .help(T("dictation.words.projects.detail"))
-                ChipGroup(w: w, ts: shown)
+                ProjectChips(w: w, groups: groups)
             }
         }
     }
@@ -335,37 +396,58 @@ private struct WordsHeading: View {
     }
 }
 
-/// A word waiting for review: the word, where it came from, Add (the one action, brand ink) and × to ignore.
+/// A word waiting for review: the word and where it came from; Add (brand ink, ⌘↩ while chosen) and × to ignore show
+/// on the chosen row and on hover, at the same place (nothing moves). Chosen: the list's tint, nothing else.
 private struct ReviewRow: View {
     @ObservedObject var w: DictationWordsModel
     let t: VocabTerm
     @State private var hover = false
+    @Environment(\.controlActiveState) private var active
 
     var body: some View {
         let chosen = w.selected == t.term
+        let tools = chosen || hover
         HStack(spacing: 8) {
             Text(t.term).font(.system(size: 13, weight: .medium)).lineLimit(1)
             Text(T("dictation.words.source.suggested")).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 8)
-            Button(T("dictation.vocab.accept")) { w.accept(t) }
+            HStack(spacing: 8) {
+                Group {
+                    if chosen {
+                        Button(T("dictation.vocab.accept")) { w.accept(t) }.keyboardShortcut(.return, modifiers: .command)
+                    } else {
+                        Button(T("dictation.vocab.accept")) { w.accept(t) }
+                    }
+                }
                 .buttonStyle(.plain).font(.system(size: 12, weight: .medium)).foregroundStyle(Color.brandInk)
+                .help(T("dictation.words.accept.tip"))
                 .accessibilityLabel(T("dictation.words.accept.ax", t.term))
-            Button { w.reject(t) } label: {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18).contentShape(Rectangle())
+                Button { w.reject(t) } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(T("dictation.vocab.ignore"))
+                .accessibilityLabel(T("dictation.words.ignore.ax", t.term))
             }
-            .buttonStyle(.plain)
-            .help(T("dictation.vocab.ignore"))
-            .accessibilityLabel(T("dictation.words.ignore.ax", t.term))
+            .opacity(tools ? 1 : 0)
+            .allowsHitTesting(tools)
+            .accessibilityHidden(!tools)
         }
-        .padding(.horizontal, 10).frame(height: 32)
+        .padding(.horizontal, 10).frame(height: 30)
         .background(RoundedRectangle(cornerRadius: 6, style: .continuous)
-            .fill(chosen ? Color.brandTint : Color.primary.opacity(hover ? 0.04 : 0)).padding(2))
+            .fill(chosen ? (active == .key ? Color.brandTint : Color.primary.opacity(0.06)) : Color.primary.opacity(hover ? 0.04 : 0)))
         .contentShape(Rectangle())
         .onHover { hover = $0 }
         .onTapGesture { w.selected = t.term }
+        .contextMenu {
+            Button(T("dictation.words.accept")) { w.accept(t) }
+            Button(T("dictation.vocab.ignore")) { w.reject(t) }
+        }
         .accessibilityElement(children: .contain)
+        .accessibilityAction(named: T("dictation.words.accept")) { w.accept(t) }
+        .accessibilityAction(named: T("dictation.vocab.ignore")) { w.reject(t) }
     }
 }
 
@@ -467,6 +549,103 @@ struct WordChip: View {
     }
 }
 
+/// The projects' words, one chip per project, as one keyboard stop like the other chips (← → move, ⌫ removes the
+/// project's words). Each chip: the project's name, then its key set the way the sidebar sets it (small, monospaced);
+/// a part that isn't a word dictation is told about (a long name) is in secondary, so "IOS" reads as the key of
+/// "口喷鸡 iOS 客户端", not as a misspelt iOS. The context menu edits or removes one word of it.
+struct ProjectChips: View {
+    @ObservedObject var w: DictationWordsModel
+    let groups: [DictationWordsModel.ProjectWords]
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        WordsFlow(spacing: 6) {
+            ForEach(groups) { g in
+                if let r = w.renaming, g.terms.contains(where: { $0.term == r }) {
+                    RenameField(w: w)
+                } else {
+                    ProjectWordsChip(w: w, g: g)
+                }
+            }
+        }
+        .focusable()
+        .focused($focused)
+        .onChange(of: focused) { f in if f, chosen == nil { pick(0) } }
+        .onMoveCommand { d in
+            switch d {
+            case .left, .up: pick((chosen ?? groups.count) - 1)
+            case .right, .down: pick((chosen ?? -1) + 1)
+            default: break
+            }
+        }
+        .onDeleteCommand {
+            guard let i = chosen else { return }
+            let next = groups.indices.contains(i + 1) ? groups[i + 1].terms.first?.term : i > 0 ? groups[i - 1].terms.first?.term : nil
+            w.remove(groups[i].terms)
+            w.selected = next
+        }
+    }
+
+    var chosen: Int? { groups.firstIndex { g in g.terms.contains { $0.term == w.selected } } }
+    func pick(_ i: Int) {
+        guard !groups.isEmpty else { return }
+        w.selected = groups[max(0, min(groups.count - 1, i))].terms.first?.term
+    }
+}
+
+private struct ProjectWordsChip: View {
+    @ObservedObject var w: DictationWordsModel
+    let g: DictationWordsModel.ProjectWords
+    @State private var hover = false
+
+    var body: some View {
+        let selected = g.terms.contains { $0.term == w.selected }
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(g.name).font(.system(size: 12.5)).lineLimit(1).truncationMode(.middle)
+                .foregroundStyle(g.nameIsWord ? Color.primary : Color.secondary)
+                .frame(maxWidth: 170, alignment: .leading).fixedSize(horizontal: g.name.count < 18, vertical: false)
+            if let k = g.keyWord {
+                Text(k.term).font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                    .foregroundStyle(g.nameIsWord ? Color.secondary : Color.primary)
+            }
+        }
+        .padding(.horizontal, 9).padding(.vertical, 3)
+        .background(Capsule().fill(selected ? Color.brandTint : Color.primary.opacity(hover ? 0.10 : 0.06)))
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(selected ? 0 : 0.05), lineWidth: 0.5))
+        .overlay(alignment: .topTrailing) {
+            if hover || selected {
+                Button { w.remove(g.terms) } label: {
+                    Image(systemName: "xmark").font(.system(size: 7, weight: .bold)).foregroundStyle(.secondary)
+                        .frame(width: 14, height: 14)
+                        .background(Circle().fill(.regularMaterial))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                }
+                .buttonStyle(.plain)
+                .offset(x: 5, y: -5)
+                .help(T("dictation.vocab.remove"))
+                .accessibilityLabel(T("dictation.words.remove", g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep"))))
+                .transition(.opacity)
+            }
+        }
+        .contentShape(Capsule())
+        .onHover { hover = $0 }
+        .onTapGesture(count: 2) { if let t = g.terms.first { w.beginRename(t) } }
+        .onTapGesture { w.selected = selected ? nil : g.terms.first?.term }
+        .contextMenu {
+            ForEach(g.terms) { t in Button(T("dictation.words.rename.one", t.term)) { w.beginRename(t) } }
+            Divider()
+            ForEach(g.terms) { t in Button(T("dictation.words.remove", t.term)) { w.remove(t) } }
+        }
+        .help(T("dictation.words.project.tip", g.name, g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep"))))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep")))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(.default) { w.selected = g.terms.first?.term }
+        .accessibilityAction(named: T("dictation.vocab.remove")) { w.remove(g.terms) }
+        .animation(.easeOut(duration: 0.12), value: hover)
+    }
+}
+
 /// Left-to-right wrapping layout for the chips.
 struct WordsFlow: Layout {
     var spacing: CGFloat = 6
@@ -496,10 +675,10 @@ struct WordsFlow: Layout {
 
 // MARK: - the detail column
 
-/// The chosen word: one header band level with the list's views (the word, where it came from), the facts in one
-/// label column, and its actions — Add as the view's one primary for a word waiting for review (Ignore beside it),
-/// Edit Spelling and Remove for a word in use. Nothing chosen: a quiet placeholder (what the words are for is said once,
-/// under the field).
+/// The chosen word, told, not acted on: one header band level with the list's views (the word, where it came from,
+/// and for a word in use a ⋯ with Edit Spelling and Remove), then the facts in one label column under a hairline, as the
+/// history's. A word waiting for review is decided in the list (its row's Add and ×) — the one place for it; here, why
+/// it was suggested and when. Nothing chosen: a quiet placeholder.
 struct DictationWordsDetail: View {
     @ObservedObject var w: DictationWordsModel
 
@@ -522,43 +701,59 @@ struct DictationWordsDetail: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    func source(_ t: VocabTerm) -> String {
+        if t.state == .suggested { return T("dictation.words.source.review") }
+        if t.source == .project, let p = w.project(of: t) { return T("dictation.words.source.project_named", p) }
+        return T("dictation.words.source.\(t.source.rawValue)")
+    }
+
     func word(_ t: VocabTerm) -> some View {
         let review = t.state == .suggested
         return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(t.term).font(.system(size: 17, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                        .textSelection(.enabled)
-                    Text(T("dictation.words.source.\(review ? "suggested" : t.source.rawValue)"))
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(t.term).font(.system(size: 17, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                            .textSelection(.enabled)
+                        Text(source(t)).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    if !review {
+                        Menu {
+                            Button(T("dictation.words.rename")) { w.beginRename(t) }
+                            Divider()
+                            Button(T("dictation.vocab.remove")) { w.remove(t) }
+                        } label: {
+                            Image(nsImage: BlurtIcon.more.symbolImage(pointSize: 13)).renderingMode(.template)
+                                .accessibilityLabel(T("dictation.history.more"))
+                        }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .foregroundStyle(.secondary)
+                        .help(T("dictation.history.more"))
+                        .accessibilityLabel(T("dictation.history.more"))
+                    }
                 }
                 .frame(height: DictationPageHeader.height, alignment: .leading)
                 .padding(.bottom, 14)
                 if review {
                     Text(T("dictation.words.review.detail")).font(.system(size: 13)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 18)
                 }
+                Divider().padding(.bottom, 12)
                 Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 16, verticalSpacing: 7) {
                     if !review { row(T("dictation.words.info.used"), T("dictation.words.info.used.value", t.hits)) }
                     if !t.soundsLike.isEmpty {
                         row(T("dictation.words.info.heard"), t.soundsLike.joined(separator: T("dictation.vocab.list_sep")))
                     }
-                    if t.added.timeIntervalSince1970 > 0 { row(T("dictation.words.info.added"), Loc.dateTime(t.added)) }
-                }
-                .font(.system(size: 12))
-                HStack(spacing: 10) {
-                    if review {
-                        Button(T("dictation.words.accept")) { w.accept(t) }
-                            .buttonStyle(.brand).keyboardShortcut(.return, modifiers: .command)
-                        Button(T("dictation.vocab.ignore")) { w.reject(t) }
-                    } else {
-                        Button(T("dictation.words.rename")) { w.beginRename(t) }
-                        Button(T("dictation.vocab.remove")) { w.remove(t) }
+                    if review, t.seen > 1 { row(T("dictation.words.info.seen"), T("dictation.words.info.seen.value", t.seen)) }
+                    if t.added.timeIntervalSince1970 > 0 {
+                        // a word waiting for review hasn't been added: when it was found
+                        row(T(review ? "dictation.words.info.found" : "dictation.words.info.added"), Loc.dateTime(t.added))
                     }
                 }
-                .controlSize(.regular)
-                .padding(.top, 22)
+                .font(.system(size: 12))
             }
             .padding(.horizontal, DictationDetailView.inset).padding(.bottom, 28)
             .frame(maxWidth: 640, alignment: .leading)

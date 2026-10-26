@@ -282,5 +282,37 @@
 			<string>%ld 张截图留着</string>
 		</dict>
 	</dict>
+	<key>main.dictation.words_count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld 个词</string>
+			<key>other</key>
+			<string>%ld 个词</string>
+		</dict>
+	</dict>
+	<key>main.dictation.cases_count</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>ld</string>
+			<key>one</key>
+			<string>%ld 个用例</string>
+			<key>other</key>
+			<string>%ld 个用例</string>
+		</dict>
+	</dict>
 </dict>
 </plist>
