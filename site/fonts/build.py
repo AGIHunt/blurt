@@ -4,9 +4,11 @@
     python3 site/fonts/build.py SRC_DIR
 
 SRC_DIR holds the full fonts (OFL, not kept in the repo):
-  NotoSerifSC-500.ttf / -700.ttf / -900.ttf   static instances of Noto Serif SC (google/fonts, NotoSerifSC[wght].ttf)
-  LXGWWenKai-Regular.ttf                      github.com/lxgw/LxgwWenKai releases
-  plexmono-400.woff2 / -500 / -600            @fontsource/ibm-plex-mono latin (copied as is, already small)
+  NotoSerifSC-700.ttf / -900.ttf   static instances of Noto Serif SC (google/fonts, NotoSerifSC[wght].ttf), made with
+                                   fontTools.varLib.instancer.instantiateVariableFont(font, {"wght": 700})
+  plexmono-500.woff2               @fontsource/ibm-plex-mono latin (copied as is, already small)
+
+Body text is the system font (the app's own), so only the display serif and the mono for measured figures are subset.
 
 Both pages are opened in headless Chromium; every text node is bucketed by the family and weight it is set in,
 so each subset only carries the glyphs that face actually renders. Strings that only appear after a click
@@ -61,7 +63,7 @@ for f in (SITE / "index.html", SITE / "en" / "index.html", SITE / "main.js", SIT
     t = f.read_text()
     # main.js marks the strings that render in the system UI font (the snap desk, live captions): no need to subset those
     t = re.sub(r"// @fonts:system-ui-start.*?// @fonts:system-ui-end", "", t, flags=re.S)
-    extra += "".join(re.findall(r'data-(?:done|busy|close|other|touch)="([^"]*)"', t))
+    extra += "".join(re.findall(r'data-(?:done|saved|note|ph|heard|typed)="([^"]*)"', t))
     extra += "".join(re.findall(r'content: "([^"]*)"', t))
     extra += "".join(re.findall(r'"([^"\n]*[　-鿿][^"\n]*)"', t)) if f.suffix == ".js" else ""
 ascii_ = "".join(chr(c) for c in range(0x20, 0x7f)) + "·—–…“”‘’「」『』，。、：；！？（）《》→↓←↑★✓✎−×"
@@ -81,9 +83,7 @@ def build(src, out, text):
     subset.save_font(font, str(out), opts)
     print(f"{out.name}: {len(set(text))} chars, {out.stat().st_size // 1024} KB")
 
-for w in (500, 700, 900):
+for w in (700, 900):
     build(SRC / f"NotoSerifSC-{w}.ttf", OUT / f"serif-{w}.woff2", want("Blurt Serif", w))
-build(SRC / "LXGWWenKai-Regular.ttf", OUT / "kai-400.woff2", want("Blurt Kai", None))
-for w in (400, 500, 600):
-    shutil.copy(SRC / f"plexmono-{w}.woff2", OUT / f"mono-{w}.woff2")
-print("unbucketed families:", sorted({k.split('|')[0] for k in buckets} - {"Blurt Serif", "Blurt Kai", "Blurt Mono"}))
+shutil.copy(SRC / "plexmono-500.woff2", OUT / "mono-500.woff2")
+print("families seen:", sorted({k.split('|')[0] for k in buckets}))
