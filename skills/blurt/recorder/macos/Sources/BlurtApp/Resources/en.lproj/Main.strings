@@ -62,15 +62,13 @@
 "app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
 "app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
 "app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
-"app.record.not_saved" = "%@ — recording not saved";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
-"app.record.failed_why" = "%1$@ · %2$@";
 "app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
 
 "app.status.ax_count" = "Blurt — %@";
 
-"app.toast.saved" = "Recording saved (%@)";
+"app.toast.saved" = "Recording saved · %@";
 "app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
 
 "main.project.removed_name" = "a removed project";
@@ -711,3 +709,6 @@
 "main.project.pin.undo_name" = "Pin";
 "main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
 "main.sidebar.taken" = "Dragged Out";
+"app.record.not_saved_title" = "Recording not saved";
+"app.record.partial_title" = "Recording stopped early";
+"app.record.partial_kept" = "the first %@ is kept";

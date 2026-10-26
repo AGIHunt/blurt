@@ -512,6 +512,7 @@ extension App {
             t.passive = a[3] == "passive"
             island.toast(t)
         case "islandsent": island.dictationSent()      // the ear's "Sent" moment after a double tap
+        case "islandnews": island.announceInbox(Int(arg) ?? 3)   // islandnews N: "+N" in the ear, as when N captures land
         case "toaststate":                              // what the island says now, and what waits
             emit(["event": "toast_state", "current": island.currentToast?.text ?? NSNull(), "waiting": island.waitingToasts])
         case "axcards":

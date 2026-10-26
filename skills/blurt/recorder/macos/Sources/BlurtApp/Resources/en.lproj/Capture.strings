@@ -43,7 +43,7 @@
 "capture.countdown.skip" = "Skip the countdown and start recording now";
 "capture.countdown.start_now" = "Start now";
 "capture.discarded" = "Discarded";
-"capture.drawer.drop_title" = "MOVE TO";
+"capture.drawer.drop_title" = "Move To";
 "capture.drawer.inbox_sub" = "File it now, pick a project later";
 "capture.drawer.missing_toast" = "“%@” folder not found · the card stays";
 "capture.drawer.more" = "More…";
@@ -52,8 +52,8 @@
 "capture.drawer.open_failed" = "Couldn’t open that folder as a project";
 "capture.drawer.open_message" = "Pick a folder. Its items are kept in a .blurt folder inside it, never committed to git.";
 "capture.drawer.open_prompt" = "Open";
-"capture.drawer.pick_title" = "FILE TO";
-"capture.drawer.switch_title" = "CURRENT PROJECT";
+"capture.drawer.pick_title" = "File To";
+"capture.drawer.switch_title" = "Switch Project";
 "capture.filed" = "Filed to %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = " (%@)";
@@ -142,8 +142,6 @@
 "capture.note.listening_done" = "pause to finish · ⏎ now";
 "capture.note.voice_busy_done" = "A voice note is recording · type a note · ⏎ done";
 "capture.note.chip_tip" = "Where this capture goes (Tab)";
-"capture.peck.done_one" = "Done: %@";
-"capture.peck.verify_one" = "Ready to verify: %@";
 "capture.picker.cancel" = "Cancel";
 "capture.picker.full_screen" = "Full screen";
 "capture.picker.hint_record" = "Drag to select an area · Click a window · F full screen · ⏎ start · Esc cancel";
@@ -218,10 +216,10 @@
 "capture.voice.mic_lost" = "The microphone disconnected — what was said is kept";
 "capture.voice.mic_gone" = "The microphone disconnected";
 "capture.voice.mic_settings" = "Open Settings";
-"capture.voice.goes_card" = "Stays as a card until you pick a project";
+"capture.voice.goes_card" = "Stays as a card";
 "capture.voice.goes_to" = "Goes to %@";
-"capture.voice.hint" = "Listening · pause to finish";
-"capture.voice.hold_hint" = "Listening · let go to finish";
+"capture.voice.hint" = "Pause to finish";
+"capture.voice.hold_hint" = "Let go to finish";
 "capture.voice.no_mic" = "The microphone isn’t available";
 "capture.voice.no_words" = "No words recognized";
 "capture.voice.nothing" = "Didn’t hear anything";
@@ -277,8 +275,8 @@
 "capture.keys.system_refused" = "%@ is a macOS shortcut (System Settings, Keyboard) — pick another";
 "capture.keys.system_short" = "macOS uses it";
 "capture.keys.undo_set" = "Change Shortcut";
-"capture.voice.hint_key" = "Listening · %@ done";
-"capture.voice.hint_done" = "Listening · click Done";
+"capture.voice.hint_key" = "%@ to finish";
+"capture.voice.hint_done" = "Click Done to finish";
 "capture.voice.esc_hint" = "Esc discard";
 "capture.voice.done" = "Done";
 "capture.voice.done_tip" = "Finish the voice note";
@@ -329,3 +327,7 @@
 "capture.keys.none" = "Not set";
 "capture.keys.swap.ask_outcome" = "Swap with %1$@? It gets %2$@.";
 "capture.keys.move.ask_outcome" = "Take %1$@ from %2$@? It’s left without one.";
+"capture.drawer.type_to_filter" = "Type to filter";
+"capture.peck.state_done" = "Done";
+"capture.peck.state_verify" = "Fixed · ready to verify";
+"capture.peck.open_inbox" = "Click to see them";

@@ -43,7 +43,7 @@
 "capture.countdown.skip" = "不等倒计时，现在就开始录";
 "capture.countdown.start_now" = "现在开始";
 "capture.discarded" = "已丢弃";
-"capture.drawer.drop_title" = "放到";
+"capture.drawer.drop_title" = "移到";
 "capture.drawer.inbox_sub" = "先存着，之后再选项目";
 "capture.drawer.missing_toast" = "找不到「%@」的文件夹 · 卡片先留着";
 "capture.drawer.more" = "更多…";
@@ -53,7 +53,7 @@
 "capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
 "capture.drawer.pick_title" = "归到";
-"capture.drawer.switch_title" = "当前项目";
+"capture.drawer.switch_title" = "切换项目";
 "capture.filed" = "已归到 %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = "（%@）";
@@ -142,8 +142,6 @@
 "capture.note.listening_done" = "停一下就完成 · ⏎ 立即完成";
 "capture.note.voice_busy_done" = "正在录语音备注 · 可以在这里打字 · ⏎ 完成";
 "capture.note.chip_tip" = "这张截图归入哪里（Tab）";
-"capture.peck.done_one" = "已完成：%@";
-"capture.peck.verify_one" = "待验证：%@";
 "capture.picker.cancel" = "取消";
 "capture.picker.full_screen" = "全屏";
 "capture.picker.hint_record" = "拖拽框选录制区域 · 单击选中窗口 · F 全屏 · ⏎ 开始 · Esc 取消";
@@ -218,10 +216,10 @@
 "capture.voice.mic_lost" = "麦克风断开了，已说的部分留下了";
 "capture.voice.mic_gone" = "麦克风断开了";
 "capture.voice.mic_settings" = "去设置";
-"capture.voice.goes_card" = "先作为卡片留着，之后再选项目";
+"capture.voice.goes_card" = "先留作卡片";
 "capture.voice.goes_to" = "归入 %@";
-"capture.voice.hint" = "在听 · 停顿即结束";
-"capture.voice.hold_hint" = "在听 · 松开即结束";
+"capture.voice.hint" = "停顿即结束";
+"capture.voice.hold_hint" = "松开即结束";
 "capture.voice.no_mic" = "麦克风用不了";
 "capture.voice.no_words" = "没识别出文字";
 "capture.voice.nothing" = "没听到声音";
@@ -277,8 +275,8 @@
 "capture.keys.system_refused" = "%@ 是 macOS 的系统快捷键（系统设置里的「键盘」），换一个";
 "capture.keys.system_short" = "macOS 在用";
 "capture.keys.undo_set" = "更改快捷键";
-"capture.voice.hint_key" = "在听 · %@ 完成";
-"capture.voice.hint_done" = "在听 · 点「完成」";
+"capture.voice.hint_key" = "%@ 结束";
+"capture.voice.hint_done" = "点「完成」结束";
 "capture.voice.esc_hint" = "Esc 丢弃";
 "capture.voice.done" = "完成";
 "capture.voice.done_tip" = "结束这条语音备注";
@@ -329,3 +327,7 @@
 "capture.keys.none" = "未设置";
 "capture.keys.swap.ask_outcome" = "与「%1$@」互换？它改用 %2$@。";
 "capture.keys.move.ask_outcome" = "把 %1$@ 从「%2$@」移过来？它将没有快捷键。";
+"capture.drawer.type_to_filter" = "输入名称筛选";
+"capture.peck.state_done" = "已完成";
+"capture.peck.state_verify" = "已修好 · 待验证";
+"capture.peck.open_inbox" = "点按查看";

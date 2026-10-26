@@ -1,6 +1,7 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
 // bars when paused), counts with one of our line glyphs (the cards' stack with its count in mint, the cards' clasp
-// colour; the inbox's tray, the stills' snap frame, the markers' flag), the mic level, a voice waveform, the hatching
+// colour; the stills' snap frame, the markers' flag), "+3" with the inbox's tray for a few seconds when new captures
+// land (news, never a standing backlog: the menu bar and the open island keep the count), the mic level, a voice waveform, the hatching
 // egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out — Icons/Mascot.swift),
 // an alert marker, "Sent" with the ok check. Every glyph in the ears is the BlurtIcon line family at one weight —
 // the dogfood found filled SF Symbols (tray.full.fill, rectangle.stack.fill, camera.fill) opposite dictation's line
@@ -69,13 +70,15 @@ final class EarSlot {
         case iconText(BlurtIcon, String, attn: Bool = false)
         /// the ok check before a short text: a moment that worked ("Sent", after a double tap)
         case done(String)
+        /// new captures just landed in the inbox: the tray and "+n", for a few seconds (Island.inboxNews)
+        case news(Int)
 
         /// Same kind of thing (so a changing number doesn't rebuild the layers)
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
                  (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
-                 (.done, .done): return true
+                 (.done, .done), (.news, .news): return true
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
             default: return false
@@ -85,7 +88,9 @@ final class EarSlot {
 
     let layer = CALayer()
     private let icon = CALayer()
-    private let label = CATextLayer()
+    /// The ear's number or word: a picture of the line drawn with font smoothing (BlurtCore TextImage), as the island's
+    /// buttons draw their titles — a CATextLayer draws without it, and its digits came out lighter than the glyph beside them.
+    private let label = CALayer()
     private let dot = CALayer()
     private let bars = CAShapeLayer()          // the working dots
     /// level bars (recording, voice note, dictation): the base gradient, vertical, seen through the bars
@@ -99,7 +104,9 @@ final class EarSlot {
     private var since = CACurrentMediaTime()
     private var pulseAt: CFTimeInterval = 0
     private(set) var width: CGFloat = 0
-    static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)
+    /// 12 medium, tabular digits: semibold at 60–92 % white went muddy on the black (a weight that says "important"
+    /// in a colour that says "quiet").
+    static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
     /// A count's glyph (cards, tray, snap, flag): 13 pt, the family's floor (docs/design/system.md §2.6).
     static let countGlyph: CGFloat = 13
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
@@ -110,7 +117,7 @@ final class EarSlot {
 
     init() {
         label.contentsScale = 2
-        label.alignmentMode = .left
+        label.contentsGravity = .resize
         dot.cornerRadius = 4
         bars.fillColor = nil
         bars.lineCap = .round
@@ -165,19 +172,23 @@ final class EarSlot {
         }
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {
-            let a = NSAttributedString(string: s, attributes: [.font: EarSlot.font, .foregroundColor: color])
-            let sz = a.size()
-            label.string = a
-            label.frame = CGRect(x: x, y: -ceil(sz.height) / 2, width: ceil(sz.width) + 1, height: ceil(sz.height))
+            guard let line = TextImage.line(s, font: EarSlot.font, color: color.cgColor, scale: 2) else {
+                label.contents = nil
+                return
+            }
+            label.contents = line.image
+            // centred on the row by the digits' cap height, not the line box (the glyph beside it is centred so too)
+            label.frame = CGRect(x: x, y: -(line.size.height / 2).rounded(), width: line.size.width, height: line.size.height)
             label.isHidden = false
-            x += ceil(sz.width)
+            x += line.size.width - 1
         }
-        // dictation's own glyphs (keyboard, wand) are mint: blurt is listening / working for you
-        func glyph(_ ic: BlurtIcon, _ size: CGFloat) {
-            icon.contents = ic.cgImage(size: size, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.1)
+        // dictation's glyphs: mint while blurt works for you (transcribing, polishing: they pulse); white while it
+        // listens — the gradient bars beside it are the one brand mark then — and quiet once it has stopped (Sent)
+        func glyph(_ ic: BlurtIcon, _ size: CGFloat, color: NSColor = BrandColor.Island.fill) {
+            icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.1)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
-            x += size + 4
+            x += size + 3
         }
         // a count's glyph: the line family at the ears' one weight (as `iconText` and `done`), in the count's colour
         func line(_ ic: BlurtIcon, color: NSColor) {
@@ -185,7 +196,7 @@ final class EarSlot {
             icon.contents = ic.cgImage(size: size, scale: 2, color: color.cgColor, weight: 1.2)
             icon.frame = CGRect(x: x, y: -size / 2, width: size, height: size)
             icon.isHidden = false
-            x += size + 4
+            x += size + 3         // glyph and number read as one token (4 pt + the digits' side bearing read as two)
         }
         switch c {
         case .none: break
@@ -234,12 +245,12 @@ final class EarSlot {
             dot.isHidden = false
             x = 8
         case .dictation(let v):
-            glyph(.keyboard, 14)
+            glyph(.keyboard, 14, color: NSColor(white: 1, alpha: 0.85))
             drawMirror(v, from: x)
             x += 21
-        case .glyph(let ic, _):
-            glyph(ic, 15)
-            x -= 4
+        case .glyph(let ic, let pulse):
+            glyph(ic, 15, color: pulse ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
+            x -= 3
         case .dots:
             drawDots(t: 0)
             x = 20
@@ -247,14 +258,17 @@ final class EarSlot {
             icon.contents = ic.cgImage(size: 12, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.2)
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
             icon.isHidden = false
-            x = 16
+            x = 15
             text(s, color: attn ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.92))
         case .done(let s):
             icon.contents = BlurtIcon.check.cgImage(size: 12, scale: 2, color: BrandColor.Island.ok.cgColor, weight: 1.3)
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
             icon.isHidden = false
-            x = 16
+            x = 15
             text(s)
+        case .news(let n):
+            line(.inbox, color: NSColor(white: 1, alpha: 0.6))
+            text("+" + Loc.number(n), color: NSColor(white: 1, alpha: 0.92))
         }
         width = x
         layer.bounds = CGRect(x: 0, y: -10, width: max(1, x), height: 20)

@@ -35,20 +35,27 @@ final class PeckCard: NSObject {
         pending = []
         lastShown = CACurrentMediaTime()
         let done = items.allSatisfy { $0.state == "done" }
+        // two lines: what it is about (the item's title, or how many), then the state in words with its mark — ✓ done
+        // in ok green, "!" to verify in attention amber, as the main list marks them (never the animation alone)
+        let state = Loc.t(done ? "capture.peck.state_done" : "capture.peck.state_verify", table: "Capture")
         let text: String
         if items.count == 1 {
-            text = Loc.t(done ? "capture.peck.done_one" : "capture.peck.verify_one", table: "Capture", items[0].title)
+            text = items[0].title + "\n" + state
         } else {
             text = Loc.plural(done ? "capture.peck.done_many" : "capture.peck.verify_many", table: "Capture", count: items.count)
+                + "\n" + Loc.t("capture.peck.open_inbox", table: "Capture")
         }
         let clip: MascotClip = done ? .happy : .peck
-        let chick = MascotView(clip: clip, size: 50, backdrop: .dark)
+        let chick = MascotView(clip: clip, size: 34, backdrop: .dark)
         chick.show(clip, frame: 0)
         let uid = items.count == 1 ? items[0].uid : nil
         var t = Island.Toast(text: text, actionTitle: nil, action: {
             if let u = uid { _ = URLRouter.handle(URL(string: "blurt://item/\(u)")!) } else { AppEnvironment.mainWindow?.showInbox() }
         })
         t.art = chick
+        if items.count == 1 {
+            t.detailMark = done ? ("checkmark", BrandColor.Island.ok) : ("exclamationmark", BrandColor.Island.attn)
+        }
         t.seconds = max(3.4, (MascotLibrary.shared.clip(clip)?.duration ?? 2) + leadIn + 1)
         island.toast(t)
         MenuGlyph.shared.hop()

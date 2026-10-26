@@ -136,7 +136,7 @@ enum SelfTests {
             let m = MainWindowController.shared.dictation.model
             if arg == "off" || arg.isEmpty { m.working = [] } else { m.working.insert(arg == "first" ? m.entries.first?.id ?? "" : arg) }
             out(["working": Array(m.working)])
-        case "toastdone": appDelegate?.toast(arg.isEmpty ? T("app.toast.saved", Loc.duration(42)) : arg, icon: .check)
+        case "toastdone": appDelegate?.toast(arg.isEmpty ? T("app.toast.saved", Island.clock(42)) : arg, icon: .check)
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
             let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" || arg == "dispatch" ? MainActor.assumeIsolated { DispatchPanel.windowNumber }

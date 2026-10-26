@@ -393,7 +393,9 @@ enum MascotArt {
         var lineColor: CGColor { color(MascotPalette.line) }
         /// arcs, dots: on a dark backdrop the line colour would vanish
         func free(_ a: CGFloat) -> CGColor { color(style.dark ? MascotPalette.inkOnDark : MascotPalette.line, a) }
-        var width: CGFloat { sticker ? line * (style.sticker ? 3.4 : 2.2) : line }
+        // the rim on dark: 2.2 lines wide at ear and toast sizes (where a thinner one is lost), 1.8 above them — wider
+        // read as a sticker cut-out round the chick, heavier than its own line
+        var width: CGFloat { sticker ? line * (style.sticker ? 3.4 : style.small ? 2.2 : 1.8) : line }
         /// the rim's pass: only the chick and the egg get an edge
         var rimOnly: Bool { sticker && !style.sticker }
 
