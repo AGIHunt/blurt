@@ -1,4 +1,6 @@
-/* blurt.agihunt.info, round 7 (round 6's scroll machinery)
+/* blurt.agihunt.info, round 7 (round 6's scroll machinery); round 9: Peep (peep.js) lives in the notch all the way
+   down. This file tells it the active scene, step and notch mode every frame, and the beats (Blurt's bar stops, the
+   52 items stream out).
    1. scenes: each [data-scene] is a tall section with a sticky stage. Scroll progress p (0–1 while pinned) picks the
       step (data-steps thresholds); steps are cumulative classes on1…onN, the CSS does the rest with transitions.
       --p, --d (distance from pinned, in viewports; + below, − above) and --de drive the parallax layers.
@@ -17,6 +19,7 @@
   const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
   const span = (p, a, b) => clamp((p - a) / (b - a));
   const mmss = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const PP = window.Peep || { scene() {}, once() {}, count() {} };
 
   /* ---------------------------------------------------------------- 4. film, 5. copy (no motion needed) */
   const film = document.querySelector("[data-film]");
@@ -128,15 +131,15 @@
   /* ---------------------------------------------------------------- 1 + 3. scenes */
   const words = (el) => (el.dataset.say || "").split(" ").filter(Boolean);
   const hooks = {
-    dict(s, p, k, prev) {
-      if (prev === 2 && k === 3) fly(s.el.querySelector("[data-target]"));
+    dict(s, p, k) {
+      // step 3: the words leave Peep's beak and land at the cursor (peep.js)
       if (p < .08) { heroTake(s); return; }
       heroStop();
       if (k >= 1 && k < 3) {
         mode("listen");
         const f = span(p, s.th[1], s.th[2] - .03);
         setLive(s, s.say, f); tm.textContent = mmss(f * 3);
-      } else { setLive(null); mode(k === 3 ? "done" : p < .08 ? "idle" : "hello"); }
+      } else { setLive(null); mode(k === 3 ? (PP.typing ? "type" : "done") : p < .08 ? "idle" : "hello"); }
     },
     speed(s, p) {
       const MAX = parseFloat(s.el.dataset.clock);
@@ -147,6 +150,8 @@
       s.lanes.forEach((ln) => {
         const at = parseFloat(ln.dataset.at);
         ln.style.setProperty("--f", (Math.min(t, at) / MAX).toFixed(4));
+        // the moment Blurt's bar stops, Peep hops
+        if (ln.classList.contains("us") && t >= at && !ln.classList.contains("got") && s.k > 0 && t < at + .4) PP.once("done");
         ln.classList.toggle("got", t >= at);
       });
     },
@@ -176,7 +181,7 @@
       if (k >= 1 && k < 4) { mode("rec"); tm.textContent = mmss(sec); }
       else mode(k === 4 ? "done" : k >= 5 ? "hello" : "idle");
       if (s.tick) s.tick.style.setProperty("--n", [6, 72, 160, 276].filter((x) => sec >= x).length);
-      if (s.count) s.count.textContent = Math.round(span(p, s.th[4] + .01, s.th[4] + .1) * 52);
+      if (s.count) { const n = Math.round(span(p, s.th[4] + .01, s.th[4] + .1) * 52); s.count.textContent = n; PP.count(k === 5 ? n : 0); }
     },
     hand(s, p, k) {
       setLive(null);
@@ -241,8 +246,11 @@
     if (!active || active.s.name !== "dict") heroStop();
     if (active && active.s.name !== "speed") hooks[active.s.name](active.s, active.p, active.k, active.prev);
     else { setLive(null); mode(onStage ? "idle" : "off"); }
-    // between the scenes (the table, privacy, the film, install) the notch goes up out of the way
-    if (!onStage) { setLive(null); mode("off"); }
+    // between the scenes (the table, privacy, the film, install) the notch stays, small, with Peep in it; it goes up
+    // out of the way when Peep peeks up at the bottom of the page
+    if (!onStage) { setLive(null); mode("idle"); }
+    if (PP.footer) mode("off");
+    PP.scene(active && onStage ? active.s.name : "", active && onStage ? active.k : 0, 0, isl.dataset.mode);
     depthEls.forEach((el) => {
       const r = el.getBoundingClientRect();
       if (r.bottom < -200 || r.top > vh + 200) return;

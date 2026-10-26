@@ -13,7 +13,7 @@
 <meta property="og:title" content="Blurt: the keyboard for the agent era">
 <meta property="og:description" content="The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.">
 <meta property="og:url" content="https://blurt.agihunt.info/en/">
-<meta property="og:image" content="https://blurt.agihunt.info/assets/og-en.png?v=0.9.0-8">
+<meta property="og:image" content="https://blurt.agihunt.info/assets/og-en.png?v=1.0.0-1">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
@@ -21,37 +21,27 @@
 <meta name="theme-color" content="#161616" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
 <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt: Blurt for AI agents">
-<link rel="icon" href="../assets/favicon.png?v=0.9.0-8">
-<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png?v=0.9.0-8">
-<link rel="preload" href="../fonts/serif-900.woff2?v=0.9.0-8" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="../fonts/serif-700.woff2?v=0.9.0-8" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="../style.css?v=0.9.0-8">
+<link rel="icon" href="../assets/peep/favicon-32.png?v=1.0.0-1" sizes="32x32" type="image/png">
+<link rel="icon" href="../assets/peep/favicon-16.png?v=1.0.0-1" sizes="16x16" type="image/png">
+<link rel="icon" href="../assets/peep/favicon-192.png?v=1.0.0-1" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="../assets/apple-touch-icon.png?v=1.0.0-1">
+<link rel="preload" href="../fonts/serif-900.woff2?v=1.0.0-1" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="../fonts/serif-700.woff2?v=1.0.0-1" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../style.css?v=1.0.0-1">
 <script>document.documentElement.classList.replace("no-js", "js")</script>
 </head>
 <body>
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="chick" viewBox="40 110 940 800">
-    <path fill="#FFC83D" d="M568.67 181.54C578.62 168.61 594.26 160.3 611.85 160.3C642.02 160.3 666.48 184.76 666.48 214.93C666.48 226.02 663.18 236.34 657.48 244.94C782.98 293.94 849.33 409.11 853.83 571.2C874.77 575.88 898.64 590.51 918.78 612.88C954.11 652.12 964.58 700.3 942.16 720.49C920.56 739.93 876.35 726.33 841.58 690.19C803.83 829.8 681.67 901.26 502.58 901.26C323.49 901.26 201.34 829.8 163.58 690.19C128.81 726.33 84.6 739.930 63.01 720.49C40.58 700.3 51.05 652.12 86.38 612.88C106.52 590.51 130.39 575.88 151.34 571.2C155.83 409.11 222.18 293.92 347.63 244.85C341.96 236.27 338.68 225.99 338.68 214.93C338.68 184.76 363.14 160.3 393.32 160.3C410.9 160.3 426.54 168.61 436.49 181.54C440.31 148.43 468.44 122.74 502.58 122.74C536.72 122.74 564.85 148.43 568.67 181.54Z"/>
-    <path fill="#FF8A5C" d="M502.58 510.29L582.82 580.29L502.58 663.95L422.34 580.29Z"/>
-    <g fill="none" stroke="#17140F" stroke-width="48" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M568.67 181.54C578.62 168.61 594.26 160.3 611.85 160.3C642.02 160.3 666.48 184.76 666.48 214.93C666.48 226.02 663.18 236.34 657.48 244.94C787.74 295.8 854.28 417.94 854.28 589.68C854.28 795.32 720.63 901.26 502.58 901.26C284.53 901.26 150.88 795.32 150.88 589.68C150.88 417.94 217.43 295.78 347.63 244.85C341.96 236.270 338.68 225.99 338.68 214.93C338.68 184.76 363.14 160.3 393.32 160.3C410.9 160.3 426.54 168.61 436.49 181.54C440.31 148.43 468.44 122.74 502.58 122.74C536.72 122.74 564.85 148.43 568.67 181.54Z"/>
-      <path d="M163.58 690.19C128.81 726.33 84.6 739.93 63.01 720.49C40.58 700.3 51.05 652.12 86.38 612.88C106.47 590.57 130.27 575.95 151.18 571.23M853.98 571.23C874.89 575.95 898.69 590.57 918.78 612.88C954.11 652.12 964.58 700.3 942.16 720.49C920.56 739.93 876.35 726.33 841.58 690.19"/>
-      <path d="M502.58 510.29L582.82 580.29L502.58 663.95L422.34 580.29Z"/>
-    </g>
-    <path fill="#17140F" d="M401.85 501.76C401.85 530.04 378.92 552.97 350.63 552.97C322.35 552.97 299.41 530.04 299.41 501.76C299.41 473.47 322.35 450.54 350.63 450.54C378.92 450.54 401.85 473.47 401.85 501.76ZM705.75 501.76C705.75 530.04 682.82 552.97 654.53 552.97C626.24 552.97 603.31 530.04 603.31 501.76C603.31 473.47 626.24 450.54 654.53 450.54C682.82 450.54 705.75 473.47 705.75 501.76Z"/>
-  </symbol>
-</svg>
 <!-- LOCKED_COPY: title, lede, cta, cta_note, platforms and every section headline come from LOCKED_COPY in
-     blurt-media/site/src/build_pages7.py. Change styling freely; change these strings only with the founder. -->
+     blurt-media/site/src/build_pages9.py. Change styling freely; change these strings only with the founder. -->
 <div class="isl" id="isl" data-mode="idle" aria-hidden="true">
-  <span class="ear el"><svg class="chick-s" viewBox="0 0 940 800"><use href="#chick" width="940" height="800"/></svg><span class="lv"><i></i><i></i><i></i><i></i><i></i></span><span class="rd"></span></span>
+  <span class="ear el"><span class="pp" data-peep></span><span class="lv"><i></i><i></i><i></i><i></i><i></i></span><span class="rd"></span></span>
   <span class="ear er"><span class="tm num">0:03</span><span class="lm"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 4h8M5.5 8h8M5.5 12h8"/><circle cx="2.5" cy="4" r="1"/><circle cx="2.5" cy="8" r="1"/><circle cx="2.5" cy="12" r="1"/></svg></span><span class="ok"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span><span class="vf">OR-21 To verify</span></span>
   <span class="core"></span>
   <div class="live"><p class="lt"></p></div>
 </div>
 
 <header class="top wrap">
-  <a class="brand" href="./" aria-label="Blurt home"><img src="../assets/logo.svg?v=0.9.0-8" width="28" height="28" alt=""><span><b>Blurt</b></span></a>
+  <a class="brand" href="./" aria-label="Blurt home"><picture><source srcset="../assets/peep/logo-dark.svg?v=1.0.0-1" media="(prefers-color-scheme: dark)"><img class="logo" src="../assets/peep/logo.svg?v=1.0.0-1" width="35" height="28" alt=""></picture><span><b>Blurt</b></span></a>
   <nav class="top-r" aria-label="Site">
     <a href="#install">Download</a>
     <a href="../" hreflang="zh-CN" lang="zh-CN">中文</a>
@@ -64,14 +54,16 @@
   <h1 id="h-hero">The keyboard for the agent <span class="nw">era.<span class="caret" aria-hidden="true"></span></span></h1>
   <div class="hero-b">
     <p class="lede">The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.</p>
-    <div class="hero-act"><div class="dl "><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a></div><p class="fine">Free, macOS 13 or later. Windows and Linux are coming soon.</p></div>
+    <div class="hero-act"><div class="dl "><a class="btn-dl" href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>Download for Mac</a></div>
+      <div class="hero-peep" aria-hidden="true"><video class="hp-v" muted loop playsinline preload="none" width="540" height="456" poster="../assets/peep/hero-v.jpg?v=1.0.0-1" data-hero><source src="../assets/peep/hero-v.mp4?v=1.0.0-1" type="video/mp4"></video><video class="hp-a" muted loop playsinline preload="none" width="440" height="384" poster="../assets/peep/hero.webp?v=1.0.0-1" data-hero>
+        <source src="../assets/peep/hero.mov?v=1.0.0-1" type='video/quicktime; codecs="hvc1"'><source src="../assets/peep/hero.webm?v=1.0.0-1" type="video/webm"></video></div><p class="fine">Free, macOS 13 or later. Windows and Linux are coming soon.</p></div>
   </div>
 </section>
 
 <section class="sc sc-dict on1 on2 on3 on4 on5" id="dictation" data-scene="dict" data-steps=".12 .16 .58 .68 .8" data-say="Find out why the coupon drops when I change country." aria-labelledby="h-dict">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
-    <span class="snotch" aria-hidden="true"></span>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"><span class="pp ps" data-still="done"></span></span>
     <div class="desk"><div class="lay">
       <div class="copy">
         <h2 id="h-dict"><span class="ph">Tap fn and talk.</span> <span class="ph">It types where</span> <span class="ph">your cursor is.</span></h2>
@@ -104,7 +96,7 @@
 
 <section class="sc sc-speed on1 on2" id="speed" data-scene="speed" data-steps=".04 .7" data-clock="3.6" aria-labelledby="h-speed">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
     <div class="wrap sp-grid">
       <div class="sp-copy">
         <h2 id="h-speed"><span class="ph">Done in 0.39 s.</span> <span class="ph">No internet needed.</span> <span class="ph">It runs on your Mac.</span></h2>
@@ -178,8 +170,8 @@
 
 <section class="sc sc-struct on1 on2 on3 on4" id="structured" data-scene="struct" data-steps=".05 .4 .58 .76" data-say="For the release, we need three things. First, run all the tests. Second, update the docs, finally, tag the build and send it to the team." aria-labelledby="h-struct">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
-    <span class="snotch" aria-hidden="true"></span>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"><span class="pp ps" data-still="talking"></span></span>
     <div class="desk"><div class="lay">
       <div class="copy">
         <h2 id="h-struct"><span class="ph">Tap Shift</span> <span class="ph">while you talk</span> <span class="ph">and get a list</span></h2>
@@ -195,11 +187,11 @@
       <div class="win w-chat" aria-hidden="true">
         <div class="wbar "><i></i><i></i><i></i><span>Slack — #release</span></div>
         <div class="chat">
-          <aside class="ch-side"><p class="ch-ws">Orbit</p><p># general</p><p class="on"># release</p><p># web</p><p class="ch-dm"><img class="av sm" src="../assets/av/maya.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async">Maya</p><p class="ch-dm"><img class="av sm" src="../assets/av/leo.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async">Leo</p></aside>
+          <aside class="ch-side"><p class="ch-ws">Orbit</p><p># general</p><p class="on"># release</p><p># web</p><p class="ch-dm"><img class="av sm" src="../assets/av/maya.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async">Maya</p><p class="ch-dm"><img class="av sm" src="../assets/av/leo.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async">Leo</p></aside>
           <div class="ch-main">
             <p class="ch-top"># release</p>
-            <div class="ch-msg"><img class="av" src="../assets/av/maya.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Maya <small>10:38</small></b>When can we ship 2.4?</p></div>
-            <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>10:41</small></b>
+            <div class="ch-msg"><img class="av" src="../assets/av/maya.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Maya <small>10:38</small></b>When can we ship 2.4?</p></div>
+            <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>10:41</small></b>
               <p class="m-light">For the release, we need three things. First, run all the tests. Second, update the docs, finally, tag the build and send it to the team.</p>
               <div class="m-list"><p>For the release, we need three things:</p><ol><li style="--i:0">Run all the tests</li><li style="--i:1">Update the docs</li><li style="--i:2">Tag the build and send it to the team</li></ol></div></div></div>
             <div class="ch-box" data-target><span class="cur"></span><span class="ch-ph">Message #release</span></div>
@@ -213,8 +205,8 @@
 
 <section class="sc sc-snap on1 on2 on3 on4 on5 on6 on7 on8 on9 on10 on11 on12" id="snap" data-scene="snap" data-steps=".03 .08 .14 .21 .28 .35 .41 .47 .55 .63 .71 .79" data-say="The total ignores the coupon after I switch to Canada." aria-labelledby="h-snap">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
-    <span class="snotch" aria-hidden="true"></span>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"><span class="pp ps" data-still="idle"></span></span>
     <div class="desk"><div class="lay">
       <div class="copy">
         <h2 id="h-snap"><span class="ph">Snap.</span> <span class="ph">Talk.</span> <span class="ph">Drag.</span></h2>
@@ -315,8 +307,8 @@
 
 <section class="sc sc-rec on1 on2 on3 on4 on5 on6 on7" id="record" data-scene="rec" data-steps=".04 .2 .3 .5 .58 .64 .84" aria-labelledby="h-rec">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
-    <span class="snotch" aria-hidden="true"></span>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"><span class="pp ps" data-still="done"></span></span>
     <div class="desk"><div class="lay">
       <div class="copy">
         <h2 id="h-rec"><span class="ph">Record</span> <span class="ph">while you talk.</span> <span class="ph">Your agent writes</span> <span class="ph">the items.</span></h2>
@@ -364,7 +356,7 @@
         <div class="rev"><p class="rev-h"><b>Items</b><span class="num"><span data-count-out>52</span></span></p><ol><li class="k-issue" style="--i:0"><i></i><span class="num">OR-21</span><b>Total ignores coupon in Canada</b><em>Issue</em></li><li class="k-issue" style="--i:1"><i></i><span class="num">OR-22</span><b>Promo field loses focus on every keystroke</b><em>Issue</em></li><li class="k-idea" style="--i:2"><i></i><span class="num">OR-23</span><b>Remember the last shipping country</b><em>Idea</em></li><li class="k-issue" style="--i:3"><i></i><span class="num">OR-24</span><b>Tax line shows before an address is set</b><em>Issue</em></li><li class="k-note" style="--i:4"><i></i><span class="num">OR-25</span><b>Pay now sits under the banner on small screens</b><em>Note</em></li><li class="k-task" style="--i:5"><i></i><span class="num">OR-26</span><b>Ask Leo about the logo in the receipt email</b><em>Task</em></li><li class="k-idea" style="--i:6"><i></i><span class="num">OR-27</span><b>Show the saving next to the total</b><em>Idea</em></li></ol></div>
       </div>
       <article class="item" aria-label="An item">
-        <figure class="i-frame"><img src="../assets/rec-frame.jpg?v=0.9.0-8" width="1200" height="600" alt="The frame at 0:06: Orbit’s checkout in Canada, the total circled with ⌃" loading="lazy"><span class="num">0:06</span></figure>
+        <figure class="i-frame"><img src="../assets/rec-frame.jpg?v=1.0.0-1" width="1200" height="600" alt="The frame at 0:06: Orbit’s checkout in Canada, the total circled with ⌃" loading="lazy"><span class="num">0:06</span></figure>
         <div class="i-body">
           <p class="i-meta"><span class="num">OR-21</span><span class="i-kind">Issue</span></p>
           <h3>Total ignores coupon in Canada</h3>
@@ -384,8 +376,8 @@
 
 <section class="sc sc-hand on1 on2 on3 on4 on5 on6 on7" id="handoff" data-scene="hand" data-steps=".04 .12 .2 .42 .54 .66 .8" aria-labelledby="h-hand">
   <div class="stage">
-    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=0.9.0-8"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=0.9.0-8"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=0.9.0-8"><img src="../assets/wall/light.jpg?v=0.9.0-8" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
-    <span class="snotch" aria-hidden="true"></span>
+    <picture class="wall" aria-hidden="true"><source media="(prefers-color-scheme: dark) and (max-width: 720px)" srcset="../assets/wall/dark-m.jpg?v=1.0.0-1"><source media="(prefers-color-scheme: dark)" srcset="../assets/wall/dark.jpg?v=1.0.0-1"><source media="(max-width: 720px)" srcset="../assets/wall/light-m.jpg?v=1.0.0-1"><img src="../assets/wall/light.jpg?v=1.0.0-1" alt="" width="1920" height="1097" loading="lazy" decoding="async"></picture>
+    <span class="snotch" aria-hidden="true"><span class="pp ps" data-still="done"></span></span>
     <div class="desk"><div class="lay">
       <div class="copy">
         <div class="hswap">
@@ -417,8 +409,8 @@
       <div class="win w-dm" aria-hidden="true">
         <div class="wbar "><i></i><i></i><i></i><span>Slack — Alex</span></div>
         <div class="dm">
-          <div class="ch-msg"><img class="av" src="../assets/av/alex.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Alex <small>11:02</small></b>Send me what you found in checkout?</p></div>
-          <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=0.9.0-8" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>11:03</small></b><p class="zip" data-target><span class="zi">ZIP</span><span>Orbit-checkout-3-items.zip<small>3 items, summary, screenshots</small></span></p></div></div>
+          <div class="ch-msg"><img class="av" src="../assets/av/alex.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async"><p><b>Alex <small>11:02</small></b>Send me what you found in checkout?</p></div>
+          <div class="ch-msg ch-me"><img class="av" src="../assets/av/you.jpg?v=1.0.0-1" width="48" height="48" alt="" loading="lazy" decoding="async"><div><b>You <small>11:03</small></b><p class="zip" data-target><span class="zi">ZIP</span><span>Orbit-checkout-3-items.zip<small>3 items, summary, screenshots</small></span></p></div></div>
         </div>
       </div>
       </div>
@@ -439,22 +431,22 @@
 </section>
 
 <section class="film wrap" id="film" aria-labelledby="h-film">
-  <figure class="film-frame" data-film data-src="../assets/promo.mp4?v=0.9.0-8">
-    <img class="film-poster" src="../assets/poster-6.jpg?v=0.9.0-8" width="1600" height="900" alt="From the film: two cards under the notch, a marked snap and a voice note" loading="lazy">
-    <a class="film-play" href="../assets/promo.mp4?v=0.9.0-8" data-play><span class="i-play" aria-hidden="true"></span><span>Watch the film</span><span class="num fp-d">2:12</span></a>
+  <figure class="film-frame" data-film data-src="../assets/promo.mp4?v=1.0.0-1">
+    <img class="film-poster" src="../assets/poster-v1.jpg?v=1.0.0-1" width="1600" height="900" alt="From the film: Peep in the notch next to the name Blurt" loading="lazy">
+    <a class="film-play" href="../assets/promo.mp4?v=1.0.0-1" data-play><span class="i-play" aria-hidden="true"></span><span>Watch the film</span><span class="num fp-d">1:42</span></a>
   </figure>
   <div class="film-t">
     <h2 id="h-film"><span class="ph">Blurt</span> <span class="ph">in two minutes</span></h2>
     <p>English voice-over, Chinese and English subtitles. Pick a chapter to start there.</p>
     <ol class="chap">
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=6.2" data-at="6.2"><span>Dictate</span><span class="num">0:06</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=32.7" data-at="32.7"><span>Speed</span><span class="num">0:32</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=43.1" data-at="43.1"><span>Local, free</span><span class="num">0:43</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=55.9" data-at="55.9"><span>Lists</span><span class="num">0:55</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=71.1" data-at="71.1"><span>Snaps, cards</span><span class="num">1:11</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=85.9" data-at="85.9"><span>Record</span><span class="num">1:25</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=101.6" data-at="101.6"><span>Hand off</span><span class="num">1:41</span></a></li>
-        <li><a href="../assets/promo.mp4?v=0.9.0-8#t=110.9" data-at="110.9"><span>Teams</span><span class="num">1:50</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=7.7" data-at="7.7"><span>Dictate</span><span class="num">0:07</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=25.4" data-at="25.4"><span>Speed</span><span class="num">0:25</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=30.9" data-at="30.9"><span>Local, free</span><span class="num">0:30</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=36.3" data-at="36.3"><span>Lists</span><span class="num">0:36</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=45.6" data-at="45.6"><span>Snaps, cards</span><span class="num">0:45</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=60.9" data-at="60.9"><span>Record</span><span class="num">1:00</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=78.1" data-at="78.1"><span>Hand off</span><span class="num">1:18</span></a></li>
+        <li><a href="../assets/promo.mp4?v=1.0.0-1#t=89.2" data-at="89.2"><span>Teams</span><span class="num">1:29</span></a></li>
     </ol>
   </div>
 </section>
@@ -507,8 +499,9 @@
 </section>
 </main>
 
+<div class="peek" aria-hidden="true"><span class="pk" data-peek style="aspect-ratio: 512 / 205"></span></div>
 <footer class="foot wrap">
-  <img src="../assets/logo.svg?v=0.9.0-8" width="24" height="24" alt="">
+  <picture><source srcset="../assets/peep/logo-dark.svg?v=1.0.0-1" media="(prefers-color-scheme: dark)"><img class="logo" src="../assets/peep/logo.svg?v=1.0.0-1" width="30" height="24" alt=""></picture>
   <a href="https://github.com/AGIHunt/blurt/blob/main/LICENSE">MIT licensed</a>
   <a href="https://github.com/AGIHunt/blurt">GitHub</a>
   <a href="https://github.com/AGIHunt/blurt/blob/main/docs/guide.md">User guide</a>
@@ -516,6 +509,8 @@
   <a href="https://agihunt.info">Made by AGI Hunt</a>
 </footer>
 
-<script src="../main.js?v=0.9.0-8" defer></script>
+<script id="peepm" type="application/json">{"s":{"n/idle":{"n":90,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-idle.webp"},"n/listening":{"n":36,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-listening.webp"},"n/talking":{"n":42,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-talking.webp"},"n/thinking":{"n":45,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-thinking.webp"},"n/done":{"n":42,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-done.webp"},"n/hello":{"n":45,"cols":10,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-hello.webp"},"f/done":{"n":42,"cols":10,"w":184,"h":168,"box":[0.06,0.09,0.91,0.87],"src":"assets/peep/f-done.webp"},"f/peck":{"n":30,"cols":10,"w":184,"h":168,"box":[0.06,0.09,0.91,0.87],"src":"assets/peep/f-peck.webp"},"fd/done":{"n":42,"cols":10,"w":184,"h":168,"box":[0.06,0.09,0.91,0.87],"src":"assets/peep/fd-done.webp"},"fd/peck":{"n":30,"cols":10,"w":184,"h":168,"box":[0.06,0.09,0.91,0.87],"src":"assets/peep/fd-peck.webp"}},"still":{"n":5,"cols":5,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-still.webp","keys":["idle","done","talking","thinking","listening"]},"look":{"n":35,"cols":5,"w":76,"h":74,"box":[0.0,0.09,0.9,0.97],"src":"assets/peep/n-look.webp","turns":7,"pitches":5,"rest":[2,2]},"peek":{"n":70,"cols":10,"w":512,"h":205,"box":[0,0.13,1,0.53],"src":"assets/peep/peek.webp","turns":7,"pitches":5,"lids":2,"rest":[4,2]},"hero":{"w":440,"h":384},"herov":{"w":540,"h":456},"from":["/Users/john/workspace/blurt-media/logo/peep/out","/Users/john/workspace/blurt-media/logo/peep/release/web","/Users/john/workspace/blurt-media/logo/peep/release/web/sprites","/Users/john/workspace/blurt-media/logo/peep/release/web/video"]}</script>
+<script src="../peep.js?v=1.0.0-1" defer></script>
+<script src="../main.js?v=1.0.0-1" defer></script>
 </body>
 </html>

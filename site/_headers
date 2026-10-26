@@ -4,6 +4,8 @@
   Cache-Control: public, max-age=0, must-revalidate
 /main.js
   Cache-Control: public, max-age=0, must-revalidate
+/peep.js
+  Cache-Control: public, max-age=0, must-revalidate
 /fonts/*
   Cache-Control: public, max-age=0, must-revalidate
 /llms.txt

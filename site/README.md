@@ -11,9 +11,9 @@ npx wrangler pages deploy site --project-name blurt --branch main      # publish
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The agihunt.info zone's Browser
 Cache TTL (4 h) overrides `_headers` on the custom domain, so without a new URL visitors get new HTML on top of old
-CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=0.9.0-8`.
+CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.0-1`.
 
-The pages are generated (`blurt-media/site/src/build_pages7.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
+The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
 
 ## Type
@@ -50,9 +50,9 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   `https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg`. `scripts/release-mac.sh` writes the disk image
   twice, `Blurt-$VERSION.dmg` and `Blurt.dmg`: attach both to every release. **The link works only once the v1.0.0
   release is published.**
-- **Film**: the poster (`assets/poster-6.jpg`, a frame at 1:19: the two cards under the notch) and chapter links that
-  open the film at that time. Chapter times are scene starts from `blurt-media/film/say2/timeline.json`, rounded up to
-  0.1 s. The round-5 title-card poster is still `assets/poster.jpg` if you prefer it (one line in the generator).
+- **Film**: the v1 film (1:42) with its poster (`assets/poster-v1.jpg`, the title card: Peep in the notch) and chapter
+  links that open the film at that time. Chapter times are the beat starts in `blurt-media/film/v3/src/timeline.json`,
+  rounded up to 0.1 s; `python3 build_pages9.py film` re-encodes the web copy and rewrites them.
 - **Speed**: talk for a minute, stop, until it's done: Blurt 0.39 s (own test, median of 3 takes) next to Wispr Flow about 1.5 s and Typeless about 3.0 s (VoiceDash, a competing
   vendor, linked); Blurt's CER 2.7% and WER 1.9% sit under the matrix, the other figures and the method in a disclosure.
 - **Install**: the download button, the agent path (`npx skills add AGIHunt/blurt`, copy button), six keys as keycaps,
@@ -62,16 +62,26 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
 
 ## Assets
 
-- `assets/promo.mp4`: the v0.9 film, one file for both pages (English voice-over, Chinese and English subtitles),
-  loaded on click. `assets/poster-6.jpg`: its poster (see above).
+- `assets/promo.mp4`: the v1 film, one file for both pages (English voice-over, Chinese and English subtitles), H.264
+  1080p with faststart, about 9 MB, loaded on click; `assets/film.json` records its length and poster. The v0.9
+  poster `assets/poster-6.jpg` is no longer on the page.
 - `assets/wall/light.jpg`, `dark.jpg` (+ `-m` crops for phones): the desktop wallpaper, morning fog and dusk, made with
   an image model for this page (`blurt-media/site/gen6/`).
 - `assets/rec-frame.jpg`: the frame on the OR-21 item, also used for the recording's film strip and the attachment
   thumbnail.
-- `assets/og.png`, `assets/og-en.png`: social cards, 1200×630, from `blurt-media/site/og/make_og6.py`: the fog desktop,
-  the notch with live text, the title.
-- `assets/logo.svg`: the 4A line chick; `favicon.png`, `apple-touch-icon.png`, `logo.png` come from
-  `../assets/brand/build.py`. The colour chick is inline SVG.
+- `assets/og.png`, `assets/og-en.png`: social cards, 1200×630, from `build_pages9.py import` (`og_cards()`): the
+  wallpaper, the notch with Peep, the title and lede, the clay three-quarter Peep.
+- `assets/peep/`: Peep, the mascot (round 9), all from the brand-book model (`blurt-media/logo/peep/`), copied and
+  cut by `python3 build_pages9.py import` (it takes `logo/peep/release/web/` once its MANIFEST says COMPLETE):
+  `n-<state>.webp` the notch sheets (dark set: idle, listening, talking, thinking, done, hello), `n-look.webp` the
+  notch's 7 × 5 gaze grid, `f-<state>.webp` Peep out of the notch in the snap (done, peck), `peek.webp` the
+  footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only), `fd-<state>.webp` the same on dark pages
+  (dark set), `n-still.webp` one still per scene for reduced motion; the hero: `hero-v.mp4` / `hero-v.jpg` (light pages,
+  the release's video-model idle clip cropped round Peep, feathered into the wallpaper on its own paper tint) and
+  `hero.webm` / `hero.mov` (VP9 and HEVC with alpha) / `hero.webp` (dark pages, the clay three-quarter idle loop); `logo.svg` /
+  `logo-dark.svg` the header mark (3D vector), favicons. `peep.json` is the sheet table, inlined into each page.
+  `peep.js` plays them (sprite sheets at 30 fps, lazy-loaded per state); `main.js` tells it the scene and step.
+  `assets/favicon.png` and `assets/apple-touch-icon.png` keep their names and now hold Peep; `/favicon.ico` too.
 - `assets/loops/`, `assets/team.jpg`: round-5 media, no longer on the page (kept for now; delete when you commit if you
   don't want them deployed).
 

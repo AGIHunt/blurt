@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=0.9.0-8") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=0.9.0-8") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=0.9.0-8") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.0-1") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.0-1") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.0-1") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -526,7 +526,7 @@ html:not(.motion) .bub-hint{ display: none; } html:not(.motion) .bub-ok{ display
 .cl-h{ font-weight: 600; color: var(--win-ink-2); }
 .cl-box{ position: absolute; left: 1.6em; right: 1.6em; bottom: 1.6em; min-height: 9em; padding: 1em 1.1em; border-radius: 1em; background: var(--win); box-shadow: inset 0 0 0 1px var(--win-line), 0 .3em .9em rgba(0, 0, 0, .06); }
 .cl-att{ display: inline-flex; align-items: center; gap: .6em; padding: .35em .8em .35em .35em; border-radius: .6em; background: var(--win-2); font-size: .86em; transition: opacity .35s, transform .45s var(--ease); }
-.cl-thumb{ width: 3.6em; height: 2.4em; border-radius: .35em; background: #F3F3F4 url("assets/rec-frame.jpg?v=0.9.0-8") 78% 60% / 260% auto no-repeat; box-shadow: inset 0 0 0 1px var(--win-line); }
+.cl-thumb{ width: 3.6em; height: 2.4em; border-radius: .35em; background: #F3F3F4 url("assets/rec-frame.jpg?v=1.0.0-1") 78% 60% / 260% auto no-repeat; box-shadow: inset 0 0 0 1px var(--win-line); }
 .cl-txt{ margin-top: .7em; transition: opacity .4s .3s; }
 .cl-send{ position: absolute; right: .9em; bottom: .9em; width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--cc); color: #fff; display: grid; place-items: center; font-weight: 700; }
 .sc-snap:not(.on12) .cl-att{ opacity: 0; transform: scale(.85); }
@@ -564,7 +564,7 @@ html.motion .sc-snap.on12 .draw{ opacity: 0; }
 .tick .num{ color: rgba(255, 255, 255, .5); flex: none; }
 .sc-rec:not(.on1) .tick, .sc-rec.on4 .tick{ opacity: 0; }
 .strip{ position: absolute; left: 34em; top: 54.9em; width: 60em; display: flex; gap: .6em; pointer-events: none; }
-.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=0.9.0-8") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 .4em 1em rgba(0, 0, 0, .3);
+.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=1.0.0-1") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 .4em 1em rgba(0, 0, 0, .3);
   transition: transform .9s var(--ease), opacity .5s; transition-delay: calc(var(--i) * 55ms); }
 .sc-rec:not(.on4) .strip{ opacity: 0; }
 .sc-rec.on5 .strip i{ transform: translate(calc((20 - 7.5 * var(--i)) * 1em), calc((-36.1 + 4.4 * var(--i)) * 1em)) scale(.4); opacity: 0; }
@@ -1122,3 +1122,91 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
   .lands > div{ grid-template-columns: 6.4em minmax(0, 1fr); }
   .lands :is(dt, dd){ font-size: 13px; line-height: 1.4; }
 }
+
+/* ================================================================== round 9: Peep
+   The mascot is the brand-book model, rendered (peep.py) and played from sprite sheets by peep.js. Beak = voice, eye
+   = mind: it listens, talks, thinks and hops with the notch. These are the places it lives; reduced motion and no JS
+   show one still per scene, its end state. */
+.brand img.logo, .foot img.logo{ filter: none !important; width: auto; }
+.brand img.logo{ height: 28px; }
+.foot img.logo{ height: 24px; }
+.pp{ display: block; flex: none; width: 38px; height: 37px; background-repeat: no-repeat; pointer-events: none; }
+/* in the notch: the left ear. In idle the ear sits under the black, so Peep is drawn over it */
+/* the left ear paints above the black core, so Peep stays in view while the ears slide (a sliding ear is its own
+   layer). Peep is 27 px across, as large as the 32 px notch allows; the clip hides the contact shadow below the edge */
+.isl .el{ z-index: 1; padding-left: 10px; }
+.isl .el > .pp{ display: block; position: relative; width: 42px; height: 41px; margin: -2px -4px 0 -6px; clip-path: inset(-30px -30px 3px -30px);
+  transform-origin: 40% 30%; transition: transform .35s cubic-bezier(.2, .9, .3, 1.3); }
+/* a beat (done, hello): Peep grows out of the notch for the moment, so the hop reads at a glance */
+.isl .el > .pp.beat{ transform: translateY(5px) scale(1.55); clip-path: inset(-30px -30px 1px -30px); }
+html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.0-1"); background-size: 500% 100%; background-position: 0 0; }
+.snotch .ps{ position: absolute; left: 8px; top: -3px; }
+.ps[data-still="done"]{ background-position: 25% 0; }
+.ps[data-still="talking"]{ background-position: 50% 0; }
+.ps[data-still="thinking"]{ background-position: 75% 0; }
+.ps[data-still="listening"]{ background-position: 100% 0; }
+/* out of the notch (the snap) */
+.pf{ position: fixed; left: 0; top: 0; z-index: 61; will-change: transform; }
+.sc-snap.pv-c .ghost, .sc-snap.pv-cd .ghost{ animation: none !important; }
+.sc-snap.pv-c .ghost{ opacity: 1; box-shadow: 0 1.4em 3em -.6em rgba(0, 0, 0, .4); }
+.sc-snap.pv-cd .ghost{ opacity: 0; transition: opacity .25s; }
+.sc-snap.pv-c .c-snap{ opacity: 0 !important; transition: none !important; }
+.sc-snap.pv-cd .c-snap{ transition-delay: 0s !important; }
+.s-ell.wob{ animation: wob .3s cubic-bezier(.3, 1.6, .5, 1); transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes wob { 0% { transform: scale(1); } 40% { transform: scale(1.06, .9); } 100% { transform: scale(1); } }
+/* dictation: the words leave the beak; the pencil box holds the phrase until the ink lands */
+.fw{ position: fixed; left: 0; top: 0; z-index: 59; white-space: pre; pointer-events: none; transform-origin: 0 0; will-change: transform, opacity;
+  color: var(--mint-ink); font-weight: 600 !important; }
+.sc-dict.pv-w .t-typed{ display: inline !important; opacity: 1 !important; color: var(--win-ink); }
+.pw{ display: none; }
+.pw.ms{ display: inline; visibility: hidden; }
+.pw.in{ display: inline; animation: pwin .18s ease-out; }
+@keyframes pwin { from { opacity: .3; } }
+.t-in{ isolation: isolate; }
+.pencil{ position: absolute; z-index: -1; border-radius: 4px; pointer-events: none;
+  background: linear-gradient(90deg, var(--mint-ink) 50%, transparent 0) 0 0 / 9px 1.5px repeat-x,
+              linear-gradient(90deg, var(--mint-ink) 50%, transparent 0) 0 100% / 9px 1.5px repeat-x,
+              linear-gradient(var(--mint-ink) 50%, transparent 0) 0 0 / 1.5px 9px repeat-y,
+              linear-gradient(var(--mint-ink) 50%, transparent 0) 100% 0 / 1.5px 9px repeat-y;
+  opacity: .75; animation: march .6s linear infinite; transition: opacity .26s, box-shadow .2s; }
+@keyframes march { to { background-position: 9px 0, -9px 100%, 0 -9px, 100% 9px; } }
+.pencil.ink{ animation: none; background: none; box-shadow: inset 0 0 0 1.5px var(--mint-ink); opacity: 1; }
+.pencil.gone{ opacity: 0; }
+/* the hero: the idle loop next to the headline */
+.hero{ position: relative; }
+.hero-peep{ position: absolute; right: 0; top: clamp(30px, 6vh, 80px); width: clamp(220px, 25vw, 380px); pointer-events: none; z-index: -1; }
+html.motion .hero-peep{ top: clamp(20px, 5vh, 70px); }
+.hero-peep video{ width: 100%; height: auto; }
+/* light: the video-model clip sits on its own paper tint, feathered into the wallpaper; dark: the clay loop with
+   alpha over a dark tint. Peep never stands on the gradient itself. */
+.hero-peep .hp-v{ -webkit-mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); }
+.hero-peep:has(.hp-v) .hp-a{ display: none; }
+.hero-peep::before{ content: ""; position: absolute; inset: 4% 2% 0; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgba(237, 232, 224, .9) 45%, rgba(237, 232, 224, 0)); }
+.hero-peep:has(.hp-v)::before{ display: none; }
+@media (prefers-color-scheme: dark) {
+  .hero-peep:has(.hp-v) .hp-a{ display: block; }
+  .hero-peep .hp-v{ display: none; }
+  .hero-peep::before, .hero-peep:has(.hp-v)::before{ display: block; background: radial-gradient(closest-side, rgba(12, 18, 20, .82) 45%, rgba(12, 18, 20, 0)); }
+}
+/* the end: clay Peep peeks up from the bottom edge, only the top of its head and its eyes */
+.peek{ position: relative; height: clamp(110px, 15vw, 210px); margin-top: 40px; overflow: hidden; pointer-events: none; }
+.pk{ position: absolute; left: 50%; bottom: 0; width: clamp(240px, 33vw, 460px); transform: translate(-50%, 6%); }
+html.no-js .pk{ background: url("assets/peep/peek.webp?v=1.0.0-1") 44.444% 66.667% / 1000% 700% no-repeat; }
+html.motion .pk{ transform: translate(-50%, 100%); transition: transform .9s cubic-bezier(.2, .9, .3, 1.15); }
+html.motion .peek.up .pk{ transform: translate(-50%, 6%); }
+html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-duration: .25s; transition-timing-function: cubic-bezier(.5, 0, .7, .4); }
+.peek + .foot{ border-top-color: var(--line-2); }
+@media (max-width: 720px) {
+  :root{ --ear: 78px; }
+  .isl .el{ padding-left: 8px; }
+  /* phones: the notch Peep is the one on screen (no hero loop), and "To verify" fits a 320 px screen */
+  .hero-peep{ display: none; }
+  .isl[data-mode="verify"]{ transform: translateX(calc(-50% - 20px)); }
+  .isl[data-mode="verify"] .el{ width: calc(var(--ear) + 30px); }
+  .isl[data-mode="verify"] .er{ width: calc(var(--ear) + 70px); padding-right: 12px; }
+  .isl[data-mode="verify"][data-mode] .er{ transform: translateX(calc(var(--ear) + 40px)); }
+  .isl[data-mode="verify"][data-mode] .el{ transform: translateX(calc(-1 * var(--ear))); }
+  .isl[data-mode="verify"] .vf{ font-size: 11.5px; }
+}
+/* zh: the title breaks after 时代的 so the hero Peep has its own room */
+@media (min-width: 721px) { html[lang="zh-CN"] .hero h1{ max-width: 7.2em; } }
