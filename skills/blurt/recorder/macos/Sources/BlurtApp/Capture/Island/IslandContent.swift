@@ -4,7 +4,7 @@
 // family at 15 pt centred on one column (IslandLayout.iconColumn, 26 pt in), and every line of text starts on one
 // column (textColumn, 42 pt in); row titles 13 regular; chevrons and accessories at 45 % white (the line chevron).
 //
-//   home        the current project (click = switch: its folder in its colour, or "No project" with a dashed ring —
+//   home        the current project (click = switch: its folder in its colour, or "Unassigned" with a dashed ring —
 //               the tray is only ever the Inbox) · record / snap / voice — quiet glyph buttons, a fill only under the
 //               pointer, one stroke (record is a ring and a dot drawn at the family's stroke) · up to 3 jobs in
 //               progress (a row on the grid: the spinner in the icon column, the title and its step, a 2 pt progress
@@ -28,7 +28,7 @@
 //   drawer      switcher (⌥⇧O): a filter field beside the notch (magnifier, placeholder, caret; typed text in white)
 //               and the title across it; recent projects (≤ 8, "More…"; a project whose folder is gone shows so,
 //               dimmed, and choosing it asks where the folder is now instead of making it current:
-//               MissingFolder.locate — ProjectPick), No project (the dashed ring), Add Project… ⌘O. Its pick form
+//               MissingFolder.locate — ProjectPick), Unassigned (the dashed ring), Add Project… ⌘O. Its pick form
 //               (Island.Pick: "Filed to X · Change") has the same rows and files that one thing instead.
 //               drop (a card dragged in, or a ⌘-click selection of them): recent projects, Unassigned, Organize
 //               ↑↓ select · ↩ choose · Esc close; the target under the pointer / selection: the island's mint tint (r 8);
@@ -124,7 +124,7 @@ final class IslandButton: NSView {
     var symbol: String { didSet { needsDisplay = true } }
     /// One of our line glyphs in place of an SF Symbol (the island's own buttons: record, snap, mic, pause, trash, stop).
     var icon: BlurtIcon? { didSet { needsDisplay = true } }
-    /// A glyph drawn here at the family's stroke (home's record: a ring and a dot; the chip's "No project" ring).
+    /// A glyph drawn here at the family's stroke (home's record: a ring and a dot; the chip's "Unassigned" ring).
     var drawn: IslandGlyph? { didSet { needsDisplay = true } }
     /// The glyph's own colour when it isn't the title's (the chip: the project's folder in its colour; paused Finish:
     /// the red stop square under a white title).
@@ -590,8 +590,8 @@ final class IslandContent: NSView {
 
     private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
         let p = ProjectStore.shared.current
-        // one name for nothing chosen: "No project" with a dashed ring (the tray is only ever the Inbox — "Unassigned"
-        // above "Inbox", two trays, read as one place drawn twice)
+        // one name for nothing chosen: "Unassigned" / 未归类 (the one term everywhere), drawn with a dashed ring (the
+        // tray glyph is only ever the Inbox)
         let name = p?.name ?? Loc.t("capture.island.no_project", table: "Capture")
         // the current project's folder is gone: captures hang as cards meanwhile (Snapper.target) — the chip says so,
         // dimmed, and the switcher it opens offers Locate…
@@ -1075,7 +1075,7 @@ final class IslandContent: NSView {
             place(l, x: IslandLayout.textColumn - 2, y: y + 6, w: w - IslandLayout.textColumn - 16)
             y += 30
         }
-        // No project / Unassigned comes last, under a line, in every project picker (this one, the menu bar's, the main
+        // Unassigned comes last, under a line, in every project picker (this one, the menu bar's, the main
         // window's M popover, a card's Move To ▸): the same place each time
         if d == .switcher && (none || pick == nil) {
             let sep = NSView(frame: NSRect(x: IslandLayout.textColumn, y: y + 4, width: w - IslandLayout.textColumn - 18, height: 1))
@@ -1087,7 +1087,7 @@ final class IslandContent: NSView {
         if d == .switcher {
             if none {
                 // no current project: recordings go to Unassigned until the user picks one — never a guess. Said as the
-                // chip says it ("No project", the dashed ring): the tray is only ever the Inbox. What it means is its
+                // chip says it ("Unassigned", the dashed ring): the tray glyph is only ever the Inbox. What it means is its
                 // tooltip (and VoiceOver's hint)
                 let r = IslandRow(icon: noProject, title: pick == nil ? Loc.t("capture.island.no_project", table: "Capture") : Loc.t("project.inbox"), height: 36)
                 r.toolTip = Loc.t(pick == nil ? "capture.drawer.none_sub" : "capture.drawer.inbox_sub", table: "Capture")

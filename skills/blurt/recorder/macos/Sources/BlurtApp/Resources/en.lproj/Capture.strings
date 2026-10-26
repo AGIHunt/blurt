@@ -347,6 +347,6 @@
 "capture.peck.state_done" = "Done";
 "capture.peck.state_verify" = "Fixed · check it";
 "capture.peck.open_inbox" = "Click to see them";
-"capture.island.no_project" = "No project";
+"capture.island.no_project" = "Unassigned";
 "capture.drawer.add_project" = "Add Project…";
 "capture.peck.open" = "Open";
