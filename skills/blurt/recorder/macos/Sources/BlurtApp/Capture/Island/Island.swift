@@ -638,13 +638,17 @@ final class Island: NSObject, IslandHosting {
     }
 
     func updateEars() {
-        if let rec = rec, rec.sessionStart.isValid {
+        if let done = RecordingDone.text {
+            // the take just ended: the dot and time turn into the ok check and its length for 1.6 s (IslandRecording)
+            left.set(.finished(done))
+            right.set(.none)
+        } else if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
             // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
-            // while the pen is latched (⌥⇧D) it takes the clicks and Esc: the ear shows the pen instead
+            // while the pen is latched (⌥⇧D) it takes the clicks and Esc — or its key is held — the ear shows the pen
             let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
-            right.set(rec.penSticky ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
-                : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : .level(rec.isPaused ? 0 : rec.micLevel))
+            right.set(rec.penSticky || rec.inkOn ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
+                : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : rec.isPaused ? .none : .level(rec.micLevel))
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
             left.set(open ? .glyph(.mic, pulse: false) : .wave(VoiceInput.shared.levels))
@@ -725,7 +729,13 @@ final class Island: NSObject, IslandHosting {
     /// number one trailing x through every state, instead of each width being centred in its ear.
     private func layoutEars(_ rect: CGRect, now: CFTimeInterval) {
         let y = geo.top + geo.row / 2
-        if geo.notch {
+        if isRecording, open || h.value > geo.row + 4 {
+            // the recording island open (and while it opens or closes): the ears ride the shape's edges, 14 pt in, so
+            // the time stands over the pause circle and the right ear's glyph over Finish — one grid, as an expanded
+            // Live Activity lines its regions up under the compact ears
+            left.place(leading: CGPoint(x: rect.minX + IslandLayout.earInset, y: y), now: now)
+            right.place(trailing: CGPoint(x: rect.maxX - IslandLayout.earInset, y: y), now: now)
+        } else if geo.notch {
             let l = geo.cx - geo.notchW / 2, r = geo.cx + geo.notchW / 2
             // the outer edge: 56 pt out, or — while an ear grows wider for its content — the shape's edge as it springs
             // out (the content rides it rather than standing outside the black for a moment); each side measures by
@@ -1049,7 +1059,10 @@ final class Island: NSObject, IslandHosting {
 
     /// The open island takes only the toasts meant to go over it (an Undo for what was just done on the cards, a
     /// question); the others wait until it closes.
-    private func canShowToast(_ t: Toast) -> Bool { drawer == nil && (!open || t.overOpen || t.isQuestion) }
+    /// A take's "✓ 0:42" holds its 1.6 s before a toast (where it was filed) takes the island.
+    private func canShowToast(_ t: Toast) -> Bool {
+        drawer == nil && (!open || t.overOpen || t.isQuestion) && (RecordingDone.text == nil || t.isQuestion)
+    }
 
     /// Forgets every toast about `key`, the one showing too (dictation's, when a new take starts).
     func dropToasts(key: String) {
@@ -1087,8 +1100,9 @@ final class Island: NSObject, IslandHosting {
         toast(text, key: nil, icon: .check)
     }
 
-    /// Dictation is still at work for the user after its take: sending (a queued Return) or saying "Sent".
-    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < momentUntil }
+    /// The ears hold both sides after the work ended: dictation sending (a queued Return), a done moment ("Sent",
+    /// "✓ Copied"), a take's ✓ and length (RecordingDone).
+    private var dictationMoment: Bool { Dictation.shared.sendQueued || CACurrentMediaTime() < momentUntil || RecordingDone.text != nil }
 
     private func tickToasts(_ now: CFTimeInterval) {
         let before = toastQ.current?.order

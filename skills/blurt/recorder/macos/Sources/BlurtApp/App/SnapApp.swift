@@ -52,6 +52,7 @@
 //     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
+//     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
 //     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
 //     recwriterfail · recstreamstop CODE   a real take's writer fails (a new piece takes over) / its stream stops
 //                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
@@ -313,7 +314,7 @@ extension App {
         case "mascot":                                  // mascot CLIP [SIZE] | mascot close: the chick alone in a window
             MascotStage.show(arg)
         case "fakerecording":                           // fakerecording [stop]: the island's recording state without a capture stream
-            if arg == "stop" { rec = nil; island.recordingStopping(); return }
+            if arg == "stop" { let r = rec; rec = nil; island.recordingStopping(r); return }
             let r = Recorder(region: CGRect(x: 360, y: 260, width: 900, height: 560))
             rec = r
             r.sessionStart = hostNow()
@@ -351,7 +352,8 @@ extension App {
                 try? FileManager.default.copyItem(at: URL(fileURLWithPath: a[2]), to: dir.appendingPathComponent("recording.mp4"))
             }
             takeEnded(5, ev)
-        case "recask": island.confirmDiscard(arg != "off")       // the recording's trash button: the discard question
+        case "recask": island.confirmDiscard(arg != "off")       // the recording's Discard or Restart…: the question
+        case "recmore": DispatchQueue.main.async { island.content.showRecordingMenu() }   // the open recording island's ··· menu
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.organizeTarget)     // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
@@ -379,12 +381,14 @@ extension App {
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
         case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
-        case "countdown":                               // countdown N X,Y,W,H [hold] | close: the 3-2-1 over that area
+        case "pickerlegend": picker?.toggleLegend()     // = ? in the area picker: the key legend back (or away)
+        case "countdown":                               // countdown N X,Y,W,H [hold] [of=T] | close: the 3-2-1 over that area
             if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; return }   // alone (no take); hold:
             let a = arg.split(separator: " ").map(String.init)                             // it stays at N
             let p = (a.count > 1 ? a[1] : "").split(separator: ",").compactMap { Double($0) }
             guard let n = Int(a.first ?? ""), p.count == 4 else { return }
-            countdown(n, over: CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), hold: a.contains("hold")) {
+            let of = a.first { $0.hasPrefix("of=") }.flatMap { Int($0.dropFirst(3)) }   // of=T: N's place in a T-second one
+            countdown(n, over: CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), hold: a.contains("hold"), of: of) {
                 emit(["event": "countdown_done"])
             }
         case "recwriterfail":                           // recwriterfail: the take's video writer fails at the next frame

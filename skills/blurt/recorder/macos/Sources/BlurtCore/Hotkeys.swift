@@ -461,6 +461,9 @@ public final class HotkeyCenter {
             seen[s] = a
             // another Blurt app has it: leave it there (two owners = whichever macOS picks), say so. A recording started
             // from the chat (not resident) registers anyway, as before: while it runs, its keys are the ones that matter.
+            // tests (BLURT_TEST_COMMANDS=1 BLURT_TEST_KEYS_FREE=1): every key as on a machine where it is free — shown
+            // where the app shows its keys, never registered (the Blurt in use keeps its own)
+            if HotkeyCenter.testKeysFree { states[a] = system.contains(s) ? .system : .ok; continue }
             if let o = others.first(where: { $0.keys.contains(s) }) { states[a] = .taken(o.pid); continue }
             let st = registerRaw(a.carbonID, code: s.code, mods: s.mods)
             if st != noErr { states[a] = .failed(st); continue }
@@ -469,6 +472,11 @@ public final class HotkeyCenter {
         if resident { publish() }
         onChange?()
     }
+
+    static let testKeysFree: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_KEYS_FREE"] == "1"
+    }()
 
     public var conflicts: [Action] { Action.allCases.filter { states[$0]?.isConflict == true } }
 

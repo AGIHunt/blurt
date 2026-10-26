@@ -1,7 +1,7 @@
 // The cards' small shared parts (v0.9.2, docs/design/system.md §3.2) — one family for the hanging row's hover note, the
 // cards overview and Recently Dragged Out, so the same thing never looks two ways:
 //   • CardTime: one relative time ("Just now", "1 min ago" / "刚刚", "1 分钟前"), never a live count of seconds.
-//   • KeyHint: the keys as drawn keycaps with one verb each ("← → Choose · ↩ Copy · ⌫ Delete · esc Close") — the
+//   • KeyHint: the keys as drawn keycaps (KeyCap, Capture/KeyCaps.swift: the app's one keycap) with one verb each ("← → Choose · ↩ Copy · ⌫ Delete · esc Close") — the
 //     row's hover note and both panels' footers use the same items and the same words.
 //   • CardActions: a card's actions in one cluster, [··· chip][Copy chip], the same order, size and "···" everywhere;
 //     shown on hover and on keyboard focus only.
@@ -25,7 +25,7 @@ enum CardTime {
     }
 }
 
-/// Keys as small keycaps, each run of caps followed by its verb.
+/// Keys as small keycaps (KeyCap's metrics and drawing), each run of caps followed by its verb.
 enum KeyHint {
     typealias Item = (keys: [String], verb: String)
 
@@ -35,13 +35,10 @@ enum KeyHint {
          (["⌫"], Loc.t("capture.keys.delete", table: "Capture")), (["esc"], Loc.t("capture.keys.close", table: "Capture"))]
     }
 
-    static let capFont = NSFont.systemFont(ofSize: 10.5, weight: .medium)
     static let verbFont = NSFont.systemFont(ofSize: 11)
-    static let capH: CGFloat = 17, capPad: CGFloat = 4.5, capGap: CGFloat = 3, verbGap: CGFloat = 5, itemGap: CGFloat = 12
+    static let capH: CGFloat = KeyCap.height, capGap: CGFloat = 3, verbGap: CGFloat = 5, itemGap: CGFloat = 12
 
-    private static func capW(_ k: String) -> CGFloat {
-        max(capH, ceil((k as NSString).size(withAttributes: [.font: capFont]).width) + capPad * 2)
-    }
+    private static func capW(_ k: String) -> CGFloat { KeyCap.width(k) }
 
     static func size(_ items: [Item]) -> CGSize {
         var w: CGFloat = 0
@@ -62,12 +59,7 @@ enum KeyHint {
             for (j, k) in it.keys.enumerated() {
                 if j > 0 { x += capGap }
                 let w = capW(k)
-                let r = NSRect(x: x, y: y, width: w, height: capH)
-                cap.setFill()
-                NSBezierPath(roundedRect: r, xRadius: 4, yRadius: 4).fill()
-                let a: [NSAttributedString.Key: Any] = [.font: capFont, .foregroundColor: ink]
-                let sz = (k as NSString).size(withAttributes: a)
-                (k as NSString).draw(at: NSPoint(x: r.midX - sz.width / 2, y: r.midY - sz.height / 2 + 0.5), withAttributes: a)
+                KeyCap.draw(k, in: NSRect(x: x, y: y, width: w, height: capH), ink: ink, fill: cap)
                 x += w
             }
             x += verbGap

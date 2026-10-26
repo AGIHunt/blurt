@@ -77,13 +77,16 @@ final class EarSlot {
         case done(String)
         /// new captures just landed in the inbox: the tray and "+n", for a few seconds (Island.inboxNews)
         case news(Int)
+        /// a take that just ended (RecordingDone): the ok check on a filled disc where the red dot was, centred on the
+        /// dot, and the take's length at the time's own x — nothing moves, the ear keeps its width
+        case finished(String)
 
         /// Same kind of thing (so a changing number doesn't rebuild the layers)
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
                  (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
-                 (.done, .done), (.news, .news), (.hello, .hello): return true
+                 (.done, .done), (.news, .news), (.hello, .hello), (.finished, .finished): return true
             case (.mark(let a), .mark(let b)): return a == b
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
@@ -179,6 +182,7 @@ final class EarSlot {
         }
         dot.cornerRadius = 4
         dot.borderWidth = 0
+        dot.contents = nil
         switch c {
         case .egg, .cracking, .hello: break
         default: chick.stop(); chick.isHidden = true; chick.contents = nil
@@ -227,7 +231,7 @@ final class EarSlot {
                 dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
                 dot.isHidden = false
             }
-            x = 13
+            x = EarSlot.timeX
             text(time, color: paused ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.95))
         case .count(let ic, let n, let tint):
             line(ic, color: tint ?? EarSlot.countGlyphColor)
@@ -245,7 +249,7 @@ final class EarSlot {
             x = EarSlot.chickSize - 2
         case .level(let v):
             drawLevel(v)
-            x = 22
+            x = EarSlot.levelW
         case .wave(let v):
             drawWave(v)
             x = 40
@@ -284,6 +288,19 @@ final class EarSlot {
             icon.isHidden = false
             x = 15
             text(s, color: attn ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.92))
+        case .finished(let s):
+            // the disc in the dot's place (centred where the dot's centre was), the check knocked out in black
+            let d: CGFloat = 14
+            dot.backgroundColor = BrandColor.Island.ok.cgColor
+            dot.cornerRadius = d / 2
+            dot.frame = CGRect(x: 4 - d / 2, y: -d / 2, width: d, height: d)
+            dot.isHidden = false
+            // the check is the disc's own contents (the dot layer sits above the icon layer)
+            dot.contents = BlurtIcon.check.cgImage(size: 10, scale: 2, color: NSColor.black.cgColor, weight: 1.9)
+            dot.contentsGravity = .center
+            dot.contentsScale = 2
+            x = EarSlot.timeX
+            text(s, color: NSColor(white: 1, alpha: 0.95))
         case .done(let s):
             icon.contents = BlurtIcon.check.cgImage(size: 12, scale: 2, color: BrandColor.Island.ok.cgColor, weight: 1.3)
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
@@ -312,17 +329,32 @@ final class EarSlot {
         level.isHidden = false
     }
     static let levelBox: CGFloat = 18
+    /// The recording time's x after the dot (and after the finished take's disc: the number never moves).
+    static let timeX: CGFloat = 15
+    /// The level's width as drawn (four 2.2 pt bars 5 pt apart): the ear's trailing edge is the last bar's, so the
+    /// meter ends where the pencil, the snap count and the flag end.
+    static let levelW: CGFloat = 17
 
-    /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment.
+    /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment. In
+    /// silence the bars rest at clearly staggered heights (4 / 7 / 5 / 3) in white 30 %, so they still read as a meter
+    /// and never as four mint dots (dictation's "working" dots) or a flat tick; the gradient comes in with the voice.
+    /// Paused, the ear shows no meter at all (Island.updateEars): the mic isn't listening.
     private func drawLevel(_ v: Float) {
         let p = CGMutablePath()
+        let rest: [CGFloat] = [4, 7, 5, 3]
+        let heard = v >= 0.2
         for i in 0..<4 {
             let th = Float(i + 1) / 5
-            let hh: CGFloat = v >= th ? CGFloat(5 + i * 3) : 3
+            let hh: CGFloat = v >= th ? CGFloat(5 + i * 3) : rest[i]
             let x = CGFloat(i) * 5 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
-        showLevel(p, width: 2.2)
+        if heard { showLevel(p, width: 2.2); return }
+        bars.path = p
+        bars.lineWidth = 2.2
+        bars.strokeColor = NSColor(white: 1, alpha: 0.3).cgColor
+        bars.fillColor = nil
+        bars.isHidden = false
     }
 
     /// The voice note's live waveform.
@@ -379,8 +411,9 @@ final class EarSlot {
         let reduce = reduceMotion
         switch content {
         case .recording(let paused, _):
-            // 1 Hz breath, still when paused or with Reduce Motion
-            dot.opacity = paused || reduce ? 1 : Float(0.55 + 0.45 * (0.5 + 0.5 * cos(t * 2 * .pi)))
+            // a shallow breath (1.6 s, never below 80 %: any frame still reads as live red), still when paused or
+            // with Reduce Motion
+            dot.opacity = paused || reduce ? 1 : Float(0.8 + 0.2 * (0.5 + 0.5 * cos(t * 2 * .pi / 1.6)))
         case .cracking(let s, let ok, _):
             if reduce || !ok {
                 let k = CGFloat(min(1, (now - s) / 0.6))

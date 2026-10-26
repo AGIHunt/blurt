@@ -7,10 +7,39 @@ import BlurtCore
 /// Tests only: the fake recording whose frame BLURT_TEST_FRAME showed (it never calls stop()).
 private var testFrameRecorder: Recorder?
 
+/// The moment a take ends (Finish, ⌥⇧S): the left ear's red dot turns, in place, into the ok check on a filled disc
+/// (centred where the dot was) beside the take's length at the time's own x ("✓ 0:42"), the ears keeping their width,
+/// for 1.6 s — dictation's "Sent" — and only then does a toast take the island ("Filed to Atlas Web · Change": where
+/// the take went; Island.canShowToast holds it back meanwhile); then the ears settle to what is next (the hatching
+/// egg while it is organised, the cards). Not for a discarded or restarted take: nothing was kept.
+enum RecordingDone {
+    private static var until: CFTimeInterval = 0
+    private static var shown = ""
+    static var text: String? { CACurrentMediaTime() < until ? shown : nil }
+    /// The take's end was said in the ears a moment ago: its saved line ("✓ Saved 0:42", Island.doneMoment) would
+    /// say the same thing twice, so it is left out (a failure still gets its toast).
+    static var saidRecently: Bool { until > 0 && CACurrentMediaTime() < until + 6 }
+    static func show(_ length: String) {
+        shown = length
+        until = CACurrentMediaTime() + 1.6
+        emit(["event": "rec_done_moment", "length": length, "seconds": 1.6])
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: Loc.t("capture.rec.done_ax", table: "Capture", length),
+                                        .priority: NSAccessibilityPriorityLevel.medium.rawValue])
+        // the ears go back once the moment is over, even with nothing else moving
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.65) { island.refresh(); island.wake() }
+    }
+}
+
+/// The open recording island's pen hint ("[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse"): the first three takes only
+/// (HintBudget); after that the pen is in the island's ··· menu with its key, and the keys still work.
+var penHintThisTake = false
+
 extension Island {
     func recordingStarted(_ r: Recorder, on s: NSScreen?) {
         if !started { start() }
         if let s = s { moveTo(s) }
+        penHintThisTake = r.penKey != nil && HintBudget.take("pen")
         let session = URL(fileURLWithPath: opts.out).deletingLastPathComponent()
         watch = RecordingWatch(session: session)
         r.snaps?.onLanded = { [weak self] s in self?.snapLanded(s) }
@@ -25,7 +54,8 @@ extension Island {
         }
     }
 
-    func recordingStopping() {
+    func recordingStopping(_ ended: Recorder? = nil) {
+        if let r = ended ?? rec, !r.discard, r.sessionStart.isValid { RecordingDone.show(Island.clock(r.elapsed())) }
         testFrameRecorder?.hideFrame()
         testFrameRecorder = nil
         watch?.stop()
