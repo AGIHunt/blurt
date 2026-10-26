@@ -5,18 +5,18 @@
 //                       the row flashing there in the brand tint; a row folded away (Dictation's By kind of app) is
 //                       unfolded by its pane first. Apart from the navigator so that the rows of every kept page, which
 //                       watch it, don't redraw with each key typed in the search.
-//   SettingsSearchResults  the page while searching, Raycast-like: a quiet line with the count and the query (and ↑↓ / ↩
-//                       on its right), then one group per pane in the sidebar's counts — a small heading, the pane's
-//                       sections as smaller captions, one-line rows over hairlines. A row is its title with the matched
-//                       words in semibold, why it matched when the title doesn't say (a stretch of its description, a
-//                       keyword, its other-language name) and, for a shortcut, its keys as keycaps on the right. A pane
-//                       found by its name ("short") leads with "Open Shortcuts settings", then its first rows and
-//                       "Show 9 more". Restore defaults is an action: only found by its own words, in brand ink. One
-//                       stop is tinted (brand tint when the window is key) with ↩ at its end; the pointer moving onto
-//                       a row makes it the keyboard's choice, as in Raycast. Click or ↩ opens it in its pane. With
-//                       no hits the page keeps its frame and says so in one quiet block where the count line goes: the
-//                       query, a hint, a few common searches and a plain Clear Search — a miss is a result, not a
-//                       friendly empty state (system.md §3.5).
+//   SettingsSearchResults  the page while searching, on the panes' own grid and in their own components: the query is
+//                       the window's title; a quiet lead with the count (and ↑↓ / ↩ on its right), then one group per
+//                       pane in the sidebar's counts — the pane's heading (its symbol, name, count) over one rounded box
+//                       of one-line rows. A row is its title with the matched words in semibold, why it matched when
+//                       the title doesn't say (a sentence of its description, a keyword — always in the UI's language)
+//                       and, on its right, one thing: a shortcut's keycaps, or the section it is in. A pane found by
+//                       its name ("short") leads with "Open Shortcuts settings", then its first rows and "Show 9 more".
+//                       Restore defaults is an action: only found by its own words, in brand ink. One stop is tinted
+//                       (brand tint when the window is key); the pointer moving onto a row makes it the keyboard's
+//                       choice, as in Raycast. Click or ↩ opens it in its pane. With no hits the page keeps its frame
+//                       and says so in one quiet block where the count goes: a hint, a few common searches and a plain
+//                       Clear Search — a miss is a result, not a friendly empty state (system.md §3.5).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -125,12 +125,12 @@ final class SettingsNavigator: ObservableObject {
             for h in shown {
                 if let r = runs.last, r[0].entry.section == h.entry.section { runs[runs.count - 1].append(h) } else { runs.append([h]) }
             }
+            // one grouping scheme: the section is each row's right-hand qualifier (no captions between rows)
             for r in runs {
                 let first = r[0].entry
                 let title = first.kind == .section ? nil : first.section.flatMap(SettingsCatalog.section).flatMap { SettingsCatalog.text($0.title) }
                 let named = title.flatMap { $0 == SettingsPane(rawValue: g.pane)?.title ? nil : $0 }
-                if let t = named, g.paneHit || r.count > 1, let s = first.section { lines.append(.section(s, t)) }
-                for h in r { add(.hit(h), section: !g.paneHit && r.count == 1 ? named : nil) }
+                for h in r { add(.hit(h), section: named) }
             }
             if folds { add(.more(g.pane)) }
         }
@@ -246,8 +246,6 @@ final class SettingsFlash: ObservableObject {
 }
 
 private enum ResultsMetrics {
-    /// the column's widest, gutters included: the keycaps stay near the titles they belong to
-    static let width: CGFloat = 560 + 2 * SettingsMetrics.gutter
     static let rowHeight: CGFloat = 22
 }
 
@@ -256,28 +254,51 @@ struct SettingsSearchResults: View {
     /// the pen's hold key, shown on its row
     @ObservedObject private var keys = HotkeySettings.shared
 
+    /// The page's lines as boxes: each pane's heading, then its rows (indices into nav.lines).
+    var blocks: [(group: SettingsResultGroup, lines: [Int])] {
+        var out: [(group: SettingsResultGroup, lines: [Int])] = []
+        for (k, l) in nav.lines.enumerated() {
+            switch l {
+            case .group(let g): out.append((g, []))
+            case .item: if !out.isEmpty { out[out.count - 1].lines.append(k) }
+            case .section: break
+            }
+        }
+        return out
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                // one frame for hits and no hits: nothing jumps while a letter more or less kills the last hit
+                // one frame for hits and no hits, on the panes' grid: the same column, insets and boxes
                 VStack(alignment: .leading, spacing: 0) {
                     if nav.items.isEmpty {
                         NoMatch(query: query)
+                            .padding(.horizontal, SettingsMetrics.boxInset).padding(.top, SettingsMetrics.groupGap)
                     } else {
                         header
-                        ForEach(Array(nav.lines.enumerated()), id: \.element.id) { k, line in
-                            lineView(line, at: k)
+                        ForEach(Array(blocks.enumerated()), id: \.element.group.pane) { _, b in
+                            groupHeading(b.group)
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(Array(b.lines.enumerated()), id: \.element) { j, k in
+                                    lineView(nav.lines[k], hairline: j > 0)
+                                }
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous))
+                            .background(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous).fill(SettingsMetrics.boxFill))
+                            .overlay(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
+                                .strokeBorder(SettingsMetrics.boxStroke, lineWidth: 0.5).allowsHitTesting(false))
                         }
                     }
                 }
-                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, 16).padding(.bottom, 40)
-                .frame(maxWidth: ResultsMetrics.width, alignment: .leading)
+                .padding(.horizontal, SettingsMetrics.gutter).padding(.top, SettingsMetrics.pageTop).padding(.bottom, 40)
+                .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
             }
             // the bottom edge as the top: rows go under a short fade instead of being cut by the window
             .overlay(alignment: .bottom) {
                 LinearGradient(colors: [SettingsMetrics.ground.opacity(0), SettingsMetrics.ground], startPoint: .top, endPoint: .bottom)
-                    .frame(height: SettingsMetrics.topFade)
+                    .frame(height: SettingsMetrics.bottomFade)
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
@@ -289,14 +310,16 @@ struct SettingsSearchResults: View {
     var query: String { nav.query.trimmingCharacters(in: .whitespaces) }
     var terms: [String] { nav.query.split(whereSeparator: { $0.isWhitespace }).map(String.init) }
 
-    /// "17 results for “short”", and how to walk them.
+    /// "16 results" (the query is the window's title), and how to walk them — the page's lead, where every page's
+    /// first line is.
     var header: some View {
         HStack(alignment: .center, spacing: 12) {
             let n = nav.hits.count
-            Text(n == 1 ? T("settings.search.count.one", query) : T("settings.search.count", n, query))
-                .font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
-                .lineLimit(1).truncationMode(.middle)
+            Text(n == 1 ? T("settings.search.count_only.one") : T("settings.search.count_only", n))
+                .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
+                .accessibilityLabel(n == 1 ? T("settings.search.count.one", query) : T("settings.search.count", n, query))
             Spacer(minLength: 8)
             HStack(spacing: 5) {
                 KeyCaps(keys: ["↑", "↓"])
@@ -308,43 +331,33 @@ struct SettingsSearchResults: View {
             .fixedSize()
             .accessibilityHidden(true)
         }
-        .padding(.bottom, 4)
+        .padding(.horizontal, SettingsMetrics.boxInset)
+        .padding(.top, SettingsMetrics.groupGap)
     }
 
     @ViewBuilder
-    func lineView(_ line: SettingsNavigator.Line, at k: Int) -> some View {
-        switch line {
-        case .group(let g):
-            groupHeading(g, first: k == 0)
-        case .section(_, let title):
-            Text(marked(title, 11)).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .padding(.top, 10).padding(.bottom, 3)
-                .accessibilityAddTraits(.isHeader)
-        case .item(let i, _, let section):
-            if nav.items.indices.contains(i) { row(nav.items[i], i, section: section, hairline: hairline(before: k, i)) }
+    func lineView(_ line: SettingsNavigator.Line, hairline: Bool) -> some View {
+        if case .item(let i, _, let section) = line, nav.items.indices.contains(i) {
+            row(nav.items[i], i, section: section, hairline: hairline && nav.selected != i && nav.selected != i - 1)
         }
     }
 
-    /// A pane's heading: its symbol and name, the number of its settings found on the right (as in the sidebar).
-    func groupHeading(_ g: SettingsResultGroup, first: Bool) -> some View {
+    /// A pane's heading, as a section's on its page: its symbol and name, how many of its settings were found on the
+    /// right (as in the sidebar).
+    func groupHeading(_ g: SettingsResultGroup) -> some View {
         let p = SettingsPane(rawValue: g.pane)
         return HStack(spacing: 6) {
             Image(systemName: p?.symbol ?? "gearshape").font(.system(size: 11, weight: .semibold)).frame(width: 14)
                 .accessibilityHidden(true)
-            Text(p?.title ?? g.pane).font(.system(size: 12, weight: .semibold))
+            Text(p?.title ?? g.pane).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 8)
-            Text(Loc.number(g.hits.count)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.tertiary)
+            Text(Loc.number(g.hits.count)).font(.system(size: SettingsMetrics.detailSize).monospacedDigit())
                 .accessibilityHidden(true)
         }
         .foregroundStyle(.secondary)
-        .padding(.top, first ? 20 : 26).padding(.bottom, 4)
-    }
-
-    /// A hairline over a row that follows another row — none next to the tinted one, whose wash is its edge.
-    func hairline(before k: Int, _ i: Int) -> Bool {
-        guard k > 0, case .item(let j, _, _) = nav.lines[k - 1] else { return false }
-        return nav.selected != i && nav.selected != j
+        .padding(.horizontal, SettingsMetrics.boxInset)
+        .padding(.top, SettingsMetrics.groupGap).padding(.bottom, 5)
     }
 
     @ViewBuilder
@@ -357,7 +370,10 @@ struct SettingsSearchResults: View {
             let name = SettingsPane(rawValue: p)?.title ?? p
             ResultRow(title: T("settings.search.open_pane", name), reason: SettingsCatalog.reason(pane: p, query: nav.query),
                       terms: terms, selected: on, hairline: hairline, axLabel: T("settings.search.open_pane", name),
-                      hover: hover, open: open) { EmptyView() }
+                      hover: hover, open: open) {
+                Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
                 .id(i)
         case .hit(let h):
             let e = h.entry
@@ -385,15 +401,15 @@ struct SettingsSearchResults: View {
         }
     }
 
-    /// On a row's right: a shortcut's keys as keycaps ("None" / "Off" without one); Restore defaults' glyph; else the
-    /// section, when no caption above says it.
+    /// On a row's right, one thing: a shortcut's keys as keycaps ("None" / "Off" without one); Restore defaults' glyph;
+    /// else the section it is in.
     @ViewBuilder
     func accessory(_ e: SettingsEntry, section: String?) -> some View {
         if let k = Self.keys(e) {
             if k.isEmpty {
-                let off = e.id == "shortcuts.dictation" || e.id == "shortcuts.draw_key"
+                let off = ["shortcuts.dictation", "shortcuts.dictation_key", "dictation.key", "shortcuts.draw_key"].contains(e.id)
                 Text(Loc.t(off ? "capture.keys.off" : "capture.keys.none", table: "Capture"))
-                    .font(.system(size: 12)).foregroundStyle(.tertiary)
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
             } else {
                 KeyCaps(keys: k)
             }
@@ -401,14 +417,14 @@ struct SettingsSearchResults: View {
             Image(systemName: "arrow.counterclockwise").font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.brandInk).accessibilityHidden(true)
         } else if let s = section {
-            Text(marked(s, 11)).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+            Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
         }
     }
 
     /// A shortcut row's keys, one keycap each ("⌥", "⇧", "R"); [] when it has none; nil for a row that isn't a key.
     static func keys(_ e: SettingsEntry) -> [String]? {
         switch e.id {
-        case "shortcuts.dictation":
+        case "shortcuts.dictation", "shortcuts.dictation_key", "dictation.key":
             return Dictation.enabled ? [Dictation.keyName] : []
         case "shortcuts.draw_key":
             switch HotkeySettings.shared.drawKey {
@@ -445,12 +461,14 @@ private struct NoMatch: View {
 
     var body: some View {
         // laid out like a results group: the symbol in the slot a pane's symbol takes, then the text column
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
-            Image(systemName: "magnifyingglass").font(.system(size: 12, weight: .medium)).foregroundStyle(.tertiary)
+        HStack(alignment: .firstTextBaseline, spacing: SettingsMetrics.iconGap) {
+            Image(systemName: "magnifyingglass").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
+                .frame(width: SettingsMetrics.iconSlot)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 0) {
-                Text(T("settings.search.none.title", Self.clipped(query)))
-                    .font(.system(size: 14, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                // the query is the window's title already
+                Text(T("settings.search.none.title_short"))
+                    .font(.system(size: 14, weight: .semibold)).lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityLabel(T("settings.search.none.title", query))
                 Text(T("settings.search.none.hint")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
@@ -521,23 +539,20 @@ private struct ResultRow<Accessory: View>: View {
                 }
                 Spacer(minLength: 12)
                 accessory
-                Text("↩").font(.system(size: 12, weight: .medium)).foregroundStyle(.secondary)
-                    .frame(width: 14).opacity(selected ? 1 : 0).accessibilityHidden(true)
             }
             .frame(minHeight: ResultsMetrics.rowHeight)
-            .padding(.vertical, 6).padding(.horizontal, 10)
+            .padding(.vertical, 6).padding(.horizontal, SettingsMetrics.boxInset)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .top) {
                 if hairline {
-                    Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).padding(.horizontal, 10)
+                    Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)).padding(.horizontal, SettingsMetrics.boxInset)
                         .allowsHitTesting(false)
                 }
             }
-            .background(RowWash(on: selected).padding(.horizontal, -6))
+            .background(ResultWash(on: selected))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, -10)
         .help(help ?? "")
         .onHover { if $0 && !selected { hover() } }
         .accessibilityLabel(axLabel)
@@ -559,6 +574,16 @@ private struct ResultRow<Accessory: View>: View {
     }
 }
 
+/// The chosen result's wash: the whole row inside its box (the box's corners clip it), brand tint while the window is
+/// key, a neutral 6 % otherwise (§3.3's selection).
+private struct ResultWash: View {
+    var on: Bool
+    @Environment(\.controlActiveState) private var active
+    var body: some View {
+        Rectangle().fill(on ? (active == .key || SettingsTestKeyLook.on ? Color.brandTint : Color.primary.opacity(0.06)) : Color.clear)
+    }
+}
+
 /// Keys as small keycaps — neutral fill, 11 pt medium — one per key ("⌥" "⇧" "R"), as on a keyboard.
 struct KeyCaps: View {
     let keys: [String]
@@ -567,7 +592,7 @@ struct KeyCaps: View {
     var body: some View {
         HStack(spacing: 3) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
-                Text(k).font(.system(size: size, weight: .medium)).foregroundStyle(.secondary)
+                Text(k).font(.system(size: size, weight: .medium)).foregroundStyle(Keycaps.inkSwiftUI)
                     .padding(.horizontal, 4)
                     .frame(minWidth: size + 7, minHeight: size + 7)
                     .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color.primary.opacity(0.07)))

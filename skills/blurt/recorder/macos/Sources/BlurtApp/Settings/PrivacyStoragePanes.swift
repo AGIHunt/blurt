@@ -99,8 +99,7 @@ struct PrivacyPane: View {
     @ObservedObject var speech = SpeechModel.shared
 
     var body: some View {
-        SettingsPage(.privacy) {
-            PrivacyPromise()
+        SettingsPage(.privacy, lead: SettingsLead(text: PrivacyPromise.text)) {
             SettingsGroup("privacy.permissions", content: {
                 PermissionsSummary(p: perms)
             })
@@ -115,6 +114,11 @@ struct PrivacyPane: View {
                 SettingToggle("privacy.spotlight", isOn: Binding(get: { m.spotlight }, set: { m.setSpotlight($0) }))
             }
         }
+        // the lead's "Where files are kept…": Settings goes to Storage itself
+        .environment(\.openURL, OpenURLAction { _ in
+            AppEnvironment.settings?.show(pane: "storage")
+            return .handled
+        })
         .onAppear { m.reload(); perms.start() }
         .onDisappear { perms.stop() }
         .task { if speech.state == nil { await speech.load() } }      // which cloud services have a key
@@ -128,10 +132,11 @@ struct PrivacyPane: View {
     }
 }
 
-/// The page's first line: what stays on this Mac, said as it is — with an agent on (the default), organizing and
-/// hand-offs send what they need to it, so "nothing is uploaded" would be untrue then — and where the files are.
-private struct PrivacyPromise: View {
-    var body: some View {
+/// The page's lead: what stays on this Mac, said as it is — with an agent on (the default), organizing and hand-offs
+/// send what they need to it, so "nothing is uploaded" would be untrue then — and where the files are (a link to
+/// Storage).
+enum PrivacyPromise {
+    @MainActor static var text: Text {
         // record.agents = [] turns every agent off; unset is the registry's default order (agents on)
         let agentsOff = Agents.shared.order?.isEmpty == true
         let line = T(agentsOff ? "settings.privacy.recordings_screenshots_items_stay" : "settings.privacy.stay_with_agents")
@@ -141,13 +146,6 @@ private struct PrivacyPromise: View {
         link.foregroundColor = .brandInk
         text.append(link)
         return Text(text)
-            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-            .environment(\.openURL, OpenURLAction { _ in
-                AppEnvironment.settings?.show(pane: "storage")
-                return .handled
-            })
-            .padding(.top, 6)
     }
 }
 
@@ -177,6 +175,7 @@ private struct PermissionsSummary: View {
             HStack(alignment: .center, spacing: 10) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(Self.kinds.map(PermissionGuide.name).joined(separator: sep)).font(.system(size: SettingsMetrics.titleSize))
+                        .gridProbe(.text, "permissions")
                     Text(missing.isEmpty ? T("settings.privacy.perms.why")
                          : T("settings.privacy.perms.missing", missing.map(PermissionGuide.name).joined(separator: sep)))
                         .font(.system(size: SettingsMetrics.detailSize))
@@ -338,6 +337,21 @@ final class StorageModel: ObservableObject {
     @Published var checkingModels = false
     /// the scripts have said which model is used by what (until then no model says "Not used")
     @Published var annotated = false
+
+    /// App data as the page lists it: the search index and the build files are one "Caches" row (both rebuilt when
+    /// needed; Move to Trash takes the build files, never the index the app has open).
+    var groupedFiles: [Row] {
+        let cacheIDs = ["index.db", "build"].map { BlurtPaths.home.appendingPathComponent($0).path }
+        let caches = files.filter { cacheIDs.contains($0.path.path) }
+        guard !caches.isEmpty else { return files }
+        let build = caches.first { $0.path.lastPathComponent == "build" }
+        let row = Row(name: T("settings.storage.caches"), path: build?.path ?? caches[0].path, bytes: caches.reduce(0) { $0 + $1.bytes },
+                      detail: T("settings.storage.rebuilt"), icon: "arrow.triangle.2.circlepath", urls: build.map { [$0.path] } ?? [],
+                      removable: build != nil)
+        var out = files.filter { !cacheIDs.contains($0.path.path) }
+        out.insert(row, at: min(1, out.count))
+        return out
+    }
 
     var videoBytes: Int64 { videos.reduce(0) { $0 + $1.bytes } }
     var recordingBytes: Int64 { folders.reduce(0) { $0 + $1.bytes } }
@@ -588,19 +602,31 @@ final class StorageModel: ObservableObject {
     }
 }
 
-/// A size as every row and the summary say it: one formatter (ByteCountFormatter, file style) in every language, and
-/// an em dash for nothing — never "0 bytes" beside "None".
-func storageSize(_ n: Int64) -> String { n > 0 ? byteString(n) : "—" }
+/// A size as every row and heading says it: one formatter (ByteCountFormatter, file style) in every language — "0 KB"
+/// for nothing, a number like every other in the column.
+func storageSize(_ n: Int64) -> String {
+    let f = ByteCountFormatter()
+    f.countStyle = .file
+    f.allowsNonnumericFormatting = false
+    f.allowedUnits = [.useKB, .useMB, .useGB, .useTB]     // nothing is "0 KB", like the rows beside it, never "0 bytes"
+    return f.string(fromByteCount: max(0, n))
+}
+
+/// Free space, rounded as people say it: "438 GB", "42.5 GB" (no hundredths on a number this size).
+func roundedSize(_ n: Int64) -> String {
+    let gb = Double(n) / 1_000_000_000
+    guard gb >= 1 else { return byteString(n) }
+    let f = NumberFormatter()
+    f.locale = Loc.locale
+    f.maximumFractionDigits = gb >= 100 ? 0 : 1
+    return T("settings.storage.gb", f.string(from: gb as NSNumber) ?? "\(Int(gb))")
+}
 
 enum StorageMetrics {
-    /// the one size column every row shares, whatever it holds or offers
+    /// the one size column every row shares, flush with the page's trailing edge
     static let sizeWidth: CGFloat = 76
-    /// the ⋯ menu's slot after it, kept when the menu isn't shown so sizes never move
+    /// the ⋯ menu's slot before it, kept when the menu isn't shown so nothing moves
     static let menuWidth: CGFloat = 24
-    /// the summary bar
-    static let barHeight: CGFloat = 6
-    /// the bar's kinds in grey (data is never brand, §3.9): recordings, models, app data
-    static let tones: [Double] = [0.62, 0.36, 0.18]
 }
 
 /// Tests: the row whose ⋯ shows as if the pointer were on it (SelfTests "storagehover NAME"), for screenshots.
@@ -638,16 +664,15 @@ struct StorageMenuItems: View {
     }
 }
 
-/// One storage row: icon, name and one plain line on the left; the size in the shared column; the ⋯ menu's slot,
-/// empty at rest and filled on hover or keyboard focus. A `child` is part of the row above it (videos inside the
-/// recordings), set in under its name. The path is the tooltip, never a line of the row.
+/// One storage row: its glyph in the page's one icon gutter, name and one plain line on the left; the size flush with
+/// the trailing edge (where every page's controls end); the ⋯ menu's slot just before the size, empty at rest and filled
+/// on hover or keyboard focus. The path is the tooltip, never a line of the row.
 struct StorageRow: View {
     var icon: String
     var title: String
     var detail: AttributedString?
     var size: String
     var tip: String?
-    var child = false
     var actions: [StorageAction] = []
     @State private var hover = false
     @FocusState private var menuFocused: Bool
@@ -662,24 +687,26 @@ struct StorageRow: View {
     private var line: some View {
         SettingsLine {
             HStack(alignment: .center, spacing: 14) {
-                Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary)
-                    .frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
-                    if let d = detail, !d.characters.isEmpty {
-                        Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).tint(Color.brandInk)
-                            .fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    SettingsIcon(icon)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(title).font(.system(size: SettingsMetrics.titleSize)).fixedSize(horizontal: false, vertical: true)
+                            .gridProbe(.iconText, title)
+                        if let d = detail, !d.characters.isEmpty {
+                            Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).tint(Color.brandInk)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                HStack(spacing: 2) {
+                HStack(spacing: 0) {
+                    // the slot stays when a row offers nothing, so every size ends at the same edge
+                    ZStack { Color.clear.frame(height: 1); menu }.frame(width: StorageMetrics.menuWidth)
                     Text(size).font(.system(size: SettingsMetrics.titleSize).monospacedDigit()).foregroundStyle(.secondary)
                         .lineLimit(1).frame(width: StorageMetrics.sizeWidth, alignment: .trailing)
-                    // the slot stays when a row offers nothing, so its size is in the same column as every other
-                    ZStack { Color.clear.frame(height: 1); menu }.frame(width: StorageMetrics.menuWidth)
+                        .gridProbe(.trailing, title)
                 }
             }
-            .padding(.leading, child ? SettingsMetrics.leadingWidth + 14 : 0)
         }
         .contentShape(Rectangle())
         .onHover { hover = $0 }
@@ -691,10 +718,10 @@ struct StorageRow: View {
     @ViewBuilder private var menu: some View {
         if !actions.isEmpty {
             Menu { StorageMenuItems(actions: actions) } label: {
-                Image(systemName: "ellipsis.circle").font(.system(size: 14))
+                Image(systemName: "ellipsis").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    .frame(width: 22, height: 20).contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-            .foregroundStyle(.secondary)
             .focused($menuFocused)
             .opacity(showMenu ? 1 : 0)
             .animation(.easeOut(duration: 0.12), value: showMenu)
@@ -706,6 +733,9 @@ struct StorageRow: View {
 
 struct StoragePane: View {
     @StateObject var m = StorageModel()
+    /// what each model is used for (its rows say it in Speech's words)
+    @ObservedObject private var speech = SpeechModel.shared
+    @ObservedObject private var dictationModels = DictationModels.shared
     /// What the confirmation is about: only turning on automatic deletion asks (it deletes on its own from then on).
     enum Ask: Identifiable {
         case auto(Int)
@@ -714,35 +744,39 @@ struct StoragePane: View {
     @State var ask: Ask?
 
     var body: some View {
-        SettingsPage(.storage) {
-            summary.padding(.top, 14)
-
-            SettingsGroup("storage.recordings") {
+        SettingsPage(.storage, lead: summary) {
+            SettingsGroup("storage.recordings", content: {
                 if m.loaded { recordings }
                 SettingRow("storage.auto_delete", icon: "clock.arrow.circlepath") {
                     ChoicePopup(label: T("settings.storage.videos.auto"),
                                 choices: [(0, T("settings.storage.videos.never"))] + VideoRetention.choices.map { ($0, T("settings.storage.videos.after", $0)) },
                                 selection: Binding(get: { m.autoDelete ?? 0 }, set: { setAuto($0) }), dividers: [1])
                 }
-            }
+            }, accessory: { headingSize(m.recordingBytes) })
 
-            SettingsGroup("storage.models", content: {
+            SettingsGroup("storage.models", note: AnyView(modelsFootnote), content: {
                 if m.loaded {
                     if m.models.isEmpty {
                         StorageRow(icon: "cpu", title: T("settings.storage.model.none"), size: storageSize(0))
                     }
                     ForEach(m.models) { r in modelRow(r) }
                 }
-                modelsFootnote
-            }, accessory: { if m.checkingModels { BrandSpinnerView(size: 10) } })
+            }, accessory: {
+                HStack(spacing: 8) {
+                    if m.checkingModels { BrandSpinnerView(size: 10) }
+                    headingSize(m.modelBytes)
+                }
+            })
 
             if !m.files.isEmpty {
-                SettingsGroup("storage.files") {
-                    ForEach(m.files) { r in fileRow(r) }
-                }
+                SettingsGroup("storage.files", content: {
+                    ForEach(m.groupedFiles) { r in fileRow(r) }
+                }, accessory: { headingSize(m.fileBytes) })
             }
         }
         .task { await m.load() }
+        .task { if speech.state == nil { await speech.load() } }
+        .task { dictationModels.loadIfNeeded() }
         // the one question left: a policy that deletes on its own from now on (a Move to Trash has Undo instead)
         .alert(alertTitle, isPresented: Binding(get: { ask != nil }, set: { if !$0 { ask = nil } }), presenting: ask) { a in
             Button(T("settings.storage.videos.auto_on"), role: .destructive) {
@@ -771,45 +805,27 @@ struct StoragePane: View {
 
     // MARK: summary
 
-    /// The page's one focus: how much Blurt takes, how much the Mac has left, and a bar of what it is.
-    var summary: some View {
-        let kinds: [(String, Int64)] = [(T("settings.storage.recordings"), m.recordingBytes), (T("settings.storage.models"), m.modelBytes),
-                                        (T("settings.storage.app_data"), m.fileBytes)]
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                if m.loaded {
-                    Text(totalLine)
-                } else {
-                    Text(T("settings.storage.counting")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 12)
-                if let a = m.available {
-                    Text(T("settings.storage.available", byteString(a))).font(.system(size: SettingsMetrics.detailSize).monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-            }
-            StorageBar(parts: m.loaded ? kinds.map(\.1) : [])
-            HStack(spacing: 16) {
-                ForEach(Array(kinds.enumerated()), id: \.offset) { i, k in
-                    HStack(spacing: 5) {
-                        Circle().fill(Color.primary.opacity(StorageMetrics.tones[i])).frame(width: 7, height: 7)
-                        Text(k.0).foregroundStyle(.secondary)
-                        Text(m.loaded ? storageSize(k.1) : "").monospacedDigit().foregroundStyle(.secondary)
-                    }
-                    .font(.system(size: SettingsMetrics.detailSize))
-                }
-            }
-            .accessibilityElement(children: .combine)
-        }
+    /// The page's one focus, as its lead: how much Blurt takes, and how much the Mac has left; each section's heading
+    /// carries its own total (the same size column as its rows), so no bar has to be decoded.
+    var summary: SettingsLead {
+        SettingsLead(text: m.loaded ? Text(totalLine) : Text(T("settings.storage.counting")),
+                     accessory: m.available.map { a in
+                         AnyView(Text(T("settings.storage.available", roundedSize(a))).monospacedDigit().foregroundStyle(.secondary))
+                     })
     }
 
     /// "Blurt uses 3.9 GB", the size in semibold tabular figures.
     var totalLine: AttributedString {
         let size = byteString(m.total)
         var a = AttributedString(T("settings.storage.uses", size))
-        a.font = .system(size: SettingsMetrics.titleSize)
-        if let r = a.range(of: size) { a[r].font = .system(size: SettingsMetrics.titleSize, weight: .semibold).monospacedDigit() }
+        if let r = a.range(of: size) { a[r].font = .system(size: SettingsMetrics.detailSize, weight: .semibold).monospacedDigit() }
         return a
+    }
+
+    /// A section's total on its heading's line, over its rows' size column.
+    func headingSize(_ n: Int64) -> some View {
+        Text(m.loaded ? storageSize(n) : "").font(.system(size: SettingsMetrics.detailSize, weight: .medium).monospacedDigit())
+            .foregroundStyle(.secondary)
     }
 
     // MARK: rows
@@ -825,13 +841,13 @@ struct StoragePane: View {
         if !m.videos.isEmpty {
             StorageRow(icon: "film", title: T("settings.storage.videos"),
                        detail: AttributedString(T("settings.storage.videos.detail", TP("settings.storage.videos.count", m.videos.count))),
-                       size: storageSize(m.videoBytes), tip: T("settings.storage.videos.footer"), child: true, actions: [videoActions])
+                       size: storageSize(m.videoBytes), tip: T("settings.storage.videos.footer"), actions: [videoActions])
         }
         if !m.liveAudio.isEmpty {
             let detail = TP("settings.privacy.live_audio", m.liveAudio.count) + " · " + T("settings.storage.live_audio.kept")
             StorageRow(icon: "captions.bubble", title: T("settings.storage.live_audio"),
                        detail: linked(detail, [(T("settings.kit.privacy"), "privacy/privacy.keep_live")]),
-                       size: storageSize(m.liveAudioBytes), child: true,
+                       size: storageSize(m.liveAudioBytes),
                        actions: [StorageAction(title: T("action.reveal_in_finder")) { NSWorkspace.shared.activateFileViewerSelecting(m.liveAudio) },
                                  trashAction(m.liveAudio, name: T("settings.storage.live_audio"))])
         }
@@ -850,32 +866,44 @@ struct StoragePane: View {
         return StorageAction(title: T("settings.privacy.move_trash"), children: older)
     }
 
-    /// A model: what it is for and which pane uses it ("Speech recognition · used by Speech and Dictation"); only a
-    /// model nothing uses says so, and one Blurt downloaded can then go to the Trash.
+    /// A model: the jobs it does now, in the words of Speech's rows ("Used for live captions and voice notes"); only a
+    /// model nothing uses says so, and one Blurt downloaded can then go to the Trash. What kind of model it is (speech
+    /// recognition, polish) is the tooltip, with its path.
     func modelRow(_ r: StorageModel.Row) -> some View {
-        var parts: [String] = []
-        if let f = r.family { parts.append(f) } else if !r.detail.isEmpty { parts.append(r.detail) }
-        if r.family != nil, !r.vad {
-            if !r.usedBy.isEmpty {
-                parts.append(T("settings.storage.model.used_by", Loc.list(r.usedBy.map { $0 == .speech ? T("settings.kit.speech") : T("dictation.settings.tab") })))
-            } else if m.annotated && !r.inUse {
-                parts.append(T("settings.storage.model.not_used"))
-            }
+        var line = ""
+        if r.family == nil, !r.detail.isEmpty { line = r.detail }
+        else if r.vad { line = T("settings.storage.model.vad_use") }
+        else {
+            let jobs = StoragePane.jobs(for: r)
+            if !jobs.isEmpty { line = T("settings.storage.model.used_for", Loc.list(jobs.map { $0.lowercased(with: Loc.locale) })) }
+            else if m.annotated && !r.inUse { line = T("settings.storage.model.not_used") }
         }
         var actions = [reveal([r])]
         if r.removable { actions.append(trashAction(r.items, name: r.name)) }
-        return StorageRow(icon: r.icon, title: r.name, detail: AttributedString(parts.joined(separator: " · ")), size: storageSize(r.bytes),
-                          tip: tilde(r.path), actions: actions)
+        return StorageRow(icon: r.icon, title: r.name, detail: AttributedString(line), size: storageSize(r.bytes),
+                          tip: [r.family, tilde(r.path)].compactMap { $0 }.joined(separator: "\n"), actions: actions)
     }
 
-    /// Under the models: where each pane's model is chosen (the pane names are links), and — when the list has any —
-    /// why the shared cache's models stay.
+    /// The jobs a model on disk does now, as Speech's rows name them: its recognition purposes (Speech's state, by the
+    /// model's folder), Dictation when it is dictation's recogniser, Dictation polish when it is the polish model.
+    @MainActor static func jobs(for r: StorageModel.Row) -> [String] {
+        let path = r.path.standardizedFileURL.path
+        var out: [String] = []
+        let sm = SpeechModel.shared, dm = DictationModels.shared
+        if let x = sm.models.first(where: { $0.path.map { URL(fileURLWithPath: $0).standardizedFileURL.path } == path || $0.title == r.name }) {
+            for p in ASRPurpose.allCases where sm.state?.selected[p.rawValue] == x.id { out.append(p.title) }
+        }
+        if let a = dm.selectedASR, (a.name ?? dm.asrName(a.id)) == r.name || dm.asrName(a.id) == r.name,
+           dm.asr?.selectedInstalled ?? a.installed { out.append(Loc.string("speech.purpose.dictation", table: "Speech")) }
+        if let p = dm.selectedPolish, p.name == r.name, p.installed { out.append(Loc.string("speech.purpose.polish", table: "Speech")) }
+        return out
+    }
+
+    /// Under the models, outside their box: where they are chosen (Speech, a link), and — when the list has any — why
+    /// the shared cache's models stay.
     var modelsFootnote: some View {
         let s = T(m.hasShared ? "settings.storage.model.footer_shared" : "settings.storage.model.footer")
-        return Text(linked(s, [(T("settings.kit.speech"), "speech/speech.models"), (T("dictation.settings.tab"), "dictation/dictation.models")]))
-            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).tint(Color.brandInk)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 8)
+        return Text(linked(s, [(T("settings.kit.speech"), "speech/speech.jobs")]))
             .environment(\.openURL, OpenURLAction { StoragePane.open($0) })
     }
 
@@ -919,31 +947,5 @@ struct StoragePane: View {
         guard u.scheme == "blurt-settings" else { return .systemAction }
         AppEnvironment.settings?.show(pane: String(u.absoluteString.dropFirst("blurt-settings:".count)))
         return .handled
-    }
-}
-
-/// The summary's bar: Blurt's total, split by kind in greys (never brand: it is data), 6 pt, rounded; a kind too small
-/// to see still gets a sliver, so the legend never names a part the bar doesn't show.
-struct StorageBar: View {
-    var parts: [Int64]
-    var body: some View {
-        GeometryReader { g in
-            let total = Double(max(parts.reduce(0, +), 1))
-            let shown = parts.enumerated().filter { $0.element > 0 }
-            let gap: CGFloat = 2
-            let free = g.size.width - gap * CGFloat(max(shown.count - 1, 0))
-            let raw = shown.map { max(3, free * CGFloat(Double($0.element) / total)) }
-            let scale = raw.isEmpty ? 1 : free / raw.reduce(0, +)
-            HStack(spacing: gap) {
-                ForEach(Array(shown.enumerated()), id: \.offset) { j, p in
-                    Rectangle().fill(Color.primary.opacity(StorageMetrics.tones[p.offset])).frame(width: raw[j] * scale)
-                }
-            }
-            .frame(width: g.size.width, alignment: .leading)
-            .background(Color.primary.opacity(0.07))
-        }
-        .frame(height: StorageMetrics.barHeight)
-        .clipShape(Capsule())
-        .accessibilityHidden(true)
     }
 }

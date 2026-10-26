@@ -1,11 +1,11 @@
 // Settings → Projects (Work): the folders opened in Blurt, managed like macOS's Login Items list.
-//   Where new snaps and voice notes go: one pop-up row (a project, or Unassigned).
-//   The list: one box, a project per row — its name, and under it its folder, short ("~/…/proj/atlas-web"; the whole
-//   path, and the key its item IDs start with, in the tooltip). Nothing is drawn on a row at rest: the pointer over
-//   it shows Show in Finder; a click selects it (the brand tint, §3.3), a double-click shows it in the Finder; its
-//   context menu has Show in Finder, Send New Snaps Here and Remove from Blurt. A folder that is gone says so in
-//   attention ink. Under the rows, inside the box, the list bar: + (Add Project Folder…, a sheet on this window),
-//   − (removes the selected one), and ··· (Show in Finder, Show Unassigned in Finder).
+//   Projects: a heading with Add Folder… at its right end, then one box, a project per row — its folder glyph in the
+//   project's colour (ProjectLook, as in the main window's sidebar) in the page's icon gutter, its name, and under it its
+//   folder, short ("~/…/proj/atlas-web"; the whole path, and the key its item IDs start with, in the tooltip). Nothing
+//   is drawn on a row at rest: the pointer over it shows its ⋯ menu (Show in Finder, Send New Snaps Here, Remove from
+//   Blurt — the same as its context menu); a click selects it (the brand tint, §3.3), a double-click shows it in the
+//   Finder. A folder that is gone says so in attention ink. Unassigned's folder is in the heading's ⋯.
+//   Snaps and voice notes: where new ones go — one pop-up row (a project, or Unassigned).
 //   Removing is at once — the folder and its items stay — with Undo (the island's button and ⌘Z on this window, like
 //   the main window's Remove). Projects are in the sidebar's order (the user's own). Errors are said in a sentence;
 //   what the script said goes to the log.
@@ -120,21 +120,27 @@ struct ProjectsPane: View {
 
     var body: some View {
         SettingsPage(.projects) {
-            SettingsGroup {
-                SettingRow("projects.capture_into") {
+            SettingsGroup("projects.list", title: T("settings.projects.list_heading"), footer: T("settings.general.projects.hint"), content: {
+                if m.projects.isEmpty {
+                    SettingsLine { Text(T("settings.projects.empty")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary) }
+                }
+                ForEach(m.projects, id: \.id) { p in row(p) }
+            }, accessory: {
+                HStack(spacing: 4) {
+                    RowMenu(label: T("settings.projects.more"), visible: true) {
+                        Button(T("settings.general.open_unassigned")) { m.revealUnassigned() }
+                    }
+                    Button(T("settings.projects.add")) { m.addFolder() }.controlSize(.small)
+                }
+            })
+
+            SettingsGroup("projects.capture", title: T("settings.projects.capture_heading")) {
+                SettingRow("projects.capture_into", title: T("settings.projects.capture_row")) {
                     ChoicePopup(label: T("settings.general.capture_into"),
                                 choices: m.projects.map { ($0.id, $0.name) } + [("inbox", T("project.inbox"))],
                                 selection: Binding(get: { m.current }, set: { m.setCurrent($0) }),
                                 dividers: m.projects.isEmpty ? [] : [m.projects.count])
                 }
-            }
-
-            SettingsGroup("projects.list", footer: T("settings.general.projects.hint")) {
-                if m.projects.isEmpty {
-                    SettingsLine { Text(T("settings.projects.empty")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary) }
-                }
-                ForEach(m.projects, id: \.id) { p in row(p) }
-                listBar
             }
 
             if let e = m.error {
@@ -146,28 +152,28 @@ struct ProjectsPane: View {
         .onAppear { m.reload() }
     }
 
-    /// A project: its name, its folder short under it; Show in Finder only under the pointer.
+    /// A project: its folder in its colour, its name, its folder's path short under it; its ⋯ only under the pointer.
     func row(_ p: Project) -> some View {
         let selected = m.selected == p.id
         let missing = !p.exists
         return SettingsLine(padding: 7) {
-            HStack(spacing: 10) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(p.name).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(missing ? .secondary : .primary)
-                        .lineLimit(1).truncationMode(.tail)
-                    Text(ProjectsModel.shortPath(p.path)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
+            HStack(spacing: 14) {
+                HStack(spacing: SettingsMetrics.iconGap) {
+                    Image(systemName: "folder.fill").font(.system(size: 14))
+                        .foregroundStyle(Color(nsColor: ProjectLook.color(p)).opacity(missing ? 0.4 : 1))
+                        .frame(width: SettingsMetrics.iconSlot).accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(p.name).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(missing ? .secondary : .primary)
+                            .lineLimit(1).truncationMode(.tail)
+                            .gridProbe(.iconText, p.name)
+                        Text(missing ? T("settings.projects.missing") : ProjectsModel.shortPath(p.path)).font(.system(size: SettingsMetrics.detailSize))
+                            .foregroundStyle(missing ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
+                            .lineLimit(1).truncationMode(.middle)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if missing {
-                    Text(T("settings.projects.missing")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandAttnInk)
-                } else {
-                    Button { m.reveal(p) } label: { Image(systemName: "arrow.up.forward.app") }
-                        .buttonStyle(.borderless)
-                        .help(T("action.reveal_in_finder"))
-                        .accessibilityLabel(T("action.reveal_in_finder"))
-                        .opacity(hovered == p.id || selected ? 1 : 0)
-                }
+                RowMenu(label: T("settings.projects.more"), visible: hovered == p.id || selected) { items(p) }
+                    .gridProbe(.trailing, p.name)
             }
         }
         .background(
@@ -181,48 +187,17 @@ struct ProjectsPane: View {
         .gesture(TapGesture(count: 2).onEnded { if !missing { m.reveal(p) } })
         .simultaneousGesture(TapGesture().onEnded { m.selected = p.id })
         .help([p.path.path, T("settings.projects.key_help", p.key)].joined(separator: "\n"))
-        .contextMenu {
-            Button(T("action.reveal_in_finder")) { m.reveal(p) }.disabled(missing)
-            Button(T("settings.projects.make_current")) { m.setCurrent(p.id) }.disabled(m.current == p.id)
-            Divider()
-            Button(T("main.project.remove")) { m.remove(p, window: NSApp.keyWindow) }
-        }
+        .contextMenu { items(p) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(p.name)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    /// The list's own bar, inside its box: + − on the left, ··· on the right (macOS's list-bar convention).
-    var listBar: some View {
-        let sel = m.projects.first { $0.id == m.selected }
-        return SettingsLine(padding: 3) {
-            HStack(spacing: 2) {
-                barButton("plus", T("settings.projects.add")) { m.addFolder() }
-                barButton("minus", T("main.project.remove")) { if let p = sel { m.remove(p, window: NSApp.keyWindow) } }
-                    .disabled(sel == nil)
-                Spacer()
-                Menu {
-                    Button(T("action.reveal_in_finder")) { if let p = sel { m.reveal(p) } }.disabled(sel == nil || sel?.exists == false)
-                    Button(T("settings.general.open_unassigned")) { m.revealUnassigned() }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
-                .help(T("settings.projects.more"))
-                .accessibilityLabel(T("settings.projects.more"))
-            }
-            .padding(.horizontal, -6)
-        }
-    }
-
-    private func barButton(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 12, weight: .medium)).frame(width: 24, height: 20).contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .help(label)
-        .accessibilityLabel(label)
+    /// A project's actions: its ⋯ menu and its context menu alike.
+    @ViewBuilder func items(_ p: Project) -> some View {
+        Button(T("action.reveal_in_finder")) { m.reveal(p) }.disabled(!p.exists)
+        Button(T("settings.projects.make_current")) { m.setCurrent(p.id) }.disabled(m.current == p.id)
+        Divider()
+        Button(T("main.project.remove")) { m.remove(p, window: NSApp.keyWindow) }
     }
 }

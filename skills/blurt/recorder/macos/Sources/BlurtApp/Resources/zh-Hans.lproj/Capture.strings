@@ -228,7 +228,7 @@
 "capture.voice.recording_busy" = "录屏正在使用麦克风";
 
 /* dictation styles (docs/design/dictation-styles.md) */
-"capture.action.reformat" = "重排上一条听写";
+"capture.action.reformat" = "改写上一条听写";
 "capture.keys.field_ax_hint" = "按空格键录新的快捷键，按删除键去掉";
 "capture.keys.reserved" = "%1$@ 在所有 App 里都是「%2$@」，加上 ⌥ 或 ⌃ 再试";
 "capture.keys.reserved_menu" = "%@ 是各个 App 自己菜单里的快捷键，加上 ⌥ 或 ⌃ 再试";
@@ -318,3 +318,5 @@
 "capture.keys.quit_others" = "退出其他口喷鸡";
 "capture.keys.taken_banner.detail_many" = "它们都退出后，这些快捷键就会在这里生效。";
 "capture.keys.none" = "未设置";
+"capture.keys.swap.ask_outcome" = "与「%1$@」互换？它改用 %2$@。";
+"capture.keys.move.ask_outcome" = "把 %1$@ 从「%2$@」移过来？它将没有快捷键。";

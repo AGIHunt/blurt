@@ -28,13 +28,13 @@
 "speech.purpose.batch" = "录屏";
 "speech.purpose.batch.detail" = "录完后转写，准确优先。";
 "speech.purpose.live" = "实时字幕";
-"speech.purpose.live.detail" = "边录边转写，停止录制时结果就已就绪。";
+"speech.purpose.live.detail" = "录屏时同步转写，停下就有文字稿。";
 "speech.purpose.note" = "语音备注";
 "speech.purpose.note.detail" = "截图备注和语音备注，速度优先。";
 "speech.purpose.dictation" = "听写";
 "speech.purpose.dictation.detail" = "把你说的话输入到光标处。";
 "speech.purpose.polish" = "听写润色";
-"speech.purpose.polish.detail" = "整理听写的文字：标点、口头禅、列表。";
+"speech.purpose.polish.detail" = "整理标点、口头禅和列表。";
 "speech.purpose.polish.unsupported" = "需要 Apple 芯片";
 "speech.purpose.none_yet" = "还没有";
 "speech.purpose.downloading" = "%@ · 正在下载";
@@ -110,7 +110,7 @@
 "speech.languages.footer" = "选择的模型会听懂这些语言。";
 "speech.languages.footer.system" = "取自系统语言设置。选择的模型会听懂这些语言。";
 "speech.advanced.language" = "识别语言";
-"speech.advanced.language.detail" = "自动识别每句话的语言，或固定用一种。";
+"speech.advanced.language.detail" = "每句自动识别语言，或固定用一种。";
 "speech.advanced.language.auto" = "自动检测";
 
 /* Advanced (folded) */
@@ -121,10 +121,10 @@
 "speech.limits.concurrent" = "同时转写数";
 "speech.limits.concurrent.detail" = "更多录屏会排队等待。";
 "speech.limits.memory" = "GPU 内存";
-"speech.limits.memory.detail" = "语音模型最多使用这么多，其余留给其他 App。";
+"speech.limits.memory.detail" = "语音模型最多能用多少内存。";
 "speech.limits.memory.value" = "最多 %@";
 "speech.limits.battery" = "用电池时使用更轻的模型";
-"speech.limits.battery.detail" = "没接电源时，录屏改用更小的模型。";
+"speech.limits.battery.detail" = "没接电源时，录屏用更小的模型。";
 "speech.limits.footer" = "录屏以低优先级转写，其他 App 保持流畅；实时字幕和语音备注以正常优先级运行。";
 "speech.advanced.mirror" = "从 hf-mirror.com 下载";
 "speech.advanced.mirror.detail" = "在中国大陆更快。";
@@ -137,3 +137,11 @@
 "speech.cloud.not_set" = "未设置";
 "speech.cloud.off" = "已在「隐私」里关闭";
 "speech.cloud.info" = "如何设置密钥";
+"speech.section.mac" = "这台 Mac";
+"speech.section.jobs" = "正在用的模型";
+"speech.machine.short" = "%1$@，%2$@";
+"speech.auto.detail_mac" = "按这台 Mac（%@）挑选合适的模型。";
+"speech.rec.title_size" = "推荐给这台 Mac · %@";
+"speech.rec.line" = "%1$@将改用 %2$@";
+"speech.rec.help" = "下载这些模型。每个用途在它的模型下载好后自动换用。";
+"speech.manage.count" = "这台 Mac 上有 %@ 个";

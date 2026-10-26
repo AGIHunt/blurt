@@ -8,9 +8,10 @@
 //
 // One cause is said once: keys another running Blurt holds (HotkeyResult.taken — every one of them, when the user's
 // own Blurt is running beside this one) are one notice above the first section, with how many, where that copy runs
-// from and Quit Other Copy; the rows it touches only show their keycaps dimmed (the tooltip says why). A conflict of
-// the row's own (a macOS shortcut, the same keys as another action, a key macOS refused, a hand-edited config.json)
-// keeps its line under the action's name, in attention ink, and the small "!" before its keycaps.
+// from and Quit Other Copy; the rows it touches show the small "!" before their keycaps (the tooltip says why) and no
+// line of their own. A conflict of the row's own (a macOS shortcut, the same keys as another action, a key macOS
+// refused, a hand-edited config.json) has the same "!" and its line under the action's name, in attention ink. Keycaps
+// keep their ink in every case: a key that doesn't work is marked, never faded.
 //
 // ⌥⇧R starts a recording and also finishes one; ⌥⇧S only finishes — it is the key a recording started from the
 // chat (no menu-bar app) listens to, so it stays, listed under While recording as "Finish recording".
@@ -53,9 +54,14 @@ enum Keycaps {
         keys.isEmpty ? 0 : keys.map(width).reduce(0, +) + gap * CGFloat(keys.count - 1)
     }
 
+    /// The keys' ink at rest: `ink-2` (70 %), never under `mute` (system.md §2.4: shortcut hints are read) — a key that
+    /// doesn't work here says so with the "!" disc beside it, never by fading.
+    static var ink: NSColor { NSColor.labelColor.withAlphaComponent(0.7) }
+    static let inkSwiftUI = Color.primary.opacity(0.7)
+
     /// Draws `keys` ending at `maxX`, centred on `midY`; returns where they start.
     @discardableResult
-    static func draw(_ keys: [String], maxX: CGFloat, midY: CGFloat, ink: NSColor = .secondaryLabelColor,
+    static func draw(_ keys: [String], maxX: CGFloat, midY: CGFloat, ink: NSColor = Keycaps.ink,
                      fill: NSColor = NSColor.labelColor.withAlphaComponent(0.07)) -> CGFloat {
         var x = maxX - width(keys)
         let start = x
@@ -88,12 +94,14 @@ enum Keycaps {
     }
 }
 
-/// A shortcut, and its recorder. At rest: the keycaps alone, right-aligned (an unset one says "Record Shortcut" in
-/// secondary ink), with the attention "!" before them while it doesn't work here. Pointer over it (or keyboard focus):
-/// a faint ground behind them and the × that turns it off. Clicked (or Space / Return): it listens — a brand-ink ring
-/// on the brand tint across the whole cell (§3.4), "Type shortcut…" and an Esc keycap; the modifiers held so far show
-/// as keycaps. Esc cancels, ⌫ turns the shortcut off. Global hotkeys are suspended meanwhile, or pressing the current
-/// one would fire it instead of being recorded. The whole cell is the click target.
+/// A shortcut, and its recorder: one fixed-width well (Self.size) in every state, so a row never changes width. At rest:
+/// the keycaps alone, flush with the row's trailing edge, with the attention "!" before them while it doesn't work here
+/// (whatever the reason: the same keys elsewhere, macOS's own, another copy of Blurt — never faded caps). Unset: the
+/// quiet well itself, "Record Shortcut" in it. Pointer over it (or keyboard focus): the well's faint ground and, before
+/// the keycaps, the × that turns it off. Clicked (or Space / Return): it listens — a brand-ink ring on the brand tint
+/// across the well (§3.4), "Type shortcut…" and an Esc keycap, centred; the modifiers held so far show as keycaps. Esc
+/// cancels, ⌫ turns the shortcut off. Global hotkeys are suspended meanwhile, or pressing the current one would fire it
+/// instead of being recorded. The whole well is the click target.
 final class ShortcutField: NSView {
     let action: HotAction
     var onSet: ((Shortcut?) -> Void)?
@@ -103,10 +111,9 @@ final class ShortcutField: NSView {
     var onRefuse: ((String?) -> Void)?
     var recording = false { didSet { needsDisplay = true } }
     var live = ""                       // modifiers held while recording
-    /// a conflict of its own (or the keys another row asks to swap for): the "!" before the keycaps
+    /// it doesn't work here (a conflict of its own, another copy of Blurt holding it, or the keys another row asks to
+    /// swap for): the "!" before the keycaps, which keep their ink
     var warn = false { didSet { if warn != oldValue { needsDisplay = true } } }
-    /// another running Blurt holds it: the keycaps dimmed (the page's notice says why, once)
-    var dim = false { didSet { if dim != oldValue { needsDisplay = true } } }
     /// keys another action has, waiting for the row's Swap / Cancel: shown in brand ink on the tint, as while listening
     var pending: [String]? { didSet { if pending != oldValue { needsDisplay = true } } }
     var monitor: Any?
@@ -139,8 +146,7 @@ final class ShortcutField: NSView {
     // the system focus ring, around what is drawn (Tab moves through the recorders)
     override var focusRingMaskBounds: NSRect { bounds }
     override func drawFocusRingMask() {
-        let r = recording ? bounds : groundRect
-        NSBezierPath(roundedRect: r.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).fill()
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 6, yRadius: 6).fill()
     }
     override func becomeFirstResponder() -> Bool { focused = true; noteFocusRingMaskChanged(); return true }
     override func resignFirstResponder() -> Bool {
@@ -178,78 +184,68 @@ final class ShortcutField: NSView {
         } else { super.keyDown(with: e) }
     }
 
-    /// The × at the right end: under the pointer or with keyboard focus, while there is a shortcut to turn off.
+    /// What rests in the well: the keycaps (right to left: the keys, the "!", the × under the pointer), or nothing set.
+    private var restingKeys: [String]? { Hotkeys.shared.shortcut(action).map(Keycaps.keys) }
+    private static let warnD: CGFloat = 12
+    private static let well: CGFloat = 6
+    /// Where the keycaps start (they end at the well's right edge).
+    private var keysMinX: CGFloat { bounds.maxX - (restingKeys.map(Keycaps.width) ?? 0) }
+    /// The × before the keycaps (and the "!"): under the pointer or with keyboard focus, while there is a shortcut to turn off.
     private var clearRect: NSRect? {
-        guard !recording, hovering || focused, Hotkeys.shared.shortcut(action) != nil else { return nil }
-        return NSRect(x: bounds.maxX - Self.clearWidth, y: 0, width: Self.clearWidth, height: bounds.height)
+        guard !recording, pending == nil, hovering || focused, restingKeys != nil else { return nil }
+        let maxX = keysMinX - 4 - (warn ? Self.warnD + 6 : 0)
+        return NSRect(x: maxX - Self.clearWidth, y: 0, width: Self.clearWidth, height: bounds.height)
     }
 
-    /// What rests in the cell, right to left: the × (when shown), the keycaps or "Record Shortcut", the "!".
-    private var restingKeys: [String]? { Hotkeys.shared.shortcut(action).map(Keycaps.keys) }
-    private var placeholder: NSAttributedString {
-        NSAttributedString(string: Loc.t("capture.keys.record", table: "Capture"),
-                           attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
-    }
-    private var contentMaxX: CGFloat { bounds.maxX - (clearRect == nil ? 6 : Self.clearWidth + 2) }
-    private var contentWidth: CGFloat { restingKeys.map(Keycaps.width) ?? ceil(placeholder.size().width) }
-    private static let warnD: CGFloat = 12
-    /// The faint ground under the pointer: hugs what is drawn, not the whole cell.
-    private var groundRect: NSRect {
-        let minX = contentMaxX - contentWidth - 6 - (warn ? Self.warnD + 6 : 0)
-        return NSRect(x: max(0, minX), y: 0, width: bounds.maxX - max(0, minX), height: bounds.height)
+    private func wellPath(_ r: NSRect) -> NSBezierPath { NSBezierPath(roundedRect: r, xRadius: Self.well, yRadius: Self.well) }
+
+    /// "Type shortcut…  [esc]", the keys held so far, a refusal, or the keys waiting for Swap: centred in the well.
+    private func drawCentred(text: String?, keys: [String], textColor: NSColor = BrandColor.ink) {
+        let a = text.map { NSAttributedString(string: $0, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: textColor]) }
+        let tw = a.map { ceil($0.size().width) } ?? 0
+        let kw = Keycaps.width(keys)
+        let total = tw + (a != nil && !keys.isEmpty ? 6 : 0) + kw
+        let x0 = max(4, bounds.midX - total / 2)
+        if let a = a { a.draw(at: NSPoint(x: x0, y: bounds.midY - a.size().height / 2)) }
+        if !keys.isEmpty {
+            Keycaps.draw(keys, maxX: min(bounds.maxX - 4, x0 + total), midY: bounds.midY, ink: BrandColor.ink, fill: BrandColor.ink.withAlphaComponent(0.12))
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         let midY = bounds.midY
-        if let k = pending, !recording {
-            // keys waiting for the row's Swap / Cancel: as while listening, with the keys
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 6, yRadius: 6)
+        let full = bounds.insetBy(dx: 0.75, dy: 0.75)
+        if recording || pending != nil {
+            // listening, or keys waiting for the row's Swap / Cancel: brand ink on the brand tint (§3.4), the whole well
+            let path = wellPath(full)
             BrandColor.tint.setFill(); path.fill()
             BrandColor.ink.setStroke(); path.lineWidth = 1.5; path.stroke()
-            Keycaps.draw(k, maxX: bounds.maxX - 6, midY: midY, ink: BrandColor.ink, fill: BrandColor.ink.withAlphaComponent(0.12))
+            if let k = pending, !recording { drawCentred(text: nil, keys: k); return }
+            if let r = refuse { drawCentred(text: r, keys: [], textColor: BrandColor.attnInk) }
+            else if !live.isEmpty { drawCentred(text: nil, keys: live.map(String.init)) }
+            else { drawCentred(text: Loc.t("capture.keys.type", table: "Capture"), keys: ["esc"]) }
             return
         }
-        if recording {
-            // listening for keys: brand ink on the brand tint (§3.4), the whole cell
-            let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.75, dy: 0.75), xRadius: 6, yRadius: 6)
-            BrandColor.tint.setFill(); path.fill()
-            BrandColor.ink.setStroke(); path.lineWidth = 1.5; path.stroke()
-            if let r = refuse {
-                let a = NSAttributedString(string: r, attributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                                                                   .foregroundColor: BrandColor.attnInk])
-                let sz = a.size()
-                a.draw(at: NSPoint(x: max(6, bounds.maxX - 8 - sz.width), y: midY - sz.height / 2))
-            } else if !live.isEmpty {
-                Keycaps.draw(live.map(String.init), maxX: bounds.maxX - 4, midY: midY, ink: BrandColor.ink,
-                             fill: BrandColor.ink.withAlphaComponent(0.12))
-            } else {
-                // "Type shortcut…  [esc]": what to do, and the way out
-                let x = Keycaps.draw(["esc"], maxX: bounds.maxX - 4, midY: midY, ink: BrandColor.ink, fill: BrandColor.ink.withAlphaComponent(0.12))
-                let a = NSAttributedString(string: Loc.t("capture.keys.type", table: "Capture"),
-                                           attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium), .foregroundColor: BrandColor.ink])
-                let sz = a.size()
-                a.draw(at: NSPoint(x: max(6, x - 6 - sz.width), y: midY - sz.height / 2))
-            }
+        guard let k = restingKeys else {
+            // nothing set: the well itself, quiet, with what a click does
+            let path = wellPath(full)
+            NSColor.labelColor.withAlphaComponent(hovering || focused ? 0.08 : 0.05).setFill(); path.fill()
+            let a = NSAttributedString(string: Loc.t("capture.keys.record", table: "Capture"),
+                                       attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
+            let sz = a.size()
+            a.draw(at: NSPoint(x: bounds.midX - sz.width / 2, y: midY - sz.height / 2))
+            if warn { Keycaps.drawWarn(midX: 6 + Self.warnD / 2, midY: midY, d: Self.warnD) }
             return
         }
         if hovering || focused {
             NSColor.labelColor.withAlphaComponent(0.05).setFill()
-            NSBezierPath(roundedRect: groundRect, xRadius: 6, yRadius: 6).fill()
+            wellPath(full).fill()
         }
-        let start: CGFloat
-        if let k = restingKeys {
-            start = dim ? Keycaps.draw(k, maxX: contentMaxX, midY: midY, ink: .tertiaryLabelColor,
-                                       fill: NSColor.labelColor.withAlphaComponent(0.04))
-                : Keycaps.draw(k, maxX: contentMaxX, midY: midY)
-        } else {
-            let a = placeholder, sz = a.size()
-            start = contentMaxX - ceil(sz.width)
-            a.draw(at: NSPoint(x: start, y: midY - sz.height / 2))
-        }
+        let start = Keycaps.draw(k, maxX: bounds.maxX, midY: midY)
         if warn { Keycaps.drawWarn(midX: start - 6 - Self.warnD / 2, midY: midY, d: Self.warnD) }
         if let c = clearRect, let x = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
-            x.draw(in: NSRect(x: c.midX - x.size.width / 2 - 1, y: c.midY - x.size.height / 2, width: x.size.width, height: x.size.height))
+            x.draw(in: NSRect(x: c.midX - x.size.width / 2, y: c.midY - x.size.height / 2, width: x.size.width, height: x.size.height))
         }
     }
 
@@ -348,10 +344,9 @@ struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ f: ShortcutField, context: Context) {
         let note = model.note(action)
         f.warn = note?.mark == true
-        f.dim = note?.dim == true
         f.pending = model.swap?.action == action ? model.swap.map { Keycaps.keys($0.keys) } : nil
         // why it doesn't work, or how the recorder works
-        let why = note?.mark == true || note?.dim == true ? note?.text : nil
+        let why = note?.mark == true ? note?.text : nil
         f.toolTip = why ?? Loc.t("capture.keys.field_help", table: "Capture")
         f.setAccessibilityHelp(why ?? Loc.t("capture.keys.field_ax_hint", table: "Capture"))
         f.needsDisplay = true
@@ -364,14 +359,13 @@ struct ShortcutRecorder: NSViewRepresentable {
 /// Read-only keycaps (the dictation key: set in Settings → Dictation), drawn like the recorder's resting ones.
 struct KeycapsView: View {
     var keys: [String]
-    var dim = false
     var body: some View {
         HStack(spacing: Keycaps.gap) {
             ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
-                Text(k).font(.system(size: 12, weight: .medium)).foregroundStyle(dim ? .tertiary : .secondary)
+                Text(k).font(.system(size: 12, weight: .medium)).foregroundStyle(Keycaps.inkSwiftUI)
                     .padding(.horizontal, 5)
                     .frame(minWidth: Keycaps.height, minHeight: Keycaps.height)
-                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(dim ? 0.04 : 0.07)))
+                    .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.07)))
             }
         }
         .accessibilityElement(children: .combine)
@@ -559,10 +553,16 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
     }
 
-    /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps (a conflict of its own); `dim`:
-    /// its keycaps dimmed (another Blurt holds them — the page's notice says so once for all); `line`: said under the
-    /// action's name too.
-    struct Note { var text: String; var mark: Bool; var line: Bool; var dim = false }
+    /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps — one treatment for every reason,
+    /// its own conflict or another copy of Blurt holding the keys (the page's notice says that one once, for all of
+    /// them, so its rows have no line of their own); `line`: said under the action's name too.
+    struct Note { var text: String; var mark: Bool; var line: Bool }
+
+    /// Test builds (BLURT_TEST_SHORTCUTS_SOLO=1 with BLURT_TEST_COMMANDS): the page as on a Mac with no other copy of
+    /// Blurt running — for screenshots taken beside the user's own Blurt, which holds the real keys (the keys are not
+    /// registered here either way).
+    static let solo = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+        && ProcessInfo.processInfo.environment["BLURT_TEST_SHORTCUTS_SOLO"] == "1"
 
     func note(_ a: HotAction) -> Note? {
         let hk = Hotkeys.shared
@@ -571,7 +571,7 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         if let p = swap, p.other == a { return Note(text: swapOutcome(p), mark: true, line: false) }
         if let bad = hk.invalid[a] { return Note(text: Loc.t("capture.keys.unreadable", table: "Capture", bad), mark: true, line: true) }
         let st = hk.states[a] ?? .ok
-        if case .taken = st { return Note(text: st.text, mark: false, line: false, dim: true) }
+        if case .taken = st { return Self.solo ? nil : Note(text: st.text, mark: true, line: false) }
         if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return Note(text: r.reason(s), mark: true, line: true) }
         if st.isConflict { return Note(text: st.text, mark: true, line: true) }
         if st == .notHere { return Note(text: Loc.t("capture.keys.menu_bar_only", table: "Capture"), mark: false, line: true) }
@@ -583,12 +583,13 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     /// The actions on the page another running Blurt holds (HotkeyResult.taken), and the dictation key when another
     /// copy listens to it.
     var takenActions: [HotAction] {
-        HotAction.allCases.filter { a in
+        if Self.solo { return [] }
+        return HotAction.allCases.filter { a in
             guard !Hotkeys.shared.disabled.contains(a), case .taken = Hotkeys.shared.states[a] ?? .ok else { return false }
             return true
         }
     }
-    var dictationTaken: Bool { AppEnvironment.settings != nil && Dictation.shared.deferredTo != nil }
+    var dictationTaken: Bool { !Self.solo && AppEnvironment.settings != nil && Dictation.shared.deferredTo != nil }
     /// How many shortcuts on the page another copy holds.
     var takenCount: Int { takenActions.count + (dictationTaken ? 1 : 0) }
 
@@ -690,8 +691,9 @@ struct ShortcutsPane: View {
         return SettingsNotice(title: Loc.plural(many ? "capture.keys.taken_banner_many" : "capture.keys.taken_banner", table: "Capture", count: n),
                               detail: detail) {
             if !m.otherApps.isEmpty {
+                // the button's number follows the title's: one copy, one "Quit Other Copy"
                 Button(m.quitting ? Loc.t("capture.keys.quitting", table: "Capture")
-                       : Loc.t(m.otherApps.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
+                       : Loc.t(many ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
                     m.quitOthers()
                 }
                 .disabled(m.quitting)
@@ -727,9 +729,9 @@ struct ShortcutsPane: View {
     }
 }
 
-/// The dictation key on the Shortcuts page: read-only keycaps (it is set in Settings → Dictation) and a chevron, the
-/// whole of it one button there — the same faint ground under the pointer as the recorders. Dimmed while another copy
-/// of Blurt hears the key (the page's notice says so).
+/// The dictation key on the Shortcuts page: read-only keycaps (it is set in Settings → Dictation) in the same fixed well
+/// as every recorder, flush with the trailing edge; the whole well is one button there, with the recorders' faint
+/// ground under the pointer. While another copy of Blurt hears the key: the "!" before it (the page's notice says why).
 struct DictationKeyButton: View {
     var taken: Bool
     var action: () -> Void
@@ -737,34 +739,48 @@ struct DictationKeyButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 6) {
+                Spacer(minLength: 0)
+                if taken { WarnDisc() }
                 if Dictation.enabled {
-                    KeycapsView(keys: [Dictation.keyName], dim: taken)
+                    KeycapsView(keys: [Dictation.keyName])
                 } else {
-                    Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary).padding(.trailing, 6)
                 }
-                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
             }
-            .padding(.leading, 6).padding(.trailing, 6)
-            .frame(height: ShortcutField.size.height)
+            .frame(width: ShortcutField.size.width, height: ShortcutField.size.height)
             .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(hover ? 0.05 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .onHover { hover = $0 }
-        .help(taken ? Loc.t("dictation.status.other_instance", table: "Dictation") : Loc.t("capture.keys.dictation_change", table: "Capture"))
+        .help(taken ? Loc.t("dictation.status.other_instance.detail", table: "Dictation") : Loc.t("capture.keys.dictation_change", table: "Capture"))
         .accessibilityLabel(Loc.t("capture.keys.dictation_change", table: "Capture"))
         .accessibilityValue(Dictation.enabled ? Dictation.keyName : Loc.t("capture.keys.off", table: "Capture"))
     }
 }
 
-/// The row's swap question, as its second line: "Swap with Voice note?" in attention ink, then Swap (brand ink, the
-/// row's one action) and Cancel — Return and Esc in the recorder do the same. The whole outcome is the tooltip.
+/// The attention disc with its "!" (12 pt), as the recorders draw it before keys that don't work here.
+struct WarnDisc: View {
+    var body: some View {
+        ZStack {
+            Circle().fill(Color.brandAttn)
+            Capsule().fill(Color(nsColor: BrandColor.onAttn)).frame(width: 1.5, height: 4.2).offset(y: -1.2)
+            Circle().fill(Color(nsColor: BrandColor.onAttn)).frame(width: 1.6, height: 1.6).offset(y: 3)
+        }
+        .frame(width: 12, height: 12)
+        .accessibilityHidden(true)
+    }
+}
+
+/// The row's swap question, as its second line, with what it does: "Swap with Voice note? It gets ⌥⇧A." in secondary
+/// ink, then Swap (brand ink, the row's one action) and Cancel — Return and Esc in the recorder do the same. The amber
+/// "!" stays on the other action's keycaps, where the clash is.
 struct SwapLine: View {
     @ObservedObject var m: HotkeySettings
     let p: HotkeySettings.PendingSwap
     var body: some View {
         HStack(spacing: 10) {
-            Text(m.swapQuestion(p)).foregroundStyle(Color.brandAttnInk).help(m.swapOutcome(p))
+            Text(question).foregroundStyle(.secondary).help(m.swapOutcome(p))
             Button(Loc.t(p.mine == nil ? "capture.keys.move.ok" : "capture.keys.swap.ok", table: "Capture")) { m.answerSwap(true) }
                 .buttonStyle(.plain).foregroundStyle(Color.brandInk).fontWeight(.semibold)
                 .accessibilityHint(m.swapOutcome(p))
@@ -773,5 +789,9 @@ struct SwapLine: View {
         }
         .font(.system(size: SettingsMetrics.detailSize))
         .fixedSize(horizontal: false, vertical: true)
+    }
+    var question: String {
+        if let mine = p.mine { return Loc.t("capture.keys.swap.ask_outcome", table: "Capture", p.other.title, mine.label) }
+        return Loc.t("capture.keys.move.ask_outcome", table: "Capture", p.keys.label, p.other.title)
     }
 }

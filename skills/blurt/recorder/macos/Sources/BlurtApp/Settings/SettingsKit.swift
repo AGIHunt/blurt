@@ -97,6 +97,9 @@ extension View {
 // MARK: - Page, groups, rows: the one look of every pane
 
 enum SettingsMetrics {
+    // One grid for every pane (system.md §3.4): the box's edge at the page column, every text at the box's inset (12),
+    // a row with a leading glyph at one gutter (an 18 pt slot, the text 10 pt after it), every trailing control, value,
+    // size and keycap flush with the box's inset on the right, and the first thing of every page at one height.
     static let pageWidth: CGFloat = 680         // the column's widest; the window's extra width goes to the margins
     static let gutter: CGFloat = 28
     static let rowPadding: CGFloat = 7
@@ -104,28 +107,39 @@ enum SettingsMetrics {
     static let detailSize: CGFloat = 12
     static let headerSize: CGFloat = 13         // a group's heading: secondary, outside its box
     static let groupGap: CGFloat = 18
-    static let leadingWidth: CGFloat = 22       // an icon or a status dot before a row's title
     /// A group's rows sit in a rounded box (the grouped-form look of System Settings): its inner side inset (the row
-    /// titles, the hairlines between rows), its corner radius.
+    /// titles, the hairlines between rows, the headings, leads and footnotes outside it), its corner radius.
     static let boxInset: CGFloat = 12
     static let boxRadius: CGFloat = 10
     /// The trailing column: every pop-up of a page the same width, so the controls share one left and one right edge
-    /// (ChoicePopup).
-    static let controlWidth: CGFloat = 200
-    /// A row's icon (SettingRow(icon:), SettingsIcon): an 18 pt slot, the text 10 pt after it — every row of a pane
-    /// that uses icons starts its text at the same x (28).
+    /// (ChoicePopup) and descriptions keep the rest of the row on one line.
+    static let controlWidth: CGFloat = 180
+    /// A row's leading glyph (an icon, a status mark, a project's folder): an 18 pt slot, the text 10 pt after it — every
+    /// row of every pane that has one starts its text at the same x (the box's inset + 28). Lists of things carry one
+    /// (Speech's jobs, Storage's files, the agents, the projects); settings rows don't.
     static let iconSlot: CGFloat = 18
     static let iconGap: CGFloat = 10
+    static var iconInset: CGFloat { iconSlot + iconGap }
     static let ground = Color(nsColor: .controlBackgroundColor)
     /// the box on the page's ground: a few percent of ink, so it holds in light, dark and Increase Contrast alike
     static let boxFill = Color.primary.opacity(0.035)
     static let boxStroke = Color.primary.opacity(0.07)
     static let topFade: CGFloat = 10            // under the titlebar: rows scrolled up fade out instead of being cut
-    /// the page's first line under the toolbar: clear of the fade, so a lead line or a heading is never half-hidden
-    static let pageTop: CGFloat = 8
+    static let bottomFade: CGFloat = 18
+    /// Where every page's first thing starts under the toolbar — a lead line, a notice, a heading or a box alike: clear
+    /// of the toolbar's own fade, so nothing is washed out at rest. Each group adds its gap above itself, so the page
+    /// pads the rest.
+    static let firstTop: CGFloat = 26
+    static var pageTop: CGFloat { firstTop - groupGap }
     /// a list of even rows: one height for a one-line row and a row with a description line
     static let evenRow: CGFloat = 46
     static let evenRowPadding: CGFloat = 5
+}
+
+extension Color {
+    /// A white-label default button in a sheet or a dialog: the light accent (`brand.accent` light, #0B735E) in both
+    /// appearances — white on it is 5.79 : 1, where the dark accent's 3.19 : 1 is under the text floor (system.md §9).
+    static let settingsDefault = Color(nsColor: NSColor(srgbRed: 11 / 255, green: 115 / 255, blue: 94 / 255, alpha: 1))
 }
 
 extension View {
@@ -150,11 +164,11 @@ extension View {
     }
 }
 
-/// A pane's page: its title (and an optional line under it), then its groups, scrolling. It scrolls to the row or the
-/// section a search, a link or `show(pane: "speech/dictation")` asked for and flashes it (SettingsFlash.request).
+/// A pane's page: its title (and an optional lead line under it), then its groups, scrolling. It scrolls to the row or
+/// the section a search, a link or `show(pane: "speech/dictation")` asked for and flashes it (SettingsFlash.request).
 struct SettingsPage<Content: View>: View {
     let pane: SettingsPane
-    var subtitle: String?
+    var lead: AnyView?
     @ViewBuilder var content: Content
     private let flash = SettingsFlash.shared         // not observed: the page only acts on a new request
     /// The row or section a request landed on, kept in view while the page still grows above it (Agents' sign-in
@@ -163,27 +177,32 @@ struct SettingsPage<Content: View>: View {
     /// types: never a page that jumps back under the user.
     @State private var hold: Hold?
     private struct Hold { let id: String; let anchor: UnitPoint; let since: Date; var until: Date }
+    /// `subtitle`: the page's one lead line (what the page does) — the same place and inset on every page.
     init(_ pane: SettingsPane, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
         self.pane = pane
-        self.subtitle = subtitle
+        self.lead = subtitle.map { AnyView(SettingsLead(text: Text($0))) }
+        self.content = content()
+    }
+    /// A lead of its own (a link in it, an action at its right): a SettingsLead.
+    init(_ pane: SettingsPane, lead: SettingsLead, @ViewBuilder content: () -> Content) {
+        self.pane = pane
+        self.lead = AnyView(lead)
         self.content = content()
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                // the pane's name is the window's title (in the toolbar): the page starts with its first group
+                // the pane's name is the window's title (in the toolbar): the page starts with its lead or first group,
+                // at SettingsMetrics.firstTop on every page
                 VStack(alignment: .leading, spacing: 0) {
-                    if let s = subtitle {
-                        Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                            .padding(.horizontal, SettingsMetrics.boxInset).padding(.top, SettingsMetrics.groupGap - 4)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    if let l = lead { l }
                     content
                 }
                 .padding(.horizontal, SettingsMetrics.gutter).padding(.top, SettingsMetrics.pageTop).padding(.bottom, 24)
                 .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
                 .frame(maxWidth: .infinity)
+                .coordinateSpace(name: SettingsGrid.space)
                 // (a preference doesn't come out of a ScrollView: the height is watched in place)
                 .background(GeometryReader { g in Color.clear.onChange(of: g.size.height) { _ in keep(proxy) } })
             }
@@ -191,6 +210,7 @@ struct SettingsPage<Content: View>: View {
             .onReceive(flash.$request) { _ in go(proxy) }
         }
         .settingsPageGround()
+        .environment(\.settingsPaneID, pane.rawValue)
         .background { if SettingsTestKeyLook.on { SettingsTestKeyLook.Reader() } }
     }
 
@@ -262,6 +282,82 @@ enum SettingsTestKeyLook {
     }
 }
 
+/// A page's lead line (one 12 pt secondary line: what the page does, a fact about this Mac), at the text column and the
+/// page's first height like every other first thing; `accessory`: one small action at its right end, on the trailing
+/// edge (Agents' Check Again).
+struct SettingsLead: View {
+    var text: Text
+    var accessory: AnyView?
+    init(text: Text, accessory: AnyView? = nil) { self.text = text; self.accessory = accessory }
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            text.font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .gridProbe(.head)
+            if let a = accessory { a.font(.system(size: SettingsMetrics.detailSize)).gridProbe(.trailing) }
+        }
+        .padding(.horizontal, SettingsMetrics.boxInset)
+        .padding(.top, SettingsMetrics.groupGap)
+    }
+}
+
+/// Test builds only (BLURT_TEST_COMMANDS=1): where the grid's parts of the page showing are, for the layout lint
+/// (`settingsgrid` → tests/test_gui_layout.py): every box's edges, every text's left edge (with or without a leading
+/// glyph), every heading, lead and footnote's left edge, every trailing control's right edge, and the page's first
+/// thing's top — in the page column's own coordinates, so scrolling doesn't move them.
+@MainActor
+final class SettingsGrid {
+    static let space = "settings.page"
+    static let on = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+    enum Kind: String { case box, text, iconText = "icon_text", head, trailing, first }
+    struct Mark { var kind: Kind; var frame: CGRect; var label: String }
+    /// pane → probe id → its last frame
+    static var marks: [String: [UUID: Mark]] = [:]
+    static func note(_ pane: String, _ id: UUID, _ m: Mark?) {
+        guard on else { return }
+        marks[pane, default: [:]][id] = m
+    }
+    /// The pane's marks as JSON for the lint.
+    static func report(_ pane: String) -> [[String: Any]] {
+        (marks[pane] ?? [:]).values.filter { $0.frame.width > 0 }.map { m in
+            ["kind": m.kind.rawValue, "x": Double(m.frame.minX), "y": Double(m.frame.minY), "max_x": Double(m.frame.maxX),
+             "w": Double(m.frame.width), "label": m.label]
+        }
+    }
+}
+
+private struct SettingsPaneIDKey: EnvironmentKey { static let defaultValue = "" }
+extension EnvironmentValues {
+    var settingsPaneID: String {
+        get { self[SettingsPaneIDKey.self] }
+        set { self[SettingsPaneIDKey.self] = newValue }
+    }
+}
+
+private struct GridProbe: ViewModifier {
+    var kind: SettingsGrid.Kind
+    var label: String
+    @Environment(\.settingsPaneID) private var pane
+    @State private var id = UUID()
+    func body(content: Content) -> some View {
+        content.background(GeometryReader { g in
+            let f = g.frame(in: .named(SettingsGrid.space))
+            Color.clear
+                .onAppear { SettingsGrid.note(pane, id, .init(kind: kind, frame: f, label: label)) }
+                .onChange(of: f) { v in SettingsGrid.note(pane, id, .init(kind: kind, frame: v, label: label)) }
+                .onDisappear { SettingsGrid.note(pane, id, nil) }
+        })
+    }
+}
+
+extension View {
+    /// Test builds: this view's frame is part of the page's grid (SettingsGrid); nothing at all otherwise.
+    @ViewBuilder func gridProbe(_ kind: SettingsGrid.Kind, _ label: String = "") -> some View {
+        if SettingsGrid.on { modifier(GridProbe(kind: kind, label: label)) } else { self }
+    }
+}
+
 /// When the user last scrolled, clicked or typed in this app (SettingsPage stops keeping a row in view then).
 final class UserInput {
     static let shared = UserInput()
@@ -295,15 +391,18 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
     var id: String?
     var title: String?
     var footer: String?
+    /// a footnote with links in it (pane names, Examples…): drawn as `footer` is, outside the box
+    var note: AnyView?
     var disclosure: Binding<Bool>?
     var boxed = true
     var accessory: Accessory
     var content: Content
     @ObservedObject private var flash = SettingsFlash.shared
 
-    init(_ id: String, title: String? = nil, footer: String? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
+    init(_ id: String, title: String? = nil, footer: String? = nil, note: AnyView? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
          @ViewBuilder content: () -> Content, @ViewBuilder accessory: () -> Accessory) {
         self.id = id
+        self.note = note
         let t = title ?? SettingsCatalog.section(id).flatMap { SettingsCatalog.text($0.title) }
         // a section named like its page (Dictation → Dictation) needs no heading of its own under the page's title
         let named = t == SettingsCatalog.section(id).flatMap({ SettingsPane(rawValue: $0.pane)?.title })
@@ -349,11 +448,13 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                     } else {
                         Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).foregroundStyle(.secondary)
                             .accessibilityAddTraits(.isHeader)
+                            .gridProbe(.head, t)
                     }
                     Spacer(minLength: 8)
-                    accessory
                 }
                 .frame(minHeight: 16)
+                // over the heading's line at its right end, never making it taller: every heading starts at one height
+                .overlay(alignment: .trailing) { accessory.gridProbe(.trailing, "heading accessory") }
                 .padding(.horizontal, boxed ? SettingsMetrics.boxInset : 0)
                 .padding(.bottom, 5)
                 .background(FlashWash(on: id != nil && flash.row == id))
@@ -370,14 +471,19 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                         .background(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous).fill(SettingsMetrics.boxFill))
                         .overlay(RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
                             .strokeBorder(SettingsMetrics.boxStroke, lineWidth: 0.5).allowsHitTesting(false))
+                        .gridProbe(.box, id ?? "")
                 } else {
                     content
                 }
-                if let f = footer {
-                    Text(f).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, boxed ? SettingsMetrics.boxInset : 0)
-                        .padding(.top, 7)
+                if footer != nil || note != nil {
+                    Group {
+                        if let n = note { n } else if let f = footer { Text(f) }
+                    }
+                    .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).tint(Color.brandInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .gridProbe(.head, "footnote")
+                    .padding(.horizontal, SettingsMetrics.boxInset)
+                    .padding(.top, 7)
                 }
             }
         }
@@ -387,9 +493,9 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
 }
 
 extension SettingsGroup where Accessory == EmptyView {
-    init(_ id: String, title: String? = nil, footer: String? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
+    init(_ id: String, title: String? = nil, footer: String? = nil, note: AnyView? = nil, disclosure: Binding<Bool>? = nil, boxed: Bool = true,
          @ViewBuilder content: () -> Content) {
-        self.init(id, title: title, footer: footer, disclosure: disclosure, boxed: boxed, content: content) { EmptyView() }
+        self.init(id, title: title, footer: footer, note: note, disclosure: disclosure, boxed: boxed, content: content) { EmptyView() }
     }
     init(footer: String? = nil, @ViewBuilder content: () -> Content) {
         self.init(footer: footer, content: content) { EmptyView() }
@@ -470,6 +576,12 @@ struct SettingRow<Control: View>: View {
     var detailText: String? { detail ?? entry.flatMap(SettingsCatalog.detail) }
     var helpText: String? { help ?? entry?.more.flatMap { SettingsCatalog.text($0) } }
 
+    /// The row says something under its title (then a longer explanation is the title's tooltip, never an ⓘ beside a
+    /// description that already explains it).
+    private var describes: Bool {
+        detailContent != nil || richDetail != nil || (detailText.map { !$0.isEmpty } ?? false)
+    }
+
     var body: some View {
         SettingsLine(flashID: id, hosts: hosts, padding: height == nil ? SettingsMetrics.rowPadding : SettingsMetrics.evenRowPadding, height: height) {
             VStack(alignment: .leading, spacing: 6) {
@@ -480,7 +592,10 @@ struct SettingRow<Control: View>: View {
                         HStack(alignment: .firstTextBaseline, spacing: 5) {
                             Text(titleText).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(enabled ? .primary : .secondary)
                                 .fixedSize(horizontal: false, vertical: true)
-                            if let h = helpText, !h.isEmpty { InfoButton(title: titleText, text: h) }
+                                .help(describes ? helpText ?? "" : "")
+                                .gridProbe(icon == nil ? .text : .iconText, titleText)
+                            // only where nothing under the title explains the row
+                            if !describes, let h = helpText, !h.isEmpty { InfoButton(title: titleText, text: h) }
                         }
                         if let c = detailContent { c }
                         else if let r = richDetail {
@@ -490,10 +605,10 @@ struct SettingRow<Control: View>: View {
                     }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    control
+                    control.gridProbe(.trailing, titleText)
                 }
                 if detailBelow, let d = detailText, !d.isEmpty {
-                    detailView(d).padding(.leading, icon == nil ? 0 : SettingsMetrics.iconSlot + SettingsMetrics.iconGap)
+                    detailView(d).padding(.leading, icon == nil ? 0 : SettingsMetrics.iconInset)
                 }
             }
         }
@@ -516,7 +631,7 @@ struct InfoButton: View {
     @State private var shown = false
     var body: some View {
         Button { shown.toggle() } label: {
-            Image(systemName: "info.circle").font(.system(size: 11.5)).foregroundStyle(.tertiary)
+            Image(systemName: "info.circle").font(.system(size: 12)).foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
         .help(T("settings.kit.more_info"))
@@ -674,6 +789,42 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
     }
 }
 
+/// A page's one primary (Speech's recommended Download): the button gradient with a white title, as `.brand` — and in
+/// dark mode a step deeper (the gradient under 14 % black), so the white title stays over 4.5 : 1 there too, where the
+/// lighter window around it lifts how the gradient reads (system.md §9).
+struct SettingsPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.colorScheme) private var scheme
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return configuration.label
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(enabled ? Color.white : Color(nsColor: .tertiaryLabelColor))
+            .padding(.horizontal, 14).frame(minHeight: 24)
+            .background {
+                if enabled {
+                    shape.fill(BrandGradient.swiftUI(BrandGradient.buttonStops))
+                        .overlay(shape.fill(Color.black.opacity(scheme == .dark ? 0.14 : 0)))
+                        .overlay(shape.fill(configuration.isPressed ? Color.black.opacity(1 - BrandGradient.buttonPressed)
+                                            : hovering && scheme != .dark ? Color.white.opacity(BrandGradient.buttonHover - 1) : .clear))
+                        .overlay(alignment: .top) {
+                            Rectangle().fill(Color.white.opacity(0.18)).frame(height: 1).padding(.horizontal, 4)
+                        }
+                        .clipShape(shape)
+                        .shadow(color: Color(red: 4 / 255, green: 38 / 255, blue: 30 / 255).opacity(0.25), radius: 0.5, y: 1)
+                } else {
+                    shape.fill(Color.primary.opacity(0.06))
+                }
+            }
+            .contentShape(shape)
+            .onHover { hovering = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovering)
+    }
+}
+
 /// A plain text button in `brand.ink` (§3.4: "Change in Speech…"), not the system's link blue.
 struct TextLinkButton: View {
     var title: String
@@ -700,21 +851,23 @@ struct SettingsNotice<Action: View>: View {
     @ViewBuilder var action: Action
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: SettingsMetrics.boxRadius, style: .continuous)
-        HStack(alignment: .center, spacing: 12) {
-            StatusDot(tone: tone, diameter: 16)
+        HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+            StatusDot(tone: tone, diameter: 16).frame(width: SettingsMetrics.iconSlot)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: SettingsMetrics.titleSize, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                    .gridProbe(.iconText, title)
                 if let d = detail {
                     Text(d).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            action
+            action.gridProbe(.trailing, "notice")
         }
         .padding(.horizontal, SettingsMetrics.boxInset).padding(.vertical, 10)
         .background(shape.fill(tint.opacity(tone == .off ? 0.05 : 0.08)))
         .overlay(shape.strokeBorder(tint.opacity(tone == .off ? 0.12 : 0.3), lineWidth: 0.5))
+        .gridProbe(.box, "notice")
         .accessibilityElement(children: .contain)
     }
     private var tint: Color { tone == .off ? Color.primary : tone == .bad ? .brandErr : .brandAttn }
@@ -774,9 +927,9 @@ struct Hint: View {
     }
 }
 
-/// The button that closes a page (Restore Defaults): a plain bordered button at the page's bottom left, a section gap
-/// under the last section, no row and no description of its own (the tooltip explains it). `id` is its catalogue
-/// entry, so search lands on it.
+/// The button that closes a page (Restore Defaults): a plain bordered button on the page's trailing edge (where every
+/// row's control ends), a section gap under the last section, no row and no description of its own (the tooltip
+/// explains it). `id` is its catalogue entry, so search lands on it.
 struct SettingsPageButton: View {
     let id: String
     var title: String
@@ -792,11 +945,16 @@ struct SettingsPageButton: View {
     }
 
     var body: some View {
-        Button(title, action: action)
-            .help(help ?? "")
-            .background(FlashWash(on: flash.row == id))
-            .padding(.top, SettingsMetrics.groupGap)
-            .id(id)
+        HStack {
+            Spacer(minLength: 0)
+            Button(title, action: action)
+                .help(help ?? "")
+                .gridProbe(.trailing, title)
+        }
+        .padding(.horizontal, SettingsMetrics.boxInset)
+        .background(FlashWash(on: flash.row == id))
+        .padding(.top, SettingsMetrics.groupGap)
+        .id(id)
     }
 }
 
@@ -915,9 +1073,9 @@ struct PermissionRows: View {
     func row(_ k: PermissionKind, _ st: Permissions.State) -> some View {
         let now = guide.running && guide.current == k
         let notNeeded = st != .granted && guide.satisfied(k)
-        return HStack(alignment: .center, spacing: lines ? 14 : 10) {
+        return HStack(alignment: .center, spacing: lines ? SettingsMetrics.iconGap : 10) {
             // granted: ok; missing: the attention dot (§3.4); not needed: neutral
-            StatusDot(tone: st == .granted ? .good : notNeeded ? .off : .warn).frame(width: lines ? SettingsMetrics.leadingWidth : nil)
+            StatusDot(tone: st == .granted ? .good : notNeeded ? .off : .warn).frame(width: lines ? SettingsMetrics.iconSlot : nil)
             VStack(alignment: .leading, spacing: lines ? 3 : 2) {
                 Text(PermissionGuide.name(k)).font(lines ? .system(size: SettingsMetrics.titleSize) : .body)
                 Text(PermissionGuide.why(k)).font(lines ? .system(size: SettingsMetrics.detailSize) : .caption).foregroundStyle(.secondary)

@@ -318,3 +318,5 @@
 "capture.keys.quit_others" = "Quit Other Copies";
 "capture.keys.taken_banner.detail_many" = "They’ll work here once those copies quit.";
 "capture.keys.none" = "Not set";
+"capture.keys.swap.ask_outcome" = "Swap with %1$@? It gets %2$@.";
+"capture.keys.move.ask_outcome" = "Take %1$@ from %2$@? It’s left without one.";

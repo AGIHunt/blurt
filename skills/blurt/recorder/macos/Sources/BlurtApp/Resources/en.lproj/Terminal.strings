@@ -2,7 +2,7 @@
 
 /* Shared verbs */
 "agents.effort" = "Effort";
-"agents.effort.default" = "Same as the CLI";
+"agents.effort.default" = "CLI’s effort";
 "agents.effort.high" = "High";
 "agents.effort.low" = "Low";
 "agents.effort.max" = "Maximum";
@@ -10,10 +10,10 @@
 "agents.effort.xhigh" = "Extra high";
 "agents.processing.cards" = "Organizing cards";
 "agents.processing.cards.help" = "Snaps, voice notes and AI fill-in. By default, the cheapest model at low effort: enough for a picture and a note, with far fewer tokens.";
-"agents.processing.cheapest" = "Cheapest";
-"agents.processing.cheapest_named" = "Cheapest (%@)";
-"agents.processing.default" = "Same as the CLI";
-"agents.processing.default_named" = "Same as the CLI (%@)";
+"agents.processing.cheapest" = "Cheapest model";
+"agents.processing.cheapest_named" = "Cheapest model (%@)";
+"agents.processing.default" = "CLI’s model";
+"agents.processing.default_named" = "CLI’s model (%@)";
 "agents.processing.recording" = "Organizing recordings";
 "agents.processing.recording.help" = "By default, the CLI’s own model at low effort: a long recording needs it.";
 "common.cancel" = "Cancel";
@@ -253,8 +253,8 @@
 "finish.state.discard" = "Discarded";
 "agents.install.help" = "Installs the blurt skill and MCP server into this agent, after showing what changes";
 "agents.state.checking" = "Checking…";
-"agents.state.unknown" = "Installed · sign-in not checked";
-"agents.state.configured" = "Set up · sign-in not checked";
+"agents.state.unknown" = "Installed · can’t check sign-in";
+"agents.state.configured" = "Installed · can’t check sign-in";
 "agents.state.logged_out" = "Not signed in";
 
 /* Sessions that end without the work (v0.9 dogfood) */
@@ -314,7 +314,7 @@
 "row.desktop" = "In %@ desktop";
 "row.desktop.no_mcp" = "In %@ desktop · waiting for you to mark it";
 "agents.handoff_target" = "Hand-offs to %@";
-"agents.handoff_target.hint" = "Where the hand-off sheet starts. Blurt’s terminal is recommended; you can change it each time.";
+"agents.handoff_target.hint" = "Where the hand-off sheet starts. You can change it each time.";
 "agents.handoff_target.no_app" = "%@ desktop isn’t installed, so hand-offs run in Blurt’s terminal.";
 "error.no_desktop" = "This agent has no desktop app to hand items to.";
 "error.desktop_version" = "This needs a newer Claude Code (2.1.285 or later).";
@@ -344,7 +344,7 @@
 "agents.test.failed" = "%@ didn’t pass the test. Run it in a terminal and check that it answers.";
 
 /* Settings → Agents (v0.9 redesign) */
-"agents.lead" = "Blurt uses the first agent that works, top to bottom. Drag to reorder.";
+"agents.lead" = "Blurt uses the first agent that works, from the top.";
 "agents.in_use" = "In use";
 "agents.state.off" = "Off";
 "agents.state.skipped" = "skipped";
@@ -369,14 +369,14 @@
 "agents.details.models" = "Models";
 "agents.details.model" = "Model";
 "agents.details.no_models" = "This agent doesn’t list its models, so it uses its own setting.";
-"agents.details.models.note" = "Cards are snaps and voice notes; AI fill-in uses the same model. Higher effort is slower and uses more tokens.";
+"agents.details.models.note" = "Higher effort is slower and uses more tokens.";
 "agents.details.skill" = "Skill and MCP";
 "agents.details.connected" = "Connected";
 "agents.details.test" = "Test run";
 "agents.details.sessions" = "Sessions";
 "agents.details.no_sessions" = "Can’t work on items in a Blurt session.";
 "agents.keep_sessions" = "Keep sessions running after you quit";
-"agents.keep_sessions.ok" = "Uses tmux %@. Sessions reconnect when you open Blurt again.";
+"agents.keep_sessions.ok" = "Uses tmux %@: sessions come back when Blurt opens.";
 "agents.keep_sessions.missing" = "Needs tmux. Without it, sessions end when you quit Blurt.";
 "agents.keep_sessions.old" = "Needs tmux 3.2 or later. Until then, sessions end when you quit Blurt.";
 "agents.keep_sessions.on" = "On";
@@ -385,14 +385,18 @@
 "agents.handoff.recommended" = "Recommended";
 "agents.handoff.terminal" = "Blurt’s terminal";
 "agents.handoff.desktop" = "%@ desktop";
-"agents.ask.line" = "Your agent sends items with the tools it already has, like Slack, Feishu or Linear.";
+"agents.ask.line" = "Your agent can send items anywhere with its own tools, like Slack or Linear.";
 "agents.ask.examples" = "Examples…";
 "agents.details" = "Details…";
 "agents.missing" = "Not installed";
 "agents.organize.header" = "Organizing";
 "agents.organize.recording" = "Recordings";
-"agents.organize.cards" = "Cards and AI fill-in";
-"agents.organize.footer" = "Every agent uses these. Higher effort is slower and uses more tokens.";
+"agents.organize.cards" = "Snaps and voice notes";
+"agents.organize.footer" = "Higher effort is slower and uses more tokens.";
 "agents.organize.own" = "Set on its own: %@ (in Details…).";
 "agents.organize.follow" = "Same as all (%@)";
 "agents.organize.follow_plain" = "Same as all agents";
+"agents.organize.inherit" = "Default (%@)";
+"agents.details.more" = "Connection";
+"agents.details.sessions_ok" = "Works in sessions";
+"agents.keep_sessions.fixed" = "Always on while tmux is installed.";

@@ -125,9 +125,10 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         detail = page
         // the last pane, for next time (a pane chosen while the window is open counts, not only the one at closing)
         nav.$pane.removeDuplicates().sink { p in Config.shared.set("app.settings_pane", p.rawValue) }.store(in: &subs)
-        nav.$pane.combineLatest(nav.$query.map { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.removeDuplicates())
+        // while searching, the query is the page's title ("“short”"): the results page doesn't say it twice
+        nav.$pane.combineLatest(nav.$query.map { $0.trimmingCharacters(in: .whitespaces) }.removeDuplicates())
             .receive(on: RunLoop.main)
-            .sink { [weak w] p, searching in w?.title = searching ? T("settings.search.title") : p.title }
+            .sink { [weak w] p, q in w?.title = q.isEmpty ? p.title : T("settings.search.title_query", q) }
             .store(in: &subs)
     }
 
@@ -181,8 +182,11 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         while !queue.isEmpty {
             let v = queue.removeFirst()
             if let s = v as? NSScrollView, let doc = s.documentView {
-                let maxY = max(0, doc.frame.height - s.contentView.bounds.height)
-                let y = to == "bottom" ? maxY : to == "top" ? 0 : min(maxY, Double(to) ?? 0)
+                // under the transparent toolbar the page's top is at minus the top inset: "top" and offsets count from
+                // there, and a page shorter than the window never moves
+                let minY = -s.contentView.contentInsets.top
+                let maxY = max(minY, doc.frame.height - s.contentView.bounds.height)
+                let y = to == "bottom" ? maxY : to == "top" ? minY : min(maxY, minY + (Double(to) ?? 0))
                 s.contentView.scroll(to: NSPoint(x: 0, y: doc.isFlipped ? y : maxY - y))
                 s.reflectScrolledClipView(s.contentView)
                 return true
@@ -304,8 +308,15 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         scroll.documentView = outline
 
         let root = NSView()
-        for v in [search, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        // dark mode: a neutral ground under the source list, so the sidebar's material doesn't carry the wallpaper's
+        // blue next to the page's neutral grey (§2.4: neutrals never tint); light mode keeps the material as it is
+        let ground = NeutralSidebarGround()
+        for v in [ground, search, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
+            ground.topAnchor.constraint(equalTo: root.topAnchor),
+            ground.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            ground.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ground.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             // under the window's buttons (the titlebar is transparent; the sidebar runs to the top)
             search.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 8),
             search.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
@@ -442,6 +453,18 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         guard !syncing, let p = (outline.item(atRow: outline.selectedRow) as? SettingsNode)?.pane else { return }
         MainActor.assumeIsolated { SettingsNavigator.shared.go(p) }
     }
+}
+
+/// The sidebar's ground in dark mode: neutral grey (#262626) over the material, nearly opaque, so the wallpaper's hue
+/// doesn't show through next to the neutral page; clear in light mode.
+final class NeutralSidebarGround: NSView {
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        layer?.backgroundColor = dark ? NSColor(srgbRed: 0.149, green: 0.149, blue: 0.149, alpha: 0.92).cgColor : NSColor.clear.cgColor
+    }
+    override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// A pane in the sidebar: its symbol, its name, and while searching how many of its settings match (dimmed at none).

@@ -133,16 +133,19 @@ public enum SettingsCatalog {
         sec("general.about", "settings.general.about"),
 
         sec("projects.list", "main.sidebar.projects", "Main"),
+        sec("projects.capture", "settings.projects.capture_heading"),
 
         // Dictation: how dictating works (untitled: named like the page), then what comes out — the style, the words,
         // the history, the models. Permissions are a notice at the top only while one is missing.
         sec("dictation.main", "dictation.settings.section", "Dictation"),
         sec("dictation.text", "dictation.text.section", "Dictation"),
+        sec("dictation.data", "dictation.data.section", "Dictation"),
         sec("dictation.advanced", "settings.general.section.developer"),
 
         // Speech: which model does each job (and is the recommended set in), the languages, a folded Advanced; the
         // model library is a sheet ("Manage Models…") that a search or a link opens
-        sec("speech.use", "speech.section.use", "Speech"),
+        sec("speech.use", "speech.section.mac", "Speech"),
+        sec("speech.jobs", "speech.section.jobs", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
         sec("speech.models", "speech.section.models", "Speech"),
@@ -203,7 +206,7 @@ public enum SettingsCatalog {
             whole("general.about"),
 
             // Projects
-            row("projects.capture_into", nil, "settings.general.capture_into"),
+            row("projects.capture_into", "projects.capture", "settings.projects.capture_row"),
             whole("projects.list", detail: S("settings.general.projects.hint")),
 
             // Dictation
@@ -233,35 +236,33 @@ public enum SettingsCatalog {
                 fold: "dictation.word_list"),
             row("dictation.learn", "dictation.text", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail"), fold: "dictation.word_list"),
             // the history's menu: how long it is kept, the audio, clearing it
-            row("dictation.history_saved", "dictation.text", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
-            row("dictation.history_keep", "dictation.text", D("dictation.history.keep"), fold: "dictation.history_saved"),
-            row("dictation.keep_audio", "dictation.text", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail"),
+            row("dictation.history_saved", "dictation.data", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
+            row("dictation.history_keep", "dictation.data", D("dictation.history.keep"), fold: "dictation.history_saved"),
+            row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail"),
                 fold: "dictation.history_saved"),
             // chosen and listed in Settings → Speech
-            row("dictation.models", "dictation.text", D("dictation.models.section"), detail: D("dictation.models.detail")),
+            row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech
             row("speech.auto", "speech.use", P("speech.auto.title"), detail: P("speech.auto.detail")),
         ]
         for p in speechPurposes {
-            e.append(row("speech.\(p)", "speech.use", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
+            e.append(row("speech.\(p)", "speech.jobs", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
         }
         // dictation's two models are two more jobs; "speech.dictation" stays the id links use (speech/dictation)
-        let adv = "speech.more"
         e += [
-            row("speech.dictation", "speech.use", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
-            row("speech.polish", "speech.use", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
+            row("speech.dictation", "speech.jobs", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
+            row("speech.polish", "speech.jobs", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
             whole("speech.languages", detail: P("speech.languages.footer")),
             row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
-            row(adv, "speech.advanced", P("speech.more.title"), detail: P("speech.more.detail")),
             row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),
-                more: P("speech.limits.footer"), fold: adv),
-            row("speech.concurrent", "speech.advanced", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail"), fold: adv),
-            row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail"), fold: adv),
-            row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail"), fold: adv),
-            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail"), fold: adv),
-            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.cloud.keys"), fold: adv),
+                more: P("speech.limits.footer")),
+            row("speech.concurrent", "speech.advanced", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail")),
+            row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
+            row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
+            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
+            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.cloud.keys")),
             whole("speech.models", detail: P("speech.models.footer")),
         ]
 
@@ -435,28 +436,25 @@ public enum SettingsCatalog {
     /// The language search looks in besides the UI's.
     public static var otherLanguage: String { Loc.languages.first { $0 != Loc.language } ?? "en" }
 
-    /// Why an entry was found, when its title doesn't say so: the stretch of its description, the keyword, or its name in
-    /// the other language that holds the query's other words. nil when the title holds every word, or when the entry
-    /// was found by its section or its pane (the results show those as headings).
+    /// Why an entry was found, when its title doesn't say so: the stretch of its description, its keyword or its longer
+    /// explanation that holds the query's other words — always in the UI's language. Found only through the other
+    /// language (an English word typed in the Chinese UI): its own description, in the UI's language, untouched (or
+    /// nothing) — never a line of English inside Chinese. nil when the title holds every word, or when the entry was
+    /// found by its section or its pane (the results show those as headings).
     public static func reason(_ e: SettingsEntry, query: String) -> String? {
         let missing = words(query).filter { !fold(title(e)).contains($0) }
         guard !missing.isEmpty else { return nil }
-        let other = otherLanguage
-        let texts = [detail(e)].compactMap { $0 } + keywordList(e.keywords, nil)
-            + [text(e.title, language: other), e.detail.flatMap { text($0, language: other) }].compactMap { $0 }
-            + keywordList(e.keywords, other) + [e.more.flatMap { text($0) }].compactMap { $0 }
-        return excerpt(texts, missing)
+        let texts = [detail(e)].compactMap { $0 } + keywordList(e.keywords, nil) + [e.more.flatMap { text($0) }].compactMap { $0 }
+        return excerpt(texts, missing) ?? detail(e)
     }
 
-    /// Why a pane was found as a whole, when its name in the UI language doesn't say so: its name in the other language
-    /// ("Shortcuts" beside 快捷键) or the keyword that holds the query ("hotkey").
+    /// Why a pane was found as a whole, when its name doesn't say so: the keyword that holds the query ("hotkey"), in the
+    /// UI's language; nothing when it was its name in the other language.
     public static func reason(pane id: String, query: String) -> String? {
         guard let p = pane(id) else { return nil }
         let missing = words(query).filter { !fold(text(p.title) ?? "").contains($0) }
         guard !missing.isEmpty else { return nil }
-        let texts = [text(p.title, language: otherLanguage)].compactMap { $0 } + keywordList(p.keywords, nil)
-            + keywordList(p.keywords, otherLanguage)
-        return excerpt(texts, missing)
+        return excerpt(keywordList(p.keywords, nil), missing)
     }
 
     private static func keywordList(_ t: SettingsText, _ lang: String?) -> [String] {
@@ -464,23 +462,34 @@ public enum SettingsCatalog {
         return s.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == "、" }).map { $0.trimmingCharacters(in: .whitespaces) }
     }
 
-    /// The first text holding the most of `terms` — a long one from a few words before the first of them, when it sits
-    /// far in ("…macOS’s own shortcuts become cards too."), so the match isn't cut off at the row's end.
+    /// The sentence holding the most of `terms`, from the first text that has them: whole from its start (the row ends
+    /// it with "…" when it is too long — cut at one end only), without its parentheses (a list of key glyphs reads as
+    /// noise in a result).
     static func excerpt(_ texts: [String], _ terms: [String]) -> String? {
         let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        func hits(_ t: String) -> Int { terms.filter { t.range(of: $0, options: opts) != nil }.count }
         var best: (text: String, n: Int)?
         for t in texts {
-            let n = terms.filter { t.range(of: $0, options: opts) != nil }.count
+            let n = hits(t)
             if n > (best?.n ?? 0) { best = (t, n) }
             if n == terms.count { break }
         }
-        guard let t = best?.text, let first = terms.compactMap({ t.range(of: $0, options: opts)?.lowerBound }).min() else { return nil }
-        guard t.count > 56, t.distance(from: t.startIndex, to: first) > 28 else { return t }
-        var from = t.index(first, offsetBy: -12, limitedBy: t.startIndex) ?? t.startIndex
-        while from > t.startIndex, !t[t.index(before: from)].isWhitespace, t.distance(from: from, to: first) < 24 {
-            from = t.index(before: from)
+        guard let t = best?.text else { return nil }
+        // its sentences (a full stop, then a space or the end; Chinese stops end one by themselves)
+        var sentences: [String] = []
+        var cur = ""
+        for (i, c) in zip(t.indices, t) {
+            cur.append(c)
+            let next = t.index(after: i)
+            if "。！？".contains(c) || (".!?".contains(c) && (next == t.endIndex || t[next].isWhitespace)) {
+                sentences.append(cur.trimmingCharacters(in: .whitespaces)); cur = ""
+            }
         }
-        return "…" + t[from...].trimmingCharacters(in: .whitespaces)
+        if !cur.trimmingCharacters(in: .whitespaces).isEmpty { sentences.append(cur.trimmingCharacters(in: .whitespaces)) }
+        let most = sentences.map(hits).max() ?? 0
+        let pick = sentences.first { hits($0) == most } ?? t
+        let bare = pick.replacingOccurrences(of: #"\s*[（(][^）)]*[）)]"#, with: "", options: .regularExpression)
+        return bare.isEmpty ? pick : bare
     }
 
     typealias Field = (text: String, title: Bool, pane: Bool, weight: Int)

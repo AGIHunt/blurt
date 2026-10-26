@@ -2,6 +2,8 @@
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
 //   settings PANE[/ROW] | settingsscroll top|bottom|N | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
 //   settingskeylook on|off       Settings drawn as the key window though another app has the focus (screenshots)
+//   settingsgrid                 the showing pane's grid (SettingsGrid: boxes, text and heading edges, trailing edges,
+//                                in the page column's coordinates) → {"pane", "marks": [{"kind", "x", "y", "max_x", "label"}]}
 //   projectsselect N|none        Settings → Projects: select its Nth project (the row's tint and Show in Finder)
 //   settingssearch TEXT          type TEXT into Settings' search field → {"hits": [id…]} (settingssearch alone clears it)
 //   settingskey down|up|return|esc   a key in that field: ↓ / ↑ walk the results, ↩ opens one, Esc clears
@@ -68,6 +70,9 @@ enum SelfTests {
         case "settings": SettingsController.shared.show(pane: arg.isEmpty ? nil : arg)
         case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
             out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
+        case "settingsgrid":            // settingsgrid: the showing pane's grid, for the layout lint
+            let p = SettingsNavigator.shared.pane.rawValue
+            out(["pane": p, "marks": SettingsGrid.report(p)])
         case "settingskeylook":         // settingskeylook on|off: the window drawn as the key one (screenshots)
             SettingsController.shared.testKeyLook(arg != "off")
             out(["keylook": arg != "off"])

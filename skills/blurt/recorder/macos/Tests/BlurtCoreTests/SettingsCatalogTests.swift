@@ -159,9 +159,10 @@ final class SettingsCatalogTests: XCTestCase {
             XCTAssertEqual(Set(r.map(\.pane)).count, r.count, lang)
             XCTAssertTrue(r.dropFirst().allSatisfy { !$0.paneHit }, lang)
             XCTAssertEqual(SettingsCatalog.search("short").map(\.entry.id), r.flatMap(\.hits).map(\.entry.id), lang)
-            // a pane's name in the other language says why it matched; the UI's own name needs no reason
-            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "short"), lang == "en" ? nil : "Shortcuts", lang)
-            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "hotkey"), "hotkey", lang)
+            // why a pane matched is said in the UI's language only: its own name needs no reason, and its name or a
+            // keyword in the other language is never shown (no English inside the Chinese UI)
+            XCTAssertNil(SettingsCatalog.reason(pane: "shortcuts", query: "short"), lang)
+            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "hotkey"), lang == "en" ? "hotkey" : nil, lang)
         }
         Loc.setting = "en"
         // an action is found only by its own words
@@ -185,8 +186,16 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.reason(login, query: "login"), nil)
         XCTAssertTrue(SettingsCatalog.reason(login, query: "short")?.localizedCaseInsensitiveContains("shortcuts") == true)
         XCTAssertEqual(SettingsCatalog.reason(login, query: "startup"), "startup")
+        // the sentence that holds the words, whole from its start, without its parentheses (cut at the row's end only)
         XCTAssertEqual(SettingsCatalog.excerpt(["Blurt tells you when a shortcut clashes with another Blurt action"], ["another"]),
-                       "…clashes with another Blurt action")
+                       "Blurt tells you when a shortcut clashes with another Blurt action")
+        XCTAssertEqual(SettingsCatalog.excerpt(["Screenshots become cards. They use macOS’s own shortcuts (⇧⌘3, ⇧⌘4)."], ["short"]),
+                       "They use macOS’s own shortcuts.")
+        // in the Chinese UI, a row found through its English text shows its own Chinese description, never the English
+        Loc.setting = "zh-Hans"
+        let r = SettingsCatalog.reason(login, query: "short")
+        XCTAssertFalse(r?.contains("shortcuts") ?? false, r ?? "")
+        Loc.setting = "en"
     }
 
     /// The no-match page's common searches each land somewhere, in either UI language.

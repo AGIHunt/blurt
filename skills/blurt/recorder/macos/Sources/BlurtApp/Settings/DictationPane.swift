@@ -6,13 +6,13 @@
 //               in another app are its tooltip) · Shortcut: the key, with Fn's "Use Fn only for dictation" in its
 //               menu · Start and stop: tap or hold / tap / hold (Esc and the voice note in its tooltip) · Double-tap to
 //               send · Microphone: Automatic / this Mac's / the default input · the start sound
-//   Text        Style: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key and the
-//               styles' default) · By kind of app: per category, apps set on their own, list suggestions, learning
-//               and the polish time limit folded under it (unfolded when a search lands in it) · Names and terms:
-//               Manage… (the Dictation page's Words tab), with reading the context and learning in its menu ·
-//               History: Open History…, with how long it is kept, the audio and Clear History… in its menu · Models:
-//               the names in use with Change in Speech… (Settings → Speech chooses them, DictationModels.swift), or
-//               what is missing with one Download for all of it, or the download's progress with Show
+//   Style and words  Style: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key
+//               and the styles' default) · By kind of app: per category, apps set on their own, list suggestions,
+//               learning and the polish time limit folded under it (unfolded when a search lands in it) · Names and
+//               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu
+//   History and models  History: Open History…, with how long it is kept, the audio and Clear History… in its menu ·
+//               Models: the names in use, or what isn't on this Mac yet, in plain words — and always the one way on,
+//               a link to Settings → Speech, which chooses them and owns the one Download (DictationModels.swift)
 //   Advanced    folded at the foot (open while it is on): Show the Dictation Lab (record.dictation.lab), for developers
 // Everything is record.dictation.* in config.json; Dictation.shared.apply() picks changes up at once.
 // Strings: Resources/*.lproj/Dictation.strings (T("dictation.…")).
@@ -210,6 +210,8 @@ final class DictationSettings: ObservableObject {
             emit(["event": "dictation_clear", "cleared": yes])
             if yes { self.clearHistory() }
         }
+        // test screenshots taken in the background: the sheet drawn as the user sees it, Cancel filled as the default
+        if SettingsTestKeyLook.on { SettingsTestKeyLook.apply(to: a.window) }
         if let w = NSApp.windows.first(where: { $0 is SettingsWindow && $0.isVisible }) {
             a.beginSheetModal(for: w, completionHandler: done)
         } else { done(a.runModal()) }
@@ -236,6 +238,10 @@ struct DictationPane: View {
             notice
             SettingsGroup("dictation.main") { mainRows }
             SettingsGroup("dictation.text") { textRows }
+            SettingsGroup("dictation.data") {
+                historyRow
+                modelsRow
+            }
 
             // for developers: folded away at the page's foot
             SettingsGroup("dictation.advanced", disclosure: $showAdvanced) {
@@ -322,14 +328,17 @@ struct DictationPane: View {
             let missing = guide.missing(.dictation).filter { $0 != .fnKey }
             let _ = perms.accessibility                 // re-evaluated as the states change (once a second)
             Group {
-                if !m.tap, let pid = Dictation.shared.deferredTo {
+                if !m.tap, Dictation.shared.deferredTo != nil, HotkeySettings.solo {
+                    EmptyView()                     // screenshots beside the user's own Blurt: as if this one were alone
+                } else if !m.tap, Dictation.shared.deferredTo != nil {
                     // another Blurt has the key (this one takes over when that one quits): the same notice and the same
-                    // way out as the Shortcuts page's
+                    // way out as the Shortcuts page's — the key named, one copy one "Quit Other Copy"
                     let keys = HotkeySettings.shared
-                    SettingsNotice(title: T("dictation.status.other_instance", "\(pid)"), detail: T("dictation.status.other_instance.detail")) {
+                    SettingsNotice(title: T("dictation.status.other_instance_key", Dictation.keyInline(m.key)),
+                                   detail: T("dictation.status.other_instance.detail")) {
                         if !keys.otherApps.isEmpty {
                             Button(keys.quitting ? Loc.t("capture.keys.quitting", table: "Capture")
-                                   : Loc.t(keys.otherApps.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
+                                   : Loc.t(keys.others.count > 1 ? "capture.keys.quit_others" : "capture.keys.quit_other", table: "Capture")) {
                                 keys.quitOthers()
                             }
                             .disabled(keys.quitting)
@@ -381,14 +390,12 @@ struct DictationPane: View {
             .accessibilityAction { showByApp.toggle() }
             .disabled(!m.enabled)
             if showByApp {
+                // the folded rows in the same box, on the same text column (the chevron above says they belong to it)
                 VStack(alignment: .leading, spacing: 0) { byApp }
-                    .padding(.leading, 20)
                     .disabled(!m.enabled)
             }
         }
         wordsRow
-        historyRow
-        modelsRow
     }
 
     /// What is set per kind of app ("Code and terminals: Verbatim · 2 apps on their own"); else what the row is for.
@@ -476,27 +483,36 @@ struct DictationPane: View {
 
     // MARK: models (chosen in Settings → Speech)
 
-    /// One row for both models: their names and Change in Speech… once in; "Not on this Mac yet · 2.4 GB" with one
-    /// Download for all that's missing; while the download manager has one (running or waiting its turn), its line
-    /// with Show — never "not downloaded" beside a running download.
+    /// One row for both models, said as Settings → Speech's rows say it: the names in use, what isn't on this Mac yet
+    /// ("polish model not downloaded"), or the download's progress — and always one way on, a link to Speech, the one
+    /// page that chooses them and offers the download. Never a second Download button, never a size that disagrees
+    /// with Speech's.
     var modelsRow: some View {
         let s = modelsState
         let detail: String? = {
             switch s {
             case .loading: return nil
             case .coming(let j): return downloadLine(j)
-            case .missing(let jobs): return T("dictation.models.missing", modelSize(jobs.reduce(0) { $0 + $1.sizeMB }))
+            case .missing(let jobs):
+                var parts: [String] = []
+                // the recogniser in use (Speech's Dictation row names the same one), then what is still to come: only
+                // the small voice detector, or the speech model itself
+                let asrHere = models.asr?.selectedInstalled ?? models.selectedASR?.installed ?? false
+                if asrHere, let a = models.selectedASR { parts.append(a.name ?? models.asrName(a.id)) }
+                if jobs.count > 1 { parts.append(T("dictation.models.n_missing", jobs.count)) }
+                else if let j = jobs.first(where: { $0.kind == .dictation }) {
+                    parts.append(T(asrHere || j.sizeMB <= 1 ? "dictation.models.small_missing" : "dictation.models.asr_missing"))
+                } else if jobs.contains(where: { $0.kind == .polish }) { parts.append(T("dictation.models.polish_missing")) }
+                let line = parts.joined(separator: " · ")
+                return line.prefix(1).uppercased(with: Loc.locale) + line.dropFirst()
             case .ready: return modelNames
             }
         }()
-        var missing = false
-        if case .missing = s { missing = true }
-        return SettingRow("dictation.models", detail: detail, detailColor: missing ? .brandAttnInk : nil) {
+        return SettingRow("dictation.models", detail: detail) {
             switch s {
             case .loading: BrandSpinnerView()
-            case .coming: Button(T("dictation.models.show")) { ModelDownloads.showProgress() }
-            case .missing: Button(T("dictation.models.download")) { models.downloadMissing(polish: m.style != .verbatim) }
-            case .ready: TextLinkButton(T("dictation.models.change")) { SpeechPane.showDictationModels() }
+            case .missing: TextLinkButton(T("dictation.models.get_in_speech")) { SpeechPane.showDictationModels() }
+            case .coming, .ready: TextLinkButton(T("dictation.models.change")) { SpeechPane.showDictationModels() }
             }
         }
     }

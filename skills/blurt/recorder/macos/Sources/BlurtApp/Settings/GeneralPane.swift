@@ -170,7 +170,8 @@ struct GeneralPane: View {
         .onDisappear { perms.stop() }
     }
 
-    /// About, as one quiet line: the version, then the rarely needed ways on, as brand-ink text buttons.
+    /// About, as one quiet line at the text column: the version, then the rarely needed ways on as quiet text buttons
+    /// (secondary ink, underlined under the pointer) — one line of facts, not a row of brand links.
     @ViewBuilder var aboutLine: some View {
         // the skill and the app don't speak the same contract: said here for as long as it lasts
         let mismatch = SkillContract.check(skill: SkillContract.skillVersion())
@@ -184,20 +185,36 @@ struct GeneralPane: View {
             }
             HStack(spacing: 6) {
                 Text(T("settings.general.about.version", Self.version)).foregroundStyle(.secondary).textSelection(.enabled)
+                    .gridProbe(.head, "about")
                 if mismatch == nil && Updater.shared.available {
                     dot
                     InkLink(T("app.menu.updates")) { Updater.shared.checkForUpdates(nil) }.disabled(!Updater.shared.canCheck)
                 }
                 dot
-                InkLink(T("settings.general.help")) { NSWorkspace.shared.open(Help.guideURL()) }
+                QuietLink(T("settings.general.help")) { NSWorkspace.shared.open(Help.guideURL()) }
                 dot
-                InkLink(T("settings.general.assistant.link")) { Onboarding.shared.show() }
+                QuietLink(T("settings.general.assistant.link")) { Onboarding.shared.show() }
             }
         }
         .font(.system(size: SettingsMetrics.detailSize))
         .padding(.horizontal, SettingsMetrics.boxInset)
-        .padding(.top, -6)
     }
 
-    private var dot: some View { Text("·").foregroundStyle(.tertiary).accessibilityHidden(true) }
+    private var dot: some View { Text("·").foregroundStyle(.secondary).accessibilityHidden(true) }
+}
+
+/// A text button in the About line: secondary ink like the facts beside it, underlined under the pointer.
+struct QuietLink: View {
+    var title: String
+    var action: () -> Void
+    @State private var hover = false
+    init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
+    var body: some View {
+        Button(action: action) { Text(title).underline(hover).foregroundStyle(hover ? .primary : .secondary) }
+            .buttonStyle(.plain)
+            .onHover { inside in
+                hover = inside
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
+    }
 }

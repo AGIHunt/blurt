@@ -229,7 +229,7 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertNotIn("c.argv", sheet)
         self.assertEqual(sheet.count("design: .monospaced"), 1)
         self.assertIn("InstallDetailsWell(lines: technical)", body)
-        self.assertIn('Button(TL("install.confirm")) { Task { await m.apply() } }\n                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)', body)
+        self.assertIn('Button(TL("install.confirm")) { Task { await m.apply() } }\n                    .buttonStyle(.borderedProminent).tint(Color.settingsDefault).keyboardShortcut(.defaultAction)', body)
         zh = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj/Terminal.strings").read_text()
         for line in zh.splitlines():
             if line.startswith('"install.'):

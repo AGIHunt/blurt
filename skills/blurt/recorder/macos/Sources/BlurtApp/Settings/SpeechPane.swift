@@ -1,25 +1,27 @@
 // Settings → Speech (K9; SettingsKit rows, titles and descriptions from SettingsCatalog), built around one question:
 // which model does each job, and is the recommended set on this Mac? (docs/design/system.md §3.4)
 //
-//   subtitle   the Mac under the page's title ("Apple M5 Max · 128 GB memory · 40-core GPU"): what the choice is for
-//   Models     at most one recommendation, only while something recommended is missing (`transcribe.py models` for
-//              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): what
-//              it is for and its size, the page's one primary Download and a "…" menu for one model at a time; while
-//              anything downloads it becomes that download's bar and Stop. Then Choose automatically (asr.auto, and
-//              dictation's two models unpinned: DictationModels.setAuto) and one row per job — Recordings, Live
-//              captions, Voice notes, Dictation, Dictation polish —, each with its model on the right: the name and
-//              "Auto" while automatic, a native pop-up of the models on this Mac (and Get More Models…) otherwise. A
-//              job whose model isn't on this Mac says "· downloading" or "None yet", never names it as if in use.
-//              Last, All models: Manage Models… opens the library.
+//   This Mac   at most one recommendation, only while something recommended is missing (`transcribe.py models` for
+//              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
+//              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
+//              one primary Download and a "…" menu for one model at a time; while anything downloads it becomes that
+//              download's bar and Stop. Then Choose automatically (asr.auto, and dictation's two models unpinned:
+//              DictationModels.setAuto), its line naming this Mac — "Auto" is said there once, never on every job.
+//   Models in use  one row per job — Recordings, Live captions, Voice notes, Dictation, Dictation polish —, each with
+//              its glyph and its model on the right: the name while automatic, a pop-up of the models on this Mac (and
+//              Get More Models…) when picked by hand. A job whose model isn't on this Mac says "· downloading" or "None
+//              yet", never names it as if in use. Last, All models: Manage Models… opens the library.
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
-//   Advanced   folded (a search or a link unfolds it): processor threads, transcriptions at a time and GPU memory as
-//              pop-ups, lighter models on battery, the download mirror, one row per cloud service with whether its key
-//              is found (never stored or shown; the variables' names and the export line in an info popover).
+//   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
+//              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
+//              mirror, one row per cloud service with whether its key is found (never stored or shown; the variables'
+//              names and the export line in an info popover).
 //   library    a sheet (ModelLibrary): one 32 pt row per model that runs here, recognition or polish — what it is
 //              used for, accuracy for your languages, speed, memory, size as a table; numbers measured on this Mac
 //              (`transcribe.py bench`) carry the seal; Download on hover, Measure / Show in Finder / Move to Trash in
 //              the row's "…" menu (and its context menu). Move to Trash asks by the model's name and size.
-// Every download goes through the app's one download manager (App/ModelDownloads.swift).
+// Every download goes through the app's one download manager (App/ModelDownloads.swift); this page is the one place
+// that offers the recommended download (Settings → Dictation links here).
 // Test hooks (BLURT_TEST_COMMANDS): `settings speech/speech.models` opens the library, `settings speech/speech.threads`
 // unfolds Advanced; BLURT_TEST_SPEECH_HOVER=ID shows a library row as hovered, BLURT_TEST_SPEECH_TAB=polish its tab.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
@@ -382,8 +384,9 @@ struct SpeechPane: View {
     }
 
     var body: some View {
-        SettingsPage(.speech, subtitle: machineLine) {
+        SettingsPage(.speech) {
             useSection
+            jobsSection
             languagesSection
             advancedSection
         }
@@ -394,13 +397,18 @@ struct SpeechPane: View {
         .onReceive(SettingsFlash.shared.$request) { r in
             guard let id = r?.id else { return }
             if id == "speech.models" { library = true }
-            if id == "speech.more" || SettingsCatalog.entry(id)?.fold == "speech.more" { advanced = true }
+            if id == "speech.advanced" || SettingsCatalog.entry(id)?.section == "speech.advanced" { advanced = true }
         }
     }
 
     // MARK: the Mac
 
-    /// "Apple M5 Max · 128 GB memory · 40-core GPU" under the page's title ("Checking this Mac…" while it is read).
+    /// "Apple M5 Max, 128 GB": what Choose automatically picks for ("Checking this Mac…" while it is read); the GPU and
+    /// the battery in the row's tooltip.
+    var machineShort: String? {
+        guard let hw = m.state?.hardware else { return nil }
+        return S("speech.machine.short", hw.chip ?? S("speech.machine.unknown"), mb(hw.ramGB * 1024))
+    }
     var machineLine: String {
         guard let hw = m.state?.hardware else { return S("speech.loading") }
         var parts = [hw.chip ?? S("speech.machine.unknown"), S("speech.machine.memory", mb(hw.ramGB * 1024))]
@@ -413,27 +421,31 @@ struct SpeechPane: View {
 
     // MARK: Models: the recommendation, automatic, one row per job, the library
 
+    /// This Mac: the recommendation (while something recommended is missing) and Choose automatically.
     @ViewBuilder var useSection: some View {
-        SettingsGroup("speech.use", content: {
+        SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
-                    HStack(spacing: SettingsMetrics.iconGap) {
-                        SettingsIcon("exclamationmark.triangle")
-                        Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
+                    Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             recommendation
             SettingToggle("speech.auto", isOn: Binding(get: { m.auto }, set: { on in d.setAuto(on); m.setAuto(on) }),
-                          icon: "laptopcomputer")
+                          detail: machineShort.map { S("speech.auto.detail_mac", $0) }, help: machineLine)
+        }, accessory: {
+            if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
+        })
+    }
+
+    /// Models in use: one row per job, with its glyph and its model, then the library.
+    @ViewBuilder var jobsSection: some View {
+        SettingsGroup("speech.jobs", title: S("speech.section.jobs")) {
             ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
             dictationRow
             polishRow
             libraryRow
-        }, accessory: {
-            if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
-        })
+        }
     }
 
     // the one recommendation
@@ -467,19 +479,21 @@ struct SpeechPane: View {
         return out
     }
 
-    /// "SenseVoice Small for voice notes · Qwen3-ASR 1.7B (MLX) and Gemma 4 E2B for dictation · 6.1 GB"
-    func pickLine(_ ps: [Pick]) -> String {
-        var groups: [(uses: String, names: [String])] = []
+    /// One line per group of jobs the download changes, in the jobs' own words: "Voice notes would use SenseVoice
+    /// Small", "Dictation would use Qwen3-ASR 1.7B (MLX) and Gemma 4 E2B" — so the rows under it and this agree: they
+    /// say what is used now, this says what Download changes.
+    func pickLines(_ ps: [Pick]) -> [String] {
+        var groups: [(uses: [String], names: [String])] = []
         for p in ps {
-            let uses = Loc.list(p.uses.map { $0.lowercased(with: Loc.locale) })
-            // a model's name never breaks over two lines: the line wraps between the parts
+            // a model's name never breaks over two lines
             let name = p.job.name.replacingOccurrences(of: " ", with: "\u{00A0}")
-            if let i = groups.firstIndex(where: { $0.uses == uses }) { groups[i].names.append(name) }
-            else { groups.append((uses, [name])) }
+            if let i = groups.firstIndex(where: { $0.uses == p.uses }) { groups[i].names.append(name) }
+            else { groups.append((p.uses, [name])) }
         }
-        return (groups.map { S("speech.rec.item", Loc.list($0.names), $0.uses) }
-                + [modelSize(ps.reduce(0) { $0 + $1.job.sizeMB }).replacingOccurrences(of: " ", with: "\u{00A0}")])
-            .joined(separator: " · ")
+        return groups.map { g in
+            let uses = Loc.list(g.uses.enumerated().map { i, u in i == 0 ? u : u.lowercased(with: Loc.locale) })
+            return S("speech.rec.line", uses, Loc.list(g.names))
+        }
     }
 
     @ViewBuilder var recommendation: some View {
@@ -489,46 +503,45 @@ struct SpeechPane: View {
             let now = dl.queue.pending.first { $0.id == dl.current } ?? dl.queue.next
             SettingsLine(flashID: "speech.download") {
                 HStack(alignment: .center, spacing: 14) {
-                    HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
-                        SettingsIcon("arrow.down.circle")
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(S("speech.rec.downloading", now?.name ?? "")).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
-                            Text(dl.current.map(dl.isUnpacking) == true ? S("speech.download.unpacking")
-                                 : p.done == 0 ? S("speech.download.preparing")
-                                 : S("speech.download.progress", modelSize(p.done), modelSize(p.total)))
-                                .font(.system(size: SettingsMetrics.detailSize)).monospacedDigit().foregroundStyle(.secondary)
-                        }
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(S("speech.rec.downloading", now?.name ?? "")).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
+                            .gridProbe(.text, "download")
+                        Text(dl.current.map(dl.isUnpacking) == true ? S("speech.download.unpacking")
+                             : p.done == 0 ? S("speech.download.preparing")
+                             : S("speech.download.progress", modelSize(p.done), modelSize(p.total)))
+                            .font(.system(size: SettingsMetrics.detailSize)).monospacedDigit().foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    ProgressView(value: min(p.done, p.total), total: max(p.total, 1)).frame(width: 120)
-                        .accessibilityLabel(S("speech.rec.downloading", now?.name ?? ""))
-                    Button(S("speech.download.stop")) { dl.stop() }
+                    HStack(spacing: 10) {
+                        ProgressView(value: min(p.done, p.total), total: max(p.total, 1)).frame(width: 96)
+                            .accessibilityLabel(S("speech.rec.downloading", now?.name ?? ""))
+                        Button(S("speech.download.stop")) { dl.stop() }
+                    }
+                    .gridProbe(.trailing, "download")
                 }
             }
         } else {
             let ps = picks
             if !ps.isEmpty {
                 let failed = ps.contains { dl.failed[$0.job.id] != nil }
+                let size = modelSize(ps.reduce(0) { $0 + $1.job.sizeMB }).replacingOccurrences(of: " ", with: "\u{00A0}")
                 SettingsLine(flashID: "speech.download") {
                     HStack(alignment: .center, spacing: 14) {
-                        HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
-                            SettingsIcon("arrow.down.circle")
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(S("speech.rec.title")).font(.system(size: SettingsMetrics.titleSize))
-                                // every model named whole, on as many lines as the width needs (never cut)
-                                Text(pickLine(ps)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                if failed {
-                                    Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
-                                        .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                                }
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(S("speech.rec.title_size", size)).font(.system(size: SettingsMetrics.titleSize))
+                                .gridProbe(.text, "recommended")
+                            // one line per job group: a structured list, never a sentence wrapped mid-name
+                            ForEach(pickLines(ps), id: \.self) { l in
+                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            if failed {
+                                Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
+                                    .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        HStack(spacing: 2) {
-                            // the page's one primary (system.md §9)
-                            Button(failed ? S("speech.rec.retry") : S("speech.download.button")) { get(ps) }
-                                .buttonStyle(.brand)
+                        .help(S("speech.rec.help"))
+                        HStack(spacing: 4) {
                             if ps.count > 1 {
                                 Menu {
                                     ForEach(ps, id: \.job.id) { p in
@@ -536,10 +549,14 @@ struct SpeechPane: View {
                                     }
                                 } label: { Image(systemName: "ellipsis") }
                                 .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                                .frame(width: 26)
+                                .frame(width: 22)
                                 .help(S("speech.rec.choose")).accessibilityLabel(S("speech.rec.choose"))
                             }
+                            // the page's one primary (system.md §9), and the app's one place to get these models
+                            Button(failed ? S("speech.rec.retry") : S("speech.download.button")) { get(ps) }
+                                .buttonStyle(SettingsPrimaryButtonStyle())
                         }
+                        .gridProbe(.trailing, "recommended")
                     }
                 }
             }
@@ -557,7 +574,7 @@ struct SpeechPane: View {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
             } else if m.auto {
-                AutoValue(text: purposeValue(p))
+                ModelName(text: purposeValue(p))
             } else {
                 ModelPopUp(label: p.title, current: m.selected(p)?.id,
                            choices: choices(p).map { ($0.id, $0.title) }, more: { library = true }) { id in
@@ -586,7 +603,7 @@ struct SpeechPane: View {
         SettingRow("speech.dictation", icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 if m.auto && d.asrAuto {
-                    AutoValue(text: dictationValue(a))
+                    ModelName(text: dictationValue(a))
                 } else {
                     // a model whose own files are in can be chosen (its setup then fetches only the VAD)
                     let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
@@ -611,9 +628,9 @@ struct SpeechPane: View {
         SettingRow("speech.polish", icon: "wand.and.stars") {
             if let p = d.polish {
                 if !p.supported {
-                    Text(S("speech.purpose.polish.unsupported")).foregroundStyle(.secondary)
+                    ModelName(text: S("speech.purpose.polish.unsupported"))
                 } else if m.auto && d.polishAuto {
-                    AutoValue(text: polishValue(p))
+                    ModelName(text: polishValue(p))
                 } else {
                     let here = p.models.filter { $0.installed }
                     ModelPopUp(label: S("speech.purpose.polish"), current: p.selected,
@@ -633,23 +650,23 @@ struct SpeechPane: View {
         return S("speech.purpose.none_yet")
     }
 
-    /// All models: what is on this Mac, and the library.
+    /// All models: how many are on this Mac (a count, not a size — Storage measures the disk), and the library (the
+    /// catalogue's "speech.models" is the library itself, which a search opens).
     var libraryRow: some View {
-        let mbHere = m.models.filter { $0.local && $0.installed }.reduce(0) { $0 + $1.sizeMB }
-            + (d.polish?.models.filter(\.installed).reduce(0) { $0 + $1.sizeMB } ?? 0)
+        let here = m.models.filter { $0.local && $0.installed }.count + (d.polish?.models.filter(\.installed).count ?? 0)
         return SettingsLine(flashID: "speech.library") {
             HStack(alignment: .center, spacing: 14) {
                 HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
                     SettingsIcon("square.stack.3d.up")
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(S("speech.section.models")).font(.system(size: SettingsMetrics.titleSize))
-                        Text(mbHere > 0 ? S("speech.manage.detail", modelSize(mbHere)) : S("speech.manage.detail.none"))
+                            .gridProbe(.iconText, "all models")
+                        Text(here > 0 ? S("speech.manage.count", Loc.number(here)) : S("speech.manage.detail.none"))
                             .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Button(S("speech.manage.button")) { library = true }
+                Button(S("speech.manage.button")) { library = true }.gridProbe(.trailing, "all models")
             }
         }
     }
@@ -660,8 +677,7 @@ struct SpeechPane: View {
         SettingsGroup("speech.languages",
                       footer: S(m.state?.languagesSet == true ? "speech.languages.footer" : "speech.languages.footer.system")) {
             SettingsLine {
-                HStack(alignment: .top, spacing: SettingsMetrics.iconGap) {
-                    SettingsIcon("globe").frame(height: LanguageChip.height)
+                HStack(alignment: .top, spacing: 0) {
                     FlowLayout(spacing: 6) {
                         ForEach(m.languages, id: \.self) { code in
                             LanguageChip(title: endonym(code), help: languageName(code), removable: m.languages.count > 1) {
@@ -683,7 +699,7 @@ struct SpeechPane: View {
                     }
                 }
             }
-            SettingRow("speech.language", icon: "ear") {
+            SettingRow("speech.language") {
                 let langs = m.languages + (m.language != "auto" && !m.languages.contains(m.language) ? [m.language] : [])
                 ChoicePopup(label: S("speech.advanced.language"),
                             choices: [("auto", S("speech.advanced.language.auto"))] + langs.map { ($0, endonym($0)) },
@@ -694,45 +710,30 @@ struct SpeechPane: View {
 
     // MARK: Advanced (folded)
 
+    /// Advanced: the one folded section of every pane (a heading that discloses its box), closed until asked for.
     @ViewBuilder var advancedSection: some View {
-        SettingsGroup("speech.advanced", title: "") {
-            SettingRow("speech.more", icon: "slider.horizontal.3") {
-                Button {
-                    withAnimation(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? nil : .easeInOut(duration: 0.18)) { advanced.toggle() }
-                } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(advanced ? 90 : 0))
-                        .frame(width: 22, height: 22).contentShape(Rectangle())
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel(S("speech.more.title"))
-                .accessibilityValue(advanced ? "expanded" : "collapsed")
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { advanced.toggle() }
-            if advanced {
-                resourceRows
-                SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }), icon: "network")
-                let cloud = m.models.filter { !$0.local }
-                ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
-            }
+        SettingsGroup("speech.advanced", footer: advanced ? S("speech.limits.footer") : nil, disclosure: $advanced) {
+            resourceRows
+            SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
+            let cloud = m.models.filter { !$0.local }
+            ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
         }
     }
 
     @ViewBuilder var resourceRows: some View {
         if let s = m.state {
             let cores = max(1, s.hardware.perfCores + s.hardware.effCores)
-            SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores))), icon: "cpu") {
+            SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores)))) {
                 ChoicePopup(label: S("speech.limits.threads"), choices: (1...cores).map { ($0, decimal(Double($0))) },
                             selection: Binding(get: { min(max(1, s.limits.threads), cores) }, set: { m.setLimit("threads", $0) }))
             }
-            SettingRow("speech.concurrent", icon: "square.stack") {
+            SettingRow("speech.concurrent") {
                 ChoicePopup(label: S("speech.limits.concurrent"), choices: (1...4).map { ($0, decimal(Double($0))) },
                             selection: Binding(get: { min(max(1, s.limits.maxConcurrent), 4) }, set: { m.setLimit("max_concurrent", $0) }))
             }
             if s.hardware.gpu.kind == "apple" {
                 // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
-                SettingRow("speech.memory", icon: "memorychip") {
+                SettingRow("speech.memory") {
                     ChoicePopup(label: S("speech.limits.memory"),
                                 choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
                                     (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
@@ -741,8 +742,7 @@ struct SpeechPane: View {
                                                    set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }
             }
-            SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }),
-                          icon: "battery.50")
+            SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }))
         }
     }
 
@@ -752,30 +752,28 @@ struct SpeechPane: View {
         let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
         // the first row is the catalogue's (search lands on it); the others are the same row for another service
         if first {
-            SettingRow("speech.cloud", title: title, detail: detail, icon: "cloud") { CloudKey(model: x) }
+            SettingRow("speech.cloud", title: title, detail: detail) { CloudKey(model: x) }
         } else {
-            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail, icon: "cloud") { CloudKey(model: x) }
+            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { CloudKey(model: x) }
         }
     }
 }
 
 // MARK: - Pieces
 
-/// A job's model while it is chosen automatically: its name, and a quiet "Auto" that says why it can't be picked here.
-private struct AutoValue: View {
+/// A job's model while it is chosen automatically: its name, quiet, one line in the control column ("Auto" is said
+/// once, on Choose automatically).
+private struct ModelName: View {
     var text: String
     var body: some View {
-        HStack(spacing: 6) {
-            Text(text).foregroundStyle(.secondary).lineLimit(1)
-            Text(S("speech.auto.tag")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                .padding(.horizontal, 6).padding(.vertical, 1.5)
-                .background(Capsule().fill(Color.secondary.opacity(0.12)))
-        }
-        .accessibilityElement(children: .combine)
+        Text(text).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .trailing)
+            .help(text)
     }
 }
 
-/// A job's model when the user picks it: a native pop-up of the models on this Mac, then Get More Models… (the library).
+/// A job's model when the user picks it: the page's pop-up (one width), the models on this Mac, then Get More Models…
+/// (the library).
 private struct ModelPopUp: View {
     var label: String
     var current: String?
@@ -783,17 +781,15 @@ private struct ModelPopUp: View {
     var more: () -> Void
     var pick: (String) -> Void
     var body: some View {
-        Picker(label, selection: Binding(get: { current ?? "" }, set: { id in
-            if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
-        })) {
-            if current == nil || !choices.contains(where: { $0.id == current }) {
-                Text(S("speech.purpose.none_yet")).tag(current ?? "")
-            }
-            ForEach(choices, id: \.id) { Text($0.name).tag($0.id) }
-            Divider()
-            Text(S("speech.purpose.more")).tag(moreModels)
-        }
-        .labelsHidden().fixedSize()
+        let missing = current == nil || !choices.contains(where: { $0.id == current })
+        var items: [(value: String, title: String)] = missing ? [(current ?? "", S("speech.purpose.none_yet"))] : []
+        items += choices.map { ($0.id, $0.name) }
+        let split = items.count
+        items.append((moreModels, S("speech.purpose.more")))
+        return ChoicePopup(label: label, choices: items,
+                           selection: Binding(get: { current ?? "" }, set: { id in
+                               if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
+                           }), dividers: [split])
     }
 }
 
