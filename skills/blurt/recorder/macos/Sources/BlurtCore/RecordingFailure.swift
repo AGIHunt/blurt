@@ -95,9 +95,10 @@ public enum RecordingFailure: String, Equatable, CaseIterable {
         return d
     }
 
-    /// A stream stop the Recorder tries once more (up to `maxRestarts` times in a take): the connection to the capture
-    /// service dropped, the system stopped the stream (sleep, the screen locked, a display reconfigured) or lost its
-    /// source for a moment. A refusal or the user's own stop never is.
+    /// A stream stop the Recorder starts again after (up to `maxRestarts` such stops in a take, each tried
+    /// `CaptureRestart.maxAttempts` times): the connection to the capture service dropped, the system stopped the
+    /// stream (sleep, the screen locked, a display reconfigured) or lost its source for a moment. A refusal or the
+    /// user's own stop never is.
     public static func restartable(_ error: Error?) -> Bool {
         guard let e = chain(error).first, scDomains.contains(e.domain) else { return false }
         return [-3805, -3804, -3811, -3815, -3821].contains(e.code)
@@ -121,6 +122,37 @@ public enum RecordingFailure: String, Equatable, CaseIterable {
     /// Less free space than this (bytes) when a take starts: say so first.
     public static let lowSpaceBytes: Int64 = 2_000_000_000
     public static func lowSpace(freeBytes: Int64?) -> Bool { freeBytes.map { $0 < lowSpaceBytes } ?? false }
+}
+
+/// Starting a stopped capture again (Recorder.restartCapture). Review v0.9-userfix: one failed start used to end the
+/// take at once, and a start right after waking (the screen still locked) is the likeliest to fail. Now:
+///  • while the screen is locked or the display asleep, nothing is tried: the Recorder waits for the wake / unlock
+///    (checked every `lockPoll` s, at most `lockWaitMax` s; then the take ends with what was recorded)
+///  • a start that fails (the content list, the stream, startCapture) is tried again after 1, 2, 4 s — `maxAttempts`
+///    tries in all — unless macOS refused the screen (a permission error: trying again can't help)
+///  • the display not found is tried again too (an external display comes back a few seconds after a wake); after the
+///    last try the take ends as display_gone
+/// Pure: RecordingFailureTests.
+public enum CaptureRestart {
+    public static let maxAttempts = 4
+    public static let lockPoll = 1.0
+    public static let lockWaitMax = 30.0 * 60
+
+    /// Seconds before try `attempt` (1-based): 1, 2, 4, 8 …
+    public static func delay(attempt: Int) -> Double { pow(2, Double(max(0, attempt - 1))) }
+
+    public enum Next: Equatable {
+        case retry(after: Double)
+        case give(up: RecordingFailure)
+    }
+
+    /// After try `attempt` failed with `error` (`displayMissing`: the display wasn't in the content list).
+    public static func next(attempt: Int, error: Error?, displayMissing: Bool = false) -> Next {
+        let reason = displayMissing ? .displayGone : RecordingFailure.reason(code: "stream_stopped", error: error)
+        if reason == .permission || RecordingFailure.endedByUser(error) { return .give(up: reason) }
+        guard attempt < maxAttempts else { return .give(up: reason) }
+        return .retry(after: delay(attempt: attempt + 1))
+    }
 }
 
 /// A take recorded in more than one piece (a writer replaced mid-take, RecordingFailure.rollsOver): where each piece

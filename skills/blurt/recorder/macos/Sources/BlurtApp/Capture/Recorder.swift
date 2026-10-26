@@ -16,13 +16,18 @@ import ServiceManagement
 // failed (MovieHeaderMaker err -16341 → AVFoundationErrorDomain -11800, "这项操作无法完成") and the take ended there,
 // the rest of what was said lost and the cause kept only as that sentence. Now:
 //  • a writer that fails mid-take is replaced (RecordingFailure.rollsOver: not for a full disk, at most 4 pieces): the
-//    next frame starts recording.part2.mp4 and the take goes on; at the end the pieces are put back together on the
+//    last frame, shown again at once, starts recording.part2.mp4 (the mic and system audio go straight on into it,
+//    a still screen sends no new frame) and the take goes on; at the end the pieces are put back together on the
 //    take's timeline (BlurtCore TakeStitch) — only what fell between the last fragment and the new file is missing;
 //  • frames are encoded without reordering (no B-frames): every frame's decode time is its presentation time, so a
 //    fragment carries no composition offsets (the variable frame rate of a screen made those large and uneven);
 //  • a stream macOS stops (sleep, the screen locked, a display reconfigured, the capture service restarted —
-//    RecordingFailure.restartable) is started again on the same display and the same file, up to 3 times; the
-//    user's own Stop in the menu bar ends the take as Finish does; a display that is gone ends it as display_gone.
+//    RecordingFailure.restartable) is started again on the same display and the same file, up to 3 such stops a
+//    take: it waits while the screen is locked or asleep, and a start that fails is tried again with backoff
+//    (BlurtCore CaptureRestart, 4 tries); the user's own Stop in the menu bar ends the take as Finish does; a display
+//    still gone after the last try ends it as display_gone.
+//  • a saved take whose writer failed says what's missing, even when the new piece never started (Finish came first):
+//    the kept file's playable length against the take's, as lost_seconds.
 
 func audioInputDevices() -> [AVCaptureDevice] {
     if #available(macOS 14.0, *) {
@@ -485,9 +490,10 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         stop()
     }
 
-    /// macOS stopped the stream for a moment (RecordingFailure.restartable): a second later the same display is
-    /// captured again into the same file — the time in between is a still frame in the video. The display gone by
-    /// then ends the take as display_gone.
+    /// macOS stopped the stream for a moment (RecordingFailure.restartable): the same display is captured again into
+    /// the same file — the time in between is a still frame in the video. Nothing is tried while the screen is locked
+    /// or asleep (the Recorder waits for the wake / unlock); a start that fails is tried again with backoff
+    /// (BlurtCore CaptureRestart); the display gone after the last try ends the take as display_gone.
     private func restartCapture(after error: Error) {
         restarts += 1
         let d = RecordingFailure.detail(error)
@@ -495,20 +501,56 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         recovered.append(["kind": "capture", "t": t, "attempt": restarts].merging(d) { a, _ in a })
         emit(["event": "capture_restarting", "t": t, "attempt": restarts].merging(d) { a, _ in a })
         log("capture_restart", ["attempt": restarts].merging(d) { a, _ in a })
-        let attempt = restarts
-        DispatchQueue.main.asyncAfter(deadline: .now() + (Recorder.testRestartDelay ?? 1)) { [weak self] in
-            guard let self = self, !self.stopping, attempt == self.restarts else { return }
-            SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, err in
-                DispatchQueue.main.async { self.restartWith(content, err, after: error, attempt: attempt) }
+        tryRestart(outage: restarts, attempt: 1, after: error, in: CaptureRestart.delay(attempt: 1))
+    }
+
+    /// Try `attempt` of starting the capture again, `delay` s from now, once the screen can be captured.
+    private func tryRestart(outage: Int, attempt: Int, after error: Error, in delay: Double) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + (Recorder.testRestartDelay ?? delay)) { [weak self] in
+            guard let self = self, !self.stopping, outage == self.restarts else { return }
+            self.whenScreenAwake(outage: outage, waited: 0, after: error) {
+                SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, err in
+                    DispatchQueue.main.async { self.restartWith(content, err, after: error, outage: outage, attempt: attempt) }
+                }
             }
         }
     }
 
-    private func restartWith(_ content: SCShareableContent?, _ err: Error?, after error: Error, attempt: Int) {
-        guard !stopping, attempt == restarts else { return }
-        guard let content = content else { return captureEnded(err ?? error, reason: .stopped) }
+    /// `go` once the screen is unlocked and the display awake (checked every CaptureRestart.lockPoll s); after
+    /// CaptureRestart.lockWaitMax s the take ends with what was recorded.
+    private func whenScreenAwake(outage: Int, waited: Double, after error: Error, _ go: @escaping () -> Void) {
+        guard !stopping, outage == restarts else { return }
+        guard Recorder.screenAsleepOrLocked(displayID) else {
+            if waited > 0 { emit(["event": "capture_screen_back", "waited": waited]); log("screen_back", ["waited": waited]) }
+            return go()
+        }
+        if waited == 0 { emit(["event": "capture_waiting_for_screen", "t": elapsed()]); log("waiting_for_screen") }
+        if waited >= CaptureRestart.lockWaitMax { return captureEnded(error, reason: .interrupted) }
+        let step = Recorder.testRestartDelay ?? CaptureRestart.lockPoll
+        DispatchQueue.main.asyncAfter(deadline: .now() + step) { [weak self] in
+            self?.whenScreenAwake(outage: outage, waited: waited + CaptureRestart.lockPoll, after: error, go)
+        }
+    }
+
+    /// The screen is locked (or another user's session is in front) or the recorded display is asleep: a capture
+    /// started now fails. Tests: BLURT_TEST_SCREEN_LOCKED=1 (test commands only) — the screen counts as locked.
+    static func screenAsleepOrLocked(_ display: CGDirectDisplayID) -> Bool {
+        if testScreenLocked { return true }
+        let d = CGSessionCopyCurrentDictionary() as? [String: Any]
+        let locked = d?["CGSSessionScreenIsLocked"] as? Bool ?? false
+        let onConsole = d?[kCGSessionOnConsoleKey as String] as? Bool ?? true
+        return locked || !onConsole || (display != 0 && CGDisplayIsAsleep(display) != 0)
+    }
+    static var testScreenLocked: Bool {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_SCREEN_LOCKED"] == "1"
+    }
+
+    private func restartWith(_ content: SCShareableContent?, _ err: Error?, after error: Error, outage: Int, attempt: Int) {
+        guard !stopping, outage == restarts else { return }
+        guard let content = content else { return restartFailed(err ?? error, after: error, outage: outage, attempt: attempt) }
         guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
-            return captureEnded(error, reason: .displayGone)
+            return restartFailed(nil, after: error, outage: outage, attempt: attempt, displayMissing: true)
         }
         let mine = content.windows.filter { $0.owningApplication?.processID == getpid() }
         do {
@@ -516,13 +558,29 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             stream = s
             s.startCapture { e in
                 DispatchQueue.main.async {
-                    if let e = e { return self.captureEnded(e, reason: RecordingFailure.reason(code: "stream_stopped", error: e)) }
-                    emit(["event": "capture_restarted", "attempt": attempt, "t": self.elapsed()])
-                    self.log("capture_restarted", ["attempt": attempt])
+                    guard !self.stopping, outage == self.restarts else { return }
+                    if let e = e { return self.restartFailed(e, after: error, outage: outage, attempt: attempt) }
+                    emit(["event": "capture_restarted", "attempt": outage, "try": attempt, "t": self.elapsed()])
+                    self.log("capture_restarted", ["attempt": outage, "try": attempt])
                 }
             }
         } catch {
-            captureEnded(error, reason: RecordingFailure.reason(code: "stream_stopped", error: error))
+            restartFailed(error, after: error, outage: outage, attempt: attempt)
+        }
+    }
+
+    /// A try at starting the capture again failed: another try after a backoff (CaptureRestart.next), or the take
+    /// ends with what was recorded, saying why.
+    private func restartFailed(_ e: Error?, after error: Error, outage: Int, attempt: Int, displayMissing: Bool = false) {
+        let d = RecordingFailure.detail(e)
+        switch CaptureRestart.next(attempt: attempt, error: e ?? error, displayMissing: displayMissing) {
+        case .retry(let delay):
+            emit(["event": "capture_restart_failed", "attempt": outage, "try": attempt, "retry_in": delay,
+                  "display_missing": displayMissing].merging(d) { a, _ in a })
+            log("capture_restart_failed", ["try": attempt, "display_missing": displayMissing].merging(d) { a, _ in a })
+            tryRestart(outage: outage, attempt: attempt + 1, after: error, in: delay)
+        case .give(up: let reason):
+            captureEnded(e ?? error, reason: reason)
         }
     }
     /// tests: how long a restart waits (BLURT_TEST_RESTART_DELAY seconds)
@@ -562,12 +620,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         }
         if segmentPending {
             // the next piece starts with this frame (its encoder is new: a key frame)
-            guard writer.startWriting() else { return writerFailed() }
-            writer.startSession(atSourceTime: pts)
-            segments.append((writer.outputURL, pts))
-            segmentPending = false
-            let n = segments.count, t = elapsed()
-            DispatchQueue.main.async { emit(["event": "segment_started", "segment": n, "t": t]); self.log("segment", ["segment": n]) }
+            guard beginPendingPiece(at: pts) else { return }
         }
         guard vIn.isReadyForMoreMediaData else { return }
         lastFrame = CMSampleBufferGetImageBuffer(sb)
@@ -585,8 +638,11 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     private func writerFailed(_ simulated: Error? = nil) {
         let e = simulated ?? writer.error
         let d = RecordingFailure.detail(e)
-        if !stopping, started, RecordingFailure.rollsOver(e, segments: segments.count) {
-            let n = segments.count + 1
+        // counted by the writers made, not the pieces started: a new writer that can't even start counts too (it
+        // fails again at once, and the new piece starts right here — without this it would go round for ever)
+        let made = abandoned.count + 1
+        if !stopping, started, RecordingFailure.rollsOver(e, segments: made) {
+            let n = made + 1
             let next = URL(fileURLWithPath: opts.out).deletingPathExtension().path + ".part\(n).mp4"
             try? FileManager.default.removeItem(atPath: next)
             do {
@@ -602,12 +658,15 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                           "reason": RecordingFailure.reason(code: "writer", error: e).rawValue].merging(d) { a, _ in a })
                     self.log("writer_replaced", ["segment": n].merging(d) { a, _ in a })
                 }
+                startPendingPieceNow()
                 return
             } catch {
                 let x = RecordingFailure.detail(error)
                 DispatchQueue.main.async { emit(["event": "writer_replace_failed"].merging(x) { a, _ in a }) }
             }
         }
+        // a simulated failure leaves its writer working: stop() then ends the take on this error, as on a real one
+        if simulated != nil { simulatedFailure = e }
         DispatchQueue.main.async {
             guard !self.stopping else { return }
             emit(["event": "error", "code": "writer", "message": e?.localizedDescription ?? "the writer failed", "mid_take": true,
@@ -617,10 +676,46 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         }
     }
 
+    /// The pending piece's writer starts at `pts` (capture queue). False: it couldn't (writerFailed has taken over).
+    private func beginPendingPiece(at pts: CMTime) -> Bool {
+        guard writer.startWriting() else { writerFailed(); return false }
+        writer.startSession(atSourceTime: pts)
+        segments.append((writer.outputURL, pts))
+        segmentPending = false
+        let n = segments.count, t = elapsed()
+        DispatchQueue.main.async { emit(["event": "segment_started", "segment": n, "t": t]); self.log("segment", ["segment": n]) }
+        return true
+    }
+
+    /// The new piece starts now with the last frame shown again (capture queue), so the mic and system audio go on
+    /// into it at once: on a still screen SCStream sends no new frame, and waiting for one lost the user's voice from
+    /// the video for as long as nothing on screen changed. Paused, or no frame to show: the next frame starts it.
+    private func startPendingPieceNow() {
+        guard segmentPending, !isPaused, let img = lastFrame else { return }
+        var pts = CMTimeSubtract(hostNow(), offset)
+        if lastVideo.isValid, CMTimeCompare(pts, lastVideo) <= 0 { pts = CMTimeAdd(lastVideo, CMTime(value: 1, timescale: 600)) }
+        var fmt: CMVideoFormatDescription?
+        var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: pts, decodeTimeStamp: .invalid)
+        var out: CMSampleBuffer?
+        guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: nil, imageBuffer: img, formatDescriptionOut: &fmt) == noErr,
+              let f = fmt,
+              CMSampleBufferCreateReadyWithImageBuffer(allocator: nil, imageBuffer: img, formatDescription: f,
+                                                       sampleTiming: &timing, sampleBufferOut: &out) == noErr,
+              let sb = out, beginPendingPiece(at: pts) else { return }
+        if vIn.isReadyForMoreMediaData, vIn.append(sb) {
+            frames += 1
+            lastVideo = pts
+        } else if writer.status == .failed {
+            writerFailed()
+        }
+    }
+
     /// Tests (`recwriterfail`): the writer fails at the next frame as if the encoder gave up (AVFoundation -11800 over
     /// OSStatus -16341, the 2026-10-26 take's error) — the same recovery as a real failure.
     func testWriterFailure() { q.async { self.testFailNext = true } }
     private var testFailNext = false
+    /// a simulated failure that ended the take (no new piece allowed): the take ends as failed with it
+    private var simulatedFailure: Error?
     /// the writers of pieces that failed: held, never finished or cancelled (cancelling deletes the file)
     private var abandoned: [AVAssetWriter] = []
 
@@ -727,7 +822,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                 w.finishWriting {
                     DispatchQueue.main.async {
                         self.wrapUp(endAt: endAt, discard: discard, restart: restart,
-                                    failed: w.status == .failed ? (w.error ?? NSError(domain: "AVFoundationErrorDomain", code: -11800)) : nil)
+                                    failed: w.status == .failed ? (w.error ?? NSError(domain: "AVFoundationErrorDomain", code: -11800))
+                                        : self.simulatedFailure)
                     }
                 }
             }
@@ -749,10 +845,11 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             return
         }
         let duration = CMTimeGetSeconds(CMTimeSubtract(endAt, sessionStart))
-        let end = { (stitched: TakeStitch.Result?, stitchError: String?) in
+        let end = { (stitched: TakeStitch.Result?, stitchError: String?, lost: Double?) in
             var pieces: [String: Any] = ["segments": parts.count]
             if !self.recovered.isEmpty { pieces["recovered"] = self.recovered }
             if let r = stitched { pieces["lost_seconds"] = (r.lost * 10).rounded() / 10 }
+            if let l = lost { pieces["lost_seconds"] = (l * 10).rounded() / 10 }
             if let e = stitchError {
                 // the pieces stay next to recording.mp4 (the first one): nothing recorded is thrown away
                 pieces["stitch_error"] = e
@@ -774,7 +871,18 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             if let early = self.endedEarly { ev["ended_early"] = early }
             sessionEnded(0, ev)
         }
-        guard parts.count > 1 else { return end(nil, nil) }
+        guard parts.count > 1 else {
+            // a writer failed and its replacement never started (no frame came before Finish): the one file kept
+            // ends at the failed piece's last fragment — what's missing is said, not hidden behind the full length
+            guard failed == nil, recovered.contains(where: { $0["kind"] as? String == "writer" }), let u = parts.first else {
+                return end(nil, nil, nil)
+            }
+            Task {
+                let playable = (try? await AVURLAsset(url: u).load(.duration)).map(CMTimeGetSeconds) ?? 0
+                await MainActor.run { end(nil, nil, max(0, duration - playable)) }
+            }
+            return
+        }
         let starts = segments.map { CMTimeGetSeconds(CMTimeSubtract($0.start, sessionStart)) }
         emit(["event": "stitching", "segments": parts.count, "starts": starts])
         Task {
@@ -782,13 +890,13 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
                 let r = try await TakeStitch.stitch(parts, starts: starts, into: URL(fileURLWithPath: opts.out))
                 await MainActor.run {
                     emit(["event": "stitched", "segments": r.pieces, "duration": r.duration, "lost_seconds": r.lost])
-                    end(r, nil)
+                    end(r, nil, nil)
                 }
             } catch {
                 let s = "\(error)"
                 await MainActor.run {
                     emit(["event": "stitch_failed", "error": s])
-                    end(nil, s)
+                    end(nil, s, nil)
                 }
             }
         }

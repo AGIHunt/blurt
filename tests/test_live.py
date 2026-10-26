@@ -464,6 +464,41 @@ class Shots(Patched):
         finally:
             transcribe.BACKENDS, transcribe.load_audio = backends, load
 
+    def test_structured_voice_note_keeps_structure_on_retranscribe(self):
+        # a Structured note (structure: true) re-transcribed: the note goes through the same structure request and the
+        # transcript stays as said_raw; with no polish model the note is the transcript and said_raw is cleared
+        session = self.tmp / "shots-structured"
+        (session / "shots").mkdir(parents=True)
+        transcribe.save_json(session / "meta.json", {"mode": "shots", "engine": "native-app"})
+        rec = {"n": 1, "file": "shots/001.png", "voice": "shots/001.wav", "text": "", "structure": True,
+               "said": "1. old\n2. list", "said_raw": "old list"}
+        with wave.open(str(session / rec["voice"]), "wb") as w:
+            w.setnchannels(1), w.setsampwidth(2), w.setframerate(SR)
+            w.writeframes(to_pcm(narration(1, 6)))
+        (session / "shots.jsonl").write_text(json.dumps(rec) + "\n", encoding="utf-8")
+        backends, load, structure = transcribe.BACKENDS, transcribe.load_audio, transcribe.structure_note
+        transcribe.BACKENDS = {**backends, "sensevoice": FakeBackend}
+        transcribe.load_audio = lambda p, track=0: from_pcm(wave.open(str(p)).readframes(10 ** 9))
+        try:
+            a = SimpleNamespace(backend="sensevoice", model=None, language=None, prompt=None, concurrency=1, force=True)
+            seen = []
+            transcribe.structure_note = lambda t: seen.append(t) or "- structured"
+            with contextlib.redirect_stdout(io.StringIO()):
+                transcribe.transcribe_shots(session, a)
+            latest = transcribe.read_shots(session)[1]
+            self.assertEqual(latest["said"], "- structured")
+            self.assertEqual(latest["said_raw"], seen[0])
+            self.assertTrue(seen[0])
+            transcribe.structure_note = lambda t: None             # no polish model
+            with contextlib.redirect_stdout(io.StringIO()):
+                transcribe.transcribe_shots(session, a)
+            latest = transcribe.read_shots(session)[1]
+            self.assertEqual(latest["said"], seen[0])
+            self.assertIsNone(latest["said_raw"])
+            self.assertTrue(latest["structure"])
+        finally:
+            transcribe.BACKENDS, transcribe.load_audio, transcribe.structure_note = backends, load, structure
+
 
 # ------------------------------------------------------------------ the Tk/ffmpeg recorder's sidecar
 class Sidecar(unittest.TestCase):

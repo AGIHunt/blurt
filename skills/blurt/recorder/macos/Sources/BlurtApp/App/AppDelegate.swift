@@ -158,7 +158,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func countdown(_ n: Int, over region: CGRect, hold: Bool = false, then: @escaping () -> Void) {
         guard n > 0 else { return then() }
         let v = CountdownView()
-        let w = overlayWindow(toNS(region), view: v)
+        let r = toNS(region)
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: r.midX, y: r.midY)) })?.frame
+        let w = overlayWindow(OverlayFit.frame(region: r, panel: v.panelSize, margin: CountdownView.panelMargin, screen: screen),
+                              view: v)
         w.ignoresMouseEvents = false
         w.orderFrontRegardless()
         countdownWin = w
@@ -599,7 +602,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var line: String?
         if let early = event["ended_early"] as? [String: Any] {
             line = T("app.record.partial", App.failureReason(early), Island.clock(duration))
-        } else if (event["segments"] as? Int ?? 1) > 1 {
+        } else if (event["segments"] as? Int ?? 1) > 1
+                    || (event["recovered"] as? [[String: Any]] ?? []).contains(where: { $0["kind"] as? String == "writer" }) {
             let lost = Int((event["lost_seconds"] as? Double ?? 0).rounded(.up))
             line = event["stitch_error"] != nil ? T("app.record.recovered_parts")
                 : lost > 0 ? T("app.record.recovered_lost", Loc.number(lost)) : T("app.record.recovered")

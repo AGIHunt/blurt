@@ -60,8 +60,10 @@ had: the video up to where it stopped (*The disk is full — the first 3:12 is k
 ready to **Organize**; it stops as soon as the disk fills up instead of running on, and warns before it starts when
 little space is left. Most hiccups no longer end a recording at all: if the video file fails partway, Blurt starts a
 new one on the spot and puts the pieces back together when you finish (only the few seconds in between are missing,
-and the notch says so); if macOS pauses the screen capture for a moment (the Mac wakes from sleep, the screen was
-locked, a display was rearranged), it picks the same screen up again. Stopping the screen sharing from macOS's menu
+and the notch says so); if macOS stops the screen capture for a moment (a display was rearranged, the capture
+service restarted, the Mac slept or the screen locked), Blurt tries to pick the same screen up again: it waits until
+the screen is unlocked and tries a few times. The time in between shows as a still picture. If that doesn't work,
+the recording ends and keeps what it had. Stopping the screen sharing from macOS's menu
 bar finishes the recording like *Finish*. The exact error behind a failure is kept in the recording's `meta.json`
 (`error_domain`, `error_code`, `error_underlying`) and in the log. Quitting Blurt
 never loses a capture on its way: it is saved first, or picked up again the next time Blurt starts — and a voice note

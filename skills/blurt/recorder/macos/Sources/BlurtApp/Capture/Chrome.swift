@@ -93,14 +93,24 @@ final class CountdownView: NSView {
     }
     required init?(coder: NSCoder) { fatalError() }
 
-    override func layout() {
-        super.layout()
+    /// The panel's own size (its text decides the width); the window around it needs `panelMargin` more each side
+    /// for the shadow.
+    var panelSize: NSSize {
         let titleW = ceil(title.intrinsicContentSize.width)
         let hintW = hint.stringValue.isEmpty ? 0 : ceil(hint.intrinsicContentSize.width)
-        let startW = start?.frame.width ?? 0
         let w = max(232, max(hintW, 26 + 8 + titleW) + 48)
-        let showsHint = hintW > 0
-        let h: CGFloat = 20 + CountdownView.ringD + 16 + 26 + (showsHint ? 8 + 16 : 0) + 14 + 24 + 18
+        let h: CGFloat = 20 + CountdownView.ringD + 16 + 26 + (hintW > 0 ? 8 + 16 : 0) + 14 + 24 + 18
+        return NSSize(width: w, height: h)
+    }
+    static let panelMargin: CGFloat = 40
+
+    override func layout() {
+        super.layout()
+        let startW = start?.frame.width ?? 0
+        let titleW = ceil(title.intrinsicContentSize.width)
+        let size = panelSize
+        let w = size.width, h = size.height
+        let showsHint = !hint.stringValue.isEmpty
         panel.frame = NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
         // panel coordinates (not flipped: from the bottom)
         var y = h - 20 - CountdownView.ringD

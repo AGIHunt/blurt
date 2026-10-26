@@ -85,6 +85,27 @@ final class RecordingFailureTests: XCTestCase {
         XCTAssertFalse(RecordingFailure.rollsOver(NSError(domain: av, code: -11807), segments: 1))
     }
 
+    /// Review v0.9-userfix: one failed start after a wake used to end the take. A failed try is tried again with
+    /// backoff, a refusal never is, and the last try gives up with the reason that fits.
+    func testAFailedRestartIsTriedAgain() {
+        XCTAssertEqual((1...4).map(CaptureRestart.delay), [1, 2, 4, 8])
+        let locked = NSError(domain: sc, code: -3805)
+        XCTAssertEqual(CaptureRestart.next(attempt: 1, error: locked), .retry(after: 2))
+        XCTAssertEqual(CaptureRestart.next(attempt: 3, error: locked), .retry(after: 8))
+        XCTAssertEqual(CaptureRestart.next(attempt: CaptureRestart.maxAttempts, error: locked), .give(up: .interrupted))
+        // an error ScreenCaptureKit says nothing more about: tried again, then "stopped"
+        XCTAssertEqual(CaptureRestart.next(attempt: 1, error: NSError(domain: sc, code: -3811)), .retry(after: 2))
+        XCTAssertEqual(CaptureRestart.next(attempt: 4, error: NSError(domain: sc, code: -3811)), .give(up: .stopped))
+        // the display not in the list yet (an external display wakes later): tried again, then display_gone
+        XCTAssertEqual(CaptureRestart.next(attempt: 2, error: nil, displayMissing: true), .retry(after: 4))
+        XCTAssertEqual(CaptureRestart.next(attempt: 4, error: nil, displayMissing: true), .give(up: .displayGone))
+        // macOS refused the screen, or the user stopped sharing: no more tries
+        XCTAssertEqual(CaptureRestart.next(attempt: 1, error: NSError(domain: sc, code: -3801)), .give(up: .permission))
+        XCTAssertEqual(CaptureRestart.next(attempt: 1, error: NSError(domain: sc, code: -3817)), .give(up: .stopped))
+        // the content list failing (no error at all) is tried again too
+        XCTAssertEqual(CaptureRestart.next(attempt: 1, error: nil), .retry(after: 2))
+    }
+
     func testEveryReasonHasWords() throws {
         let res = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/BlurtApp/Resources")
