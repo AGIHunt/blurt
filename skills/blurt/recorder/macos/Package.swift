@@ -19,12 +19,15 @@ var targets: [Target] = [
     // Config, paths, ScriptRunner (uv + login-shell env), HotkeyCenter, IndexReader (read-only SQLite), Agents.
     // No AppKit UI here — everything public is what BlurtApp (and tests) may use.
     .target(name: "BlurtCore", path: "Sources/BlurtCore"),
+    // BlurtTry: catches the Objective-C exceptions AVFoundation raises (Swift can't), so a mic format change never
+    // aborts the app.
+    .target(name: "BlurtObjC", path: "Sources/BlurtObjC"),
     // The app: Capture/ (recorder, picker, the island and its hanging cards, pen, snap, voice input, note bubble, live
     // audio), App/ (delegate, status menu, agents hub, shortcuts window, updater), MainWindow/ + WebHost/ (the main
     // window and its embedded review), Terminal/ (agent sessions), Settings/, Onboarding/, System/. main.swift = launch.
     .executableTarget(
         name: "BlurtApp",
-        dependencies: ["BlurtCore", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),
+        dependencies: ["BlurtCore", "BlurtObjC", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),
         path: "Sources/BlurtApp",
         // K10 string tables: record.py build copies Resources/*.lproj into Contents/Resources (Loc finds them there,
         // or next to the sources for a plain `swift build` run) — not SwiftPM resources.
@@ -32,7 +35,7 @@ var targets: [Target] = [
         linkerSettings: sparkle ? [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])] : []),
 ]
 // WP5: IndexReader tests + the 20k-row perf budget (`swift test`; needs Xcode's XCTest, `swift build` ignores it)
-targets.append(.testTarget(name: "BlurtCoreTests", dependencies: ["BlurtCore"], path: "Tests/BlurtCoreTests"))
+targets.append(.testTarget(name: "BlurtCoreTests", dependencies: ["BlurtCore", "BlurtObjC"], path: "Tests/BlurtCoreTests"))
 if sparkle {
     targets.append(.binaryTarget(
         name: "Sparkle",

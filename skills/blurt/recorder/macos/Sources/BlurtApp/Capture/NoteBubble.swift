@@ -59,6 +59,7 @@
 
 import AppKit
 import BlurtCore
+import BlurtObjC
 import AudioToolbox
 import AVFoundation
 import Carbon.HIToolbox
@@ -194,26 +195,19 @@ final class NoteVoice {
         let device = self.device
         MicEngine.shared.queue.async { [weak self] in
             guard let self = self else { return }
-            let e = device.map { MicEngine.shared.make(device: $0) } ?? MicEngine.shared.take(builtIn: builtIn)
+            var e = device.map { MicEngine.shared.make(device: $0) } ?? MicEngine.shared.take(builtIn: builtIn)
+            var why = self.tap(e)
+            if why != nil {
+                // a stale engine (the input changed since it was prepared): once more with a new one
+                MicEngine.shared.discard(e)
+                e = device.map { MicEngine.shared.make(device: $0) } ?? MicEngine.shared.fresh(builtIn: builtIn)
+                why = self.tap(e)
+            }
+            if let why = why {
+                MicEngine.shared.discard(e)
+                return DispatchQueue.main.async { self.running = false; self.failReason = why; ready(false) }
+            }
             let input = e.inputNode
-            let inFmt = input.outputFormat(forBus: 0)
-            guard inFmt.sampleRate > 0, let conv = AVAudioConverter(from: inFmt, to: self.fmt) else {
-                MicEngine.shared.giveBack(e, builtIn: builtIn)
-                return DispatchQueue.main.async { self.running = false; self.failReason = "no_input_format"; ready(false) }
-            }
-            input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(inFmt.sampleRate / 20), format: inFmt) { [weak self] buf, _ in
-                guard let self = self else { return }
-                let cap = AVAudioFrameCount(Double(buf.frameLength) * NoteVoice.rate / inFmt.sampleRate) + 32
-                guard let out = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: cap) else { return }
-                var fed = false
-                conv.convert(to: out, error: nil) { _, status in
-                    if fed { status.pointee = .noDataNow; return nil }
-                    fed = true
-                    status.pointee = .haveData
-                    return buf
-                }
-                DispatchQueue.main.async { self.feed(out) }
-            }
             do { try e.start() } catch {
                 input.removeTap(onBus: 0)
                 MicEngine.shared.giveBack(e, builtIn: builtIn)
@@ -236,6 +230,50 @@ final class NoteVoice {
                 ready(true)
             }
         }
+    }
+
+    /// On MicEngine's queue: the tap on the engine's input, converting to `fmt`. nil when it is in; otherwise why not.
+    /// The tap takes the input hardware's own rate: after the device under a prepared engine changed (the built-in
+    /// mic picked while AirPods are the default, a headset switching profiles) the node can still report the old
+    /// device's rate, and a tap in that rate makes AVFoundation raise — caught here (BlurtTry), never a crash.
+    private func tap(_ e: AVAudioEngine) -> String? {
+        let input = e.inputNode
+        let out = input.outputFormat(forBus: 0)
+        let hw = input.inputFormat(forBus: 0)
+        var inFmt = out
+        if hw.sampleRate > 0, hw.sampleRate != out.sampleRate {
+            emit(["event": "mic_format_mismatch", "node_rate": out.sampleRate, "hw_rate": hw.sampleRate,
+                  "channels": Int(out.channelCount)])
+            guard let f = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: hw.sampleRate,
+                                        channels: max(1, out.channelCount), interleaved: false) else { return "no_input_format" }
+            inFmt = f
+        }
+        guard inFmt.sampleRate > 0, inFmt.channelCount > 0, let conv = AVAudioConverter(from: inFmt, to: fmt) else {
+            return "no_input_format"
+        }
+        let rate = inFmt.sampleRate
+        var err: NSError?
+        let ok = BlurtTry({
+            input.installTap(onBus: 0, bufferSize: AVAudioFrameCount(rate / 20), format: inFmt) { [weak self] buf, _ in
+                guard let self = self else { return }
+                let cap = AVAudioFrameCount(Double(buf.frameLength) * NoteVoice.rate / rate) + 32
+                guard let out = AVAudioPCMBuffer(pcmFormat: self.fmt, frameCapacity: cap) else { return }
+                var fed = false
+                conv.convert(to: out, error: nil) { _, status in
+                    if fed { status.pointee = .noDataNow; return nil }
+                    fed = true
+                    status.pointee = .haveData
+                    return buf
+                }
+                DispatchQueue.main.async { self.feed(out) }
+            }
+        }, &err)
+        guard ok else {
+            let reason = err?.userInfo["reason"] as? String ?? "exception"
+            emit(["event": "mic_tap_refused", "reason": reason, "node_rate": out.sampleRate, "hw_rate": hw.sampleRate])
+            return "tap_refused"
+        }
+        return nil
     }
 
     private func startInjected(_ src: URL) -> Bool {
@@ -376,6 +414,12 @@ final class MicEngine {
     func take(builtIn: Bool) -> AVAudioEngine {
         if let e = spare, spareBuiltIn == builtIn { spare = nil; return e }
         spare = nil
+        return make(builtIn: builtIn)
+    }
+
+    /// On `queue`: a new engine, never the spare (the spare turned out stale).
+    func fresh(builtIn: Bool) -> AVAudioEngine {
+        if spareBuiltIn == builtIn { spare = nil }
         return make(builtIn: builtIn)
     }
 
