@@ -6,11 +6,11 @@ The fastest way to work with your agents, by text, voice, screenshot or screen r
 
 https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
-<p align="center"><sub>80 seconds, sound on · made in code: <a href="promo/">source</a></sub></p>
+<p align="center"><sub>Sound on</sub></p>
 
 ---
 
-Blurt is a menu-bar app for the Mac. It works next to the agents you already use, such as Claude Code, Codex, Cursor,
+Blurt is a menu-bar app for the Mac; Windows and Linux are coming soon. It works next to the agents you already use, such as Claude Code, Codex, Cursor,
 Claude and ChatGPT, and handles the part before they start: getting what you mean into the agent's input box. It has
 no agent of its own and doesn't replace yours.
 
@@ -94,7 +94,7 @@ competing vendor, and are not directly comparable.
 | End of speech → text | 0.29–0.54 s after 3–60 s of speech | about 3.0 s [9] | about 1.5 s [9] | not published | "about 450ms" (vendor) [8] |
 | English accuracy | WER 1.9 % (speech model alone) | WER about 7.9 % [9] | WER about 3.9 % [9] | depends on the model; not published | OpenASR average WER 6.24 (vendor) [10] |
 | Chinese accuracy | CER 1.3 % (speech model alone) | not published | not published | not published | not published |
-| Platforms | Dictation and cards: macOS. Recording → items: macOS, Windows, Linux (X11) | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
+| Platforms | macOS; Windows and Linux coming soon | macOS, Windows, Linux, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android | Mac, Windows, iOS, Android |
 | Offline | Dictation needs no network once the models are downloaded (not yet tested with the network off) | No | No | Yes, with local models | No |
 | Snap and voice-note cards for agents | Yes | No | No | No | No |
 | Screen recording → items with screenshots and code pointers | Yes | No | No | No | No |
@@ -184,11 +184,11 @@ Idle models unload after 10 minutes.
 Chinese, English, Japanese, Korean and Cantonese; Whisper covers 99 languages. Items come back in the language you
 spoke. The app is in English and Simplified Chinese.
 
-**Does it run on Windows and Linux?** Recording, local transcription, screenshots, the review page and exports do;
-Linux needs an X11 desktop. Dictation, cards and the menu-bar app are macOS only for now. Setup: Windows
-`winget install astral-sh.uv` and `winget install Gyan.FFmpeg`; Ubuntu/Debian
-`sudo apt install ffmpeg libportaudio2 python3-tk` plus [uv](https://docs.astral.sh/uv/). `doctor.py` tells you
-what's missing.
+**Does it run on Windows and Linux?** Not yet: Blurt is a Mac app today, and Windows and Linux versions are coming.
+If you want to try early, the skill's recording scripts (recording, local transcription, the review page, exports)
+already run there, Linux with an X11 desktop: on Windows `winget install astral-sh.uv` and
+`winget install Gyan.FFmpeg`; on Ubuntu/Debian `sudo apt install ffmpeg libportaudio2 python3-tk` plus
+[uv](https://docs.astral.sh/uv/). `doctor.py` tells you what's missing.
 
 **What permissions does it need?** Microphone; Accessibility, to paste and to hear `Fn`; Input Monitoring, for other
 keys; Screen Recording, for snaps and recordings.

@@ -189,6 +189,9 @@ Each moment comes with the number or file that backs it.
    in the shell.
 7. **A recording turned into items.** A 5-minute, 12-item session was ready for review 51 s after Finish; a 14-minute
    recording was transcribed locally in 12 s and became 23 items for about $2.6 of agent tokens. (`README.md` FAQ)
+   A teammate's 5-minute walkthrough became 52 items, each with the quote and timestamp (the earlier site's hero,
+   commit `926168db`; time to review not measured for that session). Recordings made with the app are transcribed
+   while they record, which is why review is ready soon after Finish (`skills/blurt/SKILL.md` §2).
 8. **Items handed to an agent and back.** `⌘↩` on an item starts Codex in a worktree; when the agent calls
    `mark_fixed`, the item shows *To verify* within 0.5 s. (`promo/cases/v0.9-dogfood/work/timeline.md`)
 9. **A teammate's recording, your agent.** A designer records with the app and sends the video on Slack; you tell your

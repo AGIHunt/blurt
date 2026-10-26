@@ -165,7 +165,8 @@ Agent 开始干活之前的那一段：把你想说的放进 Agent 的输入框�
    拍中文版时可以换成飞书或微信。
 6. **同一张卡片拖进终端。** Claude Code 拿到图片路径和一份 Markdown 备注，命令行里什么都不会执行。
 7. **录屏整理成条目。** 一段 5 分钟、12 条的录屏，点「完成」后 51 秒就能开始审；一段 14 分钟的录屏，本地转写 12 秒，整理出 23 条，
-   Agent 的 token 约 2.6 美元。（`README.md` FAQ）
+   Agent 的 token 约 2.6 美元。（`README.md` FAQ）一位同事 5 分钟的走查录屏整理出 52 条事项，每条带原话和时间点（旧官网首屏，
+   commit `926168db`；这一段没有测处理时间）。用 App 录的屏会边录边转写，所以点「完成」后很快就能审（`skills/blurt/SKILL.md` §2）。
 8. **条目交给 Agent，再收回来。** 在一个条目上按 `⌘↩`，Codex 在 worktree 里开工；Agent 调用 `mark_fixed` 后，0.5 秒内条目显示「待验证」。
    （`promo/cases/v0.9-dogfood/work/timeline.md`）
 9. **同事录的屏，你的 Agent 来处理。** 设计师用 App 录好，通过 Slack 或飞书把视频发过来；你对 Agent 说「处理这个视频」。交接说明里

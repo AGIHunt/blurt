@@ -6,7 +6,7 @@
 
 https://github.com/user-attachments/assets/334087d3-9b56-48fa-808a-2fb229ab666a
 
-<p align="center"><sub>80 秒介绍视频，请打开声音 · 视频全部用代码制作，<a href="promo/">源码</a></sub></p>
+<p align="center"><sub>请打开声音</sub></p>
 
 ---
 
@@ -84,7 +84,7 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 | 说完到文字出现 | 说 3–60 秒后 0.29–0.54 秒 | 约 3.0 秒 [9] | 约 1.5 秒 [9] | 未公开 | 「about 450ms」（厂商自述）[8] |
 | 英文准确率 | WER 1.9 %（只看识别模型） | WER 约 7.9 % [9] | WER 约 3.9 % [9] | 取决于所选模型；未公开 | OpenASR 平均 WER 6.24（厂商）[10] |
 | 中文准确率 | CER 1.3 %（只看识别模型） | 未公开 | 未公开 | 未公开 | 未公开 |
-| 平台 | 听写和卡片：macOS。录屏整理成条目：macOS、Windows、Linux（X11） | macOS、Windows、Linux、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android |
+| 平台 | macOS；Windows 和 Linux 即将推出 | macOS、Windows、Linux、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android |
 | 离线 | 模型下载好后听写不需要联网（还没在断网状态下实测） | 不能 | 不能 | 能，用本地模型时 | 不能 |
 | 截图、语音备注卡片，交给 Agent | 有 | 没有 | 没有 | 没有 | 没有 |
 | 录屏整理成带截图和代码定位的条目 | 有 | 没有 | 没有 | 没有 | 没有 |
@@ -165,9 +165,10 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 **支持哪些语言？** 听写测过中文、英文和中英混说。录屏：SenseVoice 支持中、英、日、韩、粤语；Whisper 支持 99 种语言。
 条目用你说的语言写。App 界面有英文和简体中文。
 
-**Windows 和 Linux 能用吗？** 录屏、本地转写、截图、审核页和导出都能用；Linux 需要 X11 桌面。听写、卡片和菜单栏 App
-目前只有 macOS 版。准备工作：Windows 运行 `winget install astral-sh.uv` 和 `winget install Gyan.FFmpeg`；Ubuntu/Debian
-运行 `sudo apt install ffmpeg libportaudio2 python3-tk`，再装 [uv](https://docs.astral.sh/uv/)。`doctor.py` 会告诉你缺什么。
+**Windows 和 Linux 能用吗？** 还不能：口喷鸡目前是 Mac App，Windows 和 Linux 版即将推出。想提前试的话，Skill 里的录屏脚本
+（录屏、本地转写、审核页、导出）已经能在这两个系统上运行，Linux 需要 X11 桌面。准备工作：Windows 运行
+`winget install astral-sh.uv` 和 `winget install Gyan.FFmpeg`；Ubuntu/Debian 运行
+`sudo apt install ffmpeg libportaudio2 python3-tk`，再装 [uv](https://docs.astral.sh/uv/)。`doctor.py` 会告诉你缺什么。
 
 **需要哪些权限？** 麦克风；「辅助功能」，用来粘贴和识别 `Fn`；「输入监控」，用来识别其他按键；「屏幕录制」，用来截图和录屏。
 
