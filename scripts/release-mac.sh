@@ -156,6 +156,9 @@ else
   would xcrun notarytool submit "$DMG" --keychain-profile "$PROFILE" --wait
   would xcrun stapler staple "$DMG" '&&' xcrun stapler staple "$APP"
 fi
+# the same DMG under a fixed name, for links that must outlive this version (the website's
+# releases/latest/download/Blurt.dmg): attach both to the release
+cp "$DMG" "$OUT/Blurt.dmg"
 
 # ---------------------------------------------------------------- Sparkle update + appcast
 say "appcast"
@@ -176,7 +179,7 @@ size() { du -sk "$1" | cut -f1; }
 APPBYTES=$(find "$APP" -type f -exec stat -f %z {} + | awk '{s+=$1} END {print s}')
 cat <<JSON
 {"dry_run": $([ $DRY = 1 ] && echo true || echo false), "version": "$VERSION", "build": "$BUILD",
- "app": "$APP", "app_bytes": $APPBYTES, "dmg": "$DMG", "dmg_kb": $(size "$DMG"),
+ "app": "$APP", "app_bytes": $APPBYTES, "dmg": "$DMG", "dmg_latest": "$OUT/Blurt.dmg", "dmg_kb": $(size "$DMG"),
  "update_zip": "$OUT/$UZIP", "zip_kb": $(size "$OUT/$UZIP"), "appcast": "$OUT/appcast.xml",
  "sparkle": "$SPARKLE_VERSION", "public_key": "$PUBKEY"}
 JSON
