@@ -140,5 +140,17 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>把这 %d 张卡片整理到未归类（调用一次 AI，附上建议的项目）</string></dict>
   </dict>
+  <key>capture.keys.taken_banner</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>另一个口喷鸡正在使用其中 %d 个快捷键</string><key>other</key><string>另一个口喷鸡正在使用其中 %d 个快捷键</string></dict>
+  </dict>
+  <key>capture.keys.taken_banner_many</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>其他几个口喷鸡正在使用其中 %d 个快捷键</string><key>other</key><string>其他几个口喷鸡正在使用其中 %d 个快捷键</string></dict>
+  </dict>
 </dict>
 </plist>

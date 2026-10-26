@@ -219,10 +219,21 @@ class SessionRecoveryWiring(unittest.TestCase):
         self.assertNotIn('confirmDiscard = true }.disabled(busy != nil)\n                        .keyboardShortcut(.defaultAction)', fin)
 
     def test_review_of_fix_2_raw_text_and_list_marks(self):
-        # raw-id #14: the install sheet says each change in words only; the script's error goes to the log
+        # raw-id #14: the install sheet says each change in words only; the script's error goes to the log, the argv
+        # and paths only to Details (mono there and nowhere else), and the one default is accent-filled
         pane = self.src("Settings/AgentsPane.swift")
-        body = pane[pane.index("var body: some View", pane.index("struct InstallSheet")):]
-        self.assertNotIn("c.error", body[:body.index("HStack {\n                if m.installing")])
+        sheet = pane[pane.index("struct InstallSheet"):pane.index("extension InstallChange {")]
+        body = sheet[sheet.index("var body: some View"):]
+        self.assertNotIn("c.error", body)
+        self.assertNotIn("c.output", body)
+        self.assertNotIn("c.argv", sheet)
+        self.assertEqual(sheet.count("design: .monospaced"), 1)
+        self.assertIn("InstallDetailsWell(lines: technical)", body)
+        self.assertIn('Button(TL("install.confirm")) { Task { await m.apply() } }\n                    .buttonStyle(.borderedProminent).tint(Color.settingsDefault).keyboardShortcut(.defaultAction)', body)
+        zh = (MAC / "Sources/BlurtApp/Resources/zh-Hans.lproj/Terminal.strings").read_text()
+        for line in zh.splitlines():
+            if line.startswith('"install.'):
+                self.assertNotIn("skill", line.split("=", 1)[1].lower(), line)   # 技能, not untranslated jargon
         # an unreadable item is marked in the list, not only once it is selected
         ilc = self.src("MainWindow/ItemListController.swift")
         self.assertIn("unreadable: it.unreadable)", ilc)

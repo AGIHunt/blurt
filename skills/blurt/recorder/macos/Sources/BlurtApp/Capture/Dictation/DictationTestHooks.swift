@@ -178,6 +178,33 @@ extension App {
             emit(["event": "dictation_context_probe", "found": c != nil, "before": c?.before.count ?? 0, "after": c?.after.count ?? 0,
                   "selection": c?.selection.count ?? 0, "title": c?.title ?? NSNull(), "app": c?.app ?? NSNull()])
         case "settings-scroll": NotificationCenter.default.post(name: DictationPane.scrollRequest, object: rest)
+        case "clear":
+            // clear ask: Settings → Dictation's Clear History… (scrolled to its row first) | clear key return|esc: a real
+            // key event to the question's sheet (which button answers ↩ / Esc) | clear click cancel|clear
+            MainActor.assumeIsolated {
+                let a = rest.split(separator: " ").map(String.init)
+                switch a.first ?? "ask" {
+                case "ask":
+                    SettingsController.shared.show(pane: "dictation")
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        NotificationCenter.default.post(name: DictationPane.scrollRequest, object: "clear")
+                    }
+                case "key":
+                    guard let w = NSApp.windows.first(where: { $0.isSheet && $0.isVisible && $0.sheetParent is SettingsWindow }) else { return }
+                    let esc = a.count > 1 && a[1] == "esc"
+                    if let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                windowNumber: w.windowNumber, context: nil, characters: esc ? "\u{1b}" : "\r",
+                                                charactersIgnoringModifiers: esc ? "\u{1b}" : "\r", isARepeat: false, keyCode: esc ? 53 : 36) {
+                        NSApp.postEvent(e, atStart: false)
+                    }
+                case "click":           // clear click cancel|clear: the question's button, as a click would
+                    guard let w = NSApp.windows.first(where: { $0.isSheet && $0.isVisible && $0.sheetParent is SettingsWindow }) else { return }
+                    let title = T(a.count > 1 && a[1] == "clear" ? "dictation.history.clear.confirm" : "dictation.cancel")
+                    func buttons(_ v: NSView) -> [NSButton] { ((v as? NSButton).map { [$0] } ?? []) + v.subviews.flatMap(buttons) }
+                    buttons(w.contentView ?? NSView()).first { $0.title == title }?.performClick(nil)
+                default: break
+                }
+            }
         case "polish": MainActor.assumeIsolated { DictationModels.shared.testCommand(rest) }    // the model rows' buttons
         case "downloads": MainActor.assumeIsolated { ModelDownloads.shared.testCommand(rest) }  // the one download manager
         case "models":              // models reload | state: dictation's recogniser as the key sees it

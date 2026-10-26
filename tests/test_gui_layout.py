@@ -3,6 +3,11 @@ isolated copy of the app and asks its `layoutcheck` hook (BlurtApp/System/Layout
 lies outside its window, under the traffic lights, on top of another control, or truncated — in English and Chinese, and
 at each resizable window's minimum size. Any problem fails the test, with the screen, window and element named.
 
+Settings panes are also held to one grid (`settingsgrid`, SettingsKit's SettingsGrid; system.md §3.4): every box shares
+one left and one right edge, every row's text starts at the box's inset (or at one icon gutter after it), headings, lead
+lines and footnotes start at that same text column, every trailing control, value, size and keycap ends at the box's
+inset on the right, and every pane's first thing starts at the same height.
+
 Why: the setup assistant shipped with its Back / Done buttons cut off at the bottom of the window (the SwiftUI layout kept
 out of the title bar's safe area, the window was sized without it). Screenshots and reviews missed it; this measures it.
 
@@ -34,7 +39,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
 MACOS = ROOT / "skills" / "blurt" / "recorder" / "macos"
 BUNDLE_ID = "dev.blurt.recorder.layouttest"
-SETTINGS_PANES = ["general", "dictation", "speech", "shortcuts", "agents", "privacy", "storage"]
+SETTINGS_PANES = ["general", "projects", "dictation", "speech", "shortcuts", "agents", "privacy", "storage"]
 ONBOARDING_STEPS = 4
 MAIN_SCOPES = ["inbox", "progress", "unassigned", "all", "dictation"]
 EMPTY_STATES = ["first", "inbox_zero", "project", "no_results", "no_index", "failed", "missing", "scanning", "discarded"]
@@ -214,6 +219,41 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     return s
 
 
+# SettingsKit's grid (SettingsMetrics): the box inset, the icon gutter (slot + gap) and the first thing's height
+GRID_INSET, GRID_ICON, GRID_FIRST, GRID_TOL = 12.0, 28.0, 26.0, 1.5
+
+
+def grid_problems(app: "App", pane: str) -> list[dict]:
+    """The showing pane against the one grid: a problem per mark off its edge."""
+    app.mark()
+    app.post("settingsgrid")
+    marks = app.wait("wp6", cmd="settingsgrid").get("marks") or []
+    boxes = [m for m in marks if m["kind"] == "box"]
+    out: list[dict] = []
+    def bad(m: dict, what: str) -> None:
+        out.append({"kind": "grid", "role": m["kind"], "label": f"{m.get('label', '')}: {what}",
+                    "frame": [round(m["x"], 1), round(m["y"], 1), round(m["w"], 1)], "bounds": pane})
+    if not boxes:
+        return [{"kind": "grid", "role": "page", "label": "no boxes reported", "frame": [], "bounds": pane}]
+    left = min(b["x"] for b in boxes)
+    right = max(b["max_x"] for b in boxes)
+    for m in marks:
+        k, x, mx = m["kind"], m["x"], m["max_x"]
+        if k == "box" and (abs(x - left) > GRID_TOL or abs(mx - right) > GRID_TOL):
+            bad(m, f"box edges {x:.1f}…{mx:.1f}, page's {left:.1f}…{right:.1f}")
+        elif k in ("text", "head") and abs(x - (left + GRID_INSET)) > GRID_TOL:
+            bad(m, f"starts at {x - left:.1f}, not the text column ({GRID_INSET:g})")
+        elif k == "icon_text" and abs(x - (left + GRID_INSET + GRID_ICON)) > GRID_TOL:
+            bad(m, f"starts at {x - left:.1f}, not the icon gutter's text ({GRID_INSET + GRID_ICON:g})")
+        elif k == "trailing" and abs(mx - (right - GRID_INSET)) > GRID_TOL:
+            bad(m, f"ends at {mx - right:.1f} from the box's edge, not at the trailing edge (-{GRID_INSET:g})")
+    tops = [m["y"] for m in marks if m["kind"] in ("box", "head")]
+    if tops and abs(min(tops) - GRID_FIRST) > GRID_TOL:
+        out.append({"kind": "grid", "role": "page", "label": f"first thing at y {min(tops):.1f}, not {GRID_FIRST:g}",
+                    "frame": [], "bounds": pane})
+    return out
+
+
 MIN_SIZE_SCREENS = {"settings general", "settings dictation", "settings speech", "settings shortcuts", "settings agents",
                     "settings privacy", "settings storage", "main inbox", "main all", "main dictation", "main selection",
                     "main empty first", "sessions window"}
@@ -233,6 +273,13 @@ def run_lint(app: App, only: set[str] | None = None, verbose: bool = True) -> li
                 uids = app.wait("wp6", cmd="mainsel").get("selected") or []
                 cmd = cmd.replace("@selected", ",".join(uids[:1]))
             app.do(cmd, kind, settle=1.2)
+        if group == "settings" and name.startswith("settings ") and name.split(" ")[1] in SETTINGS_PANES and len(name.split(" ")) == 2:
+            time.sleep(1.0)                        # the page's late lines (sign-in checks, model lists) settle
+            for p in grid_problems(app, name.split(" ")[1]):
+                key = ("grid", name, p["label"])
+                if key not in found:
+                    found[key] = {"screen": name, "lang": app.lang, "window": "Settings", "size": "", **p}
+            looked += 1
         variants = [""] + (["min", "restore"] if name in MIN_SIZE_SCREENS else [])
         for v in variants:
             windows = app.layoutcheck(v)

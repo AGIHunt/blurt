@@ -75,8 +75,8 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   method would switch between Chinese and English on it): only a ⇧ press with no other modifier, and its release only
   when its press was kept. The listen-only tap and the monitor can't do that, so with an ⌥ key the ⇧ still reaches
   the app.
-- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「双击 Fn
-  发送（回车）」 / "Double-tap Fn to send (Return)", named after whichever key is set. In chat apps the user presses
+- **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「按两下发送」
+  / "Double-tap to send", the key named in its description ("Double-tap Fn to press Return after the text"). In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
   `doubleTapWindow` of the first one's release, give `.send` (BlurtCore `DictationTrigger`, `DictationTriggerTests`).
   The window is macOS's own double-click interval (`NSEvent.doubleClickInterval`, System Settings → Accessibility →
@@ -178,10 +178,12 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     changes from other apps this way can only be confirmed on a real machine (below).
   - One listener at a time (a Blurt-only tap next to the monitor would deliver Blurt's own keys twice), and the same
     flags change twice within 30 ms counts once while one listener replaces the other.
-  - "Dictation works" = the listener is global (`tap` or `monitor`). Settings → Dictation shows a status row only
-    when it doesn't (*Blurt can't hear Fn yet · Turn On…*); which listener runs and *Last heard in another app:
-    13:46:57* (taken from the listener itself whenever the dictation key changes while another app is in front) sit
-    under Permissions, folded to *All allowed* once everything is. Only the user can make that line appear.
+  - "Dictation works" = the listener is global (`tap` or `monitor`). Settings → Dictation shows one `attn` notice at
+    the top only while something is in the way — a permission missing (*Dictation needs Accessibility · Allow…*, the
+    guide), else the key not heard (*Blurt can't hear Fn yet · Turn On…*), else macOS's own Fn action (*Fix…*) — and
+    nothing once all is well (no Permissions section). Which listener runs and *Last heard in another app: 13:46:57*
+    (taken from the listener itself whenever the dictation key changes while another app is in front) are the
+    tooltip of *Dictate into any app*. Only the user can make that line appear.
 - Until the key is heard globally (BlurtCore `DictationAccess` decides; `DictationAccessTests`):
   - macOS is never asked at launch (≤ 0.8 called `CGRequestListenEventAccess()` once per version). The request APIs
     run when the user clicks Allow / Set Up (§Permissions);
@@ -228,8 +230,9 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
    thread. That removes the engine set-up, not the device's own start-up. A Bluetooth headset (AirPods) switches to
    its call profile (HFP) when its mic opens: ~1 s with no audio, which no software can get back without keeping
    the mic open all the time (a pre-roll before the key-down would need exactly that: not done). So:
-   - **"Use the Mac's microphone for dictation"** (`record.dictation.builtin_mic`; Settings → Dictation): unset =
-     automatic, on while the default input is Bluetooth (CoreAudio transport type), when the Mac has a built-in mic.
+   - **Microphone: Automatic / This Mac's microphone / Default input** (`record.dictation.builtin_mic` unset / true /
+     false; Settings → Dictation, a popup, as System Settings' microphone source): Automatic = the built-in mic while
+     the default input is Bluetooth (CoreAudio transport type), when the Mac has a built-in mic.
      The input unit's device is switched before it starts. Trade-off: the built-in mic is ready at once and the
      headset's music keeps its quality (HFP drops it to call quality), but it is farther from the mouth and hears
      more of the room. `DictationMicChoice` (pure, tested) decides.
@@ -754,7 +757,9 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   history, so the page shows the text as it stands, the first version under it.
 - **Clear History** (Settings) never deletes the audio of a take still listening or on its way
   (`DictationHistory.liveIDs`), and posts `DictationHistory.changed`: reformat-last and the after-typing watch forget
-  the cleared (or deleted) takes.
+  the cleared (or deleted) takes. It asks first in an alert sheet with the app icon (`DictationSettings.askClear`):
+  *Clear dictation history?*, how many go (a plural) and their recordings only when some are still on disk, then *You
+  can't undo this.* on its own line; Cancel is the default (↩ and Esc), *Clear History* the quiet red one.
 
 ## Polish
 
@@ -1029,7 +1034,8 @@ polish above — stays the default everywhere and never restructures. Which styl
   (`style_asked`). Yes sets `styles.apps[bundle]` and marks it learned; Settings → Dictation → Style shows it with
   Reset. Nothing ever changes by itself.
 - **Settings → Dictation → Style** (v0.9: polish Off / Light and Style were two overlapping controls, audit newc010 /
-  dict027): **one** choice — Verbatim / Light / Structured / Auto — with one line on what it does
+  dict027): **one** choice, a popup in the page's popup column — Verbatim / Light / Structured / Auto — with one line
+  under the title on what the chosen one does
   (`BlurtCore/DictationStyleChoice`, over the keys the engine already reads: Verbatim = `polish: "off"` plus
   `styles.default: "verbatim"`, so its takes say Verbatim in the history; the others = `polish` unset plus their
   style as `styles.default`, Light unset). Folded under *By kind of app* (not shown for Verbatim): one picker per
@@ -1423,8 +1429,9 @@ a smaller polish model it does). The rows' `fits` say the same.
 the one place dictation's speech and polish models are chosen: the recommended pair with its total size and one
 *Download (5.7 GB)* for what's missing; per model one verb — *Download* when it isn't on this Mac, *Use* when it is,
 the one in use marked; sizes from the catalogues' `size_mb`, whole MB below 1 GB, one decimal above; the selected,
-recommended and downloaded models shown, the rest under *Other models (n)*). Settings → Dictation shows the model in
-use with *Change…* (or *Not downloaded yet · Download…*), which opens it there — while the download manager has it,
+recommended and downloaded models shown, the rest under *Other models (n)*). Settings → Dictation shows both models
+in one row: their names with *Change in Speech…* (a `brand.ink` text button that opens it there), or *Not on this Mac
+yet · 2.4 GB* with one *Download* for everything missing (`DictationModels.missingJobs`) — while the download manager has it,
 *Downloading · 1.2 GB of 2.5 GB* or *Waiting to download · 3.4 GB* with *Show*, never *Download…* beside a running
 download. A radio is filled only for a model on this Mac (none while none is in; the recommended one says *Used once
 it's downloaded*). Names come from the shipped catalogues (BlurtCore `ModelCatalog`) while the list loads or can't be

@@ -308,6 +308,21 @@ final class ShellDataTests: XCTestCase {
         XCTAssertEqual(u["/h/models/polish/p2"]?.removable, true)
     }
 
+    /// Settings → Storage says which pane uses a model (Speech, Dictation or both), not "In use" on every row.
+    func testWhatUsesEachModel() {
+        let polish: [String: Any] = ["selected": "p1", "models": [["id": "p1", "name": "P1", "installed": true, "path": "/h/models/polish/p1"],
+                                                               ["id": "p2", "name": "P2", "installed": true, "path": "/h/models/polish/p2"]]]
+        var u = ModelUsage.users(asr: asrModels(), dictation: ["selected": "sensevoice"], polish: polish)
+        XCTAssertEqual(u["/h/models/asr/sv"], [.speech, .dictation])
+        XCTAssertNil(u["/h/models/asr/qwen17"])
+        XCTAssertNil(u["/h/models/silero_vad.onnx"])
+        XCTAssertEqual(u["/h/models/polish/p1"], [.dictation])
+        XCTAssertNil(u["/h/models/polish/p2"])
+        u = ModelUsage.users(asr: asrModels(), dictation: ["selected": "qwen3-asr-1.7b-mlx"], polish: nil)
+        XCTAssertEqual(u["/h/models/asr/qwen17"], [.dictation])
+        XCTAssertEqual(u["/h/models/asr/sv"], [.speech])
+    }
+
     /// Without dictation's answer no speech model is offered for the Trash: the one it runs can't be told apart.
     func testNoDictationAnswerRemovesNothing() {
         let u = ModelUsage.merge(asr: asrModels(), dictation: nil, polish: nil)

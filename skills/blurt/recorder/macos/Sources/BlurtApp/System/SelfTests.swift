@@ -1,6 +1,10 @@
 // BLURT_TEST_COMMANDS=1 only: scripted checks for WP6, over a distributed notification like the shell's channel —
 //   dev.blurt.recorder.wp6[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": "…"}; every answer is one JSON line on stdout.
 //   settings PANE[/ROW] | settingsscroll top|bottom|N | onboarding [STEP] | appearance dark|light | windowid settings|onboarding
+//   settingskeylook on|off       Settings drawn as the key window though another app has the focus (screenshots)
+//   settingsgrid                 the showing pane's grid (SettingsGrid: boxes, text and heading edges, trailing edges,
+//                                in the page column's coordinates) → {"pane", "marks": [{"kind", "x", "y", "max_x", "label"}]}
+//   projectsselect N|none        Settings → Projects: select its Nth project (the row's tint and Show in Finder)
 //   settingssearch TEXT          type TEXT into Settings' search field → {"hits": [id…]} (settingssearch alone clears it)
 //   settingskey down|up|return|esc   a key in that field: ↓ / ↑ walk the results, ↩ opens one, Esc clears
 //   route URL                    parse a blurt:// URL (no action)         url URL   handle it like macOS would
@@ -66,6 +70,16 @@ enum SelfTests {
         case "settings": SettingsController.shared.show(pane: arg.isEmpty ? nil : arg)
         case "settingsscroll":          // settingsscroll top|bottom|POINTS: scroll the visible pane
             out(["scrolled": SettingsController.shared.scrollPane(arg.isEmpty ? "bottom" : arg)])
+        case "settingsgrid":            // settingsgrid: the showing pane's grid, for the layout lint
+            let p = SettingsNavigator.shared.pane.rawValue
+            out(["pane": p, "marks": SettingsGrid.report(p)])
+        case "settingskeylook":         // settingskeylook on|off: the window drawn as the key one (screenshots)
+            SettingsController.shared.testKeyLook(arg != "off")
+            out(["keylook": arg != "off"])
+        case "projectsselect":          // projectsselect N|none: Settings → Projects with its Nth row selected
+            let m = ProjectsModel.shown
+            m?.selected = Int(arg).flatMap { i in m.flatMap { i < $0.projects.count ? $0.projects[i].id : nil } }
+            out(["selected": m?.selected ?? NSNull()])
         case "settingssearch":
             SettingsController.shared.show(pane: nil)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -169,7 +183,7 @@ enum SelfTests {
                          "config": (Config.shared["record.hotkeys"] as? [String: Any])?[act.rawValue] ?? NSNull(),
                          "state": "\(Hotkeys.shared.states[act].map { "\($0)" } ?? "")",
                          "refused": m.refusals[act] ?? NSNull(), "note": m.note(act)?.text ?? NSNull(),
-                         "asking": m.asking?.messageText ?? NSNull()])
+                         "asking": m.asking ?? NSNull()])
                     if f.recording { f.stop() }
                 }
             }
@@ -182,13 +196,27 @@ enum SelfTests {
                 m.trash([u], name: arg, window: NSApp.keyWindow)
                 out(["trashing": u.path])
             }
+        case "storagehover":            // storagehover NAME: Settings → Storage shows that row's ⋯ as on hover (empty: none)
+            MainActor.assumeIsolated { StorageHover.shared.forced = arg.isEmpty ? nil : arg }
+            out(["hover": arg])
+        case "shortcutlook":            // shortcutlook ACTION hover|listen|rest: a recorder's state, for a screenshot
+            let a = arg.split(separator: " ").map(String.init)
+            guard a.count == 2, let act = HotAction(rawValue: a[0]), let f = HotkeySettings.shared.fields[act] else { out(["error": "no field"]); return }
+            switch a[1] {
+            case "hover": f.testHover(true)
+            case "listen": f.start()
+            default: f.testHover(false); if f.recording { f.stop() }
+            }
+            let m = HotkeySettings.shared
+            out(["action": act.rawValue, "hovering": f.hovering, "recording": f.recording, "warn": f.warn,
+                 "taken": m.takenCount, "others": m.others.map { Int($0) }, "location": m.otherLocation ?? NSNull()])
         case "shortcutswap":            // shortcutswap yes|no: answer the "already used" question; undo: ⌘Z's undo
             let m = HotkeySettings.shared
             if arg == "undo" { m.fields.values.first?.window?.undoManager?.undo() } else { m.testAnswerSwap(arg == "yes") }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 out(["hotkeys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                      "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, "\(Hotkeys.shared.state($0))") }),
-                     "asking": m.asking?.messageText ?? NSNull()])
+                     "asking": m.asking ?? NSNull()])
             }
         case "fix":
             let uids = (arg.split(separator: " ").first ?? "").split(separator: ",").map(String.init)
@@ -202,11 +230,18 @@ enum SelfTests {
             out(["problems": MascotArt.check()])
         case "menuglyph":              // menuglyph DIR: the menu-bar chick as the status item draws it, as PNGs
             out(["files": MenuGlyph.renderPoses(to: URL(fileURLWithPath: arg.isEmpty ? "/tmp/menuglyph" : arg))])
-        case "install":                 // install ID: the dry-run preview (sheet in Settings → Agents); install-apply: confirm it
+        case "install":                 // install ID [details]: the dry-run preview (sheet in Settings → Agents), Details open with `details`; install-apply: confirm it
             SettingsController.shared.show(pane: "agents")
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count == 1, a[0] == "details", AgentsModel.shared.plan != nil {   // install details: open them on the sheet already up
+                MainActor.assumeIsolated { AgentsModel.shared.installDetails = true }
+                out(["details": true]); break
+            }
             Task { @MainActor in
                 await AgentsModel.shared.load(login: false)
-                if let a = AgentsModel.shared.rows.first(where: { $0.id == arg }) { await AgentsModel.shared.preview(a) }
+                if let x = AgentsModel.shared.rows.first(where: { $0.id == a.first }) { await AgentsModel.shared.preview(x) }
+                if a.contains("details") { AgentsModel.shared.installDetails = true }
+                AgentsModel.shared.testKeyLook = a.contains("keylook")
                 out(["previewed": AgentsModel.shared.plan != nil, "env_home": Agents.shared.installEnvironment()["HOME"] ?? "",
                      "codex_home": Agents.shared.installEnvironment()["CODEX_HOME"] ?? ""])
             }
@@ -218,6 +253,14 @@ enum SelfTests {
                 switch a.first ?? "state" {
                 case "toggle" where a.count == 3: m.toggle(a[1], a[2] == "on")
                 case "up" where a.count == 2: m.moveUp(a[1])
+                case "down" where a.count == 2: m.moveDown(a[1])
+                // the pane's sheet and popovers, for screenshots: details ID | fix ID | examples | missing | hover ID | close
+                case "details" where a.count == 2: m.details = a[1]
+                case "fix" where a.count == 2: m.fixFor = a[1]
+                case "examples": m.examplesShown = true
+                case "missing": m.showMissing = true
+                case "hover" where a.count == 2: m.hovered = a[1]
+                case "close": m.details = nil; m.fixFor = nil; m.examplesShown = false; m.hovered = nil; m.showMissing = false
                 case "processing" where a.count >= 3:
                     // processing AGENT [recording|cards] MODEL [EFFORT] (no kind: cards)
                     let kind = ProcessingKind(rawValue: a[2])

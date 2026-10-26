@@ -1,7 +1,7 @@
 // The permission guide's test hooks (BLURT_TEST_COMMANDS=1, the `perm …` command of SnapApp.swift's channel). They
 // simulate what macOS says — nothing is granted, revoked, registered or reset, and no System Settings pane is opened
 // unless BLURT_TEST_OPEN_PANES=1 — and drive the guide the way its buttons do.
-//   perm screen on|off|clear · perm mic granted|denied|not_asked|clear · perm ax on|off|clear · perm im on|off|clear
+//   perm screen on|off|clear · perm asked on|off (Screen Recording asked for this run) · perm mic granted|denied|not_asked|clear · perm ax on|off|clear · perm im on|off|clear
 //   perm fn 0|1|2|3|unset|clear (AppleFnUsageType) · perm fnapps Typeless,…|clear (other Fn apps running)
 //   perm guide all|dictation [KIND,…] [SOURCE] · perm skip · perm cancel · perm restart · perm poll
 //   perm resume KIND,…|- FLOW SOURCE (what a relaunch for Screen Recording leaves behind, then the launch's resume)
@@ -18,6 +18,7 @@ extension App {
             let g = PermissionGuide.shared
             switch a.first ?? "status" {
             case "screen": SystemAccess.testScreen = v == "clear" ? nil : v == "on"
+            case "asked": SystemAccess.screenAskedThisRun = v != "off"      // a Screen Recording change waiting for a restart
             case "mic": SystemAccess.testMic = v == "clear" ? nil : SystemAccess.State(rawValue: v)
             case "ax": DictationKeys.testAccessibility = v == "clear" ? nil : v == "on"
             case "im": DictationKeys.testInputMonitoring = v == "clear" ? nil : v == "on"

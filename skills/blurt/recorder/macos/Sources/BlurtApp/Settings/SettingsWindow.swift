@@ -1,9 +1,9 @@
 // The Settings window (⌘, from the menu; blurt://settings/<pane>[/<row>]): one resizable window, a sidebar and a page.
 //   Sidebar  the search field on top (⌘F focuses it, Esc clears it, ↓ / ↑ walk the results, ↩ opens one), then the
-//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Agents ·
+//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Projects, Agents ·
 //            This Mac: Privacy, Storage (SettingsCatalog.panes) — in an NSOutlineView like the main window's sidebar:
 //            the brand-tint selection (BrandRowView), ↑ / ↓ move between panes. While searching, the panes with
-//            matches show how many; the others are dimmed.
+//            matches show how many; the others are dimmed (with no match anywhere, none are).
 //   Page     the pane (SwiftUI, SettingsKit's SettingsPage), or the search results (SettingsSearch.swift). Each pane's
 //            page is kept once made, so switching back doesn't reload it.
 // State (pane, query) lives in SettingsNavigator, the row to scroll to in SettingsFlash. The last pane is remembered
@@ -13,12 +13,13 @@
 // that moved (SettingsCatalog.moved: the old Export pane) opens where its settings went: Agents, at "Ask your agent".
 import AppKit
 import Combine
+import ObjectiveC
 import SwiftUI
 import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
     // the sidebar's order (SettingsCatalog.panes)
-    case general, dictation, speech, shortcuts, agents, privacy, storage
+    case general, dictation, speech, shortcuts, projects, agents, privacy, storage
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
@@ -32,6 +33,7 @@ enum SettingsPane: String, CaseIterable {
         case .shortcuts: view = AnyView(ShortcutsPane())
         case .speech: view = AnyView(SpeechPane())
         case .dictation: view = AnyView(DictationPane())
+        case .projects: view = AnyView(ProjectsPane())
         case .agents: view = AnyView(AgentsPane())
         case .privacy: view = AnyView(PrivacyPane())
         case .storage: view = AnyView(StoragePane())
@@ -46,6 +48,27 @@ enum SettingsPane: String, CaseIterable {
 /// ⌘F (and the menu's Find) focuses the search field, wherever the focus is.
 final class SettingsWindow: NSWindow {
     var onFind: (() -> Void)?
+    /// Tests (`settingskeylook on`): draw as the key window while another app has the focus — the switches in the
+    /// accent, the sidebar's selection in the brand tint — for screenshots taken without taking the focus.
+    static var keyLook = false
+    override var isKeyWindow: Bool { Self.keyLook || super.isKeyWindow }
+    override var isMainWindow: Bool { Self.keyLook || super.isMainWindow }
+    // AppKit's controls ask the window for its key / active *appearance* (the switch's accent track): answered here
+    // while keyLook is on, else as NSWindow answers
+    @objc(_hasActiveAppearance) func testHasActiveAppearance() -> Bool { Self.keyLook || superBool("_hasActiveAppearance") }
+    @objc(_hasActiveAppearanceIgnoringKeyFocus) func testHasActiveAppearanceIgnoringKeyFocus() -> Bool {
+        Self.keyLook || superBool("_hasActiveAppearanceIgnoringKeyFocus")
+    }
+    @objc(_hasKeyAppearance) func testHasKeyAppearance() -> Bool { Self.keyLook || superBool("_hasKeyAppearance") }
+    @objc(_hasMainAppearance) func testHasMainAppearance() -> Bool { Self.keyLook || superBool("_hasMainAppearance") }
+    @objc(hasKeyAppearance) func testHasKeyAppearancePublic() -> Bool { Self.keyLook || superBool("hasKeyAppearance") }
+    @objc(hasMainAppearance) func testHasMainAppearancePublic() -> Bool { Self.keyLook || superBool("hasMainAppearance") }
+    private func superBool(_ name: String) -> Bool {
+        let sel = NSSelectorFromString(name)
+        guard let imp = class_getMethodImplementation(NSWindow.self, sel), NSWindow.instancesRespond(to: sel) else { return false }
+        typealias F = @convention(c) (AnyObject, Selector) -> Bool
+        return unsafeBitCast(imp, to: F.self)(self, sel)
+    }
     override func performKeyEquivalent(with e: NSEvent) -> Bool {
         if e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, e.charactersIgnoringModifiers == "f" {
             onFind?()
@@ -73,6 +96,7 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         sideItem.minimumThickness = 190
         sideItem.maximumThickness = 260
         sideItem.canCollapse = false
+        sideItem.allowsFullHeightLayout = true          // the source list runs to the top, under the window's buttons
         let pageItem = NSSplitViewItem(viewController: page)
         pageItem.minimumThickness = 540
         split.addSplitViewItem(sideItem)
@@ -82,8 +106,12 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                                backing: .buffered, defer: false)
         w.contentViewController = split
+        // the pane's name is the window's title, in the toolbar beside the window's buttons (System Settings): the
+        // sidebar runs full height under them and the page starts right below
         w.title = T("settings.window.title")
-        w.titleVisibility = .hidden
+        w.toolbar = NSToolbar(identifier: "BlurtSettings")
+        w.toolbarStyle = .unified
+        w.titleVisibility = .visible
         w.titlebarAppearsTransparent = true
         w.minSize = NSSize(width: 760, height: 520)
         w.setContentSize(NSSize(width: 860, height: 620))
@@ -97,6 +125,11 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         detail = page
         // the last pane, for next time (a pane chosen while the window is open counts, not only the one at closing)
         nav.$pane.removeDuplicates().sink { p in Config.shared.set("app.settings_pane", p.rawValue) }.store(in: &subs)
+        // while searching, the query is the page's title ("“short”"): the results page doesn't say it twice
+        nav.$pane.combineLatest(nav.$query.map { $0.trimmingCharacters(in: .whitespaces) }.removeDuplicates())
+            .receive(on: RunLoop.main)
+            .sink { [weak w] p, q in w?.title = q.isEmpty ? p.title : T("settings.search.title_query", q) }
+            .store(in: &subs)
     }
 
     func show(pane: String?) {
@@ -149,8 +182,11 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
         while !queue.isEmpty {
             let v = queue.removeFirst()
             if let s = v as? NSScrollView, let doc = s.documentView {
-                let maxY = max(0, doc.frame.height - s.contentView.bounds.height)
-                let y = to == "bottom" ? maxY : to == "top" ? 0 : min(maxY, Double(to) ?? 0)
+                // under the transparent toolbar the page's top is at minus the top inset: "top" and offsets count from
+                // there, and a page shorter than the window never moves
+                let minY = -s.contentView.contentInsets.top
+                let maxY = max(minY, doc.frame.height - s.contentView.bounds.height)
+                let y = to == "bottom" ? maxY : to == "top" ? minY : min(maxY, minY + (Double(to) ?? 0))
                 s.contentView.scroll(to: NSPoint(x: 0, y: doc.isFlipped ? y : maxY - y))
                 s.reflectScrolledClipView(s.contentView)
                 return true
@@ -158,6 +194,21 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
             queue += v.subviews
         }
         return false
+    }
+
+    /// Tests (`settingskeylook on|off`): see SettingsWindow.keyLook.
+    @MainActor
+    func testKeyLook(_ on: Bool) {
+        SettingsWindow.keyLook = on
+        guard let w = window else { return }
+        NotificationCenter.default.post(name: on ? NSWindow.didBecomeKeyNotification : NSWindow.didResignKeyNotification, object: w)
+        NotificationCenter.default.post(name: on ? NSWindow.didBecomeMainNotification : NSWindow.didResignMainNotification, object: w)
+        for name in on ? ["acquireMainAppearance", "acquireKeyAppearance"] : ["resignKeyAppearance", "resignMainAppearance"] {
+            let sel = NSSelectorFromString(name)
+            if w.responds(to: sel) { w.perform(sel) }
+        }
+        func redraw(_ v: NSView) { v.needsDisplay = true; v.subviews.forEach(redraw) }
+        w.contentView.map(redraw)
     }
 
     /// Tests (`settingssearch TEXT`): type into the search field as a person would.
@@ -257,8 +308,15 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         scroll.documentView = outline
 
         let root = NSView()
-        for v in [search, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
+        // dark mode: a neutral ground under the source list, so the sidebar's material doesn't carry the wallpaper's
+        // blue next to the page's neutral grey (§2.4: neutrals never tint); light mode keeps the material as it is
+        let ground = NeutralSidebarGround()
+        for v in [ground, search, scroll] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
+            ground.topAnchor.constraint(equalTo: root.topAnchor),
+            ground.bottomAnchor.constraint(equalTo: root.bottomAnchor),
+            ground.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            ground.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             // under the window's buttons (the titlebar is transparent; the sidebar runs to the top)
             search.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor, constant: 8),
             search.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 12),
@@ -336,8 +394,8 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
                 return false
             case #selector(NSResponder.insertNewline(_:)):
                 guard nav.searching else { return false }
-                nav.openSelected()
-                focusList()
+                // "Show 9 more" stays in the search (the field keeps the keys); anything else opens its pane
+                if nav.openSelected() { focusList() }
                 return true
             case #selector(NSResponder.cancelOperation(_:)):
                 if search.stringValue.isEmpty { return false }
@@ -384,7 +442,7 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         let id = NSUserInterfaceItemIdentifier("SettingsPaneCell")
         let v = o.makeView(withIdentifier: id, owner: self) as? SettingsPaneCell ?? SettingsPaneCell(id: id)
         let nav = SettingsNavigator.shared
-        v.set(title: n.title, symbol: pane.symbol, count: nav.searching ? nav.count(pane) : nil)
+        v.set(title: n.title, symbol: pane.symbol, count: nav.sidebarCount(pane))
         return v
     }
 
@@ -395,6 +453,18 @@ final class SettingsSidebarController: NSViewController, NSOutlineViewDataSource
         guard !syncing, let p = (outline.item(atRow: outline.selectedRow) as? SettingsNode)?.pane else { return }
         MainActor.assumeIsolated { SettingsNavigator.shared.go(p) }
     }
+}
+
+/// The sidebar's ground in dark mode: neutral grey (#262626) over the material, nearly opaque, so the wallpaper's hue
+/// doesn't show through next to the neutral page; clear in light mode.
+final class NeutralSidebarGround: NSView {
+    override var wantsUpdateLayer: Bool { true }
+    override func updateLayer() {
+        let dark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        layer?.backgroundColor = dark ? NSColor(srgbRed: 0.149, green: 0.149, blue: 0.149, alpha: 0.92).cgColor : NSColor.clear.cgColor
+    }
+    override func viewDidChangeEffectiveAppearance() { needsDisplay = true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
 
 /// A pane in the sidebar: its symbol, its name, and while searching how many of its settings match (dimmed at none).

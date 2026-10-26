@@ -140,5 +140,17 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card into Unassigned (uses AI once), with a suggested project</string><key>other</key><string>Organize the %d cards into Unassigned (uses AI once), each with a suggested project</string></dict>
   </dict>
+  <key>capture.keys.taken_banner</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Another copy of Blurt is using one of these shortcuts</string><key>other</key><string>Another copy of Blurt is using %d of these shortcuts</string></dict>
+  </dict>
+  <key>capture.keys.taken_banner_many</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Other copies of Blurt are using one of these shortcuts</string><key>other</key><string>Other copies of Blurt are using %d of these shortcuts</string></dict>
+  </dict>
 </dict>
 </plist>

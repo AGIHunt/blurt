@@ -5,7 +5,6 @@
 //
 //   OnbMetrics            the column, the glyph slot, the row height
 //   OnbRow                a row: glyph · title + one line · trailing (keycaps, a state, a button, a switch)
-//   KeyCaps               a shortcut as keycaps, one cap per key ("⌥ ⇧ A", "fn"): UI font, tabular, neutral
 //   StepDots              the step count as four dots; the current one is a wider brand-ink capsule (a shape twin)
 //   StateLabel            one trailing state: a status dot and its word
 //   OnbNotice             a blocked step: an icon, a title, one line, an optional bar — the action is the footer's
@@ -78,48 +77,6 @@ struct OnbRow<Trailing: View>: View {
 extension OnbRow where Trailing == EmptyView {
     init(image: NSImage?, title: String, detail: String?, first: Bool = false) {
         self.init(image: image, title: title, detail: detail, first: first) { EmptyView() }
-    }
-}
-
-/// A shortcut as keycaps: each modifier its own cap, then the key ("⌥⇧A" → ⌥ ⇧ A); a named key ("fn", "右 ⌥") is one
-/// cap. Neutral: a raised cap with a hairline, in the UI font with tabular figures (§2.7 kbd).
-struct KeyCaps: View {
-    var caps: [String]
-    var size: CGFloat = 12
-
-    init(_ caps: [String], size: CGFloat = 12) { self.caps = caps; self.size = size }
-
-    /// "⌥⇧A" → ["⌥", "⇧", "A"]; "⌃⌥Space" → ["⌃", "⌥", "Space"].
-    static func split(_ label: String) -> [String] {
-        let mods: Set<Character> = ["⌃", "⌥", "⇧", "⌘"]
-        var out: [String] = []
-        var rest = ""
-        for c in label.trimmingCharacters(in: .whitespaces) {
-            if mods.contains(c) && rest.isEmpty { out.append(String(c)) } else { rest.append(c) }
-        }
-        if !rest.isEmpty { out.append(rest) }
-        return out
-    }
-
-    var body: some View {
-        HStack(spacing: 3) {
-            ForEach(Array(caps.enumerated()), id: \.offset) { _, c in
-                Text(c)
-                    .font(.system(size: size, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.primary.opacity(0.82))
-                    .padding(.horizontal, 5)
-                    .frame(minWidth: size + 10, minHeight: size + 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(Color(nsColor: .controlBackgroundColor))
-                            .shadow(color: .black.opacity(0.10), radius: 0, x: 0, y: 1)
-                    )
-                    .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(Color.primary.opacity(0.14), lineWidth: 0.5))
-            }
-        }
-        .fixedSize()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(caps.joined(separator: " "))
     }
 }
 

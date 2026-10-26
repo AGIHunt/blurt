@@ -1,18 +1,29 @@
-// Settings → Speech (K9; a page of SettingsKit rows, titles and descriptions from SettingsCatalog): which speech
-// model this Mac uses for recordings, live captions and voice notes, chosen
-// for its chip, memory and the languages the user speaks (`transcribe.py models`: hardware, tier, registry,
-// recommendation, what is installed and measured). Automatic by default (`transcribe.py auto --apply`); manual
-// per purpose. Dictation's speech and polish models are chosen here too, in their own section (DictationModels.swift:
-// the recommended pair with its total size, one Download / Use per model; Settings → Dictation links here). A
-// comparison of the models that run here — accuracy for the user's languages, speed, memory, download
-// size — measured on this Mac when the user asks (`transcribe.py bench`), reference numbers otherwise. Resource caps
-// (asr.limits: threads, transcriptions at once, GPU memory share, lighter models on battery), cloud keys (never
-// stored or shown: only whether each variable is set), recognition language and the download mirror. Every download
-// here goes through the app's one download manager (App/ModelDownloads.swift): the running one's bar and Stop, "Queued"
-// for the next, never a second copy of a model the assistant is already fetching. A purpose whose model isn't on this
-// Mac says "· downloading" or "None yet" (never names it as if in use) — and in the model list such a model has no
-// purpose badge, only "For … once it's downloaded" —, and while a batch runs no new "X is recommended · Download" offer
-// joins it. Move to Trash asks by the model's name and size, never its folder's path.
+// Settings → Speech (K9; SettingsKit rows, titles and descriptions from SettingsCatalog), built around one question:
+// which model does each job, and is the recommended set on this Mac? (docs/design/system.md §3.4)
+//
+//   This Mac   at most one recommendation, only while something recommended is missing (`transcribe.py models` for
+//              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
+//              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
+//              one primary Download and a "…" menu for one model at a time; while anything downloads it becomes that
+//              download's bar and Stop. Then Choose automatically (asr.auto, and dictation's two models unpinned:
+//              DictationModels.setAuto), its line naming this Mac — "Auto" is said there once, never on every job.
+//   Models in use  one row per job — Recordings, Live captions, Voice notes, Dictation, Dictation polish —, each with
+//              its glyph and its model on the right: the name while automatic, a pop-up of the models on this Mac (and
+//              Get More Models…) when picked by hand. A job whose model isn't on this Mac says "· downloading" or "None
+//              yet", never names it as if in use. Last, All models: Manage Models… opens the library.
+//   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
+//   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
+//              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
+//              mirror, one row per cloud service with whether its key is found (never stored or shown; the variables'
+//              names and the export line in an info popover).
+//   library    a sheet (ModelLibrary): one 32 pt row per model that runs here, recognition or polish — what it is
+//              used for, accuracy for your languages, speed, memory, size as a table; numbers measured on this Mac
+//              (`transcribe.py bench`) carry the seal; Download on hover, Measure / Show in Finder / Move to Trash in
+//              the row's "…" menu (and its context menu). Move to Trash asks by the model's name and size.
+// Every download goes through the app's one download manager (App/ModelDownloads.swift); this page is the one place
+// that offers the recommended download (Settings → Dictation links here).
+// Test hooks (BLURT_TEST_COMMANDS): `settings speech/speech.models` opens the library, `settings speech/speech.threads`
+// unfolds Advanced; BLURT_TEST_SPEECH_HOVER=ID shows a library row as hovered, BLURT_TEST_SPEECH_TAB=polish its tab.
 // Strings: Resources/*.lproj/Speech.strings (Loc table "Speech").
 import AppKit
 import Combine
@@ -145,7 +156,7 @@ enum ASRPurpose: String, CaseIterable, Identifiable {
     var detail: String { S("speech.purpose.\(rawValue).detail") }
     var symbol: String {
         switch self {
-        case .batch: return "record.circle"
+        case .batch: return "video"
         case .live: return "captions.bubble"
         case .note: return "mic"
         }
@@ -354,64 +365,220 @@ private func endonym(_ code: String) -> String {
 private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "vi", "th",
                                 "id", "ms", "tr", "nl", "pl", "sv", "da", "fi", "cs", "el", "hu", "ro", "uk", "fa", "fil"]
 
+/// The pop-ups' last item: opens the library instead of choosing.
+private let moreModels = "__more"
+
 // MARK: - Pane
 
 struct SpeechPane: View {
     @ObservedObject var m = SpeechModel.shared
-    @State var confirmRemove: ASRModel?
+    @ObservedObject var d = DictationModels.shared
+    @ObservedObject private var dl = ModelDownloads.shared
+    @State private var library = false
+    @State private var advanced = false
 
-    /// Settings → Speech scrolled to dictation's models (Settings → Dictation's "Change…" / "Download…").
+    /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
+    /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
     @MainActor static func showDictationModels() {
         AppEnvironment.settings?.show(pane: "speech/dictation")
     }
 
     var body: some View {
         SettingsPage(.speech) {
-            machineSection
-            DictationModelsSection()
+            useSection
+            jobsSection
             languagesSection
-            modelsSection
-            resourcesSection
-            cloudSection
             advancedSection
         }
         .task { await m.load() }
-        .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
-            Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
-            Button(S("speech.cancel"), role: .cancel) { confirmRemove = nil }
-        } message: {
-            // the model by its name and size — never its folder's path (the Storage pane's rows say the same)
-            Text(confirmRemove.map { S("speech.remove.message", $0.title, modelSize($0.sizeMB)) } ?? "")
+        .task { await d.load() }
+        .sheet(isPresented: $library) { ModelLibrary { library = false } }
+        // a search or a link landing on the library or on a row folded under Advanced: open / unfold it first
+        .onReceive(SettingsFlash.shared.$request) { r in
+            guard let id = r?.id else { return }
+            if id == "speech.models" { library = true }
+            if id == "speech.advanced" || SettingsCatalog.entry(id)?.section == "speech.advanced" { advanced = true }
         }
     }
 
-    // MARK: This Mac + what it uses
+    // MARK: the Mac
 
-    @ViewBuilder var machineSection: some View {
-        SettingsGroup("speech.machine", content: {
-            if let s = m.state {
-                SettingsLine { MachineRow(hw: s.hardware) }
-                SettingToggle("speech.auto", isOn: Binding(get: { m.auto }, set: { m.setAuto($0) }))
-                ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
-                ForEach(suggestions, id: \.model.id) { sug in suggestionRow(sug.model, purposes: sug.purposes) }
-            } else if m.loading {
-                SettingsLine { HStack(spacing: 8) { BrandSpinnerView(); Text(S("speech.loading")).foregroundStyle(.secondary) } }
+    /// "Apple M5 Max, 128 GB": what Choose automatically picks for ("Checking this Mac…" while it is read); the GPU and
+    /// the battery in the row's tooltip.
+    var machineShort: String? {
+        guard let hw = m.state?.hardware else { return nil }
+        return S("speech.machine.short", hw.chip ?? S("speech.machine.unknown"), mb(hw.ramGB * 1024))
+    }
+    var machineLine: String {
+        guard let hw = m.state?.hardware else { return S("speech.loading") }
+        var parts = [hw.chip ?? S("speech.machine.unknown"), S("speech.machine.memory", mb(hw.ramGB * 1024))]
+        if let c = hw.gpu.cores { parts.append(S("speech.machine.gpu_cores", decimal(Double(c)))) }
+        else if let v = hw.gpu.vramGB, let n = hw.gpu.name { parts.append("\(n) · " + mb(v * 1024)) }
+        else { parts.append(S("speech.machine.cpu_cores", decimal(Double(hw.perfCores + hw.effCores)))) }
+        if hw.onBattery == true { parts.append(S("speech.machine.battery")) }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: Models: the recommendation, automatic, one row per job, the library
+
+    /// This Mac: the recommendation (while something recommended is missing) and Choose automatically.
+    @ViewBuilder var useSection: some View {
+        SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
+            if let e = m.error {
+                SettingsLine {
+                    Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            if let e = m.error { SettingsLine { Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr) } }
+            recommendation
+            SettingToggle("speech.auto", isOn: Binding(get: { m.auto }, set: { on in d.setAuto(on); m.setAuto(on) }),
+                          detail: machineShort.map { S("speech.auto.detail_mac", $0) }, help: machineLine)
         }, accessory: {
-            if m.loading && m.state != nil { BrandSpinnerView(size: 10) }
+            if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
         })
     }
 
+    /// Models in use: one row per job, with its glyph and its model, then the library.
+    @ViewBuilder var jobsSection: some View {
+        SettingsGroup("speech.jobs", title: S("speech.section.jobs")) {
+            ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
+            dictationRow
+            polishRow
+            libraryRow
+        }
+    }
+
+    // the one recommendation
+
+    struct Pick { var job: ModelDownloadQueue.Job; var uses: [String] }
+
+    /// What is recommended for this Mac and not on it yet, with the jobs it is for. The recording / voice-note models
+    /// only while they are chosen automatically (a hand-picked set isn't second-guessed); dictation's pair always.
+    var picks: [Pick] {
+        var out: [Pick] = []
+        func add(_ j: ModelDownloadQueue.Job, _ use: String) {
+            if let i = out.firstIndex(where: { $0.job.id == j.id }) {
+                if !out[i].uses.contains(use) { out[i].uses.append(use) }
+            } else { out.append(Pick(job: j, uses: [use])) }
+        }
+        if m.auto && m.state != nil {
+            for p in ASRPurpose.allCases {
+                guard let r = m.recommended(p), !r.installed, r.local, r.runsHere ?? true else { continue }
+                add(.init(id: r.id, kind: .note, name: r.title, sizeMB: r.sizeMB), p.title)
+            }
+        }
+        let dictation = S("speech.purpose.dictation")
+        if let a = d.recommendedASR, !a.installed, a.files != true {
+            add(.init(id: a.id, kind: .dictation, name: a.name ?? d.asrName(a.id), sizeMB: a.sizeMB), dictation)
+        } else if d.dictationReady == false, let j = d.dictationJob {
+            add(j, dictation)              // only the VAD (or the configured model) is missing: what the key needs
+        }
+        if let p = d.recommendedPolish, !p.installed {
+            add(.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB), dictation)
+        }
+        return out
+    }
+
+    /// One line per group of jobs the download changes, in the jobs' own words: "Voice notes would use SenseVoice
+    /// Small", "Dictation would use Qwen3-ASR 1.7B (MLX) and Gemma 4 E2B" — so the rows under it and this agree: they
+    /// say what is used now, this says what Download changes.
+    func pickLines(_ ps: [Pick]) -> [String] {
+        var groups: [(uses: [String], names: [String])] = []
+        for p in ps {
+            // a model's name never breaks over two lines
+            let name = p.job.name.replacingOccurrences(of: " ", with: "\u{00A0}")
+            if let i = groups.firstIndex(where: { $0.uses == p.uses }) { groups[i].names.append(name) }
+            else { groups.append((p.uses, [name])) }
+        }
+        return groups.map { g in
+            let uses = Loc.list(g.uses.enumerated().map { i, u in i == 0 ? u : u.lowercased(with: Loc.locale) })
+            return S("speech.rec.line", uses, Loc.list(g.names))
+        }
+    }
+
+    @ViewBuilder var recommendation: some View {
+        if dl.active {
+            // whatever is downloading (from here, the library, the assistant, the dictation key): one bar, one Stop
+            let p = dl.progress
+            let now = dl.queue.pending.first { $0.id == dl.current } ?? dl.queue.next
+            SettingsLine(flashID: "speech.download") {
+                HStack(alignment: .center, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(S("speech.rec.downloading", now?.name ?? "")).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
+                            .gridProbe(.text, "download")
+                        Text(dl.current.map(dl.isUnpacking) == true ? S("speech.download.unpacking")
+                             : p.done == 0 ? S("speech.download.preparing")
+                             : S("speech.download.progress", modelSize(p.done), modelSize(p.total)))
+                            .font(.system(size: SettingsMetrics.detailSize)).monospacedDigit().foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 10) {
+                        ProgressView(value: min(p.done, p.total), total: max(p.total, 1)).frame(width: 96)
+                            .accessibilityLabel(S("speech.rec.downloading", now?.name ?? ""))
+                        Button(S("speech.download.stop")) { dl.stop() }
+                    }
+                    .gridProbe(.trailing, "download")
+                }
+            }
+        } else {
+            let ps = picks
+            if !ps.isEmpty {
+                let failed = ps.contains { dl.failed[$0.job.id] != nil }
+                let size = modelSize(ps.reduce(0) { $0 + $1.job.sizeMB }).replacingOccurrences(of: " ", with: "\u{00A0}")
+                SettingsLine(flashID: "speech.download") {
+                    HStack(alignment: .center, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(S("speech.rec.title_size", size)).font(.system(size: SettingsMetrics.titleSize))
+                                .gridProbe(.text, "recommended")
+                            // one line per job group: a structured list, never a sentence wrapped mid-name
+                            ForEach(pickLines(ps), id: \.self) { l in
+                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            if failed {
+                                Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
+                                    .foregroundStyle(Color.brandErr).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(S("speech.rec.help"))
+                        HStack(spacing: 4) {
+                            if ps.count > 1 {
+                                Menu {
+                                    ForEach(ps, id: \.job.id) { p in
+                                        Button(S("speech.rec.one", p.job.name, modelSize(p.job.sizeMB))) { get([p]) }
+                                    }
+                                } label: { Image(systemName: "ellipsis") }
+                                .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                                .frame(width: 22)
+                                .help(S("speech.rec.choose")).accessibilityLabel(S("speech.rec.choose"))
+                            }
+                            // the page's one primary (system.md §9), and the app's one place to get these models
+                            Button(failed ? S("speech.rec.retry") : S("speech.download.button")) { get(ps) }
+                                .buttonStyle(SettingsPrimaryButtonStyle())
+                        }
+                        .gridProbe(.trailing, "recommended")
+                    }
+                }
+            }
+        }
+    }
+
+    /// One request for the download manager: nothing is pinned (an automatic choice stays automatic and takes each
+    /// model once it is in).
+    func get(_ ps: [Pick]) { dl.download(ps.map(\.job), via: "settings") }
+
+    // the jobs
+
     func purposeRow(_ p: ASRPurpose) -> some View {
         SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
-            if m.auto {
-                Text(purposeValue(p)).foregroundStyle(.secondary)
+            if m.state == nil {
+                BrandSpinnerView(size: 12)
+            } else if m.auto {
+                ModelName(text: purposeValue(p))
             } else {
-                RowPicker(label: p.title, selection: Binding(get: { m.selected(p)?.id ?? "" }, set: { id in
+                ModelPopUp(label: p.title, current: m.selected(p)?.id,
+                           choices: choices(p).map { ($0.id, $0.title) }, more: { library = true }) { id in
                     if let x = m.model(id) { m.choose(x, for: p) }
-                })) {
-                    ForEach(choices(p)) { x in Text(x.title).tag(x.id) }
                 }
             }
         }
@@ -422,7 +589,7 @@ struct SpeechPane: View {
     func purposeValue(_ p: ASRPurpose) -> String {
         guard let x = m.selected(p) else { return S("speech.purpose.none_yet") }
         if x.installed || !x.local { return x.title }
-        return ModelDownloads.shared.queue.contains(x.id) ? S("speech.purpose.downloading", x.title) : S("speech.purpose.none_yet")
+        return dl.queue.contains(x.id) ? S("speech.purpose.downloading", x.title) : S("speech.purpose.none_yet")
     }
 
     /// Installed models that run here (cloud ones when a key is set and local-only is off).
@@ -432,51 +599,76 @@ struct SpeechPane: View {
         return out
     }
 
-    /// Recommended models that aren't downloaded yet, with the purposes they would take over.
-    /// While a batch downloads, only the ones in it (their bars): no further "X is recommended · Download" on top.
-    var suggestions: [(model: ASRModel, purposes: [ASRPurpose])] {
-        guard m.auto else { return [] }
-        let dl = ModelDownloads.shared
-        var out: [(model: ASRModel, purposes: [ASRPurpose])] = []
-        for p in ASRPurpose.allCases {
-            guard let r = m.recommended(p), !r.installed, r.local, !dl.active || dl.queue.contains(r.id) else { continue }
-            if let i = out.firstIndex(where: { $0.model.id == r.id }) { out[i].purposes.append(p) } else { out.append((r, [p])) }
-        }
-        return out
-    }
-
-    func suggestionRow(_ x: ASRModel, purposes: [ASRPurpose]) -> some View {
-        SettingsLine {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 14) {
-                Image(systemName: "sparkles").foregroundStyle(Color.brandInk).frame(width: SettingsMetrics.leadingWidth).accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(S("speech.suggest.title", x.title)).fontWeight(.medium)
-                    Text(suggestionDetail(x, purposes)).font(.caption).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+    @ViewBuilder var dictationRow: some View {
+        SettingRow("speech.dictation", icon: "character.cursor.ibeam") {
+            if let a = d.asr {
+                if m.auto && d.asrAuto {
+                    ModelName(text: dictationValue(a))
+                } else {
+                    // a model whose own files are in can be chosen (its setup then fetches only the VAD)
+                    let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
+                    ModelPopUp(label: S("speech.purpose.dictation"), current: a.selected,
+                               choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) }, more: { library = true }) { id in
+                        if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
+                    }
                 }
-                Spacer(minLength: 12)
-                if m.download(x.id) == nil {
-                    Button(S("speech.suggest.download", modelSize(x.sizeMB))) { m.startDownload(x) }
-                        .disabled(!(x.runsHere ?? true))
-                }
+            } else {
+                BrandSpinnerView(size: 12)
             }
-            if let d = m.download(x.id) { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 36) }
-            if let f = m.failed(x.id) { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 36) }
-        }
         }
     }
 
-    func suggestionDetail(_ x: ASRModel, _ purposes: [ASRPurpose]) -> String {
-        let uses = Loc.list(purposes.map { $0.title.lowercased(with: Loc.locale) })
-        var parts = [S("speech.suggest.for", uses)]
-        let cur = purposes.compactMap { m.selected($0) }.first
-        if let c = cur, let a = m.errorRate(c)?.value, let b = m.errorRate(x)?.value, b < a * 0.8, a > 0 {
-            parts.append(S("speech.suggest.better", percent(a), percent(b)))
-        } else if let c = cur, !m.missing(c).isEmpty, m.missing(x).isEmpty {
-            parts.append(S("speech.suggest.languages", Loc.list(m.missing(c).map(languageName))))
+    func dictationValue(_ a: DictationASRState) -> String {
+        if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return d.asrName(a.selected) }
+        if let j = d.dictationJob, dl.queue.contains(j.id) { return S("speech.purpose.downloading", j.name) }
+        return S("speech.purpose.none_yet")
+    }
+
+    @ViewBuilder var polishRow: some View {
+        SettingRow("speech.polish", icon: "wand.and.stars") {
+            if let p = d.polish {
+                if !p.supported {
+                    ModelName(text: S("speech.purpose.polish.unsupported"))
+                } else if m.auto && d.polishAuto {
+                    ModelName(text: polishValue(p))
+                } else {
+                    let here = p.models.filter { $0.installed }
+                    ModelPopUp(label: S("speech.purpose.polish"), current: p.selected,
+                               choices: here.map { ($0.id, $0.name) }, more: { library = true }) { id in
+                        if let x = p.models.first(where: { $0.id == id }) { d.choose(x) }
+                    }
+                }
+            } else {
+                BrandSpinnerView(size: 12)
+            }
         }
-        return sentences(parts)
+    }
+
+    func polishValue(_ p: PolishState) -> String {
+        if let s = p.selected { return d.polishName(s) }
+        if let r = d.recommendedPolish, dl.queue.contains(r.id) { return S("speech.purpose.downloading", r.name) }
+        return S("speech.purpose.none_yet")
+    }
+
+    /// All models: how many are on this Mac (a count, not a size — Storage measures the disk), and the library (the
+    /// catalogue's "speech.models" is the library itself, which a search opens).
+    var libraryRow: some View {
+        let here = m.models.filter { $0.local && $0.installed }.count + (d.polish?.models.filter(\.installed).count ?? 0)
+        return SettingsLine(flashID: "speech.library") {
+            HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    SettingsIcon("square.stack.3d.up")
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(S("speech.section.models")).font(.system(size: SettingsMetrics.titleSize))
+                            .gridProbe(.iconText, "all models")
+                        Text(here > 0 ? S("speech.manage.count", Loc.number(here)) : S("speech.manage.detail.none"))
+                            .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Button(S("speech.manage.button")) { library = true }.gridProbe(.trailing, "all models")
+            }
+        }
     }
 
     // MARK: Languages
@@ -485,258 +677,454 @@ struct SpeechPane: View {
         SettingsGroup("speech.languages",
                       footer: S(m.state?.languagesSet == true ? "speech.languages.footer" : "speech.languages.footer.system")) {
             SettingsLine {
-                FlowLayout(spacing: 6) {
-                    ForEach(m.languages, id: \.self) { code in
-                        LanguageChip(title: endonym(code), help: languageName(code), removable: m.languages.count > 1) {
-                            m.setLanguages(m.languages.filter { $0 != code })
-                        }
-                    }
-                    Menu {
-                        ForEach(offeredLanguages.filter { !m.languages.contains($0) }, id: \.self) { code in
-                            Button(endonym(code) + (endonym(code) == languageName(code) ? "" : " — " + languageName(code))) {
-                                m.setLanguages(m.languages + [code])
+                HStack(alignment: .top, spacing: 0) {
+                    FlowLayout(spacing: 6) {
+                        ForEach(m.languages, id: \.self) { code in
+                            LanguageChip(title: endonym(code), help: languageName(code), removable: m.languages.count > 1) {
+                                m.setLanguages(m.languages.filter { $0 != code })
                             }
                         }
-                    } label: {
-                        Label(S("speech.languages.add"), systemImage: "plus")
-                    }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                }
-            }
-        }
-    }
-
-    // MARK: The comparison
-
-    @ViewBuilder var modelsSection: some View {
-        let here = m.models.filter { $0.local && ($0.runsHere ?? true) }
-        let elsewhere = m.models.filter { $0.local && !($0.runsHere ?? true) }.count
-        SettingsGroup("speech.models", footer: S("speech.models.footer") + (elsewhere > 0 ? "\n" + S("speech.models.elsewhere") : "")) {
-            ForEach(here) { x in SettingsLine { modelRow(x) } }
-        }
-    }
-
-    func modelRow(_ x: ASRModel) -> some View {
-        // the purposes it runs: only a model on this Mac runs anything — one picked but not downloaded yet says when
-        // it will (as the purpose rows above say "None yet"), never a badge that reads as "in use"
-        let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
-        let uses = x.installed ? picked : []
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                StatusDot(tone: x.installed ? (uses.isEmpty ? .off : .good) : .off)
-                    .opacity(x.installed ? 1 : 0.5)
-                Text(x.title).fontWeight(uses.isEmpty ? .regular : .semibold)
-                if !uses.isEmpty {
-                    Text(uses.map(\.title).joined(separator: " · "))
-                        .font(.caption2.weight(.medium)).foregroundStyle(Color.brandInk)
-                        .padding(.horizontal, 6).padding(.vertical, 1.5)
-                        .background(Capsule().fill(Color.brandTint))
-                } else if !x.installed, !picked.isEmpty {
-                    Text(S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) })))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 8)
-                actions(x, inUse: !uses.isEmpty)
-            }
-            HStack(spacing: 14) {  // fixed minimum widths: the columns line up from one model to the next
-                Metric(label: S("speech.metric.accuracy"), value: m.errorRate(x).map { percent(max(0, 1 - $0.value)) } ?? "—",
-                       measured: m.errorRate(x)?.measured).frame(minWidth: 76, alignment: .leading)
-                Metric(label: S("speech.metric.speed"), value: m.speed(x).map { S("speech.metric.speed.value", decimal($0.value)) } ?? "—",
-                       measured: m.speed(x)?.measured).frame(minWidth: 112, alignment: .leading)
-                Metric(label: S("speech.metric.memory"), value: m.memory(x).map { mb($0.value) } ?? "—",
-                       measured: m.memory(x)?.measured).frame(minWidth: 80, alignment: .leading)
-                Metric(label: S("speech.metric.size"), value: (x.approx == true ? "≈ " : "") + modelSize(x.sizeMB), measured: nil)
-            }
-            .padding(.leading, 17)
-            Text(coverage(x)).font(.caption).foregroundStyle(.secondary).padding(.leading, 17)
-                .fixedSize(horizontal: false, vertical: true)
-            if let d = m.download(x.id) { DownloadBar(d: d) { m.cancelDownload(x) }.padding(.leading, 17) }
-            if let f = m.failed(x.id) { Text(f).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
-            if let b = m.bench[x.id], let e = b.error { Text(e).font(.caption).foregroundStyle(Color.brandErr).padding(.leading, 17) }
-        }
-    }
-
-    func coverage(_ x: ASRModel) -> String {
-        let miss = m.missing(x)
-        return sentences([x.qualityNoteKey.map { S($0) } ?? "",
-                          miss.isEmpty ? S("speech.coverage.all") : S("speech.coverage.missing", Loc.list(miss.map(languageName)))])
-    }
-
-    @ViewBuilder
-    func actions(_ x: ASRModel, inUse: Bool) -> some View {
-        HStack(spacing: 6) {
-            if x.installed {
-                if m.benching.contains(x.id) {
-                    BrandSpinnerView()
-                    Text(S("speech.bench.running")).font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Button(S("speech.bench.button")) { Task { await m.runBench(x) } }
-                        .controlSize(.small)
-                        .help(S("speech.bench.help"))
-                }
-            } else if m.download(x.id) == nil {
-                Button(S("speech.download.button")) { m.startDownload(x) }.controlSize(.small)
-            }
-            if m.canRemove(x) && !inUse {
-                Button { confirmRemove = x } label: { Image(systemName: "trash") }
-                    .buttonStyle(.borderless).help(S("speech.remove.confirm"))
-                    .accessibilityLabel(S("speech.remove.confirm"))
-            }
-        }
-    }
-
-    // MARK: Resources
-
-    @ViewBuilder var resourcesSection: some View {
-        if let s = m.state {
-            let cores = s.hardware.perfCores + s.hardware.effCores
-            SettingsGroup("speech.resources", footer: S("speech.limits.footer")) {
-                SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores)))) {
-                    HStack(spacing: 6) {
-                        Text(decimal(Double(s.limits.threads))).monospacedDigit().foregroundStyle(.secondary)
-                        Stepper(S("speech.limits.threads"), value: Binding(get: { s.limits.threads }, set: { m.setLimit("threads", $0) }),
-                                in: 1...max(1, cores)).labelsHidden()
-                    }
-                }
-                SettingRow("speech.concurrent") {
-                    HStack(spacing: 6) {
-                        Text(decimal(Double(s.limits.maxConcurrent))).monospacedDigit().foregroundStyle(.secondary)
-                        Stepper(S("speech.limits.concurrent"), value: Binding(get: { s.limits.maxConcurrent }, set: { m.setLimit("max_concurrent", $0) }),
-                                in: 1...4).labelsHidden()
-                    }
-                }
-                if s.hardware.gpu.kind == "apple" {
-                    SettingRow("speech.memory", detail: S("speech.limits.memory.detail", mb(s.hardware.ramGB * 1024 * s.limits.maxMemoryFraction))) {
-                        HStack(spacing: 10) {
-                            Slider(value: Binding(get: { s.limits.maxMemoryFraction }, set: { v in
-                                m.state?.limits.maxMemoryFraction = (v * 20).rounded() / 20
-                            }), in: 0.1...0.5, step: 0.05) { editing in
-                                if !editing, let f = m.state?.limits.maxMemoryFraction { m.setLimit("max_memory_fraction", f) }
+                        Menu {
+                            ForEach(offeredLanguages.filter { !m.languages.contains($0) }, id: \.self) { code in
+                                Button(endonym(code) + (endonym(code) == languageName(code) ? "" : " — " + languageName(code))) {
+                                    m.setLanguages(m.languages + [code])
+                                }
                             }
-                            .frame(width: 150)
-                            .accessibilityLabel(S("speech.limits.memory"))
-                            Text(percent(s.limits.maxMemoryFraction, digits: 0)).monospacedDigit().foregroundStyle(.secondary)
-                                .frame(minWidth: 34, alignment: .trailing)
+                        } label: {
+                            Label(S("speech.languages.add"), systemImage: "plus")
                         }
-                    }
-                }
-                SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }))
-            }
-        }
-    }
-
-    // MARK: Cloud
-
-    @ViewBuilder var cloudSection: some View {
-        SettingsGroup("speech.cloud", footer: S(m.localOnly ? "speech.cloud.local_only" : "speech.cloud.keys")) {
-            ForEach(m.models.filter { !$0.local }) { x in
-                SettingsLine {
-                    HStack(alignment: .center, spacing: 14) {
-                        StatusDot(tone: x.installed && !m.localOnly ? .good : .off).frame(width: SettingsMetrics.leadingWidth)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(x.title).font(.system(size: SettingsMetrics.titleSize))
-                            Text((x.keys ?? []).joined(separator: "  ")).font(.system(size: 11, design: .monospaced))
-                                .foregroundStyle(.secondary).textSelection(.enabled)
-                        }
-                        Spacer()
-                        Text(x.installed ? S("speech.cloud.set") : S("speech.cloud.not_set")).foregroundStyle(.secondary)
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .frame(height: LanguageChip.height)
                     }
                 }
             }
-        }
-    }
-
-    // MARK: Advanced
-
-    @ViewBuilder var advancedSection: some View {
-        SettingsGroup("speech.advanced") {
             SettingRow("speech.language") {
-                RowPicker(label: S("speech.advanced.language"), selection: Binding(get: { m.language }, set: { m.setLanguage($0) })) {
-                    Text(S("speech.advanced.language.auto")).tag("auto")
-                    ForEach(m.languages, id: \.self) { Text(endonym($0)).tag($0) }
+                let langs = m.languages + (m.language != "auto" && !m.languages.contains(m.language) ? [m.language] : [])
+                ChoicePopup(label: S("speech.advanced.language"),
+                            choices: [("auto", S("speech.advanced.language.auto"))] + langs.map { ($0, endonym($0)) },
+                            selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), dividers: [1])
+            }
+        }
+    }
+
+    // MARK: Advanced (folded)
+
+    /// Advanced: the one folded section of every pane (a heading that discloses its box), closed until asked for.
+    @ViewBuilder var advancedSection: some View {
+        SettingsGroup("speech.advanced", footer: advanced ? S("speech.limits.footer") : nil, disclosure: $advanced) {
+            resourceRows
+            SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
+            let cloud = m.models.filter { !$0.local }
+            ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
+        }
+    }
+
+    @ViewBuilder var resourceRows: some View {
+        if let s = m.state {
+            let cores = max(1, s.hardware.perfCores + s.hardware.effCores)
+            SettingRow("speech.threads", detail: S("speech.limits.threads.detail", decimal(Double(cores)))) {
+                ChoicePopup(label: S("speech.limits.threads"), choices: (1...cores).map { ($0, decimal(Double($0))) },
+                            selection: Binding(get: { min(max(1, s.limits.threads), cores) }, set: { m.setLimit("threads", $0) }))
+            }
+            SettingRow("speech.concurrent") {
+                ChoicePopup(label: S("speech.limits.concurrent"), choices: (1...4).map { ($0, decimal(Double($0))) },
+                            selection: Binding(get: { min(max(1, s.limits.maxConcurrent), 4) }, set: { m.setLimit("max_concurrent", $0) }))
+            }
+            if s.hardware.gpu.kind == "apple" {
+                // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
+                SettingRow("speech.memory") {
+                    ChoicePopup(label: S("speech.limits.memory"),
+                                choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
+                                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
+                                },
+                                selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
+                                                   set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }
             }
-            SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
+            SettingToggle("speech.battery", isOn: Binding(get: { m.onBattery == "lighter" }, set: { m.setOnBattery($0) }))
+        }
+    }
+
+    /// One cloud service: whether its key is found, and how to set one (the variables' names) in a popover.
+    @ViewBuilder func cloudRow(_ x: ASRModel, first: Bool) -> some View {
+        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.title
+        let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
+        // the first row is the catalogue's (search lands on it); the others are the same row for another service
+        if first {
+            SettingRow("speech.cloud", title: title, detail: detail) { CloudKey(model: x) }
+        } else {
+            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { CloudKey(model: x) }
         }
     }
 }
 
 // MARK: - Pieces
 
-/// "Apple M5 Max · 128 GB memory · 40-core GPU" with the tier the models were picked for.
-private struct MachineRow: View {
-    var hw: ASRHardware
+/// A job's model while it is chosen automatically: its name, quiet, one line in the control column ("Auto" is said
+/// once, on Choose automatically).
+private struct ModelName: View {
+    var text: String
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: hw.gpu.kind == "apple" ? "cpu" : "memorychip")
-                // a hardware fact, not Blurt acting: neutral, never brand mint (system.md §1.1, §9)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(.secondary)
-                .frame(width: 34, height: 34)
-                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(hw.chip ?? S("speech.machine.unknown")).font(.headline)
-                Text(details).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 8)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(S("speech.tier.\(hw.tier)"))
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .background(Capsule().fill(Color.secondary.opacity(0.12)))
-                if hw.onBattery == true { Text(S("speech.machine.battery")).font(.caption2).foregroundStyle(.secondary) }
-            }
-            .help(S("speech.tier.\(hw.tier).help"))
-        }
-        .padding(.vertical, 4)
-        .accessibilityElement(children: .combine)
-    }
-
-    var details: String {
-        var parts = [S("speech.machine.memory", mb(hw.ramGB * 1024))]
-        if let c = hw.gpu.cores { parts.append(S("speech.machine.gpu_cores", decimal(Double(c)))) }
-        else if let v = hw.gpu.vramGB, let n = hw.gpu.name { parts.append("\(n) · " + mb(v * 1024)) }
-        parts.append(S("speech.machine.cpu_cores", decimal(Double(hw.perfCores + hw.effCores))))
-        return parts.joined(separator: " · ")
+        Text(text).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            .frame(maxWidth: SettingsMetrics.controlWidth, alignment: .trailing)
+            .help(text)
     }
 }
 
-private struct Metric: View {
+/// A job's model when the user picks it: the page's pop-up (one width), the models on this Mac, then Get More Models…
+/// (the library).
+private struct ModelPopUp: View {
     var label: String
-    var value: String
-    var measured: Bool?
+    var current: String?
+    var choices: [(id: String, name: String)]
+    var more: () -> Void
+    var pick: (String) -> Void
     var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundStyle(.secondary).textCase(nil)
-            HStack(spacing: 3) {
-                Text(value).font(.callout.weight(.medium)).monospacedDigit()
-                if measured == true {
-                    Image(systemName: "checkmark.seal.fill").font(.system(size: 9)).foregroundStyle(Color.brandOk)
-                        .help(S("speech.metric.measured"))
-                        .accessibilityLabel(S("speech.metric.measured"))
+        let missing = current == nil || !choices.contains(where: { $0.id == current })
+        var items: [(value: String, title: String)] = missing ? [(current ?? "", S("speech.purpose.none_yet"))] : []
+        items += choices.map { ($0.id, $0.name) }
+        let split = items.count
+        items.append((moreModels, S("speech.purpose.more")))
+        return ChoicePopup(label: label, choices: items,
+                           selection: Binding(get: { current ?? "" }, set: { id in
+                               if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
+                           }), dividers: [split])
+    }
+}
+
+/// "✓ Key found" (ok + check) or "Not set", and an info button whose popover names the variables and the export line.
+private struct CloudKey: View {
+    var model: ASRModel
+    @State private var info = false
+    var body: some View {
+        HStack(spacing: 6) {
+            if model.installed {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
+                Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+            } else {
+                Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
+            }
+            Button { info.toggle() } label: { Image(systemName: "info.circle").foregroundStyle(.secondary) }
+                .buttonStyle(.borderless)
+                .help(S("speech.cloud.info")).accessibilityLabel(S("speech.cloud.info"))
+                .popover(isPresented: $info, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(S("speech.cloud.keys")).font(.system(size: SettingsMetrics.detailSize))
+                            .fixedSize(horizontal: false, vertical: true)
+                        ForEach(model.keys ?? [], id: \.self) { CommandText(text: "export \($0)=…") }
+                    }
+                    .padding(14).frame(width: 340, alignment: .leading)
+                }
+        }
+    }
+}
+
+// MARK: - The library (a sheet)
+
+private struct ModelLibrary: View {
+    var close: () -> Void
+    @ObservedObject var m = SpeechModel.shared
+    @ObservedObject var d = DictationModels.shared
+    @ObservedObject private var dl = ModelDownloads.shared
+    @State private var tab = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_TAB"] == "polish" ? Tab.polish : .asr
+    @State private var hover: String? = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_HOVER"]
+    @State private var confirmRemove: ASRModel?
+    enum Tab: Hashable { case asr, polish }
+
+    /// fixed columns, so numbers line up from row to row (right-aligned, tabular digits)
+    enum Col {
+        static let used: CGFloat = 120, accuracy: CGFloat = 62, speed: CGFloat = 46, memory: CGFloat = 62, size: CGFloat = 62
+        static let action: CGFloat = 86, gap: CGFloat = 10
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center) {
+                Text(S("speech.section.models")).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
+                Spacer()
+                if d.polish?.supported == true {
+                    Picker(S("speech.section.models"), selection: $tab) {
+                        Text(S("speech.lib.recognition")).tag(Tab.asr)
+                        Text(S("speech.purpose.polish")).tag(Tab.polish)
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }
             }
+            note.padding(.top, 6).fixedSize(horizontal: false, vertical: true)
+            // a dozen rows at most: the sheet grows to fit them instead of scrolling
+            SettingsGroup("speech.models", title: "") {
+                header
+                if tab == .asr { ForEach(asrModels) { asrRow($0) } } else { ForEach(polishModels) { polishRow($0) } }
+            }
+            .padding(.top, -12)
+            HStack(alignment: .center) {
+                if tab == .asr && m.models.contains(where: { $0.local && !($0.runsHere ?? true) }) {
+                    Text(S("speech.models.elsewhere")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(S("speech.lib.done"), action: close).keyboardShortcut(.defaultAction)
+            }
+            .padding(.top, 14)
         }
-        .accessibilityElement(children: .combine)
+        .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
+        .frame(width: 760)
+        .fixedSize(horizontal: false, vertical: true)
+        .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
+            Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
+            Button(S("speech.cancel"), role: .cancel) { confirmRemove = nil }
+        } message: {
+            // the model by its name and size — never its folder's path (the Storage pane's rows say the same)
+            Text(confirmRemove.map { S("speech.remove.message", $0.title, modelSize($0.sizeMB)) } ?? "")
+        }
+    }
+
+    /// "Accuracy is for Chinese and English, from a reference test on Apple M5 Max." (+ the seal, once something is
+    /// measured here); the polish tab says what polish does.
+    var note: some View {
+        var t = Text(tab == .polish ? S("speech.purpose.polish.detail") : S("speech.lib.note", Loc.list(m.languages.map(languageName))))
+        if tab == .asr && m.models.contains(where: { $0.bench != nil }) {
+            t = t + Text("  ") + Text(Image(systemName: "checkmark.seal.fill")).foregroundColor(Color.brandOk)
+                + Text(" " + S("speech.lib.note.measured"))
+        }
+        return t.font(.system(size: SettingsMetrics.detailSize)).foregroundColor(.secondary)
+    }
+
+    // rows: in use first, then the rest on this Mac, then the others (the catalogue's order within each)
+
+    var asrModels: [ASRModel] {
+        let here = m.models.filter { $0.local && ($0.runsHere ?? true) }
+        return here.enumerated().sorted { a, b in
+            let ra = rank(installed: a.element.installed, used: !usedFor(a.element).isEmpty)
+            let rb = rank(installed: b.element.installed, used: !usedFor(b.element).isEmpty)
+            return ra != rb ? ra < rb : a.offset < b.offset
+        }.map(\.element)
+    }
+    var polishModels: [PolishModel] {
+        (d.polish?.models ?? []).enumerated().sorted { a, b in
+            let ra = rank(installed: a.element.installed, used: d.polish?.selected == a.element.id)
+            let rb = rank(installed: b.element.installed, used: d.polish?.selected == b.element.id)
+            return ra != rb ? ra < rb : a.offset < b.offset
+        }.map(\.element)
+    }
+    func rank(installed: Bool, used: Bool) -> Int { used ? 0 : installed ? 1 : 2 }
+
+    /// The jobs a model on this Mac does, as the page's rows show them (their icon and title): its purposes, and
+    /// dictation when it is dictation's.
+    func usedFor(_ x: ASRModel) -> [Job] {
+        guard x.installed else { return [] }
+        var out = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:)).map { Job(symbol: $0.symbol, title: $0.title) }
+        if let a = d.asr, a.selected == x.id, a.selectedInstalled ?? true { out.append(Job.dictation) }
+        return out
+    }
+
+    /// What the Used for column says: the jobs' icons (the same as the page's rows; their names in the tooltip and
+    /// to VoiceOver), or a line about the model's download or measurement.
+    struct Used {
+        var text = ""
+        var err = false
+        var jobs: [Job] = []
+    }
+    struct Job: Hashable {
+        var symbol: String
+        var title: String
+        static var dictation: Job { Job(symbol: "character.cursor.ibeam", title: S("speech.purpose.dictation")) }
+        static var polish: Job { Job(symbol: "wand.and.stars", title: S("speech.purpose.polish")) }
+    }
+
+    var header: some View {
+        HStack(spacing: Col.gap) {
+            Color.clear.frame(width: SettingsMetrics.iconSlot)
+            headerCell(S("speech.lib.col.model"), width: nil, trailing: false)
+            headerCell(S("speech.lib.col.used"), width: Col.used, trailing: false)
+            if tab == .asr {
+                headerCell(S("speech.metric.accuracy"), width: Col.accuracy, seal: true, help: S("speech.metric.accuracy.help"))
+                headerCell(S("speech.metric.speed"), width: Col.speed, seal: true, help: S("speech.metric.speed.help"))
+            }
+            headerCell(S("speech.metric.memory"), width: Col.memory, seal: tab == .asr, help: S("speech.metric.memory.help"))
+            headerCell(S("speech.metric.size"), width: Col.size)
+            Color.clear.frame(width: Col.action)
+        }
+        .padding(.bottom, 5)
+    }
+
+    /// `seal`: the column's numbers keep a slot for the seal after them — the heading sits over the number.
+    func headerCell(_ t: String, width: CGFloat?, trailing: Bool = true, seal: Bool = false, help: String = "") -> some View {
+        Text(t).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary).lineLimit(1)
+            .padding(.trailing, seal ? 11 : 0)
+            .frame(maxWidth: width ?? .infinity, alignment: trailing ? .trailing : .leading)
+            .frame(width: width)
+            .help(help)
+    }
+
+    // MARK: recognition rows
+
+    func asrRow(_ x: ASRModel) -> some View {
+        let uses = usedFor(x)
+        let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
+        let err = m.errorRate(x), speed = m.speed(x), memory = m.memory(x)
+        let dash = x.installed ? S("speech.lib.dash.installed") : S("speech.lib.dash")
+        var used = Used()
+        if let p = m.download(x.id) { used.text = p.text }
+        else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
+        else if m.benching.contains(x.id) { used.text = S("speech.bench.running") }
+        else if m.bench[x.id]?.error != nil { used = Used(text: S("speech.bench.failed"), err: true) }
+        else if !uses.isEmpty { used.jobs = uses }
+        else if !x.installed, !picked.isEmpty {
+            used.text = S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) }))
+        } else if !m.missing(x).isEmpty { used.text = S("speech.lib.missing", Loc.list(m.missing(x).map(languageName))) }
+        return row(id: x.id, installed: x.installed, name: x.title, help: describe(x), used: used, inUse: !uses.isEmpty) {
+            MetricCell(text: err.map { percent(max(0, 1 - $0.value)) }, measured: err?.measured == true, width: Col.accuracy, dash: dash)
+            MetricCell(text: speed.map { S("speech.metric.speed.value", decimal($0.value)) }, measured: speed?.measured == true,
+                       width: Col.speed, dash: dash)
+            MetricCell(text: memory.map { modelSize($0.value) }, measured: memory?.measured == true, width: Col.memory, dash: dash)
+            MetricCell(text: modelSize(x.sizeMB), measured: false, width: Col.size, dash: "", seal: false)
+        } action: {
+            if m.download(x.id) != nil {
+                stopButton(x.id)
+            } else if m.benching.contains(x.id) {
+                BrandSpinnerView(size: 12)
+            } else if !x.installed {
+                if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { m.startDownload(x) } }
+            } else if hover == x.id {
+                Menu { asrActions(x, inUse: !uses.isEmpty) } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel(S("speech.lib.actions", x.title))
+            }
+        } menu: {
+            if x.installed { asrActions(x, inUse: !uses.isEmpty) }
+            else if m.download(x.id) == nil { Button(S("speech.download.button")) { m.startDownload(x) } }
+        }
+    }
+
+    @ViewBuilder func asrActions(_ x: ASRModel, inUse: Bool) -> some View {
+        Button(S("speech.bench.button")) { Task { await m.runBench(x) } }.help(S("speech.bench.help"))
+        if let p = x.path {
+            Button(T("action.reveal_in_finder")) { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]) }
+        }
+        if m.canRemove(x) && !inUse {
+            Divider()
+            Button(S("speech.remove.menu"), role: .destructive) { confirmRemove = x }
+        }
+    }
+
+    /// The row's tooltip: what the model is good at, and the languages it doesn't understand.
+    func describe(_ x: ASRModel) -> String {
+        let miss = m.missing(x)
+        return sentences([x.qualityNoteKey.map { S($0) } ?? "",
+                          miss.isEmpty ? "" : S("speech.coverage.missing", Loc.list(miss.map(languageName)))])
+    }
+
+    // MARK: polish rows
+
+    func polishRow(_ x: PolishModel) -> some View {
+        let inUse = d.polish?.selected == x.id
+        var used = Used()
+        if let p = m.download(x.id) { used.text = p.text }
+        else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
+        else if inUse { used.jobs = [Job.polish] }
+        return row(id: x.id, installed: x.installed, name: x.name, help: "", used: used, inUse: inUse) {
+            MetricCell(text: x.ramMB.map(modelSize), measured: false, width: Col.memory, dash: S("speech.lib.dash"), seal: false)
+            MetricCell(text: modelSize(x.sizeMB), measured: false, width: Col.size, dash: "", seal: false)
+        } action: {
+            if m.download(x.id) != nil {
+                stopButton(x.id)
+            } else if !x.installed {
+                if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { d.download(x) } }
+            } else if hover == x.id && !inUse {
+                Menu { Button(S("speech.lib.use_polish")) { d.choose(x) } } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .accessibilityLabel(S("speech.lib.actions", x.name))
+            }
+        } menu: {
+            if x.installed && !inUse { Button(S("speech.lib.use_polish")) { d.choose(x) } }
+            else if !x.installed && m.download(x.id) == nil { Button(S("speech.download.button")) { d.download(x) } }
+        }
+    }
+
+    // MARK: one row
+
+    func stopButton(_ id: String) -> some View {
+        HStack(spacing: 6) {
+            if let p = m.download(id) {
+                ProgressView(value: min(p.done, p.total), total: max(p.total, 1)).controlSize(.small).frame(width: 56)
+            }
+            Button { dl.stop(id) } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                .buttonStyle(.borderless).help(S("speech.download.stop")).accessibilityLabel(S("speech.download.stop"))
+        }
+    }
+
+    func row<Metrics: View, Action: View, Items: View>(id: String, installed: Bool, name: String, help: String,
+                                                         used: Used, inUse: Bool,
+                                                         @ViewBuilder metrics: () -> Metrics, @ViewBuilder action: () -> Action,
+                                                         @ViewBuilder menu: () -> Items) -> some View {
+        SettingsLine(padding: 5) {
+            HStack(spacing: Col.gap) {
+                // the one install mark: a quiet check for a model on this Mac (what it does is in Used for)
+                Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
+                    .opacity(installed ? 1 : 0).frame(width: SettingsMetrics.iconSlot)
+                    .accessibilityHidden(true)
+                Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .help(help)
+                Group {
+                    if used.jobs.isEmpty {
+                        Text(used.text).font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
+                            .foregroundStyle(used.err ? AnyShapeStyle(Color.brandErr) : AnyShapeStyle(.secondary))
+                            .lineLimit(1).truncationMode(.tail)
+                            .help(used.text)
+                    } else {
+                        let names = Loc.list(used.jobs.map(\.title))
+                        HStack(spacing: 8) {
+                            ForEach(used.jobs, id: \.self) { j in
+                                Image(systemName: j.symbol).font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 16)
+                            }
+                        }
+                        .help(names)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(S("speech.lib.col.used") + " " + names)
+                    }
+                }
+                .frame(width: Col.used, alignment: .leading)
+                metrics()
+                HStack(spacing: 0) { Spacer(minLength: 0); action() }.frame(width: Col.action, height: 22)
+            }
+            .frame(minHeight: 22)
+            .contentShape(Rectangle())
+            .onHover { h in if h { hover = id } else if hover == id { hover = nil } }
+            .contextMenu { menu() }
+            .accessibilityElement(children: .contain)
+        }
     }
 }
 
-private struct DownloadBar: View {
-    var d: (done: Double, total: Double, text: String)
-    var cancel: () -> Void
+/// A number in the library's table: right-aligned tabular digits, the seal in its own slot after it when measured
+/// here; "—" with a tooltip that says why there is no number.
+private struct MetricCell: View {
+    var text: String?
+    var measured: Bool
+    var width: CGFloat
+    var dash: String
+    var seal = true
     var body: some View {
-        HStack(spacing: 8) {
-            ProgressView(value: d.total > 0 ? min(d.done, d.total) : 0, total: max(d.total, 1))
-            Text(d.text).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                .frame(minWidth: 120, alignment: .trailing)
-            Button(S("speech.download.stop"), action: cancel).controlSize(.small)
+        HStack(spacing: 2) {
+            Text(text ?? "—").font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
+                .foregroundStyle(text == nil ? .secondary : .primary).lineLimit(1)
+            if seal {
+                Image(systemName: "checkmark.seal.fill").font(.system(size: 9)).foregroundStyle(Color.brandOk)
+                    .frame(width: 9).opacity(measured ? 1 : 0)
+                    .accessibilityHidden(!measured).accessibilityLabel(S("speech.metric.measured"))
+            }
         }
+        .frame(width: width, alignment: .trailing)
+        .help(text == nil ? dash : measured ? S("speech.metric.measured") : "")
     }
 }
 
+/// A language you speak: its name in itself, × to remove it (not the last one). Chips and the Add menu share one
+/// height, so they sit on one baseline.
 private struct LanguageChip: View {
+    static let height: CGFloat = 22
     var title: String
     var help: String
     var removable: Bool
@@ -744,7 +1132,7 @@ private struct LanguageChip: View {
     @State private var hover = false
     var body: some View {
         HStack(spacing: 4) {
-            Text(title).font(.callout)
+            Text(title).font(.system(size: 12))
             if removable {
                 Button(action: remove) {
                     Image(systemName: "xmark").font(.system(size: 8, weight: .bold))
@@ -754,7 +1142,8 @@ private struct LanguageChip: View {
                 .accessibilityLabel(S("speech.languages.remove", title))
             }
         }
-        .padding(.leading, 9).padding(.trailing, removable ? 6 : 9).padding(.vertical, 3)
+        .padding(.leading, 9).padding(.trailing, removable ? 6 : 9)
+        .frame(height: LanguageChip.height)
         .background(Capsule().fill(Color.secondary.opacity(hover ? 0.18 : 0.11)))
         .onHover { hover = $0 }
         .help(help)
@@ -788,3 +1177,4 @@ private struct FlowLayout: Layout {
         }
     }
 }
+

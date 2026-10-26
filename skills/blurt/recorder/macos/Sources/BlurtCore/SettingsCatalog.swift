@@ -7,10 +7,14 @@
 //
 // Ids are "<pane>.<name>". A `.section` entry is a whole section (a list like the projects or the models) that search
 // can land on; `generated` rows come out of a ForEach over an enum (the shortcuts, the dictation app categories, the
-// speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there.
+// speech purposes); `fold` names the row whose disclosure hides the entry until a search jumps there, or whose menu
+// holds it (SettingMenuToggle / SettingMenuPicker: a search lands on that row).
 // Search: every word of the query has to appear in the entry's title, description, keywords or section — in the UI
-// language or in the other one — scored title first; a query that only names a pane lists that pane's rows. Plain
-// substring matching, no language rules.
+// language or in the other one — scored title first. Plain substring matching, no language rules. The results come in
+// groups, one per pane, best group first (ties: the sidebar's order), each by section, best first: what the results
+// page shows and what the sidebar counts. A query that names a pane ("short", "快捷") — or, when no row matches by its
+// own words, one that matches a pane's keywords ("hotkey") — finds the pane as a whole: its group leads, the pane itself
+// is its first hit and its rows follow in the page's order. Actions (Restore defaults) are only found by their own words.
 import Foundation
 
 public struct SettingsText: Hashable {
@@ -29,7 +33,7 @@ public struct SettingsEntry: Hashable {
     public let detail: SettingsText?
     /// A longer explanation (the row's tooltip), searched too.
     public let more: SettingsText?
-    /// The row whose disclosure folds this one away.
+    /// The row whose disclosure folds this one away, or whose menu holds it.
     public let fold: String?
     public let generated: Bool
     public var pane: String { String(id.prefix { $0 != "." }) }
@@ -56,6 +60,17 @@ public struct SettingsHit: Hashable {
     public let score: Int
 }
 
+/// One pane's share of the results.
+public struct SettingsResultGroup: Hashable {
+    public let pane: String
+    /// The query names the pane (or matches only its keywords): the pane itself is the group's first hit, and `hits`
+    /// are all its settings, in the page's order.
+    public let paneHit: Bool
+    /// The settings found, by section (best section first, a section's own entry leading it), best first in a section.
+    public let hits: [SettingsHit]
+    public let score: Int
+}
+
 public enum SettingsCatalog {
     // MARK: panes
 
@@ -71,10 +86,16 @@ public enum SettingsCatalog {
         pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
         pane("speech", "settings.kit.speech", "Settings", "waveform", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
+        pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
         pane("storage", "settings.kit.storage", "Settings", "internaldrive", "mac"),
     ]
+
+    /// The searches the no-match page offers (in the UI language): each finds rows in every language
+    /// (SettingsCatalogTests), so a miss always has somewhere to go.
+    public static let suggestions: [SettingsText] = ["shortcut", "model", "microphone", "language"]
+        .map { SettingsText("settings.search.try.\($0)", "Settings") }
 
     public static func pane(_ id: String) -> SettingsPaneInfo? { panes.first { $0.id == id } }
 
@@ -82,43 +103,60 @@ public enum SettingsCatalog {
     /// Export went in v0.9: the user's agent sends items with its own tools, so Agents says how to ask it.
     public static let moved: [String: String] = ["export": "agents/agents.ask"]
 
-    /// "export" or "export/target" → "agents/agents.ask"; anything else as it is.
+    /// Rows that moved to another place (v0.9: the projects got their own pane, the Dictation Lab went to Dictation's
+    /// Advanced, the four drag switches became one choice, About became General's closing line): old row → new row.
+    public static let movedRows: [String: String] = [
+        "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
+        "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
+        "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
+        "general.version": "general.about", "general.help": "general.about", "general.assistant": "general.about",
+    ]
+
+    /// "export" or "export/target" → "agents/agents.ask"; "general/general.capture_into" (or "general/capture_into") →
+    /// "projects/projects.capture_into"; anything else as it is.
     public static func redirect(_ link: String) -> String {
         let pane = String(link.prefix { $0 != "/" })
-        return moved[pane] ?? link
+        if let to = moved[pane] { return to }
+        guard link.count > pane.count + 1 else { return link }
+        let row = String(link.dropFirst(pane.count + 1))
+        guard let to = movedRows[row.contains(".") ? row : "\(pane).\(row)"] else { return link }
+        return "\(to.prefix { $0 != "." })/\(to)"
     }
 
     // MARK: sections
 
     public static let sections: [SettingsSection] = [
-        sec("general.projects", "main.sidebar.projects", "Main"),
         sec("general.app", "settings.general.app"),
         sec("general.recording", "settings.general.recording"),
         sec("general.voice", "settings.general.section.voice"),
         sec("general.cards", "settings.general.section.cards"),
-        sec("general.developer", "settings.general.section.developer"),
         sec("general.about", "settings.general.about"),
 
+        sec("projects.list", "main.sidebar.projects", "Main"),
+        sec("projects.capture", "settings.projects.capture_heading"),
+
+        // Dictation: how dictating works (untitled: named like the page), then what comes out — the style, the words,
+        // the history, the models. Permissions are a notice at the top only while one is missing.
         sec("dictation.main", "dictation.settings.section", "Dictation"),
-        sec("dictation.style", "dictation.style.section", "Dictation"),
-        sec("dictation.models", "dictation.models.section", "Dictation"),
-        sec("dictation.words", "dictation.vocab.section", "Dictation"),
-        sec("dictation.history", "dictation.history.section", "Dictation"),
-        sec("dictation.mic", "dictation.mic.section", "Dictation"),
-        sec("dictation.permissions", "dictation.perm.section", "Dictation"),
+        sec("dictation.text", "dictation.text.section", "Dictation"),
+        sec("dictation.data", "dictation.data.section", "Dictation"),
+        sec("dictation.advanced", "settings.general.section.developer"),
 
-        sec("speech.machine", "speech.section.machine", "Speech"),
-        sec("speech.dictation", "speech.section.dictation", "Speech"),
+        // Speech: which model does each job (and is the recommended set in), the languages, a folded Advanced; the
+        // model library is a sheet ("Manage Models…") that a search or a link opens
+        sec("speech.use", "speech.section.mac", "Speech"),
+        sec("speech.jobs", "speech.section.jobs", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
-        sec("speech.models", "speech.section.models", "Speech"),
-        sec("speech.resources", "speech.section.resources", "Speech"),
-        sec("speech.cloud", "speech.section.cloud", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
+        sec("speech.models", "speech.section.models", "Speech"),
 
-        sec("shortcuts.anytime", "capture.keys.anytime", "Capture"),
+        sec("shortcuts.capture", "capture.keys.section.capture", "Capture"),
         sec("shortcuts.recording", "capture.keys.while_recording", "Capture"),
+        sec("shortcuts.dictation", "dictation.settings.tab", "Dictation"),
+        sec("shortcuts.open", "capture.keys.section.open", "Capture"),
 
         sec("agents.list", "agents.header", "Terminal"),
+        sec("agents.organize", "agents.organize.header", "Terminal"),
         sec("agents.sessions", "agents.sessions.header", "Terminal"),
         sec("agents.manual", "agents.manual.header", "Terminal"),
         sec("agents.ask", "agents.ask.header", "Terminal"),
@@ -126,114 +164,134 @@ public enum SettingsCatalog {
         sec("privacy.permissions", "settings.privacy.permissions_live"),
         sec("privacy.data", "settings.privacy.data"),
 
-        sec("storage.recordings", "settings.privacy.recordings_screenshots"),
+        sec("storage.recordings", "settings.storage.recordings"),
         sec("storage.models", "settings.storage.models"),
-        sec("storage.dictation", "dictation.settings.tab", "Dictation"),
-        sec("storage.files", "settings.privacy.blurt_own_files"),
+        sec("storage.files", "settings.storage.app_data"),
     ]
 
     public static func section(_ id: String) -> SettingsSection? { sections.first { $0.id == id } }
 
     // MARK: entries
 
-    /// The shortcut actions under "While recording"; the rest are "Anytime".
-    public static let recordingShortcuts: Set<String> = ["pause", "marker", "pen", "stop"]
+    /// The Shortcuts page's sections and their actions (HotkeyCenter.Action raw values), in the page's order: what you
+    /// capture, the keys of a recording in progress, dictation, and opening or switching things. The dictation key
+    /// (set in Settings → Dictation) leads its section, ahead of these.
+    public static let shortcutSections: [(section: String, actions: [String])] = [
+        ("shortcuts.capture", ["record", "snap", "voice"]),
+        ("shortcuts.recording", ["pause", "marker", "pen", "stop"]),
+        ("shortcuts.dictation", ["reformat"]),
+        ("shortcuts.open", ["project", "cards", "menu", "main"]),
+    ]
+    /// The section an action's row is in.
+    public static func shortcutSection(_ action: String) -> String? { shortcutSections.first { $0.actions.contains(action) }?.section }
+    /// The actions whose name needs a line to say what it does (capture.action.<name>.detail).
+    public static let describedShortcuts: Set<String> = ["marker", "cards", "reformat"]
     /// The three jobs of speech recognition (BlurtApp ASRPurpose), in the pane's order.
     public static let speechPurposes = ["batch", "live", "note"]
 
     public static let entries: [SettingsEntry] = {
         var e: [SettingsEntry] = [
             // General
-            row("general.capture_into", "general.projects", "settings.general.capture_into"),
-            whole("general.projects", detail: S("settings.general.projects.hint")),
             row("general.login", "general.app", "settings.general.login", detail: S("settings.general.login.detail")),
             row("general.language", "general.app", "settings.general.language"),
             row("general.after_recording", "general.recording", "settings.general.after_recording"),
             row("general.countdown", "general.recording", SettingsText("app.menu.countdown", "Main")),
             row("general.system_audio", "general.recording", "settings.general.system_audio"),
-            row("general.collect", "general.recording", "settings.general.collect", detail: S("settings.general.collect.hint")),
             row("general.voice_end_on_pause", "general.voice", "settings.general.voice_end_on_pause",
-                detail: S("settings.general.voice_end_on_pause.detail"), more: S("settings.general.voice_end_on_pause.hint")),
-            row("general.live_text", "general.voice", "settings.general.live_text",
-                detail: S("settings.general.live_text.detail"), more: S("settings.general.live_text.hint")),
-            row("general.smart_paste", "general.cards", "settings.general.smart_paste",
-                detail: S("settings.general.smart_paste.detail"), more: S("settings.general.smart_paste.hint")),
-            row("general.drag_copy_note", "general.cards", "settings.general.drag_copy_note",
-                detail: S("settings.general.drag_copy_note.detail"), more: S("settings.general.drag_copy_note.hint")),
-            row("general.drag_note_file", "general.cards", "settings.general.drag_note_file",
-                detail: S("settings.general.drag_note_file.detail"), more: S("settings.general.drag_note_file.hint")),
-            row("general.drag_caption", "general.cards", "settings.general.drag_caption", detail: S("settings.general.drag_caption.hint")),
-            row("general.dictation_lab", "general.developer", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
-            row("general.version", "general.about", "settings.general.version"),
-            row("general.help", "general.about", "settings.general.help", detail: S("settings.general.help.detail")),
-            row("general.assistant", "general.about", "settings.general.assistant.title", detail: S("settings.general.assistant.detail")),
+                more: S("settings.general.voice_end_on_pause.hint")),
+            row("general.live_text", "general.voice", "settings.general.live_text", more: S("settings.general.live_text.hint")),
+            row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
+            row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
+            row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
+            whole("general.about"),
+
+            // Projects
+            row("projects.capture_into", "projects.capture", "settings.projects.capture_row"),
+            whole("projects.list", detail: S("settings.general.projects.hint")),
 
             // Dictation
             row("dictation.enable", "dictation.main", D("dictation.settings.enable"), detail: D("dictation.settings.enable.detail")),
+            // the key's menu: keeping Fn from macOS (Fn only)
             row("dictation.key", "dictation.main", D("dictation.settings.key")),
+            row("dictation.fn_capture", "dictation.main", D("dictation.fn.capture"), detail: D("dictation.fn.capture.detail"), fold: "dictation.key"),
             row("dictation.mode", "dictation.main", D("dictation.settings.mode")),
             row("dictation.double_tap", "dictation.main", D("dictation.settings.double_tap"), detail: D("dictation.settings.double_tap.detail")),
-            row("dictation.fn_capture", "dictation.main", D("dictation.fn.capture"), detail: D("dictation.fn.capture.detail")),
-            row("dictation.default_style", "dictation.style", D("dictation.style.default")),
-            row("dictation.by_app", "dictation.style", D("dictation.style.by_app"), detail: D("dictation.style.by_app.detail")),
+            row("dictation.mic", "dictation.main", D("dictation.mic.section"), detail: D("dictation.mic.detail"), more: D("dictation.mic.builtin.detail")),
+            row("dictation.start_sound", "dictation.main", D("dictation.mic.start_sound")),
+            row("dictation.default_style", "dictation.text", D("dictation.style.default")),
+            row("dictation.by_app", "dictation.text", D("dictation.style.by_app"), detail: D("dictation.style.by_app.detail")),
         ]
         for c in ["chat", "code", "mail", "notes", "other"] {
-            e.append(row("dictation.cat.\(c)", "dictation.style", D("dictation.style.cat.\(c)"), detail: D("dictation.style.cat.\(c).detail"),
+            e.append(row("dictation.cat.\(c)", "dictation.text", D("dictation.style.cat.\(c)"), detail: D("dictation.style.cat.\(c).detail"),
                          fold: "dictation.by_app", generated: true))
         }
         e += [
-            row("dictation.suggest_lists", "dictation.style", D("dictation.style.suggest"), fold: "dictation.by_app"),
-            row("dictation.learn_styles", "dictation.style", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
+            row("dictation.suggest_lists", "dictation.text", D("dictation.style.suggest"), fold: "dictation.by_app"),
+            row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
-            row("dictation.polish_timeout", "dictation.style", D("dictation.polish.timeout"), fold: "dictation.by_app"),
-            row("dictation.asr_model", "dictation.models", D("dictation.models.asr")),
-            row("dictation.polish_model", "dictation.models", D("dictation.models.polish")),
-            row("dictation.word_list", "dictation.words", D("dictation.vocab.summary.title")),
-            row("dictation.context", "dictation.words", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail")),
-            row("dictation.learn", "dictation.words", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail")),
-            row("dictation.history_keep", "dictation.history", D("dictation.history.keep")),
-            row("dictation.keep_audio", "dictation.history", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail")),
-            row("dictation.history_saved", "dictation.history", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
-            row("dictation.builtin_mic", "dictation.mic", D("dictation.mic.builtin"), detail: D("dictation.mic.builtin.detail")),
-            row("dictation.start_sound", "dictation.mic", D("dictation.mic.start_sound")),
-            whole("dictation.permissions"),
+            row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
+            // the words' menu: reading the context, learning
+            row("dictation.word_list", "dictation.text", D("dictation.vocab.summary.title"), detail: D("dictation.vocab.summary.detail")),
+            row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),
+                fold: "dictation.word_list"),
+            row("dictation.learn", "dictation.text", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail"), fold: "dictation.word_list"),
+            // the history's menu: how long it is kept, the audio, clearing it
+            row("dictation.history_saved", "dictation.data", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
+            row("dictation.history_keep", "dictation.data", D("dictation.history.keep"), fold: "dictation.history_saved"),
+            row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail"),
+                fold: "dictation.history_saved"),
+            // chosen and listed in Settings → Speech
+            row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
+            row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech
-            row("speech.auto", "speech.machine", P("speech.auto.title"), detail: P("speech.auto.detail")),
+            row("speech.auto", "speech.use", P("speech.auto.title"), detail: P("speech.auto.detail")),
         ]
         for p in speechPurposes {
-            e.append(row("speech.\(p)", "speech.machine", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
+            e.append(row("speech.\(p)", "speech.jobs", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
         }
+        // dictation's two models are two more jobs; "speech.dictation" stays the id links use (speech/dictation)
         e += [
-            whole("speech.dictation", detail: P("speech.dictation.footer")),
+            row("speech.dictation", "speech.jobs", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
+            row("speech.polish", "speech.jobs", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
             whole("speech.languages", detail: P("speech.languages.footer")),
+            row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
+            row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),
+                more: P("speech.limits.footer")),
+            row("speech.concurrent", "speech.advanced", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail")),
+            row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
+            row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
+            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
+            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.cloud.keys")),
             whole("speech.models", detail: P("speech.models.footer")),
-            row("speech.threads", "speech.resources", P("speech.limits.threads"), detail: P("speech.limits.threads.detail")),
-            row("speech.concurrent", "speech.resources", P("speech.limits.concurrent"), detail: P("speech.limits.concurrent.detail")),
-            row("speech.memory", "speech.resources", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
-            row("speech.battery", "speech.resources", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
-            whole("speech.cloud", detail: P("speech.cloud.keys")),
-            row("speech.language", "speech.advanced", P("speech.advanced.language")),
-            row("speech.mirror", "speech.advanced", P("speech.advanced.mirror")),
         ]
 
-        // Shortcuts: one row per action (HotkeyCenter.Action), in the page's order, the dictation key among them, then
-        // the pen's hold key
-        func shortcut(_ a: String) -> SettingsEntry {
-            row("shortcuts.\(a)", recordingShortcuts.contains(a) ? "shortcuts.recording" : "shortcuts.anytime",
-                SettingsText("capture.action.\(a)", "Capture"), generated: true)
+        // Shortcuts: one row per action (HotkeyCenter.Action), section by section in the page's order, the dictation
+        // key heading its section (the pen's hold key is the pen row's second line: its keywords find it), then the
+        // page's Restore Defaults
+        func shortcut(_ a: String, _ section: String) -> SettingsEntry {
+            row("shortcuts.\(a)", section, SettingsText("capture.action.\(a)", "Capture"),
+                detail: describedShortcuts.contains(a) ? SettingsText("capture.action.\(a).detail", "Capture") : nil, generated: true)
         }
-        e += ["record", "snap", "voice", "project", "cards", "menu", "main"].map(shortcut)
-        e += [row("shortcuts.dictation", "shortcuts.anytime", D("dictation.settings.tab"))]
-        e += ["reformat", "pause", "marker", "pen", "stop"].map(shortcut)
+        for (section, actions) in shortcutSections {
+            if section == "shortcuts.dictation" {
+                e.append(row("shortcuts.dictation_key", section, SettingsText("capture.keys.dictation_key", "Capture")))
+            }
+            e += actions.map { shortcut($0, section) }
+        }
         e += [
-            row("shortcuts.draw_key", "shortcuts.recording", SettingsText("capture.keys.hold_draw", "Capture"),
-                detail: SettingsText("capture.keys.draw_note", "Capture")),
-            row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture"), detail: S("settings.kit.conflicts_are_checked_three")),
+            row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture")),
 
             // Agents
-            whole("agents.list", detail: SettingsText("agents.footer", "Terminal")),
-            whole("agents.sessions", detail: SettingsText("agents.tmux.ok.detail", "Terminal")),
+            whole("agents.list", detail: SettingsText("agents.lead", "Terminal")),
+            whole("agents.organize", detail: SettingsText("agents.organize.footer", "Terminal")),
+            whole("agents.sessions", detail: SettingsText("agents.sessions.about", "Terminal")),
+            row("agents.keep_sessions", "agents.sessions", SettingsText("agents.keep_sessions", "Terminal"),
+                detail: SettingsText("agents.keep_sessions.ok", "Terminal")),
+            row("agents.project_agent", "agents.sessions", SettingsText("agents.project_agent", "Terminal"),
+                detail: SettingsText("agents.project_agent.hint", "Terminal")),
+            row("agents.handoff", "agents.sessions", SettingsText("agents.handoff_target", "Terminal"),
+                detail: SettingsText("agents.handoff_target.hint", "Terminal")),
             whole("agents.ask", detail: SettingsText("agents.ask.footer", "Terminal")),
 
             // Privacy
@@ -244,16 +302,18 @@ public enum SettingsCatalog {
             row("privacy.spotlight", "privacy.data", "settings.privacy.items_appear_spotlight", detail: S("settings.privacy.spotlight.detail")),
 
             // Storage
+            // (the storage rows themselves — folders, videos, models, files — come from the disk; the sections and
+            // their keywords are what search lands on)
             whole("storage.recordings"),
-            row("storage.videos", "storage.recordings", "settings.storage.videos", detail: S("settings.storage.videos.footer")),
-            row("storage.auto_delete", "storage.recordings", "settings.storage.videos.auto"),
+            row("storage.auto_delete", "storage.recordings", "settings.storage.videos.auto", detail: S("settings.storage.videos.footer")),
             whole("storage.models", detail: S("settings.storage.model.footer")),
-            row("storage.choose_models", "storage.models", "settings.storage.choose_models", detail: S("settings.storage.choose_models.detail")),
-            whole("storage.files", detail: S("settings.privacy.index_can_be_deleted")),
-            row("storage.live_audio", "storage.files", "settings.privacy.raw_live_caption_audio"),
+            whole("storage.files"),
         ]
         return e
     }()
+
+    /// Rows that are a button rather than a setting: found by their own words only, never listed with their pane.
+    public static let actions: Set<String> = ["shortcuts.restore"]
 
     public static func entry(_ id: String) -> SettingsEntry? { byID[id] }
     private static let byID: [String: SettingsEntry] = Dictionary(entries.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -294,13 +354,16 @@ public enum SettingsCatalog {
 
     // MARK: search
 
-    /// The entries every word of `query` matches, best first (ties keep the catalogue's order). A query that is a pane's
-    /// name or its start ("快捷", "short") puts that pane's rows first; one that only matches a pane's keywords ("hotkey") lists
-    /// its rows when nothing matches the rows themselves — "voice" finds the voice settings, not every row of Dictation.
-    public static func search(_ query: String) -> [SettingsHit] {
-        let terms = query.split(whereSeparator: { $0.isWhitespace }).map { fold(String($0)) }.filter { !$0.isEmpty }
+    /// Every setting found, in the order the results page lists them (its groups one after the other).
+    public static func search(_ query: String) -> [SettingsHit] { results(query).flatMap(\.hits) }
+
+    /// The results by pane, best group first; ties keep the sidebar's order. A query that is a pane's name or its start
+    /// ("快捷", "short") finds that pane as a whole; one that only matches a pane's keywords ("hotkey") does so when
+    /// nothing matches the rows themselves — "voice" finds the voice settings, not the whole of Dictation.
+    public static func results(_ query: String) -> [SettingsResultGroup] {
+        let terms = words(query)
         guard !terms.isEmpty else { return [] }
-        let here = Loc.language, other = Loc.languages.first { $0 != here } ?? "en"
+        let here = Loc.language, other = otherLanguage
         let all = entries.map { fields($0, here: here, other: other) }
         func pass(_ paneLevel: Bool) -> [SettingsHit] {
             var hits: [(SettingsHit, Int)] = []
@@ -317,26 +380,129 @@ public enum SettingsCatalog {
             }
             return hits.sorted { $0.0.score != $1.0.score ? $0.0.score > $1.0.score : $0.1 < $1.1 }.map(\.0)
         }
-        // the query is (the start of) a pane's name ("快捷", "short", "Shortcuts"): that pane's rows lead, so the
-        // results don't jump around while the name is typed — two letters at least, or one Chinese character
+        // the query is (the start of) a pane's name ("快捷", "short", "Shortcuts"): the pane is found as a whole and
+        // leads, so the results don't jump around while the name is typed — two letters at least, or one Chinese character
         let q = fold(query.trimmingCharacters(in: .whitespaces))
         let longEnough = q.count >= (q.unicodeScalars.allSatisfy(\.isASCII) ? 2 : 1)
-        let named = !longEnough ? [] : Set(panes.filter { p in
+        var whole = !longEnough ? Set<String>() : Set(panes.filter { p in
             [here, other].contains { lang in text(p.title, language: lang).map(fold)?.hasPrefix(q) == true }
         }.map(\.id))
-        let rows = pass(false)
-        guard !named.isEmpty else { return rows.isEmpty ? pass(true) : rows }
-        let lead = entries.filter { named.contains($0.pane) }.map { SettingsHit(entry: $0, score: 1000) }
-        return lead + rows.filter { !named.contains($0.entry.pane) }
+        var own = pass(false)
+        if own.isEmpty && whole.isEmpty {
+            // nothing matches by its own words: a pane whose name or keywords hold every word ("hotkey") is found as a
+            // whole; otherwise rows matched with their pane's help ("shortcut snap") are listed one by one
+            for p in panes where terms.allSatisfy({ score($0, paneFields(p, here: here, other: other)) > 0 }) { whole.insert(p.id) }
+            if whole.isEmpty { own = pass(true) }
+        }
+        var groups: [SettingsResultGroup] = []
+        let lead = 100_000
+        for p in panes where whole.contains(p.id) {
+            let found = Set(own.map(\.entry.id))
+            let rows = entries.filter { $0.pane == p.id && (!actions.contains($0.id) || found.contains($0.id)) }
+                .map { SettingsHit(entry: $0, score: lead) }
+            groups.append(SettingsResultGroup(pane: p.id, paneHit: true, hits: bySection(rows), score: lead))
+        }
+        for p in panes where !whole.contains(p.id) {
+            let rows = own.filter { $0.entry.pane == p.id }
+            guard let best = rows.first?.score else { continue }
+            groups.append(SettingsResultGroup(pane: p.id, paneHit: false, hits: bySection(rows), score: best))
+        }
+        let order = Dictionary(uniqueKeysWithValues: panes.enumerated().map { ($1.id, $0) })
+        return groups.sorted { $0.score != $1.score ? $0.score > $1.score : order[$0.pane, default: 0] < order[$1.pane, default: 0] }
+    }
+
+    /// Hits (best first) by section: the sections in the order of their best hit, a section's own entry leading it,
+    /// rows without a section (actions) last.
+    private static func bySection(_ hits: [SettingsHit]) -> [SettingsHit] {
+        var keys: [String] = []
+        var runs: [String: [SettingsHit]] = [:]
+        for h in hits {
+            let k = h.entry.section ?? ""
+            if runs[k] == nil { keys.append(k) }
+            runs[k, default: []].append(h)
+        }
+        let ordered = keys.filter { !$0.isEmpty } + keys.filter(\.isEmpty)
+        return ordered.flatMap { k -> [SettingsHit] in
+            let r = runs[k] ?? []
+            return r.filter { $0.entry.kind == .section } + r.filter { $0.entry.kind != .section }
+        }
+    }
+
+    /// The query's words, folded.
+    public static func words(_ query: String) -> [String] {
+        query.split(whereSeparator: { $0.isWhitespace }).map { fold(String($0)) }.filter { !$0.isEmpty }
+    }
+
+    /// The language search looks in besides the UI's.
+    public static var otherLanguage: String { Loc.languages.first { $0 != Loc.language } ?? "en" }
+
+    /// Why an entry was found, when its title doesn't say so: the stretch of its description, its keyword or its longer
+    /// explanation that holds the query's other words — always in the UI's language. Found only through the other
+    /// language (an English word typed in the Chinese UI): its own description, in the UI's language, untouched (or
+    /// nothing) — never a line of English inside Chinese. nil when the title holds every word, or when the entry was
+    /// found by its section or its pane (the results show those as headings).
+    public static func reason(_ e: SettingsEntry, query: String) -> String? {
+        let missing = words(query).filter { !fold(title(e)).contains($0) }
+        guard !missing.isEmpty else { return nil }
+        let texts = [detail(e)].compactMap { $0 } + keywordList(e.keywords, nil) + [e.more.flatMap { text($0) }].compactMap { $0 }
+        return excerpt(texts, missing) ?? detail(e)
+    }
+
+    /// Why a pane was found as a whole, when its name doesn't say so: the keyword that holds the query ("hotkey"), in the
+    /// UI's language; nothing when it was its name in the other language.
+    public static func reason(pane id: String, query: String) -> String? {
+        guard let p = pane(id) else { return nil }
+        let missing = words(query).filter { !fold(text(p.title) ?? "").contains($0) }
+        guard !missing.isEmpty else { return nil }
+        return excerpt(keywordList(p.keywords, nil), missing)
+    }
+
+    private static func keywordList(_ t: SettingsText, _ lang: String?) -> [String] {
+        guard let s = lang == nil ? text(t) : text(t, language: lang) else { return [] }
+        return s.split(whereSeparator: { $0 == "," || $0 == "，" || $0 == "、" }).map { $0.trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// The sentence holding the most of `terms`, from the first text that has them: whole from its start (the row ends
+    /// it with "…" when it is too long — cut at one end only), without its parentheses (a list of key glyphs reads as
+    /// noise in a result).
+    static func excerpt(_ texts: [String], _ terms: [String]) -> String? {
+        let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]
+        func hits(_ t: String) -> Int { terms.filter { t.range(of: $0, options: opts) != nil }.count }
+        var best: (text: String, n: Int)?
+        for t in texts {
+            let n = hits(t)
+            if n > (best?.n ?? 0) { best = (t, n) }
+            if n == terms.count { break }
+        }
+        guard let t = best?.text else { return nil }
+        // its sentences (a full stop, then a space or the end; Chinese stops end one by themselves)
+        var sentences: [String] = []
+        var cur = ""
+        for (i, c) in zip(t.indices, t) {
+            cur.append(c)
+            let next = t.index(after: i)
+            if "。！？".contains(c) || (".!?".contains(c) && (next == t.endIndex || t[next].isWhitespace)) {
+                sentences.append(cur.trimmingCharacters(in: .whitespaces)); cur = ""
+            }
+        }
+        if !cur.trimmingCharacters(in: .whitespaces).isEmpty { sentences.append(cur.trimmingCharacters(in: .whitespaces)) }
+        let most = sentences.map(hits).max() ?? 0
+        let pick = sentences.first { hits($0) == most } ?? t
+        let bare = pick.replacingOccurrences(of: #"\s*[（(][^）)]*[）)]"#, with: "", options: .regularExpression)
+        return bare.isEmpty ? pick : bare
     }
 
     typealias Field = (text: String, title: Bool, pane: Bool, weight: Int)
 
     /// The texts one entry is found by, folded, with what a match in each is worth; `pane`: the pane's name or keywords.
+    /// An action is found by its name and keywords only ("restore", "reset"), never by a word of its description
+    /// ("shortcut" in Restore defaults' one).
     private static func fields(_ e: SettingsEntry, here: String, other: String) -> [Field] {
         var out: [Field] = []
+        let action = actions.contains(e.id)
         func add(_ t: SettingsText?, _ lang: String?, title: Bool = false, pane: Bool = false, _ w: Int) {
-            guard let t = t, let s = lang == nil ? text(t) : text(t, language: lang) else { return }
+            guard let t = t, !(action && (t == e.detail || t == e.more)),
+                  let s = lang == nil ? text(t) : text(t, language: lang) else { return }
             out.append((fold(s), title, pane, w))
         }
         add(e.title, nil, title: true, 100)
@@ -353,6 +519,12 @@ public enum SettingsCatalog {
         add(pane(e.pane)?.keywords, other, pane: true, 10)
         add(e.detail, other, 8)
         return out
+    }
+
+    /// A pane's own texts: its name and keywords, in both languages.
+    private static func paneFields(_ p: SettingsPaneInfo, here: String, other: String) -> [Field] {
+        [text(p.title, language: here), text(p.keywords, language: here), text(p.title, language: other), text(p.keywords, language: other)]
+            .compactMap { $0 }.map { (text: fold($0), title: false, pane: true, weight: 10) }
     }
 
     /// A field's best match for one word: the title scores by where the word sits (its start, a word's start, anywhere);

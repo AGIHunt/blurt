@@ -53,6 +53,11 @@ enum SystemAccess {
 
     static func granted(_ k: PermissionKind) -> Bool { state(k) == .granted }
 
+    /// Screen Recording asked for (Allow, or its System Settings pane opened) since this Blurt started: a change made
+    /// there now may only apply after a restart, so Settings → Privacy says so (with Restart Blurt) — and only then.
+    /// Not persisted: `app.asked_screen` is "ever asked" (denied vs not asked), which says nothing about a pending change.
+    static var screenAskedThisRun = false
+
     /// System Settings → Keyboard → "Press 🌐 key to" (nil = unset). Synchronized first, so a change made in System
     /// Settings a moment ago is seen.
     static var fnUsage: FnUsage? {
@@ -76,6 +81,7 @@ enum SystemAccess {
     @discardableResult
     static func register(_ k: PermissionKind, via: String, done: ((Bool) -> Void)? = nil) -> Bool {
         emit(["event": "perm_request", "kind": k.rawValue, "via": via, "test_mode": testMode])
+        if k == .screen { screenAskedThisRun = true }
         if testMode { done?(granted(k)); return granted(k) }
         switch k {
         case .screen:
@@ -102,6 +108,7 @@ enum SystemAccess {
 
     static func openPane(_ k: PermissionKind) {
         emit(["event": "perm_open_pane", "kind": k.rawValue, "url": k.paneURL])
+        if k == .screen { screenAskedThisRun = true }
         if testMode && env["BLURT_TEST_OPEN_PANES"] != "1" { return }
         if let u = URL(string: k.paneURL) { NSWorkspace.shared.open(u) }
     }
