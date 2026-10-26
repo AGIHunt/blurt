@@ -5,7 +5,7 @@
 Website: https://blurt.agihunt.info/en/ (English), https://blurt.agihunt.info/ (Chinese)
 Source: https://github.com/AGIHunt/blurt
 User guide: https://github.com/AGIHunt/blurt/blob/main/docs/guide.md
-Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the v0.9.0 release)
+Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the v1.0.0 release)
 Or have your agent install it: `npx skills add AGIHunt/blurt`, then tell your agent "start blurt".
 Film (2:12, English voice-over, Chinese and English subtitles): https://blurt.agihunt.info/assets/promo.mp4
 

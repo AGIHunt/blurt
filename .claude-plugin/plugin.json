@@ -1,7 +1,7 @@
 {
   "name": "blurt",
-  "version": "0.5.0",
-  "description": "Show it. Say it. Your AI gets it — record your screen, talk, get bugs, ideas and todos back. 边看边喷，AI 全懂。",
+  "version": "1.0.0",
+  "description": "The keyboard for the agent era: dictate, snap or record your screen while you talk, and hand it to your agents. Agent 时代的输入法。",
   "license": "MIT",
   "keywords": [
     "feedback",

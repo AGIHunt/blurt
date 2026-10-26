@@ -48,7 +48,7 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   paper sheet at the bottom; desktop coordinates in `style.css` are shared by both.
 - **Primary action**: *Download for Mac* in the hero and the install section, pointing at
   `https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg`. `scripts/release-mac.sh` writes the disk image
-  twice, `Blurt-$VERSION.dmg` and `Blurt.dmg`: attach both to every release. **The link works only once the v0.9.0
+  twice, `Blurt-$VERSION.dmg` and `Blurt.dmg`: attach both to every release. **The link works only once the v1.0.0
   release is published.**
 - **Film**: the poster (`assets/poster-6.jpg`, a frame at 1:19: the two cards under the notch) and chapter links that
   open the film at that time. Chapter times are scene starts from `blurt-media/film/say2/timeline.json`, rounded up to
