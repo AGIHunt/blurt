@@ -780,7 +780,7 @@ final class Snapper {
     /// Blurt pastes the words into that window's composer — the shot cards' follow-up (DragNoteFollowUp: the window
     /// forward, the composer focused, one paste, the clipboard back). Can't: the words on the clipboard. Either way the
     /// card has been used ("Pasted into Claude · Undo").
-    /// `wordsWithheld`: the drag carried no words over that window (a web composer: Blurt pastes them, taken or not).
+    /// `wordsWithheld`: the drag carried no words over that window (Feishu / Lark: Blurt pastes them, taken or not).
     func takeOutVoice(_ s: Shot, fromPanel: Bool = false, landed t: DropTarget, at p: NSPoint, accepted: Bool, wordsWithheld: Bool = false) {
         guard let b = s.batch, !s.deleted else { return }
         if NoteBubble.shared.shot === s { NoteBubble.shared.cancel() }
@@ -790,7 +790,8 @@ final class Snapper {
         let app = DropProbe.appName(t) ?? Loc.t("capture.voice_drop.that_app", table: "Capture")
         let plan = VoiceCardDrop.plan(cls: t.cls, kind: t.kind, accepted: accepted, words: s.copyText, enabled: SmartPaste.enabled,
                                       accessibility: SmartPaste.accessibility,
-                                      secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(), wordsWithheld: wordsWithheld)
+                                      secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(),
+                                      swallows: VoiceCardDrop.swallowsTextDrop(bundleID: t.bundleID), wordsWithheld: wordsWithheld)
         emit(["event": "voice_drop_plan", "n": s.n, "bundle": t.bundleID ?? NSNull(), "kind": t.kind.rawValue, "app": app,
               "accepted": accepted, "words_withheld": wordsWithheld, "plan": "\(plan)"])
         let done = { [weak self] (pasted: Bool, copy: String?) in

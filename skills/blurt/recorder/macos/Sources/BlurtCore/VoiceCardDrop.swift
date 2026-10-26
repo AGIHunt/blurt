@@ -21,10 +21,10 @@
 //
 // v0.9 — the report: a voice card dragged into Feishu did nothing (WeChat was fine). Feishu's chat area takes a
 // text drop — the drag ends as taken — and puts nothing in, so "the app took it" left Blurt doing nothing at all.
-// A web composer's "yes" to a text drop says nothing about the words going in. So over a browser / Electron / Feishu
-// window, when Blurt can paste (withholdsWords), the drag carries no words (CardPasteboard.drag(into:): only the
-// capture's tag) and Blurt always pastes them into the composer, taken or not; when it can't, they go on the
-// clipboard whatever the app answered. WeChat / QQ (Qt) put a text drop in their composer: their "yes" stands.
+// Feishu / Lark only (DropTargets.feishu, swallowsTextDrop): when Blurt can paste (withholdsWords), the drag carries
+// no words over its windows (CardPasteboard.drag(into:): only the capture's tag) and Blurt pastes them into the
+// composer, taken or not; when it can't, they go on the clipboard whatever Feishu answered. Every other app's "yes"
+// stands: WeChat / QQ, the browsers, Claude, Slack… put a text drop on their composer in themselves.
 
 import Foundation
 
@@ -34,11 +34,14 @@ public enum VoiceCardDrop {
     /// anywhere — in an editor, into source code.)
     public static func pastes(cls: DropClass, kind: ComposerKind) -> Bool { cls == .chat && (kind == .web || kind == .qt) }
 
-    /// The drag leaves the words off over this window: a web composer (browsers, Electron apps, Feishu), and Blurt can
+    /// The app takes a text drop and may put nothing in (Feishu / Lark: v0.9 report): its "yes" doesn't count.
+    public static func swallowsTextDrop(bundleID: String?) -> Bool { DropTargets.isFeishu(bundleID) }
+
+    /// The drag leaves the words off over this window: an app that swallows a text drop (Feishu / Lark), and Blurt can
     /// paste (`canPaste`: smart paste on, Accessibility granted). Without that the words stay on the drag: a drop on the
-    /// composer itself is then the only way they go in directly.
-    public static func withholdsWords(cls: DropClass, kind: ComposerKind, canPaste: Bool) -> Bool {
-        canPaste && pastes(cls: cls, kind: kind) && kind == .web
+    /// composer itself is then the only way they go in directly. Every other app keeps its own text drop.
+    public static func withholdsWords(bundleID: String?, cls: DropClass, kind: ComposerKind, canPaste: Bool) -> Bool {
+        canPaste && pastes(cls: cls, kind: kind) && swallowsTextDrop(bundleID: bundleID)
     }
 
     public enum Plan: Equatable {
@@ -51,16 +54,16 @@ public enum VoiceCardDrop {
     }
 
     /// `accepted`: the app took the drop (the session ended with an operation); `words`: what the card says;
-    /// `wordsWithheld`: the drag carried no words there (withholdsWords, when it was let go of).
-    ///  • Qt (WeChat, QQ): taken → their own text drop; refused → Blurt pastes (or copies, if it can't).
-    ///  • web: Blurt pastes when it can and the app had no words to take (withheld) or refused them; otherwise the
-    ///    words go on the clipboard — a web app that took a text drop may or may not have put it in.
+    /// `swallows`: the app may take a text drop and put nothing in (swallowsTextDrop: Feishu); `wordsWithheld`: the
+    /// drag carried no words there when it was let go of (withholdsWords, as last written to the drag).
+    ///  • taken, by an app whose "yes" stands (WeChat, QQ, browsers, Claude…): its own text drop — nothing more.
+    ///  • taken by Feishu, or with no words to take, or refused: Blurt pastes when it can, else the words go on the
+    ///    clipboard ("⌘V to paste").
     public static func plan(cls: DropClass?, kind: ComposerKind?, accepted: Bool, words: String?, enabled: Bool,
-                            accessibility: Bool, secureInput: Bool, wordsWithheld: Bool = false) -> Plan {
+                            accessibility: Bool, secureInput: Bool, swallows: Bool = false, wordsWithheld: Bool = false) -> Plan {
         guard let c = cls, let k = kind, pastes(cls: c, kind: k) else { return .none("not_a_chat_app") }
-        if accepted, k == .qt { return .none("app_took_it") }
+        if accepted, !swallows, !wordsWithheld { return .none("app_took_it") }
         guard let w = CardNote.clean(words) else { return .none("no_words") }
-        if accepted, !wordsWithheld { return .copy(w) }
         guard enabled, accessibility, !secureInput else { return .copy(w) }
         return .paste(w)
     }

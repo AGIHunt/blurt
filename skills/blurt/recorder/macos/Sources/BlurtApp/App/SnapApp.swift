@@ -9,9 +9,10 @@
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
 //                             a drag into that kind of app carries (rich chat terminal finder — or the old names web
 //                             text unknown — or a bundle id: its composer counts too, WeChat / QQ get the rich item and
-//                             a voice card over a web composer no words when Blurt can paste them)
-//     voicedrop N PID [taken] as if voice card N was let go of over process PID's window (a stand-in, `droptarget map`),
-//                             refused — or taken — by it: the words pasted through the test route, or copied
+//                             a voice card over Feishu / Lark no words when Blurt can paste them)
+//     voicedrop N PID [taken] [words] as if voice card N was let go of over process PID's window (a stand-in, `droptarget map`),
+//                             refused — or taken — by it: the words pasted through the test route, or copied;
+//                             `words`: the drop beat the rewrite that takes the words off over Feishu
 //     takeout N [CLASS [PID]] as if card N had been dragged out and taken by that kind of app (the safety-net copy, the
 //                             toast; no CLASS: not sure which); PID: it landed in that process (a stand-in mapped to a
 //                             chat app gets the note pasted in after the picture, through the test route)
@@ -190,13 +191,15 @@ extension App {
                     .contains { $0.file != nil && $0.file == card.noteFile } } ?? false
                 snapper.takeOut(s, delivered: cls, noteFile: md, landed: landed)
             }
-        case "voicedrop":                               // voicedrop N PID [taken]: as if voice card N was let go of over
+        case "voicedrop":                               // voicedrop N PID [taken] [words]: as if voice card N was let go of over
             let a = arg.split(separator: " ").map(String.init)      // process PID's window (its bundle from `droptarget
             if a.count > 1, let n = Int(a[0]), let pid = pid_t(a[1]),  // map`), refused — or taken — by the app
                let s = snapper.cards.last(where: { $0.n == n }) {
                 let t = DropProbe.target(pid: pid)
                 let canPaste = SmartPaste.enabled && SmartPaste.accessibility
-                let withheld = s.kind == .voice && VoiceCardDrop.withholdsWords(cls: t.cls, kind: t.kind, canPaste: canPaste)
+                // `… words`: the drop landed before the drag's rewrite took the words off (they were still on it)
+                let withheld = s.kind == .voice && !a.contains("words")
+                    && VoiceCardDrop.withholdsWords(bundleID: t.bundleID, cls: t.cls, kind: t.kind, canPaste: canPaste)
                 let at = NSPoint(x: NSScreen.main?.frame.midX ?? 0, y: NSScreen.main?.frame.midY ?? 0)
                 snapper.takeOutVoice(s, landed: t, at: at, accepted: a.count > 2 && a[2] == "taken", wordsWithheld: withheld)
             }

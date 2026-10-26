@@ -28,7 +28,7 @@
 //    it (a rich layout read by mistake already had the note in it), and the toast only claims what it knows.
 // v0.9 — the layout follows the app's composer too (BlurtCore DragLanding): WeChat / QQ get the rich item they put
 // the picture in their composer from (the picture alone was a bare file URL to them: a file to send), and a voice
-// card over a web composer carries no words when Blurt can paste them (Feishu took a text drop and put nothing in).
+// card over Feishu / Lark carries no words when Blurt can paste them (Feishu took a text drop and put nothing in).
 // Tests (BLURT_TEST_COMMANDS=1): `droptarget map PID=BUNDLE,…` gives our stand-in processes the bundle ids of the apps
 // they stand in for (the decision still goes through the window owner's pid); BLURT_TEST_DROP_TARGET=BUNDLE (or
 // `droptarget fixed BUNDLE`) does it for every window that isn't ours.
@@ -161,7 +161,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     func landing(_ t: DropTarget?) -> DragLanding {
         guard let t else { return DragLanding(cls: .chat) }
         return DragLanding(cls: t.cls, kind: t.kind,
-                           wordsWithheld: isVoice && VoiceCardDrop.withholdsWords(cls: t.cls, kind: t.kind,
+                           wordsWithheld: isVoice && VoiceCardDrop.withholdsWords(bundleID: t.bundleID, cls: t.cls, kind: t.kind,
                                                                                   canPaste: SmartPaste.enabled && SmartPaste.accessibility))
     }
 
@@ -302,9 +302,10 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return t
     }
 
-    /// A voice card let go of over `t`: its words were kept off the drag there (Blurt pastes them itself, whatever the
-    /// app answered: VoiceCardDrop.plan).
-    func wordsWithheld(at t: DropTarget) -> Bool { isVoice && landing(t).wordsWithheld }
+    /// A voice card let go of over `t`: the drag pasteboard, as last written, carried no words for that app (Blurt
+    /// pastes them itself: VoiceCardDrop.plan). Rewrites are throttled, so a quick drop can land before the words came
+    /// off: then they were on the drag, and the app's answer is what counts.
+    func wordsWithheld(at t: DropTarget) -> Bool { isVoice && written.wordsWithheld && landing(t) == written }
 
     /// The .md is in what an app of class `c` got (the layout last written, when it was written for that class).
     func noteFile(_ c: DropClass) -> Bool {

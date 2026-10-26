@@ -190,7 +190,8 @@ What you can do with a card:
 
   The note is pasted into the message box you dropped on: Blurt brings that window forward, puts the cursor after the
   picture, pastes, and puts your clipboard back. It never pastes into Blurt itself, into a password field, or into
-  another window. *Settings → General → Also attach the note as a .md file* adds the Markdown file for chat apps and
+  another window. In Feishu/Lark it pastes only when it can tell the cursor is in a text box; when it can't, the note
+  goes on the clipboard (*⌘V to paste the note*). *Settings → General → Also attach the note as a .md file* adds the Markdown file for chat apps and
   the Finder too (off by default). The note is also written into the picture's own description (Preview's *Get
   Info* shows it). A voice note is just text you happened to say, so it drops its words, never an audio file. Into
   a chat app — a browser, Claude, Feishu/Lark, Slack, WeChat, QQ — you can let go of it **anywhere in the window**,
@@ -751,7 +752,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
   | 终端、iTerm2、Ghostty、Warp、kitty、WezTerm、Alacritty | 图片和一个写着备注的 Markdown 小文件（`截图-153012-备注.md`）的路径，Claude Code、Codex 能看到图片、读到备注（备注文字本身不会打进命令行） |
   | 访达或桌面 | 图片文件 |
 
-  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天 App和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音备注本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天 App——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些 App 只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑、代码编辑器和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音备注还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
+  备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。在飞书/Lark 里，只有确认光标在输入框里才会贴；确认不了时，备注放进剪贴板（「⌘V 可粘贴」）。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天 App和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音备注本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天 App——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些 App 只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑、代码编辑器和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音备注还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
 - **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。刘海上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天 App：先放图片，再贴备注」、App 没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，复制到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天 App：先放图片，再贴备注」。
 - **最近拖走的**：拖出去的卡片保留 7 天。右键点刘海（或刘海左边的数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。鼠标指到某一行，会出现一个「复制」按钮（图片和备注一起）和「···」菜单（或者右键这一行），里面可以单独复制图片或备注，或者「放回刘海下方」让它重新成为卡片；把图片（语音备注是它的小方块）再拖出去就能再用一次。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的 App 用。默认关闭；原来的截图不变。

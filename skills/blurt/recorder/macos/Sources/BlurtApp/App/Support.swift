@@ -79,6 +79,33 @@ func emit(_ obj: [String: Any]) {
         print(s)
         fflush(stdout)
     }
+    if let line = DragLog.line(obj, at: Date().timeIntervalSince1970) { DragLogFile.append(line) }
+}
+
+/// <BLURT_HOME>/logs/card-drag.log (BlurtCore DragLog): a card drag's events, kept where a normal launch's stdout isn't.
+enum DragLogFile {
+    static let url = blurtHome.appendingPathComponent("logs").appendingPathComponent(DragLog.fileName)
+    private static let queue = DispatchQueue(label: "dev.blurt.draglog", qos: .utility)
+
+    static func append(_ line: String) {
+        queue.async {
+            let fm = FileManager.default
+            try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if let n = (try? fm.attributesOfItem(atPath: url.path))?[.size] as? Int, n > DragLog.maxBytes {
+                let old = url.appendingPathExtension("1")
+                try? fm.removeItem(at: old)
+                try? fm.moveItem(at: url, to: old)
+            }
+            guard let d = (line + "\n").data(using: .utf8) else { return }
+            if let h = try? FileHandle(forWritingTo: url) {
+                defer { try? h.close() }
+                _ = try? h.seekToEnd()
+                try? h.write(contentsOf: d)
+            } else {
+                try? d.write(to: url)
+            }
+        }
+    }
 }
 
 /// Global coordinates: AppKit uses bottom-left origin, CoreGraphics / ScreenCaptureKit use top-left.

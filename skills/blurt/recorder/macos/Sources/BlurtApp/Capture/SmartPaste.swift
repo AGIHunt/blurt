@@ -427,6 +427,8 @@ private func smartPasteTapCallback(proxy: CGEventTapProxy, type: CGEventType, ev
 enum DragNoteFollowUp {
     /// tests: what Accessibility would have said (`followup facts editable=1,selection=0,window=same,secure=0`)
     static var testFacts: [String: String] = [:]
+    /// the focused element's role when the follow-up last looked (for the log: "none" when Accessibility gave none)
+    static var focusRole: String?
 
     /// Bring the app forward at the drop point, find the composer, put the caret after the picture, paste the note,
     /// give the clipboard back. `done(true)`: pasted, and the app read it.
@@ -440,7 +442,8 @@ enum DragNoteFollowUp {
                 }
                 focus(target: t, at: p, window: window) { facts in
                     let decision = FollowUpFocus.decide(facts)
-                    emit(["event": "drag_note_focus", "kind": t.kind.rawValue, "front": facts.frontIsTarget,
+                    emit(["event": "drag_note_focus", "kind": t.kind.rawValue, "bundle": t.bundleID ?? NSNull(),
+                          "needs_text": facts.needsText, "role": focusRole ?? NSNull(), "front": facts.frontIsTarget,
                           "same_window": facts.sameWindow.map { $0 as Any } ?? NSNull(),
                           "editable": facts.editable.map { $0 as Any } ?? NSNull(),
                           "selection": facts.selection.map { $0 as Any } ?? NSNull(), "decision": "\(decision)"])
@@ -495,7 +498,7 @@ enum DragNoteFollowUp {
     /// text area in the window (ComposerPick). WeChat / QQ: nothing is moved (the drop went into their composer, and
     /// Qt's Accessibility can't say). Test builds: `testFacts`.
     static func focus(target t: DropTarget, at p: NSPoint, window: AXUIElement?, _ then: @escaping (FollowUpFocus.Facts) -> Void) {
-        var f = FollowUpFocus.Facts(kind: t.kind)
+        var f = FollowUpFocus.Facts(kind: t.kind, needsText: FollowUpFocus.needsText(bundleID: t.bundleID))
         if DictationInsert.testMode {
             let x = testFacts
             func flag(_ k: String) -> Bool? { x[k].map { ["1", "true", "yes"].contains($0) } }
@@ -506,6 +509,7 @@ enum DragNoteFollowUp {
             f.frontIsTarget = x["front"].map { $0 != "other" } ?? true
             return then(f)
         }
+        focusRole = nil
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
         f.frontIsBlurt = front == getpid()
         f.frontIsTarget = front == t.pid
@@ -516,7 +520,8 @@ enum DragNoteFollowUp {
         AXUIElementSetMessagingTimeout(app, 0.3)
         let read = { (moved: Bool) -> FollowUpFocus.Facts in
             var g = f
-            guard let el = AXProbe.element(app, kAXFocusedUIElementAttribute) else { return g }
+            guard let el = AXProbe.element(app, kAXFocusedUIElementAttribute) else { focusRole = "none"; return g }
+            focusRole = AXProbe.string(el, kAXRoleAttribute) ?? "?"
             let a = AXProbe.Focus(el)
             g.editable = a.editable
             g.focusSecure = a.secure

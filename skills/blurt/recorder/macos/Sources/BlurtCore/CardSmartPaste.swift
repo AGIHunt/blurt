@@ -293,10 +293,15 @@ public enum FollowUpFocus {
         public var editable: Bool?
         /// the focused text's selection length (nil: unknown)
         public var selection: Int?
+        /// paste only into text Accessibility confirms (needsText(bundleID:)): a web app whose focus after a drop may
+        /// be something else than its composer and that can't say
+        public var needsText: Bool
         public init(kind: ComposerKind, frontIsTarget: Bool = true, frontIsBlurt: Bool = false, secureInput: Bool = false,
-                    focusSecure: Bool = false, sameWindow: Bool? = nil, editable: Bool? = nil, selection: Int? = nil) {
+                    focusSecure: Bool = false, sameWindow: Bool? = nil, editable: Bool? = nil, selection: Int? = nil,
+                    needsText: Bool = false) {
             self.kind = kind; self.frontIsTarget = frontIsTarget; self.frontIsBlurt = frontIsBlurt; self.secureInput = secureInput
             self.focusSecure = focusSecure; self.sameWindow = sameWindow; self.editable = editable; self.selection = selection
+            self.needsText = needsText
         }
     }
 
@@ -315,6 +320,13 @@ public enum FollowUpFocus {
         return identical
     }
 
+    /// Feishu / Lark (v0.9 report: a picture + note card left the picture alone there). The blind ⌘↓ ⌘V a web app
+    /// gets when Accessibility can't say what has the focus didn't put the note in: Feishu shows its web content to
+    /// Accessibility only for a screen reader, and a dropped picture may open something of its own (a send dialog)
+    /// rather than sit in the message box. So there the note is pasted only into text Accessibility confirms; else it
+    /// goes on the clipboard and the toast says "⌘V to paste" — never a paste into who knows what, never lost.
+    public static func needsText(bundleID: String?) -> Bool { DropTargets.isFeishu(bundleID) }
+
     public static func decide(_ f: Facts) -> Decision {
         if f.frontIsBlurt { return .skip("blurt_in_front") }
         guard f.frontIsTarget else { return .skip("not_front") }
@@ -324,6 +336,7 @@ public enum FollowUpFocus {
         case .editor: return .skip("code_editor")
         case .qt: return .paste(caret: [.end])
         case .native where f.editable != true: return .skip("not_text")
+        case .web where f.needsText && f.editable != true: return .skip("not_text")
         case .native, .web: break
         }
         guard let n = f.selection else { return .paste(caret: [.end]) }
