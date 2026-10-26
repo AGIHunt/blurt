@@ -124,7 +124,7 @@ Claude Code、Codex 是「干活的」：一个文件夹里跑各种会话。口
 - 「复制指令」复制的是一句话，例如：
 
   ```
-  请处理这 3 个问题，详情和截图见 /Users/john/.blurt/handoff/H-0012.md。做完后如果有 blurt MCP，调用 mark_fixed。
+  请处理这 3 个问题，详情和截图见 /Users/you/.blurt/handoff/H-0012.md。做完后如果有 blurt MCP，调用 mark_fixed。
   ```
 
 - 另有「复制全文」，把 Markdown 正文直接复制过去，图片仍用路径。
@@ -262,7 +262,7 @@ suggested_project: {"id": "…", "reason": "…"}   # 整理时给未归类条�
 created: "2026-10-22T10:15:00+08:00"
 updated: "2026-10-22T10:20:41+08:00"   # 每次 items.py 写入都更新
 source: {"type": "recording", "by": "john", "role": null, "app": "Chrome", "url": "https://…",   # 示例为排版折行，实际写在一行
-         "session": "/Users/john/workspace/bug-agent/.blurt/sessions/20261022-101500", "shot": null, "local_id": "I-001"}
+         "session": "/Users/you/code/orbit/.blurt/sessions/20261022-101500", "shot": null, "local_id": "I-001"}
 language: zh
 severity: high                    # 以下是 lens 字段（issue：module owner severity type code_refs；task：owner due…）
 module: auth
@@ -473,8 +473,8 @@ projects.json 只有 `projects.py` 写，锁 `$BLURT_HOME/.projects.lock`，原�
  "current": null,                        // 项目 id，或 null = 没选（进未归类）；v0.8 的 "auto" 读作 null。只由用户设置
  "projects": [{
    "id": "3f2a9c1b7e44",                 // sha1(realpath(path)).hex[:12]，和 v1 索引的 workspace id 同一公式
-   "path": "/Users/john/workspace/bug-agent",
-   "name": "bug-agent",                  // 默认文件夹名
+   "path": "/Users/you/code/orbit",
+   "name": "orbit",                  // 默认文件夹名
    "key": "BA",                          // 条目编号前缀：^[A-Z][A-Z0-9]{1,4}$，在注册表里唯一，"IN" 保留给 inbox
    "slug": "bug-agent",                  // ^[a-z0-9][a-z0-9-]{0,31}$，唯一；tmux 会话名用它（K5）
    "description": "",                    // 用户可写；没选项目的内容整理时作为候选项目的说明
@@ -726,7 +726,7 @@ jobs/<id>.claude-settings.json / <id>.diff / <id>.prompt.md   会话用的附属
   - 其他（Kimi Code、OpenCode…）：有交互式命令就 `interactive.session.argv`，提示词放不进参数的就启动后用 `sessions.py send` 粘贴；状态只有运行中 / 已退出。
   - 环境：`BLURT_JOB`、`BLURT_AGENT`、`BLURT_PROJECT`、`BLURT_HOME`、`BLURT_WORKSPACE`，以及 `BLURT_RUN_ID = BLURT_JOB`（旧别名）。
   - 提示词（`agents.py prompt work --items … --mode session|external --worktree on|off`，P2，替代 C5 的 `prompt fix`）总是很短：
-    第一行是标题（「AW-12 · <标题> (Blurt hand-off)」，见下面的细则），然后指向 K6 的交接单，例如「Read /Users/john/.blurt/handoff/H-0012.md
+    第一行是标题（「AW-12 · <标题> (Blurt hand-off)」，见下面的细则），然后指向 K6 的交接单，例如「Read /Users/you/.blurt/handoff/H-0012.md
     and handle the items in it. …」，说明完成后调 `mark_fixed`（或 `items.py work`）、提交规则见上。
 - **状态**（`agent.status`）：`running` 运行中 / `waiting_input` 等你回答 / `turn_done` 本轮完成 / `exited` 已退出 / `error` 出错。
 
@@ -953,14 +953,14 @@ sessions.py doctor                               → {"ok","tmux":{"path","versi
 ---
 handoff: H-0012
 created: "2026-10-22T10:15:00+08:00"
-project: {"id": "3f2a9c1b7e44", "name": "bug-agent", "path": "/Users/john/workspace/bug-agent"}
+project: {"id": "3f2a9c1b7e44", "name": "orbit", "path": "/Users/you/code/orbit"}
 items: ["01JB…", "01JC…", "01JD…"]
 to: external
 lang: en
 ---
 # 3 items for bug-agent
 
-Project folder: /Users/john/workspace/bug-agent
+Project folder: /Users/you/code/orbit
 When you finish an item, call the blurt MCP tool `mark_fixed` with its uid (state "fixed" or "wontfix", plus a short note).
 Without the MCP: `uv run --script <scripts>/items.py work <uid> --state to_verify --claim fixed --note "…"`.
 Don't push. <worktree 规则：提交 / 不提交>
@@ -971,14 +971,14 @@ uid 01JB… · issue · high · module auth
 > …
 **Actual** … **Expected** … **Steps** 1. … 2. …
 **Suspected code** `web/src/Login.tsx:42`
-![Frame 1 · 0:14 — login button greyed out](/Users/john/workspace/bug-agent/.blurt/assets/01JB…/1.png)
+![Frame 1 · 0:14 — login button greyed out](/Users/you/code/orbit/.blurt/assets/01JB…/1.png)
 ```
 
   图片一律**绝对路径**（Claude Code 和 Codex 都能直接读本机图片）。
 - **复制指令**（一句话，按界面语言）：
-  en 单条「Please handle BA-12 — details and screenshots are in /Users/john/.blurt/handoff/H-0012.md. When you're done, call mark_fixed if the blurt MCP is available.」
+  en 单条「Please handle BA-12 — details and screenshots are in /Users/you/.blurt/handoff/H-0012.md. When you're done, call mark_fixed if the blurt MCP is available.」
   en 多条「Please handle these 3 items — details and screenshots are in …H-0012.md. When you're done, call mark_fixed for each if the blurt MCP is available.」
-  zh 单条「请处理 BA-12，详情和截图见 /Users/john/.blurt/handoff/H-0012.md。做完后如果有 blurt MCP，调用 mark_fixed。」
+  zh 单条「请处理 BA-12，详情和截图见 /Users/you/.blurt/handoff/H-0012.md。做完后如果有 blurt MCP，调用 mark_fixed。」
   zh 多条「请处理这 3 个条目，详情和截图见 …H-0012.md。做完后如果有 blurt MCP，逐条调用 mark_fixed。」
 - **复制全文** = 去掉 front-matter 的正文。
 - CLI：`handoff.py create --items REF … [--lang en|zh] [--to external|session] [--mark]` → `{"ok","id","path","instruction","full","items":[uid]}`；
