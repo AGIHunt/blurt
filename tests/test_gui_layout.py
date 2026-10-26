@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,7 +94,16 @@ class App:
 
     def start(self) -> None:
         self.log.write_text("")
+        # a voice note listens to this file, never the microphone (6 s of silence)
+        quiet = self.home / "quiet.wav"
+        if not quiet.exists():
+            with wave.open(str(quiet), "wb") as w:
+                w.setnchannels(1)
+                w.setsampwidth(2)
+                w.setframerate(48000)
+                w.writeframes(b"\0\0" * 48000 * 6)
         envs = {"BLURT_HOME": self.home, "BLURT_WORKSPACE": self.ws, "BLURT_TMUX_SOCKET": f"blurt-test-{self.channel}",
+                "BLURT_TEST_MIC_WAV": quiet,
                 "BLURT_NO_NOTIFICATIONS": 1, "BLURT_NO_ONBOARDING": 1, "BLURT_TEST_COMMANDS": 1,
                 "BLURT_TEST_CHANNEL": self.channel, "BLURT_SPOTLIGHT_DOMAIN": f"dev.blurt.test.{self.channel}",
                 "BLURT_ALLOW_MULTI": 1, "BLURT_DEBUG_CHROME": 1, "PATH": os.environ.get("PATH", ""),
@@ -207,6 +217,13 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     s.append(("panels", "island", [("shell", "island open")]))
     s.append(("panels", "island switcher", [("shell", "island switcher")]))
     s.append(("panels", "island closed", [("shell", "island close")]))
+    # a voice note (from the silent test file: no microphone) — plain, then Structured (its chip, the ear's list mark)
+    s.append(("panels", "voice note", [("shell", "voice tap")]))
+    s.append(("panels", "voice note structured", [("shell", "voice structure")]))
+    s.append(("panels", "voice note cancelled", [("shell", "voice esc")]))
+    # the recording's countdown alone over an area (no take: nothing is captured)
+    s.append(("panels", "countdown", [("shell", "countdown 3 300,200,700,460 hold")]))
+    s.append(("panels", "countdown closed", [("shell", "countdown close")]))
     s.append(("panels", "recently taken", [("shell", "taken show")]))
     s.append(("panels", "recently taken hidden", [("shell", "taken hide")]))
     # a snap (a PNG stands in for the screen: nothing is captured) → its note bubble, then the hanging cards

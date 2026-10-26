@@ -144,6 +144,13 @@ applies the renderer only when the detector is confident (≥ 3 ordinal markers 
 | **E. "Reformat last"** hotkey (proposed ⌥⇧L, configurable), plus the island chip ≡ after a paste when the take looked like a list but wasn't formatted | One key after the fact; the safety net that lets the default stay conservative | Light ↔ Structured: < 50 ms (stored texts plus the renderer). The Email LLM pass: 0.5–1.5 s, off the dictation path | None | **Second wave, high value.** The history already keeps `raw` and `polished`, and `DictationWatch` already tracks the pasted span with anchors for 60 s. Pressing again cycles Verbatim → Light → Structured → back. Replace only while the anchors still match (user edits never get overwritten); otherwise copy to the clipboard with a toast. |
 | F. Separate mode hotkeys (Superwhisper or VoiceInk style) | Higher: more keys to remember | 0 | None | Not needed beyond A and E. |
 
+**Voice notes (⌥⇧V, v0.9-userfix).** The same switch, the same model: while a voice note listens, a lone ⇧ (BlurtCore
+`LoneShift`: down with no other modifier held, up within 1 s, nothing pressed between — ⌥⇧V's own ⇧ never counts) or a
+click on the open island's *Structured* chip / its right ear toggles Structured for that note. The ear shows the list
+mark before the time. When the note's words are in, they go through the same `structure` request (polish.py) as a
+dictation's; the card's note is that text and the transcript stays in shots.jsonl as `said_raw`
+(`VoiceNoteStructure`). No polish model or a refusal: the transcript is the note, and the island says so.
+
 ### 3.3 The renderer (why Structured needs no extra model call) — superseded, §3.8
 
 Spoken lists almost always come with **ordinal markers** at clause starts, and the speaker usually pauses between

@@ -35,6 +35,8 @@
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
 //     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
 //     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
+//     voice keys SCRIPT | structure | earclick   key events while it listens ("shift-down@0 shift-up@120": a lone ⇧
+//                             toggles Structured) · a click on the island's Structured chip · on its right ear
 //     assign N PROJECT|inbox  = dropping card N (with its ⌘-click selection) on that target · aisort · deleteall
 //     cardselect N,M…         a ⌘-click selection of those cards (no copy: the clipboard is left alone)
 //     cardmove N PROJECT|inbox   card N's menu: Move To ▸ that project (its selection too; "card_move_menu" lists it)
@@ -50,6 +52,9 @@
 //     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
+//     countdown N X,Y,W,H [hold] | close   the recording's countdown alone over that area (no take; hold: no ticks)
+//     recwriterfail · recstreamstop CODE   a real take's writer fails (a new piece takes over) / its stream stops
+//                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|inbox        switch the current project (inbox: none — captures go to Unassigned)
 //     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
@@ -142,8 +147,25 @@ extension App {
             emit(["event": "voice_test_set", "key": a[1], "value": v.map { "\($0)" } ?? "default"])
         case "voice" where arg == "esc": captureHotkey(.voiceEsc)       // = Esc while it listens (its Carbon hotkey)
         case "voice" where arg == "stall": VoiceInput.shared.testStall()  // its mic stops delivering (a headset gone)
+        case "voice" where arg.hasPrefix("keys "):     // voice keys SCRIPT: key events while it listens, as the key
+            let t0 = CACurrentMediaTime()                // listener hands them over ("shift-down@0 shift-up@120"; BlurtCore
+            for e in DictationTrigger.parse(String(arg.dropFirst(5))) {   // DictationTrigger.parse) — nothing is posted
+                var ev = e
+                if case let .flags(c, f, t) = e { ev = .flags(keyCode: c, flags: f, time: t0 + t) }
+                if case let .keyDown(c, t) = e { ev = .keyDown(keyCode: c, time: t0 + t) }
+                if case let .mouseDown(t) = e { ev = .mouseDown(time: t0 + t) }
+                Dictation.shared.handle(ev)
+            }
+            emit(["event": "voice_style_state", "structured": VoiceInput.shared.structured])
+        case "voice" where arg == "structure":           // = a click on the island's Structured chip
+            VoiceInput.shared.toggleStructured(via: "island")
+            emit(["event": "voice_style_state", "structured": VoiceInput.shared.structured])
+        case "voice" where arg == "earclick":            // = a click on the right ear (the clock / list mark)
+            VoiceInput.shared.toggleStructured(via: "ear")
+            emit(["event": "voice_style_state", "structured": VoiceInput.shared.structured])
         case "voice" where arg == "state":
             emit(["event": "voice_state", "active": VoiceInput.shared.active, "holding": VoiceInput.shared.holding,
+                  "structured": VoiceInput.shared.structured,
                   "elapsed": VoiceInput.shared.elapsed, "hint": IslandContent.voiceHint(), "live": VoiceInput.shared.liveText ?? NSNull()])
         case "voice":
             if arg != "up" { Hotkeys.shared.simulate(.voice, released: false) }
@@ -348,6 +370,20 @@ extension App {
             let xy = (a.count > 1 ? a[1] : "0.5,0.5").split(separator: ",").compactMap { Double($0) }
             rec?.testInk(a.first.map(String.init) ?? "down", x: xy.first ?? 0.5, y: xy.count > 1 ? xy[1] : 0.5,
                          shift: a.contains("shift"), option: a.contains("option"))
+        case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
+        case "countdown":                               // countdown N X,Y,W,H [hold] | close: the 3-2-1 over that area
+            if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; return }   // alone (no take); hold:
+            let a = arg.split(separator: " ").map(String.init)                             // it stays at N
+            let p = (a.count > 1 ? a[1] : "").split(separator: ",").compactMap { Double($0) }
+            guard let n = Int(a.first ?? ""), p.count == 4 else { return }
+            countdown(n, over: CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), hold: a.contains("hold")) {
+                emit(["event": "countdown_done"])
+            }
+        case "recwriterfail":                           // recwriterfail: the take's video writer fails at the next frame
+            rec?.testWriterFailure()                    // (-11800 / -16341, as on 2026-10-26): a new piece takes over
+        case "recstreamstop":                           // recstreamstop CODE: the stream stops with ScreenCaptureKit error CODE
+            let code = Int(arg) ?? -3821                // (-3821 system stopped → restart; -3817 the user's Stop; -3801 …)
+            rec?.streamStopped(NSError(domain: "com.apple.ScreenCaptureKit.SCStreamErrorDomain", code: code))
         case "recflags":                                // recflags ctl,opt,shift,cmd | none | real: what the pen's poll sees
             if arg == "real" { rec?.testFlags = nil } else {
                 var f: CGEventFlags = []

@@ -233,8 +233,16 @@ final class Island: NSObject, IslandHosting {
         return CGRect(x: geo.cx - w.value / 2, y: geo.top, width: left.width + 28, height: geo.row)
     }
 
+    /// The right ear while a voice note listens (its clock, with the list mark while Structured): a click toggles
+    /// Structured, as a click on the island does for dictation.
+    private var rightEarRect: CGRect? {
+        guard VoiceInput.shared.active, right.layer.opacity > 0.5, ears.opacity > 0.3 else { return nil }
+        if geo.notch { return CGRect(x: geo.cx + geo.notchW / 2, y: geo.top, width: earSpan, height: geo.row) }
+        return CGRect(x: geo.cx + w.value / 2 - right.width - 28, y: geo.top, width: right.width + 28, height: geo.row)
+    }
+
     /// A click there goes to the island itself (not to the open content growing over it): see clicked(at:).
-    func earHit(_ p: NSPoint) -> Bool { leftEarRect?.contains(p) ?? false }
+    func earHit(_ p: NSPoint) -> Bool { (leftEarRect?.contains(p) ?? false) || (rightEarRect?.contains(p) ?? false) }
 
     // MARK: setup
 
@@ -563,7 +571,9 @@ final class Island: NSObject, IslandHosting {
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
             left.set(open ? .glyph(.mic, pulse: false) : .wave(VoiceInput.shared.levels))
-            right.set(.text(Island.clock(VoiceInput.shared.elapsed), mono: true))
+            // Structured: dictation's list mark with the clock (a click on it toggles: clicked(at:))
+            let clock = Island.clock(VoiceInput.shared.elapsed)
+            right.set(VoiceInput.shared.structured ? .iconText(.list, clock) : .text(clock, mono: true))
         } else if Dictation.shared.busy {
             // dictation never opens the island: ears only, so the app being typed into keeps the whole screen
             switch Dictation.shared.phase {
@@ -723,6 +733,8 @@ final class Island: NSObject, IslandHosting {
             if DictationInsert.testMode { Dictation.shared.handle(.islandClick(time: CACurrentMediaTime())) }   // no listener in tests
             return
         }
+        // a voice note's right ear (its clock / list mark): Structured on or off
+        if let r = rightEarRect, r.contains(p) { VoiceInput.shared.toggleStructured(via: "ear"); return }
         // the left ear's count: the cards come down and stay (until the pointer has come and gone, or Esc)
         if earHit(p) { hanging.reveal(via: "ear"); return }
         // a toast's body: a line without a button (a peck's "open the item") is its own button; one with a button acts

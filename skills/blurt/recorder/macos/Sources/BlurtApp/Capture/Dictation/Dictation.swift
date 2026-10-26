@@ -624,6 +624,8 @@ final class Dictation {
     func labReset() { trigger.reset(active: false) }
 
     func handle(_ event: DictationTrigger.Event) {
+        // a voice note listening: a lone ⇧ is its Structured toggle (VoiceInput.keyEvent; BlurtCore LoneShift)
+        if VoiceInput.shared.active { VoiceInput.shared.keyEvent(event) }
         guard Dictation.enabled else { return }
         var e = event
         // a click on Blurt's own island while dictating is the style chip, not "a click joined in" (it never cancels
@@ -700,7 +702,8 @@ final class Dictation {
     /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
     /// in front too (an input method would switch between Chinese and English on it).
     func updateShiftFilter() {
-        keys.swallowShift = trigger.active || trigger.armedDown || listening
+        // a voice note too: its lone ⇧ is Structured, never the input method's Chinese / English switch
+        keys.swallowShift = trigger.active || trigger.armedDown || listening || VoiceInput.shared.active
     }
 
     private func scheduleHoldTick() {
@@ -741,7 +744,14 @@ final class Dictation {
     func warm() {
         guard !speechModelMissing, !speechToolsMissing else { return }
         VoiceInput.warmSpeechModel(dictation: true)
-        guard Dictation.polishOn, polishModel != nil else { return }
+        guard Dictation.polishOn else { return }
+        warmPolish()
+    }
+
+    /// The polish server up (or a stuck one replaced) with its model loaded — dictation's key-down, and a voice note
+    /// switched to Structured (its words go through the same structuring pass). Nothing without a polish model.
+    func warmPolish() {
+        guard polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced

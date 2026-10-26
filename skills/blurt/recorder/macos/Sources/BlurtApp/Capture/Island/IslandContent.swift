@@ -10,7 +10,8 @@
 //               filled, and ↩ chooses it) · mic level · finish ·
 //               "hold ⌃ to draw · ⇧ box · ⌥ ellipse" (every modifier a keycap) · how many items were spotted so far ·
 //               the project (changeable; dimmed with questionmark.folder while its folder is gone)
-//   voice       the listening chick (mascot), the live waveform, Done, how it ends ("press ⌥⇧V again to finish · Esc to
+//   voice       the listening chick (mascot), the live waveform, Done, the Structured chip (list glyph; on = the mint
+//               tint chip, as "Pen on"; ⇧ alone does the same), how it ends ("press ⌥⇧V again to finish · Esc to
 //               discard"; "pause to finish" with record.voice.end_on_pause; the time left in its last minute), where it
 //               will go — the words themselves hang under the island (LiveTranscript.swift)
 //   drawer      switcher (⌥⇧O): Unassigned (no current project; tray.2, as in the sidebar — the tray is the Inbox),
@@ -371,6 +372,8 @@ final class IslandContent: NSView {
     private weak var wave: Bars?
     private weak var time: NSTextField?
     private weak var voiceText: NSTextField?
+    /// the voice note's Structured chip (tests: its frame)
+    private(set) weak var structuredChip: IslandButton?
     private weak var spotted: NSTextField?
     private weak var pauseBtn: IslandButton?
     /// The pen was latched when the recording row was built (it changes from the key, ⌥⇧D): rebuilt when it differs.
@@ -804,11 +807,25 @@ final class IslandContent: NSView {
         wave = wv
         place(done, x: w - 16 - done.frame.width, y: y + (34 - done.frame.height) / 2)
         y += 44
-        // the words themselves show under the island (LiveTranscript); here: how it ends
+        // Structured, as dictation's (⇧ alone, or this chip): a quiet chip with the list glyph; on, the tint chip in
+        // mint like "Pen on" (click = off). Then how it ends — the words themselves show under the island (LiveTranscript)
+        let on = v.structured
+        let st = IslandButton(icon: .list, title: Loc.t("capture.voice.structured", table: "Capture"),
+                              tip: Loc.t(on ? "capture.voice.structured_off_tip" : "capture.voice.structured_tip", table: "Capture"),
+                              fill: on ? BrandColor.Island.tint : NSColor(white: 1, alpha: 0.08)) { VoiceInput.shared.toggleStructured(via: "island") }
+        st.fg = on ? BrandColor.Island.fill : ink2
+        st.symbolInset = 10
+        st.setFrameSize(NSSize(width: st.frame.width, height: 24))
+        st.setAccessibilityValue(on ? Loc.t("capture.voice.structured_ax_on", table: "Capture") : Loc.t("capture.voice.structured_ax_off", table: "Capture"))
+        // a row of its own under the chick's feet (the chick stands 56 pt tall from 13 pt above the waveform)
+        y += 2
+        place(st, x: 12, y: y)
+        structuredChip = st
+        let hx = st.frame.maxX + 10
         let tx = label(IslandContent.voiceHint(), size: 12.5, color: ink2)
-        place(tx, x: 18, y: y, w: w - 36)
+        place(tx, x: hx, y: y + (24 - tx.frame.height) / 2, w: w - hx - 18)
         voiceText = tx
-        y += 24
+        y += 30
         let dest: String
         if let m = ProjectStore.shared.missingCurrent { dest = Loc.t("capture.project.missing_card", table: "Capture", m.name) }
         else if let p = ProjectStore.shared.current { dest = Loc.t("capture.voice.goes_to", table: "Capture", p.name) } else {

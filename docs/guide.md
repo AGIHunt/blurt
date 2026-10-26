@@ -34,8 +34,8 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 | | Shortcut | What happens |
 |---|---|---|
 | **Snap** | `⌥⇧A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). *Goes to …* under the note (or *Stays as a card* when there is no current project) changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. When the words are saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
-| **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. |
-| **Record** | `⌥⇧R` | Pick an area, a window or the full screen, then talk while you use your product. `⌥⇧R` again (or *Finish* at the notch) stops. |
+| **Voice note** | `⌥⇧V` | Press once and talk — pauses to think are fine; press `⌥⇧V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Press `⇧` on its own while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
+| **Record** | `⌥⇧R` | Pick an area, a window or the full screen and click *Start recording*; after a 3-second countdown (*Start now* skips it), talk while you use your product. `⌥⇧R` again (or *Finish* at the notch) stops. |
 
 While recording: `⌥⇧P` pause, `⌥⇧A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
 screen — the same strokes as on a snap: `⌃⇧` for a box, `⌃⌥` for an ellipse (press `⌃` first, then add the other
@@ -54,10 +54,18 @@ and is never thrown away without asking: if Blurt heard nothing in it, the notch
 empty item. A note whose words couldn't be transcribed says so at the notch with *Retry*, and still goes to its
 project once Retry has the words. If the microphone goes away mid-note (AirPods taken out), the note ends with what
 you said; before you said anything, a snap's note says *Mic disconnected* and you can type it instead. A recording
-that can't be finished says why — *The disk is full*, *Screen Recording was refused* — and keeps what it had: the
-video up to where it stopped (*The disk is full — the first 3:12 is kept*) and the snaps you took during it, ready to
-**Organize**; it stops as soon as the disk fills up instead of running on, and warns before it starts when little
-space is left. Quitting Blurt
+that can't be finished says why — *The disk is full*, *Screen Recording was refused*, *The recorded display was
+disconnected*, *Sleep or the lock screen stopped the recording*, *Writing the video file failed* — and keeps what it
+had: the video up to where it stopped (*The disk is full — the first 3:12 is kept*) and the snaps you took during it,
+ready to **Organize**; it stops as soon as the disk fills up instead of running on, and warns before it starts when
+little space is left. Most hiccups no longer end a recording at all: if the video file fails partway, Blurt starts a
+new one on the spot and puts the pieces back together when you finish (only the few seconds in between are missing,
+and the notch says so); if macOS stops the screen capture for a moment (a display was rearranged, the capture
+service restarted, the Mac slept or the screen locked), Blurt tries to pick the same screen up again: it waits until
+the screen is unlocked and tries a few times. The time in between shows as a still picture. If that doesn't work,
+the recording ends and keeps what it had. Stopping the screen sharing from macOS's menu
+bar finishes the recording like *Finish*. The exact error behind a failure is kept in the recording's `meta.json`
+(`error_domain`, `error_code`, `error_underlying`) and in the log. Quitting Blurt
 never loses a capture on its way: it is saved first, or picked up again the next time Blurt starts — and a voice note
 you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 
@@ -65,6 +73,14 @@ you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 click *Done*, or let go of the keys if you held them (10 minutes at most; the notch shows the time, and the time left
 in the last minute). Prefer the old way? *Settings → General → End a voice note when I pause* ends it after 1.5 s of
 silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
+
+**Structured voice notes.** While a voice note listens, press `⇧` on its own (or click *Structured* at the notch, or
+the time in the notch's right ear) to make it a structured note — the same switch as in dictation, any time before you
+finish; press it again to go back. The notch shows the list mark next to the time. When the words are in, the polish
+model lays out what you listed and keeps only your corrected wording ("milk, eggs — no, duck eggs" becomes duck eggs),
+or leaves a paragraph a paragraph; the card's note is that text, and the transcript as heard is kept with the capture
+(`said_raw` in its `shots.jsonl`). Without a polish model (*Settings → Dictation*) the note keeps the transcript and
+the notch says so. `⌥⇧V` itself and `⇧` with another key (a capital letter, `⇧`-click) never switch it.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognized so far shows in a
 small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in; a snap's spoken

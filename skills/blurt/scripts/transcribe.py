@@ -1934,6 +1934,24 @@ def shot_voice(session: Path, n, rec: dict) -> Path | None:
     return p if p.exists() else None
 
 
+def structure_note(text: str) -> str | None:
+    """A Structured voice note's text through the warm polish model (polish.py serve) — the same `structure` request
+    the app sends for dictation and voice notes (model-based: lists laid out, self-corrections resolved). None when no
+    polish server runs, the text is empty, or the model fell back."""
+    if not text.strip():
+        return None
+    try:
+        import polish
+        timeout = polish.structure_timeout_s()
+        r = polish._server_call({"cmd": "structure", "text": text, "timeout": timeout}, timeout + 5)
+    except Exception:  # noqa: BLE001 — no polish: the transcript stays the note
+        return None
+    if not isinstance(r, dict) or not r.get("ok") or r.get("fell_back"):
+        return None
+    out = (r.get("text") or "").strip()
+    return out or None
+
+
 def transcribe_shots(session: Path, a) -> None:
     latest = read_shots(session)
     todo = [(n, rec, wav) for n, rec in latest.items()
@@ -1948,10 +1966,17 @@ def transcribe_shots(session: Path, a) -> None:
             for n, rec, wav in todo:
                 results, _, _ = transcribe_track(load_audio(wav), backend, name, workers, quiet=True)
                 said = " ".join(r[2] for r in sorted(results, key=lambda r: r[0]) if r[2]).strip()
+                upd = {"said": said}
+                if rec.get("structure"):
+                    # a Structured note (⇧ while it listened): its note is the structured text and the transcript stays
+                    # as said_raw, as the app keeps it. No polish model: the transcript, and said_raw cleared — a
+                    # stale one from an earlier pass would sit next to a note it no longer matches
+                    s = structure_note(said)
+                    upd = {"said": s, "said_raw": said} if s and s != said else {"said": said, "said_raw": None}
                 # an update line with the same n (full record + "said"); later lines win — docs/design/snap-and-live.md
                 with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps({**rec, "said": said}, ensure_ascii=False) + "\n")
-                done.append({"n": n, "said": said})
+                    fh.write(json.dumps({**rec, **upd}, ensure_ascii=False) + "\n")
+                done.append({"n": n, **upd})
     print(json.dumps({"session": str(session), "mode": "shots", "shots": len(latest), "transcribed": len(done),
                       "backend": name, "elapsed_seconds": round(time.time() - t0, 1), "said": done},
                      ensure_ascii=False, indent=2))
