@@ -854,7 +854,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             open.showHotkey(.openMain)
             open.image = App.menuSymbol("macwindow")
             if #available(macOS 14.4, *) {
-                if badge.new > 0 { open.badge = NSMenuItemBadge.newItems(count: badge.new) }
+                if badge.new > 0 { open.badge = NSMenuItemBadge(string: T("main.inbox.new", badge.new)) }     // the window's own words ("9 new"), not the system's
                 if badge.verify > 0 { open.subtitle = T("main.inbox.verify", badge.verify) }
             } else if waiting {
                 // (macOS 13–14.3: no subtitle) the counts in the title, as the window's subtitle says them
