@@ -36,6 +36,12 @@
 "capture.card.first_hint" = "Click to copy, or drag into any app";
 "capture.cards.ax" = "Cards waiting for a project";
 "capture.cards.none" = "No cards";
+"capture.card.tip_hint" = "Click to copy · Drag into any app";
+"capture.card.tip_keys" = "← → Choose · ↩ Copy · ⌫ Delete · esc Close";
+"capture.cards.more_caption" = "Show all";
+"capture.cards.overview_heading" = "Cards";
+"capture.cards.overview_hint" = "Click to copy · Double-click to edit the note · Drag into any app";
+"capture.cards.overview_keys" = "Arrow keys choose · ↩ Copy · ⌫ Delete · esc Close";
 "capture.change" = "Change";
 "capture.countdown.finish" = "finish";
 "capture.countdown.pause" = "pause / resume";
@@ -198,7 +204,7 @@
 "capture.file.shot" = "Screenshot";
 "capture.file.note" = "note";
 "capture.taken.title" = "Recently Dragged Out";
-"capture.taken.hint" = "Cards you dragged into other apps stay here for 7 days. Drag one out again, copy it, or put it back under the notch.";
+"capture.taken.hint" = "Drag a picture out to use it again.";
 "capture.taken.empty" = "Nothing dragged out in the last 7 days";
 "capture.taken.menu" = "Recently Dragged Out (%d)";
 "capture.taken.show_all" = "Show All…";
@@ -209,6 +215,9 @@
 "capture.taken.more" = "More";
 "capture.taken.put_back" = "Put Back Under the Notch";
 "capture.taken.when" = "Dragged out %@";
+"capture.taken.kept" = "Kept 7 days";
+"capture.taken.empty_title" = "Nothing dragged out yet";
+"capture.taken.empty_hint" = "Cards you drag into other apps stay here for 7 days.";
 "capture.undo" = "Undo";
 "capture.voice.card_empty" = "Voice note · %@";
 "capture.voice.check_mic" = "Didn’t hear anything — check the microphone";

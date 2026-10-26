@@ -110,6 +110,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>显示全部 %d 张卡片</string></dict>
   </dict>
+  <key>capture.cards.selected</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>已选 %d 张</string></dict>
+  </dict>
   <key>capture.cards.overview_title</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

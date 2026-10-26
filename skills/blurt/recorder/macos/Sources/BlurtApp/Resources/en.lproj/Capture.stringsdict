@@ -110,6 +110,12 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the card</string><key>other</key><string>Show all %d cards</string></dict>
   </dict>
+  <key>capture.cards.selected</key>
+  <dict>
+    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
+    <key>n</key>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 selected</string><key>other</key><string>%d selected</string></dict>
+  </dict>
   <key>capture.cards.overview_title</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

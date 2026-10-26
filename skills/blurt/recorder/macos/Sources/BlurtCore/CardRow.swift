@@ -96,6 +96,13 @@ public enum CardRow {
         islandBottom - (cardsHang ? band : 0) - gap
     }
 
+    /// Whether the row hangs from a rod (v0.9.1): some card's (or the tile's) clasp, at `centres`, is not under the
+    /// island's `edge` — a thread to it would run nearly flat from the island (the fan the judges read as tent ropes).
+    /// Then a short rod under the island spans the row, held by two stems, and every card hangs straight down from it.
+    public static func rodded(centres: [CGFloat], edge: ClosedRange<CGFloat>, tolerance: CGFloat = 1) -> Bool {
+        centres.contains { $0 < edge.lowerBound - tolerance || $0 > edge.upperBound + tolerance }
+    }
+
     /// Where the thread of a card at `x` comes out of the island's bottom edge (`edge`: the part of it a thread may
     /// leave from), given the whole row's `span`.
     public static func threadX(_ x: CGFloat, row: ClosedRange<CGFloat>, edge: ClosedRange<CGFloat>) -> CGFloat {

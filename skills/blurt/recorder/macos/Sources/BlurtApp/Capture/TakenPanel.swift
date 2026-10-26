@@ -20,19 +20,31 @@
 // hidden button) — shows them, so there is one primary at a time. A hairline, then the hint. VoiceOver reads a tile
 // as what it is ("Voice note 3, 00:07"), with the drag tip as its help.
 // v0.8.6 had four buttons of the same weight on every row; v0.9.0 a 56 pt mic glyph as a voice note's picture.
+// v0.9.1: the cards overview's chrome — only the close button, the heading drawn in the title-bar row (never an
+// inactive grey title), "Kept 7 days" said once on its right; every row's title the same ink; nothing dragged out is
+// the app's one empty state (EmptyStateContent) with no footer; the footer one short line.
 
 import AppKit
 import BlurtCore
+import SwiftUI
 
 final class TakenPanel: NSObject, NSWindowDelegate {
     static let shared = TakenPanel()
     static let width: CGFloat = 440
     static let rowGap: CGFloat = 2
     static let footerPad: CGFloat = 10
+    /// The empty state (the mark, the title, one line of hint and the padding round them): the panel sizes to it.
+    static let emptyH: CGFloat = 188
     private var window: NSPanel?
     private let list = NSStackView()
-    private let empty = NSTextField(labelWithString: "")
-    private let hint = NSTextField(wrappingLabelWithString: "")
+    private let scroll = NSScrollView()
+    private let rule = NSBox()
+    private let heading = NSTextField(labelWithString: "")
+    private let kept = NSTextField(labelWithString: "")
+    private let empty = NSHostingView(rootView: EmptyStateContent(title: Loc.t("capture.taken.empty_title", table: "Capture"),
+                                                                  message: Loc.t("capture.taken.empty_hint", table: "Capture")))
+    private let hint = NSTextField(labelWithString: "")
+    private var titleBar: CGFloat = 28
     private(set) var rows: [TakenRow] = []
 
     var isOpen: Bool { window?.isVisible ?? false }
@@ -66,7 +78,8 @@ final class TakenPanel: NSObject, NSWindowDelegate {
 
     private func build() {
         let w = NSPanel(contentRect: NSRect(x: 0, y: 0, width: TakenPanel.width, height: 120),
-                        styleMask: [.titled, .closable, .utilityWindow, .nonactivatingPanel], backing: .buffered, defer: false)
+                        styleMask: [.titled, .closable, .fullSizeContentView, .utilityWindow, .nonactivatingPanel],
+                        backing: .buffered, defer: false)
         w.title = Loc.t("capture.taken.title", table: "Capture")
         w.isFloatingPanel = true
         w.level = .floating
@@ -75,45 +88,63 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         w.becomesKeyOnlyIfNeeded = true
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         w.delegate = self
+        // only the close button, and the panel's own heading in the title bar's row (ink, never inactive grey) — the
+        // same chrome as the cards' overview (CardsOverview)
+        w.titlebarAppearsTransparent = true
+        w.titleVisibility = .hidden
+        w.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        w.standardWindowButton(.zoomButton)?.isHidden = true
+        titleBar = max(24, w.frame.height - w.contentLayoutRect.height)
+        heading.stringValue = w.title
+        heading.font = .systemFont(ofSize: 13, weight: .semibold)
+        heading.textColor = .labelColor
+        heading.translatesAutoresizingMaskIntoConstraints = false
+        // the 7 days, said once for every row (a row says it again only on its last day)
+        kept.stringValue = Loc.t("capture.taken.kept", table: "Capture")
+        kept.font = .systemFont(ofSize: 11)
+        kept.textColor = .secondaryLabelColor
+        kept.translatesAutoresizingMaskIntoConstraints = false
         list.orientation = .vertical
         list.alignment = .leading
         list.spacing = TakenPanel.rowGap
-        list.edgeInsets = NSEdgeInsets(top: 6, left: 0, bottom: 6, right: 0)
+        list.edgeInsets = NSEdgeInsets(top: 4, left: 0, bottom: 6, right: 0)
         list.translatesAutoresizingMaskIntoConstraints = false
         let doc = FlippedView()
         doc.translatesAutoresizingMaskIntoConstraints = false
         doc.addSubview(list)
-        let scroll = NSScrollView()
         scroll.documentView = doc
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        // the footer, like the main window's quiet hints: a hairline, then one small secondary paragraph
-        let rule = NSBox()
+        // the footer: a hairline, then one short line (how to use a row again; the rest is on its "···")
         rule.boxType = .separator
         rule.translatesAutoresizingMaskIntoConstraints = false
         hint.stringValue = Loc.t("capture.taken.hint", table: "Capture")
-        hint.font = .systemFont(ofSize: 11)
+        hint.font = .systemFont(ofSize: 11.5)
         hint.textColor = .secondaryLabelColor
-        hint.preferredMaxLayoutWidth = TakenPanel.width - 32
+        hint.lineBreakMode = .byTruncatingTail
         hint.translatesAutoresizingMaskIntoConstraints = false
-        empty.stringValue = Loc.t("capture.taken.empty", table: "Capture")
-        empty.font = .systemFont(ofSize: 13)
-        empty.textColor = .secondaryLabelColor
-        empty.alignment = .center
+        // nothing dragged out: the one empty state of the app (the mark, a neutral title, the hint) — no footer under it
         empty.translatesAutoresizingMaskIntoConstraints = false
+        empty.sizingOptions = []            // the panel sizes the empty state (emptyH), not the other way round
         let root = NSView()
-        for v in [scroll, rule, hint, empty] as [NSView] { root.addSubview(v) }
+        for v in [heading, kept, scroll, rule, hint, empty] as [NSView] { root.addSubview(v) }
         NSLayoutConstraint.activate([
-            scroll.topAnchor.constraint(equalTo: root.topAnchor), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            heading.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            heading.centerYAnchor.constraint(equalTo: root.topAnchor, constant: titleBar / 2),
+            kept.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            kept.firstBaselineAnchor.constraint(equalTo: heading.firstBaselineAnchor),
+            scroll.topAnchor.constraint(equalTo: root.topAnchor, constant: titleBar), scroll.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: root.trailingAnchor), scroll.bottomAnchor.constraint(equalTo: rule.topAnchor),
-            rule.leadingAnchor.constraint(equalTo: root.leadingAnchor), rule.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            rule.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16), rule.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             hint.topAnchor.constraint(equalTo: rule.bottomAnchor, constant: TakenPanel.footerPad),
             hint.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            hint.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            hint.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -16),
             hint.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -TakenPanel.footerPad),
-            empty.centerXAnchor.constraint(equalTo: scroll.centerXAnchor), empty.centerYAnchor.constraint(equalTo: scroll.centerYAnchor),
+            empty.topAnchor.constraint(equalTo: root.topAnchor, constant: titleBar),
+            empty.leadingAnchor.constraint(equalTo: root.leadingAnchor), empty.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            empty.bottomAnchor.constraint(equalTo: root.bottomAnchor),
             doc.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor), doc.trailingAnchor.constraint(equalTo: scroll.contentView.trailingAnchor),
             doc.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
             list.topAnchor.constraint(equalTo: doc.topAnchor), list.leadingAnchor.constraint(equalTo: doc.leadingAnchor),
@@ -135,14 +166,16 @@ final class TakenPanel: NSObject, NSWindowDelegate {
             list.addArrangedSubview(r)
             r.widthAnchor.constraint(equalTo: list.widthAnchor).isActive = true
         }
-        empty.isHidden = !rows.isEmpty
-        // up to 6 rows, then it scrolls; the list's insets, the hairline and the footer under them
-        let n = CGFloat(max(1, min(rows.count, 6)))
-        let h = 12 + n * TakenRow.height + (n - 1) * TakenPanel.rowGap + 1 + TakenPanel.footerPad * 2 + ceil(hint.fittingSize.height)
+        let none = rows.isEmpty
+        empty.isHidden = !none
+        for v in [scroll, rule, hint, kept] as [NSView] { v.isHidden = none }
+        // up to 6 rows, then it scrolls; the hairline and the footer under them — or the empty state alone
+        let n = CGFloat(min(rows.count, 6))
+        let h = none ? titleBar + TakenPanel.emptyH
+            : titleBar + 10 + n * TakenRow.height + (n - 1) * TakenPanel.rowGap + 1 + TakenPanel.footerPad * 2 + ceil(hint.fittingSize.height)
         var f = w.frame
-        let content = w.contentRect(forFrameRect: f)
-        let dh = h - content.height
-        f.size.height += dh
+        let dh = h - f.height
+        f.size.height = h
         f.origin.y -= dh
         w.setFrame(f, display: true)
         follow()
@@ -287,9 +320,10 @@ final class TakenRow: NSView {
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
         let title = NSTextField(labelWithString: s.words.map { $0.split(whereSeparator: \.isNewline).joined(separator: " ") } ?? TakenPanel.title(s))
-        title.font = .systemFont(ofSize: 13, weight: s.words == nil ? .regular : .medium)
+        // every row's title the same (a snap without a note is named, not greyed out as if disabled)
+        title.font = .systemFont(ofSize: 13)
         title.lineBreakMode = .byTruncatingTail
-        title.textColor = s.words == nil ? .secondaryLabelColor : .labelColor
+        title.textColor = .labelColor
         title.toolTip = s.words
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let detail = NSTextField(labelWithAttributedString: TakenRow.detail(s))
@@ -483,7 +517,7 @@ final class TakenThumb: NSView, NSDraggingSource {
     }
 }
 
-final class ClosureButton: NSButton {
+class ClosureButton: NSButton {
     private var fn: (() -> Void)?
     convenience init(_ title: String, _ fn: @escaping () -> Void) {
         self.init(title: title, target: nil, action: nil)

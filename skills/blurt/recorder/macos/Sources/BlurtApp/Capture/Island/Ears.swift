@@ -1,6 +1,6 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
-// bars when paused), counts with one of our line glyphs (the cards' stack with its count in mint, the cards' clasp
-// colour; the inbox's tray, the stills' snap frame, the markers' flag), the mic level, a voice waveform, the hatching
+// bars when paused), counts with one of our line glyphs (the hanging card with its count, one tone; the inbox's
+// tray, the stills' snap frame, the markers' flag), the mic level, a voice waveform, the hatching
 // egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out — Icons/Mascot.swift),
 // an alert marker, "Sent" with the ok check. Every glyph in the ears is the BlurtIcon line family at one weight —
 // the dogfood found filled SF Symbols (tray.full.fill, rectangle.stack.fill, camera.fill) opposite dictation's line
@@ -48,9 +48,8 @@ final class EarSlot {
         case recording(paused: Bool, time: String)
         /// a count with one of our line glyphs; `tint` colours both (a quieter count: white at 60 %)
         case count(icon: BlurtIcon, n: Int, tint: NSColor?)
-        /// the hanging cards waiting (the left ear): the cards glyph and its count in mint (the cards' clasp colour),
-        /// so it never reads like the inbox's tray count beside it (white at 60 %) — a mint dot on the glyph's top edge
-        /// read as a jar's lid at 11 pt
+        /// the hanging cards waiting (the left ear): the hanging-card glyph and its count in one tone (white at 92 %),
+        /// brighter than the inbox's tray count beside it (white at 60 %); no mint at rest
         case cards(Int)
         case level(Float)
         case wave([Float])
@@ -206,8 +205,10 @@ final class EarSlot {
             line(ic, color: tint ?? NSColor(white: 1, alpha: 0.85))
             text(Loc.number(n), color: tint ?? NSColor(white: 1, alpha: 0.92))
         case .cards(let n):
-            line(.cards, color: NSColor(white: 1, alpha: 0.85))
-            text(Loc.number(n), color: BrandColor.Island.fill)
+            // one token in one tone (v0.9.1): a resting count is not blurt in the act, so no mint — the clasp of the
+            // card just caught carries that; brighter than the inbox's 60 %, as what a click takes
+            line(.cards, color: NSColor(white: 1, alpha: 0.92))
+            text(Loc.number(n), color: NSColor(white: 1, alpha: 0.92))
         case .level(let v):
             drawLevel(v)
             x = 22

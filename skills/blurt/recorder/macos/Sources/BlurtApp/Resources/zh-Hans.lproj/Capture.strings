@@ -36,6 +36,12 @@
 "capture.card.first_hint" = "点一下复制，或拖进任意 App";
 "capture.cards.ax" = "还没归类的卡片";
 "capture.cards.none" = "没有卡片";
+"capture.card.tip_hint" = "点一下复制 · 拖进任意 App";
+"capture.card.tip_keys" = "← → 选择 · ↩ 复制 · ⌫ 删除 · esc 收起";
+"capture.cards.more_caption" = "查看全部";
+"capture.cards.overview_heading" = "卡片";
+"capture.cards.overview_hint" = "点一下复制 · 双击改备注 · 拖进任意 App";
+"capture.cards.overview_keys" = "方向键选择 · ↩ 复制 · ⌫ 删除 · esc 关闭";
 "capture.change" = "更改";
 "capture.countdown.finish" = "完成";
 "capture.countdown.pause" = "暂停 / 继续";
@@ -198,7 +204,7 @@
 "capture.file.shot" = "截图";
 "capture.file.note" = "备注";
 "capture.taken.title" = "最近拖走的";
-"capture.taken.hint" = "拖进别的 App 的卡片会在这里保留 7 天：可以再拖出去、复制，或者放回刘海下方。";
+"capture.taken.hint" = "把图片拖出去，可以再用一次。";
 "capture.taken.empty" = "最近 7 天没有拖走的卡片";
 "capture.taken.menu" = "最近拖走的（%d）";
 "capture.taken.show_all" = "全部显示…";
@@ -209,6 +215,9 @@
 "capture.taken.more" = "更多";
 "capture.taken.put_back" = "放回刘海下方";
 "capture.taken.when" = "%@拖走";
+"capture.taken.kept" = "保留 7 天";
+"capture.taken.empty_title" = "还没有拖走的卡片";
+"capture.taken.empty_hint" = "拖进别的 App 的卡片会在这里保留 7 天。";
 "capture.undo" = "撤销";
 "capture.voice.card_empty" = "语音备注 · %@";
 "capture.voice.check_mic" = "什么也没听到，检查一下麦克风";

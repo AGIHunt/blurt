@@ -53,6 +53,13 @@ final class CardRowTests: XCTestCase {
         XCTAssertEqual(CardRow.threadX(600, row: 560...700, edge: 620...820), 620, "clamped to the island's edge")
     }
 
+    func testARowWiderThanTheIslandHangsFromARod() {
+        XCTAssertFalse(CardRow.rodded(centres: [660, 720, 800], edge: 620...820), "every clasp under the island: own threads")
+        XCTAssertTrue(CardRow.rodded(centres: [480, 600, 720, 840, 940], edge: 620...820), "outer cards: a rod, no fan")
+        XCTAssertFalse(CardRow.rodded(centres: [], edge: 620...820))
+        XCTAssertFalse(CardRow.rodded(centres: [619.5, 820.5], edge: 620...820), "a hair outside the edge is still under it")
+    }
+
     func testWideRowMapsOntoTheEdgeInOrder() {
         let row: ClosedRange<CGFloat> = 350...1090, edge: ClosedRange<CGFloat> = 620...820
         let xs: [CGFloat] = [406, 530, 654, 778, 902, 1034]
