@@ -756,7 +756,6 @@ struct OnboardingView: View {
                 .font(.system(size: 15))
                 .lineLimit(3...5)
                 .focused($tryFocused)
-                .frame(maxHeight: .infinity, alignment: .topLeading)
             if m.tried {
                 VStack(alignment: .leading, spacing: 6) {
                     check(T("onboarding.try.works"))
@@ -774,6 +773,7 @@ struct OnboardingView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: OnboardingView.tryHeight, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)         // its own height, never stretched to the login row
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
             .strokeBorder(tryFocused ? Color.brandAccent : Color.primary.opacity(0.12), lineWidth: tryFocused ? 1.5 : 0.5))
