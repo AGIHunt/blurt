@@ -724,7 +724,8 @@ export class ReviewStore {
     if (s === "discarded") return; // R restores it
     if (kind === "discard" || s === "new") this.act([i], kind);
     if (this.counts().p === 0 && this.cur === this.data.items.length - 1) {
-      setTimeout(() => this.openFinish(), 250);
+      // not when an undo right after (Z within the delay) has brought a new item back
+      setTimeout(() => this.counts().p === 0 && this.openFinish(), 250);
       return;
     }
     setTimeout(() => this.nextPending(), 90);

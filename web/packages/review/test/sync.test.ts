@@ -26,6 +26,18 @@ describe("the quote", () => {
     const ops = diffOps([merged[0]], B(base));
     expect(ops[0]).toMatchObject({ op: "set", id: "AW-1", set: { quote: merged[0].quote, merged_from: ["AW-3"] } });
   });
+  it("goes back with an undone merge (M, then Z): on the page and in the file", () => {
+    const words = "Safari 上点登录没反应";
+    const base = [it2("AW-1", { quote: words })];
+    // the server has the merge: the joined quote and merged_from, both the user's
+    const server = [it2("AW-1", { quote: words + " … 价格页在手机上横着溢出了。", merged_from: ["AW-3"], _user: { quote: 1, merged_from: 1 } })];
+    const r = rebase(clone(base), B(base), clone(server), true);
+    expect(r.items[0].quote).toBe(words);
+    expect(r.items[0].merged_from).toBeUndefined();
+    expect(diffOps(r.items, B(server))).toEqual([{ op: "set", id: "AW-1", set: { quote: words }, unset: ["merged_from"] }]);
+    // an ordinary poll still takes the server's quote
+    expect(rebase(clone(base), B(base), clone(server), false).items[0].quote).toBe(server[0].quote);
+  });
 });
 
 describe("norm / statusOf", () => {

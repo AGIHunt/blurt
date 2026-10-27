@@ -85,7 +85,8 @@ export function rebase(L: Item[], B: Map<string, Item>, S: Item[], undoing: bool
     const ch = new Set<string>();
     for (const k of new Set([...Object.keys(s), ...Object.keys(b || {}), ...Object.keys(l)])) {
       if (v3 ? k === "uid" : k === "id") continue;
-      const owned = (v3 && (k === "id" || SERVER_OWNED.has(k))) || quoteOwned(k, l, b);
+      // undoing a merge (the server has the merge, the step's items don't): the quote goes back with merged_from
+      const owned = (v3 && (k === "id" || SERVER_OWNED.has(k))) || (quoteOwned(k, l, b) && (!undoing || quoteOwned(k, l, s)));
       const bv = canon(b?.[k]);
       if (owned) {
         if (canon(l[k]) === canon(s[k])) continue;

@@ -1,13 +1,15 @@
 // The review canvas in a real WKWebView with the C6 macos host: a reference implementation of the native side
 // (WKURLSchemeHandler for blurt-app://ui/*, blurt-app://session/* and blurt-app://file/*, the "blurt" message bridge, items.py user-ops)
-// plus an acceptance run against a fixture session. Not part of the app — WP5's WebHost implements the same contract.
+// plus an acceptance run against a fixture session. Not part of the app — WP5's WebHost implements the same contract
+// (protocol v3, as WebHostController: load = items.py doc SESSION, poll = items.py poll … --etag, sendOps = items.py
+// user-ops … --stdin [--confirm]; the session's items live in the Markdown store, here the scratch inbox).
 //
-//   swiftc -O Harness.swift -o harness && ./harness --html dist/index.html --session <copy of a fixture> \
-//       --scripts skills/blurt/scripts --out <dir> [--icon icon.png] [--python python3]
-// Prints one JSON line per check and a summary; exit 0 = all passed.
+//   BLURT_HOME=<scratch> BLURT_WORKSPACE=<scratch> swiftc -O Harness.swift -o harness && ./harness \
+//       --html dist/index.html --session <copy of a fixture> --scripts skills/blurt/scripts --out <dir> [--icon icon.png] [--python python3]
+// Prints one JSON line per check and a summary; exit 0 = all passed. scripts/wkwebview.mjs sets the scratch folders:
+// without them items.py would file the fixture into the user's own ~/Blurt/inbox, so the harness refuses to run.
 
 import AppKit
-import CryptoKit
 import UniformTypeIdentifiers
 import WebKit
 
@@ -31,10 +33,12 @@ do {
     }
 }
 let sessionURL = URL(fileURLWithPath: opts.session).standardizedFileURL
-
-func etagOf(_ d: Data) -> String {
-    "\"" + Insecure.SHA1.hash(data: d).map { String(format: "%02x", $0) }.joined().prefix(16) + "\""
+let environment = ProcessInfo.processInfo.environment
+guard let workspace = environment["BLURT_WORKSPACE"], environment["BLURT_HOME"] != nil else {
+    FileHandle.standardError.write(Data("set BLURT_HOME and BLURT_WORKSPACE to scratch folders (scripts/wkwebview.mjs does)\n".utf8))
+    exit(2)
 }
+let workspaceURL = URL(fileURLWithPath: workspace).standardizedFileURL
 
 /// run a skill script; returns (exit code, stdout)
 @discardableResult
@@ -56,17 +60,25 @@ func runScript(_ script: String, _ args: [String], stdin: Data? = nil) -> (Int32
     return (p.terminationStatus, String(decoding: data, as: UTF8.self))
 }
 
-func readDoc() -> (Data, [String: Any]) {
-    let d = (try? Data(contentsOf: sessionURL.appendingPathComponent("items.json"))) ?? Data("{\"items\":[]}".utf8)
-    var o = (try? JSONSerialization.jsonObject(with: d) as? [String: Any]) ?? ["items": []]
-    if let v = o["source_video"] as? String {   // like review.py: shots sessions have no recording
-        o["_video"] = FileManager.default.fileExists(atPath: sessionURL.appendingPathComponent(v).path)
-    } else { o["_video"] = false }
-    return (d, o)
+/// an items.py command's JSON answer (its last line)
+func itemsPy(_ args: [String], stdin: Data? = nil) -> [String: Any]? {
+    let (code, out) = runScript("items.py", args, stdin: stdin)
+    guard code == 0, let line = out.split(separator: "\n").last else { return nil }
+    return try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any]
 }
+/// the session's doc, as the page gets it (every item, the discarded ones too)
+func sessionDoc() -> [String: Any] {
+    itemsPy(["doc", sessionURL.path])?["doc"] as? [String: Any] ?? ["items": []]
+}
+/// an item by the agent's draft id (I-003, kept as source.local_id) or its store id (IN-3)
 func item(_ id: String) -> [String: Any]? {
-    let (_, o) = readDoc()
-    return (o["items"] as? [[String: Any]])?.first { $0["id"] as? String == id }
+    (sessionDoc()["items"] as? [[String: Any]])?.first {
+        ($0["source"] as? [String: Any])?["local_id"] as? String == id || $0["id"] as? String == id
+    }
+}
+func batchReviewed() -> Bool {
+    let d = (try? Data(contentsOf: sessionURL.appendingPathComponent("batch.json"))) ?? Data()
+    return ((try? JSONSerialization.jsonObject(with: d)) as? [String: Any])?["reviewed"] as? Bool == true
 }
 
 // MARK: - blurt-app:// scheme
@@ -78,9 +90,10 @@ final class Scheme: NSObject, WKURLSchemeHandler {
         if url.host == "ui" {
             file = url.path == "/icon.png" ? URL(fileURLWithPath: opts.icon) : URL(fileURLWithPath: opts.html)
         } else if url.host == "file" {
-            // protocol v3: blurt-app://file/<percent-encoded absolute path>; this harness only serves its session
-            let f = URL(fileURLWithPath: String(url.path.dropFirst())).standardizedFileURL
-            if f.path.hasPrefix(sessionURL.path + "/") { file = f }
+            // protocol v3: blurt-app://file/<percent-encoded absolute path>; this harness serves its session and its
+            // scratch Blurt folder (the inbox store, where the items' frames and clips are)
+            let f = URL(fileURLWithPath: url.path).standardizedFileURL
+            if [sessionURL, workspaceURL].contains(where: { f.path.hasPrefix($0.path + "/") }) { file = f }
         } else if url.host == "session" {
             let rel = String(url.path.dropFirst())   // URL.path is percent-decoded
             let f = sessionURL.appendingPathComponent(rel).standardizedFileURL
@@ -127,23 +140,22 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             var result: Any = NSNull()
             var error: String?
             switch method {
-            case "load":
-                let (d, o) = readDoc()
-                result = ["doc": o, "etag": etagOf(d)] as [String: Any]
-            case "poll":
-                let (d, o) = readDoc()
-                let e = etagOf(d)
-                result = e == params["etag"] as? String ? ["etag": e] as [String: Any] : ["doc": o, "etag": e] as [String: Any]
+            case "load", "poll":
+                let args = method == "load" ? ["doc", sessionURL.path]
+                    : ["poll", sessionURL.path, "--etag", params["etag"] as? String ?? ""]
+                if let o = itemsPy(args), o["ok"] as? Bool == true {
+                    var out: [String: Any] = ["etag": o["etag"] ?? ""]
+                    if let doc = o["doc"] { out["doc"] = doc }
+                    result = out
+                } else { error = "items.py \(method) failed" }
             case "sendOps":
                 let ops: Any = params["ops"] ?? [Any]()
                 let body = try! JSONSerialization.data(withJSONObject: ["ops": ops])
                 var args = ["user-ops", sessionURL.path, "--stdin"]
                 if params["confirm"] as? Bool == true { args.append("--confirm") }
-                let (code, out) = runScript("items.py", args, stdin: body)
-                if code == 0, let line = out.split(separator: "\n").last,
-                   let o = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
-                    result = ["ok": true, "etag": (o["etag"] as? String) ?? ""] as [String: Any]
-                } else { error = "items.py user-ops exited \(code): \(out)" }
+                if let o = itemsPy(args, stdin: body), o["ok"] as? Bool != false {
+                    result = ["ok": true, "etag": o["etag"] ?? "", "doc": o["doc"] ?? NSNull()] as [String: Any]
+                } else { error = "items.py user-ops failed" }
             default:
                 error = "unknown method \(method)"
             }
@@ -240,50 +252,55 @@ Task { @MainActor in
     let accent = await js("return getComputedStyle(document.documentElement).getPropertyValue('--sys-accent')") as? String ?? ""
     report("system accent injected", !accent.isEmpty, accent)
     _ = await js("localStorage.setItem('blurt.view','focus'); window.blurtReview.store.setView('focus')")
-    report("frame image from blurt-app://session/", await waitJS("document.querySelector('.shot.ready img')?.naturalWidth > 0"))
+    report("frame image from blurt-app://file/ (the store)", await waitJS("document.querySelector('.shot.ready img')?.naturalWidth > 0"))
     report("drag rects registered", await waitFile(3) { bridge.notes.contains { $0["method"] as? String == "registerDragRects" && (($0["params"] as? [String: Any])?["rects"] as? [Any])?.isEmpty == false } })
 
-    // keys: J J A → I-003 kept, saved through items.py user-ops with _user
-    _ = await js(key("j") + key("j"))
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-003'")
-    _ = await js(key("a"))
-    report("A keeps → items.py user-ops writes status + _user", await waitFile {
-        let i = item("I-003"); return i?["status"] as? String == "confirmed" && (i?["_user"] as? [String: Any])?["status"] != nil })
+    func at(_ id: String) async -> Bool { await waitJS("document.querySelector('.idrow > span')?.textContent === '\(id)'") }
 
-    // typing in a field (A moved on to I-004: back to I-003)
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-004'")
-    _ = await js(key("k"))
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-003'")
+    // keys: the review opens on the first new item (IN-3, the agent's I-003); A keeps it (new → to do) through
+    // items.py user-ops and goes on to the next new one (IN-5)
+    report("opens on the first new item", await at("IN-3"))
+    _ = await js(key("a"))
+    report("A keeps → items.py user-ops writes the state", await waitFile { item("I-003")?["state"] as? String == "todo" })
+
+    // typing in a field (back to IN-3), recorded as the user's
+    _ = await at("IN-5")
+    _ = await js(key("k") + key("k"))
+    _ = await at("IN-3")
     _ = await js("""
         const el = document.querySelector('textarea[data-k="why"]'); el.focus();
         Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(el, 'typed in WKWebView');
         el.dispatchEvent(new Event('input', {bubbles: true})); el.blur();
         """)
-    report("field edit autosaves", await waitFile { item("I-003")?["why"] as? String == "typed in WKWebView" })
+    report("field edit autosaves", await waitFile {
+        let i = item("I-003"); return i?["why"] as? String == "typed in WKWebView" && (i?["_user"] as? [String: Any])?["why"] != nil })
 
-    // IME: WebKit's committing Enter (keyCode 229) must not keep
-    _ = await js(key("k"))
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-002'")
+    // IME: WebKit's committing Enter (keyCode 229) must not keep the new item it lands on (IN-5)
+    _ = await js(key("j") + key("j"))
+    _ = await at("IN-5")
+    let keptBefore = await js("return document.querySelectorAll('.qi.keep').length") as? Int ?? -1
     _ = await js("""
         const e = new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true});
         Object.defineProperty(e, 'keyCode', {get: () => 229}); document.body.dispatchEvent(e);
         """)
     try? await Task.sleep(nanoseconds: 800_000_000)
     let keptCount = await js("return document.querySelectorAll('.qi.keep').length") as? Int
-    report("IME Enter (keyCode 229) does not keep", item("I-002")?["_user"] == nil && keptCount == 1, "kept rows: \(keptCount ?? -1)")
+    let stayed = await at("IN-5")
+    report("IME Enter (keyCode 229) does not keep", item("I-005")?["state"] as? String == "new" && keptCount == keptBefore && stayed,
+           "kept rows: \(keptBefore) → \(keptCount ?? -1)")
 
     // the agent adds frames: shown within 3 s
-    _ = await js(key("j"))
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-003'")
+    _ = await js(key("k") + key("k"))
+    _ = await at("IN-3")
     let before = await js("return document.querySelectorAll('.strip .th img').length") as? Int ?? -1
     let t0 = Date()
     runScript("items.py", ["set-frames", sessionURL.path, "I-003", "frames/I-003-1.jpg@3.3", "frames/I-002-1.jpg@3.6"])
     let shown = await waitJS("document.querySelectorAll('.strip .th img').length === \(before + 1)", 3)
     report("set-frames shows up within 3 s", shown, String(format: "%.2fs", Date().timeIntervalSince(t0)))
 
-    // the clip plays from blurt-app://session/ (range requests)
+    // the clip plays from blurt-app://file/ (range requests)
     _ = await js(key("k") + key("k"))
-    _ = await waitJS("document.querySelector('.idrow > span')?.textContent === 'I-001'")
+    _ = await at("IN-1")
     _ = await js(key("ArrowRight") + key("ArrowRight"))
     report("video loads through the scheme handler", await waitJS("document.querySelector('#mediaBox video')?.readyState >= 1", 6),
            await js("const v = document.querySelector('#mediaBox video'); return v ? v.readyState + ' ' + v.currentSrc + ' ' + (v.error && v.error.code) : 'no video'") ?? "")
@@ -305,7 +322,7 @@ Task { @MainActor in
     _ = await js(key("Enter", ", metaKey: true"))
     _ = await waitJS("document.querySelector('#modalBg.show #mOk')")
     _ = await js("document.querySelector('#mOk').click()")
-    report("confirm reaches items.py --confirm", await waitFile { readDoc().1["reviewed"] as? Bool == true })
+    report("confirm reaches items.py --confirm", await waitFile { batchReviewed() })
     report("done screen + confirmed notification", await waitJS("document.querySelector('#done.show')") &&
            bridge.notes.contains { $0["method"] as? String == "confirmed" })
 
