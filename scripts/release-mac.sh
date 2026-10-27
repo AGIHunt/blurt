@@ -177,6 +177,10 @@ ditto -c -k --sequesterRsrc --keepParent "$APP" "$UPD/$UZIP"
 GA=("$SPK/generate_appcast" --download-url-prefix "$REPO_URL/releases/download/$TAG/" --link "$REPO_URL")
 [ -n "$KEYFILE" ] && GA+=(--ed-key-file "$KEYFILE")
 "${GA[@]}" "$UPD"
+# generate_appcast gives every archive in the directory this release's prefix; an earlier version's full zip lives in
+# its own release (v1.0.2's appcast pointed 1.0.0 and 1.0.1 at …/v1.0.2/, where nothing was attached)
+sed -E -i '' "s#releases/download/$TAG/Blurt-([0-9]+\.[0-9]+\.[0-9]+)\.zip#releases/download/v\1/Blurt-\1.zip#g" "$UPD/appcast.xml"
+sed -E -i '' "s#releases/download/v$VERSION/Blurt-$VERSION\.zip#releases/download/$TAG/Blurt-$VERSION.zip#g" "$UPD/appcast.xml"
 cp "$UPD/$UZIP" "$UPD/appcast.xml" "$OUT/"
 cp "$UPD"/*.delta "$OUT/" 2>/dev/null || true
 SIG=$(sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p' "$OUT/appcast.xml" | head -1)
