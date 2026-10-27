@@ -510,8 +510,16 @@ def cap_threads(n: int) -> None:
         os.environ[k] = str(n)
 
 
+# MLX's cache of freed buffers, kept for reuse. It used to be min(limit / 4, 2 GB): the warm servers then held what
+# their warm-up had freed (polish's two prompt prefills: ~1.5 GB) until the first request — 4.6 GB instead of 3.1 GB
+# for Gemma 4 E2B. 64 MB costs 2.4 ms a polish request with the same output (0 MB: +68 ms); docs/design/dictation.md
+# §Memory.
+MLX_CACHE_BYTES = 64 << 20
+
+
 def cap_mlx_memory(fraction: float) -> int | None:
-    """Keep MLX (which otherwise grows its buffer cache to most of unified memory) inside fraction × RAM."""
+    """Keep MLX (which otherwise grows its buffer cache to most of unified memory) inside fraction × RAM, and its cache
+    of freed buffers small (MLX_CACHE_BYTES)."""
     try:
         import mlx.core as mx
     except ImportError:
@@ -520,7 +528,7 @@ def cap_mlx_memory(fraction: float) -> int | None:
     if not total:
         return None
     limit = int(total * fraction)
-    for fn, val in (("set_memory_limit", limit), ("set_cache_limit", min(limit // 4, 2 << 30))):
+    for fn, val in (("set_memory_limit", limit), ("set_cache_limit", min(limit // 4, MLX_CACHE_BYTES))):
         f = getattr(mx, fn, None) or getattr(getattr(mx, "metal", None), fn, None)
         if f:
             try:
@@ -1141,6 +1149,7 @@ class SenseVoice:
 class Qwen3Onnx:
     """Qwen3-ASR 0.6B int8 on the CPU through sherpa-onnx: 30 languages on any OS."""
     max_chunk = 20
+    max_terms = dictation_vocab.MAX_TERMS     # its hotwords
 
     def __init__(self, args):
         import sherpa_onnx
@@ -1190,10 +1199,27 @@ class MlxBackend:
         return self._ex.submit(self.decode, np.asarray(x, np.float32)).result()
 
     def close(self):
+        try:
+            self._ex.submit(self.release).result(timeout=10)   # before the next model loads, not racing it
+        except Exception:  # noqa: BLE001 — a decode still running: the process ending frees it all the same
+            pass
         self._ex.shutdown(wait=False)
+
+    def release(self):
+        """Drop this backend's model and MLX's buffer cache (on the MLX thread), so a replacement doesn't sit beside it."""
+        try:
+            cache = getattr(getattr(self, "holder", None), "_cache", None)
+            if cache is not None and hasattr(cache, "_data"):
+                cache._data.clear()
+            import mlx.core as mx
+            getattr(mx, "clear_cache", None) and mx.clear_cache()
+        except Exception:  # noqa: BLE001 — best effort: the process ending frees it all the same
+            pass
 
 
 class MlxWhisper(MlxBackend):
+    max_terms = dictation_vocab.MAX_TERMS     # its prompt (~224 tokens)
+
     def load(self, args):
         try:
             import mlx.core as mx
@@ -1280,6 +1306,12 @@ class Qwen3Mlx(MlxBackend):
             raise Fail("mlx-qwen3-asr not installed (uv run --with mlx-qwen3-asr …)", "deps", 4)
         self.m, self.mx = mlx_qwen3_asr, mx
         self.repo = self.model = args.model or "mlx-community/Qwen3-ASR-0.6B-8bit"
+        # the package keeps up to 4 loaded models in its own LRU: a server that switched models (dictation ↔ a voice
+        # note's pick) held both — about 1 GB more than the one it uses. One is all a backend ever needs.
+        cache = getattr(_ModelHolder, "_cache", None)
+        if cache is not None and hasattr(cache, "set_max_entries"):
+            cache.set_max_entries(1)
+        self.holder = _ModelHolder
         _ModelHolder.get(self.repo, dtype=mx.float16)  # load now, not inside the first chunk
         self.context = args.prompt or ""
         self.base_context = self.context
@@ -1588,12 +1620,24 @@ def hw_kind(hw: dict) -> str:
     return "nvidia" if hw["gpu"].get("kind") == "nvidia" else "cpu"
 
 
-def preference(kind: str, tier: str, purpose: str, sv_ok: bool, sv_good: bool) -> list[str]:
+QWEN_FIRST_LANGS = ("zh", "en")   # where Qwen3-ASR measured best on real speech; Cantonese (36–39 % on the `say`
+#                                  samples), Japanese, Korean and French keep the table's choice
+
+
+def preference(kind: str, tier: str, purpose: str, sv_ok: bool, sv_good: bool, qwen_ok: bool = False) -> list[str]:
     """Models to try, best first (the first that fits and speaks every language wins). sv_ok: SenseVoice speaks
-    every language; sv_good: and its reference error rate is ≤ 5 % in each (not Korean: 10 % vs Whisper's 0.5 %)."""
+    every language; sv_good: and its reference error rate is ≤ 5 % in each (not Korean: 10 % vs Whisper's 0.5 %);
+    qwen_ok: every language is one of QWEN_FIRST_LANGS."""
     multi = {"apple": {"pro": [TURBO, TURBO_Q4], "standard": [TURBO, TURBO_Q4], "light": [TURBO_Q4], "minimal": []},
              "nvidia": {"pro": [CT2, QWEN_CPU], "standard": [CT2, QWEN_CPU], "light": [QWEN_CPU], "minimal": []},
              "cpu": {"pro": [QWEN_CPU], "standard": [QWEN_CPU], "light": [QWEN_CPU], "minimal": []}}[kind][tier]
+    # Apple Silicon with 16 GB or more: one model for every job — dictation, voice notes, live captions, recordings
+    # (v1.0.2). Qwen3-ASR on MLX was the most accurate on real speech in every set measured (AISHELL-1 NE terms, ASCEND
+    # zh-en, FLEURS zh, LibriSpeech, contextual earnings calls: docs/design/asr-benchmark.md §Real speech) and the only
+    # one that takes the user's words; one model also means one warm copy instead of three (the 24 GB Mac that
+    # swapped held a Qwen, a SenseVoice and a Whisper).
+    if kind == "apple" and tier in ("pro", "standard") and qwen_ok:
+        return ([QWEN_MLX_17] if tier == "pro" else []) + [QWEN_MLX] + multi + ([SV] if sv_ok else [])
     # on a CPU the multilingual model is 10x slower and no more accurate in SenseVoice's languages
     prefer_sv = sv_ok if kind == "cpu" else sv_good
     fallback = [SV] if sv_ok else []
@@ -1661,7 +1705,7 @@ def recommend(languages: list[str] | None = None, purpose: str = "batch", hw: di
     sv = entry(SV)
     sv_ok = all(speaks(sv, x) for x in langs)
     sv_good = sv_ok and all((sv.get("error_ref") or {}).get(x, 0) <= 0.05 for x in langs)
-    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good)
+    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good, all(x in QWEN_FIRST_LANGS for x in langs))
     bench = _bench_results()
     pick = None
     for mid in dict.fromkeys(order):
@@ -1772,7 +1816,10 @@ def make_backend(name: str, a, purpose: str = "batch"):
             if os.environ.get("BLURT_NO_DOWNLOAD"):
                 raise Fail(f"{m['id']} is not downloaded", "model_missing")
             install_model(m)
-    return BACKENDS[name](a)
+    b = BACKENDS[name](a)
+    if name == "qwen3-asr-mlx" and purpose in ("batch", "live"):
+        b.max_chunk = 15      # a segment per chunk: a recording's timestamps (frames, items) stay this fine
+    return b
 
 
 def model_label(name: str, backend, a) -> str | None:
@@ -2114,18 +2161,26 @@ class NoteEngine:
         a = argparse.Namespace(backend=None, model=None, model_id=model_id, language=language, prompt=None)
         name = resolve_backend(a, "note")
         if self.backend is None or a.model_id != self.model_id or (language or None) != getattr(self, "language", None):
+            if self.backend is not None and a.model_id != self.model_id and hasattr(self.backend, "close"):
+                self.backend.close()     # its model goes before the next one loads (a language change keeps it)
+            elif self.backend is not None and hasattr(self.backend, "_ex"):
+                self.backend._ex.shutdown(wait=False)   # the same model: only its thread goes
             self.backend = make_backend(name, a, "note")
             self.name, self.model_id, self.language = name, a.model_id, language or None
         return self
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
-             purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None) -> dict:
+             purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None,
+             app: str | None = None) -> dict:
         """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
         them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
         `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
         the sentence.
         hint: the target app's window title and the text around the cursor — words seen there are listed to the model
         first.
+        app: the name of the app the text goes into ("飞书"), named to the model before the words — what the speech is
+        likely about where two words sound the same (飞书会话 vs 绘画: 4 → 8 of 12 synthetic takes right). Only for a
+        backend that takes words (Qwen3-ASR's context); nothing else is said about the app.
         stop: an interim request (the live words of dictation and of notes) — a callable that says another request is
         waiting; the decode then raises Interrupted. An interruptible backend looks at it between steps; a quick one
         (`quick_decode`: SenseVoice, one ~0.1 s pass) is asked once before and then decodes whole — a waiting final
@@ -2150,8 +2205,16 @@ class NoteEngine:
         terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
         biased = False
         if hasattr(self.backend, "set_vocab"):
-            limit = min(PRIOR_TERMS, dictation_vocab.QWEN_MAX_TERMS) if prior else dictation_vocab.QWEN_MAX_TERMS
-            biased = self.backend.set_vocab(dictation_vocab.ranked(terms, prior or "", hint or "", limit))
+            # the most relevant `cap` of them: ranked() cuts by relevance, then names them in a fixed order — a
+            # backend that took fewer than it was given would cut alphabetically (Whisper's 40 of 64: a third of the
+            # right words gone, contextual-earnings22)
+            cap = getattr(self.backend, "max_terms", dictation_vocab.QWEN_MAX_TERMS)
+            limit = min(PRIOR_TERMS, cap) if prior else cap
+            use = dictation_vocab.ranked(terms, prior or "", hint or "", limit)
+            name = " ".join(str(app or "").split())[:40]
+            if name and not any(t["term"] == name for t in use):
+                use = [{"term": name, "sounds_like": [], "source": "app", "hits": 0}] + use[:max(0, limit - 1)]
+            biased = self.backend.set_vocab(use)
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
         retried = False
@@ -2318,7 +2381,8 @@ def cmd_serve(a):
                         # a dictation (final or interim) never waits for a download, whatever the client sent
                         with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
                             resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
-                                            req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop)
+                                            req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop,
+                                            app=req.get("app"))
                         if interim:
                             resp["interim"] = True
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)

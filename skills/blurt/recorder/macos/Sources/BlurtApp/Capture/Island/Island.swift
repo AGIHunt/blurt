@@ -123,6 +123,8 @@ final class Island: NSObject, IslandHosting {
     private var vis = Spring(0, response: 0.3, damping: 1)       // capsule screens: shown or not
     private var bumpStart: CFTimeInterval = 0
     private var shapeMoving = false
+    /// The outline last drawn (its path and shadow path are made again only when it changes).
+    private var lastOutline: (rect: CGRect, radius: CGFloat, notch: Bool, lifted: Bool)?
 
     // MARK: state
 
@@ -365,9 +367,12 @@ final class Island: NSObject, IslandHosting {
 
     /// The screen under the pointer. Scripted visual checks (test commands only) can pin the island instead:
     /// BLURT_ISLAND_SCREEN=notch → the screen with a notch (else the first), whatever the pointer does.
-    private func pointerScreen() -> NSScreen? {
+    private static let pinnedToNotch: Bool = {
         let env = ProcessInfo.processInfo.environment
-        if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_ISLAND_SCREEN"] == "notch" {
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_ISLAND_SCREEN"] == "notch"
+    }()
+    private func pointerScreen() -> NSScreen? {
+        if Island.pinnedToNotch {
             if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) { return n }
             return NSScreen.screens.first
         }
@@ -430,9 +435,24 @@ final class Island: NSObject, IslandHosting {
             build()
             let d = MotionDriver(view: v)
             d.tick = { [weak self] dt in self?.frame(dt) ?? false }
-            d.idle = { [weak self] in self?.poll(CACurrentMediaTime()) }
+            // at rest the poll (pointer, hover) also keeps a resting toast's clock: a toast that just sits there needs no
+            // frames; the next one (or none) wakes the shape
+            d.idle = { [weak self] in
+                guard let self else { return }
+                let now = CACurrentMediaTime()
+                self.poll(now)
+                guard self.toastNow != nil || !self.toastQ.waiting.isEmpty else { return }
+                let before = self.toastQ.current?.order
+                self.tickToasts(now)
+                self.content.tick(now)
+                if self.toastQ.current?.order != before { self.wake() }
+            }
             d.idleRate = 1.0 / 15
             driver = d
+            // Peep in the ear pauses while the panel can't be seen (another space's full-screen app, a sleeping screen)
+            NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: p, queue: .main) { [weak self] _ in
+                self?.earsSeen()
+            }
         }
         let moved = screen != s
         screen = s
@@ -580,10 +600,20 @@ final class Island: NSObject, IslandHosting {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let rect = CGRect(x: shapeMinX, y: geo.top, width: w.value, height: max(1, h.value))
-        shape.path = Island.path(rect, radius: r.value, shoulders: geo.notch)
-        shape.opacity = Float(max(0, min(1, vis.value)))
         let lifted = h.value > geo.row + 8
-        shape.shadowOpacity = lifted ? Float(min(0.35, (h.value - geo.row) / 120)) : 0
+        // set only what changed: a new path (and a shadow along it, so the shadow isn't found from the pixels) only
+        // when the outline moves
+        let outline = (rect: rect, radius: r.value, notch: geo.notch, lifted: lifted)
+        if lastOutline.map({ $0 != outline }) ?? true {
+            lastOutline = outline
+            let p = Island.path(rect, radius: r.value, shoulders: geo.notch)
+            shape.path = p
+            shape.shadowPath = lifted ? p : nil
+        }
+        let opacity = Float(max(0, min(1, vis.value)))
+        if shape.opacity != opacity { shape.opacity = opacity }
+        let shadow: Float = lifted ? Float(min(0.35, (h.value - geo.row) / 120)) : 0
+        if shape.shadowOpacity != shadow { shape.shadowOpacity = shadow }
         if bump != 1 {
             let c = CGPoint(x: rect.midX, y: geo.top + h.value / 2)
             var tr = CATransform3DMakeTranslation(c.x, c.y, 0)
@@ -600,10 +630,16 @@ final class Island: NSObject, IslandHosting {
         // the open content: from the top of the shape (home and the drawer use the ears row, beside the notch),
         // revealed as it grows, clipped to it — only the bottom corners round
         let cw = content.preferredWidth
-        clip.frame = NSRect(x: rect.minX, y: geo.top, width: rect.width, height: rect.height)
-        clip.layer?.cornerRadius = min(r.value, rect.height / 2)
-        clip.layer?.maskedCorners = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
-        content.frame = NSRect(x: geo.cx - cw / 2 - rect.minX, y: 0, width: cw, height: Island.maxH)
+        let clipFrame = NSRect(x: rect.minX, y: geo.top, width: rect.width, height: rect.height)
+        if clip.frame != clipFrame { clip.frame = clipFrame }
+        let corner = min(r.value, rect.height / 2)
+        let corners: CACornerMask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        if let l = clip.layer, l.cornerRadius != corner || l.maskedCorners != corners {
+            l.cornerRadius = corner
+            l.maskedCorners = corners
+        }
+        let contentFrame = NSRect(x: geo.cx - cw / 2 - rect.minX, y: 0, width: cw, height: Island.maxH)
+        if content.frame != contentFrame { content.frame = contentFrame }
         let grown = (h.value - geo.row) / max(1, content.fittingHeight - geo.row)
         let showing = open || drawer != nil || toastNow != nil
         let reveal = showing ? max(0, min(1, (grown - 0.55) / 0.35)) : 0
@@ -619,9 +655,14 @@ final class Island: NSObject, IslandHosting {
         // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.
         if shapeMoving && !moving { content.redrawAll() }
         shapeMoving = moving
-        return moving || left.animating || right.animating || toastNow != nil || !toastQ.waiting.isEmpty || isRecording
+        // the shape's springs and a fading glow at the display's rate; the ears (dots, level, clock: the mic's levels
+        // come 20 times a second, Peep's frames 30) at 30 Hz. A resting toast needs no frames (the idle poll keeps its
+        // clock), and with nothing at all to move the link stops.
+        let small = left.animating || right.animating || isRecording
             || VoiceInput.shared.active || Dictation.shared.busy || dictationMoment || momentUntil > 0 || glowAmount > 0 || newsUntil > 0
-            || helloUntil > 0 || testWorking != nil
+            || helloUntil > 0 || testWorking != nil || testPeep != nil
+        driver?.maxFPS = moving || (glowAmount > 0 && glowAmount < 1) ? 120 : 30
+        return moving || small
     }
 
     /// Dictation or a voice note hears you (not while the mic is still starting, not while recording).
@@ -674,12 +715,34 @@ final class Island: NSObject, IslandHosting {
 
     // MARK: ears
 
+    /// Peep is in the left ear, where it can be seen.
+    private var earShowsPeep: Bool {
+        guard panel?.isVisible == true, capsuleVisible else { return false }
+        switch left.content {
+        case .hello, .peep, .peepLevel, .thinking, .sorted: return true
+        default: return false
+        }
+    }
+
+    /// Peep in an ear pauses while the island can't be seen (its panel covered or off, the capsule gone).
+    private func earsSeen() {
+        let unseen = !(panel?.occlusionState.contains(.visible) ?? false) || !capsuleVisible
+        for slot in [left, right] {
+            for case let m as MascotLayer in slot.layer.sublayers ?? [] where m.unseen != unseen { m.unseen = unseen }
+        }
+    }
+
     private var agentAlert: Job? {
         JobStore.shared.active.first { $0.type == .agent && $0.agent?.status == .waitingInput }
     }
 
     func updateEars() {
-        MenuGlyph.shared.sync()          // the menu-bar Peep reads the same state (talking, listening, thinking)
+        defer {
+            // the menu-bar Peep reads the same state (talking, listening, thinking); it holds still while Peep is here
+            MenuGlyph.shared.held = earShowsPeep
+            MenuGlyph.shared.sync()
+            earsSeen()
+        }
         if let done = RecordingDone.text {
             // the take just ended: the dot and time turn into the ok check and its length for 1.6 s (IslandRecording)
             left.set(.finished(done))

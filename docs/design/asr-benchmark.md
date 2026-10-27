@@ -125,9 +125,47 @@ people with more than one language in `asr.languages`. When a chunk produces too
 detected and each language run is decoded separately. Mono-language accuracy and speed are unchanged (re-measured).
 Whisper's ASCII commas in Chinese and Japanese text are converted to full-width marks.
 
+## Real speech (v1.0.2)
+
+The `say` samples above are synthetic, so this round used human speech from public datasets.
+
+**Setup:**
+- Seed 0, sets of 120–200 utterances each.
+- Scoring: punctuation stripped, full-width characters folded, Traditional Chinese converted to Simplified, Chinese numerals reconciled.
+- Rare terms were tested three ways, through Blurt's own vocabulary path (`dictation_vocab.ranked` → `set_vocab`):
+  - with no context;
+  - with the right terms in the context;
+  - with the right terms plus 50 distractors.
+
+Results are error % / term recall %:
+
+| Set | Qwen3-ASR 0.6B 8-bit | 0.6B 4-bit | 1.7B 8-bit | SenseVoice | Whisper turbo |
+|---|---|---|---|---|---|
+| AISHELL-1 NE (names), no context | 6.0 / 62 | 7.2 / 54 | 4.5 / 66 | 7.6 / 48 | 12.3 / 42 |
+| … with the right terms | **2.6 / 94** | 3.9 / 87 | **1.7 / 95** | — (no context) | 7.7 / 87 |
+| … right terms + 50 distractors | 4.6 / 76 | 6.0 / 66 | 2.9 / 84 | — | 10.8 / 57 |
+| contextual Earnings-22 (en), no context → terms | 14.5 / 50 → 12.6 / 77 | 15.2 / 47 → 14.1 / 67 | 12.5 / 56 → 10.6 / 85 | 19.4 / 30 | 16.1 / 58 → 15.0 / 81 |
+| ASCEND (zh-en mixed) | 14.5 | 15.5 | **11.8** | 16.3 | 20.5 |
+| AISHELL-1 | 1.8 | 2.2 | **1.4** | 2.9 | 5.9 |
+| FLEURS zh | 4.1 | 4.4 | **3.5** | 4.8 | 5.2 |
+| LibriSpeech clean / other | 2.8 / 4.8 | 3.2 / 4.8 | **2.2 / 3.7** | 4.6 / 8.4 | 2.5 / 3.7 |
+| max RSS | 1.2 GB | 0.9 GB | 2.6 GB | 1.0 GB | 2.0 GB |
+
+What follows from these numbers:
+
+- **Qwen3-ASR wins.** It was the most accurate on every Chinese and mixed set, and it is the only model whose terms list moves recall by 27–32 points. Even with 50 distractor terms, it still added 14–19 points.
+- **The cost of the terms list.** It costs about 20 ms per utterance and no extra memory. With distractors in the list, no wrong term was inserted into Chinese text.
+- **The 4-bit 0.6B isn't worth it.** It saves 0.3 GB but loses up to 8 points of recall.
+- **Polish can't do the terms job.**
+  - Run on the same output, it didn't recover terms, even with the terms list forced into its prompt.
+  - Its job is fillers and punctuation, which these references keep, so its error-rate numbers here are not a verdict on it.
+- **App context.** In synthetic takes, naming the front app ("飞书") to the speech model doubled 会话 over 绘画: 4 → 8 of 12. Polish fixed none of them.
+
+So on Apple Silicon with 16 GB or more, a user who speaks Chinese and/or English gets one Qwen3-ASR for every job: the 1.7B on 32 GB and more, the 0.6B below. A recording's chunks are 15 s, which is the granularity of its timestamps. On the `say` samples the MLX builds measured zh 0–0.7 %, en 1.9 %, ja 1.3–1.7 %, ko 0–0.5 %, fr 0.8–4.2 %, but Cantonese 36–39 %: Cantonese, Japanese, Korean and French speakers keep the table's choice (`QWEN_FIRST_LANGS`). Scripts, data manifests and per-utterance outputs are in the v1.0.2 work notes.
+
 ## The choice per machine
 
-`transcribe.py recommend` encodes the following (`preference()` in transcribe.py):
+`transcribe.py recommend` encodes the following (`preference()` in transcribe.py). **v1.0.2:** on Apple Silicon pro and standard, when every language is zh or en, every job uses Qwen3-ASR (1.7B on pro, else 0.6B), and the table's choices apply otherwise.
 
 | machine | recordings | live captions | voice notes |
 |---|---|---|---|
@@ -156,5 +194,5 @@ measured peak memory fits within 40 % of RAM.
   onnxruntime. The pane labels speeds on those machines as estimates until the user presses "Measure". Windows and
   Linux validation is planned for the VM round.
 - Real microphones, noise, accents and spontaneous speech.
-- Cantonese (yue). The bench text is ready (Sinji voice) but wasn't run in this round.
+- Cantonese (yue) beyond the `say` samples: Qwen3-ASR measured 36–39 % there (v1.0.2), SenseVoice and Whisper not yet.
 - Chinese dialects, where Qwen3-ASR claims 22, and languages outside the seven tested.

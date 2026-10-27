@@ -1624,8 +1624,8 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 | Tier | Macs | Cap | Default |
 |---|---|---:|---|
 | pro | Apple silicon ≥ 32 GB | 8 GB | Gemma 4 E2B (Gemma 4 E4B and Qwen3.5 4B offered) |
-| standard | 16–24 GB | 4 GB | Gemma 4 E2B (3.5 GB peak) |
-| light | 8 GB | 2 GB | Qwen3 1.7B (2.1 GB peak; MLX's limit is relaxed, so it slightly overshoots instead of failing) |
+| standard | 16–24 GB | 4 GB | Gemma 4 E2B (2.2 GB peak since v1.0.2, §Memory; 3.5 GB before) |
+| light | 8 GB | 2 GB | Gemma 3 1B since v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
 | minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
 
 **Memory together (arch098, v0.9).** What a 16 GB Mac holds while it dictates is the sum: dictation's speech model,
@@ -1637,6 +1637,39 @@ first, a one-off process). Polish stays Gemma 4 E2B: nothing lighter was good en
 20 % of the time, Qwen3 1.7B 24 %). The bigger saving is time: every warm server now ends after 10 idle minutes and
 with Blurt (§Polish), where the model used to stay up to 30 minutes and the process up to 4 hours. Only automatic
 choices change: a model the user picked (`asr.models`, `record.dictation.asr_model`, `polish_model`) stays.
+
+### Memory (v1.0.2)
+
+**Field report.** A colleague's 24 GB Mac had 10.6 GB compressed and 17 GB of swap. Blurt's two warm servers held about 5.6 GB, and the notch stuttered. Measured on an M5 Max, footprint of the warm server, Gemma 4 E2B, 68 eval and over-delete cases, output compared byte for byte:
+
+| | Polish server | Cost |
+|---|---:|---|
+| v1.0.1 | 4.6 GB after load, 3.1 GB after the first request | — |
+| MLX cache of freed buffers capped at 64 MB (`MLX_CACHE_BYTES`; it was min(limit / 4, 2 GB)) | 3.1 GB from the start | +2.4 ms a request, same output |
+| … and Gemma 4's per-layer embedding table read from its file (`CPUEmbedding`, an np.memmap gathered on the CPU) | **2.0 GB** | +40 ms a request, same output |
+
+Why each change helped:
+
+- **The cache cap.** The two prompt prefills freed about 1.5 GB of buffers at warm-up, and MLX kept them in its cache until the first generate.
+- **The per-layer embedding table.** It is 1.26 GB of E2B's 2.48 GB of weights. A token reads one row of it, and in Metal memory it could only be compressed or swapped. Mapped from the file, its pages are dropped for free under pressure.
+- **The wired limit.** mlx-lm raises it for each generate and puts it back afterwards. Changing it made no difference.
+
+**Smaller models.** A sweep under the same conditions found nothing that holds up as well as E2B:
+
+| Model | Fallback, eval | Fallback, 18 zh / zh-en cases | Footprint |
+|---|---:|---:|---:|
+| Gemma 4 E2B | 2.2 % | 0 | 3.1 GB |
+| Gemma 3 1B QAT | 17 % | 6 | 1.3 GB |
+| Qwen3.5 2B | 17 % | 2 | 1.6 GB |
+| Hunyuan 1.8B | 37 % | 12 | 1.5 GB |
+| MiniCPM5 1B | 35 % | 9 | 1.0 GB |
+| LFM2.5 1.2B | 61 % | 16 | 1.0 GB |
+
+**Speech server.** mlx-qwen3-asr kept up to 4 loaded models in its own LRU. A server that switched between dictation's model and a voice note's held both. A backend now keeps one, and a switch frees the old model first.
+
+**One speech model.** For Chinese and English speakers on Apple Silicon with 16 GB or more, dictation, voice notes, live captions and recordings now share one Qwen3-ASR: the 1.7B from 32 GB, the 0.6B below (asr-benchmark.md §Real speech). One warm copy replaces a Qwen, a SenseVoice and a Whisper, and voice notes now get the user's words too. Settings → Speech shows them as one Speech recognition row, and every row's pop-up starts with Automatic. The library's Use gives a model every job.
+
+**Memory pressure.** On a warning or critical event (`DispatchSource.makeMemoryPressureSource`), the app asks each idle warm server to exit (App/MemoryPressure.swift). A take in progress keeps its servers. The launch prewarm skips for 10 minutes after such an event.
 
 Nothing is downloaded until the user presses **Download** in Settings → Speech → Dictation. The size is shown, and the download
 comes from Hugging Face, or from ModelScope when the download mirror is on (it mirrors mlx-community, and is fast from

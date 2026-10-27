@@ -933,6 +933,64 @@ def peak_memory_mb() -> float | None:
 
 
 # ------------------------------------------------------------------ the model
+class CPUEmbedding:
+    """A quantized embedding table read from its safetensors file (np.memmap) and gathered on the CPU, the rows then
+    dequantized as mlx's own QuantizedEmbedding does. For Gemma 4's per-layer embeddings: 1.26 GB of E2B's 2.48 GB of
+    weights, of which a token reads one row. In Metal memory it was 1.26 GB the system can only compress or swap;
+    mapped from the file, the pages a dictation doesn't use cost nothing and can be dropped under pressure. Same
+    output, byte for byte (86 eval cases); +40 ms a request (the token ids come back to the CPU each step)."""
+
+    def __init__(self, files: list[Path], prefix: str, group_size: int, bits: int, mode: str):
+        import numpy as np
+        self.group_size, self.bits, self.mode, self.t = group_size, bits, mode, {}
+        kinds = {"U32": np.uint32, "U8": np.uint8, "BF16": np.uint16, "F16": np.float16, "F32": np.float32}
+        for f in files:
+            with open(f, "rb") as fh:
+                n = int.from_bytes(fh.read(8), "little")
+                header = json.loads(fh.read(n))
+            for k, v in header.items():
+                for part in ("weight", "scales", "biases"):
+                    if k.endswith(f"{prefix}.{part}") and v.get("dtype") in kinds:
+                        start = v["data_offsets"][0]
+                        self.t[part] = (np.memmap(f, dtype=kinds[v["dtype"]], mode="r", offset=8 + n + start,
+                                                  shape=tuple(v["shape"])), v["dtype"])
+        if "weight" not in self.t or "scales" not in self.t:
+            raise ValueError(f"{prefix} not found")
+
+    def _rows(self, part: str, ids):
+        import mlx.core as mx
+        import numpy as np
+        mm, kind = self.t[part]
+        x = mx.array(np.ascontiguousarray(mm[ids]))
+        return x.view(mx.bfloat16) if kind == "BF16" else x
+
+    def __call__(self, x):
+        import mlx.core as mx
+        import numpy as np
+        ids = np.array(x)
+        return mx.dequantize(self._rows("weight", ids), scales=self._rows("scales", ids),
+                             biases=self._rows("biases", ids) if "biases" in self.t else None,
+                             group_size=self.group_size, bits=self.bits, mode=self.mode)
+
+
+def offload_per_layer_embeddings(model, path: Path) -> bool:
+    """Gemma 4 (lazily loaded, not evaluated yet): its per-layer embedding table goes to CPUEmbedding, so it never
+    reaches Metal memory. False (and the model untouched) for any other model, or a layout this doesn't know — an
+    mlx-lm update that moves it (tests/test_polish.py pins the output against the plain load)."""
+    try:
+        lm = model.language_model.model
+        emb = lm.embed_tokens_per_layer
+        if not hasattr(emb, "bits") or not hasattr(emb, "group_size"):
+            return False          # not quantized
+        cpu = CPUEmbedding(sorted(Path(path).glob("*.safetensors")), "embed_tokens_per_layer", emb.group_size,
+                           emb.bits, getattr(emb, "mode", "affine"))
+    except (AttributeError, ValueError, OSError, KeyError):
+        return False
+    del lm["embed_tokens_per_layer"]
+    object.__setattr__(lm, "embed_tokens_per_layer", cpu)
+    return True
+
+
 class Engine:
     """One polish model, loaded once (in-process `run` / `eval`, or kept warm by `serve`). The fixed part of each
     prompt (rules + examples: Light's, Structured's) is prefilled once and reused, so a request only pays for its own
@@ -997,7 +1055,10 @@ class Engine:
         ensure_mlx()
         cap_memory()
         from mlx_lm import load
-        self.model, self.tok = load(str(path))
+        self.model, self.tok = load(str(path), lazy=True)
+        self.offloaded = offload_per_layer_embeddings(self.model, path)
+        import mlx.core as mx
+        mx.eval(self.model.parameters())
         self.model_id = model_id
         for mode in self.MODES:
             self._prefill(mode)

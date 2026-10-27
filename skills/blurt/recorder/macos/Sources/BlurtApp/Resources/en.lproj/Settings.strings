@@ -286,7 +286,7 @@
 "settings.kw.dictation.start_sound" = "sound, beep, chime";
 "settings.kw.dictation.mic" = "microphone, mic, bluetooth, AirPods, headset, input";
 "settings.kw.dictation.models" = "speech model, polish model, recognition, ASR, LLM, Qwen, Gemma, download";
-"settings.kw.speech.auto" = "automatic, recommended, choose model";
+"settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "dictation model, speech model, download, Qwen";
 "settings.kw.speech.polish" = "polish model, tidy, punctuation, Gemma";
 "settings.kw.speech.languages" = "language, languages, multilingual";

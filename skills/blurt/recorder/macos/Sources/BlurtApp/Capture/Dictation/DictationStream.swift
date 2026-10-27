@@ -272,7 +272,7 @@ final class DictationStream {
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
-                                          hint: lock.locked { context }?.hint ?? "",
+                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
                                           audioSeconds: Double(samples.count) / NoteVoice.rate)
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += answer["load_ms"] as? Int ?? 0
@@ -371,7 +371,7 @@ final class DictationStream {
         let samples = Array(audio[t.start..<t.end])
         let issued = CACurrentMediaTime()
         // the text so far as context, as a final piece gets it (names spelled the same way)
-        let (done, gaps, hint) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "") }
+        let (done, gaps, hint, app) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "") }
         let prior = String(DictationStitch.joinPieces(done, pauses: gaps).suffix(200))
         let url = liveWav, vocab = opt.vocab, language = opt.language
         interimSent += 1
@@ -379,7 +379,7 @@ final class DictationStream {
             guard let self = self, !self.cancelled else { return }
             DictationStream.writeWav(samples, to: url)
             let t0 = CACurrentMediaTime()
-            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint)
+            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app)
             let secs = CACurrentMediaTime() - t0
             try? FileManager.default.removeItem(at: url)
             DispatchQueue.main.async { self.interimDone(t, r, seconds: secs, arrived: issued) }
@@ -575,7 +575,8 @@ final class DictationStream {
     private func whole(_ n: Int) -> Result {
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
-                                          hint: lock.locked { context }?.hint ?? "", audioSeconds: DictationStream.seconds(of: wholeWav))
+                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          audioSeconds: DictationStream.seconds(of: wholeWav))
         guard answer["ok"] as? Bool == true else {
             emit(["event": "dictation_asr_failed", "id": id, "code": answer["code"] ?? "error"])
             return failure(DictationASRFailure(code: answer["code"] as? String), segments: n)

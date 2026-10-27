@@ -22,9 +22,6 @@
 "speech.tier.minimal" = "Basic";
 
 /* Automatic choice and the jobs */
-"speech.auto.title" = "Choose automatically";
-"speech.auto.detail" = "The most accurate models this Mac runs comfortably, for your languages.";
-"speech.auto.tag" = "Auto";
 "speech.purpose.batch" = "Recordings";
 "speech.purpose.batch.detail" = "Transcribed after you stop. Accuracy first.";
 "speech.purpose.live" = "Live captions";
@@ -140,8 +137,14 @@
 "speech.section.mac" = "This Mac";
 "speech.section.jobs" = "Models in use";
 "speech.machine.short" = "%1$@, %2$@";
-"speech.auto.detail_mac" = "Picks what this Mac runs well (%@).";
 "speech.rec.title_size" = "Recommended for this Mac · %@";
 "speech.rec.line" = "%1$@ would use %2$@";
 "speech.rec.help" = "Download gets these models. Each job switches to its model once it’s in.";
 "speech.manage.count" = "%@ on this Mac";
+
+"speech.purpose.recognition" = "Speech recognition";
+"speech.purpose.recognition.detail" = "Dictation, voice notes, live captions and recordings all use this model.";
+"speech.auto.choice" = "Automatic (%@)";
+"speech.lib.use" = "Use";
+"speech.lib.use.help" = "Dictation, voice notes, live captions and recordings all switch to this model.";
+"speech.auto.footer" = "Automatic picks for this Mac (%@) and the languages you speak.";

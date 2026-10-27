@@ -180,10 +180,17 @@ class Recommend(unittest.TestCase):
 
     def test_apple_pro(self):
         h = hw(ram=128)
-        self.assertEqual(self.pick(h, ["zh", "en"]), "whisper-large-v3-turbo-mlx")
-        self.assertEqual(self.pick(h, ["zh", "en"], "live"), "whisper-large-v3-turbo-mlx")  # same as batch: reused
-        self.assertEqual(self.pick(h, ["zh", "en"], "note"), "sensevoice-small")
+        # Chinese / English / Cantonese: one Qwen3-ASR for every job (v1.0.2) — the 1.7B on a pro Mac
+        for purpose in ("batch", "live", "note"):
+            self.assertEqual(self.pick(h, ["zh", "en"], purpose), "qwen3-asr-1.7b-mlx")
+        self.assertEqual(self.pick(h, ["ja", "en"]), "whisper-large-v3-turbo-mlx")       # Japanese: Whisper
         self.assertEqual(self.pick(h, ["de", "en"], "note"), "whisper-large-v3-turbo-mlx")
+
+    def test_apple_one_model_for_chinese_and_english(self):
+        for purpose in ("batch", "live", "note"):
+            self.assertEqual(self.pick(hw(ram=16), ["zh", "en"], purpose), "qwen3-asr-0.6b-mlx")
+            self.assertEqual(self.pick(hw(ram=24), ["en"], purpose), "qwen3-asr-0.6b-mlx")
+        self.assertEqual(self.pick(hw(ram=8, perf=4, eff=4), ["zh", "en"], "note"), "sensevoice-small")   # light
 
     def test_apple_standard(self):
         h = hw(ram=16)
