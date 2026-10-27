@@ -26,7 +26,7 @@ parts of [desktop-app.md §2.4](desktop-app.md#24-视觉语言).
 The user amended the v2 proposal before it shipped; those amendments are folded in below and marked **(amended)**:
 gradient text for large headlines, native controls in the brand accent, white text on a deeper button gradient, and a
 multi-hue spectrum for special moments. v2.1 then toned it down (§14): the spectrum is left only in the onboarding
-hero, "AI is working" is a spinner plus a 1 pt hairline, empty states show the app icon.
+hero, "AI is working" is a spinner plus a 1 pt hairline, empty states show Peep (§6.1).
 
 Mock-ups and screenshots (untracked, in `promo/cases/v0.8-color/`):
 
@@ -359,9 +359,9 @@ spectrum, **M** = flat mint (`brand.fill`), **I** = `brand.ink`, **T** = `brand.
 | "Recommended", "In use" badges | T + I | Settings → Agents: "In use" on the one agent that runs, only once its sign-in check is in |
 | Selected choice card (dictation style, model) | I border + T ring | not a filled card |
 | Hotkey recorder while listening for keys | I | One fixed-width well (140 pt) in every state, so a row never changes width. At rest a shortcut is small keycaps (one 20 pt chip per key, `ink-2` text — never under `mute`) flush with the trailing edge; unset is the quiet well itself (ink @ 5 %) with "Record Shortcut"; the dictation key (set in Dictation) is the same keycaps in the same well. Hover or focus: the well's faint ground and the × before the keycaps. Listening: an `ink` ring on `tint` across the well, "Type shortcut…" and an esc keycap, centred. **A key that doesn't work here is marked, never faded**: a 12 pt `attn` "!" disc before its full-ink keycaps, whatever the reason — its own conflict (with why under the action's name in `attnInk`) or another running Blurt holding it (one `SettingsNotice` above the first section names the cause once, with Quit Other Copy / Copies matching its count; the rows have no line of their own). Keys another action has: **asked in the row, no sheet** — the new keys stay in the well (`ink` on `tint`), the second line asks with the outcome in secondary ink ("Swap with Voice note? It gets ⌥⇧A.") with Swap (brand ink) and Cancel; the other action's keycaps get the "!" meanwhile; Return / Esc in the recorder do the same, ⌘Z undoes it |
-| Onboarding hero panel | **field** + grain (light), **deep** + grain (dark), **S** glow | A 200 pt side panel (the window grows to 840 pt; the content column keeps 640): the mascot on a still, blurred spectrum glow — **the one place the spectrum appears**. Flat field without grain or glow under Reduce Transparency. |
+| Onboarding hero panel | paper (light) / night (dark), a soft mint light | A 200 pt side panel (the window grows to 840 pt; the content column keeps 640): Peep, 108 pt clay, on paper with a soft mint glow behind it — never on the brand gradient (Peep's body is the gradient). Hello on the first steps, then idle; done on the last. Flat paper under Reduce Transparency. |
 | Onboarding title | gradient text | 24 pt bold, `gradient.text` |
-| Onboarding Next / Done, or the step's own action | **B** | One per step: Set Up Permissions… / Download Recommended Models / Install uv while that is still to do (the footer then says Skip for Now, plain), else Next / Done. Done closes (the chick is already happy on the last step; v2.1: no bloom) |
+| Onboarding Next / Done, or the step's own action | **B** | One per step: Set Up Permissions… / Download Recommended Models / Install uv while that is still to do (the footer then says Skip for Now, plain), else Next / Done. Done closes (Peep already peeps and hops on the last step; v2.1: no bloom) |
 | Onboarding step bars | I | |
 | Permission rows | `ok` + ✓ granted · `attn` dot missing | |
 
@@ -371,10 +371,10 @@ These cover the empty inbox, inbox zero, All Items / a project with nothing yet,
 sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)**: AppKit `EmptyStateView`, SwiftUI
 `EmptyStateContent`, Tauri `EmptyState.tsx`, all on the `EmptyState` metrics (`Icons/BrandViews.swift`):
 
-- **The brand mark**: the app icon itself — the 4A chick on its gradient tile, as in the Dock and the logo
-  (`BrandMark`: Blurt.app's `AppIcon.icns`; the web UIs use `web/packages/ui/src/assets/app-icon.png`, 160 px, written
-  by `assets/brand/build.py`). An **80 pt canvas**, so the tile is 64 pt, centred. The same mark for every friendly
-  state: no per-page glyph tiles, no hop.
+- **The brand mark**: Peep alone, idling (a breath and a blink), clay, in the light set for the appearance — no tile
+  (a page showing Peep and the tile side by side would repeat the mark). `BrandMarkView` / `MascotImage(clip: .idle)`
+  on an **80 pt** square; Peep thinks while the page waits on work (a first read of the items). The Tauri UI still uses
+  `web/packages/ui/src/assets/app-icon.png` (the Peep paper tile, 160 px). The same mark for every friendly state.
 - 10 pt to a **neutral title** (15 pt semibold), 4 pt to a **neutral hint** (12 pt, secondary, ≤ 320 pt wide), 16 pt
   to at most **one primary** when it moves you on (Open Folder, Turn On Dictation…).
 - Trouble states (scan failed, missing folder) and detail-pane placeholders keep a quiet SF symbol: warnings are never
@@ -451,14 +451,21 @@ sessions window, the Tauri inbox and sessions. **One component everywhere (v2.1)
 
 ### 3.6 Menu-bar icon
 
-No colour. `glyph.svg` is a template image: since v0.9 the chick as a bold filled silhouette (face knocked out),
-the logo's chick scaled uniformly (17.2 × 16.2 pt in its 18 pt box: the logo's body and wings, a bolder tuft), with no arcs at rest; while voice input listens two sound arcs appear to its right and pulse (still under
-Reduce Motion). The recording status item shows a `rec` dot and the time, or `attn` while paused.
+No colour. Peep as the native template glyph: the release package's frames (18 pt, black + alpha, @1x and @2x pixels
+each, the hop inside the box; `Resources/Peep/glyph-*.png`, `App/MenuGlyph.swift`). It moves a little with what Blurt
+does, swapping frames only while something moves: **talking** while you dictate (the frame whose beak opening is
+nearest the voice level), **listening** to a voice note or during the countdown, **thinking** while a take is
+transcribed or captures are organised (15 fps), **done** once (sent, saved, sorted, fixed), **error** once (a job or
+a take that really failed), and at rest a **blink** every 4–9 s. Reduce Motion: no timer; a lasting state shows its
+still frame, the one-shots and the blink don't play. The recording status item shows a `rec` dot and the time, or
+`attn` while paused.
 
 ### 3.7 Review page and overlays (web)
 
-- **Review page** (`web/packages/review`): primary **B**; the "organising" pill carries `.ai-working` (its hatching egg
-  is the motion); the Done screen's headline and logo are plain (v2.1); selected card 2 pt I ring; active tab 2 pt I
+- **Review page** (`web/packages/review`): primary **B**; the top bar's logo is Peep's vector drawing (inline; on dark
+  the beak's slate is a step lighter); the "organising" pill carries `.ai-working` and Peep thinking (the menu-bar
+  frames as a 15 px mask in brand ink) is its motion; the Done screen shows Peep's clay done pose (the happy eye,
+  served next to the page: `peep-done[-dark].webp`) with one hop, and a plain headline (v2.1); selected card 2 pt I ring; active tab 2 pt I
   underline (it marks the tab, not decoration);
   current transcript line and "now playing" mark I; drop zone T + I; links per §3.3; kind chips; triage's Keep ✓ `ok` (review mode only; never a button fill in the detail).
 - **Overlays** (`web/apps/overlays`, Windows / Linux island and picker): exactly §3.1–3.2, island values; the voice
@@ -519,12 +526,12 @@ Reduce Motion: the still frame must still say the state.
 | Card hung | M clasp | The card swings in on the spring and settles straight; its clasp pops once and stays mint 2.4 s (blurt just caught it), then goes neutral. |
 | Cards come down | — | Only after the pointer rests 180 ms on the island (a brush past the notch drops nothing); up again 0.25 s after it leaves the cards and their threads. Reduce Motion: 0.2 s fades. |
 | blurt working | I spinner arc, M dot | Quarter arc, 1.1 s per turn |
-| Done | `ok` + ✓ | The check draws once (200 ms); the chick hops. The colour never pulses. |
+| Done | `ok` + ✓ | The check draws once (200 ms); Peep peeps and hops. The colour never pulses. |
 | Needs you | `attn` | One pulse when it appears, then still. |
-| Launch | the chick | A hello (v0.9-island r2): the chick (no sound arcs) hops in the right ear for 1.2 s, then fades and slips 6 pt out — the one sign at launch that blurt is there, since the island is the bare notch at rest. Reduce Motion: the still chick, then the fade. |
+| Launch | Peep | A hello: Peep turns to you and blinks in the left ear, "Blurt is ready" in the right, then it fades and slips 6 pt out — the one sign at launch that blurt is there, since the island is the bare notch at rest. Reduce Motion: the still chick, then the fade. |
 | Primary button | B | Brightness 1.04 on hover (120 ms). The gradient never animates or shifts. |
-| AI working | spinner + `brand.working` hairline | The spinner (or the review page's hatching egg) is the only motion; the 1 pt hairline is static and fades in / out over 0.2 s (instantly with Reduce Motion). |
-| Something big finished | `ok` + ✓ / the chick | No bloom (v2.1): the done check, the chick hatching or hopping, says it. |
+| AI working | spinner + `brand.working` hairline | The spinner (or Peep thinking, in the island and on the review page) is the only motion; the 1 pt hairline is static and fades in / out over 0.2 s (instantly with Reduce Motion). |
+| Something big finished | `ok` + ✓ / Peep | No bloom (v2.1): the done check, Peep's peep and hop, says it. |
 
 Rules: at most one brand-coloured thing moves at a time on a screen; no gradient ever moves (no animated gradient
 angles, no shimmer, no rotating rims); the listening glow only while listening; nothing in brand colour blinks for an
@@ -564,7 +571,7 @@ Test builds force them with `BLURT_REDUCE_TRANSPARENCY=1`, `BLURT_INCREASE_CONTR
 | Capture stroke, level bars | `BrandGradient.layer(linearStops, .diagonal / .vertical)` **masked** by a `CAShapeLayer` (the dashed rect / the bars path) | `SelectionOutline` (Picker), `Ears`, `Bars` |
 | Gradient text | `GradientLabel` (AppKit: glyphs as a mask) / `.brandGradientText()` (SwiftUI `foregroundStyle`) | `BrandViews.swift` |
 | Onboarding hero | `FieldView` / `BrandField`: `BrandGradient.drawField` (`CGContext.drawRadialGradient` per layer) + `drawGrain` (a generated 256 px value-noise tile, overlay, one noise pixel per device pixel) | `BrandViews.swift`, `BrandColor.swift` |
-| Empty states | `EmptyStateView` (AppKit) / `EmptyStateContent` (SwiftUI) on the `EmptyState` metrics; `BrandMarkView` / `BrandMark.image` (the app icon) | `BrandViews.swift`, `ItemListController.swift` |
+| Empty states | `EmptyStateView` (AppKit) / `EmptyStateContent` (SwiftUI) on the `EmptyState` metrics; `BrandMarkView` / `MascotImage` (Peep idling) | `BrandViews.swift`, `ItemListController.swift` |
 | Listening glow | `GlowLayer.make`: the base gradient, blurred once with Core Image, cached as a layer image; `GlowLayer.fade` | `Island.swift` |
 | AI working | `WorkingOutline` (a 1 pt `BrandColor.working` stroke, `island` for the island value) / `.aiWorking(active)` | `BrandViews.swift` |
 | Spectrum (onboarding only) | `SpectrumGlow` | `App/BrandMoments.swift` |
@@ -600,66 +607,59 @@ rect with a `<linearGradient gradientUnits="userSpaceOnUse">`, a 2 px `--on-bran
 Never: `background-clip: text` on body text; gradients on `border` of thin things; animated `background-position` of
 brand gradients.
 
-## 6. The app icon (shipped)
+## 6. Peep: the app icon and the character (shipped, v1.0)
 
-**Variant A**: the shipped chick unchanged (white body, `#17140F` line, white glints) on the gradient field.
+Peep replaces the 4A line chick and its colour mascot. It is a soft 3D clay chick: a gradient sphere (`#66D97A` →
+`#61DBBD` → `#4AABE2`, mixed a little toward warm grey as clay), two glossy black eyes with one highlight each (the far
+eye hidden behind the head in the side view), and a dark slate two-part beak (`#1F2B29`; on black the slate one step
+lighter, `#4A5D5B`, never white). The beak is the voice, the eyes are the mind. The brand book
+(`blurt-media/brand-book/`) defines it; the single source is the Blender model `blurt-media/logo/peep/peep.py`, and
+everything in this repo comes from its release package through `assets/brand/import_peep.py` (`assets/brand/README.md`).
+Nothing here draws Peep.
 
-- **Canvas**: 1024 × 1024, macOS 26 grid: the 824 px superellipse at (100, 100), the soft shadow, a 3 px white 22 %
-  rim (`assets/brand/app-icon.svg`, group `#tile`).
-- **Tile fill**: `gradient.field` mapped to the 824 box (azure corners from the bottom-left and bottom-right, the mint
-  seam glow, the airy green top), then grain at **7 %** (overlay; `feTurbulence` base frequency 0.6 on the 1024
-  canvas, 2 octaves, ×3 contrast).
-- **Small sizes**: 32 px (`app-icon-small.svg`) and 16 px (`app-icon-16.svg`) use the plain vertical
-  `gradient.linear`, no radial layers, no grain.
-- **Build**: `chick.swift` reads `gradient.field / deep / linear / grain` from `assets/color/tokens.json` and writes the
-  tile; `build.py` renders every size (masters between 33 and 1023 px are rendered at 1024 and scaled down, so the
-  grain averages out as in WebKit). rsvg-convert and a WebKit render agree to about one level at 1024.
-- **Outputs**: `skills/blurt/assets/icon.png` / `-16` / `-32` (→ `record.py make_icns` → Blurt.app `AppIcon.icns`;
-  the review page's logo and favicon), the Tauri icons (PNGs, `.icns`, `.ico`), the capture demo icons. The README
-  logo stays the bare chick on its sticker edge (unchanged). The site's favicon / apple-touch / og are written only with
-  `build.py --site`, for the site redo.
-- **Dark appearance**: not shipped. `app-icon-dark.svg` (the deep field) is rendered for preview. macOS shows a dark
-  icon only from an Icon Composer `.icon` compiled by actool into `Assets.car` (`CFBundleIconName`); an
-  `.appiconset` with dark entries is ignored for the mac idiom. It would fit the actool run `assets/color/build.py`
-  already does, at the cost of a 2–6 MB `Assets.car` (`assets/brand/README.md`).
-- **Menu bar**: unchanged (template glyph).
+**Rendering families, by size**: 3D clay (renders) from 56 device px up — the app icon 64–1024, the island, onboarding,
+notifications, empty states, About; 3D vector (a shaded SVG) for 24–56 px and wherever a raster can't go — the 32 px
+icon slot, the review page's top bar; the flat mark for 16–24 px — the 16 px icon slot, favicons; the template glyph
+for the menu bar (18 pt only).
 
-### 6.1 The mascot (shipped, v0.9)
+- **App icon**: the paper tile, Peep's body 60 % of it; the dark tile is the dark appearance. macOS 26: an Icon
+  Composer `.icon` (`assets/brand/AppIcon.icon`: Peep alone on the tile's own light, paper / dark) compiled into
+  `Assets.car` by `assets/color/build.py` (`CFBundleIconName`), so the system draws the shape, margin and shadow and the
+  icon sits on the Dock's grid like any other; no rim of our own. macOS 13–15: the release `.icns` (`CFBundleIconFile`;
+  clay from 64 px, the vector drawing at 32, the flat mark at 16). `skills/blurt/assets/icon.png` (the 1024 tile) is
+  kept for the review server and fallbacks.
+- **Menu bar**: §3.6.
 
-**One chick.** The mascot for moments (the onboarding hero, the island's ears and quiet lines, the voice note,
-notification pictures) is the mark itself — the 4A line chick of the icon, logo and menu bar — in colour. It replaces
-the 1A round raster chick (frames from an image model), which did not look like the logo; the user kept its warm
-yellow and its bounce.
+### 6.1 The mascot
 
-- **Drawing**: the mark's own geometry (`assets/brand/chick.swift` writes `Icons/MascotGeometry.swift`: the outline,
-  wings, eyes, beak, arcs), so it is the logo's chick by construction. 32 pt and below use the 32 px icon's drawing
-  (heavier line, one arc, filled beak). The line is the icon's (`#17140F`, as thick relative to the art as on the
-  1024 icon).
-- **Colour**: a warm butter-yellow body (`#FFC83D`, the 1A yellow) under the line, wings a shade deeper, a coral beak,
-  faint cheeks, a soft shade low on the body. The art's colours live in `chick.swift` with the art, like the icon's
-  line and white body; the UI's colours stay in `tokens.json`. On a dark backdrop (the island, dark mode) the free
-  marks (sound arcs, thought dots) turn light (`#F4F1EA`), the ground shadow goes, and the chick and the egg get a
-  thin white rim (the logo's sticker edge, thinner) so their black line — the tuft, the wing nubs, the shell — still
-  reads on the island's black; the arcs and sparkles get none. On the onboarding field it reads as on a light
-  backdrop, like the icon on its tile. Notification pictures carry the logo's full white sticker edge.
-- **Motion** (`Icons/MascotArt.swift`, vector, drawn for each moment at 60 fps while it plays): posed part by part
-  about the foot — hops with squash and stretch, tilt, wings that flap (drawn whole behind the body, so at rest only
-  the nub shows, as on the icon), blinks, glances, ^ ^ eyes, an open beak, sound arcs that pulse. Clips: `idle`
-  (breathes, blinks, glances), `listening` (head tilted, the arcs pulse outward, inner then outer — like the menu-bar
-  glyph), `thinking` (eyes up, thought dots where the arcs were), `wobble` (the egg rocking: organizing), `hatching`
-  (the egg cracks, the cap flies off and shrinks away, the chick pops up and hops out, the cup sinks; shell pieces
-  stay solid, never half-transparent; ending where `idle` begins), `happy` (two hops,
-  wings up, sparkles), `peck` (spots a bug, pounces on it, the bug goes in a sparkle, a hop back). Sparkles are warm
-  yellow and coral, without a line. The layer draws 4 % past its square (`MascotArt.bleed`), so a landing squash or
-  the flying cap is never cut off; the `mascotcheck` self-test holds every clip inside that, keeps shell pieces
-  solid, and checks the rim on black.
-- **Reduce Motion**: each clip's still moment, which says the same thing (the happy face, the listening tilt with
-  both arcs, the chick out of its egg).
-- **Restraint**: the mascot is illustration, not UI: it never carries brand mint or the gradient, and only one
-  mascot moves at a time on a screen. Empty states keep the app icon (§3.5).
-- **Web** (Windows / Linux overlays, Tauri) still plays the 1A strips from `assets/mascot/`; porting is in TODO.md.
-- Comparison sheet (untracked): `promo/cases/v0.9-polish/mascot/compare.png`, every clip before / after, light and
-  dark, next to the app icon.
+**Peep is the mascot.** Every moment that showed the chick shows Peep, from frames rendered in Blender: sprite sheets
+per clip in two light sets — **paper** (light backgrounds: onboarding, empty states, About, notifications) and
+**dark** (the notch, dark mode: the dark-notch beak) — played by `Icons/Mascot.swift` (`MascotView`, `MascotLayer`,
+`MascotImage`) at 30 fps on one shared timer, only while something plays. The layer's square is Peep at rest; the hop,
+the shake and the contact shadow reach past it (the sheet's bleed), never clipped.
+
+| State | Motion | Where |
+|---|---|---|
+| idle | a breath and a blink, a random 0–2 s rest between loops | empty states, About, onboarding after the hello |
+| hello | turns to you, two blinks | the launch hello in the island, the onboarding's first steps |
+| listening | eye wide, swelling with the voice | the countdown, a voice note (ears and open island) |
+| talking | the beak follows the voice level (the frame whose opening is nearest it) | dictation (the ears) |
+| thinking | the eye looks round | dictation transcribing, captures being organised (replaces the egg) |
+| done | crouch, a peep and a hop, the happy eye | sent, saved, sorted, a job done, an item fixed or done; the onboarding's last step |
+| error | a head shake, then a droop (it rests on the droop) | sorting or a job that failed — real failures only, never a cancel |
+
+- **Retired**: the egg and its hatch (organising is Peep thinking; sorted is done), the peck "to verify" (it folds into
+  done; the line's own ⚠ / ✓ says which), the sound arcs (everywhere), the code-drawn chick (`MascotArt`,
+  `MascotGeometry`).
+- **The island**: Peep is always in the left ear, its words or count across the notch on the right ("Blurt is
+  ready", "3", "+5", "Not sorted"); while you dictate the level sits beside it, during a voice note the wave.
+- **Notifications**: the done pose (the happy eye) in the light set for the current appearance.
+- **Reduce Motion**: each state's still frame, which says the same thing (the eye up, the beak open, the happy eye,
+  the droop); a one-shot's completion still runs.
+- **Restraint**: Peep is illustration, not UI; it never sits on the brand gradient (its body is the gradient), and
+  only one Peep moves at a time on a screen.
+- **Web** (Windows / Linux overlays, Tauri) still plays the old 1A strips from `assets/mascot/` and the tray shows the
+  `blurt` line glyph; their move to Peep is in TODO.md.
 
 ## 7. Typography (as used today)
 
@@ -745,7 +745,7 @@ assets/color/build.py          writes, and with --check verifies (stale outputs,
   web/packages/ui/src/tokens.css       the @generated colour block (light, dark, prefers-contrast, reduced transparency)
   web/apps/overlays/src/theme.css      the island values
   --table                              prints the token table below
-assets/brand/chick.swift + build.py    read gradient.field / deep / linear / grain for the icon tile
+assets/brand/import_peep.py           Peep (the app icon, the mascot) comes from its release package, not from tokens
 ```
 
 `--check` enforces every `min` against `checks` (and the `hc` values), `on` tokens against the token they sit on,
@@ -823,7 +823,7 @@ Before / after screenshots (untracked): `promo/cases/v0.8-color/restrained/sheet
 | Main window job rows (整理 · 未归类), Lab recorder card | `AIGlowView` / `.aiGlow`: 2 pt spectrum rim + 14 pt blurred rim, turning every 3.2 s | spinner + a static 1 pt `brand.working` hairline (`WorkingOutline`, `.aiWorking`) |
 | "Still organising" banner (还在整理 · 查看进度) | spectrum rim | its wand icon becomes a small spinner; the banner's own quiet ink wash; no line |
 | Island AI-sort / hand-off job row | spectrum rim | the spinner in the row's icon column and its 2 pt progress line (v0.9-island r2: no hairline box) |
-| Island, AI sort finished | spectrum bloom round the island | none (the chick hatching in the ear says it) |
+| Island, AI sort finished | spectrum bloom round the island | none (Peep's peep and hop in the ear says it) |
 | Lab Compare / Run All buttons, Dictation "Make Item" | spectrum rim round the button | none: the spinner beside it |
 | Lab score | 30 pt gradient text + spectrum bloom | 30 pt neutral |
 | Dictation page stats | 15 pt bold gradient digits | neutral semibold digits |
@@ -832,7 +832,7 @@ Before / after screenshots (untracked): `promo/cases/v0.8-color/restrained/sheet
 | Snap while recording | mint ring + blurred gradient halo | flat mint ring |
 | Picker window hover | `gradient.field` wash at 22 % | flat `brand.tint` |
 | Empty states (All Items / first launch, inbox zero, nothing in progress, all filed, a project, no results, no index, Dictation, sessions; Tauri inbox / sessions) | 104 pt field-and-grain tiles with a per-page white glyph (inbox zero hopped); Tauri: the mascot on a 112 px field tile | the app-icon mark (80 pt canvas / 64 pt tile), one component, one set of spacings |
-| Review page "organising" pill | `.ai-glow` spectrum rim | `.ai-working` hairline (the hatching egg is the motion) |
+| Review page "organising" pill | `.ai-glow` spectrum rim | `.ai-working` hairline (Peep thinking is the motion) |
 | Review page Done screen | the logo turned the spectrum once; the headline in gradient text | plain logo, neutral headline |
 | Tauri sidebar jobs box | `.ai-glow` | `.ai-working` |
 | Tokens | `gradient.aiGlow`, `gradient.wash`, `brand.glow`; CSS `--brand-spectrum*`, `--ai-glow-opacity`, `--brand-wash`, `--brand-glow`; Swift `BrandGradient.spectrum()`, `aiGlow*`, `wash*`; views `AIGlowView`, `Celebration`, `.celebrate`, `HearingRule`, `EmptyArtTile`, `BrandArtTile` | removed; `brand.working` (+ `--brand-working`, `BrandColor.working`, `workingWidth`) added |

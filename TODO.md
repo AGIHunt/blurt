@@ -284,11 +284,13 @@
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)
-- [ ] One chick on the web too: the Mac mascot is now the 4A logo chick in colour, drawn and moved in code
-      (Icons/MascotArt.swift + the generated MascotGeometry.swift; docs/design/system.md §6.1). The overlays and the
-      Tauri app still play the 1A raster strips (`@blurt/icons/mascot`, assets/mascot). Port: have chick.swift also write
-      the geometry for TS (or SVG parts), draw it in a canvas / SVG with the same clips and timings, then drop the webp
-      strips and assets/mascot.
+- [ ] Peep on Windows / Linux too: the mac app, the review page and the README show Peep (docs/design/system.md §6;
+      assets/brand/import_peep.py). Still the old marks: the web overlays (`web/apps/overlays`: the 1A raster strips
+      from `@blurt/icons/mascot` / assets/mascot, the `chicken` toast glyph, the hatching egg), the Tauri app
+      (`web/apps/desktop`: the sidebar's egg, its window and app icons in `apps/desktop/src-tauri/icons`, the tray's
+      `blurt` glyph), the capture demo's icons (`crates/blurt-capture/demo/icons`). The release package has their pieces:
+      `web/sprites/{notch,light}-<state>.webp` + `sprites.json`, `app/marks/tray-{black,white}.png`, `web/favicon*`,
+      `app/icon/paper/*`. Port them with import_peep.py, then retire assets/mascot and the chick / egg line glyphs.
 - [ ] Brand pass (Mac v0.9, docs/design/system.md §3.2): the overlays have no Recently Dragged Out list yet — when they
       get one, use the Mac's row (tile, one-line note, "dragged out … · kept N days", Copy as the one primary on the
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in

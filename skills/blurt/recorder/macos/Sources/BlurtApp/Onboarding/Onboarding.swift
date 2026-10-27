@@ -851,27 +851,31 @@ struct OnbPermissionRow: View {
     }
 }
 
-/// The hero side panel (§3.4): the field with grain, a soft still spectrum glow, the mascot on it — the only place
-/// the spectrum appears. Flat field (no grain, no glow) with Reduce Transparency. Peep (the paper clay renders) turns
-/// to say hello on the first steps, then idles (a breath and a blink), and peeps and hops on the last step. It sits a
-/// little above the middle, where the eye puts the centre.
+/// The hero side panel (§3.4): Peep on paper (night in dark mode) with a soft mint light behind it — never on the brand
+/// gradient (Peep's own body is the gradient: no gradient on gradient). Peep, the 3D clay render in the light set for
+/// the panel, turns to say hello on the first steps, then idles (a breath and a blink), and peeps and hops on the last
+/// step. It sits a little above the middle, where the eye puts the centre. Flat paper with Reduce Transparency.
 struct OnboardingHero: View {
     @ObservedObject var m: OnboardingModel
     @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        let dark = scheme == .dark
         GeometryReader { g in
             ZStack {
-                BrandField()
-                ZStack {
-                    // light: a bloom that lightens the field (screen), never a darker smudge on it
-                    SpectrumGlow(size: 176, opacity: scheme == .dark ? 0.5 : 0.7)
-                        .blendMode(scheme == .dark ? .normal : .screen)
-                    MascotImage(clip: m.step == m.steps - 1 ? .done : .hello, then: .idle, size: 108, backdrop: .light)   // the field is light in both appearances: the paper set
-                        .frame(width: 108, height: 108)
+                // paper #F3EFE8 → #EDE8E0 (the brand book's backdrop), night #181D1E → #121516
+                LinearGradient(colors: dark ? [Color(red: 0.094, green: 0.114, blue: 0.118), Color(red: 0.071, green: 0.082, blue: 0.086)]
+                                            : [Color(red: 0.953, green: 0.937, blue: 0.910), Color(red: 0.929, green: 0.910, blue: 0.878)],
+                               startPoint: .top, endPoint: .bottom)
+                if !reduceTransparency {
+                    RadialGradient(colors: [Color(nsColor: BrandColor.srgb(0x61DBBD)).opacity(dark ? 0.16 : 0.26), .clear],
+                                   center: .center, startRadius: 0, endRadius: 120)
+                        .frame(width: 260, height: 260)
+                        .position(x: g.size.width / 2, y: g.size.height * 0.45)
                 }
-                .frame(width: 140, height: 140)
-                .position(x: g.size.width / 2, y: g.size.height * 0.45)
+                MascotImage(clip: m.step == m.steps - 1 ? .done : .hello, then: .idle, size: 108, backdrop: dark ? .dark : .light)
+                    .frame(width: 108, height: 108)
+                    .position(x: g.size.width / 2, y: g.size.height * 0.45)
             }
         }
         .clipped()

@@ -139,7 +139,7 @@ final class EarSlot {
     /// The cards' stack is drawn a little heavier than the ears' 1.2: its thin lines read lighter than the numeral.
     static let cardsWeight: CGFloat = 1.45
     /// The launch hello: Peep turns to you and blinks (the hello clip), then it goes.
-    static var helloSeconds: Double { (MascotLibrary.shared.clip(.hello)?.duration ?? 1.5) + 0.3 }
+    static var helloSeconds: Double { (MascotLibrary.shared.clip(.hello)?.duration ?? 1.5) + 0.9 }   // and a moment to read "Blurt is ready"
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
                                                 "hidden": NSNull(), "opacity": NSNull(), "frame": NSNull(), "path": NSNull(),
                                                 "transform": NSNull(), "backgroundColor": NSNull(), "foregroundColor": NSNull(),
@@ -295,9 +295,13 @@ final class EarSlot {
         case .sorted(_, let ok, let n):
             placeChick()
             playChick(ok ? .done : .error)
-            x = EarSlot.chickSize + 1
-            text(ok ? "+" + Loc.number(n) : "", color: NSColor(white: 1, alpha: 0.95))
-            label.opacity = 0
+            if n > 0 {
+                x = EarSlot.chickSize + 1
+                text("+" + Loc.number(n), color: NSColor(white: 1, alpha: 0.95))
+                label.opacity = 0
+            } else {
+                x = EarSlot.chickSize - 2
+            }
         case .alert:
             dot.backgroundColor = BrandColor.Island.attn.cgColor
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)

@@ -139,7 +139,7 @@
 "notify.more" = "and %ld more";
 "notify.exit" = "It stopped with an error";
 
-/* An item reached "to verify" (the chicken pecks it) */
+/* An item reached "to verify" (Peep says so in the island) */
 "verify.by" = "%@ says it’s fixed";
 "verify.by.wontfix" = "%@ suggests not doing it";
 "verify.by.none" = "%@ handed it back";

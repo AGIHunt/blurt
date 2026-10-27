@@ -547,7 +547,7 @@ extension View {
 /// One empty state for every page (AppKit `EmptyStateView`, SwiftUI `EmptyStateContent`): the mark, a neutral title,
 /// a neutral hint, at most one primary — the same sizes and spacing everywhere.
 enum EmptyState {
-    /// the mark's slot: Peep idles in its middle 72 pt (room for its breath and shadow)
+    /// the mark's slot: Peep's square (its breath and shadow reach past it)
     static let markSide: CGFloat = 80
     static let markToTitle: CGFloat = 10
     static let titleToMessage: CGFloat = 4
@@ -565,8 +565,8 @@ struct EmptyStateContent<Actions: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // the mark: Peep alone, idling (BrandMarkView in AppKit), 72 pt in the 80 pt slot
-            MascotImage(clip: .idle, size: EmptyState.markSide - 8)
+            // the mark: Peep alone, idling (BrandMarkView in AppKit), filling the 80 pt slot
+            MascotImage(clip: .idle, size: EmptyState.markSide)
                 .frame(width: EmptyState.markSide, height: EmptyState.markSide)
                 .accessibilityHidden(true)
                 .padding(.bottom, EmptyState.markToTitle)

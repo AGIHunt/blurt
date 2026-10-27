@@ -34,7 +34,9 @@ What it writes
   brand       assets/brand/peep/*.svg (vector, flat, mono, glyph), app-icon-paper.png, app-icon-dark.png (1024)
   README      assets/peep-readme.png, assets/peep-readme-dark.png (264 px: the 132 px header @2x); assets/logo.png
   web         web/packages/ui/src/assets/app-icon.png (160)
-              web/packages/review/src/assets/peep-vector.svg (the top bar and the Done screen; numbers rounded:
+              skills/blurt/assets/peep-done.webp, peep-done-dark.webp, favicon.png   served next to the review page
+                (the Done screen's clay done pose; the flat-mark favicon)
+              web/packages/review/src/assets/peep-vector.svg (the top bar; numbers rounded:
                 the page is one file under a 400 KB budget), peep-thinking.png (the organising pill: every third
                 thinking glyph frame, a CSS mask strip)
 """
@@ -240,6 +242,33 @@ def tile_fill(im: Image.Image, tone: str) -> dict:
     return {"linear-gradient": [srgb(im.getpixel((150, 160))), srgb(im.getpixel((150, 880)))]}
 
 
+def body_box(im: Image.Image, area: tuple[int, int, int, int]) -> tuple[float, float, float]:
+    """Peep's body in an icon picture: the strongly coloured pixels (the gradient sphere; the slate beak, the tile and
+    the shadow are greys) → (centre x, centre y, width) in pixels."""
+    px = im.load()
+    xs, ys = [], []
+    for y in range(area[1], area[3], 2):
+        for x in range(area[0], area[2], 2):
+            r, g, b, a = px[x, y]
+            if a > 200 and max(r, g, b) - min(r, g, b) > 60:
+                xs.append(x)
+                ys.append(y)
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs)
+
+
+def fit_to_tile(layer: Image.Image, tile: Image.Image) -> Image.Image:
+    """The release's icon layer, scaled and moved so Peep's body has the size and place it has on the 1024 tile (60 %
+    of the 824 px tile, a little left of centre): the system draws the .icon's canvas as the tile itself."""
+    tx, ty, tw = body_box(tile, (110, 110, 914, 914))
+    lx, ly, lw = body_box(layer, (0, 0, 1024, 1024))
+    k = (tw / 824) / (lw / 1024)                         # the tile's 824 px become the canvas's 1024
+    want_x, want_y = (tx - 100) / 824 * 1024, (ty - 100) / 824 * 1024
+    scaled = layer.resize((round(1024 * k), round(1024 * k)), Image.LANCZOS)
+    out = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
+    out.paste(scaled, (round(want_x - lx * k), round(want_y - ly * k)))   # onto nothing: a plain copy
+    return out
+
+
 def write_icon_composer(paper: Path, dark: Path, layers: Path | None, out: dict) -> None:
     """assets/brand/AppIcon.icon for macOS 26 (Icon Composer format): the system draws the rounded shape, the margin
     and the shadow, so the icon sits on the Dock's grid like every other one, and switches with the appearance. Fill:
@@ -255,7 +284,7 @@ def write_icon_composer(paper: Path, dark: Path, layers: Path | None, out: dict)
         fills.append(tile_fill(im, tone))
         alone = layers / f"peep-{tone}-1024.png" if layers else None
         if alone and alone.exists():
-            Image.open(alone).convert("RGBA").save(ic / "Assets" / name, optimize=True)
+            fit_to_tile(Image.open(alone).convert("RGBA"), im).save(ic / "Assets" / name, optimize=True)
             continue
         sq = im.crop((100, 100, 924, 924)).resize((1024, 1024), Image.LANCZOS)
         flat = Image.new("RGBA", sq.size, sq.getpixel((512, 40)))
@@ -397,6 +426,19 @@ def write_review(src: Path, out: dict) -> None:
     out_strip.save(REVIEW_ASSETS / "peep-thinking.png", optimize=True)
     out["review"] = {"thinking_frames": len(picks), "thinking_fps": 10}
     w += [REVIEW_ASSETS / "peep-vector.svg", REVIEW_ASSETS / "peep-thinking.png"]
+    # served next to the page (review.py, the app's blurt-app://ui/, never inlined: the page has a size budget): the
+    # Done screen's clay done pose (the happy eye) in each light set, and the flat-mark favicon
+    for st, name in (("paper", "peep-done.webp"), ("dark", "peep-done-dark.webp")):
+        f = frames(src, st, "done")[DONE_STILL]
+        sx, sy, side = square_of(solid_box(frames(src, st, "idle")[0]))
+        pad = side * 0.12
+        c = f.crop((round(sx - pad), round(sy - pad), round(sx + side + pad), round(sy + side + pad)))
+        c.resize((240, 240), Image.LANCZOS).save(SKILL_ASSETS / name, "WEBP", quality=90, alpha_quality=100, method=6)
+        w.append(SKILL_ASSETS / name)
+    fav = PACKAGE / "web/favicon-32.png"
+    if fav.exists():
+        shutil.copy(fav, SKILL_ASSETS / "favicon.png")
+        w.append(SKILL_ASSETS / "favicon.png")
 
 
 def main() -> int:

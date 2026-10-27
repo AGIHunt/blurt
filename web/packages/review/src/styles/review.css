@@ -59,6 +59,12 @@ body {
 }
 /* on dark the slate beak keeps a lighter top so it parts from the background (the dark drawing's one change) */
 [data-theme="dark"] .peep-logo stop[stop-color="#33433F"] {
+  stop-color: #5b6f6c;
+}
+[data-theme="dark"] .peep-logo stop[stop-color="#1F2B29"] {
+  stop-color: #4a5d5b; /* the beak on dark: the slate one step lighter (the dark-notch set's) */
+}
+[data-theme="dark"] .peep-logo stop[stop-color="#141c1b"] {
   stop-color: #3a4d4b;
 }
 .brand small {
@@ -2114,13 +2120,20 @@ button.chip:hover {
 }
 .done .cel {
   display: block;
-  width: 100px;
+  width: 120px;
   margin: 0 auto;
 }
 /* Peep peeps and hops once when the work is handed on (its done state); still with Reduce Motion */
+.done .peep-done {
+  object-fit: contain;
+}
+[data-theme="dark"] .done .peep-done.paper,
+:root:not([data-theme="dark"]) .done .peep-done.night {
+  display: none;
+}
 .done.show .peep-done {
-  width: 100px;
-  height: 88px;
+  width: 120px;
+  height: 120px;
   transform-origin: 50% 100%;
   animation: peep-hop 0.9s cubic-bezier(0.3, 0.7, 0.4, 1) 0.25s both;
 }
@@ -2182,7 +2195,7 @@ button.chip:hover {
   }
 }
 .proc .peep-think {
-  color: var(--ink-2);
+  color: var(--brand-ink); /* Peep at work: the brand ink, as the menu bar's glyph is the system's */
 }
 .proc.stalled .peep-think,
 .shot.wait:not(.shim) .peep-think {

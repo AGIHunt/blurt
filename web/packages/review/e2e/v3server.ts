@@ -77,6 +77,10 @@ export async function startV3(scope: Scope, frames: Record<string, string[]> = {
       res.writeHead(200, { "Content-Type": "image/png" });
       return res.end(readFileSync(ICON));
     }
+    if (path === "/favicon.png" || path === "/peep-done.webp" || path === "/peep-done-dark.webp") {
+      res.writeHead(200, { "Content-Type": path.endsWith(".webp") ? "image/webp" : "image/png" });
+      return res.end(readFileSync(join(ICON, "..", path.slice(1))));
+    }
     if (path.startsWith("/files/")) {
       const abs = resolve(decodeURIComponent(path.slice(7)));
       if (!allowed.has(abs)) return send(res, 403, { ok: false, code: "forbidden" });

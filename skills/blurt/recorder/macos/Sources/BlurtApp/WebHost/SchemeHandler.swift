@@ -39,8 +39,13 @@ final class SchemeHandler: NSObject, WKURLSchemeHandler {
         case ("ui", "/"), ("ui", "/index.html"):
             guard let d = try? Data(contentsOf: Self.pageFile) else { return fail(task, 404, "the review page is missing: \(Self.pageFile.path)") }
             respond(task, 200, d, "text/html; charset=utf-8")
-        case ("ui", "/icon.png"), ("ui", "/favicon.ico"):
+        case ("ui", "/icon.png"):
             file(task, Self.iconFile)
+        case ("ui", "/favicon.ico"), ("ui", "/favicon.png"), ("ui", "/peep-done.webp"), ("ui", "/peep-done-dark.webp"):
+            // the page's pictures that are not inlined in it: the favicon, Peep's done pose (skills/blurt/assets)
+            let name = path == "/favicon.ico" ? "favicon.png" : String(path.dropFirst())
+            file(task, Self.webRoot.map { $0.appendingPathComponent(name) }.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+                ?? Scripts.dir.deletingLastPathComponent().appendingPathComponent("assets/\(name)"))
         case ("file", let p):
             guard let f = Self.allowed(URL(fileURLWithPath: p), session: session) else { return fail(task, 403) }
             file(task, f)

@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
-import { Logo, Thinking, isMacLike } from "./TopBar";
+import { Thinking, isMacLike } from "./TopBar";
 
 export function Toast() {
   const s = useStore();
@@ -137,7 +137,10 @@ export function Done() {
       <div>
         {!s.embedded && (
           <span className="cel">
-            <Logo className="big peep-done" />
+            {/* Peep's done pose, the clay render (served next to the page: review.py, the app); the vector if it
+                cannot load */}
+            <img className="big peep-done paper" src="peep-done.webp" alt="" onError={(e) => (e.currentTarget.hidden = true)} />
+            <img className="big peep-done night" src="peep-done-dark.webp" alt="" onError={(e) => (e.currentTarget.hidden = true)} />
           </span>
         )}
         <h2>{s.t(s.handsBack ? "done.title" : "done.title_app")}</h2>

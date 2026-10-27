@@ -279,7 +279,8 @@ final class MascotLayer: CALayer {
         if now < holdUntil { return true }
         let t = now - started
         if !c.loops && t >= k.duration {
-            show(index: k.frames - 1)
+            // a one-shot rests on its last frame; error on its droop (the clip itself recovers, for a loop)
+            show(index: c == .error ? PeepPlayback.stillFrame(.error, clip: k) : k.frames - 1)
             if let d = done { done = nil; d() }
             return false
         }
@@ -407,7 +408,7 @@ final class BrandMarkView: NSView {
     var state: MascotClip = .idle { didSet { if state != oldValue, window != nil, !isHiddenOrHasHiddenAncestor { peep.play(state) } } }
     override func layout() {
         super.layout()
-        peep.frame = bounds.insetBy(dx: 4, dy: 4)          // 72 pt: room for the breath and the shadow
+        peep.frame = bounds                                  // its square: the frames' bleed holds the breath and shadow
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

@@ -315,6 +315,25 @@ final class Island: NSObject, IslandHosting {
         refresh()
     }
     private var testPeep: (state: PeepState, since: CFTimeInterval, until: CFTimeInterval)?
+
+    /// Peep's own moments across the notch: Peep left, its words or count right ("Blurt is ready", "3", "+5", "Not
+    /// sorted"). False for anything else.
+    private func peepAcross(_ r: EarSlot.Content) -> Bool {
+        switch r {
+        case .hello:
+            left.set(.hello)
+            right.set(.text(Loc.t("capture.island.hello", table: "Capture"), mono: false))
+        case .thinking(let n):
+            left.set(.peep(.thinking))
+            right.set(.text(Loc.number(n), mono: true))
+        case .sorted(let since, let ok, let n):
+            left.set(.sorted(since: since, ok: ok, n: 0))
+            right.set(.text(ok ? "+" + Loc.number(n) : Loc.t("capture.island.sort_failed", table: "Capture"), mono: ok,
+                            attn: !ok))
+        default: return false
+        }
+        return true
+    }
     /// A made-up voice for the test states: words about every 0.3 s, louder and softer.
     static func testVoice(_ t: Double) -> Float {
         Float(max(0, 0.55 * sin(t * 11) + 0.35 * sin(t * 2.7 + 1) + 0.1))
@@ -707,10 +726,10 @@ final class Island: NSObject, IslandHosting {
             switch tp.state {
             case .talking: left.set(.peepLevel(.talking, voice)); right.set(.text(Island.clock(t + 4), mono: true))
             case .listening: left.set(.peepLevel(.listening, voice)); right.set(.text(Island.clock(t + 2), mono: true))
-            case .thinking: left.set(.none); right.set(.thinking(n: 3))
-            case .done: left.set(.none); right.set(.sorted(since: tp.since, ok: true, n: 5))
-            case .error: left.set(.none); right.set(.sorted(since: tp.since, ok: false, n: 0))
-            case .idle, .hello: left.set(.none); right.set(.peep(tp.state))
+            case .thinking: _ = peepAcross(.thinking(n: 3))
+            case .done: _ = peepAcross(.sorted(since: tp.since, ok: true, n: 5))
+            case .error: _ = peepAcross(.sorted(since: tp.since, ok: false, n: 0))
+            case .idle, .hello: left.set(.peep(tp.state)); right.set(.none)
             }
         } else if let tw = testWorking, CACurrentMediaTime() < tw.until, tw.until > 0 {
             left.set(.peep(.thinking))
@@ -750,6 +769,9 @@ final class Island: NSObject, IslandHosting {
             } else if cardCount == 0, case .news(let n) = r {
                 left.set(.mark(.inbox))
                 right.set(.text("+" + Loc.number(n), mono: true))
+            } else if cardCount == 0, peepAcross(r) {
+                // Peep's moments are told across the notch too: Peep on the left (where it talks and listens), the
+                // words or the count on the right — it never jumps from one side to the other between states
             } else {
                 left.set(cardCount > 0 ? .cards(cardCount) : .none)
                 right.set(r)
