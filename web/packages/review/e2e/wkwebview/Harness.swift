@@ -49,14 +49,24 @@ func runScript(_ script: String, _ args: [String], stdin: Data? = nil) -> (Int32
     var env = ProcessInfo.processInfo.environment
     env["BLURT_NO_INDEX"] = "1"
     p.environment = env
-    let out = Pipe(), inp = Pipe()
+    let out = Pipe(), inp = Pipe(), err = Pipe()
     p.standardOutput = out
+    p.standardError = err
     p.standardInput = inp
     try? p.run()
     if let s = stdin { inp.fileHandleForWriting.write(s) }
     try? inp.fileHandleForWriting.close()
+    var errData = Data()
+    let errDone = DispatchSemaphore(value: 0)
+    DispatchQueue.global().async { errData = err.fileHandleForReading.readDataToEndOfFile(); errDone.signal() }
     let data = out.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
+    errDone.wait()
+    if p.terminationStatus != 0 {
+        // CI only shows this log: say why a script failed
+        print("diag \(script) \(args.first ?? "") exit \(p.terminationStatus): \(String(decoding: errData, as: UTF8.self).suffix(800))")
+        fflush(stdout)
+    }
     return (p.terminationStatus, String(decoding: data, as: UTF8.self))
 }
 
@@ -143,7 +153,11 @@ final class Bridge: NSObject, WKScriptMessageHandler {
             case "load", "poll":
                 let args = method == "load" ? ["doc", sessionURL.path]
                     : ["poll", sessionURL.path, "--etag", params["etag"] as? String ?? ""]
-                if let o = itemsPy(args), o["ok"] as? Bool == true {
+                let o = itemsPy(args)
+                if o?["ok"] as? Bool != true {
+                    print("diag \(method): \(o.map { "\($0["ok"] ?? "nil") \($0["error"] ?? "")" } ?? "no JSON")"); fflush(stdout)
+                }
+                if let o = o, o["ok"] as? Bool == true {
                     var out: [String: Any] = ["etag": o["etag"] ?? ""]
                     if let doc = o["doc"] { out["doc"] = doc }
                     result = out
