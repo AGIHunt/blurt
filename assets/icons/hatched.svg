@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Hatched — done</title>
+  <path d="M7.6 12.6A5.2 5.2 0 0 1 9.9 5.2C9.6 3.6 11 2.8 11.6 3.9 12.3 2.8 13.9 3.4 13.7 5 16.2 6 17.4 9.6 16.4 12.6"/>
+  <circle cx="10" cy="9.6" r="1.05" fill="currentColor" stroke="none"/>
+  <circle cx="14" cy="9.6" r="1.05" fill="currentColor" stroke="none"/>
+  <path d="M11.2 11.2 12 10.8l.8.4-.8.8Z"/>
+  <path d="M4.8 12.8 7.2 15l2.4-2.2L12 15l2.4-2.2 2.4 2.2 2.4-2.2c0 4.8-3.1 8.3-7.2 8.3S4.8 17.6 4.8 12.8Z"/>
+</svg>

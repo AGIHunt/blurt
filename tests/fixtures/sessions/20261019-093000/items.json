@@ -1,0 +1,146 @@
+{
+  "session": "20261019-093000",
+  "source_video": "recording.mp4",
+  "language": "zh",
+  "title": "官网走查：登录和价格页",
+  "digest": "## 总览\n- 登录按钮无响应（高优）\n- 价格页移动端溢出\n- 空状态学 Linear",
+  "reviewed": true,
+  "agent_at": 1792373500.0,
+  "_removed": {
+    "I-004": "I-003"
+  },
+  "items": [
+    {
+      "id": "I-001",
+      "kind": "issue",
+      "title": "登录按钮点击无响应",
+      "quote": "这个登录按钮点了之后没有任何反应。",
+      "time": {
+        "start": 0.2,
+        "end": 1.6
+      },
+      "frames": [
+        {
+          "path": "frames/I-001-1.jpg",
+          "t": 1.2,
+          "caption": "红框：登录按钮"
+        }
+      ],
+      "source": {
+        "url": "https://example.test/login",
+        "app": "Chrome"
+      },
+      "tags": [
+        "登录"
+      ],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "confirmed",
+      "exported": {},
+      "module": "auth",
+      "owner": "",
+      "severity": "high",
+      "type": "bug",
+      "actual": "点击后没有请求发出",
+      "expected": "提交表单并跳转",
+      "steps": [
+        "打开 /login",
+        "填写账号密码",
+        "点击登录"
+      ],
+      "code_refs": [
+        "src/auth/LoginButton.tsx:42"
+      ],
+      "_user": {
+        "title": 1792373600.0,
+        "severity": 1792373601.0
+      }
+    },
+    {
+      "id": "I-002",
+      "kind": "idea",
+      "title": "空状态学 Linear 的做法",
+      "quote": "空状态可以学一下 Linear。",
+      "time": {
+        "start": 3.0,
+        "end": 3.9
+      },
+      "frames": [
+        {
+          "path": "frames/I-002-1.jpg",
+          "t": 3.4
+        }
+      ],
+      "tags": [
+        "设计"
+      ],
+      "confidence": "high",
+      "questions": [],
+      "answer": "",
+      "status": "confirmed",
+      "exported": {},
+      "why": "现在的空状态只有一行灰字",
+      "next": "画一版插画 + 主操作按钮"
+    },
+    {
+      "id": "I-003",
+      "kind": "issue",
+      "title": "价格页在手机上横向溢出",
+      "quote": "价格页在手机上会溢出。… 表格被截断",
+      "time": {
+        "start": 1.8,
+        "end": 2.9
+      },
+      "frames": [
+        {
+          "path": "frames/I-003-1.jpg",
+          "t": 2.2
+        },
+        {
+          "path": "frames/I-004-1.jpg",
+          "t": 2.7
+        }
+      ],
+      "tags": [
+        "移动端"
+      ],
+      "confidence": "low",
+      "questions": [
+        "只在 Safari 上出现吗？"
+      ],
+      "answer": "Chrome 也有",
+      "status": "confirmed",
+      "exported": {},
+      "module": "pricing",
+      "severity": "medium",
+      "actual": "表格超出屏幕",
+      "expected": "表格可横向滚动",
+      "merged_from": [
+        "I-004"
+      ],
+      "_user": {
+        "answer": 1792373650.0,
+        "merged_from": 1792373655.0,
+        "quote": 1792373655.0
+      }
+    },
+    {
+      "id": "I-005",
+      "kind": "note",
+      "title": "录屏开头的杂音",
+      "quote": "",
+      "time": {
+        "start": 0.0,
+        "end": 0.2
+      },
+      "frames": [],
+      "status": "deleted",
+      "exported": {},
+      "_dropped": true,
+      "_user": {
+        "status": 1792373660.0
+      }
+    }
+  ]
+}

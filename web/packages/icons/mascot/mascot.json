@@ -1,0 +1,21 @@
+{
+  "_": "The 1A round chick's frame animations. Each sheet is a horizontal strip of `size`×`size` px frames (<sheet>.webp, 2× pixels). A clip plays `timeline`: [frame, ticks] pairs at `fps`; `loop` clips repeat, the others stop on their last frame. `still` is the frame shown with Reduce Motion. Made by assets/mascot/tools/cut.py; copied into the app and web by assets/mascot/tools/build.py.",
+  "size": 160,
+  "fps": 12,
+  "clips": {
+    "idle": {"sheet": "idle", "frames": 8, "loop": true, "still": 0,
+      "timeline": [[0, 10], [1, 4], [0, 8], [3, 4], [0, 10], [5, 1], [6, 2], [7, 1], [0, 8]]},
+    "listening": {"sheet": "listening", "frames": 8, "loop": true, "still": 4,
+      "timeline": [[0, 2], [1, 2], [2, 2], [3, 2], [4, 3], [5, 2], [6, 2], [7, 2]]},
+    "thinking": {"sheet": "thinking", "frames": 8, "loop": true, "still": 2,
+      "timeline": [[0, 2], [1, 2], [2, 2], [3, 3], [4, 2], [5, 2], [6, 2], [7, 2]]},
+    "wobble": {"sheet": "hatching", "frames": 12, "loop": true, "still": 0,
+      "timeline": [[0, 3], [1, 2], [0, 1], [2, 2], [0, 1], [1, 2], [0, 1], [2, 2], [0, 10]]},
+    "hatching": {"sheet": "hatching", "frames": 12, "loop": false, "still": 11,
+      "timeline": [[3, 3], [4, 2], [5, 3], [6, 2], [7, 3], [8, 3], [9, 3], [10, 3], [11, 1]]},
+    "happy": {"sheet": "happy", "frames": 12, "loop": false, "still": 7,
+      "timeline": [[0, 1], [1, 2], [2, 1], [3, 2], [4, 2], [5, 1], [6, 2], [7, 2], [8, 2], [9, 2], [10, 2], [11, 1]]},
+    "peck": {"sheet": "peck", "frames": 12, "loop": false, "still": 9,
+      "timeline": [[0, 4], [1, 3], [2, 2], [3, 3], [4, 2], [5, 3], [6, 3], [7, 3], [8, 2], [9, 2], [10, 3], [11, 1]]}
+  }
+}

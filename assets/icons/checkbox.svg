@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="brand">
+  <title>Checkbox with a tick — a task (kind family)</title>
+  <rect x="4.5" y="4.5" width="15" height="15" rx="4"/>
+  <path d="m8.5 12.25 2.5 2.5 4.75-5"/>
+</svg>

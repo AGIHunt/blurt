@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "reference": "rtf_ref / ram_mb / error_ref: Apple M5 Max (128 GB, 40-core GPU), 3 threads, utility priority, say-generated speech in 7 languages; docs/design/asr-benchmark.md",
+  "models": [
+    {"id": "sensevoice-small", "name": "SenseVoice Small", "backend": "sensevoice", "model": "sense-voice-small-int8", "languages": ["zh", "en", "ja", "ko", "yue"], "size_mb": 228, "rtf_ref": 0.0265, "ram_mb": 540, "error_ref": {"zh": 0.033, "en": 0.024, "ja": 0.017, "ko": 0.105}, "platforms": ["darwin-arm64", "darwin-x86_64", "linux-x86_64", "linux-arm64", "windows-x86_64", "windows-arm64"], "requires": [], "streaming": false, "tiers": ["pro", "standard", "light", "minimal"], "verified": "run", "default": true, "install": {"files": {"sensevoice/model.int8.onnx": ["https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/model.int8.onnx"], "sensevoice/tokens.txt": ["https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt", "https://hf-mirror.com/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17/resolve/main/tokens.txt"]}}, "quality_note_key": "speech.note.sensevoice", "vocab": "none"},
+    {"id": "whisper-large-v3-turbo-mlx", "name": "Whisper large-v3-turbo", "backend": "mlx-whisper", "model": "mlx-community/whisper-large-v3-turbo", "languages": "multi", "size_mb": 1540, "rtf_ref": 0.0225, "ram_mb": 3670, "error_ref": {"zh": 0.016, "en": 0.019, "ja": 0.008, "ko": 0.005, "es": 0.005, "fr": 0.013, "de": 0.005}, "platforms": ["darwin-arm64"], "requires": ["mlx"], "package": "mlx-whisper", "streaming": false, "tiers": ["pro", "standard"], "verified": "run", "install": {"hf": "mlx-community/whisper-large-v3-turbo"}, "quality_note_key": "speech.note.whisper_turbo", "vocab": "prompt"},
+    {"id": "whisper-large-v3-turbo-q4-mlx", "name": "Whisper large-v3-turbo (4-bit)", "backend": "mlx-whisper", "model": "mlx-community/whisper-large-v3-turbo-q4", "languages": "multi", "size_mb": 442, "rtf_ref": 0.0255, "ram_mb": 2570, "error_ref": {"zh": 0.033, "en": 0.019, "ja": 0.015, "ko": 0.008, "es": 0.0, "fr": 0.017, "de": 0.011}, "platforms": ["darwin-arm64"], "requires": ["mlx"], "package": "mlx-whisper", "streaming": false, "tiers": ["standard", "light"], "verified": "run", "install": {"hf": "mlx-community/whisper-large-v3-turbo-q4"}, "quality_note_key": "speech.note.whisper_turbo_q4", "vocab": "prompt"},
+    {"id": "qwen3-asr-1.7b-mlx", "name": "Qwen3-ASR 1.7B (MLX)", "backend": "qwen3-asr-mlx", "model": "mlx-community/Qwen3-ASR-1.7B-8bit", "languages": ["zh", "en", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "th", "vi", "id", "ms", "tr", "nl", "sv", "da", "fi", "pl", "cs", "el", "hu", "ro", "fa", "fil", "mk"], "size_mb": 2468, "rtf_ref": 0.033, "ram_mb": 3100, "platforms": ["darwin-arm64"], "requires": ["mlx"], "package": "mlx-qwen3-asr", "streaming": false, "tiers": ["pro"], "verified": "run", "vocab": "context", "install": {"hf": "mlx-community/Qwen3-ASR-1.7B-8bit"}, "quality_note_key": "speech.note.qwen3_mlx_17"},
+    {"id": "qwen3-asr-0.6b-mlx", "name": "Qwen3-ASR 0.6B (MLX)", "backend": "qwen3-asr-mlx", "model": "mlx-community/Qwen3-ASR-0.6B-8bit", "languages": ["zh", "en", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "th", "vi", "id", "ms", "tr", "nl", "sv", "da", "fi", "pl", "cs", "el", "hu", "ro", "fa", "fil", "mk"], "size_mb": 1010, "rtf_ref": 0.029, "ram_mb": 2100, "platforms": ["darwin-arm64"], "requires": ["mlx"], "package": "mlx-qwen3-asr", "streaming": false, "tiers": ["pro", "standard"], "verified": "run", "vocab": "context", "install": {"hf": "mlx-community/Qwen3-ASR-0.6B-8bit"}, "quality_note_key": "speech.note.qwen3_mlx"},
+    {"id": "whisper-large-v3-turbo-ct2", "name": "Whisper large-v3-turbo (CUDA)", "backend": "faster-whisper", "model": "mobiuslabsgmbh/faster-whisper-large-v3-turbo", "languages": "multi", "size_mb": 1547, "rtf_ref": null, "ram_mb": 1670, "error_ref": {"zh": 0.023, "en": 0.019, "ja": 0.011, "ko": 0.005, "es": 0.0, "fr": 0.013, "de": 0.005}, "platforms": ["linux-x86_64", "linux-arm64", "windows-x86_64"], "requires": [], "package": "faster-whisper", "streaming": false, "tiers": ["pro", "standard"], "verified": "run", "install": {"hf": "mobiuslabsgmbh/faster-whisper-large-v3-turbo"}, "quality_note_key": "speech.note.whisper_turbo_cpu", "vocab": "prompt"},
+    {"id": "qwen3-asr-0.6b-onnx", "name": "Qwen3-ASR 0.6B", "backend": "qwen3-asr-onnx", "model": "qwen3-asr-0.6b-int8", "languages": ["zh", "en", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "th", "vi", "id", "ms", "tr", "nl", "sv", "da", "fi", "pl", "cs", "el", "hu", "ro", "fa", "fil", "mk"], "size_mb": 940, "rtf_ref": 0.2543, "ram_mb": 2570, "error_ref": {"zh": 0.043, "en": 0.01, "ja": 0.053, "ko": 0.133, "es": 0.068, "fr": 0.15, "de": 0.074}, "platforms": ["darwin-arm64", "darwin-x86_64", "linux-x86_64", "linux-arm64", "windows-x86_64", "windows-arm64"], "requires": [], "streaming": false, "tiers": ["pro", "standard", "light"], "verified": "run", "install": {"archive": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2", "dir": "qwen3-asr-0.6b-int8", "keep": ["conv_frontend.onnx", "encoder.int8.onnx", "decoder.int8.onnx", "tokenizer/"]}, "quality_note_key": "speech.note.qwen3_cpu", "vocab": "hotwords"},
+    {"id": "openai-compatible", "name": "OpenAI-compatible API", "backend": "openai", "model": null, "local": false, "languages": "multi", "size_mb": 0, "ram_mb": 0, "platforms": ["*"], "requires": ["key"], "streaming": false, "tiers": [], "verified": "run", "keys": ["BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"], "quality_note_key": "speech.note.cloud"},
+    {"id": "qwen3-asr-flash", "name": "Qwen3-ASR Flash (DashScope)", "backend": "dashscope", "model": "qwen3-asr-flash", "local": false, "languages": "multi", "size_mb": 0, "ram_mb": 0, "platforms": ["*"], "requires": ["key"], "streaming": false, "tiers": [], "verified": "docs", "keys": ["DASHSCOPE_API_KEY"], "quality_note_key": "speech.note.cloud"}
+  ],
+  "bench": {
+    "note": "Spoken with macOS `say` (the first listed voice that exists, else any voice of the locale); error = CER for zh / yue / ja / ko, WER otherwise.",
+    "samples": {
+      "zh": {
+        "voices": [
+          "Tingting"
+        ],
+        "locale": "zh_CN",
+        "text": [
+          "我先打开登录页面，输入邮箱和密码，然后点击登录按钮。",
+          "按钮点了之后没有任何反应，控制台里也没有报错。",
+          "设置页里的保存按钮颜色太浅了，看不出来可以点击。",
+          "搜索框输入中文的时候，候选词会把下面的结果挡住。",
+          "上传头像以后要刷新一下页面才能看到新的图片。",
+          "有一个想法，可以加一个导出表格的功能，方便发给运营的同事。",
+          "另外记一下，下周三之前要把发布说明写好。"
+        ]
+      },
+      "en": {
+        "voices": [
+          "Samantha"
+        ],
+        "locale": "en_US",
+        "text": [
+          "First I open the sign in page, type my email and password, and press the sign in button.",
+          "Nothing happens after the click, and there is no error in the console either.",
+          "The save button on the settings page is so pale that it does not look clickable.",
+          "When I search for a project, the dropdown covers the first result.",
+          "After uploading a new avatar I have to reload the page before it shows up.",
+          "One idea: we could add an export to spreadsheet option for the support team.",
+          "Also a note to self, the release notes need to be ready before Wednesday."
+        ]
+      },
+      "ja": {
+        "voices": [
+          "Kyoko"
+        ],
+        "locale": "ja_JP",
+        "text": [
+          "まずログイン画面を開いて、メールアドレスとパスワードを入力し、ログインボタンを押します。",
+          "ボタンを押しても何も起きず、コンソールにもエラーは出ていません。",
+          "設定画面の保存ボタンは色が薄すぎて、押せるように見えません。",
+          "プロジェクトを検索すると、候補のリストが最初の結果を隠してしまいます。",
+          "新しいアイコンをアップロードした後、ページを再読み込みしないと表示されません。",
+          "アイデアとして、サポートチーム向けに表計算ソフトへの書き出し機能があると便利です。",
+          "それから、水曜日までにリリースノートを用意する必要があります。"
+        ]
+      },
+      "ko": {
+        "voices": [
+          "Yuna"
+        ],
+        "locale": "ko_KR",
+        "text": [
+          "먼저 로그인 페이지를 열고 이메일과 비밀번호를 입력한 다음 로그인 버튼을 누릅니다.",
+          "버튼을 눌러도 아무 반응이 없고 콘솔에도 오류가 없습니다.",
+          "설정 페이지의 저장 버튼은 색이 너무 연해서 누를 수 있는 것처럼 보이지 않습니다.",
+          "프로젝트를 검색하면 목록이 첫 번째 결과를 가립니다.",
+          "새 프로필 사진을 올린 뒤에는 페이지를 새로 고쳐야 보입니다.",
+          "아이디어 하나는 지원팀을 위해 스프레드시트로 내보내는 기능을 추가하는 것입니다.",
+          "그리고 수요일 전까지 릴리스 노트를 준비해야 합니다."
+        ]
+      },
+      "es": {
+        "voices": [
+          "Mónica"
+        ],
+        "locale": "es_ES",
+        "text": [
+          "Primero abro la página de inicio de sesión, escribo mi correo y mi contraseña y pulso el botón de entrar.",
+          "Después del clic no pasa nada y tampoco aparece ningún error en la consola.",
+          "El botón de guardar en la página de ajustes es tan claro que no parece que se pueda pulsar.",
+          "Cuando busco un proyecto, la lista desplegable tapa el primer resultado.",
+          "Después de subir una foto de perfil nueva tengo que recargar la página para verla.",
+          "Una idea: podríamos añadir una opción para exportar a una hoja de cálculo para el equipo de soporte.",
+          "También tengo que tener listas las notas de la versión antes del miércoles."
+        ]
+      },
+      "fr": {
+        "voices": [
+          "Thomas"
+        ],
+        "locale": "fr_FR",
+        "text": [
+          "D'abord j'ouvre la page de connexion, je saisis mon adresse e-mail et mon mot de passe, puis je clique sur le bouton de connexion.",
+          "Il ne se passe rien après le clic et il n'y a aucune erreur dans la console.",
+          "Le bouton enregistrer de la page des réglages est si pâle qu'on ne voit pas qu'il est cliquable.",
+          "Quand je cherche un projet, la liste déroulante cache le premier résultat.",
+          "Après avoir envoyé une nouvelle photo de profil, je dois recharger la page pour la voir.",
+          "Une idée : on pourrait ajouter un export vers un tableur pour l'équipe du support.",
+          "Et il faut que les notes de version soient prêtes avant mercredi."
+        ]
+      },
+      "de": {
+        "voices": [
+          "Anna"
+        ],
+        "locale": "de_DE",
+        "text": [
+          "Zuerst öffne ich die Anmeldeseite, gebe meine E-Mail-Adresse und mein Passwort ein und klicke auf Anmelden.",
+          "Nach dem Klick passiert nichts, und in der Konsole steht auch kein Fehler.",
+          "Der Speichern-Knopf auf der Einstellungsseite ist so blass, dass er nicht anklickbar aussieht.",
+          "Wenn ich nach einem Projekt suche, verdeckt die Liste das erste Ergebnis.",
+          "Nach dem Hochladen eines neuen Profilbilds muss ich die Seite neu laden, bevor es erscheint.",
+          "Eine Idee: Wir könnten für das Support-Team einen Export in eine Tabelle anbieten.",
+          "Außerdem müssen die Versionshinweise bis Mittwoch fertig sein."
+        ]
+      },
+      "yue": {
+        "voices": [
+          "Sinji"
+        ],
+        "locale": "zh_HK",
+        "text": [
+          "我打開登入頁面，輸入電郵同密碼，然後撳登入掣。",
+          "撳完之後乜嘢反應都冇，主控台都冇錯誤。",
+          "設定頁嘅儲存掣顏色太淺，睇唔出可以撳。",
+          "有個諗法，可以加一個匯出試算表嘅功能，方便支援團隊。"
+        ]
+      }
+    }
+  }
+}

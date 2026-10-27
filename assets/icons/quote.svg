@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" data-group="generic">
+  <title>Quote (what was said)</title>
+  <circle cx="7.4" cy="15.2" r="1.6" fill="currentColor" stroke="none"/>
+  <circle cx="15.8" cy="15.2" r="1.6" fill="currentColor" stroke="none"/>
+  <path d="M5.8 15.2C5.8 11.6 7 9.1 9.8 7.6M14.2 15.2C14.2 11.6 15.4 9.1 18.2 7.6"/>
+</svg>

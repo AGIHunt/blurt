@@ -1,0 +1,434 @@
+/* Base elements and the few controls every Blurt web surface uses. Needs tokens.css. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: var(--fs) / 1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+  padding: 0;
+}
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+a {
+  color: inherit;
+  text-decoration-color: var(--brand-ink);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
+}
+::selection {
+  background: var(--focus-soft);
+}
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+[data-platform="mac"] :focus-visible {
+  outline: 3px solid var(--focus-soft);
+  outline-offset: 0;
+  box-shadow: 0 0 0 1px var(--focus);
+}
+[data-platform="win"] :focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+[data-platform="gnome"] :focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--focus) 50%, transparent);
+  outline-offset: 1px;
+}
+
+kbd {
+  /* the UI font, as macOS menus set their keys: in a monospace the letter O reads as zero (dogfood-2) */
+  font: 600 11px/1 var(--font);
+  font-variant-numeric: tabular-nums;
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--mute);
+  min-width: 18px;
+  text-align: center;
+  display: inline-block;
+}
+[data-theme="dark"] kbd {
+  border-color: transparent;
+}
+
+.scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+.scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* push button */
+.btn {
+  white-space: nowrap;
+  height: calc(var(--ctl-h) + 4px);
+  padding: 0 14px;
+  border-radius: var(--r-sm);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--ctl-bg);
+  border: 1px solid var(--ctl-border);
+  box-shadow: var(--ctl-shadow);
+  transition: transform 0.08s, background-color 0.15s, filter 0.15s;
+}
+.btn:hover {
+  background: color-mix(in srgb, var(--ctl-bg), var(--ink) 4%);
+}
+.btn:active {
+  transform: scale(0.98);
+}
+[data-platform="win"] .btn {
+  border-bottom-color: var(--ctl-border-bottom);
+  font-weight: 500;
+}
+[data-platform="gnome"] .btn {
+  font-weight: 700;
+}
+/* the one primary action per view: white bold text on the deeper button gradient (system.md §3.3, §5.2) */
+.btn.primary {
+  background: var(--brand-button);
+  border-color: transparent;
+  color: var(--on-brand-button);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
+}
+.btn.primary:hover {
+  background: var(--brand-button);
+  filter: brightness(1.04);
+}
+.btn.primary:active {
+  filter: brightness(0.92);
+}
+.btn.primary:disabled {
+  background: var(--chip);
+  color: var(--faint);
+  box-shadow: none;
+  filter: none;
+  cursor: default;
+}
+.btn.primary kbd {
+  background: rgb(255 255 255 / 0.16);
+  border-color: transparent;
+  color: inherit;
+}
+
+.icon-btn {
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  border-radius: var(--r-sm);
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.icon-btn:active {
+  background: var(--press);
+}
+
+/* segmented control */
+.seg {
+  display: flex;
+  background: var(--panel-2);
+  border-radius: calc(var(--r-sm) + 2px);
+  padding: 2px;
+  gap: 2px;
+}
+.seg button {
+  white-space: nowrap;
+  padding: 3px 11px;
+  border-radius: var(--r-sm);
+  color: var(--mute);
+  font-weight: 600;
+  font-size: 12.5px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: calc(var(--ctl-h) - 4px);
+}
+.seg button:hover {
+  color: var(--ink);
+}
+.seg button.on {
+  background: var(--ctl-bg);
+  color: var(--ink);
+  box-shadow: var(--ctl-shadow), 0 0 0 0.5px var(--ctl-border);
+}
+[data-theme="dark"] .seg button.on {
+  background: rgba(255, 255, 255, 0.11);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+[data-reduced-motion="1"] *,
+[data-reduced-motion="1"] *::before,
+[data-reduced-motion="1"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* ---------- K8: kind icons and the work-state ring (@blurt/ui/react, statusRingSvg) ---------- */
+.kind-ic {
+  display: inline-flex;
+  flex: none;
+  line-height: 0;
+  color: var(--kc-light);
+}
+[data-theme="dark"] .kind-ic {
+  color: var(--kc-dark);
+}
+.kind-ic.k-issue { color: var(--kind-issue); }
+.kind-ic.k-idea { color: var(--kind-idea); }
+.kind-ic.k-note { color: var(--kind-note); }
+.kind-ic.k-task { color: var(--kind-task); }
+.sring {
+  flex: none;
+  display: inline-block;
+  vertical-align: middle;
+  overflow: visible;
+  --ring-cut: #fff;
+}
+.sring.s-todo { color: var(--mute); }
+.sring.s-new,
+.sring.s-handed_off,
+.sring.s-in_progress { color: var(--brand-ink); }
+.sring.s-to_verify { color: var(--attn); }
+.sring.s-done { color: var(--ok); }
+.sring.s-wontfix,
+.sring.s-discarded { color: var(--faint); }
+.sring.s-to_verify { --ring-cut: var(--on-attn); }
+.sring.s-done { --ring-cut: var(--on-ok); }
+
+/* ---------- K3: the state pill (ring + name + chevron), the bare ring button, and their action menu ---------- */
+.spill,
+.spill-ring {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  color: var(--ink);
+  border-radius: var(--r-pill);
+  transition: background-color 0.12s, box-shadow 0.12s;
+}
+.spill {
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--chip, var(--panel-2));
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.spill.static {
+  padding-right: 10px;
+}
+button.spill:hover,
+.spill.open {
+  background: color-mix(in srgb, var(--chip, var(--panel-2)), var(--ink) 6%);
+}
+.spill-l {
+  max-width: 22ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.spill-ch {
+  color: var(--mute);
+  margin-left: -1px;
+}
+.spill.s-new .spill-l,
+.spill.s-handed_off .spill-l,
+.spill.s-in_progress .spill-l { color: var(--brand-ink); }
+.spill.s-to_verify { background: var(--attn-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--attn) 30%, transparent); }
+.spill.s-to_verify .spill-l { color: var(--attn-ink); }
+.spill.s-done .spill-l { color: var(--ok); }
+.spill.s-wontfix .spill-l,
+.spill.s-discarded .spill-l { color: var(--mute); }
+.spill-ring {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin: -4px;
+}
+.spill-ring:hover,
+.spill-ring.open {
+  background: var(--hover);
+}
+
+.smenu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 248px;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 5px;
+  border-radius: calc(var(--r-sm) + 4px);
+  background: var(--raise, var(--panel));
+  box-shadow: var(--shadow-pop);
+  color: var(--ink);
+  font: 13px / 1.35 var(--font);
+  animation: smenu-in 0.12s ease-out;
+}
+[data-theme="dark"] .smenu {
+  background: color-mix(in srgb, var(--raise, var(--panel)), #fff 3%);
+}
+@keyframes smenu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px);
+  }
+}
+.smenu-i {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px 7px 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  color: inherit;
+}
+.smenu-i > .sring {
+  margin-top: 1.5px;
+}
+.smenu-i:focus,
+.smenu-i:focus-visible {
+  outline: none;
+  box-shadow: none;
+  background: var(--hover);
+}
+.smenu-i:focus {
+  background: color-mix(in srgb, var(--focus) 12%, transparent);
+}
+.smenu-t {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.smenu-v {
+  font-weight: 600;
+}
+.smenu-h {
+  color: var(--mute);
+  font-size: 12px;
+}
+.smenu-k {
+  display: inline-flex;
+  gap: 3px;
+  margin-top: 0.5px;
+}
+.smenu-k kbd {
+  font-size: 10px;
+  padding: 2px 4px;
+  min-width: 17px;
+}
+.smenu-i.a-discard .smenu-v { color: var(--err); }
+
+/* ---------- brand utilities (system.md §2.2, §5.2) ---------- */
+/* Gradient text: a hero headline only (≥ 20 px; unused in the app UIs, kept for the site redo), never body, labels,
+   numbers or small text.
+   Flat --ink where background-clip: text is missing, under Increase Contrast (the generated block sets
+   --brand-text: none there) and in forced colours. */
+.g-text {
+  color: var(--ink);
+}
+@supports ((background-clip: text) or (-webkit-background-clip: text)) {
+  .g-text {
+    background: var(--brand-text);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  .g-text {
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+/* The field: the large gradient surface (light field / deep in dark mode, both in --brand-field) with grain.
+   Only on boxes ≥ 64 px in both dimensions (a hero; unused in the app UIs, kept for the site redo); never buttons,
+   bars, text.
+   (Not called .field: that name is taken by form rows in the Tauri app.) */
+.g-field {
+  position: relative;
+  isolation: isolate;
+  background: var(--brand-field);
+}
+.g-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: var(--grain) 0 0 / 200px;
+  mix-blend-mode: overlay;
+  opacity: var(--grain-opacity);
+}
+
+/* "AI is working" (organizing): one static 1 px hairline in translucent brand ink (--brand-working) just inside the
+   element's rounded edge. The element's own spinner / hatching egg carries the state; the line only says which box.
+   No rotation, no spectrum, no halo — nothing for Reduce Motion or Reduce Transparency to change. */
+.ai-working {
+  box-shadow: inset 0 0 0 1px var(--brand-working);
+}

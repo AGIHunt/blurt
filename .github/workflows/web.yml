@@ -1,0 +1,90 @@
+name: web
+
+# The review canvas (web/packages/review → skills/blurt/scripts/review.html), the design tokens (web/packages/ui) and
+# the overlay pages (web/apps/overlays), @blurt/i18n: unit tests, build + size budget, Playwright (Chromium + WebKit)
+# against review.py on the fixture sessions (v2) and the v3 doc server (e2e/v3server.ts), and on macOS the canvas in a
+# real WKWebView with the macos host.
+on:
+  push:
+    branches: [main]
+    paths: ["web/**", "skills/blurt/scripts/review.py", "skills/blurt/scripts/items.py", "skills/blurt/scripts/_common.py",
+            "skills/blurt/scripts/review.html", "tests/fixtures/sessions/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["web/**", "skills/blurt/scripts/review.py", "skills/blurt/scripts/items.py", "skills/blurt/scripts/_common.py",
+            "skills/blurt/scripts/review.html", "tests/fixtures/sessions/**", ".github/workflows/web.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: web
+
+jobs:
+  test-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # pnpm-lock.yaml is not committed (global gitignore); versions are pinned in the package.json files
+      - run: pnpm install --no-frozen-lockfile
+      - name: Unit tests
+        run: pnpm test
+      - name: Build (fails over the 400 KB budget)
+        run: pnpm build
+      - name: review.html in the repo is the build output
+        working-directory: .
+        run: |
+          ls -l skills/blurt/scripts/review.html
+          git diff --stat -- skills/blurt/scripts/review.html || true
+          grep -q 'mountReview\|blurtReview' skills/blurt/scripts/review.html
+      - name: Playwright browsers
+        run: pnpm -C packages/review exec playwright install --with-deps chromium webkit
+      - name: E2E (Chromium + WebKit) against review.py
+        run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: review-screens-and-report
+          path: |
+            web/packages/review/screens/
+            web/packages/review/playwright-report/
+            web/packages/review/test-results/
+          if-no-files-found: ignore
+
+  wkwebview:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm -C packages/review exec vite build
+      - uses: actions/setup-python@v5   # items.py needs 3.10+; the runner's own python3 is 3.9
+        with:
+          python-version: "3.12"
+      - name: The canvas in a WKWebView with the macos host (blurt-app:// + bridge + items.py user-ops)
+        run: pnpm -C packages/review test:wkwebview
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wkwebview-screens
+          path: web/packages/review/screens/
+          if-no-files-found: ignore

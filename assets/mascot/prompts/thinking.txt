@@ -1,0 +1,20 @@
+# codex exec (built-in image_gen) with --image for each reference: d1a-hero.png
+# (promo/cases/v0.7/mascot/d1-round-chick/, the approved 1A design). Sent verbatim; see gen.sh.
+Use your built-in image generation tool to create exactly ONE image (do not write code to draw it; do not create SVG; do not compose it from separate images with code). Request a landscape 1536x1024 image with a transparent background. Image brief:
+
+ANIMATION FRAME SHEET for a 2D sprite animation (frame-by-frame, like a sticker/emoji animation).
+The attached image(s) show the approved mascot: a perfectly round, plump baby chick — head and body are one soft circle like a mochi — warm butter-yellow (#FFC83D) with soft subtle shading, NO outline, a small coral (#FF5A3C) rounded-triangle beak, two small coral blush cheeks, two small dark charcoal (#2A2A2E) oval dot eyes each with a tiny white highlight, a tiny wing nub on each side, and a playful 2-feather tuft on top of the head. Reproduce EXACTLY this character — same shapes, proportions, colours, soft rendering and level of detail — in every frame. It must look like the SAME drawing reused frame after frame, with only the described change between frames (this is critical: consecutive frames must differ only by the described motion, so the animation does not flicker).
+Layout rules: ONE image, landscape 1536x1024, TRANSPARENT background (real alpha channel). The frames are arranged in a clean grid of equal cells, read left-to-right, top-to-bottom. No grid lines, no borders, no frame numbers, no labels, no text, no ground line, no ground shadow. Each frame is drawn centred in its own cell with generous empty space around it so nothing touches another cell. The chick has the SAME size in every cell (about 55% of the cell height) and sits at the SAME place in every cell (its bottom on the same invisible baseline about 18% above the cell's bottom edge, horizontally centred), unless the frame description explicitly says it moves up or down. No legs, no feet, no claws, no teeth; cute, premium, Apple-quality flat illustration.
+
+ANIMATION: "thinking" — the chick is busy working something out; a gentle floating bob, seamless loop. 8 frames, grid of 4 columns x 2 rows.
+In EVERY frame: the chick is NOT mirrored — its single wing nub is always on the viewer's LEFT side and its body faces the same way in all 8 frames; beak closed, eyes looking up and to the viewer's right as if thinking; three small round dots (a thought ellipsis, in soft warm grey #B8A98A) float above the head to the upper right. The bob moves the WHOLE chick (and the dots) up and down a little.
+1. Chick at the baseline, only the first (smallest, lowest) dot visible.
+2. Chick 2% of the cell height higher, first and second dots visible.
+3. Chick 4% higher, all three dots visible.
+4. Chick 5% higher (top of the bob), all three dots visible, eyes look straight up (pupils at the top of the eyes).
+5. Chick 4% higher, all three dots, eyes looking straight up.
+6. Chick 2% higher, dots fading (lighter).
+7. Chick at the baseline, body very slightly squashed (2% wider, 2% shorter), no dots.
+8. Chick at the baseline, normal shape, no dots, eyes back to looking up-right.
+
+After the image is generated, copy the generated PNG file to $RAW/thinking.png (use cp from ~/.codex/generated_images). Reply only with the final path.

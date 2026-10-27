@@ -1,0 +1,475 @@
+import { checkCatalogs } from "@blurt/i18n";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BlurtHost, Scope, UserOp } from "../src/host";
+import { CATALOGS } from "../src/i18n";
+import { ReviewStore } from "../src/store";
+import { StoreCtx } from "../src/ui/ctx";
+import { Inspector } from "../src/ui/Inspector";
+import { ListView } from "../src/ui/Views";
+import { MemStore, PROJECTS, V3_ITEMS } from "./v3store";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+Element.prototype.scrollIntoView ??= () => {};
+
+function v3Host(scope: Scope, extra: Partial<BlurtHost> = {}) {
+  const m = new MemStore(V3_ITEMS, PROJECTS, { title: "Batch", language: "en" });
+  const sent: UserOp[][] = [];
+  const host: BlurtHost = {
+    host: "macos",
+    scope,
+    load: async () => ({ doc: m.doc(scope), etag: m.etag }),
+    poll: async (e) => (e === m.etag ? { etag: e } : { doc: m.doc(scope), etag: m.etag }),
+    sendOps: async (ops, confirm) => {
+      sent.push(ops);
+      m.apply(ops, confirm);
+      return { ok: true, etag: m.etag }; // acknowledge only, like the macOS bridge
+    },
+    fileUrl: (p) => "blurt-app://file/" + encodeURIComponent(p),
+    ...extra,
+  };
+  return { m, host, sent };
+}
+const flush = async () => {
+  await vi.advanceTimersByTimeAsync(500);
+};
+const U = (n: number) => V3_ITEMS[n].uid!;
+
+afterEach(() => vi.useRealTimers());
+
+describe("v3 doc: ops by uid", () => {
+  it("edits go out addressed by uid; server-owned fields never do", async () => {
+    vi.useFakeTimers();
+    const { host, sent } = v3Host({ session: "/s" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    expect(s.v3).toBe(true);
+    s.setField(s.data.items[0], "module", "billing");
+    await flush();
+    expect(sent[0]).toEqual([{ op: "set", id: U(0), set: { module: "billing" }, unset: [] }]);
+    s.dispose();
+  });
+
+  it("a project move changes the id; an unsaved edit typed meanwhile survives, keyed by uid", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ session: "/s" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    // the bridge answers slowly: the user keeps typing while the move is in flight
+    let release!: () => void;
+    const send = host.sendOps;
+    host.sendOps = async (ops, c) => {
+      await new Promise<void>((r) => (release = r));
+      return send(ops, c);
+    };
+    s.moveTo([s.data.items[0]], "p-site");
+    await vi.advanceTimersByTimeAsync(1);
+    s.setField(s.data.items[0], "actual", "typed while the move was in flight");
+    release();
+    await vi.advanceTimersByTimeAsync(1);
+    host.sendOps = send;
+    expect(sent[0]).toEqual([{ op: "set", id: U(0), set: { project: "p-site" }, unset: [] }]);
+    expect(s.data.items[0].id).toBe("WS-8"); // the server's new id is in, the typing is still local
+    expect(s.data.items[0].actual).toBe("typed while the move was in flight");
+    await flush();
+    expect(sent[1]).toEqual([{ op: "set", id: U(0), set: { actual: "typed while the move was in flight" }, unset: [] }]);
+    const now = s.data.items.find((i) => i.uid === U(0))!;
+    expect(now.id).toBe("WS-8");
+    expect(now.aliases).toEqual(["BA-12"]);
+    expect(now.actual).toBe("typed while the move was in flight");
+    expect(m.items.find((i) => i.uid === U(0))!.actual).toBe("typed while the move was in flight");
+    expect(s.pendingOps()).toEqual([]);
+    expect(s.toast?.msg).toBe("Moved to website");
+    s.dispose();
+  });
+
+  it("in a project's list, items moved away leave the list (no phantom re-add)", async () => {
+    vi.useFakeTimers();
+    const { host, sent } = v3Host({ project: "p-blurt" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    expect(s.data.items.map((i) => i.id)).toEqual(["BA-12", "BA-13", "BA-14", "BA-15", "BA-16"]);
+    s.moveTo([s.data.items[1], s.data.items[3]], "inbox");
+    await flush();
+    expect(s.data.items.map((i) => i.id)).toEqual(["BA-12", "BA-14", "BA-16"]);
+    expect(sent.flat().every((o) => o.op === "set")).toBe(true);
+    expect(s.pendingOps()).toEqual([]);
+    expect(s.toast?.msg).toBe("Moved 2 items to Unassigned");
+    s.dispose();
+  });
+
+  it("state: the user confirms done; optimistic, sent as a state op by uid, history kept", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ session: "/s" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    expect(s.stateOf(s.data.items[4])).toBe("wontfix"); // an old file: draft + work.state wontfix
+    s.act([s.data.items[0]], "done");
+    expect(s.stateOf(s.data.items[0])).toBe("done"); // before the server answers
+    expect(s.toast?.msg).toBe("Done · BA-12");
+    await flush();
+    expect(sent[0]).toEqual([{ op: "state", id: U(0), action: "done" }]);
+    const f = m.items[0];
+    expect(f.state).toBe("done");
+    expect(f.work_history!.map((w) => w.state)).toEqual(["in_progress", "to_verify"]);
+    expect(s.data.items[0].state).toBe("done");
+    expect(s.pendingOps()).toEqual([]);
+    s.dispose();
+  });
+
+  it("in a project's list, a discarded item leaves the doc but stays on the page until undone", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    s.act([s.data.items[1]], "discard");
+    await flush();
+    expect(sent[0]).toEqual([{ op: "state", id: U(2), action: "discard" }]);
+    expect(m.items[2]).toMatchObject({ state: "discarded", restore_to: "handed_off" });
+    expect(s.data.items.map((i) => s.stateOf(i))).toEqual(["to_verify", "discarded", "wontfix", "in_progress", "done"]);
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-12", "BA-14", "BA-15", "BA-16"]); // all but discarded
+    s.setStateF("discarded");
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-13"]);
+    s.setStateF("inbox");
+    expect(s.listed().map(({ i }) => i.id)).toEqual(["BA-12"]);
+    s.undo();
+    await flush();
+    expect(sent[1]).toEqual([{ op: "state", id: U(2), state: "handed_off", undo: true }]);
+    expect(m.items[2].state).toBe("handed_off");
+    expect(s.pendingOps()).toEqual([]);
+    s.dispose();
+  });
+
+  it("undoing a chip pick leaves alone a state the agent wrote meanwhile (window ⌘Z over the project doc)", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const labels: string[] = [];
+    host.registerUndo = (l) => labels.push(l);
+    const s = new ReviewStore(host, { lang: "en", mode: "item", itemId: "BA-12" });
+    await s.load();
+    const other = s.data.items.find((i) => i.id === "BA-15")!;
+    expect(s.stateOf(other)).toBe("in_progress");
+    s.setKind("note");
+    await flush();
+    expect(labels).toEqual(["Change Kind"]);
+    m.agentWork(other.uid!, "to_verify", "fixed"); // an agent finishing, after the pick
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(s.stateOf(s.data.items.find((i) => i.id === "BA-15")!)).toBe("to_verify");
+    const before = sent.length;
+    s.undo();
+    await flush();
+    expect(s.item?.kind ?? "issue").toBe("issue");
+    expect(s.stateOf(s.data.items.find((i) => i.id === "BA-15")!)).toBe("to_verify");
+    expect(sent.slice(before).flat().some((o) => o.op === "state")).toBe(false);
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.redo();
+    await flush();
+    expect(s.item?.kind).toBe("note");
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.dispose();
+  });
+
+  it("undoing a state step sends back only the items it changed, and only while they are still where it left them", async () => {
+    vi.useFakeTimers();
+    const { m, host, sent } = v3Host({ project: "p-blurt" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    const [a, b] = ["BA-12", "BA-16"].map((id) => s.data.items.find((i) => i.id === id)!);
+    const other = s.data.items.find((i) => i.id === "BA-15")!;
+    s.act([a, b], "discard");
+    await flush();
+    m.agentWork(b.uid!, "to_verify", "fixed"); // b moved on by an agent after the discard
+    m.agentWork(other.uid!, "to_verify", "fixed");
+    await vi.advanceTimersByTimeAsync(2100);
+    const before = sent.length;
+    s.undo();
+    await flush();
+    expect(sent.slice(before).flat().filter((o) => o.op === "state")).toEqual([{ op: "state", id: a.uid, state: "to_verify", undo: true }]);
+    expect(m.items.find((i) => i.uid === a.uid)!.state).toBe("to_verify");
+    expect(m.items.find((i) => i.uid === b.uid)!.state).toBe("to_verify");
+    expect(m.items.find((i) => i.uid === other.uid)!.state).toBe("to_verify");
+    s.redo(); // discards a again, and only a
+    await flush();
+    expect(m.items.find((i) => i.uid === a.uid)!.state).toBe("discarded");
+    expect(m.items.find((i) => i.uid === b.uid)!.state).toBe("to_verify");
+    s.dispose();
+  });
+
+  it("a field's editing session is named after the field in the Edit menu", async () => {
+    vi.useFakeTimers();
+    const { host } = v3Host({ project: "p-blurt" });
+    const labels: string[] = [];
+    host.registerUndo = (l) => labels.push(l);
+    const s = new ReviewStore(host, { lang: "en", mode: "item", itemId: "BA-12" });
+    await s.load();
+    const i = s.item!;
+    s.beginEdit(i, "steps");
+    s.setField(i, "steps", ["Open it", "Click"]);
+    s.endEdit(i);
+    s.setSev("low");
+    expect(labels).toEqual(["Edit Steps to Reproduce", "Change Severity"]);
+    s.dispose();
+  });
+
+  it("an agent's to_verify arrives by poll while nothing is pending", async () => {
+    vi.useFakeTimers();
+    const { m, host } = v3Host({ session: "/s" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    m.agentWork(U(5), "to_verify", "fixed");
+    await vi.advanceTimersByTimeAsync(2100);
+    expect(s.stateOf(s.data.items[5])).toBe("to_verify");
+    s.dispose();
+  });
+
+  it("merge in v3 records uids and removes by uid", async () => {
+    vi.useFakeTimers();
+    const { host, sent } = v3Host({ session: "/s" });
+    const s = new ReviewStore(host, { lang: "en" });
+    await s.load();
+    s.go(1);
+    s.mergePrev();
+    await flush();
+    expect(sent[0]).toEqual(expect.arrayContaining([{ op: "remove", id: U(1), into: U(0) }]));
+    expect(s.data.items[0].merged_from).toEqual([U(1)]);
+    s.dispose();
+  });
+});
+
+describe("v3 UI", () => {
+  async function mount(node: React.ReactNode, extra: Partial<BlurtHost> = {}, lang = "en") {
+    const h = v3Host({ session: "/s" }, extra);
+    const s = new ReviewStore(h.host, { lang });
+    await s.load();
+    const el = document.createElement("div");
+    const root = createRoot(el);
+    await act(async () => root.render(<StoreCtx.Provider value={s}>{node}</StoreCtx.Provider>));
+    return { s, el, ...h, done: () => (act(() => root.unmount()), s.dispose()) };
+  }
+
+  it("work panel: one Open Session per item — the host's banner has it while the item is with the agent", async () => {
+    const openSession = vi.fn();
+    const at = (s: ReviewStore, id: string) => s.data.items.findIndex((i) => i.id === id);
+    for (const banner of [false, true]) {
+      const { el, s, done } = await mount(<Inspector />, { openSession, sessionBanner: banner });
+      await act(async () => s.go(at(s, "BA-15"))); // in progress, with a session
+      expect(el.querySelector("#workSession") === null).toBe(banner);
+      // under the banner a card with only "By Codex" would repeat it: no card (dogfood v0.9)
+      expect(el.querySelector("#workRow") === null).toBe(banner);
+      await act(async () => s.go(at(s, "BA-12"))); // to verify: no banner above it, so the panel has the button
+      expect(el.querySelector("#workSession")).not.toBeNull();
+      await act(async () => (el.querySelector("#workSession") as HTMLButtonElement).click());
+      expect(openSession).toHaveBeenLastCalledWith("j-20261022-101500-ab12");
+      done();
+    }
+  });
+
+  it("inspector: project picker, state pill, work panel with Mark as done, provenance, handoff buttons", async () => {
+    const handoff = vi.fn(async () => ({ id: "H-0013", path: "/h/H-0013.md", text: "Please handle BA-12 …" }));
+    const dispatch = vi.fn();
+    const { el, s, done } = await mount(<Inspector />, { handoff, dispatch, openSession: vi.fn() });
+    await act(async () => s.go(0)); // the review opens on the first new item; this one is waiting to be verified
+    expect((el.querySelector("#projectPick") as HTMLSelectElement).value).toBe("p-blurt");
+    const pill = el.querySelector("#statePill") as HTMLButtonElement;
+    expect(pill.querySelector(".sring.s-to_verify")).not.toBeNull();
+    expect(pill.textContent).toBe("To verify");
+    expect(pill.getAttribute("aria-haspopup")).toBe("menu");
+    expect(el.querySelector(".work-claim")?.textContent).toMatch(/says it’s fixed/);
+    expect(el.querySelector("#workDone")?.textContent).toContain("Mark as Done");
+    expect(el.querySelector("#workSession")).not.toBeNull();
+    expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
+    // one footer line (how · when · who); captured in its own project says nothing the breadcrumb doesn't: not repeated
+    expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/^Screen recording at 0:12·.+·by max$/);
+    expect(el.querySelector("#provenance")?.textContent).not.toContain("Captured in this project");
+    expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
+    expect(el.querySelector("#handoffRow")).toBeNull(); // to verify: nothing to hand off
+    // the pill's menu: only what to-verify allows, hand off not among them
+    await act(async () => pill.click());
+    expect([...document.querySelectorAll<HTMLElement>(".smenu [role=menuitem]")].map((b) => b.dataset.action)).toEqual(["done", "send_back", "wontfix", "discard"]);
+    await act(async () => document.querySelector<HTMLElement>('.smenu [data-action="send_back"]')!.click());
+    expect(s.stateOf(s.data.items[0])).toBe("todo");
+    expect(document.querySelector(".smenu")).toBeNull();
+    // to do: now it can be handed off
+    await act(async () => (el.querySelector("#copyInstruction") as HTMLButtonElement).click());
+    expect(handoff).toHaveBeenCalledWith([U(0)], "instruction");
+    expect(s.toast?.msg).toBe("Instruction copied · H-0013");
+    await act(async () => (el.querySelector("#dispatchBtn") as HTMLButtonElement).click());
+    expect(dispatch).toHaveBeenCalledWith([U(0)]);
+    await act(async () => pill.click());
+    expect(document.querySelector('.smenu [data-action="hand_off"]')).not.toBeNull();
+    await act(async () => document.querySelector<HTMLElement>('.smenu [data-action="hand_off"]')!.click());
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    done();
+  });
+
+  it("inspector: only filled fields are rows; the kind's body always, with a prompt; the rest in Add field", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    document.body.appendChild(el);
+    await act(async () => s.go(0)); // an issue: module, actual and a source link filled
+    const keys = () => [...el.querySelectorAll<HTMLElement>(".fields [data-k]")].map((f) => f.dataset.k);
+    expect(keys()).toEqual(["actual", "module", "source"]);
+    expect([...el.querySelectorAll(".fields [placeholder]")].map((f) => f.getAttribute("placeholder"))).not.toContain("—");
+    const add = el.querySelector("#addField") as HTMLSelectElement;
+    // the fields, then (an issue without a type) the types: an unset type is no chip of its own
+    expect([...add.options].slice(1).map((o) => o.value)).toEqual(["owner", "expected", "steps", "tags",
+      ...s.types.map((t) => "type:" + t)]);
+    expect(el.querySelector("#typeChip")).toBeNull();
+    // picking one shows it, focused; emptied or not, it stays while this item is showing
+    await act(async () => {
+      add.value = "expected";
+      add.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(keys()).toEqual(["actual", "module", "expected", "source"]);
+    expect(document.activeElement).toBe(el.querySelector('[data-k="expected"]'));
+    expect([...(el.querySelector("#addField") as HTMLSelectElement).options].map((o) => o.value)).not.toContain("expected");
+    // the focus was one-shot: away and back, nothing is focused (J/K would type into it) and the emptied field is gone
+    await act(async () => (document.activeElement as HTMLElement).blur());
+    await act(async () => s.go(1));
+    await act(async () => s.go(0));
+    expect(document.activeElement?.tagName).not.toBe("TEXTAREA");
+    expect(keys()).toEqual(["actual", "module", "source"]);
+    // an idea with nothing written yet: its body, with a real prompt; nothing else
+    await act(async () => s.go(1));
+    expect(keys()).toEqual(["summary"]);
+    expect(el.querySelector('[data-k="summary"]')?.getAttribute("placeholder")).toBe("What’s the idea?");
+    expect(el.querySelector("#typeChip")).toBeNull();
+    el.remove();
+    done();
+  });
+
+  it("to verify: one card that asks — one brand primary, Send Back… with a note, the rest under ⋯, no amber elsewhere", async () => {
+    const reviewChanges = vi.fn();
+    const { el, s, done } = await mount(<Inspector />, { openSession: vi.fn(), reviewChanges });
+    document.body.appendChild(el);
+    await act(async () => s.go(0)); // BA-12: Claude says it's fixed, with a session and a commit
+    const card = el.querySelector("#workRow")!;
+    // exactly one primary in the whole inspector, and it is the brand button (never the old flat `ok` keep button)
+    expect(el.querySelectorAll(".btn.primary")).toHaveLength(1);
+    expect(card.querySelector("#workDone")?.classList.contains("primary")).toBe(true);
+    expect(el.querySelector(".btn.keep")).toBeNull();
+    // state glyphs are not verbs: no rings inside the buttons; the card leads with the to-verify disc
+    expect(card.querySelectorAll("button .sring")).toHaveLength(0);
+    expect(card.querySelector(":scope > .sring.s-to_verify")).not.toBeNull();
+    expect(card.querySelector(".work-claim")?.textContent).toBe("The agent says it’s fixed");
+    expect(card.querySelector(".sha")?.textContent).toBe("a1c3e5f");
+    expect(card.querySelector("#workBack")?.textContent).toBe("Send Back…");
+    // ⋯: Review Changes… (a session) and Won't Do
+    const more = [...(card.querySelector("#workMore") as HTMLSelectElement).options].slice(1).map((o) => o.value);
+    expect(more).toEqual(["review", "wontfix"]);
+    await act(async () => {
+      const m = card.querySelector("#workMore") as HTMLSelectElement;
+      m.value = "review";
+      m.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(reviewChanges).toHaveBeenCalledWith("j-20261022-101500-ab12");
+    // severity is neutral (bars), never the attention hue
+    expect(el.querySelector("#sevChip")?.parentElement?.querySelector(".sevbars")).not.toBeNull();
+    // the history's two entries and the provenance sit in one Activity disclosure at the end
+    expect(el.querySelector("#provenance")).not.toBeNull();
+    expect(el.querySelectorAll(".worklog li")).toHaveLength(2);
+    // Send Back…: a note field in place; Esc closes it, the button sends the note with the step
+    const spy = vi.spyOn(s, "act");
+    await act(async () => (card.querySelector("#workBack") as HTMLButtonElement).click());
+    const note = el.querySelector("#workBackNote") as HTMLTextAreaElement;
+    expect(document.activeElement).toBe(note);
+    expect(el.querySelectorAll(".btn.primary")).toHaveLength(1); // the composer's Send Back is the one primary now
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(note, "  Still grey on Safari  ");
+      note.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => (el.querySelector("#workBackSend") as HTMLButtonElement).click());
+    expect(spy).toHaveBeenCalledWith([s.data.items[0]], "send_back", { note: "Still grey on Safari" });
+    expect(s.stateOf(s.data.items[0])).toBe("todo");
+    el.remove();
+    done();
+  });
+
+  it("to verify: one history entry is not a History section", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    const i = s.data.items[0];
+    delete i.work_history;
+    await act(async () => s.go(1));
+    await act(async () => s.go(0));
+    expect(el.querySelector(".worklog")).toBeNull();
+    expect(el.querySelector("#provenance")).not.toBeNull();
+    done();
+  });
+
+  it("inspector: no 'captured in this project' on an item without a project", async () => {
+    const { el, s, done } = await mount(<Inspector />);
+    s.data.items[1].project_by = "capture"; // IN-3 is in the inbox (Unassigned)
+    await act(async () => s.go(1));
+    expect(el.querySelector("#provenance")?.textContent ?? "").not.toContain("Captured in this project");
+    expect(el.querySelector("#provenance")?.textContent).toContain("Voice note");
+    done();
+  });
+
+  it("an Unassigned item shows its organizing run's suggestion; Move moves it, and it shows only in Unassigned", async () => {
+    vi.useFakeTimers();
+    const { el, s, sent, done } = await mount(<Inspector />);
+    await act(async () => s.go(1));
+    expect(el.querySelector(".prov-sug")?.textContent).toContain("Looks like website");
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized · mentions the pricing page");
+    // no reason given: no dangling separator
+    await act(async () => { s.data.items[1].suggested_project!.reason = ""; s.go(0); });
+    await act(async () => s.go(1));
+    expect(el.querySelector(".prov-sug")?.getAttribute("title")).toBe("Suggested when it was organized");
+    await act(async () => (el.querySelector("#acceptSuggestion") as HTMLButtonElement).click());
+    await act(flush);
+    expect(sent[0][0]).toEqual({ op: "set", id: U(1), set: { project: "p-site" }, unset: [] });
+    expect(s.data.items[1].id).toBe("WS-8");
+    // moved: the suggestion stays on the item (for ⌘Z) but isn't offered outside Unassigned
+    await act(flush);
+    expect(el.querySelector(".prov-sug")).toBeNull();
+    done();
+  });
+
+  it("list: kind icons, a state ring per card, multi-select and batch move", async () => {
+    vi.useFakeTimers();
+    const { el, s, sent, done } = await mount(<ListView />, {}, "zh-Hans");
+    const cards = [...el.querySelectorAll(".card")];
+    expect(cards.map((c) => c.querySelector(".kind-ic")!.className)).toEqual([
+      "kind-ic k-issue", "kind-ic k-idea", "kind-ic k-task", "kind-ic k-note", "kind-ic k-competitor", "kind-ic k-issue", "kind-ic k-issue"]);
+    expect(cards.map((c) => c.querySelector(".sring")!.getAttribute("class"))).toEqual(["sring s-to_verify", "sring s-new",
+      "sring s-handed_off", "sring s-new", "sring s-wontfix", "sring s-in_progress", "sring s-done"]);
+    expect(cards[1].querySelector(".spill-ring")?.getAttribute("aria-label")).toBe("新 · 更改状态");
+    expect(cards[2].querySelector(".wk")?.textContent).toBe("已复制给你的 Agent");
+    expect(cards[5].querySelector(".wk")?.textContent).toBe("进行中");
+    await act(async () => (cards[0].querySelector(".pickbox") as HTMLButtonElement).click());
+    await act(async () => (cards[2].querySelector(".pickbox") as HTMLButtonElement).click());
+    expect(el.querySelector(".selcount")?.textContent).toBe("已选 2 条");
+    const pick = el.querySelector("#selMove") as HTMLSelectElement;
+    await act(async () => {
+      pick.value = "p-site";
+      pick.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(flush);
+    expect(sent[0].map((o) => o.op === "set" && o.set.project)).toEqual(["p-site", "p-site"]);
+    expect(s.data.items.filter((i) => i.project === "p-site").map((i) => i.id).sort()).toEqual(["WS-7", "WS-8", "WS-9"]);
+    expect(s.toast?.msg).toBe("已把 2 条移到 website");
+    done();
+  });
+});
+
+describe("catalogs (K10)", () => {
+  it("en and zh-Hans have the same keys and placeholders", () => {
+    expect(checkCatalogs(CATALOGS.en, CATALOGS["zh-Hans"])).toEqual([]);
+  });
+  it("every key the source uses exists", () => {
+    const SRC = join(__dirname, "../src");
+    const files = (d: string): string[] =>
+      readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
+    const common = JSON.parse(readFileSync(join(__dirname, "../../i18n/src/common/en.json"), "utf8"));
+    const known = (k: string) => k in CATALOGS.en || k in common || `${k}_other` in CATALOGS.en;
+    const missing: string[] = [];
+    for (const f of files(SRC).filter((f) => /\.tsx?$/.test(f))) {
+      const src = readFileSync(f, "utf8");
+      for (const m of src.matchAll(/\b(?:t|plural)\(\s*"([a-z_]+(?:\.[a-z_]+)+)"/g)) if (!known(m[1])) missing.push(`${f.slice(SRC.length + 1)}: ${m[1]}`);
+      for (const m of src.matchAll(/"((?:keys|work|project|source|severity|type|handoff|select)\.[a-z_.]+)"/g)) if (!known(m[1]) && !/\.$/.test(m[1])) missing.push(`${f.slice(SRC.length + 1)}: ${m[1]}`);
+    }
+    expect(missing).toEqual([]);
+  });
+});

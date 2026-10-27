@@ -1,0 +1,717 @@
+/* Main — the main window, the menu bar menu, notifications (docs/design/next-round.md K10). Owner: P4.
+   Same keys and placeholders in the other language (tests/test_l10n.py). */
+
+"app.agent.fallback_notice" = "%1$@ — organizing with %2$@ instead";
+"app.agent.list_sep" = ", ";
+"app.agent.can_be_used" = " can’t be used";
+"app.agent.checking" = "checking…";
+"app.agent.configured_can_verify_advance" = "set up (checked when it’s first used)";
+"app.agent.failed" = "failed";
+"app.agent.isn_installed" = " isn’t installed";
+"app.agent.isn_logged" = " isn’t signed in";
+"app.agent.logged" = "signed in";
+"app.agent.login_unknown_will_just" = "sign-in not checked — will try anyway";
+"app.agent.none_short" = "No agent available";
+"app.agent.not_installed" = "not installed";
+"app.agent.not_logged" = "not signed in";
+"app.agent.unfinished" = "%@ stopped before it finished";
+"app.agent.couldnt_start" = "%@ couldn’t start. Check that it runs in a terminal, then retry.";
+
+"app.menu.after.keep" = "Just keep the video";
+"app.menu.after.organize" = "Organize into items";
+"app.menu.countdown" = "Countdown";
+"app.menu.countdown.none" = "None";
+"app.menu.countdown.seconds" = "%ld seconds";
+"app.menu.discard" = "Discard Recording";
+"app.menu.finish" = "Finish Recording";
+"app.menu.open" = "Open Blurt";
+"app.menu.pause" = "Pause";
+"app.menu.project" = "Current Project: %@";
+"app.menu.project.none_tip" = "No current project: recordings go to Unassigned, snaps and voice notes stay as cards under the notch";
+"app.menu.quit" = "Quit Blurt";
+"app.menu.record" = "Start Recording";
+"app.menu.record_last" = "Record the Last Area";
+"app.menu.restart" = "Start Over";
+"app.menu.resume" = "Resume";
+"app.menu.selecting" = "Choosing an area…";
+"app.menu.shortcuts" = "Shortcuts…";
+"app.menu.updates" = "Check for Updates…";
+
+"app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or wait in Unassigned until you pick a project?";
+"app.migrate.keep" = "Keep %@";
+"app.name" = "Blurt";
+
+
+"app.record.failed" = "Recording not saved";
+"app.record.failed.disk_full" = "The disk is full, so nothing from this take was kept. Free some space, then record again.";
+"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Turn on Screen Recording for Blurt in System Settings.";
+"app.record.failed.stopped" = "macOS stopped the screen recording partway, so nothing from this take was kept.";
+"app.record.failed.no_frames" = "No picture came in from the screen, so nothing was recorded.";
+"app.record.failed.unknown" = "Blurt couldn’t finish writing the video, so nothing from this take was kept.";
+"app.record.reason.disk_full" = "The disk is full";
+"app.record.reason.permission" = "Screen Recording was refused";
+"app.record.reason.stopped" = "macOS stopped the recording";
+"app.record.reason.no_frames" = "No picture came in";
+"app.record.reason.unknown" = "Something went wrong";
+"app.record.failed.display_gone" = "The display being recorded was disconnected partway, so nothing from this take was kept. Connect it again, then record again.";
+"app.record.failed.interrupted" = "The Mac went to sleep, locked or started the screen saver partway, so nothing from this take was kept. Keep the Mac awake while you record.";
+"app.record.failed.writer" = "Writing the video file failed partway, so nothing from this take was kept. Recording again usually works; the exact error is in the log.";
+"app.record.reason.display_gone" = "The recorded display was disconnected";
+"app.record.reason.interrupted" = "Sleep or the lock screen stopped the recording";
+"app.record.reason.writer" = "Couldn’t write the video file";
+"app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
+"app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
+"app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
+"app.record.partial" = "%1$@ — the first %2$@ is kept";
+"app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
+"app.record.organize" = "Organize";
+
+"app.status.ax_count" = "Blurt — %@";
+
+"app.toast.saved" = "Recording saved · %@";
+"app.toast.welcome" = "Blurt is in the menu bar · %1$@ to dictate · %2$@ to snap";
+
+"main.project.removed_name" = "a removed project";
+"app.url.no_item" = "Can’t find that item. It may have been deleted or moved.";
+"app.url.no_session" = "That recording or snap is gone. It may have been deleted or moved.";
+
+"main.action.record" = "Record";
+"main.action.snap" = "Snap";
+
+"main.banner.agent" = "an agent";
+"main.banner.ended" = "Session ended without the agent reporting back";
+"main.banner.external" = "Copied to your agent. Mark it done when it is.";
+"main.banner.open_session" = "Open Session";
+"main.banner.organizing" = "Still being organized · %@";
+"main.banner.show_progress" = "Show Progress";
+"main.banner.with_agent" = "Handed off to %@ · %@";
+
+"main.captures.tip" = "They’re waiting at the top of your screen, under the notch. This brings them all down there, so you can choose a project for each.";
+"main.captures.taken" = "Recently dragged out · %ld in the last 7 days";
+"main.captures.taken.show" = "Show";
+"main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back under the notch";
+"main.cmd.copy_full" = "Copy Full Text";
+"main.cmd.copy_instruction" = "Copy Instruction";
+
+"main.col.id" = "ID";
+"main.col.kind" = "Kind";
+"main.col.project" = "Project";
+"main.col.state" = "State";
+"main.col.title" = "Title";
+"main.col.updated" = "Updated";
+
+"main.detail.gone" = "The item’s file is gone";
+"main.detail.label" = "Item detail";
+"main.detail.legacy" = "Not converted yet";
+"main.detail.legacy.detail" = "This item comes from an older recording. Blurt converts it in the background; it will open here when that’s done.";
+"main.detail.none" = "Nothing selected";
+"main.detail.none.detail" = "Pick an item on the left.";
+"main.detail.parse_error" = "This item’s file can’t be read";
+"main.detail.parse_error.detail" = "It was edited into something Blurt can’t read, so Blurt won’t overwrite it. Fix it in an editor and save; it shows up here again.";
+"main.unreadable.fix_first" = "This item’s file can’t be read. Fix it in an editor first.";
+"main.unreadable.open" = "Open in Editor";
+"main.unreadable.show" = "Show";
+"main.unreadable.found" = "%@’s file can’t be read. Fix it in an editor.";
+"main.unreadable.found.many" = "%d item files can’t be read. Fix them in an editor.";
+"main.skipped.found" = "%@ couldn’t be added to the list. Details are in the log.";
+"main.skipped.found.many" = "%d files couldn’t be added to the list. Details are in the log.";
+"main.scan.failed" = "Couldn’t refresh the list.";
+
+"main.dispatch.needs_project" = "Move these items to a project first";
+"main.dispatch.one_project" = "Choose items from one project";
+"main.dispatch.discarded" = "Discarded items can’t be handed off.";
+"main.dispatch.reopen_first" = "This item is %@. Reopen it to hand it off again.";
+"main.dispatch.with_session" = "%@ is already with a session.";
+"main.dispatch.open_session" = "Open Session";
+
+"main.empty.all_filed" = "Everything is filed";
+"main.empty.all_filed.detail" = "Items without a project show up here.";
+"main.empty.clear_all" = "Clear Search & Filters";
+"main.empty.clear_filters" = "Clear Filters";
+"main.empty.discarded" = "Nothing discarded";
+"main.empty.discarded.detail" = "Items you discard with ⌫ stay here, and you can restore them any time.";
+"main.empty.filters_on" = "Filters are on: %@.";
+"main.empty.first" = "Talk through your work";
+"main.empty.first.detail" = "Open a project folder, then record or snap while you talk. Blurt turns it into items your agents can work on.";
+"main.empty.inbox_zero" = "Nothing needs you right now";
+"main.empty.inbox_zero.detail" = "New captures and finished agent work land here.";
+"main.empty.no_index" = "Your items aren’t listed yet";
+"main.empty.no_index.detail" = "Blurt reads your project folders on this Mac. Nothing is uploaded.";
+"main.empty.no_match" = "No items match these filters";
+"main.empty.no_results" = "No results for “%@”";
+"main.empty.no_scripts" = "The blurt skill’s scripts are missing";
+"main.empty.no_scripts.detail" = "Install or update the skill (npx skills add AGIHunt/blurt), then reopen this window.";
+"main.empty.nothing_in_progress" = "Nothing in progress";
+"main.empty.nothing_in_progress.detail" = "Items you hand off to an agent stay here until you verify them.";
+"main.empty.outdated" = "Updating your items…";
+"main.empty.outdated.detail" = "This takes a moment after an update. Nothing is lost.";
+"main.empty.project" = "Nothing in this project yet";
+"main.empty.project.detail" = "Record your screen or snap a few shots while you talk.";
+"main.empty.rebuild" = "Update Items";
+"main.empty.scan" = "List Items";
+"main.empty.scan_failed" = "Couldn’t read your items";
+"main.empty.scan_failed.detail" = "Blurt couldn’t finish reading the items in this folder. Try again in a moment.";
+"main.empty.scanning" = "Reading your items…";
+"main.empty.try_shorter" = "Try a shorter word or another phrasing.";
+"main.empty.show_item" = "Show %@";
+"main.empty.id_in" = "%1$@ is in %2$@.";
+"main.empty.id_filtered" = "%@ is here, but the filters hide it.";
+
+"main.error.bad_transition" = "That state change isn’t possible from here.";
+"main.error.deleted" = "It’s in Discarded. Restore it first.";
+"main.error.cant_edit" = "Can’t edit right now";
+"main.error.generic" = "Something went wrong. The details are in the log.";
+"main.error.io" = "Couldn’t write the file there. Choose another folder.";
+"main.error.bad_key" = "2–5 letters or digits, starting with a letter (IN is taken).";
+"main.error.key_in_use" = "The key can’t change once the project has items.";
+"main.error.key_taken" = "Another project already uses that key.";
+"main.error.needs_project" = "Move the items to a project first.";
+"main.error.no_scripts" = "This needs the Blurt skill and uv. Reinstall the skill (npx skills add AGIHunt/blurt), then try again.";
+"main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
+"main.error.not_found" = "Blurt can’t find that any more.";
+"main.error.no_project" = "That project isn’t in Blurt any more.";
+"main.error.exists" = "That folder is in Blurt already.";
+"main.error.folder_missing" = "That project’s folder can’t be found. Locate it first.";
+"main.error.not_a_folder" = "That isn’t a folder.";
+"main.error.reserved" = "That’s Blurt’s own folder.";
+"main.error.save_title" = "Couldn’t save";
+"main.error.timeout" = "It took too long. Try again in a moment.";
+"main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
+"main.list.move" = "Move";
+"main.list.move.tip" = "Move it to %@ (⌘Z moves it back)";
+"main.list.suggested" = "Looks like %@";
+"main.move.here" = "here now";
+"main.move.list" = "Projects";
+"main.move.placeholder" = "Move to…";
+"main.move.placeholder.one" = "Move %@ to…";
+"main.move.current" = "Here now";
+"main.palette.move_pick" = "Move to Project…";
+"main.palette.switch_project" = "Switch Project…";
+"main.palette.use_none" = "No Current Project (new snaps and recordings to Unassigned)";
+"main.palette.use_project" = "Make %@ the Current Project";
+"main.project.use_none" = "Stop Using as Current Project";
+"main.state.toast" = "%1$@ · %2$@";
+"main.state.not_here" = "Can’t do that from %@. Press S to see what you can do.";
+"main.state.restore_first" = "It’s in Discarded. Press R to restore it first.";
+"main.state.these" = "these states";
+
+"main.filter.kind" = "Filter by kind";
+"main.filter.live" = "All but Discarded";
+"main.filter.needs_you" = "Inbox";
+"main.filter.only_kind" = "Only %@ (%ld)";
+
+"main.filter.state" = "Filter by state";
+"main.handoff.copied" = "Instruction copied — paste it into Claude Code, Codex or any agent";
+"main.handoff.copied_full" = "Full text copied — screenshots are linked by path";
+"main.handoff.failed" = "Couldn’t prepare the hand-off";
+
+"main.inbox.new" = "%ld new";
+"main.inbox.verify" = "%ld to verify";
+"main.item.untitled" = "Untitled";
+
+"main.job.error.auth" = "The agent isn’t signed in.";
+"main.job.error.auth.named" = "%@ isn’t signed in.";
+"main.job.error.conflict" = "The changes conflict with yours.";
+"main.job.error.git" = "Git couldn’t finish.";
+"main.job.error.model" = "The model isn’t available.";
+"main.job.error.network" = "The network dropped.";
+"main.job.error.quota" = "The agent ran out of quota.";
+"main.job.error.quota.named" = "%@ ran out of quota.";
+"main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
+"main.job.hint.no_agent" = "No coding agent is ready. Install or sign in to one in Settings, under Agents.";
+"main.job.capture" = "A capture";
+"main.job.no_agent" = "No coding agent is ready: %@.";
+"main.job.no_agent.sep" = "; ";
+"main.job.organized_by" = "Organized by %1$@ (%2$@)";
+"main.job.error.agent_exit" = "The agent stopped before it finished.";
+"main.job.error.agent_exit.named" = "%@ stopped before it finished.";
+"main.job.error.io" = "Blurt couldn’t read or write a file it needs. Retry; if it keeps failing, the details are in the log.";
+"main.job.error.model.named" = "The model %@ uses isn’t available right now.";
+"main.job.error.network.named" = "Couldn’t reach %@’s service. Check your network or proxy, then retry.";
+"main.job.error.skill" = "The Blurt skill isn’t ready. Update the skill, then retry.";
+"main.job.error.unknown" = "It stopped before it finished. Retry; if it keeps failing, the details are in the log.";
+"main.job.error.unknown.named" = "%@ stopped before it finished. Retry; if it keeps failing, the details are in the log.";
+"main.job.hint.interrupted" = "Blurt quit before this finished. Retry to run it again.";
+"main.job.no_terminal" = "The terminal isn’t available";
+"main.job.no_terminal.detail" = "Open the session in your own terminal to follow it.";
+"main.job.show_log" = "Show Log";
+"main.job.skipped" = "Skipped";
+"main.job.step_state.done" = "done";
+"main.job.step_state.failed" = "failed";
+"main.job.step_state.pending" = "not started";
+"main.job.step_state.running" = "in progress";
+"main.job.step_state.skipped" = "skipped";
+
+"main.keys.section.navigate" = "Navigate";
+"main.keys.section.triage" = "Triage";
+"main.keys.section.item" = "Item";
+"main.keys.section.general" = "General";
+"main.keys.palette" = "Command palette";
+"main.keys.search" = "Search";
+"main.keys.next" = "Next item";
+"main.keys.previous" = "Previous item";
+"main.keys.open" = "Open in the detail";
+"main.keys.back_to_list" = "Back to the list";
+"main.keys.places" = "Inbox, In Progress, Unassigned, All Items";
+"main.keys.projects" = "Top five projects in the sidebar";
+"main.keys.keep.note" = "Moves a new item to To do";
+"main.keys.back" = "Send back or reopen";
+"main.keys.back.note" = "Also takes back a handed-off item or restores a discarded one";
+"main.keys.kind" = "Kind: issue, idea, note, task";
+"main.keys.copy_instruction" = "Copy instruction";
+"main.keys.move" = "Move to project";
+"main.keys.space" = "Space";
+"main.keys.copy_path" = "Copy path";
+"main.keys.dictation" = "Dictation history";
+"main.keys.open_folder" = "Open a folder";
+"main.keys.project_settings" = "Project settings";
+"main.keys.sidebar" = "Show or hide the sidebar";
+"main.keys.detail" = "Show or hide the detail";
+"main.keys.close_window" = "Close the window";
+"main.keys.close_window.note" = "Blurt keeps running in the menu bar";
+"main.keys.this" = "Keyboard shortcuts";
+"main.keys.or" = "or";
+"main.keys.search_field" = "Search shortcuts";
+"main.keys.no_match" = "No shortcuts match";
+"main.keys.footer" = "Press ? or Esc to close";
+
+"main.list.label" = "Items";
+
+"main.menu.change_state" = "Change State…";
+"main.menu.copy_link" = "Copy Item Link";
+"main.menu.enrich" = "Fill In Details with AI";
+"main.menu.export_bundle" = "Export Hand-off Bundle…";
+"main.bundle.save" = "Export";
+"main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
+"main.bundle.saved" = "Hand-off bundle saved: %@";
+"main.bundle.failed" = "Couldn’t export the hand-off bundle";
+"main.bundle.error.io" = "Blurt couldn’t write there. Choose another folder.";
+"main.bundle.error.unreadable" = "A screenshot or clip couldn’t be read, so nothing was packed.";
+"main.bundle.error.no_items" = "There are no items to pack.";
+"main.bundle.packing" = "Packing the hand-off bundle (%@)…";
+"main.menu.kind" = "Kind";
+"main.suggest.label" = "Suggested projects";
+"main.suggest.looks_like" = "Looks like %@";
+"main.suggest.more" = "Suggestions for %ld more projects below";
+"main.suggest.move_all" = "Move All (%ld)";
+"main.suggest.move_all.tip" = "Move these %1$ld items to %2$@ — one ⌘Z moves them all back";
+"main.undo.kind" = "Change Kind";
+"main.menu.move_to" = "Move to Project";
+"main.menu.open_in" = "Open in %@";
+"main.menu.quick_look" = "Quick Look";
+"main.menu.rename" = "Rename";
+"main.menu.review_batch" = "Review the Whole Capture";
+"main.menu.start_session" = "Hand Off to Agent";
+"main.menu.open_session" = "Open Session";
+
+"main.misc.by_codex" = "Fixed by Codex";
+"main.misc.drag_finder_terminal" = "Drag to Finder or a terminal";
+"main.misc.fixed" = " · fixed";
+"main.misc.idea" = "Idea";
+"main.misc.issue" = "Issue";
+"main.misc.note" = "Note";
+"main.misc.task" = "Task";
+
+"main.move.failed" = "Couldn’t move the items";
+"main.move.undo_name" = "Move to %@";
+
+"main.open.failed" = "Couldn’t open “%@”";
+"main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder’s .blurt, which never goes into git.";
+"main.open.prompt" = "Open";
+
+"main.palette.field" = "Command";
+"main.palette.move_to" = "Move to %@";
+"main.palette.only_kind" = "Show Only %@";
+"main.palette.placeholder" = "Type a command, a project or an item…";
+"main.palette.project" = "Project · %@";
+
+"main.place.all" = "All Items";
+"main.place.inbox" = "Inbox";
+"main.place.progress" = "In Progress";
+"main.place.project" = "Project";
+"main.place.session" = "Capture";
+
+"main.project.agent" = "Agent";
+"main.project.agent.default" = "Default";
+"main.project.description" = "Description";
+"main.project.description.note" = "Blurt reads the description to file unassigned snaps and recordings here.";
+"main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
+"main.project.key" = "Key";
+"main.project.key.invalid" = "Use 2–5 letters or digits, letter first.";
+"main.project.key.note" = "Used in item IDs: %1$@-1, %1$@-2…";
+"main.project.key.locked" = "Items already use this key, so it can’t change.";
+"main.project.name" = "Name";
+"main.project.open_as" = "Open as Project";
+"main.project.remove" = "Remove from Blurt";
+"main.project.remove.undo_name" = "Remove from Blurt";
+"main.project.removed" = "Removed “%@” from Blurt — the folder and its items stay where they are";
+"main.project.rename" = "Rename";
+"main.project.rename.undo_name" = "Rename Project";
+"main.project.reorder.undo_name" = "Reorder Projects";
+"main.project.save_failed" = "Couldn’t save the project";
+"main.project.use_failed" = "Couldn’t switch the project";
+"main.project.settings" = "Project Settings…";
+"main.project.use" = "Make Current Project";
+"main.project.use.tip" = "New recordings, snaps and voice notes go to the current project";
+"main.project.worktree" = "Separate branch for each hand-off";
+"main.project.worktree.no_git" = "Not a git repository, so agents edit the folder directly.";
+"main.project.worktree.note" = "Changes go to a git worktree; you merge, open a PR or discard.";
+"main.project.agent.default_named" = "Default (%@)";
+"main.project.description.keys" = "Return adds a line; ⌘Return saves.";
+"main.project.key.taken" = "IN is used by Unassigned.";
+"main.project.section.handoff" = "Hand-off";
+"main.project.section.project" = "Project";
+"main.project.settings.subtitle" = "Project settings";
+
+"main.rename.title" = "Rename Item";
+"main.rename.empty" = "Title can’t be empty";
+
+"main.search.label" = "Search";
+"main.search.placeholder" = "Search items";
+
+"main.session.recording" = "Recording, %@";
+"main.session.snaps" = "Snaps, %@";
+"main.session.voice" = "Voice note, %@";
+
+"main.sidebar.inbox.ax" = "Inbox: new items and items to verify";
+"main.sidebar.label" = "Sidebar";
+"main.sidebar.missing" = "folder not found";
+"main.missing.title" = "This folder can’t be found";
+"main.missing.detail" = "It may have been moved or renamed. These are its items from before.";
+"main.missing.detail_empty" = "It may have been moved or renamed. Locate it and its items come back.";
+"main.missing.locate" = "Locate…";
+"main.missing.locate.message" = "Choose where “%@” is now.";
+"main.missing.other" = "That folder is “%1$@”, not “%2$@”";
+"main.sidebar.not_opened" = "not opened as a project";
+"main.sidebar.open_folder.tip" = "Open a folder as a project (⌘O) — or drop folders here";
+"main.sidebar.progress.ax" = "In progress: items handed off to an agent, and running jobs";
+"main.sidebar.projects" = "Projects";
+"main.sidebar.unassigned.ax" = "Unassigned: items not filed under a project yet";
+
+"main.state.ax" = "State: %@. Click to change it.";
+"main.toast.download_failed" = "Couldn’t save it to Downloads.";
+"main.toast.downloaded" = "Saved to Downloads: %@";
+"main.toast.session_gone" = "This session has ended and its record was cleared.";
+"main.speech.recommended" = "Recommended speech model for this Mac · %@";
+"main.speech.recommended.action" = "Review";
+
+"main.toolbar.handoff" = "Hand Off";
+"main.toolbar.handoff.own" = "For Your Own Agent";
+"main.toolbar.handoff.tip" = "Hand the selected items to an agent in Blurt, or copy an instruction for your own";
+"main.toolbar.move" = "Move";
+"main.toolbar.move.tip" = "Move the selected items to a project";
+"main.toolbar.record.tip" = "Record your screen and voice %@";
+"main.toolbar.snap.tip" = "Snap an area and add a note %@";
+
+"main.window.label" = "Blurt";
+
+"menu.close" = "Close Window";
+
+"menu.copy" = "Copy";
+
+"menu.cut" = "Cut";
+
+"menu.edit" = "Edit";
+
+"menu.file" = "File";
+
+"menu.find" = "Find";
+
+"menu.go" = "Go";
+
+"menu.help" = "Help";
+
+"menu.hide" = "Hide Blurt";
+"menu.about" = "About Blurt";
+"menu.about.credits" = "Free and open source · blurt.agihunt.info";
+
+"menu.item" = "Item";
+"menu.project" = "Project";
+
+"menu.minimize" = "Minimize";
+
+"menu.open_recent" = "Open Recent";
+
+"menu.palette" = "Command Palette…";
+
+"menu.paste" = "Paste";
+
+"menu.quit" = "Quit Blurt";
+
+"menu.redo" = "Redo";
+
+"menu.rescan" = "Rescan Everything";
+
+"menu.select_all" = "Select All";
+
+"menu.settings" = "Settings…";
+
+"menu.shortcuts" = "Keyboard Shortcuts";
+
+"menu.toggle_sidebar" = "Show or Hide Sidebar";
+"menu.view" = "View";
+"menu.toggle_detail" = "Show or Hide Detail";
+"menu.sort_by" = "Sort By";
+"main.quit.kept" = "Blurt is still in the menu bar, so dictation keeps working. To quit, use its menu there.";
+
+"menu.undo" = "Undo";
+
+"menu.website" = "Blurt User Guide";
+
+"menu.window" = "Window";
+
+"menu.zoom" = "Zoom";
+
+
+"notify.done.generic" = "Organized";
+"notify.done.recording" = "Recording organized";
+"notify.done.snaps" = "Snaps organized";
+
+"notify.failed" = "%@ didn’t finish";
+
+"notify.open" = "Open";
+
+"notify.show" = "Show";
+
+/* the Dictation page (DictationPage.swift) */
+"main.sidebar.dictation.ax" = "Dictation: what you dictated into other apps";
+"main.dictation.today" = "Today";
+"main.dictation.today.none" = "Nothing dictated today yet";
+"main.dictation.stat.saved" = "about %ld min saved";
+"main.dictation.stat.saved.tip" = "Compared with typing it at about 40 English words or 50 Chinese characters a minute, minus the time you spent talking";
+"main.dictation.settings" = "Dictation Settings…";
+"main.dictation.off" = "Dictation is off";
+"main.dictation.off.detail" = "Turn it on in Settings, under Dictation.";
+"main.dictation.ready" = "Dictation is on";
+"main.dictation.unknown_app" = "Unknown app";
+"main.dictation.mark.terms" = "Words used: %@";
+"main.dictation.mode.label" = "Show";
+"main.dictation.mode.polished" = "Polished";
+"main.dictation.mode.raw" = "As Spoken";
+"main.dictation.mode.compare" = "Changes";
+"main.dictation.typed" = "Typed";
+"main.dictation.heard" = "Heard";
+"main.dictation.same" = "polish changed nothing";
+"main.dictation.copied" = "Copied";
+"main.dictation.corrected" = "Corrected";
+"main.dictation.correct" = "Correct";
+"main.dictation.correct.tip" = "Fix what was misheard; the names you fix can go into Words";
+"main.dictation.correct.hint" = "⌘↩ to save · Esc to cancel";
+"main.dictation.correct.save" = "Save";
+"main.dictation.correct.cancel" = "Cancel";
+"main.dictation.correct.saved" = "Correction saved";
+"main.dictation.correct.sep" = ", ";
+"main.dictation.correct.found" = "Correction saved · found %@";
+"main.dictation.correct.add" = "Add to Words";
+"main.dictation.correct.added" = "Added %@ to Words";
+"main.dictation.correct.known" = "Correction saved · %@ already in Words";
+"main.dictation.correct.undo_name" = "Correction";
+"main.dictation.before_reformat" = "Before reformatting";
+"main.dictation.show_item" = "Show Item %@";
+"main.dictation.delete.tip" = "Delete this dictation (⌫, undo with ⌘Z)";
+"main.dictation.info.app" = "App";
+"main.dictation.info.when" = "When";
+"main.dictation.info.length" = "Length";
+"main.dictation.info.result" = "Result";
+"main.dictation.info.pasted" = "Typed into the app";
+"main.dictation.info.copied" = "Copied to the clipboard (no text field had the focus)";
+"main.dictation.info.not_typed" = "Not typed";
+"main.dictation.info.polish" = "Polish";
+"main.dictation.info.polish.off" = "Off";
+"main.dictation.info.asr" = "Speech model";
+"main.dictation.info.language" = "Language";
+"main.dictation.info.terms" = "Words used";
+"main.dictation.info.context" = "Context";
+"main.dictation.info.context.yes" = "Polish read the text around the cursor";
+"main.dictation.info.model.other" = "Another model";
+"main.dictation.none" = "No dictation selected";
+"main.dictation.none.detail" = "Select one on the left to see it here.";
+"main.dictation.copy_all" = "Copy All";
+
+/* The Dictation page's detail: what polish did */
+"main.dictation.info.polish.short" = "Too short to tidy";
+"main.dictation.info.polish.no_model" = "No polish model";
+"main.dictation.info.polish.get" = "Download…";
+"app.toast.welcome_no_dictation" = "Blurt is in the menu bar · %1$@ to snap · %2$@ to record";
+"app.toast.change_shortcut" = "Change…";
+"app.config.unreadable" = "Can’t read config.json · using defaults, can’t save";
+"app.config.not_saved" = "That change wasn’t saved · config.json can’t be read";
+"app.contract.skill_older" = "The Blurt skill is older than this app";
+"app.contract.app_older" = "The Blurt skill is newer than this app";
+"app.contract.how" = "How to Update";
+"app.models.background" = "The models carry on downloading · %@ to go";
+"app.models.menu" = "Downloading speech models · %1$@ of %2$@";
+"app.models.ready_try" = "Speech models are ready · tap %@ to try";
+"app.models.resuming" = "Finishing the speech models · %@ to go";
+"app.models.show" = "Show";
+"app.models.menu_unpacking" = "Unpacking speech models…";
+"app.models.stop" = "Stop";
+"app.toast.welcome_dictation_only" = "Blurt is in the menu bar · %@ to dictate";
+"app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";
+"app.toast.welcome_no_model.action" = "Download";
+"app.toast.welcome_plain" = "Blurt is in the menu bar";
+"app.toast.welcome_setup" = "Blurt is in the menu bar · dictation isn’t on yet";
+"app.toast.welcome_setup.action" = "Turn On…";
+"app.toast.welcome_taken" = "Blurt is in the menu bar · shortcut %@ won’t work";
+"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts won’t work";
+"app.toast.welcome_snap_only" = "Blurt is in the menu bar · %@ to snap";
+"app.url.ask_record" = "A link wants to start a screen recording";
+"app.url.ask_snap" = "A link wants to take a snap";
+"app.url.snap" = "Snap";
+
+/* Sessions that end without the work (v0.9 dogfood) */
+"main.dispatch.move_first" = "Move to Project…";
+"main.job.dismiss" = "Dismiss";
+"main.job.hint.stopped_at_quit" = "Blurt stopped organizing when it quit. Try again to organize it.";
+"main.banner.failed_start" = "%1$@ couldn’t start: %2$@";
+"main.banner.failed" = "%1$@ stopped with an error: %2$@";
+"main.banner.review" = "Review Changes…";
+"main.banner.restart" = "Restart Session";
+"main.banner.ended_review" = "Session ended, ready to review";
+"app.quit.organizing.title" = "Blurt is still organizing “%@”.";
+"app.quit.organizing.title_at" = "Blurt is still organizing what you captured %@.";
+"app.quit.organizing.title_n" = "Blurt is still organizing %ld batches.";
+"app.quit.organizing.detail" = "Quitting stops it. You can retry it later under Running, above the list.";
+"app.quit.organizing.quit" = "Quit Anyway";
+
+// dogfood v0.9 review
+"main.banner.no_response" = "No response for a minute";
+"main.banner.more" = "More";
+// the agent's desktop app (Claude)
+"main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
+"main.banner.desktop.no_mcp" = "In the %@ desktop app · no progress comes back here: mark it done when it is";
+"main.banner.go_desktop" = "Go to %@";
+"app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
+"app.toast.welcome_not_set_up.action" = "Set Up…";
+"app.config.show" = "Show File";
+"app.models.offline" = "The speech models finish once you’re online";
+"main.speech.recommended_recordings" = "A better model for recordings · %@";
+"app.menu.cards" = "Show Cards";
+"app.menu.project_header" = "Project";
+"app.menu.key_off" = "%@ isn’t working";
+"app.alert.not_now" = "Not Now";
+"app.record.again" = "Record Again";
+
+/* The Dictation page (v0.9 redesign, round 1) */
+"main.dictation.changes.removed" = "Removed";
+"main.dictation.changes.added" = "Added or changed";
+"main.dictation.count_of" = "%ld of %@";
+"main.dictation.none.keys" = "↑↓ Move    ⌘C Copy    ⌫ Delete";
+"main.dictation.banner.no_model" = "Dictation needs a speech model";
+"main.dictation.banner.no_model.detail" = "Nothing can be typed until one is downloaded · %@";
+"main.dictation.banner.no_model.detail_plain" = "Nothing can be typed until one is set up.";
+"main.dictation.banner.permission" = "Dictation can’t hear its key yet";
+"main.dictation.banner.downloading" = "The speech model is downloading";
+"main.dictation.banner.downloading.detail" = "%1$@ of %2$@ · dictation works once it’s in";
+"main.dictation.chip.copied" = "Copied";
+"main.dictation.details" = "Details";
+"main.dictation.details.open" = "Expanded";
+"main.dictation.details.closed" = "Collapsed";
+"main.dictation.reveal_audio" = "Show Recording in Finder";
+"main.dictation.info.model.gone" = "%@ · no longer on this Mac";
+"main.dictation.info.polish.gone" = "A model no longer on this Mac";
+"main.dictation.info.model.choose" = "Choose…";
+"main.dictation.correct.title" = "Correct the text";
+"main.dictation.correct.save.tip" = "Save the correction (⌘↩)";
+"main.dictation.correct.cancel.tip" = "Discard the changes (Esc)";
+"main.dictation.correct.caption" = "After you save, you can add the names you fixed to Words.";
+"main.dictation.correct.caption.none" = "No misheard words found";
+"main.dictation.correct.caption.found" = "Words found:";
+
+/* The Dictation page (v0.9 redesign, round 2) */
+"main.dictation.chip.copied_raw" = "Copied · as spoken";
+"main.dictation.status.copied" = "Copied to the clipboard, not typed: no text field had the focus.";
+"main.dictation.status.copied_raw" = "Copied as spoken, not typed: no text field had the focus, and %@.";
+"main.dictation.status.raw" = "Typed as spoken: %@.";
+"main.dictation.changes.key" = "Struck-through words were left out; underlined words were added or respelled.";
+"main.dictation.banner.download" = "Download Model";
+
+"main.kind.voice_note" = "Voice note";
+"main.filter.change" = "Change the filter";
+"main.filter.clear" = "Clear";
+"main.filter.showing" = "Showing %@";
+"main.filter.kind_header" = "Kind";
+"main.filter.all_kinds" = "All kinds";
+"main.filter.state_header" = "State";
+"main.filter.kind_plural.issue" = "issues";
+"main.filter.kind_plural.idea" = "ideas";
+"main.filter.kind_plural.note" = "notes";
+"main.filter.kind_plural.task" = "tasks";
+"main.toolbar.filter" = "Filter";
+"main.toolbar.filter.tip" = "Show only some kinds or states";
+"main.toolbar.title" = "Title";
+"main.sidebar.project_tip" = "%@ · its ids start with %@";
+"main.palette.section.selected" = "Selected Item";
+"main.palette.section.selected_n" = "Selected Items";
+"main.palette.section.capture" = "Capture";
+"main.palette.section.go" = "Go To";
+"main.palette.section.items" = "Items";
+"main.palette.section.commands" = "Commands";
+"main.palette.chip.n" = "%@ items";
+"main.palette.chip.clear" = "Clear";
+"main.palette.chip.help" = "The commands under Selected Item act on this. Press Delete in the empty field to clear it.";
+"main.palette.footer.open" = "Open";
+"main.palette.footer.run" = "Run";
+"main.palette.footer.close" = "Close";
+"main.palette.no_results" = "No commands or items match “%@”";
+"main.palette.hint.copy_instruction" = "Copy an instruction to paste into your own agent";
+"main.palette.hint.copy_full" = "Copy the whole item as text";
+
+/* several items selected (SelectionView) */
+"main.selection.hand_off" = "Hand Off…";
+"main.selection.hand_off_to" = "Hand Off to %@…";
+"main.selection.move" = "Move to Project…";
+"main.selection.more" = "More Actions";
+"main.selection.remove" = "Remove from Selection";
+"main.selection.list" = "Selected items";
+"main.cmd.copy_instruction.tip" = "Copies a prompt that lists these items, to paste into your own agent app";
+"main.selection.blocked.mixed" = "Hand off works on one project at a time: move these to one first";
+"main.selection.blocked.needs_project" = "Hand off needs a project: move these to one first";
+"main.selection.blocked.finished" = "Only new and to-do items can be handed off";
+"main.job.stop" = "Stop";
+"main.job.stop.tip" = "Stop organizing (⌘.)";
+"main.job.more" = "More";
+"main.job.title.organizing" = "Organizing “%@”";
+"main.job.title.organizing_at" = "Organizing what you captured %@";
+"main.job.started" = "Started %@";
+"main.job.took" = "Took %@";
+"main.job.elapsed" = "%@ elapsed";
+"main.job.steps" = "Steps";
+"main.job.items" = "Items";
+"main.job.items.waiting" = "Items appear here as they’re written.";
+"main.job.items.none" = "This run didn’t write any items.";
+"main.job.items.more" = "Show all %ld";
+"main.job.doing.prepare" = "Preparing…";
+"main.job.doing.transcribe" = "Transcribing…";
+"main.job.doing.write" = "Writing items…";
+"main.job.doing.frames" = "Picking screenshots…";
+"main.job.stopped" = "You stopped this run. Try again to organize it.";
+"main.job.step_stopped" = "Stopped";
+"main.empty.go_inbox" = "Go to Inbox";
+"main.empty.project.detail_other" = "New recordings and snaps go to the current project. Make this one current and they land here.";
+"main.empty.no_results_in" = "No results for “%1$@” in %2$@";
+"main.empty.search_all" = "Search All Items";
+"main.empty.clear_search" = "Clear Search";
+"main.empty.no_match.detail" = "Showing only %@. Everything else here is hidden.";
+"main.empty.scanning.detail" = "Blurt is going through your project folders. This takes a few seconds.";
+"main.missing.title_named" = "Can’t find the “%@” folder";
+"main.missing.detail_named" = "It may have been moved, renamed, or be on a disk that isn’t connected. Locate it to see its items again.";
+"main.missing.detail_current" = "It may have been moved or renamed. Until it’s found, new recordings go to Unassigned.";
+"main.missing.locate_folder" = "Locate Folder…";
+"main.missing.remove" = "Remove from Blurt";
+"main.search.title" = "Results for “%@”";
+"main.items.of" = "%1$@ of %2$@";
+"main.items.of_in" = "%1$@ in %2$@";
+"main.project.current_count" = "Current project · %@";
+"main.project.current_mark" = "Current project: new recordings and snaps go here";
+"main.updating" = "Updating…";
+"main.search.placeholder_wait" = "Search once your items are listed";
+"main.project.pin" = "Pin to Top";
+"main.project.unpin" = "Unpin";
+"main.project.pin.undo_name" = "Pin";
+"main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
+"main.sidebar.taken" = "Dragged Out";
+"app.record.not_saved_title" = "Recording not saved";
+"app.record.partial_title" = "Recording stopped early";
+"app.record.partial_kept" = "the first %@ is kept";
+"app.ear.saved" = "Saved %@";

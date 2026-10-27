@@ -10,11 +10,13 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
+from _common import BLURT_HOME, CONTRACT, IS_LINUX, IS_MAC, IS_WIN, MODELS_DIR, global_config, run, system_info  # noqa: E402
+import sessions  # noqa: E402
 
 
 def recommend(info: dict) -> list[dict]:
@@ -42,14 +44,103 @@ def recommend(info: dict) -> list[dict]:
     return recs
 
 
+# Variables an agent session (Claude Code, the Claude / Codex desktop apps, codex) exports to its children; the Blurt
+# app drops them before launching the agent (BlurtRecorder.swift: isAgentSessionVar) — e.g. CLAUDE_CODE_SIMPLE=1 makes
+# `claude` skip the keychain login. Check login state the way the app will run the agent, not the way this session does.
+_SESSION_PREFIXES = ("CLAUDE", "ANTHROPIC_", "CODEX_", "MCP_", "OTEL_")
+_SESSION_NAMES = {"AI_AGENT", "BAGGAGE", "USE_LOCAL_OAUTH", "USE_STAGING_OAUTH", "API_TIMEOUT_MS", "DISABLE_AUTOUPDATER",
+                  "DISABLE_MICROCOMPACT", "BLURT_APP"}
+
+
+_USER_CONFIG_VARS = {"CODEX_HOME", "CLAUDE_CONFIG_DIR", "KIMI_CODE_HOME"}  # the user's own config locations: keep
+
+
+def _is_session_var(k: str) -> bool:
+    return k not in _USER_CONFIG_VARS and (k.startswith(_SESSION_PREFIXES) or k in _SESSION_NAMES)
+
+
+def agent_env() -> dict:
+    """Like the app's agentEnvironment(): this env minus agent-session vars, plus what the user's login shell sets."""
+    env = {k: v for k, v in os.environ.items() if not _is_session_var(k)}
+    sh = os.environ.get("SHELL")
+    if not IS_WIN and sh and os.path.isabs(sh) and os.access(sh, os.X_OK):
+        try:
+            out = run([sh, "-ilc", "printf '\\n__BLURT_ENV__\\n'; env -0"], check=False, env=env, timeout=8,
+                      stdin=subprocess.DEVNULL).stdout
+            _, sep, rest = out.partition("\n__BLURT_ENV__\n")
+            for entry in rest.split("\0") if sep else []:
+                k, eq, v = entry.partition("=")
+                if eq and k and k not in ("SHLVL", "_", "PWD", "OLDPWD"):
+                    env[k] = v
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return env
+
+
+def agent_clis() -> dict:
+    """The agent CLIs the Blurt app can hand recordings to: path, version, logged in (None = couldn't tell)."""
+    env = agent_env()
+    path = env.get("PATH")
+    report = {}
+    for name, login_args in (("claude", ["auth", "status", "--json"]), ("codex", ["login", "status"])):
+        exe = shutil.which(name, path=path) or shutil.which(name)
+        info: dict = {"path": exe, "version": None, "logged_in": None}
+        if exe:
+            try:
+                v = run([exe, "--version"], check=False, env=env, timeout=15, stdin=subprocess.DEVNULL)
+                info["version"] = (v.stdout or v.stderr).strip().splitlines()[0] if (v.stdout or v.stderr).strip() else None
+                r = run([exe, *login_args], check=False, env=env, timeout=20, stdin=subprocess.DEVNULL)
+                text = (r.stdout or "") + (r.stderr or "")
+                info["logged_in"] = parse_login(name, r.returncode, text)
+            except (OSError, subprocess.SubprocessError):
+                pass
+        report[name] = info
+    return report
+
+
+def parse_login(name: str, code: int, text: str) -> bool | None:
+    if name == "claude" and "{" in text:
+        try:
+            v = json.loads(text[text.index("{"):]).get("loggedIn")
+            if isinstance(v, bool):
+                return v
+        except ValueError:
+            pass
+    low = text.lower()
+    if "not logged in" in low or "please run /login" in low:
+        return False
+    if name == "codex" and code == 0 and "logged in" in low:
+        return True
+    return None
+
+
+def tracked_stores() -> list[dict]:
+    """Registered projects whose .blurt/ already has files committed to git (K1: never committed). Reported only:
+    untracking is the user's call."""
+    out = []
+    try:
+        reg = json.loads((BLURT_HOME / "projects.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return out
+    for p in reg.get("projects") or []:
+        path = p.get("path") if isinstance(p, dict) else None
+        if not path or not Path(path, ".blurt").is_dir() or not shutil.which("git"):
+            continue
+        r = run(["git", "-C", path, "ls-files", "--", ".blurt"], check=False, timeout=10, stdin=subprocess.DEVNULL)
+        files = [f for f in r.stdout.splitlines() if f.strip()] if r.returncode == 0 else []
+        if files:
+            out.append({"project": path, "files": len(files), "fix": f"git -C '{path}' rm -r --cached .blurt"})
+    return out
+
+
 def main():
     info = system_info()
     ff = shutil.which("ffmpeg")
     report = {
+        "contract": CONTRACT,  # the skill's side of the app ↔ scripts handshake (_common.CONTRACT)
         "system": info,
         "ffmpeg": run([ff, "-version"]).stdout.splitlines()[0] if ff else None,
         "uv": shutil.which("uv"),
-        "lark_cli": shutil.which("lark-cli"),
         "gh": shutil.which("gh"),
         "disk_free_gb": round(shutil.disk_usage(Path.cwd()).free / 2**30, 1),
         "asr_configured": global_config().get("asr"),
@@ -57,8 +148,22 @@ def main():
         "api_keys": {k: bool(os.environ.get(k)) for k in
                      ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY", "DASHSCOPE_API_KEY")},
         "asr_recommendations": recommend(info),
+        "agent_cli": agent_clis(),
+        "tmux": sessions.tmux_info(),
+        "tracked_stores": tracked_stores(),
         "todo": [],
     }
+    for name, a in report["agent_cli"].items():
+        if a["path"] and a["logged_in"] is False:
+            fix = "run `claude` in a terminal and /login" if name == "claude" else "run `codex login` in a terminal"
+            report["todo"].append(f"The `{name}` CLI ({a['path']}) is not logged in, so the Blurt app can't hand recordings "
+                                  f"to it for background processing: {fix}")
+    if not report["tmux"] and not IS_WIN:
+        report["todo"].append("Agent sessions in Blurt run in tmux (3.2 or newer); without it they end when Blurt quits: "
+                              + ("brew install tmux" if IS_MAC else "sudo apt install tmux"))
+    for t in report["tracked_stores"]:
+        report["todo"].append(f"{t['project']}/.blurt has {t['files']} file(s) committed to git; Blurt keeps it out of "
+                              f"git (.git/info/exclude). To stop tracking them: {t['fix']}")
     if not ff:
         report["todo"].append("Install ffmpeg: " + ("brew install ffmpeg" if IS_MAC else "winget install Gyan.FFmpeg" if IS_WIN
                                                      else "sudo apt install ffmpeg"))

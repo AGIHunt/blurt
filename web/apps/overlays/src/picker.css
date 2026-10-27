@@ -1,0 +1,138 @@
+/* The region picker (system.md §3.1): the selection outline is the one thin gradient line in the system (an inline
+   SVG: a 2 px --on-brand 60 % solid under-stroke so it holds on white and black, then the gradient in 6 / 4 dashes
+   that march while dragging); the size label is a mint pill; Snap / Record is the button gradient. */
+body {
+  cursor: crosshair;
+}
+.mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.38);
+}
+body.has-sel .mask {
+  display: none; /* the selection's shadow dims everything else */
+}
+.sel {
+  position: fixed;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.38);
+  cursor: move;
+}
+.sel .outline {
+  /* drawn just outside the area, where the old 2 px outline was */
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  overflow: visible;
+  pointer-events: none;
+}
+.sel .outline rect {
+  fill: none;
+  stroke-width: 2;
+  shape-rendering: crispEdges;
+}
+.sel .outline .under {
+  stroke: var(--on-brand);
+  stroke-opacity: 0.6;
+}
+.sel .outline .dash {
+  stroke-dasharray: 6 4;
+}
+body.dragging .sel .outline .dash {
+  animation: march 1s linear infinite; /* 10 px/s */
+}
+@keyframes march {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.dragging .sel .outline .dash {
+    animation: none;
+  }
+}
+.sel .size {
+  position: absolute;
+  left: 0;
+  top: -26px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--brand);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--on-brand);
+}
+.hint {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translate(-50%, -50%);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--fg2);
+  pointer-events: none;
+  white-space: nowrap;
+}
+body.has-sel .hint {
+  display: none;
+}
+.bar {
+  position: fixed;
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: calc(var(--radius) + 2px);
+  background: var(--glass);
+  box-shadow: inset 0 0 0 1px var(--line), 0 6px 24px rgba(0, 0, 0, 0.35);
+  cursor: default;
+}
+.bar[hidden],
+.sel[hidden] {
+  display: none;
+}
+.bar button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: var(--radius);
+  color: var(--fg2);
+}
+.bar button:hover {
+  background: var(--s3);
+  color: var(--fg);
+}
+/* Snap / Record: white bold text on the button gradient */
+.bar button.primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
+}
+.bar button.primary:hover {
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+  filter: brightness(1.04);
+}
+.bar button.primary:active {
+  filter: brightness(0.92);
+}
+.bar button.primary .rdot {
+  width: 8px;
+  height: 8px;
+  margin-right: -2px;
+  border-radius: 50%;
+  background: var(--rec);
+  box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.9);
+}
+.bar button kbd {
+  font: 600 11px/1 var(--font);
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.16);
+}

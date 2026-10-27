@@ -1,0 +1,246 @@
+// BlurtCore/CardRow.swift: the hanging cards' row (newest first, at most 5, a "+N" tile), their threads, when they come
+// down and go up, Esc, the keyboard's stops, the hover note, the deferred click and the Undo window of a delete.
+import XCTest
+@testable import BlurtCore
+
+final class CardRowTests: XCTestCase {
+    let shot: CGFloat = 112, voice: CGFloat = 168, gap: CGFloat = 12
+
+    func layout(_ widths: [CGFloat], centre: CGFloat = 720, screen: CGFloat = 1440) -> CardRow.Layout {
+        CardRow.layout(widths: widths, tile: shot, gap: gap, centre: centre, bounds: 12...(screen - 12))
+    }
+
+    func testNewestFirstLeftToRight() {
+        let l = layout([shot, shot, shot])
+        XCTAssertEqual(l.shown, [2, 1, 0], "the newest card hangs on the left")
+        XCTAssertEqual(l.more, 0)
+        XCTAssertNil(l.tileX)
+        XCTAssertEqual(l.centres, l.centres.sorted())
+        XCTAssertEqual((l.span.lowerBound + l.span.upperBound) / 2, 720, accuracy: 0.01, "centred under the island")
+    }
+
+    /// The audit's 16 cards: the 5 newest hang, the other 11 wait behind "+11" — no rotating pages, nothing mixed.
+    func testManyCardsShowTheNewestFiveAndACount() {
+        let l = layout(Array(repeating: shot, count: 16))
+        XCTAssertEqual(l.shown, [15, 14, 13, 12, 11])
+        XCTAssertEqual(l.more, 11)
+        XCTAssertNotNil(l.tileX)
+        XCTAssertGreaterThan(l.tileX!, l.centres.last!, "the tile closes the row, after the oldest card that hangs")
+        XCTAssertLessThanOrEqual(l.span.upperBound - l.span.lowerBound, CardRow.maxWidth, "no curtain across the screen")
+    }
+
+    func testVoiceCardsAreWiderSoFewerHang() {
+        let l = layout(Array(repeating: voice, count: 8))
+        XCTAssertLessThan(l.shown.count, CardRow.maxShown)
+        XCTAssertLessThanOrEqual(l.span.upperBound - l.span.lowerBound, CardRow.maxWidth)
+        XCTAssertEqual(l.shown.count + l.more, 8)
+    }
+
+    func testNeverOffTheScreen() {
+        let l = layout(Array(repeating: shot, count: 9), centre: 40, screen: 1280)
+        XCTAssertGreaterThanOrEqual(l.span.lowerBound, 12)
+        let narrow = layout(Array(repeating: voice, count: 6), centre: 300, screen: 600)
+        XCTAssertLessThanOrEqual(narrow.span.upperBound, 588)
+        XCTAssertGreaterThanOrEqual(narrow.shown.count, 1)
+    }
+
+    func testEmpty() {
+        XCTAssertEqual(layout([]), .empty)
+    }
+
+    func testThreadsHangStraightWhenTheRowFitsUnderTheIsland() {
+        XCTAssertEqual(CardRow.threadX(700, row: 650...790, edge: 620...820), 700)
+        XCTAssertEqual(CardRow.threadX(600, row: 560...700, edge: 620...820), 620, "clamped to the island's edge")
+    }
+
+    func testARowWiderThanTheIslandHangsFromARod() {
+        XCTAssertFalse(CardRow.rodded(centres: [660, 720, 800], edge: 620...820), "every clasp under the island: own threads")
+        XCTAssertTrue(CardRow.rodded(centres: [480, 600, 720, 840, 940], edge: 620...820), "outer cards: a rod, no fan")
+        XCTAssertFalse(CardRow.rodded(centres: [], edge: 620...820))
+        XCTAssertFalse(CardRow.rodded(centres: [619.5, 820.5], edge: 620...820), "a hair outside the edge is still under it")
+    }
+
+    func testTheLipIsCentredOnTheIslandAndOnlyAsWideAsTheRow() {
+        let edge: ClosedRange<CGFloat> = 630...810, island: ClosedRange<CGFloat> = 620...820
+        XCTAssertNil(CardRow.lip(clasps: [680, 760], edge: edge, island: island), "a row under the island: no lip")
+        let lip = CardRow.lip(clasps: [470, 600, 720, 840, 950], edge: edge, island: island)!
+        XCTAssertEqual((lip.lowerBound + lip.upperBound) / 2, 720, "centred on the island, not on the clasps")
+        XCTAssertEqual(lip.lowerBound, 470 - 8, "the outermost clasp plus 8")
+        XCTAssertEqual(lip.upperBound, 720 + 258, "symmetric about the island")
+        let narrow = CardRow.lip(clasps: [628, 700], edge: edge, island: island)!
+        XCTAssertEqual(narrow, island, "never narrower than the island")
+    }
+
+    func testSteppingAsideMovesEveryItemOnEachSide() {
+        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: nil, by: 8), [0, 0, 0, 0, 0])
+        XCTAssertEqual(CardRow.stepAside(items: 5, lifted: 1, by: 8), [-8, 0, 8, 8, 8], "the tile (last) moves with the cards")
+        XCTAssertEqual(CardRow.stepAside(items: 3, lifted: 7, by: 8), [0, 0, 0])
+        // the lifted card grows 5 % (150 pt: 3.75 a side); the gap beside it never drops under the row's 12
+        let gap: CGFloat = 12, grow: CGFloat = 150 * 0.05 / 2
+        XCTAssertGreaterThanOrEqual(gap + 8 - grow, 12)
+    }
+
+    func testTheOverviewGridLeavesNoOrphan() {
+        XCTAssertEqual((1...4).map(CardGrid.columns), [1, 2, 3, 4])
+        XCTAssertEqual(CardGrid.columns(5), 3)
+        XCTAssertEqual(CardGrid.columns(6), 3)
+        XCTAssertEqual(CardGrid.columns(7), 4, "7 = 4 + 3")
+        XCTAssertEqual(CardGrid.columns(8), 4)
+        XCTAssertEqual(CardGrid.columns(20), 4)
+        XCTAssertEqual(CardGrid.columns(0), 1)
+    }
+
+    func testTheBandKeepsWholeWords() {
+        let fits = { (s: String) in s.count <= 20 }
+        XCTAssertEqual(CardBand.clamp("Sign in stays grey", fits: fits).clipped, false)
+        let c = CardBand.clamp("The onboarding sheet jumps when the keyboard opens", fits: fits)
+        XCTAssertEqual(c.text, "The onboarding sheet")
+        XCTAssertTrue(c.clipped)
+        XCTAssertFalse(c.text.hasSuffix("…"))
+        let zh = CardBand.clamp("引导页会跳一下，登录按钮被键盘挡住", fits: { $0.count <= 9 })
+        XCTAssertTrue(zh.clipped)
+        XCTAssertLessThanOrEqual(zh.text.count, 9)
+        XCTAssertTrue("引导页会跳一下，登录按钮被键盘挡住".hasPrefix(zh.text))
+        XCTAssertEqual(CardBand.clamp("Supercalifragilisticexpialidocious", fits: fits).text.count, 20, "one long word: characters")
+    }
+
+    func testOneRelativeTimeNeverCountsSeconds() {
+        XCTAssertEqual(CardAgo.of(6), .justNow)
+        XCTAssertEqual(CardAgo.of(59), .justNow)
+        XCTAssertEqual(CardAgo.of(61), .minutes(1))
+        XCTAssertEqual(CardAgo.of(3599), .minutes(59))
+        XCTAssertEqual(CardAgo.of(7200), .hours(2))
+        XCTAssertEqual(CardAgo.of(90_000), .yesterday)
+        XCTAssertEqual(CardAgo.of(3 * 86_400 + 5), .days(3))
+        XCTAssertEqual(CardAgo.of(-3), .justNow)
+    }
+
+    func testWideRowMapsOntoTheEdgeInOrder() {
+        let row: ClosedRange<CGFloat> = 350...1090, edge: ClosedRange<CGFloat> = 620...820
+        let xs: [CGFloat] = [406, 530, 654, 778, 902, 1034]
+        let ts = xs.map { CardRow.threadX($0, row: row, edge: edge) }
+        XCTAssertEqual(ts, ts.sorted(), "threads keep their order and never cross")
+        XCTAssertTrue(ts.allSatisfy { edge.contains($0) })
+        let steps = zip(ts.dropFirst(), ts).map { $0 - $1 }
+        XCTAssertTrue(steps.allSatisfy { $0 > 20 }, "spread along the edge, not bunched at its two corners")
+    }
+
+    func testDwellBeforeTheCardsComeDown() {
+        XCTAssertFalse(CardReveal.dwelled(since: nil, now: 10))
+        XCTAssertFalse(CardReveal.dwelled(since: 10, now: 10.05), "brushing past the notch drops nothing")
+        XCTAssertTrue(CardReveal.dwelled(since: 10, now: 10 + CardReveal.dwell + 0.001))
+        XCTAssertGreaterThanOrEqual(CardReveal.dwell, 0.15)
+        XCTAssertLessThanOrEqual(CardReveal.dwell, 0.2)
+        XCTAssertLessThan(CardReveal.away, 0.4, "they go up again quickly")
+    }
+
+    func testEscIsOnlyTakenWhileThePointerIsOnCardsBroughtDownOnPurpose() {
+        let esc = { (sticky: Bool, pointerIn: Bool, keyboard: Bool, visited: Bool, since: Double) in
+            CardReveal.holdsEsc(sticky: sticky, pointerIn: pointerIn, keyboard: keyboard, visited: visited, sinceReveal: since)
+        }
+        XCTAssertTrue(esc(true, true, false, true, 30))
+        XCTAssertFalse(esc(true, true, true, true, 0), "the panel has the keyboard: no hotkey")
+        XCTAssertFalse(esc(false, true, false, true, 0), "not brought down on purpose")
+        XCTAssertFalse(esc(true, false, false, true, 1), "been on them and left: Esc is the front app's again")
+        // the menu / the main window: down with the pointer elsewhere — Esc puts them back up for a moment
+        XCTAssertTrue(esc(true, false, false, false, 1))
+        XCTAssertFalse(esc(true, false, false, false, CardReveal.escGrace + 0.1), "an Esc for the app in front later on")
+    }
+
+    func testCardsBroughtDownOnPurposeNeverHangForever() {
+        XCTAssertTrue(CardReveal.staysDown(visited: false, pointerIn: false, sinceReveal: 2), "time to reach them")
+        XCTAssertFalse(CardReveal.staysDown(visited: false, pointerIn: false, sinceReveal: CardReveal.unvisited + 0.1),
+                       "the pointer never came: no curtain over the top of the screen")
+        XCTAssertTrue(CardReveal.staysDown(visited: true, pointerIn: true, sinceReveal: 60))
+        XCTAssertFalse(CardReveal.staysDown(visited: true, pointerIn: false, sinceReveal: 1), "came and went")
+        XCTAssertGreaterThan(CardReveal.unvisited, CardReveal.escGrace)
+    }
+
+    func testFirstHintOnce() {
+        XCTAssertTrue(CardReveal.firstHint(alreadyShown: false, isCard: true, recording: false))
+        XCTAssertFalse(CardReveal.firstHint(alreadyShown: true, isCard: true, recording: false))
+        XCTAssertFalse(CardReveal.firstHint(alreadyShown: false, isCard: false, recording: false), "filed straight away: no card")
+        XCTAssertFalse(CardReveal.firstHint(alreadyShown: false, isCard: true, recording: true))
+    }
+
+    func testKeyboardStops() {
+        XCTAssertEqual(CardFocus.move(nil, by: 1, cards: 3, tile: true), 0, "starts on the newest card")
+        XCTAssertEqual(CardFocus.move(0, by: 1, cards: 3, tile: true), 1)
+        XCTAssertEqual(CardFocus.move(2, by: 1, cards: 3, tile: true), 3, "then the +N tile")
+        XCTAssertEqual(CardFocus.move(3, by: 1, cards: 3, tile: true), 3, "stays at the end")
+        XCTAssertEqual(CardFocus.move(0, by: -1, cards: 3, tile: false), 0)
+        XCTAssertNil(CardFocus.move(nil, by: 1, cards: 0, tile: false))
+        XCTAssertEqual(CardFocus.clamp(3, cards: 2, tile: false), 1, "the last card was deleted: the one before it")
+        XCTAssertNil(CardFocus.clamp(0, cards: 0, tile: false))
+    }
+
+    func testHoverNoteOnlyAddsWhatTheCardCannotShow() {
+        XCTAssertNil(CardTip.content(truncated: false, playable: false), "the caption says it all: no note")
+        XCTAssertEqual(CardTip.content(truncated: true, playable: false), .init(text: true, play: false))
+        XCTAssertEqual(CardTip.content(truncated: false, playable: true), .init(text: false, play: true), "just the play button")
+        XCTAssertEqual(CardTip.content(truncated: true, playable: true), .init(text: true, play: true))
+    }
+
+    func testDoubleClickNeverCopiesFirst() {
+        var c = DeferredClick<Int>()
+        XCTAssertEqual(c.click(7, count: 1, at: 1.0, interval: 0.4), .copy(at: 1.4))
+        XCTAssertNil(c.fire(at: 1.2), "not yet: a second click may still come")
+        XCTAssertEqual(c.click(7, count: 2, at: 1.25, interval: 0.4), .edit)
+        XCTAssertNil(c.fire(at: 2.0), "the double-click cancelled the copy")
+    }
+
+    func testSingleClickCopiesOnceTheIntervalHasPassed() {
+        var c = DeferredClick<Int>()
+        _ = c.click(3, count: 1, at: 5, interval: 0.3)
+        XCTAssertEqual(c.fire(at: 5.3), 3)
+        XCTAssertNil(c.fire(at: 5.4), "once")
+        _ = c.click(4, count: 1, at: 6, interval: 0.3)
+        c.cancel()
+        XCTAssertNil(c.fire(at: 7))
+    }
+
+    func testDeletesInARowAllComeBackWithOneUndo() {
+        final class Card {}
+        let a = Card(), b = Card(), c = Card()
+        var undo = CardUndo<Card>()
+        XCTAssertEqual(undo.add([a], live: false).count, 1)
+        let both = undo.add([b], live: true)            // ⌫ again while "Deleted · Undo" shows
+        XCTAssertTrue(both.count == 2 && both[0] === a && both[1] === b)
+        XCTAssertEqual(undo.add([b], live: true).count, 2, "the same card twice is one card")
+        let back = undo.take()
+        XCTAssertTrue(back.count == 2 && back[0] === a && back[1] === b, "Undo brings back both, not only the first")
+        XCTAssertTrue(undo.take().isEmpty, "once")
+        _ = undo.add([a], live: false)
+        let fresh = undo.add([c], live: false)          // the earlier Undo had gone: they stay deleted
+        XCTAssertTrue(fresh.count == 1 && fresh[0] === c)
+    }
+
+    func testDeletedFilesOutlastTheUndo() {
+        XCTAssertGreaterThan(CardDelete.recycleAfter, CardDelete.undoSeconds)
+        XCTAssertGreaterThanOrEqual(CardDelete.undoSeconds, 3)
+    }
+    /// Five 150 pt snaps are 798 pt, just over 780: the row showed four and a "+1" the size of the card it hid.
+    func testNoPlusOneTileForACardThatFits() {
+        let l = layout(Array(repeating: 150, count: 5))
+        XCTAssertEqual(l.shown.count, 5)
+        XCTAssertEqual(l.more, 0)
+        XCTAssertNil(l.tileX)
+        // more than five still wait behind the tile, and a narrow screen still gets the tile
+        XCTAssertGreaterThan(layout(Array(repeating: 150, count: 6)).more, 1, "two or more wait behind the tile")
+        let narrow = layout(Array(repeating: 150, count: 5), centre: 400, screen: 800)
+        XCTAssertLessThanOrEqual(narrow.span.upperBound - narrow.span.lowerBound, 776)
+        XCTAssertEqual(narrow.shown.count + narrow.more, 5)
+    }
+
+    /// Put Back re-hung a card over Recently Dragged Out: panels under the cards open below the strip they hang in.
+    func testPanelsOpenBelowTheCardBand() {
+        let depth = CardRow.bandDepth(below: 18, slacks: [0, 9, 3, 12, 5, 10, 2], cardHeight: 84)
+        XCTAssertEqual(depth, 18 + 12 + 84 + 30)
+        let islandBottom: CGFloat = 1117 - 32
+        let top = CardRow.panelTop(islandBottom: islandBottom, band: depth)
+        XCTAssertLessThanOrEqual(top, islandBottom - 18 - 12 - 84, "below the lowest card")
+        XCTAssertEqual(top, islandBottom - depth - 12)
+        // no card hangs: right under the island, not floating 150 pt down
+        XCTAssertEqual(CardRow.panelTop(islandBottom: islandBottom, band: depth, cardsHang: false), islandBottom - 12)
+    }
+}

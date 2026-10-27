@@ -1,0 +1,219 @@
+{
+  "_": "macOS mapping. generic: SF Symbol candidates, best first (the first one this macOS has wins; macOS 13 is the floor, newer names come first with an older fallback after them; none available → our own vector). brand: always our vector; `nearest` is only the closest SF Symbol, for reference. aliases: other names that resolve to the same icon on every platform. The item kinds (bug, lightbulb, document, checkbox, tag) are brand: always our own family, never SF Symbols, so the four read as one set (docs/design/system.md §2.6).",
+  "generic": {
+    "check": [
+      "checkmark"
+    ],
+    "x": [
+      "xmark"
+    ],
+    "chevron-up": [
+      "chevron.up"
+    ],
+    "chevron-down": [
+      "chevron.down"
+    ],
+    "chevron-left": [
+      "chevron.left"
+    ],
+    "chevron-right": [
+      "chevron.right"
+    ],
+    "plus": [
+      "plus"
+    ],
+    "more": [
+      "ellipsis"
+    ],
+    "download": [
+      "arrow.down.to.line"
+    ],
+    "folder": [
+      "folder"
+    ],
+    "reveal": [
+      "folder"
+    ],
+    "external-link": [
+      "arrow.up.forward.square",
+      "arrow.up.right.square"
+    ],
+    "eye": [
+      "eye"
+    ],
+    "wand": [
+      "wand.and.stars"
+    ],
+    "code": [
+      "chevron.left.forwardslash.chevron.right"
+    ],
+    "copy": [
+      "doc.on.doc"
+    ],
+    "moon": [
+      "moon"
+    ],
+    "sun": [
+      "sun.max"
+    ],
+    "keyboard": [
+      "keyboard"
+    ],
+    "languages": [
+      "globe"
+    ],
+    "play": [
+      "play"
+    ],
+    "play-fill": [
+      "play.fill"
+    ],
+    "pause": [
+      "pause"
+    ],
+    "pause-fill": [
+      "pause.fill"
+    ],
+    "stop": [
+      "stop"
+    ],
+    "stop-fill": [
+      "stop.fill"
+    ],
+    "record": [
+      "record.circle"
+    ],
+    "record-fill": [
+      "circle.fill"
+    ],
+    "restart": [
+      "arrow.counterclockwise"
+    ],
+    "undo": [
+      "arrow.uturn.backward"
+    ],
+    "camera": [
+      "camera"
+    ],
+    "film": [
+      "film"
+    ],
+    "video": [
+      "video"
+    ],
+    "help-circle": [
+      "questionmark.circle"
+    ],
+    "info": [
+      "info.circle"
+    ],
+    "warning": [
+      "exclamationmark.triangle"
+    ],
+    "quote": [
+      "quote.opening",
+      "quote.bubble"
+    ],
+    "merge": [
+      "arrow.triangle.merge"
+    ],
+    "pencil": [
+      "pencil"
+    ],
+    "search": [
+      "magnifyingglass"
+    ],
+    "settings": [
+      "gearshape"
+    ],
+    "trash": [
+      "trash"
+    ],
+    "git-commit": [
+      "circle.and.line.horizontal",
+      "smallcircle.filled.circle"
+    ],
+    "inbox": [
+      "tray"
+    ],
+    "list": [
+      "list.bullet"
+    ],
+    "home": [
+      "house"
+    ],
+    "arrow-left": [
+      "arrow.left"
+    ],
+    "terminal": [
+      "apple.terminal"
+    ],
+    "folder-plus": [
+      "folder.badge.plus"
+    ],
+    "git-branch": [
+      "arrow.triangle.branch"
+    ],
+    "git-pull-request": [
+      "arrow.triangle.pull"
+    ],
+    "send": [
+      "paperplane"
+    ],
+    "bell": [
+      "bell"
+    ],
+    "flag": [
+      "flag"
+    ]
+  },
+  "nearest": {
+    "chicken": "bird",
+    "blurt": "bird",
+    "spark": "sparkle",
+    "mic": "mic",
+    "waveform": "waveform",
+    "snap": "camera.viewfinder",
+    "ink": "scribble.variable",
+    "mcp": "powerplug",
+    "egg": "oval.portrait",
+    "bug": "ladybug",
+    "lightbulb": "lightbulb",
+    "document": "doc.text",
+    "checkbox": "checkmark.square",
+    "tag": "tag",
+    "cards": "rectangle.stack"
+  },
+  "aliases": {
+    "close": "x",
+    "discard": "x",
+    "pen": "pencil",
+    "edit": "pencil",
+    "process": "chicken",
+    "issue": "bug",
+    "idea": "lightbulb",
+    "todo": "checkbox",
+    "listening": "waveform",
+    "voice": "waveform",
+    "screenshot": "snap",
+    "fixed": "peck",
+    "hatching": "hatch",
+    "finish": "stop-fill",
+    "resume": "play-fill",
+    "settings-gear": "settings",
+    "delete": "trash",
+    "alert": "warning",
+    "help": "help-circle",
+    "open-external": "external-link",
+    "plug": "mcp",
+    "note": "document",
+    "task": "checkbox",
+    "lens": "tag",
+    "open-folder": "folder-plus",
+    "branch": "git-branch",
+    "pr": "git-pull-request",
+    "handoff": "send",
+    "notify": "bell",
+    "checklist": "checkbox"
+  }
+}

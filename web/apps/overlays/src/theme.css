@@ -1,0 +1,92 @@
+/* Overlay tokens (docs/design/system.md §3.1–3.2). Overlays sit on top of anything, so they are always dark: the
+   generated block below holds the island values (--brand, --on-brand, --brand-tint, --rec, --attn, --ok, --err, the
+   gradients); this block only the neutral glass. */
+:root {
+  --s1: #1e1e1e;
+  --s2: #2a2a2a;
+  --s3: #323232;
+  --glass: rgba(30, 30, 30, 0.9);
+  --line: rgba(255, 255, 255, 0.08);
+  --fg: rgba(255, 255, 255, 0.92);
+  --fg2: rgba(255, 255, 255, 0.64);
+  --fg3: rgba(255, 255, 255, 0.4);
+  --radius: 12px;
+  --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', 'Cantarell', 'Noto Sans', 'Microsoft YaHei UI',
+    'PingFang SC', sans-serif;
+}
+/* @generated colour: assets/color/build.py from assets/color/tokens.json. Do not edit by hand. */
+/* island values: overlays sit on top of anything, so they are always dark */
+:root {
+  accent-color: var(--brand);
+  --brand: #61dbbd;
+  --brand-ink: #61dbbd;
+  --brand-tint: rgba(97, 219, 189, 0.20);
+  --brand-working: rgba(97, 219, 189, 0.50);
+  --on-brand: #04261e;
+  --rec: #ff453a;
+  --attn: #ffc23d;
+  --ok: #8acb4e;
+  --err: #ff6b6b;
+  --info: #8da4ef;
+  --markup: #ff5c3d;
+  --g-green: #66d97a;
+  --g-mint: #61dbbd;
+  --g-blue: #4aabe2;
+  --brand-gradient: linear-gradient(to bottom right, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-gradient-v: linear-gradient(180deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-gradient-h: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-button: linear-gradient(to bottom right, #028932 0%, #02866f 45%, #087eb3 100%);
+  --on-brand-button: #ffffff;
+  --brand-text: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
+  --brand-ink-light: #0b735e;
+  --glow-opacity: 0.45;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glow-opacity: 0;
+  }
+}
+/* @end generated colour */
+:root[data-platform='win'] {
+  --s1: #202020;
+  --s2: #2b2b2b;
+  --glass: rgba(32, 32, 32, 0.92);
+  --radius: 8px;
+}
+:root[data-platform='gnome'] {
+  --s1: #242424;
+  --s2: #303030;
+  --glass: rgba(36, 36, 36, 0.94);
+  --radius: 12px;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent; /* the window is transparent: only what is drawn shows */
+  overflow: hidden;
+  font: 13px/1.3 var(--font);
+  color: var(--fg);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+textarea,
+input {
+  color-scheme: dark; /* not on :root — that would give the page an opaque canvas in some webviews / iframes */
+}
+
+[data-reduce-motion='1'] * {
+  transition-duration: 0s !important;
+  animation: none !important;
+}

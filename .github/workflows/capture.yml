@@ -1,0 +1,163 @@
+name: capture
+
+# WP8 (docs/design/desktop-app.md §6): Windows/Linux recording for the Tauri app — record.py's ffmpeg engine with
+# --status-jsonl, crates/blurt-capture and the overlay pages in web/apps/overlays.
+#   linux:   x11grab take under xvfb (no mic) + status sequence + in-recording snap, crate tests on the real
+#            screen, overlays rendered transparent and on top (openbox + xcompmgr), a take shown in the island
+#   windows: crate build + tests (lavfi screen), the ffmpeg-engine unit tests, overlay windows open
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/blurt-capture/**"
+      - "web/apps/overlays/**"
+      - "skills/blurt/scripts/record.py"
+      - "tests/test_capture_ffmpeg.py"
+      - ".github/workflows/capture.yml"
+  pull_request:
+    paths:
+      - "crates/blurt-capture/**"
+      - "web/apps/overlays/**"
+      - "skills/blurt/scripts/record.py"
+      - "tests/test_capture_ffmpeg.py"
+      - ".github/workflows/capture.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
+    if: vars.CROSS_PLATFORM_CI == 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      DISPLAY: ":99"
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/blurt-capture
+            crates/blurt-capture/demo
+      - name: System packages (ffmpeg, X11 test desktop, Tauri build deps)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg xvfb openbox xcompmgr imagemagick xdotool \
+            x11-utils x11-xserver-utils python3-tk python3-pil \
+            libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev
+      - name: Start X (xvfb 1280x800 + openbox + compositor)
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 +extension Composite +extension RANDR -nolisten tcp &
+          for i in $(seq 1 50); do xdpyinfo >/dev/null 2>&1 && break; sleep 0.2; done
+          openbox &
+          xcompmgr &
+          xsetroot -solid '#00a000'
+          sleep 1
+
+      - name: "record.py: 5 s x11grab take, status lines, snap (no mic)"
+        run: python3 crates/blurt-capture/ci/x11grab_take.py "$RUNNER_TEMP/take"
+      - name: "record.py: ffmpeg engine unit tests on the real screen"
+        run: BLURT_CAPTURE_REAL=1 uv run -q --with numpy --with pillow python -m unittest tests.test_capture_ffmpeg -v
+
+      - name: Overlay pages (typecheck, unit tests, build)
+        working-directory: web
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm --filter @blurt/overlays test
+          pnpm --filter @blurt/overlays build
+      - name: "blurt-capture: tests (record.py on x11grab), clippy"
+        working-directory: crates/blurt-capture
+        run: |
+          BLURT_CAPTURE_REAL=1 cargo test
+          cargo clippy --all-targets -- -D warnings
+      - name: Build the test harness app
+        working-directory: crates/blurt-capture/demo
+        run: cargo build
+      - name: "Overlays: rendered, transparent, on top"
+        run: python3 crates/blurt-capture/ci/check_overlays.py crates/blurt-capture/demo/target/debug/blurt-capture-demo "$RUNNER_TEMP/overlays"
+      - name: "A take shown in the island (engine::record, x11grab)"
+        run: |
+          mkdir -p "$RUNNER_TEMP/home" && echo '{"record":{"install_app":false,"live":false}}' > "$RUNNER_TEMP/home/config.json"
+          WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1 crates/blurt-capture/demo/target/debug/blurt-capture-demo record \
+            --record-py skills/blurt/scripts/record.py --session "$RUNNER_TEMP/island-take" --region 0,0,640,360 \
+            --seconds 5 --home "$RUNNER_TEMP/home" | tee "$RUNNER_TEMP/island-take.out"
+          grep -q '"ev":"stopped"' "$RUNNER_TEMP/island-take.out"
+          test -s "$RUNNER_TEMP/island-take/recording.mp4" && test -s "$RUNNER_TEMP/island-take/shots/001.png"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture-linux
+          path: |
+            ${{ runner.temp }}/take/session/shots
+            ${{ runner.temp }}/take/session/*.json*
+            ${{ runner.temp }}/take/stderr.log
+            ${{ runner.temp }}/overlays
+            ${{ runner.temp }}/island-take.out
+          if-no-files-found: ignore
+
+  windows:
+    # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
+    if: vars.CROSS_PLATFORM_CI == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/blurt-capture
+            crates/blurt-capture/demo
+      - name: ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: "record.py: ffmpeg engine unit tests (lavfi screen)"
+        run: uv run -q --with numpy --with pillow python -m unittest tests.test_capture_ffmpeg -v
+      - name: Overlay pages
+        working-directory: web
+        run: |
+          pnpm install --no-frozen-lockfile
+          pnpm --filter @blurt/overlays build
+      - name: "blurt-capture: build + tests"
+        working-directory: crates/blurt-capture
+        run: |
+          cargo test
+          cargo clippy --all-targets -- -D warnings
+      - name: Build the test harness app
+        working-directory: crates/blurt-capture/demo
+        run: cargo build
+      - name: "Overlays open (window rects printed)"
+        continue-on-error: true  # depends on the runner's desktop session; the real check is on a VM (deferred)
+        run: |
+          crates/blurt-capture/demo/target/debug/blurt-capture-demo.exe overlays --seconds 3 | tee overlays.out
+          grep -q blurt-overlay-island overlays.out

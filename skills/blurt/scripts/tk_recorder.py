@@ -1,4 +1,19 @@
-"""Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / marker / discard / stop).
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["sounddevice==0.5.6", "numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'"]
+# ///
+"""Tk-based recorder UI: region picker, 3-2-1 countdown, floating control bar (pause / snap / discard / stop).
+
+Also the Windows / Linux desktop app's capture helpers outside a recording (v0.7 contract K7), run as a script:
+
+  tk_recorder.py shot SESSION --region x,y,w,h [--project ID|inbox]
+      one frame of the region → SESSION/shots/NNN.png + its shots.jsonl line → {"ok", "n", "file", "line"}
+  tk_recorder.py voice SESSION [--project ID|inbox] [--max 120] [--silence-ms 1500] [--hold]
+      a voice note → SESSION/shots/NNN.wav + a `type: voice` line. Prints JSON lines: {"ev": "started", "n"},
+      {"ev": "level", "rms"} (~20 Hz), then {"ev": "done", "n", "file", "duration"} or {"ev": "cancelled"}.
+      Ends after --silence-ms of quiet once speech was heard (not with --hold), at --max seconds, or when stdin says
+      "stop" / "cancel" (EOF = stop). BLURT_TEST_MIC_WAV=<wav> stands in for the microphone (tests).
+  `--project` omitted = a card (K7: not in a project yet).
 
 Used on Windows (primary), Linux/X11, and on macOS when the native Swift recorder can't be built. Video is captured
 with ffmpeg (Windows: gdigrab region; Linux: x11grab region; macOS: avfoundation + crop), audio with PortAudio (MicRecorder). Pause stops the
@@ -6,6 +21,12 @@ current video segment and drops audio; segments are aligned by wall clock and jo
 
 The control bar is excluded from capture on Windows 10 2004+ (SetWindowDisplayAffinity) and always sits outside
 the recorded region when there is room.
+
+Hotkeys (Windows): config record.hotkeys, same as the macOS app — {"pause": "alt+shift+P", "snap": "alt+shift+A",
+"marker": "alt+shift+M", "stop": "alt+shift+S"} are the defaults; "off" disables one.
+
+Snap (the snap button on the bar, Alt+Shift+A, or `record.py snap`; the marker hotkey Alt+Shift+M snaps too): one full-resolution
+ffmpeg frame of the region → <session>/shots/NNN.png + a line in shots.jsonl (t = video time) + a "snap" event.
 """
 from __future__ import annotations
 
@@ -20,7 +41,8 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import IS_LINUX, IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, run  # noqa: E402
+from _common import (IS_LINUX, IS_MAC, IS_WIN, ffmpeg_bin, fix_tcl_env, hotkey_label,  # noqa: E402
+                     hotkeys_from_config, run)
 
 ACCENT = "#ff5c3d"
 AMBER = "#ffc23d"
@@ -70,6 +92,31 @@ def mac_backing_scale() -> float:
     except Exception:
         pass
     return 1.0
+
+
+ICON_DIR = Path(__file__).resolve().parent.parent / "assets" / "icons"
+_ICONS: dict = {}
+
+
+def tk_icon(widget, name: str):
+    """A light 16 pt glyph of the blurt icon family as a Tk PhotoImage (Tk 8.6 reads PNG; never emoji as icons).
+
+    assets/icons/NAME.png, @1.5x and @2x are rendered from assets/icons/*.svg by assets/icons/tools/build.py; the
+    density follows Tk's scaling (pixels per point: 1.33 at 96 dpi). None if the file can't be read (then the caller's
+    text label is all there is)."""
+    import tkinter as tk
+    try:
+        ratio = float(widget.tk.call("tk", "scaling")) / (96 / 72)
+    except Exception:
+        ratio = 1.0
+    suffix = "" if ratio < 1.25 or IS_MAC else "@1.5x" if ratio < 1.75 else "@2x"
+    key = (str(widget.winfo_toplevel()), name, suffix)
+    if key not in _ICONS:
+        try:
+            _ICONS[key] = tk.PhotoImage(master=widget, file=str(ICON_DIR / f"{name}{suffix}.png"))
+        except Exception:
+            _ICONS[key] = None
+    return _ICONS[key]
 
 
 def virtual_screen(root) -> tuple[int, int, int, int]:
@@ -190,7 +237,9 @@ class Picker:
         if self.last:
             mk(self.t("上次区域", "Last area"), self.use_last).pack(side="left", padx=3)
         mk(self.t("取消", "Cancel"), lambda: self.finish(False)).pack(side="left", padx=3)
-        mk("● " + self.t("开始录制", "Start recording"), lambda: self.finish(True), ACCENT).pack(side="left", padx=3)
+        start = mk(self.t("开始录制", "Start recording"), lambda: self.finish(True), ACCENT)
+        start.config(image=tk_icon(f, "record-fill") or "", compound="left")
+        start.pack(side="left", padx=3)
         f.update_idletasks()
         x, y, w, h = self.sel
         fx = max(8, min(x + w // 2 - f.winfo_reqwidth() // 2, self.vw - f.winfo_reqwidth() - 8))
@@ -205,6 +254,67 @@ class Picker:
             self.done([x + self.vx, y + self.vy, w // 2 * 2, h // 2 * 2])
         else:
             self.done(None)
+
+
+# ------------------------------------------------------------------ snaps
+_WIN_VK = {"Space": 0x20, "Tab": 0x09, "Return": 0x0D, "Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
+           "-": 0xBD, "=": 0xBB, "[": 0xDB, "]": 0xDD, ";": 0xBA, "'": 0xDE, ",": 0xBC, ".": 0xBE, "/": 0xBF,
+           "\\": 0xDC, "`": 0xC0}
+
+
+def win_hotkey(hk) -> tuple[int, int] | None:
+    """(("opt", "shift"), "P") → (MOD_ALT | MOD_SHIFT, VK_P) for RegisterHotKey; None when off."""
+    if not hk:
+        return None
+    mods = sum({"opt": 0x1, "ctrl": 0x2, "shift": 0x4, "cmd": 0x8}[m] for m in hk[0])
+    key = hk[1]
+    if len(key) == 1 and key.isalnum():
+        vk = ord(key.upper())
+    elif key.startswith("F") and key[1:].isdigit():
+        vk = 0x6F + int(key[1:])
+    else:
+        vk = _WIN_VK.get(key)
+    return (mods, vk) if vk else None
+
+
+def snap_cmd(ff: str, region: list[int], out: Path) -> list[str]:
+    """ffmpeg command for a single full-resolution frame of the region (same grabbers as the video)."""
+    x, y, w, h = region
+    cmd = [ff, "-hide_banner", "-loglevel", "error", "-y"]
+    if os.environ.get("BLURT_FAKE_SCREEN"):
+        cmd += ["-f", "lavfi", "-i", f"testsrc2=s={w}x{h}:r=1"]
+    elif IS_WIN:
+        cmd += ["-f", "gdigrab", "-draw_mouse", "1", "-offset_x", str(x), "-offset_y", str(y), "-video_size", f"{w}x{h}",
+                "-i", "desktop"]
+    elif IS_LINUX:
+        cmd += ["-f", "x11grab", "-draw_mouse", "1", "-video_size", f"{w}x{h}", "-i", f"{os.environ.get('DISPLAY', ':0')}+{x},{y}"]
+    else:
+        from record import list_screens
+        sf = mac_backing_scale()
+        cmd += ["-f", "avfoundation", "-capture_cursor", "1", "-i", f"{list_screens()[0]['index']}:none",
+                "-vf", f"crop={int(w * sf)}:{int(h * sf)}:{int(x * sf)}:{int(y * sf)}"]
+    return cmd + ["-frames:v", "1", "-update", "1", str(out)]
+
+
+def shot_line(n: int, t: float | None, region: list[int], wall: float | None = None) -> dict:
+    """One shots.jsonl line (docs/design/snap-and-live.md): later lines for the same n win."""
+    return {"n": n, "file": f"shots/{n:03d}.png", "marked": None, "t": None if t is None else round(t, 3),
+            "wall": round(wall if wall is not None else time.time(), 3), "region": list(region), "voice": None,
+            "text": None, "strokes": []}
+
+
+def capture_shot(session: Path, region: list[int], n: int, t: float | None, wall: float | None = None) -> dict | None:
+    """Grab the frame and append its line to shots.jsonl. Returns the line, or None if ffmpeg failed."""
+    shots = session / "shots"
+    shots.mkdir(parents=True, exist_ok=True)
+    out = shots / f"{n:03d}.png"
+    r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+    if r.returncode or not out.exists():
+        return None
+    line = shot_line(n, t, region, wall)
+    with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+    return line
 
 
 # ------------------------------------------------------------------ recorder
@@ -223,6 +333,8 @@ class TkRecorder:
         self.seg_started = None
         self.events = []
         self.result = None
+        self.live_audio = False          # record.py: also write live/audio.pcm for live.py
+        self.shots = 0
 
     def t(self, a, b):
         return a if zh(self.lang) else b
@@ -274,7 +386,10 @@ class TkRecorder:
         lbl = tk.Label(cw, text=str(n), fg="white", bg=BG, font=("Segoe UI", 64, "bold"))
         lbl.pack(expand=True, fill="both")
         tk.Label(cw, text=self.t("准备，开喷", "Get ready"), fg=MUTED, bg=BG, font=("Segoe UI", 10)).pack()
-        hint = self.t("Alt+Shift+P 暂停/继续 · Alt+Shift+S 完成 · 点一下跳过", "Alt+Shift+P pause · Alt+Shift+S finish · click to skip")
+        hk = {a: hotkey_label(k, mac=False) for a, k in hotkeys_from_config().items()}
+        parts = [f"{hk[a]} {self.t(zh_, en)}" for a, zh_, en in (("pause", "暂停/继续", "pause"), ("snap", "截图", "snap"),
+                                                                 ("stop", "完成", "finish")) if hk[a]]
+        hint = " · ".join(parts + [self.t("点一下跳过", "click to skip")])
         tk.Label(cw, text=hint if IS_WIN else self.t("点一下跳过", "click to skip"), fg=MUTED, bg=BG,
                  font=("Segoe UI", 8), wraplength=size + 120).pack(pady=(2, 10))
 
@@ -304,7 +419,8 @@ class TkRecorder:
         self.show_chrome()
         if self.mic:
             from record import MicRecorder
-            self.audio = MicRecorder(self.mic, self.session / "audio.wav", gate=lambda: not self.paused)
+            self.audio = MicRecorder(self.mic, self.session / "audio.wav", gate=lambda: not self.paused,
+                                     live=self.session / "live" if self.live_audio else None)
             self.audio.start()
         self.start_segment()
         self.on_event({"event": "recording"})
@@ -330,19 +446,26 @@ class TkRecorder:
         hud.configure(bg=BG)
         row = tk.Frame(hud, bg=BG, padx=10, pady=6)
         row.pack()
-        self.dot = tk.Label(row, text="●", fg="#ff3b30", bg=BG, font=("Segoe UI", 12))
+        self.dot = tk.Canvas(row, width=12, height=12, bg=BG, highlightthickness=0)   # the recording light
+        self.dot_id = self.dot.create_oval(1, 1, 11, 11, fill="#ff3b30", outline="")
         self.dot.pack(side="left")
         self.clock = tk.Label(row, text="00:00", fg=FG, bg=BG, font=("Consolas" if IS_WIN else "Menlo", 13, "bold"), width=6)
         self.clock.pack(side="left", padx=(4, 8))
-        mk = lambda txt, cmd, tip, bg=BG2: tk.Button(row, text=txt, command=cmd, bg=bg, fg="white", activebackground=bg,  # noqa: E731
-                                                      activeforeground="white", relief="flat", bd=0, width=3,
-                                                      font=("Segoe UI Symbol" if IS_WIN else "Helvetica", 11, "bold"),
-                                                      cursor="hand2")
-        self.pause_btn = mk("⏸", self.toggle_pause, "pause")
+        # icon buttons: PNG glyphs of the blurt icon family (assets/icons), with a text fallback if a PNG is missing
+        self.icons = {n: tk_icon(row, n) for n in ("pause-fill", "play-fill", "snap", "restart", "stop-fill")}
+
+        def mk(icon, cmd, fallback, text="", bg=BG2):
+            img = self.icons.get(icon)
+            return tk.Button(row, image=img or "", text=text if img else (text or fallback), compound="left",
+                             command=cmd, bg=bg, fg="white", activebackground=bg, activeforeground="white", relief="flat",
+                             bd=0, padx=7, pady=5, font=("Segoe UI" if IS_WIN else "Helvetica", 10, "bold"), cursor="hand2")
+        self.pause_btn = mk("pause-fill", self.toggle_pause, self.t("暂停", "Pause"))
         self.pause_btn.pack(side="left", padx=2)
-        mk("↺", self.redo, "restart").pack(side="left", padx=2)
-        done = mk("■ " + self.t("完成", "Finish"), self.stop, "stop", "#e0342b")
-        done.config(width=0, padx=10)
+        self.snap_btn = mk("snap", lambda: self.snap("hud"), self.t("截图", "Snap"))
+        self.snap_btn.pack(side="left", padx=2)
+        mk("restart", self.redo, self.t("重录", "Redo")).pack(side="left", padx=2)
+        done = mk("stop-fill", self.stop, "", " " + self.t("完成", "Finish"), "#e0342b")
+        done.config(padx=10)
         done.pack(side="left", padx=(4, 0))
         # drag to move
         row.bind("<ButtonPress-1>", lambda e: setattr(self, "_drag", (e.x_root - hud.winfo_x(), e.y_root - hud.winfo_y())))
@@ -358,9 +481,10 @@ class TkRecorder:
     def tick(self, gen=0):
         if self.result or gen != getattr(self, "gen", 0):
             return
+        self.resolve_live_leads()
         s = int(self.elapsed())
         self.clock.config(text=f"{s // 60:02d}:{s % 60:02d}" if s < 3600 else f"{s // 3600}:{s // 60 % 60:02d}:{s % 60:02d}")
-        self.dot.config(fg=AMBER if self.paused else ("#ff3b30" if int(time.time() * 2) % 2 else "#7a1f1a"))
+        self.dot.itemconfig(self.dot_id, fill=AMBER if self.paused else ("#ff3b30" if int(time.time() * 2) % 2 else "#7a1f1a"))
         self.root.after(250, self.tick, gen)
 
     # --- capture
@@ -398,8 +522,32 @@ class TkRecorder:
         seg = {"video": out, "log": log, "fh": fh, "audio_from": self.audio.frames if self.audio else 0,
                "wall_start": time.time()}
         seg["proc"] = subprocess.Popen(self.video_cmd(out), stdin=subprocess.PIPE, stdout=fh, stderr=fh)
+        if self.audio and self.audio.live:
+            seg["live"] = self.audio.live.segment(seg["audio_from"])
         self.segments.append(seg)
         self.seg_started = time.time()
+
+    def resolve_live_leads(self):
+        """live/audio.pcm drops the same lead per segment as finalize() does, once ffmpeg logged its first frame."""
+        live = self.audio.live if self.audio else None
+        if not live:
+            return
+        from record import first_frame_wall
+        for i, seg in enumerate(self.segments):
+            j = seg.get("live")
+            if j is None or live.lead_known(j):
+                continue
+            v0 = first_frame_wall(seg["log"])
+            aw = self.audio.first_wall if i == 0 else seg["wall_start"]
+            if v0 and aw:
+                live.set_lead(j, v0 - aw)
+
+    def end_live(self, discard: bool):
+        live = self.audio.live if self.audio else None
+        if live:
+            if not discard:
+                self.resolve_live_leads()
+            live.discard() if discard else live.finish()
 
     def end_segment(self):
         seg = self.segments[-1]
@@ -422,6 +570,10 @@ class TkRecorder:
         self.seg_started = None
 
     # --- controls
+    def set_icon(self, btn, icon: str, fallback: str):
+        img = self.icons.get(icon)
+        btn.config(image=img or "", text="" if img else fallback)
+
     def toggle_pause(self):
         if not self.segments or self.result:
             return
@@ -429,19 +581,46 @@ class TkRecorder:
             self.paused = False
             self.start_segment()
             self.log("resume")
-            self.pause_btn.config(text="⏸")
+            self.set_icon(self.pause_btn, "pause-fill", self.t("暂停", "Pause"))
             self.on_event({"event": "resumed", "t": round(self.elapsed(), 2)})
         else:
             self.log("pause")
             self.end_segment()
             self.paused = True
-            self.pause_btn.config(text="▶")
+            self.set_icon(self.pause_btn, "play-fill", self.t("继续", "Resume"))
             self.on_event({"event": "paused", "t": round(self.elapsed(), 2)})
 
+    def snap(self, via: str = "hotkey"):
+        """A full-resolution still of the region at this instant, without pausing (ffmpeg runs off the UI thread)."""
+        if not self.segments or self.result:
+            return
+        self.shots += 1
+        n, t, wall = self.shots, round(self.elapsed(), 3), time.time()
+        self.log("snap", n=n, file=f"shots/{n:03d}.png", via=via)
+        self.on_event({"event": "snap", "n": n, "t": t})
+        for b in self.borders:           # flash the border (it is outside the region)
+            b.configure(bg="white")
+        self.root.after(220, lambda: [b.configure(bg=AMBER if self.paused else ACCENT) for b in self.borders if b.winfo_exists()])
+
+        def work():
+            line = capture_shot(self.session, self.region, n, t, wall)
+            def done():
+                if line and not self.result and self.snap_btn.winfo_exists():
+                    self.snap_btn.config(text=f" {n}")
+                if not line:
+                    self.on_event({"event": "error", "code": "snap", "message": f"could not capture shot {n}"})
+            try:
+                self.root.after(0, done)
+            except Exception:
+                pass
+        threading.Thread(target=work, daemon=True).start()
+
     def marker(self):
+        """Still logged as a marker, and a snap of this moment (as in the macOS app)."""
         if self.segments and not self.paused:
             self.log("marker")
             self.on_event({"event": "marker", "t": round(self.elapsed(), 2)})
+            self.snap("marker")
 
     def redo(self):
         """Restart (same area, fresh take) / keep recording / discard — one button, one question."""
@@ -465,6 +644,7 @@ class TkRecorder:
             self.end_segment()
         if self.audio:
             self.audio.stop()
+            self.end_live(discard=True)
         for w in [self.hud, *self.borders]:
             w.destroy()
         for seg in self.segments:
@@ -489,6 +669,7 @@ class TkRecorder:
             self.end_segment()
         if self.audio:
             self.audio.stop()
+            self.end_live(discard)
         for w in [self.hud, *self.borders]:
             w.destroy()
         self.result = {"event": "cancelled", "reason": "discarded"} if discard else self.finalize()
@@ -562,23 +743,32 @@ class TkRecorder:
             self.toggle_pause()
         elif c == "marker":
             self.marker()
+        elif c == "snap":
+            self.snap("command")
 
     def start_hotkeys(self):
         if not IS_WIN:
             return
         q: queue.Queue = queue.Queue()
+        hotkeys = hotkeys_from_config()
 
         def loop():
             import ctypes
             from ctypes import wintypes
             user32 = ctypes.windll.user32
-            MOD = 0x0001 | 0x0004 | 0x4000  # ALT | SHIFT | NOREPEAT
-            for i, vk in enumerate((0x50, 0x4D, 0x53), 1):  # P, M, S
-                user32.RegisterHotKey(None, i, MOD, vk)
+            ids = {}
+            for i, (action, cmd) in enumerate((("pause", "toggle"), ("marker", "marker"), ("stop", "stop"),
+                                                ("snap", "snap")), 1):
+                reg = win_hotkey(hotkeys.get(action))
+                if reg and user32.RegisterHotKey(None, i, reg[0] | 0x4000, reg[1]):  # | MOD_NOREPEAT
+                    ids[i] = cmd
+                elif reg:  # another app owns it: say so once, keep going
+                    print(f"hotkey {hotkey_label(hotkeys[action], mac=False)} ({action}) is taken by another app",
+                          file=sys.stderr, flush=True)
             msg = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) != 0:
                 if msg.message == 0x0312:  # WM_HOTKEY
-                    q.put({1: "toggle", 2: "marker", 3: "stop"}.get(msg.wParam))
+                    q.put(ids.get(msg.wParam))
 
         threading.Thread(target=loop, daemon=True).start()
 
@@ -590,3 +780,181 @@ class TkRecorder:
             if not self.result:
                 self.root.after(150, drain)
         self.root.after(150, drain)
+
+
+# ------------------------------------------------------------------ desktop app helpers (K7, run as a script)
+def next_shot_n(session: Path) -> int:
+    """The next free `n` of a shots batch: past every shots.jsonl line and every file already in shots/."""
+    top = 0
+    try:
+        for raw in (session / "shots.jsonl").read_text(encoding="utf-8").splitlines():
+            try:
+                top = max(top, int(json.loads(raw).get("n") or 0))
+            except (ValueError, AttributeError):
+                continue
+    except OSError:
+        pass
+    for f in (session / "shots").glob("[0-9][0-9][0-9]*"):
+        m = re.match(r"(\d+)", f.name)
+        if m:
+            top = max(top, int(m.group(1)))
+    return top + 1
+
+
+def _append_line(session: Path, line: dict) -> None:
+    with open(session / "shots.jsonl", "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
+def _owner_fields(project: str | None) -> dict:
+    # K7: "project": id | "inbox" | null (null = a card, not filed yet)
+    return {"project": project, "assigned_by": "capture"} if project else {"project": None}
+
+
+def cli_shot(session: Path, region: list[int], project: str | None) -> dict:
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "shots").mkdir(exist_ok=True)
+    n = next_shot_n(session)
+    out = session / "shots" / f"{n:03d}.png"
+    r = subprocess.run(snap_cmd(ffmpeg_bin(), region, out), stdin=subprocess.DEVNULL, capture_output=True, timeout=20)
+    if r.returncode or not out.exists():
+        return {"ok": False, "error": (r.stderr or b"").decode("utf-8", "replace")[-300:] or "no frame", "code": "snap"}
+    line = {**shot_line(n, None, region), "type": "shot", **_owner_fields(project)}
+    _append_line(session, line)
+    return {"ok": True, "n": n, "file": line["file"], "line": line}
+
+
+def _wav_rms(chunk: bytes) -> float:
+    import array
+    a = array.array("h", chunk[: len(chunk) // 2 * 2])
+    if not a:
+        return 0.0
+    return (sum(v * v for v in a) / len(a)) ** 0.5 / 32768.0
+
+
+def cli_voice(session: Path, project: str | None, max_s: float, silence_ms: int, hold: bool) -> int:
+    """Records until silence / --max / "stop" on stdin; one JSON line per event on stdout."""
+    import wave
+
+    def say(**kw):
+        print(json.dumps(kw, ensure_ascii=False), flush=True)
+
+    session.mkdir(parents=True, exist_ok=True)
+    (session / "shots").mkdir(exist_ok=True)
+    n = next_shot_n(session)
+    wav = session / "shots" / f"{n:03d}.wav"
+    cmd: dict = {"v": None}
+
+    def stdin_reader():
+        for raw in sys.stdin:
+            word = raw.strip().lower()
+            if word in ("stop", "cancel"):
+                cmd["v"] = word
+                return
+        cmd["v"] = cmd["v"] or "stop"
+
+    threading.Thread(target=stdin_reader, daemon=True).start()
+    test = os.environ.get("BLURT_TEST_MIC_WAV")
+    chunks: queue.Queue = queue.Queue()
+    stream = None
+    if test:  # tests: the file plays in real time, in 50 ms chunks, then silence
+        src = wave.open(test, "rb")
+        sr = src.getframerate()
+        if src.getnchannels() != 1 or src.getsampwidth() != 2:
+            say(ev="error", code="voice", msg="BLURT_TEST_MIC_WAV must be 16-bit mono")
+            return 1
+
+        def feed():
+            step = sr // 20
+            while True:
+                data = src.readframes(step)
+                chunks.put(data if data else b"\0\0" * step)
+                time.sleep(0.05)
+
+        threading.Thread(target=feed, daemon=True).start()
+    else:
+        from record import pick_mic  # sounddevice; PortAudio (Linux: libportaudio2)
+        import sounddevice as sd
+        mic = pick_mic(None)
+        if mic is None:
+            say(ev="error", code="mic", msg="no microphone")
+            return 1
+        sr = int(mic.get("samplerate") or 48000)
+        stream = sd.RawInputStream(samplerate=sr, channels=1, dtype="int16", device=mic["index"],
+                                   blocksize=sr // 20, callback=lambda data, *_: chunks.put(bytes(data)))
+        stream.start()
+    say(ev="started", n=n)
+    out = wave.open(str(wav), "wb")
+    out.setnchannels(1)
+    out.setsampwidth(2)
+    out.setframerate(sr)
+    t0, heard, quiet_since, frames = time.time(), False, None, 0
+    ended = "stop"
+    try:
+        while True:
+            if cmd["v"]:
+                ended = cmd["v"]
+                break
+            try:
+                data = chunks.get(timeout=0.2)
+            except queue.Empty:
+                continue
+            out.writeframes(data)
+            frames += len(data) // 2
+            rms = _wav_rms(data)
+            say(ev="level", rms=round(rms, 4))
+            now = time.time()
+            if rms > 0.02:
+                heard, quiet_since = True, None
+            elif heard and not hold:
+                quiet_since = quiet_since or now
+                if (now - quiet_since) * 1000 >= silence_ms:
+                    break
+            if now - t0 >= max_s:
+                break
+    finally:
+        if stream is not None:
+            stream.stop()
+            stream.close()
+        out.close()
+    if ended == "cancel" or frames == 0:
+        wav.unlink(missing_ok=True)
+        say(ev="cancelled")
+        return 0
+    line = {"n": n, "type": "voice", "file": None, "marked": None, "t": None, "wall": round(t0, 3), "region": None,
+            "voice": f"shots/{n:03d}.wav", "text": None, "said": None, "strokes": [], **_owner_fields(project)}
+    _append_line(session, line)
+    say(ev="done", n=n, file=line["voice"], duration=round(frames / sr, 2))
+    return 0
+
+
+def main() -> int:
+    import argparse
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = p.add_subparsers(dest="cmd", required=True)
+    s = sub.add_parser("shot", help="one frame of a region into a shots batch")
+    s.add_argument("session")
+    s.add_argument("--region", required=True)
+    s.add_argument("--project")
+    v = sub.add_parser("voice", help="a voice note into a shots batch")
+    v.add_argument("session")
+    v.add_argument("--project")
+    v.add_argument("--max", type=float, default=120.0)
+    v.add_argument("--silence-ms", type=int, default=1500)
+    v.add_argument("--hold", action="store_true", help="push-to-talk: no silence end, wait for stop")
+    a = p.parse_args()
+    if a.cmd == "shot":
+        try:
+            region = [int(float(x)) for x in a.region.split(",")]
+            assert len(region) == 4 and region[2] > 0 and region[3] > 0
+        except (ValueError, AssertionError):
+            print(json.dumps({"ok": False, "error": "--region is x,y,w,h", "code": "bad_args"}))
+            return 1
+        r = cli_shot(Path(a.session), region, a.project)
+        print(json.dumps(r, ensure_ascii=False))
+        return 0 if r["ok"] else 1
+    return cli_voice(Path(a.session), a.project, a.max, a.silence_ms, a.hold)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

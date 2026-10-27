@@ -1,0 +1,221 @@
+// BlurtCore/SettingsCatalog.swift: the Settings window's rows as data. Every text exists in both languages, every id is
+// rendered exactly once by the panes (BlurtApp/Settings/*.swift, App/HotkeySettings.swift: SettingRow / SettingToggle /
+// SettingMenuToggle / SettingMenuPicker / SettingsPageButton / SettingsGroup with that id) and nothing is rendered that the catalogue — and so search — doesn't know; search finds
+// rows by title, keyword or the other language.
+import XCTest
+@testable import BlurtCore
+
+final class SettingsCatalogTests: XCTestCase {
+    override func tearDown() { Loc.setting = nil }
+
+    func testEveryTextExistsInBothLanguages() {
+        var texts: [(String, SettingsText)] = []
+        for p in SettingsCatalog.panes { texts += [(p.id, p.title), (p.id + " keywords", p.keywords)] }
+        for g in SettingsCatalog.groups { texts.append((g.id, g.title)) }
+        for s in SettingsCatalog.sections { texts.append((s.id, s.title)) }
+        for e in SettingsCatalog.entries {
+            texts.append((e.id, e.title))
+            if let d = e.detail { texts.append((e.id + " detail", d)) }
+            if let m = e.more { texts.append((e.id + " more", m)) }
+        }
+        for lang in Loc.languages {
+            for (what, t) in texts {
+                XCTAssertNotNil(Loc.string(t.key, table: t.table, language: lang), "\(what): \(t.table).\(t.key) missing in \(lang)")
+            }
+            // keywords are optional per row, but never in one language only
+            for e in SettingsCatalog.entries {
+                let k = e.keywords
+                XCTAssertEqual(Loc.string(k.key, table: k.table, language: "en") == nil, Loc.string(k.key, table: k.table, language: "zh-Hans") == nil,
+                               "\(k.key) in one language only")
+            }
+        }
+    }
+
+    func testIdsAndStructure() {
+        let ids = SettingsCatalog.entries.map(\.id)
+        XCTAssertEqual(Set(ids).count, ids.count, "an id twice")
+        // rows and sections share the page's scroll ids: a row may not take a section's
+        let sectionIDs = Set(SettingsCatalog.sections.map(\.id))
+        XCTAssertEqual(SettingsCatalog.entries.filter { $0.kind == .row && sectionIDs.contains($0.id) }.map(\.id), [])
+        let panes = Set(SettingsCatalog.panes.map(\.id))
+        XCTAssertEqual(Set(SettingsCatalog.panes.map(\.group)).subtracting(SettingsCatalog.groups.map(\.id)), [])
+        for s in SettingsCatalog.sections { XCTAssertTrue(panes.contains(s.pane), s.id) }
+        for e in SettingsCatalog.entries {
+            XCTAssertTrue(panes.contains(e.pane), e.id)
+            if let s = e.section {
+                XCTAssertEqual(SettingsCatalog.section(s)?.pane, e.pane, "\(e.id): section \(s)")
+            }
+            if e.kind == .section { XCTAssertEqual(e.section, e.id) }
+            if let f = e.fold { XCTAssertEqual(SettingsCatalog.entry(f)?.kind, .row, "\(e.id) folds under \(f)") }
+        }
+        for p in panes { XCTAssertTrue(SettingsCatalog.entries.contains { $0.pane == p }, "\(p) has nothing to find") }
+        // the generated rows are the enums' cases, no more and no fewer
+        func generated(_ prefix: String) -> Set<String> {
+            Set(SettingsCatalog.entries.filter { $0.generated && $0.id.hasPrefix(prefix) }.map { String($0.id.dropFirst(prefix.count)) })
+        }
+        XCTAssertEqual(generated("shortcuts."), Set(HotkeyCenter.Action.allCases.map(\.rawValue)))
+        XCTAssertEqual(generated("dictation.cat."), Set(DictationAppCategory.allCases.map(\.rawValue)))
+        XCTAssertEqual(generated("speech."), Set(SettingsCatalog.speechPurposes))
+    }
+
+    /// The panes render each id once, and only ids the catalogue has: the search index and the window can't drift.
+    func testThePanesRenderTheCatalogue() throws {
+        let app = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/BlurtApp")
+        var files = try FileManager.default.contentsOfDirectory(at: app.appendingPathComponent("Settings"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        files.append(app.appendingPathComponent("App/HotkeySettings.swift"))
+        // a setting in a row's menu (SettingMenuToggle / SettingMenuPicker) is rendered there, once, like a row
+        let pattern = try NSRegularExpression(pattern: #"\b(SettingRow|SettingToggle|SettingMenuToggle|SettingMenuPicker|SettingsPageButton|SettingsGroup)\(\s*"([a-z0-9_.]+)""#)
+        var rows: [String: Int] = [:], groups: [String: Int] = [:]
+        for f in files {
+            let code = try String(contentsOf: f, encoding: .utf8).split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            for m in pattern.matches(in: code, range: NSRange(code.startIndex..., in: code)) {
+                let kind = String(code[Range(m.range(at: 1), in: code)!]), id = String(code[Range(m.range(at: 2), in: code)!])
+                if kind == "SettingsGroup" { groups[id, default: 0] += 1 } else { rows[id, default: 0] += 1 }
+            }
+        }
+        XCTAssertFalse(rows.isEmpty, "no rows found: the scan looks in the wrong place")
+        for e in SettingsCatalog.entries where !e.generated {
+            switch e.kind {
+            case .row: XCTAssertEqual(rows[e.id], 1, "\(e.id) rendered \(rows[e.id] ?? 0) times")
+            case .section: XCTAssertEqual(groups[e.id], 1, "section \(e.id) rendered \(groups[e.id] ?? 0) times")
+            }
+        }
+        for id in rows.keys { XCTAssertEqual(SettingsCatalog.entry(id)?.kind, .row, "\(id) is rendered but not in the catalogue") }
+        for id in groups.keys { XCTAssertNotNil(SettingsCatalog.section(id), "group \(id) is not a catalogue section") }
+    }
+
+    func testSearchFindsByTitleKeywordAndTheOtherLanguage() {
+        Loc.setting = "en"
+        func top(_ q: String) -> String? { SettingsCatalog.search(q).first?.entry.id }
+        func ids(_ q: String) -> [String] { SettingsCatalog.search(q).map(\.entry.id) }
+        XCTAssertEqual(top("open blurt at login"), "general.login")
+        XCTAssertEqual(top("startup"), "general.login")               // a keyword
+        XCTAssertEqual(top("mirror"), "speech.mirror")
+        XCTAssertEqual(top("开机"), "general.login")                   // Chinese in the English UI
+        XCTAssertTrue(ids("hotkey").contains("shortcuts.snap"))       // the pane's keywords: its rows
+        XCTAssertTrue(ids("voice").contains("general.voice_end_on_pause"))
+        XCTAssertFalse(ids("voice").contains("dictation.key"))       // …but not when rows match themselves
+        XCTAssertFalse(ids("model").contains("speech.threads"))      // a pane keyword alone doesn't pull in its rows
+        XCTAssertTrue(ids("model").contains("storage.models"))
+        XCTAssertEqual(ids("shortcuts").first, "shortcuts.record")   // a pane's name: its rows lead, in page order
+        XCTAssertEqual(ids("shortcut").first, "shortcuts.record")    // …or the start of it, as it's typed
+        XCTAssertEqual(ids("short").first, "shortcuts.record")
+        XCTAssertEqual(ids("快捷").first, "shortcuts.record")
+        XCTAssertNotEqual(ids("s").first, "shortcuts.record")        // one letter isn't a pane's name yet
+        XCTAssertEqual(top("codex"), "agents.list")                   // an agent's name finds the agents list
+        XCTAssertEqual(top("claude"), "agents.list")
+        XCTAssertEqual(top("Kimi"), "agents.list")
+        XCTAssertEqual(top("voice pause"), "general.voice_end_on_pause")  // every word, anywhere
+        XCTAssertTrue(ids("LOGIN").contains("general.login"))         // case doesn't matter
+        XCTAssertEqual(ids(""), [])
+        XCTAssertEqual(ids("   "), [])
+        XCTAssertEqual(ids("zzqqxx"), [])
+        // a title match outranks a description match
+        let hits = SettingsCatalog.search("spotlight")
+        XCTAssertEqual(hits.first?.entry.id, "privacy.spotlight")
+
+        Loc.setting = "zh-Hans"
+        XCTAssertEqual(top("开机"), "general.login")
+        XCTAssertEqual(top("镜像"), "speech.mirror")
+        XCTAssertEqual(top("login"), "general.login")                 // English in the Chinese UI
+        XCTAssertTrue(ids("快捷键").contains("shortcuts.record"))
+        XCTAssertEqual(ids("快捷").first, "shortcuts.record")
+        XCTAssertEqual(ids("short").first, "shortcuts.record")
+        XCTAssertEqual(top("codex"), "agents.list")
+        XCTAssertEqual(SettingsCatalog.title(SettingsCatalog.entry("general.login")!), "登录时打开口喷鸡")
+    }
+
+    /// Links to rows that moved (v0.9: Projects got its own pane, the Lab went to Dictation, the drag switches became one
+    /// choice, About a closing line) land where the row is now; every target exists.
+    func testMovedRowsRedirect() {
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.capture_into"), "projects/projects.capture_into")
+        XCTAssertEqual(SettingsCatalog.redirect("general/capture_into"), "projects/projects.capture_into")
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.dictation_lab"), "dictation/dictation.lab")
+        XCTAssertEqual(SettingsCatalog.redirect("general/smart_paste"), "general/general.card_drag")
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.login"), "general/general.login")
+        XCTAssertEqual(SettingsCatalog.redirect("general"), "general")
+        XCTAssertEqual(SettingsCatalog.redirect("export/target"), "agents/agents.ask")
+        for (old, new) in SettingsCatalog.movedRows {
+            XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
+            XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")
+        }
+    }
+
+    func testResultsComeByPaneAndAPaneNameFindsThePane() {
+        defer { Loc.setting = nil }
+        for lang in ["en", "zh-Hans"] {
+            Loc.setting = lang
+            let r = SettingsCatalog.results("short")
+            // the pane named leads, as one hit with its settings after it in the page's order — not Restore defaults
+            XCTAssertEqual(r.first?.pane, "shortcuts", lang)
+            XCTAssertEqual(r.first?.paneHit, true, lang)
+            XCTAssertEqual(r.first?.hits.first?.entry.id, "shortcuts.record", lang)
+            XCTAssertFalse(r.first?.hits.contains { $0.entry.id == "shortcuts.restore" } ?? true, lang)
+            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.capture" }.count, 3, lang)
+            // the other panes' hits follow, each pane once; the page's order is the search's
+            XCTAssertEqual(Set(r.map(\.pane)).count, r.count, lang)
+            XCTAssertTrue(r.dropFirst().allSatisfy { !$0.paneHit }, lang)
+            XCTAssertEqual(SettingsCatalog.search("short").map(\.entry.id), r.flatMap(\.hits).map(\.entry.id), lang)
+            // why a pane matched is said in the UI's language only: its own name needs no reason, and its name or a
+            // keyword in the other language is never shown (no English inside the Chinese UI)
+            XCTAssertNil(SettingsCatalog.reason(pane: "shortcuts", query: "short"), lang)
+            XCTAssertEqual(SettingsCatalog.reason(pane: "shortcuts", query: "hotkey"), lang == "en" ? "hotkey" : nil, lang)
+        }
+        Loc.setting = "en"
+        // an action is found only by its own words
+        XCTAssertEqual(SettingsCatalog.results("restore").first?.hits.first?.entry.id, "shortcuts.restore")
+        // pane keywords alone: the pane as a whole
+        XCTAssertEqual(SettingsCatalog.results("hotkey").first?.paneHit, true)
+        XCTAssertEqual(SettingsCatalog.results("hotkey").first?.pane, "shortcuts")
+        // groups: best first, a pane's hits by section
+        let voice = SettingsCatalog.results("voice")
+        XCTAssertTrue(voice.allSatisfy { !$0.paneHit })
+        for g in voice {
+            var seen: [String] = []
+            for s in g.hits.map({ $0.entry.section ?? "" }) where seen.last != s {
+                XCTAssertFalse(seen.contains(s), "section \(s) of \(g.pane) split")
+                seen.append(s)
+            }
+        }
+        XCTAssertEqual(voice.map(\.score), voice.map(\.score).sorted(by: >))
+        // why a row matched when its title doesn't say: the stretch of its description
+        let login = SettingsCatalog.entry("general.login")!
+        XCTAssertEqual(SettingsCatalog.reason(login, query: "login"), nil)
+        XCTAssertTrue(SettingsCatalog.reason(login, query: "short")?.localizedCaseInsensitiveContains("shortcuts") == true)
+        XCTAssertEqual(SettingsCatalog.reason(login, query: "startup"), "startup")
+        // the sentence that holds the words, whole from its start, without its parentheses (cut at the row's end only)
+        XCTAssertEqual(SettingsCatalog.excerpt(["Blurt tells you when a shortcut clashes with another Blurt action"], ["another"]),
+                       "Blurt tells you when a shortcut clashes with another Blurt action")
+        XCTAssertEqual(SettingsCatalog.excerpt(["Screenshots become cards. They use macOS’s own shortcuts (⇧⌘3, ⇧⌘4)."], ["short"]),
+                       "They use macOS’s own shortcuts.")
+        // in the Chinese UI, a row found through its English text shows its own Chinese description, never the English
+        Loc.setting = "zh-Hans"
+        let r = SettingsCatalog.reason(login, query: "short")
+        XCTAssertFalse(r?.contains("shortcuts") ?? false, r ?? "")
+        Loc.setting = "en"
+    }
+
+    /// The no-match page's common searches each land somewhere, in either UI language.
+    func testSuggestionsAlwaysFindSomething() {
+        XCTAssertFalse(SettingsCatalog.suggestions.isEmpty)
+        for lang in Loc.languages {
+            Loc.setting = lang
+            for t in SettingsCatalog.suggestions {
+                let word = SettingsCatalog.text(t)
+                XCTAssertNotNil(word, "\(t.key) missing in \(lang)")
+                XCTAssertFalse(SettingsCatalog.search(word ?? "").isEmpty, "\(lang): “\(word ?? "")” finds nothing")
+            }
+        }
+        XCTAssertTrue(SettingsCatalog.search("zzqx").isEmpty)
+    }
+
+    func testPlaceholdersReadAsAGapWithoutArguments() {
+        XCTAssertEqual(SettingsCatalog.fillGaps("Double-tap %@ to send"), "Double-tap … to send")
+        XCTAssertEqual(SettingsCatalog.fillGaps("%1$@, in %2$@"), "…, in …")
+        XCTAssertEqual(SettingsCatalog.fillGaps("%ld seconds, 100%%"), "… seconds, 100%")
+        XCTAssertEqual(SettingsCatalog.fillGaps("plain"), "plain")
+    }
+}

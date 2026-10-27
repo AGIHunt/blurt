@@ -1,0 +1,236 @@
+"""Dictation's live text (docs/design/dictation.md §Live text): the open piece's audio so far goes to the warm speech
+server as an *interim* request, and the server stops that decode as soon as another request is waiting — a final
+piece never waits for an interim one. A model that can't stop halfway takes no interim requests. No model: fake
+backends stand in.
+
+  uv run --with numpy --with pytest pytest tests/test_transcribe_interim.py -q
+"""
+from __future__ import annotations
+
+import os
+import tempfile
+import threading
+import time
+import unittest
+from argparse import Namespace
+from pathlib import Path
+
+import test_asr_select as A
+
+T = A.T
+SR = A.SR
+
+
+class Stoppable(A.FakeBackend):
+    """An interim decode takes 3 s, looking at stop_check every 10 ms (as Qwen3Mlx does between tokens); a final one
+    is quick."""
+    interruptible = True
+    stop_check = None
+    calls: list = []
+
+    def transcribe(self, x):
+        Stoppable.calls.append("interim" if self.stop_check else "final")
+        if self.stop_check is not None:
+            for _ in range(300):
+                if self.stop_check():
+                    raise T.Interrupted("waiting")
+                time.sleep(0.01)
+        return super().transcribe(x)
+
+
+class Plain(A.FakeBackend):
+    """A slow backend that can't stop halfway (Whisper on CT2, Qwen3-ASR on the CPU…)."""
+
+
+class Quick(A.FakeBackend):
+    """A backend whose decode is one short pass (SenseVoice): interim requests are decoded whole."""
+    quick_decode = True
+    calls: list = []
+
+    def transcribe(self, x):
+        Quick.calls.append(getattr(self, "stop_check", None))
+        return super().transcribe(x)
+
+
+class Interim(unittest.TestCase):
+    def setUp(self):
+        self.patches = {"BACKENDS": T.BACKENDS, "vad_segments": T.vad_segments}
+        T.vad_segments = lambda x, max_speech=25: [(0.0, len(x) / SR)]
+        self.real = A.fake_installed("sensevoice-small")
+        self.tmp = Path(tempfile.mkdtemp())
+        Stoppable.calls = []
+
+    def tearDown(self):
+        for k, v in self.patches.items():
+            setattr(T, k, v)
+        T.installed = self.real
+
+    def serve(self, backend):
+        T.BACKENDS = {**self.patches["BACKENDS"], "sensevoice": backend}
+        n = A.Notes()
+        th, _out = n.serve_in_thread(Namespace(preload=True, idle=600, exit_after=1800, parent=None))
+        return th
+
+    def stop(self, th):
+        T._server_call({"cmd": "exit"})
+        th.join(5)
+
+    def note(self, seconds, **kw):
+        return T._server_call({"cmd": "note", "wav": str(A.write_wav(self.tmp / f"{seconds}-{time.time()}.wav", seconds)),
+                               "language": "auto", "purpose": None, **kw}, timeout=10)
+
+    def test_a_final_piece_never_waits_for_an_interim_decode(self):
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(Stoppable)
+            try:
+                got = {}
+                t = threading.Thread(target=lambda: got.update(self.note(8.0, interim=True)))
+                t.start()
+                time.sleep(0.3)                     # the interim decode is under way (it would take 3 s)
+                t0 = time.perf_counter()
+                final = self.note(4.0)
+                waited = time.perf_counter() - t0
+                t.join(5)
+            finally:
+                self.stop(th)
+        self.assertEqual((final["ok"], final["text"]), (True, "heard 4.0s"))
+        self.assertLess(waited, 0.5, waited)       # one 10 ms step and the request itself, not the remaining 2.7 s
+        self.assertEqual((got.get("ok"), got.get("code"), got.get("interim")), (False, "interrupted", True), got)
+        self.assertEqual(Stoppable.calls, ["interim", "final"])
+
+    def test_an_interim_decode_alone_answers(self):
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(Stoppable)
+            try:
+                r = self.note(2.0, interim=True)
+                # the stop check is off again for the next (final) request
+                f = self.note(1.0)
+            finally:
+                self.stop(th)
+        self.assertEqual((r["ok"], r["text"], r["interim"]), (True, "heard 2.0s", True))
+        self.assertTrue(f["ok"])
+        self.assertNotIn("interim", f)
+
+    def test_a_model_that_cannot_stop_takes_no_interim_requests(self):
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(Plain)
+            try:
+                r = self.note(2.0, interim=True)
+                f = self.note(2.0)
+            finally:
+                self.stop(th)
+        self.assertEqual((r["ok"], r["code"]), (False, "interim_unsupported"))
+        self.assertTrue(f["ok"])
+
+    def test_a_quick_model_answers_interim_requests_whole(self):
+        """dogfood: SenseVoice, every tier's note model, refused every interim request — no live words in a voice
+        note or a snap's note on any Mac. It decodes a piece in ~0.1 s, so it answers them, without a stop check."""
+        Quick.calls = []
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(Quick)
+            try:
+                r = self.note(2.0, interim=True)
+                f = self.note(1.0)
+            finally:
+                self.stop(th)
+        self.assertEqual((r["ok"], r["text"], r.get("interim")), (True, "heard 2.0s", True), r)
+        self.assertTrue(f["ok"])
+        self.assertEqual(Quick.calls, [None, None])     # never handed a stop check it couldn't use
+
+    def test_a_quick_model_skips_an_interim_request_when_a_final_one_already_waits(self):
+        e = T.NoteEngine()
+        e.backend, e.name, e.model_id, e.language = Quick(Namespace(language=None)), "sensevoice", None, None
+        e.load = lambda *a, **k: e
+        wav = A.write_wav(self.tmp / "w.wav", 1.0)
+        with self.assertRaises(T.Interrupted):
+            e.note(wav, stop=lambda: True)
+        self.assertEqual(e.note(wav, stop=lambda: False)["text"], "heard 1.0s")
+
+    def test_sensevoice_is_marked_quick(self):
+        self.assertTrue(getattr(T.SenseVoice, "quick_decode", False))
+        self.assertFalse(getattr(T.FasterWhisper, "quick_decode", False))
+
+
+class SeesNoDownload(A.FakeBackend):
+    """Records whether a download would have been refused while it loads and decodes."""
+    seen: list = []
+
+    def __init__(self, a):
+        SeesNoDownload.seen.append(("load", os.environ.get("BLURT_NO_DOWNLOAD")))
+        super().__init__(a)
+
+    def transcribe(self, x):
+        SeesNoDownload.seen.append(("decode", os.environ.get("BLURT_NO_DOWNLOAD")))
+        return super().transcribe(x)
+
+
+class DictationNeverDownloads(unittest.TestCase):
+    """A dictation request — final or interim, with or without "no_download" — never starts a download in the server
+    (dogfood: an interim request loaded a missing model and began a 241 MB download mid-take)."""
+    setUp = Interim.setUp
+    tearDown = Interim.tearDown
+    serve = Interim.serve
+    stop = Interim.stop
+    note = Interim.note
+
+    def test_dictation_requests_refuse_downloads_and_others_still_may(self):
+        os.environ.pop("BLURT_NO_DOWNLOAD", None)
+        SeesNoDownload.seen = []
+        with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            th = self.serve(SeesNoDownload)
+            try:
+                i = self.note(1.0, purpose="dictation", interim=True)
+                d = self.note(1.0, purpose="dictation")     # no "no_download" key: an older client
+                v = self.note(1.0)                          # a voice note: as before
+            finally:
+                self.stop(th)
+        self.assertTrue(v["ok"])
+        self.assertTrue(d["ok"], d)
+        self.assertEqual(i.get("code"), "interim_unsupported")
+        decodes = [e for k, e in SeesNoDownload.seen if k == "decode"]
+        self.assertEqual(decodes[0], "1")                  # the dictation's decode: no download possible
+        loads_during_dictation = [e for k, e in SeesNoDownload.seen[1:] if k == "load"]
+        self.assertTrue(all(e == "1" for e in loads_during_dictation), SeesNoDownload.seen)
+        self.assertEqual(decodes[-1], None)                # the voice note's decode: downloads allowed again
+        self.assertNotIn("BLURT_NO_DOWNLOAD", os.environ)
+
+
+class QwenStops(unittest.TestCase):
+    """Qwen3Mlx without the model: an interrupted decode propagates (it is not taken for a broken tag-aware decoder),
+    and an interim request uses the interruptible loop even when no language is preferred."""
+
+    def backend(self, prefer=None):
+        b = object.__new__(T.Qwen3Mlx)
+        b.m, b.repo, b.args = None, "fake", type("A", (), {"language": None})()
+        b.context = b.base_context = ""
+        b.names, b.prefer, b.tagged, b.last = [], prefer, True, {}
+        return b
+
+    def test_interrupted_is_not_a_broken_decoder(self):
+        b = self.backend("Chinese")
+
+        def dec(x, ctx, prefer):
+            raise T.Interrupted("waiting")
+        b._decode_tagged = dec
+        b.stop_check = lambda: True
+        with self.assertRaises(T.Interrupted):
+            b.decode([0.0] * SR)
+        self.assertTrue(b.tagged)
+        self.assertTrue(b.interruptible)
+
+    def test_interim_without_a_preferred_language_uses_the_loop(self):
+        b = self.backend(None)
+        seen = []
+
+        def dec(x, ctx, prefer):
+            seen.append(prefer)
+            return "hello", "en"
+        b._decode_tagged = dec
+        b.stop_check = lambda: False
+        self.assertEqual(b.decode([0.0] * SR)[0][2], "hello")
+        self.assertEqual(seen, [None])
+        # a final request (no stop check, no preferred language) keeps the library's own decode
+        b.stop_check = None
+        b.m = type("M", (), {"transcribe": staticmethod(lambda x, **k: type("R", (), {"text": "plain", "language": "English"})())})
+        self.assertEqual(b.decode([0.0] * SR)[0][2], "plain")
+        self.assertEqual(seen, [None])
