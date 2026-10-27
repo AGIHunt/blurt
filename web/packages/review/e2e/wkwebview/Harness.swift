@@ -247,7 +247,16 @@ Task { @MainActor in
     web.appearance = NSAppearance(named: .aqua)
     web.load(URLRequest(url: URL(string: "blurt-app://ui/index.html?session=\(sessionURL.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")!))
 
-    report("loads over blurt-app:// with the macos host", await waitJS("document.querySelector('.qi') && window.blurtReview?.store.host.host === 'macos'"))
+    let loaded = await waitJS("document.querySelector('.qi') && window.blurtReview?.store.host.host === 'macos'", 20)
+    report("loads over blurt-app:// with the macos host", loaded)
+    if !loaded {
+        // say why (CI only shows this log): what items.py answers, and what the page has
+        let (code, out) = runScript("items.py", ["doc", sessionURL.path])
+        print("diag items.py doc exit \(code): \(out.suffix(600))")
+        let page = await js("return JSON.stringify({url: location.href, body: document.body.innerText.slice(0, 300), host: window.blurtReview?.store?.host?.host ?? null, err: window.__blurtLastError ?? null})")
+        print("diag page: \(page ?? "nil")")
+        fflush(stdout)
+    }
     report("in-app chrome, mac platform", await js("return document.documentElement.classList.contains('in-app') && document.documentElement.dataset.platform") as? String == "mac")
     let accent = await js("return getComputedStyle(document.documentElement).getPropertyValue('--sys-accent')") as? String ?? ""
     report("system accent injected", !accent.isEmpty, accent)
