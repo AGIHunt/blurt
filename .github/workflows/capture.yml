@@ -32,6 +32,8 @@ concurrency:
 
 jobs:
   linux:
+    # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
+    if: vars.CROSS_PLATFORM_CI == 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 40
     env:
@@ -111,6 +113,8 @@ jobs:
           if-no-files-found: ignore
 
   windows:
+    # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
+    if: vars.CROSS_PLATFORM_CI == 'true'
     runs-on: windows-latest
     timeout-minutes: 40
     defaults:

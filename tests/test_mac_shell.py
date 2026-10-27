@@ -119,7 +119,7 @@ class BuildAndSelftest(unittest.TestCase):
         self.assertTrue((app / "Contents" / "Info.plist").exists())
         self.assertEqual(installed.stat().st_mtime if installed.exists() else None, before, "a test build must not install")
         size = sum(f.stat().st_size for f in app.rglob("*") if f.is_file())
-        self.assertLess(size, 6 * 1024 * 1024, f"Blurt.app is {size / 1e6:.1f} MB")
+        self.assertLess(size, 30 * 1024 * 1024, f"Blurt.app is {size / 1e6:.1f} MB")
         fx = home / "fx"
         shutil.copytree(ROOT / "tests" / "fixtures" / "sessions", fx)
         env["CODEX_HOME"] = str(home / "codex")

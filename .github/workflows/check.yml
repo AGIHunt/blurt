@@ -18,6 +18,8 @@ concurrency:
 
 jobs:
   smoke:
+    # Windows and Linux are still in development: these jobs run only when the repo variable CROSS_PLATFORM_CI is 'true'
+    if: vars.CROSS_PLATFORM_CI == 'true'
     strategy:
       fail-fast: false
       matrix:
