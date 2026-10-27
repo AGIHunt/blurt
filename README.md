@@ -41,20 +41,24 @@ go to Unassigned and snaps stay as cards until you pick a project. Every shortcu
 You need macOS 13 or later. Dictation and the recommended speech models need Apple silicon.
 
 **[Download Blurt for Mac](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)** (signed and
-notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app.
+notarized), open the disk image and drag Blurt into Applications. Updates arrive inside the app. The app brings
+everything it runs, so there is nothing else to install.
 
-Or let your agent install it through the Blurt skill:
+Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
 
 ```bash
-npx skills add AGIHunt/blurt
+curl -fsSL https://blurt.agihunt.info/install.sh | sh
 ```
 
-<sub>In Claude Code you can also run <code>/plugin marketplace add AGIHunt/blurt</code>, or paste this repository's URL
-to your agent and ask it to install the skill.</sub>
+It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.
 
-Then tell your agent **"start blurt"**. The first run checks your machine, picks a speech model and builds the Blurt
-app into `~/Applications`. It needs the Xcode Command Line Tools and [uv](https://docs.astral.sh/uv/); the agent offers
-to install what's missing.
+**Use it from your agent.** In Blurt, *Settings → Agents → Connect…* adds the Blurt skill and MCP server to Claude
+Code, Codex and the other agents it finds. Then tell your agent **"start blurt"**, or ask it about your items.
+
+<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt</code> (or <code>/plugin marketplace add
+AGIHunt/blurt</code> in Claude Code), then "start blurt". The first run builds Blurt into <code>~/Applications</code>; it
+needs the Xcode Command Line Tools and <a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install
+what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
 key than `Fn`), then downloads the speech models: about 5.9 GB on a Mac with 32 GB of memory, 4.4 GB on 16–24 GB.

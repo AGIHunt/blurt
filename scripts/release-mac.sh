@@ -104,6 +104,14 @@ BLURT_HOME=$WORK/home BLURT_WORKSPACE=$WORK/ws BLURT_UNIVERSAL=1 BLURT_SPARKLE=1
 APP=$OUT/Blurt.app
 ditto "$WORK/home/Blurt.app" "$APP"
 rm -f "$APP/Contents/Resources/source.sha"
+# the skill the app runs (BlurtCore BundledSkill: copied to ~/.blurt/skill at launch): every tracked file of
+# skills/blurt but the recorder's source, so the app from the website needs no `npx skills add`; .version tells a new
+# copy from the one already there
+say "bundle the skill"
+SK=$APP/Contents/Resources/skill
+git -C "$ROOT/skills/blurt" ls-files -z -- . ':!recorder' | rsync -a --from0 --files-from=- "$ROOT/skills/blurt/" "$SK/"
+printf '%s (%s) %s\n' "$VERSION" "$BUILD" "$(git -C "$ROOT" rev-parse --short HEAD)" > "$SK/.version"
+[ -f "$SK/scripts/_common.py" ] && [ -f "$SK/SKILL.md" ] || { echo "the bundled skill is incomplete: $SK" >&2; exit 1; }
 PB=/usr/libexec/PlistBuddy
 $PB -c "Set :CFBundleShortVersionString $VERSION" -c "Set :CFBundleVersion $BUILD" -c "Set :SUPublicEDKey $PUBKEY" \
   "$APP/Contents/Info.plist"

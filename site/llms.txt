@@ -6,7 +6,7 @@ Website: https://blurt.agihunt.info/en/ (English), https://blurt.agihunt.info/ (
 Source: https://github.com/AGIHunt/blurt
 User guide: https://github.com/AGIHunt/blurt/blob/main/docs/guide.md
 Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the v1.0.0 release)
-Or have your agent install it: `npx skills add AGIHunt/blurt`, then tell your agent "start blurt".
+Or have your agent install it: `curl -fsSL https://blurt.agihunt.info/install.sh | sh` (downloads the latest release, checks it is signed and notarized, puts Blurt.app in Applications and opens it; the user turns on the microphone and Accessibility in the setup window).
 Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.agihunt.info/assets/promo.mp4
 
 ## Facts
@@ -53,4 +53,6 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 
 ## Install
 - Download for Mac: https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
-- For agents: `npx skills add AGIHunt/blurt`, then tell your agent "start blurt".
+- Agent install: `curl -fsSL https://blurt.agihunt.info/install.sh | sh`. The app brings everything it runs; nothing else to install.
+- To use Blurt from an agent ("start blurt", questions about your items): Blurt's Settings → Agents → Connect… adds the Blurt skill and MCP server to Claude Code, Codex and other agents.
+- Without the app, from source: `npx skills add AGIHunt/blurt`, then "start blurt" (builds the app; needs the Xcode Command Line Tools and uv).

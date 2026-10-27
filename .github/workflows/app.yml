@@ -89,8 +89,12 @@ jobs:
             dry-run/appcast.xml
             Blurt-macOS.zip
             dist-summary.json
+      # only a signed, notarized build with the real appcast key goes on a release. Without the secrets this job is a
+      # dry run (ad hoc): attaching it overwrote v1.0.0's notarized DMG and zip ten minutes after the release, and
+      # Gatekeeper then refused the download. Releases are made with scripts/release-mac.sh on a Mac with the
+      # certificate; this job only checks the pipeline
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && env.HAS_CERT == 'true' && env.HAS_SPARKLE_KEY == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |

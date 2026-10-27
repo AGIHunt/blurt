@@ -7,7 +7,9 @@
 // element looks like to Accessibility (WeChat's input box isn't a text role) —
 //   • no app in front, secure input on / a password field, or no Accessibility (a posted ⌘V wouldn't arrive) →
 //     the text stays on the clipboard and the island says "Copied — paste with ⌘V";
-//   • a paste into a focus Accessibility can't confirm as text → the island offers "Copy again" for a few seconds;
+//   • a paste into a focus Accessibility can't read (WeChat) → the island offers "Copy again" for a few seconds;
+//   • a paste into a focus Accessibility reads as something other than a text field (the desktop, a page with no
+//     field focused) → the island keeps the text with Copy until it is copied, closed or the next take starts;
 //   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke;
 //   • never into an app other than the one the take started in (`appChanged`): copied instead.
 // While pastes overlap (a reformat right after a dictation), one snapshot of the user's clipboard is held: only the
@@ -88,6 +90,7 @@ enum DictationInsert {
     static func insert(_ text: String, appChanged: Bool = false, field: DictationField? = nil,
                        before: (text: String, selection: NSRange)? = nil, done: @escaping (Result) -> Void) {
         guard !text.isEmpty else { return done(.none) }
+        lastNoField = testMode && testNoField
         if appChanged {
             copy(text)
             lastCopyReason = "app_changed"
@@ -108,10 +111,11 @@ enum DictationInsert {
         // the focused element only says whether the paste is confirmed (and catches a password field); it no longer
         // decides: WeChat's input box and many Electron / web editors aren't an Accessibility text role
         let focus = trusted && front != nil && front?.processIdentifier != me ? focusedElement() : Focus()
+        let isText: Bool? = focus.role == nil && focus.pid == nil ? nil : focus.editable && (focus.pid == nil || focus.pid == front?.processIdentifier)
         let decision = DictationPastePolicy.decide(.init(
             hasFrontApp: front != nil, frontIsBlurt: front?.processIdentifier == me, secureInput: IsSecureEventInputEnabled(),
-            accessibility: trusted, focusSecure: focus.secure,
-            focusIsText: focus.role == nil && focus.pid == nil ? nil : focus.editable && (focus.pid == nil || focus.pid == front?.processIdentifier)))
+            accessibility: trusted, focusSecure: focus.secure, focusIsText: isText))
+        lastNoField = isText == false
         switch decision {
         case .own:
             return insertHere(text, done: done)
@@ -132,7 +136,7 @@ enum DictationInsert {
             let ours = pasteboard.changeCount
             postCommandV()
             emit(["event": "dictation_insert", "result": "pasted", "app": front?.bundleIdentifier ?? "", "role": focus.role ?? "",
-                  "confirmed": confirmed])
+                  "confirmed": confirmed, "no_field": lastNoField])
             // the dictated text stays in the history (and "Copy again" on the island); the user's clipboard comes back
             // once the paste has landed
             land(text, field: field, before: before, ours: ours, done: done)
@@ -189,6 +193,12 @@ enum DictationInsert {
     /// The last ⌘V went to a focus Accessibility recognised as a text field (false: WeChat and the like — the island
     /// then offers "Copy again" in case it didn't land).
     static var lastPasteConfirmed = true
+
+    /// The last ⌘V went to a focus Accessibility could read and it isn't a text field (the desktop, a web page with
+    /// nothing focused): the island keeps the text with Copy, and a double tap's Return isn't pressed there.
+    static var lastNoField = false
+    /// Tests: the test pad's paste counts as one into a focus that isn't a text field (`dictation no-field on`).
+    static var testNoField = false
 
     /// Our own app is in front: a text view in one of our windows gets a paste: (no synthetic key); the island or
     /// anything that isn't a text field gets nothing — the text goes to the clipboard.

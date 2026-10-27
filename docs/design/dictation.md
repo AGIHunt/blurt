@@ -653,9 +653,14 @@ watch needs; ≤ 500 characters each side of the cursor / selection), and the di
 - Why: v0.8 also required the focused element to belong to the app in front and not to be a button, list or table.
   WeChat's input box isn't an AX text role (no focused element can be read there at all), so every dictation into
   WeChat was left on the clipboard ("copied"), while Typeless pastes there fine (C).
-- When Accessibility couldn't confirm a text field (`focusIsText` false or unknown: WeChat, many Electron and web
-  editors), the island says "Pasted" for 4 s with **Copy Again**, in case it didn't land; the history keeps every
-  text (copy from the Dictation page).
+- When Accessibility couldn't read the focus at all (`focusIsText` unknown: WeChat), the island says "Pasted" for a
+  few seconds with **Copy Again**, in case it didn't land; the history keeps every text (copy from the Dictation page).
+- When it read the focus and it isn't a text field (`focusIsText` false: the desktop, a web page with nothing focused,
+  a list), ⌘V still goes (a spreadsheet or canvas may take it), but the text most likely went nowhere: the island
+  keeps it — 「没找到输入框，文字在这里」 / "No text field here. Your text:", its first 80 characters, **Copy** and
+  **Close** — until it is copied, closed or the next take starts (1.0.1; v1.0.0 said "Pasted" for 5 s and the text
+  was gone from view, unlike Typeless). A double tap's Return isn't pressed there (it would rename the selected file
+  or follow a link).
 - Refused → the text stays on the clipboard and the island says "已复制，可粘贴" / "Copied — paste it with Command-V".
 - **Test builds never post an event or create a tap.** A test build is one with `BLURT_TEST_COMMANDS=1` *or* a bundle
   id other than `dev.blurt.recorder`. In a test build the text goes only into the app's own test pad;

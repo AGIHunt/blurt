@@ -15,6 +15,22 @@ final class DictationTakeFlowTests: XCTestCase {
         XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: false, confirmed: true, appChanged: false), .none)
         // a password field: not typed, not copied — the line offers Copy (also when a send was asked)
         XCTAssertEqual(DictationDeliveredLine.line(result: "held", sendAsked: true, confirmed: true, appChanged: false), .held)
+        // the focus was read and isn't a text field (the desktop, a page with nothing focused): the island keeps the text
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false,
+                                                   noField: true), .noField)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: false,
+                                                   noField: true), .noField)
+    }
+
+    func testTheKeptTextIsItsStart() {
+        XCTAssertEqual(DictationKeptText.preview("  short\nline  "), "short line")
+        let zh = String(repeating: "这是一段很长的话", count: 12) + "，最后几个字"
+        let p = DictationKeptText.preview(zh)
+        XCTAssertTrue(p.hasSuffix("…"))
+        XCTAssertLessThanOrEqual(p.count, DictationKeptText.limit + 1)
+        // a break near the end: cut there, not mid-word
+        let en = String(repeating: "word ", count: 30)
+        XCTAssertEqual(DictationKeptText.preview(en), String(repeating: "word ", count: 16).trimmingCharacters(in: .whitespaces) + "…")
     }
 
     func testPastesGoInTheOrderTheyWereSaid() {

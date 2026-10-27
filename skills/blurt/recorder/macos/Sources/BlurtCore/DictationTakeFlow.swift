@@ -271,18 +271,25 @@ public enum DictationDeliveredLine: Equatable {
     case copiedNotSent
     /// a double tap asked to send and nothing went in (why: not_pasted)
     case notSent
-    /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.): "Copy again"
+    /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.: no focused element could be read):
+    /// "Copy again"
     case pastedUnsure
+    /// pasted, but Accessibility read the focus and it isn't a text field (the desktop, a web page with no field
+    /// focused, a list): the text most likely went nowhere, so the island keeps it, with Copy, until it is copied,
+    /// closed or the next take starts
+    case noField
     /// a password field had the focus: not typed, not copied — "Copy" is the user's call
     case held
     case none
 
-    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take.
-    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool) -> DictationDeliveredLine {
+    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take; `noField`: the
+    /// focus was read and isn't a text field.
+    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool,
+                            noField: Bool = false) -> DictationDeliveredLine {
         switch result {
         case "held": return .held
         case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
-        case "pasted": return confirmed ? .none : .pastedUnsure
+        case "pasted": return confirmed ? .none : noField ? .noField : .pastedUnsure
         default: return sendAsked ? .notSent : .none
         }
     }
@@ -306,6 +313,24 @@ public enum DictationDeliveredLine: Equatable {
         case .copied(false): return 2.4
         default: return 4
         }
+    }
+}
+
+/// The text the island keeps after a paste that found no field: the start of it, at most `limit` characters (three
+/// lines of the island), cut at a word or after punctuation when one is near the end; Copy copies all of it.
+public enum DictationKeptText {
+    public static let limit = 80
+
+    public static func preview(_ text: String, limit: Int = limit) -> String {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "\n", with: " ")
+        guard t.count > limit else { return t }
+        let head = String(t.prefix(limit))
+        // a break in the last fifth: a space (Latin) or a mark (CJK punctuation, commas)
+        let marks: Set<Character> = [" ", "，", "。", "、", "；", "：", "！", "？", ",", ".", ";", ":", "!", "?"]
+        if let i = head.lastIndex(where: { marks.contains($0) }), head.distance(from: i, to: head.endIndex) <= limit / 5 {
+            return String(head[..<i]).trimmingCharacters(in: .whitespaces) + "…"
+        }
+        return head + "…"
     }
 }
 

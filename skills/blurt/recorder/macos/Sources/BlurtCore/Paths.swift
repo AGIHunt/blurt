@@ -20,12 +20,20 @@ public enum BlurtPaths {
         env("BLURT_WORKSPACE").map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Blurt")
     }
-    /// The blurt skill (SKILL.md, scripts/, agents.json): config `skill_dir` (record.py writes it on every run), else
-    /// the usual install location. A config.json that doesn't parse must not move the app to another skill copy (or to
-    /// none: a skill installed for Codex, at a custom path, a dev checkout): its `skill_dir` is still read from the
-    /// text when it stands whole, else the last one a readable file named (kept in the app's defaults) — so the scripts
-    /// keep running on the defaults instead of every call failing.
-    public static var skillDir: URL { skillDir(config: .shared, remembered: .standard) }
+    /// The blurt skill (SKILL.md, scripts/, agents.json). A release app runs its own (BundledSkill: the copy in
+    /// ~/.blurt/skill, or the bundle itself when that copy couldn't be made), whatever skill an agent has installed.
+    /// A local build: config `skill_dir` (record.py writes it on every run), else the usual install location. A
+    /// config.json that doesn't parse must not move the app to another skill copy (or to none: a skill installed for
+    /// Codex, at a custom path, a dev checkout): its `skill_dir` is still read from the text when it stands whole, else
+    /// the last one a readable file named (kept in the app's defaults) — so the scripts keep running on the defaults
+    /// instead of every call failing.
+    public static var skillDir: URL {
+        if let bundled = BundledSkill.source {
+            let copy = BundledSkill.installed
+            return FileManager.default.fileExists(atPath: copy.appendingPathComponent("scripts/_common.py").path) ? copy : bundled
+        }
+        return skillDir(config: .shared, remembered: .standard)
+    }
 
     static let rememberedKey = "BlurtSkillDir"
     static var defaultSkillDir: URL { FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/skills/blurt") }

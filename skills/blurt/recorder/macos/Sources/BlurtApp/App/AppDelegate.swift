@@ -45,6 +45,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             signalSources.append(s)
         }
         if let l = opts.lang { Loc.setting = l }
+        // a release app's own skill where its scripts run from (~/.blurt/skill), before anything runs one
+        switch BundledSkill.syncAtLaunch() {
+        case .success(let copied)?: if copied { emit(["event": "skill_synced", "to": BundledSkill.installed.path]) }
+        case .failure(let e)?: NSLog("blurt: copying the bundled skill: \(e)"); emit(["event": "skill_synced", "error": "\(e)"])
+        case nil: break
+        }
         if resident { AppEnvironment.installModules() }
         installHotkeyHandler()
         hotkeyHandler = { [weak self] k in self?.hotkey(k) }
