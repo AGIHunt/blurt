@@ -438,10 +438,12 @@ extension Dictation {
             let sendAsked = take.sendAfterPaste
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
-                if result == .pasted { self.pressReturn(after: "paste"); sent = true } else {
+                if result == .pasted && !DictationInsert.lastNoField { self.pressReturn(after: "paste"); sent = true } else {
                     // left on the clipboard (another app in front now, a password field, Blurt in front …): Return
-                    // would send without it — the one line below says so
-                    emit(["event": "dictation_send", "result": "skipped", "why": appChanged ? "app_changed" : "not_pasted", "after": "paste"])
+                    // would send without it — the one line below says so. No field in focus: Return would act on
+                    // whatever is (rename the file selected on the desktop, follow a link)
+                    let why = appChanged ? "app_changed" : result == .pasted ? "no_field" : "not_pasted"
+                    emit(["event": "dictation_send", "result": "skipped", "why": why, "after": "paste"])
                 }
             }
             // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
@@ -470,7 +472,8 @@ extension Dictation {
             DictationHistoryWindow.shared.reloadIfOpen()
             // one line about how it went (DictationDeliveredLine: never two that replace each other in one frame)
             let line = DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
-                                                   confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged)
+                                                   confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged,
+                                                   noField: DictationInsert.lastNoField)
             switch line {
             case .copied, .copiedNotSent:
                 // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
@@ -491,6 +494,8 @@ extension Dictation {
                     DictationInsert.copy(text)
                     emit(["event": "dictation_copy_again", "id": id])
                 })
+            case .noField:
+                self.keepText(text, id: id)
             case .none:
                 break
             }
@@ -516,6 +521,25 @@ extension Dictation {
     }
 
     // MARK: what the island says around a take
+
+    /// The text went to a focus that isn't a text field (the desktop, a page with nothing focused): the island keeps it
+    /// (its start, DictationKeptText) with Copy until it is copied, closed, or the next take starts (the take key is
+    /// dropped then). Copy copies all of it.
+    func keepText(_ text: String, id: String) {
+        var t = Island.Toast(text: Loc.t("dictation.toast.no_field", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.toast.copy", table: "Dictation"), action: { [weak self] in
+            DictationInsert.copy(text)
+            emit(["event": "dictation_copy_kept", "id": id])
+            self?.toast("dictation.toast.copied", key: Dictation.toastKey, seconds: 2.4, icon: .check)
+        })
+        t.quote = DictationKeptText.preview(text)
+        t.secondTitle = Loc.t("dictation.toast.close", table: "Dictation")
+        t.second = { emit(["event": "dictation_kept_closed", "id": id]) }
+        t.seconds = .infinity
+        t.key = Dictation.toastKey
+        island.toast(t)
+        emit(["event": "dictation_kept", "id": id, "chars": text.count])
+    }
 
     /// A double tap's Return didn't go in: why, so the user doesn't think the message went.
     func sendSkipped(_ why: String?) {

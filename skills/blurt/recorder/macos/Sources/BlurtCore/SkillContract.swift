@@ -1,5 +1,6 @@
-// The handshake between the app and the skill scripts it runs. The app updates itself (Sparkle) but runs the Python
-// in the installed skill (config skill_dir, else ~/.claude/skills/blurt), so the two can drift apart: items.py's
+// The handshake between the app and the skill scripts it runs. A release app carries its own skill (BundledSkill), so
+// the two always match there; a local build runs the Python in the installed skill (config skill_dir, else
+// ~/.claude/skills/blurt), so the two can drift apart: items.py's
 // documents, the jobs files, the serve protocols. The skill says which contract it speaks in scripts/_common.py
 // (`CONTRACT = n`, also in `doctor.py`'s report); the app knows which one it expects. At launch the menu-bar app reads
 // that line (no Python) and, when the two differ, says once which side to update (Housekeeping.checkSkillContract).

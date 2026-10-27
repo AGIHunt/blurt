@@ -203,6 +203,8 @@ final class Island: NSObject, IslandHosting {
         /// island). `action` is the first answer.
         var secondTitle: String?
         var second: (() -> Void)?
+        /// A question's quoted text, under it in the quiet colour (the dictated text the island keeps)
+        var quote: String?
         var isQuestion: Bool { secondTitle != nil }
 
         init(text: String, actionTitle: String?, action: (() -> Void)?) {

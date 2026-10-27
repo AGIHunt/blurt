@@ -11,7 +11,7 @@ npx wrangler pages deploy site --project-name blurt --branch main      # publish
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The agihunt.info zone's Browser
 Cache TTL (4 h) overrides `_headers` on the custom domain, so without a new URL visitors get new HTML on top of old
-CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.0-3`.
+CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.1-1`.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -55,7 +55,8 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   rounded up to 0.1 s; `python3 build_pages9.py film` re-encodes the web copy and rewrites them.
 - **Speed**: talk for a minute, stop, until it's done: Blurt 0.39 s (own test, median of 3 takes) next to Wispr Flow about 1.5 s and Typeless about 3.0 s (VoiceDash, a competing
   vendor, linked); Blurt's CER 2.7% and WER 1.9% sit under the matrix, the other figures and the method in a disclosure.
-- **Install**: the download button, the agent path (`npx skills add AGIHunt/blurt`, copy button), six keys as keycaps,
+- **Install**: the download button, the agent path (`curl -fsSL https://blurt.agihunt.info/install.sh | sh`, copy
+  button; `install.sh` is served from this folder), six keys as keycaps,
   and a link to the user guide for every other key; then the specs (system, models, languages, words, history,
   permissions, other dictation apps, source).
 - Headlines: phrases are no-break spans (`|` in the generator) on desktop; on phones they wrap normally.
@@ -87,8 +88,10 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
 
 ## Install path
 
-The primary action is the DMG download (above). The second path, for agents, is `npx skills add AGIHunt/blurt` (copy
-button), then "start blurt" to the agent, as in the repo README.
+The primary action is the DMG download (above). The second path, for agents, is `install.sh` (this folder): the agent
+(or the user, in a terminal) runs `curl -fsSL https://blurt.agihunt.info/install.sh | sh`, which installs the same DMG's
+app and opens it. The app brings its own skill (`~/.blurt/skill`), so neither path needs `npx skills add`; that stays in
+the repo README for using the skill without the app.
 
 ## Copy
 

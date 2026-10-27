@@ -666,11 +666,12 @@ dictation came out wrong and keep the evidence. Everything in it stays on this M
 
 ### 9. Updating
 
-The Mac app updates itself (*Check for Updates…* in the menu and in *Settings → General*). The agent skill updates
-with the command you installed it with, for example `npx skills add AGIHunt/blurt`. The app runs the skill's scripts,
-so the two must speak the same version: when one is older than the other, the notch says which one to update, and
-the menu-bar menu and *Settings → General* keep saying so until they match. A Blurt you built yourself updates with
-`uv run skills/blurt/scripts/record.py build` in your checkout.
+The Mac app updates itself (*Check for Updates…* in the menu and in *Settings → General*). It brings its own copy of
+the skill's scripts (in `~/.blurt/skill`, refreshed with every update), and the agents you connected in *Settings →
+Agents* use that copy, so they update with it. A skill you installed separately (`npx skills add AGIHunt/blurt`)
+updates with that command. A Blurt you built yourself runs the scripts in your checkout and updates with
+`uv run skills/blurt/scripts/record.py build`; when the app and those scripts don't speak the same version, the notch
+says which one to update, and the menu-bar menu and *Settings → General* keep saying so until they match.
 
 ---
 
@@ -948,4 +949,4 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 
 ### 9. 更新
 
-Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。Agent skill 用你安装时的命令更新，比如 `npx skills add AGIHunt/blurt`。App 会调用 skill 里的脚本，两边的版本要对得上：哪边旧了，刘海里会提示该更新哪边，菜单栏菜单和「设置 → 通用」也会一直写着，直到对上为止。自己编译的口喷鸡，在代码目录里运行 `uv run skills/blurt/scripts/record.py build` 更新。
+Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。App 自带一份 skill 脚本（放在 `~/.blurt/skill`，每次更新一起换新），在「设置 → Agent」里连接的 Agent 用的也是这一份，所以会跟着一起更新。单独装的 skill（`npx skills add AGIHunt/blurt`）用这条命令更新。自己编译的口喷鸡用代码目录里的脚本，运行 `uv run skills/blurt/scripts/record.py build` 更新；App 和脚本的版本对不上时，刘海里会提示该更新哪边，菜单栏菜单和「设置 → 通用」也会一直写着，直到对上为止。

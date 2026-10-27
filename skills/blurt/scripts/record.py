@@ -551,8 +551,12 @@ def native_binary(build: bool = True) -> Path | None:
     """The recorder lives inside ~/.blurt/Blurt.app so it can also be launched as a standalone app.
     Built from recorder/macos (a SwiftPM package) with `swift build`; BLURT_UNIVERSAL=1 → arm64 + x86_64 (lipo);
     BLURT_SPARKLE=1 → with Sparkle (auto-update; release builds, see scripts/release-mac.sh)."""
-    if not IS_MAC or not (SWIFT_DIR / "Package.swift").exists():
+    if not IS_MAC:
         return None
+    if not (SWIFT_DIR / "Package.swift").exists():
+        # the skill a release app carries (copied to ~/.blurt/skill): no source to build — the installed app records
+        return next((exe for app in (Path("/Applications/Blurt.app"), Path.home() / "Applications" / "Blurt.app")
+                     if (exe := app / "Contents" / "MacOS" / "blurt-recorder").exists()), None)
     remember_skill_dir()
     h = hashlib.sha256()
     for p in swift_sources():

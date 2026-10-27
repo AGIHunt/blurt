@@ -35,18 +35,22 @@
 
 需要 macOS 13 或更新版本。听写和推荐的语音模型需要 Apple 芯片。
 
-**[下载 Mac 版](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)**（已签名并经过 Apple 公证），打开后把口喷鸡拖进「应用程序」。之后的更新在 App 里完成。
+**[下载 Mac 版](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)**（已签名并经过 Apple 公证），打开后把口喷鸡拖进「应用程序」。之后的更新在 App 里完成。App 自带运行需要的一切，不用再装别的。
 
-也可以让你的 Agent 通过 skill 安装：
+也可以把这行命令发给你的 Agent（Claude Code、Codex 等），或者粘到终端里运行：
 
 ```bash
-npx skills add AGIHunt/blurt
+curl -fsSL https://blurt.agihunt.info/install.sh | sh
 ```
 
-<sub>在 Claude Code 里也可以运行 <code>/plugin marketplace add AGIHunt/blurt</code>，或者把本仓库地址发给你的 Agent，让它安装这个 skill。</sub>
+它会下载最新版，确认已签名并经过公证，放进「应用程序」并打开。
 
-然后对 Agent 说 **「开始口喷」**。第一次运行会检查你的电脑、选好语音模型，并把口喷鸡 App 编译安装到 `~/Applications`。
-这需要 Xcode Command Line Tools 和 [uv](https://docs.astral.sh/uv/)，缺什么 Agent 会提出帮你安装。
+**在 Agent 里用口喷鸡。** 在口喷鸡的「设置 → Agent」里点「连接…」，会把口喷鸡的 skill 和 MCP 加到 Claude Code、Codex
+等它找到的 Agent 里。之后对 Agent 说 **「开始口喷」**，或者让它查你的条目。
+
+<sub>不装 App、从源码用：<code>npx skills add AGIHunt/blurt</code>（Claude Code 里也可以用 <code>/plugin marketplace add
+AGIHunt/blurt</code>），然后说「开始口喷」。第一次运行会把口喷鸡编译安装到 <code>~/Applications</code>，需要 Xcode Command
+Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会提出帮你安装。</sub>
 
 **第一分钟。** 设置助手会请你开启麦克风和「辅助功能」权限（听写键不用 `Fn` 时还需要「输入监控」），然后下载语音模型：
 32 GB 内存的 Mac 约 5.9 GB，16–24 GB 约 4.4 GB。点「下载」之前不会下载任何东西。之后在任意输入框里按 `Fn` 就能听写。

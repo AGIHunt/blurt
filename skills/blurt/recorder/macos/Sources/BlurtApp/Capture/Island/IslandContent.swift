@@ -1378,8 +1378,19 @@ final class IslandContent: NSView {
         l.preferredMaxLayoutWidth = w - 40
         let h = ceil(l.sizeThatFits(NSSize(width: w - 40, height: 200)).height)
         place(l, x: 20, y: top + 10, w: w - 40, h: h)
-        var bx = w - 16
         var y = top + 10 + h + 10
+        if let quote = t.quote {
+            let q = NSTextField(wrappingLabelWithString: quote)
+            q.font = .systemFont(ofSize: 13)
+            q.textColor = ink2
+            q.maximumNumberOfLines = 3
+            q.cell?.truncatesLastVisibleLine = true      // wraps, and the third line ends with "…" (DictationKeptText)
+            q.preferredMaxLayoutWidth = w - 40
+            let qh = ceil(q.sizeThatFits(NSSize(width: w - 40, height: 200)).height)
+            place(q, x: 20, y: y - 6, w: w - 40, h: qh)
+            y += qh + 4
+        }
+        var bx = w - 16
         for (title, act, filled) in [(t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
             guard let title = title, let act = act else { continue }
             let b = IslandButton(symbol: "", title: title, tip: title, fill: NSColor(white: 1, alpha: 0.14),

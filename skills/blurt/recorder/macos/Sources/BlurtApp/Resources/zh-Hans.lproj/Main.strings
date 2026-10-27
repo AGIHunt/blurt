@@ -140,7 +140,7 @@
 "main.empty.no_match" = "没有符合筛选的条目";
 "main.empty.no_results" = "没有找到「%@」";
 "main.empty.no_scripts" = "找不到 blurt skill 的脚本";
-"main.empty.no_scripts.detail" = "先装好或更新 skill（npx skills add AGIHunt/blurt），再重开这个窗口。";
+"main.empty.no_scripts.detail" = "口喷鸡的脚本不见了。从 blurt.agihunt.info 重新安装口喷鸡，再重开这个窗口。";
 "main.empty.nothing_in_progress" = "没有进行中的条目";
 "main.empty.nothing_in_progress.detail" = "交给 Agent 的条目会在这里等你验证。";
 "main.empty.outdated" = "正在更新你的条目…";
@@ -166,7 +166,7 @@
 "main.error.key_in_use" = "项目里已经有条目了，前缀不能再改。";
 "main.error.key_taken" = "这个前缀已经被别的项目用了。";
 "main.error.needs_project" = "先把条目移到一个项目里。";
-"main.error.no_scripts" = "需要口喷鸡 skill 和 uv。重新安装 skill（npx skills add AGIHunt/blurt）后再试。";
+"main.error.no_scripts" = "需要口喷鸡的脚本和 uv。从 blurt.agihunt.info 重新安装口喷鸡后再试。";
 "main.error.no_uv" = "没装 uv，口喷鸡的设置助手可以帮你装。";
 "main.error.not_found" = "找不到了。";
 "main.error.no_project" = "这个项目已经不在口喷鸡里了。";
