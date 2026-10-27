@@ -59,13 +59,13 @@ body {
 }
 /* on dark the slate beak keeps a lighter top so it parts from the background (the dark drawing's one change) */
 [data-theme="dark"] .peep-logo stop[stop-color="#33433F"] {
-  stop-color: #5b6f6c;
+  stop-color: #6a7f7c;
 }
 [data-theme="dark"] .peep-logo stop[stop-color="#1F2B29"] {
-  stop-color: #4a5d5b; /* the beak on dark: the slate one step lighter (the dark-notch set's) */
+  stop-color: #566a67; /* the beak on dark: never darker than the dark-notch slate (#4A5D5B) */
 }
 [data-theme="dark"] .peep-logo stop[stop-color="#141c1b"] {
-  stop-color: #3a4d4b;
+  stop-color: #4a5d5b;
 }
 .brand small {
   color: var(--mute);
