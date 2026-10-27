@@ -267,7 +267,7 @@ Task { @MainActor in
         // say why (CI only shows this log): what items.py answers, and what the page has
         let (code, out) = runScript("items.py", ["doc", sessionURL.path])
         print("diag items.py doc exit \(code): \(out.suffix(600))")
-        let page = await js("return JSON.stringify({url: location.href, body: document.body.innerText.slice(0, 300), host: window.blurtReview?.store?.host?.host ?? null, err: window.__blurtLastError ?? null})")
+        let page = await js("return JSON.stringify({url: location.href, body: document.body.innerText.slice(0, 300), host: window.blurtReview?.store?.host?.host ?? null, err: window.blurtReview?.store?.loadError ?? null})")
         print("diag page: \(page ?? "nil")")
         fflush(stdout)
     }
