@@ -48,6 +48,8 @@ final class PeepSprites {
     private(set) var sets: [String: Sheet] = [:]
     private(set) var glyph: [PeepState: PeepClip] = [:]
     private(set) var glyphBlink: ClosedRange<Int>?
+    /// The menu-bar glyph's canvas, pt ("box": [w, h], or one number for a square).
+    private(set) var glyphSize = CGSize(width: 18, height: 18)
     private(set) var stillDone = 26
     private let cache = NSCache<NSString, CGImage>()
 
@@ -76,6 +78,8 @@ final class PeepSprites {
         }
         let g = j["glyph"] as? [String: Any]
         glyph = clips(g?["clips"])
+        if let b = g?["box"] as? [Double], b.count == 2 { glyphSize = CGSize(width: b[0], height: b[1]) }
+        else if let b = g?["box"] as? Double { glyphSize = CGSize(width: b, height: b) }
         if let b = ((g?["clips"] as? [String: Any])?["idle"] as? [String: Any])?["blink"] as? [Int], b.count == 2, b[0] <= b[1] {
             glyphBlink = b[0]...b[1]
         }

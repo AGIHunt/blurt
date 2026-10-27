@@ -1,4 +1,4 @@
-// The menu-bar Peep: the native template glyph (18 pt, black + alpha, tinted by macOS like every other menu-bar icon),
+// The menu-bar Peep: the native template glyph (22 × 18 pt, black + alpha, tinted by macOS like every other menu-bar icon),
 // moving a little with what Blurt does. The frames are the Peep release package's glyph frames, projected from the same
 // 3D model as the clay renders and snapped to the pixel grid (Resources/Peep/glyph-<state>.png @2x, -@1x; peep.json):
 //
@@ -10,7 +10,7 @@
 //   error      a head shake and a droop (a job or a dictation that failed); a one-shot
 //
 // The status item can only show an image, so this swaps images — only while something moves. Every frame is the same
-// 18 × 18 pt square (the hop stays inside it), so nothing beside it ever shifts. Reduce Motion: no timer; a state
+// 22 × 18 pt canvas (the hop stays inside it), so nothing beside it ever shifts. Reduce Motion: no timer; a state
 // that lasts shows its still frame (listening, talking, thinking), the one-shots and the blink don't play.
 // BlurtCore PeepGlyphMode decides the state; MenuGlyph.sync() reads the app (dictation, voice note, countdown, the
 // island's organising) — called when any of them changes.
@@ -23,8 +23,9 @@ final class MenuGlyph {
     private(set) var current: NSImage?
     var onFrame: ((NSImage?) -> Void)?
 
-    /// The glyph's box, pt.
-    static let box: CGFloat = 18
+    /// The glyph's canvas, pt: 22 × 18 (wider than tall, so the body can be as tall as its neighbours and the beak
+    /// still has room), from peep.json.
+    static var size: CGSize { PeepSprites.shared.glyphSize }
 
     /// v0.8 betas had a colour menu-bar hen behind Settings → General (app.menu_icon_color, before that
     /// app.menu_icon_mono). The glyph is monochrome only, so the old keys just go.
@@ -175,21 +176,23 @@ final class MenuGlyph {
         let lib = PeepSprites.shared
         guard let k = lib.glyph[s], let s2 = lib.sheet("glyph-\(s.rawValue).png") else { return nil }
         let n = max(0, min(k.frames - 1, i))
-        let img = NSImage(size: NSSize(width: box, height: box))
-        for (sheet, px) in [(lib.sheet("glyph-\(s.rawValue)@1x.png"), 18), (s2, 36)] {
-            guard let sh = sheet, let c = sh.cropping(to: CGRect(x: n * px, y: 0, width: px, height: px)) else { continue }
+        let pt = size
+        let img = NSImage(size: pt)
+        for (sheet, scale) in [(lib.sheet("glyph-\(s.rawValue)@1x.png"), 1), (s2, 2)] {
+            let w = Int(pt.width) * scale, h = Int(pt.height) * scale
+            guard let sh = sheet, let c = sh.cropping(to: CGRect(x: n * w, y: 0, width: w, height: h)) else { continue }
             let rep = NSBitmapImageRep(cgImage: c)
-            rep.size = NSSize(width: box, height: box)
+            rep.size = pt
             img.addRepresentation(rep)
         }
         img.isTemplate = template
         return img.representations.isEmpty ? nil : img
     }
 
-    /// The rest glyph (idle, frame 0), in one colour at `size` pt (the island's toasts lead with it in white).
-    static func tinted(_ color: NSColor, size: CGFloat) -> NSImage {
-        let base = image(.idle, 0) ?? BlurtIcon.blurt.image(size: box)
-        let img = NSImage(size: NSSize(width: size, height: size), flipped: false) { r in
+    /// The rest glyph (idle, frame 0), in one colour, `height` pt tall (the island's toasts lead with it in white).
+    static func tinted(_ color: NSColor, size height: CGFloat) -> NSImage {
+        let base = image(.idle, 0) ?? BlurtIcon.blurt.image(size: size.height)
+        let img = NSImage(size: NSSize(width: (height * size.width / size.height).rounded(), height: height), flipped: false) { r in
             base.draw(in: r)
             color.set()
             r.fill(using: .sourceIn)
@@ -234,11 +237,12 @@ extension MenuGlyph {
             let picks: [Int] = s == .idle ? Array(lib.glyphBlink ?? 0...0) : Array(stride(from: 0, to: k.frames, by: 3))
             let imgs = picks.compactMap { image(s, $0) }
             let gap: CGFloat = 4
-            let size = NSSize(width: CGFloat(imgs.count) * (box + gap), height: 22)
+            let box = MenuGlyph.size
+            let size = NSSize(width: CGFloat(imgs.count) * (box.width + gap), height: 22)
             for scale in [1, 2] {
                 for (bar, tint) in [("light", NSColor.black), ("dark", NSColor.white)] {
                     write(bitmap(size, scale: scale) {
-                        for (i, im) in imgs.enumerated() { im.draw(in: NSRect(x: CGFloat(i) * (box + gap), y: 2, width: box, height: box)) }
+                        for (i, im) in imgs.enumerated() { im.draw(in: NSRect(x: CGFloat(i) * (box.width + gap), y: 2, width: box.width, height: box.height)) }
                         tint.set()
                         NSRect(origin: .zero, size: size).fill(using: .sourceIn)
                     }, "menuglyph-\(s.rawValue)-\(bar)@\(scale)x.png")

@@ -14,7 +14,7 @@ The package's layout (what this reads; the app's part is under app/, the site's 
   <set>/<state>/NNNN.png           512 px, 30 fps, transparent (or anim/<set>/…). set: paper (light backgrounds) or
                                     dark (the notch, dark mode; the dark-notch beak). state: idle hello listening
                                     talking thinking done error
-  glyph/<state>/NNNN@1x.png, @2x   the menu-bar template frames (18 pt, black + alpha), same states
+  glyph/<state>/NNNN@1x.png, @2x   the menu-bar template frames (22 × 18 pt, black + alpha), same states
   glyph/peep-glyph.svg             the glyph at rest
   icon/paper/Peep-paper.icns, icon/paper/icon_<n>.png, icon/dark/icon_<n>.png   the app icon tiles (16…1024)
   icon-layers/peep-<paper|dark>-1024.png   the clay Peep alone, for the macOS 26 icon's layer
@@ -24,7 +24,7 @@ The package's layout (what this reads; the app's part is under app/, the site's 
 What it writes
   macOS app   skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Peep/
                 <set>-<state>.webp       a sprite sheet per clip (10 columns of `cell` px frames); Icons/Mascot.swift
-                glyph-<state>.png, glyph-<state>@1x.png   the menu-bar frames as strips (36 / 18 px cells); MenuGlyph
+                glyph-<state>.png, glyph-<state>@1x.png   the menu-bar frames as strips (44 × 36 / 22 × 18 px cells); MenuGlyph
                 peep.json                the sheets' geometry, fps, the talking frames' beak opening and the blink
               skills/blurt/assets/AppIcon.icns          the paper tile (record.py puts it in Blurt.app; macOS 13–15)
               skills/blurt/assets/icon.png, icon-16.png, icon-32.png   the paper tile (review page server, fallbacks)
@@ -171,30 +171,36 @@ def write_sheets(src: Path, out: dict) -> None:
 
 
 def write_glyphs(src: Path, out: dict) -> None:
-    g = {"box": 18, "clips": {}}
+    # the canvas in pt (wider than tall: the beak needs the room) from the package's frames.json; 18 × 18 before that
+    meta = json.loads((src / "frames.json").read_text()).get("glyph", {}) if (src / "frames.json").exists() else {}
+    w, h = int(meta.get("w", 18)), int(meta.get("h", 18))
+    g = {"box": [w, h], "clips": {}}
     for s in STATES:
         d = src / "glyph" / s
         f2 = sorted(d.glob("*@2x.png"))
         f1 = sorted(d.glob("*@1x.png"))
         if not f2 or len(f1) != len(f2):
             sys.exit(f"glyph frames missing or unpaired in {d}")
-        for files, cell, sfx in ((f2, 36, ""), (f1, 18, "@1x")):
-            strip = Image.new("RGBA", (cell * len(files), cell), (0, 0, 0, 0))
+        for files, (cw, ch), sfx in ((f2, (w * 2, h * 2), ""), (f1, (w, h), "@1x")):
+            strip = Image.new("RGBA", (cw * len(files), ch), (0, 0, 0, 0))
             for i, f in enumerate(files):
                 im = Image.open(f).convert("RGBA")
-                if im.size != (cell, cell):
-                    sys.exit(f"{f}: {im.size}, want {cell} px")
+                if im.size != (cw, ch):
+                    sys.exit(f"{f}: {im.size}, want {cw} × {ch} px")
                 # a template image: black, the shape in alpha only
                 a = im.getchannel("A")
                 k = Image.new("RGBA", im.size, (0, 0, 0, 0))
                 k.putalpha(a)
-                strip.paste(k, (i * cell, 0))
+                strip.paste(k, (i * cw, 0))
             name = f"glyph-{s}{sfx}.png"
             strip.save(MAC_RES / name, optimize=True)
             out["written"].append(MAC_RES / name)
         ims = [Image.open(f).convert("RGBA") for f in f2]
         clip = {"frames": len(ims), "fps": 30}
-        if s == "talking":
+        given = meta.get("clips", {}).get(s, {}).get("open")
+        if s == "talking" and given and len(given) == len(ims):
+            clip["open"] = given                    # the package's own opening per frame (0 closed … 1 wide)
+        elif s == "talking":
             rest = ink_box(Image.open(sorted((src / "glyph/idle").glob("*@2x.png"))[0]).convert("RGBA"), 128)
             clip["open"] = [beak_open(im, rest) for im in ims]
         if s == "idle":

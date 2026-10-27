@@ -119,30 +119,32 @@ final class PeepTests: XCTestCase {
     func testEveryGlyphFrameIsATemplateInsideItsBox() throws {
         let j = try manifest()
         let g = try XCTUnwrap(j["glyph"] as? [String: Any])
-        XCTAssertEqual(g["box"] as? Int, 18)
+        let box = try XCTUnwrap(g["box"] as? [Int])
+        XCTAssertEqual(box, [22, 18], "wider than tall: the body as tall as its neighbours, room for the beak")
+        let (w, h) = (box[0], box[1])
         let clips = try XCTUnwrap(g["clips"] as? [String: [String: Any]])
         XCTAssertEqual(Set(clips.keys), Set(PeepState.allCases.map(\.rawValue)))
         for (clip, info) in clips {
             let n = try XCTUnwrap(info["frames"] as? Int)
-            for (sfx, cell) in [("", 36), ("@1x", 18)] {
+            for (sfx, cw, ch) in [("", w * 2, h * 2), ("@1x", w, h)] {
                 let strip = try image("glyph-\(clip)\(sfx).png")
-                XCTAssertEqual(strip.width, n * cell, clip + sfx)
-                XCTAssertEqual(strip.height, cell, clip + sfx)
+                XCTAssertEqual(strip.width, n * cw, clip + sfx)
+                XCTAssertEqual(strip.height, ch, clip + sfx)
                 guard sfx.isEmpty else { continue }
                 let a = alpha(strip)
                 let margin = 1                       // half a point at @2x: the hop and the shake never touch the edge
                 for f in 0..<n {
-                    var minX = cell, maxX = -1, minY = cell, maxY = -1, ink = 0
-                    for y in 0..<cell {
-                        for x in 0..<cell where a[y * strip.width + f * cell + x] > 24 {
+                    var minX = cw, maxX = -1, minY = ch, maxY = -1, ink = 0
+                    for y in 0..<ch {
+                        for x in 0..<cw where a[y * strip.width + f * cw + x] > 24 {
                             minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y); ink += 1
                         }
                     }
-                    XCTAssertGreaterThan(ink, cell * cell / 5, "\(clip)#\(f): a silhouette, not a speck")
+                    XCTAssertGreaterThan(ink, cw * ch / 6, "\(clip)#\(f): a silhouette, not a speck")
                     XCTAssertGreaterThanOrEqual(minX, margin, "\(clip)#\(f) left")
                     XCTAssertGreaterThanOrEqual(minY, margin, "\(clip)#\(f) top")
-                    XCTAssertLessThanOrEqual(maxX, cell - 1 - margin, "\(clip)#\(f) right")
-                    XCTAssertLessThanOrEqual(maxY, cell - 1 - margin, "\(clip)#\(f) bottom")
+                    XCTAssertLessThanOrEqual(maxX, cw - 1 - margin, "\(clip)#\(f) right")
+                    XCTAssertLessThanOrEqual(maxY, ch - 1 - margin, "\(clip)#\(f) bottom")
                 }
             }
         }
