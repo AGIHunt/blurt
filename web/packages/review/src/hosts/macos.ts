@@ -82,11 +82,12 @@ export function createMacosHost(win: W = window as W, timeoutMs = 30000, toastTi
         return;
       }
       if (r && typeof (r as Promise<unknown>).then === "function") {
-        // WKScriptMessageHandlerWithReply answers through this promise. Recent WebKit also returns a promise for a
-        // plain handler, resolved with undefined — then the answer still comes through __blurtReply.
+        // WKScriptMessageHandlerWithReply answers through this promise. WebKit also returns a promise for a plain
+        // handler, resolved with undefined (macOS 26) or null (macOS 15 and earlier) — then the answer still comes
+        // through __blurtReply.
         (r as Promise<T>).then(
           (v) => {
-            if (v === undefined || !pending.has(id)) return;
+            if (v == null || !pending.has(id)) return;
             pending.delete(id);
             clearTimeout(timer);
             resolve(v);

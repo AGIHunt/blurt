@@ -100,6 +100,16 @@ describe("macos host (WKWebView bridge, protocol v3)", () => {
     (win as unknown as Reply).__blurtReply(sent[0].id, { doc, etag: '"q"' });
     await expect(p).resolves.toEqual({ doc, etag: '"q"' });
   });
+  it("a plain handler whose postMessage returns a promise of null (macOS 15 WebKit) still waits for __blurtReply", async () => {
+    const sent: { id: number }[] = [];
+    const win = fakeWindow({ webkit: { messageHandlers: { blurt: { postMessage: async (m: never) => (sent.push(m), null) } } } });
+    const h = createMacosHost(win as never);
+    const p = h.load();
+    await Promise.resolve();
+    await Promise.resolve();
+    (win as unknown as Reply).__blurtReply(sent[0].id, { doc, etag: '"q"' });
+    await expect(p).resolves.toEqual({ doc, etag: '"q"' });
+  });
   it("only exposes the optional methods the native side lists", () => {
     const win = fakeWindow({ webkit: { messageHandlers: { blurt: { postMessage: () => {} } } }, blurtHostInfo: { host: "macos", methods: ["quickLook", "handoff"] } });
     const h = createMacosHost(win as never);
