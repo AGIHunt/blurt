@@ -518,6 +518,8 @@ def mux(video: Path, audio: Path | None, offset: float, dest: Path) -> None:
 # ---------------------------------------------------------------- native macOS recorder
 APP_BUNDLE = BLURT_HOME / "Blurt.app"
 ICON = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+# the app icon as the Peep release package ships it (assets/brand/import_peep.py): the paper tile, every size drawn
+APP_ICNS = ICON.with_name("AppIcon.icns")
 INFO_PLIST = SWIFT_DIR / "Info.plist"
 
 
@@ -557,6 +559,8 @@ def native_binary(build: bool = True) -> Path | None:
         h.update(str(p.relative_to(SWIFT_DIR)).encode() + b"\0" + p.read_bytes())
     if AGENTS_JSON.exists():
         h.update(AGENTS_JSON.read_bytes())
+    if APP_ICNS.exists():                       # a new app icon is a new build too
+        h.update(APP_ICNS.read_bytes())
     if os.environ.get("BLURT_UNIVERSAL"):
         h.update(b"universal")
     sparkle = os.environ.get("BLURT_SPARKLE") == "1"
@@ -614,9 +618,13 @@ def native_binary(build: bool = True) -> Path | None:
     make_icns(APP_BUNDLE / "Contents" / "Resources" / "AppIcon.icns")
     for lproj in sorted((SWIFT_DIR / "Sources" / "BlurtApp" / "Resources").glob("*.lproj")):   # K10 string tables
         shutil.copytree(lproj, APP_BUNDLE / "Contents" / "Resources" / lproj.name, dirs_exist_ok=True)
+    # Peep's frames (the mascot's sprite sheets, the menu-bar glyph frames, peep.json: assets/brand/import_peep.py)
+    shutil.copytree(SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Peep", APP_BUNDLE / "Contents" / "Resources" / "Peep",
+                    dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
-    # the AccentColor (Info.plist NSAccentColorName): compiled by assets/color/build.py with Xcode's actool and
+    # the AccentColor (Info.plist NSAccentColorName) and, for macOS 26, the app icon with its dark appearance
+    # (CFBundleIconName; assets/brand/AppIcon.icon): compiled by assets/color/build.py with Xcode's actool and
     # committed, so this build needs the Command Line Tools only
     car = SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Assets.car"
     if car.exists():
@@ -697,8 +705,12 @@ def sign_app(bundle: Path) -> None:
 
 
 def make_icns(dest: Path) -> None:
-    """AppIcon.icns from the 1024 master (assets/icon.png); the 16 and 32 px slots take the simplified small-size
-    art (assets/icon-16.png, icon-32.png) like Apple's own small icons. All rendered by assets/brand/build.py."""
+    """AppIcon.icns (macOS 13–15; macOS 26 takes the Assets.car icon): the Peep release package's own .icns
+    (assets/AppIcon.icns — clay from 64 px up, the vector drawing at 32, the flat mark at 16), else built from the 1024
+    tile (assets/icon.png) with the small slots from icon-16.png / icon-32.png."""
+    if APP_ICNS.exists():
+        shutil.copy(APP_ICNS, dest)
+        return
     if not ICON.exists():
         return
     iconset = BLURT_HOME / "build" / "AppIcon.iconset"

@@ -1,6 +1,6 @@
 // WP6 (mac-settings-system) owns Settings/, Onboarding/, System/. Called once at launch by the menu-bar app (before
 // the menu exists): registers Settings and blurt:// handling with the shell (AppEnvironment),
-// the Services provider ("Add to Blurt"), Spotlight indexing, the fix watcher (→ the chicken pecks the bug), the
+// the Services provider ("Add to Blurt"), Spotlight indexing, the fix watcher (→ Peep's done line), the
 // live-audio retention sweep, and the setup assistant on first launch.
 import AppKit
 import BlurtCore

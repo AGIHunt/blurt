@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.png" width="132" alt="Blurt"></p>
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/peep-readme-dark.png"><img src="assets/peep-readme.png" width="132" alt="Blurt"></picture></p>
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>

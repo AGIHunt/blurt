@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Item } from "../host";
 import { kindOf, SEV, type StateFilter } from "../store";
 import { Icon } from "./Icon";
+import { Thinking } from "./TopBar";
 import { cx, mdLite, useStore } from "./ctx";
 import { StateControl, StateRing, stateText } from "./Queue";
 
@@ -111,7 +112,7 @@ function Card({ i, k, st }: { i: Item; k: number; st: string }) {
       }}
     >
       <div className={cx("img", !img && "none", wait && "shim", fresh && "fresh")} style={img ? { backgroundImage: `url("${src}")` } : undefined}>
-        {img ? null : wait ? <Icon name="hatch" className="hatching" /> : s.t("media.none")}
+        {img ? null : wait ? <Thinking /> : s.t("media.none")}
         <button
           className={cx("pickbox", sel && "on")}
           role="checkbox"

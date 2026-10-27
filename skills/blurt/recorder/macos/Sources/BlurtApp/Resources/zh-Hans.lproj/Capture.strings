@@ -64,6 +64,8 @@
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = "（%@）";
 "capture.island.ax" = "口喷鸡刘海";
+"capture.island.hello" = "口喷鸡准备好了";
+"capture.island.sort_failed" = "没整理好";
 "capture.island.organize" = "整理";
 "capture.island.organize_tip" = "把这些卡片整理到 %@（调用一次 AI）";
 "capture.island.project_ax" = "当前项目：%@";

@@ -3,6 +3,26 @@
 import AppKit
 import BlurtCore
 
+/// About Blurt: the standard panel (name, version) with Peep in place of the icon — the clay render alone, idling still,
+/// in the light set for the current appearance (no tile: the panel is the frame) — and one line of credits.
+final class AboutPanel: NSObject {
+    static let shared = AboutPanel()
+    @objc func orderFrontStandardAboutPanel(_ sender: Any?) {
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        var opts: [NSApplication.AboutPanelOptionKey: Any] = [
+            .credits: NSAttributedString(string: T("menu.about.credits"), attributes: [
+                .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()]),
+        ]
+        if let img = MascotLibrary.shared.image(.idle, points: 64, scale: 4, dark: dark, bleed: 0.1) {
+            opts[.applicationIcon] = NSImage(cgImage: img, size: NSSize(width: 64, height: 64))
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: opts)
+        emit(["event": "about_panel"])
+    }
+}
+
 enum MainMenu {
     static func build() -> NSMenu {
         let main = NSMenu()
@@ -23,7 +43,8 @@ enum MainMenu {
             main.addItem(it)
             return m
         }
-        var app = [NSMenuItem]()
+        var app = [item(T("menu.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: AboutPanel.shared),
+                   NSMenuItem.separator()]
         if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
         // no ⌘Q on Quit: it's the resident app. ⌘Q in the main window closes it back to the menu bar instead
         // (MainWindowController.handleKeyEquivalent → mCloseToMenuBar, which says so once)

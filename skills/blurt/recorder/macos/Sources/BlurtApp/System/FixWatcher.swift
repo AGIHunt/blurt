@@ -1,7 +1,7 @@
 // Watches every item store (each project's .blurt/ and the inbox — K1) for item files whose state becomes
 // "to_verify" (K3) — whoever wrote it: an agent in a Blurt session (mark_fixed / items.py state), a worktree merge,
 // an agent outside Blurt with the MCP (a session that just exits moves nothing). Then a notification says what the
-// agent claimed, and the chicken pecks the item when it claimed something (FixRunner.announceFixed). A file seen
+// agent claimed, and Peep says so in the island when it claimed something (FixRunner.announceFixed). A file seen
 // for the first time is only a baseline.
 import AppKit
 import CoreServices

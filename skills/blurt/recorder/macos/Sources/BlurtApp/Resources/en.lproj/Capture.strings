@@ -64,6 +64,8 @@
 "capture.hotkey.hint" = "%1$@ %2$@";
 "capture.hotkey.tip" = " (%@)";
 "capture.island.ax" = "Blurt notch";
+"capture.island.hello" = "Blurt is ready";
+"capture.island.sort_failed" = "Not sorted";
 "capture.island.organize" = "Organize";
 "capture.island.organize_tip" = "Organize these cards into %@ (uses AI once)";
 "capture.island.project_ax" = "Current project: %@";

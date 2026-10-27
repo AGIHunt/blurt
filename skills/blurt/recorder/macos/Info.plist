@@ -25,6 +25,8 @@
 	<string>blurt-recorder</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>dev.blurt.recorder</string>
 	<key>CFBundleLocalizations</key>

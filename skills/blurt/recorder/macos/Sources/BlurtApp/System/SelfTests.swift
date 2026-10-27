@@ -15,7 +15,7 @@
 //   service TEXT                 "Add to Blurt" with TEXT on a private pasteboard, through the real service method
 //   fix UIDS                     the dispatch panel for those items (agent, mode, worktree)
 //   peck TITLE | peckframes DIR [dark] | mascotcheck | perms
-//   menuglyph DIR                the menu-bar chick: the template glyph (rest / listen / hop; 1x / 2x) and the real
+//   menuglyph DIR                the menu-bar Peep: every state's template frames (1x / 2x) and the real
 //                                status button with a count of 3 (aqua / dark; rest / open) as PNGs
 //   design system v2 moments (screenshots, no real work behind them):
 //   onboardingdone               Done on the onboarding's last step: it closes
@@ -243,9 +243,55 @@ enum SelfTests {
         case "peckframes":
             let a = arg.split(separator: " ").map(String.init)
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.contains("dark"))])
-        case "mascotcheck":             // the mascot's clips: one-shots end at rest, loops join up (MascotArt.check)
-            out(["problems": MascotArt.check()])
-        case "menuglyph":              // menuglyph DIR: the menu-bar chick as the status item draws it, as PNGs
+        case "mascotcheck":             // Peep's clips: every clip in the package, frames that decode (MascotLibrary.check)
+            out(["problems": MascotLibrary.shared.check()])
+        case "about":                   // About Blurt (the main menu's item): the standard panel with Peep
+            AboutPanel.shared.orderFrontStandardAboutPanel(nil)
+        case "iconsheet":               // iconsheet DIR: the app icon as Finder and the Dock draw it (Icon Services, light
+                                        // and dark, 16…512 pt) and the notification picture, as PNGs (no other app is shot)
+            let dir = URL(fileURLWithPath: arg.isEmpty ? "/tmp/iconsheet" : arg)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var files: [String] = []
+            let icon = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+            let sizes: [CGFloat] = [16, 32, 64, 128, 256]
+            for (name, look, bg) in [("light", NSAppearance.Name.aqua, NSColor(white: 0.93, alpha: 1)),
+                                     ("dark", .darkAqua, NSColor(white: 0.16, alpha: 1))] {
+                let w = sizes.reduce(0) { $0 + $1 + 24 } + 24, h: CGFloat = 256 + 48
+                let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w) * 2, pixelsHigh: Int(h) * 2, bitsPerSample: 8,
+                                           samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                           bytesPerRow: 0, bitsPerPixel: 0)!
+                rep.size = NSSize(width: w, height: h)
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                NSAppearance(named: look)?.performAsCurrentDrawingAppearance {
+                    bg.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
+                    var x: CGFloat = 24
+                    for z in sizes {
+                        icon.draw(in: NSRect(x: x, y: 24, width: z, height: z), from: .zero, operation: .sourceOver, fraction: 1)
+                        x += z + 24
+                    }
+                }
+                NSGraphicsContext.restoreGraphicsState()
+                let f = dir.appendingPathComponent("appicon-\(name).png")
+                if (try? rep.representation(using: .png, properties: [:])?.write(to: f)) != nil { files.append(f.path) }
+            }
+            for dark in [false, true] {
+                if let img = MascotLibrary.shared.image(.done, points: 80, dark: dark, bleed: 0.06),
+                   let d = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) {
+                    let f = dir.appendingPathComponent("notification-\(dark ? "dark" : "light").png")
+                    if (try? d.write(to: f)) != nil { files.append(f.path) }
+                }
+            }
+            out(["files": files])
+        case "menupeep":               // menupeep idle|talking|listening|thinking|done|error|off: the menu-bar Peep held in a state
+            switch arg {
+            case "done": MenuGlyph.shared.done()
+            case "error": MenuGlyph.shared.error()
+            case "off": MenuGlyph.shared.testMode = nil
+            default: MenuGlyph.shared.testMode = PeepGlyphMode(rawValue: arg)
+            }
+            out(["menupeep": arg, "mode": MenuGlyph.shared.mode.rawValue])
+        case "menuglyph":              // menuglyph DIR: the menu-bar Peep as the status item draws it, as PNGs
             out(["files": MenuGlyph.renderPoses(to: URL(fileURLWithPath: arg.isEmpty ? "/tmp/menuglyph" : arg))])
         case "install":                 // install ID [details]: the dry-run preview (sheet in Settings → Agents), Details open with `details`; install-apply: confirm it
             SettingsController.shared.show(pane: "agents")

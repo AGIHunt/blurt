@@ -227,7 +227,7 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     s.append(("panels", "recently taken", [("shell", "taken show")]))
     s.append(("panels", "recently taken hidden", [("shell", "taken hide")]))
     # a snap (a PNG stands in for the screen: nothing is captured) → its note bubble, then the hanging cards
-    still = ROOT / "assets" / "logo-1.png"
+    still = ROOT / "assets" / "brand" / "legacy" / "logo-1.png"
     s.append(("panels", "snap note bubble", [("shell", f"snapregion 200,200,480,320 {still}")]))
     s.append(("panels", "snap note saved", [("shell", "commit")]))
     s.append(("panels", "hanging cards", [("shell", "cards show")]))

@@ -564,7 +564,7 @@ final class Snapper {
     }
 
     /// Captures → items with captures.py: the note is the item, no agent, no tokens. A process job (K4) all the
-    /// same, so the island hatches it and the main window lists it (usage: 0 tokens).
+    /// same, so the island sorts it and the main window lists it (usage: 0 tokens).
     func file(_ shots: [Shot], in b: ShotBatch, project: String) {
         // a project whose folder can't be found takes nothing: its folder would be made again at the old path
         if let gone = missingProject(project) { return keepAsCards(shots, missing: gone, via: "file") }

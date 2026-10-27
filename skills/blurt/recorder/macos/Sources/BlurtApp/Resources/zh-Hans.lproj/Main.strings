@@ -423,6 +423,8 @@
 "menu.help" = "帮助";
 
 "menu.hide" = "隐藏口喷鸡";
+"menu.about" = "关于口喷鸡";
+"menu.about.credits" = "免费开源 · blurt.agihunt.info";
 
 "menu.item" = "条目";
 "menu.project" = "项目";

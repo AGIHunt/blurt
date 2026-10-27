@@ -6,7 +6,7 @@
 // grows "ears" (56 pt; each side wider only for its own content — IslandLayout.earNeed). Both ears grow when both have
 // something to say (recording, dictation, a voice note); a standing thing alone is told across the notch as a live
 // activity is — its glyph on the left, its value on the right (the cards waiting: stack | 2; captures just landed:
-// tray | +3); a moment grows its own side (the egg, an alert, the launch hello). At rest — nothing live — it is the
+// tray | +3); a moment grows its own side (Peep thinking, an alert, the launch hello). At rest — nothing live — it is the
 // bare notch: the inbox's backlog is the menu bar's count and the open island's Inbox row, never a standing number
 // beside the notch. A short done state is said in the ears, not a toast: "✓ Sent" after a double tap, "✓ Saved 0:42"
 // after a take (earMoment). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
@@ -16,17 +16,19 @@
 // notch drops nothing). Resting on the cards' count opens the island after 450 ms (the cards are down by then).
 //
 // Collapsed (ears)        left                         right
-//   idle                  cards waiting (n) — a click   hatching egg (the mascot) + n processing, else an agent that
+//   idle                  cards waiting (n) — a click   Peep thinking + n processing, else an agent that
 //                         brings them down to stay      waits on you (the alert dot), else "+n" for a few seconds as
 //                                                       new captures land in the inbox; nothing at all otherwise
 //   recording             red dot (1 Hz breath) + time  the pen while latched, else snaps (n, the snap frame), else
 //                         (paused: pause bars, amber)   markers (n, a flag), else the mic level
-//   voice input           live waveform (open: the mic  duration
-//                         glyph — the row has the wave)
-//   dictation             keyboard / level / wand       clock or style chip (from 4:30 the time left, in attention
-//                                                       amber), dots while working or sending, then "Sent" with the
-//                                                       ok check for 1.6 s after a double tap (dictationSent)
-// Every ear glyph is the BlurtIcon line family at one weight (Ears.swift).
+//   voice input           Peep listening + the live     duration
+//                         wave (open: the mic glyph —
+//                         the row has Peep and the wave)
+//   dictation             Peep talking (its beak with   clock or style chip (from 4:30 the time left, in attention
+//                         your voice) + the level;      amber), dots while working or sending, then "Sent" with the
+//                         Peep thinking while it works  ok check for 1.6 s after a double tap (dictationSent)
+//   a done moment         Peep's peep and hop           the ok check and the words ("Sent", "Saved 0:42")
+// Every ear glyph is the BlurtIcon line family at one weight; Peep is the clay character (Ears.swift).
 // Each ear's content sits against the island's outer edge (BlurtCore IslandLayout.earOrigin), never centred in its ear.
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
 // Toasts: BlurtCore ToastQueue — the newest reply first, replaced by key, passive lines (launch, jobs) behind replies,
@@ -160,11 +162,13 @@ final class Island: NSObject, IslandHosting {
     /// (when it has one), the ok check and the words on the right — until then. No toast for a word or two.
     private var momentUntil: CFTimeInterval = 0
     private var moment: (lead: BlurtIcon?, text: String)?
-    /// The launch hello (the chick hops in the right ear, then goes): until then.
+    /// The launch hello (Peep turns to you and blinks in the right ear, then goes): until then.
     private var helloUntil: CFTimeInterval = 0
     /// Tests: dictation's working ears held for a look (`testWorkingEars`).
     private var testWorking: (polishing: Bool, until: CFTimeInterval)?
     private var hatches: [Hatch] = []
+    /// Captures are being organised (Peep thinks in the ear and in the menu bar).
+    var organizing: Bool { hatches.contains { $0.ended == nil } }
     private var lastAgentAlert: [String: String] = [:]
     private(set) var started = false
     var watch: RecordingWatch?
@@ -288,7 +292,7 @@ final class Island: NSObject, IslandHosting {
         ensurePanel(on: screenWithPointer())
         JobStore.shared.start()
         // JobNotifier owns JobStore.onChange (the one listener) and re-posts every change; setting onChange here was
-        // overwritten by it, so the egg never learned its job ended (it wobbled on until the 120 s timeout)
+        // overwritten by it, so the ear never learned its job ended (it went on until the 120 s timeout)
         NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
             self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
         }
@@ -301,14 +305,48 @@ final class Island: NSObject, IslandHosting {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.hello() }
     }
 
-    /// Tests: dictation's working ears — the keyboard (transcribing) or the wand (polishing) in mint, pulsing, and the
-    /// dots — held `seconds` for a look: on a fast Mac a take's working moment lasts a tenth of a second.
+    /// Tests: one of Peep's ear states held `seconds` for a look, without a microphone, a take or a job — talking
+    /// (dictation, a made-up voice), listening (a voice note), thinking (organising 3), done (sorted: +5), error (sorting
+    /// failed). `nil` ends it.
+    func testPeepEars(_ state: PeepState?, seconds: Double) {
+        testPeep = state.map { ($0, CACurrentMediaTime(), CACurrentMediaTime() + seconds) }
+        if state == .hello { testPeep = nil; toastQ.dismissCurrent(); hello() }
+        emit(["event": "island_test_peep", "state": state?.rawValue ?? NSNull()])
+        refresh()
+    }
+    private var testPeep: (state: PeepState, since: CFTimeInterval, until: CFTimeInterval)?
+
+    /// Peep's own moments across the notch: Peep left, its words or count right ("Blurt is ready", "3", "+5", "Not
+    /// sorted"). False for anything else.
+    private func peepAcross(_ r: EarSlot.Content) -> Bool {
+        switch r {
+        case .hello:
+            left.set(.hello)
+            right.set(.text(Loc.t("capture.island.hello", table: "Capture"), mono: false))
+        case .thinking(let n):
+            left.set(.peep(.thinking))
+            right.set(.text(Loc.number(n), mono: true))
+        case .sorted(let since, let ok, let n):
+            left.set(.sorted(since: since, ok: ok, n: 0))
+            right.set(.text(ok ? "+" + Loc.number(n) : Loc.t("capture.island.sort_failed", table: "Capture"), mono: ok,
+                            attn: !ok))
+        default: return false
+        }
+        return true
+    }
+    /// A made-up voice for the test states: words about every 0.3 s, louder and softer.
+    static func testVoice(_ t: Double) -> Float {
+        Float(max(0, 0.55 * sin(t * 11) + 0.35 * sin(t * 2.7 + 1) + 0.1))
+    }
+
+    /// Tests: dictation's working ears — Peep thinking and the dots — held `seconds` for a look: on a fast Mac a take's
+    /// working moment lasts a tenth of a second.
     func testWorkingEars(polishing: Bool, seconds: Double) {
         testWorking = (polishing, CACurrentMediaTime() + seconds)
         refresh()
     }
 
-    /// The launch hello: the chick hops in the right ear for 1.2 s, then goes — the one sign at launch that blurt is
+    /// The launch hello: Peep turns to you and blinks in the right ear (the hello clip), then goes — the one sign at launch that blurt is
     /// there (the island is the bare notch at rest). Not over something live.
     func hello() {
         guard !isRecording, !VoiceInput.shared.active, !Dictation.shared.busy, toastNow == nil, !open, drawer == nil else { return }
@@ -518,6 +556,7 @@ final class Island: NSObject, IslandHosting {
             updateEars()        // the time, the level, the wave; the end of a done moment
         }
         if let tw = testWorking { if now < tw.until { updateEars() } else { testWorking = nil; updateEars() } }
+        if let tp = testPeep { if now < tp.until { updateEars() } else { testPeep = nil; updateEars() } }
         if helloUntil > 0, now >= helloUntil {                                     // the hello is over: the bare notch
             helloUntil = 0
             updateEars()
@@ -638,6 +677,7 @@ final class Island: NSObject, IslandHosting {
     }
 
     func updateEars() {
+        MenuGlyph.shared.sync()          // the menu-bar Peep reads the same state (talking, listening, thinking)
         if let done = RecordingDone.text {
             // the take just ended: the dot and time turn into the ok check and its length for 1.6 s (IslandRecording)
             left.set(.finished(done))
@@ -651,7 +691,8 @@ final class Island: NSObject, IslandHosting {
                 : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : rec.isPaused ? .none : .level(rec.micLevel))
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
-            left.set(open ? .glyph(.mic, pulse: false) : .wave(VoiceInput.shared.levels))
+            // Peep listens (eye wide, swelling) with the wave beside it; open, the row under the ears has both
+            left.set(open ? .glyph(.mic, pulse: false) : .peepLevel(.listening, VoiceInput.shared.levels))
             // the clock alone: Structured is the open island's chip (one mint thing), never a second mark here; a click
             // on the clock still toggles it (clicked(at:))
             right.set(.text(Island.clock(VoiceInput.shared.elapsed), mono: true))
@@ -659,12 +700,13 @@ final class Island: NSObject, IslandHosting {
             // dictation never opens the island: ears only, so the app being typed into keeps the whole screen
             switch Dictation.shared.phase {
             case .listening where !Dictation.shared.micLive:
-                // the mic is still starting (a Bluetooth headset takes ~1 s): not "listening" until audio arrives,
-                // so the user knows when to start talking
-                left.set(.glyph(.keyboard, pulse: false))
+                // the mic is still starting (a Bluetooth headset takes ~1 s): Peep waits, not talking until audio
+                // arrives, so the user knows when to start
+                left.set(.peep(.idle))
                 right.set(.dots)
             case .listening:
-                left.set(.dictation(Dictation.shared.levels))
+                // Peep talks: its beak follows your voice, the mirrored level beside it
+                left.set(.peepLevel(.talking, Dictation.shared.levels))
                 // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default)
                 // from 4:30 the time left before the 5-minute limit, in attention amber (not only a minus sign)
                 let clock = Dictation.shared.earClock, ending = Dictation.shared.earCountdown
@@ -673,24 +715,33 @@ final class Island: NSObject, IslandHosting {
                 case .verbatim?: right.set(.iconText(.quote, clock, attn: ending))
                 default: right.set(.text(clock, mono: true, attn: ending))
                 }
-            case .polishing:
-                left.set(.glyph(.wand, pulse: true))
-                right.set(.dots)
             default:
-                left.set(.glyph(.keyboard, pulse: true))
+                // transcribing, polishing: Peep thinks (its eye looks round)
+                left.set(.peep(.thinking))
                 right.set(.dots)
             }
-        } else if let tw = testWorking, CACurrentMediaTime() < tw.until {
-            left.set(.glyph(tw.polishing ? .wand : .keyboard, pulse: true))
+        } else if let tp = testPeep, CACurrentMediaTime() < tp.until {
+            let t = CACurrentMediaTime() - tp.since
+            let voice = (0..<12).map { Island.testVoice(t - Double(11 - $0) * 0.05) }
+            switch tp.state {
+            case .talking: left.set(.peepLevel(.talking, voice)); right.set(.text(Island.clock(t + 4), mono: true))
+            case .listening: left.set(.peepLevel(.listening, voice)); right.set(.text(Island.clock(t + 2), mono: true))
+            case .thinking: _ = peepAcross(.thinking(n: 3))
+            case .done: _ = peepAcross(.sorted(since: tp.since, ok: true, n: 5))
+            case .error: _ = peepAcross(.sorted(since: tp.since, ok: false, n: 0))
+            case .idle, .hello: left.set(.peep(tp.state)); right.set(.none)
+            }
+        } else if let tw = testWorking, CACurrentMediaTime() < tw.until, tw.until > 0 {
+            left.set(.peep(.thinking))
             right.set(.dots)
         } else if Dictation.shared.sendQueued {
             // a double tap's Return waits for the paste to land (~0.6 s): sending, not idle
-            left.set(.glyph(.keyboard, pulse: true))
+            left.set(.peep(.thinking))
             right.set(.dots)
         } else if let m = moment, CACurrentMediaTime() < momentUntil {
-            // a done moment says itself where the user is looking, without growing the island into a toast: the source's
-            // glyph (quiet) on the left, the ok check and the words on the right
-            left.set(m.lead.map { .glyph($0, pulse: false) } ?? .none)
+            // a done moment says itself where the user is looking, without growing the island into a toast: Peep's
+            // peep and hop on the left, the ok check and the words on the right
+            left.set(.peep(.done))
             right.set(.done(m.text))
         } else {
             moment = nil
@@ -700,9 +751,9 @@ final class Island: NSObject, IslandHosting {
             if CACurrentMediaTime() < helloUntil {
                 r = .hello
             } else if let h = hatches.first(where: { $0.ended != nil }), let end = h.ended {
-                r = .cracking(since: end.at, ok: end.ok, n: end.items)
+                r = .sorted(since: end.at, ok: end.ok, n: end.items)
             } else if processing > 0 {
-                r = .egg(n: processing)
+                r = .thinking(n: processing)
             } else if agentAlert != nil {
                 r = .alert
             } else if inboxNews {
@@ -718,6 +769,9 @@ final class Island: NSObject, IslandHosting {
             } else if cardCount == 0, case .news(let n) = r {
                 left.set(.mark(.inbox))
                 right.set(.text("+" + Loc.number(n), mono: true))
+            } else if cardCount == 0, peepAcross(r) {
+                // Peep's moments are told across the notch too: Peep on the left (where it talks and listens), the
+                // words or the count on the right — it never jumps from one side to the other between states
             } else {
                 left.set(cardCount > 0 ? .cards(cardCount) : .none)
                 right.set(r)
@@ -1075,6 +1129,7 @@ final class Island: NSObject, IslandHosting {
     /// The "Sent" moment after a double tap (dictation): the keyboard on the left, the ok check and the word on the
     /// right for 1.6 s — no toast for one word; only the right ear widens for it (earNeed).
     func dictationSent() {
+        MenuGlyph.shared.done()
         earMoment(Loc.t("dictation.toast.sent", table: "Dictation"), lead: .keyboard, seconds: 1.6)
         emit(["event": "island_sent"])
     }
@@ -1096,6 +1151,7 @@ final class Island: NSObject, IslandHosting {
     /// A take saved without processing: "✓ Saved 0:42" in the ears (the record glyph on the left), or — with the ears
     /// busy — the done toast.
     func doneMoment(_ ear: String, lead: BlurtIcon?, toast text: String) {
+        MenuGlyph.shared.done()
         if earMoment(ear, lead: lead) { return }
         toast(text, key: nil, icon: .check)
     }
@@ -1125,7 +1181,7 @@ final class Island: NSObject, IslandHosting {
 
     // MARK: hatching (only for captures being processed — K7)
 
-    /// Captures were handed to processing: show the egg now; the process job that picks them up takes it over.
+    /// Captures were handed to processing: Peep thinks in the ear now; the process job that picks them up takes it over.
     func expectProcess(session: URL, captures: [Int]) {
         if let h = hatches.first(where: { $0.session == session && $0.job == nil && $0.ended == nil }) {
             h.captures = Array(Set(h.captures + captures)).sorted()
@@ -1152,8 +1208,8 @@ final class Island: NSObject, IslandHosting {
             hatch.job = j.id
             if !j.isActive, hatch.ended == nil {
                 hatch.ended = (CACurrentMediaTime(), j.state == .done, j.items.count)
-                // the hand-off / AI sort finished: the chick hatching in the ear says it (no ring, no bloom)
-                DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? EarSlot.hatchSeconds + 1.4 : 5)) { [weak self] in
+                // the hand-off / AI sort finished: Peep says it in the ear — a peep and a hop, or a head shake
+                DispatchQueue.main.asyncAfter(deadline: .now() + (j.state == .done ? EarSlot.sortedSeconds + 1.4 : 5)) { [weak self] in
                     self?.hatches.removeAll { $0 === hatch }
                     self?.refreshReviewCount()
                     self?.refresh()

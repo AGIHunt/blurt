@@ -1,0 +1,195 @@
+{
+ "version": 1,
+ "source": "~/workspace/blurt-media/logo/peep/release",
+ "manifest": "**Status: COMPLETE** (draft 3, 2026-10-27 04:50). This line is written last; if it is missing, the package is still being built.",
+ "sets": {
+  "dark": {
+   "square": 160,
+   "cell": 192,
+   "bleed": 0.1,
+   "cols": 10,
+   "clips": {
+    "idle": {
+     "frames": 45,
+     "fps": 15
+    },
+    "hello": {
+     "frames": 45,
+     "fps": 30
+    },
+    "listening": {
+     "frames": 36,
+     "fps": 30
+    },
+    "talking": {
+     "frames": 42,
+     "fps": 30,
+     "open": [
+      1.213,
+      1.395,
+      1.858,
+      2.267,
+      2.445,
+      2.234,
+      1.91,
+      1.577,
+      1.425,
+      1.613,
+      2.055,
+      2.418,
+      2.613,
+      2.393,
+      1.892,
+      1.657,
+      1.714,
+      1.91,
+      2.1,
+      2.209,
+      2.079,
+      1.709,
+      1.396,
+      1.213,
+      1.421,
+      1.874,
+      2.322,
+      2.525,
+      2.382,
+      2.055,
+      1.66,
+      1.51,
+      1.623,
+      1.818,
+      2.01,
+      2.063,
+      1.957,
+      1.641,
+      1.373,
+      1.213,
+      1.213,
+      1.213
+     ]
+    },
+    "thinking": {
+     "frames": 45,
+     "fps": 30
+    },
+    "done": {
+     "frames": 42,
+     "fps": 30
+    },
+    "error": {
+     "frames": 45,
+     "fps": 30
+    }
+   }
+  },
+  "paper": {
+   "square": 216,
+   "cell": 260,
+   "bleed": 0.1019,
+   "cols": 10,
+   "clips": {
+    "idle": {
+     "frames": 45,
+     "fps": 15
+    },
+    "hello": {
+     "frames": 45,
+     "fps": 30
+    },
+    "done": {
+     "frames": 42,
+     "fps": 30
+    }
+   }
+  }
+ },
+ "stills": {
+  "done": 26
+ },
+ "glyph": {
+  "box": 18,
+  "clips": {
+   "idle": {
+    "frames": 90,
+    "fps": 30,
+    "blink": [
+     51,
+     60
+    ]
+   },
+   "hello": {
+    "frames": 45,
+    "fps": 30
+   },
+   "listening": {
+    "frames": 36,
+    "fps": 30
+   },
+   "talking": {
+    "frames": 42,
+    "fps": 30,
+    "open": [
+     3.994,
+     4.142,
+     4.438,
+     4.734,
+     5.03,
+     4.734,
+     4.438,
+     4.29,
+     4.142,
+     4.29,
+     4.734,
+     5.03,
+     5.325,
+     5.03,
+     4.438,
+     4.438,
+     4.438,
+     4.438,
+     4.882,
+     4.734,
+     4.734,
+     4.438,
+     4.142,
+     3.994,
+     4.142,
+     4.438,
+     4.882,
+     5.03,
+     5.03,
+     4.734,
+     4.438,
+     4.142,
+     4.29,
+     4.438,
+     4.734,
+     4.734,
+     4.586,
+     4.438,
+     4.142,
+     3.994,
+     3.994,
+     3.994
+    ]
+   },
+   "thinking": {
+    "frames": 45,
+    "fps": 30
+   },
+   "done": {
+    "frames": 42,
+    "fps": 30
+   },
+   "error": {
+    "frames": 45,
+    "fps": 30
+   }
+  }
+ },
+ "review": {
+  "thinking_frames": 15,
+  "thinking_fps": 10
+ }
+}

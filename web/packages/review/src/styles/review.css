@@ -45,11 +45,27 @@ body {
   font-size: calc(var(--fs) + 1px);
 }
 .brand .logo {
-  width: 28px;
+  /* Peep (the vector drawing, no tile): its body and beak fill the 28 px box's width */
+  width: 32px;
   height: 28px;
+}
+.peep-logo {
   display: block;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.28));
+}
+.peep-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* on dark the slate beak keeps a lighter top so it parts from the background (the dark drawing's one change) */
+[data-theme="dark"] .peep-logo stop[stop-color="#33433F"] {
+  stop-color: #6a7f7c;
+}
+[data-theme="dark"] .peep-logo stop[stop-color="#1F2B29"] {
+  stop-color: #566a67; /* the beak on dark: never darker than the dark-notch slate (#4A5D5B) */
+}
+[data-theme="dark"] .peep-logo stop[stop-color="#141c1b"] {
+  stop-color: #4a5d5b;
 }
 .brand small {
   color: var(--mute);
@@ -2104,15 +2120,43 @@ button.chip:hover {
 }
 .done .cel {
   display: block;
-  width: 88px;
+  width: 120px;
   margin: 0 auto;
-  border-radius: 22px;
+}
+/* Peep peeps and hops once when the work is handed on (its done state); still with Reduce Motion */
+.done .peep-done {
+  object-fit: contain;
+}
+[data-theme="dark"] .done .peep-done.paper,
+:root:not([data-theme="dark"]) .done .peep-done.night {
+  display: none;
+}
+.done.show .peep-done {
+  width: 120px;
+  height: 120px;
+  transform-origin: 50% 100%;
+  animation: peep-hop 0.9s cubic-bezier(0.3, 0.7, 0.4, 1) 0.25s both;
+}
+@keyframes peep-hop {
+  0%,
+  100% {
+    transform: none;
+  }
+  18% {
+    transform: scale(1.06, 0.88);
+  }
+  45% {
+    transform: translateY(-14px) scale(0.96, 1.06);
+  }
+  70% {
+    transform: scale(1.05, 0.9);
+  }
 }
 .done p {
   color: var(--mute);
 }
 
-/* ---------- organizing (the hatching egg: brand and motion only, K8), progressive loading ---------- */
+/* ---------- organizing (Peep thinking: brand and motion only, K8), progressive loading ---------- */
 .proc {
   display: flex;
   align-items: center;
@@ -2131,18 +2175,42 @@ button.chip:hover {
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
 }
-.hatching {
-  transform-origin: 50% 88%;
-  animation: wobble 1.8s ease-in-out infinite;
+/* Peep thinking: the menu-bar glyph's thinking frames (15, every third, 10 fps) as a mask strip in currentColor */
+.peep-think {
+  --s: 15px;
+  display: inline-block;
+  flex: none;
+  width: var(--s);
+  height: var(--s);
+  background: currentColor;
+  --peep-strip: url("../assets/peep-thinking.png"); /* once: the page is one file */
+  -webkit-mask: var(--peep-strip) 0 0 / calc(var(--s) * 15) var(--s) no-repeat;
+  mask: var(--peep-strip) 0 0 / calc(var(--s) * 15) var(--s) no-repeat;
+  animation: peep-think 1.5s steps(15) infinite;
 }
-.proc .hatching {
-  width: 15px;
-  height: 15px;
-  color: var(--attn-ink); /* the egg's colour (illustration), not a state */
+@keyframes peep-think {
+  to {
+    -webkit-mask-position: calc(var(--s) * -15) 0;
+    mask-position: calc(var(--s) * -15) 0;
+  }
 }
-.proc.stalled .hatching {
+.proc .peep-think {
+  color: var(--brand-ink); /* Peep at work: the brand ink, as the menu bar's glyph is the system's */
+}
+.proc.stalled .peep-think,
+.shot.wait:not(.shim) .peep-think {
   animation: none;
   opacity: 0.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .peep-think {
+    animation: none;
+    -webkit-mask-position: calc(var(--s) * -3) 0; /* the eye up */
+    mask-position: calc(var(--s) * -3) 0;
+  }
+  .done.show .peep-done {
+    animation: none;
+  }
 }
 .proc.fin {
   color: var(--ok);
@@ -2153,22 +2221,6 @@ button.chip:hover {
 }
 .proc.out {
   opacity: 0;
-}
-@keyframes wobble {
-  0%,
-  55%,
-  100% {
-    transform: rotate(0);
-  }
-  12% {
-    transform: rotate(-10deg);
-  }
-  26% {
-    transform: rotate(8deg);
-  }
-  40% {
-    transform: rotate(-4deg);
-  }
 }
 .shim {
   position: relative;
@@ -2202,9 +2254,8 @@ button.chip:hover {
   color: var(--faint);
   font-size: 13px;
 }
-.wait-in .hatching {
-  width: 30px;
-  height: 30px;
+.wait-in .peep-think {
+  --s: 30px;
   opacity: 0.8;
 }
 .th.shim {
@@ -2226,9 +2277,8 @@ button.chip:hover {
   background: var(--wait);
   font-size: 0;
 }
-.card .img.shim .hatching {
-  width: 24px;
-  height: 24px;
+.card .img.shim .peep-think {
+  --s: 24px;
   color: var(--faint);
 }
 

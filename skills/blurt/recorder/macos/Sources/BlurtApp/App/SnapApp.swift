@@ -58,8 +58,8 @@
 //                             with ScreenCaptureKit error CODE (restartable ones restart; Capture/Recorder.swift)
 //     voice stall (the voice note's mic stops) · quit (= Quit Blurt: applicationShouldTerminate)
 //     project ID|inbox        switch the current project (inbox: none — captures go to Unassigned)
-//     peck [to_verify|done] TITLE   the completion chick · axcards  the cards' accessibility elements ("ax" event)
-//     mascot CLIP [SIZE] | close    the chick playing CLIP alone in a small window ("mascot" event: its window number)
+//     peck [to_verify|done] TITLE   the done line (Peep) · axcards  the cards' accessibility elements ("ax" event)
+//     mascot CLIP [SIZE] | close    Peep playing CLIP alone in a small window ("mascot" event: its window number)
 //     mascotframes DIR CLIP [dark]  the clip at 12 fps as PNGs (80 pt, 2x), in order
 //     menuicon DIR            renders the menu-bar template offscreen on light and dark menu bars, 1x and 2x
 //     dictation keys SCRIPT   synthetic key events into the dictation trigger, at their script times (no event tap,
@@ -135,9 +135,12 @@ extension App {
             case "open": island.setOpen(true, sticky: true)
             case "close": island.setOpen(false); island.closeSwitcher()
             case "switcher": island.showSwitcher()
-            case "hello": island.hello()                    // the launch hello again (the chick hops in the ear)
+            case "hello": island.hello()                    // the launch hello again (Peep in the ear)
             case "transcribing", "polishing":               // dictation's working ears, held 3 s for a look
                 island.testWorkingEars(polishing: arg == "polishing", seconds: 3)
+            case let a where a.hasPrefix("peep "):          // peep STATE [SECONDS] | peep off: Peep's ear state held for a look
+                let p = a.split(separator: " ").map(String.init)
+                island.testPeepEars(PeepState(rawValue: p[1]), seconds: p.count > 2 ? Double(p[2]) ?? 6 : 6)
             case let a where a.hasPrefix("filter "):        // filter TEXT: = typing TEXT into the open switcher
                 island.content.query = String(a.dropFirst(7)); island.content.rebuild(); island.wake()
             default: break
@@ -308,10 +311,10 @@ extension App {
         case "mascotframes":                            // mascotframes DIR CLIP [dark]: the clip at 12 fps
             let a = arg.split(separator: " ").map(String.init)
             guard let d = a.first else { return }
-            let n = PeckCard.renderFrames(to: URL(fileURLWithPath: d), clip: MascotClip(rawValue: a.count > 1 ? a[1] : "") ?? .peck,
+            let n = PeckCard.renderFrames(to: URL(fileURLWithPath: d), clip: MascotClip(rawValue: a.count > 1 ? a[1] : "") ?? .done,
                                           dark: a.contains("dark"))
             emit(["event": "mascotframes", "frames": n])
-        case "mascot":                                  // mascot CLIP [SIZE] | mascot close: the chick alone in a window
+        case "mascot":                                  // mascot CLIP [SIZE] | mascot close: Peep alone in a window
             MascotStage.show(arg)
         case "fakerecording":                           // fakerecording [stop]: the island's recording state without a capture stream
             if arg == "stop" { let r = rec; rec = nil; island.recordingStopping(r); return }
@@ -383,7 +386,7 @@ extension App {
         case "pickercancel": picker?.finish(false)      // = Esc in the area picker (snap or record)
         case "pickerlegend": picker?.toggleLegend()     // = ? in the area picker: the key legend back (or away)
         case "countdown":                               // countdown N X,Y,W,H [hold] [of=T] | close: the 3-2-1 over that area
-            if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; return }   // alone (no take); hold:
+            if arg == "close" { countdownWin?.orderOut(nil); countdownWin = nil; MenuGlyph.shared.countdown = false; return }   // alone (no take); hold:
             let a = arg.split(separator: " ").map(String.init)                             // it stays at N
             let p = (a.count > 1 ? a[1] : "").split(separator: ",").compactMap { Double($0) }
             guard let n = Int(a.first ?? ""), p.count == 4 else { return }

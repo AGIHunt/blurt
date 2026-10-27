@@ -7,7 +7,7 @@
 //   FieldView         the field (light) / deep (dark) with grain, for heroes and empty-state art; `BrandField` in SwiftUI
 //   GlowLayer         the listening aura: the base gradient, blurred
 //   WorkingOutline    "AI is working on this": one static 1 pt brand-ink hairline (`.aiWorking` in SwiftUI)
-//   BrandMarkView     the brand mark (the app-icon chick tile) for empty states; `BrandMark` in SwiftUI
+//   BrandMarkView     the empty states' mark: Peep alone, idling (Icons/Mascot.swift); MascotImage in SwiftUI
 //
 // Accessibility: Reduce Transparency → no grain, no glow (flat colours only); Increase Contrast → gradient text turns
 // flat brand ink (the generated colours switch to their `hc` values by themselves); Reduce Motion → the listening
@@ -542,24 +542,12 @@ extension View {
     func aiWorking(_ active: Bool, cornerRadius: CGFloat = 10) -> some View { modifier(AIWorking(active: active, cornerRadius: cornerRadius)) }
 }
 
-// MARK: - Brand mark (empty states)
-
-/// The brand mark for empty states (docs/design/system.md §3.5): the app icon itself — the 4A chick on its gradient
-/// tile, exactly as in the Dock — drawn on the icon canvas (`EmptyState.markSide`; the tile is 80 % of it). It is the
-/// running app's own icon (Blurt.app's AppIcon.icns, built from assets/brand/app-icon.svg), or the skill's
-/// assets/icon.png for a bare `swift build` run. Decoration: hidden from VoiceOver.
-enum BrandMark {
-    static let image: NSImage = {
-        if let p = Bundle.main.path(forResource: "AppIcon", ofType: "icns"), let i = NSImage(contentsOfFile: p) { return i }
-        if let i = NSImage(contentsOf: Scripts.dir.deletingLastPathComponent().appendingPathComponent("assets/icon.png")) { return i }
-        return NSApp.applicationIconImage ?? NSImage()
-    }()
-}
+// MARK: - Empty states
 
 /// One empty state for every page (AppKit `EmptyStateView`, SwiftUI `EmptyStateContent`): the mark, a neutral title,
 /// a neutral hint, at most one primary — the same sizes and spacing everywhere.
 enum EmptyState {
-    /// the icon canvas; the tile inside it is 80 % (64 pt), as the Dock draws it
+    /// the mark's slot: Peep's square (its breath and shadow reach past it)
     static let markSide: CGFloat = 80
     static let markToTitle: CGFloat = 10
     static let titleToMessage: CGFloat = 4
@@ -567,22 +555,6 @@ enum EmptyState {
     static let titleSize: CGFloat = 15
     static let messageSize: CGFloat = 12
     static let messageWidth: CGFloat = 320
-}
-
-/// AppKit: the mark, `EmptyState.markSide` square.
-final class BrandMarkView: NSImageView {
-    init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: EmptyState.markSide, height: EmptyState.markSide))
-        image = BrandMark.image
-        imageScaling = .scaleProportionallyUpOrDown
-        translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([widthAnchor.constraint(equalToConstant: EmptyState.markSide),
-                                     heightAnchor.constraint(equalToConstant: EmptyState.markSide)])
-        setAccessibilityElement(false)
-        cell?.setAccessibilityElement(false)
-    }
-    required init?(coder: NSCoder) { fatalError() }
-    override var intrinsicContentSize: NSSize { NSSize(width: EmptyState.markSide, height: EmptyState.markSide) }
 }
 
 /// SwiftUI: the one empty state — the mark, a title, a hint, then `actions` (at most one primary).
@@ -593,7 +565,8 @@ struct EmptyStateContent<Actions: View>: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Image(nsImage: BrandMark.image).resizable().interpolation(.high)
+            // the mark: Peep alone, idling (BrandMarkView in AppKit), filling the 80 pt slot
+            MascotImage(clip: .idle, size: EmptyState.markSide)
                 .frame(width: EmptyState.markSide, height: EmptyState.markSide)
                 .accessibilityHidden(true)
                 .padding(.bottom, EmptyState.markToTitle)

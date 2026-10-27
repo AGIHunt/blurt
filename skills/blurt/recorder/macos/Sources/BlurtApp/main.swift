@@ -8,8 +8,8 @@
 // Control: HUD buttons, global hotkeys (defaults ⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off,
 // ⌥⇧S stop; configurable, Hotkeys.swift),
 // stdin lines ("pause" | "resume" | "toggle" | "snap" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
-// Snap mode, the island and notes live in Capture/ (Snap.swift, Island/, NoteBubble.swift); the mascot in
-// Icons/Mascot.swift + MascotArt.swift.
+// Snap mode, the island and notes live in Capture/ (Snap.swift, Island/, NoteBubble.swift); Peep, the mascot, in
+// Icons/Mascot.swift (frames from Resources/Peep) and the menu-bar glyph in App/MenuGlyph.swift.
 // stdout: one JSON object per line: ready, selected, countdown, recording, paused, resumed, marker, level?, stopped,
 // cancelled, error.
 

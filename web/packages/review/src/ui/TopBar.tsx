@@ -1,18 +1,20 @@
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
+import peep from "../assets/peep-vector.svg?raw";
 
+/** Peep, the brand character: the shaded vector drawing (assets/brand/import_peep.py), no tile — inline, so the dark
+ *  theme can give the beak its lighter top (review.css), as the dark drawing has it. */
 export function Logo({ className }: { className?: string }) {
-  return (
-    <img
-      className={className}
-      src="icon.png"
-      alt=""
-      onError={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = "hidden")}
-    />
-  );
+  return <span className={cx("peep-logo", className)} role="presentation" dangerouslySetInnerHTML={{ __html: peep }} />;
 }
 
-/** organizing: the hatching egg (the one place the egg stays: brand and motion, K8) */
+/** Peep thinking (its eye looks round): the menu-bar glyph's frames as a mask, in the colour around it. Organising,
+ *  and media still on their way. Reduce Motion: one frame, the eye up. */
+export function Thinking({ className }: { className?: string }) {
+  return <span className={cx("peep-think", className)} aria-hidden="true" />;
+}
+
+/** organizing: Peep thinking (brand and motion only, K8) */
 function Proc() {
   const s = useStore();
   if (s.proc === "hidden") return null;
@@ -29,7 +31,7 @@ function Proc() {
   const title = s.plural(stalled ? "proc.stalled" : "proc.working", n);
   return (
     <span className={cx("proc", stalled ? "stalled" : "ai-working")} id="proc" title={title}>
-      <Icon name="hatch" className="hatching" />
+      <Thinking />
       <span>
         <span className="long">{title}</span>
         {!stalled && (

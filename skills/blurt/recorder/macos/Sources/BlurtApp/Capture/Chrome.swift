@@ -75,7 +75,7 @@ final class BorderView: NSView {
 /// The 3-2-1 before a take (v0.9-userfix: the old one was a grey disc with a red rim and two loose pills under it,
 /// not the island's family). Now a piece of the island over the area about to be recorded: the island's black
 /// (`#000`, radius 24, the window's soft shadow), the number in a thin ring that drains once a second in `rec` — the
-/// recording is committed (system.md §3.1 / §4) — the 4A chick listening beside "Get ready", the keys that pause and
+/// recording is committed (system.md §3.1 / §4) — Peep listening beside "Get ready" (eye wide, swelling), the keys that pause and
 /// finish (white 60 %), and "Start now" as the island's tint chip in mint. A click anywhere on it starts at once, as
 /// before. Restrained: the ring is the one thing that moves — it drains once over the whole countdown, on the number's
 /// own clock (the time left of `total`: at "3" of 3 it is between full and two thirds, at "2" between two thirds and

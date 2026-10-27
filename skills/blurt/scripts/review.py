@@ -144,9 +144,12 @@ def make_handler(scope: dict | Path, done: threading.Event, app_seen: threading.
                 if app_seen is not None:
                     app_seen.set()
                 return self._json(200, {"ok": True})
-            if path in ("/icon.png", "/favicon.ico"):
-                icon = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
-                return self._send(200, icon.read_bytes(), "image/png") if icon.exists() else self._send(404, b"", "text/plain")
+            if path in ("/icon.png", "/favicon.ico", "/favicon.png", "/peep-done.webp", "/peep-done-dark.webp"):
+                # the page's pictures that are not inlined in it (its size budget): Peep's done pose, the favicon
+                name = {"/favicon.ico": "favicon.png"}.get(path, path[1:])
+                icon = Path(__file__).resolve().parent.parent / "assets" / name
+                kind = "image/webp" if name.endswith(".webp") else "image/png"
+                return self._send(200, icon.read_bytes(), kind) if icon.exists() else self._send(404, b"", "text/plain")
             if path == "/api/items":
                 return self._items()
             if sub.startswith("/files/"):

@@ -3,12 +3,17 @@
 // cards' stack, the stills' snap frame, the markers' flag), "+3" with the inbox's tray for a few seconds when new captures
 // land (news, never a standing backlog: the menu bar and the open island keep the count). A standing thing alone is
 // told across the notch, as a live activity is: its glyph on the left, its value on the right (`mark` | `text`). The
-// launch hello (the chick hops in the right ear, then goes), the mic level, a voice waveform, the hatching
-// egg (the mascot: it wobbles while captures are organised, then cracks and the chick pops out — Icons/Mascot.swift),
-// an alert marker, "Sent" with the ok check. Every glyph in the ears is the BlurtIcon line family at one weight —
+// launch hello (Peep turns to you and blinks in the right ear, then goes), the mic level, a voice waveform, Peep
+// thinking while captures are organised (then a peep and a hop when they are sorted), an alert marker, "Sent" with the
+// ok check. Every glyph in the ears is the BlurtIcon line family at one weight —
 // the dogfood found filled SF Symbols (tray.full.fill, rectangle.stack.fill, camera.fill) opposite dictation's line
 // keyboard in the same 20 pt strip, the filled tray a blob at 11 pt. No implicit animations: a new state replaces the
 // old at once, never drawn over it.
+//
+// Peep (the brand character, Icons/Mascot.swift; the dark-notch frames) is in the ear for what Blurt is doing: it talks
+// while you dictate (its beak with your voice, the level beside it), listens to a voice note (the wave beside it),
+// thinks while a take is transcribed or captures are organised (with the count), peeps and hops when something is done
+// (sent, saved, sorted), shakes its head when sorting failed, and says hello at launch.
 import AppKit
 import BlurtCore
 import QuartzCore
@@ -56,17 +61,22 @@ final class EarSlot {
         case cards(Int)
         /// a count's glyph alone (60 %): the leading half of a thing told across the notch (its value in the other ear)
         case mark(BlurtIcon)
-        /// the launch hello: the chick (no sound arcs) hops in the ear, then goes (Island.hello)
+        /// the launch hello: Peep turns to you and blinks in the ear, then goes (Island.hello)
         case hello
+        /// Peep alone in a state (dictation's working ears: thinking; a done moment: done)
+        case peep(PeepState)
+        /// Peep and a live level beside it: talking + dictation's mirrored level (the beak with the voice), or
+        /// listening + a voice note's wave
+        case peepLevel(PeepState, [Float])
         case level(Float)
         case wave([Float])
         /// `attn`: in the attention colour (dictation's clock counting down to the 5-minute limit)
         case text(String, mono: Bool, attn: Bool = false)
-        case egg(n: Int)
-        case cracking(since: CFTimeInterval, ok: Bool, n: Int)
+        /// captures being organised: Peep thinking (its eye looks round) and how many
+        case thinking(n: Int)
+        /// the organising ended: a peep and a hop, then "+n" (ok), or a head shake and a droop (it failed)
+        case sorted(since: CFTimeInterval, ok: Bool, n: Int)
         case alert
-        /// dictation (Dictation.swift): our keyboard glyph (mint) + a mirrored gradient level — not the voice note's wave
-        case dictation([Float])
         /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand)
         case glyph(BlurtIcon, pulse: Bool)
         /// three dots taking turns: working on it
@@ -85,9 +95,11 @@ final class EarSlot {
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
-                 (.egg, .egg), (.cracking, .cracking), (.alert, .alert), (.dictation, .dictation), (.dots, .dots),
+                 (.thinking, .thinking), (.sorted, .sorted), (.alert, .alert), (.dots, .dots),
                  (.done, .done), (.news, .news), (.hello, .hello), (.finished, .finished): return true
             case (.mark(let a), .mark(let b)): return a == b
+            case (.peep(let a), .peep(let b)): return a == b
+            case (.peepLevel(let a, _), .peepLevel(let b, _)): return a == b
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
             default: return false
@@ -106,8 +118,12 @@ final class EarSlot {
     private let level = CAGradientLayer()
     private let levelMask = CAShapeLayer()
     private let chick = MascotLayer()
-    /// How long the egg takes to crack and the chick to come out (the `hatching` clip).
-    static var hatchSeconds: Double { MascotLibrary.shared.clip(.hatching)?.duration ?? 1.6 }
+    /// The voice level Peep's beak follows while it talks (the newest of the levels the ear was given).
+    private var liveLevel: Float = 0
+    /// How long the done clip (a peep and a hop) takes, before "+n" is all that is left.
+    static var sortedSeconds: Double { MascotLibrary.shared.clip(.done)?.duration ?? 1.4 }
+    /// Peep's square in the ear: its body and beak at rest fill it (a little taller than the 20 pt row: the island
+    /// is black above and below it).
     static let chickSize: CGFloat = 24
     private(set) var content: Content = .none
     private var since = CACurrentMediaTime()
@@ -122,8 +138,8 @@ final class EarSlot {
     static let countGlyphColor = NSColor(white: 1, alpha: 0.6)
     /// The cards' stack is drawn a little heavier than the ears' 1.2: its thin lines read lighter than the numeral.
     static let cardsWeight: CGFloat = 1.45
-    /// The launch hello: the chick's hops, then it goes.
-    static let helloSeconds: Double = 1.2
+    /// The launch hello: Peep turns to you and blinks (the hello clip), then it goes.
+    static var helloSeconds: Double { (MascotLibrary.shared.clip(.hello)?.duration ?? 1.5) + 0.9 }   // and a moment to read "Blurt is ready"
     static let noActions: [String: CAAction] = ["contents": NSNull(), "string": NSNull(), "bounds": NSNull(), "position": NSNull(),
                                                 "hidden": NSNull(), "opacity": NSNull(), "frame": NSNull(), "path": NSNull(),
                                                 "transform": NSNull(), "backgroundColor": NSNull(), "foregroundColor": NSNull(),
@@ -157,11 +173,11 @@ final class EarSlot {
         switch content {
         case .recording(let p, _): return !p && !reduceMotion
         case .wave, .level: return true
-        case .egg: return false            // the mascot runs its own timer
+        case .thinking, .peep: return false          // Peep runs its own timer
         case .hello: return CACurrentMediaTime() - since < EarSlot.helloSeconds + 0.1
-        case .cracking(let s, _, _): return CACurrentMediaTime() - s < EarSlot.hatchSeconds + 0.3
+        case .sorted(let s, _, _): return CACurrentMediaTime() - s < EarSlot.sortedSeconds + 0.3
         case .alert: return CACurrentMediaTime() - pulseAt < 1
-        case .dictation, .dots: return true
+        case .peepLevel, .dots: return true
         case .glyph(_, let p): return p && !reduceMotion
         default: return false
         }
@@ -184,10 +200,9 @@ final class EarSlot {
         dot.borderWidth = 0
         dot.contents = nil
         switch c {
-        case .egg, .cracking, .hello: break
-        default: chick.stop(); chick.isHidden = true; chick.contents = nil
+        case .thinking, .sorted, .hello, .peep, .peepLevel: break
+        default: chick.clear(); chick.isHidden = true; chick.contents = nil; chick.level = nil
         }
-        chick.quiet = c == .hello
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {
             guard let line = TextImage.line(s, font: EarSlot.font, color: color.cgColor, scale: 2) else {
@@ -245,8 +260,25 @@ final class EarSlot {
             x -= 3
         case .hello:
             placeChick()
-            if chick.clip != .happy || !chick.isPlaying { chick.play(.happy) }
+            playChick(.hello)
             x = EarSlot.chickSize - 2
+        case .peep(let st):
+            placeChick()
+            playChick(st)
+            x = EarSlot.chickSize - 2
+        case .peepLevel(let st, let v):
+            placeChick()
+            liveLevel = v.last ?? 0
+            if st == .talking { chick.level = { [weak self] in self?.liveLevel ?? 0 } }
+            playChick(st)
+            x = EarSlot.chickSize + 1
+            if st == .talking {
+                drawMirror(v, from: x)
+                x += 21
+            } else {
+                drawWave(v, from: x)
+                x += 40
+            }
         case .level(let v):
             drawLevel(v)
             x = EarSlot.levelW
@@ -255,27 +287,26 @@ final class EarSlot {
             x = 40
         case .text(let s, _, let attn):
             text(s, color: attn ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.92))
-        case .egg(let n):
+        case .thinking(let n):
             placeChick()
-            if chick.clip != .wobble || !chick.isPlaying { chick.play(.wobble) }
+            playChick(.thinking)
             x = EarSlot.chickSize + 1
             text(Loc.number(n))
-        case .cracking(_, let ok, let n):
+        case .sorted(_, let ok, let n):
             placeChick()
-            chick.opacity = ok ? 1 : 0.5
-            if ok { chick.play(.hatching) } else { chick.show(.wobble) }
-            x = EarSlot.chickSize + 1
-            text(ok ? "+" + Loc.number(n) : "", color: NSColor(white: 1, alpha: 0.95))
-            label.opacity = 0
+            playChick(ok ? .done : .error)
+            if n > 0 {
+                x = EarSlot.chickSize + 1
+                text("+" + Loc.number(n), color: NSColor(white: 1, alpha: 0.95))
+                label.opacity = 0
+            } else {
+                x = EarSlot.chickSize - 2
+            }
         case .alert:
             dot.backgroundColor = BrandColor.Island.attn.cgColor
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
             dot.isHidden = false
             x = 8
-        case .dictation(let v):
-            glyph(.keyboard, 14, color: NSColor(white: 1, alpha: 0.85))
-            drawMirror(v, from: x)
-            x += 21
         case .glyph(let ic, let pulse):
             glyph(ic, 15, color: pulse ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
             x -= 3
@@ -358,12 +389,12 @@ final class EarSlot {
     }
 
     /// The voice note's live waveform.
-    private func drawWave(_ v: [Float]) {
+    private func drawWave(_ v: [Float], from x0: CGFloat = 0) {
         let p = CGMutablePath()
         let n = min(10, v.count)
         for (i, a) in v.suffix(n).enumerated() {
             let hh = max(3, CGFloat(a) * 16)
-            let x = CGFloat(i) * 4 + 1
+            let x = x0 + CGFloat(i) * 4 + 1
             p.move(to: CGPoint(x: x, y: -hh / 2)); p.addLine(to: CGPoint(x: x, y: hh / 2))
         }
         showLevel(p, width: 2)
@@ -414,15 +445,13 @@ final class EarSlot {
             // a shallow breath (1.6 s, never below 80 %: any frame still reads as live red), still when paused or
             // with Reduce Motion
             dot.opacity = paused || reduce ? 1 : Float(0.8 + 0.2 * (0.5 + 0.5 * cos(t * 2 * .pi / 1.6)))
-        case .cracking(let s, let ok, _):
+        case .sorted(let s, let ok, _):
             if reduce || !ok {
-                let k = CGFloat(min(1, (now - s) / 0.6))
-                if !ok { chick.opacity = Float(0.5 * (1 - k)) }
-                label.opacity = Float(k)
+                label.opacity = Float(min(1, (now - s) / 0.6))
                 break
             }
-            // the egg cracks and the chick pops out (the clip), then the count appears beside it
-            let d = EarSlot.hatchSeconds
+            // a peep and a hop (the clip), then the count appears beside it
+            let d = EarSlot.sortedSeconds
             let open = Ease.outCubic(CGFloat(max(0, ((now - s) - d * 0.6) / (d * 0.4))))
             label.opacity = Float(open)
             label.setAffineTransform(CGAffineTransform(scaleX: 0.7 + 0.3 * Ease.outBack(open), y: 0.7 + 0.3 * Ease.outBack(open)))
@@ -433,7 +462,7 @@ final class EarSlot {
         case .glyph(_, let pulse):
             icon.opacity = pulse && !reduce ? Float(0.5 + 0.5 * (0.5 + 0.5 * cos(t * 2 * .pi * 0.9))) : 1
         case .hello:
-            // in for the hops, then away: it fades and slips 6 pt out (Reduce Motion: the still chick, then a fade)
+            // in for the hello, then away: it fades and slips 6 pt out (Reduce Motion: the still Peep, then a fade)
             let k = CGFloat(max(0, min(1, (t - (EarSlot.helloSeconds - 0.3)) / 0.3)))
             chick.opacity = Float(1 - k)
             chick.setAffineTransform(reduce ? .identity : CGAffineTransform(translationX: 6 * Ease.outCubic(k), y: 0))
@@ -441,6 +470,12 @@ final class EarSlot {
             drawDots(t: t)
         default: break
         }
+    }
+
+    /// Plays a clip on Peep unless it already plays it (a loop keeps going; a one-shot plays once and rests).
+    private func playChick(_ st: PeepState) {
+        if st != .talking { chick.level = nil }
+        if chick.clip != st || (st.loops && !chick.isPlaying && !reduceMotion) { chick.play(st) }
     }
 
     private func placeChick() {

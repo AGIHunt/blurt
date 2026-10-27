@@ -14,7 +14,7 @@ changed in *Settings → Shortcuts*. Settings (`⌘,`) lists its panes in a side
 are looking for (`⌘F`), in English or Chinese — "login", "mirror", "快捷键" — and pick a result (or press `↩`) to jump
 to that setting.
 
-**First minute.** Blurt lives in the menu bar (the line chick). The first launch walks you through what dictation
+**First minute.** Blurt lives in the menu bar (Peep, the little round chick). The first launch walks you through what dictation
 needs — the Microphone and Accessibility (Input Monitoring only if your key needs it) — and the speech models; Screen
 Recording is asked for the first time you snap or record. After that, try `Fn` in any text field to dictate and `⌥⇧A`
 to snap. Setting up speech needs the internet once: if the Mac is offline, the models step says so in one sentence
@@ -94,8 +94,8 @@ as you stop. Turn it off in *Settings → General → Show text while I talk*.
 In the menu-bar menu, hold `⌥` to turn *Start Recording* into *Record the Last Area*. The menu is short: capture
 (record, snap, voice note, dictation history), *Open Blurt* and one *Inbox* row with what waits for you, the current
 project, Settings and Quit. The countdown, system audio and what happens after a recording are in *Settings → General*.
-The menu-bar icon is the line chick in monochrome, like the other icons up there: its sound arcs pulse while a voice
-note listens, and it hops when something is done. A `blurt://record` or `blurt://snap` link opened from another app
+The menu-bar icon is Peep in monochrome, like the other icons up there. Its beak moves while you dictate, it listens
+during a voice note, it looks around while Blurt works, and it hops when something is done. A `blurt://record` or `blurt://snap` link opened from another app
 asks at the notch first — one click — unless Blurt itself is in front.
 
 Speech is transcribed on your computer. Nothing leaves it unless you choose a cloud speech service.
@@ -682,7 +682,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
 ——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
-**第一分钟。** 口喷鸡住在菜单栏里（那只线条小鸡）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）、下好语音模型；
+**第一分钟。** 口喷鸡住在菜单栏里（那只圆圆的小鸡 Peep）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）、下好语音模型；
 屏幕录制等你第一次截图或录屏时再开。之后在任意输入框里按 `Fn` 听写，按 `⌥⇧A` 截图。设置语音要联一次网：Mac 没联网（或被代理挡住）时，
 模型这一步只用一句话说明，配一个「重试」（Mac 联着网还是失败，比如被代理挡住，会照实说），联网后会自己再试；在那之前按 `Fn` 会提示
 「听写还没设置好 · 设置…」，而不是听半天。
@@ -710,7 +710,7 @@ the menu-bar menu and *Settings → General* keep saying so until they match. A 
 
 **边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入；截图时说的备注也一样，文字直接出现在备注框里。听写停下后，面板从头显示打进去的文字（最多八行），清单的标题也在，方便按两下发送前看一眼。即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。备注用的语音模型很快，所以每台 Mac 上都这样。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
-菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的线条小鸡，和菜单栏里其他图标一致：语音备注在听时它的声波会跳动，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
+菜单栏菜单里按住 `⌥`，「开始录屏」会变成「录上次的区域」。菜单很短：截图、录屏、语音备注、听写历史，「打开口喷鸡」和一行「待处理」（有几条等你看），当前项目，设置和退出。倒计时、是否录系统声音、录完之后做什么，都在「设置 → 通用」里。菜单栏图标是单色的 Peep，和菜单栏里其他图标一致：听写时它的嘴跟着你说话动，语音备注时它在听，口喷鸡干活时它四处看，有事做完时它会跳一下。从别的 App 打开的 `blurt://record` 或 `blurt://snap` 链接，会先在刘海里问一句、点一下才开始，除非口喷鸡自己就在最前面。
 
 语音在你的电脑上转写。除非你选了云端语音服务，内容不会离开这台电脑。
 

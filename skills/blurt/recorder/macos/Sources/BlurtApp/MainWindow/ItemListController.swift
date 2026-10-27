@@ -186,8 +186,8 @@ final class InlineRename: NSObject, NSTextFieldDelegate {
 
 /// The one empty state (docs/design/system.md §3.5, `EmptyState` metrics, the same as SwiftUI's `EmptyStateContent`).
 /// Three looks, one layout:
-///   • friendly — the brand mark (the app icon: the 4A chick on its tile): first run, inbox zero, nothing here yet, a
-///     first read of your items. Its first button is the view's one primary (BrandButton, ↩) when it moves you on.
+///   • friendly — the brand mark (Peep alone, idling; thinking while a first read of your items runs): first run,
+///     inbox zero, nothing here yet, a first read of your items. Its first button is the view's one primary (BrandButton, ↩) when it moves you on.
 ///   • miss — a quiet symbol (a search or a filter that matched nothing): no brand, and its buttons only undo the
 ///     search or the filter, so they are plain and never take ↩.
 ///   • trouble — a quiet symbol (a scan that failed, a folder that's gone): warnings are never brand; its first button
@@ -285,6 +285,7 @@ final class EmptyStateView: NSView {
         icon.image = showMark ? nil : image ?? symbol.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil) }
         icon.isHidden = icon.image == nil
         mark.isHidden = !showMark
+        mark.state = busy ? .thinking : .idle
         busy ? spinner.startAnimation() : spinner.stopAnimation()     // stopped, it is hidden: it takes no room
         title.stringValue = t
         message.stringValue = m
