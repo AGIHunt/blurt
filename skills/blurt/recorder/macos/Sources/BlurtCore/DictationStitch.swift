@@ -10,7 +10,9 @@
 //  • a seam is a pause, not a sentence end: each piece was transcribed (and polished) as if it were a whole utterance,
 //    so it ended in 。 and the next began with a capital — a full stop at every breath. `seam` takes the piece's
 //    trailing punctuation off after a breath and keeps the speech model's own mark after a long pause (`longPause`,
-//    1.2 s). Mechanical only (docs/design/dictation.md §Rules vs model): no stop words, no list of ordinary words, no
+//    1.2 s) — for the transcript as said (polish off, a fall-back, the speech model's prior). With polish on no pause
+//    leaves a mark: a window's input is the carried clause + the piece with nothing between them (`windowInput`).
+//    Mechanical only (docs/design/dictation.md §Rules vs model): no stop words, no list of ordinary words, no
 //    correction markers — whether a sentence is complete, a capital belongs to a name, or a piece corrects the one
 //    before is the polish model's call, made over a window that spans the seam (`commitSplit` keeps the last,
 //    unfinished clause of a window to be polished again with the next piece).
@@ -245,6 +247,15 @@ extension DictationStitch {
         guard !wi.isEmpty, wi.count == wo.count, wi.lowercased() == wo.lowercased(), wo.dropFirst() == wi.dropFirst() else { return output }
         return String(wi) + o.dropFirst(wo.count)
     }
+
+    /// A polish window's input: the clause carried from the window before + the new piece (its ending taken off), with
+    /// no mark between them whatever the pause was. A pause is not punctuation: after a long one (≥ `longPause`) the
+    /// carried clause used to go in with the mark the window before had ended it with — a mark polish wrote without
+    /// seeing what came next, nearly always 。 — and the model kept a mark there (turning 。 into ，): on real
+    /// spontaneous speech 5 of 15 mid-clause thinking pauses ≥ 1.2 s at a cut got one
+    /// (「报过绘画班但是，我报的是」), none without it. Whether the clause ended is the model's call from the words on
+    /// both sides (docs/design/dictation.md §Thinking pauses on real speech).
+    public static func windowInput(carry: String, piece: String) -> String { join(carry, piece) }
 
     /// The text stops inside a sentence (no sentence end, no line break at its end).
     public static func midSentence(_ text: String) -> Bool {

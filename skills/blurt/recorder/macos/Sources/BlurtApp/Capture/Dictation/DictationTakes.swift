@@ -463,6 +463,7 @@ extension Dictation {
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
             entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
+            if keep { entry.pieces = r.pieces.compactMap(DictationPieceRecord.init(json:)) }
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }

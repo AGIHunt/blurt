@@ -773,3 +773,56 @@ class ServeWhileLoading(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FormattingAndContext(unittest.TestCase):
+    """v1.0.2, from the user's real takes: numbers and spelled-out letters written as a writer would (same value),
+    and the text before the cursor shown as the turn before — inline, the model rewrote it instead of the dictation."""
+
+    def test_spelled_letters_count_as_the_word(self):
+        self.assertEqual(polish.units("直接用 C L I"), ["直", "接", "用", "cli"])
+        self.assertIsNone(polish.guard("直接用 C L I。", "直接用 CLI。")["reason"])
+        self.assertIsNone(polish.guard("我到 H T M L 里面去 review", "我到 HTML 里面去 review。")["reason"])
+
+    def test_digits_with_the_same_value_stay_and_another_value_goes_back(self):
+        for raw, out in [("预算大概是一点二万，或者再多一点", "预算大概是 1.2 万，或者再多一点。"),
+                         ("过去四十八小时的服务", "过去 48 小时的服务。"), ("非拟物三D的版本", "非拟物 3D 的版本。"),
+                         ("开源神器五点六K Star", "开源神器 5.6K Star。"), ("有一万多的阅读", "有 1 万多的阅读。")]:
+            self.assertEqual(polish.repair(raw, out), (out, []), raw)
+        self.assertEqual(polish.repair("预算大概是一点二万", "预算大概是 1.5 万。")[0], "预算大概是一点二万。")
+        self.assertTrue(polish.same_number("一点二万", "1.2万"))
+        self.assertFalse(polish.same_number("一点二万", "1.3万"))
+
+    def test_the_eval_counts_a_number_kept_in_digits(self):
+        self.assertEqual(polish.in_digits("一点二万，1.2 万，百分之四十五，二点三点一，一万二"), "12000,12000,45%,2.3.1,一万二")
+        c = {"input": "x", "reference": "x", "keep": ["一点二万", "两百毫秒"]}
+        self.assertTrue(polish.score(c, "大概 1.2 万，200 毫秒")["kept"])
+        self.assertFalse(polish.score(c, "大概一万二，200 毫秒")["kept"])
+
+    def test_the_prompt_asks_for_digits_and_joined_letters(self):
+        self.assertIn("48 小时", polish.SYSTEM)
+        self.assertIn("C L I → CLI", polish.SYSTEM)
+        self.assertNotIn("三十 stays 三十", polish.SYSTEM)
+
+    def test_the_text_before_the_cursor_is_the_turn_before(self):
+        ctx = {"before": "我们下午开会讨论一下这个方案。", "after": "", "app": "Lark"}
+        m = polish.messages("空中云汇", [], ctx)
+        self.assertEqual(m[-3:-1], [{"role": "user", "content": "我们下午开会讨论一下这个方案。"},
+                                    {"role": "assistant", "content": "我们下午开会讨论一下这个方案。"}])
+        self.assertEqual(m[-1]["content"], "空中云汇")               # no inline context line
+        m = polish.messages("空中云汇", [], {**ctx, "after": "谢谢。"})
+        self.assertIn("Near the cursor: ▮ 谢谢。", m[-1]["content"])
+        self.assertNotIn("开会", m[-1]["content"])
+        both = polish.messages("新的一句", [], {**ctx, "dictated": "刚才说的"})
+        self.assertEqual(both[-3]["content"], "我们下午开会讨论一下这个方案。 刚才说的")
+
+    def test_a_polish_that_followed_the_context_is_tried_once_without_it(self):
+        def reply(_text):
+            reply.n += 1
+            return "会议改到明天下午三点，大家记得参加。" if reply.n == 1 else "空中云汇。"   # it wrote on from the context
+        reply.n = 0
+        e = FakeEngine(reply)
+        r = e.polish("空中云汇", "fake", 3, [], {"before": "我们下午开会讨论一下这个方案。"})
+        self.assertEqual((r["text"], r["fell_back"], r.get("retried")), ("空中云汇。", False, "grew"))
+        self.assertEqual(len(e.asked), 2)
+        self.assertEqual(e.asked[1][1][-1]["content"], "空中云汇")

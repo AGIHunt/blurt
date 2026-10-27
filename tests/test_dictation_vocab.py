@@ -191,9 +191,11 @@ class Prompt(unittest.TestCase):
         self.assertEqual(polish.context_text(None), "")
 
     def test_fixed_prefix_is_the_same_with_or_without_words(self):
-        a = polish.messages("x")[:-1]
-        b = polish.messages("x", V.normalize(["Claude"]), {"before": "y"})[:-1]
-        self.assertEqual(a, b)          # the prompt cache covers both
+        n = 1 + 2 * len(polish.EXAMPLES)     # the rules and the examples: the cached prefix
+        a = polish.messages("x")
+        b = polish.messages("x", V.normalize(["Claude"]), {"before": "y"})
+        self.assertEqual(a[:n], b[:n])          # the prompt cache covers both
+        self.assertEqual(b[n:-1], [{"role": "user", "content": "y"}, {"role": "assistant", "content": "y"}])  # the text before the cursor: the turn before
 
     def test_only_what_the_dictation_may_need_goes_to_polish(self):
         """Polish lists only the relevant words, and a title alone is no "Near the cursor" line: with them the model
@@ -204,7 +206,8 @@ class Prompt(unittest.TestCase):
         self.assertIn("GitHub", [t["term"] for t in V.relevant(TERMS, "提交一下", "GitHub — pull requests")])
         self.assertEqual(polish.user_message("把这个，不对，这两个拿到那一边去", [], {"title": "微信", "app": "WeChat"}),
                          "把这个，不对，这两个拿到那一边去")
-        self.assertIn("Near the cursor: 前文 ▮", polish.user_message("后文", [], {"before": "前文", "title": "微信"}))
+        self.assertEqual(polish.user_message("后文", [], {"before": "前文。", "title": "微信"}), "后文")   # the turn before (v1.0.2)
+        self.assertIn("Near the cursor: ▮ 后面", polish.user_message("后文", [], {"before": "前文", "after": "后面"}))
 
     def test_english_dictation_says_its_language(self):
         """With a word list, Gemma translated English dictations into Chinese: an English one is labelled English.

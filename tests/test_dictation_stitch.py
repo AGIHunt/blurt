@@ -36,6 +36,8 @@ def run(r: dict):
         return S.mid_sentence(r["text"])
     if fn == "keepCase":
         return S.keep_case(r["input"], r["output"])
+    if fn == "windowInput":
+        return S.window_input(r["carry"], r["piece"])
     raise AssertionError(fn)
 
 
@@ -104,16 +106,33 @@ def test_a_correction_across_a_pause_is_just_words():
     assert "不对" in r["text"] and not any(q.get("deferred") for q in r["pieces"])
 
 
-def test_a_long_pause_keeps_its_mark_for_the_model():
-    """After a long pause the carried clause goes into the next window with the mark it ended in: the model sees the
-    pause's full stop and both sides, and decides (no stop-word list)."""
+def test_no_pause_puts_a_mark_into_the_window():
+    """The carried clause goes into the next window with no mark, however long the pause: the mark the window before
+    ended it with was polish's own, written without seeing what came next, and kept a mark at a thinking pause
+    (「报过绘画班但是，我报的是」). Whether the sentence ended is the model's call from the words on both sides."""
+    for pause in (0.6, 1.5, 3.0, None):
+        pieces = [{"raw": "我小时候报过绘画班，但是。"}, {"raw": "我报的是一个线上的课。"}]
+        fn, calls = scripted({"我小时候报过绘画班，但是": {"text": "我小时候报过绘画班，但是。"}})
+        S.stream(pieces, [pause, None], fn)
+        assert calls[-1][0] == "但是我报的是一个线上的课。", (pause, calls)
+    # a real sentence end is the model's to write, seeing both sides
     pieces = [{"raw": "我们先开个短会。"}, {"raw": "下午修问题。"}]
-    fn, calls = scripted({"我们先开个短会": {"text": "我们先开个短会。"}})
-    S.stream(pieces, [1.5, None], fn)
-    assert calls[-1][0] == "我们先开个短会。下午修问题。", calls
-    fn, calls = scripted({"我们先开个短会": {"text": "我们先开个短会。"}})
-    S.stream(pieces, [0.6, None], fn)
-    assert calls[-1][0] == "我们先开个短会下午修问题。", calls       # a breath: no mark
+    fn, calls = scripted({"我们先开个短会": {"text": "我们先开个短会。"},
+                          "我们先开个短会下午修问题。": {"text": "我们先开个短会。下午修问题。"}})
+    r = S.stream(pieces, [1.5, None], fn)
+    assert calls[-1][0] == "我们先开个短会下午修问题。", calls
+    assert r["text"] == "我们先开个短会。下午修问题。", r["text"]
+
+
+def test_a_refused_window_after_a_long_pause_keeps_the_heard_mark():
+    """A window that falls back types the transcript as said: after a long pause the seam rule's mark (the speech
+    model's), as without polish."""
+    def refuse(text, ctx):
+        return {"text": text, "fell_back": True, "reason": "copied"}
+    pieces = [{"raw": "我们先开个短会。"}, {"raw": "下午修问题。"}]
+    fn, _ = scripted({"我们先开个短会": {"text": "我们先开个短会。"}, "我们先开个短会下午修问题。": refuse})
+    r = S.stream(pieces, [1.5, None], fn)
+    assert r["text"] == "我们先开个短会。下午修问题。", r["text"]
 
 
 def test_a_window_that_continues_a_sentence_loses_the_models_capital():

@@ -401,7 +401,6 @@ struct SpeechPane: View {
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
     @State private var library = false
-    @State private var advanced = false
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
@@ -419,11 +418,9 @@ struct SpeechPane: View {
         .task { await m.load() }
         .task { await d.load() }
         .sheet(isPresented: $library) { ModelLibrary { library = false } }
-        // a search or a link landing on the library or on a row folded under Advanced: open / unfold it first
+        // a search or a link landing on the library: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
-            guard let id = r?.id else { return }
-            if id == "speech.models" { library = true }
-            if id == "speech.advanced" || SettingsCatalog.entry(id)?.section == "speech.advanced" { advanced = true }
+            if r?.id == "speech.models" { library = true }
         }
     }
 
@@ -745,11 +742,12 @@ struct SpeechPane: View {
         }
     }
 
-    // MARK: Advanced (folded)
+    // MARK: Advanced
 
-    /// Advanced: the one folded section of every pane (a heading that discloses its box), closed until asked for.
+    /// Advanced: the resource limits, the download mirror and the cloud models — shown open, like every other section
+    /// of the pane (folded until v1.0.2).
     @ViewBuilder var advancedSection: some View {
-        SettingsGroup("speech.advanced", footer: advanced ? S("speech.limits.footer") : nil, disclosure: $advanced) {
+        SettingsGroup("speech.advanced", footer: S("speech.limits.footer")) {
             resourceRows
             SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
             let cloud = m.models.filter { !$0.local }

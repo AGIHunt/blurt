@@ -173,6 +173,16 @@ def commit_split(text: str, at_clauses: bool = True) -> tuple[str, str, str]:
     return core[:ce].strip(), core[ce:].strip(), end
 
 
+def window_input(carry: str, piece: str) -> str:
+    """DictationStitch.windowInput: a polish window's input — the clause carried from the window before + the new
+    piece, with no mark between them whatever the pause. After a long pause the carried clause used to go in with the
+    mark the window before ended it with (polish's own, written without seeing what came next: nearly always 。), and
+    the model kept a mark there — 5 of 15 mid-clause thinking pauses ≥ 1.2 s at a cut on real spontaneous speech,
+    none without it. Whether the clause ended is the model's call from the words (docs/design/dictation.md §Thinking
+    pauses on real speech)."""
+    return join(carry, piece)
+
+
 def keep_case(inp: str, out: str) -> str:
     """The output with the case its first word had in the input (polish capitalises a window that continues a
     sentence: "update the docs" → "Update the docs")."""
@@ -212,11 +222,10 @@ def stream(pieces: list[dict], pauses: list[float | None], polish, guard=None, c
         last = idx == n - 1
         core = raw if last else split_trailing(raw)[0]
         g_prev = pauses[idx - 1] if idx > 0 and idx - 1 < len(pauses) else None
-        # the carried clause goes into this window; after a long pause with the mark it ended in (the pause may have
-        # ended a sentence: the model decides, seeing both sides)
-        carry_in = carry + (mark(carry_end, carry) if carry and g_prev is not None and g_prev >= LONG_PAUSE else "")
+        # the carried clause goes into this window with no mark, however long the pause (window_input)
+        carry_in = carry
         carry = carry_end = ""
-        inp = join(carry_in, core)
+        inp = window_input(carry_in, core)
         so = join_all([q["text"] for q in out_pieces[:idx]])
         ctx = dict(context or {})
         if so:

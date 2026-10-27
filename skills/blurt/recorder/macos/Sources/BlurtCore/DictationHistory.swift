@@ -16,6 +16,8 @@
 // Since v0.9: "asr_tags" — per piece, the speech model's language tag and how sure it was (DictationLanguageTag: the
 // tag, p_en / p_<lang> read without the Words, p_en_words with them, the margin to the threshold, redone), so a take
 // typed in the wrong language shows in the history and the Dictation Lab.
+// Since v1.0.2: "pieces" — with the audio only (keep_audio): each streamed piece's cut, pause, transcript and polish
+// window (DictationPieceRecord), so `dictation_lab.py from-history` / `review` replay the take as it ran.
 // Retention (record.dictation.retention_days, default 30) rewrites the file without what is older or deleted, and
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
 // no entry points at that is over an hour old (a take dropped, cancelled, or cut short by a quit or a crash). It runs
@@ -67,6 +69,9 @@ public struct DictationEntry: Identifiable, Hashable {
     public var typedFirst: String?
     /// the speech model's language tag per piece (nil: an older entry, or a model without one)
     public var asrTags: [DictationLanguageTag]?
+    /// each streamed piece — where it was cut, the pause after it, what was heard, what its polish window got and
+    /// committed — kept with the audio only (record.dictation.keep_audio), so the Lab can replay the take as it ran
+    public var pieces: [DictationPieceRecord]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -107,6 +112,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
         if let c = corrected { o["corrected"] = c }
         if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
+        if let p = pieces, !p.isEmpty { o["pieces"] = p.map(\.json) }
         style?.write(into: &o)
         return o
     }
@@ -138,7 +144,47 @@ public struct DictationEntry: Identifiable, Hashable {
         fitted = o["fitted"] as? [String]
         corrected = o["corrected"] as? String
         asrTags = (o["asr_tags"] as? [[String: Any]])?.compactMap(DictationLanguageTag.init(json:))
+        pieces = (o["pieces"] as? [[String: Any]])?.compactMap(DictationPieceRecord.init(json:))
         style = DictationStyleRecord(json: o)
+    }
+}
+
+/// One streamed piece of a kept take (DictationStream.Result.pieces, the keys the Dictation Lab's segments use).
+public struct DictationPieceRecord: Hashable {
+    public var start: Double
+    public var end: Double
+    public var pauseAfter: Double?
+    public var heard: String
+    public var raw: String
+    /// the polish window's input and what it committed (nil: polish off)
+    public var polishIn: String?
+    public var committed: String?
+    public var polished: String?
+    public var fellBack: Bool
+    public var reason: String?
+
+    public init?(json o: [String: Any]) {
+        guard let s = (o["start"] as? NSNumber)?.doubleValue, let e = (o["end"] as? NSNumber)?.doubleValue else { return nil }
+        start = s; end = e
+        pauseAfter = (o["pause_after"] as? NSNumber)?.doubleValue
+        raw = o["raw"] as? String ?? ""
+        heard = o["asr_text"] as? String ?? raw
+        polishIn = o["polish_in"] as? String
+        committed = o["text"] as? String
+        polished = o["polished"] as? String
+        fellBack = o["fell_back"] as? Bool ?? false
+        reason = o["reason"] as? String
+    }
+
+    public var json: [String: Any] {
+        let r = { (x: Double) in (x * 100).rounded() / 100 }
+        var o: [String: Any] = ["start": r(start), "end": r(end), "asr_text": heard, "raw": raw, "fell_back": fellBack]
+        if let p = pauseAfter { o["pause_after"] = r(p) }
+        if let p = polishIn { o["polish_in"] = p }
+        if let c = committed { o["text"] = c }
+        if let p = polished { o["polished"] = p }
+        if let w = reason { o["reason"] = w }
+        return o
     }
 }
 

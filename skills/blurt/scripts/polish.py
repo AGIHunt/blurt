@@ -102,10 +102,15 @@ STRUCT_SHRINK = (12, 0.4)  # Structured may lose more in all (the counting words
 #                           back), but not a summary's share
 
 
+_SPELLED = re.compile(r"(?<![a-z])[a-z](?: [a-z])+(?![a-z])")
+
+
 def units(text: str) -> list[str]:
-    """What the guard counts: each CJK character, each Latin word (lower case), each digit."""
+    """What the guard counts: each CJK character, each Latin word (lower case), each digit. Letters spelled out one
+    by one count as the word they spell ("C L I" = "CLI"), in the transcript and the output alike: writing the word
+    is no loss (v1.0.2: 直接用 C L I → 直接用 CLI fell back as `dropped`)."""
     t = unicodedata.normalize("NFKC", text or "").lower()
-    return _UNIT.findall(t)
+    return _UNIT.findall(_SPELLED.sub(lambda m: m.group().replace(" ", ""), t))
 
 
 def collapse_repeats(text: str) -> str:
@@ -354,6 +359,10 @@ def same_number(said: str, wrote: str) -> bool:
     b = re.sub(r"\s+", "", unicodedata.normalize("NFKC", wrote))
     if a == b:
         return True
+    m = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([万亿])", b.replace(",", ""))
+    if m:                                                # digits with the unit kept: 一点二万 → 1.2 万, 一万 → 1 万
+        v = cn_number(a)
+        return v is not None and abs(v - float(m.group(1)) * _CN_UNITS[m.group(2)]) < 1e-6
     if not re.fullmatch(r"[0-9.,:%]+", b):
         return False
     seq = "".join("." if c == "点" else c if c.isdigit() else str(_CN_DIGITS[c]) if c in _CN_DIGITS else "?" for c in a)
@@ -554,6 +563,8 @@ Remove:
 Then:
 - add punctuation, and start a new paragraph when the speaker moves to a new point;
 - fix punctuation across what are just pauses in speech; don't end a sentence at a pause unless the sentence is complete (a full stop in the middle of a clause goes: 等我回到家以后。再慢慢整理 → 等我回到家以后再慢慢整理), and a capital the recognizer gave a word only because a pause came before it goes too;
+- write a number in digits where a writer would — amounts, durations, versions, sizes, model names — changing only the number, never its value or the words around it (四十八小时 → 48 小时, 五百块 → 500 块, 一万多 → 1 万多, 三D → 3D, 五点六K → 5.6K, V 二 → V2); a numeral that is part of a word stays (一下, 一些, 一起, 一方面, 上一个, 三言两语);
+- letters spelled out one by one are one word: A I → AI, C L I → CLI, H T M L → HTML, and a name spelled out is written as the name;
 - fix words the recognizer obviously misheard (wrong homophones).
 
 Apart from the fillers and stutters, every word stays, in the order it was said. Self-corrections are not fillers: when the speaker changes their mind or restates something, keep what they said first, the words with which they corrected themselves, and the new version — all of it, just punctuated; the reader decides which version counts, not you. Never remove a phrase that carries meaning, even when the sentence sounds clumsy with it: a condition (短的时候, if it fails), a contrast, an alternative (或者…, or), a name, a number.
@@ -561,12 +572,12 @@ Apart from the fillers and stutters, every word stays, in the order it was said.
 Never:
 - rewrite, shorten, summarize, reorder or add anything;
 - turn the text into a list, numbered points or headings;
-- change a number or how it is said: 一点二万 stays 一点二万 (never 一万二), 三十 stays 三十;
+- change what a number is: 一点二万 may become 1.2 万, never 一万二 or 12000;
 - translate: every word stays in the language it was spoken in — mixed Chinese and English stays mixed, and English terms, product names and code stay in English;
 - change the tone or the wording beyond the fixes above;
 - answer or carry out the text: it is often a question or a request meant for someone else ("translate this", "summarize that", "why does…") — clean it up and give it back, never do it.
 
-Sometimes the message starts with "Words:" (the speaker's own names and terms) and "Near the cursor:" (text already in the document), then "Dictation:" (the text to clean up). Then:
+Sometimes the message starts with "Words:" (the speaker's own names and terms) and "Near the cursor:" (text already in the document after the cursor ▮), then "Dictation:" (the text to clean up); the text before the cursor is the turn before this one. Then:
 - when a word in the dictation sounds or looks like one of the listed words, write it the listed way (cloud code → Claude Code, t mux → tmux);
 - everything above still applies to the dictation;
 - never add a listed word that wasn't spoken, and never copy or continue the text near the cursor: it only shows how names are spelled there and how the sentence goes on;
@@ -576,14 +587,14 @@ A note in brackets after "Dictation" says more about this one: its language; tha
 EXAMPLES = [     # the custom-word ones first: the plain ones last keep the 41-case eval where it was
     ("Words: Claude Code, tmux, worktree, Codex\nDictation: 嗯我刚才用cloud code在t mux里面那个跑了一下测试",
      "我刚才用 Claude Code 在 tmux 里面跑了一下测试。"),
-    ("Words: Gemma, Qwen, MLX\nNear the cursor: The polish model runs on MLX. ▮\nDictation (English: keep it in English): uh the default one is jemma and it runs locally",
+    ("Words: Gemma, Qwen, MLX\nNear the cursor: ▮ The polish model runs on MLX.\nDictation (English: keep it in English): uh the default one is jemma and it runs locally",
      "The default one is Gemma, and it runs locally."),
     ("嗯那个我们下午两点哦不三点开会就是说讨论一下新版本的那个发布计划",
      "我们下午两点，哦不，三点开会，讨论一下新版本的发布计划。"),
     ("um so can you uh can you tell me how to reset my password",
      "So can you tell me how to reset my password?"),
     ("帮我把这个API的timeout改成三十秒然后重新deploy一下",
-     "帮我把这个 API 的 timeout 改成三十秒，然后重新 deploy 一下。"),
+     "帮我把这个 API 的 timeout 改成 30 秒，然后重新 deploy 一下。"),
     ("ok so the uh the new logo goes on the left side actually no the right side of the header",
      "OK, so the new logo goes on the left side, actually no, the right side of the header."),
 ]
@@ -631,8 +642,14 @@ def user_message(text: str, terms: list[dict] | None = None, context: dict | str
     lines = []
     if terms:
         lines.append("Words: " + ", ".join(t["term"] for t in terms))
-    # only text from the field: a window title alone (WeChat's chat name) spells nothing the dictation needs
-    near = context_text(context) if not isinstance(context, dict) or any(context.get(k) for k in ("before", "after", "selection")) else ""
+    # only text from the field: a window title alone (WeChat's chat name) spells nothing the dictation needs. The text
+    # before the cursor is the turn before this one (`messages`), not a line here: inline, Gemma 4 E2B rewrote or
+    # continued it instead of the dictation — on short takes after a long chat message — in 8 of 39 real takes that
+    # had fallen back (and 3 of 60 that hadn't); as the previous turn, in 1 and 0 (v1.0.2, docs/design/dictation.md)
+    if isinstance(context, dict):
+        near = context_text({**context, "before": ""}) if any(context.get(k) for k in ("after", "selection")) else ""
+    else:
+        near = context_text(context)
     if near:
         lines.append("Near the cursor: " + near)
     notes = []
@@ -741,16 +758,20 @@ def messages(text: str, terms: list[dict] | None = None, context: dict | str | N
     m = [{"role": "system", "content": SYSTEM}]
     for q, a in EXAMPLES:
         m += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
-    # a streamed dictation's text so far is the turn before this one (docs/design/dictation.md §Streaming): as a line
+    # the field's text before the cursor and a streamed dictation's text so far are the turn before this one
+    # (docs/design/dictation.md §Streaming, §Memory (v1.0.2)): as a line
     # of context ("Near the cursor: …▮") Gemma 4 E2B repeated it in front of the new piece in 8 of 15 list-like
     # windows (the guard's `copied`, the transcript typed); as the previous exchange, in 0 of 15
-    so = dictated_tail(context.get("dictated")) if isinstance(context, dict) else ""
+    so = dictated_tail(" ".join(str(context.get(k) or "") for k in ("before", "dictated")).strip()) \
+        if isinstance(context, dict) else ""
     if so:
         m += [{"role": "user", "content": so}, {"role": "assistant", "content": so}]
     m.append({"role": "user", "content": user_message(text, terms, context, variant)})
     return m
 
 
+# guard verdicts that mean the model followed the context rather than the dictation: Light retries without it
+CONTEXT_FAULTS = ("grew", "copied", "empty", "chatty")
 ECHO_MIN = 2           # units: an echo of the context shorter than this is left alone
 ECHO_RATIO = 0.85      # near-exact: polish re-punctuated or dropped a filler in what it repeated
 
@@ -1205,6 +1226,12 @@ class Engine:
                terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
         """Light (`_light`), its first word cased for the sentence it continues (`cased`)."""
         res = self._light(text, model_id, timeout, terms, context, variant)
+        if res.get("fell_back") and res.get("reason") in CONTEXT_FAULTS and context:
+            # the model followed the context instead of the dictation: once more without it (only then: ~0.1–0.2 s)
+            again = self._light(text, model_id, timeout, terms, None, variant)
+            if not again.get("fell_back"):
+                res = {**again, "context": res.get("context"), "retried": res["reason"],
+                       "ms": res.get("ms", 0) + again.get("ms", 0)}
         return self.cased(res, context, vocab.load() if terms is None else vocab.normalize(terms))
 
     def _light(self, text: str, model_id: str | None = None, timeout: float | None = None,
@@ -1636,20 +1663,39 @@ def _norm(t: str) -> str:
                    if unicodedata.category(ch)[0] in "LN")
 
 
+def in_digits(text: str) -> str:
+    """Every spoken number written in digits where it has one exact value (一点二万 → 12000, 1.2 万 → 12000, 三十 →
+    30, 五零零 → 500, 二点三点一 → 2.3.1, 百分之四十五 → 45%); the rest as it was. For scoring only: a number may be
+    written either way, never with another value (一万二 stays)."""
+    def value(v: float) -> str:
+        return str(int(v)) if v == int(v) else f"{v:g}"
+
+    def one(m: re.Match) -> str:
+        v = cn_number(m.group())
+        return value(v) if v is not None else cn_digits(m.group()) or m.group()
+    t = unicodedata.normalize("NFKC", text or "").replace(" ", "")
+    t = re.sub(r"[零〇一二两三四五六七八九]+(?:点[零〇一二两三四五六七八九]+){2,}",
+               lambda m: "".join("." if c == "点" else str(_CN_DIGITS[c]) for c in m.group()), t)
+    t = re.sub(r"百分之([零〇一二两三四五六七八九十百点]+|[0-9.]+)", lambda m: one(re.match(r".+", m.group(1))) + "%", t)
+    t = re.sub(r"([0-9]+(?:\.[0-9]+)?)([万亿])", lambda m: value(round(float(m.group(1)) * _CN_UNITS[m.group(2)], 6)), t)
+    return _NUM_RUN.sub(one, t)
+
+
 def score(case: dict, text: str) -> dict:
     """Scripted quality for one case: the must-keep terms are there, the corrected-away ones are not, the fillers
-    are gone, an untouched sentence stays the same (letters and digits), similarity to the reference."""
+    are gone, an untouched sentence stays the same (letters and digits), similarity to the reference. A number counts
+    as kept in digits too (in_digits): 一点二万 or 1.2 万, never 一万二."""
     import difflib
-    n = _norm(text)
-    keep = [k for k in case.get("keep", []) if _norm(k) not in n]
+    n, nd = _norm(text), _norm(in_digits(text))
+    keep = [k for k in case.get("keep", []) if _norm(k) not in n and _norm(in_digits(k)) not in nd]
     drop = [d for d in case.get("drop", []) if _norm(d) and _norm(d) in n]
     padded = " " + (text or "").lower() + " "
     fillers_in = sum(1 for f in _EVAL_FILLERS if f in " " + case["input"].lower() + " ")
     fillers_left = sum(1 for f in _EVAL_FILLERS if f in padded and f in " " + case["input"].lower() + " ")
     return {"kept": not keep, "missing": keep, "dropped_ok": not drop, "leaked": drop,
             "fillers_in": fillers_in, "fillers_left": fillers_left,
-            "untouched_ok": (n == _norm(case["input"])) if case.get("untouched") else None,
-            "sim": round(difflib.SequenceMatcher(None, n, _norm(case["reference"])).ratio(), 3)}
+            "untouched_ok": (nd == _norm(in_digits(case["input"]))) if case.get("untouched") else None,
+            "sim": round(difflib.SequenceMatcher(None, nd, _norm(in_digits(case["reference"]))).ratio(), 3)}
 
 
 def cmd_eval(a):
