@@ -310,7 +310,7 @@ final class Island: NSObject, IslandHosting {
     /// failed). `nil` ends it.
     func testPeepEars(_ state: PeepState?, seconds: Double) {
         testPeep = state.map { ($0, CACurrentMediaTime(), CACurrentMediaTime() + seconds) }
-        if state == .hello { testPeep = nil; hello() }
+        if state == .hello { testPeep = nil; toastQ.dismissCurrent(); hello() }
         emit(["event": "island_test_peep", "state": state?.rawValue ?? NSNull()])
         refresh()
     }

@@ -256,6 +256,9 @@ final class MascotLayer: CALayer {
 
     func stop() { MascotDriver.shared.remove(self); done = nil }
 
+    /// Stops and forgets the clip: the next play of any clip, the same one too, starts it afresh.
+    func clear() { stop(); clip = nil; shownIndex = -1; art.contents = nil }
+
     private func showStill(_ c: MascotClip) {
         let lib = PeepSprites.shared
         guard let k = lib.clip(c, set: lib.set(dark: dark, clip: c)) else { return }

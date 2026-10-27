@@ -201,7 +201,7 @@ final class EarSlot {
         dot.contents = nil
         switch c {
         case .thinking, .sorted, .hello, .peep, .peepLevel: break
-        default: chick.stop(); chick.isHidden = true; chick.contents = nil; chick.level = nil
+        default: chick.clear(); chick.isHidden = true; chick.contents = nil; chick.level = nil
         }
         var x: CGFloat = 0
         func text(_ s: String, color: NSColor = NSColor(white: 1, alpha: 0.92)) {

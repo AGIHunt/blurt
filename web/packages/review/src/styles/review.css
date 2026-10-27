@@ -48,8 +48,18 @@ body {
   /* Peep (the vector drawing, no tile): its body and beak fill the 28 px box's width */
   width: 32px;
   height: 28px;
+}
+.peep-logo {
   display: block;
-  object-fit: contain;
+}
+.peep-logo svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* on dark the slate beak keeps a lighter top so it parts from the background (the dark drawing's one change) */
+[data-theme="dark"] .peep-logo stop[stop-color="#33433F"] {
+  stop-color: #3a4d4b;
 }
 .brand small {
   color: var(--mute);
@@ -2111,7 +2121,6 @@ button.chip:hover {
 .done.show .peep-done {
   width: 100px;
   height: 88px;
-  object-fit: contain;
   transform-origin: 50% 100%;
   animation: peep-hop 0.9s cubic-bezier(0.3, 0.7, 0.4, 1) 0.25s both;
 }

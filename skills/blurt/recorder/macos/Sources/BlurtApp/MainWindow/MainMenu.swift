@@ -14,7 +14,7 @@ final class AboutPanel: NSObject {
                 .font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor,
                 .paragraphStyle: { let p = NSMutableParagraphStyle(); p.alignment = .center; return p }()]),
         ]
-        if let img = MascotLibrary.shared.image(.idle, points: 64, scale: 4, dark: dark, bleed: 0.02) {
+        if let img = MascotLibrary.shared.image(.idle, points: 64, scale: 4, dark: dark, bleed: 0.1) {
             opts[.applicationIcon] = NSImage(cgImage: img, size: NSSize(width: 64, height: 64))
         }
         NSApp.activate(ignoringOtherApps: true)

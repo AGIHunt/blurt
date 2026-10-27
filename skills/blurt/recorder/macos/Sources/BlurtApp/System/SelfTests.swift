@@ -245,6 +245,44 @@ enum SelfTests {
             out(["frames": PeckCard.renderFrames(to: URL(fileURLWithPath: a.first ?? "/tmp/peck"), dark: a.contains("dark"))])
         case "mascotcheck":             // Peep's clips: every clip in the package, frames that decode (MascotLibrary.check)
             out(["problems": MascotLibrary.shared.check()])
+        case "about":                   // About Blurt (the main menu's item): the standard panel with Peep
+            AboutPanel.shared.orderFrontStandardAboutPanel(nil)
+        case "iconsheet":               // iconsheet DIR: the app icon as Finder and the Dock draw it (Icon Services, light
+                                        // and dark, 16…512 pt) and the notification picture, as PNGs (no other app is shot)
+            let dir = URL(fileURLWithPath: arg.isEmpty ? "/tmp/iconsheet" : arg)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var files: [String] = []
+            let icon = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+            let sizes: [CGFloat] = [16, 32, 64, 128, 256]
+            for (name, look, bg) in [("light", NSAppearance.Name.aqua, NSColor(white: 0.93, alpha: 1)),
+                                     ("dark", .darkAqua, NSColor(white: 0.16, alpha: 1))] {
+                let w = sizes.reduce(0) { $0 + $1 + 24 } + 24, h: CGFloat = 256 + 48
+                let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w) * 2, pixelsHigh: Int(h) * 2, bitsPerSample: 8,
+                                           samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                           bytesPerRow: 0, bitsPerPixel: 0)!
+                rep.size = NSSize(width: w, height: h)
+                NSGraphicsContext.saveGraphicsState()
+                NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+                NSAppearance(named: look)?.performAsCurrentDrawingAppearance {
+                    bg.setFill(); NSRect(x: 0, y: 0, width: w, height: h).fill()
+                    var x: CGFloat = 24
+                    for z in sizes {
+                        icon.draw(in: NSRect(x: x, y: 24, width: z, height: z), from: .zero, operation: .sourceOver, fraction: 1)
+                        x += z + 24
+                    }
+                }
+                NSGraphicsContext.restoreGraphicsState()
+                let f = dir.appendingPathComponent("appicon-\(name).png")
+                if (try? rep.representation(using: .png, properties: [:])?.write(to: f)) != nil { files.append(f.path) }
+            }
+            for dark in [false, true] {
+                if let img = MascotLibrary.shared.image(.done, points: 80, dark: dark, bleed: 0.06),
+                   let d = NSBitmapImageRep(cgImage: img).representation(using: .png, properties: [:]) {
+                    let f = dir.appendingPathComponent("notification-\(dark ? "dark" : "light").png")
+                    if (try? d.write(to: f)) != nil { files.append(f.path) }
+                }
+            }
+            out(["files": files])
         case "menupeep":               // menupeep idle|talking|listening|thinking|done|error|off: the menu-bar Peep held in a state
             switch arg {
             case "done": MenuGlyph.shared.done()

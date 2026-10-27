@@ -867,7 +867,7 @@ struct OnboardingHero: View {
                     // light: a bloom that lightens the field (screen), never a darker smudge on it
                     SpectrumGlow(size: 176, opacity: scheme == .dark ? 0.5 : 0.7)
                         .blendMode(scheme == .dark ? .normal : .screen)
-                    MascotImage(clip: m.step == m.steps - 1 ? .done : .hello, then: .idle, size: 108, backdrop: .light)
+                    MascotImage(clip: m.step == m.steps - 1 ? .done : .hello, then: .idle, size: 108, backdrop: .light)   // the field is light in both appearances: the paper set
                         .frame(width: 108, height: 108)
                 }
                 .frame(width: 140, height: 140)

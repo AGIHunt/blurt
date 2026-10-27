@@ -1,10 +1,11 @@
 import { Icon } from "./Icon";
 import { cx, useStore } from "./ctx";
-import peep from "../assets/peep-vector.svg";
+import peep from "../assets/peep-vector.svg?raw";
 
-/** Peep, the brand character: the shaded vector drawing (assets/brand/import_peep.py), no tile. */
+/** Peep, the brand character: the shaded vector drawing (assets/brand/import_peep.py), no tile — inline, so the dark
+ *  theme can give the beak its lighter top (review.css), as the dark drawing has it. */
 export function Logo({ className }: { className?: string }) {
-  return <img className={className} src={peep} alt="" />;
+  return <span className={cx("peep-logo", className)} role="presentation" dangerouslySetInnerHTML={{ __html: peep }} />;
 }
 
 /** Peep thinking (its eye looks round): the menu-bar glyph's frames as a mask, in the colour around it. Organising,
