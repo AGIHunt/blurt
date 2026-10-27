@@ -424,11 +424,12 @@ def write_review(src: Path, out: dict) -> None:
         old.unlink()
     (REVIEW_ASSETS / "peep-vector.svg").write_text(svg_min((src / "vector/peep-vector.svg").read_text()))
     strip = Image.open(MAC_RES / "glyph-thinking.png")
-    n = strip.width // 36
+    w2, h2 = (2 * v for v in out["glyph"]["box"])     # the @2x cell (44 × 36): the page's CSS keeps its 22:18
+    n = strip.width // w2
     picks = list(range(0, n, 3))
-    out_strip = Image.new("RGBA", (36 * len(picks), 36), (0, 0, 0, 0))
+    out_strip = Image.new("RGBA", (w2 * len(picks), h2), (0, 0, 0, 0))
     for j, i in enumerate(picks):
-        out_strip.paste(strip.crop((i * 36, 0, i * 36 + 36, 36)), (j * 36, 0))
+        out_strip.paste(strip.crop((i * w2, 0, i * w2 + w2, h2)), (j * w2, 0))
     out_strip.save(REVIEW_ASSETS / "peep-thinking.png", optimize=True)
     out["review"] = {"thinking_frames": len(picks), "thinking_fps": 10}
     w += [REVIEW_ASSETS / "peep-vector.svg", REVIEW_ASSETS / "peep-thinking.png"]

@@ -2180,18 +2180,19 @@ button.chip:hover {
   --s: 15px;
   display: inline-block;
   flex: none;
-  width: var(--s);
+  --w: calc(var(--s) * 22 / 18); /* the menu-bar glyph's canvas, 22 × 18 */
+  width: var(--w);
   height: var(--s);
   background: currentColor;
   --peep-strip: url("../assets/peep-thinking.png"); /* once: the page is one file */
-  -webkit-mask: var(--peep-strip) 0 0 / calc(var(--s) * 15) var(--s) no-repeat;
-  mask: var(--peep-strip) 0 0 / calc(var(--s) * 15) var(--s) no-repeat;
+  -webkit-mask: var(--peep-strip) 0 0 / calc(var(--w) * 15) var(--s) no-repeat;
+  mask: var(--peep-strip) 0 0 / calc(var(--w) * 15) var(--s) no-repeat;
   animation: peep-think 1.5s steps(15) infinite;
 }
 @keyframes peep-think {
   to {
-    -webkit-mask-position: calc(var(--s) * -15) 0;
-    mask-position: calc(var(--s) * -15) 0;
+    -webkit-mask-position: calc(var(--w) * -15) 0;
+    mask-position: calc(var(--w) * -15) 0;
   }
 }
 .proc .peep-think {
@@ -2205,8 +2206,8 @@ button.chip:hover {
 @media (prefers-reduced-motion: reduce) {
   .peep-think {
     animation: none;
-    -webkit-mask-position: calc(var(--s) * -3) 0; /* the eye up */
-    mask-position: calc(var(--s) * -3) 0;
+    -webkit-mask-position: calc(var(--w) * -3) 0; /* the eye up */
+    mask-position: calc(var(--w) * -3) 0;
   }
   .done.show .peep-done {
     animation: none;
