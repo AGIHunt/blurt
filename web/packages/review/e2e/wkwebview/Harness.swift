@@ -261,7 +261,8 @@ Task { @MainActor in
     web.appearance = NSAppearance(named: .aqua)
     web.load(URLRequest(url: URL(string: "blurt-app://ui/index.html?session=\(sessionURL.path.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!)")!))
 
-    let loaded = await waitJS("document.querySelector('.qi') && window.blurtReview?.store.host.host === 'macos'", 20)
+    // loaded, in whichever view a fresh profile opens on (the overview when the session has a digest)
+    let loaded = await waitJS("window.blurtReview?.store.loaded && window.blurtReview?.store.host.host === 'macos'", 20)
     report("loads over blurt-app:// with the macos host", loaded)
     if !loaded {
         // say why (CI only shows this log): what items.py answers, and what the page has
