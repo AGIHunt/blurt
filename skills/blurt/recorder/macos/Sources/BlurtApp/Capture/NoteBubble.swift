@@ -225,14 +225,42 @@ final class NoteVoice {
                     return
                 }
                 self.engine = e
-                // the input device changed under a running note (AirPods out of the ear, a headset unplugged): macOS
-                // stops the engine — the note ends with what it has rather than listening to nothing
-                self.configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: e,
-                                                                             queue: .main) { [weak self] _ in
-                    self?.engineLost = true
-                    self?.lost("config_change")
-                }
+                self.observeConfig(e)
                 ready(true)
+            }
+        }
+    }
+
+    /// How many times this take restarted its engine after a configuration change.
+    private var restarts = 0
+
+    /// The engine's configuration changed under a running take, and macOS stopped it. Most often this is the engine
+    /// settling on the device it was switched to (the built-in mic picked while AirPods are the default: the node
+    /// cached the old device's rate, and the first start reconciles it). In that case the same engine is tapped again
+    /// in the format it reports now and restarted, and the take goes on. After two restarts, or when the tap or the
+    /// start fails (the device really went away: AirPods out of the ear, a headset unplugged), the take ends with
+    /// what it has rather than listening to nothing.
+    private func observeConfig(_ e: AVAudioEngine) {
+        configObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: e,
+                                                                queue: .main) { [weak self] _ in
+            guard let self = self, self.running, self.engine === e else { return }
+            guard self.restarts < 2 else { self.engineLost = true; return self.lost("config_change") }
+            self.restarts += 1
+            let n = self.restarts
+            MicEngine.shared.queue.async { [weak self] in
+                guard let self = self else { return }
+                e.inputNode.removeTap(onBus: 0)
+                e.stop()
+                var why = self.tap(e)
+                if why == nil {
+                    do { try e.start() } catch { e.inputNode.removeTap(onBus: 0); why = "engine_start: \((error as NSError).code)" }
+                }
+                let hw = e.inputNode.inputFormat(forBus: 0).sampleRate
+                DispatchQueue.main.async {
+                    emit(["event": "mic_restart", "n": n, "ok": why == nil, "why": why ?? NSNull(), "hw_rate": hw])
+                    guard self.running, self.engine === e else { return }
+                    if why != nil { self.engineLost = true; self.lost("config_change") }
+                }
             }
         }
     }
