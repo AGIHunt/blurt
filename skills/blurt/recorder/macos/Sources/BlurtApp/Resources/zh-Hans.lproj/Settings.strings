@@ -285,7 +285,7 @@
 "settings.kw.dictation.start_sound" = "声音, 提示音, 音效";
 "settings.kw.dictation.mic" = "麦克风, 蓝牙, AirPods, 耳机, 输入设备";
 "settings.kw.dictation.models" = "识别模型, 语音模型, 润色模型, 大模型, ASR, Qwen, Gemma, 下载";
-"settings.kw.speech.auto" = "自动, 推荐, 选择模型";
+"settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "听写模型, 识别模型, 下载, Qwen";
 "settings.kw.speech.polish" = "润色模型, 整理, 标点, Gemma";
 "settings.kw.speech.languages" = "语言, 多语言, 方言";

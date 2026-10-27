@@ -14,10 +14,13 @@
 // view's appearance. The layer's square is Peep at rest (body and beak, a little air); the frames reach past it on
 // every side by the sheet's bleed (the hop, the shake, the contact shadow), on a sublayer that is not clipped.
 //
-// One shared 30 fps timer drives every playing layer and stops when none plays. Each tick puts the clip's frame at
-// that moment into the sublayer's contents (a crop of the decoded sheet: no drawing), so offscreen renders
-// (FrameCapture, `mascotframes`) see the frame the screen does. Reduce Motion: the clip's still frame, no movement; a
-// one-shot's completion still runs. Sheets decode on first use and live in a cache the system may empty.
+// One shared 30 fps timer drives every playing layer and stops when none plays — or when none can be seen: a host
+// that is hidden, in a closed or covered window, or on a sleeping screen pauses its Peep (MascotView), and it goes on
+// when it shows again. The sublayer shows the clip's whole sheet, set once, and each tick moves its contentsRect to
+// the frame of that moment: no picture is made per frame (a crop is a new image, which Core Animation decoded from
+// the WebP again — ~10 ms on the main thread and 7 MB of fresh memory, 30 times a second), and offscreen renders
+// (FrameCapture) see the frame the screen does. Sheets decode on first use, once, and live in a cache the system may
+// empty. Reduce Motion: the clip's still frame, no movement; a one-shot's completion still runs.
 import AppKit
 import BlurtCore
 import ImageIO
@@ -93,15 +96,25 @@ final class PeepSprites {
 
     func clip(_ c: PeepState, set: String = "dark") -> PeepClip? { sets[set]?.clips[c] }
 
-    /// One frame of a clip as a CGImage (`cell` px square, the chick's square centred in it).
+    /// One frame of a clip as a CGImage (`cell` px square, the chick's square centred in it): pictures of a moment
+    /// (notifications, tests). The layer doesn't use it — it moves over the sheet (MascotLayer.redraw).
     func frame(_ c: PeepState, set name: String, index: Int) -> CGImage? {
-        guard let s = sets[name], let clip = s.clips[c], let sheet = sheet("\(name)-\(c.rawValue).webp") else { return nil }
-        let i = max(0, min(clip.frames - 1, index))
-        let r = CGRect(x: CGFloat(i % s.cols) * s.cell, y: CGFloat(i / s.cols) * s.cell, width: s.cell, height: s.cell)
+        guard let r = cell(c, set: name, index: index), let sheet = sheet(c, set: name) else { return nil }
         return sheet.cropping(to: r)
     }
 
-    /// A strip of the package (decoded once; the cache may let it go).
+    /// Where frame `index` of a clip sits in its sheet, px from the top left.
+    func cell(_ c: PeepState, set name: String, index: Int) -> CGRect? {
+        guard let s = sets[name], let clip = s.clips[c] else { return nil }
+        let i = max(0, min(clip.frames - 1, index))
+        return CGRect(x: CGFloat(i % s.cols) * s.cell, y: CGFloat(i / s.cols) * s.cell, width: s.cell, height: s.cell)
+    }
+
+    /// A clip's sheet (all its frames, `cols` to a row).
+    func sheet(_ c: PeepState, set name: String) -> CGImage? { sheet("\(name)-\(c.rawValue).webp") }
+
+    /// A strip of the package (decoded once; the cache may let it go). Core Animation shows ImageIO's decode as it is —
+    /// no copy of its own, which a redrawn bitmap gets (twice the memory) — so the sheet stays the image ImageIO made.
     func sheet(_ file: String) -> CGImage? {
         if let c = cache.object(forKey: file as NSString) { return c }
         guard let d = dir, let src = CGImageSourceCreateWithURL(d.appendingPathComponent(file) as CFURL, nil),
@@ -204,6 +217,9 @@ final class MascotLayer: CALayer {
     private var holdUntil: CFTimeInterval = 0
     private var smoothed: Double = 0
     private var done: (() -> Void)?
+    /// The sheet on the art layer ("dark-idle"): set again only when the clip or the set changes.
+    private var sheetKey: String?
+    private var sheetSize = CGSize.zero
     /// What it sits on (`.auto` = the app's appearance; MascotView passes its own).
     var backdrop: MascotBackdrop = .auto { didSet { if oldValue != backdrop { redraw(force: true) } } }
     /// Set by MascotView from its effective appearance, for `.auto`.
@@ -211,6 +227,9 @@ final class MascotLayer: CALayer {
     var isPlaying: Bool { MascotDriver.shared.has(self) }
     /// Talking with the voice: read every tick (0…1); nil = the clip's own beats.
     var level: (() -> Float)?
+    /// Nobody can see it (its host is hidden, its window closed or covered): a playing clip pauses where it is and goes
+    /// on when this turns false — it still counts as playing.
+    var unseen = false { didSet { if unseen != oldValue { MascotDriver.shared.update() } } }
 
     override init() {
         super.init()
@@ -218,7 +237,7 @@ final class MascotLayer: CALayer {
         actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
         art.contentsGravity = .resize
         art.minificationFilter = .trilinear
-        art.actions = ["contents": NSNull(), "bounds": NSNull(), "position": NSNull()]
+        art.actions = ["contents": NSNull(), "contentsRect": NSNull(), "bounds": NSNull(), "position": NSNull()]
         addSublayer(art)
     }
     override init(layer: Any) { super.init(layer: layer) }
@@ -261,7 +280,7 @@ final class MascotLayer: CALayer {
     func stop() { MascotDriver.shared.remove(self); done = nil }
 
     /// Stops and forgets the clip: the next play of any clip, the same one too, starts it afresh.
-    func clear() { stop(); clip = nil; shownIndex = -1; art.contents = nil }
+    func clear() { stop(); clip = nil; shownIndex = -1; art.contents = nil; sheetKey = nil }
 
     private func showStill(_ c: MascotClip) {
         let lib = PeepSprites.shared
@@ -305,7 +324,7 @@ final class MascotLayer: CALayer {
     }
 
     /// Hidden or cleared by its host: drop the picture too.
-    override var contents: Any? { didSet { if contents == nil { art.contents = nil; shownIndex = -1 } } }
+    override var contents: Any? { didSet { if contents == nil { art.contents = nil; shownIndex = -1; sheetKey = nil } } }
 
     private func show(index: Int) {
         guard index != shownIndex || art.contents == nil else { return }
@@ -313,12 +332,13 @@ final class MascotLayer: CALayer {
         redraw(force: true)
     }
 
-    /// Puts the current frame on the art layer, sized to the layer's square plus the sheet's bleed.
+    /// Puts the current frame on the art layer, sized to the layer's square plus the sheet's bleed: the clip's sheet
+    /// (once per clip) with its contentsRect on the frame.
     private func redraw(force: Bool) {
         guard let c = clip, bounds.width >= 1 else { return }
         let lib = PeepSprites.shared
         let set = lib.set(dark: dark, clip: c)
-        guard let sheet = lib.sets[set] else { return }
+        guard let sheet = lib.sets[set], let cell = lib.cell(c, set: set, index: max(0, shownIndex)) else { return }
         let side = min(bounds.width, bounds.height)
         let b = sheet.bleed
         CATransaction.begin()
@@ -326,33 +346,55 @@ final class MascotLayer: CALayer {
         art.contentsScale = contentsScale
         art.frame = CGRect(x: bounds.midX - side * (0.5 + b), y: bounds.midY - side * (0.5 + b),
                            width: side * (1 + 2 * b), height: side * (1 + 2 * b))
-        art.contents = lib.frame(c, set: set, index: max(0, shownIndex))
+        let key = "\(set)-\(c.rawValue)"
+        if key != sheetKey || art.contents == nil, let img = lib.sheet(c, set: set) {
+            art.contents = img
+            sheetKey = key
+            sheetSize = CGSize(width: img.width, height: img.height)
+        }
+        if sheetSize.width > 0 {
+            // the unit rect counts from the bottom of the picture, or from its top under a flipped view (the island's)
+            let w = sheetSize.width, h = sheetSize.height
+            let y = art.contentsAreFlipped() ? cell.minY : h - cell.maxY
+            art.contentsRect = CGRect(x: cell.minX / w, y: y / h, width: cell.width / w, height: cell.height / h)
+        }
         CATransaction.commit()
     }
 }
 
-/// One timer for every playing mascot, only while one plays (30 fps: the frames' own rate).
+/// One timer for every playing mascot, only while one plays where it can be seen and the screens are awake (30 fps:
+/// the frames' own rate).
 private final class MascotDriver {
     static let shared = MascotDriver()
     private var layers = NSHashTable<MascotLayer>.weakObjects()
     private var timer: Timer?
+    private var asleep = false
+
+    init() {
+        let nc = NSWorkspace.shared.notificationCenter
+        nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.asleep = true; self?.update() }
+        nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.asleep = false; self?.update() }
+    }
 
     func has(_ l: MascotLayer) -> Bool { layers.contains(l) }
-    func add(_ l: MascotLayer) {
-        layers.add(l)
+    func add(_ l: MascotLayer) { layers.add(l); update() }
+    func remove(_ l: MascotLayer) { layers.remove(l); update() }
+
+    /// The timer runs while a playing layer can be seen.
+    func update() {
+        let wanted = !asleep && layers.allObjects.contains { !$0.unseen }
+        if !wanted { timer?.invalidate(); timer = nil; return }
         guard timer == nil else { return }
         let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.fire() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
-    func remove(_ l: MascotLayer) {
-        layers.remove(l)
-        if layers.count == 0 { timer?.invalidate(); timer = nil }
-    }
+
     private func fire() {
         let now = CACurrentMediaTime()
-        for l in layers.allObjects where !l.step(now) { layers.remove(l) }
-        if layers.count == 0 { timer?.invalidate(); timer = nil }
+        for l in layers.allObjects where !l.unseen && !l.step(now) { layers.remove(l) }
+        if PerfFrames.on { PerfFrames.shared.peepStep(CACurrentMediaTime() - now) }
+        update()
     }
 }
 
@@ -390,7 +432,29 @@ final class MascotView: NSView {
     func stop() { mascot.stop() }
     override func viewDidMoveToWindow() {
         if window == nil { mascot.stop() } else { viewDidChangeEffectiveAppearance() }
+        watch(window)
+        seen()
     }
+    override func viewDidHide() { super.viewDidHide(); seen() }
+    override func viewDidUnhide() { super.viewDidUnhide(); seen() }
+
+    /// Peep pauses while nobody can see it: the view hidden, its window closed, ordered out or covered.
+    private var watching: [NSObjectProtocol] = []
+    private func watch(_ w: NSWindow?) {
+        watching.forEach { NotificationCenter.default.removeObserver($0) }
+        watching = []
+        guard let w else { return }
+        for n in [NSWindow.didChangeOcclusionStateNotification, NSWindow.willCloseNotification] {
+            watching.append(NotificationCenter.default.addObserver(forName: n, object: w, queue: .main) { [weak self] note in
+                self?.seen(closing: note.name == NSWindow.willCloseNotification)
+            })
+        }
+    }
+    private func seen(closing: Bool = false) {
+        guard let w = window else { mascot.unseen = true; return }
+        mascot.unseen = closing || isHiddenOrHasHiddenAncestor || !w.occlusionState.contains(.visible)
+    }
+    deinit { watching.forEach { NotificationCenter.default.removeObserver($0) } }
 }
 
 /// The empty states' mark (docs/design/system.md §3.5): Peep alone, idling (a breath and a blink), on whatever the

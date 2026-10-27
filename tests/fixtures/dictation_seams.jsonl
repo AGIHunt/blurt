@@ -30,3 +30,6 @@
 {"fn": "joinPieces", "texts": ["最好在设置页面里也，", "加上一个开关。"], "pauses": [1.5], "want": "最好在设置页面里也，加上一个开关。"}
 {"fn": "joinPieces", "texts": ["First run the tests;", "then ship it."], "pauses": [1.4], "want": "First run the tests; then ship it."}
 {"fn": "joinPieces", "texts": ["我们先开个短会！", "下午修问题。"], "pauses": [1.3], "want": "我们先开个短会！下午修问题。"}
+{"fn": "windowInput", "carry": "我小时候报过绘画班，但是", "piece": "我报的是一个线上的课", "want": "我小时候报过绘画班，但是我报的是一个线上的课"}
+{"fn": "windowInput", "carry": "", "piece": "下午修问题。", "want": "下午修问题。"}
+{"fn": "windowInput", "carry": "we should move the meeting to", "piece": "Thursday afternoon.", "want": "we should move the meeting to Thursday afternoon."}

@@ -20,8 +20,9 @@
 // A cut is a pause, not a sentence end (each piece used to come back as a whole utterance: a full stop at every
 // breath). So a piece's own ending isn't final: its trailing 。/，is taken off before polish, and polish works over a
 // sliding window — the last, unfinished clause of the window before (`carry`) is polished again together with the
-// new piece (after a long pause, ≥ 1.2 s, with the mark it ended in: the model decides whether the sentence ended),
-// and only the text up to the window's last sentence end or comma is committed (DictationStitch.commitSplit). Without
+// new piece, with no mark between them however long the pause (DictationStitch.windowInput: the model decides from
+// the words whether the sentence ended), and only the text up to the window's last sentence end or comma is
+// committed (DictationStitch.commitSplit). Without
 // polish the transcripts are joined with the seam rule (DictationStitch.joinPieces). At key-up the last window is the
 // carried clause + the last piece. Structured then runs one structuring pass over the joined text (`finish(structure:)`).
 // Nothing here reads the words for meaning: no correction markers, no stop words (docs/design/dictation.md §Rules vs
@@ -272,7 +273,7 @@ final class DictationStream {
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
-                                          hint: lock.locked { context }?.hint ?? "",
+                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
                                           audioSeconds: Double(samples.count) / NoteVoice.rate)
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += answer["load_ms"] as? Int ?? 0
@@ -306,19 +307,16 @@ final class DictationStream {
 
     /// One polish window: the carried, unfinished clause + this piece (its own ending taken off unless it is the
     /// last). What the window says up to its last sentence end or comma is committed; the rest is carried to the next
-    /// window. After a long pause the carried clause keeps the mark it ended in: the pause may have ended a sentence,
-    /// and the model decides with both sides in view (no stop-word list does).
+    /// window. No pause puts a mark between them (DictationStitch.windowInput): whether the sentence ended at the pause
+    /// is the model's call from the words on both sides (no stop-word list makes it, and no pause length does).
     private func polish(_ p: Piece) {
         guard !cancelled, !lock.locked({ skipped }) else { return }
         // without polish the transcripts are joined with the seam rule at the end (assemble)
         guard opt.polish, !p.raw.isEmpty else { return }
         let core = p.last ? p.raw : DictationStitch.splitTrailing(p.raw).core
-        var carried = carry
-        if !carry.isEmpty, let g = pause(after: p.index - 1), g >= DictationStitch.longPause {
-            carried += DictationStitch.mark(carryEnd, after: carry)
-        }
+        let carried = carry
         carry = ""; carryPolished = ""; carryEnd = ""
-        let input = DictationStitch.join(carried, core)
+        let input = DictationStitch.windowInput(carry: carried, piece: core)
         var ctx = lock.locked { context }?.payload ?? [:]
         let so = DictationStitch.join(lock.locked { pieces.prefix(p.index).map(\.text) })
         // the dictation's own text so far goes as its own key: polish.py shows it as the turn before this one, so the
@@ -371,7 +369,7 @@ final class DictationStream {
         let samples = Array(audio[t.start..<t.end])
         let issued = CACurrentMediaTime()
         // the text so far as context, as a final piece gets it (names spelled the same way)
-        let (done, gaps, hint) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "") }
+        let (done, gaps, hint, app) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "") }
         let prior = String(DictationStitch.joinPieces(done, pauses: gaps).suffix(200))
         let url = liveWav, vocab = opt.vocab, language = opt.language
         interimSent += 1
@@ -379,7 +377,7 @@ final class DictationStream {
             guard let self = self, !self.cancelled else { return }
             DictationStream.writeWav(samples, to: url)
             let t0 = CACurrentMediaTime()
-            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint)
+            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app)
             let secs = CACurrentMediaTime() - t0
             try? FileManager.default.removeItem(at: url)
             DispatchQueue.main.async { self.interimDone(t, r, seconds: secs, arrived: issued) }
@@ -575,7 +573,8 @@ final class DictationStream {
     private func whole(_ n: Int) -> Result {
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
-                                          hint: lock.locked { context }?.hint ?? "", audioSeconds: DictationStream.seconds(of: wholeWav))
+                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          audioSeconds: DictationStream.seconds(of: wholeWav))
         guard answer["ok"] as? Bool == true else {
             emit(["event": "dictation_asr_failed", "id": id, "code": answer["code"] ?? "error"])
             return failure(DictationASRFailure(code: answer["code"] as? String), segments: n)

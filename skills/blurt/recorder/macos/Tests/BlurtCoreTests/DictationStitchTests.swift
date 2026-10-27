@@ -92,6 +92,16 @@ final class DictationStitchTests: XCTestCase {
         XCTAssertEqual(S.mark("", after: "好的"), "")
     }
 
+    /// With polish on no pause leaves a mark: the carried clause goes into the next window as it is, and the model
+    /// decides from the words whether it ended (a long pause used to add the mark the window before ended in — polish's
+    /// own 。 — and a thinking pause came out as 「但是，我报的是」).
+    func testAWindowGetsNoMarkFromThePause() {
+        XCTAssertEqual(S.windowInput(carry: "我小时候报过绘画班，但是", piece: "我报的是一个线上的课"), "我小时候报过绘画班，但是我报的是一个线上的课")
+        XCTAssertEqual(S.windowInput(carry: "", piece: "下午修问题。"), "下午修问题。")
+        XCTAssertEqual(S.windowInput(carry: "we should move the meeting to", piece: "Thursday afternoon."),
+                       "we should move the meeting to Thursday afternoon.")
+    }
+
     func testTheCaseIsLeftAlone() {
         // no list of ordinary words decides whether a capital is a name's: the words stay as the speech model wrote
         // them (polish, when on, fixes the case seeing the sentence)
@@ -164,6 +174,8 @@ final class DictationStitchTests: XCTestCase {
                 XCTAssertEqual(S.midSentence(r["text"] as! String), r["want"] as? Bool, "\(r)")
             case "keepCase":
                 XCTAssertEqual(S.keepCase(input: r["input"] as! String, output: r["output"] as! String), r["want"] as? String, "\(r)")
+            case "windowInput":
+                XCTAssertEqual(S.windowInput(carry: r["carry"] as! String, piece: r["piece"] as! String), r["want"] as? String, "\(r)")
             default:
                 XCTFail("unknown fn \(fn)")
             }

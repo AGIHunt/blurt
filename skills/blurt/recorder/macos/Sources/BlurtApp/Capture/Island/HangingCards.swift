@@ -546,6 +546,13 @@ final class HangingCards: NSObject {
     // MARK: building a card
 
     /// The cards' opaque surface (a picture shown whole is letterboxed on it; the "+N" tile is made of it).
+    /// A solid rounded surface's shadow follows its outline (set with its size), so Core Animation doesn't find it
+    /// from the pixels of the layer and everything on it on every frame a card moves.
+    static func shadowAlongEdge(_ l: CALayer) {
+        let r = min(l.cornerRadius, l.bounds.width / 2, l.bounds.height / 2)
+        l.shadowPath = CGPath(roundedRect: l.bounds, cornerWidth: r, cornerHeight: r, transform: nil)
+    }
+
     static func surface(dark: Bool) -> NSColor {
         dark ? NSColor(calibratedWhite: 0.2, alpha: 0.98) : NSColor(calibratedWhite: 0.985, alpha: 0.99)
     }
@@ -763,6 +770,7 @@ final class HangingCards: NSObject {
         c.card.shadowColor = NSColor.black.cgColor
         c.card.shadowRadius = 8
         c.card.shadowOffset = CGSize(width: 0, height: 3)
+        HangingCards.shadowAlongEdge(c.card)
         c.face.frame = c.card.bounds
         c.face.cornerRadius = c.card.cornerRadius
         c.face.masksToBounds = true
@@ -1059,6 +1067,7 @@ final class HangingCards: NSObject {
             // quiet way into the overview, never the loudest thing in the row; a second sheet peeks out under it
             let sz = HangingCards.tileSize
             stack.bounds = CGRect(origin: .zero, size: sz)
+            HangingCards.shadowAlongEdge(stack)
             if stack.isHidden != wasHidden || instant { tileX.value = sx; tileX.snap() }
             tileX.target = sx
             stack.position = CGPoint(x: tileX.value, y: stack.position.y)
@@ -1964,6 +1973,7 @@ final class HangingCards: NSObject {
             y += 7 + KeyHint.capH
         }
         tip.bounds = CGRect(x: 0, y: 0, width: w, height: y + 10)
+        HangingCards.shadowAlongEdge(tip)
         emit(["event": "card_tip", "n": c.shot.n, "text": what.text, "play": what.play, "width": Double(w), "hint": hint ?? NSNull(), "keys": keys])
     }
 
@@ -1984,6 +1994,7 @@ final class HangingCards: NSObject {
         let tw = ceil(s.size().width), lead: CGFloat = pickedCopied ? 12 + 5 : 0
         let w = tw + lead + 28
         selPill.bounds = CGRect(x: 0, y: 0, width: w, height: 26)
+        HangingCards.shadowAlongEdge(selPill)
         selCheck.isHidden = !pickedCopied
         selCheck.contents = BlurtIcon.check.cgImage(size: 12, scale: 2, color: HangingCards.cardColor(BrandColor.ok, dark: dark), weight: 1.2)
         selCheck.frame = CGRect(x: 14, y: 7, width: 12, height: 12)

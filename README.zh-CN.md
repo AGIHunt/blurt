@@ -161,14 +161,15 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 
 | 用途 | 模型 | 下载大小 |
 |---|---|---|
-| 听写，32 GB 及以上内存 | Qwen3-ASR 1.7B，8-bit，MLX | 2.5 GB |
-| 听写，16–24 GB | Qwen3-ASR 0.6B，8-bit，MLX | 1.0 GB |
+| 语音识别（听写、语音备注、录屏），32 GB 及以上内存 | Qwen3-ASR 1.7B，8-bit，MLX | 2.5 GB |
+| 语音识别，16–24 GB | Qwen3-ASR 0.6B，8-bit，MLX | 1.0 GB |
 | 润色，16 GB 及以上 | Gemma 4 E2B，4-bit | 3.4 GB |
-| 润色，8 GB | Qwen3 1.7B，4-bit | 0.9 GB |
-| 语音备注；只有 CPU 的机器 | SenseVoice Small | 228 MB |
+| 润色，8 GB | Gemma 3 1B，4-bit | 0.7 GB |
+| 只有 CPU 的机器上的语音备注；日语、韩语、粤语 | SenseVoice Small | 228 MB |
 | 其他语言的录屏 | Whisper large-v3-turbo，MLX | 1.5 GB |
 
-闲置 10 分钟后模型会退出内存。
+说中文和英文时，所有用途共用一个语音识别模型。用的时候，模型在 16–24 GB 的 Mac 上占内存约 2.8 GB，用 1.7B 时约
+4.2 GB（在 M1 Max 上测）。闲置 10 分钟后退出内存，内存紧张时会更早退出。
 
 **支持哪些语言？** 听写测过中文、英文和中英混说。录屏：SenseVoice 支持中、英、日、韩、粤语；Whisper 支持 99 种语言。
 条目用你说的语言写。App 界面有英文和简体中文。

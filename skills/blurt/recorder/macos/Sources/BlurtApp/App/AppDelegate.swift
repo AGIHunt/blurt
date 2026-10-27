@@ -221,6 +221,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         JobStore.shared.start()
         JobNotifier.shared.start()
         Housekeeping.atLaunch()
+        MemoryPressure.shared.start()
         AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) ?? nil }
         listenForReviews()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)

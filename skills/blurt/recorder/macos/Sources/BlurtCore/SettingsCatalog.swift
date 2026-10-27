@@ -245,13 +245,13 @@ public enum SettingsCatalog {
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
             // Speech
-            row("speech.auto", "speech.use", P("speech.auto.title"), detail: P("speech.auto.detail")),
         ]
         for p in speechPurposes {
             e.append(row("speech.\(p)", "speech.jobs", P("speech.purpose.\(p)"), detail: P("speech.purpose.\(p).detail"), generated: true))
         }
         // dictation's two models are two more jobs; "speech.dictation" stays the id links use (speech/dictation)
         e += [
+            row("speech.recognition", "speech.jobs", P("speech.purpose.recognition"), detail: P("speech.purpose.recognition.detail")),
             row("speech.dictation", "speech.jobs", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
             row("speech.polish", "speech.jobs", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
             whole("speech.languages", detail: P("speech.languages.footer")),

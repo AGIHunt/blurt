@@ -58,6 +58,7 @@ extension App {
         case "cancel": d.cancel()
         case "no-field": DictationInsert.testNoField = rest == "on"   // no-field on|off: the test pad's paste found no text field
         case "keep": d.keepText(rest, id: "test")                       // keep TEXT: the island keeps TEXT with Copy
+        case "memory-pressure": DispatchQueue.global().async { MemoryPressure.shared.relieve(critical: rest == "critical") }  // as macOS would
         case "front":               // front NAME: the app in front as the paste check sees it (a slow take's user moved on)
             d.testFront = rest.isEmpty ? "test-pad" : rest
             emit(["event": "dictation_test_front", "front": d.testFront])

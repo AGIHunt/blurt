@@ -22,9 +22,6 @@
 "speech.tier.minimal" = "基础";
 
 /* Automatic choice and the jobs */
-"speech.auto.title" = "自动选择";
-"speech.auto.detail" = "按你的语言，选这台 Mac 能从容运行的最准确的模型。";
-"speech.auto.tag" = "自动";
 "speech.purpose.batch" = "录屏";
 "speech.purpose.batch.detail" = "录完后转写，准确优先。";
 "speech.purpose.live" = "实时字幕";
@@ -140,8 +137,14 @@
 "speech.section.mac" = "这台 Mac";
 "speech.section.jobs" = "正在用的模型";
 "speech.machine.short" = "%1$@，%2$@";
-"speech.auto.detail_mac" = "按这台 Mac（%@）挑选合适的模型。";
 "speech.rec.title_size" = "推荐给这台 Mac · %@";
 "speech.rec.line" = "%1$@将改用 %2$@";
 "speech.rec.help" = "下载这些模型。每个用途在它的模型下载好后自动换用。";
 "speech.manage.count" = "这台 Mac 上有 %@ 个";
+
+"speech.purpose.recognition" = "语音识别";
+"speech.purpose.recognition.detail" = "听写、语音备注、实时字幕和录屏都用这个模型。";
+"speech.auto.choice" = "自动（%@）";
+"speech.lib.use" = "使用";
+"speech.lib.use.help" = "听写、语音备注、实时字幕和录屏都改用这个模型。";
+"speech.auto.footer" = "「自动」按这台 Mac（%@）和你说的语言挑选模型。";

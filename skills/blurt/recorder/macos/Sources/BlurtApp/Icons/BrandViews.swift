@@ -17,10 +17,8 @@ import QuartzCore
 import SwiftUI
 
 /// System "Reduce transparency" (BLURT_REDUCE_TRANSPARENCY=1 forces it, for tests).
-var reduceTransparency: Bool {
-    NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
-        || ProcessInfo.processInfo.environment["BLURT_REDUCE_TRANSPARENCY"] == "1"
-}
+var reduceTransparency: Bool { reduceTransparencyForced || NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency }
+private let reduceTransparencyForced = ProcessInfo.processInfo.environment["BLURT_REDUCE_TRANSPARENCY"] == "1"
 
 extension NSView {
     var isDarkAppearance: Bool { effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }

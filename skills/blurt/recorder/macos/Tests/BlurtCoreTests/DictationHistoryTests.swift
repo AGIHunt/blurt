@@ -35,6 +35,30 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertNil(entry("d-old", "x", 1).asrTags)                 // an older entry has none
     }
 
+    /// v1.0.2: a kept take keeps its streamed pieces (cuts, pauses, each polish window), so the Lab can replay it as
+    /// it ran — through prune as well.
+    func testAKeptTakesPiecesSurviveTheRoundTrip() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        var e = entry("d-p", "飞书会话里面的消息。", Date().timeIntervalSince1970)
+        e.pieces = [["index": 0, "start": 0.0, "end": 1.504, "pause_after": 1.42, "asr_text": "飞书会话。", "raw": "飞书会话。",
+                     "polish_in": "飞书会话", "text": "", "polished": "飞书会话", "fell_back": false, "reason": NSNull()],
+                    ["index": 1, "start": 1.5, "end": 3.0, "pause_after": NSNull(), "asr_text": "里面的消息。", "raw": "里面的消息。",
+                     "polish_in": "飞书会话。里面的消息", "text": "飞书会话里面的消息。", "polished": "飞书会话里面的消息。",
+                     "fell_back": false]].compactMap(DictationPieceRecord.init(json:))
+        h.append(e)
+        XCTAssertEqual(h.prune(days: 30), 0)
+        let back = try XCTUnwrap(h.load().first?.pieces)
+        XCTAssertEqual(back.count, 2)
+        XCTAssertEqual(back[0].end, 1.5, accuracy: 1e-9)
+        XCTAssertEqual(back[0].pauseAfter ?? 0, 1.42, accuracy: 1e-9)
+        XCTAssertNil(back[1].pauseAfter)
+        XCTAssertEqual(back[1].polishIn, "飞书会话。里面的消息")
+        XCTAssertEqual(back[1].committed, "飞书会话里面的消息。")
+        XCTAssertNil(entry("d-old", "x", 1).pieces)                     // only kept takes carry them
+    }
+
     /// v0.9 dogfood: Undo of a delete brought back a row without its recording (Retry and Add to Lab gone). The
     /// recording now waits aside until Undo is unlikely.
     func testADeletedRecordingComesBackWithUndoAndGoesLater() throws {

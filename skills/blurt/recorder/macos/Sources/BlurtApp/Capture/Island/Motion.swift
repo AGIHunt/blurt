@@ -34,10 +34,10 @@ struct Spring {
     mutating func snap() { value = target; velocity = 0 }
 }
 
-/// System "Reduce motion" (BLURT_REDUCE_MOTION=1 forces it, for tests).
-var reduceMotion: Bool {
-    NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || ProcessInfo.processInfo.environment["BLURT_REDUCE_MOTION"] == "1"
-}
+/// System "Reduce motion" (BLURT_REDUCE_MOTION=1 forces it, for tests). Read every frame, several times: the environment
+/// is read once (building it was most of the island's work per frame).
+var reduceMotion: Bool { reduceMotionForced || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
+private let reduceMotionForced = ProcessInfo.processInfo.environment["BLURT_REDUCE_MOTION"] == "1"
 var isDarkMode: Bool { NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua }
 
 enum Ease {
@@ -56,6 +56,8 @@ enum Ease {
 /// Calls `tick(dt)` on the display (up to 120 Hz) while it returns true; then idles at `idleRate` calling `idle()`
 /// (pointer polls), or stops entirely when `idle` is nil. `wake()` restarts the fast loop — only while the view's window
 /// is on screen (macOS 14+: a view's display link doesn't fire for an ordered-out window; it idles meanwhile).
+/// `maxFPS`: a tick may lower the rate while only small things move (the island's ears: 30); `wake()` puts it back to
+/// 120, so whatever woke it springs at the display's rate from its first frame.
 final class MotionDriver: NSObject {
     var tick: ((CGFloat) -> Bool)?
     var idle: (() -> Void)?
@@ -65,11 +67,23 @@ final class MotionDriver: NSObject {
     private var slow: Timer?
     private var last = CACurrentMediaTime()
     private var still = 0
+    var maxFPS: Float = 120 {
+        didSet {
+            guard maxFPS != oldValue, #available(macOS 14.0, *), let l = link as? CADisplayLink else { return }
+            l.preferredFrameRateRange = MotionDriver.range(maxFPS)
+        }
+    }
 
     init(view: NSView) { self.view = view }
 
+    @available(macOS 14.0, *)
+    private static func range(_ fps: Float) -> CAFrameRateRange {
+        CAFrameRateRange(minimum: min(60, fps), maximum: fps, preferred: fps)
+    }
+
     func wake() {
         still = 0
+        maxFPS = 120
         // A view's display link only fires while its window is on screen. One left running when the window was ordered
         // out never fires again, so it never settles into the idle polls — and every later wake() found it "running"
         // and did nothing. (That is how the hanging cards stopped coming back on hover: their poll never ran again.)
@@ -83,7 +97,7 @@ final class MotionDriver: NSObject {
         last = CACurrentMediaTime()
         if #available(macOS 14.0, *) {
             let l = v.displayLink(target: self, selector: #selector(fired))
-            l.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            l.preferredFrameRateRange = MotionDriver.range(maxFPS)
             l.add(to: .main, forMode: .common)
             link = l
         } else {
@@ -95,9 +109,11 @@ final class MotionDriver: NSObject {
 
     @objc private func fired() {
         let now = CACurrentMediaTime()
-        let dt = CGFloat(min(0.05, now - last))
+        let gap = now - last, fps = maxFPS
+        let dt = CGFloat(min(0.05, gap))
         last = now
         let moving = tick?(dt) ?? false
+        if PerfFrames.on, view is IslandView { PerfFrames.shared.tick(gap: gap, work: CACurrentMediaTime() - now, fps: fps) }
         if moving { still = 0 } else {
             still += 1
             if still >= 3 { settle() }
@@ -140,4 +156,32 @@ func renderImage(_ size: CGSize, _ draw: (CGContext) -> Void) -> CGImage? {
     ctx.scaleBy(x: scale, y: scale)
     draw(ctx)
     return ctx.makeImage()
+}
+
+/// BLURT_PERF_FRAMES=1 (scratch measurements): the island's ticks — the gap since the last one, late when over 1.5 frames
+/// at the rate asked for — and Peep's frame steps, said once a second as a `perf_frames` event. Off: nothing is timed.
+final class PerfFrames {
+    static let on = ProcessInfo.processInfo.environment["BLURT_PERF_FRAMES"] == "1"
+    static let shared = PerfFrames()
+    private var ticks = 0, late = 0, work = 0.0, worstGap = 0.0, peep = 0, peepWork = 0.0, peepWorst = 0.0
+    private var since = CACurrentMediaTime()
+
+    func tick(gap: Double, work w: Double, fps: Float) {
+        ticks += 1
+        work += w
+        worstGap = max(worstGap, gap)
+        if gap > 1.5 / Double(fps) && gap < 0.25 { late += 1 }      // (a first tick after a rest is no late frame)
+        flush()
+    }
+    func peepStep(_ w: Double) { peep += 1; peepWork += w; peepWorst = max(peepWorst, w); flush() }
+
+    private func flush() {
+        let now = CACurrentMediaTime()
+        guard now - since >= 1 else { return }
+        let ms = { (x: Double) in (x * 10000).rounded() / 10 }
+        emit(["event": "perf_frames", "secs": ms(now - since) / 1000, "ticks": ticks, "late": late, "gap_max_ms": ms(worstGap),
+              "island_ms": ms(work), "peep_steps": peep, "peep_ms": ms(peepWork), "peep_max_ms": ms(peepWorst)])
+        ticks = 0; late = 0; work = 0; worstGap = 0; peep = 0; peepWork = 0; peepWorst = 0
+        since = now
+    }
 }

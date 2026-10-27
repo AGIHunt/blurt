@@ -69,6 +69,13 @@ extension Updater: SPUUpdaterDelegate {
     }
 }
 
+extension Updater: NSMenuItemValidation {
+    /// The main menu's Check for Updates… (About and Help) greys out while a check is already running.
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action == #selector(checkForUpdates(_:)) ? canCheck : true
+    }
+}
+
 extension Updater: SPUStandardUserDriverDelegate {
     // A menu-bar app (LSUIElement) has no Dock icon to badge: Sparkle shows its update window when it finds one
     // in the background, and we bring ourselves forward for it.

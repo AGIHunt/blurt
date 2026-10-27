@@ -43,8 +43,13 @@ enum MainMenu {
             main.addItem(it)
             return m
         }
-        var app = [item(T("menu.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: AboutPanel.shared),
-                   NSMenuItem.separator()]
+        // Check for Updates… under About (the Mac's place) and in Help (where people look for it): a release build only —
+        // a local build has no updater (Updater: no key, no Sparkle), so it offers none
+        let updates = { () -> [NSMenuItem] in
+            Updater.shared.available ? [item(T("app.menu.updates"), #selector(Updater.checkForUpdates(_:)), target: Updater.shared)] : []
+        }
+        var app = [item(T("menu.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: AboutPanel.shared)]
+            + updates() + [NSMenuItem.separator()]
         if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
         // no ⌘Q on Quit: it's the resident app. ⌘Q in the main window closes it back to the menu bar instead
         // (MainWindowController.handleKeyEquivalent → mCloseToMenuBar, which says so once)
@@ -132,7 +137,8 @@ enum MainMenu {
         // ⌘/ (as Linear and Raycast): AppKit keeps ⇧⌘/ (⌘?) for the Help menu's search field, so that key never
         // reached this item
         let help = menu(T("menu.help"), [item(T("menu.shortcuts"), #selector(MainWindowController.mShortcuts), "/", [.command]),
-                                         item(T("menu.website"), #selector(MainWindowController.mHelp))])
+                                         item(T("menu.website"), #selector(MainWindowController.mHelp))]
+                                        + (Updater.shared.available ? [.separator()] + updates() : []))
         NSApp.helpMenu = help
         NSApp.windowsMenu = main.items.first { $0.title == T("menu.window") }?.submenu
         return main

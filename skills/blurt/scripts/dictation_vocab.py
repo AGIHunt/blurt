@@ -115,6 +115,47 @@ def similar(a: str, b: str) -> bool:
     return len(a) >= 3 and len(b) >= 3 and sk(a) == sk(b) and len(sk(a)) >= 2
 
 
+# ------------------------------------------------------------------ sounds alike (Mandarin)
+# Close initials and finals a recognizer (or a speaker) swaps: zh/z, ch/c, sh/s, n/l, -ng/-n, f/h. Only for finding
+# which of the user's own terms a transcript may have misheard (空中云会 → 空中云汇, 绘画 → 会话) — the term then goes
+# to the model (ASR context, polish's word list), which decides; nothing is replaced here.
+_SOFT = [("zh", "z"), ("ch", "c"), ("sh", "s"), ("ng", "n"), ("l", "n"), ("f", "h")]
+_CHAR_PY: dict[str, str] = {}
+
+
+def _soft(py: str) -> str:
+    for a, b in _SOFT:
+        py = py.replace(a, b)
+    return py
+
+
+def _char_py(c: str) -> str:
+    if c not in _CHAR_PY:
+        _CHAR_PY[c] = _soft(pinyin(c))
+    return _CHAR_PY[c]
+
+
+def sounds_in(term: str, text: str) -> str | None:
+    """Where `text` says a Chinese `term` (of 2+ characters) with other characters of the same sound — "空中云会" for
+    空中云汇 —: that span, else None. The term written right is not a match (it needs no help)."""
+    chars = _CJK_RE.findall(term or "")
+    if len(chars) < 2 or len(chars) != len(term) or not text:
+        return None
+    want = [_char_py(c) for c in chars]
+    if not all(want):
+        return None
+    n = len(chars)
+    for i in range(len(text) - n + 1):
+        span = text[i:i + n]
+        if span == term or not all(_CJK_RE.match(c) for c in span):
+            continue
+        if span[0] != term[0] and span[-1] != term[-1] and n == 2:
+            continue          # two characters both different: too loose to call (many words share two syllables)
+        if all(_char_py(a) == b for a, b in zip(span, want)):
+            return span
+    return None
+
+
 # ------------------------------------------------------------------ which terms matter now
 def ranked(terms: list[dict], raw: str = "", context: str = "", limit: int = MAX_TERMS) -> list[dict]:
     """Relevant first: a sounds-like heard in `raw`, a term (or something spelled like it) in `raw` or the context,
@@ -126,9 +167,9 @@ def ranked(terms: list[dict], raw: str = "", context: str = "", limit: int = MAX
 
     def score(t: dict) -> tuple:
         s = 0
-        if any(sl.lower() in low_raw for sl in t["sounds_like"]):
-            s += 8
         k = t["term"].lower()
+        if any(sl.lower() in low_raw for sl in t["sounds_like"]) or (_CJK_RE.search(k) and sounds_in(t["term"], raw)):
+            s += 8
         if k in low_raw:
             s += 4
         elif not _CJK_RE.search(k) and any(similar(w, k) for w in words):
@@ -147,7 +188,7 @@ def ranked(terms: list[dict], raw: str = "", context: str = "", limit: int = MAX
 
 def relevant(terms: list[dict], raw: str = "", context: str = "") -> list[dict]:
     """The terms this text may need: a sounds-like heard, the term itself (any case), a Latin word spelled like it,
-    or the term in the context. What polish lists (ranked() orders them)."""
+    Chinese characters that sound like it (sounds_in), or the term in the context. What polish lists (ranked() orders them)."""
     low = unicodedata.normalize("NFKC", raw or "").lower()
     ctx = unicodedata.normalize("NFKC", context or "").lower()
     words = [w.lower() for w in _WORD.findall(low)]
@@ -155,7 +196,8 @@ def relevant(terms: list[dict], raw: str = "", context: str = "") -> list[dict]:
     for t in terms:
         k = t["term"].lower()
         if k in low or k in ctx or any(s.lower() in low for s in t["sounds_like"]) \
-                or (not _CJK_RE.search(k) and any(similar(w, k) for w in words)):
+                or (not _CJK_RE.search(k) and any(similar(w, k) for w in words)) \
+                or (_CJK_RE.search(k) and sounds_in(t["term"], raw)):
             out.append(t)
     return out
 

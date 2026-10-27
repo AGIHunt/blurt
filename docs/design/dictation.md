@@ -379,9 +379,9 @@ kept it (polish only saw `before ▮` and the piece). Now (`DictationStitch`, `D
   punctuation across the pause is decided with both sides in view. Every comma inside a window was written with the
   words on both sides in view; only the window's own end wasn't, and that is what is carried. Carrying the whole
   unfinished sentence (the first version) made the window at key-up as long as the sentence: polish after key-up
-  went from 150 to 302 ms (median) on these clips; one clause costs ~25 ms. After a long pause the carried clause
-  goes into the next window **with the mark it ended in**: the model sees the pause's full stop and the words on both
-  sides, and keeps it or turns it into a comma (v0.8.x committed it as it was when a stop-word test judged the
+  went from 150 to 302 ms (median) on these clips; one clause costs ~25 ms. The carried clause goes into the next window
+  **with no mark, however long the pause** (`windowInput`, since v1.0.2: §Thinking pauses below; before, a long pause
+  added the mark the window before ended in, and v0.8.x committed it as it was when a stop-word test judged the
   sentence whole). The last piece's window keeps its ending: the dictation ended there. A carried clause left when the dictation ends (nothing after the last cut) is
   typed with the punctuation polish gave it — no work after key-up.
 - **The prompt** says it too: "fix punctuation across what are just pauses in speech; don't end a sentence at a pause
@@ -446,6 +446,78 @@ the last word), so the last piece is always still to do — the worst case:
   punctuation polish gave it.
 - These absolute numbers are above the speed eval's (287 / 375 / 538 ms) because the machine was busy (a render on
   the GPU throughout); the paired differences are what to read.
+
+### Thinking pauses on real speech (v1.0.2)
+
+What the user saw (real takes, Qwen3-ASR 1.7B + Gemma 4 E2B): a mark wherever they stopped to think, mid-clause —
+「你可以，在我告诉你的时候」, 「针对性的进行，优化」, 「看一下，为什么识别错？以及？」, 「去在不同的界面去。展示」; 63 of 197
+multi-piece takes had a 1–3 character fragment between two marks. The `say` clips above never showed it: their pauses
+were 0.6–1.0 s inside a clause and 1.3 s at a sentence end, so a long pause always was an end.
+
+Where the marks came from — replaying real spontaneous speech through the app's own pipeline (below):
+
+- **After a long pause the window got a mark polish itself had written.** The carried clause went into the next
+  window with `carryEnd`, the mark the window before had ended it with — polish's own, written without seeing what
+  came next, so nearly always 。 (the speech model's is no better: it ends every piece with one). Given 「…但是。我报的是…」
+  the model turned 。 into ， instead of dropping it: 5 of 15 mid-clause pauses ≥ 1.2 s at a cut kept a mark.
+- **Inside a piece the marks are the speech model's.** At mid-clause pauses that didn't fall on a cut (the piece was
+  still < 3 s, or the pause < 0.5 s of quiet), 35 % had a mark from Qwen3-ASR; polish took out a third of them
+  and added none (the 12 left are all the speech model's). Not changed here: taking the speech model's marks out (`bare` below) lost
+  a third of the marks said without a pause.
+- **Polish's own commas at short seams**: 10 % of mid-clause pauses < 1.2 s at a cut, the same with every variant —
+  the model's reading of the words.
+
+Now (`DictationStitch.windowInput`, `DictationStream.polish`, `dictation_stitch.window_input`): **no pause puts a mark
+into a window**; the carried clause and the new piece go in as one run of words and the model decides from them
+whether the sentence ended. The seam rule (`seam`, `longPause`) still writes the transcript as said — polish off, a
+refused window (`fallbackSeam`), the speech model's prior.
+
+Eval (`scratchpad/…/seams/`, see its RERUN.txt; not in git): **real spontaneous speech with human punctuation** —
+MagicData's open multi-stream conversation sample (HF `MagicDataTech/multi-stream-spontaneous-conversation-training-
+datasets_chinese`: two people talking on their own phones, each on their own track, 10 h; a clip = one speaker's turn,
+8–40 s, 200 clips with a pause) and 86 contextual-earnings22 chunks (English calls, 15 s). Qwen3-ForcedAligner-0.6B
+timed every reference character; the app's own loudness rule found the quiet runs (≥ 0.6 s); each was placed in its
+reference gap and classed by the reference's punctuation there (fillers 嗯/呃 out of the reference; the annotators'
+segment-final commas, often at a hesitation, labelled by hand: 35 mid-clause, 16 clause breaks). The replay is the
+Lab's `mode=windows` (`dictation_lab.run_case`: transcribe.py / polish.py serve, the prior, the windows, the stitch
+guard) on cuts made by a port of `DictationSegmenter`; Qwen3-ASR 1.7B + Gemma 4 E2B, the scripts of 1d354c2b, the same
+cached transcripts for every variant, the typed text aligned to the reference by units:
+
+| 286 clips, 171 mid-clause pauses, 220 sentence ends at a pause | Before | **Now** (no mark) | Comma at a long pause | Mark only ≥ 2 s | "…" at a long pause | Polish off |
+|---|---:|---:|---:|---:|---:|---:|
+| Mid-clause pauses with a mark — all | 14.6 % | **11.8 %** | 14.6 % | 12.4 % | 14.7 % | 18.2 % |
+| … ≥ 1.2 s at a cut (n = 15) | **33.3 %** | **0 %** | 33.3 % | 7.1 % | 35.7 % | 80 % |
+| … ≥ 1.2 s, cut or not (n = 23) | 43.5 % | 22.7 % | 43.5 % | 27.3 % | 45.5 % | 72 % |
+| … < 1.2 s | 10.1 % | 10.1 % | 10.1 % | 10.1 % | 10.1 % | 10.2 % |
+| Sentence ends with any mark — all | 87.7 % | 83.8 % | 87.7 % | 84.3 % | 87.3 % | 40.4 % |
+| … after ≥ 1.2 s (n = 65) | 95.4 % | **82.0 %** | 95.4 % | 83.9 % | 93.8 % | 92.9 % |
+| … after ≥ 1.2 s, as a sentence end | 58.5 % | 39.3 % | 36.9 % | 41.9 % | 49.2 % | 87.1 % |
+| Clause commas at a pause with a mark (n = 141) | 75.2 % | 73.8 % | 75.2 % | 73.8 % | 75.0 % | 22.0 % |
+| Marks said without a pause, kept (n = 1025) / in fast speech ≥ 5.5 units/s (n = 132) | 87.9 / 97.0 % | 87.8 / 97.0 % | 87.9 / 97.0 % | 87.8 / 97.0 % | 87.8 / 97.0 % | 85.1 / 93.0 % |
+| Punctuation F1 (a mark) / `<end>` F1 / `<pause>` F1 | 81.6 / 50.2 / 66.2 | 81.2 / 47.5 / 66.1 | 81.6 / 47.6 / 65.9 | 81.2 / 47.8 / 66.1 | 81.5 / 49.1 / 66.0 | 71.7 / 46.4 / 61.1 |
+| CER | 9.49 % | 9.52 % | 9.47 % | 9.51 % | 9.49 % | 9.49 % |
+| Polish after key-up (last window), median | 309 ms | 294 ms | 304 ms | 298 ms | 294 ms | — |
+
+- **Thinking pauses at a cut: 5 of 15 got a mark, now none.** Those are the user's: 「报过绘画班但是，我报的是」,
+  「草制药这种行业是需要，很多专业知识」, 「交给。对对对」. A pause ≥ 1.2 s that didn't fall on a cut is the speech
+  model's mark (above), unchanged.
+- **The price: some real sentence ends after a long pause lose their mark** — with any mark 95 → 82 % (11 of 61 without
+  one, 3 of 65 before: 「…领导人对话会强调要携手…」, 「…加倍的努力还有许许多…」), and more of them are commas (59 → 39 %): Gemma 4
+  E2B, deciding from the words, runs some sentences together. In a conversation long pauses at a sentence end are
+  three times as common as thinking pauses; in dictation the thinking pauses are what the user reported, and the
+  marks there read as errors where a missing full stop reads as a run-on. Overall F1 −0.4, `<end>` F1 −2.7.
+- Fast, dense speech is untouched: the marks said without a pause are the same (87.9 → 87.8 %; 97 % in the fastest).
+- A weaker hint isn't a middle ground: a comma or "…" at the long pause gives the same 33–36 % mid-clause marks
+  (the model keeps a mark it's given); a mark only after ≥ 2 s gives 7 % and 84 % — the user's thinking pauses are
+  often longer than that. The speech model's own end mark instead of polish's: no difference (it ends every piece).
+  Carrying the whole sentence (63 clips): a long pause still kept its mark (3 of 4) and polish after key-up took
+  +440 ms. Taking out the speech model's marks
+  inside pieces (`bare`, 63 clips): mid-clause marks inside a piece 23 → 0 %, but marks said without a pause kept
+  89 → 68 % and sentence ends 81 → 73 %: no. A prompt line asking for a full stop where a sentence is complete
+  and the next starts, even with no mark there (a local copy of polish.py, with no mark): long-pause ends 82 → 83 %,
+  takes that fell back 12 → 18 — not taken.
+- Polish off keeps the seam rule (the speech model's mark after a long pause): with no model to decide, dropping it
+  would leave the sentence ends there without a mark (93 % have one now).
 
 ### Polish windows: context, not output (v0.8.x)
 
@@ -1197,7 +1269,8 @@ polish.py; `dictation_corrections.py` gone), `tests/test_dictation_stitch.py::te
      code" a product or "github" the name takes the sentence (v0.9 review: the spelling pass turned
      "npm install @anthropic-ai/claude-code" into "…/Claude Code"). The near-miss pass (`snap`, edit distance plus
      word lists) went before it, §Rules vs model.
-  3. **Polish** gets `Words: …` and `Near the cursor: … ▮ …` lines before `Dictation: …` in the last message (the
+  3. **Polish** gets `Words: …` and `Near the cursor: ▮ …` (the text after the cursor) lines before `Dictation: …` in
+     the last message, and the text before the cursor as the turn before it (since v1.0.2, §Real takes; the
      cached prefix is unchanged). The prompt says to write a word that sounds or looks like a listed one the listed
      way, never to add one that wasn't spoken, and never to copy the context. Two examples show it. The guard accepts
      units from the words and the context as not new, accepts a lost Latin word replaced by a similar listed one,
@@ -1593,6 +1666,51 @@ Notes, including my own reading of every output:
 2 % fall-backs against Qwen3.5 2B's 20 % and Qwen3.5 4B's 5 %, and removes the most fillers. Qwen is still the
 better choice under 2 GB, where Gemma 4 has no model.
 
+### Real takes (v1.0.2)
+
+The user's own history (367 takes, 20–28 Oct, Qwen3-ASR 1.7B + Gemma 4 E2B, streamed) fell back to the raw transcript
+in **12.8 %** of takes (`grew` 23, `dropped` 7, `term` 4, …), against 2 % on the eval set. Replayed whole and without
+context, the same transcripts fell back in 1 %: the cause was the context, not the words. With the text typed into the
+same app in the 10 minutes before as the text before the cursor (what a chat box holds), the fall-backs came back:
+the model **rewrote or continued the text before the cursor** instead of the dictation, mostly on short takes
+(「空中云会。」 → 「没问题。」, the previous message). And the takes that weren't polished showed what users see
+most: 三D, 四十八小时, V 二, F N, C L I, H T M L as the speech model wrote them.
+
+Changes (`polish.py`), each measured with Gemma 4 E2B on the replayed takes (39 that had fallen back + 60 that hadn't,
+with their simulated field text), 30 formatting cases taken from those takes with the expected writing, 64 real-speech
+homophone errors + 60 exact transcripts (AISHELL / ContextASR / FLEURS, Qwen3-ASR 1.7B), and the eval and
+over-deletion sets, before = the committed code in the same conditions:
+
+| | before | after |
+|---|---:|---:|
+| fell back, real takes that had (39) / hadn't (60) | 8 / 3 | **0 / 0** |
+| formatting cases right (30) | 7 | **19** |
+| eval set: fall-back / kept / fillers removed | 2.2 % / 95.7 % / 71 % | 2.2 % / 95.7 % / 71 % |
+| over-deletion: kept (final) | 100 % | 95.5 % (od-01: 「要快」 → 「快」) |
+| homophone spans fixed (81) | 0 | 0 |
+
+- **The text before the cursor is the turn before** (`messages`), as a streamed dictation's text so far already was;
+  `Near the cursor` keeps only the text after the cursor. And when the guard still says the model followed the
+  context (`CONTEXT_FAULTS`: grew, copied, empty, chatty), Light tries once more without it (`retried` in the answer;
+  only then, ~0.1–0.2 s).
+- **Numbers in digits, the same value** — the prompt said 「三十 stays 三十」; now digits where a writer would use
+  them, changing only the number (五百块 → 500 块, not 500 元: the first wording changed the words around it). The
+  repair still puts a number back whenever its value changed (`same_number` accepts 1.2 万 for 一点二万). The eval's
+  must-keep terms count a number written in digits (`in_digits`).
+- **Letters spelled out are the word** for the guard (`units`: 「C L I」 = 「CLI」): writing the word was `dropped`.
+- **Homophones are not polish's job:** told plainly to fix misheard same-sounding words, E2B fixed none of 81 real
+  ones (买点 / 埋点, 绘画 / 会话 among them) and changed nothing else. **Nor is rescoring the speech model's own
+  alternatives worth it** (prototype, `scratchpad/rescore/`, 929 real utterances per model): the right word is the
+  runner-up in 57 % (1.7B) / 73 % (0.6B) of same-sound errors, but at ~7–16 % of the wrong word's probability; branching
+  where the runner-up is ≥ 10 % and choosing by speech score + 0.3 × text score (the speech model's own decoder without
+  audio judged best — Gemma 4 E2B and Qwen3.5 0.8B preferred wrong versions of correct sentences far more often) cut
+  CER 4.07 → 4.02 (1.7B) / 5.27 → 5.20 (0.6B) with no correct sentence broken, fixed 0 of 66 / 3 of 103 same-sound
+  spans, and missed both reported phrases (会话 at 2 % of 绘画). Not shipped. **The lever is context:** with the app
+  name or the text before the cursor in the scorer's prompt, the margin for 会话 over 绘画 went +5.9 → +10.9 and
+  for 埋点 over 买点 +4.9 → +11.8. The speech model gets the app name already (`note(app=…)`); whether the field's
+  text as its context helps is measured on the user's kept takes (`keep_audio` keeps the context too), §Lab Review.
+- Not fixed: two-letter keys (F N) stay apart; 三 D with a space, sometimes.
+
 ### Over-deletion (the v0.8 speed eval)
 
 `tests/fixtures/polish_overdelete.jsonl`: 22 synthetic sentences like the user's D and E (a condition, a contrast, an
@@ -1624,8 +1742,8 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 | Tier | Macs | Cap | Default |
 |---|---|---:|---|
 | pro | Apple silicon ≥ 32 GB | 8 GB | Gemma 4 E2B (Gemma 4 E4B and Qwen3.5 4B offered) |
-| standard | 16–24 GB | 4 GB | Gemma 4 E2B (3.5 GB peak) |
-| light | 8 GB | 2 GB | Qwen3 1.7B (2.1 GB peak; MLX's limit is relaxed, so it slightly overshoots instead of failing) |
+| standard | 16–24 GB | 4 GB | Gemma 4 E2B (2.2 GB peak since v1.0.2, §Memory; 3.5 GB before) |
+| light | 8 GB | 2 GB | Gemma 3 1B since v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
 | minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
 
 **Memory together (arch098, v0.9).** What a 16 GB Mac holds while it dictates is the sum: dictation's speech model,
@@ -1637,6 +1755,39 @@ first, a one-off process). Polish stays Gemma 4 E2B: nothing lighter was good en
 20 % of the time, Qwen3 1.7B 24 %). The bigger saving is time: every warm server now ends after 10 idle minutes and
 with Blurt (§Polish), where the model used to stay up to 30 minutes and the process up to 4 hours. Only automatic
 choices change: a model the user picked (`asr.models`, `record.dictation.asr_model`, `polish_model`) stays.
+
+### Memory (v1.0.2)
+
+**Field report.** A colleague's 24 GB Mac had 10.6 GB compressed and 17 GB of swap. Blurt's two warm servers held about 5.6 GB, and the notch stuttered. Measured on an M5 Max, footprint of the warm server, Gemma 4 E2B, 68 eval and over-delete cases, output compared byte for byte:
+
+| | Polish server | Cost |
+|---|---:|---|
+| v1.0.1 | 4.6 GB after load, 3.1 GB after the first request | — |
+| MLX cache of freed buffers capped at 64 MB (`MLX_CACHE_BYTES`; it was min(limit / 4, 2 GB)) | 3.1 GB from the start | +2.4 ms a request, same output |
+| … and Gemma 4's per-layer embedding table read from its file (`CPUEmbedding`, an np.memmap gathered on the CPU) | **2.0 GB** | +40 ms a request, same output |
+
+Why each change helped:
+
+- **The cache cap.** The two prompt prefills freed about 1.5 GB of buffers at warm-up, and MLX kept them in its cache until the first generate.
+- **The per-layer embedding table.** It is 1.26 GB of E2B's 2.48 GB of weights. A token reads one row of it, and in Metal memory it could only be compressed or swapped. Mapped from the file, its pages are dropped for free under pressure.
+- **The wired limit.** mlx-lm raises it for each generate and puts it back afterwards. Changing it made no difference.
+
+**Smaller models.** A sweep under the same conditions found nothing that holds up as well as E2B:
+
+| Model | Fallback, eval | Fallback, 18 zh / zh-en cases | Footprint |
+|---|---:|---:|---:|
+| Gemma 4 E2B | 2.2 % | 0 | 3.1 GB |
+| Gemma 3 1B QAT | 17 % | 6 | 1.3 GB |
+| Qwen3.5 2B | 17 % | 2 | 1.6 GB |
+| Hunyuan 1.8B | 37 % | 12 | 1.5 GB |
+| MiniCPM5 1B | 35 % | 9 | 1.0 GB |
+| LFM2.5 1.2B | 61 % | 16 | 1.0 GB |
+
+**Speech server.** mlx-qwen3-asr kept up to 4 loaded models in its own LRU. A server that switched between dictation's model and a voice note's held both. A backend now keeps one, and a switch frees the old model first.
+
+**One speech model.** For Chinese and English speakers on Apple Silicon with 16 GB or more, dictation, voice notes, live captions and recordings now share one Qwen3-ASR: the 1.7B from 32 GB, the 0.6B below (asr-benchmark.md §Real speech). One warm copy replaces a Qwen, a SenseVoice and a Whisper, and voice notes now get the user's words too. Settings → Speech shows them as one Speech recognition row, and every row's pop-up starts with Automatic. The library's Use gives a model every job.
+
+**Memory pressure.** On a warning or critical event (`DispatchSource.makeMemoryPressureSource`), the app asks each idle warm server to exit (App/MemoryPressure.swift). A take in progress keeps its servers. The launch prewarm skips for 10 minutes after such an event.
 
 Nothing is downloaded until the user presses **Download** in Settings → Speech → Dictation. The size is shown, and the download
 comes from Hugging Face, or from ModelScope when the download mirror is on (it mirrors mlx-community, and is fast from
@@ -1743,7 +1894,8 @@ so. Pure parts in BlurtCore `DictationLab.swift` (`LabMetrics`, `LabCase`, `LabS
 | **Compare** | `dictation_lab.py rerun ID --config …` for a saved case: the installed ASR models (`transcribe.py dictation-models`), polish off / other installed polish models (`polish.py models`), no custom words, no context, the whole take at once. Rows show the diff against the truth, WER, terms, ms. |
 | **Learn** | Saving a corrected text calls `dictation_lab.py learn` → `dictation_vocab.learn(raw, corrected)` **when the module has it** (feature-detected: `getattr`), which reports the term-by-term changes to `vocabulary.json`. Without it the app's own learner runs (`DictationLearn.fixes` on heard vs corrected → `DictationVocabulary.learn`). Either way the page lists what was learned with **Undo** (`LabVocab.revert`: each changed term goes back to how it was, only while it still looks as the learning left it). |
 | **Run all cases** | `dictation_lab.py run --json [--config SPEC]` in the background; a table of before (the case's last run with the same configuration key) / after, the change, the text when it changed, an overall score and a breakdown by tag. |
-| **History** | *Add to Lab* (context menu and the detail): `dictation_lab.py from-history ID` — the audio when it was kept, else a reference-only case (the typed text as its reference). *Keep the audio of my next dictations* (`record.dictation.lab_keep_next`, counts down in `Dictation.deliver`): the audio only, never the text around the cursor. |
+| **History** | *Add to Lab* (context menu and the detail): `dictation_lab.py from-history ID` — the audio when it was kept, else a reference-only case (the typed text as its reference). *Keep the audio of my next dictations* (`record.dictation.lab_keep_next`, counts down in `Dictation.deliver`): the audio only, never the text around the cursor. Since v1.0.2 a kept take also keeps its streamed pieces (`pieces`: cuts, pauses, each polish window's input and commit — `DictationPieceRecord`), so a case from it replays the windows as they ran. |
+| **Review** | `dictation_lab.py review [--since ISO] [--last N]`: every kept take heard again in one pass (`mode=whole`, polish off: no cuts, no prior) beside what was typed, with flags — `fell_back:<reason>`, `heard_differently` (and where), `seam_marks` (a mark typed where the one-pass transcript has none, in a take with pauses), `spelled_letters`, `numeral_format`. For a reviewer — the user, or an agent (`.claude/skills/blurt-dictation-review`) — who saves the real errors with `from-history ID --corrected … --tags …`: the user's own takes become the regression set. |
 | **Export** | `dictation_lab.py export --out FILE.zip`. |
 | **Delete** | *Move to Trash* (the case's folder; the CLI's `delete` removes it). |
 

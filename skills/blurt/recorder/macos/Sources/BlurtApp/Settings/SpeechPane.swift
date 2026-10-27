@@ -248,6 +248,32 @@ final class SpeechModel: ObservableObject {
         Task { await load() }
     }
 
+    /// One model for every job — recordings, live captions, voice notes and dictation (the library's Use, the
+    /// Speech recognition row): automatic choice ends; polish keeps what it uses now.
+    @MainActor func useEverywhere(_ x: ASRModel) {
+        let d = DictationModels.shared
+        d.setAuto(false)
+        if let dm = d.asr?.models.first(where: { $0.id == x.id }) { d.chooseASR(dm) }
+        Config.shared.set("asr.models", Dictionary(uniqueKeysWithValues: ASRPurpose.allCases.map { ($0.rawValue, x.id) }))
+        Config.shared.set("asr.auto", false)
+        emit(["event": "speech_model_use", "model": x.id])
+        Task { await load() }
+    }
+
+    /// Back to automatic: every job, dictation's two models too.
+    @MainActor func useAuto() {
+        DictationModels.shared.setAuto(true)
+        setAuto(true)
+    }
+
+    /// The model every job runs on now, when they all run on one (nil: they differ, or one has none yet).
+    @MainActor var everywhere: ASRModel? {
+        guard let a = DictationModels.shared.asr else { return nil }
+        let ids = ASRPurpose.allCases.map { state?.selected[$0.rawValue] ?? nil } + [a.selected]
+        guard let first = ids.first ?? nil, ids.allSatisfy({ $0 == first }) else { return nil }
+        return model(first)
+    }
+
     func setLanguages(_ l: [String]) {
         Config.shared.set("asr.languages", l.isEmpty ? nil : l)
         if language != "auto", !l.contains(language) { setLanguage("auto") }
@@ -375,12 +401,11 @@ struct SpeechPane: View {
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
     @State private var library = false
-    @State private var advanced = false
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
     @MainActor static func showDictationModels() {
-        AppEnvironment.settings?.show(pane: "speech/dictation")
+        AppEnvironment.settings?.show(pane: SpeechModel.shared.everywhere == nil ? "speech/dictation" : "speech/recognition")
     }
 
     var body: some View {
@@ -393,11 +418,9 @@ struct SpeechPane: View {
         .task { await m.load() }
         .task { await d.load() }
         .sheet(isPresented: $library) { ModelLibrary { library = false } }
-        // a search or a link landing on the library or on a row folded under Advanced: open / unfold it first
+        // a search or a link landing on the library: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
-            guard let id = r?.id else { return }
-            if id == "speech.models" { library = true }
-            if id == "speech.advanced" || SettingsCatalog.entry(id)?.section == "speech.advanced" { advanced = true }
+            if r?.id == "speech.models" { library = true }
         }
     }
 
@@ -421,8 +444,10 @@ struct SpeechPane: View {
 
     // MARK: Models: the recommendation, automatic, one row per job, the library
 
-    /// This Mac: the recommendation (while something recommended is missing) and Choose automatically.
+    /// This Mac: the recommendation, only while something recommended is missing (or downloading). Automatic choice
+    /// is each pop-up's first item (the jobs' footer says what it goes by).
     @ViewBuilder var useSection: some View {
+        if m.error != nil || dl.active || !picks.isEmpty {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
@@ -431,18 +456,21 @@ struct SpeechPane: View {
                 }
             }
             recommendation
-            SettingToggle("speech.auto", isOn: Binding(get: { m.auto }, set: { on in d.setAuto(on); m.setAuto(on) }),
-                          detail: machineShort.map { S("speech.auto.detail_mac", $0) }, help: machineLine)
         }, accessory: {
             if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
         })
+        }
     }
 
     /// Models in use: one row per job, with its glyph and its model, then the library.
     @ViewBuilder var jobsSection: some View {
-        SettingsGroup("speech.jobs", title: S("speech.section.jobs")) {
-            ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
-            dictationRow
+        SettingsGroup("speech.jobs", title: S("speech.section.jobs"), footer: machineShort.map { S("speech.auto.footer", $0) }) {
+            if let one = m.everywhere {
+                recognitionRow(one)
+            } else {
+                ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
+                dictationRow
+            }
             polishRow
             libraryRow
         }
@@ -573,13 +601,24 @@ struct SpeechPane: View {
         SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
-            } else if m.auto {
-                ModelName(text: purposeValue(p))
             } else {
-                ModelPopUp(label: p.title, current: m.selected(p)?.id,
-                           choices: choices(p).map { ($0.id, $0.title) }, more: { library = true }) { id in
-                    if let x = m.model(id) { m.choose(x, for: p) }
+                ModelPopUp(label: p.title, current: m.auto ? ModelPopUp.auto : m.selected(p)?.id,
+                           auto: purposeValue(p), choices: choices(p).map { ($0.id, $0.title) }, more: { library = true }) { id in
+                    if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.choose(x, for: p) }
                 }
+            }
+        }
+    }
+
+    /// Every job on one model (Chinese and English on Apple silicon, by default): one row, its pop-up the models every
+    /// job can use. Picking one there (or the library's Use) gives it every job; Automatic gives them back to this Mac.
+    func recognitionRow(_ one: ASRModel) -> some View {
+        let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
+        let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
+        return SettingRow("speech.recognition", icon: "waveform") {
+            ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
+                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true }) { id in
+                if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
     }
@@ -602,15 +641,12 @@ struct SpeechPane: View {
     @ViewBuilder var dictationRow: some View {
         SettingRow("speech.dictation", icon: "character.cursor.ibeam") {
             if let a = d.asr {
-                if m.auto && d.asrAuto {
-                    ModelName(text: dictationValue(a))
-                } else {
-                    // a model whose own files are in can be chosen (its setup then fetches only the VAD)
-                    let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
-                    ModelPopUp(label: S("speech.purpose.dictation"), current: a.selected,
-                               choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) }, more: { library = true }) { id in
-                        if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
-                    }
+                // a model whose own files are in can be chosen (its setup then fetches only the VAD)
+                let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
+                ModelPopUp(label: S("speech.purpose.dictation"), current: m.auto && d.asrAuto ? ModelPopUp.auto : a.selected,
+                           auto: dictationValue(a), choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) },
+                           more: { library = true }) { id in
+                    if id == ModelPopUp.auto { m.useAuto() } else if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
                 }
             } else {
                 BrandSpinnerView(size: 12)
@@ -629,13 +665,11 @@ struct SpeechPane: View {
             if let p = d.polish {
                 if !p.supported {
                     ModelName(text: S("speech.purpose.polish.unsupported"))
-                } else if m.auto && d.polishAuto {
-                    ModelName(text: polishValue(p))
                 } else {
                     let here = p.models.filter { $0.installed }
-                    ModelPopUp(label: S("speech.purpose.polish"), current: p.selected,
-                               choices: here.map { ($0.id, $0.name) }, more: { library = true }) { id in
-                        if let x = p.models.first(where: { $0.id == id }) { d.choose(x) }
+                    ModelPopUp(label: S("speech.purpose.polish"), current: m.auto && d.polishAuto ? ModelPopUp.auto : p.selected,
+                               auto: polishValue(p), choices: here.map { ($0.id, $0.name) }, more: { library = true }) { id in
+                        if id == ModelPopUp.auto { m.useAuto() } else if let x = p.models.first(where: { $0.id == id }) { d.choose(x) }
                     }
                 }
             } else {
@@ -708,11 +742,12 @@ struct SpeechPane: View {
         }
     }
 
-    // MARK: Advanced (folded)
+    // MARK: Advanced
 
-    /// Advanced: the one folded section of every pane (a heading that discloses its box), closed until asked for.
+    /// Advanced: the resource limits, the download mirror and the cloud models — shown open, like every other section
+    /// of the pane (folded until v1.0.2).
     @ViewBuilder var advancedSection: some View {
-        SettingsGroup("speech.advanced", footer: advanced ? S("speech.limits.footer") : nil, disclosure: $advanced) {
+        SettingsGroup("speech.advanced", footer: S("speech.limits.footer")) {
             resourceRows
             SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
             let cloud = m.models.filter { !$0.local }
@@ -772,24 +807,28 @@ private struct ModelName: View {
     }
 }
 
-/// A job's model when the user picks it: the page's pop-up (one width), the models on this Mac, then Get More Models…
-/// (the library).
+/// A job's model: the page's pop-up (one width) — Automatic (with what it picks: `auto`), the models on this Mac,
+/// then Get More Models… (the library). `current` is `ModelPopUp.auto` while the choice is automatic.
 private struct ModelPopUp: View {
+    static let auto = "\u{1}auto"
     var label: String
     var current: String?
+    var auto: String
     var choices: [(id: String, name: String)]
     var more: () -> Void
     var pick: (String) -> Void
     var body: some View {
-        let missing = current == nil || !choices.contains(where: { $0.id == current })
-        var items: [(value: String, title: String)] = missing ? [(current ?? "", S("speech.purpose.none_yet"))] : []
+        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.choice", auto))]
+        let top = items.count
+        let missing = current != ModelPopUp.auto && (current == nil || !choices.contains(where: { $0.id == current }))
+        if missing { items.append((current ?? "", S("speech.purpose.none_yet"))) }
         items += choices.map { ($0.id, $0.name) }
         let split = items.count
         items.append((moreModels, S("speech.purpose.more")))
         return ChoicePopup(label: label, choices: items,
                            selection: Binding(get: { current ?? "" }, set: { id in
                                if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
-                           }), dividers: [split])
+                           }), dividers: [top, split])
     }
 }
 
@@ -987,11 +1026,15 @@ private struct ModelLibrary: View {
             } else if !x.installed {
                 if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { m.startDownload(x) } }
             } else if hover == x.id {
-                Menu { asrActions(x, inUse: !uses.isEmpty) } label: { Image(systemName: "ellipsis.circle") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .accessibilityLabel(S("speech.lib.actions", x.title))
+                HStack(spacing: 6) {
+                    if uses.count < everyJob { useButton { m.useEverywhere(x) } }
+                    Menu { asrActions(x, inUse: !uses.isEmpty) } label: { Image(systemName: "ellipsis.circle") }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                        .accessibilityLabel(S("speech.lib.actions", x.title))
+                }
             }
         } menu: {
+            if x.installed && uses.count < everyJob { Button(S("speech.lib.use")) { m.useEverywhere(x) }; Divider() }
             if x.installed { asrActions(x, inUse: !uses.isEmpty) }
             else if m.download(x.id) == nil { Button(S("speech.download.button")) { m.startDownload(x) } }
         }
@@ -1032,9 +1075,7 @@ private struct ModelLibrary: View {
             } else if !x.installed {
                 if hover == x.id || m.failed(x.id) != nil { Button(S("speech.download.button")) { d.download(x) } }
             } else if hover == x.id && !inUse {
-                Menu { Button(S("speech.lib.use_polish")) { d.choose(x) } } label: { Image(systemName: "ellipsis.circle") }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
-                    .accessibilityLabel(S("speech.lib.actions", x.name))
+                useButton { d.choose(x) }
             }
         } menu: {
             if x.installed && !inUse { Button(S("speech.lib.use_polish")) { d.choose(x) } }
@@ -1043,6 +1084,14 @@ private struct ModelLibrary: View {
     }
 
     // MARK: one row
+
+    /// recordings, live captions, voice notes and dictation
+    var everyJob: Int { ASRPurpose.allCases.count + 1 }
+
+    /// Use: an installed model takes over its tab's jobs (every recognition job / dictation polish).
+    func useButton(_ action: @escaping () -> Void) -> some View {
+        Button(S("speech.lib.use"), action: action).controlSize(.small).help(tab == .asr ? S("speech.lib.use.help") : S("speech.lib.use_polish"))
+    }
 
     func stopButton(_ id: String) -> some View {
         HStack(spacing: 6) {

@@ -145,7 +145,7 @@ struct DictationContext {
     static let chars = 500
     var before = "", after = "", selection = "", title = "", app = ""
 
-    var isEmpty: Bool { before.isEmpty && after.isEmpty && selection.isEmpty && title.isEmpty }
+    var isEmpty: Bool { before.isEmpty && after.isEmpty && selection.isEmpty && title.isEmpty && app.isEmpty }
     var payload: [String: Any] { ["before": before, "after": after, "selection": selection, "title": title, "app": app] }
     /// For the speech model's request: the title and 300 characters each side of the cursor. Only which custom words
     /// appear in it is used (their order in the model's word list, the near-miss pass); none of it goes to the model.
@@ -189,7 +189,7 @@ struct DictationContext {
                 c.title = (t as? String) ?? ""
             }
         }
-        return c.title.isEmpty ? nil : c
+        return c.isEmpty ? nil : c     // the app's name alone still tells the speech model what the words are about
     }
 }
 

@@ -158,6 +158,51 @@ def test_from_history_with_and_without_audio(home):
     assert cli("from-history", "nope", home=home)["code"] == "not_found"
 
 
+def _kept_take(home: Path) -> dict:
+    """A kept take (keep_audio): 3 s of audio, cut once at a 1.4 s pause, typed with a comma the pause put there."""
+    hd = home / "dictation"
+    (hd / "audio").mkdir(exist_ok=True)
+    tone(hd / "audio" / "k-1.wav", 3.0)
+    e = {"id": "k-1", "t": "2026-10-28T10:00:00+08:00", "app": "Lark", "bundle": "com.electron.lark", "duration": 3.0,
+         "raw": "飞书绘画里面的消息", "polished": "飞书绘画，里面的消息。", "text": "飞书绘画，里面的消息。", "model": "gemma4-e2b",
+         "fell_back": False, "reason": None, "insert": "pasted", "audio": "audio/k-1.wav", "asr_model": "qwen3-asr-1.7b-mlx",
+         "pieces": [{"start": 0.0, "end": 1.5, "pause_after": 1.4, "asr_text": "飞书绘画。", "raw": "飞书绘画。",
+                     "polish_in": "飞书绘画", "text": "", "polished": "飞书绘画", "fell_back": False},
+                    {"start": 1.5, "end": 3.0, "asr_text": "里面的消息。", "raw": "里面的消息。",
+                     "polish_in": "飞书绘画。里面的消息", "text": "飞书绘画，里面的消息。", "polished": "飞书绘画，里面的消息。",
+                     "fell_back": False}]}
+    (hd / "history.jsonl").write_text(json.dumps(e, ensure_ascii=False) + "\n", encoding="utf-8")
+    return e
+
+
+def test_from_history_keeps_the_pieces_and_the_correction(home):
+    _kept_take(home)
+    c = cli("from-history", "k-1", "--corrected", "飞书会话里面的消息。", "--tags", "term,punctuation", home=home)["case"]
+    segs = c["take"]["segments"]
+    assert [(s["start"], s["end"], s["pause_after"]) for s in segs] == [(0.0, 1.5, 1.4), (1.5, 3.0, None)]
+    assert segs[1]["polish_in"] == "飞书绘画。里面的消息"                 # the window's input: where the comma came from
+    assert c["corrected"] == "飞书会话里面的消息。" and c["errors"] == ["term", "punctuation"]
+    assert L.validate(c) == []
+
+
+def test_review_flags_what_one_pass_heard_differently_and_seam_marks(home):
+    e = _kept_take(home)
+    fake = FakePipeline({3.0: "飞书会话里面的消息。"})
+    r = L.review_take(e, fake, L.parse_spec("mode=whole,polish=off"))
+    assert [c["secs"] for c in fake.calls] == [3.0]                       # the whole take, once
+    assert r["heard_once"] == "飞书会话里面的消息。"
+    assert {"once": "会话", "streamed": "绘画"} in r["heard_diff"]
+    assert "heard_differently" in r["flags"] and "seam_marks" in r["flags"]
+    assert r["pieces"][0]["pause_after"] == 1.4
+
+
+def test_review_counts_takes_without_audio(home):
+    e = _kept_take(home)
+    (home / "dictation" / "audio" / "k-1.wav").unlink()
+    out = cli("review", home=home)
+    assert out["takes"] == [] and out["no_audio"] == 1
+
+
 # ------------------------------------------------------------------ the runner
 class FakePipeline:
     """A speech model that answers from a table by audio length (seconds, 1 decimal), and a polish that capitalises."""

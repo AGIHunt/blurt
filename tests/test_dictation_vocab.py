@@ -191,9 +191,11 @@ class Prompt(unittest.TestCase):
         self.assertEqual(polish.context_text(None), "")
 
     def test_fixed_prefix_is_the_same_with_or_without_words(self):
-        a = polish.messages("x")[:-1]
-        b = polish.messages("x", V.normalize(["Claude"]), {"before": "y"})[:-1]
-        self.assertEqual(a, b)          # the prompt cache covers both
+        n = 1 + 2 * len(polish.EXAMPLES)     # the rules and the examples: the cached prefix
+        a = polish.messages("x")
+        b = polish.messages("x", V.normalize(["Claude"]), {"before": "y"})
+        self.assertEqual(a[:n], b[:n])          # the prompt cache covers both
+        self.assertEqual(b[n:-1], [{"role": "user", "content": "y"}, {"role": "assistant", "content": "y"}])  # the text before the cursor: the turn before
 
     def test_only_what_the_dictation_may_need_goes_to_polish(self):
         """Polish lists only the relevant words, and a title alone is no "Near the cursor" line: with them the model
@@ -204,7 +206,8 @@ class Prompt(unittest.TestCase):
         self.assertIn("GitHub", [t["term"] for t in V.relevant(TERMS, "提交一下", "GitHub — pull requests")])
         self.assertEqual(polish.user_message("把这个，不对，这两个拿到那一边去", [], {"title": "微信", "app": "WeChat"}),
                          "把这个，不对，这两个拿到那一边去")
-        self.assertIn("Near the cursor: 前文 ▮", polish.user_message("后文", [], {"before": "前文", "title": "微信"}))
+        self.assertEqual(polish.user_message("后文", [], {"before": "前文。", "title": "微信"}), "后文")   # the turn before (v1.0.2)
+        self.assertIn("Near the cursor: ▮ 后面", polish.user_message("后文", [], {"before": "前文", "after": "后面"}))
 
     def test_english_dictation_says_its_language(self):
         """With a word list, Gemma translated English dictations into Chinese: an English one is labelled English.
@@ -247,6 +250,8 @@ class BiasedNote(unittest.TestCase):
                 wav = A.write_wav(Path(d) / "n.wav", 1.5)
                 r = T.NoteEngine().note(wav, vocab=[{"term": "Claude Code", "sounds_like": ["cloud code"]}, "worktree"])
                 plain = T.NoteEngine().note(wav)
+                T.NoteEngine().note(wav, vocab=["worktree"], app="飞书")
+                T.NoteEngine().note(wav, vocab=["飞书"], app="飞书")
         finally:
             T.BACKENDS, T.vad_segments, T.installed = old, oldvad, real
         self.assertEqual(r["text"], "我用cloud code开了work tree")
@@ -256,6 +261,8 @@ class BiasedNote(unittest.TestCase):
         self.assertEqual(Biasable.seen[0][:2], ["Claude Code", "worktree"])
         self.assertEqual(Biasable.seen[1], [])                # cleared: the next voice note isn't biased
         self.assertNotIn("asr_text", plain)                   # no vocab asked: the plain voice-note answer
+        asked = [s for s in Biasable.seen if s]
+        self.assertEqual(asked[1:], [["飞书", "worktree"], ["飞书"]])  # the app the text goes into: named first, once
 
     def test_streamed_piece_gets_the_text_so_far(self):
         """A streamed dictation's piece: `prior` (the text so far) reaches the backend for this request only."""
@@ -368,14 +375,18 @@ class BiasedNote(unittest.TestCase):
         real = A.fake_installed("sensevoice-small", "qwen3-asr-1.7b-mlx")
         try:
             base = {"asr": {"auto": False, "backend": "sensevoice"}}
-            with A.config(base):
-                # polish on (Gemma 4 E2B, 3.9 GB) + 1.7B (3.1 GB) is over a 16 GB Mac's share: SenseVoice
-                self.assertGreater(T.polish_ram_mb(A.hw(ram=16.0)), 3000)
+            with A.config({**base, "record": {"dictation": {"polish_model": "gemma4-e4b"}}}):
+                # a big polish model (Gemma 4 E4B, 5.4 GB) next to either Qwen is over a 16 GB Mac's share: SenseVoice
+                self.assertGreater(T.polish_ram_mb(A.hw(ram=16.0)), 5000)
                 d = T.dictation_models(A.hw(ram=16.0))
-                self.assertEqual((d["recommended"], d["selected"]), ("qwen3-asr-0.6b-mlx", "sensevoice-small"))
+                self.assertEqual((d["recommended"], d["selected"]), ("sensevoice-small", "sensevoice-small"))
                 self.assertFalse({m["id"]: m["fits"] for m in d["models"]}["qwen3-asr-1.7b-mlx"])
                 # 24 GB (still standard): the pair fits — the 1.7B, which takes the Words list, runs until the 0.6B
                 self.assertEqual(T.dictation_models(A.hw(ram=24.0))["selected"], "qwen3-asr-1.7b-mlx")
+            with A.config(base):
+                # the default polish (Gemma 4 E2B, 2.3 GB since its per-layer embeddings stay in their file) + 1.7B fits
+                self.assertEqual(T.polish_ram_mb(A.hw(ram=16.0)), 2300)
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-1.7b-mlx")
             with A.config({**base, "record": {"dictation": {"polish": "off"}}}):
                 # no polish model held next to it: the 1.7B alone fits 16 GB
                 self.assertEqual(T.polish_ram_mb(A.hw(ram=16.0)), 0)
@@ -630,3 +641,23 @@ class LearnFromCorrection(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SoundsAlike(unittest.TestCase):
+    """A Chinese term misheard as characters of the same sound is found (and listed for the model), never replaced."""
+
+    def test_a_misheard_term_is_found(self):
+        self.assertEqual(V.sounds_in("空中云汇", "我们用空中云会收款"), "空中云会")
+        self.assertEqual(V.sounds_in("口喷鸡", "打开口喷机"), "口喷机")
+
+    def test_the_term_written_right_needs_nothing(self):
+        self.assertIsNone(V.sounds_in("空中云汇", "我们用空中云汇收款"))
+
+    def test_two_characters_both_different_are_too_loose(self):
+        self.assertIsNone(V.sounds_in("会话", "飞书绘画里面的消息"))
+
+    def test_relevant_and_ranked_bring_the_term_first(self):
+        terms = [{"term": t, "sounds_like": [], "source": "manual", "hits": 0} for t in ("Notion", "空中云汇")]
+        raw = "我们用空中云会收款"
+        self.assertEqual([t["term"] for t in V.relevant(terms, raw)], ["空中云汇"])
+        self.assertEqual(V.ranked(terms, raw)[0]["term"], "空中云汇")

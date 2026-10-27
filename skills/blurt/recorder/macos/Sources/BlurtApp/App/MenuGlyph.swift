@@ -11,7 +11,9 @@
 //
 // The status item can only show an image, so this swaps images — only while something moves. Every frame is the same
 // 22 × 18 pt canvas (the hop stays inside it), so nothing beside it ever shifts. Reduce Motion: no timer; a state
-// that lasts shows its still frame (listening, talking, thinking), the one-shots and the blink don't play.
+// that lasts shows its still frame (listening, talking, thinking), the one-shots and the blink don't play. The same
+// still frame while the island shows Peep in its ear (`held`): one Peep moves at a time — the one by the notch — and
+// the status item, redrawn in every menu bar, costs more per frame than the island.
 // BlurtCore PeepGlyphMode decides the state; MenuGlyph.sync() reads the app (dictation, voice note, countdown, the
 // island's organising) — called when any of them changes.
 import AppKit
@@ -32,6 +34,9 @@ final class MenuGlyph {
     static func migrateSetting() {
         for k in ["app.menu_icon_mono", "app.menu_icon_color"] where Config.shared[k] != nil { Config.shared.set(k, nil) }
     }
+
+    /// The island shows Peep in its ear (Island.updateEars): a state that lasts holds its still frame here.
+    var held = false { didSet { if held != oldValue { run() } } }
 
     /// The countdown before a take is up (CountdownWindow): Peep listens.
     var countdown = false { didSet { if countdown != oldValue { sync() } } }
@@ -80,7 +85,7 @@ final class MenuGlyph {
         run()
     }
 
-    private var moving: Bool { oneShot != nil || blinkSince != nil || (mode != .idle && !reduceMotion) }
+    private var moving: Bool { oneShot != nil || blinkSince != nil || (mode != .idle && !reduceMotion && !held) }
 
     private func run() {
         scheduleBlink()
@@ -123,6 +128,7 @@ final class MenuGlyph {
             if t < k.duration { return show(frame(o.state, PeepPlayback.frame(at: t, clip: k, loops: false))) }
             oneShot = nil
         }
+        if held, mode != .idle { timer?.invalidate(); timer = nil; return show(still(mode.state)) }
         switch mode {
         case .idle:
             if let b = blinkSince, let r = lib.glyphBlink, let k = lib.glyph[.idle] {

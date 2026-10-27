@@ -288,11 +288,12 @@ final class Dictation {
     /// The speech model loaded a few seconds after launch (and when the key starts being heard), so the first
     /// dictation doesn't wait ~6 s for it (newc008). Only when dictation is on and its key is heard, the Mac has 16 GB
     /// or more, and the dictation model is installed (`transcribe.py dictation-models`: nothing is ever downloaded
-    /// for this). At utility priority; the server ends again after 10 idle minutes, and with Blurt.
+    /// for this), and macOS hasn't reported memory pressure in the last 10 minutes (MemoryPressure). At utility
+    /// priority; the server ends again after 10 idle minutes, with Blurt, and when memory runs short.
     func prewarm(_ why: String) {
         let gb = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
         let skip: String? = !Dictation.enabled ? "off" : !keys.installed ? "key_not_heard" : gb < 15 ? "memory" :
-            WarmSpawn.testNoServers ? "test" : phase != .idle ? "busy" : nil
+            WarmSpawn.testNoServers ? "test" : phase != .idle ? "busy" : MemoryPressure.shared.recent ? "memory_pressure" : nil
         if let s = skip { return emit(["event": "dictation_prewarm", "why": why, "skipped": s]) }
         refreshSpeechModels { [weak self] in
             guard let self = self, let m = self.speechModels, m.ready, Dictation.enabled else {
@@ -1197,18 +1198,20 @@ final class Dictation {
     /// one when installed), biased toward the words, with `prior` (the text so far) as context; the answer's `text` is
     /// what the model wrote (`asr_text`, when present, the same). Blocking: off the main thread.
     /// `hint`: the target window's title and the text around the cursor (DictationContext.hint) — words seen there go
-    /// to the model first (docs/design/dictation.md §Code-switching).
+    /// to the model first (docs/design/dictation.md §Code-switching). `app`: the front app's name, named to the model
+    /// before the words (what two words that sound the same are likely about: 飞书 → 会话, not 绘画).
     /// Always an answer: `ok` true with the text, or false with `code` (model_missing, timeout, …) and `error` — a
     /// failure is never mistaken for silence. Nothing is ever downloaded for a dictation (`no_download`,
     /// `--no-download`). The server gets `DictationASRFailure.serverTimeout` for this much audio, not a flat minute;
     /// a server that doesn't answer in that time is given up on (ended when it is ours) and the CLI is used — which
     /// no longer asks that same server first (`--no-server`).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
-                           hint: String = "", audioSeconds: Double) -> [String: Any] {
+                           hint: String = "", app: String = "", audioSeconds: Double) -> [String: Any] {
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
                                   "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
+        if !app.isEmpty { req["app"] = app }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
         if WarmServer.running("asr-serve"), !serverGivenUp {
@@ -1284,12 +1287,13 @@ final class Dictation {
     /// "no_server", tried again later), `interim` so the server stops it as soon as a final piece (or anything) waits.
     /// Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, vocab: [[String: Any]], language: String, prior: String,
-                                  hint: String) -> [String: Any]? {
+                                  hint: String, app: String = "") -> [String: Any]? {
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
                                   "vocab": vocab, "interim": true, "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
+        if !app.isEmpty { req["app"] = app }
         return WarmServer.call("asr-serve", req, timeout: 15)
     }
 

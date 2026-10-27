@@ -9,8 +9,15 @@ configurations and run them all again after a change (a regression run). Everyth
   dictation_lab.py show ID                            → {"ok", "case": {...}, "runs": [...]}
   dictation_lab.py add --wav FILE [--reference T] [--corrected T] [--tags a,b] [--note T] [--source import]
                                                       an audio file as a case (converted to 16 kHz mono)
-  dictation_lab.py from-history ID                    a dictation history entry as a case (its audio when it was kept,
-                                                      else text only: a reference-only case)
+  dictation_lab.py from-history ID [--corrected T] [--note T] [--tags a,b]
+                                                      a dictation history entry as a case (its audio and streamed
+                                                      pieces when they were kept, else text only: a reference-only
+                                                      case); --corrected sets the ground truth
+  dictation_lab.py review [--since ISO] [--last N] [--config SPEC]
+                                                      the takes whose audio was kept (record.dictation.keep_audio):
+                                                      each heard again in one pass (default mode=whole,polish=off)
+                                                      beside what was typed, with flags (fell_back, heard_differently,
+                                                      seam_marks, spelled_letters, numeral_format) for a reviewer
   dictation_lab.py delete ID…                         remove cases (their folder: audio, case.json, runs)
   dictation_lab.py score --ref T --hyp T [--terms A,B]   metrics + the diff (CJK by character, Latin by word)
   dictation_lab.py configs                            the ASR / polish models there are, and the presets
@@ -750,10 +757,10 @@ def tag_summary(tags: list[dict]) -> dict:
     return {"tag_margin": m, "fragile_tag": abs(m) < dictation_vocab.FRAGILE_MARGIN}
 
 
-def run_case(c: dict, cfg: dict, backend) -> dict:
+def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
     """One case through one configuration → {"outputs", "metrics", "config"}. `backend` has .asr / .polish (Servers,
-    or a fake in tests)."""
-    wav = audio_of(c)
+    or a fake in tests). `wav`: the recording when it isn't the case's own (a history take under review)."""
+    wav = wav or audio_of(c)
     if not wav:
         raise Fail(f"case {c.get('id')} has no audio", "no_audio")
     x = read_samples(wav)
@@ -1272,6 +1279,31 @@ def history_entry(hid: str) -> dict | None:
         return None
 
 
+def case_from_history(e: dict, cid: str) -> tuple[dict, Path | None]:
+    """A history entry as a case (not saved) and its kept recording (None: the audio is gone)."""
+    c = blank_case(cid, "history")
+    c["history_id"] = e.get("id")
+    wav = blurt_home() / "dictation" / (e.get("audio") or "")
+    has_audio = bool(e.get("audio")) and wav.is_file()
+    c["duration"] = e.get("duration")
+    c["app"] = {"bundle": e.get("bundle")}
+    c["config"] = {"asr_model": e.get("asr_model"), "polish": e.get("polished") is not None or bool(e.get("fell_back")),
+                   "polish_model": e.get("model"), "language": e.get("language")}
+    # the streamed pieces (kept with the audio since v1.0.2): the windows replay cuts the take where the app did
+    segs = [{"index": i, **{k: p.get(k) for k in ("start", "end", "pause_after", "asr_text", "raw", "polish_in", "text",
+                                                    "polished", "fell_back", "reason")}}
+            for i, p in enumerate(e.get("pieces") or [])]
+    c["take"] = {"segments": segs, "raw": e.get("raw") or "", "asr_text": e.get("raw") or "", "polished": e.get("polished"),
+                 "text": e.get("text") or "", "fitted": e.get("text") or "", "fit": e.get("fitted") or [],
+                 "terms_applied": e.get("terms_applied") or [], "fell_back": bool(e.get("fell_back")),
+                 "reason": e.get("reason"), "repaired": e.get("repaired") or [],
+                 "timings": {k: e[k] for k in ("asr_ms", "polish_ms", "load_ms", "total_ms", "segments") if k in e},
+                 "language": e.get("language"), "asr_model": e.get("asr_model"), "polish_model": e.get("model"),
+                 "tags": e.get("asr_tags") or [], **tag_summary(e.get("asr_tags") or [])}
+    c["reference"] = e.get("corrected") or e.get("text") or None    # a starting point for the ground truth
+    return c, wav if has_audio else None
+
+
 def cmd_from_history(a) -> None:
     e = history_entry(a.id)
     if not e:
@@ -1279,31 +1311,80 @@ def cmd_from_history(a) -> None:
     existing = next((c for c in all_cases() if c.get("history_id") == a.id), None)
     if existing:
         return emit({"ok": True, "case": existing, "existed": True})
-    c = blank_case(new_id(), "history")
-    c["history_id"] = a.id
+    c, wav = case_from_history(e, new_id())
     d = case_path(c["id"])
     d.mkdir(parents=True)
-    wav = blurt_home() / "dictation" / (e.get("audio") or "")
-    if e.get("audio") and wav.is_file():
+    if wav:
         c["duration"] = to_16k_mono(wav, d / "audio.wav")
         c["audio"] = "audio.wav"
-    else:
-        c["duration"] = e.get("duration")
-    c["app"] = {"bundle": e.get("bundle")}
-    c["config"] = {"asr_model": e.get("asr_model"), "polish": e.get("polished") is not None or bool(e.get("fell_back")),
-                   "polish_model": e.get("model"), "language": e.get("language")}
-    c["take"] = {"segments": [], "raw": e.get("raw") or "", "asr_text": e.get("raw") or "", "polished": e.get("polished"),
-                 "text": e.get("text") or "", "fitted": e.get("text") or "", "fit": e.get("fitted") or [],
-                 "terms_applied": e.get("terms_applied") or [], "fell_back": bool(e.get("fell_back")),
-                 "reason": e.get("reason"), "repaired": e.get("repaired") or [],
-                 "timings": {k: e[k] for k in ("asr_ms", "polish_ms", "load_ms", "total_ms", "segments") if k in e},
-                 "language": e.get("language"), "asr_model": e.get("asr_model"), "polish_model": e.get("model"),
-                 "tags": e.get("asr_tags") or [], **tag_summary(e.get("asr_tags") or [])}
-    c["reference"] = e.get("text") or None       # a starting point for the ground truth: what was typed
+    if a.corrected:
+        c["corrected"] = a.corrected
+    if a.note:
+        c["note"] = a.note
+    if a.tags:
+        c["errors"] = [t for t in a.tags.split(",") if t]
     c["app_version"] = a.app_version
     refresh_metrics(c)
     save_case(c)
     emit({"ok": True, "case": c})
+
+
+_SPELLED = re.compile(r"(?<![A-Za-z])[A-Za-z](?: [A-Za-z])+(?![A-Za-z])")
+_CN_NUM_LATIN = re.compile(r"[零〇一二两三四五六七八九十]+ ?[A-Za-z]|[A-Za-z] ?[零〇一二两三四五六七八九十]+")
+_MARKS = "，。？！、；：,.?!;:"
+
+
+def review_take(e: dict, be, cfg: dict) -> dict:
+    """One kept take for review: what was typed beside the whole take heard again in one pass (no cuts, no prior —
+    the seams can't shape it), and what looks off. A reviewer (the user, or an agent reading this) decides."""
+    c, wav = case_from_history(e, "review-" + str(e.get("id")))
+    r = run_case(c, cfg, be, wav=wav)
+    heard_once = r["outputs"]["raw"]
+    typed = e.get("corrected") or e.get("text") or ""
+    flags = []
+    if e.get("fell_back"):
+        flags.append(f"fell_back:{e.get('reason')}")
+    words = [d for d in diff(heard_once, e.get("raw") or "") if d["op"] != "equal" and re.search(r"\w", d["ref"] + d["hyp"])]
+    if words:
+        flags.append("heard_differently")
+    seams = [p for p in e.get("pieces") or [] if p.get("pause_after")]
+    # a mark typed at a seam that the one-pass transcript doesn't have there: the pause may have put it in
+    count = lambda t: sum(ch in _MARKS for ch in t)  # noqa: E731
+    marks = [d for d in diff(heard_once, typed) if d["op"] != "equal" and count(d["hyp"]) > count(d["ref"])]
+    if marks and seams:
+        flags.append("seam_marks")
+    if _SPELLED.search(typed):
+        flags.append("spelled_letters")
+    if _CN_NUM_LATIN.search(typed):
+        flags.append("numeral_format")
+    return {"id": e.get("id"), "t": e.get("t"), "app": e.get("app"), "duration": e.get("duration"),
+            "audio": str(wav) if wav else None, "typed": typed, "raw": e.get("raw"), "polished": e.get("polished"),
+            "heard_once": heard_once, "asr_model": r["outputs"].get("asr_model"), "flags": flags,
+            "heard_diff": [{"once": d["ref"], "streamed": d["hyp"]} for d in words],
+            "pieces": [{k: p.get(k) for k in ("raw", "pause_after", "polish_in", "text")} for p in e.get("pieces") or []]}
+
+
+def cmd_review(a) -> None:
+    """The kept takes since --since (or the last --last ones) for review; takes without audio are counted, not shown."""
+    import dictation  # noqa: PLC0415
+    entries = [e for e in dictation.load(blurt_home() / "dictation" / "history.jsonl") if e.get("raw")]
+    entries.sort(key=lambda e: e.get("t") or "")
+    if a.since:
+        entries = [e for e in entries if (e.get("t") or "") >= a.since]
+    if a.last:
+        entries = entries[-a.last:]
+    kept = [e for e in entries if e.get("audio") and (blurt_home() / "dictation" / e["audio"]).is_file()]
+    cfg = parse_spec(a.config or "mode=whole,polish=off,vocab=on")
+    be = Servers()
+    out = []
+    for n, e in enumerate(kept, 1):
+        try:
+            out.append(review_take(e, be, cfg))
+        except Fail as x:
+            out.append({"id": e.get("id"), "t": e.get("t"), "error": str(x), "code": x.code})
+        print(json.dumps({"event": "review_progress", "n": n, "total": len(kept)}), file=sys.stderr, flush=True)
+    flagged = [t for t in out if t.get("flags")]
+    emit({"ok": True, "takes": out, "flagged": len(flagged), "no_audio": len(entries) - len(kept), "config": cfg["key"]})
 
 
 def cmd_delete(a) -> None:
@@ -1486,6 +1567,13 @@ def main() -> None:
     fh = sub.add_parser("from-history")
     fh.add_argument("id")
     fh.add_argument("--app-version")
+    fh.add_argument("--corrected")
+    fh.add_argument("--note")
+    fh.add_argument("--tags")
+    rv = sub.add_parser("review")
+    rv.add_argument("--since")
+    rv.add_argument("--last", type=int)
+    rv.add_argument("--config")
     de = sub.add_parser("delete")
     de.add_argument("ids", nargs="+")
     sc = sub.add_parser("score")
@@ -1522,7 +1610,7 @@ def main() -> None:
     ge.add_argument("--focus", help="a dimension to stress, e.g. 'self-corrections with numbers'")
     a = p.parse_args()
     try:
-        {"list": cmd_list, "show": cmd_show, "add": cmd_add, "from-history": cmd_from_history, "delete": cmd_delete,
+        {"list": cmd_list, "show": cmd_show, "add": cmd_add, "from-history": cmd_from_history, "review": cmd_review, "delete": cmd_delete,
          "score": cmd_score, "configs": cmd_configs, "rerun": cmd_rerun, "run": cmd_run, "export": cmd_export,
          "learn": cmd_learn, "packs": cmd_packs, "pack": cmd_pack, "import-pack": cmd_import_pack,
          "generate": cmd_generate}[a.cmd](a)
