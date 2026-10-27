@@ -226,8 +226,6 @@ struct DictationPane: View {
     @ObservedObject var models = DictationModels.shared
     @ObservedObject var guide = PermissionGuide.shared
     @State var showByApp = false
-    /// Advanced (the Dictation Lab): folded unless the Lab is on
-    @State var showAdvanced = DictationLabModel.enabled
     @State var lab = DictationLabModel.enabled
 
     private let nav = SettingsNavigator.shared       // not observed: the pane needn't redraw as the search is typed
@@ -243,8 +241,8 @@ struct DictationPane: View {
                 modelsRow
             }
 
-            // for developers: folded away at the page's foot
-            SettingsGroup("dictation.advanced", disclosure: $showAdvanced) {
+            // the page's foot, shown open like every section (folded until v1.0.2)
+            SettingsGroup("dictation.advanced") {
                 SettingToggle("dictation.lab", isOn: Binding(get: { lab }, set: { v in
                     lab = v
                     Config.shared.set("record.dictation.lab", v ? true : nil)
@@ -267,7 +265,6 @@ struct DictationPane: View {
         .onReceive(SettingsFlash.shared.$request) { r in
             guard let id = r?.id else { return }
             if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
-            if id == "dictation.lab" || id == "dictation.advanced" { showAdvanced = true }
         }
         .onAppear { m.start(); perms.start() }
         .onDisappear { m.stop(); perms.stop() }
