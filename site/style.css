@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.0-1") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.0-1") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.0-1") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.0-2") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.0-2") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.0-2") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -356,7 +356,12 @@ html:not(.motion) .nowl{ display: none; }
 .chap{ margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
 .chap a{ display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); color: var(--ink); text-decoration: none; font-size: 15px; white-space: nowrap; }
 .chap a:hover{ color: var(--mint-ink); }
-.chap .num{ color: var(--ink-3); font-size: 13px; }
+.chap .chap-t{ display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px 3px 5px; border-radius: 999px; background: color-mix(in srgb, var(--mint) 14%, transparent); color: var(--mint-ink); font-size: 13px; transition: background .15s, color .15s; }
+.chap .chap-t .i-play{ width: 16px; height: 16px; border-radius: 50%; background: var(--mint); position: relative; flex: none; }
+.chap .chap-t .i-play::after{ border-width: 3.5px 0 3.5px 5.5px; }
+.chap a:hover .chap-t, .chap a:focus-visible .chap-t{ background: var(--mint); color: var(--on-mint); }
+.chap a:hover .chap-t .i-play, .chap a:focus-visible .chap-t .i-play{ background: var(--on-mint); }
+.chap a:hover .chap-t .i-play::after, .chap a:focus-visible .chap-t .i-play::after{ border-left-color: var(--mint); }
 
 /* ------------------------------------------------------------------ 3. structured: a chat window */
 .sc-struct { --len: 290vh; }
@@ -526,7 +531,7 @@ html:not(.motion) .bub-hint{ display: none; } html:not(.motion) .bub-ok{ display
 .cl-h{ font-weight: 600; color: var(--win-ink-2); }
 .cl-box{ position: absolute; left: 1.6em; right: 1.6em; bottom: 1.6em; min-height: 9em; padding: 1em 1.1em; border-radius: 1em; background: var(--win); box-shadow: inset 0 0 0 1px var(--win-line), 0 .3em .9em rgba(0, 0, 0, .06); }
 .cl-att{ display: inline-flex; align-items: center; gap: .6em; padding: .35em .8em .35em .35em; border-radius: .6em; background: var(--win-2); font-size: .86em; transition: opacity .35s, transform .45s var(--ease); }
-.cl-thumb{ width: 3.6em; height: 2.4em; border-radius: .35em; background: #F3F3F4 url("assets/rec-frame.jpg?v=1.0.0-1") 78% 60% / 260% auto no-repeat; box-shadow: inset 0 0 0 1px var(--win-line); }
+.cl-thumb{ width: 3.6em; height: 2.4em; border-radius: .35em; background: #F3F3F4 url("assets/rec-frame.jpg?v=1.0.0-2") 78% 60% / 260% auto no-repeat; box-shadow: inset 0 0 0 1px var(--win-line); }
 .cl-txt{ margin-top: .7em; transition: opacity .4s .3s; }
 .cl-send{ position: absolute; right: .9em; bottom: .9em; width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--cc); color: #fff; display: grid; place-items: center; font-weight: 700; }
 .sc-snap:not(.on12) .cl-att{ opacity: 0; transform: scale(.85); }
@@ -564,7 +569,7 @@ html.motion .sc-snap.on12 .draw{ opacity: 0; }
 .tick .num{ color: rgba(255, 255, 255, .5); flex: none; }
 .sc-rec:not(.on1) .tick, .sc-rec.on4 .tick{ opacity: 0; }
 .strip{ position: absolute; left: 34em; top: 54.9em; width: 60em; display: flex; gap: .6em; pointer-events: none; }
-.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=1.0.0-1") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 .4em 1em rgba(0, 0, 0, .3);
+.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=1.0.0-2") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 .4em 1em rgba(0, 0, 0, .3);
   transition: transform .9s var(--ease), opacity .5s; transition-delay: calc(var(--i) * 55ms); }
 .sc-rec:not(.on4) .strip{ opacity: 0; }
 .sc-rec.on5 .strip i{ transform: translate(calc((20 - 7.5 * var(--i)) * 1em), calc((-36.1 + 4.4 * var(--i)) * 1em)) scale(.4); opacity: 0; }
@@ -1139,7 +1144,7 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
   transform-origin: 40% 30%; transition: transform .35s cubic-bezier(.2, .9, .3, 1.3); }
 /* a beat (done, hello): Peep grows out of the notch for the moment, so the hop reads at a glance */
 .isl .el > .pp.beat{ transform: translateY(5px) scale(1.55); clip-path: inset(-30px -30px 1px -30px); }
-html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.0-1"); background-size: 500% 100%; background-position: 0 0; }
+html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.0-2"); background-size: 500% 100%; background-position: 0 0; }
 .snotch .ps{ position: absolute; left: 8px; top: -3px; }
 .ps[data-still="done"]{ background-position: 25% 0; }
 .ps[data-still="talking"]{ background-position: 50% 0; }
@@ -1191,7 +1196,7 @@ html.motion .hero-peep{ top: clamp(20px, 5vh, 70px); }
 /* the end: clay Peep peeks up from the bottom edge, only the top of its head and its eyes */
 .peek{ position: relative; height: clamp(110px, 15vw, 210px); margin-top: 40px; overflow: hidden; pointer-events: none; }
 .pk{ position: absolute; left: 50%; bottom: 0; width: clamp(240px, 33vw, 460px); transform: translate(-50%, 6%); }
-html.no-js .pk{ background: url("assets/peep/peek.webp?v=1.0.0-1") 44.444% 66.667% / 1000% 700% no-repeat; }
+html.no-js .pk{ background: url("assets/peep/peek.webp?v=1.0.0-2") 44.444% 66.667% / 1000% 700% no-repeat; }
 html.motion .pk{ transform: translate(-50%, 100%); transition: transform .9s cubic-bezier(.2, .9, .3, 1.15); }
 html.motion .peek.up .pk{ transform: translate(-50%, 6%); }
 html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-duration: .25s; transition-timing-function: cubic-bezier(.5, 0, .7, .4); }
