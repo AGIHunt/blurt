@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Bring the feedback reports home (docs/design/feedback.md §On the developer's Mac): list the reports in the bucket,
+"""Bring the feedback reports home (docs/design/feedback.md §On the developer's Mac): list the reports on the service,
 download each, unpack it to ~/BlurtFeedback/<id>/, add its dictations to the Dictation Lab
-(`dictation_lab.py import-feedback DIR`), and delete the report from the bucket once that worked.
+(`dictation_lab.py import-feedback DIR`), and delete the report from the service once that worked. A report whose
+parts never all arrived is deleted once it is an hour old (the sender was told it failed).
 
   pull.py [--dry-run] [--keep-remote] [--dest DIR]
         --dry-run      list what is there; download, import and delete nothing
-        --keep-remote  import, but leave the reports in the bucket
+        --keep-remote  import, but leave the reports on the service
         --dest         where the reports are unpacked (default ~/BlurtFeedback)
   pull.py init [--force]
         make the admin token: ~/.config/blurt-feedback/admin.env (mode 600), then print the command that gives it to
@@ -29,6 +30,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,6 +38,15 @@ LAB = ROOT / "skills" / "blurt" / "scripts" / "dictation_lab.py"
 DEFAULT_URL = "https://blurt-feedback.agihunt.info"
 MAX_UNPACKED = 2 * 1024**3          # a 100 MB zip that unpacks past this is not one of ours
 ID_CHARS = set("abcdefghijklmnopqrstuvwxyz234567")
+STALE = timedelta(hours=1)          # an upload not complete after this long was given up
+
+
+def _when(iso) -> datetime:
+    try:
+        t = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime.fromtimestamp(0, timezone.utc)
 
 
 class Fail(Exception):
@@ -181,6 +192,7 @@ def pull(dest: Path, dry_run: bool, keep_remote: bool) -> int:
     reports = list_reports(base, token)
     print(f"{len(reports)} report(s) at {base}")
     failed = 0
+    now = datetime.now(timezone.utc)
     for rep in reports:
         rid = str(rep.get("id") or "")
         meta = rep.get("meta") or {}
@@ -189,6 +201,22 @@ def pull(dest: Path, dry_run: bool, keep_remote: bool) -> int:
         if len(rid) != 26 or not set(rid) <= ID_CHARS:
             print(line + "  skipped: not a report id")
             failed += 1
+            continue
+        if not rep.get("complete"):
+            # a send that stopped half way: the app said it failed, so nobody waits for it
+            age = now - _when(rep.get("uploaded"))
+            line += f"  incomplete ({rep.get('done', '?')}/{rep.get('parts', '?')} parts)"
+            if age < STALE:
+                print(line + "; still arriving, left for now")
+            elif dry_run:
+                print(line + "; would be deleted")
+            else:
+                try:
+                    delete(base, token, rid)
+                    print(line + "; over an hour old, deleted")
+                except Fail as e:
+                    print(line + f"; delete failed: {e}")
+                    failed += 1
             continue
         if dry_run:
             print(line)
@@ -206,18 +234,18 @@ def pull(dest: Path, dry_run: bool, keep_remote: bool) -> int:
             zpath.unlink(missing_ok=True)
         r = import_lab(dest / rid, rid)
         if not r.get("ok"):
-            print(line + f"  import failed ({r.get('code', 'error')}): {r.get('error')}; kept in the bucket")
+            print(line + f"  import failed ({r.get('code', 'error')}): {r.get('error')}; kept on the service")
             failed += 1
             continue
         line += f"  → {len(r.get('imported') or [])} case(s)"
         if r.get("skipped"):
             line += f", {len(r['skipped'])} skipped"
         if keep_remote:
-            print(line + "; kept in the bucket")
+            print(line + "; kept on the service")
             continue
         try:
             delete(base, token, rid)
-            print(line + "; deleted from the bucket")
+            print(line + "; deleted from the service")
         except Fail as e:
             print(line + f"; delete failed: {e}")
             failed += 1

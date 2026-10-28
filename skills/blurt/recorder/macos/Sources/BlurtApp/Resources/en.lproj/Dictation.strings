@@ -637,4 +637,5 @@
 "dictation.feedback.done" = "Done";
 "dictation.feedback.error.network" = "Couldn’t reach the server. Check your connection and try again.";
 "dictation.feedback.error.rate" = "Too many reports at once. Try again in a minute.";
+"dictation.feedback.error.full" = "We’ve had all the reports we can take today. Try again tomorrow.";
 "dictation.feedback.error.other" = "It didn’t go through. Try again later.";

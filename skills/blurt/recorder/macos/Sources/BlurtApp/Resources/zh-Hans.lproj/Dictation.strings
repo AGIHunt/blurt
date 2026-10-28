@@ -637,4 +637,5 @@
 "dictation.feedback.done" = "完成";
 "dictation.feedback.error.network" = "连不上服务器，检查网络后再试一次。";
 "dictation.feedback.error.rate" = "发得太频繁了，过一分钟再试。";
+"dictation.feedback.error.full" = "今天收到的反馈已经满了，明天再发吧。";
 "dictation.feedback.error.other" = "没发送成功，稍后再试。";

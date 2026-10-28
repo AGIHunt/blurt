@@ -12,20 +12,25 @@ into one zip and sent to the Blurt developers. Nothing is sent without `send`, a
           $BLURT_HOME/feedback/sent.jsonl {"id","t","takes":[ids],"bytes"}
 
 Errors ({"ok": false, "code"}): not_found (an id not in the history), too_large (over 100 000 000 bytes), network
-(no answer), rate_limited (HTTP 429), server (any other HTTP error), usage.
+(no answer), rate_limited (HTTP 429: too many from here), full (HTTP 503: the service's day is used up, try tomorrow),
+server (any other HTTP error), usage.
 
 The bundle: report.json, history.jsonl (the takes' lines as written, plus the edit lines naming them; "context"
-dropped with --no-context), audio/<id>.wav (each kept recording; a take whose recording is gone goes as text only).
-The endpoint: --endpoint, else $BLURT_FEEDBACK_URL, else https://blurt-feedback.agihunt.info.
+dropped with --no-context), audio/<id>.flac (each kept recording, lossless; .wav when neither afconvert
+nor ffmpeg can convert it; a take whose recording is gone goes as text only).
+The upload: POST /v1/report (X-Blurt-Size, X-Blurt-Parts, …) → {"id", "part_size"}, then PUT /v1/report/<id>/<i>
+for each 24 MiB part. The endpoint: --endpoint, else $BLURT_FEEDBACK_URL, else https://blurt-feedback.agihunt.info.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import locale
+import math
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -40,6 +45,7 @@ from _common import IS_MAC, IS_WIN, _ram_gb, blurt_home, global_config, private_
 
 SCHEMA = 1
 LIMIT = 100_000_000                 # the Worker refuses more (413); refused here first so nothing is uploaded for naught
+PART = 24 * 1024 * 1024             # the Worker's part size (a Workers KV value is at most 25 MiB)
 ENDPOINT = "https://blurt-feedback.agihunt.info"
 _SAFE_ID = re.compile(r"[A-Za-z0-9_.-]{1,128}")
 
@@ -228,58 +234,133 @@ def terms() -> list[dict]:
 
 
 # ------------------------------------------------------------------ the bundle
+def compress(wav: Path, out_dir: Path) -> Path | None:
+    """The recording as FLAC: lossless, about half of 16 kHz PCM — a lossy codec changed what the speech model heard
+    on a test clip (32 kbit/s AAC dropped the first two characters), and a report is for replaying exactly what was
+    heard. afconvert on macOS, else ffmpeg; None when neither works (the WAV goes instead). The Lab turns it back into
+    its 16 kHz WAV (to_16k_mono)."""
+    dst = out_dir / (wav.stem + ".flac")
+    cmds = []
+    if shutil.which("afconvert"):
+        cmds.append(["afconvert", "-f", "flac", "-d", "flac", str(wav), str(dst)])
+    if shutil.which("ffmpeg"):
+        cmds.append(["ffmpeg", "-nostdin", "-loglevel", "error", "-y", "-i", str(wav), "-c:a", "flac", str(dst)])
+    for cmd in cmds:
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=300)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0 and dst.is_file() and dst.stat().st_size > 0:
+            return dst
+        dst.unlink(missing_ok=True)
+    return None
+
+
 def build(ids: list[str], context: bool, out: Path, app_version: str, app_build: str) -> dict:
-    """Writes the zip to `out`; → {"takes": [preview rows], "device", "models", "bytes", "with_audio"}."""
+    """Writes the zip to `out` (the converted recordings go next to it, in its folder); → {"takes": [preview rows],
+    "device", "models", "bytes", "with_audio"}."""
     entries = folded(ids)
     lines = history_lines(ids, context)
     settings = dictation_settings()
     dev, mods = device(), models(settings)
     takes, rows, with_audio = [], [], 0
-    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-        for i, e in enumerate(entries):
-            wav = audio_file(e)
-            name = f"audio/{arc_id(e, i)}.wav" if wav else None
-            if wav:
-                z.write(wav, name, compress_type=zipfile.ZIP_STORED)   # PCM barely deflates; stored keeps it quick
-                with_audio += 1
-            takes.append({"id": e["id"], "audio": name})
-            own = [ln for ln in lines if e["id"] in ln]
-            rows.append({"id": e["id"], "t": e.get("t"), "app": e.get("app"), "duration": e.get("duration"),
-                         "text": (e.get("text") or "")[:80], "has_audio": bool(wav),
-                         "has_context": bool(context and e.get("context")),
-                         "bytes": (wav.stat().st_size if wav else 0) + sum(len(ln.encode()) + 1 for ln in own)})
-        report = {"schema": SCHEMA, "created": now_iso(), "platform": platform_name(),
-                  "app": {"version": app_version, "build": app_build}, "device": dev, "dictation": settings,
-                  "models": mods, "terms": terms(), "context_included": context, "takes": takes}
-        z.writestr("report.json", json.dumps(report, ensure_ascii=False, indent=2))
-        z.writestr("history.jsonl", "".join(ln + "\n" for ln in lines))
+    work = out.parent / (out.stem + "-audio")
+    work.mkdir(exist_ok=True)
+    try:
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            for i, e in enumerate(entries):
+                wav = audio_file(e)
+                name, sent = None, None
+                if wav:
+                    sent = compress(wav, work) or wav
+                    name = f"audio/{arc_id(e, i)}{sent.suffix.lower()}"
+                    z.write(sent, name, compress_type=zipfile.ZIP_STORED)   # FLAC / PCM: deflate gains nothing
+                    with_audio += 1
+                takes.append({"id": e["id"], "audio": name})
+                own = [ln for ln in lines if e["id"] in ln]
+                rows.append({"id": e["id"], "t": e.get("t"), "app": e.get("app"), "duration": e.get("duration"),
+                             "text": (e.get("text") or "")[:80], "has_audio": bool(wav),
+                             "has_context": bool(context and e.get("context")),
+                             "bytes": (sent.stat().st_size if sent else 0) + sum(len(ln.encode()) + 1 for ln in own)})
+            report = {"schema": SCHEMA, "created": now_iso(), "platform": platform_name(),
+                      "app": {"version": app_version, "build": app_build}, "device": dev, "dictation": settings,
+                      "models": mods, "terms": terms(), "context_included": context, "takes": takes}
+            z.writestr("report.json", json.dumps(report, ensure_ascii=False, indent=2))
+            z.writestr("history.jsonl", "".join(ln + "\n" for ln in lines))
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
     return {"takes": rows, "device": dev, "models": mods, "bytes": out.stat().st_size, "with_audio": with_audio}
 
 
-def post(path: Path, endpoint: str, app_version: str, takes: int, timeout: float = 120) -> dict:
-    use_system_certs()
-    size = path.stat().st_size
-    url = endpoint.rstrip("/") + "/v1/report"
-    with open(path, "rb") as f:
-        req = urllib.request.Request(url, data=f, method="POST", headers={
-            "Content-Type": "application/zip", "Content-Length": str(size), "X-Blurt-Version": app_version,
-            # the Worker keeps these as the object's metadata (report.json is at the zip's end: it never unpacks it)
-            "X-Blurt-Platform": platform_name(), "X-Blurt-Takes": str(takes), "User-Agent": f"blurt/{app_version}"})
+# ------------------------------------------------------------------ the upload: announce, then the zip in parts
+class _Slice:
+    """`length` bytes of an open file from `offset`, read in blocks (http.client streams a body with .read())."""
+
+    def __init__(self, f, offset: int, length: int):
+        self.f, self.left = f, length
+        f.seek(offset)
+
+    def read(self, n: int = -1) -> bytes:
+        if self.left <= 0:
+            return b""
+        b = self.f.read(self.left if n is None or n < 0 else min(n, self.left))
+        self.left -= len(b)
+        return b
+
+
+def _http(req: urllib.request.Request, timeout: float) -> dict:
+    """The answer's JSON; an HTTP error or no answer → Fail with the code the app shows."""
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read()
+    except urllib.error.HTTPError as e:
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                body = r.read()
-        except urllib.error.HTTPError as e:
-            code = {429: "rate_limited", 413: "too_large"}.get(e.code, "server")
-            raise Fail(f"the feedback service answered HTTP {e.code}", code) from None
-        except (urllib.error.URLError, OSError) as e:
-            raise Fail(f"could not reach the feedback service: {getattr(e, 'reason', e)}", "network") from None
+            server_code = json.loads(e.read() or b"{}").get("code")
+        except (ValueError, OSError, AttributeError):
+            server_code = None
+        code = {429: "rate_limited", 413: "too_large", 503: "full", 409: "exists"}.get(e.code, "server")
+        raise Fail(f"the feedback service answered HTTP {e.code} ({server_code or 'no code'})", code) from None
+    except (urllib.error.URLError, OSError) as e:
+        raise Fail(f"could not reach the feedback service: {getattr(e, 'reason', e)}", "network") from None
     try:
         o = json.loads(body)
     except ValueError:
         raise Fail("the feedback service's answer is not JSON", "server") from None
-    if not (isinstance(o, dict) and o.get("ok") and isinstance(o.get("id"), str)):
-        raise Fail("the feedback service did not return a report id", "server")
+    if not (isinstance(o, dict) and o.get("ok")):
+        raise Fail("the feedback service did not say ok", "server")
     return o
+
+
+def upload(path: Path, endpoint: str, app_version: str, takes: int, timeout: float = 120) -> dict:
+    """POST /v1/report (the size, the number of parts, what the Worker keeps as the report's metadata) → its id and
+    the part size; then PUT /v1/report/<id>/<i> for each part. A part that fails on the way is sent once more."""
+    use_system_certs()
+    size = path.stat().st_size
+    base = endpoint.rstrip("/")
+    parts = max(1, math.ceil(size / PART))
+    head = {"X-Blurt-Version": app_version, "X-Blurt-Platform": platform_name(), "X-Blurt-Takes": str(takes),
+            "User-Agent": f"blurt/{app_version}"}
+    o = _http(urllib.request.Request(f"{base}/v1/report", data=b"", method="POST", headers={
+        **head, "X-Blurt-Size": str(size), "X-Blurt-Parts": str(parts)}), timeout)
+    rid, part = o.get("id"), o.get("part_size")
+    if not isinstance(rid, str) or part != PART:
+        raise Fail("the feedback service's answer has no report id or another part size", "server")
+    with open(path, "rb") as f:
+        for i in range(parts):
+            n = min(PART, size - i * PART)
+            for attempt in range(2):
+                req = urllib.request.Request(f"{base}/v1/report/{rid}/{i}", data=_Slice(f, i * PART, n), method="PUT",
+                                             headers={**head, "Content-Type": "application/octet-stream",
+                                                      "Content-Length": str(n)})
+                try:
+                    _http(req, timeout)
+                    break
+                except Fail as e:
+                    if attempt and e.code == "exists":      # the first try got there; only its answer was lost
+                        break
+                    if attempt or e.code not in ("network", "server"):
+                        raise Fail(str(e), "server" if e.code == "exists" else e.code) from None
+    return {"id": rid, "parts": parts}
 
 
 def record_sent(rid: str, ids: list[str], size: int) -> None:
@@ -312,7 +393,7 @@ def cmd_send(a) -> None:
         r = build(ids, not a.no_context, z, a.app_version, a.app_build)
         if r["bytes"] > LIMIT:
             raise Fail(f"the report is {r['bytes']} bytes, over the {LIMIT} limit: choose fewer dictations", "too_large")
-        o = post(z, endpoint, a.app_version, len(ids))
+        o = upload(z, endpoint, a.app_version, len(ids))
     record_sent(o["id"], ids, r["bytes"])
     emit({"ok": True, "id": o["id"], "bytes": r["bytes"], "takes": len(ids), "with_audio": r["with_audio"]})
 

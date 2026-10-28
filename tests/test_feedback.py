@@ -9,12 +9,14 @@ from __future__ import annotations
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
 import threading
 import wave
 import zipfile
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -29,6 +31,7 @@ import feedback as F  # noqa: E402
 import pull as P  # noqa: E402
 
 RID = "abcdefghijklmnopqrstuvwxyz"       # a report id's shape: 26 base32 characters
+CONVERTS = bool(shutil.which("afconvert") or shutil.which("ffmpeg"))
 
 
 def tone(path: Path, seconds: float) -> Path:
@@ -86,12 +89,14 @@ def bundle(tmp_path: Path, ids=("t-1", "t-2"), context=True) -> tuple[dict, zipf
 # ------------------------------------------------------------------ the bundle
 def test_bundle_holds_report_history_and_kept_audio(home, tmp_path):
     r, z = bundle(tmp_path)
-    assert sorted(z.namelist()) == ["audio/t-1.wav", "history.jsonl", "report.json"]
+    audio = "audio/t-1.flac" if CONVERTS else "audio/t-1.wav"
+    assert sorted(z.namelist()) == [audio, "history.jsonl", "report.json"]
+    assert not list(tmp_path.glob("*-audio"))                      # the converted copies are gone
     rep = json.loads(z.read("report.json"))
     assert rep["schema"] == 1 and rep["platform"] in ("macos", "linux", "windows")
     assert rep["app"] == {"version": "1.0.3", "build": "42"}
     assert set(rep["device"]) >= {"os", "os_version", "arch", "model", "chip", "cores", "memory_gb", "locale"}
-    assert rep["takes"] == [{"id": "t-1", "audio": "audio/t-1.wav"}, {"id": "t-2", "audio": None}]   # t-2: text only
+    assert rep["takes"] == [{"id": "t-1", "audio": audio}, {"id": "t-2", "audio": None}]   # t-2: text only
     assert rep["context_included"] is True and rep["models"] == {"asr": "mock-asr", "polish": "mock-polish"}
     assert rep["dictation"] == {"keep_audio": True, "polish": "light", "cloud": {}}                   # no key
     assert rep["terms"] == [{"term": "Claude Code", "sounds_like": ["cloud code"], "source": "learned"}]
@@ -102,7 +107,11 @@ def test_bundle_holds_report_history_and_kept_audio(home, tmp_path):
     raw = (home / "dictation" / "history.jsonl").read_text().splitlines()
     assert z.read("history.jsonl").decode().splitlines()[1] == raw[1]   # entry lines as written
     assert "Not chosen" not in z.read("history.jsonl").decode()
-    assert z.read("audio/t-1.wav") == (home / "dictation" / "audio" / "t-1.wav").read_bytes()
+    wav = (home / "dictation" / "audio" / "t-1.wav").read_bytes()
+    if CONVERTS:
+        assert z.read(audio)[:4] == b"fLaC" and len(z.read(audio)) < len(wav)               # FLAC: lossless, smaller
+    else:
+        assert z.read(audio) == wav
     assert [t["has_audio"] for t in r["takes"]] == [True, False] and r["takes"][0]["has_context"] is True
     assert r["takes"][0]["text"] == "Use Claude Code." and r["bytes"] == (tmp_path / "b-1.zip").stat().st_size
 
@@ -121,9 +130,16 @@ def test_preview_cli_and_unknown_ids(home):
     r = run("preview", "--ids", "t-1,t-2", "--no-context")
     o = json.loads(r.stdout.splitlines()[-1])
     assert r.returncode == 0 and o["ok"] and o["limit"] == 100_000_000 and [t["id"] for t in o["takes"]] == ["t-1", "t-2"]
-    assert o["takes"][0]["has_context"] is False and o["bytes"] > o["takes"][0]["bytes"] > 32000
+    assert o["takes"][0]["has_context"] is False and o["bytes"] > o["takes"][0]["bytes"] > 1000
     r = run("preview", "--ids", "t-1,t-3")                  # t-3 was deleted
     assert r.returncode == 1 and json.loads(r.stdout)["code"] == "not_found"
+
+
+def test_the_wav_goes_when_nothing_can_convert_it(home, tmp_path, monkeypatch):
+    monkeypatch.setattr(F.shutil, "which", lambda name: None)
+    _, z = bundle(tmp_path, ids=["t-1"])
+    assert json.loads(z.read("report.json"))["takes"][0]["audio"] == "audio/t-1.wav"
+    assert z.read("audio/t-1.wav") == (home / "dictation" / "audio" / "t-1.wav").read_bytes()
 
 
 def test_audio_path_outside_the_dictation_folder_is_not_sent(home, tmp_path):
@@ -137,22 +153,39 @@ def test_audio_path_outside_the_dictation_folder_is_not_sent(home, tmp_path):
 
 # ------------------------------------------------------------------ sending
 class Stub:
-    """The Worker's upload route: answers `status` (201 with an id by default) and keeps what it got."""
+    """The Worker's upload routes: POST /v1/report answers `status` (201 with an id and the part size by default),
+    each PUT /v1/report/<id>/<i> is kept; `fail_puts` answers the first PUTs with 500 (a retry must follow)."""
 
-    def __init__(self, status=201):
-        self.got = []
+    def __init__(self, status=201, fail_puts=0):
+        self.got, self.parts, self.fail_puts = [], {}, fail_puts
         stub = self
 
         class H(BaseHTTPRequestHandler):
-            def do_POST(self):
-                body = self.rfile.read(int(self.headers["Content-Length"]))
-                stub.got.append((self.path, dict(self.headers), body))
-                out = json.dumps({"ok": True, "id": RID} if status == 201 else {"ok": False}).encode()
-                self.send_response(status)
+            def _answer(self, code, o):
+                out = json.dumps(o).encode()
+                self.send_response(code)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(out)))
                 self.end_headers()
                 self.wfile.write(out)
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                stub.got.append((self.path, dict(self.headers), body))
+                if status != 201:
+                    return self._answer(status, {"ok": False})
+                self._answer(201, {"ok": True, "id": RID, "part_size": F.PART})
+
+            def do_PUT(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                i = int(self.path.rsplit("/", 1)[-1])
+                if stub.fail_puts:
+                    stub.fail_puts -= 1
+                    return self._answer(500, {"ok": False})
+                if i in stub.parts:
+                    return self._answer(409, {"ok": False, "code": "exists"})
+                stub.parts[i] = body
+                self._answer(201, {"ok": True, "part": i})
 
             def log_message(self, *a):
                 pass
@@ -160,6 +193,9 @@ class Stub:
         self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
         self.url = f"http://127.0.0.1:{self.srv.server_address[1]}"
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def zip(self) -> bytes:
+        return b"".join(self.parts[i] for i in sorted(self.parts))
 
     def close(self):
         self.srv.shutdown()
@@ -182,17 +218,33 @@ def test_send_posts_the_zip_and_notes_it(home, capsys):
     finally:
         s.close()
     assert code == 0 and o == {"ok": True, "id": RID, "bytes": o["bytes"], "takes": 2, "with_audio": 1}
-    path, headers, body = s.got[0]
-    assert path == "/v1/report" and headers["Content-Type"] == "application/zip" and len(body) == o["bytes"]
+    path, headers, _ = s.got[0]
+    assert path == "/v1/report" and headers["X-Blurt-Size"] == str(o["bytes"]) and headers["X-Blurt-Parts"] == "1"
     assert headers["X-Blurt-Version"] == "1.0.3" and headers["X-Blurt-Takes"] == "2"
-    assert body[:4] == b"PK\x03\x04" and "audio/t-1.wav" in zipfile.ZipFile(io.BytesIO(body)).namelist()
+    body = s.zip()
+    assert len(body) == o["bytes"] and body[:4] == b"PK\x03\x04"
+    assert {"report.json", "history.jsonl"} < set(zipfile.ZipFile(io.BytesIO(body)).namelist())
     sent = [json.loads(x) for x in (home / "feedback" / "sent.jsonl").read_text().splitlines()]
     assert sent == [{"id": RID, "t": sent[0]["t"], "takes": ["t-1", "t-2"], "bytes": o["bytes"]}]
     assert stat.S_IMODE((home / "feedback").stat().st_mode) == 0o700
 
 
+def test_send_in_parts_with_a_retry(home, capsys, monkeypatch):
+    monkeypatch.setattr(F, "PART", 4096)                            # the stub's part size follows
+    s = Stub(fail_puts=1)
+    try:
+        code, o = send(capsys, "--ids", "t-1,t-2", "--endpoint", s.url)
+    finally:
+        s.close()
+    parts = -(-o["bytes"] // 4096)
+    assert code == 0 and parts > 1 and sorted(s.parts) == list(range(parts))
+    assert s.got[0][1]["X-Blurt-Parts"] == str(parts) and all(len(s.parts[i]) == 4096 for i in range(parts - 1))
+    names = zipfile.ZipFile(io.BytesIO(s.zip())).namelist()           # back to back, the zip that was built
+    assert "report.json" in names and "history.jsonl" in names
+
+
 def test_send_uses_the_env_endpoint_and_maps_errors(home, capsys, monkeypatch):
-    for status, want in ((429, "rate_limited"), (500, "server"), (413, "too_large")):
+    for status, want in ((429, "rate_limited"), (503, "full"), (500, "server"), (413, "too_large")):
         s = Stub(status)
         monkeypatch.setenv("BLURT_FEEDBACK_URL", s.url)
         try:
@@ -233,7 +285,10 @@ def test_import_feedback_makes_cases_once(home, tmp_path, monkeypatch):
     cases = {c["history_id"]: c for c in L.all_cases()}
     a = cases["t-1"]
     assert a["source"] == "feedback" and a["tags"] == ["feedback"] and a["note"] == f"report {RID}"
-    assert a["app_version"] == "1.0.3+42" and a["device"]["os"] and a["audio"] == "audio.wav" and a["duration"] == 1.0
+    assert a["app_version"] == "1.0.3+42" and a["device"]["os"] and a["audio"] == "audio.wav"
+    assert abs(a["duration"] - 1.0) < 0.05                         # the FLAC back as 16 kHz mono PCM
+    with wave.open(str(L.case_path(a["id"]) / "audio.wav")) as w:
+        assert (w.getframerate(), w.getnchannels(), w.getsampwidth()) == (16000, 1, 2)
     assert a["reference"] == "Use Claude Code!" and a["take"]["raw"] == "use cloud code"
     assert a["context"] == {"included": True, "title": "Doc", "before": "before text", "selection": "sel",
                             "after": "after text", "text": "Doc — before text|[sel]after text"}
@@ -260,10 +315,11 @@ def test_import_feedback_cli_without_context(home, tmp_path):
 
 # ------------------------------------------------------------------ pull.py
 class Admin:
-    """The Worker's admin routes over a dict of id → zip bytes; checks the bearer token."""
+    """The Worker's admin routes over a dict of id → zip bytes (None: an upload whose parts never all came, with
+    its age in `ages`, minutes); checks the bearer token."""
 
-    def __init__(self, reports: dict[str, bytes], token="t0ken"):
-        self.reports, self.deleted, self.gets = dict(reports), [], []
+    def __init__(self, reports: dict[str, bytes | None], token="t0ken", ages: dict[str, int] | None = None):
+        self.reports, self.deleted, self.gets, self.ages = dict(reports), [], [], ages or {}
         adm = self
 
         class H(BaseHTTPRequestHandler):
@@ -286,7 +342,10 @@ class Admin:
                 if not self._ok():
                     return
                 if self.path.startswith("/v1/admin/reports?"):
-                    rows = [{"id": k, "size": len(v), "uploaded": "2026-10-28T00:00:00Z", "meta": {}} for k, v in adm.reports.items()]
+                    now = datetime.now(timezone.utc)
+                    rows = [{"id": k, "size": len(v or b"x"), "parts": 2, "done": 2 if v else 1, "complete": v is not None,
+                             "uploaded": (now - timedelta(minutes=adm.ages.get(k, 5))).isoformat(), "meta": {}}
+                            for k, v in adm.reports.items()]
                     return self._send(json.dumps({"reports": rows, "cursor": None}).encode())
                 rid = self.path.rsplit("/", 1)[-1]
                 adm.gets.append(rid)
@@ -320,7 +379,8 @@ def test_pull_imports_then_deletes_and_refuses_unsafe_zips(home, tmp_path, monke
         z.writestr("report.json", "{}")
         z.writestr("../escape.txt", "x")
     evil_id = "zzzzzzzzzzzzzzzzzzzzzzzzzz"
-    adm = Admin({RID: good.read_bytes(), evil_id: evil.getvalue()})
+    stale, fresh = "s" * 26, "f" * 26                                   # parts missing: 2 hours old, 5 minutes old
+    adm = Admin({RID: good.read_bytes(), evil_id: evil.getvalue(), stale: None, fresh: None}, ages={stale: 120})
     dev, dest = tmp_path / "devhome", tmp_path / "dest"
     monkeypatch.setenv("BLURT_HOME", str(dev))
     monkeypatch.setenv("BLURT_FEEDBACK_ADMIN_ENV", str(tmp_path / "admin.env"))
@@ -329,13 +389,15 @@ def test_pull_imports_then_deletes_and_refuses_unsafe_zips(home, tmp_path, monke
     monkeypatch.delenv("BLURT_FEEDBACK_ADMIN_TOKEN", raising=False)
     try:
         assert P.main(["--dry-run", "--dest", str(dest)]) == 0
-        assert adm.gets == [] and not dest.exists()                      # dry run: nothing downloaded
+        assert adm.gets == [] and adm.deleted == [] and not dest.exists()   # dry run: nothing downloaded or deleted
         assert P.main(["--dest", str(dest)]) == 1                         # the unsafe one failed
         out = capsys.readouterr().out
     finally:
         adm.close()
-    assert adm.deleted == [RID] and evil_id in adm.reports                # only the imported one deleted
-    assert (dest / RID / "audio" / "t-1.wav").is_file() and not (tmp_path / "escape.txt").exists()
+    assert sorted(adm.deleted) == sorted([RID, stale]) and evil_id in adm.reports and fresh in adm.reports
+    assert stale not in adm.gets and fresh not in adm.gets             # incomplete ones are never downloaded
+    assert (dest / RID / "audio" / ("t-1.flac" if CONVERTS else "t-1.wav")).is_file()
+    assert not (tmp_path / "escape.txt").exists()
     assert not (dest / evil_id).exists() and "unsafe path" in out and "t0ken" not in out
     assert len(list((dev / "dictation" / "lab" / "cases").glob("*/case.json"))) == 2
 

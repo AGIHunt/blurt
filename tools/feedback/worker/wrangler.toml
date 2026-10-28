@@ -1,4 +1,5 @@
-# Blurt feedback reports (docs/design/feedback.md). Deploy steps: README.md next to this file.
+# Blurt feedback reports (docs/design/feedback.md). Free plan only: Workers KV + one SQLite-backed Durable Object,
+# both with hard limits, so nothing can be billed. Deploy steps: README.md next to this file.
 name = "blurt-feedback"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
@@ -7,12 +8,21 @@ preview_urls = false
 
 routes = [{ pattern = "blurt-feedback.agihunt.info", custom_domain = true }]
 
-# private bucket: no public URL, no r2.dev; only this Worker's admin routes read it
-[[r2_buckets]]
+# the reports' parts and manifests; every key expires after 14 days (the Worker sets expirationTtl)
+[[kv_namespaces]]
 binding = "REPORTS"
-bucket_name = "blurt-feedback"
+id = "c5de266b8c0f4962b05d34656a0cfdb7"   # `wrangler kv namespace create blurt-feedback` printed it
 
-# Workers Rate Limiting API: 5 uploads a minute per key (the Worker keys on CF-Connecting-IP and stores nothing).
+# the day's allowance and which parts are in (one instance, "global")
+[[durable_objects.bindings]]
+name = "BUDGET"
+class_name = "Budget"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Budget"]
+
+# Workers Rate Limiting API: 5 new reports a minute per key (the Worker keys on CF-Connecting-IP and stores nothing).
 # namespace_id: any integer unique among this account's rate limiters.
 [[ratelimits]]
 name = "UPLOADS"

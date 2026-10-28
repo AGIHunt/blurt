@@ -73,6 +73,7 @@ final class DictationFeedbackModel: ObservableObject {
         switch code {
         case "network": return T("dictation.feedback.error.network")
         case "rate_limited": return T("dictation.feedback.error.rate")
+        case "full": return T("dictation.feedback.error.full")
         case "too_large": return T("dictation.feedback.too_large")
         default: return T("dictation.feedback.error.other")
         }
