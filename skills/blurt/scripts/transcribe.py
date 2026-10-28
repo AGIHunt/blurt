@@ -90,7 +90,7 @@ import dictation_vocab  # noqa: E402
 from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
                      server_exit, serve_exit_reason, serve_said, use_system_certs)
-from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
+from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent, write_text_atomic)
 
 use_system_certs()
@@ -902,11 +902,14 @@ def _modelscope(repo: str, total_mb: float) -> Path:
     except Exception as e:  # noqa: BLE001
         raise Fail(f"could not download {repo} from ModelScope: {e}", "network")
     want = [x for x in files if x.get("Type") == "blob" and not x["Path"].endswith((".md", ".gitattributes"))]
-    begin_download(dest, [{"path": x["Path"], "size": x.get("Size")} for x in want])
+    try:
+        begin_download(dest, [{"path": x["Path"], "size": x.get("Size")} for x in want])
+    except ValueError as e:
+        raise Fail(f"invalid ModelScope manifest: {e}", "network") from None
     done = 0.0
     serve_said(f"downloading {repo} (ModelScope)")
     for x in want:
-        p = dest / x["Path"]
+        p = download_path(dest, x["Path"])
         if p.exists() and p.stat().st_size == x.get("Size"):
             done += p.stat().st_size / 2**20
             continue
@@ -1513,12 +1516,14 @@ class OpenAICompat:
     """POST {base}/audio/transcriptions. verbose_json gives segment timestamps where supported."""
 
     def __init__(self, args):
-        self.key = (os.environ.get("BLURT_ASR_API_KEY") or os.environ.get("OPENAI_API_KEY")
-                    or os.environ.get("GROQ_API_KEY"))
-        if not self.key:
+        for name, default_base in (("BLURT_ASR_API_KEY", "https://api.openai.com/v1"),
+                                   ("OPENAI_API_KEY", "https://api.openai.com/v1"),
+                                   ("GROQ_API_KEY", "https://api.groq.com/openai/v1")):
+            self.key = os.environ.get(name)
+            if self.key:
+                break
+        else:
             raise Fail("no API key: set BLURT_ASR_API_KEY (or OPENAI_API_KEY / GROQ_API_KEY)", "auth")
-        default_base = "https://api.groq.com/openai/v1" if (os.environ.get("GROQ_API_KEY") and not os.environ.get(
-            "BLURT_ASR_API_KEY")) else "https://api.openai.com/v1"
         self.base = (os.environ.get("BLURT_ASR_BASE_URL") or default_base).rstrip("/")
         self.model = args.model or os.environ.get("BLURT_ASR_MODEL") or (
             "whisper-large-v3-turbo" if "groq" in self.base else "whisper-1")

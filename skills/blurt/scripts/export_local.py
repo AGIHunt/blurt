@@ -454,7 +454,7 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
 
     # frames/<ID>-<n>.<ext>, clips/<ID>.<ext>, items/<the item's file name>; a file that is gone is listed, not fatal
     media: dict[str, dict] = {}
-    copies: list[tuple[Path, str]] = []
+    copies: list[tuple[Path, str, Path]] = []
     missing: list[str] = []
     used: set[str] = set()
 
@@ -467,23 +467,30 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
         return cand
 
     files: dict[str, str] = {}
+
+    def media_file(i: dict, ref: str) -> Path:
+        try:
+            return items_mod.media_path(Path(i["store"]), ref)
+        except items_mod.ItemsError as e:
+            raise BundleError(str(e), e.code) from None
+
     for i in items:
         ident = slug(str(i.get("id") or ""), i["uid"], lower=False)
         m = media.setdefault(i["uid"], {"frames": [], "missing": []})
         for n, f in enumerate([f for f in i.get("frames") or [] if isinstance(f, dict) and f.get("path")], 1):
-            src = Path(f["path"])
+            src = media_file(i, f["path"])
             if not src.is_file():
                 missing.append(f"{ident}: {src.name}")
                 cap = str(f.get("caption") or "").replace("\n", " ").strip()
                 m["missing"].append(f"{t['frame']} {n}{' — ' + cap if cap else ''}")
                 continue
             m["frames"].append(("frames/" + unique(f"{ident}-{n}{src.suffix.lower() or '.png'}"), f))
-            copies.append((src, m["frames"][-1][0]))
+            copies.append((src, m["frames"][-1][0], Path(i["store"])))
         if isinstance(i.get("clip"), str) and i["clip"]:
-            src = Path(i["clip"])
+            src = media_file(i, i["clip"])
             if src.is_file():
                 m["clip"] = "clips/" + unique(f"{ident}{src.suffix.lower() or '.mp4'}")
-                copies.append((src, m["clip"]))
+                copies.append((src, m["clip"], Path(i["store"])))
             else:
                 missing.append(f"{ident}: {src.name}")
                 m["missing"].append(t["clip"])
@@ -506,8 +513,9 @@ def bundle(items: list[dict], out: Path, *, title: str | None = None, lang: str 
             z.writestr(f"{root}/summary.md", scrub("\n".join(md)))
             for i in items:
                 z.writestr(f"{root}/items/{files[i['uid']]}", scrub(item_file(i, t, L, media[i["uid"]])))
-            for src, rel in copies:  # pictures and video are compressed already
+            for src, rel, store in copies:  # pictures and video are compressed already
                 try:
+                    src = media_file({"store": str(store)}, str(src))
                     z.write(src, f"{root}/{rel}", compress_type=zipfile.ZIP_STORED)
                 except OSError as e:
                     raise BundleError(f"can't read {src.name}: {e.strerror or e}", "unreadable") from None

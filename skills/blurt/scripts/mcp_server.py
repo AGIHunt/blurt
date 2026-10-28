@@ -220,7 +220,7 @@ def get_item(uid: str, include_frames: bool = True, max_frames: int = 3) -> list
     if include_frames:
         frames = [f for f in item.get("frames") or [] if isinstance(f, dict) and f.get("path")]
         for f in frames[:max(0, min(int(max_frames), 10))]:
-            data = _jpeg(Path(f["path"]))
+            data = _jpeg(items_mod.media_path(Path(item["store"]), f["path"]))
             if data:
                 content.append(ImageContent(type="image", data=base64.b64encode(data).decode(), mimeType="image/jpeg"))
     return content

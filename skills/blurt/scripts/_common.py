@@ -14,7 +14,7 @@ import threading
 import time
 from contextlib import contextmanager
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 IS_MAC = sys.platform == "darwin"
 IS_WIN = os.name == "nt"
@@ -612,16 +612,40 @@ def folder_complete(d: Path, legacy=None) -> bool:
     man = load_json(d / DOWNLOAD_MANIFEST, None)
     if isinstance(man, list):
         for f in man:
-            p = d / f["path"]
+            try:
+                p = download_path(d, f["path"])
+            except (ValueError, TypeError, KeyError, OSError):
+                return False
             if not p.is_file() or (f.get("size") and p.stat().st_size != f["size"]):
                 return False
         return True
     return bool(legacy(d)) if legacy else False
 
 
+def download_path(d: Path, name: str) -> Path:
+    """A mirror manifest's POSIX path, confined to its model folder (including its resumable .part file).
+    This is for file-by-file mirror downloads, not HF snapshots with links into their sibling blobs folder.
+    """
+    if not isinstance(name, str) or not name or "\x00" in name or "\\" in name:
+        raise ValueError("invalid model file path")
+    rel = PurePosixPath(name)
+    if not rel.parts or rel.is_absolute() or ".." in rel.parts or PureWindowsPath(name).drive:
+        raise ValueError(f"invalid model file path: {name!r}")
+    p = d / name
+    try:
+        root = d.resolve()
+        if any(not f.resolve().is_relative_to(root) for f in (p, p.with_name(p.name + ".part"))):
+            raise ValueError(f"model file path escapes its folder: {name!r}")
+    except RuntimeError as e:  # a symlink loop is not a usable model path either
+        raise ValueError(f"invalid model file path: {name!r}") from e
+    return p
+
+
 def begin_download(d: Path, files: list[dict]) -> None:
     """Before the first file: the marker (the folder isn't a model until end_download) and the manifest
     ([{"path", "size"}])."""
+    for f in files:  # validate the whole response before any marker, manifest or model file is written
+        download_path(d, f["path"])
     d.mkdir(parents=True, exist_ok=True)
     (d / DOWNLOAD_MARKER).write_text(str(os.getpid()))
     write_text_atomic(d / DOWNLOAD_MANIFEST, json.dumps([{"path": f["path"], "size": f.get("size")} for f in files]))

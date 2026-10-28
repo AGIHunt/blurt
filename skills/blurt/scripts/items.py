@@ -205,7 +205,23 @@ def present(item: dict, path: Path, s: Store | None = None, names: dict | None =
 
 
 def _abs(s: Store, p: str) -> str:
-    return p if os.path.isabs(p) else str(s.root / p)
+    return str(media_path(s.root, p))
+
+
+def media_path(root: Path, ref: str) -> Path:
+    """Resolve a persisted attachment inside its store, including symlinks. Missing files may still be shown."""
+    base = real(root)
+    p = real(Path(ref) if os.path.isabs(ref) else base / ref)
+    if not p.is_relative_to(base):
+        fail(f"{ref}: media path is outside its store or session", "bad_media_path")
+    return p
+
+
+def _asset_dir(root: Path, uid: str) -> Path:
+    assets = media_path(root, "assets")
+    if not isinstance(uid, str) or not UID_RE.fullmatch(uid):
+        fail("invalid item uid for media", "bad_media_path")
+    return media_path(assets, uid)
 
 
 _NAMES: dict | None = None
@@ -327,7 +343,8 @@ def touch_batch(item: dict) -> None:
             save_batch(Path(session), b)
 
 
-def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Path | None, root: Path) -> dict:
+def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Path | None, root: Path,
+                 *, allow_external_media: bool = False) -> dict:
     user = item.get("_user") or {}
     written, kept = [], []
     for k, v in sets.items():
@@ -349,7 +366,7 @@ def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Pa
             kept.append(k)
             continue
         if k in ("frames", "clip"):
-            v = import_media(item, k, v, ctx, root)
+            v = import_media(item, k, v, ctx, root, allow_external=allow_external_media)
         item[k] = v
         written.append(k)
     for k in unsets:
@@ -363,7 +380,8 @@ def apply_fields(item: dict, sets: dict, unsets: list[str], force: bool, ctx: Pa
     return {"written": written, **({"kept_user": kept} if kept else {})}
 
 
-def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | None) -> dict:
+def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | None,
+          *, allow_external_media: bool = True) -> dict:
     try:
         check_item_fields(sets, unsets, f"{path.stem.split('-', 2)[0]}: ")
     except InvalidEdit as e:
@@ -373,7 +391,8 @@ def patch(path: Path, sets: dict, unsets: list[str], force: bool, ctx: Path | No
 
     def fn(item):
         out = {"ok": True, "id": item.get("id"), "uid": item.get("uid"),
-               **apply_fields(item, sets, unsets, force, ctx or _session_of(item), root)}
+               **apply_fields(item, sets, unsets, force, ctx or _session_of(item), root,
+                              allow_external_media=allow_external_media)}
         if item.get("state") == "discarded":
             out["note"] = "the user discarded this item — no need to spend more work on it"
         if not out["written"]:
@@ -402,23 +421,44 @@ def _asset_name(adir: Path, src: Path, clip: bool = False) -> Path:
     return adir / f"{n}{marked}{ext}"
 
 
-def import_media(item: dict, key: str, value, ctx: Path | None, root: Path):
+def import_media(item: dict, key: str, value, ctx: Path | None, root: Path, *, allow_external: bool = False,
+                 own_assets: bool = False):
     """frames / clip given relative to the session (or absolute) → copied into assets/<uid>/, stored relative to the
-    store root. Paths already in this store's assets are kept; files that don't exist are kept as given."""
+    store root. Only explicit CLI imports may read outside the store or the supplied session; a session's own
+    metadata cannot grant that access. Paths already in assets are kept; missing references remain confined.
+    """
+    owned = _asset_dir(root, item["uid"]) if own_assets else None
+
+    def stored(p: Path) -> str:
+        if owned is not None:
+            return (Path("assets") / item["uid"] / p.relative_to(owned)).as_posix()
+        return os.path.relpath(p, root).replace(os.sep, "/")
+
     def one(p, clip=False):
         if not isinstance(p, str) or not p:
             return p
-        if not os.path.isabs(p) and p.startswith("assets/") and (root / p).is_file():
-            return p
+        if not own_assets and not os.path.isabs(p) and p.startswith("assets/"):
+            asset = media_path(root, p)
+            if asset.is_file():
+                return os.path.relpath(asset, root).replace(os.sep, "/")
         src = Path(p) if os.path.isabs(p) else (ctx / p if ctx else root / p)
-        if not src.is_file():
-            return str(src) if ctx and not os.path.isabs(p) else p
         src = real(src)
-        if (root / "assets") in src.parents:
-            return os.path.relpath(src, root).replace(os.sep, "/")
-        dst = _asset_name(root / "assets" / item["uid"], src, clip)
+        if not allow_external and not any(src.is_relative_to(real(r)) for r in (root, ctx) if r is not None):
+            fail(f"{p}: media path is outside its store or session", "bad_media_path")
+        if not src.is_file():
+            if owned is not None:
+                return stored(_asset_name(owned, src, clip))
+            if src.is_relative_to(real(root)):
+                return os.path.relpath(src, root).replace(os.sep, "/")
+            # An unfinished/legacy session can name a frame before it is written. Keep a missing assets reference;
+            # a later ingest will copy the real frame, without authorizing future reads outside the store.
+            return os.path.relpath(_asset_dir(root, item["uid"]) / src.name, root).replace(os.sep, "/")
+        assets = media_path(root, "assets")
+        if assets in src.parents and (owned is None or src.is_relative_to(owned)):
+            return stored(src)
+        dst = media_path(root, str(_asset_name(_asset_dir(root, item["uid"]), src, clip)))
         st.link_or_copy(src, dst)
-        return os.path.relpath(dst, root).replace(os.sep, "/")
+        return stored(dst)
     if key == "clip":
         return one(value, clip=True)
     if not isinstance(value, list):
@@ -457,7 +497,7 @@ def set_frames(session: Path | None, ref: str, frames: list[dict], append: bool,
             fail(f"{p}: no such file" + (f" in {ctx}" if ctx else ""), "not_found")
 
     def fn(it):
-        new = import_media(it, "frames", frames, ctx, st.store_of_item(path).root)
+        new = import_media(it, "frames", frames, ctx, st.store_of_item(path).root, allow_external=True)
         if append:
             have = {f.get("path") for f in it.get("frames") or []}
             new = (it.get("frames") or []) + [f for f in new if f["path"] not in have]
@@ -512,7 +552,8 @@ def read_shots(session: Path) -> dict[int, dict]:
 
 
 def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: str, session: Path | None,
-               meta: dict, local: str | None, language: str | None, shot: int | None) -> dict:
+               meta: dict, local: str | None, language: str | None, shot: int | None,
+               allow_external_media: bool = False) -> dict:
     """A new item for store s from v2-shaped fields (an items.json entry, add --json, a page's add op). The caller
     holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/."""
     item = {"id": s.next_id(), "uid": uid, "kind": str(fields.get("kind") or "note")}
@@ -548,9 +589,11 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
         if k not in skip:
             item[k] = v
     if fields.get("frames") is not None:
-        item["frames"] = import_media(item, "frames", fields["frames"], session, s.root)
+        item["frames"] = import_media(item, "frames", fields["frames"], session, s.root,
+                                      allow_external=allow_external_media)
     if fields.get("clip"):
-        item["clip"] = import_media(item, "clip", fields["clip"], session, s.root)
+        item["clip"] = import_media(item, "clip", fields["clip"], session, s.root,
+                                    allow_external=allow_external_media)
     return item
 
 
@@ -645,7 +688,7 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
             if path is not None:  # the agent rewrote items.json after an earlier ingest: patch, keep the user's edits
                 sets = {k: v for k, v in it.items() if k not in PROTECTED and k != "status"
                         and not (k == "title" and not str(v or "").strip())}
-                patch(path, sets, [], False, session)
+                patch(path, sets, [], False, session, allow_external_media=False)
                 h = st.read_header(path)
                 results.append({"local": lid, "uid": uid, "id": h.get("id"), "path": str(path),
                                 "project": h.get("project")})
@@ -724,7 +767,8 @@ def add(session: Path | None, project: str | None, fields: dict, after: str | No
             meta = load_json(session / "meta.json", {}) or {}
             with target.lock():
                 item = build_item(fields, uid, target, project_by="capture", created=now_iso(), session=session,
-                                  meta=meta, local=lid, language=b.get("language"), shot=_shot_of(fields))
+                                  meta=meta, local=lid, language=b.get("language"), shot=_shot_of(fields),
+                                  allow_external_media=True)
                 path = write_new(target, item)
             if lid:
                 b.setdefault("local", {})[lid] = uid
@@ -746,7 +790,7 @@ def add(session: Path | None, project: str | None, fields: dict, after: str | No
     with target.lock():
         item = build_item(fields, uid, target, project_by="user" if os.environ.get("BLURT_BY") == "user" else "capture",
                           created=now_iso(), session=None, meta={}, local=None, language=fields.get("language"),
-                          shot=None)
+                          shot=None, allow_external_media=True)
         path = write_new(target, item)
     return {"ok": True, "id": item["id"], "uid": uid, "path": str(path)}
 
@@ -935,6 +979,7 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
             for s in locks:
                 stack.enter_context(s.lock())
             item = load(path)
+            shown = present(item, path, src)  # validate references before assets can be copied to another store
             old = item.get("id")
             if by == "user":
                 item.setdefault("_user", {})["project"] = round(to_epoch(now_iso()) or 0, 1)
@@ -948,12 +993,17 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
                 moved.append({"uid": item["uid"], "from": src.project_id, "to": dst.project_id, "id": old,
                               "path": str(path)})
                 continue
+            # Make valid absolute paths and links to other files in this store self-contained before moving.
+            # Only the item's own assets travel; links outside that directory must not become external reads later.
+            for key in ("frames", "clip"):
+                if key in item:
+                    item[key] = import_media(item, key, shown.get(key), None, src.root, own_assets=True)
             aliases = list(item.get("aliases") or [])
             back = _former_id(aliases, dst)
             item["id"] = back or dst.next_id()
             item["project"] = dst.project_id
             item["aliases"] = [*(a for a in aliases if a != back), *([old] if old else [])]
-            a_src, a_dst = src.asset_dir(item["uid"]), dst.asset_dir(item["uid"])
+            a_src, a_dst = _asset_dir(src.root, item["uid"]), _asset_dir(dst.root, item["uid"])
             if a_src.is_dir():
                 a_dst.parent.mkdir(parents=True, exist_ok=True)
                 if a_dst.exists():
@@ -961,7 +1011,7 @@ def move_items(paths: list[Path], pid: str, by: str = "user", only_from: set[str
                 try:
                     os.rename(a_src, a_dst)
                 except OSError:  # another volume
-                    shutil.copytree(a_src, a_dst)
+                    shutil.copytree(a_src, a_dst, symlinks=True)  # do not dereference unreferenced external links
                     shutil.rmtree(a_src)
             item["updated"] = now_iso()
             new_path = write_new(dst, item)
@@ -1230,8 +1280,8 @@ def _user_set(item: dict, sets: dict, unsets: list, now: float, root: Path, uid_
 def _relativize(v, root: Path):
     """A page sends back the absolute paths the doc gave it: inside the store they become relative again."""
     def one(p):
-        if isinstance(p, str) and os.path.isabs(p) and real(p).is_relative_to(root):
-            return os.path.relpath(real(p), root).replace(os.sep, "/")
+        if isinstance(p, str) and p:
+            return os.path.relpath(media_path(root, p), root).replace(os.sep, "/")
         return p
     if isinstance(v, list):
         return [{**f, "path": one(f.get("path"))} if isinstance(f, dict) else f for f in v]
