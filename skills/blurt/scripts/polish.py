@@ -54,7 +54,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab as vocab  # noqa: E402
 from _common import (BLURT_HOME, MODELS_DIR, SERVE_IDLE, global_config, landed_in, load_json, progress_line,  # noqa: E402
                      save_config_if_readable, save_json, server_exit, serve_exit_reason, serve_said)
-from _common import (begin_download, download_lock, end_download, fetch, folder_complete,  # noqa: E402
+from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
                      safetensors_complete, watch_parent)
 
 HERE = Path(__file__).parent
@@ -1588,7 +1588,7 @@ def _modelscope(m: dict) -> Path:
     done = 0.0
     serve_said(f"downloading {repo} (ModelScope)")
     for f in want:
-        p = dest / f["Path"]
+        p = download_path(dest, f["Path"])
         if p.exists() and p.stat().st_size == f.get("Size"):
             done += p.stat().st_size / 2**20
             continue
