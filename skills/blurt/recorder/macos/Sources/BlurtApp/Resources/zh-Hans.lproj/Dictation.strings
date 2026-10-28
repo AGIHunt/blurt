@@ -617,7 +617,7 @@
 "dictation.feedback.button" = "发送反馈";
 "dictation.feedback.button.tip" = "把听写发给 Blurt 开发者，用来复现和改进识别";
 "dictation.feedback.title" = "发送反馈";
-"dictation.feedback.note" = "勾选识别或排版不对的听写发给我们。我们会在自己的电脑上重放、找出原因并改进，不用写说明。";
+"dictation.feedback.note" = "勾选识别或排版不对的听写发给我们。AI 将会自行进行重放、评分、迭代改进。";
 "dictation.feedback.all" = "全选";
 "dictation.feedback.count" = "已选 %ld 条 · %@";
 "dictation.feedback.text_only" = "仅文字";

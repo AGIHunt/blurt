@@ -617,7 +617,7 @@
 "dictation.feedback.button" = "Send Feedback";
 "dictation.feedback.button.tip" = "Send dictations to the Blurt developers so they can reproduce and fix them";
 "dictation.feedback.title" = "Send Feedback";
-"dictation.feedback.note" = "Check the dictations that came out wrong and send them. We replay them on our own Mac, find the cause and fix it. No need to describe anything.";
+"dictation.feedback.note" = "Check the dictations that came out wrong and send them. AI replays and scores them, then improves Blurt.";
 "dictation.feedback.all" = "Select All";
 "dictation.feedback.count" = "%ld selected · %@";
 "dictation.feedback.text_only" = "Text only";
