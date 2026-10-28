@@ -28,6 +28,8 @@
 "dictation.toast.nothing" = "Didn’t catch anything";
 "dictation.toast.copied" = "Copied — paste with ⌘V";
 "dictation.toast.pasted_unsure" = "Pasted";
+/* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
+"dictation.toast.no_list" = "Couldn’t make a list; the text is as it was";
 "dictation.toast.copy_again" = "Copy Again";
 "dictation.toast.copy" = "Copy";
 "dictation.toast.no_field" = "No text field here. Your text:";

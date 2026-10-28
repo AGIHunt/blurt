@@ -1,0 +1,49 @@
+{"id": "z01", "input": "帮我做三件事，第一，改登录页；第二，修那个按钮，不对，是修导航栏；第三，写测试。", "output": "帮我做三件事：\n1. 改登录页\n2. 修导航栏\n3. 写测试", "pass": true}
+{"id": "z02", "input": "帮我做三件事，第一，改登录页；第二，修导航栏；第三，写测试。", "output": "帮我做三件事：\n1. 改登录页\n2. 修导航栏\n3. 写测试", "pass": true}
+{"id": "z03", "input": "今天三件事，第一买菜，第二取快递，不对，是寄快递，第三洗车。", "output": "今天三件事：\n1. 买菜\n2. 寄快递\n3. 洗车", "pass": true}
+{"id": "z04", "input": "两件事，第一件事是发周报，第二件事是约周四，哦不对，周五的会。", "output": "两件事：\n1. 发周报\n2. 约周五的会", "pass": true}
+{"id": "z05", "input": "明天要做的，首先是开会，其次是写文档，最后是，呃，最后是回邮件。", "output": "明天要做的：\n1. 开会\n2. 写文档\n3. 回邮件", "pass": true}
+{"id": "z06", "input": "有三个问题，第一个是太慢，第二个是太贵，不是，是太丑，第三个是不稳定。", "output": "有三个问题：\n1. 太慢\n2. 太丑\n3. 不稳定", "pass": true}
+{"id": "z07", "input": "我说一下顺序，一是备份数据库，二是升级，三是重启服务，四是检查日志。", "output": "我说一下顺序：\n1. 备份数据库\n2. 升级\n3. 重启服务\n4. 检查日志", "pass": true}
+{"id": "z08", "input": "要准备四样东西，第一是护照，第二是签证，第三是机票，第四是酒店，不对，酒店不用，第四是保险。", "output": "要准备四样东西：\n1. 护照\n2. 签证\n3. 机票\n4. 保险", "pass": true}
+{"id": "z09", "input": "周末安排，第一，去超市；第二，打扫卫生；第三，看电影，算了，第三是陪孩子。", "output": "周末安排：\n1. 去超市\n2. 打扫卫生\n3. 看电影，算了，第三是陪孩子", "pass": true}
+{"id": "z10", "input": "三个需求：第一，导出 PDF；第二，导出 CSV，不对，是 Excel；第三，支持暗色模式。", "output": "三个需求：\n1. 导出 PDF\n2. 导出 Excel\n3. 支持暗色模式", "pass": true}
+{"id": "z11", "input": "接下来，第一步，克隆仓库；第二步，装依赖；第三步，跑测试。", "output": "接下来，第一步，克隆仓库；第二步，装依赖；第三步，跑测试。", "pass": true}
+{"id": "z12", "input": "第一，改标题，第二，改颜色，不对，改字号，第三，改图标。", "output": "1. 改标题\n2. 改颜色\n3. 改字号\n4. 改图标", "pass": true}
+{"id": "z13", "input": "给你说两点，第一点，价格要降，第二点，交期要提前。", "output": "给你说两点：\n1. 价格要降\n2. 交期要提前", "pass": true}
+{"id": "z14", "input": "三件事，一个是招人，一个是融资，还有一个是，嗯，是做产品。", "output": "三件事：\n1. 招人\n2. 融资\n3. 做产品", "pass": true}
+{"id": "z15", "input": "这周要完成，第一，修复登录的 bug，第二，把那个上传的功能，呃，就是批量上传，做完，第三，写周报。", "output": "这周要完成：\n1. 修复登录的 bug\n2. 把那个上传的功能，就是批量上传，做完\n3. 写周报", "pass": true}
+{"id": "z16", "input": "记一下，第一，买牛奶，第二，买鸡蛋，第三，买面包，第四，买苹果，第五，买香蕉。", "output": "记一下：\n1. 买牛奶\n2. 买鸡蛋\n3. 买面包\n4. 买苹果\n5. 买香蕉", "pass": true}
+{"id": "z17", "input": "问题有两个，第一，页面打不开，第二，打开了也很慢，不对，是打开了数据不对。", "output": "问题有两个：\n1. 页面打不开\n2. 打开了也很慢，不对，是打开了数据不对", "pass": true}
+{"id": "z18", "input": "首先登录后台，然后点设置，然后，不对，先点用户，再点权限。", "output": "首先登录后台，然后点设置，然后不对，先点用户，再点权限。", "pass": true}
+{"id": "z19", "input": "第一，周一交，第二，周二评审，第三，周三上线。", "output": "1. 周一交\n2. 周二评审\n3. 周三上线", "pass": true}
+{"id": "z20", "input": "你帮我看三个地方，第一个地方是首页的轮播图，第二个地方是详情页的价格，第三个地方是购物车，不对，是结算页的优惠券。", "output": "你帮我看三个地方：\n1. 首页的轮播图\n2. 详情页的价格\n3. 结算页的优惠券", "pass": true}
+{"id": "z21", "input": "我们今天讨论了很多，主要是三个结论，第一，下个月发布，第二，先做 iOS 版本，Android 版本推迟，第三，预算增加百分之二十。", "output": "我们今天讨论了很多，主要是三个结论：\n1. 下个月发布\n2. 先做 iOS 版本，Android 版本推迟\n3. 预算增加百分之二十", "pass": true}
+{"id": "z22", "input": "两个选择，一是自己做，二是外包，嗯，外包可能更快。", "output": "两个选择，一是自己做，二是外包，外包可能更快。", "pass": true}
+{"id": "z23", "input": "需要三个人，第一个，前端，第二个，后端，第三个，测试，不对，设计。", "output": "需要三个人：\n1. 前端\n2. 后端\n3. 测试，不对，设计", "pass": true}
+{"id": "z24", "input": "三件事，第一，订票，第二，订酒店，第三，租车，哦对了，第四，买保险。", "output": "三件事：\n1. 订票\n2. 订酒店\n3. 租车\n4. 买保险", "pass": true}
+{"id": "e01", "input": "Three things. First, fix the login page. Second, update the docs, no wait, update the README. Third, ship it.", "output": "Three things:\n1. Fix the login page\n2. Update the README\n3. Ship it", "pass": true}
+{"id": "e02", "input": "Two things: first, call Anna, second, book the room.", "output": "Two things:\n1. Call Anna\n2. Book the room", "pass": true}
+{"id": "e04", "input": "My list: one, milk, two, eggs, three, bread, actually make that bagels.", "output": "My list:\n1. milk\n2. eggs\n3. bread, actually make that bagels", "pass": true}
+{"id": "e05", "input": "There are three issues, the first is speed, the second is cost, the third is reliability.", "output": "There are three issues, the first is speed, the second is cost, the third is reliability.", "pass": true}
+{"id": "e05-list", "input": "There are three issues, the first is speed, the second is cost, the third is reliability.", "output": "There are three issues:\n1. Speed\n2. Cost\n3. Reliability", "pass": true}
+{"id": "e06", "input": "To do today. Number one, reply to the client. Number two, review the PR. Number three, plan the sprint.", "output": "To do today:\n1. Reply to the client\n2. Review the PR\n3. Plan the sprint", "pass": true}
+{"id": "m01", "input": "三个任务，第一，部署 staging，第二，跑 e2e test，不对，是 smoke test，第三，发 release notes。", "output": "三个任务：\n1. 部署 staging\n2. 跑 smoke test\n3. 发 release notes", "pass": true}
+{"id": "m02", "input": "第一，升级 React 到十九，第二，换掉 Redux，第三，加上 TypeScript 的 strict 模式。", "output": "1. 升级 React 到十九\n2. 换掉 Redux\n3. 加上 TypeScript 的 strict 模式", "pass": true}
+{"id": "p01", "input": "我第一次用这个软件的时候觉得很难，后来慢慢就习惯了。", "output": "我第一次用这个软件的时候觉得很难，后来慢慢就习惯了。", "pass": true}
+{"id": "p02", "input": "这个方案不对，应该先做调研，再做设计。", "output": "这个方案不对，应该先做调研，再做设计。", "pass": true}
+{"id": "p03", "input": "我们周三开会，不对，周四开会。", "output": "我们周四开会。", "pass": true}
+{"id": "z21-sum", "input": "我们今天讨论了很多，主要是三个结论，第一，下个月发布，第二，先做 iOS 版本，Android 版本推迟，第三，预算增加百分之二十。", "output": "三个结论：\n1. 下月发布\n2. 先做 iOS\n3. 预算加百分之二十", "pass": false, "reason": "shrunk"}
+{"id": "z15-sum", "input": "这周要完成，第一，修复登录的 bug，第二，把那个上传的功能，呃，就是批量上传，做完，第三，写周报。", "output": "本周：\n1. 修登录 bug\n2. 批量上传\n3. 周报", "pass": false, "reason": "shrunk"}
+{"id": "z20-sum", "input": "你帮我看三个地方，第一个地方是首页的轮播图，第二个地方是详情页的价格，第三个地方是购物车，不对，是结算页的优惠券。", "output": "三处：\n1. 轮播图\n2. 价格\n3. 优惠券", "pass": false, "reason": "shrunk"}
+{"id": "z08-drop", "input": "要准备四样东西，第一是护照，第二是签证，第三是机票，第四是酒店，不对，酒店不用，第四是保险。", "output": "要准备：\n1. 护照\n2. 签证", "pass": false, "reason": "shrunk"}
+{"id": "z07-drop", "input": "我说一下顺序，一是备份数据库，二是升级，三是重启服务，四是检查日志。", "output": "顺序：\n1. 备份数据库\n2. 升级", "pass": false, "reason": "shrunk"}
+{"id": "commit-sum", "input": "没问题，该提交就提交不过提交之前是不是还有一些小东西要改一下？第一是在帮助理也加一下检查更新，第二是给我讲一下这个检查更新的逻辑是什么？是到 GitHub 里去找新的版本吗第三是我们在设置里的语音里面有一个默认是收起的高音那个高级不用收起吧，直接展开就好嘛。", "output": "提交前要改：\n1. 帮助里加检查更新\n2. 讲一下检查更新的逻辑\n3. 设置里的高级直接展开", "pass": false, "reason": "shrunk"}
+{"id": "commit-drop", "input": "没问题，该提交就提交不过提交之前是不是还有一些小东西要改一下？第一是在帮助理也加一下检查更新，第二是给我讲一下这个检查更新的逻辑是什么？是到 GitHub 里去找新的版本吗第三是我们在设置里的语音里面有一个默认是收起的高音那个高级不用收起吧，直接展开就好嘛。", "output": "没问题，该提交就提交，不过提交之前还有一些小东西要改一下：\n1. 在帮助里也加一下检查更新\n2. 给我讲一下这个检查更新的逻辑是什么\n3. 设置里的语音里面的高级不用收起，直接展开", "pass": false, "reason": "dropped"}
+{"id": "hang-sum", "input": "还有是要看一下几个事情，嗯。要找一个合适的解决方案然后。能够分租户、分用户的去看他们整个的行为链路。然后，对一些关键的事件能够进行标识，类似于全链路的数据。", "output": "要看几个事情：\n1. 找解决方案\n2. 分租户、分用户看行为链路\n3. 标识关键事件", "pass": false, "reason": "shrunk"}
+{"id": "z06-drop", "input": "有三个问题，第一个是太慢，第二个是太贵，不是，是太丑，第三个是不稳定。", "output": "问题：\n1. 太慢", "pass": false, "reason": "shrunk"}
+{"id": "z04-sum", "input": "两件事，第一件事是发周报，第二件事是约周四，哦不对，周五的会。", "output": "1. 周报\n2. 周五", "pass": false, "reason": "shrunk"}
+{"id": "z10-drop", "input": "三个需求：第一，导出 PDF；第二，导出 CSV，不对，是 Excel；第三，支持暗色模式。", "output": "需求：\n1. 导出 PDF\n2. 导出 Excel", "pass": false, "reason": "shrunk"}
+{"id": "z21-sum2", "input": "我们今天讨论了很多，主要是三个结论，第一，下个月发布，第二，先做 iOS 版本，Android 版本推迟，第三，预算增加百分之二十。", "output": "结论：\n1. 下个月发布\n2. 先做 iOS\n3. 预算加百分之二十", "pass": false, "reason": "shrunk"}
+{"id": "preface", "input": "明天要做三件事第一跑测试第二写文档第三提交代码", "output": "好的，下面是整理后的内容：\n1. 跑测试\n2. 写文档\n3. 提交代码", "pass": false, "reason": "chatty"}
+{"id": "signoff", "input": "明天要做三件事第一跑测试第二写文档第三提交代码", "output": "明天要做三件事：\n1. 跑测试\n2. 写文档\n3. 提交代码\n希望对你有帮助", "pass": false, "reason": "chatty"}

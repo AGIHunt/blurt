@@ -96,10 +96,12 @@ GROW_SLACK = 8
 NOVEL_SLACK = 4           # words / characters not in the input: homophone fixes add one or two
 NOVEL_RATIO = 0.15
 ADDED_RUN = 3             # this many words in a row at the start or end that were never said: a preface or a sign-off
-STRUCT_SPAN = 12          # Structured: one run of the input's units left out may be at most this long (a correction
-#                           taken back with the words that announced it); a longer one is content lost
-STRUCT_SHRINK = (12, 0.4)  # Structured may lose more in all (the counting words that became numbers, what was taken
-#                           back), but not a summary's share
+STRUCT_SPAN = 14          # Structured: one run of the input's units left out may be at most this long (a correction
+#                           taken back with the words that announced it, and the counting word it said again:
+#                           第四是酒店，不对，酒店不用，第四是保险); a longer one is content lost
+STRUCT_SHRINK = (12, 0.4)  # Structured may lose more in all (what was taken back), but not a summary's share …
+STRUCT_ITEM = 2           # … plus this many units for each list line: the counting word its number stands for (第一,
+#                           首先, first). A short list with a correction lost 50–60 % (issue #14: 31 → 17)
 
 
 _SPELLED = re.compile(r"(?<![a-z])[a-z](?: [a-z])+(?![a-z])")
@@ -155,16 +157,20 @@ def clean_structured(text: str) -> str:
     return "\n".join(ln.rstrip() for ln in t.split("\n")).strip()
 
 
+_LINE = "\n"   # a line break among units (_added_run)
+
+
 def _added_run(out_u: list[str], raw_u: list[str], allowed: set[str]) -> int:
     """The longest run of units at the start or the end of the output that follows nothing that was said: each unit
     and the next one were never said one after the other (pairs, since single CJK characters recur everywhere), and
-    neither is a custom word, a context word or a digit."""
+    neither is a custom word, a context word or a digit. A run ends at a line break (`_LINE`, Structured): list items
+    of a word each ("1. Speed\n2. Cost") are next to each other only on the page."""
     pairs = set(zip(raw_u, raw_u[1:]))
 
     def run(seq):
         n = 0
         for a, b in zip(seq, seq[1:]):
-            if (a, b) in pairs or (b, a) in pairs or a in allowed or a.isdigit():
+            if (a, b) in pairs or (b, a) in pairs or a in allowed or a.isdigit() or _LINE in (a, b):
                 break
             n += 1
         return n
@@ -238,11 +244,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     if (lost_latin and len(novel_cjk) >= 2) or (len(lost_cjk) >= 2 and len(novel_latin) >= 2):
         return verdict("translated")
     flat, ratio = STRUCT_SHRINK if mode == "structured" else (SHRINK_SLACK, SHRINK_RATIO)
-    if n_core - n_out > max(flat, ratio * n_core):
+    numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
+    if n_core - n_out > max(flat, ratio * n_core) + numbered:
         return verdict("shrunk")
     if n_out > n_raw * GROW_RATIO + GROW_SLACK:
         return verdict("grew")
-    if _added_run(out_u, raw_u, allowed) >= ADDED_RUN:
+    lined = [u for ln in out_for_units.split("\n") for u in [*units(ln), _LINE]][:-1] if mode == "structured" else out_u
+    if _added_run(lined, raw_u, allowed) >= ADDED_RUN:
         return verdict("chatty")
     if len(novel) > max(NOVEL_SLACK, NOVEL_RATIO * n_out) or (n_out and len(novel) > n_out / 2):
         return verdict("novel")
@@ -604,9 +612,10 @@ EXAMPLES = [     # the custom-word ones first: the plain ones last keep the 41-c
 # a correction or a list is the model's judgement, never a word list's.
 SYSTEM_STRUCTURE = """You format text someone dictated. Reply with the formatted text only: no preface, no quotes, no notes, no Markdown.
 
-Do two things:
+Do three things:
 1. Self-corrections: when the speaker takes something back or restates it — in whatever words, or just by saying it again differently — keep only the version they settled on, and leave out what they took back together with the words that announced the change. When you can't tell whether something was taken back, keep it.
 2. Lists: when the speaker really enumerates — counts off points or steps (第一个…第二个…, 首先…其次…最后, first… second…, even inside one long sentence), or announces several items and names them one by one — put each item on a line of its own as "1. …", "2. …". The sentence that introduces them becomes a line ending in a colon (：in Chinese); what is said after the list stays as a line of its own. Words that only counted the items (第一, 第二, 首先, first, second, finally …) become the numbers. When the speech doesn't enumerate, make no list: give the text back as it is, with only the self-corrections resolved.
+3. Paragraphs: when a long text moves on from one part or topic to the next, start each new part on a new paragraph (a blank line before it). Lists inside a part work as above.
 
 If the text still has hesitations, stutters or missing punctuation, tidy those as well.
 
@@ -619,6 +628,12 @@ STRUCTURE_EXAMPLES = [
      "我觉得有两个风险：\n1. 供应商可能会延期\n2. 测试环境还没准备好\n这两个下周要盯一下。"),
     ("For the release we need three things. First, run all the tests, second, update the docs, and finally, tag the build and send it to the team.",
      "For the release we need three things:\n1. Run all the tests\n2. Update the docs\n3. Tag the build and send it to the team"),
+    # a long take in parts (v1.0.3: a 280 s take came back as one block): a paragraph for each part, a list inside one
+    ("说一下搬家的安排，下周五之前要搬完，大家这周先把东西整理好。我这边第一块是打包，每个人自己的东西自己装箱，箱子行政那边会发，"
+     "记得贴好名字。然后第二块是搬过去以后分几件事，第一个是网络要先通，第二个是工位按新的座位表坐，再有是门禁卡要在周一之前换好，"
+     "别耽误上班。",
+     "说一下搬家的安排，下周五之前要搬完，大家这周先把东西整理好。\n\n我这边第一块是打包，每个人自己的东西自己装箱，箱子行政那边会发，"
+     "记得贴好名字。\n\n然后第二块是搬过去以后分几件事：\n1. 网络要先通\n2. 工位按新的座位表坐\n3. 门禁卡要在周一之前换好，别耽误上班"),
     ("这个按钮先改成蓝色吧，算了还是用绿色，字号也大一点。",
      "这个按钮用绿色，字号也大一点。"),
     ("The budget is twenty thousand, twenty-five thousand, including tax.",

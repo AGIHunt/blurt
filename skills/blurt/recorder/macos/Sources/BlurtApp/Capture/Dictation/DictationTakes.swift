@@ -498,7 +498,12 @@ extension Dictation {
             case .noField:
                 self.keepText(text, id: id)
             case .none:
-                break
+                // ⇧ (or Fn+⇧, the island) asked for a list and the structuring pass fell back: say so, or it looks
+                // as if ⇧ did nothing (issue #14: the reason was only in the history)
+                if take.explicit?.style == .structured, r.structureReason != nil {
+                    self.toast("dictation.toast.no_list", key: Dictation.toastKey, seconds: 3)
+                    emit(["event": "dictation_no_list", "id": id, "reason": r.structureReason ?? ""])
+                }
             }
             if result == .pasted { self.afterPaste(take, r, category: styleRecord.category, sent: sent) }
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,

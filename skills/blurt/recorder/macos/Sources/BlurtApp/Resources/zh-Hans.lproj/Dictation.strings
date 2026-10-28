@@ -28,6 +28,8 @@
 "dictation.toast.nothing" = "没听到内容";
 "dictation.toast.copied" = "已复制，⌘V 粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
+/* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
+"dictation.toast.no_list" = "没能排成清单，文字保持原样";
 "dictation.toast.copy_again" = "再复制一次";
 "dictation.toast.copy" = "复制";
 "dictation.toast.no_field" = "没找到输入框，文字在这里";
