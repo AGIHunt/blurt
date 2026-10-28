@@ -231,6 +231,7 @@ extension App {
                 case "query": DictationHistoryWindow.shared.setQuery(a.count > 1 ? a[1] : "")
                 case "delete": DictationHistoryWindow.shared.delete(a.count > 1 ? a[1] : nil)
                 case "select": DictationHistoryWindow.shared.testSelect((a.count > 1 ? a[1] : "").split(separator: ",").map(String.init))
+                case "feedback": DictationHistoryWindow.shared.testFeedback()
                 case "tab": DictationHistoryWindow.shared.testTab(a.count > 1 ? a[1] : "history")    // history | words | lab
                 case "key": DictationHistoryWindow.shared.testKey(a.count > 1 ? a[1] : "")       // delete | cmd+c | cmd+z | cmd+f | esc | up | down
                 // edit [ID] (opens the editor) | correct ID TEXT (saves a correction, as "Save Correction" does)

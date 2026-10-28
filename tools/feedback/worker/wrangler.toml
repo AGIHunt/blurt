@@ -1,0 +1,22 @@
+# Blurt feedback reports (docs/design/feedback.md). Deploy steps: README.md next to this file.
+name = "blurt-feedback"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false          # only the custom domain: no *.workers.dev URL
+preview_urls = false
+
+routes = [{ pattern = "blurt-feedback.agihunt.info", custom_domain = true }]
+
+# private bucket: no public URL, no r2.dev; only this Worker's admin routes read it
+[[r2_buckets]]
+binding = "REPORTS"
+bucket_name = "blurt-feedback"
+
+# Workers Rate Limiting API: 5 uploads a minute per key (the Worker keys on CF-Connecting-IP and stores nothing).
+# namespace_id: any integer unique among this account's rate limiters.
+[[ratelimits]]
+name = "UPLOADS"
+namespace_id = "4101"
+simple = { limit = 5, period = 60 }
+
+# secret, set with `wrangler secret put ADMIN_TOKEN` (never in this file): the admin routes' bearer token

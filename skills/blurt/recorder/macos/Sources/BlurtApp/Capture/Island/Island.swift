@@ -9,8 +9,9 @@
 // tray | +3); a moment grows its own side (Peep thinking, an alert, the launch hello). At rest — nothing live — it is the
 // bare notch: the inbox's backlog is the menu bar's count and the open island's Inbox row, never a standing number
 // beside the notch. A short done state is said in the ears, not a toast: "✓ Sent" after a double tap, "✓ Saved 0:42"
-// after a take (earMoment). Without a notch it is a capsule 6 pt under the menu bar (30 high, ≥ 120 wide) that hides
-// when idle and appears after the pointer rests 250 ms in the top-middle 320 × 8 pt. Hovering 180 ms (or a hotkey)
+// after a take (earMoment). A screen without a notch (an external display) gets the same island since v1.0.3: a notch
+// drawn in its menu bar's row, the built-in notch's width and the menu bar's height (it was a capsule 6 pt under the
+// menu bar, hidden when idle; that code is still there behind geo.notch == false). Hovering 180 ms (or a hotkey)
 // opens it: 480 wide, as tall as its content (≤ 420), 22 pt corners; it closes 400 ms after the pointer leaves it and
 // the hanging cards (HangingCards.swift), which drop after the same rest (CardReveal.dwell, 180 ms: a brush past the
 // notch drops nothing). Resting on the cards' count opens the island after 450 ms (the cards are down by then).
@@ -366,14 +367,16 @@ final class Island: NSObject, IslandHosting {
     private func screenWithPointer() -> NSScreen { pointerScreen() ?? NSScreen.main ?? NSScreen.screens[0] }
 
     /// The screen under the pointer. Scripted visual checks (test commands only) can pin the island instead:
-    /// BLURT_ISLAND_SCREEN=notch → the screen with a notch (else the first), whatever the pointer does.
-    private static let pinnedToNotch: Bool = {
+    /// BLURT_ISLAND_SCREEN=notch → the screen with a notch (else the first), =plain → one without (else the first),
+    /// whatever the pointer does.
+    private static let pinnedScreen: String? = {
         let env = ProcessInfo.processInfo.environment
-        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_ISLAND_SCREEN"] == "notch"
+        guard env["BLURT_TEST_COMMANDS"] == "1", let s = env["BLURT_ISLAND_SCREEN"], ["notch", "plain"].contains(s) else { return nil }
+        return s
     }()
     private func pointerScreen() -> NSScreen? {
-        if Island.pinnedToNotch {
-            if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }) { return n }
+        if let pin = Island.pinnedScreen {
+            if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { ($0.safeAreaInsets.top > 0) == (pin == "notch") }) { return n }
             return NSScreen.screens.first
         }
         let m = NSEvent.mouseLocation
@@ -388,11 +391,21 @@ final class Island: NSObject, IslandHosting {
         return CGFloat(dx)
     }()
 
-    /// Visual checks of the capsule (test commands only): BLURT_ISLAND_NOTCH=0 draws it as on a screen without a notch.
+    /// Visual checks (test commands only): BLURT_ISLAND_NOTCH=0 draws it as on a screen without a notch.
     static let testNoNotch: Bool = {
         let env = ProcessInfo.processInfo.environment
         return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_ISLAND_NOTCH"] == "0"
     }()
+
+    /// The built-in screen's notch width, which a screen without a notch borrows (185 pt, a 14" MacBook Pro's, when no
+    /// screen has one).
+    static var builtInNotchWidth: CGFloat {
+        if #available(macOS 12.0, *), let n = NSScreen.screens.first(where: { $0.safeAreaInsets.top > 0 }),
+           let l = n.auxiliaryTopLeftArea, let r = n.auxiliaryTopRightArea {
+            return n.frame.width - l.width - r.width
+        }
+        return 185
+    }
 
     private func ensurePanel(on s: NSScreen) {
         var g = Geo()
@@ -406,8 +419,13 @@ final class Island: NSObject, IslandHosting {
             g.row = g.notchH
             g.cx = Island.panelSize.width / 2 + ((l.maxX + r.minX) / 2 - s.frame.midX)
         } else {
-            g.top = min(menuH, 40) + 6
-            g.row = 30
+            // a screen without one (an external display): the same island, drawn as a notch in its menu bar's row — as
+            // wide as the built-in screen's notch, as tall as this menu bar
+            g.notch = true
+            g.notchW = Island.builtInNotchWidth
+            g.notchH = menuH
+            g.top = 0
+            g.row = g.notchH
             g.cx = Island.panelSize.width / 2
         }
         let f = NSRect(x: s.frame.midX - Island.panelSize.width / 2 + Island.testOffset, y: s.frame.maxY - Island.panelSize.height,

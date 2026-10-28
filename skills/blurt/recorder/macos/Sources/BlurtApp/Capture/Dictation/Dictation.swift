@@ -67,7 +67,7 @@
 // Config record.dictation: enabled (true), key fn|right_option|either_option (unset = fn), mode auto|tap|hold (unset =
 // auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
 // polish_timeout_ms, load_budget_ms (12000), streaming (true), precapture (true), builtin_mic (automatic), start_sound
-// (false), retention_days (30), keep_audio (false), asr_model (automatic), context (true), learn (true),
+// (false), retention_days (30), keep_audio (true), asr_model (automatic), context (true), learn (true),
 // double_tap_send (true), live_partial (automatic: on from 16 GB). Test hooks:
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
@@ -236,7 +236,8 @@ final class Dictation {
     /// a soft tick when the mic is really listening (off by default)
     static var startSound: Bool { settings["start_sound"] as? Bool ?? false }
     static var retentionDays: Int { settings["retention_days"] as? Int ?? 30 }
-    static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? false }
+    /// on unless turned off (v1.0.3: the recordings are what a feedback report sends, docs/design/feedback.md)
+    static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? true }
     /// the Dictation Lab: keep the audio of this many more dictations (collecting cases from real use)
     static var labKeepNext: Int { (settings["lab_keep_next"] as? NSNumber)?.intValue ?? 0 }
     /// read the text around the cursor for polish (Accessibility, read-only)

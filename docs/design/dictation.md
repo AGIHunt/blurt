@@ -1449,7 +1449,7 @@ element's value around the cursor (500 characters each side, the selection), the
 app's name. Accessibility, read-only, 0.25 s timeouts. Skipped entirely for `AXSecureTextField` (role or subrole),
 while secure event input is on, for Blurt's own windows (test builds read only the test pad), and when
 `record.dictation.context` is off. Polish gets 300 characters each side; the guard accepts their words. The history
-stores only `context_used`; the text itself only with `keep_audio` (the debugging setting).
+stores only `context_used`; the text itself only with `keep_audio` (on unless turned off).
 - Apps whose focused element Accessibility can't read (WeChat's input box, some Electron apps): the front app's name
   and its focused window's title only (`DictationContext.titleOnly`: often the chat's or the document's name).
 - A streamed dictation's pieces get the polished text so far appended to "before the cursor".
@@ -1871,7 +1871,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `start_sound` | `false`: a soft tick when listening starts |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
-| `keep_audio` | `false` (also keeps the context in the history: debugging) |
+| `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
 | `context` | `true`: read the text around the cursor for polish |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |

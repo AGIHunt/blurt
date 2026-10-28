@@ -2,7 +2,7 @@
 // dictation; edits are lines too, applied in order when it is read:
 //   {"id","t","app","bundle","duration","raw","polished","text","model","fell_back","reason","insert","audio",
 //    "terms_applied" [custom words the dictation wrote], "context_used" (text around the cursor went to polish),
-//    "context" (that text — only with record.dictation.keep_audio, the debug setting),
+//    "context" (that text — only with record.dictation.keep_audio, on unless turned off),
 //    "asr_ms","polish_ms","load_ms","total_ms" (key-up → paste),"segments" (pieces streamed), "fitted" (how it was fitted at the cursor), "repaired" (spans polish
 //    dropped that the guard put back), …}
 //   {"op":"delete","ids":[…],"t"}   {"op":"item","id","item","uid","t"}   {"op":"clear","t"}
@@ -49,7 +49,7 @@ public struct DictationEntry: Identifiable, Hashable {
     public var termsApplied: [String]?
     /// whether the text around the cursor went to polish; nil in older entries
     public var contextUsed: Bool?
-    /// that text itself — kept only when record.dictation.keep_audio (debugging) is on
+    /// that text itself — kept only when record.dictation.keep_audio is on (the default)
     public var context: String?
     /// per-stage times (ms): asr_ms, polish_ms, load_ms (model loads waited for), total_ms (key-up → paste), segments
     /// (pieces transcribed while talking); nil in older entries

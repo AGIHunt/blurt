@@ -2,7 +2,7 @@
 // History…", the command palette and Settings → Dictation all open it. The list column starts with one header band
 // (DictationPageHeader): the views History | Words (DictationWords.swift: the custom words, managed here only) | Lab
 // (when on) as a neutral segmented control on the column's leading edge, and the view's own few commands on the right
-// (the Lab's). History: every dictation, newest first, grouped by day (today's numbers on the Today heading) — what
+// (the Lab's; History's Send Feedback…, DictationFeedback.swift). History: every dictation, newest first, grouped by day (today's numbers on the Today heading) — what
 // stands in dictation's way (no speech model…) as one banner above it, with the view's one primary; the detail column
 // shows one dictation: where and when, the text (polished, original, or the changes polish made marked in one text),
 // Copy and Correct on hover, Turn into Item, the rest in "⋯" (and the row's right-click), and how it was typed behind
@@ -111,6 +111,8 @@ final class DictationHistoryModel: ObservableObject {
     enum Tab: String { case history, words, lab }
 
     @Published var tab: Tab = .history
+    /// History → Send Feedback… (DictationFeedback.swift)
+    @Published var feedbackOpen = false
     /// "Add to Lab" on an entry (the page sets it: the lab takes it in and shows it)
     var addToLab: ((DictationEntry) -> Void)?
     @Published var entries: [DictationEntry] = []
@@ -671,10 +673,29 @@ struct DictationPageHeader: View {
                 .fixedSize()
             Spacer(minLength: 8)
             if m.tab == .lab { LabCommandBar(lab: lab) }
+            if m.tab == .history && !m.entries.isEmpty {
+                // the history's one command: send chosen dictations to the developers (DictationFeedback.swift)
+                ViewThatFits(in: .horizontal) {
+                    feedbackButton(titled: true)
+                    feedbackButton(titled: false)
+                }
+            }
         }
         .padding(.leading, DictationPageHeader.inset).padding(.trailing, 10)
         .frame(height: DictationPageHeader.height)
         .onAppear { if m.tab == .lab && !DictationLabModel.enabled { m.tab = .history } }
+        .sheet(isPresented: $m.feedbackOpen) {
+            DictationFeedbackSheet(f: DictationFeedbackModel(entries: m.entries, selected: m.selection)) { m.feedbackOpen = false }
+        }
+    }
+
+    func feedbackButton(titled: Bool) -> some View {
+        LabBarButton(icon: .send, title: titled ? T("dictation.feedback.button") : nil, help: T("dictation.feedback.button.tip"), on: false) {
+            m.feedbackOpen = true
+            emit(["event": "dictation_feedback", "action": "open", "selected": m.selection.count])
+        }
+        .fixedSize()
+        .accessibilityLabel(T("dictation.feedback.button"))
     }
 }
 
@@ -2067,6 +2088,13 @@ final class DictationHistoryWindow: NSObject {
     }
 
     /// tests: `dictation history tab history|words|lab`, then what the Words tab shows ("dictation_words")
+    /// Tests: History → Send Feedback… (the sheet), as the header's button opens it.
+    @MainActor func testFeedback() {
+        show()
+        page.model.tab = .history
+        page.model.feedbackOpen = true
+    }
+
     @MainActor func testTab(_ t: String) {
         show()
         if let tab = DictationHistoryModel.Tab(rawValue: t) { page.model.tab = tab == .lab && !DictationLabModel.enabled ? .history : tab }

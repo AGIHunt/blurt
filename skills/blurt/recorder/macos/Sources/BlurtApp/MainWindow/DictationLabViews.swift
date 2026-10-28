@@ -14,7 +14,7 @@ import AppKit
 import SwiftUI
 import BlurtCore
 
-private func labGlyph(_ i: BlurtIcon, _ size: CGFloat = 12) -> Image {
+func labGlyph(_ i: BlurtIcon, _ size: CGFloat = 12) -> Image {
     Image(nsImage: i.isBrand ? i.image(size: size + 2) : i.symbolImage(pointSize: size)).renderingMode(.template)
 }
 
@@ -170,7 +170,7 @@ struct LabCommandBar: View {
 }
 
 /// A bar button: an icon (and a word); a rounded neutral wash on hover, and while its pane is showing.
-private struct LabBarButton: View {
+struct LabBarButton: View {
     let icon: BlurtIcon
     var title: String? = nil
     let help: String
