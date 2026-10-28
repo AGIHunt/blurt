@@ -28,6 +28,8 @@
 "dictation.toast.nothing" = "没听到内容";
 "dictation.toast.copied" = "已复制，⌘V 粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
+/* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
+"dictation.toast.no_list" = "没能排成清单，文字保持原样";
 "dictation.toast.copy_again" = "再复制一次";
 "dictation.toast.copy" = "复制";
 "dictation.toast.no_field" = "没找到输入框，文字在这里";
@@ -77,7 +79,7 @@
 "dictation.history.keep" = "听写记录保留";
 "dictation.history.days" = "%ld 天";
 "dictation.history.keep_audio" = "保留录音";
-"dictation.history.keep_audio.detail" = "关闭时，文字输入完录音就删除。";
+"dictation.history.keep_audio.detail" = "录音和光标周围的文字随听写记录一起保留，到期删除。关闭时，文字输入完录音就删除。";
 "dictation.history.open" = "打开听写历史…";
 "dictation.history.clear" = "清空历史…";
 "dictation.history.clear.title" = "清空听写历史？";
@@ -610,3 +612,30 @@
 "dictation.lab.result" = "结果";
 "dictation.lab.metric.exact" = "完全一致";
 "dictation.toast.no_model.action_size" = "下载（%@）";
+
+/* Send Feedback (DictationFeedback.swift, docs/design/feedback.md) */
+"dictation.feedback.button" = "发送反馈";
+"dictation.feedback.button.tip" = "把听写发给口喷鸡开发者，用来复现和改进识别";
+"dictation.feedback.title" = "发送反馈";
+"dictation.feedback.note" = "勾选识别或排版不对的听写发给我们。AI 将会自行进行重放、评分、迭代改进。";
+"dictation.feedback.all" = "全选";
+"dictation.feedback.count" = "已选 %ld 条 · %@";
+"dictation.feedback.text_only" = "仅文字";
+"dictation.feedback.context" = "附带光标周围的文字";
+"dictation.feedback.context.detail" = "听写时光标前后的文字。很多问题要有它才能复现。";
+"dictation.feedback.what" = "会发送：每条的原始录音、识别和润色每一步的结果、最终文字和你的更正，以及设备配置、口喷鸡版本、听写设置、模型和自定义词。";
+"dictation.feedback.where" = "上传到口喷鸡在 Cloudflare 上的私有存储，只有口喷鸡开发者能读取，不记录账号和 IP，14 天内从存储中删除。";
+"dictation.feedback.too_large" = "超过 100 MB，少选几条再发";
+"dictation.feedback.sending" = "正在发送…";
+"dictation.feedback.cancel" = "取消";
+"dictation.feedback.send" = "发送";
+"dictation.feedback.send.n" = "发送 %ld 条";
+"dictation.feedback.sent" = "已发送，谢谢。";
+"dictation.feedback.id" = "编号";
+"dictation.feedback.copy_id" = "拷贝";
+"dictation.feedback.id.detail" = "想删掉这份反馈，在 GitHub 上给 AGIHunt/blurt 提个 issue 附上编号即可。";
+"dictation.feedback.done" = "完成";
+"dictation.feedback.error.network" = "连不上服务器，检查网络后再试一次。";
+"dictation.feedback.error.rate" = "发得太频繁了，过一分钟再试。";
+"dictation.feedback.error.full" = "今天收到的反馈已经满了，明天再发吧。";
+"dictation.feedback.error.other" = "没发送成功，稍后再试。";

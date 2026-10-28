@@ -13,6 +13,11 @@ configurations and run them all again after a change (a regression run). Everyth
                                                       a dictation history entry as a case (its audio and streamed
                                                       pieces when they were kept, else text only: a reference-only
                                                       case); --corrected sets the ground truth
+  dictation_lab.py import-feedback DIR [--report ID]  an unpacked feedback report (docs/design/feedback.md: report.json,
+                                                      history.jsonl, audio/) as cases: source "feedback", tagged
+                                                      feedback, "report <id>" in the note, the sender's device and
+                                                      app version; a take already imported is skipped (ID: the
+                                                      folder's name unless given)
   dictation_lab.py review [--since ISO] [--last N] [--config SPEC]
                                                       the takes whose audio was kept (record.dictation.keep_audio):
                                                       each heard again in one pass (default mode=whole,polish=off)
@@ -946,9 +951,9 @@ def regression(cfg: dict, backend, ids: list[str] | None = None, save: bool = Tr
 
 
 def case_tags(c: dict) -> list[str]:
-    """The dimensions a case can be sliced by: its script prompt's tags ("length:short", "feature:numbers" …), the
-    pack, and its scenario."""
-    out = []
+    """The dimensions a case can be sliced by: its own tags ("feedback"), its script prompt's tags ("length:short",
+    "feature:numbers" …), the pack, and its scenario."""
+    out = [t for t in c.get("tags") or [] if isinstance(t, str) and t]
     p = c.get("prompt") or {}
     if p.get("pack"):
         out.append(f"pack:{p['pack']}")
@@ -1329,6 +1334,84 @@ def cmd_from_history(a) -> None:
     emit({"ok": True, "case": c})
 
 
+def _context_from_debug(s: str) -> dict:
+    """A history line's "context" (DictationContext.debugText: "title — before|[selection]after") back into its parts,
+    as near as the one string allows; the string itself is kept as `text`."""
+    title, sep, rest = s.partition(" — ")
+    if not sep:
+        title, rest = "", s
+    before, _, after = rest.partition("|")
+    selection = ""
+    if after.startswith("[") and "]" in after:
+        selection, _, after = after[1:].partition("]")
+    return {"title": title, "before": before, "selection": selection, "after": after, "text": s}
+
+
+def _feedback_audio(d: Path, rel) -> Path | None:
+    """A take's recording inside the report folder (the name comes from the report: nothing outside it)."""
+    if not isinstance(rel, str) or not rel:
+        return None
+    base = d.resolve()
+    p = (base / rel).resolve()
+    return p if p.is_relative_to(base) and p.is_file() else None
+
+
+def import_feedback(d: Path, rid: str | None = None) -> dict:
+    """An unpacked feedback report → Lab cases, one per take; a take already imported from this report is skipped."""
+    import dictation  # noqa: PLC0415 — the history's own reader (edit lines applied)
+    try:
+        report = json.loads((d / "report.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise Fail(f"no report.json in {d}", "not_found") from None
+    if not isinstance(report, dict) or not isinstance(report.get("takes"), list):
+        raise Fail("report.json has no takes", "bad_report")
+    rid = rid or d.name
+    by_id = {e["id"]: e for e in dictation.load(d / "history.jsonl")}
+    done = {((c.get("feedback") or {}).get("report"), c.get("history_id")) for c in all_cases() if c.get("source") == "feedback"}
+    app = report.get("app") or {}
+    version = "+".join(str(app[k]) for k in ("version", "build") if app.get(k) not in (None, "", "unknown")) or None  # "1.0.3+42", as the app writes it
+    imported, skipped = [], []
+    for t in report["takes"]:
+        hid = (t or {}).get("id")
+        e = by_id.get(hid)
+        if not e:
+            skipped.append({"id": hid, "why": "not_in_history"})
+            continue
+        if (rid, hid) in done:
+            skipped.append({"id": hid, "why": "imported"})
+            continue
+        cid = new_id()
+        while case_path(cid).exists():
+            cid = new_id()
+        c, _ = case_from_history(e, cid)
+        c["source"], c["tags"], c["note"] = "feedback", ["feedback"], f"report {rid}"
+        c["device"], c["app_version"] = report.get("device") or {}, version
+        c["feedback"] = {"report": rid, "platform": report.get("platform"), "created": report.get("created"),
+                         "context_included": bool(report.get("context_included")), "models": report.get("models")}
+        if report.get("context_included") and isinstance(e.get("context"), str) and e["context"]:
+            c["context"] = {"included": True, **_context_from_debug(e["context"])}
+        cd = case_path(cid)
+        cd.mkdir(parents=True)
+        wav = _feedback_audio(d, t.get("audio"))
+        if wav:
+            try:
+                c["duration"] = to_16k_mono(wav, cd / "audio.wav")
+                c["audio"] = "audio.wav"
+            except Fail:
+                pass                                            # a recording that won't convert: text only
+        refresh_metrics(c)
+        save_case(c)
+        imported.append({"case": cid, "history_id": hid, "audio": bool(c["audio"])})
+    return {"report": rid, "imported": imported, "skipped": skipped}
+
+
+def cmd_import_feedback(a) -> None:
+    d = Path(a.dir).expanduser()
+    if not d.is_dir():
+        raise Fail(f"{d} is not a folder", "not_found")
+    emit({"ok": True, **import_feedback(d, a.report)})
+
+
 _SPELLED = re.compile(r"(?<![A-Za-z])[A-Za-z](?: [A-Za-z])+(?![A-Za-z])")
 _CN_NUM_LATIN = re.compile(r"[零〇一二两三四五六七八九十]+ ?[A-Za-z]|[A-Za-z] ?[零〇一二两三四五六七八九十]+")
 _MARKS = "，。？！、；：,.?!;:"
@@ -1570,6 +1653,9 @@ def main() -> None:
     fh.add_argument("--corrected")
     fh.add_argument("--note")
     fh.add_argument("--tags")
+    imf = sub.add_parser("import-feedback")
+    imf.add_argument("dir")
+    imf.add_argument("--report", help="the report's id (default: the folder's name)")
     rv = sub.add_parser("review")
     rv.add_argument("--since")
     rv.add_argument("--last", type=int)
@@ -1610,7 +1696,8 @@ def main() -> None:
     ge.add_argument("--focus", help="a dimension to stress, e.g. 'self-corrections with numbers'")
     a = p.parse_args()
     try:
-        {"list": cmd_list, "show": cmd_show, "add": cmd_add, "from-history": cmd_from_history, "review": cmd_review, "delete": cmd_delete,
+        {"list": cmd_list, "show": cmd_show, "add": cmd_add, "from-history": cmd_from_history,
+         "import-feedback": cmd_import_feedback, "review": cmd_review, "delete": cmd_delete,
          "score": cmd_score, "configs": cmd_configs, "rerun": cmd_rerun, "run": cmd_run, "export": cmd_export,
          "learn": cmd_learn, "packs": cmd_packs, "pack": cmd_pack, "import-pack": cmd_import_pack,
          "generate": cmd_generate}[a.cmd](a)

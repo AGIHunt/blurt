@@ -940,12 +940,12 @@ no filler, correction-marker, question or preface word lists; what the words mea
 | `empty` | the output has no units |
 | `term` | a custom word that was spoken (any case or spacing) is missing from the output |
 | `translated` | a spoken Latin word vanished while ≥ 2 new CJK characters appeared, or the reverse |
-| `shrunk` | loss > max(8 units, 25 % of the input); Structured: max(12, 40 %) |
+| `shrunk` | loss > max(8 units, 25 % of the input); Structured: max(12, 40 %) + 2 per list line (the counting word its number stands for) |
 | `grew` | output > 1.25 × input + 8 units |
-| `chatty` | ≥ 3 units in a row at the start or the end of the output that follow nothing that was said (each unit and the next were never said one after the other, and neither is a custom or context word): a preface ("好的，下面是…", "Sure, here is…"), a sign-off ("Hope this helps"), an answer |
+| `chatty` | ≥ 3 units in a row at the start or the end of the output that follow nothing that was said (each unit and the next were never said one after the other, and neither is a custom or context word): a preface ("好的，下面是…", "Sure, here is…"), a sign-off ("Hope this helps"), an answer. A run ends at a line break: one-word list items ("1. Speed\n2. Cost") are neighbours only on the page |
 | `novel` | more than max(4, 15 % of output) units that aren't in the input (digits exempt: 五零零 → 500), the custom words or the context — or more than half of the output |
 | `listed` | Light: more numbered / bulleted lines than the input had |
-| `dropped` (Structured) | one run of the input left out (not moved) is longer than 12 units: content, not a taken-back phrase |
+| `dropped` (Structured) | one run of the input left out (not moved) is longer than 14 units: content, not a taken-back phrase |
 | `number` (Structured) | a number it wrote wasn't said (as said, or the same value in digits): 「三百，三百五」 → 「三百三十五」 |
 | `copied` | 6 units in a row of the context (the text around the cursor, or a streamed dictation's polished text so far) that weren't spoken: the model continued the document |
 | `dropped` | the repair (below) had to put back more than 40 % of the content: the polish was bad |
@@ -956,7 +956,15 @@ Why these thresholds:
 - Every hand-written reference output in the eval set passes (Light's, and the structured references through the
   structured guard). Light keeps corrections now, so its largest legitimate shrink is a few units of fillers and
   stutters, inside the flat 8; Structured's — a correction resolved in a short sentence plus the counting words that
-  became numbers — gets max(12, 40 %), with the 12-unit run and the number check keeping a summary out.
+  became numbers — gets max(12, 40 %) plus 2 units per list line, with the 14-unit run and the number check keeping a
+  summary out.
+- v1.0.3 (issue #14): max(12, 40 %) alone refused 9 of 35 correct short lists from Gemma 4 E2B (「帮我做三件事，第一，改
+  登录页；第二，修那个按钮，不对，是修导航栏；第三，写测试」 31 → 17 units: the counting words and the taken-back phrase
+  are half of it), so ⇧ typed the plain text. 2 per list line passes all of them; 12 of 18 hand-written bad outputs
+  (summaries, dropped items) are still caught, as before, but 6 short ones now pass — a 3-item list that drops 买 from
+  every item, a 5-item list cut to 3: short enough to see at a glance, and the model wrote none of them in 35 runs.
+  14 units per run: a correction that repeats its counting word (第四是酒店，不对，酒店不用，第四是保险). Fixture:
+  `tests/fixtures/structured_guard.jsonl`. A refused list says so on the island (「没能排成清单，文字保持原样」).
 - A summary or a list rewrite loses 30–60 % of a long input, well past 25 %.
 - Short inputs get the flat 8, because one dropped clause in a 12-unit sentence is still a meaningful loss, and a
   pure ratio would allow almost nothing there.
@@ -1010,8 +1018,8 @@ leaving the original wording is fine. Resolve corrections in the Structured styl
   speaker takes something back or restates it — in whatever words, or just by saying it again differently — keep only
   the version they settled on … When you can't tell whether something was taken back, keep it." Its examples use
   哦不是, 算了还是, a bare restatement ("twenty thousand, twenty-five thousand") and a postposed "I mean". Unresolved is
-  fine: the text keeps what was said. Its guard lets a taken-back phrase go (≤ 12 units in a run, ≤ max(12, 40 %) in
-  all) but not a clause, a custom word (`term`) or a number that wasn't said (`number`): then Light's text is typed.
+  fine: the text keeps what was said. Its guard lets a taken-back phrase go (≤ 14 units in a run, ≤ max(12, 40 %) + 2
+  per list line in all) but not a clause, a custom word (`term`) or a number that wasn't said (`number`): then Light's text is typed.
 - **Gone** (v0.8.x, §Rules vs model): `dictation_corrections.py` (the deterministic pass before the model — its marker
   table, the shapes it resolved, the two extra prompt examples for unresolved markers), the stream's correction merge
   and end-marker carry (`startsWithCorrection`, `endsWithCorrection`, `commaJoin`), the guard's `correction` check and
@@ -1070,15 +1078,17 @@ polish above — stays the default everywhere and never restructures. Which styl
   of a one-sentence message goes (not ？！, an ellipsis or a decimal), blank lines become single ones; code and
   terminals get one line (a multi-line paste collapses into "[Pasted N lines]" in Claude Code), unless a list was
   typed; mail and notes as light. Layout only.
-- **The structuring pass** (`polish.py` `Engine.structure`, `SYSTEM_STRUCTURE` + 8 examples, its own cached prefix):
+- **The structuring pass** (`polish.py` `Engine.structure`, `SYSTEM_STRUCTURE` + 9 examples, its own cached prefix):
   1. resolve self-corrections (§Self-corrections); 2. lists only when the speaker really enumerates — counts off points
   or steps, or announces several items and names them — with the counting words (第一, 首先, first …) becoming the
-  numbers; otherwise the text comes back as it is. Never rewrite, summarize, add headings or words, translate, answer.
+  numbers; otherwise the text comes back as it is; 3. (v1.0.3) a long text that moves from part to part gets a
+  paragraph per part, a list inside a part as above — a 280 s take with 「第一个是…第二个是…再有是…」 inside its second
+  part came back as one block, now a paragraph and a 3-item list (same 3.3 s). Never rewrite, summarize, add headings or words, translate, answer.
   The examples are varied on purpose: two Chinese lists (首先…其次…最后 with a correction inside; 第一个是…第二个是…),
-  an English one, an implicit one (「三点进展：…，…，…」), prose with a correction, a bare restatement, and two
+  an English one, a long one in parts (paragraphs, a list in the last), an implicit one (「三点进展：…，…，…」), prose with a correction, a bare restatement, and two
   sentences that look like lists but aren't (「我第一次用…」, "At first I thought…"). Output: Markdown emphasis and
   heading marks taken off (`clean_structured`); the guard in structured mode (§Guard: numbers aren't words, a run
-  > 12 units lost is `dropped`, a number not said is `number`).
+  > 14 units lost is `dropped`, a number not said is `number`).
 - **At key-up** the windows finish as for Light (the last one included), the stitch guard checks the joined text, then
   the structuring pass runs once on it (`structure_timeout_ms`, 10 s); the island stays on "polishing". Tried and
   measured, not kept: feeding the last piece to the structuring pass as heard (skipping its Light window) saved
@@ -1439,7 +1449,7 @@ element's value around the cursor (500 characters each side, the selection), the
 app's name. Accessibility, read-only, 0.25 s timeouts. Skipped entirely for `AXSecureTextField` (role or subrole),
 while secure event input is on, for Blurt's own windows (test builds read only the test pad), and when
 `record.dictation.context` is off. Polish gets 300 characters each side; the guard accepts their words. The history
-stores only `context_used`; the text itself only with `keep_audio` (the debugging setting).
+stores only `context_used`; the text itself only with `keep_audio` (on unless turned off).
 - Apps whose focused element Accessibility can't read (WeChat's input box, some Electron apps): the front app's name
   and its focused window's title only (`DictationContext.titleOnly`: often the chat's or the document's name).
 - A streamed dictation's pieces get the polished text so far appended to "before the cursor".
@@ -1861,7 +1871,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `start_sound` | `false`: a soft tick when listening starts |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
-| `keep_audio` | `false` (also keeps the context in the history: debugging) |
+| `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
 | `context` | `true`: read the text around the cursor for polish |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |

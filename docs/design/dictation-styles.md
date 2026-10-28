@@ -273,7 +273,7 @@ Resolve corrections in the Structured style; in Light, don't adjust them." So (d
 - **The renderer is gone** (`DictationList.swift`, the Python port, the shared list fixture). Structured is one more
   pass of the polish model (Gemma 4 E2B, the server that is already warm) over the stitched Light text at key-up:
   `polish.py structure`, its own prompt and cached prefix. It resolves self-corrections and lays out what the speaker
-  enumerated — only when they really did; otherwise a paragraph. Its guard keeps the content (no run > 12 units lost,
+  enumerated — only when they really did; otherwise a paragraph. Its guard keeps the content (no run > 14 units lost (12 until v1.0.3),
   no number that wasn't said, no custom word dropped); a refusal types Light's text. Reformat-last and the island's
   *Make a List* chip use the same pass, off the dictation's path; the chip's trigger is now the pass finding a list
   in a longer light take (after the paste), not a marker count.

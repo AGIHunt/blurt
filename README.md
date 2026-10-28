@@ -145,16 +145,19 @@ languages.
 
 ## Privacy
 
-- Speech recognition and polish run on your Mac. A dictation's audio is deleted after transcription unless you choose
-  to keep it; the text stays in Dictation History for 30 days (you can change this).
-- When you start talking, Blurt reads about 500 characters around the cursor so names come out right. It uses them for
-  that dictation only and never reads password fields. You can turn this off.
+- Speech recognition and polish run on your Mac. Dictation History keeps each dictation's text, its audio and the text
+  around the cursor for 30 days (you can change how long, or stop keeping the audio).
+- When you start talking, Blurt reads about 500 characters around the cursor so names come out right. It never reads
+  password fields. You can turn this off.
 - Snaps, voice notes, recordings and items stay in your folders: `~/Blurt`, or `.blurt/` inside a project, which Blurt
   keeps out of git.
 - When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
   anything else you give it.
-- There is no Blurt server and no account. Network use is limited to model downloads, update checks, a cloud speech
-  key if you add one (Groq, OpenAI or DashScope, for recordings), and what your agent sends to its provider.
+- No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
+  or DashScope, for recordings), what your agent sends to its provider, and Send Feedback: when you click it on the
+  Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
+  on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
+  and deleted within 14 days.
   *Settings → Privacy → Never use cloud speech recognition* keeps speech on your Mac even when a key is set.
 
 ## FAQ

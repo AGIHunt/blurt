@@ -1,7 +1,7 @@
 // What dictation reads from the text field it types into (docs/design/dictation.md §Context, §Auto-learn), read-only:
 //   • at the start: ≈ 500 characters before and after the cursor, the selection, the window title and the app's name.
-//     They go to polish as spelling hints and are never stored (only with record.dictation.keep_audio, the debug
-//     setting, does the history keep them);
+//     They go to polish as spelling hints; the history keeps them only with record.dictation.keep_audio (on unless
+//     turned off), for the Lab and feedback reports;
 //   • after the text is typed: the same field, every 1.5 s for 60 s, to see whether the user fixed a word. Only a few
 //     dozen characters around the typed text are held while it is watched, then dropped; what is learned is the
 //     word pair (DictationLearn → DictationVocabulary), never the text around it — once, when the watch ends (its
@@ -152,7 +152,7 @@ struct DictationContext {
     var hint: String {
         [title, String(before.suffix(300)), selection, String(after.prefix(300))].filter { !$0.isEmpty }.joined(separator: "\n")
     }
-    /// for the history, only with keep_audio (debugging)
+    /// for the history, only with keep_audio (the Lab, feedback reports)
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 
     static func capture() -> DictationContext? {

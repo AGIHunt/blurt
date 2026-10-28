@@ -107,6 +107,20 @@ class Guard(unittest.TestCase):
         self.check(long, "先把登录页的文案改一下，再把首页的加载动画换成新的，最后把帮助文档里关于导出的那一节重写，顺便检查一下所有"
                          "页面在暗色模式下的对比度，还有设置页的图标。", "dropped", mode="structured")
 
+    def test_structured_short_lists_keep_their_correction_out(self):
+        """Issue #14: a short list with a correction loses its counting words and the taken-back phrase — 50–60 % of a
+        31-unit sentence — and must still pass. fixtures/structured_guard.jsonl: Gemma 4 E2B's own structured outputs
+        (pass) and summaries / dropped items written by hand (caught). One-word items are no added words: a run of
+        them is next to each other only on the page (`_added_run` stops at a line break)."""
+        self.check("帮我做三件事，第一，改登录页；第二，修那个按钮，不对，是修导航栏；第三，写测试。",
+                   "帮我做三件事：\n1. 改登录页\n2. 修导航栏\n3. 写测试", None, mode="structured")
+        rows = [json.loads(l) for l in open(EVAL.parent / "structured_guard.jsonl", encoding="utf-8")]
+        self.assertGreaterEqual(sum(r["pass"] for r in rows), 30)
+        self.assertGreaterEqual(sum(not r["pass"] for r in rows), 10)
+        for r in rows:
+            g = polish.guard(r["input"], r["output"], mode="structured")
+            self.assertEqual(g["pass"], r["pass"], f"{r['id']}: {g}")
+
     def test_additions_are_caught(self):
         self.check("按钮太浅了", "按钮太浅了，建议把颜色加深到品牌主色，并且增加悬停效果和点击动画，提升整体可用性。", "grew")
         self.check("the build is broken", "The build pipeline appears broken; investigate the failing CI runner.", "chatty")

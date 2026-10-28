@@ -28,6 +28,8 @@
 "dictation.toast.nothing" = "Didn’t catch anything";
 "dictation.toast.copied" = "Copied — paste with ⌘V";
 "dictation.toast.pasted_unsure" = "Pasted";
+/* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
+"dictation.toast.no_list" = "Couldn’t make a list; the text is as it was";
 "dictation.toast.copy_again" = "Copy Again";
 "dictation.toast.copy" = "Copy";
 "dictation.toast.no_field" = "No text field here. Your text:";
@@ -77,7 +79,7 @@
 "dictation.history.keep" = "Keep dictations for";
 "dictation.history.days" = "%ld days";
 "dictation.history.keep_audio" = "Keep the audio";
-"dictation.history.keep_audio.detail" = "Off: the recording is deleted as soon as the text is in.";
+"dictation.history.keep_audio.detail" = "The recording and the text around the cursor are kept with the history and deleted with it. Off: the recording is deleted as soon as the text is in.";
 "dictation.history.open" = "Open History…";
 "dictation.history.clear" = "Clear History…";
 "dictation.history.clear.title" = "Clear dictation history?";
@@ -610,3 +612,30 @@
 "dictation.lab.result" = "Result";
 "dictation.lab.metric.exact" = "Exact";
 "dictation.toast.no_model.action_size" = "Download (%@)";
+
+/* Send Feedback (DictationFeedback.swift, docs/design/feedback.md) */
+"dictation.feedback.button" = "Send Feedback";
+"dictation.feedback.button.tip" = "Send dictations to the Blurt developers so they can reproduce and fix them";
+"dictation.feedback.title" = "Send Feedback";
+"dictation.feedback.note" = "Check the dictations that came out wrong and send them. AI replays and scores them, then improves Blurt.";
+"dictation.feedback.all" = "Select All";
+"dictation.feedback.count" = "%ld selected · %@";
+"dictation.feedback.text_only" = "Text only";
+"dictation.feedback.context" = "Include the text around the cursor";
+"dictation.feedback.context.detail" = "The text before and after the cursor when you dictated. Many problems can’t be reproduced without it.";
+"dictation.feedback.what" = "Sent: each dictation’s original recording, what every step of recognition and polish made of it, the final text and your correction, plus your Mac’s model and memory, the Blurt version, your dictation settings, the models and your custom words.";
+"dictation.feedback.where" = "Uploaded to Blurt’s private storage on Cloudflare. Only the Blurt developers can read it. No account or IP address is kept, and it is deleted from that storage within 14 days.";
+"dictation.feedback.too_large" = "Over 100 MB. Pick fewer dictations.";
+"dictation.feedback.sending" = "Sending…";
+"dictation.feedback.cancel" = "Cancel";
+"dictation.feedback.send" = "Send";
+"dictation.feedback.send.n" = "Send %ld";
+"dictation.feedback.sent" = "Sent. Thank you.";
+"dictation.feedback.id" = "Report";
+"dictation.feedback.copy_id" = "Copy";
+"dictation.feedback.id.detail" = "To have it deleted, open an issue on AGIHunt/blurt on GitHub with this report number.";
+"dictation.feedback.done" = "Done";
+"dictation.feedback.error.network" = "Couldn’t reach the server. Check your connection and try again.";
+"dictation.feedback.error.rate" = "Too many reports at once. Try again in a minute.";
+"dictation.feedback.error.full" = "We’ve had all the reports we can take today. Try again tomorrow.";
+"dictation.feedback.error.other" = "It didn’t go through. Try again later.";

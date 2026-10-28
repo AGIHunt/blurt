@@ -117,7 +117,7 @@ final class DictationSettings: ObservableObject {
         save("retention_days", d == 30 ? nil : d)
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: d) }
     }
-    func setKeepAudio(_ v: Bool) { keepAudio = v; save("keep_audio", v ? true : nil) }
+    func setKeepAudio(_ v: Bool) { keepAudio = v; save("keep_audio", v ? nil : false) }
 
     // MARK: style (dictation-styles.md)
 
