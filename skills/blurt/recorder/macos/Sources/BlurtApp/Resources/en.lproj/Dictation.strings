@@ -624,7 +624,7 @@
 "dictation.feedback.context" = "Include the text around the cursor";
 "dictation.feedback.context.detail" = "The text before and after the cursor when you dictated. Many problems can’t be reproduced without it.";
 "dictation.feedback.what" = "Sent: each dictation’s original recording, what every step of recognition and polish made of it, the final text and your correction, plus your Mac’s model and memory, the Blurt version, your dictation settings, the models and your custom words.";
-"dictation.feedback.where" = "Uploaded to Blurt’s private storage on Cloudflare. Only the Blurt developers can read it. No account or IP address is kept, and it is deleted within 30 days.";
+"dictation.feedback.where" = "Uploaded to Blurt’s private storage on Cloudflare. Only the Blurt developers can read it. No account or IP address is kept, and it is deleted from that storage within 14 days.";
 "dictation.feedback.too_large" = "Over 100 MB. Pick fewer dictations.";
 "dictation.feedback.sending" = "Sending…";
 "dictation.feedback.cancel" = "Cancel";

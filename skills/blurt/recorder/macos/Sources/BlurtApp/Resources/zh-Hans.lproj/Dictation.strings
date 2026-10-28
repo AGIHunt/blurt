@@ -615,7 +615,7 @@
 
 /* Send Feedback (DictationFeedback.swift, docs/design/feedback.md) */
 "dictation.feedback.button" = "发送反馈";
-"dictation.feedback.button.tip" = "把听写发给 Blurt 开发者，用来复现和改进识别";
+"dictation.feedback.button.tip" = "把听写发给口喷鸡开发者，用来复现和改进识别";
 "dictation.feedback.title" = "发送反馈";
 "dictation.feedback.note" = "勾选识别或排版不对的听写发给我们。AI 将会自行进行重放、评分、迭代改进。";
 "dictation.feedback.all" = "全选";
@@ -623,8 +623,8 @@
 "dictation.feedback.text_only" = "仅文字";
 "dictation.feedback.context" = "附带光标周围的文字";
 "dictation.feedback.context.detail" = "听写时光标前后的文字。很多问题要有它才能复现。";
-"dictation.feedback.what" = "会发送：每条的原始录音、识别和润色每一步的结果、最终文字和你的更正，以及设备配置、Blurt 版本、听写设置、模型和自定义词。";
-"dictation.feedback.where" = "上传到 Blurt 在 Cloudflare 上的私有存储，只有 Blurt 开发者能读取，不记录账号和 IP，30 天内删除。";
+"dictation.feedback.what" = "会发送：每条的原始录音、识别和润色每一步的结果、最终文字和你的更正，以及设备配置、口喷鸡版本、听写设置、模型和自定义词。";
+"dictation.feedback.where" = "上传到口喷鸡在 Cloudflare 上的私有存储，只有口喷鸡开发者能读取，不记录账号和 IP，14 天内从存储中删除。";
 "dictation.feedback.too_large" = "超过 100 MB，少选几条再发";
 "dictation.feedback.sending" = "正在发送…";
 "dictation.feedback.cancel" = "取消";

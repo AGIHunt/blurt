@@ -48,8 +48,8 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 - Teams: pack the items into one hand-off bundle (.zip: a summary, every item and its screenshots, relative paths only) and send it to a teammate, or ask your agent to post it wherever the team works ("Bundle the checkout issues and post them to #web in Slack"). No connectors by design: the agent sends them with the tools it already has.
 
 ## Privacy
-- On the Mac: recognition and polish for dictation, snap notes and voice notes. A dictation's audio is deleted after transcription unless you keep it; Dictation History keeps text for 30 days. About 500 characters around the cursor are used for that dictation only.
-- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself; and, when your agent organises a recording, the transcript and a few frames go to that agent's provider.
+- On the Mac: recognition and polish for dictation, snap notes and voice notes. About 500 characters around the cursor help get names right. Dictation History keeps each dictation's text, audio and that cursor text for 30 days (adjustable; the audio can be turned off).
+- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself; when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
 
 ## Install
 - Download for Mac: https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
