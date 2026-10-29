@@ -450,7 +450,7 @@ html:not(.motion) .nowl{ display: none; }
 .sc-snap:not(.on1) .dim, .sc-snap.on2 .dim{ opacity: 0; }
 .sel{ position: absolute; left: 50.3em; top: 28.2em; width: 20.6em; height: 21.8em; border-radius: .15em;
   box-shadow: 0 0 0 .12em var(--mint), 0 0 0 200em rgba(0, 0, 0, .42); transform-origin: 0 0; transition: transform .6s var(--ease), opacity .4s; }
-.sc-snap:not(.on2) .sel{ transform: scale(0); opacity: 0; }
+html.motion .sc-snap:not(.on1) .sel{ opacity: 0; }
 .sc-snap.on10 .sel{ opacity: 0; }
 .ink{ position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .ink *{ fill: none; stroke: var(--pen); stroke-width: 3px; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round;
@@ -1457,7 +1457,6 @@ html[lang="en"] #h-hand{ font-size: 2.6em; }
    on (step 5) it is back at the phone zoom. */
 @media (max-width: 720px) {
   html.motion .sc-rec .view{ transition: transform .8s var(--ease), font-size .8s var(--ease); }
-  html.motion .sc-rec:not(.on5) .view{ font-size: 1.5cqw; --cx: -1.9; --cy: 15; }
 }
 /* privacy on phones: one column, the headline first at full width, then the two lists at full width, no forced breaks */
 @media (min-width: 721px) { .pv-grid{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
@@ -1466,4 +1465,23 @@ html[lang="en"] #h-hand{ font-size: 2.6em; }
   .pv-grid h2{ font-size: clamp(30px, 8.4vw, 36px); line-height: 1.22; }
   .pv{ grid-template-columns: minmax(0, 1fr); }
   .pv li br{ display: none; }
+}
+
+/* round 11: the snap is dragged out, not popped in. From the moment the screen dims (k 1), a crosshair drags the
+   selection from its top-left corner to its bottom-right with the scroll (--sel 0-1, main.js); the selection's own
+   shadow is the dim, so the picked area brightens as it grows. The crosshair becomes the pen once the bubble opens. */
+.sc-snap .dim{ display: none; }
+.sc-snap .sel{ width: calc(20.6em * var(--sel, 1)); height: calc(21.8em * var(--sel, 1)); transform: none; transition: opacity .4s; }
+html.motion .sc-snap:not(.on1) .pen{ opacity: 0; }
+.sc-snap:not(.on4) .pen{ --px: calc(20.6em * var(--sel, 1)); --py: calc(21.8em * var(--sel, 1)); transition: opacity .3s; }
+.sc-snap:not(.on3) .pen svg{ opacity: 0; }
+.sc-snap .pen::before, .sc-snap .pen::after{ content: ""; position: absolute; left: 0; top: 0; background: #111; box-shadow: 0 0 0 1px rgba(255, 255, 255, .9); opacity: 0; transition: opacity .2s; }
+.sc-snap .pen::before{ width: 1.5px; height: 1.6em; transform: translate(-50%, -50%); }
+.sc-snap .pen::after{ width: 1.6em; height: 1.5px; transform: translate(-50%, -50%); }
+.sc-snap.on1:not(.on3) .pen::before, .sc-snap.on1:not(.on3) .pen::after{ opacity: 1; }
+/* phones: the recording frame and the circle at a weight you can see at this zoom; the window with room either side */
+@media (max-width: 720px) {
+  html.motion .sc-rec:not(.on5) .view{ font-size: 1.4cqw; --cx: .7; --cy: 14; }
+  .sc-rec .recf{ border-width: 3px; }
+  .sc-rec .ring{ border-width: 2.5px; }
 }

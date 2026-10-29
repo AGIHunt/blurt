@@ -207,6 +207,8 @@
       // the note bubble listens from the moment it opens (k 3) until the pause saves it (k 9); the words are its own
       setLive(null);
       mode(k >= 10 ? "hello" : "idle");
+      // ⌥A: the crosshair drags the selection out with the scroll, from the screen going dim (k 1) to the bubble (k 3)
+      s.el.style.setProperty("--sel", span(p, s.th[0] + .006, s.th[2] - .012).toFixed(3));
       const f = k >= 9 ? 1 : k < 3 ? 0 : span(p, s.th[2] + .01, s.th[7] + .03);
       bubble(s, f);
       let cur = null;
