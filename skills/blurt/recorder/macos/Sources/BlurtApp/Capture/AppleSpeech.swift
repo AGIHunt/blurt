@@ -30,6 +30,7 @@ enum AppleSpeech {
 
     /// macOS has the engine (26 or later, and an SDK that knows it)
     static var available: Bool {
+        if ProcessInfo.processInfo.environment["BLURT_NO_APPLE_SPEECH"] != nil { return false }    // tests: macOS 13–15
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) { return SpeechTranscriber.isAvailable }
         #endif

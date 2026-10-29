@@ -825,6 +825,76 @@ class CloudSpeed(unittest.TestCase):
                 os.environ["DASHSCOPE_API_KEY"] = old
 
 
+class OneKey(unittest.TestCase):
+    """Model Studio (the recommended key in China): polish and translate on DeepSeek V4.1 Flash there, Copy Text from
+    Screen on its vision model; on a Mac without macOS's recogniser its key recognises speech too."""
+
+    def test_preset(self):
+        import polish_cloud
+        cfg = polish_cloud.settings({"provider": "dashscope", "key": "k"})
+        self.assertEqual((cfg["model"], cfg["vision_model"]), ("deepseek-v4.1-flash", "qwen3.6-flash"))
+        self.assertIn("dashscope.aliyuncs.com", cfg["base_url"])
+        self.assertEqual(polish_cloud.settings({"provider": "deepseek", "key": "k"})["vision_model"], "")
+
+    def test_job_models(self):
+        import polish_cloud, polish
+        cfg = polish_cloud.settings({"provider": "deepseek", "key": "k", "translate_model": "deepseek-v4-pro"})
+        self.assertEqual((cfg["model"], cfg["translate_model"]), ("deepseek-flash", "deepseek-v4-pro"))
+        sent = {}
+
+        def fake_complete(c, msgs, timeout, max_tokens):
+            sent["model"] = c["model"]
+            return {"text": "hi", "usage": {}, "ms": 1}
+        old = polish_cloud.complete
+        polish_cloud.complete = fake_complete
+        try:
+            polish.cloud_translate("你好", "en", {"provider": "deepseek", "key": "k", "translate_model": "deepseek-v4-pro"})
+            self.assertEqual(sent["model"], "deepseek-v4-pro")
+            polish.cloud_translate("你好", "en", {"provider": "deepseek", "key": "k"})
+            self.assertEqual(sent["model"], "deepseek-flash")       # "" = the polish model
+        finally:
+            polish_cloud.complete = old
+
+    def test_dashscope_speech_model_from_settings(self):
+        old = {k: os.environ.get(k) for k in ("DASHSCOPE_API_KEY", "DASHSCOPE_ASR_MODEL")}
+        try:
+            os.environ["DASHSCOPE_API_KEY"] = "test"
+            os.environ.pop("DASHSCOPE_ASR_MODEL", None)
+            self.assertEqual(T.DashScope(Namespace(model="qwen3-asr-flash", prompt=None, language=None)).model, "qwen3-asr-flash")
+            os.environ["DASHSCOPE_ASR_MODEL"] = "qwen3-asr-flash-2026-02-10"
+            self.assertEqual(T.DashScope(Namespace(model="qwen3-asr-flash", prompt=None, language=None)).model, "qwen3-asr-flash-2026-02-10")
+        finally:
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    def test_cloud_speech_before_a_download_without_apple(self):
+        real = fake_installed()
+        old = {k: os.environ.get(k) for k in ("DASHSCOPE_API_KEY", "BLURT_NO_APPLE_SPEECH")}
+        try:
+            os.environ["BLURT_NO_APPLE_SPEECH"] = "1"
+            os.environ["DASHSCOPE_API_KEY"] = "test"
+            with config({"asr": {"languages": ["zh"]}}):
+                self.assertEqual(T.select("note")["id"], "qwen3-asr-flash")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "qwen3-asr-flash")
+                self.assertTrue(d["ready"] and d["selected_cloud"])
+            with config({"asr": {"languages": ["zh"]}, "privacy": {"local_asr": True}}):
+                self.assertEqual(T.select("note")["id"], "sensevoice-small")
+            os.environ.pop("DASHSCOPE_API_KEY")
+            with config({"asr": {"languages": ["zh"]}}):
+                self.assertEqual(T.select("note")["id"], "sensevoice-small")
+        finally:
+            T.installed = real
+            for k, v in old.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+
 # ------------------------------------------------------------------ the real thing (opt-in: BLURT_ASR_SLOW=1)
 @unittest.skipUnless(os.environ.get("BLURT_ASR_SLOW") and sys.platform == "darwin", "set BLURT_ASR_SLOW=1 (macOS, models installed)")
 class Multilingual(unittest.TestCase):

@@ -31,6 +31,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         CloudSpeech.install()
+        UVSetup.ensure(via: "launch")           // quietly, only when no usable uv is there (first-minute-speech.md)
         for sig in [SIGTERM, SIGINT] {
             signal(sig, SIG_IGN)
             let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)

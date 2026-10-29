@@ -130,6 +130,7 @@
 /* Cloud */
 "speech.cloud.title" = "Cloud speech recognition";
 "speech.cloud.name.openai" = "OpenAI-compatible API";
+"speech.cloud.name.dashscope" = "Alibaba Cloud Model Studio · Qwen3-ASR (recommended)";
 "speech.cloud.set" = "Set";
 "speech.cloud.not_set" = "Not set";
 "speech.cloud.off" = "Turned off in Privacy";

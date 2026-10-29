@@ -136,7 +136,13 @@ final class OnboardingModel: ObservableObject {
     /// each time, so models installed from Settings meanwhile show as installed (load() skips while a download runs).
     func appear() {
         uv = ScriptRunner.shared.uvPath
-        guard uv != nil else { return }
+        // macOS's recogniser needs no uv: its language files are asked for either way
+        ModelSetup.shared.prepareSystem()
+        guard uv != nil else {
+            // installed quietly (UVSetup); the step says it is coming, Install uv stays for a failure
+            if !uvFailed { installUV(via: "onboarding") }
+            return
+        }
         warmUp()
         Task { await ModelSetup.shared.load() }
     }
@@ -145,32 +151,36 @@ final class OnboardingModel: ObservableObject {
     static let contentWidth: CGFloat = 640
     static let height: CGFloat = 560
 
-    static let uvInstallCommand = "curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=\"$HOME/.blurt/bin\" UV_NO_MODIFY_PATH=1 sh"
+    static let uvInstallCommand = UVSetup.installCommand
 
     /// Only after the user pressed Install uv (its tooltip shows this exact command).
-    func installUV() {
+    /// uv through UVSetup (one install at a time, nothing when a usable one is there); the step follows it.
+    func installUV(via: String = "button") {
         installingUV = true
         uvFailed = false
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        var env = ShellEnv.agentEnvironment()
-        env["HOME"] = env["HOME"] ?? NSHomeDirectory()
-        // ~/.blurt/bin follows BLURT_HOME, like everything else
-        p.arguments = ["-c", OnboardingModel.uvInstallCommand.replacingOccurrences(of: "$HOME/.blurt", with: BlurtPaths.home.path)]
-        p.environment = env
-        p.standardInput = FileHandle.nullDevice
-        streamLines(p) { line, _ in emit(["event": "onboarding_uv", "line": line]) }
-        p.terminationHandler = { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
-                guard let self = self else { return }
-                self.installingUV = false
-                self.uv = ScriptRunner.shared.uvPath
-                self.uvFailed = self.uv == nil
-                self.appear()
+        if uvObserver == nil {
+            uvObserver = NotificationCenter.default.addObserver(forName: UVSetup.finished, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self = self else { return }
+                    self.installingUV = false
+                    self.uv = ScriptRunner.shared.uvPath
+                    self.uvFailed = self.uv == nil
+                    if self.uv != nil { self.appear() }
+                }
             }
         }
-        do { try p.run() } catch { installingUV = false; uvFailed = true }
+        if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { installingUV = false; uvFailed = true; return }
+        UVSetup.ensure(via: via)
+        // a uv already there answers without an install (no notification): look again shortly
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self = self, self.installingUV, !UVSetup.installing else { return }
+            self.installingUV = false
+            self.uv = ScriptRunner.shared.uvPath
+            self.uvFailed = self.uv == nil
+            if self.uv != nil { self.appear() }
+        }
     }
+    private var uvObserver: NSObjectProtocol?
 
     /// Pre-installs the scripts' dependencies (numpy, sherpa-onnx…) and builds the search index — quietly: only the
     /// speech tools' failure shows (on the models step, as SpeechSetup .blocked; the script's output goes to the
@@ -298,6 +308,9 @@ struct OnboardingView: View {
     /// the cloud key's sheet (start now), and whether a key is set up
     @State private var keySheet = false
     @State private var cloudReady = DictationCloud.ready
+    /// the cloud speech key (Aliyun) for a Mac without macOS's recogniser
+    @State private var speechSheet = false
+    @State private var speechKey = CloudSpeech.Key.has(CloudSpeech.dashScopeModel) || DictationCloud.Key.has(.dashscope)
 
     var body: some View {
         HStack(spacing: 0) {
@@ -339,8 +352,9 @@ struct OnboardingView: View {
             guard !guide.missing(.dictation).isEmpty else { return nil }
             return StepAction(title: guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) { startWalk() }
         case 2:
-            // dictation works already (macOS's recogniser): the local models are an upgrade, Next is the primary
-            if models.startNow { return nil }
+            // dictation works already (macOS's recogniser, or the cloud key on macOS 13–15): the local models are an
+            // upgrade, Next is the primary
+            if models.startNow || models.dictationReady { return nil }
             guard SpeechSetup.pending(m.speechStep, settled: models.settled, retrying: m.retrying) else { return nil }
             switch m.speechStep {
             case .needsUV:
@@ -434,7 +448,8 @@ struct OnboardingView: View {
         case 1:
             return (T("onboarding.dictation.title"),
                     T(guide.missing(.dictation).isEmpty ? "onboarding.dictation.detail_done" : "onboarding.dictation.detail"))
-        case 2: return (T("onboarding.models"), T(models.startNow ? "onboarding.start.detail" : "onboarding.models.detail"))
+        // "on this Mac, nothing uploaded" only while that is true (not with the cloud key dictating on macOS 13–15)
+        case 2: return (T("onboarding.models"), T(models.startNow || (speechKey && models.dictationReady) ? "onboarding.start.detail" : "onboarding.models.detail"))
         default: return (T("onboarding.try"), T("onboarding.try.subtitle"))
         }
     }
@@ -577,6 +592,9 @@ struct OnboardingView: View {
                 keySheet = false
                 cloudReady = DictationCloud.ready
                 emit(["event": "onboarding_key", "ready": cloudReady, "provider": DictationCloud.setup.provider.rawValue])
+                // a Model Studio key recognises speech too: dictation's model is read again (macOS 13–15 dictate now)
+                Task { await ModelSetup.shared.load() }
+                Dictation.shared.refreshSpeechModels()
             }
             .buttonStyle(.automatic)
         }
@@ -654,9 +672,36 @@ struct OnboardingView: View {
         }
     }
 
-    /// No macOS recogniser for this user (macOS 13–15, or a language it doesn't speak): the models to download.
+    /// No macOS recogniser for this user (macOS 13–15, or a language it doesn't speak): the one key first — with it the
+    /// cloud recognises speech, nothing to download (transcribe.py `select`) — then the models to download.
     var classicModels: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // speech first: Aliyun's key (the cloud speech sheet; the founder: Aliyun first for speech, DeepSeek first
+            // for polish), then the polish key
+            OnbRow(image: GlyphTile.brand(.mic), title: T("onboarding.key.cloud.title"),
+                   detail: speechKey ? T("onboarding.key.on", T("dictation.cloud.provider.dashscope")) : T("onboarding.key.cloud.detail"),
+                   first: true) {
+                Button(T(speechKey ? "onboarding.key.change" : "onboarding.key.add")) { speechSheet = true }.controlSize(.small)
+            }
+            OnbRow(image: GlyphTile.brand(.wand), title: T("onboarding.key.title"),
+                   detail: cloudReady ? T("onboarding.key.on", T("dictation.cloud.provider.\(DictationCloud.setup.provider.rawValue)"))
+                                      : T("onboarding.key.detail")) {
+                Button(T(cloudReady ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
+            }
+            .padding(.bottom, 14)
+            .sheet(isPresented: $speechSheet) {
+                CloudSpeechSheet(modelID: CloudSpeech.dashScopeModel, title: T("dictation.cloud.provider.dashscope")) { saved in
+                    speechSheet = false
+                    guard saved else { return }
+                    speechKey = CloudSpeech.Key.has(CloudSpeech.dashScopeModel) || DictationCloud.Key.has(.dashscope)
+                    CloudSpeech.invalidate()
+                    emit(["event": "onboarding_speech_key", "ready": speechKey])
+                    // the cloud recognises speech now: dictation's model is read again (macOS 13–15 dictate)
+                    Task { await ModelSetup.shared.load() }
+                    Dictation.shared.refreshSpeechModels()
+                }
+                .buttonStyle(.automatic)
+            }
             switch m.speechStep {
             case .needsUV:
                 OnbNotice(kind: .attention, title: T("onboarding.uv.title"), detail: T("onboarding.uv.needed")) {
@@ -683,6 +728,15 @@ struct OnboardingView: View {
             default:
                 modelRows
                 modelStatus.padding(.top, 14)
+                // dictating in the cloud already: the download is the upgrade, its own button (Next is the primary)
+                if models.dictationReady, !models.downloading, !models.ready, models.totalMB > 0 {
+                    HStack {
+                        Spacer()
+                        Button(T("onboarding.upgrade.download", size(models.totalMB))) { models.start() }
+                            .controlSize(.small).disabled(m.online == false)
+                    }
+                    .padding(.top, 8)
+                }
             }
         }
     }

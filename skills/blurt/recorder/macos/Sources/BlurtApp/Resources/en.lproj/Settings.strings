@@ -471,6 +471,8 @@
 "onboarding.key.on" = "On · %@";
 "onboarding.key.add" = "Add…";
 "onboarding.key.change" = "Change…";
+"onboarding.key.cloud.title" = "Dictate in the cloud: Model Studio key";
+"onboarding.key.cloud.detail" = "macOS's own speech recognition isn't available here (it needs macOS 26 and your language). An Alibaba Cloud Model Studio key lets you dictate right away, recognised in the cloud with nothing to download; or download the local models below.";
 "onboarding.upgrade.title" = "Local models (optional)";
 "onboarding.upgrade.detail" = "Work offline, know your word list, and get more words right.";
 "onboarding.upgrade.download" = "Download (%@)";

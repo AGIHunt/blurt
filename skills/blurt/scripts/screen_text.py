@@ -267,6 +267,8 @@ def read_cloud(cloud: dict, image: str, draft: str | None, timeout: float = 20) 
     cfg = polish_cloud.settings(cloud)
     if not cfg["key"]:
         raise polish_cloud.CloudError("no key", "config")
+    if cfg.get("vision_model"):
+        cfg = {**cfg, "model": cfg["vision_model"]}     # a provider whose polish model can't see (Model Studio)
     from_bytes = Path(image).read_bytes()
     b64 = base64.b64encode(from_bytes).decode()
     if cfg["protocol"] == "anthropic":

@@ -130,6 +130,7 @@
 /* Cloud */
 "speech.cloud.title" = "云端语音识别";
 "speech.cloud.name.openai" = "OpenAI 兼容接口";
+"speech.cloud.name.dashscope" = "阿里云百炼 · Qwen3-ASR（推荐）";
 "speech.cloud.set" = "已设置";
 "speech.cloud.not_set" = "未设置";
 "speech.cloud.off" = "已在「隐私」里关闭";

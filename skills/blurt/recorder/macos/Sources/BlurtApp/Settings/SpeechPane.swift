@@ -751,7 +751,8 @@ struct SpeechPane: View {
         SettingsGroup("speech.advanced", footer: S("speech.limits.footer")) {
             resourceRows
             SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
-            let cloud = m.models.filter { !$0.local }
+            // Aliyun (Model Studio) first: the recommended speech key (the founder, 2026-10-29)
+            let cloud = m.models.filter { !$0.local }.sorted { ($0.backend == "dashscope" ? 0 : 1) < ($1.backend == "dashscope" ? 0 : 1) }
             ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
         }
     }
@@ -784,7 +785,7 @@ struct SpeechPane: View {
 
     /// One cloud service: whether its key is found, and how to set one (the variables' names) in a popover.
     @ViewBuilder func cloudRow(_ x: ASRModel, first: Bool) -> some View {
-        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.title
+        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.backend == "dashscope" ? S("speech.cloud.name.dashscope") : x.title
         let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
         // the first row is the catalogue's (search lands on it); the others are the same row for another service
         if first {

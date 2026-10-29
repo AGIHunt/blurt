@@ -66,6 +66,7 @@ final class DictationCloudModel: ObservableObject {
         DictationCloud.save(s)
         key = ""
         refreshKeys()
+        CloudSpeech.invalidate()        // a Model Studio key is cloud speech's too
         Dictation.shared.apply()
     }
 
@@ -107,7 +108,11 @@ struct DictationCloudSheet: View {
                 label("dictation.cloud.service")
                 ChoicePopup(label: T("dictation.cloud.service"),
                             choices: DictationCloud.Provider.allCases.map { ($0, T("dictation.cloud.provider.\($0.rawValue)")) },
-                            selection: Binding(get: { m.setup.provider }, set: { m.setup.provider = $0; m.key = ""; m.check = .idle }),
+                            selection: Binding(get: { m.setup.provider }, set: {
+                                // another service: its own default models (a model picked for one service rarely exists on another)
+                                if $0 != m.setup.provider { m.setup.model = ""; m.setup.translateModel = ""; m.setup.visionModel = "" }
+                                m.setup.provider = $0; m.key = ""; m.check = .idle
+                            }),
                             width: 220)
             }
             GridRow {
@@ -115,11 +120,26 @@ struct DictationCloudSheet: View {
                 TextField(m.setup.provider.defaultBaseURL, text: Binding(get: { m.setup.baseURL }, set: { m.setup.baseURL = $0; m.check = .idle }))
                     .textFieldStyle(.roundedBorder)
             }
+            // one model per job, each a default, the provider's list and Custom… (CloudModels; what was measured shows
+            // under it). The pickers are rebuilt when the service changes (its list does)
             GridRow {
                 label("dictation.cloud.model")
-                TextField(m.setup.provider.defaultModel.isEmpty ? T("dictation.cloud.model.placeholder") : m.setup.provider.defaultModel,
-                          text: Binding(get: { m.setup.model }, set: { m.setup.model = $0; m.check = .idle }))
-                    .textFieldStyle(.roundedBorder)
+                CloudModelPicker(label: T("dictation.cloud.model"), job: .polish, provider: m.setup.provider.rawValue,
+                                 model: Binding(get: { m.setup.model }, set: { m.setup.model = $0; m.check = .idle }))
+                    .id("polish-\(m.setup.provider.rawValue)")
+            }
+            GridRow {
+                label("dictation.cloud.model.translate")
+                CloudModelPicker(label: T("dictation.cloud.model.translate"), job: .translate, provider: m.setup.provider.rawValue,
+                                 model: $m.setup.translateModel, inherit: m.setup.effectiveModel)
+                    .id("translate-\(m.setup.provider.rawValue)")
+            }
+            GridRow {
+                label("dictation.cloud.model.vision")
+                CloudModelPicker(label: T("dictation.cloud.model.vision"), job: .vision, provider: m.setup.provider.rawValue,
+                                 model: $m.setup.visionModel,
+                                 inherit: CloudModels.choices(.vision, provider: m.setup.provider.rawValue).isEmpty ? m.setup.effectiveModel : nil)
+                    .id("vision-\(m.setup.provider.rawValue)")
             }
             GridRow {
                 label("dictation.cloud.key")
@@ -129,7 +149,9 @@ struct DictationCloudSheet: View {
                         .textFieldStyle(.roundedBorder)
                     HStack(spacing: 12) {
                         if let u = m.setup.provider.keyPage {
-                            TextLinkButton(T("dictation.cloud.key.get")) { NSWorkspace.shared.open(u) }
+                            TextLinkButton(T(m.setup.provider == .dashscope ? "dictation.cloud.key.get.dashscope" : "dictation.cloud.key.get")) {
+                                NSWorkspace.shared.open(u)
+                            }
                         }
                         if m.keyStored { TextLinkButton(T("dictation.cloud.key.forget"), tint: .secondary) { m.forgetKey() } }
                     }
@@ -141,7 +163,7 @@ struct DictationCloudSheet: View {
     }
 
     func label(_ key: String) -> some View {
-        Text(T(key)).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+        Text(T(key)).foregroundStyle(.secondary).fixedSize().gridColumnAlignment(.trailing)
     }
 
     /// what goes, where it goes, what it costs: one quiet paragraph
@@ -149,6 +171,7 @@ struct DictationCloudSheet: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(T("dictation.cloud.what"))
             if m.setup.provider == .deepseek { Text(T("dictation.cloud.cost")) }
+            if m.setup.provider == .dashscope { Text(T("dictation.cloud.dashscope.what")) }
         }
         .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)

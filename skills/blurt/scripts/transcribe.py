@@ -836,6 +836,8 @@ _APPLE_OK: bool | None = None
 def apple_speech_ok() -> bool:
     """macOS 26 or later, and a Blurt that can run it."""
     global _APPLE_OK
+    if os.environ.get("BLURT_NO_APPLE_SPEECH"):     # tests: a Mac before macOS 26
+        return False
     if _APPLE_OK is None:
         try:
             major = int((platform.mac_ver()[0] or "0").split(".")[0]) if IS_MAC else 0
@@ -1685,7 +1687,8 @@ class DashScope:
             raise Fail("no API key: set DASHSCOPE_API_KEY", "auth")
         # its own variable: BLURT_ASR_BASE_URL is the OpenAI-compatible service's (both can be set in the app)
         self.base = (os.environ.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-        self.model = args.model or "qwen3-asr-flash"
+        # the model picked in Settings (CloudSpeech: DASHSCOPE_ASR_MODEL), else the registry's
+        self.model = os.environ.get("DASHSCOPE_ASR_MODEL") or args.model or "qwen3-asr-flash"
         self.args = args
         self.speed = cloud_speed()
         self.terms: list[str] = []
@@ -1698,7 +1701,7 @@ class DashScope:
     def transcribe(self, x):
         audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
         payload = {"model": self.model, "stream": False,
-                   "messages": [{"role": "system", "content": [{"text": self.args.prompt or ", ".join(self.terms)}]},
+                   "messages": [{"role": "system", "content": [{"type": "text", "text": self.args.prompt or ", ".join(self.terms)}]},
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
@@ -1900,6 +1903,13 @@ def select(purpose: str, a=None) -> dict:
     apple = entry(APPLE)
     if apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]):
         return apple
+    # no macOS recogniser (macOS 13–15, ~23 % of Macs): a cloud service whose key the user set — the setup assistant's
+    # one key (Model Studio in China) says it recognises speech too — before a model that would have to download
+    if not local_only():
+        for mid in DICTATION_CLOUD:
+            m = entry(mid)
+            if m and installed(m):
+                return m
     return entry("sensevoice-small")  # downloads on first use (never during a recording: BLURT_NO_DOWNLOAD)
 
 

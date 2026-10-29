@@ -470,6 +470,8 @@
 "onboarding.key.on" = "已开启 · %@";
 "onboarding.key.add" = "添加…";
 "onboarding.key.change" = "更改…";
+"onboarding.key.cloud.title" = "用云端听写：阿里云百炼的 Key";
+"onboarding.key.cloud.detail" = "这台 Mac 用不了系统自带的语音识别（要 macOS 26，并且支持你说的语言）。填阿里云百炼的 Key 就能马上听写，语音在云端识别，不用下载；也可以下载下面的本机模型。";
 "onboarding.upgrade.title" = "本机模型（可选）";
 "onboarding.upgrade.detail" = "不联网也能用，认得你的词表，比系统自带的更准。";
 "onboarding.upgrade.download" = "下载（%@）";

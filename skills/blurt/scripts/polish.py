@@ -1542,6 +1542,8 @@ def cloud_translate(text: str, target: str, cloud: dict, timeout: float | None =
     """The user's cloud model → {"ok", "text", "ms", "cloud": True, "model", "usage"}; raises polish_cloud.CloudError."""
     import polish_cloud
     cfg = polish_cloud.settings(cloud)
+    if cfg.get("translate_model"):
+        cfg = {**cfg, "model": cfg["translate_model"]}      # the user picked a model for translate
     r = polish_cloud.complete(cfg, translate_messages(text, target, terms, spoken),
                               timeout or (CLOUD_TIMEOUT + CLOUD_PER_CHAR * len(text) * 2), max_tokens=int(len(text) * 3) + 200)
     return {"ok": True, "text": clean_output(r["text"]), "ms": r["ms"], "cloud": True,

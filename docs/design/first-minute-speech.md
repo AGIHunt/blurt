@@ -109,23 +109,57 @@
 
 云端识别比 Apple 好 1.8 个点，每月多花约 ¥8.5（1.5 倍速是 ¥5.6）。
 
-### 2.5 用百炼的大模型润色：不行（用现在的提示词）
+### 2.5 一个阿里云百炼的 key：润色、翻译、截图取字
 
-同一个提示词（`polish_cloud.py` 的 Light）、同样的 Apple 识别结果：
+创始人定：国内默认推荐阿里的 key（2026-10-29）。百炼上能用的模型很多（`/compatible-mode/v1/models` 列出 184 个），
+除了千问，还托管了 DeepSeek V4.1 Flash。问题出在旧的 `qwen-flash` / `qwen-plus` 别名，不在提示词：换模型、
+关掉思考（`enable_thinking: false`，Qwen3.x 和 DeepSeek 在百炼默认会思考）之后，同一个提示词就不改写了。
 
-| 润色模型 | 保留的听写 | 术语 | 耗时（中位 / p90） |
-|---|---:|---:|---:|
-| DeepSeek Flash | **9.4 %** | 32 / 35 | 1.0 / 1.4 s |
-| qwen-flash | 15.4 % | 28 / 35 | 0.6 / 1.1 s |
-| qwen-plus | 18.2 % | 26 / 35 | 0.9 / 2.1 s |
+**润色**（同一个 Light 提示词、同样的 Apple 识别结果，270 条保留的听写 + 13 条金标）：
 
-Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整」→「我需要手动做大量调整」还算轻的），甚至补出没说过的内容
-（把「binlog 解析」写成「通过阿里 DTS 或者其他服务」）。在提示词改好之前，百炼只适合做识别，不适合润色。
-所以「一个 key 四处用」现在做不到：最好的组合要两个 key（百炼识别 + DeepSeek 润色），或者一个 DeepSeek key
-（Apple 识别 + DeepSeek 润色 + 截图取字）。
+| 润色模型 | 保留的听写 | 术语 | 金标 | 耗时（中位 / p90） |
+|---|---:|---:|---:|---:|
+| DeepSeek Flash（DeepSeek 官方，对照） | **9.4 %** | **32 / 35** | 4.3 % | 1.0 / 1.4 s |
+| **DeepSeek V4.1 Flash（百炼）** | 9.6 % | **32 / 35** | 3.2 % | **0.8** / 1.2 s |
+| qwen3.6-flash | 9.7 % | 25 / 35 | 2.1 % | 0.6 / 1.0 s |
+| qwen3.7-flash | 10.0 % | 27 / 35 | 2.1 % | 0.8 / 1.3 s |
+| qwen3.8-flash | 10.0 % | 30 / 35 | 2.8 % | 1.0 / 1.8 s |
+| qwen-flash（旧别名） | 15.4 % | 28 / 35 | 4.6 % | 0.6 / 1.1 s |
+| qwen-plus（旧别名） | 18.2 % | 26 / 35 | 4.3 % | 0.9 / 2.1 s |
 
-本轮花费：识别约 ¥2.5（原速 ¥1.16、1.5 倍 ¥0.75、2 倍 ¥0.56）、Qwen 润色约 ¥0.35，合计约 ¥2.9。数据：
-`promo/cases/first-minute-asr/out/*.ds-asr*.jsonl`、`*+dashscope.jsonl`、`*+qwen-plus.jsonl`。
+旧别名会改写、压缩，甚至补出没说过的内容（把「binlog 解析」写成「通过阿里 DTS 或者其他服务」）；新的 Qwen3.x
+和 DeepSeek 都不会。百炼上的 DeepSeek V4.1 Flash 和官方 DeepSeek 几乎一样（术语一样多），还快 0.2 秒。
+
+**翻译**（听写翻译那套 60 条：40 条中文 + 20 条英文，`translate_system` 共用提示词，对 Light 结果翻译；两位盲评，
+相关系数 0.94；1–10 分 =「能不能不改就发出去」）：
+
+| 翻译模型 | 质量 | 必须改 | 中→英 | 英→中 | 耗时（中位 / p90） |
+|---|---:|---:|---:|---:|---:|
+| qwen3.8-flash | **8.5** | 3 / 60 | 8.2 | 9.1 | 1.1 / 1.8 s |
+| DeepSeek Flash（官方，对照） | 8.4 | 3 / 60 | 8.0 | 9.2 | 1.0 / 1.3 s |
+| **DeepSeek V4.1 Flash（百炼）** | 8.4 | 3 / 60 | 8.0 | 9.2 | 0.9 / 1.2 s |
+| qwen3.6-flash | 7.8 | 7.5 / 60 | 7.5 | 8.3 | 0.7 / 1.2 s |
+
+**截图取字的云端第二段**（`tests/fixtures/screen_text`，17 张有草稿的截图；字符错误率：Vision 草稿 / 模型自己读 / 合并后）：
+
+| 模型 | 草稿 | 模型自己 | 合并后 | 耗时（中位 / 最长） |
+|---|---:|---:|---:|---:|
+| DeepSeek Flash（官方，对照） | 0.74 % | 19.7 % | **0.16 %** | 1.1 / 1.7 s |
+| **qwen3.6-flash** | 0.74 % | 19.5 % | **0.16 %** | **0.8** / 1.5 s |
+| qwen3.5-flash | 0.74 % | 19.5 % | 0.16 % | 0.9 / 1.9 s |
+| qwen3.8-flash | 0.74 % | 19.6 % | 0.19 % | 1.3 / 3.1 s |
+| qwen3-vl-plus | 0.74 % | 18.6 % | 0.20 % | 2.4 / 5.0 s |
+| qwen3.5-ocr | 0.74 % | 23.4 % | 1.32 % | 0.7 / 1.6 s |
+| qwen-vl-ocr | — | — | 4.6 %，2 张返回空 | 1.1 / 1.8 s |
+| DeepSeek V4.1 Flash（百炼） | — | — | 13 张里 3 张超时 / 503，中位 26 秒，不能用 | |
+
+**结论：一个百炼 key 就够。** 润色和翻译用百炼上的 DeepSeek V4.1 Flash（和官方 DeepSeek 一样好），截图取字用
+qwen3.6-flash（看图的模型；百炼上的 DeepSeek 看图太慢），语音识别用 qwen3-asr-flash（1.5 倍速）。
+价格：DeepSeek V4.1 Flash 在百炼和官方同价（输入 ¥2、输出 ¥8 / 百万 token，闲时半价）；qwen3.6-flash 输入 ¥1.2、
+输出 ¥7.2。普通用户（每天 100 条、30 分钟）每月约：识别 ¥5.6 + 润色 ¥3 ≈ **¥9**；用 Apple 识别只要润色那 ¥3。
+
+本节花费（按返回的 token 数和单价估算）：润色约 ¥1.5、截图取字约 ¥0.3、翻译约 ¥0.3，约 ¥2；§2.4 的识别另花了约 ¥2.9。数据：
+`promo/cases/first-minute-asr/out/`（`*+deepseek-v4.1-flash.jsonl`、`st-*.json` 等）。
 
 ## 3. 每月花多少钱
 
@@ -176,7 +210,7 @@ Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整
 
 1. 标题「听写已经可以用了」。一行：「用 macOS 自带的语音识别，不用下载。」
 2. **一个 key**（可选）：「加一个 AI 服务的 key，听写会帮你改错字、加标点、认对专有名词。」服务选择 + key 输入框
-   + 测试。默认 DeepSeek（润色和截图取字；§2.5：百炼的 Qwen 润色会改写），海外也可以填 OpenAI 兼容的服务。
+   + 测试。润色默认 DeepSeek（推荐），也可以选阿里云百炼（§2.5）或 OpenAI / Anthropic 兼容的服务；语音识别推荐阿里云百炼。
 3. **本机模型**（升级，次要按钮）：「想离线用、或者更准：下载本机模型（1.0 GB）。」大小按这台 Mac 的档位
    （§5）。点了就进现在的下载管理器，后台下，不挡下一步。
 4. 主按钮是「下一步」，不是下载。试一试那一步不再因为「识别模型还在下载」被挡住。
@@ -191,7 +225,7 @@ Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整
 
 | 服务 | 听写识别 | 润色 | 语音笔记 / 录屏转写 | 截图取字 |
 |---|---|---|---|---|
-| 阿里云百炼 | qwen3-asr-flash（1.5 倍速） | 不推荐（§2.5：会改写） | qwen3-asr-flash | qwen-vl 系（未测） |
+| 阿里云百炼（国内推荐） | qwen3-asr-flash（1.5 倍速） | DeepSeek V4.1 Flash（百炼托管） | qwen3-asr-flash | qwen3.6-flash |
 | OpenAI（或兼容） | gpt-4o-mini-transcribe | 用户填的模型 | 同左 | 同左（带图） |
 | DeepSeek | —（继续 Apple / 本机） | deepseek-flash | — | deepseek（带图） |
 | Groq | whisper-large-v3-turbo | 用户填的模型 | 同左 | — |
@@ -208,7 +242,7 @@ Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整
 | 16 GB | Apple | Qwen3-ASR 0.6B + Gemma 4 E2B | 4.4 GB | 4.4 GB（闲 10 分钟释放） | 本机或云端 |
 | 24 GB | Apple | 同 16 GB | 4.4 GB | 4.4 GB | 本机或云端 |
 | 32 GB 以上 | Apple | Qwen3-ASR 1.7B + Gemma 4 E2B | 5.9 GB | 5.4 GB | 本机或云端 |
-| macOS 13–15（任何内存） | 没有 Apple 新引擎：云端 key，或 SenseVoice（228 MB，最小的本机模型） | 同上 | | | |
+| macOS 13–15（任何内存） | 没有 Apple 新引擎：设置助手第一行就是云端 key（百炼的 key 同时做识别和润色），也可以下载本机模型 | 同上 | | | 云端 |
 
 - 档位就是 `transcribe.py tier_for` 现有的 light / standard / pro，只改了「没有本机模型时用什么」。
 - Apple 引擎的那 0.45 GB 在系统进程里、用完系统自己收，8 GB 的 Mac 上比任何本机模型都轻。
@@ -227,18 +261,28 @@ Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整
 这一格 macOS 有、另外两个没有，所以 Windows / Linux 的设置助手应该把「加一个 key」和「SenseVoice 228 MB」
 并排放在第一屏。
 
-## 7. 要拍板的事
+**uv 在 Windows / Ubuntu（以后做，这次不做）：** 和 macOS 一样，先找能用的 uv（`uv --version` 能跑），找到就不装：
+- Windows：PATH、`%USERPROFILE%\.local\bin`、`%LOCALAPPDATA%\uv`、winget / scoop 装的位置、Blurt 自己的
+  `%LOCALAPPDATA%\Blurt\bin`；都没有时静默运行官方的 `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`，
+  设 `UV_INSTALL_DIR` 到 Blurt 自己的 bin、`UV_NO_MODIFY_PATH=1`（不改用户的 PATH）。
+- Ubuntu：PATH、`~/.local/bin`、`~/.cargo/bin`、snap 装的 `/snap/bin/uv`、`~/.blurt/bin`；都没有时同 macOS 的
+  `curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=… UV_NO_MODIFY_PATH=1 sh`（没有 curl 时用 wget）。
+- 两边都只在后台装，不弹窗；失败了下次启动再试，设置助手里留一个「安装 uv」按钮。
 
-第 1 条创始人已定（2026-10-29：做）。第 2–4 条还没定，§8 先按不改现状的做法实现。
+## 7. 拍板记录（创始人，2026-10-29）
 
-1. **默认识别换成 Apple SpeechTranscriber（macOS 26+）**，本机模型变成升级项？代价：没有本机模型时中文错误率
-   多约 3 个点、自定义词基本不认（有云端润色就补回来）。
-2. **国内默认推荐哪家的 key**：已测（§2.4–2.5）。百炼的 Qwen 用现在的提示词润色会改写，所以 DeepSeek 留作默认；
-   百炼只在要更准的识别时加（多 1.8 个点，每月多 ¥5.6–8.5）。要不要把百炼识别接进听写，待定。
-3. **uv 的安装同意**：现在装 uv 要用户点同意。要不要改成后台静默装（uv 本体 44 MB，装在 ~/.blurt/bin；连同 Python 和依赖约 150 MB）？
-   不改的话，「马上用」档没有云端润色，直到用户点同意。
-4. **macOS 13–15**：用老的 `SFSpeechRecognizer`（要多一个「语音识别」权限，质量未测）、还是直接推 SenseVoice
-   （228 MB + 150 MB 工具）或云端 key？测老引擎需要在这台 Mac 上弹一次权限框。
+1. **默认识别换成 Apple SpeechTranscriber，本机模型变成升级项**：做。
+2. **国内默认推荐阿里的 key**：后来改定为「语音识别优先推荐阿里，润色继续优先推荐 DeepSeek」，并且每个云端任务都能自己选模型（§8）。§2.5 测过一个百炼 key 也能管润色、翻译、截图取字，质量和 DeepSeek 一样，所以只用百炼也行。
+3. **uv 静默安装，已有就不装**：做（§8）。Windows / Ubuntu 只写进 §6，这次不做。
+4. **macOS 13–15**：问的是「是不是很老、能不能不支持、只给云端行不行」。数据：
+   - Homebrew 30 天统计（2026-09-29 到 10-29，2,508 万次安装，开发者多，和 Blurt 的用户最像）里的 Mac：
+     macOS 26 46.0 %、macOS 27 29.1 %、**macOS 15 19.1 %、14 2.4 %、13 1.6 %**，13–15 合计约 **23 %**，主要是 Sequoia。
+   - StatCounter 分不出 macOS 11 以后的版本（Apple 的浏览器把它们都报成 10.15），没法用。
+   - Blurt 自己：没有遥测；反馈服务现在没有报告；GitHub 上 5 个 issue 都没提到 13–15；下载量还很小
+     （v1.0.2–1.0.4 每版十几次）。
+   - 结论：每 4–5 台 Mac 就有一台在 13–15，不该不支持。**做法：13–15 上云端优先**：设置助手第一行是 AI 服务的
+     Key，填了百炼的 key 就能直接听写（识别和润色都在云端，不用下载）；本机模型照旧能下载。这次已经做了
+     （改动小，§8）。没测老的 `SFSpeechRecognizer`：它要多一个权限框，而云端的质量已经更好。
 
 ## 8. 已实现（2026-10-29，未提交）
 
@@ -251,12 +295,30 @@ Qwen 会改写、压缩：删掉整句（「我需要手动去做大量的调整
 | 录屏转写 | `transcribe.py` 的 `apple` 后端调用 app 自己的可执行文件 `blurt-recorder --speech WAV`（整段送进去，不用 VAD，所以连 0.6 MB 的 VAD 也不用下）；app 启动的脚本都带 `BLURT_APP_BIN` | `main.swift`、`AppleSpeech.runCLI`、`BlurtCore/Script.swift` |
 | 云端润色无本机模型也能跑 | 只开了云端润色、没有本机润色模型时也起润色服务（polish.py 从不自己下载模型） | `Dictation.warmPolish` |
 | 设置助手 | 有 Apple 引擎时：「听写现在就能用」、AI 服务的 Key（添加… 打开云端润色那张表）、「本机模型（可选）」一行自带下载按钮；主按钮是「下一步」；试一试只会被权限或系统语言包挡住 | `Onboarding/Onboarding.swift`、`ModelSetup.swift` |
-| 一个 key | 设置助手里的 key 就是云端润色的 key（截图取字也用它）；在表里填了新 key 就默认打开。曾把百炼加成润色服务，§2.5 实测 Qwen 润色会改写，已撤掉；百炼 key 仍在 设置 → 模型 → 高级 → 云端识别 | `DictationCloudSheet.swift`、`Onboarding.swift` |
+| 阿里云百炼作为润色服务 | 云端润色的服务里有「阿里云百炼」（可选；默认仍是 DeepSeek）：润色和翻译用 DeepSeek V4.1 Flash，截图取字自动换成 qwen3.6-flash（`vision_model`），同一个 key 也给云端语音识别（`DASHSCOPE_API_KEY`）；百炼的请求都关掉思考；在表里填了新 key 就默认打开 | `polish_cloud.py`（PRESETS、`enable_thinking`）、`screen_text.py`（`read_cloud` 用 `vision_model`）、`DictationCloud.swift`、`DictationCloudSheet.swift`、`CloudSpeechSheet.swift` |
+| uv 静默安装 | 启动时和设置助手打开时：PATH、`~/.local/bin`、Homebrew、`~/.blurt/bin` 里有能跑（`uv --version`）的 uv 就用，没有才在后台用官方安装器装到 `~/.blurt/bin`（不改 shell 配置）；装好后重新读听写和润色模型；测试版不装 | `App/UVSetup.swift`、`AppDelegate.swift`、`Onboarding.swift` |
+| macOS 13–15：云端优先 | 没有 Apple 引擎时，设置助手第一行是「用云端听写：AI 服务的 Key」；`select()` 在 Apple 之后、下载之前选有 key 的云端服务；这时主按钮是「下一步」，本机模型单独一个下载按钮 | `transcribe.py`、`Onboarding.swift` |
 
 | 云端识别的播放速度 | `asr.cloud.speed`，所有云端服务（百炼、Groq、OpenAI 兼容）通用：1.5 倍速默认（推荐），1 倍、2 倍可选，每档一行实测代价；送出前本机用 ffmpeg `atempo` 变速，返回的时间换算回原时间轴（创始人 2026-10-29 定） | `transcribe.py`（`cloud_speed`、`speed_up`）、`CloudSpeechSheet.swift`、`Speech.strings` |
 | 听写用云端识别 | 有 key 的云端服务出现在听写的模型列表里（「语音识别」一栏的弹出菜单）；选了它：词表作为上下文送过去，说话时的实时字用 Apple 的（免费、本机），只把切好的片段送云端，不「重听」（每多送一遍都要钱）；片段不用 VAD | `transcribe.py`（`DICTATION_CLOUD`、`selected_cloud`、云端 `set_vocab`）、`Dictation.swift`、`VoiceInput.swift`、`AppleSpeech.forLiveText` |
 
+| 推荐：识别阿里、润色 DeepSeek | 创始人 2026-10-29 改定：语音识别优先推荐阿里云百炼，润色继续优先推荐 DeepSeek。云端润色的默认服务改回 DeepSeek（标「推荐」），百炼保留为可选；设置 → 模型 → 高级里百炼的云端识别排第一、标「推荐」；macOS 13–15 的设置助手第一行是百炼的语音识别 Key（云端识别那张表），第二行是润色的 Key | `DictationCloud.swift`、`SpeechPane.swift`、`Onboarding.swift` |
+| 每个云端任务自己选模型 | 润色、翻译、截图取字、语音识别各有一个模型菜单：默认值（标「默认」）、这家服务现在的几个模型、「自定义…」（任意模型 ID）；选中的模型下面一行写实测结果，或「没有实测过」。存储不变：`Setup.model`（空 = 默认），新增 `translate_model` / `vision_model`（空 = 翻译跟润色一样、截图取字用这家的看图模型），百炼识别的模型存在 `asr.cloud.qwen3-asr-flash.model`，经 `DASHSCOPE_ASR_MODEL` 给脚本 | `Settings/CloudModels.swift`（新）、`DictationCloudSheet.swift`、`CloudSpeechSheet.swift`、`polish_cloud.py`、`polish.py`、`transcribe.py` |
+
+各服务的模型清单（2026-10-29 从各家 `/models` 读到）和实测情况：
+
+| 任务 | DeepSeek | 阿里云百炼 | 其他 |
+|---|---|---|---|
+| 润色 | **deepseek-flash**（默认，实测 9.4 %）、deepseek-v4-pro（未测） | **deepseek-v4.1-flash**（默认，9.6 %）、qwen3.8-flash（10.0 %）、qwen3.6-flash（9.7 %，词认得少）、qwen-flash / qwen-plus（实测会改写，标「不推荐」） | OpenAI / Anthropic 兼容：自己填 |
+| 翻译 | 默认跟润色一样；deepseek-flash（8.4 分）、deepseek-v4-pro（未测） | 默认跟润色一样；deepseek-v4.1-flash（8.4）、qwen3.8-flash（8.5）、qwen3.6-flash（7.8） | 自己填 |
+| 截图取字 | **deepseek-flash**（默认，0.16 %） | **qwen3.6-flash**（默认，0.16 %）、qwen3.5-flash（0.16 %）、qwen3-vl-plus（0.20 %）、qwen3.5-ocr（1.3 %）、qwen-vl-ocr（4.6 %，有空结果） | 默认跟润色一样，或自己填 |
+| 语音识别 | — | **qwen3-asr-flash**（默认，6.8 %，1.5 倍速 8.0 %）；百炼其他识别模型（qwen-audio-3.0-asr-flash、fun-asr-flash）只支持百炼自己的接口，Blurt 用的 OpenAI 兼容接口调不通，所以不列出，要用可以「自定义…」填 qwen3-asr-flash 的快照版本 | OpenAI：whisper-1（默认，有时间戳）、gpt-4o-mini-transcribe、gpt-4o-transcribe；Groq：whisper-large-v3-turbo（默认）、whisper-large-v3；都未测 |
+
+另外修了一处：百炼识别请求里的上下文缺 `"type": "text"`（qwen3-asr-flash 不挑，别的模型会拒绝）。
+
 在隔离的测试 app 里（全新 BLURT_HOME、空的模型缓存）验证过：
+- 模拟 macOS 13–15（`BLURT_NO_APPLE_SPEECH`）+ 一个百炼 key：启动就 `selected = qwen3-asr-flash, ready`；一条听写识别出「tmux」，再由百炼上的 DeepSeek V4.1 Flash 润色，松手后 10 ms 粘贴；设置助手截图 `screens/onb-models-oldmac-zh.png`，布局检查没问题。
+- 百炼一个 key 走真实代码：润色检查 0.8 s（deepseek-v4.1-flash）、截图取字 1.1 s（自动用 qwen3.6-flash）、翻译 0.8 s。
 - 听写选百炼（1.5 倍速，默认）：片段 845 ms 识别完（说话时就在做），松手后 14 ms 粘贴；词表里的 tmux 认对了；实时字 5 次都来自 Apple；没有重听。
 - 启动即 `selected = apple-speech, ready`；系统语言包 37 ms 就绪。
 - 一条真实听写（Lab 里那条 6 秒的「请看一下过去 48 小时……」）：松手到粘贴 171 ms，文字和参考一致，没起语音服务。
