@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.5-3") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.5-3") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-3") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.5-4") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.5-4") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-4") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -1411,3 +1411,13 @@ html.motion .hero{ padding-top: clamp(80px, 14vh, 156px); }
 :is(#h-get, #h-priv, #h-hand) .ph{ display: block; }
 html[lang="en"] #h-hand{ font-size: 2.6em; }
 @media (max-width: 720px) { html[lang="en"] #h-hand{ font-size: 24px; } }
+/* phones (founder, 2026-10-29): the big perched Peep shows here too, on the first window's top-right corner, 12 camera
+   ems wide, the same pose */
+@media (max-width: 720px) {
+  .sc-dict .perch{ display: block; left: 20.4em; top: 4.4em; width: 12em; }
+  /* on a phone the live panel opens right there once you scroll: Peep fades out as the page moves on */
+  html.motion .sc-dict .perch{ opacity: clamp(0, 1 - var(--sy0, 0) / 160, 1); }
+  /* the hero's small text keeps clear of the screen edges */
+  .hero .lede, .hero .fine{ padding-inline: 14px; }
+}
+@media (max-width: 360px) { html[lang="zh-CN"] .hero h1{ font-size: 40px; } html[lang="zh-CN"] .hero h1 .nw{ white-space: nowrap; } }

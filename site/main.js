@@ -285,7 +285,7 @@
     const phone = innerWidth <= 720;
     // where the window rests (its top in px): 9.5 desk ems on a desktop, 7.6 camera ems (3% of the width) on a phone
     const top = phone ? 7.6 * innerWidth * .03 : 9.5 * Math.min(innerWidth, innerHeight * 1.6) / 100;
-    const want = Math.max(phone ? 0 : innerHeight * .54, hb + 32 - top);
+    const want = Math.max(phone ? 0 : innerHeight * .54, hb + (phone ? 72 : 32) - top);   // phones: room for perched Peep over the window
     dictEl.style.setProperty("--rise0", Math.round(want) + "px");
   };
   fit();
