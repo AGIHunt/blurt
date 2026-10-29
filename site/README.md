@@ -11,7 +11,7 @@ npx wrangler pages deploy site --project-name blurt --branch main      # publish
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The agihunt.info zone's Browser
 Cache TTL (4 h) overrides `_headers` on the custom domain, so without a new URL visitors get new HTML on top of old
-CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.4-1`.
+CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.4-2`.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
