@@ -5,8 +5,8 @@
 // (pauses, markers, clicks, cursor samples, pen strokes). Built on first use by record.py with `swiftc`.
 // Pen: hold ⌃ and drag to circle / underline / point at things — the ink is in the video and in events.jsonl.
 //
-// Control: HUD buttons, global hotkeys (defaults ⌥⇧P pause/resume, ⌥⇧A snap, ⌥⇧M marker (+ snap), ⌥⇧D pen on/off,
-// ⌥⇧S stop; configurable, Hotkeys.swift),
+// Control: HUD buttons, global hotkeys (defaults ⌥P pause/resume, ⌥A snap, ⌥M marker (+ snap), ⌥D pen on/off,
+// ⌥S stop; configurable, Hotkeys.swift),
 // stdin lines ("pause" | "resume" | "toggle" | "snap" | "marker" | "stop"), or SIGTERM/SIGINT (= stop).
 // Snap mode, the island and notes live in Capture/ (Snap.swift, Island/, NoteBubble.swift); Peep, the mascot, in
 // Icons/Mascot.swift (frames from Resources/Peep) and the menu-bar glyph in App/MenuGlyph.swift.
@@ -21,6 +21,13 @@ import ScreenCaptureKit
 import ServiceManagement
 import BlurtCore
 
+
+// macOS's speech recognition for transcribe.py's `apple` backend (Capture/AppleSpeech.swift): answers and exits.
+switch CommandLine.arguments.dropFirst().first {
+case "--speech": AppleSpeech.runCLI(Array(CommandLine.arguments.dropFirst(2)))
+case "--speech-status": AppleSpeech.runCLI(["--status"] + Array(CommandLine.arguments.dropFirst(2)))
+default: break
+}
 
 var opts = Options.parse()
 if let l = opts.lang { Loc.setting = l }

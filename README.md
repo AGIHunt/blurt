@@ -2,9 +2,9 @@
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
-<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
+<a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
 
-<p align="center"><a href="https://blurt.agihunt.info/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
+<p align="center"><a href="https://blurt.work/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
 <p align="center"><sub>Watch the 2-minute film, sound on · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">Download for Mac</a></sub></p>
 
 ---
@@ -16,18 +16,26 @@ no agent of its own and doesn't replace yours.
 ## What it does
 
 **Dictation (`Fn`).** Tap `Fn` in any app, talk, and tap it again. The words are typed where your cursor is. Finish
-with a double tap instead and it's sent too (Return). Speech recognition runs on your Mac with open-source models, so
-no internet is needed once they're downloaded; after a minute of talking the text is in about 0.4 s. A local model
-removes fillers and stutters and adds punctuation; it doesn't rewrite, summarize or translate. The words show under
-the notch as you talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to
-switch back; `⌥⇧L` reformats the last dictation. Holding `Fn` while you talk works too.
+with a double tap instead and it's sent too (Return). It works the moment Blurt is installed, with macOS's own speech
+recognition (macOS 26) and nothing to download. Open-source local models are an optional upgrade: more accurate, they
+learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
+fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
+talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back; tap `⌘`
+to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
+while you talk works too.
 
-**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong; the note opens right
+**Snap (`⌥A`) and Voice Note (`⌥V`).** Drag over part of the screen and say what's wrong; the note opens right
 beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
 undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
 your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
-**Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
+**Copy text from screen (`⌥C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
+terminal. Let go and it's on the clipboard in about 0.2 s, laid out as if you had copied it: the half line the edge
+cut is left out, wrapped list items are one line again, tables keep their tabs and code its indentation. It reads with
+macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
+(720 MB) or your own cloud model fixes misread symbols in code and paths.
+
+**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
 that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
 5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
@@ -47,7 +55,7 @@ everything it runs, so there is nothing else to install.
 Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
 
 ```bash
-curl -fsSL https://blurt.agihunt.info/install.sh | sh
+curl -fsSL https://blurt.work/install.sh | sh
 ```
 
 It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.
@@ -61,8 +69,10 @@ needs the Xcode Command Line Tools and <a href="https://docs.astral.sh/uv/">uv</
 what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
-key than `Fn`), then downloads the speech models: about 5.9 GB on a Mac with 32 GB of memory, 4.4 GB on 16–24 GB.
-Nothing is downloaded until you click Download. Then press `Fn` in any text field. Screen Recording is asked for the
+key than `Fn`). Then press `Fn` in any text field: dictation already works with macOS's own recognizer. Two optional
+upgrades: one AI-service key (fixes misheard names and punctuation, and powers translation and the cloud second
+reading of copied text), and the local models (1–6 GB depending on your Mac's memory, downloaded only when you click
+Download). Screen Recording is asked for the
 first time you snap or record.
 
 ## How it works with your agents
@@ -155,7 +165,8 @@ languages.
   anything else you give it.
 - No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
   or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
-  to DeepSeek or the API you set up), what your agent sends to its provider, and Send Feedback: when you click it on the
+  to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
+  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
   and deleted within 14 days.

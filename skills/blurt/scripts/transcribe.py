@@ -71,6 +71,7 @@ import select as _select  # `select` is this module's model pick
 import shutil
 import socket
 import subprocess
+import tempfile
 import sys
 import threading
 import time
@@ -808,7 +809,56 @@ def _own_legacy_complete(d: Path) -> bool:
 def installed(m: dict) -> bool:
     if not m.get("local", True):
         return any(os.environ.get(k) for k in m.get("keys", []))
+    if m.get("builtin"):
+        return apple_speech_ok()
     return model_path(m) is not None
+
+
+# macOS's own speech recognition (docs/design/first-minute-speech.md): SpeechTranscriber, macOS 26+, run by the Blurt
+# app's executable (`blurt-recorder --speech WAV`: Capture/AppleSpeech.swift). Nothing to download from Blurt; the
+# language's files are macOS's own (the app asks for them; a run without them fails "model_missing").
+APPLE = "apple-speech"
+APPLE_LOCALES = {"zh": "zh-CN", "zh-hant": "zh-TW", "yue": "yue-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR",
+                 "fr": "fr-FR", "de": "de-DE", "es": "es-ES", "it": "it-IT", "pt": "pt-BR"}
+
+
+def apple_speech_helper() -> Path | None:
+    """The Blurt executable that answers `--speech` (BLURT_APP_BIN from the app, else an installed Blurt.app)."""
+    cands = [os.environ.get("BLURT_APP_BIN") or "", str(BLURT_HOME / "Blurt.app/Contents/MacOS/blurt-recorder"),
+             "/Applications/Blurt.app/Contents/MacOS/blurt-recorder",
+             str(Path.home() / "Applications/Blurt.app/Contents/MacOS/blurt-recorder")]
+    return next((Path(c) for c in cands if c and os.access(c, os.X_OK)), None)
+
+
+_APPLE_OK: bool | None = None
+
+
+def apple_speech_ok() -> bool:
+    """macOS 26 or later, and a Blurt that can run it."""
+    global _APPLE_OK
+    if os.environ.get("BLURT_NO_APPLE_SPEECH"):     # tests: a Mac before macOS 26
+        return False
+    if _APPLE_OK is None:
+        try:
+            major = int((platform.mac_ver()[0] or "0").split(".")[0]) if IS_MAC else 0
+        except ValueError:
+            major = 0
+        _APPLE_OK = major >= 26 and apple_speech_helper() is not None
+    return _APPLE_OK
+
+
+def apple_locale(language: str | None) -> str | None:
+    """The locale for an explicit language, else the user's first language macOS's recogniser speaks."""
+    if language and language not in ("auto", ""):
+        langs = [language]
+    else:
+        langs = user_languages()
+    for lang in langs:
+        if lang == "zh" and chinese_script() == "hant":
+            lang = "zh-hant"
+        if lang in APPLE_LOCALES:
+            return APPLE_LOCALES[lang]
+    return None
 
 
 def _du_mb(p: Path) -> float:
@@ -1509,6 +1559,76 @@ class FasterWhisper:
         return [(s.start, s.end, cjk_punctuation(s.text.strip()), info.language) for s in segs]
 
 
+class AppleSpeech:
+    """macOS's recogniser through the Blurt executable: the whole audio at once (it finds its own pauses and gives
+    each phrase its time), so no VAD — nothing for a first run to download."""
+    max_chunk = 3600
+    no_vad = True
+
+    def __init__(self, args):
+        self.helper = apple_speech_helper()
+        if not self.helper or not apple_speech_ok():
+            raise Fail("macOS speech recognition needs macOS 26 and the Blurt app", "model_missing")
+        self.args = args
+        self.terms: list[str] = []
+        self.model = "SpeechTranscriber"
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
+
+    def transcribe(self, x):
+        loc = apple_locale(self.args.language)
+        if not loc:
+            raise Fail("macOS speech recognition doesn't speak this language", "unsupported_language")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(wav_bytes(x))
+            path = f.name
+        try:
+            cmd = [str(self.helper), "--speech", path, "--locale", loc]
+            if self.terms:
+                cmd += ["--words", "\n".join(self.terms)]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120 + len(x) / SR)
+        finally:
+            os.unlink(path)
+        line = next((ln for ln in reversed(r.stdout.splitlines()) if ln.startswith("{")), "{}")
+        data = json.loads(line)
+        if not data.get("ok"):
+            raise Fail(data.get("error") or "macOS speech recognition failed", data.get("code") or "error")
+        lang = loc.split("-")[0]
+        return [(s["start"], s["end"], s["text"], lang) for s in data.get("segments") or []]
+
+
+# Cloud recognition hears the audio sped up (asr.cloud.speed, every provider; docs/design/first-minute-speech.md §2.4):
+# billing is per second of audio sent. Measured with DashScope qwen3-asr-flash on 270 kept takes: 1x 6.8 % (full cost),
+# 1.5x 8.0 % for 64 % of the cost (the default), 2x 11.6 % for 47 % — and twice it answered with the word list instead
+# of the speech. Pitch is kept (ffmpeg atempo); the times that come back are put back on the original timeline.
+CLOUD_SPEEDS = (1.0, 1.5, 2.0)
+CLOUD_SPEED_DEFAULT = 1.5
+
+
+def cloud_speed(cfg: dict | None = None) -> float:
+    v = os.environ.get("BLURT_ASR_SPEED") or ((cfg if cfg is not None else asr_config()).get("cloud") or {}).get("speed")
+    try:
+        v = float(v) if v is not None else CLOUD_SPEED_DEFAULT
+    except (TypeError, ValueError):
+        v = CLOUD_SPEED_DEFAULT
+    return min(CLOUD_SPEEDS, key=lambda s: abs(s - v))
+
+
+def speed_up(x: np.ndarray, speed: float) -> np.ndarray:
+    """x played `speed` times as fast, same pitch (ffmpeg atempo); x itself when 1x or ffmpeg isn't there."""
+    if speed == 1.0 or not len(x) or not shutil.which("ffmpeg"):
+        return x
+    pcm = (np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes()
+    r = subprocess.run([shutil.which("ffmpeg"), "-nostdin", "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1",
+                        "-i", "-", "-filter:a", f"atempo={speed}", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"],
+                       input=pcm, capture_output=True)
+    if r.returncode or not r.stdout:
+        return x
+    return np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768
+
+
 class OpenAICompat:
     """POST {base}/audio/transcriptions. verbose_json gives segment timestamps where supported."""
 
@@ -1526,26 +1646,35 @@ class OpenAICompat:
         # Longer chunks = fewer requests (Groq bills >=10s per request); shorter when no timestamps come back.
         self.max_chunk = 60 if self.verbose else 20
         self.args = args
+        self.speed = cloud_speed()
+        self.terms: list[str] = []
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """The dictation's words, in the prompt (Whisper-style services read it as preceding text)."""
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
 
     def transcribe(self, x):
         fields = {"model": self.model, "response_format": "verbose_json" if self.verbose else "json"}
         if self.args.language:
             fields["language"] = self.args.language
-        if self.args.prompt:
-            fields["prompt"] = self.args.prompt
+        prompt = self.args.prompt or (", ".join(self.terms) if self.terms else None)
+        if prompt:
+            fields["prompt"] = prompt
         boundary = uuid.uuid4().hex
         body = io.BytesIO()
         for k, v in fields.items():
             body.write(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
         body.write(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
                    f'Content-Type: audio/wav\r\n\r\n'.encode())
-        body.write(wav_bytes(x))
+        body.write(wav_bytes(speed_up(x, self.speed)))
         body.write(f"\r\n--{boundary}--\r\n".encode())
         data = _post(f"{self.base}/audio/transcriptions", body.getvalue(),
                      {"Authorization": f"Bearer {self.key}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
         lang = lang_code(data.get("language"))
         if data.get("segments"):
-            return [(s["start"], s["end"], s["text"].strip(), lang) for s in data["segments"]]
+            k = self.speed
+            return [(s["start"] * k, min(s["end"] * k, len(x) / SR), s["text"].strip(), lang) for s in data["segments"]]
         return [(0.0, len(x) / SR, (data.get("text") or "").strip(), lang)]
 
 
@@ -1558,13 +1687,21 @@ class DashScope:
             raise Fail("no API key: set DASHSCOPE_API_KEY", "auth")
         # its own variable: BLURT_ASR_BASE_URL is the OpenAI-compatible service's (both can be set in the app)
         self.base = (os.environ.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-        self.model = args.model or "qwen3-asr-flash"
+        # the model picked in Settings (CloudSpeech: DASHSCOPE_ASR_MODEL), else the registry's
+        self.model = os.environ.get("DASHSCOPE_ASR_MODEL") or args.model or "qwen3-asr-flash"
         self.args = args
+        self.speed = cloud_speed()
+        self.terms: list[str] = []
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """The dictation's words as Qwen3-ASR's context (measured: 27 of 35 terms with them, §2.4)."""
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
 
     def transcribe(self, x):
-        audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(x)).decode()
+        audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
         payload = {"model": self.model, "stream": False,
-                   "messages": [{"role": "system", "content": [{"text": self.args.prompt or ""}]},
+                   "messages": [{"role": "system", "content": [{"type": "text", "text": self.args.prompt or ", ".join(self.terms)}]},
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
@@ -1595,8 +1732,9 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4) -> dict:
 
 
 BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
-            "qwen3-asr-mlx": Qwen3Mlx, "faster-whisper": FasterWhisper, "openai": OpenAICompat, "dashscope": DashScope}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper"}
+            "qwen3-asr-mlx": Qwen3Mlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech, "openai": OpenAICompat,
+            "dashscope": DashScope}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper", "apple"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
                   "qwen3-asr-mlx": "mlx-qwen3-asr"}  # backend → `uv run --with` package
 # The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
@@ -1761,6 +1899,17 @@ def select(purpose: str, a=None) -> dict:
             return m
         if m and not m.get("local", True) and not local_only() and installed(m) and mid == chosen:
             return m
+    # nothing downloaded: macOS's own recogniser when it speaks the user's languages (first-minute-speech.md)
+    apple = entry(APPLE)
+    if apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]):
+        return apple
+    # no macOS recogniser (macOS 13–15, ~23 % of Macs): a cloud service whose key the user set — the setup assistant's
+    # one key (Model Studio in China) says it recognises speech too — before a model that would have to download
+    if not local_only():
+        for mid in DICTATION_CLOUD:
+            m = entry(mid)
+            if m and installed(m):
+                return m
     return entry("sensevoice-small")  # downloads on first use (never during a recording: BLURT_NO_DOWNLOAD)
 
 
@@ -1787,6 +1936,8 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
     a key, else why not."""
     if name not in BACKENDS:
         return f"unknown backend {name}"
+    if name == "apple":
+        return None if apple_speech_ok() else "macOS speech recognition needs macOS 26 and the Blurt app"
     if not (MODELS_DIR / "silero_vad.onnx").exists():
         return "VAD model not downloaded (transcribe.py setup)"
     if name in API_KEYS:
@@ -1826,6 +1977,8 @@ def make_backend(name: str, a, purpose: str = "batch"):
 def model_label(name: str, backend, a) -> str | None:
     if name == "sensevoice":
         return "sense-voice-small-int8"
+    if name == "apple":
+        return "apple-speech-transcriber"
     m = getattr(backend, "model", None)
     return m if isinstance(m, str) else getattr(backend, "repo", None) or a.model
 
@@ -1894,7 +2047,15 @@ def print_summary(data: dict, files: list[str], **extra) -> None:
 
 def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, label: str | None = None,
                      quiet: bool = False):
-    """VAD → chunks → backend. Returns ([(start, end, text, label[, language])], speech s, s that decoded to nothing)."""
+    """VAD → chunks → backend. Returns ([(start, end, text, label[, language])], speech s, s that decoded to nothing).
+    A backend that finds its own pauses (`no_vad`: macOS's recogniser) gets the whole audio."""
+    # …and so does a cloud service for audio it takes in one request (a dictation's or voice note's piece, which the
+    # app has already cut at a pause): no VAD file needed for it either
+    whole = getattr(backend, "no_vad", False) or (name in API_KEYS and len(samples) / SR <= backend.max_chunk)
+    if whole:
+        dur = len(samples) / SR
+        r = decode_slice(backend, samples, 0.0, dur) if dur > 0 else []
+        return [(s_, e_, t, label, *lg) for s_, e_, t, *lg in r], dur, dur if is_blank(r) else 0.0
     segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
     chunks = group_chunks(segs, backend.max_chunk)
     sp = sum(e - s for s, e in chunks)
@@ -2467,7 +2628,9 @@ def cmd_auto(a):
 # --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
-DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
+DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+#                                                                                   first; macOS's own last (nothing to download)
+DICTATION_CLOUD = ("qwen3-asr-flash", "openai-compatible")   # offered once their key is set (first-minute-speech.md §2.4)
 
 
 def polish_ram_mb(hw: dict, cfg: dict | None = None) -> float:
@@ -2511,8 +2674,11 @@ def dictation_models(hw: dict | None = None) -> dict:
         return bool(m) and fits_with_polish(m, hw, pmb)
     # the v0.8 speed eval (docs/design/dictation.md §Recognition model): 1.7B on pro Macs (≥ 32 GB: 3 GB more is
     # fine there), 0.6B on standard ones
+    # (the voice-note pick is macOS's own recogniser while nothing is downloaded: the download to offer is then the one
+    # the voice-note rules would choose)
+    note_rec = note_pick["id"] if note_pick["id"] != APPLE else recommend(purpose="note", hw=hw)["pick"]["model"]
     rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and fits(QWEN_MLX_17) else \
-        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_pick["id"]
+        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_rec
     # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
     # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
     # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
@@ -2525,26 +2691,34 @@ def dictation_models(hw: dict | None = None) -> dict:
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     rows = []
-    for mid in DICTATION_MODELS:
+    for mid in DICTATION_MODELS + DICTATION_CLOUD:
         m = entry(mid)
         if not m or not runs_here(m):
             continue
+        if not m.get("local", True) and (local_only() or not installed(m)):
+            continue        # a cloud service: only with its key, never when recognition stays on this Mac
         have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
-                     "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True)), "files": have,
+                     "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True) or bool(m.get("builtin"))),
+                     "files": have,
+                     "builtin": bool(m.get("builtin")),
                      "vocab": m.get("vocab") or "none", "recommended": mid == rec, "fits": fits(mid)})
     # ready: a dictation can run right now with nothing downloaded (it never downloads: `no_download`) — the
     # selected model (local and on this Mac, or a cloud one with its key: judged by itself, not by being a row) and
     # the VAD every take goes through. missing: what a download would have to bring for that ("silero-vad" and/or
     # the selected model's id)
     sel = entry(selected)
-    missing = [] if vad else ["silero-vad"]
+    # macOS's recogniser hears without the VAD, and so does a cloud service for a dictation's pieces (transcribe_track)
+    missing = [] if vad or selected == APPLE or bool(sel and not sel.get("local", True)) else ["silero-vad"]
     selected_installed = bool(sel and installed(sel))
     if not selected_installed:
         missing.append(selected)
     return {"configured": configured, "configured_installed": bool(configured and entry(configured)
                                                                      and installed(entry(configured))),
             "recommended": rec, "selected": selected, "selected_installed": selected_installed,
+            # the dictation goes to a cloud service: the app shows live text from macOS's recogniser and doesn't hear it
+            # again (each pass is billed)
+            "selected_cloud": bool(sel and not sel.get("local", True)),
             "ready": not missing, "missing": missing, "vad": vad, "models": rows}
 
 

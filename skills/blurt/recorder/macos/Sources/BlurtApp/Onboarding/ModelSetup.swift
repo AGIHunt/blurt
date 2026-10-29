@@ -11,6 +11,10 @@
 //              is installed); voice notes are re-picked with `transcribe.py auto --apply`.
 //   dictation  `dictationReady`: the recogniser is in — the Try-it step works from then on, even while the polish and
 //              voice-note models are still coming.
+//   start now  `startNow` (docs/design/first-minute-speech.md): macOS 26's own recogniser speaks the user's language,
+//              so dictation works with nothing downloaded — the step says so, offers the one cloud key, and the set
+//              becomes the optional local upgrade (Download is no longer the footer's primary). `system` is where
+//              macOS's language files stand (asked for here, in the background: AppleSpeech.prepare).
 import AppKit
 import BlurtCore
 import Combine
@@ -30,6 +34,12 @@ final class ModelSetup: ObservableObject {
     var settled: Bool { only && !downloading && SpeechModel.shared.model(ModelBundle.fallbackID)?.installed == true }
     /// the assistant is showing (else the download manager's toasts say how the models went)
     var shown = false
+    /// macOS's language files for its recogniser (nil: not asked yet)
+    @Published private(set) var system: AppleSpeech.Assets?
+    /// Dictation works with nothing downloaded: macOS's recogniser, in a language the user speaks.
+    var startNow: Bool { AppleSpeech.available && AppleSpeech.locale() != nil && system != .unsupported }
+    /// …and its files are here: the Try-it step works now.
+    var systemReady: Bool { startNow && system == .installed }
     private var sub: AnyCancellable?
 
     init() {
@@ -61,6 +71,7 @@ final class ModelSetup: ObservableObject {
 
     /// The recogniser dictation runs on is in (installed, or came down in this batch): Try it works now.
     var dictationReady: Bool {
+        if systemReady { return true }
         guard let d = parts.first(where: { $0.kind == .dictation }) else { return DictationModels.shared.dictationReady == true }
         return d.installed || finished.contains(d.id) || DictationModels.shared.dictationReady == true
     }
@@ -80,6 +91,7 @@ final class ModelSetup: ObservableObject {
         guard !loading else { return }
         loading = true
         defer { loading = false }
+        prepareSystem()
         async let d = try? SkillCLI.shared.run("transcribe.py", ["dictation-models"], timeout: 180)
         async let p = try? SkillCLI.shared.run("polish.py", ["models"], timeout: 120)
         await SpeechModel.shared.load()
@@ -103,6 +115,15 @@ final class ModelSetup: ObservableObject {
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
                                                                    "installed": $0.installed] },
               "total_mb": totalMB])
+    }
+
+    /// macOS's language files asked for (nothing to fetch when they are here); dictation re-reads its model then.
+    func prepareSystem() {
+        guard AppleSpeech.available, system != .installed else { return }
+        AppleSpeech.prepare(via: "onboarding") { [weak self] a in
+            self?.system = a
+            Dictation.shared.refreshSpeechModels()
+        }
     }
 
     private func part(_ m: ASRModel, _ kind: ModelBundle.Kind) -> ModelBundle.Part {

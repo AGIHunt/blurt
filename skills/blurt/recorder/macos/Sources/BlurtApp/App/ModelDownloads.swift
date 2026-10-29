@@ -179,9 +179,12 @@ final class ModelDownloads: ObservableObject {
         let env = ProcessInfo.processInfo.environment
         let test = env["BLURT_TEST_COMMANDS"] == "1"
         let parent = ["--parent", "\(getpid())"]
-        let (script, args) = j.kind == .polish
-            ? ((test ? env["BLURT_TEST_POLISH_SETUP"] : nil) ?? "polish.py", ["setup", "--model", j.id] + (j.select ? ["--use"] : []) + parent)
-            : ((test ? env["BLURT_TEST_ASR_SETUP"] : nil) ?? "transcribe.py", ["setup", "--model-id", j.id] + parent)
+        let (script, args): (String, [String])
+        switch j.kind {
+        case .polish: (script, args) = ((test ? env["BLURT_TEST_POLISH_SETUP"] : nil) ?? "polish.py", ["setup", "--model", j.id] + (j.select ? ["--use"] : []) + parent)
+        case .screenText: (script, args) = ("screen_text.py", ["setup"] + parent)      // Copy Text from Screen's local model
+        case .dictation, .note: (script, args) = ((test ? env["BLURT_TEST_ASR_SETUP"] : nil) ?? "transcribe.py", ["setup", "--model-id", j.id] + parent)
+        }
         var extra: [String: String] = [:]
         if ModelBundle.mirror { extra["BLURT_HF_MIRROR"] = "1" }
         emit(["event": "model_download", "op": "start", "model": j.id, "kind": j.kind.rawValue, "mirror": extra["BLURT_HF_MIRROR"] != nil])
@@ -283,6 +286,7 @@ final class ModelDownloads: ObservableObject {
             Dictation.shared.apply()
         }
         if j.kind == .polish { Dictation.shared.refreshPolishModel() }
+        if j.kind == .screenText { ScreenTextRefine.refreshInstalled { if ScreenTextRefine.mode == .local { ScreenTextRefine.shared.warm() } } }
         Task {
             await refresh()
             if DictationModels.shared.dictationReady == true { Dictation.shared.prewarm("model_installed") }

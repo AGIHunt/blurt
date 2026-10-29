@@ -1,0 +1,1 @@
+/telemetry，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。

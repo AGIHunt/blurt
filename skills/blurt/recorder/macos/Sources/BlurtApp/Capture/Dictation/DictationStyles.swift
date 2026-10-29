@@ -10,9 +10,9 @@
 //    DictationStream.finish): it resolves self-corrections and lays out what was enumerated, or leaves a paragraph.
 //    Light never resolves a correction and never lists. Then the category's variant (chat: no final 。 on one
 //    sentence; code: one line);
-//  • reformat-last (⌥⇧L, the island's suggestion chip): the last take in the next style — verbatim → light →
+//  • reformat-last (⌥L, the island's suggestion chip): the last take in the next style — verbatim → light →
 //    structured → verbatim — with the same model passes (made on demand, off the dictation's path), replacing it in the
-//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥⇧L while a take is on its way waits
+//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥L while a take is on its way waits
 //    for it (it means the take said last; cancelled, failed or empty, the request goes with it); the chip and Undo act on the take they were shown for, never on a newer one, and
 //    go when the next take starts. History: the style, the router's inputs, every reformat / undo / revert /
 //    suggestion, and the text now in the field;
@@ -130,7 +130,8 @@ extension Dictation {
         let t0 = CACurrentMediaTime()
         let d = take.style ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: take.bundle)
         let pick = d.style.pick(light: r.text, structured: r.structured)
-        let v = DictationStyleVariant.apply(pick.text, category: d.category, structured: pick.list)
+        // translated: the same text in the other language, its layout kept (DictationTranslating.swift)
+        let v = DictationStyleVariant.apply(r.translated ?? pick.text, category: d.category, structured: pick.list)
         let rec = DictationStyleRecord(style: d.style.rawValue, source: d.source.rawValue, category: d.category.rawValue,
                                        base: d.base.rawValue, explicit: take.explicit?.style.rawValue,
                                        toggles: take.toggles, rendered: pick.list, variant: v.changes)
@@ -153,6 +154,9 @@ extension Dictation {
     /// learning check.
     func rememberPaste(id: String, app: NSRunningApplication?, bundle: String?, r: DictationStream.Result, record: DictationStyleRecord,
                        typed: String, result: DictationInsert.Result, field: DictationField?, location: Int?) {
+        // a translated take has no versions in its own language to cycle through (they are the words as said): ⌥L
+        // and the ≡ chip leave it alone
+        if r.translated != nil { lastPaste = nil; return }
         let cat = DictationAppCategory(rawValue: record.category) ?? .other
         let style = DictationStyle(rawValue: record.style) ?? .light
         let original: DictationStyle = style == .auto ? (record.rendered ? .structured : .light) : style
@@ -219,7 +223,7 @@ extension Dictation {
 
     // MARK: reformat-last
 
-    /// ⌥⇧L (and the test hook): the last take in the next style of the cycle that reads differently.
+    /// ⌥L (and the test hook): the last take in the next style of the cycle that reads differently.
     func reformatLast(via: String) {
         guard !listening else { return }                // talking: ⇧ is the style key now
         // a take is being pasted (or the last one is still on its way): this is about the take said last — once it
@@ -367,7 +371,7 @@ extension Dictation {
             }
             if replaced { t.icon = .check }      // the ok check when the field really changed ("copied" is not done yet)
             t.seconds = replaced && action != "undo" ? 5 : 2.4
-            // one toast about the last take: a second ⌥⇧L replaces the first at once (its Undo is then for the new
+            // one toast about the last take: a second ⌥L replaces the first at once (its Undo is then for the new
             // version), and the next take's start drops it
             t.key = Dictation.toastKey
             island.toast(t)

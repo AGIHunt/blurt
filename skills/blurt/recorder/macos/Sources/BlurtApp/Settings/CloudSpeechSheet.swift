@@ -62,6 +62,18 @@ enum CloudSpeech {
                      baseURL: o["base_url"] as? String ?? "", model: o["model"] as? String ?? "")
     }
 
+    /// DashScope's model (asr.cloud["qwen3-asr-flash"].model; "" = qwen3-asr-flash, the one measured: CloudModels)
+    static var dashScopeChoice: String {
+        ((Config.shared["asr.cloud"] as? [String: Any])?[dashScopeModel] as? [String: Any])?["model"] as? String ?? ""
+    }
+    static func saveDashScope(model: String) {
+        var all = Config.shared["asr.cloud"] as? [String: Any] ?? [:]
+        let t = trimmed(model)
+        all[dashScopeModel] = t.isEmpty ? nil : ["model": t]
+        Config.shared.set("asr.cloud", all)
+        invalidate()
+    }
+
     static func save(_ s: Setup) {
         var o: [String: Any] = ["service": s.service.rawValue]
         if !trimmed(s.baseURL).isEmpty { o["base_url"] = trimmed(s.baseURL) }
@@ -71,6 +83,23 @@ enum CloudSpeech {
         Config.shared.set("asr.cloud", all)
         invalidate()
     }
+
+    /// How fast every cloud service hears the audio (asr.cloud.speed; transcribe.py `cloud_speed`): billing is per
+    /// second sent. 1.5x is the default — measured 34 % cheaper for 1.2 points more error; 2x halves the cost but
+    /// errs a lot more (docs/design/first-minute-speech.md §2.4).
+    static let speeds: [Double] = [1.0, 1.5, 2.0]
+    static let defaultSpeed = 1.5
+    static var speed: Double {
+        let v = (Config.shared["asr.cloud"] as? [String: Any])?["speed"] as? Double ?? defaultSpeed
+        return speeds.min { abs($0 - v) < abs($1 - v) } ?? defaultSpeed
+    }
+    static func setSpeed(_ v: Double) {
+        var all = Config.shared["asr.cloud"] as? [String: Any] ?? [:]
+        all["speed"] = v
+        Config.shared.set("asr.cloud", all)
+    }
+    /// "1" / "1.5" / "2": the strings' suffix
+    static func speedKey(_ v: Double) -> String { v == 1.5 ? "15" : String(Int(v)) }
 
     // MARK: what the scripts get
 
@@ -88,7 +117,11 @@ enum CloudSpeech {
             if !s.effectiveBaseURL.isEmpty { env["BLURT_ASR_BASE_URL"] = s.effectiveBaseURL }
             if !s.effectiveModel.isEmpty { env["BLURT_ASR_MODEL"] = s.effectiveModel }
         }
-        if let k = Key.read(dashScopeModel) { env["DASHSCOPE_API_KEY"] = k }
+        // DashScope: its own key, else the cloud polish key when that is Model Studio's (one key: first-minute-speech.md)
+        if let k = Key.read(dashScopeModel) ?? DictationCloud.Key.read(.dashscope).flatMap({ $0.isEmpty ? nil : $0 }) {
+            env["DASHSCOPE_API_KEY"] = k
+            if !dashScopeChoice.isEmpty { env["DASHSCOPE_ASR_MODEL"] = dashScopeChoice }
+        }
         cached = env
         return env
     }
@@ -154,6 +187,8 @@ struct CloudSpeechSheet: View {
     let title: String
     var close: (_ saved: Bool) -> Void
     @State private var setup = CloudSpeech.setup
+    @State private var speed = CloudSpeech.speed
+    @State private var dsModel = CloudSpeech.dashScopeChoice
     @State private var key = ""
     @State private var stored: Bool
 
@@ -197,7 +232,10 @@ struct CloudSpeechSheet: View {
                     label("dictation.cloud.service")
                     ChoicePopup(label: T("dictation.cloud.service"),
                                 choices: CloudSpeech.Service.allCases.map { ($0, S("speech.cloud.service.\($0.rawValue)")) },
-                                selection: $setup.service, width: 220)
+                                selection: Binding(get: { setup.service }, set: {
+                                    if $0 != setup.service { setup.model = "" }     // that service's own default
+                                    setup.service = $0
+                                }), width: 220)
                 }
                 GridRow {
                     label("dictation.cloud.base_url")
@@ -206,9 +244,25 @@ struct CloudSpeechSheet: View {
                 }
                 GridRow {
                     label("dictation.cloud.model")
-                    TextField(setup.service.defaultModel.isEmpty ? T("dictation.cloud.model.placeholder") : setup.service.defaultModel,
-                              text: $setup.model)
-                        .textFieldStyle(.roundedBorder)
+                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: setup.service.rawValue, model: $setup.model)
+                        .id("speech-\(setup.service.rawValue)")
+                }
+            } else {
+                GridRow {
+                    label("dictation.cloud.model")
+                    CloudModelPicker(label: T("dictation.cloud.model"), job: .speech, provider: "dashscope", model: $dsModel)
+                }
+            }
+            GridRow {
+                Text(S("speech.cloud.speed")).foregroundStyle(.secondary).fixedSize().gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 5) {
+                    ChoicePopup(label: S("speech.cloud.speed"),
+                                choices: CloudSpeech.speeds.map { ($0, S("speech.cloud.speed.\(CloudSpeech.speedKey($0))")) },
+                                selection: $speed, width: 220)
+                    Text(S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint") + " " + S("speech.cloud.speed.all"))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, SettingsMetrics.fieldTextInset)
                 }
             }
             GridRow {
@@ -234,14 +288,16 @@ struct CloudSpeechSheet: View {
         }
     }
 
-    func label(_ k: String) -> some View { Text(T(k)).foregroundStyle(.secondary).gridColumnAlignment(.trailing) }
+    func label(_ k: String) -> some View { Text(T(k)).foregroundStyle(.secondary).fixedSize().gridColumnAlignment(.trailing) }
 
     func save() {
         if openAI { CloudSpeech.save(setup) }
+        if speed != CloudSpeech.speed { CloudSpeech.setSpeed(speed) }
+        if !openAI, dsModel != CloudSpeech.dashScopeChoice { CloudSpeech.saveDashScope(model: dsModel) }
         let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if !k.isEmpty { CloudSpeech.Key.write(modelID, k) }
         emit(["event": "speech_cloud", "action": "save", "model": modelID, "service": openAI ? setup.service.rawValue : "dashscope",
-              "key": !k.isEmpty])
+              "key": !k.isEmpty, "speed": speed])
         close(true)
     }
 }

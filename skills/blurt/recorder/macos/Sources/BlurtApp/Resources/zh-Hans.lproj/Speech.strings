@@ -80,6 +80,7 @@
 "speech.note.qwen3_mlx" = "用 GPU 运行，速度快，能参考词库里的词来识别。";
 "speech.note.qwen3_mlx_17" = "更大的 Qwen3-ASR：专有名词和嘈杂环境下错得更少，每句慢约 25 毫秒。";
 "speech.note.cloud" = "在云端运行，使用你自己的密钥。";
+"speech.note.apple" = "macOS 26 自带，无需下载；专有名词不如 Qwen3-ASR 准";
 
 /* Actions */
 "speech.download.button" = "下载";
@@ -129,11 +130,20 @@
 /* Cloud */
 "speech.cloud.title" = "云端语音识别";
 "speech.cloud.name.openai" = "OpenAI 兼容接口";
+"speech.cloud.name.dashscope" = "阿里云百炼 · Qwen3-ASR（推荐）";
 "speech.cloud.set" = "已设置";
 "speech.cloud.not_set" = "未设置";
 "speech.cloud.off" = "已在「隐私」里关闭";
 "speech.cloud.setup" = "设置…";
 "speech.cloud.sheet.note" = "用你自己的 API Key 在云端识别。Key 存在这台 Mac 的钥匙串里，只在识别时发给这家服务；发过去的是录音。";
+"speech.cloud.speed" = "倍速";
+"speech.cloud.speed.1" = "原速";
+"speech.cloud.speed.15" = "1.5 倍速（推荐）";
+"speech.cloud.speed.2" = "2 倍速";
+"speech.cloud.speed.1.hint" = "最准确，按原时长计费";
+"speech.cloud.speed.15.hint" = "费用省约三分之一，准确度略降";
+"speech.cloud.speed.all" = "对所有云端识别服务生效";
+"speech.cloud.speed.2.hint" = "费用减半，但错误明显增多";
 "speech.cloud.service.openai" = "OpenAI";
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "其他兼容 OpenAI 的服务";

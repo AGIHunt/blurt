@@ -1,8 +1,8 @@
 // Stills and the captures model (docs/design/next-round.md K7).
 //
-//  • while recording, ⌥⇧A: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
+//  • while recording, ⌥A: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
 //    shots.jsonl (t = video time) + a "snap" event in events.jsonl. No pause, no prompt; the border flashes and the
-//    thumbnail flies into the island. The island's snap button also pauses and opens the note. ⌥⇧M = marker + snap.
+//    thumbnail flies into the island. The island's snap button also pauses and opens the note. ⌥M = marker + snap.
 //  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
@@ -689,9 +689,9 @@ final class RecordingSnaps {
     }
 
     var count: Int { batch.live.count }
-    /// The stills that came from ⌥⇧M (a marker: a still of that moment, logged as a marker too).
+    /// The stills that came from ⌥M (a marker: a still of that moment, logged as a marker too).
     private var markerShots = Set<Int>()
-    /// The island's counts: markers apart from the stills the user took (⌥⇧A, the island's button).
+    /// The island's counts: markers apart from the stills the user took (⌥A, the island's button).
     var markers: Int { batch.live.filter { markerShots.contains($0.n) }.count }
     var stills: Int { count - markers }
 

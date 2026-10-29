@@ -31,6 +31,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ n: Notification) {
         CloudSpeech.install()
+        UVSetup.ensure(via: "launch")           // quietly, only when no usable uv is there (first-minute-speech.md)
         for sig in [SIGTERM, SIGINT] {
             signal(sig, SIG_IGN)
             let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)
@@ -92,10 +93,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
-        case .pickEsc: picker?.finish(false)
+        case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
@@ -266,6 +267,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 LaunchMessages.shared.post(.shortcuts, t)
             }
         }
+        // v1.0.5: the default shortcuts lost their ⇧ (⌥A, ⌥C, ⌥V…). Someone who used the ⌥⇧ ones is told once; a new
+        // user never knew them
+        if recordConfig()["hotkeys_v2"] == nil {
+            if recordConfig()["welcomed"] == nil || assisted {
+                setRecordConfig("hotkeys_v2", true)
+            } else {
+                var t = Island.Toast(text: T("app.toast.hotkeys_v2", hk(.snap), hk(.text), hk(.voice)),
+                                     actionTitle: T("app.toast.change_shortcut")) {
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                }
+                t.seconds = 10
+                LaunchMessages.shared.post(.shortcuts, t, shown: { setRecordConfig("hotkeys_v2", true) })
+            }
+        }
         // `--process <session dir> [--agent <id>]`: process an existing recording (also handy for testing);
         // `--review <url> --review-session <dir>`: review.py asked for its batch (we weren't running) → the main window
         let args = CommandLine.arguments
@@ -366,7 +381,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Opening the app (Finder, Dock, Spotlight, a second launch) shows the main window; recording starts from the
-    /// menu or ⌥⇧R. The one-shot recorder (`record.py start`, not resident) still records straight away.
+    /// menu or ⌥R. The one-shot recorder (`record.py start`, not resident) still records straight away.
     func openFromLaunch() {
         if resident, let mw = AppEnvironment.mainWindow { mw.show(); NSApp.activate(ignoringOtherApps: true) }
         else if !busy { startRecording(useLast: false) }
@@ -461,7 +476,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
            o["pid"] as? Int == Int(getpid()) { try? FileManager.default.removeItem(at: f) }
     }
 
-    /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥⇧B shows the same menu at the pointer.
+    /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥B shows the same menu at the pointer.
     func popMenu() {
         let m = NSMenu()
         menuNeedsUpdate(m)

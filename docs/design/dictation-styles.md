@@ -287,6 +287,14 @@ Resolve corrections in the Structured style; in Light, don't adjust them." So (d
   resolved 68 → 82 %; words kept in the list takes 99.4 → 97.4 %. §3.0's estimate (+0.5–1.5 s for a whole-take pass)
   was pessimistic for takes this long: the pass writes as many tokens as the take has, ~0.1–0.4 s here.
 
+### 3.9 Translate (orthogonal to the style)
+
+Translate is not a style: any style can be translated (Structured's list in English). ⌘ alone while talking, or a
+click on the island's left half, turns it on for the take; at key-up one `translate` pass of the polish server (the
+prompt ⌥⇧T uses) runs over the text in its style, after Structured's. Measured on 60 real takes with blind judges, the
+key-up cost, the triggers weighed (double ⇧, right ⌥, the island, reformat-last, per app) and the founder's choices:
+`docs/design/dictation-translate.md`.
+
 ## 4. Other improvements the feedback points to
 
 1. **Never lose a take.** This is the #2 complaint everywhere. Keep the take's audio until the paste is confirmed (not

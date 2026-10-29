@@ -7,12 +7,12 @@
 //   DictationRunaway      a hands-free take nobody stopped: a reminder after 20 s without speech, a countdown on the
 //                         ear from 4:30, and the 5-minute limit said out loud when it ends the take
 //   DictationTips         one quiet line after a take, for the first few: double-tap to send (chat apps, up to 5),
-//                         ⇧ for a list, ⌥⇧L for another style (from the first take elsewhere, a different one each
+//                         ⇧ for a list, ⌥L for another style (from the first take elsewhere, a different one each
 //                         time) — each until it was shown enough or the user used it
 //   DictationASRFailure   why a take's words couldn't be recognised, in the user's terms (no model, too slow, failed)
 //   DictationSpeechModels what `transcribe.py dictation-models` says: can a take run with nothing downloaded, what a
 //                         download would have to bring, whether a weaker model ran
-//   DictationReformatAfterPaste  ⌥⇧L while a take is on its way: bound to that take, never run for another
+//   DictationReformatAfterPaste  ⌥L while a take is on its way: bound to that take, never run for another
 import Foundation
 
 /// The takes that stopped and wait for their text, in the order they were said. Each is pasted only once the one
@@ -112,7 +112,7 @@ public enum DictationTip: String, CaseIterable {
     case send
     /// "Press ⇧ while you talk for a list"
     case list
-    /// "⌥⇧L tries another style"
+    /// "⌥L tries another style"
     case reformat
 
     /// how many times each is shown at most
@@ -126,7 +126,7 @@ public enum DictationTip: String, CaseIterable {
         if chat {
             return sendOn && !sent && left(.send) ? .send : nil
         }
-        // elsewhere: from the first take, one each — ⇧ for a list, then ⌥⇧L (a chat app's takes teach sending first)
+        // elsewhere: from the first take, one each — ⇧ for a list, then ⌥L (a chat app's takes teach sending first)
         return [.list, .reformat].first(where: left)
     }
 }
@@ -188,6 +188,8 @@ public struct DictationSpeechModels: Equatable {
     public var configuredInstalled: Bool
     /// what a download would bring: "silero-vad" and/or the selected model's id
     public var missing: [String]
+    /// the selected model is a cloud service (live text then comes from macOS's recogniser; no hearing again)
+    public var selectedCloud = false
 
     public static let vad = "silero-vad"
 
@@ -210,6 +212,7 @@ public struct DictationSpeechModels: Equatable {
                   recommendedInstalled: row(rec), configured: configured,
                   configuredInstalled: r["configured_installed"] as? Bool ?? configured.map(row) ?? false,
                   missing: r["missing"] as? [String] ?? (selIn ? [] : [selected]))
+        selectedCloud = r["selected_cloud"] as? Bool ?? false
     }
 
     /// Only the VAD is missing (the model is there): the island says that, not "no speech model".
@@ -233,7 +236,7 @@ public struct DictationSpeechModels: Equatable {
     }
 }
 
-/// ⌥⇧L pressed while a take is still on its way (being transcribed, polished or pasted): it means the take said
+/// ⌥L pressed while a take is still on its way (being transcribed, polished or pasted): it means the take said
 /// last, once it is in. Bound to that take's id: a take cancelled, failed or empty takes the request with it, and it
 /// never runs for a later one.
 public struct DictationReformatAfterPaste<ID: Hashable> {

@@ -9,7 +9,9 @@
 //   Style and words  Style: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key
 //               and the styles' default) · By kind of app: per category, apps set on their own, list suggestions,
 //               learning and the polish time limit folded under it (unfolded when a search lands in it) · Names and
-//               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu
+//               terms: Manage… (the Dictation page's Words tab), with reading the context and learning in its menu ·
+//               Translate: Chinese ↔ English / into English / into Chinese (⌘ while talking turns it on), whether the
+//               cloud model translates, the apps where every take is translated (DictationTranslating.swift)
 //   History and models  History: Open History…, with how long it is kept, the audio and Clear History… in its menu ·
 //               Models: the names in use, or what isn't on this Mac yet, in plain words — and always the one way on,
 //               a link to Settings → Speech, which chooses them and owns the one Download (DictationModels.swift)
@@ -57,6 +59,8 @@ final class DictationSettings: ObservableObject {
     func stop() { timer?.invalidate(); timer = nil }
 
     func refresh() {
+        let tr = Dictation.translateConfig      // an app accepted on the island shows up here
+        if tr != translate { translate = tr }
         let im = DictationKeys.inputMonitoring, ax = DictationKeys.accessibility, t = Dictation.shared.tapInstalled
         if im != inputMonitoring { inputMonitoring = im }
         if ax != accessibility { accessibility = ax }
@@ -118,6 +122,17 @@ final class DictationSettings: ObservableObject {
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: d) }
     }
     func setKeepAudio(_ v: Bool) { keepAudio = v; save("keep_audio", v ? nil : false) }
+
+    // MARK: translate (dictation-translate.md)
+
+    @Published var translate = Dictation.translateConfig
+    func setTranslate(_ change: (inout DictationTranslateConfig) -> Void) {
+        var c = Dictation.translateConfig
+        change(&c)
+        Dictation.setTranslateConfig(c)
+        translate = c
+        emit(["event": "dictation_setting", "key": "translate", "target": c.target.rawValue, "cloud": c.cloud, "apps": c.apps.count])
+    }
 
     // MARK: style (dictation-styles.md)
 
@@ -393,7 +408,42 @@ struct DictationPane: View {
                     .disabled(!m.enabled)
             }
         }
+        translateRows
         wordsRow
+    }
+
+    /// Translate: into what (⌘ while talking turns it on), the cloud or this Mac, the apps where it is always on.
+    @ViewBuilder var translateRows: some View {
+        SettingRow("dictation.translate", detail: T("dictation.translate.settings.detail")) {
+            ChoicePopup(label: T("dictation.translate.settings.title"),
+                        choices: DictationTranslateTarget.allCases.map { ($0, T("dictation.translate.target.\($0.rawValue)")) },
+                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }))
+        }
+        .disabled(!m.enabled)
+        let cloud = ScreenTextRefine.cloudPayload != nil, local = Dictation.shared.polishModel != nil
+        SettingToggle("dictation.translate_cloud", isOn: Binding(get: { m.translate.cloud }, set: { v in m.setTranslate { $0.cloud = v } }),
+                      detail: cloud ? T("dictation.translate.cloud.detail", DictationCloud.setup.effectiveModel)
+                          : local ? T("dictation.translate.cloud.none") : T("dictation.translate.cloud.nothing"))
+            .disabled(!m.enabled || !cloud)
+        if !cloud {
+            SettingsLine(padding: 8) {
+                TextLinkButton(T("dictation.translate.cloud.setup")) { AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish") }
+            }
+        }
+        if !m.translate.apps.isEmpty {
+            SettingsLine(padding: 8) { Hint(T("dictation.translate.apps")) }
+            ForEach(m.translate.apps.sorted(), id: \.self) { b in
+                SettingsLine(padding: 8) {
+                    HStack(spacing: 8) {
+                        Text(m.appName(b)).font(.system(size: SettingsMetrics.titleSize))
+                        Spacer()
+                        Button(T("dictation.translate.apps.remove")) { m.setTranslate { $0.apps.remove(b) } }
+                            .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
     }
 
     /// What is set per kind of app ("Code and terminals: Verbatim · 2 apps on their own"); else what the row is for.

@@ -27,6 +27,13 @@ import urllib.request
 PRESETS = {
     # DeepSeek's Flash with thinking off: the measured default (median 0.95 s, p90 2.1 s from Beijing)
     "deepseek": {"base_url": "https://api.deepseek.com", "model": "deepseek-flash", "protocol": "openai"},
+    # Alibaba Cloud Model Studio (百炼), the recommended key in China: one key for speech (qwen3-asr-flash), polish and
+    # translate (DeepSeek V4.1 Flash hosted there: 9.6 % on the 270 kept takes against DeepSeek's own 9.4 %, translate
+    # 8.4 / 10 like DeepSeek's) and Copy Text from Screen (qwen3.6-flash reads images: 0.16 % merged, as DeepSeek;
+    # DeepSeek there took 25 s on an image). Its older qwen-flash / qwen-plus rewrote the takes (15–18 %).
+    # docs/design/first-minute-speech.md §2.5
+    "dashscope": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "deepseek-v4.1-flash",
+                  "vision_model": "qwen3.6-flash", "protocol": "openai"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "", "protocol": "openai"},
     "anthropic": {"base_url": "https://api.anthropic.com", "model": "", "protocol": "anthropic"},
 }
@@ -74,7 +81,9 @@ def settings(cloud: dict | None) -> dict:
     Raises CloudError("config") when something needed is missing."""
     c = dict(cloud or {})
     p = PRESETS.get(c.get("provider") or "", {})
-    out = {k: (c.get(k) or p.get(k) or "") for k in ("base_url", "model", "protocol")}
+    # translate_model / vision_model: the user's pick for translate and Copy Text from Screen ("" = translate on the
+    # polish model; Copy Text from Screen on the provider's vision model, else the polish model)
+    out = {k: (c.get(k) or p.get(k) or "") for k in ("base_url", "model", "protocol", "translate_model", "vision_model")}
     out["protocol"] = out["protocol"] or "openai"
     out["key"] = c.get("key") or ""
     out["provider"] = c.get("provider") or "custom"
@@ -138,6 +147,8 @@ def complete(cfg: dict, msgs: list[dict], timeout: float, max_tokens: int) -> di
         body = {"model": cfg["model"], "messages": msgs, "max_tokens": max_tokens, "temperature": 0.2, "stream": False}
         if "deepseek.com" in base:
             body["thinking"] = {"type": "disabled"}     # thinking is the default there: 3× the time for nothing here
+        elif "dashscope" in base:
+            body["enable_thinking"] = False             # Model Studio's hybrid models (Qwen3.x, DeepSeek) think by default
         headers = {"Authorization": "Bearer " + cfg["key"], "Content-Type": "application/json"}
     req = urllib.request.Request(url, json.dumps(body).encode(), headers)
     t0 = time.perf_counter()

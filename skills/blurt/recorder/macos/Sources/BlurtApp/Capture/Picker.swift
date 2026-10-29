@@ -23,12 +23,15 @@ final class PickerController {
     var snapped = false             // selection came from clicking a window (or F / last area): drag = draw new
     var hovered: NSRect?
     var onDone: ((CGRect?) -> Void)?
-    var snapMode = false            // ⌥⇧A: release (or click a window / F / L) captures right away
+    var snapMode = false            // ⌥A: release (or click a window / F / L) captures right away
+    /// the screens frozen when the picker opened, for the loupe (Loupe.swift); the pointer it follows
+    let stills = LoupeStills()
+    var pointer = NSEvent.mouseLocation
     let toolbar = PickerToolbar()
     var toolbarHost: NSView?
     /// The app in front when the picker opened: its windows can be picked even if it's a background-style app.
     var frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-    /// A drag is drawing / moving / resizing the selection: its dashes march.
+    /// A drag is drawing / moving / resizing the selection.
     var dragging = false
     /// A drag is drawing a new selection: no handles yet (they mean "adjust this", true only once it is let go — as
     /// ⌘⇧4 shows only the crosshair and the size while it draws).
@@ -45,7 +48,7 @@ final class PickerController {
 
     /// Visual checks (test commands only), all global top-left points: BLURT_TEST_PICKER_SELECTION=X,Y,W,H opens the
     /// picker with that selection, BLURT_TEST_PICKER_HOVER=X,Y,W,H with that window hovered (no selection), and
-    /// BLURT_TEST_PICKER_DRAGGING=1 keeps the selection's dashes marching as if it were being dragged, and
+    /// BLURT_TEST_PICKER_DRAGGING=1 shows the selection as while it is being dragged, and
     /// BLURT_TEST_PICKER_MODE=record shows the snap picker (the `snap` command) as the recording picker looks (hint,
     /// window label, the Record button) — it still only snaps.
     private func applyTestState() {
@@ -73,6 +76,7 @@ final class PickerController {
             w.hasShadow = false
             w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             w.acceptsMouseMovedEvents = true
+            w.alphaValue = 0                // until the stills are in: none of them may hold the picker (Loupe.swift)
             let v = PickerView(frame: NSRect(origin: .zero, size: screen.frame.size))
             v.controller = self
             v.screen = screen
@@ -80,6 +84,11 @@ final class PickerController {
             w.setFrame(screen.frame, display: true)
             w.orderFrontRegardless()
             windows.append(w)
+        }
+        stills.capture(NSScreen.screens) { [weak self] in
+            guard let self = self else { return }
+            self.windows.forEach { $0.alphaValue = 1 }
+            self.refresh()
         }
         toolbar.controller = self
         if let p = preselect { selection = toNS(p) }
@@ -139,6 +148,7 @@ final class PickerController {
 
     /// The picker's windows go (the stage is up, or the snap failed).
     func closeWindows() {
+        stills.cancel()
         windows.forEach { $0.orderOut(nil) }
         windows.removeAll()
         // the picker took the keyboard (Esc, ↩): the app the user was in gets it back, so a recording never starts
@@ -234,6 +244,7 @@ final class PickerView: NSView {
         }
 
         if c.frozen { return }      // taken: only the dim, until the stage is up
+        defer { Loupe.draw(pointer: c.pointer, in: self, stills: c.stills, label: Loupe.pointLabel(c.pointer)) }
         if let sel = c.selection.map(local) {
             // the outline and the handles are layers (SelectionOutline); the size: one value, the snap's pixels, on
             // the chrome's one surface (the mint stays on the outline and handles)
@@ -247,13 +258,10 @@ final class PickerView: NSView {
             // the window under the pointer, in its own shape: a flat mint tint inside, a 2 pt mint line over the
             // selection's dark under-stroke (so it holds on white as on black); what a click does, centred on it,
             // only while the legend shows (the hint below says it too)
-            BrandColor.Island.tint.setFill()
+            BrandColor.Island.selection.withAlphaComponent(0.10).setFill()
             holePath(h).fill()
-            let edge = NSBezierPath(roundedRect: h.insetBy(dx: 1.5, dy: 1.5), xRadius: max(0, radius - 1.5), yRadius: max(0, radius - 1.5))
-            BrandColor.Island.on.withAlphaComponent(0.6).setStroke()
-            edge.lineWidth = 4
-            edge.stroke()
-            BrandColor.Island.fill.setStroke()
+            let edge = NSBezierPath(roundedRect: h.insetBy(dx: 1, dy: 1), xRadius: max(0, radius - 1), yRadius: max(0, radius - 1))
+            BrandColor.Island.selection.setStroke()
             edge.lineWidth = 2
             edge.stroke()
             guard c.showsLegend else { return }
@@ -307,7 +315,20 @@ final class PickerView: NSView {
         h.frame = r
     }
 
+    /// The loupe follows the pointer: only its old and new frames are redrawn.
+    func pointerMoved(to p: NSPoint) {
+        guard let c = controller else { return }
+        let old = c.pointer
+        c.pointer = p
+        for w in c.windows {
+            guard let v = w.contentView else { continue }
+            v.setNeedsDisplay(Loupe.frame(for: old, in: v).insetBy(dx: -12, dy: -12))
+            v.setNeedsDisplay(Loupe.frame(for: p, in: v).insetBy(dx: -12, dy: -12))
+        }
+    }
+
     override func mouseMoved(with e: NSEvent) {
+        pointerMoved(to: global(e))
         guard let c = controller, c.selection == nil, !c.hoverPinned else { return }
         let r = windowRect(at: global(e))
         if r != c.hovered { c.hovered = r; c.refresh() }
@@ -351,6 +372,7 @@ final class PickerView: NSView {
     override func mouseDragged(with e: NSEvent) {
         guard let c = controller else { return }
         let p = global(e)
+        pointerMoved(to: p)
         let bounds = c.screenFrame(containing: downAt)
         switch mode {
         case .create(let s):
@@ -428,78 +450,52 @@ final class PickerView: NSView {
     }
 }
 
-/// The selection's outline (§3.1, the one thin gradient line in the system): a 2 pt `Island.on` @ 60 % solid
-/// under-stroke so it holds on white and on black, then the base gradient, corner to corner across the selection, seen
-/// through 2 pt [6, 4] dashes; the handles on top (flat mint, a 1.5 pt white ring, a 1 pt shadow). The dashes march
-/// (10 pt/s) while a drag draws, moves or resizes it; still with Reduce Motion. Layers, so the marching costs no redraw
-/// of the screen-sized picker view.
+/// The selection's outline: the one solid 2 pt line every area picker draws (BrandColor.Island.selection), just
+/// outside the area so nothing of it lands in the captured pixels, the same while a drag draws, moves or resizes it and
+/// after; the handles on top (the same colour, a 1.5 pt white ring, a 1 pt shadow). Layers: no redraw of the
+/// screen-sized picker view.
 final class SelectionOutline: NSView {
-    private let under = CAShapeLayer()
-    private let stroke = CAGradientLayer()
-    private let dashes = CAShapeLayer()
+    private let line = CAShapeLayer()
     private let knobs = CAShapeLayer()
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        under.fillColor = nil
-        under.strokeColor = BrandColor.Island.on.withAlphaComponent(0.6).cgColor
-        under.lineWidth = 2
-        BrandGradient.layer(BrandGradient.linearStops, .diagonal, flipped: false, into: stroke)
-        dashes.fillColor = nil
-        dashes.strokeColor = NSColor.black.cgColor
-        dashes.lineWidth = 2
-        dashes.lineDashPattern = [6, 4]
-        stroke.mask = dashes
-        knobs.fillColor = BrandColor.Island.fill.cgColor
+        line.fillColor = nil
+        line.strokeColor = BrandColor.Island.selection.cgColor
+        line.lineWidth = 2
+        knobs.fillColor = BrandColor.Island.selection.cgColor
         knobs.strokeColor = NSColor.white.cgColor
         knobs.lineWidth = 1.5
         knobs.shadowColor = NSColor.black.cgColor
         knobs.shadowOpacity = 0.35
         knobs.shadowRadius = 1
         knobs.shadowOffset = CGSize(width: 0, height: -0.5)
-        for l in [under, stroke, knobs] as [CALayer] { layer?.addSublayer(l); l.isHidden = true }
+        for l in [line, knobs] as [CALayer] { layer?.addSublayer(l); l.isHidden = true }
     }
     required init?(coder: NSCoder) { fatalError() }
     override var isFlipped: Bool { false }
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
-    /// `sel` in this view's coordinates (nil hides it), its handle centres, and whether a drag is on.
+    /// `sel` in this view's coordinates (nil hides it) and its handle centres. (`marching` is kept for the callers:
+    /// the line no longer changes while a drag is on.)
     func update(_ sel: NSRect?, handles: [NSPoint], marching: Bool) {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         defer { CATransaction.commit() }
         guard let sel = sel, sel.width > 0, sel.height > 0 else {
-            for l in [under, stroke, knobs] as [CALayer] { l.isHidden = true }
-            dashes.removeAnimation(forKey: "march")
+            for l in [line, knobs] as [CALayer] { l.isHidden = true }
             return
         }
-        // on the selection's edge, outside it: nothing of the outline lands in the captured pixels
-        let edge = sel.insetBy(dx: -1, dy: -1)
-        under.frame = bounds
-        under.path = CGPath(rect: edge, transform: nil)
-        stroke.frame = sel.insetBy(dx: -2, dy: -2)
-        dashes.frame = stroke.bounds
-        dashes.path = CGPath(rect: edge.offsetBy(dx: -stroke.frame.minX, dy: -stroke.frame.minY), transform: nil)
+        line.frame = bounds
+        line.path = CGPath(rect: sel.insetBy(dx: -1, dy: -1), transform: nil)
         let p = CGMutablePath()
         for h in handles {
             p.addRoundedRect(in: CGRect(x: h.x - 4.5, y: h.y - 4.5, width: 9, height: 9), cornerWidth: 2.5, cornerHeight: 2.5)
         }
         knobs.frame = bounds
         knobs.path = p
-        for l in [under, stroke, knobs] as [CALayer] { l.isHidden = false }
-        if marching && !reduceMotion {
-            if dashes.animation(forKey: "march") == nil {
-                let a = CABasicAnimation(keyPath: "lineDashPhase")
-                a.fromValue = 0
-                a.toValue = -10                    // one dash + gap (6 + 4) per second: 10 pt/s
-                a.duration = 1
-                a.repeatCount = .infinity
-                dashes.add(a, forKey: "march")
-            }
-        } else {
-            dashes.removeAnimation(forKey: "march")
-        }
+        for l in [line, knobs] as [CALayer] { l.isHidden = false }
     }
 }
 

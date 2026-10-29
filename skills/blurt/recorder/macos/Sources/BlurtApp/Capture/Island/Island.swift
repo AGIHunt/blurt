@@ -815,8 +815,8 @@ final class Island: NSObject, IslandHosting {
             right.set(.none)
         } else if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
-            // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
-            // while the pen is latched (⌥⇧D) it takes the clicks and Esc — or its key is held — the ear shows the pen
+            // the stills taken (⌥A, the island's button) — a marker (⌥M) is its own count, with a flag
+            // while the pen is latched (⌥D) it takes the clicks and Esc — or its key is held — the ear shows the pen
             let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
             right.set(rec.penSticky || rec.inkOn ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
                 : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : rec.isPaused ? .none : .level(rec.micLevel))
@@ -838,13 +838,17 @@ final class Island: NSObject, IslandHosting {
             case .listening:
                 // Peep talks: its beak follows your voice, the mirrored level beside it
                 left.set(.peepLevel(.talking, Dictation.shared.levels))
-                // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default)
+                // the style chip: a list glyph while Structured, quotes while Verbatim, nothing for light (the default);
+                // the translate glyph after it while the take is translated (docs/design/dictation-translate.md)
                 // from 4:30 the time left before the 5-minute limit, in attention amber (not only a minus sign)
                 let clock = Dictation.shared.earClock, ending = Dictation.shared.earCountdown
-                switch Dictation.shared.listeningStyle {
-                case .structured?: right.set(.iconText(.list, clock, attn: ending))
-                case .verbatim?: right.set(.iconText(.quote, clock, attn: ending))
-                default: right.set(.text(clock, mono: true, attn: ending))
+                let mark: BlurtIcon? = Dictation.shared.listeningStyle == .structured ? .list
+                    : Dictation.shared.listeningStyle == .verbatim ? .quote : nil
+                switch (mark, Dictation.shared.listeningTranslate) {
+                case let (m?, true): right.set(.iconsText(m, .languages, clock, attn: ending))
+                case let (m?, false): right.set(.iconText(m, clock, attn: ending))
+                case (nil, true): right.set(.iconText(.languages, clock, attn: ending))
+                case (nil, false): right.set(.text(clock, mono: true, attn: ending))
                 }
             default:
                 // transcribing, polishing: Peep thinks (its eye looks round)
@@ -1057,10 +1061,13 @@ final class Island: NSObject, IslandHosting {
     }
 
     func clicked(at p: NSPoint) {
-        // while a dictation listens the island is its style chip: the click went to Dictation as `.islandClick`
-        // (through the key listener, which sees it first) — here it opens nothing
+        // while a dictation listens the island is its style chip: the click went to Dictation as `.islandClick` (its
+        // left half, Peep's: `.islandTranslateClick`), through the key listener, which sees it first — here it opens nothing
         if Dictation.shared.phase == .listening {
-            if DictationInsert.testMode { Dictation.shared.handle(.islandClick(time: CACurrentMediaTime())) }   // no listener in tests
+            if DictationInsert.testMode {   // no listener in tests
+                let t = CACurrentMediaTime()
+                Dictation.shared.handle(p.x < shapeMinX + w.value / 2 ? .islandTranslateClick(time: t) : .islandClick(time: t))
+            }
             return
         }
         // a voice note's right ear (its clock): Structured on or off
@@ -1080,7 +1087,7 @@ final class Island: NSObject, IslandHosting {
         if !open && drawer == nil { setOpen(true) }
     }
 
-    // MARK: drawer: switcher (⌥⇧O) and drop targets (a card dragged in)
+    // MARK: drawer: switcher (⌥O) and drop targets (a card dragged in)
 
     /// The switcher's pick form: where one thing already captured goes ("Filed to X · Change" after a recording or a
     /// filed card). The same rows, type to filter; choosing calls `choose` with a project id or "inbox" and leaves the

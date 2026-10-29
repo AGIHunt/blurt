@@ -1,4 +1,4 @@
-/* blurt.agihunt.info, round 9: Peep.
+/* blurt.work, round 9: Peep.
    Every Peep on the page is a frame set rendered from the brand-book model (logo/peep/peep.py), played at 30 fps from
    sprite sheets (one background image per state, the frame picked by background-position). The table of sheets is
    inlined in the page (#peepm, written by build_pages9.py).
@@ -135,6 +135,8 @@
     let st = "idle";
     if (mode === "listen" || mode === "rec") st = "listening";
     if (mode === "list") st = "talking";
+    if (mode === "trl") st = "listening";
+    if (mode === "think") st = "thinking";
     if (name === "dict" && k === 3) st = words.on ? "talking" : "idle";
     if (name === "struct" && k >= 3) st = "talking";
     if (name === "snap" && k >= 3 && k < 9) st = "listening";
@@ -146,6 +148,7 @@
     else carry.stop(-1);
     // beats
     if (mode === "done" && last0.mode !== "done" && !(name === "dict" && k === 3)) once("done");
+    if (mode === "copied" && last0.mode !== "copied") once("done");
     if (name === "rec" && into(4)) once("done");
     if (name === "hand" && (into(4) || into(6))) once("done");
     if (mode === "hello" && last0.mode !== "hello" && st === "idle" && !carry.on) once("hello");     // turns to you, blinks twice

@@ -13,7 +13,7 @@
 // refused, a hand-edited config.json) has the same "!" and its line under the action's name, in attention ink. Keycaps
 // keep their ink in every case: a key that doesn't work is marked, never faded.
 //
-// ⌥⇧R starts a recording and also finishes one; ⌥⇧S only finishes — it is the key a recording started from the
+// ⌥R starts a recording and also finishes one; ⌥S only finishes — it is the key a recording started from the
 // chat (no menu-bar app) listens to, so it stays, listed under While recording as "Finish recording".
 //
 // What the recorder refuses, with the reason under the action's name: a key without ⌃ / ⌥ / ⌘, ⌘ / ⇧⌘ with a typing
@@ -36,7 +36,7 @@ enum Keycaps {
     static let gap: CGFloat = 3
     static let font = NSFont.systemFont(ofSize: 12, weight: .medium)
 
-    /// "⌥⇧R" → ["⌥", "⇧", "R"]; a named key ("Space", "F5") stays whole.
+    /// "⌥R" → ["⌥", "⇧", "R"]; a named key ("Space", "F5") stays whole.
     static func keys(_ s: Shortcut) -> [String] {
         var k: [String] = []
         if s.mods & controlKey != 0 { k.append("⌃") }
@@ -379,7 +379,7 @@ struct KeyCaps: View {
         .accessibilityLabel(keys.joined(separator: " "))
     }
 
-    /// A shortcut's label as caps: "⌃⌥⇧R" → ["⌃", "⌥", "⇧", "R"]; the key after the modifiers is one cap ("F5", "Space").
+    /// A shortcut's label as caps: "⌃⌥R" → ["⌃", "⌥", "⇧", "R"]; the key after the modifiers is one cap ("F5", "Space").
     static func split(_ label: String) -> [String] {
         var caps: [String] = [], rest = ""
         for c in label.trimmingCharacters(in: .whitespaces) {
@@ -481,7 +481,7 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         emit(["event": "shortcut_set", "action": a.rawValue, "now": s?.spec ?? "off"])
     }
 
-    /// "Swap with Voice note?" / "Move ⌥⇧V from Voice note?"
+    /// "Swap with Voice note?" / "Move ⌥V from Voice note?"
     func swapQuestion(_ p: PendingSwap) -> String {
         p.mine == nil ? Loc.t("capture.keys.move.ask", table: "Capture", p.keys.label, p.other.title)
             : Loc.t("capture.keys.swap.ask", table: "Capture", p.other.title)
@@ -675,7 +675,7 @@ struct ShortcutsPane: View {
             if m.takenCount > 0 { banner.padding(.top, SettingsMetrics.groupGap) }
 
             SettingsGroup("shortcuts.capture") {
-                ForEach([HotAction.toggleRecord, .snap, .voice], id: \.self) { row($0) }
+                ForEach([HotAction.toggleRecord, .snap, .text, .translateText, .voice], id: \.self) { row($0) }
             }
             SettingsGroup("shortcuts.recording") {
                 ForEach([HotAction.pause, .marker, .pen, .finish], id: \.self) { row($0) }
@@ -683,7 +683,7 @@ struct ShortcutsPane: View {
             if AppEnvironment.settings != nil {
                 SettingsGroup("shortcuts.dictation") {
                     dictationRow
-                    row(.reformat)          // ⌥⇧L: the last dictation in another style
+                    row(.reformat)          // ⌥L: the last dictation in another style
                 }
             }
             SettingsGroup("shortcuts.open") {
@@ -789,7 +789,7 @@ struct WarnDisc: View {
     }
 }
 
-/// The row's swap question, as its second line, with what it does: "Swap with Voice note? It gets ⌥⇧A." in secondary
+/// The row's swap question, as its second line, with what it does: "Swap with Voice note? It gets ⌥A." in secondary
 /// ink, then Swap (brand ink, the row's one action) and Cancel — Return and Esc in the recorder do the same. The amber
 /// "!" stays on the other action's keycaps, where the clash is.
 struct SwapLine: View {

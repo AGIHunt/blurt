@@ -287,6 +287,8 @@ enum BrandColor {
         static let tint = @@i_tint@@
         static let working = @@i_working@@
         static let on = @@i_on@@
+        /// the one solid line round an area being picked (snap, record, copy text) and the loupe's crosshair
+        static let selection = @@i_selection@@
         static let rec = @@i_rec@@
         static let attn = @@i_attn@@
         static let ok = @@i_ok@@
@@ -491,7 +493,7 @@ def gen_swift() -> str:
         rep[n] = swift_color(B[n])
     for n in ("rec", "attn", "attnInk", "onAttn", "ok", "onOk", "err", "info", "markup"):
         rep[n] = swift_color(S[n])
-    for n in ("fill", "ink", "tint", "working", "on"):
+    for n in ("fill", "ink", "tint", "working", "on", "selection"):
         rep["i_" + n] = swift_static(B[n], "island")
     for n in ("rec", "attn", "ok", "err", "info", "markup"):
         rep["i_" + n] = swift_static(S[n], "island")

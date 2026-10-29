@@ -19,20 +19,39 @@ import BlurtCore
 
 enum DictationCloud {
     enum Provider: String, CaseIterable, Identifiable {
-        case deepseek, openai, anthropic
+        case deepseek, dashscope, openai, anthropic
         var id: String { rawValue }
         var protocolName: String { self == .anthropic ? "anthropic" : "openai" }
         /// what the fields show until the user types their own
         var defaultBaseURL: String {
             switch self {
             case .deepseek: return "https://api.deepseek.com"
+            case .dashscope: return "https://dashscope.aliyuncs.com/compatible-mode/v1"
             case .openai: return "https://api.openai.com/v1"
             case .anthropic: return "https://api.anthropic.com"
             }
         }
-        var defaultModel: String { self == .deepseek ? "deepseek-flash" : "" }
-        /// where to get a key (DeepSeek's own page; the others are the user's own service)
-        var keyPage: URL? { self == .deepseek ? URL(string: "https://platform.deepseek.com/api_keys") : nil }
+        /// Model Studio (百炼): DeepSeek V4.1 Flash hosted there polishes and translates as DeepSeek's own does (its
+        /// older qwen-flash / qwen-plus rewrote the takes); Copy Text from Screen reads with qwen3.6-flash, and the same
+        /// key does cloud speech (polish_cloud.py PRESETS; docs/design/first-minute-speech.md §2.5)
+        var defaultModel: String {
+            switch self {
+            case .deepseek: return "deepseek-flash"
+            case .dashscope: return "deepseek-v4.1-flash"
+            default: return ""
+            }
+        }
+        /// where to get a key (DeepSeek's and Model Studio's own pages; the others are the user's own service)
+        var keyPage: URL? {
+            switch self {
+            case .deepseek: return URL(string: "https://platform.deepseek.com/api_keys")
+            case .dashscope: return URL(string: "https://bailian.console.aliyun.com/?tab=model#/api-key")
+            default: return nil
+            }
+        }
+        /// polish's recommended service: DeepSeek, everywhere (the founder, 2026-10-29: Aliyun first for speech,
+        /// DeepSeek first for polish)
+        static var recommended: Provider { .deepseek }
     }
 
     struct Setup: Equatable {
@@ -40,20 +59,29 @@ enum DictationCloud {
         var provider: Provider = .deepseek
         var baseURL = ""
         var model = ""
+        /// translate's and Copy Text from Screen's model ("" = the provider's default: translate the polish model, Copy
+        /// Text from Screen the provider's vision model — CloudModels)
+        var translateModel = ""
+        var visionModel = ""
         var effectiveBaseURL: String { baseURL.trimmingCharacters(in: .whitespaces).isEmpty ? provider.defaultBaseURL : baseURL.trimmingCharacters(in: .whitespaces) }
         var effectiveModel: String { model.trimmingCharacters(in: .whitespaces).isEmpty ? provider.defaultModel : model.trimmingCharacters(in: .whitespaces) }
     }
 
     static var setup: Setup {
         let o = Dictation.settings["cloud_polish"] as? [String: Any] ?? [:]
-        return Setup(on: o["on"] as? Bool ?? false, provider: Provider(rawValue: o["provider"] as? String ?? "") ?? .deepseek,
-                     baseURL: o["base_url"] as? String ?? "", model: o["model"] as? String ?? "")
+        return Setup(on: o["on"] as? Bool ?? false, provider: Provider(rawValue: o["provider"] as? String ?? "") ?? .recommended,
+                     baseURL: o["base_url"] as? String ?? "", model: o["model"] as? String ?? "",
+                     translateModel: o["translate_model"] as? String ?? "", visionModel: o["vision_model"] as? String ?? "")
     }
 
     static func save(_ s: Setup) {
         var o: [String: Any] = ["on": s.on, "provider": s.provider.rawValue]
         if !s.baseURL.trimmingCharacters(in: .whitespaces).isEmpty { o["base_url"] = s.baseURL.trimmingCharacters(in: .whitespaces) }
         if !s.model.trimmingCharacters(in: .whitespaces).isEmpty { o["model"] = s.model.trimmingCharacters(in: .whitespaces) }
+        for (k, v) in [("translate_model", s.translateModel), ("vision_model", s.visionModel)] {
+            let t = v.trimmingCharacters(in: .whitespaces)
+            if !t.isEmpty { o[k] = t }
+        }
         Dictation.set("cloud_polish", o)
         emit(["event": "dictation_cloud", "action": "save", "on": s.on, "provider": s.provider.rawValue, "custom_url": !s.baseURL.isEmpty])
     }
@@ -66,8 +94,14 @@ enum DictationCloud {
     }
 
     static func payload(_ s: Setup, key: String) -> [String: Any] {
-        ["provider": s.provider.rawValue, "base_url": s.effectiveBaseURL, "model": s.effectiveModel,
-         "protocol": s.provider.protocolName, "key": key]
+        var p: [String: Any] = ["provider": s.provider.rawValue, "base_url": s.effectiveBaseURL, "model": s.effectiveModel,
+                                "protocol": s.provider.protocolName, "key": key]
+        // translate / Copy Text from Screen on their own model when one was picked (polish_cloud.settings fills the
+        // provider's default otherwise)
+        let t = s.translateModel.trimmingCharacters(in: .whitespaces), v = s.visionModel.trimmingCharacters(in: .whitespaces)
+        if !t.isEmpty { p["translate_model"] = t }
+        if !v.isEmpty { p["vision_model"] = v }
+        return p
     }
 
     /// on, with a key: what the Settings row and the reminder ask

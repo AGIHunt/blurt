@@ -91,6 +91,7 @@ class App:
         self.channel = f"layout{os.getpid()}"
         self.pid: int | None = None
         self.pos = 0
+        self.extra_env: dict = {}       # more of the app's environment (test_screen_text_app: its private pasteboard)
 
     def start(self) -> None:
         self.log.write_text("")
@@ -107,7 +108,7 @@ class App:
                 "BLURT_NO_NOTIFICATIONS": 1, "BLURT_NO_ONBOARDING": 1, "BLURT_TEST_COMMANDS": 1,
                 "BLURT_TEST_CHANNEL": self.channel, "BLURT_SPOTLIGHT_DOMAIN": f"dev.blurt.test.{self.channel}",
                 "BLURT_ALLOW_MULTI": 1, "BLURT_DEBUG_CHROME": 1, "PATH": os.environ.get("PATH", ""),
-                "HOME": os.environ.get("HOME", "")}
+                "HOME": os.environ.get("HOME", ""), **self.extra_env}
         cmd = ["open", "-n", "-g"]
         for k, v in envs.items():
             cmd += ["--env", f"{k}={v}"]

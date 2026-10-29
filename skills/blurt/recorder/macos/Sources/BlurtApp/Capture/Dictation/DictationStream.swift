@@ -143,7 +143,23 @@ final class DictationStream {
         /// the windows the pieces were heard again in (§Hearing again): pieces, start / end, what the pieces said and
         /// what the window said, asr_ms, ok
         var windows: [[String: Any]] = []
+        /// Translated (docs/design/dictation-translate.md): the text in its style, in the other language — typed in
+        /// place of it (nil: not asked, already in the target, or refused: then the text as said is typed)
+        var translated: String?
+        /// what the translation did, for the history (nil: the take wasn't translated)
+        var translation: DictationTranslateRecord?
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    /// A take to translate at key-up (Dictation.translateJob): Settings' target, the style it is typed in (the
+    /// translation is of that text), the cloud model (nil: the local one), how it was turned on.
+    struct TranslateJob {
+        var setting: DictationTranslateTarget
+        var style: DictationStyle
+        var cloud: [String: Any]?
+        var engine: DictationTranslateRoute.Engine
+        var source: String
+        var toggles: Int
     }
 
     let id: String
@@ -570,7 +586,8 @@ final class DictationStream {
 
     /// The last piece, then everything joined; `structure` (Structured / Auto at key-up): the joined text then goes
     /// through the polish model's structuring pass once. `done` runs on the main queue.
-    func finish(keyUp: CFTimeInterval, structure: Bool = false, onlyForLists: Bool = false, _ done: @escaping (Result) -> Void) {
+    func finish(keyUp: CFTimeInterval, structure: Bool = false, onlyForLists: Bool = false, translate: TranslateJob? = nil,
+                _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
         self.onlyForLists = onlyForLists
         lock.locked { finished = done; delivered = false }
@@ -593,11 +610,12 @@ final class DictationStream {
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
         // (strong captures: the controller has let go of the stream by now; the queues hold it until it is done)
         asrQ.async {
-            if self.opt.polish || structure { DispatchQueue.main.async { self.onStage?("polish") } }
+            if self.opt.polish || structure || translate != nil { DispatchQueue.main.async { self.onStage?("polish") } }
             self.polishQ.async {
                 guard !self.cancelled, !self.lock.locked({ self.delivered }) else { return }
                 var r = self.assemble()
                 if structure, !r.empty, !self.lock.locked({ self.skipped }) { self.structure(&r) }
+                if let j = translate, !r.empty, !self.lock.locked({ self.skipped }) { self.translate(&r, j) }
                 self.deliver(r)
             }
         }
@@ -624,6 +642,34 @@ final class DictationStream {
         emit(["event": "dictation_structure", "id": id, "ms": ms, "list": s?["list"] as? Bool ?? false,
               "fell_back": s?["fell_back"] as? Bool ?? (s == nil), "reason": s?["reason"] ?? NSNull()])
     }
+    /// Translate: the text in its style (Structured's when it picked it) through polish.py's `translate`, into the other
+    /// language of the one the speech model heard — or Settings' fixed target; nothing is sent when the take is
+    /// already in it. A refusal or a failure keeps the text as said (`translation.fellBack`: the island says so).
+    private func translate(_ r: inout Result, _ j: TranslateJob) {
+        let t0 = CACurrentMediaTime()
+        let said = j.style.pick(light: r.text, structured: r.structured).text
+        guard let target = DictationTranslateRoute.target(j.setting, spoken: r.language) else {
+            r.translation = DictationTranslateRecord(source: j.source, toggles: j.toggles, target: nil, engine: j.engine.rawValue)
+            emit(["event": "dictation_translate", "action": "skipped", "id": id, "language": r.language ?? NSNull()])
+            return
+        }
+        let a = Dictation.translate(said, target: target, vocab: opt.vocab, cloud: j.cloud, loadBudget: opt.loadBudget)
+        let ms = Int((CACurrentMediaTime() - t0) * 1000)
+        let out = (a?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let fellBack = a?["ok"] as? Bool != true || a?["fell_back"] as? Bool == true || out.isEmpty
+        let reason = a == nil ? "unavailable" : a?["ok"] as? Bool != true ? (a?["code"] as? String ?? "error")
+            : out.isEmpty ? "empty" : a?["reason"] as? String
+        let engine = a?["cloud"] as? Bool == true ? "cloud" : a?["model"] != nil ? "local" : j.engine.rawValue
+        r.translation = DictationTranslateRecord(source: j.source, toggles: j.toggles, target: target, engine: engine, sourceText: said,
+                                                 fellBack: fellBack, reason: fellBack ? reason : nil,
+                                                 cloudError: a?["cloud_error"] as? String, ms: ms)
+        if !fellBack { r.translated = out }
+        r.timing["translate_ms"] = ms
+        r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
+        emit(["event": "dictation_translate", "action": "done", "id": id, "ms": ms, "target": target, "engine": engine,
+              "fell_back": fellBack, "reason": (fellBack ? reason : nil) ?? NSNull(), "cloud_error": a?["cloud_error"] ?? NSNull()])
+    }
+
     private func assemble() -> Result {
         let (ps, us, ws, gaps, pgaps) = lock.locked { (pieces, units, windows, unitGaps, pauses) }
         // the safety path: a piece the speech model failed on → the whole recording, the old way
@@ -711,12 +757,13 @@ final class DictationStream {
 
     /// Retry (the island's, the history's): the whole recording again, after a failure — the same passes as at key-up.
     /// `done` on the main queue.
-    func retry(structure: Bool, _ done: @escaping (Result) -> Void) {
+    func retry(structure: Bool, translate: TranslateJob? = nil, _ done: @escaping (Result) -> Void) {
         cancelled = false
         keyUp = CACurrentMediaTime()
         polishQ.async {
             var r = self.whole(max(1, self.segments))
             if structure, !r.empty, r.asrError == nil { self.structure(&r) }
+            if let j = translate, !r.empty, r.asrError == nil { self.translate(&r, j) }
             DispatchQueue.main.async { done(r) }
         }
     }

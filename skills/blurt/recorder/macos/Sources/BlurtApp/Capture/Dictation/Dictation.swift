@@ -1,5 +1,5 @@
 // Dictation (听写, docs/design/dictation.md): talk, and the words are typed into whichever app has the focus —
-// separate from the voice note (⌥⇧V files into Blurt; the two never share a key).
+// separate from the voice note (⌥V files into Blurt; the two never share a key).
 //
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
@@ -114,7 +114,7 @@ final class Dictation {
     // the takes that stopped and are on their way to the cursor (DictationTakes.swift)
     var takes: [String: DictationTake] = [:]
     var queue = DictationPasteQueue<String>()
-    /// ⌥⇧L came while a take was on its way: run once that take is in (BlurtCore's DictationReformatAfterPaste)
+    /// ⌥L came while a take was on its way: run once that take is in (BlurtCore's DictationReformatAfterPaste)
     var reformatAfterPaste = DictationReformatAfterPaste<String>()
     /// takes whose speech recognition failed, kept (with their audio) for Retry — the last few
     var failedTakes: [String: DictationTake] = [:]
@@ -163,7 +163,7 @@ final class Dictation {
     private var frontKey = ""
     private var holdTimer: Timer?
     private var escRegistered = false
-    private var polishServer: Process?
+    var polishServer: Process?
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
     private var generation = 0
@@ -190,6 +190,8 @@ final class Dictation {
     /// ⇧ / the island / Fn+⇧ this take (the last choice wins), and how often it was switched
     var explicitStyle: (style: DictationStyle, source: DictationStyleSource)?
     var styleToggles = 0
+    /// this take translated (⌘ / the island's left half / the app's setting: DictationTranslating.swift)
+    var translating = TranslateState()
     /// the bundle id the take goes into (the app in front at the key-down)
     var styleBundle: String?
     /// tests (`dictation style app BUNDLE`): the app a take counts as going into (the pad is always the field)
@@ -304,6 +306,10 @@ final class Dictation {
                 return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed",
                              "model": self?.speechModels?.selected ?? NSNull()])
             }
+            // macOS's own recogniser: nothing of ours to load (the system keeps its own warm)
+            guard m.selected != AppleSpeech.modelID else {
+                return emit(["event": "dictation_prewarm", "why": why, "skipped": "builtin", "model": m.selected])
+            }
             VoiceInput.warmSpeechModel(dictation: true)
             emit(["event": "dictation_prewarm", "why": why, "model": m.selected])
         }
@@ -315,8 +321,13 @@ final class Dictation {
         MainActor.assumeIsolated {
             Task { @MainActor in
                 await DictationModels.shared.load()
-                if let a = DictationModels.shared.asr { self.setSpeechModels(a.dictionary) }
-                then?()
+                if let a = DictationModels.shared.asr { self.setSpeechModels(a.dictionary); then?(); return }
+                // the list can't be read (no speech tools yet: a first run before uv): macOS's recogniser, once its
+                // language's files are here (docs/design/first-minute-speech.md)
+                AppleSpeech.prepare(via: "no_tools") { a in
+                    if a == .installed, self.speechModels == nil { self.setSpeechModels(AppleSpeech.dictationModels) }
+                    then?()
+                }
             }
         }
     }
@@ -332,6 +343,9 @@ final class Dictation {
                   "missing": m.missing, "recommended": m.recommended])
         }
         if was?.ready == false, m.ready { modelArrived() }
+        // dictation runs on macOS's recogniser: its language's files asked for (once; nothing when they are here)
+        // (a cloud service too: macOS's recogniser gives its live text)
+        if m.selected == AppleSpeech.modelID || m.selectedCloud, was?.selected != m.selected { AppleSpeech.prepare(via: "dictation") }
     }
 
     /// Dictation listens with the Mac's own mic (DictationMicChoice: automatic = when the default input is Bluetooth).
@@ -639,9 +653,9 @@ final class Dictation {
         }
         var e = event
         // a click on Blurt's own island while dictating is the style chip, not "a click joined in" (it never cancels
-        // push-to-talk; the island itself ignores it then)
+        // push-to-talk; the island itself ignores it then): its left half (Peep's ear) translates, the rest Structured
         if case let .mouseDown(t) = e, trigger.active, phase == .listening, island.frameOnScreen.contains(NSEvent.mouseLocation) {
-            e = .islandClick(time: t)
+            e = NSEvent.mouseLocation.x < island.frameOnScreen.midX ? .islandTranslateClick(time: t) : .islandClick(time: t)
         }
         if let l = lab, phase == .idle, voice == nil, MainActor.assumeIsolated({ l.wantsKey }) {
             for out in trigger.handle(e) {
@@ -650,13 +664,14 @@ final class Dictation {
                 case .stop: MainActor.assumeIsolated { l.keyStop() }
                 case .cancel: MainActor.assumeIsolated { l.keyCancel() }
                 case .arm: warm()
-                case .send, .style: break
+                case .send, .style, .translate: break
                 }
             }
             scheduleHoldTick()
             return
         }
         let wasIsland: Bool = { if case .islandClick = e { return true }; return false }()
+        let wasIslandTranslate: Bool = { if case .islandTranslateClick = e { return true }; return false }()
         let outs = trigger.handle(e)
         if Dictation.keyTrace { trace(e, outs) }
         for out in outs {
@@ -669,6 +684,7 @@ final class Dictation {
             case .cancel: cancel(quietly: outs.contains(.send) || joinedEarly(e))
             case .send: send()
             case .style: toggleStyle(via: wasIsland ? .island : .shift)
+            case .translate: toggleTranslate(via: wasIslandTranslate ? "island" : "command")
             }
         }
         // the press became a shortcut (Fn-←, ⌥A), a click joined in, or it was let go too early / too late: the mic
@@ -702,6 +718,7 @@ final class Dictation {
         case let .keyDown(c, at): t = at; o["type"] = c == DictationTrigger.escape ? "esc" : c == 179 ? "globe" : "key"
         case let .mouseDown(at): t = at; o["type"] = "click"
         case let .islandClick(at): t = at; o["type"] = "island"
+        case let .islandTranslateClick(at): t = at; o["type"] = "island_translate"
         case let .tick(at): t = at; o["type"] = "tick"
         }
         if let l = lastTraced { o["dt_ms"] = Int((t - l) * 1000) }
@@ -755,7 +772,7 @@ final class Dictation {
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
     func warm() {
         guard !speechModelMissing, !speechToolsMissing else { return }
-        VoiceInput.warmSpeechModel(dictation: true)
+        if speechModels?.selected != AppleSpeech.modelID { VoiceInput.warmSpeechModel(dictation: true) }
         guard Dictation.polishOn else { return }
         warmPolish()
     }
@@ -763,7 +780,8 @@ final class Dictation {
     /// The polish server up (or a stuck one replaced) with its model loaded — dictation's key-down, and a voice note
     /// switched to Structured (its words go through the same structuring pass). Nothing without a polish model.
     func warmPolish() {
-        guard polishModel != nil else { return }
+        // the server runs cloud polish too: with no local model it is the cloud's alone (polish.py never downloads one)
+        guard polishModel != nil || DictationCloud.ready else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced
@@ -863,11 +881,12 @@ final class Dictation {
         // the style: the app in front decides the base now (verbatim skips polish for the whole take); ⇧ or the
         // island can still make it Structured — the structuring pass runs once at key-up, on the stitched text
         beginStyle(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
+        beginTranslate(bundle: styleBundle)
         let base = styleDecision?.base ?? .light
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
         opt.streaming = Dictation.streaming
-        opt.rehear = Dictation.rehear
+        opt.rehear = Dictation.rehear && !AppleSpeech.cloudSelected     // a cloud service bills every pass
         opt.rehearWindow = Dictation.rehearWindow
         opt.polishTimeout = Dictation.polishTimeout
         opt.structureTimeout = Dictation.structureTimeout
@@ -1225,6 +1244,7 @@ final class Dictation {
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
+        take.translate = translateJob(style: styleDecision?.style ?? .light)
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
               "pending": queue.count])
         enqueue(take)
@@ -1244,6 +1264,7 @@ final class Dictation {
     /// no longer asks that same server first (`--no-server`).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
                            hint: String = "", app: String = "", audioSeconds: Double) -> [String: Any] {
+        if AppleSpeech.forDictation { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation") }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
                                   "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
@@ -1325,6 +1346,7 @@ final class Dictation {
     /// Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, vocab: [[String: Any]], language: String, prior: String,
                                   hint: String, app: String = "") -> [String: Any]? {
+        if AppleSpeech.forLiveText { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation_interim") }
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
                                   "vocab": vocab, "interim": true, "no_download": true]

@@ -1,4 +1,4 @@
-// Captures outside a recording (docs/design/next-round.md K7): ⌥⇧A stills, ⌥⇧V voice notes, and (optionally) the
+// Captures outside a recording (docs/design/next-round.md K7): ⌥A stills, ⌥V voice notes, and (optionally) the
 // system's own screenshots. Each one is a line in the current store's open shots batch, <store>/sessions/<ts>-shots/.
 //
 // v0.7 token diet — an agent runs only when the user asks for one, once per batch:
@@ -72,7 +72,7 @@ final class Snapper {
 
     // MARK: entry points
 
-    /// ⌥⇧A when not recording. While a note is open: save it, then take the next shot.
+    /// ⌥A when not recording. While a note is open: save it, then take the next shot.
     func hotkey() {
         guard let app = app, app.resident, app.rec == nil else { return }
         if app.picker != nil { return }
@@ -229,7 +229,7 @@ final class Snapper {
     /// No picture came back. Without Screen Recording access that is why: "Open Settings" starts the permission guide.
     /// With access, ScreenCaptureKit is asked once more: refused = a stale grant (an older build's: "re-allow Screen
     /// Recording", the guide's re-add form) — else a passing failure, "try again" (BlurtCore ScreenGrant).
-    private func snapFailed() {
+    func snapFailed() {
         let allowed = SystemAccess.granted(.screen)
         guard allowed else {
             emit(["event": "snap_failed", "screen_recording": false])
@@ -308,7 +308,7 @@ final class Snapper {
         transcribeWhole(s, wav, key: key, take: take)
     }
 
-    /// The whole wav → its words: the warm speech server when it runs or is starting (the snap's note bubble and ⌥⇧V
+    /// The whole wav → its words: the warm speech server when it runs or is starting (the snap's note bubble and ⌥V
     /// start it as they begin listening: VoiceInput.warmSpeechModel), else `transcribe.py note` (a cold model load).
     private func transcribeWhole(_ s: Shot, _ wav: URL, key: ObjectIdentifier, take: Int) {
         let fail = Snapper.testFailWords()

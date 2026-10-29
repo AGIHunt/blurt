@@ -7,7 +7,7 @@
 //                       (300 ms) it is push-to-talk instead: it starts then, and letting go stops. Like Typeless.
 //   tap mode            a clean tap starts, the next clean tap stops. Clean = the key went down and up within
 //                       `tapMax` (400 ms) with no other key, modifier or click in between, and no other modifier
-//                       held when it went down — so the key as a modifier (⌥-letter, ⌥⇧V, Fn-←) never triggers.
+//                       held when it went down — so the key as a modifier (⌥-letter, ⌥V, Fn-←) never triggers.
 //   hold mode           held alone for `holdMin` (250 ms) starts; letting go stops; another key or a click joining
 //                       in cancels (the user is typing a shortcut, not talking).
 //   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models, open the mic
@@ -44,7 +44,12 @@
 //                       A click on Blurt's own island (`.islandClick`: the app tells which clicks land there) is the
 //                       same toggle and never cancels. Fn+⇧ as the start press (⇧ held when Fn goes down, or pressed
 //                       while it is down) starts in Structured: `startShift`. Only with Fn: with an ⌥ key, ⇧ stays a
-//                       modifier (⌥⇧V and Blurt's other ⌥⇧ shortcuts never start anything).
+//                       modifier (⌥V and Blurt's other ⌥⇧ shortcuts never start anything).
+//   translate           (docs/design/dictation-translate.md) ⌘ — either one — pressed and released alone while dictating
+//                       says `.translate`: the app turns translation on or off for this take. Like ⇧, it joins
+//                       push-to-talk without cancelling it; ⌘ with a key (⌘V) is a shortcut and cancels as before.
+//                       Input methods never use a lone ⌘, so it passes on to the app untouched. A click on the island's
+//                       left half (`.islandTranslateClick`) is the same toggle.
 import Foundation
 
 public struct DictationTrigger {
@@ -83,6 +88,8 @@ public struct DictationTrigger {
         case send
         /// ⇧ alone (or a click on the island) while dictating: toggle Structured for this take
         case style
+        /// ⌘ alone (or a click on the island's left half) while dictating: translation on or off for this take
+        case translate
     }
     public enum Event: Equatable {
         /// a modifier changed (CGEvent flagsChanged): its keyCode and the flags after the change
@@ -91,6 +98,8 @@ public struct DictationTrigger {
         case mouseDown(time: Double)
         /// a click on Blurt's own island (the app checks where a mouse-down landed): never cancels push-to-talk
         case islandClick(time: Double)
+        /// …on its left half (Peep's ear): the translate toggle
+        case islandTranslateClick(time: Double)
         /// the caller's timer, at or after `deadline`
         case tick(time: Double)
     }
@@ -99,8 +108,11 @@ public struct DictationTrigger {
     /// kVK_Shift, kVK_RightShift
     public static let shiftCodes: Set<Int> = [56, 60]
     static let shiftMask: UInt64 = 0x2_0000
-    /// a lone ⇧ held longer than this is not a toggle (a finger resting on it)
+    /// a lone ⇧ held longer than this is not a toggle (a finger resting on it); a lone ⌘ the same
     public var shiftTapMax = 1.0
+    /// kVK_RightCommand, kVK_Command
+    public static let commandCodes: Set<Int> = [54, 55]
+    static let commandMask: UInt64 = 0x10_0000
 
     public var key: Key
     public var mode: Mode
@@ -163,6 +175,8 @@ public struct DictationTrigger {
     private var startTapUp: Double?
     /// ⇧ went down while dictating, alone so far: its release toggles the style
     private var shiftDownAt: Double?
+    /// ⌘ went down while dictating, alone so far: its release toggles translation
+    private var commandDownAt: Double?
     /// the press now down has ⇧ with it (Fn+⇧)
     private var chord = false
     /// The dictation in progress was started with Fn+⇧: it starts in Structured.
@@ -213,6 +227,7 @@ public struct DictationTrigger {
         pushToTalk = false
         startShift = false
         shiftDownAt = nil
+        commandDownAt = nil
         quickStop = false
         startTapUp = nil
         if !keepTap { lastTap = nil }
@@ -249,6 +264,9 @@ public struct DictationTrigger {
             if DictationTrigger.shiftCodes.contains(code) {
                 return shiftChanged(down: flags & DictationTrigger.shiftMask != 0, t)
             }
+            if DictationTrigger.commandCodes.contains(code), active, state == .holding || state == .idle {
+                return commandChanged(down: flags & DictationTrigger.commandMask != 0, t)
+            }
             if key.keyCodes.contains(code) {
                 // either-⌥: the other side going down or up while one is held is another key, not this one
                 if case let .down(_, _, held) = state, held != code { return otherInput(t) }
@@ -274,6 +292,8 @@ public struct DictationTrigger {
             return otherInput(t)
         case .islandClick:
             return active ? [.style] : []
+        case .islandTranslateClick:
+            return active ? [.translate] : []
         case let .tick(t):
             return tick(t)
         }
@@ -289,6 +309,7 @@ public struct DictationTrigger {
         holdingCode = code
         second = nil
         shiftDownAt = nil                   // the key joined a ⇧ that was down: no toggle when ⇧ comes up
+        commandDownAt = nil                 // … nor a ⌘
         chord = withShift && alone
         miss = nil
         let bounce = lastTap.map { $0.did == .sent && t - $0.up <= doubleTapWindow } ?? false
@@ -398,6 +419,7 @@ public struct DictationTrigger {
         lastTap = nil
         startTapUp = nil
         shiftDownAt = nil                   // ⇧ with another key: a shortcut (or a capital), not the style toggle
+        commandDownAt = nil                 // ⌘ with another key (⌘V): a shortcut, not the translate toggle
         switch state {
         case let .down(at, _, code):
             if holdThreshold != nil, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
@@ -445,6 +467,7 @@ public struct DictationTrigger {
                 lastTap = nil
                 startTapUp = nil
                 shiftDownAt = t
+                commandDownAt = nil         // ⌘⇧: a chord, neither toggle
                 return []
             }
             defer { shiftDownAt = nil }
@@ -454,18 +477,34 @@ public struct DictationTrigger {
         if state == .waitRelease { return [] }
         return otherInput(t)
     }
+
+    /// ⌘ went down or up while dictating (hands-free or push-to-talk): alone and let go within `shiftTapMax`, the
+    /// translate toggle. A key while it is down makes it a shortcut (`otherInput`).
+    private mutating func commandChanged(down: Bool, _ t: Double) -> [Output] {
+        if down {
+            lastTap = nil
+            startTapUp = nil
+            commandDownAt = shiftDownAt == nil ? t : nil     // ⇧⌘: a chord, neither toggle
+            shiftDownAt = nil
+            return []
+        }
+        defer { commandDownAt = nil }
+        if let d = commandDownAt, t - d <= shiftTapMax { return [.translate] }
+        return []
+    }
 }
 
 extension DictationTrigger {
     /// A compact script of events for tests and the app's test hook (`dictation keys …`), one token per event,
     /// times in ms: "ropt-down@0 ropt-up@120", "fn-down@0 tick@300 fn-up@900", "ropt-down@0 key:9@50 ropt-up@90",
-    /// "click@40", "island@40" (a click on Blurt's island), "esc@500", "shift-down@0 shift-up@10". Modifier tokens:
-    /// ropt, lopt, fn, shift, rshift, cmd, ctrl.
+    /// "click@40", "island@40" (a click on Blurt's island), "island-translate@40" (on its left half), "esc@500",
+    /// "shift-down@0 shift-up@10". Modifier tokens: ropt, lopt, fn, shift, rshift, cmd, rcmd, ctrl.
     public static func parse(_ script: String, holding: Set<String> = []) -> [Event] {
         var held = holding
         let bits: [String: (code: Int, mask: UInt64)] = [
             "ropt": (61, 0x80000 | 0x40), "lopt": (58, 0x80000 | 0x20), "fn": (63, 0x80_0000),
-            "shift": (56, 0x2_0000), "rshift": (60, 0x2_0000), "cmd": (55, 0x10_0000), "ctrl": (59, 0x4_0000),
+            "shift": (56, 0x2_0000), "rshift": (60, 0x2_0000), "cmd": (55, 0x10_0000), "rcmd": (54, 0x10_0000),
+            "ctrl": (59, 0x4_0000),
         ]
         func flags() -> UInt64 { held.reduce(0) { $0 | (bits[$1]?.mask ?? 0) } }
         var out: [Event] = []
@@ -475,6 +514,7 @@ extension DictationTrigger {
             let t = ms / 1000, name = String(parts[0])
             if name == "tick" { out.append(.tick(time: t)) } else if name == "click" { out.append(.mouseDown(time: t)) }
             else if name == "island" { out.append(.islandClick(time: t)) }
+            else if name == "island-translate" { out.append(.islandTranslateClick(time: t)) }
             else if name == "esc" { out.append(.keyDown(keyCode: escape, time: t)) }
             else if name.hasPrefix("key:"), let c = Int(name.dropFirst(4)) { out.append(.keyDown(keyCode: c, time: t)) }
             else {

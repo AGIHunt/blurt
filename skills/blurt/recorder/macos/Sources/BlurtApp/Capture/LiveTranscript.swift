@@ -1,5 +1,5 @@
 // The words while you talk (v0.8.6): a panel under the island with the last lines (up to three, newest at
-// the bottom) of what has been recognised so far — the voice note (⌥⇧V, VoiceNoteStream) and dictation
+// the bottom) of what has been recognised so far — the voice note (⌥V, VoiceNoteStream) and dictation
 // (DictationStream) — the newest words fading in. The report: nothing to see while talking, and seeing it would help.
 //  • Dictation keeps up with the speech (v0.9, docs/design/dictation.md §Live text): after the finished pieces'
 //    transcripts (committed, 92 % white) comes the piece still being said, decoded about once a second (pending,

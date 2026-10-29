@@ -1,16 +1,16 @@
-// Voice note (K7, ⌥⇧V): talk, and it becomes a capture — no screen recording, just the words. (Not dictation: that
+// Voice note (K7, ⌥V): talk, and it becomes a capture — no screen recording, just the words. (Not dictation: that
 // types at the cursor. This one files a card.)
 //
 // v0.8.6 — the report: any breath or thinking pause ended the voice note (1.5 s of silence did), fine for a short
 // note, bad for a long one. Now you end it:
-//  • press once: listening starts; press ⌥⇧V again (or the island's Done) to finish. A pause no longer
+//  • press once: listening starts; press ⌥V again (or the island's Done) to finish. A pause no longer
 //    ends it — unless Settings → General → "End a voice note when I pause" (record.voice.end_on_pause, off) is on:
 //    then 1.5 s of silence after you spoke does, as before (record.voice.silence_ms). 10 minutes at most
 //    (record.voice.max_seconds, 600; the right ear shows the time, the island the time left in the last minute);
 //    nothing heard within 20 s (8 s with end_on_pause) = nothing filed.
 //  • hold longer than 0.35 s: push-to-talk — it ends when you let go.
 //  • record.voice.mode: auto (both, default) | toggle | hold.
-//  • the snap's spoken note (⌥⇧A, NoteBubble) keeps its silence end: it is a sentence about one picture.
+//  • the snap's spoken note (⌥A, NoteBubble) keeps its silence end: it is a sentence about one picture.
 //  • the words while you talk (record.live_text, on — "Show text while I talk"): VoiceNoteStream cuts the audio at
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
 //    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second
@@ -89,7 +89,7 @@ final class VoiceInput {
     private var mode: String { settings["mode"] as? String ?? "auto" }
     private var silence: Double { (settings["silence_ms"] as? Double ?? 1500) / 1000 }
     /// "End a voice note when I pause" (off): a pause of `silence` ends it, as before v0.8.6
-    /// The live words of a note — ⌥⇧V's panel and a snap's note field — on every tier: the note model is quick
+    /// The live words of a note — ⌥V's panel and a snap's note field — on every tier: the note model is quick
     /// (SenseVoice answers an interim request whole in ~0.1 s; a slow model says so and DictationLiveDecode asks again
     /// later, then stops for that take). Dictation's tier gate is about its larger model on the GPU, so it isn't
     /// applied here; only the user's own switches turn them off: record.live_text ("Show text while I talk") and an
@@ -102,7 +102,7 @@ final class VoiceInput {
     var maxSeconds: Double { max(30, (settings["max_seconds"] as? Double) ?? 600) }
     /// transcribe while talking (off: the whole wav after stop, the old path)
     var streams: Bool { settings["stream"] as? Bool ?? true }
-    var rehears: Bool { settings["rehear"] as? Bool ?? true }
+    var rehears: Bool { (settings["rehear"] as? Bool ?? true) && !AppleSpeech.cloudSelected }   // a cloud service bills every pass
     /// what the island says it will take to finish: the key, else the Done button
     var endsOnPause: Bool { VoiceInput.endOnPause && !holding }
 
@@ -291,6 +291,8 @@ final class VoiceInput {
     /// dictation: its own model (record.dictation.asr_model / the recommended one) — a running server is asked to
     /// load it, a new one preloads it.
     static func warmSpeechModel(dictation: Bool = false) {
+        // macOS's recogniser runs in this process (AppleSpeech): no speech server to start, no memory held
+        if AppleSpeech.forNotes { return }
         if dictation && WarmServer.running("asr-serve") {
             // a run file can name a server that will never answer (stuck since an app long gone, or ours hung): the
             // key-down asks it, and one that is stuck is replaced — on a relaunch too (v0.9 dogfood: every take
@@ -403,6 +405,11 @@ final class VoiceInput {
     /// One piece of a voice note → its words: the warm server (`note`, the voice-note model), else the CLI (which
     /// asks the server itself, or loads the model). Blocking: off the main thread.
     static func transcribePiece(_ wav: URL, prior: String) -> [String: Any]? {
+        // no local model: macOS's recogniser, in this process (first-minute-speech.md)
+        if AppleSpeech.forNotes {
+            let r = AppleSpeech.transcribe(wav, language: "auto", purpose: "note")
+            return r["ok"] as? Bool == true ? r : nil
+        }
         notesLock.lock(); notesInFlight += 1; notesLock.unlock()
         defer { notesLock.lock(); notesInFlight -= 1; notesLock.unlock() }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto"]
@@ -417,7 +424,11 @@ final class VoiceInput {
             sem.signal()
         }
         sem.wait()
-        return out.flatMap { ($0["ok"] as? Bool ?? true) ? $0 : nil }
+        if let o = out, o["ok"] as? Bool ?? true { return o }
+        // the speech tools couldn't run (no uv yet) or had no model: macOS's recogniser when it is ready
+        guard AppleSpeech.ready() else { return nil }
+        let r = AppleSpeech.transcribe(wav, language: "auto", purpose: "note_fallback")
+        return r["ok"] as? Bool == true ? r : nil
     }
 
     /// Tests (test commands only): the microphone stops delivering mid-note.
@@ -517,6 +528,7 @@ final class VoiceInput {
     /// The voice-note model on the piece still being said (the live text): the warm server only, never a CLI — an
     /// interim answer that has to load a model isn't worth it. Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, prior: String) -> [String: Any]? {
+        if AppleSpeech.forLiveText { return AppleSpeech.transcribe(wav, language: "auto", purpose: "note_interim") }
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto", "interim": true]
         if !prior.isEmpty { req["prior"] = prior }
@@ -561,7 +573,7 @@ final class VoiceInput {
 /// Live text (`interim`, v0.9 — the same as dictation's, docs/design/dictation.md §Live text): about once a second the
 /// piece still being said is decoded by the warm server as an *interim* request (BlurtCore DictationLiveDecode decides
 /// when; a final piece always goes first) and `onLive` gets the finished pieces' text and, after it, the interim
-/// text. The ⌥⇧V panel and the snap's note bubble show it; nothing filed comes from an interim answer.
+/// text. The ⌥V panel and the snap's note bubble show it; nothing filed comes from an interim answer.
 final class VoiceNoteStream {
     let id: String
     /// the finished pieces' text so far, on the main queue, after each piece

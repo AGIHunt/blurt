@@ -23,9 +23,9 @@
 //   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): Peep
 //               listening (eye wide, swelling with the voice), the live waveform and Done (with the key held there is no Done:
 //               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
-//               view's one mint thing), how it ends ("⌥⇧V to finish · Esc to discard"; the time left in its last
+//               view's one mint thing), how it ends ("⌥V to finish · Esc to discard"; the time left in its last
 //               minute) and, on the right edge, where it will go — the words themselves hang under the island
-//   drawer      switcher (⌥⇧O): a filter field beside the notch (magnifier, placeholder, caret; typed text in white)
+//   drawer      switcher (⌥O): a filter field beside the notch (magnifier, placeholder, caret; typed text in white)
 //               and the title across it; recent projects (≤ 8, "More…"; a project whose folder is gone shows so,
 //               dimmed, and choosing it asks where the folder is now instead of making it current:
 //               MissingFolder.locate — ProjectPick), Unassigned (the dashed ring), Add Project… ⌘O. Its pick form
@@ -509,7 +509,7 @@ final class IslandContent: NSView {
     private weak var pauseBtn: IslandButton?
     /// the recording row's ··· (its menu: the pen, a marker, Discard or Restart…)
     private(set) weak var moreBtn: IslandButton?
-    /// The pen was latched when the recording row was built (it changes from the key, ⌥⇧D): rebuilt when it differs.
+    /// The pen was latched when the recording row was built (it changes from the key, ⌥D): rebuilt when it differs.
     private var penShown = false
     /// A peck's chevron: "Open" beside it while the pointer is on the island.
     private weak var openHint: OpenHint?
@@ -935,7 +935,7 @@ final class IslandContent: NSView {
     // MARK: voice input
 
     /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
-    /// the picker say it: "⌥⇧V to finish · Esc discard" (the user's key; "Click Done to finish" without one), "Pause
+    /// the picker say it: "⌥V to finish · Esc discard" (the user's key; "Click Done to finish" without one), "Pause
     /// to finish" with record.voice.end_on_pause, "Let go to finish" while held — and in its last minute, the time
     /// left. Not "Listening": the waveform and Peep say that.
     static func voiceHint() -> String {

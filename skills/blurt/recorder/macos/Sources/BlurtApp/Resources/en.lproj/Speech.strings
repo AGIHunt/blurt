@@ -80,6 +80,7 @@
 "speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words.";
 "speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: fewer mistakes on names and in a noisy room, about 25 ms slower per sentence.";
 "speech.note.cloud" = "Runs in the cloud with your own key.";
+"speech.note.apple" = "Built into macOS 26, nothing to download; less accurate on names than Qwen3-ASR";
 
 /* Actions */
 "speech.download.button" = "Download";
@@ -129,11 +130,20 @@
 /* Cloud */
 "speech.cloud.title" = "Cloud speech recognition";
 "speech.cloud.name.openai" = "OpenAI-compatible API";
+"speech.cloud.name.dashscope" = "Alibaba Cloud Model Studio · Qwen3-ASR (recommended)";
 "speech.cloud.set" = "Set";
 "speech.cloud.not_set" = "Not set";
 "speech.cloud.off" = "Turned off in Privacy";
 "speech.cloud.setup" = "Set Up…";
 "speech.cloud.sheet.note" = "Recognize speech in the cloud with your own API key. The key stays in this Mac’s Keychain and is sent only to this service, with the audio to recognize.";
+"speech.cloud.speed.1" = "Normal";
+"speech.cloud.speed" = "Speed";
+"speech.cloud.speed.15" = "1.5× (recommended)";
+"speech.cloud.speed.2" = "2×";
+"speech.cloud.speed.1.hint" = "Most accurate; billed at full length";
+"speech.cloud.speed.15.hint" = "About a third cheaper, slightly less accurate";
+"speech.cloud.speed.all" = "Applies to every cloud speech service";
+"speech.cloud.speed.2.hint" = "Half the cost, noticeably more errors";
 "speech.cloud.service.openai" = "OpenAI";
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";

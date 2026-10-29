@@ -64,7 +64,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkWin: NSPanel?
     var inkView: InkView?
     var inkTicker: Timer?
-    var penSticky = false             // toggled with ⌥⇧D
+    var penSticky = false             // toggled with ⌥D
     var inkOn = false
     var penArm = PenArm()             // the pen key first, then ⇧ / ⌥ (a ⌃⌥ chord is the window manager's)
     var testFlags: CGEventFlags?      // scripted checks (recflags): the modifiers the poll sees instead of the keyboard's
@@ -86,7 +86,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         default: return .control
         }
     }
-    var snaps: RecordingSnaps?       // ⌥⇧A stills (Snap.swift)
+    var snaps: RecordingSnaps?       // ⌥A stills (Snap.swift)
     var lastFrame: CVImageBuffer?     // latest video frame (capture queue): a snap's fallback
     var frames = 0
     var audioBuffers = 0
@@ -417,7 +417,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         island.orderFront()
     }
 
-    /// ⌥⇧M: still logged as a marker, and now also a snap of this exact moment. Silent — the mic is recording.
+    /// ⌥M: still logged as a marker, and now also a snap of this exact moment. Silent — the mic is recording.
     func marker() {
         log("marker")
         emit(["event": "marker", "t": elapsed()])

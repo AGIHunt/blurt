@@ -1,4 +1,4 @@
-// Structured for a voice note (⌥⇧V), the same as dictation's (docs/design/dictation-styles.md §3.2, v0.9-userfix):
+// Structured for a voice note (⌥V), the same as dictation's (docs/design/dictation-styles.md §3.2, v0.9-userfix):
 // while the note listens, ⇧ pressed and let go on its own toggles Structured — or a click on the island's list mark.
 // When the note's words are in, Structured runs the polish model's structuring pass over them (the same `structure`
 // request dictation's Structured makes: lists laid out, self-corrections resolved, or a paragraph left a paragraph);
@@ -6,7 +6,7 @@
 // about what a list is: the model decides.
 //
 // LoneShift is the key half: ⇧ down with no other modifier held, up again within `tapMax`, nothing pressed between.
-// ⌥⇧V itself never counts (its ⇧ goes down with ⌥ held), nor a capital letter, nor a ⇧-click. Two listeners can hand
+// ⌥V itself never counts (its ⇧ goes down with ⌥ held), nor a capital letter, nor a ⇧-click. Two listeners can hand
 // the same change over (the dictation key's tap and the voice note's own monitor): the same change within 30 ms
 // counts once. Pure: VoiceNoteStyleTests.
 import Foundation
@@ -42,7 +42,7 @@ public struct LoneShift {
         case .keyDown, .mouseDown:
             downAt = nil
             return false
-        case .islandClick, .tick:
+        case .islandClick, .islandTranslateClick, .tick:
             return false
         }
     }

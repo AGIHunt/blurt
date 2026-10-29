@@ -65,6 +65,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var finalText: String { corrected ?? text }
     /// the style the take was typed in, why, and what reformat-last did with it (nil: an older entry)
     public var style: DictationStyleRecord?
+    /// translated (docs/design/dictation-translate.md): by what, into what, and what was said (nil: not translated)
+    public var translate: DictationTranslateRecord?
     /// what was typed first, when reformat-last replaced it in the field since (`text` is then the current version)
     public var typedFirst: String?
     /// the speech model's language tag per piece (nil: an older entry, or a model without one)
@@ -86,7 +88,7 @@ public struct DictationEntry: Identifiable, Hashable {
         self.timing = timing; self.repaired = repaired; self.fitted = fitted
     }
 
-    public static let timingKeys = ["asr_ms", "polish_ms", "structure_ms", "load_ms", "total_ms", "segments", "windows", "rehear_ms_all"]
+    public static let timingKeys = ["asr_ms", "polish_ms", "structure_ms", "translate_ms", "load_ms", "total_ms", "segments", "windows", "rehear_ms_all"]
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -117,6 +119,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let p = pieces, !p.isEmpty { o["pieces"] = p.map(\.json) }
         if let w = windows, !w.isEmpty { o["windows"] = w.map(\.json) }
         style?.write(into: &o)
+        if let t = translate { o["translate"] = t.json }
         return o
     }
 
@@ -150,6 +153,7 @@ public struct DictationEntry: Identifiable, Hashable {
         pieces = (o["pieces"] as? [[String: Any]])?.compactMap(DictationPieceRecord.init(json:))
         windows = (o["windows"] as? [[String: Any]])?.compactMap(DictationWindowRecord.init(json:))
         style = DictationStyleRecord(json: o)
+        translate = (o["translate"] as? [String: Any]).flatMap(DictationTranslateRecord.init(json:))
     }
 }
 

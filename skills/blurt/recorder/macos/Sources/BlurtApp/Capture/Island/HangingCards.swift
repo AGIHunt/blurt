@@ -25,14 +25,14 @@
 //    it opens or a toast makes it taller they go down with it. (They used to follow on their own springs, lag behind
 //    an opening island, slide under it and fade as if reeled in, then drop out again: the flicker when the pointer
 //    came up to the island from below.) A drop already under way or showing is never started again.
-//  • brought down on purpose — a click on the left ear's count, ⌥⇧H "Show hanging cards" (record.hotkeys "cards"),
+//  • brought down on purpose — a click on the left ear's count, ⌥H "Show hanging cards" (record.hotkeys "cards"),
 //    the menu, the main window's "Unfiled captures" — they stay (sticky) until the pointer has come to the cards and
 //    gone again, or Esc; if it never comes, they stop staying 10 s later (CardReveal.staysDown), and the keyboard
 //    handed back (a typed key, a click elsewhere) ends it too. Esc is a system-wide hotkey only while the pointer is
 //    on them or the island, or for 4 s after they came down with it elsewhere (CardReveal.holdsEsc): an Esc for the
 //    app in front is never swallowed. Esc with the pointer on the island keeps them up until it has left the island.
 //    The pointer resting on the ear itself opens the island a little later (0.45 s), so its count can be clicked.
-//  • the keyboard (⌥⇧H): the panel takes the keys without activating Blurt, starting on the newest card (a ring in
+//  • the keyboard (⌥H): the panel takes the keys without activating Blurt, starting on the newest card (a ring in
 //    brand.accent): ←/→, Tab / ⇧Tab move between the cards and the "+N" tile · ↩ / ⌘C copy the card and hand the
 //    keyboard straight back (the next ⌘V pastes it where the user was), the cards going up a moment later · ↩ on the
 //    tile opens the overview with the keyboard in it · ⌫ deletes · Esc sends them up. Any other key, a click
@@ -216,7 +216,7 @@ final class HangingCard {
     var piled = false
     /// the card cuts its note short (the hover note then shows all of it)
     var truncated = false
-    /// the keyboard is on this card (⌥⇧H): a ring in brand.accent
+    /// the keyboard is on this card (⌥H): a ring in brand.accent
     let focusRing = CALayer()
 
     init(_ s: Shot, x: CGFloat, side: CGFloat) {
@@ -229,7 +229,7 @@ final class HangingCard {
     }
 }
 
-/// Key-able only while the keyboard is on the cards (⌥⇧H), and never activating: the app the user was in stays in front.
+/// Key-able only while the keyboard is on the cards (⌥H), and never activating: the app the user was in stays in front.
 final class CardsPanel: NSPanel {
     var keyable = false
     override var canBecomeKey: Bool { keyable }
@@ -369,7 +369,7 @@ final class HangingCards: NSObject {
     private var holds = 0
     private var awaySince: CFTimeInterval?
     private var shown = false                      // the cards are down
-    /// Brought down on purpose (the ear's count, ⌥⇧H, the menu, the main window): down until the pointer has been on
+    /// Brought down on purpose (the ear's count, ⌥H, the menu, the main window): down until the pointer has been on
     /// the cards (`visited`) and left them and the island, or Esc.
     private var sticky = false
     private var visited = false
@@ -1307,7 +1307,7 @@ final class HangingCards: NSObject {
         show()
     }
 
-    /// A recording started: the cards go up and stay there (K7: nothing hangs over what you are showing). Only ⌥⇧H
+    /// A recording started: the cards go up and stay there (K7: nothing hangs over what you are showing). Only ⌥H
     /// or the menu brings them down meanwhile.
     func recordingStarted() {
         sticky = false
@@ -1317,8 +1317,8 @@ final class HangingCards: NSObject {
         retract()
     }
 
-    /// The ear's count, ⌥⇧H "Show hanging cards", the menu, the main window's "Unfiled captures": every card comes down
-    /// and stays until the pointer has come and gone, or Esc. Nothing hanging: the island says so. ⌥⇧H (`keyboard`)
+    /// The ear's count, ⌥H "Show hanging cards", the menu, the main window's "Unfiled captures": every card comes down
+    /// and stays until the pointer has come and gone, or Esc. Nothing hanging: the island says so. ⌥H (`keyboard`)
     /// also puts the keyboard on them (see `key`).
     func reveal(via: String, keyboard: Bool = false) {
         emit(["event": "cards_reveal", "via": via, "count": cards.count])
@@ -1354,14 +1354,14 @@ final class HangingCards: NSObject {
 
     // MARK: keyboard
 
-    /// The panel has the keyboard (⌥⇧H): it takes keys without activating Blurt.
+    /// The panel has the keyboard (⌥H): it takes keys without activating Blurt.
     private var keyboardOn = false
     private var keyboard: Bool { keyboardOn && panel?.isKeyWindow == true }
 
     /// The card the keyboard is on (nil: none, or the "+N" tile).
     private var focusCard: HangingCard? { focus.flatMap { $0 < row.shown.count ? shownCards[$0] : nil } }
 
-    /// ⌥⇧H: the keyboard on the cards, starting at the newest — ←/→ (Tab, ⇧Tab) move between the cards and the "+N"
+    /// ⌥H: the keyboard on the cards, starting at the newest — ←/→ (Tab, ⇧Tab) move between the cards and the "+N"
     /// tile, ↩ or ⌘C copies the card and hands the keyboard back (on the tile: the overview, with the keyboard), ⌫
     /// deletes it (Undo in the island), Esc sends them up. Any other key, a click somewhere else or the cards going up
     /// gives the keyboard back to the app in front.
@@ -1377,7 +1377,7 @@ final class HangingCards: NSObject {
     }
 
     /// The keyboard back to the app the user was in (`restore`; false: another of our panels takes it — the overview).
-    /// Brought down by ⌥⇧H, they now go up like any time the pointer isn't on them.
+    /// Brought down by ⌥H, they now go up like any time the pointer isn't on them.
     private func endKeyboard(restore: Bool = true) {
         let had = keyboardOn
         keyboardOn = false

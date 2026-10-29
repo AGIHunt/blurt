@@ -131,6 +131,7 @@ public enum SettingsCatalog {
         sec("general.recording", "settings.general.recording"),
         sec("general.voice", "settings.general.section.voice"),
         sec("general.cards", "settings.general.section.cards"),
+        sec("general.screen_text", "settings.general.section.screen_text"),
         sec("general.about", "settings.general.about"),
 
         sec("projects.list", "main.sidebar.projects", "Main"),
@@ -178,7 +179,7 @@ public enum SettingsCatalog {
     /// capture, the keys of a recording in progress, dictation, and opening or switching things. The dictation key
     /// (set in Settings → Dictation) leads its section, ahead of these.
     public static let shortcutSections: [(section: String, actions: [String])] = [
-        ("shortcuts.capture", ["record", "snap", "voice"]),
+        ("shortcuts.capture", ["record", "snap", "text", "translate", "voice"]),
         ("shortcuts.recording", ["pause", "marker", "pen", "stop"]),
         ("shortcuts.dictation", ["reformat"]),
         ("shortcuts.open", ["project", "cards", "menu", "main"]),
@@ -186,7 +187,7 @@ public enum SettingsCatalog {
     /// The section an action's row is in.
     public static func shortcutSection(_ action: String) -> String? { shortcutSections.first { $0.actions.contains(action) }?.section }
     /// The actions whose name needs a line to say what it does (capture.action.<name>.detail).
-    public static let describedShortcuts: Set<String> = ["marker", "cards", "reformat"]
+    public static let describedShortcuts: Set<String> = ["marker", "cards", "reformat", "text", "translate"]
     /// The three jobs of speech recognition (BlurtApp ASRPurpose), in the pane's order.
     public static let speechPurposes = ["batch", "live", "note"]
 
@@ -204,6 +205,7 @@ public enum SettingsCatalog {
             row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
             row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
             row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
+            row("general.screen_text_refine", "general.screen_text", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
             whole("general.about"),
 
             // Projects
@@ -231,6 +233,9 @@ public enum SettingsCatalog {
             row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
             row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
+            // translate mode (docs/design/dictation-translate.md): into what, and whether the cloud model does it
+            row("dictation.translate", "dictation.text", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
+            row("dictation.translate_cloud", "dictation.text", D("dictation.translate.cloud.title")),
             // the words' menu: reading the context, learning
             row("dictation.word_list", "dictation.text", D("dictation.vocab.summary.title"), detail: D("dictation.vocab.summary.detail")),
             row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),

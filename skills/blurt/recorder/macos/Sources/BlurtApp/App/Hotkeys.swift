@@ -24,6 +24,8 @@ extension HotkeyCenter.Action {
         case .project: return .project
         case .cards: return .cards
         case .reformat: return .reformat
+        case .text: return .text
+        case .translateText: return .translateText
         }
     }
 }
@@ -32,14 +34,14 @@ extension HotkeyCenter {
     func shortcut(_ a: HotAction) -> Shortcut? { binding(a) }
 }
 
-/// The user's actual keys, for hints: "⌥⇧A", "" when that hotkey is off.
+/// The user's actual keys, for hints: "⌥A", "" when that hotkey is off.
 func hk(_ a: HotAction) -> String { Hotkeys.shared.label(a) }
-/// "（⌥⇧P）" / " (⌥⇧P)" for tooltips, "" when off.
+/// "（⌥P）" / " (⌥P)" for tooltips, "" when off.
 func hkTip(_ a: HotAction) -> String {
     let l = hk(a)
     return l.isEmpty ? "" : Loc.t("capture.hotkey.tip", table: "Capture", l)
 }
-/// "⌥⇧A next shot" — a hint (a Capture table key) that only exists while the hotkey does.
+/// "⌥A next shot" — a hint (a Capture table key) that only exists while the hotkey does.
 func hkHint(_ a: HotAction, _ key: String) -> String? {
     let l = hk(a)
     return l.isEmpty ? nil : Loc.t("capture.hotkey.hint", table: "Capture", l, Loc.t(key, table: "Capture"))

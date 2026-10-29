@@ -43,9 +43,9 @@ public func hotkeyMods(_ spec: String?) -> Int? {
     return m
 }
 
-/// The defaults' modifiers: ⌥⇧, or BLURT_HOTKEY_MODS (tests keep away from the user's running Blurt that way).
+/// The defaults' modifiers: ⌥ (⌥⇧ until v1.0.5), or BLURT_HOTKEY_MODS (tests keep away from the user's running Blurt that way).
 public let defaultHotkeyMods = hotkeyMods(ProcessInfo.processInfo.environment["BLURT_HOTKEY_MODS"]).flatMap { $0 == 0 ? nil : $0 }
-    ?? (optionKey | shiftKey)
+    ?? optionKey        // ⌥ alone since v1.0.5 (the founder: one key fewer); ⌥⇧ before (legacyKeys)
 
 /// name (as stored) → (virtual key code, glyph shown to the user)
 public let hotkeyKeyTable: [(name: String, code: Int, glyph: String)] = {
@@ -179,7 +179,7 @@ public struct KeyCombo: Hashable {
         ["off", "none", "disabled", "-", ""].contains(s.trimmingCharacters(in: .whitespaces).lowercased())
     }
 
-    /// "opt+shift+R" / "⌥⇧R" / "Alt+Shift+r" / "ctrl+F5" (as _common.py's parse_hotkey); nil for off / unparseable
+    /// "opt+shift+R" / "⌥R" / "Alt+Shift+r" / "ctrl+F5" (as _common.py's parse_hotkey); nil for off / unparseable
     public static func parse(_ raw: String) -> KeyCombo? {
         var s = Substring(raw.trimmingCharacters(in: .whitespaces))
         if isOff(String(s)) { return nil }
@@ -306,10 +306,14 @@ public final class HotkeyCenter {
     /// Raw values are the config keys (record.hotkeys) — shared with _common.py / the Windows recorder.
     public enum Action: String, CaseIterable {
         case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
-        /// ⌥⇧H: every hanging card comes down and stays (K7; macOS only — the island's cards)
+        /// ⌥H: every hanging card comes down and stays (K7; macOS only — the island's cards)
         case cards
-        /// ⌥⇧L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
+        /// ⌥L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
         case reformat
+        /// ⌥C: copy the text in an area of the screen (macOS only; ScreenText, docs/design/screen-text.md)
+        case text
+        /// ⌥T: the same, translated (zh ↔ en; the cloud polish model or the local one)
+        case translateText = "translate"
 
         /// nil = off unless the user sets one
         public var defaultKey: String? {
@@ -326,6 +330,8 @@ public final class HotkeyCenter {
             case .project: return "O"
             case .cards: return "H"
             case .reformat: return "L"
+            case .text: return "C"
+            case .translateText: return "T"
             }
         }
         public var title: String {
@@ -342,10 +348,12 @@ public final class HotkeyCenter {
             case .project: return Loc.t("capture.action.project", table: "Capture")
             case .cards: return Loc.t("capture.action.cards", table: "Capture")
             case .reformat: return Loc.t("capture.action.reformat", table: "Capture")
+            case .text: return Loc.t("capture.action.text", table: "Capture")
+            case .translateText: return Loc.t("capture.action.translate", table: "Capture")
             }
         }
         /// Only the menu-bar app registers these (a recording started from the chat has no menu or window to open).
-        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards, .reformat].contains(self) }
+        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards, .reformat, .text, .translateText].contains(self) }
         public var defaultCombo: KeyCombo? { defaultKey.flatMap { KeyCombo(mods: defaultHotkeyMods, key: $0) } }
         var carbonID: UInt32 { 100 + UInt32(Action.allCases.firstIndex(of: self)!) }
     }

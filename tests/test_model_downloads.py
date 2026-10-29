@@ -182,7 +182,10 @@ class DictationNeedsTheVad(unittest.TestCase):
             self.assertFalse(d["vad"])
             local = [r for r in d["models"] if r["files"]]
             self.assertTrue(local)
-            self.assertFalse(any(r["installed"] for r in local if T.entry(r["id"]).get("local", True)))
+            vad_models = [r for r in local if T.entry(r["id"]).get("local", True) and not T.entry(r["id"]).get("builtin")]
+            self.assertFalse(any(r["installed"] for r in vad_models))
+            # macOS's own recogniser finds its own pauses: installed without the VAD (first-minute-speech.md)
+            self.assertTrue(all(r["installed"] for r in local if T.entry(r["id"]).get("builtin")))
             vad.parent.mkdir(parents=True, exist_ok=True)
             vad.write_bytes(b"onnx")
             self.assertTrue(all(r["installed"] for r in T.dictation_models()["models"]))

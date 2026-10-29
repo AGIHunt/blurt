@@ -1,0 +1,4 @@
+def load_user_events(user_id: str,since_ts: int = @) -> Listldict]:
+    '''Read from the read-only replica, never the primary."!"
+   rows = db.query(READ_ONLY_DSN,"'select * from user_events where user_id = %s",user_id)
+    return Ir for r in rows if r["created_at"] >= since_ts] #_init_ ok
