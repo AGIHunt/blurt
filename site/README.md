@@ -24,7 +24,7 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The previous agihunt.info zone's Browser
 Cache TTL (4 h) overrode `_headers`, so versioned URLs are retained. On blurt.work, configure Browser Cache TTL
-to respect existing headers so styles, scripts and fonts revalidate as declared in `_headers`. Current: `?v=1.0.5-1`.
+to respect existing headers so styles, scripts and fonts revalidate as declared in `_headers`. Current: `?v=1.0.5-3`.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -40,7 +40,8 @@ full fonts it expects).
 
 Tokens on `:root` from `assets/color/tokens.json` (docs/design/system.md), dark values under
 `prefers-color-scheme: dark`. Mint is the "live" colour: the caret, the listening level, Blurt's bar in the speed
-chart, the download button (flat `--mint-ink`; no gradient on the page). Text set straight on the wallpaper uses
+chart. Buttons (download, copy, the film's play button) use the button gradient (`gradient.button` in tokens.json,
+white text); no other gradient on the page. Text set straight on the wallpaper uses
 `--over` / `--over-2`. The hand-off scene and the privacy band are night (`#12171A`) in both modes.
 
 ## The page: your Mac, the notch, and the day passing

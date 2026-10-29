@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.5-1") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.5-1") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-1") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.5-3") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.5-3") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-3") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -1381,3 +1381,33 @@ html.motion .sc-first:not(.on3) .kk{ opacity: 0; }
 /* privacy: the headline's phrases may wrap inside their column (one phrase was wider than the column and ran over the lists) */
 .pv-grid{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
 .pv-grid h2 .ph{ white-space: normal; }
+/* hero, centred (founder, 2026-10-29): headline, lede and download centred under the notch, with more room below the
+   notch and the live panel that grows out of it */
+.hero{ text-align: center; }
+.hero h1{ margin-inline: auto; }
+.hero-b{ justify-content: center; justify-items: center; }
+.hero-act{ justify-items: center; }
+.hero .dl{ justify-content: center; }
+html.motion .hero{ padding-top: clamp(80px, 14vh, 156px); }
+@media (max-width: 720px) {
+  .hero{ padding-top: 56px; }
+  html.motion .hero{ padding-top: 52px; }
+}
+
+/* round 10b (founder, 2026-10-29) ---------------------------------------------------------------------------------
+   the hero headline stays on two lines (founder: two lines read better than one), centred; phones the same,
+   English balanced */
+@media (max-width: 720px) { html[lang="en"] .hero h1{ text-wrap: balance; } }
+/* buttons: the brand's button gradient (tokens.json gradient.button, corner to corner, white semibold text) */
+.btn-dl, .btn, .film-play, .su-next{ background: linear-gradient(to bottom right, #028932 0%, #02866F 45%, #087EB3 100%); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn-dl, .su-next{ color: #fff; } }
+.btn.done{ background: linear-gradient(to bottom right, #028932 0%, #02866F 45%, #087EB3 100%); filter: brightness(1.08); }
+.film-play .i-play{ background: #fff; }
+.film-play .i-play::after{ border-left-color: #02866F; }
+/* the facts under the download button: smaller, so they sit under it instead of competing with it */
+.get-l .figs dt{ font-size: clamp(24px, 2.2vw, 32px); }
+.get-l .figs dd{ font-size: 13.5px; }
+/* headlines that break at their comma or full stop, one phrase per line: install, privacy, hand-off */
+:is(#h-get, #h-priv, #h-hand) .ph{ display: block; }
+html[lang="en"] #h-hand{ font-size: 2.6em; }
+@media (max-width: 720px) { html[lang="en"] #h-hand{ font-size: 24px; } }
