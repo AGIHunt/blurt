@@ -66,8 +66,8 @@
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
 // Config record.dictation: enabled (true), key fn|right_option|either_option (unset = fn), mode auto|tap|hold (unset =
 // auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
-// polish_timeout_ms, load_budget_ms (12000), streaming (true), rehear (true: §Hearing again), precapture (true), builtin_mic (automatic), start_sound
-// (false), retention_days (30), keep_audio (true), asr_model (automatic), context (true), learn (true),
+// polish_timeout_ms, load_budget_ms (12000), streaming (true), rehear (true: §Hearing again), precapture (true), builtin_mic (automatic), sounds
+// (true: DictationSound), retention_days (30), keep_audio (true), asr_model (automatic), context (true), learn (true),
 // double_tap_send (true), live_partial (automatic: on from 16 GB). Test hooks:
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
@@ -238,8 +238,6 @@ final class Dictation {
     static var precapture: Bool { settings["precapture"] as? Bool ?? true }
     /// the Mac's own mic for dictation: unset = automatic (when the default input is Bluetooth), true / false
     static var builtInMicSetting: Bool? { settings["builtin_mic"] as? Bool }
-    /// a soft tick when the mic is really listening (off by default)
-    static var startSound: Bool { settings["start_sound"] as? Bool ?? false }
     static var retentionDays: Int { settings["retention_days"] as? Int ?? 30 }
     /// on unless turned off (v1.0.3: the recordings are what a feedback report sends, docs/design/feedback.md)
     static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? true }
@@ -268,6 +266,7 @@ final class Dictation {
     func install() {
         keys.onEvent = { [weak self] e in self?.handle(e) }
         keys.onChange = { [weak self] in self?.listenerChanged() }
+        DictationSound.preload()
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: Dictation.retentionDays) }
         // ≤ 0.7: a once-ever flag that silenced the reminder for good after one unseen toast
         if Config.shared["app.dictation_prompted"] != nil { Config.shared.set("app.dictation_prompted", nil) }
@@ -944,7 +943,7 @@ final class Dictation {
         }
     }
 
-    /// The first audio arrived: the island switches to "listening" (the user can talk now), a soft tick if wanted.
+    /// The first audio arrived: the island switches to "listening" (the user can talk now), and Peep peeps.
     private func micStarted(_ v: NoteVoice) {
         guard voice === v else { return }
         micLive = true
@@ -953,7 +952,7 @@ final class Dictation {
               "precaptured": precaptured, "builtin_mic": v.builtInMic])
         if listening {
             island.dictationChanged()
-            if Dictation.startSound, (NSApp.delegate as? App)?.rec == nil { NSSound(named: "Tink")?.play() }
+            DictationSound.start.play()
         }
     }
 
@@ -1035,12 +1034,13 @@ final class Dictation {
         // limit, "still recognizing") is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore
         // IslandToasts.swift). A line left up said the opposite of the listening ears under it (v0.9 dogfood).
         DictationToastKeys.droppedAtStart.forEach { island.dropToasts(key: $0) }
+        remindRemembered()          // Structured / Translate still on here from last time: said after an hour's quiet
         if trigger.key == .fn { fnClashNotice(via: "take") }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
               "precaptured": adopted, "mic_live": micLive, "pending": queue.count, "style": styleDecision?.style.rawValue ?? "light",
               "style_source": styleDecision?.source.rawValue ?? "default", "category": styleDecision?.category.rawValue ?? "other"])
-        if micLive, Dictation.startSound { NSSound(named: "Tink")?.play() }
+        if micLive { DictationSound.start.play() }
     }
 
     /// The text around the cursor, read while the user talks (Accessibility calls can take a moment). Test builds read
@@ -1093,6 +1093,7 @@ final class Dictation {
         trigger.reset(active: false)
         emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
         discard(quietly: true)
+        if !quietly { DictationSound.cancel.play() }
         if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
     }
 
@@ -1103,6 +1104,14 @@ final class Dictation {
         if let id = queue.last, let t = takes[id] {
             t.sendAfterPaste = true
             emit(["event": "dictation_send", "result": "queued", "phase": phase.rawValue, "id": id])
+            return
+        }
+        // Return is a dictation's send: not with nothing dictated just before, in this app (DictationSendRule)
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        guard DictationInsert.testMode || DictationSendRule.decide(pending: false, lastPaste: DictationInsert.lastPasted, front: front,
+                                                                   now: CACurrentMediaTime()) == .send else {
+            sendAttempts += 1           // the setup's Try-it step counts the gesture, Return or not
+            emit(["event": "dictation_send", "result": "skipped", "why": "no_take", "after": after])
             return
         }
         pressReturn(after: after)
@@ -1224,6 +1233,7 @@ final class Dictation {
         let keyUp = CACurrentMediaTime()
         let duration = v.elapsed
         if !ended { v.stop(keep: heardSpeech) }
+        DictationSound.stop.play()      // after the mic closed: the peck isn't in the take
         voice = nil
         stream = nil
         micLive = false
@@ -1236,6 +1246,7 @@ final class Dictation {
             updatePhase()
             return toastNothing()
         }
+        rememberSwitches()          // a ⇧ / ⌘ switch stays on in this app (DictationRemembering)
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish

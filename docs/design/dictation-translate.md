@@ -77,6 +77,8 @@ Kimi Code 2、Code 1、备忘录 1；中位 29 字，最长 495 字）+ 20 条�
 
    只用云端时不需要 MLX，也不需要下载模型（`polish.py serve` 不装模型也能起来，并且接 `translate` 请求）。
 2. 终端、Codex 都**不默认**翻译：一律手动打开；同一个 App 里开过 3 次，就问一次要不要以后都翻。
+   **v1.0.6 改为记住**：在某个 App 里按 ⌘ 打开翻译，以后在这个 App 里一直翻译，再按 ⌘ 关掉才取消；隔了一小时再用会提示一句「沿用上次的设置」。
+   详见 `dictation-styles.md` §3.5。
 3. 触发：**说话时单按 ⌘ + 点刘海标签**。
 
 ## 5. 做了什么
@@ -137,3 +139,14 @@ Kimi Code 2、Code 1、备忘录 1；中位 29 字，最长 495 字）+ 20 条�
 「To translate, set up a cloud model or download this Mac's polish model」，并给出「设置…」；翻译不会打开，听写按原话输入。
 刘海截图（只截隔离 App 自己的刘海窗口，中英文各一套）：`promo/cases/dictation-translate/shots/`。英文那行原来折成两行，
 已改短为「Translating: Chinese ↔ English · ⌘ to turn off」。没跑三评委视觉评审。
+
+## 7. v1.0.6：更多语种
+
+- 「设置 → 听写 → 翻译成」：「自动：中文 ↔ 英文」（默认，和以前一样），或 English、简体中文、繁體中文、日本語、
+  한국어、Français、Deutsch、Español、Português、Italiano、Русский（用各语言自己的写法列出）。⌥T 截图翻译共用这一个
+  设置（创始人选的方案：一个「翻译成」列表）。
+- 说的已经是目标语言：翻成系统的第一语言（`DictationTranslateRoute.home`），两者相同就不翻。听写知道说的是什么语言
+  （语音模型给出），直接定方向；⌥T 和没判出语言的听写把两个都交给模型：polish.py 的 target 写成 `X|Y`（翻成 X；
+  已经是 X 就翻成 Y），守卫只在原文确实是 X 时才接受 Y。
+- 实测（DeepSeek V3.1，经 OpenRouter）：中文、英文句子翻成日语、法语都对；目标英文、原文英文时翻成了中文。本机
+  润色模型在中英以外的语言上没测，设置里的说明写「用云端更好」。

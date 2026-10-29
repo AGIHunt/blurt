@@ -345,18 +345,18 @@ class BiasedNote(unittest.TestCase):
         try:
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
                 d = T.dictation_models(A.hw())
-                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")       # Apple silicon, pro (v0.8 speed eval)
+                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")       # Apple silicon, pro too (v1.0.6)
                 self.assertEqual(d["selected"], "sensevoice-small")             # … until it is installed
-                self.assertEqual(d["models"][0]["id"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(d["models"][0]["id"], "qwen3-asr-0.6b-mlx")
                 self.assertEqual({m["id"]: m["vocab"] for m in d["models"]}["sensevoice-small"], "none")
                 self.assertEqual(T.dictation_models(A.hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")   # standard
             T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
-                # a pro Mac with only the 0.6B keeps using it until the 1.7B is installed
                 self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-0.6b-mlx")
             T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx", "qwen3-asr-1.7b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
-                self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-1.7b-mlx")
+                # both here: the recommended 0.6B
+                self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-0.6b-mlx")
                 self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"},
                            "record": {"dictation": {"asr_model": "sensevoice-small"}}}):

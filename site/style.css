@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.5-5") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.5-5") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-5") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.6-1") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.6-1") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.6-1") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;

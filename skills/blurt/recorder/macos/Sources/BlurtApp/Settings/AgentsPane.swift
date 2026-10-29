@@ -376,11 +376,12 @@ struct AgentsPane: View {
         .task { await m.open() }
         // Connect's preview; from the details sheet it opens over that sheet instead (AgentDetailSheet)
         .sheet(isPresented: Binding(get: { m.plan != nil && m.details == nil }, set: { if !$0 { m.plan = nil } })) {
-            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied).buttonStyle(.automatic) }
+            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied).buttonStyle(.automatic)
+                .closesOnOutsideClick { m.plan = nil } }
         }
         .background {
             Color.clear.sheet(isPresented: Binding(get: { m.details != nil }, set: { if !$0 { m.details = nil } })) {
-                if let id = m.details { AgentDetailSheet(m: m, id: id).buttonStyle(.automatic) }
+                if let id = m.details { AgentDetailSheet(m: m, id: id).buttonStyle(.automatic).closesOnOutsideClick { m.details = nil } }
             }
         }
     }

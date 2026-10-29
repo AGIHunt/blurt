@@ -51,7 +51,7 @@
 "speech.manage.button" = "管理模型…";
 "speech.lib.recognition" = "语音识别";
 "speech.lib.col.model" = "模型";
-"speech.lib.col.used" = "用于";
+"speech.lib.col.used" = "说明";
 "speech.lib.done" = "完成";
 "speech.lib.note" = "准确率按%@计算，来自 Apple M5 Max 上的参考测试。";
 "speech.lib.note.measured" = "表示在这台 Mac 上实测的数字。";
@@ -151,8 +151,8 @@
 "speech.section.mac" = "这台 Mac";
 "speech.section.jobs" = "正在用的模型";
 "speech.machine.short" = "%1$@，%2$@";
-"speech.rec.title_size" = "推荐给这台 Mac · %@";
-"speech.rec.line" = "%1$@将改用 %2$@";
+"speech.rec.title_size" = "推荐下载 · %@";
+"speech.rec.line" = "下载后，%1$@改用 %2$@";
 "speech.rec.help" = "下载这些模型。每个用途在它的模型下载好后自动换用。";
 "speech.manage.count" = "这台 Mac 上有 %@ 个";
 
@@ -162,3 +162,25 @@
 "speech.lib.use" = "使用";
 "speech.lib.use.help" = "听写、语音备注、实时字幕和录屏都改用这个模型。";
 "speech.auto.footer" = "「自动」按这台 Mac（%@）和你说的语言挑选模型。";
+
+/* Model library: what each model is for (v1.0.6) */
+"speech.lib.note2" = "推荐的模型按这台 Mac 的内存挑选。速度和内存是实测值，带 ✓ 的是在这台 Mac 上测的。";
+"speech.lib.more" = "更多模型（%d）";
+"speech.lib.in_use" = "在用：%@";
+"speech.tag.recommended" = "推荐";
+"speech.tag.small_mac" = "适合内存小的 Mac";
+"speech.tag.apple-speech" = "系统自带，不用下载；同音字错得多";
+"speech.tag.qwen3-asr-0.6b-mlx" = "准，认得你加的词";
+"speech.tag.qwen3-asr-1.7b-mlx" = "英文稍好，体积是 0.6B 的 2.5 倍";
+"speech.tag.sensevoice-small" = "最小最快，不认你加的词";
+"speech.tag.whisper-large-v3-turbo-mlx" = "支持的语言最多";
+"speech.tag.whisper-large-v3-turbo-q4-mlx" = "语言多，下载小";
+"speech.tag.qwen3-asr-0.6b-onnx" = "不需要 Apple 芯片";
+"speech.tag.whisper-large-v3-turbo-ct2" = "适合 NVIDIA 显卡";
+"speech.tag.gemma4-e2b" = "实测最稳";
+"speech.tag.gemma4-e4b" = "更大更慢，改写偏多";
+"speech.tag.qwen3.5-2b" = "更小更快";
+"speech.tag.qwen3.5-0.8b" = "适合内存小的 Mac";
+"speech.tag.qwen3-0.6b" = "适合内存很小的 Mac";
+"speech.tag.qwen3-1.7b" = "适合内存小的 Mac";
+"speech.tag.gemma3-1b" = "适合内存小的 Mac";

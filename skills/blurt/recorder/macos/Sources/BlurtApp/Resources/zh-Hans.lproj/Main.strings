@@ -453,7 +453,6 @@
 "menu.view" = "显示";
 "menu.toggle_detail" = "显示或隐藏详情";
 "menu.sort_by" = "排序方式";
-"main.quit.kept" = "口喷鸡还在菜单栏里，听写照常能用。要退出，请从菜单栏图标的菜单里选。";
 
 "menu.undo" = "撤销";
 

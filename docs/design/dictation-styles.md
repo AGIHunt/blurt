@@ -208,10 +208,26 @@ Signals blurt can already see:
   60 s.
 - **Edits** in the watch window that re-add particles or remove a final 。 in chat refine the chat variant.
 
-Policy: **suggest, never switch silently.** After ≥ 3 consistent signals in an app (≥ 70 % one way), the island
-offers 「在 备忘录 里自动排清单？」 Yes / No once, like the existing *Learned "pull request"* · Undo pattern. Silent
-drift is the root of the Typeless complaints about quality getting worse with updates. Learned app defaults show and
-can be reset in Settings → Dictation.
+Policy (v0.9–1.0.5): **suggest, never switch silently.** After ≥ 3 consistent signals in an app (≥ 70 % one way),
+the island offers 「在 备忘录 里自动排清单？」 Yes / No once, like the existing *Learned "pull request"* · Undo pattern.
+Silent drift is the root of the Typeless complaints about quality getting worse with updates. Learned app defaults
+show and can be reset in Settings → Dictation.
+
+**Since v1.0.6: a switch sticks to its app** (the founder: 「每个应用里 Fn 键后如果按过 shift 或 command 来触发结构化或者翻译，
+那后面再次在这个应用里用 fn 录音的时候就保持对应的结构化或者翻译」). ⇧ / Fn+⇧ / the island to Structured, or ⌘ / the
+island's left half to Translate, in a take that was typed, stays on in that app until switched back
+(`BlurtCore/DictationRemember`, `DictationRemembering.swift`); the same per-app lists as before hold it (style:
+`apps` + `learned`; translate: `apps`), so Settings shows it with Reset. How it squares with the old rules:
+- **The ask after 3 switches** no longer comes up for ⇧ / ⌘: the first switch already made it the app's style, so
+  the next takes start there and there is nothing left to suggest. It still asks from the other signals (a kept or
+  undone ⌥L reformat, a list taken apart in the field, the ≡ chip ignored) — those say something ⇧ doesn't.
+- **"Never switch silently"** is kept in a lighter form: nothing changes that the user didn't switch themselves; the
+  first three remembered switches say so (「以后在 微信 里也会结构化 · 按 ⇧ 换回」), the ear shows the style and
+  translate glyphs from the moment it listens, and a take that starts with something remembered says so when the
+  app was quiet for an hour or more (「沿用 微信 上次的设置：翻译 · 按 ⌘ 关掉」) — the risk is a translation left on
+  from a chat with a foreign contact going out to the next one.
+- A cancelled take, or one with nothing heard, leaves nothing. Settings → Dictation → "Remember Structured and
+  Translate for each app" (`learn_styles`, on) turns it all off.
 
 ### 3.6 What to build first, and the latency it costs
 

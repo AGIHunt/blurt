@@ -137,6 +137,10 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   - Price: two quick taps no longer mean "start, then stop at once" (that dictated nothing anyway); someone used to
     macOS's "Press 🌐 twice" for system dictation now sends Return instead. A single tap right after letting go of
     push-to-talk no longer sends (two do), and a tap while a take is still being typed doesn't start the next one.
+  - (v1.0.6) Return only as a dictation's send (`BlurtCore/DictationSendRule`): a take still on its way, or one typed
+    into the app in front within the last 60 s. A double tap with nothing dictated before it pressed Return in whatever
+    app was in front (the founder: 「这时候不应该有回车」); now it presses nothing (`dictation_send` result `skipped`,
+    why `no_take`; the setup's Try-it step still counts the gesture).
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
 - Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
 - **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox
@@ -241,7 +245,12 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
    - **The island says "listening" only once audio arrives** (`NoteVoice.onFirstAudio` → `Dictation.micLive`):
      until then the keyboard glyph with dots (`shots/island-mic-starting.png`), then the mint level and the clock
      (`shots/island-listening.png`). `dictation_mic_live` records `from_key_ms`.
-   - An optional soft tick when listening starts (`record.dictation.start_sound`, off; never while recording).
+   - **Sounds** (v1.0.6, on: `record.dictation.sounds`; `DictationSound`): Peep's peep (two rising chirps) when the first audio arrives
+     (talk now), a double peck when the take stops (after the mic closed, so it isn't in the take), one softer peck
+     when Esc cancels it; voice notes the same. Never while a screen recording runs. Why (the founder): a Fn press that
+     didn't register went unnoticed — they talked, pressed again to stop, and that press started the take. Silence
+     after a press now says nothing started. The clips are the film's (`assets/sounds/build.py`: its synthesized peep, at
+     1:34, and peck; the founder chose the peep over a recorded hen's cluck), level-matched (−24.4 / −24.5 LUFS). Replaces v0.9's optional Tink (`start_sound`, off).
 - Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
   (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
 
@@ -1956,7 +1965,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
-| `start_sound` | `false`: a soft tick when listening starts |
+| `sounds` | `true`: the peep / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |

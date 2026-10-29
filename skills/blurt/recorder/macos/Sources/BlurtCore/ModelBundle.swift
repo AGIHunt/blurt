@@ -46,13 +46,21 @@ public enum ModelBundle {
     }
 
     /// Downloads from the China-friendly mirrors first (BLURT_HF_MIRROR=1): Settings → Speech's choice, else — never
-    /// set — a CN region. Every download (the assistant, Settings → Dictation and → Speech) asks this, so they agree
-    /// with the checkbox.
-    public static func mirror(setting: Bool?, region: String?) -> Bool { setting ?? (region == "CN") }
+    /// set — a CN region or a mainland-China time zone (v1.0.6: someone in China with an English / US system still
+    /// can't reach Hugging Face). Every download (the assistant, Settings → Dictation and → Speech) asks this, so they
+    /// agree with the checkbox; a download that fails on one source tries the other.
+    public static func mirror(setting: Bool?, region: String?, timeZone: String? = nil) -> Bool {
+        setting ?? (region == "CN" || timeZone.map(chinaTimeZones.contains) == true)
+    }
 
-    /// `mirror(setting:region:)` for this Mac (config asr.hf_mirror, the current locale's region).
+    /// The mainland's zones (not Hong Kong, Macau or Taipei: Hugging Face is reachable there).
+    static let chinaTimeZones: Set<String> = ["Asia/Shanghai", "Asia/Chongqing", "Asia/Chungking", "Asia/Harbin",
+                                              "Asia/Urumqi", "Asia/Kashgar", "PRC"]
+
+    /// `mirror(setting:region:timeZone:)` for this Mac (config asr.hf_mirror, the locale's region, the time zone).
     public static var mirror: Bool {
-        mirror(setting: Config.shared["asr.hf_mirror"] as? Bool, region: Locale.current.region?.identifier)
+        mirror(setting: Config.shared["asr.hf_mirror"] as? Bool, region: Locale.current.region?.identifier,
+               timeZone: TimeZone.current.identifier)
     }
 
     /// What still has to be downloaded, in order.

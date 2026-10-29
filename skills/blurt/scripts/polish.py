@@ -1471,7 +1471,10 @@ class Engine:
 # One prompt for every translation the app asks for (Copy Text from Screen's ⌥⇧T; dictation's translate mode builds on
 # it): the model decides the source language; `target` "auto" asks it for the other one of the user's pair.
 TRANSLATE_TARGETS = {"en": "English", "zh": "Simplified Chinese", "zh-Hant": "Traditional Chinese", "ja": "Japanese",
-                     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish"}
+                     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese",
+                     "it": "Italian", "ru": "Russian"}
+# A target is "auto" (Chinese ↔ English, the model picks the direction), a language ("ja"), or "X|Y" (v1.0.6, the
+# app's "Translate into" list): into X, and into Y — the user's own language — when the text is already in X.
 
 
 def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"), terms: bool = False,
@@ -1479,8 +1482,11 @@ def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"),
     """`terms`: the message starts with a "Words:" line (dictation: the user's own names and terms — without it 口喷鸡
     came out as "spray chicken"); `spoken`: the text is a dictation, which may still have hesitations in it."""
     a, b = (TRANSLATE_TARGETS.get(x, x) for x in pair)
-    rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}."
-            if target == "auto" else f"Translate it into {TRANSLATE_TARGETS.get(target, target)}.")
+    into, _, also = target.partition("|")
+    x, y = TRANSLATE_TARGETS.get(into, into), TRANSLATE_TARGETS.get(also, also)
+    rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if target == "auto"
+            else f"Translate it into {x}; if it is already in {x}, translate it into {y}." if also
+            else f"Translate it into {x}.")
     return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
             "only: no preface, no notes, no quotes, no Markdown the text didn't have. Keep its layout: the same line "
             "breaks, list markers, tabs and indentation. Keep code, commands, file paths, URLs, product names and "
@@ -1519,6 +1525,14 @@ def translate_guard(src: str, out: str, target: str, terms: list[str] | None = N
         return "empty"
     if " ".join(out.split()) == " ".join(src.split()):
         return None
+    if "|" in target:           # into X, or into Y when the text was in X already
+        into, _, also = target.partition("|")
+        first = translate_guard(src, out, into, terms)
+        if first in (None, "term", "empty"):
+            return first
+        # Y is right only for a text that was X (as far as the script tells: Chinese or not; other languages pass)
+        was_x = {"en": _cjk_share(su) < 0.2, "zh": _cjk_share(su) >= 0.3, "zh-Hant": _cjk_share(su) >= 0.3}.get(into, True)
+        return translate_guard(src, out, also, terms) if was_x else first
     if target in TRANSLATE_RATIO:
         # the script, not words: into English nearly no CJK is left; into Chinese some has to come
         if target == "en" and _cjk_share(ou) > 0.2 or target == "zh" and _cjk_share(ou) < 0.3 and _cjk_share(su) < 0.3:

@@ -479,6 +479,8 @@ struct OnboardingView: View {
                     T(Dictation.doubleTapSend ? "onboarding.use.dictation.detail" : "onboarding.use.dictation.detail_plain"),
                     OnboardingView.dictationCaps(m.dictationKey), first: true)
             feature(.snap, T("onboarding.use.snap"), T("onboarding.use.snap.detail"), KeyCaps.split(hk(.snap)))
+            feature(.copy, T("onboarding.use.text"), T("onboarding.use.text.detail"), KeyCaps.split(hk(.text)))
+            feature(.languages, T("onboarding.use.translate"), T("onboarding.use.translate.detail"), KeyCaps.split(hk(.translateText)))
             feature(.mic, T("onboarding.use.voice"), T("onboarding.use.voice.detail"), KeyCaps.split(hk(.voice)))
             feature(.record, T("onboarding.use.record"), T("onboarding.use.record.detail"), KeyCaps.split(hk(.toggleRecord)))
             Spacer(minLength: 12)

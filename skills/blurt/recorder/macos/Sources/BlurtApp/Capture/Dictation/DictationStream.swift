@@ -648,7 +648,7 @@ final class DictationStream {
     private func translate(_ r: inout Result, _ j: TranslateJob) {
         let t0 = CACurrentMediaTime()
         let said = j.style.pick(light: r.text, structured: r.structured).text
-        guard let target = DictationTranslateRoute.target(j.setting, spoken: r.language) else {
+        guard let target = DictationTranslateRoute.target(j.setting, spoken: r.language, home: Dictation.homeLanguage) else {
             r.translation = DictationTranslateRecord(source: j.source, toggles: j.toggles, target: nil, engine: j.engine.rawValue)
             emit(["event": "dictation_translate", "action": "skipped", "id": id, "language": r.language ?? NSNull()])
             return

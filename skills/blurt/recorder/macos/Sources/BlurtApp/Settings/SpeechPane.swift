@@ -417,7 +417,7 @@ struct SpeechPane: View {
         }
         .task { await m.load() }
         .task { await d.load() }
-        .sheet(isPresented: $library) { ModelLibrary { library = false }.buttonStyle(.automatic) }
+        .sheet(isPresented: $library) { ModelLibrary { library = false }.buttonStyle(.automatic).closesOnOutsideClick { library = false } }
         // a search or a link landing on the library: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
             if r?.id == "speech.models" { library = true }
@@ -879,11 +879,13 @@ private struct ModelLibrary: View {
     @State private var tab = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_TAB"] == "polish" ? Tab.polish : .asr
     @State private var hover: String? = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_HOVER"]
     @State private var confirmRemove: ASRModel?
+    /// the rest of the catalogue, folded under "More models" (v1.0.6: a dozen rows nobody could tell apart)
+    @State private var more = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_MORE"] != nil
     enum Tab: Hashable { case asr, polish }
 
     /// fixed columns, so numbers line up from row to row (right-aligned, tabular digits)
     enum Col {
-        static let used: CGFloat = 120, accuracy: CGFloat = 62, speed: CGFloat = 46, memory: CGFloat = 62, size: CGFloat = 62
+        static let used: CGFloat = 220, speed: CGFloat = 46, memory: CGFloat = 62, size: CGFloat = 62
         static let action: CGFloat = 86, gap: CGFloat = 10
     }
 
@@ -904,7 +906,15 @@ private struct ModelLibrary: View {
             // a dozen rows at most: the sheet grows to fit them instead of scrolling
             SettingsGroup("speech.models", title: "") {
                 header
-                if tab == .asr { ForEach(asrModels) { asrRow($0) } } else { ForEach(polishModels) { polishRow($0) } }
+                if tab == .asr {
+                    ForEach(asrModels.filter(shown)) { asrRow($0) }
+                    let rest = asrModels.filter { !shown($0) }
+                    if !rest.isEmpty { moreToggle(rest.count); if more { ForEach(rest) { asrRow($0) } } }
+                } else {
+                    ForEach(polishModels.filter(shown)) { polishRow($0) }
+                    let rest = polishModels.filter { !shown($0) }
+                    if !rest.isEmpty { moreToggle(rest.count); if more { ForEach(rest) { polishRow($0) } } }
+                }
             }
             .padding(.top, -12)
             HStack(alignment: .center) {
@@ -931,7 +941,7 @@ private struct ModelLibrary: View {
     /// "Accuracy is for Chinese and English, from a reference test on Apple M5 Max." (+ the seal, once something is
     /// measured here); the polish tab says what polish does.
     var note: some View {
-        var t = Text(tab == .polish ? S("speech.purpose.polish.detail") : S("speech.lib.note", Loc.list(m.languages.map(languageName))))
+        var t = Text(tab == .polish ? S("speech.purpose.polish.detail") : S("speech.lib.note2"))
         if tab == .asr && m.models.contains(where: { $0.bench != nil }) {
             t = t + Text("  ") + Text(Image(systemName: "checkmark.seal.fill")).foregroundColor(Color.brandOk)
                 + Text(" " + S("speech.lib.note.measured"))
@@ -958,6 +968,45 @@ private struct ModelLibrary: View {
     }
     func rank(installed: Bool, used: Bool) -> Int { used ? 0 : installed ? 1 : 2 }
 
+    // MARK: what each model is for, and which are folded
+
+    /// Recommended for this Mac: dictation's pick, or any job's.
+    func recommended(_ x: ASRModel) -> Bool {
+        x.id == d.asr?.recommended || ASRPurpose.allCases.contains { m.recommended($0)?.id == x.id }
+    }
+    /// Shown without "More models": in use, on this Mac, recommended, built in, or downloading.
+    func shown(_ x: ASRModel) -> Bool {
+        x.installed || !usedFor(x).isEmpty || recommended(x) || x.id == "apple-speech" || m.download(x.id) != nil
+    }
+    func shown(_ x: PolishModel) -> Bool {
+        x.installed || d.polish?.selected == x.id || d.polish?.recommended == x.id || m.download(x.id) != nil
+    }
+    /// The line in the For column: "Recommended · …", then what the model is good at (speech.tag.<id>), from the
+    /// measurements in docs/design/first-minute-speech.md and dictation.md.
+    func tag(id: String, recommended rec: Bool, tiers: [String]? = nil) -> String {
+        var parts: [String] = []
+        if rec { parts.append(S("speech.tag.recommended")) }
+        if Loc.has("speech.tag.\(id)", table: "Speech") { parts.append(S("speech.tag.\(id)")) }
+        else if let t = tiers, !t.contains("pro"), !t.contains("standard") { parts.append(S("speech.tag.small_mac")) }
+        return parts.joined(separator: " · ")
+    }
+
+    func moreToggle(_ n: Int) -> some View {
+        Button { withAnimation(.easeOut(duration: 0.15)) { more.toggle() } } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(more ? 90 : 0))
+                Text(S("speech.lib.more", n)).font(.system(size: SettingsMetrics.detailSize))
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 8).padding(.leading, SettingsMetrics.iconSlot + Col.gap)
+        .accessibilityLabel(S("speech.lib.more", n))
+    }
+
     /// The jobs a model on this Mac does, as the page's rows show them (their icon and title): its purposes, and
     /// dictation when it is dictation's.
     func usedFor(_ x: ASRModel) -> [Job] {
@@ -973,6 +1022,8 @@ private struct ModelLibrary: View {
         var text = ""
         var err = false
         var jobs: [Job] = []
+        /// the model's own line (what it is good for), not news about it
+        var tag = false
     }
     struct Job: Hashable {
         var symbol: String
@@ -987,7 +1038,6 @@ private struct ModelLibrary: View {
             headerCell(S("speech.lib.col.model"), width: nil, trailing: false)
             headerCell(S("speech.lib.col.used"), width: Col.used, trailing: false)
             if tab == .asr {
-                headerCell(S("speech.metric.accuracy"), width: Col.accuracy, seal: true, help: S("speech.metric.accuracy.help"))
                 headerCell(S("speech.metric.speed"), width: Col.speed, seal: true, help: S("speech.metric.speed.help"))
             }
             headerCell(S("speech.metric.memory"), width: Col.memory, seal: tab == .asr, help: S("speech.metric.memory.help"))
@@ -1011,7 +1061,7 @@ private struct ModelLibrary: View {
     func asrRow(_ x: ASRModel) -> some View {
         let uses = usedFor(x)
         let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
-        let err = m.errorRate(x), speed = m.speed(x), memory = m.memory(x)
+        let speed = m.speed(x), memory = m.memory(x)
         let dash = x.installed ? S("speech.lib.dash.installed") : S("speech.lib.dash")
         var used = Used()
         if let p = m.download(x.id) { used.text = p.text }
@@ -1022,8 +1072,8 @@ private struct ModelLibrary: View {
         else if !x.installed, !picked.isEmpty {
             used.text = S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) }))
         } else if !m.missing(x).isEmpty { used.text = S("speech.lib.missing", Loc.list(m.missing(x).map(languageName))) }
+        else { used.text = tag(id: x.id, recommended: recommended(x)); used.tag = true }
         return row(id: x.id, installed: x.installed, name: x.title, help: describe(x), used: used, inUse: !uses.isEmpty) {
-            MetricCell(text: err.map { percent(max(0, 1 - $0.value)) }, measured: err?.measured == true, width: Col.accuracy, dash: dash)
             MetricCell(text: speed.map { S("speech.metric.speed.value", decimal($0.value)) }, measured: speed?.measured == true,
                        width: Col.speed, dash: dash)
             MetricCell(text: memory.map { modelSize($0.value) }, measured: memory?.measured == true, width: Col.memory, dash: dash)
@@ -1076,6 +1126,7 @@ private struct ModelLibrary: View {
         if let p = m.download(x.id) { used.text = p.text }
         else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
         else if inUse { used.jobs = [Job.polish] }
+        else { used.text = tag(id: x.id, recommended: d.polish?.recommended == x.id); used.tag = true }
         return row(id: x.id, installed: x.installed, name: x.name, help: "", used: used, inUse: inUse) {
             MetricCell(text: x.ramMB.map(modelSize), measured: false, width: Col.memory, dash: S("speech.lib.dash"), seal: false)
             MetricCell(text: modelSize(x.sizeMB), measured: false, width: Col.size, dash: "", seal: false)
@@ -1133,15 +1184,11 @@ private struct ModelLibrary: View {
                             .lineLimit(1).truncationMode(.tail)
                             .help(used.text)
                     } else {
-                        let names = Loc.list(used.jobs.map(\.title))
-                        HStack(spacing: 8) {
-                            ForEach(used.jobs, id: \.self) { j in
-                                Image(systemName: j.symbol).font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 16)
-                            }
-                        }
-                        .help(names)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(S("speech.lib.col.used") + " " + names)
+                        // in words, not icons (v1.0.6: nobody could read the icon row): "In use: dictation, voice notes"
+                        let names = Loc.list(used.jobs.enumerated().map { i, j in i == 0 ? j.title : j.title.lowercased(with: Loc.locale) })
+                        Text(S("speech.lib.in_use", names)).font(.system(size: SettingsMetrics.detailSize))
+                            .foregroundStyle(Color.brandInk).lineLimit(1).truncationMode(.tail)
+                            .help(S("speech.lib.in_use", names))
                     }
                 }
                 .frame(width: Col.used, alignment: .leading)

@@ -95,13 +95,15 @@ final class DictationSettings: ObservableObject {
     /// nil = Automatic (the Mac's own mic when the default input is Bluetooth), true = always the Mac's, false = always
     /// the default input (DictationMicChoice)
     @Published var micChoice = Dictation.builtInMicSetting
-    @Published var startSound = Dictation.startSound
+    @Published var startSound = DictationSound.startOn
+    @Published var stopSound = DictationSound.stopOn
     func setMic(_ v: Bool?) {
         micChoice = v
         save("builtin_mic", v)
         MicEngine.shared.prepare(builtIn: Dictation.useBuiltInMic)
     }
-    func setStartSound(_ v: Bool) { startSound = v; save("start_sound", v ? true : nil) }
+    func setStartSound(_ v: Bool) { startSound = v; save("sounds", v ? nil : false) }
+    func setStopSound(_ v: Bool) { stopSound = v; save("stop_sound", v ? nil : false) }
 
     private func save(_ key: String, _ value: Any?) {
         Dictation.set(key, value)
@@ -309,7 +311,8 @@ struct DictationPane: View {
                             choices: [(nil, T("dictation.mic.auto")), (true, T("dictation.mic.mac")), (false, T("dictation.mic.default"))],
                             selection: Binding(get: { m.micChoice }, set: { m.setMic($0) }))
             }
-            SettingToggle("dictation.start_sound", isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+            SettingToggle("dictation.sounds", isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+            SettingToggle("dictation.stop_sound", isOn: Binding(get: { m.stopSound }, set: { m.setStopSound($0) }))
         }
         .disabled(!m.enabled)
     }
@@ -415,9 +418,10 @@ struct DictationPane: View {
     /// Translate: into what (⌘ while talking turns it on), the cloud or this Mac, the apps where it is always on.
     @ViewBuilder var translateRows: some View {
         SettingRow("dictation.translate", detail: T("dictation.translate.settings.detail")) {
+            // auto first, then every language by its own name (日本語, Español); ⌥T uses the same setting
             ChoicePopup(label: T("dictation.translate.settings.title"),
-                        choices: DictationTranslateTarget.allCases.map { ($0, T("dictation.translate.target.\($0.rawValue)")) },
-                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }))
+                        choices: DictationTranslateTarget.allCases.map { ($0, $0 == .auto ? T("dictation.translate.target.auto") : $0.endonym) },
+                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }), dividers: [1])
         }
         .disabled(!m.enabled)
         let cloud = ScreenTextRefine.cloudPayload != nil, local = Dictation.shared.polishModel != nil

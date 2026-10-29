@@ -36,7 +36,8 @@
 "dictation.toast.close" = "Close";
 "dictation.toast.secure_held" = "A password field has the cursor — nothing typed";
 "dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start listening, so your first words are lost. Automatic uses this Mac’s microphone whenever the default input is Bluetooth.";
-"dictation.mic.start_sound" = "Play a sound when listening starts";
+"dictation.sounds" = "Sound when listening starts";
+"dictation.stop_sound" = "Sound when listening stops";
 
 /* menus */
 "dictation.menu.history" = "Dictation History…";
@@ -422,8 +423,8 @@
 "dictation.style.reset" = "Reset";
 "dictation.style.reset.help" = "Back to its category’s style";
 "dictation.style.suggest" = "Offer a list when a take sounds like one";
-"dictation.style.learn_toggle" = "Suggest an app’s style from how I switch";
-"dictation.style.learn_toggle.detail" = "It only asks; it never changes a style by itself";
+"dictation.style.learn_toggle" = "Remember Structured and Translate for each app";
+"dictation.style.learn_toggle.detail" = "Turned on with ⇧ or ⌘, it stays on in that app until you press it again";
 "dictation.style.verbatim.detail" = "Exactly what the speech model heard. No polish.";
 "dictation.history.style" = "Style: %@";
 "dictation.history.style.reformatted" = "reformatted %ld×";
@@ -709,8 +710,6 @@
 
 /* Translate mode (docs/design/dictation-translate.md) */
 "dictation.translate.toast.on.auto" = "Translate on: Chinese ↔ English · ⌘ to turn off";
-"dictation.translate.toast.on.en" = "Translating into English · ⌘ to turn off";
-"dictation.translate.toast.on.zh" = "Translating into Chinese · ⌘ to turn off";
 "dictation.translate.toast.off" = "Translate off";
 "dictation.translate.toast.unavailable" = "Translating needs a cloud model or this Mac's polish model";
 "dictation.translate.toast.setup" = "Set Up…";
@@ -718,11 +717,9 @@
 "dictation.translate.toast.cloud_hint" = "Translated on this Mac; a cloud model does better";
 "dictation.translate.toast.suggest" = "Translate everything you dictate in %@?";
 "dictation.translate.toast.suggest.yes" = "Translate";
-"dictation.translate.settings.title" = "Translate";
-"dictation.translate.settings.detail" = "Press ⌘ while talking, or click Peep, to type in the other language";
-"dictation.translate.target.auto" = "Chinese ↔ English";
-"dictation.translate.target.en" = "Into English";
-"dictation.translate.target.zh" = "Into Chinese";
+"dictation.translate.settings.title" = "Translate into";
+"dictation.translate.settings.detail" = "Turn on with ⌘ while talking, or click Peep. ⌥T uses it too.";
+"dictation.translate.target.auto" = "Auto: Chinese ↔ English";
 "dictation.translate.cloud.title" = "Use the cloud model to translate";
 "dictation.translate.cloud.detail" = "Text is sent to %@; falls back to this Mac's model";
 "dictation.translate.cloud.none" = "No cloud model set up; this Mac's polish model translates";
@@ -730,3 +727,10 @@
 "dictation.translate.cloud.setup" = "Set Up…";
 "dictation.translate.apps" = "Always translate in";
 "dictation.translate.apps.remove" = "Remove";
+
+/* Per-app memory of Structured / Translate (DictationRemembering) */
+"dictation.remember.translate" = "Translate";
+"dictation.remember.and" = " and ";
+"dictation.remember.saved" = "%2$@ stays on in %1$@ · %3$@ to switch back";
+"dictation.remember.kept" = "As last time in %1$@: %2$@ · %3$@ to turn off";
+"dictation.translate.toast.on.into" = "Translating into %@ · ⌘ to turn off";

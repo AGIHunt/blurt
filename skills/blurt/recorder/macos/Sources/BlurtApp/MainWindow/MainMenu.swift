@@ -51,10 +51,10 @@ enum MainMenu {
         var app = [item(T("menu.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: AboutPanel.shared)]
             + updates() + [NSMenuItem.separator()]
         if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
-        // no ⌘Q on Quit: it's the resident app. ⌘Q in the main window closes it back to the menu bar instead
-        // (MainWindowController.handleKeyEquivalent → mCloseToMenuBar, which says so once)
+        // ⌘Q quits, as in every Mac app (v1.0.6, the founder; it used to close the window to the menu bar, which read as
+        // "⌘Q doesn't work"); ⌘W is the one that leaves Blurt in the menu bar
         app += [item(T("menu.hide"), #selector(NSApplication.hide(_:)), "h", target: nil), .separator(),
-                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "", target: nil)]
+                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "q", target: nil)]
         _ = menu("Blurt", app)
 
         let recent = NSMenu()
@@ -148,8 +148,8 @@ enum MainMenu {
 
 extension MainMenu {
     /// While only a small window of ours is open (Settings) the app is a menu-bar app without a
-    /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W do nothing, in its search field too. This gives it the
-    /// Edit keys (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
+    /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W / ⌘Q do nothing, in its search field too. This gives it the
+    /// Edit keys and Quit (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
     static func ensureEditKeys() {
         if let m = NSApp.mainMenu, m.items.contains(where: { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true }) { return }
         func item(_ t: String, _ sel: Selector, _ key: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
@@ -165,6 +165,7 @@ extension MainMenu {
         let main = NSMenu()
         let app = NSMenuItem(title: "Blurt", action: nil, keyEquivalent: "")
         app.submenu = NSMenu(title: "Blurt")
+        app.submenu?.addItem(item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "q"))
         main.addItem(app)
         let e = NSMenuItem(title: edit.title, action: nil, keyEquivalent: "")
         e.submenu = edit
@@ -218,14 +219,6 @@ extension MainWindowController {
 
     @objc func mClearFilters() { clearFilters() }
 
-    /// ⌘Q in the main window: close it to the menu bar — Blurt stays for dictation and the capture keys. The first
-    /// time, a toast says so (and where Quit is).
-    @objc func mCloseToMenuBar() {
-        let first = !quitHintShown
-        quitHintShown = true                // before the close, which saves the window state
-        window?.performClose(nil)
-        if first { appDelegate?.toast(T("main.quit.kept"), seconds: 7) }
-    }
 }
 
 /// A section title in a menu (NSMenuItem.sectionHeader on macOS 14+, a disabled item before).
@@ -288,8 +281,8 @@ enum ShortcutsSheet {
                 Row(label: T("main.keys.detail"), keys: [["⌥⌘I"]]),
                 Row(label: T("menu.undo"), keys: [["⌘Z"]]),
                 Row(label: T("menu.redo"), keys: [["⇧⌘Z"]]),
-                // ⌘Q in the main window closes it too (mCloseToMenuBar): Blurt is the resident app
-                Row(label: T("main.keys.close_window"), note: T("main.keys.close_window.note"), keys: [["⌘W"], ["⌘Q"]]),
+                Row(label: T("main.keys.close_window"), note: T("main.keys.close_window.note"), keys: [["⌘W"]]),
+                Row(label: T("menu.quit"), keys: [["⌘Q"]]),
                 Row(label: T("main.keys.this"), keys: [["?"], ["⌘/"]]),
             ]),
         ]

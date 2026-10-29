@@ -283,7 +283,8 @@
 "settings.kw.dictation.history_keep" = "历史, 保留, 天数";
 "settings.kw.dictation.keep_audio" = "音频, 录音, 保留音频";
 "settings.kw.dictation.history_saved" = "历史, 清除历史, 删除历史";
-"settings.kw.dictation.start_sound" = "声音, 提示音, 音效";
+"settings.kw.dictation.sounds" = "声音, 提示音, 音效";
+"settings.kw.dictation.stop_sound" = "声音, 提示音, 音效, 结束";
 "settings.kw.dictation.mic" = "麦克风, 蓝牙, AirPods, 耳机, 输入设备";
 "settings.kw.dictation.models" = "识别模型, 语音模型, 润色模型, 大模型, ASR, Qwen, Gemma, 下载";
 "settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";
@@ -336,6 +337,10 @@
 "onboarding.use.snap.detail" = "截一块屏幕，存成卡片";
 "onboarding.use.voice.detail" = "说一句备注，存成卡片";
 "onboarding.use.record.detail" = "边录屏边讲，整理成条目交给 Agent";
+"onboarding.use.text" = "截图取字";
+"onboarding.use.text.detail" = "拖过一段文字，复制下来，光标在输入框里就直接打进去";
+"onboarding.use.translate" = "截图翻译";
+"onboarding.use.translate.detail" = "拖过一段文字，得到译文";
 "onboarding.use.change" = "在设置里修改快捷键…";
 "onboarding.cap.right_option" = "右 ⌥";
 "onboarding.dictation.title" = "设置听写";

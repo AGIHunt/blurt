@@ -196,15 +196,15 @@ review. A real 5-minute, 12-item session was ready in 51 s.
 
 | Use | Model | Download |
 |---|---|---|
-| Speech (dictation, voice notes, recordings), Macs with 32 GB or more | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
-| Speech, 16–24 GB | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Speech (dictation, voice notes, recordings), 16 GB and up | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Speech, optional: a little better at English, 2.5× the size | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
 | Polish, 16 GB and up | Gemma 4 E2B, 4-bit | 3.4 GB |
 | Polish, 8 GB | Gemma 3 1B, 4-bit | 0.7 GB |
 | Voice notes on CPU-only machines; Japanese, Korean, Cantonese | SenseVoice Small | 228 MB |
 | Recordings in other languages | Whisper large-v3-turbo, MLX | 1.5 GB |
 
-One speech model serves every job for Chinese and English. In use, the models take about 2.8 GB of memory on a
-16–24 GB Mac and 4.2 GB with the 1.7B (measured on an M1 Max). Idle models unload after 10 minutes, and sooner when
+One speech model serves every job for Chinese and English. In use, the models take about 2.8 GB of memory (4.2 GB
+with the 1.7B; measured on an M1 Max). Idle models unload after 10 minutes, and sooner when
 macOS runs short of memory.
 
 **Which languages?** Dictation was tested in Chinese, English and mixed Chinese–English. Recordings: SenseVoice covers

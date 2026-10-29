@@ -625,6 +625,9 @@ def native_binary(build: bool = True) -> Path | None:
     # Peep's frames (the mascot's sprite sheets, the menu-bar glyph frames, peep.json: assets/brand/import_peep.py)
     shutil.copytree(SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Peep", APP_BUNDLE / "Contents" / "Resources" / "Peep",
                     dirs_exist_ok=True)
+    # the sounds of a take (DictationSound: assets/sounds/build.py)
+    shutil.copytree(SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Sounds", APP_BUNDLE / "Contents" / "Resources" / "Sounds",
+                    dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
     # the AccentColor (Info.plist NSAccentColorName) and, for macOS 26, the app icon with its dark appearance
