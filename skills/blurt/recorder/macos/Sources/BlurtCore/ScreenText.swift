@@ -133,6 +133,8 @@ public enum ScreenText {
         return " "
     }
 
+    /// the marks that are never a word's start: a bullet even with no space after it ("-", "*", "–", "。", "·" are)
+    static let solidBullets: Set<Character> = ["•", "◦", "○", "◎", "▪", "■", "●", "◆", "◇", "►", "▸", "✓", "✔", "☐", "☑"]   // glyph-ok: OCR input, never shown
     static let bulletMarks: Set<Character> = ["•", "◦", "○", "◎", "。", "·", "▪", "■", "●", "◆", "◇", "►", "▸", "✓", "✔", "☐", "☑", "*", "–", "-"]   // glyph-ok: what Vision reads a list's bullet or check icon as (OCR input, never shown)
 
     /// "- rest" for a lone symbol and a space at the start, "N. rest" for a number or letter with . ) 、 (its space put
@@ -141,6 +143,10 @@ public enum ScreenText {
         let a = Array(s)
         if a.count >= 3, bulletMarks.contains(a[0]), a[1] == " " {
             return ("- " + String(a.dropFirst(2)).trimmingCharacters(in: .whitespaces), true)
+        }
+        // a bullet glyph that is never text is one even when Vision dropped the space after it ("•日志已经附在工单里")
+        if a.count >= 2, solidBullets.contains(a[0]), !a[1].isWhitespace {
+            return ("- " + String(a.dropFirst()).trimmingCharacters(in: .whitespaces), true)
         }
         var i = 0
         while i < a.count, i < 3, a[i].isASCII, a[i].isNumber { i += 1 }
@@ -175,13 +181,32 @@ public enum ScreenText {
         let inner = input.filter { $0.box.minY > 3 && $0.box.maxY < H - 3 }
         let hs = (inner.isEmpty ? input : inner).flatMap { p in Array(repeating: p.box.height, count: max(1, p.text.count)) }.sorted()
         let lineH = hs[hs.count / 2]
+        // a line's ink height (rows with ink in its x-span, a little above and below its box): what an edge cut
+        // takes away, whatever box Vision guessed for the part it saw
+        func inkHeight(_ b: CGRect, to edgeTop: Bool? = nil) -> CGFloat {
+            let pad = 0.3 * lineH
+            let y0 = edgeTop == true ? 0 : max(0, Int(b.minY - pad)), y1 = edgeTop == false ? ink.height : min(ink.height, Int(b.maxY + pad))
+            let rows = (y0..<max(y0, y1)).filter { ink.row($0, b.minX, b.maxX) > 0.01 }
+            guard let f = rows.first, let l = rows.last else { return 0 }
+            return CGFloat(l - f + 1)
+        }
+        let fullInk: CGFloat? = {
+            let h = inner.map { inkHeight($0.box) }.filter { $0 > 0 }.sorted()
+            return h.isEmpty ? nil : h[h.count / 2]
+        }()
 
         var kept: [Piece] = []
         for p in input {
             let b = p.box
             // 1. cut by the top or bottom edge
-            let cut = (b.minY <= 3 && ink.row(0, b.minX, b.maxX) > 0.02) || (b.maxY >= H - 3 && ink.row(ink.height - 1, b.minX, b.maxX) > 0.02)
-            if cut && b.height < 0.9 * lineH { continue }
+            // near an edge (Vision's box may stop short of it) with glyphs on the edge row
+            let topCut = b.minY <= 0.5 * lineH && ink.row(0, b.minX, b.maxX) > 0.02
+            let bottomCut = b.maxY >= H - 0.5 * lineH && ink.row(ink.height - 1, b.minX, b.maxX) > 0.02
+            if topCut || bottomCut {
+                if let full = fullInk {
+                    if inkHeight(b, to: topCut) < 0.9 * full { continue }
+                } else if b.height < 0.9 * lineH { continue }
+            }
             // 2. a character cut by the left or right edge
             var t = Array(p.text), ch = p.chars
             if ch.count == t.count, !t.isEmpty {
@@ -292,7 +317,11 @@ public enum ScreenText {
             while j >= 0, j < a.count, a[j] == " " || a[j] == "\t" { j += step }
             return j < 0 || j >= a.count || a[j] == "\n" || !isCJK(a[j]) || fw.contains(a[j])
         }
-        for i in a.indices where fw.contains(a[i]) && ok(i, -1) && ok(i, 1) {
+        // ("？sort=price": a space before it and ASCII right after — a query string, not a Chinese question)
+        func spacedBeforeASCII(_ i: Int) -> Bool {
+            i > 0 && a[i - 1] == " " && i + 1 < a.count && a[i + 1].isASCII && !a[i + 1].isWhitespace
+        }
+        for i in a.indices where fw.contains(a[i]) && ((ok(i, -1) && ok(i, 1)) || spacedBeforeASCII(i)) {
             if let v = a[i].unicodeScalars.first?.value, let u = UnicodeScalar(v - 0xFEE0) { a[i] = Character(u) }
         }
         return String(a)

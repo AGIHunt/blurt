@@ -1,3 +1,4 @@
-john@m5 ~/ordo-pLatform (main)$ uv run pytest tests/test_read_only.py -q •F.
+john@m5 ~/ordo-pLatform (main)$ uv run pytest tests/test_read_only.py -q
+- F.
 FAILED tests/test_read_only.py::test_replica_lag - AssertionError: Lag 12.5s > 10S
 1 failed,5 passed in 3.21s

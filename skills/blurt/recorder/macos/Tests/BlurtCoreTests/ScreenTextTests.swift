@@ -109,3 +109,20 @@ extension ScreenTextTests {
         XCTAssertEqual(S.fillMissingNumbers(["1. a", "note", "more", "2. c"]), ["1. a", "note", "more", "2. c"])
     }
 }
+
+extension ScreenTextTests {
+    /// Found making the site demo (2026-10-29): a bullet Vision read with no space after it, a query string's "？".
+    func testSolidBulletWithoutSpaceAndQueryQuestionMark() {
+        XCTAssertEqual(S.marker("•日志已经附在工单里")?.text, "- 日志已经附在工单里")
+        XCTAssertNil(S.marker("-1 是默认值"))
+        XCTAssertNil(S.marker("·分隔"))
+        XCTAssertEqual(S.asciiPunctuation("搜索页不认 ？sort=price"), "搜索页不认 ?sort=price")
+        XCTAssertEqual(S.asciiPunctuation("你好？我在"), "你好？我在")
+    }
+
+    /// The bottom line cut in half (Vision's box for it stops short of the edge): left out.
+    func testBottomHalfLineLeftOut() throws {
+        let t = try S.text(in: image("en_bottom_cut")).text
+        XCTAssertTrue(t.hasSuffix("- One owner for each item"), t)
+    }
+}
