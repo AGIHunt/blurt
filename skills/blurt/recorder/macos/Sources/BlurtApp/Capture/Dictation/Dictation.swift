@@ -768,8 +768,7 @@ final class Dictation {
     /// The polish server up (or a stuck one replaced) with its model loaded — dictation's key-down, and a voice note
     /// switched to Structured (its words go through the same structuring pass). Nothing without a polish model.
     func warmPolish() {
-        // the server runs cloud polish too: with no local model it is the cloud's alone (polish.py never downloads one)
-        guard polishModel != nil || DictationCloud.ready else { return }
+        guard polishModel != nil else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced
