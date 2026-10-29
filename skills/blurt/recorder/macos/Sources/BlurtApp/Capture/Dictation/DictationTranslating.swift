@@ -77,14 +77,19 @@ extension Dictation {
         let shown = Dictation.settings["translate_hint_shown"] as? Int ?? 0
         guard DictationTranslateHint.says(shown: shown) else { return }
         if translating.on { Dictation.set("translate_hint_shown", shown + 1) }
-        let into: String
-        switch Dictation.translateConfig.target {
-        case .auto: into = "dictation.translate.toast.on.auto"
-        case .en: into = "dictation.translate.toast.on.en"
-        case .zh: into = "dictation.translate.toast.on.zh"
-        }
-        toast(translating.on ? into : "dictation.translate.toast.off", key: Dictation.styleToastKey, seconds: 3)
+        let target = Dictation.translateConfig.target
+        if !translating.on { toast("dictation.translate.toast.off", key: Dictation.styleToastKey, seconds: 3) }
+        else if target == .auto { toast("dictation.translate.toast.on.auto", key: Dictation.styleToastKey, seconds: 3) }
+        else { toast("dictation.translate.toast.on.into", Dictation.languageName(target), key: Dictation.styleToastKey, seconds: 3) }
     }
+
+    /// A target language in the app's own language ("日语", "Japanese").
+    static func languageName(_ t: DictationTranslateTarget) -> String {
+        Loc.locale.localizedString(forIdentifier: t.rawValue) ?? t.endonym
+    }
+
+    /// The user's own language: what a take already in the target language is translated into (the system's first).
+    static var homeLanguage: String { DictationTranslateRoute.home(Locale.preferredLanguages) }
 
     /// The polish server up for the key-up's translation: with the local model loaded when that is what translates;
     /// without a local model it serves the cloud alone (polish.py never downloads one).

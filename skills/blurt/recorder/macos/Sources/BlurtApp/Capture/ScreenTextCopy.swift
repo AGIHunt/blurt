@@ -151,16 +151,19 @@ final class ScreenTextCopy {
     private func translate(_ text: String, image: CGImage, field: Field?) {
         island.toast(Loc.t("capture.text.translating", table: "Capture"), key: Self.toastKey, seconds: 30)
         let cloud = ScreenTextRefine.cloudPayload
+        // Settings → Dictation → Translate into, shared with dictation: auto (Chinese ↔ English), or a language — and
+        // the user's own when the text is in it already (v1.0.6)
+        let target = Dictation.translateConfig.target.request(home: Dictation.homeLanguage)
         let t0 = CACurrentMediaTime()
         DispatchQueue.global(qos: .userInitiated).async {
             var r: [String: Any]?
             if WarmServer.running("polish-serve") {
-                var req: [String: Any] = ["cmd": "translate", "text": text, "target": "auto"]
+                var req: [String: Any] = ["cmd": "translate", "text": text, "target": target]
                 if let c = cloud { req["cloud"] = c }
                 r = WarmServer.call("polish-serve", req, timeout: 40)
             }
             if r == nil {       // no server (yet): the CLI, the key on stdin
-                var o: [String: Any] = ["text": text, "target": "auto"]
+                var o: [String: Any] = ["text": text, "target": target]
                 if let c = cloud { o["cloud"] = c }
                 let body = try? JSONSerialization.data(withJSONObject: o)
                 let sem = DispatchSemaphore(value: 0)

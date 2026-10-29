@@ -137,6 +137,10 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   - Price: two quick taps no longer mean "start, then stop at once" (that dictated nothing anyway); someone used to
     macOS's "Press 🌐 twice" for system dictation now sends Return instead. A single tap right after letting go of
     push-to-talk no longer sends (two do), and a tap while a take is still being typed doesn't start the next one.
+  - (v1.0.6) Return only as a dictation's send (`BlurtCore/DictationSendRule`): a take still on its way, or one typed
+    into the app in front within the last 60 s. A double tap with nothing dictated before it pressed Return in whatever
+    app was in front (the founder: 「这时候不应该有回车」); now it presses nothing (`dictation_send` result `skipped`,
+    why `no_take`; the setup's Try-it step still counts the gesture).
 - Off while a screen recording runs (it owns the mic) and while a voice note listens; both cases show a toast.
 - Permissions: Accessibility for the paste, the context and the Fn filter; Input Monitoring for the listen-only tap.
 - **The Fn filter.** macOS uses Fn itself (System Settings → Keyboard → "Press 🌐 key to", `com.apple.HIToolbox

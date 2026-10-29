@@ -1288,3 +1288,43 @@ func diskSize(_ u: URL) -> Int64 {
     return total
 }
 typealias CoreAgent = BlurtCore.AgentStatus   // the shell has its own AgentStatus (AgentHub.swift)
+
+// MARK: sheets that close like popovers
+
+/// A sheet that only shows things (the model library, an agent's details) closes on a click outside it, in the window
+/// it hangs from, and on Esc — not only on its Done button (v1.0.6, the founder). Sheets with fields keep Esc alone:
+/// a stray click must not throw away a key being typed. The click that closes it does nothing else.
+struct ClosesOnOutsideClick: ViewModifier {
+    let close: () -> Void
+    @State private var monitor: Any?
+    @State private var sheet: NSWindow?
+
+    func body(content: Content) -> some View {
+        content
+            .background(WindowReader { sheet = $0 })
+            .onExitCommand(perform: close)
+            .onAppear {
+                monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { e in
+                    guard let s = sheet, let parent = s.sheetParent, e.window === parent, s.attachedSheet == nil else { return e }
+                    close()
+                    return nil
+                }
+            }
+            .onDisappear { if let m = monitor { NSEvent.removeMonitor(m) }; monitor = nil }
+    }
+}
+
+/// The window a view is in, once it is in one.
+private struct WindowReader: NSViewRepresentable {
+    let found: (NSWindow?) -> Void
+    func makeNSView(context: Context) -> NSView {
+        let v = NSView()
+        DispatchQueue.main.async { [weak v] in found(v?.window) }
+        return v
+    }
+    func updateNSView(_ v: NSView, context: Context) {}
+}
+
+extension View {
+    func closesOnOutsideClick(_ close: @escaping () -> Void) -> some View { modifier(ClosesOnOutsideClick(close: close)) }
+}

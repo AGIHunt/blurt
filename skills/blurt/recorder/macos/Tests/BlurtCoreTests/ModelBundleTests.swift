@@ -51,6 +51,11 @@ final class ModelBundleTests: XCTestCase {
         // the checkbox, either way, wins — turned off in China stays off
         XCTAssertFalse(ModelBundle.mirror(setting: false, region: "CN"))
         XCTAssertTrue(ModelBundle.mirror(setting: true, region: "US"))
+        // an English / US system in Shanghai: the mirror too; Hong Kong, Taipei or Singapore reach Hugging Face
+        XCTAssertTrue(ModelBundle.mirror(setting: nil, region: "US", timeZone: "Asia/Shanghai"))
+        XCTAssertFalse(ModelBundle.mirror(setting: nil, region: "US", timeZone: "Asia/Hong_Kong"))
+        XCTAssertFalse(ModelBundle.mirror(setting: nil, region: "SG", timeZone: "Asia/Singapore"))
+        XCTAssertFalse(ModelBundle.mirror(setting: false, region: "US", timeZone: "Asia/Shanghai"))
     }
 
     func testPendingAndTotal() {

@@ -285,6 +285,7 @@
 "settings.kw.dictation.keep_audio" = "audio, recording, keep audio";
 "settings.kw.dictation.history_saved" = "history, clear history, delete history";
 "settings.kw.dictation.sounds" = "sound, beep, chime, chirp";
+"settings.kw.dictation.stop_sound" = "sound, beep, chime, stop";
 "settings.kw.dictation.mic" = "microphone, mic, bluetooth, AirPods, headset, input";
 "settings.kw.dictation.models" = "speech model, polish model, recognition, ASR, LLM, Qwen, Gemma, download";
 "settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";
@@ -337,6 +338,10 @@
 "onboarding.use.snap.detail" = "Grab part of the screen as a card.";
 "onboarding.use.voice.detail" = "Say a quick note; it becomes a card.";
 "onboarding.use.record.detail" = "Talk over your screen; it becomes items for your agent.";
+"onboarding.use.text" = "Copy text from screen";
+"onboarding.use.text.detail" = "Drag over text; it's copied, or typed where your cursor is.";
+"onboarding.use.translate" = "Translate from screen";
+"onboarding.use.translate.detail" = "Drag over text; you get the translation.";
 "onboarding.use.change" = "Change Shortcuts in Settings…";
 "onboarding.cap.right_option" = "right ⌥";
 "onboarding.dictation.title" = "Set up dictation";

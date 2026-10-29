@@ -1106,6 +1106,14 @@ final class Dictation {
             emit(["event": "dictation_send", "result": "queued", "phase": phase.rawValue, "id": id])
             return
         }
+        // Return is a dictation's send: not with nothing dictated just before, in this app (DictationSendRule)
+        let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        guard DictationInsert.testMode || DictationSendRule.decide(pending: false, lastPaste: DictationInsert.lastPasted, front: front,
+                                                                   now: CACurrentMediaTime()) == .send else {
+            sendAttempts += 1           // the setup's Try-it step counts the gesture, Return or not
+            emit(["event": "dictation_send", "result": "skipped", "why": "no_take", "after": after])
+            return
+        }
         pressReturn(after: after)
     }
 

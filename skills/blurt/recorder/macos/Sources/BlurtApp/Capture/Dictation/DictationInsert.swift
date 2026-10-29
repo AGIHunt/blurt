@@ -136,6 +136,7 @@ enum DictationInsert {
             put(text, transient: true)
             let ours = pasteboard.changeCount
             postCommandV()
+            lastPasted = (CACurrentMediaTime(), front?.bundleIdentifier)
             emit(["event": "dictation_insert", "result": "pasted", "app": front?.bundleIdentifier ?? "", "role": focus.role ?? "",
                   "confirmed": confirmed, "no_field": lastNoField])
             // the dictated text stays in the history (and "Copy again" on the island); the user's clipboard comes back
@@ -194,6 +195,8 @@ enum DictationInsert {
     /// The last ⌘V went to a focus Accessibility recognised as a text field (false: WeChat and the like — the island
     /// then offers "Copy again" in case it didn't land).
     static var lastPasteConfirmed = true
+    /// When and into which app the last take was pasted (DictationSendRule: a double tap sends only right after one).
+    static var lastPasted: (at: Double, bundle: String?)?
 
     /// The last ⌘V went to a focus Accessibility could read and it isn't a text field (the desktop, a web page with
     /// nothing focused): the island keeps the text with Copy, and a double tap's Return isn't pressed there.

@@ -16,8 +16,37 @@
 //                               "asked": [bundle ids]}  (one dictionary: bundle ids have dots)
 import Foundation
 
+/// Settings' "Translate into" (dictation and ⌥T share it): auto = Chinese ↔ English, the model picks the direction;
+/// else one language (v1.0.6: the cloud models translate any of these; before, English or Chinese only).
 public enum DictationTranslateTarget: String, CaseIterable, Hashable {
-    case auto, en, zh
+    case auto, en, zh, zhHant = "zh-Hant", ja, ko, fr, de, es, pt, it, ru
+
+    /// The language in its own words, as Settings lists it ("日本語", "Español").
+    public var endonym: String {
+        switch self {
+        case .auto: return ""
+        case .en: return "English"
+        case .zh: return "简体中文"
+        case .zhHant: return "繁體中文"
+        case .ja: return "日本語"
+        case .ko: return "한국어"
+        case .fr: return "Français"
+        case .de: return "Deutsch"
+        case .es: return "Español"
+        case .pt: return "Português"
+        case .it: return "Italiano"
+        case .ru: return "Русский"
+        }
+    }
+
+    /// What polish.py's `translate` takes: "auto"; or "X|Y" — into X, and into `home` (the user's own language) when
+    /// the text is in X already (⌥T can't know what it will read; a dictation whose language wasn't heard).
+    public func request(home: String) -> String {
+        guard self != .auto else { return "auto" }
+        let h = DictationTranslateRoute.family(home)
+        let y = h == DictationTranslateRoute.family(rawValue) && self != .zhHant ? (h == "en" ? "zh" : "en") : h
+        return rawValue + "|" + y
+    }
 }
 
 public struct DictationTranslateConfig: Equatable {
@@ -54,25 +83,37 @@ public struct DictationTranslateConfig: Equatable {
 }
 
 public enum DictationTranslateRoute {
-    /// What the take is translated into, given the setting and the language the speech model heard it in ("zh",
-    /// "en", nil when it said none): "en" / "zh" / "auto" (the model decides: the other of the two), or nil — the take
-    /// is already in the fixed target, nothing to translate.
-    public static func target(_ setting: DictationTranslateTarget, spoken: String?) -> String? {
+    /// What the take is translated into, given the setting, the language the speech model heard it in ("zh", "en",
+    /// nil when it said none) and `home`, the user's own language (the system's first): auto → the other of Chinese
+    /// and English ("auto" when nothing was heard: the model decides); a fixed X → X, or `home` when the take is in X
+    /// already (the founder, v1.0.6) — nil when that is X too; nothing heard → "X|home" (polish.py: X, or home if it
+    /// was X).
+    public static func target(_ setting: DictationTranslateTarget, spoken: String?, home: String = "zh") -> String? {
         let heard = spoken.map(family)
         switch setting {
-        case .en: return heard == "en" ? nil : "en"
-        case .zh: return heard == "zh" ? nil : "zh"
         case .auto:
             switch heard {
             case "zh"?: return "en"
             case "en"?: return "zh"
             default: return "auto"
             }
+        default:
+            guard let h = heard else { return setting.request(home: home) }
+            // Chinese speech into Traditional is still a translation (the script changes)
+            guard setting != .zhHant, h == family(setting.rawValue) else { return setting.rawValue }
+            let mine = family(home)
+            return mine == h ? nil : mine
         }
     }
 
+    /// The user's own language from the system's list ("zh-Hans-CN" → "zh", "en-US" → "en", "ja-JP" → "ja").
+    public static func home(_ preferred: [String]) -> String {
+        let c = family(preferred.first ?? "zh")
+        return String(c.prefix(while: { $0 != "-" && $0 != "_" }))
+    }
+
     /// "zh-Hans", "zh_CN", "yue", "Chinese" → "zh"; "en-US", "English" → "en"; anything else as it is
-    static func family(_ code: String) -> String {
+    public static func family(_ code: String) -> String {
         let c = code.lowercased()
         if c.hasPrefix("zh") || c == "yue" || c == "cmn" || c == "chinese" || c == "cantonese" { return "zh" }
         if c.hasPrefix("en") || c == "english" { return "en" }

@@ -284,8 +284,8 @@ Editing, the Mac way:
   the list says where it is, with a button that shows it.
 - `↑` on the first item walks up into the banners and running jobs above the list; Return on a banner opens it.
 - Each place keeps its own filters: a State filter set in All Items stays there and never empties your Inbox.
-- `⌘Q` in this window closes it; Blurt keeps running in the menu bar for dictation and capture. Quit is in the menu
-  bar icon's menu.
+- `⌘Q` quits Blurt, as in any Mac app (also from Settings). `⌘W` closes this window and leaves Blurt in the menu bar
+  for dictation and capture.
 - A task's **Done when** is what the agent is told "done" means; it shows (and can be edited) with the task's details.
   No field an item holds is ever hidden.
 - An item file you or a sync tool edited into something Blurt can't read stays in the list, with a small warning mark
@@ -449,8 +449,7 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   notch says *Still listening · Fn to finish · Esc to cancel*; from 4:30 the clock counts down (−0:30) in amber with a
   quiet *30 s left*, and at the limit the notch says the dictation stopped there and types what you said. A tap while
   that line shows doesn't start a new one.
-- **No speech model yet.** Fn doesn't listen; the notch says *No speech model yet* with its size (or, when only the
-  small speech detection file is missing, says that) and **Download**, which starts it in the download queue above —
+- **No speech model yet.** Fn doesn't listen; the notch says *No speech model yet* with its size and **Download**, which starts it in the download queue above —
   the notch says it started, *Show* shows how far it is — the model you picked in Settings if that's the one
   missing. While it is already coming down, the notch says how far it is instead. A dictation never downloads a
   model by itself. If recognizing a dictation fails anyway, the recording is kept and the notch says so with
@@ -474,7 +473,19 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   "Sent" — or, when the Return couldn't be pressed (no Accessibility, a password field, the text was only copied), the
   notch says why not. Return goes as soon as the field shows the text, and your clipboard comes back only after that. For your first few dictations in a chat app, a quiet line after the text reminds you:
   *Double-tap Fn to send*. It works with whichever key you set, never types into Blurt itself or a password field,
-  and can be turned off in *Settings → Dictation* (*Double-tap Fn to send (Return)*).
+  and can be turned off in *Settings → Dictation* (*Double-tap Fn to send (Return)*). A double tap only sends what you
+  dictated: with nothing typed into that app in the last minute and nothing on its way, it presses nothing.
+- **Sounds.** Peep peeps when the mic is really listening (talk now) and pecks when the take stops; a softer peck when
+  Esc cancels it. Silence after a press means nothing started. Voice notes do the same; nothing plays while a screen
+  recording runs. *Settings → Dictation* has a switch for each (*Sound when listening starts / stops*).
+- **Translate while you talk.** Tap ⌘ (either side) while dictating, or click Peep in the notch: the take is typed
+  translated. *Settings → Dictation → Translate into*: *Auto: Chinese ↔ English* (default), or English, 简体中文,
+  繁體中文, 日本語, 한국어, Français, Deutsch, Español, Português, Italiano, Русский; what you said in that language
+  already goes into your system's language instead. ⌥T (translate from screen) uses the same setting. The cloud model
+  translates when you have one set up (better, about 1 s); otherwise the local polish model.
+- **Each app remembers.** Turn on Structured (⇧) or Translate (⌘) in an app and it stays on there until you switch it
+  back; after an hour away the notch reminds you as the next take starts. *Settings → Dictation → Remember Structured
+  and Translate for each app* turns this off; the apps are listed there with Reset.
 - **Nothing heard?** The notch names the microphone it listened with — "Didn't catch anything (AirPods)", or "No
   sound from AirPods" when that mic gave only silence (muted, the wrong input, a headset still connecting) — and
   *Change Mic…* opens *Settings → Dictation*'s microphone.
@@ -803,7 +814,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 - 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。条目不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
 - 在第一条上按 `↑` 会走到列表上方的横幅和正在运行的任务；在横幅上按回车会打开它。
 - 每个位置有自己的筛选：在「全部条目」里设的状态筛选只留在那里，不会把「待处理」筛空。
-- 在这个窗口按 `⌘Q` 只是关掉窗口；口喷鸡还在菜单栏里，听写和截图照常能用。要退出，从菜单栏图标的菜单里选。
+- `⌘Q` 退出口喷鸡，和其他 Mac App 一样（在设置窗口里也是）。`⌘W` 只关掉这个窗口，口喷鸡留在菜单栏里，听写和截图照常能用。
 - 待办的「**完成标准**」就是交给 Agent 时说的「做到什么算完成」，和待办的详情放在一起，能看也能改。条目里存着的字段一个都不会藏起来。
 - 你或同步工具把条目文件改成了口喷鸡读不懂的样子，它还留在列表里，标题前有个小警示标记，详情写着「这一条的文件读不出来」，带
   「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他条目照常更新，口喷鸡只提醒一次是哪个文件要改。
@@ -898,13 +909,17 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **马上说下一段。** 刚结束就再按一下 Fn（隔半秒以上，免得算成按两下），下一段马上开始听，上一段还在输入也不影响；几段按你说的先后顺序输入。
 - **只输入到原来的地方。** 文字只会输入到你开始说话时所在的 App。等文字好了你已经换到别的 App（说得很长、模型还在加载），就改成复制，刘海上提示「已复制，⌘V 粘贴」；这时按两下也不会按回车，刘海上会在同一行说明：「已复制，没有发送 · ⌘V 粘贴」。
 - **忘了结束的听写。** 按一下开始的听写最长 5 分钟。超过 20 秒没说话，刘海上提示「还在听 · 按 Fn 结束 · Esc 取消」；从 4:30 开始时间倒数（−0:30），变成琥珀色并轻轻提示「还剩 30 秒」；到上限时刘海上会说明听写已结束，并输入你说的内容。这行提示还在时按的那一下不会开始新的一段。
-- **还没有语音模型。** 按 Fn 不会开始听，刘海下方提示「还没有语音模型（大小）」（只缺那个很小的语音检测文件时，就说缺这个文件）和**下载**，点它就在上面的下载队列里开始下载，刘海上会说开始了，点「查看」看进度；如果你在设置里选了某个模型而它不在，下载的就是那个。已经在下载时，刘海上显示下载到哪了。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，刘海上说明原因并给出**重试**；模型下载好以后，刘海上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。听写页也会说明还没有语音模型，给出**下载**和下载进度；模型就绪之前不会说「听写已开启」。
+- **还没有语音模型。** 按 Fn 不会开始听，刘海下方提示「还没有语音模型（大小）」和**下载**，点它就在上面的下载队列里开始下载，刘海上会说开始了，点「查看」看进度；如果你在设置里选了某个模型而它不在，下载的就是那个。已经在下载时，刘海上显示下载到哪了。听写本身从不自己下载模型。如果某一段还是没能识别，录音会保留，刘海上说明原因并给出**重试**；模型下载好以后，刘海上会再给一次重试。听写页里也会列出这一条，同样可以重试。这种情况不会再显示「没听到内容」。听写页也会说明还没有语音模型，给出**下载**和下载进度；模型就绪之前不会说「听写已开启」。
 - **在句子中间听写。** 口喷鸡会看光标前后的文字，只插入新的部分：光标放在「我知道你就是▮的。」里，说「就是从老家回来的」，得到的是「我知道你就是从老家回来的。」，不会重复「就是」，也不会多一个句号。标点和空格也会顺着句子来。它只修剪自己要输入的文字，从不改动框里已有的内容；读不到输入框文字的地方（比如微信），就照说的输入。光标前是「I think ▮」这样没说完的句子时，接着说的话不会另起一句（首字母不大写，人名除外）。在终端里，说出的命令保持命令的样子（「git status」，不大写、不加句号）；说给 Agent 的请求还是一句话。
 - **按两下 Fn 发送。** 快速按两下，就是在前台 App 里按回车。有两种用法：
   - **先看再发：** 按一下结束，看一眼文字（输入框里，或刘海下方的面板），再按两下发送；要改就先改。
   - **直接发：** 把结束的那一下换成按两下：听写结束，文字填进去，然后发送出去，就像在聊天框里自己按回车。（按住说话时：松开后按两下。）
 
+  按两下只用来发送刚听写的内容：一分钟内没往这个 App 里听写过、也没有还在处理的，就什么都不按。
   按两下稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时按两下，会等文字填进去再发送——输入框里出现文字就马上回车，之后才还原你的剪贴板。刘海右侧会显示一个对勾和「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了），刘海上会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「按两下 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「按两下 Fn 发送（回车）」。
+- **提示音。** 麦克风真正开始收音时小鸡叫一声（可以说了），结束时啄两下；按 Esc 取消是轻轻啄一下。按了没声音，就是没开始。语音备注也一样；录屏时不出声。「设置 → 听写」里开始和结束各有一个开关。
+- **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 翻译成」：「自动：中文 ↔ 英文」（默认），或 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский；说的已经是这种语言时，改翻成系统语言。⌥T 截图翻译也用这个设置。设置了云端模型就用云端（更好，约 1 秒），否则用本机润色模型。
+- **每个 App 记住你的选择。** 在某个 App 里打开结构化（⇧）或翻译（⌘）后，在这个 App 里一直保持，直到你再切回；隔一小时再用，开始时刘海会提示一句。在「设置 → 听写 → 在每个 App 里记住结构化和翻译」里可以关掉，用过的 App 也列在那里，可以重置。
 - **没听到？** 刘海上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单独按一下），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。用 Fn 听写完一段、或者它们刚打开时，刘海上也会提示一次（每天一次），点**改用右 Option** 就马上换键。

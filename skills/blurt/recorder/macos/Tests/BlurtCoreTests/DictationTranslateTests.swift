@@ -12,9 +12,21 @@ final class DictationTranslateTests: XCTestCase {
         XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "ja"), "auto")
         // a fixed target: nothing to send when the take is already in it
         XCTAssertEqual(DictationTranslateRoute.target(.en, spoken: "zh"), "en")
-        XCTAssertNil(DictationTranslateRoute.target(.en, spoken: "en"))
-        XCTAssertNil(DictationTranslateRoute.target(.zh, spoken: "zh"))
-        XCTAssertEqual(DictationTranslateRoute.target(.zh, spoken: nil), "zh")
+        // already in the target: into the user's own language (v1.0.6), nothing when that is the target too
+        XCTAssertEqual(DictationTranslateRoute.target(.en, spoken: "en", home: "zh"), "zh")
+        XCTAssertNil(DictationTranslateRoute.target(.en, spoken: "en", home: "en"))
+        XCTAssertNil(DictationTranslateRoute.target(.zh, spoken: "zh", home: "zh"))
+        // nothing heard: the model gets both ("into X, or home if it was X")
+        XCTAssertEqual(DictationTranslateRoute.target(.zh, spoken: nil, home: "zh"), "zh|en")
+        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: nil, home: "zh"), "ja|zh")
+        // the other languages (v1.0.6)
+        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: "zh", home: "zh"), "ja")
+        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: "ja", home: "zh"), "zh")
+        XCTAssertEqual(DictationTranslateRoute.target(.zhHant, spoken: "zh", home: "zh"), "zh-Hant")
+        XCTAssertEqual(DictationTranslateRoute.home(["ja-JP", "en-US"]), "ja")
+        XCTAssertEqual(DictationTranslateRoute.home(["zh-Hans-CN"]), "zh")
+        XCTAssertEqual(DictationTranslateTarget.en.request(home: "zh"), "en|zh")
+        XCTAssertEqual(DictationTranslateTarget.auto.request(home: "zh"), "auto")
     }
 
     func testCloudFirstWithItsSwitchThenThisMacThenNothing() {

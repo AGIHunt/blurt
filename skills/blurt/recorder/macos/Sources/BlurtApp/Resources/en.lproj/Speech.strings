@@ -51,7 +51,7 @@
 "speech.manage.button" = "Manage Models…";
 "speech.lib.recognition" = "Speech recognition";
 "speech.lib.col.model" = "Model";
-"speech.lib.col.used" = "Used for";
+"speech.lib.col.used" = "About";
 "speech.lib.done" = "Done";
 "speech.lib.note" = "Accuracy is for %@, from a reference test on Apple M5 Max.";
 "speech.lib.note.measured" = "marks numbers measured on this Mac.";
@@ -151,8 +151,8 @@
 "speech.section.mac" = "This Mac";
 "speech.section.jobs" = "Models in use";
 "speech.machine.short" = "%1$@, %2$@";
-"speech.rec.title_size" = "Recommended for this Mac · %@";
-"speech.rec.line" = "%1$@ would use %2$@";
+"speech.rec.title_size" = "Recommended download · %@";
+"speech.rec.line" = "After it, %1$@ uses %2$@";
 "speech.rec.help" = "Download gets these models. Each job switches to its model once it’s in.";
 "speech.manage.count" = "%@ on this Mac";
 
@@ -162,3 +162,25 @@
 "speech.lib.use" = "Use";
 "speech.lib.use.help" = "Dictation, voice notes, live captions and recordings all switch to this model.";
 "speech.auto.footer" = "Automatic picks for this Mac (%@) and the languages you speak.";
+
+/* Model library: what each model is for (v1.0.6) */
+"speech.lib.note2" = "Recommended models are picked for this Mac's memory. Speed and memory are measured; ✓ means measured on this Mac.";
+"speech.lib.more" = "More models (%d)";
+"speech.lib.in_use" = "In use: %@";
+"speech.tag.recommended" = "Recommended";
+"speech.tag.small_mac" = "For Macs with less memory";
+"speech.tag.apple-speech" = "Built in, no download; more sound-alike mistakes";
+"speech.tag.qwen3-asr-0.6b-mlx" = "Accurate, knows your words";
+"speech.tag.qwen3-asr-1.7b-mlx" = "A little better at English; 2.5× the size";
+"speech.tag.sensevoice-small" = "Smallest and fastest; ignores your words";
+"speech.tag.whisper-large-v3-turbo-mlx" = "The most languages";
+"speech.tag.whisper-large-v3-turbo-q4-mlx" = "Many languages, small download";
+"speech.tag.qwen3-asr-0.6b-onnx" = "Runs without Apple silicon";
+"speech.tag.whisper-large-v3-turbo-ct2" = "For NVIDIA graphics";
+"speech.tag.gemma4-e2b" = "Steadiest in our tests";
+"speech.tag.gemma4-e4b" = "Bigger and slower; rewrites more";
+"speech.tag.qwen3.5-2b" = "Smaller and faster";
+"speech.tag.qwen3.5-0.8b" = "For Macs with less memory";
+"speech.tag.qwen3-0.6b" = "For Macs with little memory";
+"speech.tag.qwen3-1.7b" = "For Macs with less memory";
+"speech.tag.gemma3-1b" = "For Macs with less memory";

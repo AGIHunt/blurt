@@ -5,7 +5,8 @@
 // press started the take instead. With a cue for each edge, silence after a press says nothing started, and a start
 // peep where a stop peck was expected says the same, before the words are lost.
 //
-// On unless turned off (record.dictation.sounds; Settings → Dictation). Never while a screen recording runs: the cue
+// On unless turned off, the start and the stop each (record.dictation.sounds / stop_sound; Settings → Dictation; the
+// cancel peck goes with the stop's). Never while a screen recording runs: the cue
 // would be in it. The start cue waits for the first audio (Dictation.micStarted, NoteVoice.onFirstAudio), so it means
 // "talk now", not "key seen". The clips: assets/sounds/build.py → Resources/Sounds (the film's peep and peck, both
 // synthesized), copied into Blurt.app by record.py.
@@ -14,11 +15,15 @@ import AppKit
 enum DictationSound: String, CaseIterable {
     case start, stop, cancel
 
-    static var on: Bool { Dictation.settings["sounds"] as? Bool ?? true }
+    /// the start's peep (the key `sounds` predates the stop's own switch)
+    static var startOn: Bool { Dictation.settings["sounds"] as? Bool ?? true }
+    /// the stop's peck, and the cancel's
+    static var stopOn: Bool { Dictation.settings["stop_sound"] as? Bool ?? true }
 
-    /// Plays it when sounds are on and nothing is being recorded; a cue already playing is cut, not doubled.
+    /// Plays it when its switch is on and nothing is being recorded; a cue already playing is cut, not doubled.
     func play() {
-        guard DictationSound.on, (NSApp.delegate as? App)?.rec == nil, let s = sound else { return }
+        guard self == .start ? DictationSound.startOn : DictationSound.stopOn, (NSApp.delegate as? App)?.rec == nil,
+              let s = sound else { return }
         if s.isPlaying { s.stop() }
         s.play()
         emit(["event": "dictation_sound", "cue": rawValue])

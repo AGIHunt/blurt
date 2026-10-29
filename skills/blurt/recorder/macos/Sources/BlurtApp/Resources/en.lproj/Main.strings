@@ -452,7 +452,6 @@
 "menu.view" = "View";
 "menu.toggle_detail" = "Show or Hide Detail";
 "menu.sort_by" = "Sort By";
-"main.quit.kept" = "Blurt is still in the menu bar, so dictation keeps working. To quit, use its menu there.";
 
 "menu.undo" = "Undo";
 

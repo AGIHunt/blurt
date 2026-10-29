@@ -181,9 +181,9 @@ class Recommend(unittest.TestCase):
 
     def test_apple_pro(self):
         h = hw(ram=128)
-        # Chinese / English / Cantonese: one Qwen3-ASR for every job (v1.0.2) — the 1.7B on a pro Mac
+        # Chinese / English / Cantonese: one Qwen3-ASR for every job (v1.0.2) — the 0.6B, a pro Mac too (v1.0.6)
         for purpose in ("batch", "live", "note"):
-            self.assertEqual(self.pick(h, ["zh", "en"], purpose), "qwen3-asr-1.7b-mlx")
+            self.assertEqual(self.pick(h, ["zh", "en"], purpose), "qwen3-asr-0.6b-mlx")
         self.assertEqual(self.pick(h, ["ja", "en"]), "whisper-large-v3-turbo-mlx")       # Japanese: Whisper
         self.assertEqual(self.pick(h, ["de", "en"], "note"), "whisper-large-v3-turbo-mlx")
 
@@ -673,7 +673,7 @@ class AppleSpeechSelect(unittest.TestCase):
                 self.assertEqual(d["selected"], "apple-speech")
                 self.assertTrue(d["ready"])                 # no VAD needed: it finds its own pauses
                 self.assertEqual(d["missing"], [])
-                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")    # the download still offered (the upgrade)
+                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")    # the download still offered (the upgrade)
                 self.assertTrue({m["id"]: m for m in d["models"]}["apple-speech"]["builtin"])
                 # an 8 GB Mac: the voice-note rules' pick is offered, never macOS's own
                 self.assertNotEqual(T.dictation_models(hw(ram=8.0))["recommended"], "apple-speech")

@@ -104,6 +104,23 @@ VAD_URLS = [
     "https://hf-mirror.com/csukuangfj/vad/resolve/main/silero_vad.onnx",
 ]
 PURPOSES = ("batch", "live", "note")
+# The VAD ships with the skill (models/silero_vad.onnx, 0.6 MB; Silero VAD, MIT, as k2-fsa/sherpa-onnx publishes it —
+# the same bytes as VAD_URLS[0]). v1.0.6: on a fresh Mac it was all a local model lacked, and the island and the setup
+# said "no speech model · 1 MB" for it. bundled_vad() puts it where the models live before anything looks for it.
+BUNDLED_VAD = HERE.parent / "models" / "silero_vad.onnx"
+
+
+def bundled_vad() -> None:
+    dest = MODELS_DIR / "silero_vad.onnx"
+    if dest.exists() or not BUNDLED_VAD.is_file():
+        return
+    try:
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".part")
+        shutil.copyfile(BUNDLED_VAD, tmp)
+        tmp.replace(dest)
+    except OSError:
+        pass            # the download still works
 BENCH_FILE = BLURT_HOME / "asr-bench.json"
 RUN_DIR = BLURT_HOME / "run"
 
@@ -721,6 +738,8 @@ def download(rel: str, aux: str | None = None) -> Path:
     """A single model file under MODELS_DIR (the VAD, SenseVoice's files). `aux`: fetched on the way to another
     model (its progress lines are named so: progress_line)."""
     dest = MODELS_DIR / rel
+    if rel == "silero_vad.onnx":
+        bundled_vad()
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     if os.environ.get("BLURT_NO_DOWNLOAD"):  # live.py: never start a download in the middle of a recording
@@ -1775,8 +1794,12 @@ def preference(kind: str, tier: str, purpose: str, sv_ok: bool, sv_good: bool, q
     # zh-en, FLEURS zh, LibriSpeech, contextual earnings calls: docs/design/asr-benchmark.md §Real speech) and the only
     # one that takes the user's words; one model also means one warm copy instead of three (the 24 GB Mac that
     # swapped held a Qwen, a SenseVoice and a Whisper).
+    # v1.0.6: the 0.6B on pro Macs too. On the founder's real takes the two are close — the 0.6B ahead on the Lab's
+    # corrected takes (4.6 vs 6.4 %), the 1.7B ahead on English (2.7 vs 3.2 %) and custom words (28 vs 25 of 35) —
+    # while the 1.7B is 2.5x the download and holds 1 GB more (docs/design/first-minute-speech.md §2.1). The 1.7B
+    # stays a choice, and a Mac that already has it keeps using it.
     if kind == "apple" and tier in ("pro", "standard") and qwen_ok:
-        return ([QWEN_MLX_17] if tier == "pro" else []) + [QWEN_MLX] + multi + ([SV] if sv_ok else [])
+        return [QWEN_MLX] + ([QWEN_MLX_17] if tier == "pro" else []) + multi + ([SV] if sv_ok else [])
     # on a CPU the multilingual model is 10x slower and no more accurate in SenseVoice's languages
     prefer_sv = sv_ok if kind == "cpu" else sv_good
     fallback = [SV] if sv_ok else []
@@ -1938,6 +1961,7 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
         return f"unknown backend {name}"
     if name == "apple":
         return None if apple_speech_ok() else "macOS speech recognition needs macOS 26 and the Blurt app"
+    bundled_vad()
     if not (MODELS_DIR / "silero_vad.onnx").exists():
         return "VAD model not downloaded (transcribe.py setup)"
     if name in API_KEYS:
@@ -2628,7 +2652,7 @@ def cmd_auto(a):
 # --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
-DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
 DICTATION_CLOUD = ("qwen3-asr-flash", "openai-compatible")   # offered once their key is set (first-minute-speech.md §2.4)
 
@@ -2672,13 +2696,11 @@ def dictation_models(hw: dict | None = None) -> dict:
     def fits(mid: str) -> bool:
         m = entry(mid)
         return bool(m) and fits_with_polish(m, hw, pmb)
-    # the v0.8 speed eval (docs/design/dictation.md §Recognition model): 1.7B on pro Macs (≥ 32 GB: 3 GB more is
-    # fine there), 0.6B on standard ones
+    # the 0.6B on pro and standard Macs (v1.0.6; before, the v0.8 speed eval's 1.7B on pro ones: preference() says why)
     # (the voice-note pick is macOS's own recogniser while nothing is downloaded: the download to offer is then the one
     # the voice-note rules would choose)
     note_rec = note_pick["id"] if note_pick["id"] != APPLE else recommend(purpose="note", hw=hw)["pick"]["model"]
-    rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and fits(QWEN_MLX_17) else \
-        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_rec
+    rec = QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_rec
     # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
     # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
     # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
@@ -2689,6 +2711,7 @@ def dictation_models(hw: dict | None = None) -> dict:
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
+    bundled_vad()
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     rows = []
     for mid in DICTATION_MODELS + DICTATION_CLOUD:
@@ -2765,6 +2788,7 @@ def cmd_models(_a):
             if m.get(k) is not None:
                 r[k] = m[k]
         rows.append(r)
+    bundled_vad()
     vad = MODELS_DIR / "silero_vad.onnx"  # every local model needs it; listed so hosts can show the whole download
     rows.append({"id": "silero-vad", "name": "Silero VAD", "backend": "vad", "role": "vad", "local": True,
                  "languages": ["*"], "installed": vad.exists(), "size_mb": _du_mb(vad) if vad.exists() else 0.6,
@@ -2806,6 +2830,7 @@ def cmd_setup(a):
 
 
 def cmd_backends(_a):
+    bundled_vad()
     have = lambda rel: (MODELS_DIR / rel).exists()  # noqa: E731
     emit({
         "ok": True,

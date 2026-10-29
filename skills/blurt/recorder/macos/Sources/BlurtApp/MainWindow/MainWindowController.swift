@@ -66,7 +66,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// The reminder sheet while it is up (tests answer it).
     var openAlert: NSAlert?
     /// ⌘Q's one-time "still in the menu bar" toast was shown (saved with the window state).
-    var quitHintShown = false
     /// Export Hand-off Bundle…'s Save panel while it is up (tests read its suggested name, then cancel it).
     var bundlePanel: NSSavePanel?
     /// A hand-off bundle is being packed: the action is off until it is done (one at a time).
@@ -1672,7 +1671,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             case "k": palette.toggle(); return true
             case "f": focusSearch(); return true
             case "o": openFolder(); return true
-            case "q": mCloseToMenuBar(); return true     // not Quit: the window goes, Blurt stays in the menu bar
             case "1": go(.inbox); return true
             case "2": go(.inProgress); return true
             case "3": go(.unassigned); return true
@@ -1931,7 +1929,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         var kinds: [String]?, state: String?
         var selected: [String]?, open: Bool?
         /// ⌘Q's "Blurt is still in the menu bar" was shown
-        var quitHint: Bool?
     }
     static var stateURL: URL { BlurtPaths.home.appendingPathComponent("ui/main-window.json") }
 
@@ -1955,7 +1952,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         s.detail = foldedForEmpty ? detailWidthBeforeFold : Double(items[2].viewController.view.frame.width)
         if case .session = model.scope {} else { s.scope = model.scope.key }
         s.filters = model.allFilters
-        s.quitHint = quitHintShown ? true : nil
         s.sort = model.sort; s.ascending = model.ascending
         s.selected = list.selectedIDs
         s.open = open
@@ -1976,7 +1972,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         model.filters = filters
         model.applyFilters()
-        quitHintShown = s?.quitHint == true
         model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false

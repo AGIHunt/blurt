@@ -427,8 +427,10 @@ def _models() -> list[dict]:
     return json.loads(p.stdout)["models"]
 
 
-def test_transcribe_models_lists_catalog(env):
+def test_transcribe_models_lists_catalog(env, monkeypatch):
     """WP2 also owns `transcribe.py models`: installed / downloadable ASR models for the apps' settings."""
+    # a Mac without macOS 26's recogniser (it would be the configured one otherwise: the order the suite ran in hid it)
+    monkeypatch.setenv("BLURT_NO_APPLE_SPEECH", "1")
     rows = {m["backend"]: m for m in _models()}
     assert {"sensevoice", "mlx-whisper", "faster-whisper", "openai", "dashscope", "vad"} <= set(rows)
     sv = rows["sensevoice"]

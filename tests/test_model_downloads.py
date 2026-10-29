@@ -177,7 +177,9 @@ class DictationNeedsTheVad(unittest.TestCase):
         had = vad.read_bytes() if vad.is_file() else None
         self.addCleanup(lambda: vad.write_bytes(had) if had is not None else vad.unlink(missing_ok=True))
         vad.unlink(missing_ok=True)
-        with mock.patch.object(T, "installed", return_value=True):
+        # without the copy the skill ships (v1.0.6): what an install that lost it would see
+        with mock.patch.object(T, "installed", return_value=True), \
+                mock.patch.object(T, "BUNDLED_VAD", T.MODELS_DIR / "no-such-vad.onnx"):
             d = T.dictation_models()
             self.assertFalse(d["vad"])
             local = [r for r in d["models"] if r["files"]]
