@@ -24,7 +24,7 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The previous agihunt.info zone's Browser
 Cache TTL (4 h) overrode `_headers`, so versioned URLs are retained. On blurt.work, configure Browser Cache TTL
-to respect existing headers so styles, scripts and fonts revalidate as declared in `_headers`. Current: `?v=1.0.5-3`.
+to respect existing headers so styles, scripts and fonts revalidate as declared in `_headers`. Current: `?v=1.0.5-4`.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -95,7 +95,7 @@ white text); no other gradient on the page. Text set straight on the wallpaper u
   top-right corner, facing the window, no contact shadow: `perch.webm` / `perch.mov` / `perch.webp` (light pages,
   `out/anim/paper-ns/idle`) and `perch-d.*` (dark pages, `out/anim/dark/idle` with the shadow taken out), side view
   flipped to face left, VP9 and HEVC with alpha, the WebP is the first frame (poster, reduced motion). On desktop it
-  drifts a little with the scroll (`--sy0`), not on phones (the notch Peep is the one there); `logo.svg` /
+  drifts a little with the scroll (`--sy0`); on phones it sits at the screen's right edge over the first window, smaller; `logo.svg` /
   `logo-dark.svg` the header mark (3D vector), favicons. `peep.json` is the sheet table, inlined into each page.
   `peep.js` plays them (sprite sheets at 30 fps, lazy-loaded per state); `main.js` tells it the scene and step.
   `assets/favicon.png` and `assets/apple-touch-icon.png` keep their names and now hold Peep; `/favicon.ico` too.
