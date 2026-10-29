@@ -16,11 +16,13 @@ no agent of its own and doesn't replace yours.
 ## What it does
 
 **Dictation (`Fn`).** Tap `Fn` in any app, talk, and tap it again. The words are typed where your cursor is. Finish
-with a double tap instead and it's sent too (Return). Speech recognition runs on your Mac with open-source models, so
-no internet is needed once they're downloaded; after a minute of talking the text is in about 0.4 s. A local model
-removes fillers and stutters and adds punctuation; it doesn't rewrite, summarize or translate. The words show under
-the notch as you talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to
-switch back; `⌥⇧L` reformats the last dictation. Holding `Fn` while you talk works too.
+with a double tap instead and it's sent too (Return). It works the moment Blurt is installed, with macOS's own speech
+recognition (macOS 26) and nothing to download. Open-source local models are an optional upgrade: more accurate, they
+learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
+fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
+talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back; tap `⌘`
+to translate (speak Chinese, type English, or the other way round); `⌥⇧L` reformats the last dictation. Holding `Fn`
+while you talk works too.
 
 **Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong; the note opens right
 beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
@@ -67,8 +69,10 @@ needs the Xcode Command Line Tools and <a href="https://docs.astral.sh/uv/">uv</
 what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
-key than `Fn`), then downloads the speech models: about 5.9 GB on a Mac with 32 GB of memory, 4.4 GB on 16–24 GB.
-Nothing is downloaded until you click Download. Then press `Fn` in any text field. Screen Recording is asked for the
+key than `Fn`). Then press `Fn` in any text field: dictation already works with macOS's own recognizer. Two optional
+upgrades: one AI-service key (fixes misheard names and punctuation, and powers translation and the cloud second
+reading of copied text), and the local models (1–6 GB depending on your Mac's memory, downloaded only when you click
+Download). Screen Recording is asked for the
 first time you snap or record.
 
 ## How it works with your agents
@@ -161,7 +165,8 @@ languages.
   anything else you give it.
 - No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
   or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
-  to DeepSeek or the API you set up), what your agent sends to its provider, and Send Feedback: when you click it on the
+  to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
+  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
   and deleted within 14 days.
