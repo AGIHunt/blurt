@@ -36,7 +36,7 @@
 "dictation.toast.close" = "Close";
 "dictation.toast.secure_held" = "A password field has the cursor — nothing typed";
 "dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start listening, so your first words are lost. Automatic uses this Mac’s microphone whenever the default input is Bluetooth.";
-"dictation.mic.start_sound" = "Play a sound when listening starts";
+"dictation.sounds" = "Play sounds when listening starts and stops";
 
 /* menus */
 "dictation.menu.history" = "Dictation History…";

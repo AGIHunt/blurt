@@ -95,13 +95,13 @@ final class DictationSettings: ObservableObject {
     /// nil = Automatic (the Mac's own mic when the default input is Bluetooth), true = always the Mac's, false = always
     /// the default input (DictationMicChoice)
     @Published var micChoice = Dictation.builtInMicSetting
-    @Published var startSound = Dictation.startSound
+    @Published var sounds = DictationSound.on
     func setMic(_ v: Bool?) {
         micChoice = v
         save("builtin_mic", v)
         MicEngine.shared.prepare(builtIn: Dictation.useBuiltInMic)
     }
-    func setStartSound(_ v: Bool) { startSound = v; save("start_sound", v ? true : nil) }
+    func setSounds(_ v: Bool) { sounds = v; save("sounds", v ? nil : false) }
 
     private func save(_ key: String, _ value: Any?) {
         Dictation.set(key, value)
@@ -309,7 +309,7 @@ struct DictationPane: View {
                             choices: [(nil, T("dictation.mic.auto")), (true, T("dictation.mic.mac")), (false, T("dictation.mic.default"))],
                             selection: Binding(get: { m.micChoice }, set: { m.setMic($0) }))
             }
-            SettingToggle("dictation.start_sound", isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
+            SettingToggle("dictation.sounds", isOn: Binding(get: { m.sounds }, set: { m.setSounds($0) }))
         }
         .disabled(!m.enabled)
     }

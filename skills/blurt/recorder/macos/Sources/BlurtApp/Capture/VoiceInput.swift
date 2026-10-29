@@ -225,6 +225,7 @@ final class VoiceInput {
             if self.levels.count > 120 { self.levels.removeFirst(self.levels.count - 120) }
         }
         v.onSpeech = { [weak self] in self?.heardSpeech = true }
+        v.onFirstAudio = { [weak self] in if self?.voice === v { DictationSound.start.play() } }     // as dictation's
         v.onEnd = { [weak self] e in
             guard let self = self, self.voice === v else { return }
             if e == .maxed { island.toast(Loc.t("capture.voice.maxed", table: "Capture", Island.clock(self.maxSeconds)), actionTitle: nil, action: nil) }
@@ -462,6 +463,9 @@ final class VoiceInput {
         case .drop(let t): toast = t
         }
         if !ended { v.stop(keep: kept || undoable) } else if !kept && !undoable { v.stop(keep: false) }
+        // the take's sounds (DictationSound): Esc's soft peck, the stop's double peck; none when the mic never opened
+        // or the app quits
+        if via == "esc" { DictationSound.cancel.play() } else if via != "no_mic" && via != "quit" { DictationSound.stop.play() }
         let st = stream
         voice = nil
         stream = nil

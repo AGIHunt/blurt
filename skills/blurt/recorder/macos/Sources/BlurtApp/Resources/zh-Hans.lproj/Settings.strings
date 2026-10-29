@@ -283,7 +283,7 @@
 "settings.kw.dictation.history_keep" = "历史, 保留, 天数";
 "settings.kw.dictation.keep_audio" = "音频, 录音, 保留音频";
 "settings.kw.dictation.history_saved" = "历史, 清除历史, 删除历史";
-"settings.kw.dictation.start_sound" = "声音, 提示音, 音效";
+"settings.kw.dictation.sounds" = "声音, 提示音, 音效";
 "settings.kw.dictation.mic" = "麦克风, 蓝牙, AirPods, 耳机, 输入设备";
 "settings.kw.dictation.models" = "识别模型, 语音模型, 润色模型, 大模型, ASR, Qwen, Gemma, 下载";
 "settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";

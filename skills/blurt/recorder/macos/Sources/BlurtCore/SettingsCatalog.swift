@@ -220,7 +220,7 @@ public enum SettingsCatalog {
             row("dictation.mode", "dictation.main", D("dictation.settings.mode")),
             row("dictation.double_tap", "dictation.main", D("dictation.settings.double_tap"), detail: D("dictation.settings.double_tap.detail")),
             row("dictation.mic", "dictation.main", D("dictation.mic.section"), detail: D("dictation.mic.detail"), more: D("dictation.mic.builtin.detail")),
-            row("dictation.start_sound", "dictation.main", D("dictation.mic.start_sound")),
+            row("dictation.sounds", "dictation.main", D("dictation.sounds")),
             row("dictation.default_style", "dictation.text", D("dictation.style.default")),
             row("dictation.by_app", "dictation.text", D("dictation.style.by_app"), detail: D("dictation.style.by_app.detail")),
         ]

@@ -36,7 +36,7 @@
 "dictation.toast.close" = "关闭";
 "dictation.toast.secure_held" = "光标在密码框里，没有输入";
 "dictation.mic.builtin.detail" = "蓝牙耳机要约一秒才开始收音，开头的话会丢。自动：默认输入是蓝牙时，改用 Mac 自带的麦克风。";
-"dictation.mic.start_sound" = "开始收音时播放提示音";
+"dictation.sounds" = "开始和结束收音时播放音效";
 
 /* 菜单 */
 "dictation.menu.history" = "听写历史…";
