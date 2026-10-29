@@ -289,6 +289,7 @@
     dictEl.style.setProperty("--rise0", Math.round(want) + "px");
   };
   fit();
+  if (document.fonts) document.fonts.ready.then(() => { fit(); queue(); });   // the serif can arrive after this runs
 
   let queued = false;
   const frame = () => {

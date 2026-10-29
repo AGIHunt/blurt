@@ -21,10 +21,19 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 `env -u CF_API_KEY -u CLOUDFLARE_API_KEY` prefixed. Use the account
 `2f0c4283882da012b8a3283dcee20cc7`.
 
-**When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
-preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The previous agihunt.info zone's Browser
-Cache TTL (4 h) overrode `_headers`, so versioned URLs are retained. On blurt.work, configure Browser Cache TTL
-to respect existing headers so styles, scripts and fonts revalidate as declared in `_headers`. Current: `?v=1.0.5-4`.
+**When `style.css`, a font or an asset changes, bump `?v=`** (`V` in the generator: both pages' `<link>`, font and
+image preloads, `<video>`/`poster`, og images; by hand: the `url()`s in `style.css`). `_headers` lets browsers keep
+`style.css`, `fonts/` and `assets/` for a year without asking (immutable), so a file changed under the same `?v=`
+never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.5-5`.
+
+**The first paint.** `peep.js` and `main.js` are inlined at the end of each page (the generator reads them from this
+folder), and the `<head>` script sets `motion` before anything renders. The scripts then run before the first paint
+(they wait for `style.css`, as the paint does), so the first frame is already the notch, the first scene's step and
+its window position. With deferred files the browser painted the no-script layout first (a second notch on the
+desktop, the window lower) and jumped a round trip later. After editing either script, rebuild the pages. The
+first scene's wallpaper is fetched at high priority, the others lazily; wallpapers are WebP (the JPEGs stay for the
+og cards). The serif is `font-display: block` (the title appears once, in its own face), and the nav's star count
+is baked in at build time (main.js refreshes it), so the header never changes width.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -41,7 +50,8 @@ full fonts it expects).
 Tokens on `:root` from `assets/color/tokens.json` (docs/design/system.md), dark values under
 `prefers-color-scheme: dark`. Mint is the "live" colour: the caret, the listening level, Blurt's bar in the speed
 chart. Buttons (download, copy, the film's play button) use the button gradient (`gradient.button` in tokens.json,
-white text); no other gradient on the page. Text set straight on the wallpaper uses
+white text), lifted off the wallpaper by a white halo, a thin dark rim and a deep tinted shadow, with a sheen
+on hover; no other gradient on the page. Text set straight on the wallpaper uses
 `--over` / `--over-2`. The hand-off scene and the privacy band are night (`#12171A`) in both modes.
 
 ## The page: your Mac, the notch, and the day passing
@@ -80,7 +90,7 @@ white text); no other gradient on the page. Text set straight on the wallpaper u
 - `assets/promo.mp4`: the v1 film, one file for both pages (English voice-over, Chinese and English subtitles), H.264
   1080p with faststart, about 9 MB, loaded on click; `assets/film.json` records its length and poster. The v0.9
   poster `assets/poster-6.jpg` is no longer on the page.
-- `assets/wall/light.jpg`, `dark.jpg` (+ `-m` crops for phones): the desktop wallpaper, morning fog and dusk, made with
+- `assets/wall/light.webp`, `dark.webp` (+ `-m` crops for phones; WebP q80 of the `.jpg` masters, about 45 KB): the desktop wallpaper, morning fog and dusk, made with
   an image model for this page (`blurt-media/site/gen6/`).
 - `assets/rec-frame.jpg`: the frame on the OR-21 item, also used for the recording's film strip and the attachment
   thumbnail.
@@ -90,7 +100,9 @@ white text); no other gradient on the page. Text set straight on the wallpaper u
   cut by `python3 build_pages9.py import` (it takes `logo/peep/release/web/` once its MANIFEST says COMPLETE):
   `n-<state>.webp` the notch sheets (dark set: idle, listening, talking, thinking, done, hello), `n-look.webp` the
   notch's 7 × 5 gaze grid, `f-<state>.webp` Peep out of the notch in the snap (done, peck), `peek.webp` the
-  footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only), `fd-<state>.webp` the same on dark pages
+  footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only; peep.js eases the gaze with a spring
+  and cross-fades the four poses around it, the body leans and sways a little; on phones it looks where you tap and
+  follows a finger dragged across the page, with passive listeners so the page still scrolls), `fd-<state>.webp` the same on dark pages
   (dark set), `n-still.webp` one still per scene for reduced motion; the hero: Peep perched on the first window's
   top-right corner, facing the window, no contact shadow: `perch.webm` / `perch.mov` / `perch.webp` (light pages,
   `out/anim/paper-ns/idle`) and `perch-d.*` (dark pages, `out/anim/dark/idle` with the shadow taken out), side view
@@ -98,6 +110,7 @@ white text); no other gradient on the page. Text set straight on the wallpaper u
   drifts a little with the scroll (`--sy0`); on phones it sits at the screen's right edge over the first window, smaller; `logo.svg` /
   `logo-dark.svg` the header mark (3D vector), favicons. `peep.json` is the sheet table, inlined into each page.
   `peep.js` plays them (sprite sheets at 30 fps, lazy-loaded per state); `main.js` tells it the scene and step.
+  Until a sheet arrives the notch shows `n-still.webp` (preloaded), so its ear is never empty.
   `assets/favicon.png` and `assets/apple-touch-icon.png` keep their names and now hold Peep; `/favicon.ico` too.
 - `assets/loops/`, `assets/team.jpg`: round-5 media, no longer on the page (kept for now; delete when you commit if you
   don't want them deployed).

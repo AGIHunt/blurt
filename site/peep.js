@@ -8,14 +8,17 @@
    2. dictation: the words leave Peep's beak and land at the cursor; a dashed mint pencil box holds the phrase until
       the ink lands.
    3. the snap: Peep leaves the notch, pecks the circled total and carries the card back under the notch.
-   4. the hero idle loop (video with alpha) perched on the first window, 5. the footer: clay Peep peeks up from the bottom edge, eyes on the pointer.
+   4. the hero idle loop (video with alpha) perched on the first window, 5. the footer: clay Peep peeks up from the bottom edge, eyes on the pointer
+      (or the finger), eased and cross-faded between its rendered poses.
    Reduced motion: nothing here runs; the CSS shows a still per scene (each scene's end state). */
 (() => {
   const mEl = document.getElementById("peepm");
   if (!mEl) return;
   const M = JSON.parse(mEl.textContent);
+  // the pages inline this file (data-base: the site root from the page, data-v: the asset version); as a file, its own URL
   const me = document.currentScript;
-  const BASE = new URL(".", me.src), V = new URL(me.src).search;
+  const BASE = me.src ? new URL(".", me.src) : new URL(me.dataset.base || "./", location.href);
+  const V = me.src ? new URL(me.src).search : me.dataset.v || "";
   const url = (src) => new URL(src, BASE).href + V;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const fine = matchMedia("(pointer: fine)").matches;
@@ -346,43 +349,87 @@
   }
 
   // the page ends with clay Peep peeking up from the bottom edge: three-quarter, top of the head and eyes only.
-  // It rises when you get there, looks at the pointer, looks around when you stop, blinks at uneven times. Come
-  // close and it ducks; the third time it stays.
+  // It rises when you get there, looks at the pointer (on a phone: where you tap, and follows a finger dragged across
+  // the page, which keeps scrolling), looks around when you stop, blinks at uneven times. Come close and it ducks;
+  // the third time it stays.
+  // Smooth on 7 turns x 5 pitches: the gaze moves between the rendered poses, eased toward the pose nearest the
+  // pointer by a spring, and while it moves the four poses around it are cross-faded by their bilinear weights
+  // (plus-lighter: a true dissolve, no see-through halfway); the body leans a little into the motion and sways at rest.
+  // Reduced motion: the rest pose, still.
   function footer() {
     const el = document.querySelector("[data-peek]");
     const L = M.peek;
     if (!el || !L) return;
     const wrap = el.parentElement;
-    let ti = L.rest[0], pj = L.rest[1], lid = 0, lastP = 0, on = false, ducks = 0, ducking = false;
-    const draw = () => paint(el, L, (ti * L.pitches + pj) * L.lids + lid);
-    const aim = (x, y) => {
-      // index 4 is the rest (three-quarter); lower turns toward the beak side, higher toward you
-      // never past the three-quarter rest toward you: no front view, ever (brand book)
-      ti = x > 0 ? Math.max(0, Math.round(L.rest[0] - x * L.rest[0])) : L.rest[0];
-      pj = Math.max(0, Math.min(L.pitches - 1, Math.round((y * 0.5 + 0.5) * (L.pitches - 1))));
+    const TN = L.rest[0], PN = L.pitches - 1;      // turns past the three-quarter rest toward you: never (no front view, brand book)
+    el.textContent = "";
+    const body = document.createElement("span"); body.className = "pk-b";
+    const lay = [0, 1, 2, 3].map(() => { const i = document.createElement("i"); body.appendChild(i); return i; });
+    el.appendChild(body);
+    let tx = L.rest[0], ty = L.rest[1], cx = tx, cy = ty, vx = 0, vy = 0, lid = 0, lastP = 0, on = false, ducks = 0, ducking = false;
+    let raf = 0, t0 = 0, ready = false;
+    const shown = [-1, -1, -1, -1], op = [-1, -1, -1, -1];
+    const draw = () => {
+      if (!ready) return;
+      // the blend is kept short (a smoothstep over the middle 30% of each step): a dissolve between poses 5-7 degrees apart
+      // doubles the eye, so it should read as motion blur, never as a pose
+      const sm = (u) => { u = clamp((u - 0.35) / 0.3, 0, 1); return u * u * (3 - 2 * u); };
+      const x0 = Math.min(TN - 1, Math.floor(cx)), y0 = Math.min(PN - 1, Math.floor(cy)), fx = sm(cx - x0), fy = sm(cy - y0);
+      const at = [[x0, y0, (1 - fx) * (1 - fy)], [x0 + 1, y0, fx * (1 - fy)], [x0, y0 + 1, (1 - fx) * fy], [x0 + 1, y0 + 1, fx * fy]];
+      at.forEach(([ti, pj, w], k) => {
+        const f = (ti * L.pitches + pj) * L.lids + lid, o = Math.round(w * 1000) / 1000;
+        if (f !== shown[k]) { shown[k] = f; paint(lay[k], L, f); }
+        if (o !== op[k]) { op[k] = o; lay[k].style.opacity = o; }
+      });
+    };
+    const still = () => { cx = tx = L.rest[0]; cy = ty = L.rest[1]; draw(); };
+    const step = (now) => {
+      raf = 0;
+      if (!on) { t0 = 0; return; }
+      const dt = Math.min(0.05, (now - (t0 || now)) / 1000), t = now / 1000; t0 = now;
+      // a critically damped spring (settles in about 0.4 s): eases out of rest, never overshoots
+      const w = 13;
+      vx += (w * w * (tx - cx) - 2 * w * vx) * dt; cx = clamp(cx + vx * dt, 0, TN);
+      vy += (w * w * (ty - cy) - 2 * w * vy) * dt; cy = clamp(cy + vy * dt, 0, PN);
       draw();
+      // the body leans into a turn and sways a little at rest (degrees; pivots at the bottom edge)
+      const lean = clamp(-vx * 0.35, -2.4, 2.4) + Math.sin(t * 1.1) * 0.5 + Math.sin(t * 0.43 + 1) * 0.35;
+      body.style.transform = `translateX(${(lean * 0.6).toFixed(2)}%) rotate(${lean.toFixed(2)}deg)`;
+      raf = requestAnimationFrame(step);
+    };
+    const run = () => { if (!raf && on && !reduce) raf = requestAnimationFrame(step); };
+    const aim = (x, y) => {
+      // the head comes to rest on a rendered pose (never between two: that would hold the doubled eye)
+      tx = Math.round(x > 0 ? TN - x * TN : TN);
+      ty = Math.round(clamp((y * 0.5 + 0.5) * PN, 0, PN));
+      run();
     };
     new IntersectionObserver(([e]) => {
-      if (e.isIntersecting && !el._s) load(L).then(draw);
+      if (e.isIntersecting && !ready) load(L).then(() => { ready = true; draw(); });
     }, { rootMargin: "600px 0px" }).observe(wrap);
-    if (reduce) return;
+    if (reduce) { still(); return; }
     new IntersectionObserver(([e]) => {
       on = e.isIntersecting; api.footer = on;
       wrap.classList.toggle("up", on);
       dispatchEvent(new Event("scroll"));
+      run();
     }, { threshold: 0.6 }).observe(wrap);
-    addEventListener("pointermove", (ev) => {
+    const look = (px, py, near) => {
       if (!on) return;
       const b = el.getBoundingClientRect();
       const hx = b.left + b.width * 0.47, hy = b.top + b.height * 0.55;
       lastP = performance.now();
-      aim(clamp((ev.clientX - hx) / (innerWidth * 0.4)), clamp((ev.clientY - hy) / 420));
-      if (ducks < 3 && !ducking && Math.hypot(ev.clientX - hx, ev.clientY - hy) < b.width * 0.3) {
+      aim(clamp((px - hx) / (innerWidth * 0.4)), clamp((py - hy) / 420));
+      if (near && ducks < 3 && !ducking && Math.hypot(px - hx, py - hy) < b.width * 0.3) {
         ducking = true; ducks++;
         wrap.classList.add("duck");
         setTimeout(() => { wrap.classList.remove("duck"); setTimeout(() => { ducking = false; }, 500); }, 650);
       }
-    }, { passive: true });
+    };
+    addEventListener("pointermove", (ev) => { if (ev.pointerType === "mouse" || ev.pointerType === "pen") look(ev.clientX, ev.clientY, true); }, { passive: true });
+    // touch: passive listeners only, so a drag still scrolls the page; a tap on Peep ducks it
+    addEventListener("touchstart", (ev) => { const p = ev.touches[0]; if (p) look(p.clientX, p.clientY, true); }, { passive: true });
+    addEventListener("touchmove", (ev) => { const p = ev.touches[0]; if (p) look(p.clientX, p.clientY, false); }, { passive: true });
     (async () => { for (;;) {                      // blinks at uneven times, one in five twice
       await wait(2200 + Math.random() * 3800);
       if (!on) continue;

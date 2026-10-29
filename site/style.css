@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: swap; src: url("fonts/serif-700.woff2?v=1.0.5-4") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: swap; src: url("fonts/serif-900.woff2?v=1.0.5-4") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-4") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.5-5") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.5-5") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.5-5") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -1151,7 +1151,8 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
   transform-origin: 40% 30%; transition: transform .35s cubic-bezier(.2, .9, .3, 1.3); }
 /* a beat (done, hello): Peep grows out of the notch for the moment, so the hop reads at a glance */
 .isl .el > .pp.beat{ transform: translateY(5px) scale(1.55); clip-path: inset(-30px -30px 1px -30px); }
-html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.1-2"); background-size: 500% 100%; background-position: 0 0; }
+/* the still until peep.js has the idle sheet (it paints over it inline), so the notch never shows an empty ear */
+.isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.1-2"); background-size: 500% 100%; background-position: 0 0; }
 .snotch .ps{ position: absolute; left: 8px; top: -3px; }
 .ps[data-still="done"]{ background-position: 25% 0; }
 .ps[data-still="talking"]{ background-position: 50% 0; }
@@ -1209,6 +1210,10 @@ html.motion .pk{ transform: translate(-50%, 100%); transition: transform .9s cub
 html.motion .peek.up .pk{ transform: translate(-50%, 6%); }
 html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-duration: .25s; transition-timing-function: cubic-bezier(.5, 0, .7, .4); }
 .peek + .foot{ border-top-color: var(--line-2); }
+/* peep.js: four layers of the gaze sheet cross-faded (plus-lighter sums them: a dissolve with no see-through middle);
+   the body leans and sways from its bottom edge */
+.pk .pk-b{ position: absolute; inset: 0; isolation: isolate; transform-origin: 50% 100%; will-change: transform; }
+.pk .pk-b i{ position: absolute; inset: 0; mix-blend-mode: plus-lighter; opacity: 0; }
 @media (max-width: 720px) {
   :root{ --ear: 78px; }
   .isl .el{ padding-left: 8px; }
@@ -1421,3 +1426,29 @@ html[lang="en"] #h-hand{ font-size: 2.6em; }
   .hero .lede, .hero .fine{ padding-inline: 14px; }
 }
 @media (max-width: 360px) { html[lang="zh-CN"] .hero h1{ font-size: 40px; } html[lang="zh-CN"] .hero h1 .nw{ white-space: nowrap; } }
+
+/* round 11: the buttons stand off the mint wallpaper. The same gradient (tokens.json gradient.button), lifted: a
+   white halo that parts it from the green, a thin dark rim, a deep tinted shadow, light along the top edge, and a
+   sheen that crosses on hover. */
+.btn-dl, .su-next{
+  position: relative; overflow: hidden; isolation: isolate;
+  --lift: 0 0 0 1px rgba(0, 48, 36, .35), inset 0 1px 0 rgba(255, 255, 255, .28), inset 0 -2px 0 rgba(0, 36, 56, .25);
+  box-shadow: var(--lift), 0 0 0 5px rgba(255, 255, 255, .5), 0 3px 6px rgba(0, 56, 42, .22), 0 16px 32px -10px rgba(0, 92, 80, .75);
+  text-shadow: 0 1px 1px rgba(0, 40, 30, .3);
+  transition: transform .2s var(--ease), box-shadow .2s var(--ease), filter .2s var(--ease);
+}
+.btn-dl{ padding: 15px 28px 15px 22px; font-size: 18px; border-radius: 14px; }
+.btn-dl::before{
+  content: ""; position: absolute; top: 0; bottom: 0; left: -60%; width: 45%; z-index: 1; pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .3), transparent); transform: skewX(-18deg);
+  transition: left .7s var(--ease);
+}
+.btn-dl:hover{ transform: translateY(-2px); filter: brightness(1.05);
+  box-shadow: var(--lift), 0 0 0 6px rgba(255, 255, 255, .62), 0 4px 8px rgba(0, 56, 42, .24), 0 22px 40px -12px rgba(0, 92, 80, .85); }
+.btn-dl:hover::before{ left: 120%; }
+.btn-dl:active{ transform: translateY(0) scale(.98); filter: brightness(.92); }
+@media (prefers-color-scheme: dark) {
+  .btn-dl, .su-next, .btn-dl:hover{ box-shadow: var(--lift), 0 0 0 5px rgba(97, 219, 189, .16), 0 14px 34px -10px rgba(40, 200, 160, .5); }
+}
+@media (max-width: 720px) { .btn-dl{ padding: 14px 24px 14px 20px; font-size: 17px; } }
+@media (prefers-reduced-motion: reduce) { .btn-dl::before{ display: none; } }
