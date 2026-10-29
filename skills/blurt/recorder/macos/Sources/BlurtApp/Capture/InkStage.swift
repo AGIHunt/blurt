@@ -54,19 +54,14 @@ final class StageView: NSView {
     override func cursorUpdate(with event: NSEvent) { NSCursor.arrow.set() }
 }
 
-/// The frozen picture's edge (r2): committed, not being chosen. The picker's dashes say "still choosing"; once the
-/// picture freezes the same gradient line goes solid (dashed vs solid: the shape twin of chosen vs frozen) — 2 pt,
-/// just outside the picture, between two 1 pt black 40 % keylines so it holds on a light title bar and on a dark
-/// desktop alike — and the picture lifts off the dim on a shadow you can see at a glance (black 55 %, 24 pt, 8 pt
-/// down). Corners are closed (one rectangle, no dash phase). (r1: 1.5 pt over one keyline and an 18 pt shadow — gone
-/// at a normal viewing size on a dark desktop.)
+/// The frozen picture's edge: the one solid 2 pt line every area picker draws (BrandColor.Island.selection), just
+/// outside the picture, the same line it had while it was being chosen (the founder, 2026-10-29: one colour, one line,
+/// before and after); the picture lifts off the dim on a shadow you can see at a glance (black 55 %, 24 pt, 8 pt down).
 final class FrozenEdge: NSView {
     private let lift = CALayer()
-    private let keyline = CAShapeLayer()
-    private let line = CAGradientLayer()
-    private let mask = CAShapeLayer()
-    /// the band outside the picture: keyline 1 · gradient 2 · keyline 1
-    static let band: CGFloat = 4
+    private let line = CAShapeLayer()
+    /// the band outside the picture the line takes
+    static let band: CGFloat = 2
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -75,15 +70,10 @@ final class FrozenEdge: NSView {
         lift.shadowOpacity = 0.55
         lift.shadowRadius = 24
         lift.shadowOffset = CGSize(width: 0, height: -8)
-        keyline.fillColor = nil
-        keyline.strokeColor = NSColor(white: 0, alpha: 0.40).cgColor
-        keyline.lineWidth = FrozenEdge.band
-        BrandGradient.layer(BrandGradient.linearStops, .diagonal, flipped: false, into: line)
-        mask.fillColor = nil
-        mask.strokeColor = NSColor.black.cgColor
-        mask.lineWidth = 2
-        line.mask = mask
-        for l in [lift, keyline, line] as [CALayer] { layer?.addSublayer(l) }
+        line.fillColor = nil
+        line.strokeColor = BrandColor.Island.selection.cgColor
+        line.lineWidth = 2
+        for l in [lift, line] as [CALayer] { layer?.addSublayer(l) }
     }
     required init?(coder: NSCoder) { fatalError() }
     override var isFlipped: Bool { false }
@@ -97,13 +87,8 @@ final class FrozenEdge: NSView {
         lift.frame = bounds
         lift.shadowPath = CGPath(rect: sel.insetBy(dx: -FrozenEdge.band, dy: -FrozenEdge.band), transform: nil)
         lift.isHidden = !lifted
-        // both centred 2 pt out: the keyline's 4 pt band runs 0…4 pt from the picture, the gradient's 2 pt 1…3 pt
-        let mid = sel.insetBy(dx: -FrozenEdge.band / 2, dy: -FrozenEdge.band / 2)
-        keyline.frame = bounds
-        keyline.path = CGPath(rect: mid, transform: nil)
-        line.frame = sel.insetBy(dx: -FrozenEdge.band - 1, dy: -FrozenEdge.band - 1)
-        mask.frame = line.bounds
-        mask.path = CGPath(rect: mid.offsetBy(dx: -line.frame.minX, dy: -line.frame.minY), transform: nil)
+        line.frame = bounds
+        line.path = CGPath(rect: sel.insetBy(dx: -1, dy: -1), transform: nil)
     }
 
     func setLifted(_ on: Bool) { lift.isHidden = !on }

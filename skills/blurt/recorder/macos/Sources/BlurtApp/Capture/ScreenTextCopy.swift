@@ -191,11 +191,11 @@ final class ScreenTextCopy {
 
 // MARK: - The drag
 
-/// A crosshair and a loupe until the drag starts (as Bob's): transparent windows over every screen take the mouse; the
-/// screen is frozen into a still the moment it opens, the loupe magnifies that still around the pointer (8×, a pixel
-/// grid's crosshair) with the point under it, and while the drag draws, the selection is a thin mint outline and the
-/// loupe says its size. Letting go reads the selection from the same still (what the user saw, no second capture);
-/// Esc or a click without a drag cancels. Never captured itself (above the normal window layer, like our other chrome).
+/// A crosshair and the loupe (Loupe.swift) until the drag starts, as Bob's: transparent windows over every screen take
+/// the mouse, invisible until the screen's stills are in (so no still holds the picker itself); the selection is the
+/// one solid line every area picker draws (BrandColor.Island.selection) with a faint fill of it, the same while it is
+/// drawn and after; the loupe's label says the point, then the selection's size. Letting go reads the selection from
+/// the same still (what the user saw, no second capture); Esc or a click without a drag cancels.
 final class TextDragPicker {
     private var windows: [KeyWindow] = []
     private let done: (CGRect?, CGImage?) -> Void
@@ -204,8 +204,7 @@ final class TextDragPicker {
     var current: NSPoint?
     /// the pointer, global AppKit points
     var pointer = NSEvent.mouseLocation
-    /// each screen's still: (its frame, the picture, pixels a point)
-    var stills: [(frame: NSRect, image: CGImage, scale: CGFloat)] = []
+    let stills = LoupeStills()
     var selection: NSRect? {
         guard let a = start, let b = current else { return nil }
         return NSRect(x: min(a.x, b.x), y: min(a.y, b.y), width: abs(a.x - b.x), height: abs(a.y - b.y))
@@ -222,6 +221,7 @@ final class TextDragPicker {
             w.hasShadow = false
             w.ignoresMouseEvents = false
             w.acceptsMouseMovedEvents = true
+            w.alphaValue = 0
             w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
             let v = TextDragView(frame: NSRect(origin: .zero, size: screen.frame.size))
             v.picker = self
@@ -229,13 +229,11 @@ final class TextDragPicker {
             w.setFrame(screen.frame, display: false)
             w.orderFrontRegardless()
             windows.append(w)
-            // the still the loupe magnifies and the selection is read from (our own windows are never in it)
-            let frame = screen.frame
-            captureStill(rect: toCG(frame), showsCursor: false) { [weak self] img, scale in
-                guard let self = self, !self.finished, let img = img else { return }
-                self.stills.append((frame, img, scale))
-                self.redraw()
-            }
+        }
+        stills.capture(NSScreen.screens) { [weak self] in
+            guard let self = self, !self.finished else { return }
+            self.windows.forEach { $0.alphaValue = 1 }
+            self.redraw()
         }
         // the key window under the pointer takes Esc without activating Blurt; the crosshair from the first move
         windows.first { $0.frame.contains(NSEvent.mouseLocation) }?.makeKey()
@@ -244,23 +242,21 @@ final class TextDragPicker {
     }
 
     func moved(to p: NSPoint) {
+        let old = pointer
         pointer = p
-        redraw()
+        for w in windows {
+            guard let v = w.contentView else { continue }
+            if selection != nil { v.needsDisplay = true; continue }
+            v.setNeedsDisplay(Loupe.frame(for: old, in: v).insetBy(dx: -12, dy: -12))
+            v.setNeedsDisplay(Loupe.frame(for: p, in: v).insetBy(dx: -12, dy: -12))
+        }
     }
 
     func redraw() { windows.forEach { $0.contentView?.needsDisplay = true } }
 
-    func still(at p: NSPoint) -> (frame: NSRect, image: CGImage, scale: CGFloat)? { stills.first { $0.frame.contains(p) } }
-
     func finish() {
         let r = selection
-        let crop: CGImage? = r.flatMap { s in
-            // the selection inside one screen's still: cut out of it (else a fresh capture across the screens)
-            guard let st = stills.first(where: { $0.frame.contains(s) }) else { return nil }
-            let px = CGRect(x: (s.minX - st.frame.minX) * st.scale, y: (st.frame.maxY - s.maxY) * st.scale,
-                            width: s.width * st.scale, height: s.height * st.scale).integral
-            return st.image.cropping(to: px)
-        }
+        let crop = r.flatMap { stills.crop($0) }
         close()
         guard let s = r, s.width >= 4, s.height >= 4 else { return done(nil, nil) }
         done(toCG(s).integral, crop)
@@ -269,6 +265,7 @@ final class TextDragPicker {
     func close() {
         guard !finished else { return }
         finished = true
+        stills.cancel()
         NSCursor.pop()
         windows.forEach { $0.orderOut(nil) }
         windows.removeAll()
@@ -277,8 +274,6 @@ final class TextDragPicker {
 
 final class TextDragView: NSView {
     weak var picker: TextDragPicker?
-    static let loupe: CGFloat = 120          // points
-    static let zoom: CGFloat = 8
 
     override var acceptsFirstResponder: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -298,87 +293,18 @@ final class TextDragView: NSView {
     override func draw(_ dirty: NSRect) {
         guard let p = picker, let w = window else { return }
         if let s = p.selection {
-            let r = s.offsetBy(dx: -w.frame.minX, dy: -w.frame.minY).intersection(bounds)
-            if !r.isEmpty {
-                BrandColor.Island.fill.withAlphaComponent(0.08).setFill()
-                r.fill()
-                let outer = NSBezierPath(rect: r.insetBy(dx: 0.5, dy: 0.5))
-                outer.lineWidth = 1
-                NSColor(white: 0, alpha: 0.35).setStroke()
-                outer.stroke()
-                let edge = NSBezierPath(rect: r.insetBy(dx: 1.5, dy: 1.5))
-                edge.lineWidth = 1.5
-                BrandColor.Island.fill.setStroke()
+            let r = s.offsetBy(dx: -w.frame.minX, dy: -w.frame.minY)
+            if !r.intersection(bounds).isEmpty {
+                BrandColor.Island.selection.withAlphaComponent(0.10).setFill()
+                r.intersection(bounds).fill()
+                // the one line, just outside the area (nothing of it lands in what is read)
+                let edge = NSBezierPath(rect: r.insetBy(dx: -1, dy: -1))
+                edge.lineWidth = 2
+                BrandColor.Island.selection.setStroke()
                 edge.stroke()
             }
         }
-        guard w.frame.contains(p.pointer) else { return }
-        drawLoupe(p, in: w)
-    }
-
-    /// The loupe below-right of the pointer (flipped at the screen's edges), its label under it: the point (top-left
-    /// points, as the selection is measured) or, while dragging, the selection's size.
-    private func drawLoupe(_ p: TextDragPicker, in w: NSWindow) {
-        let L = Self.loupe, gap: CGFloat = 18, labelH: CGFloat = 22
-        let at = NSPoint(x: p.pointer.x - w.frame.minX, y: p.pointer.y - w.frame.minY)
-        var o = NSPoint(x: at.x + gap, y: at.y - gap - L - labelH)
-        if o.x + L > bounds.maxX - 4 { o.x = at.x - gap - L }
-        if o.y < 4 { o.y = at.y + gap }
-        let box = NSRect(x: o.x, y: o.y + labelH, width: L, height: L)
-        let ctx = NSGraphicsContext.current!.cgContext
-        ctx.saveGState()
-        let shape = NSBezierPath(roundedRect: box, xRadius: 10, yRadius: 10)
-        NSGraphicsContext.saveGraphicsState()
-        let shadow = NSShadow()
-        shadow.shadowBlurRadius = 10
-        shadow.shadowOffset = NSSize(width: 0, height: -2)
-        shadow.shadowColor = NSColor(white: 0, alpha: 0.35)
-        shadow.set()
-        NSColor(white: 0.08, alpha: 1).setFill()
-        shape.fill()
-        NSGraphicsContext.restoreGraphicsState()
-        shape.addClip()
-        if let st = p.still(at: p.pointer) {
-            // the still's pixels around the pointer, each one Z points wide (nearest neighbour: a pixel grid)
-            let span = L / Self.zoom                      // points of the screen shown
-            let px = CGRect(x: (p.pointer.x - st.frame.minX - span / 2) * st.scale, y: (st.frame.maxY - p.pointer.y - span / 2) * st.scale,
-                            width: span * st.scale, height: span * st.scale).integral
-            if let part = st.image.cropping(to: px) {
-                ctx.interpolationQuality = .none
-                ctx.draw(part, in: box)
-            }
-        }
-        // the crosshair: the pixel under the pointer framed, lines through it
-        let cell = Self.zoom / max(1, p.still(at: p.pointer)?.scale ?? 2)
-        let c = NSPoint(x: box.midX, y: box.midY)
-        BrandColor.Island.fill.withAlphaComponent(0.85).setStroke()
-        let lines = NSBezierPath()
-        lines.lineWidth = 1
-        lines.move(to: NSPoint(x: box.minX, y: c.y)); lines.line(to: NSPoint(x: c.x - cell, y: c.y))
-        lines.move(to: NSPoint(x: c.x + cell, y: c.y)); lines.line(to: NSPoint(x: box.maxX, y: c.y))
-        lines.move(to: NSPoint(x: c.x, y: box.minY)); lines.line(to: NSPoint(x: c.x, y: c.y - cell))
-        lines.move(to: NSPoint(x: c.x, y: c.y + cell)); lines.line(to: NSPoint(x: c.x, y: box.maxY))
-        lines.stroke()
-        NSBezierPath(rect: NSRect(x: c.x - cell, y: c.y - cell, width: cell * 2, height: cell * 2)).stroke()
-        ctx.restoreGState()
-        NSColor(white: 1, alpha: 0.9).setStroke()
-        let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
-        rim.lineWidth = 1
-        rim.stroke()
-        // the label
-        let text: String
-        if let s = p.selection, s.width >= 1 || s.height >= 1 {
-            text = "\(Int(s.width.rounded())) × \(Int(s.height.rounded()))"
-        } else {
-            let g = toCG(NSRect(origin: p.pointer, size: .zero))
-            text = "\(Int(g.minX.rounded())), \(Int(g.minY.rounded()))"
-        }
-        let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        let a = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor(white: 1, alpha: 0.92)])
-        let tw = ceil(a.size().width) + 16
-        let pill = NSRect(x: box.midX - tw / 2, y: o.y, width: tw, height: labelH - 4)
-        NSColor(white: 0.08, alpha: 0.92).setFill()
-        NSBezierPath(roundedRect: pill, xRadius: pill.height / 2, yRadius: pill.height / 2).fill()
-        a.draw(at: NSPoint(x: pill.minX + 8, y: pill.midY - a.size().height / 2))
+        Loupe.draw(pointer: p.pointer, in: self, stills: p.stills,
+                   label: p.selection.map(Loupe.sizeLabel) ?? Loupe.pointLabel(p.pointer))
     }
 }

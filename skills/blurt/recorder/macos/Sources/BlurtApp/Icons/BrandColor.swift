@@ -43,6 +43,8 @@ enum BrandColor {
         static let tint = srgb(0x61DBBD, 0.2)
         static let working = srgb(0x61DBBD, 0.502)
         static let on = srgb(0x04261E, 1)
+        /// the one solid line round an area being picked (snap, record, copy text) and the loupe's crosshair
+        static let selection = srgb(0x1CA288, 1)
         static let rec = srgb(0xFF453A, 1)
         static let attn = srgb(0xFFC23D, 1)
         static let ok = srgb(0x8ACB4E, 1)
