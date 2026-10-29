@@ -68,6 +68,8 @@ public enum ShellEnv {
         for (k, v) in inherited where k.hasPrefix("BLURT_") { env[k] = v }
         env["PATH"] = path
         env["BLURT_APP"] = "1"
+        // this executable answers `--speech` (macOS's recogniser for transcribe.py's `apple` backend)
+        if env["BLURT_APP_BIN"] == nil, let exe = Bundle.main.executablePath { env["BLURT_APP_BIN"] = exe }
         return env
     }
 

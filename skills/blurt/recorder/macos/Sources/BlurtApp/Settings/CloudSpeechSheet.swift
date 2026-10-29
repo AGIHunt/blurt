@@ -72,6 +72,23 @@ enum CloudSpeech {
         invalidate()
     }
 
+    /// How fast every cloud service hears the audio (asr.cloud.speed; transcribe.py `cloud_speed`): billing is per
+    /// second sent. 1.5x is the default — measured 34 % cheaper for 1.2 points more error; 2x halves the cost but
+    /// errs a lot more (docs/design/first-minute-speech.md §2.4).
+    static let speeds: [Double] = [1.0, 1.5, 2.0]
+    static let defaultSpeed = 1.5
+    static var speed: Double {
+        let v = (Config.shared["asr.cloud"] as? [String: Any])?["speed"] as? Double ?? defaultSpeed
+        return speeds.min { abs($0 - v) < abs($1 - v) } ?? defaultSpeed
+    }
+    static func setSpeed(_ v: Double) {
+        var all = Config.shared["asr.cloud"] as? [String: Any] ?? [:]
+        all["speed"] = v
+        Config.shared.set("asr.cloud", all)
+    }
+    /// "1" / "1.5" / "2": the strings' suffix
+    static func speedKey(_ v: Double) -> String { v == 1.5 ? "15" : String(Int(v)) }
+
     // MARK: what the scripts get
 
     private static let lock = NSLock()
@@ -154,6 +171,7 @@ struct CloudSpeechSheet: View {
     let title: String
     var close: (_ saved: Bool) -> Void
     @State private var setup = CloudSpeech.setup
+    @State private var speed = CloudSpeech.speed
     @State private var key = ""
     @State private var stored: Bool
 
@@ -212,6 +230,18 @@ struct CloudSpeechSheet: View {
                 }
             }
             GridRow {
+                Text(S("speech.cloud.speed")).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+                VStack(alignment: .leading, spacing: 5) {
+                    ChoicePopup(label: S("speech.cloud.speed"),
+                                choices: CloudSpeech.speeds.map { ($0, S("speech.cloud.speed.\(CloudSpeech.speedKey($0))")) },
+                                selection: $speed, width: 220)
+                    Text(S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint") + " " + S("speech.cloud.speed.all"))
+                        .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, SettingsMetrics.fieldTextInset)
+                }
+            }
+            GridRow {
                 label("dictation.cloud.key")
                 VStack(alignment: .leading, spacing: 5) {
                     SecureField(stored ? T("dictation.cloud.key.stored") : T("dictation.cloud.key.placeholder"), text: $key)
@@ -238,10 +268,11 @@ struct CloudSpeechSheet: View {
 
     func save() {
         if openAI { CloudSpeech.save(setup) }
+        if speed != CloudSpeech.speed { CloudSpeech.setSpeed(speed) }
         let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if !k.isEmpty { CloudSpeech.Key.write(modelID, k) }
         emit(["event": "speech_cloud", "action": "save", "model": modelID, "service": openAI ? setup.service.rawValue : "dashscope",
-              "key": !k.isEmpty])
+              "key": !k.isEmpty, "speed": speed])
         close(true)
     }
 }

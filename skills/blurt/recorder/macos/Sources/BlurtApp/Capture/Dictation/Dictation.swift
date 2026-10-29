@@ -306,6 +306,10 @@ final class Dictation {
                 return emit(["event": "dictation_prewarm", "why": why, "skipped": "not_installed",
                              "model": self?.speechModels?.selected ?? NSNull()])
             }
+            // macOS's own recogniser: nothing of ours to load (the system keeps its own warm)
+            guard m.selected != AppleSpeech.modelID else {
+                return emit(["event": "dictation_prewarm", "why": why, "skipped": "builtin", "model": m.selected])
+            }
             VoiceInput.warmSpeechModel(dictation: true)
             emit(["event": "dictation_prewarm", "why": why, "model": m.selected])
         }
@@ -317,8 +321,13 @@ final class Dictation {
         MainActor.assumeIsolated {
             Task { @MainActor in
                 await DictationModels.shared.load()
-                if let a = DictationModels.shared.asr { self.setSpeechModels(a.dictionary) }
-                then?()
+                if let a = DictationModels.shared.asr { self.setSpeechModels(a.dictionary); then?(); return }
+                // the list can't be read (no speech tools yet: a first run before uv): macOS's recogniser, once its
+                // language's files are here (docs/design/first-minute-speech.md)
+                AppleSpeech.prepare(via: "no_tools") { a in
+                    if a == .installed, self.speechModels == nil { self.setSpeechModels(AppleSpeech.dictationModels) }
+                    then?()
+                }
             }
         }
     }
@@ -334,6 +343,9 @@ final class Dictation {
                   "missing": m.missing, "recommended": m.recommended])
         }
         if was?.ready == false, m.ready { modelArrived() }
+        // dictation runs on macOS's recogniser: its language's files asked for (once; nothing when they are here)
+        // (a cloud service too: macOS's recogniser gives its live text)
+        if m.selected == AppleSpeech.modelID || m.selectedCloud, was?.selected != m.selected { AppleSpeech.prepare(via: "dictation") }
     }
 
     /// Dictation listens with the Mac's own mic (DictationMicChoice: automatic = when the default input is Bluetooth).
@@ -760,7 +772,7 @@ final class Dictation {
     /// which is how a cold polish server missed a 19 s dictation); online only if that fails.
     func warm() {
         guard !speechModelMissing, !speechToolsMissing else { return }
-        VoiceInput.warmSpeechModel(dictation: true)
+        if speechModels?.selected != AppleSpeech.modelID { VoiceInput.warmSpeechModel(dictation: true) }
         guard Dictation.polishOn else { return }
         warmPolish()
     }
@@ -768,7 +780,8 @@ final class Dictation {
     /// The polish server up (or a stuck one replaced) with its model loaded — dictation's key-down, and a voice note
     /// switched to Structured (its words go through the same structuring pass). Nothing without a polish model.
     func warmPolish() {
-        guard polishModel != nil else { return }
+        // the server runs cloud polish too: with no local model it is the cloud's alone (polish.py never downloads one)
+        guard polishModel != nil || DictationCloud.ready else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced
@@ -873,7 +886,7 @@ final class Dictation {
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
         opt.streaming = Dictation.streaming
-        opt.rehear = Dictation.rehear
+        opt.rehear = Dictation.rehear && !AppleSpeech.cloudSelected     // a cloud service bills every pass
         opt.rehearWindow = Dictation.rehearWindow
         opt.polishTimeout = Dictation.polishTimeout
         opt.structureTimeout = Dictation.structureTimeout
@@ -1251,6 +1264,7 @@ final class Dictation {
     /// no longer asks that same server first (`--no-server`).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
                            hint: String = "", app: String = "", audioSeconds: Double) -> [String: Any] {
+        if AppleSpeech.forDictation { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation") }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
                                   "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
@@ -1332,6 +1346,7 @@ final class Dictation {
     /// Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, vocab: [[String: Any]], language: String, prior: String,
                                   hint: String, app: String = "") -> [String: Any]? {
+        if AppleSpeech.forLiveText { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation_interim") }
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
                                   "vocab": vocab, "interim": true, "no_download": true]

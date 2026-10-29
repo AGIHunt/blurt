@@ -54,9 +54,12 @@ struct DictationASRState: Decodable {
     var selectedInstalled: Bool?
     var configuredInstalled: Bool?
     var missing: [String]?
+    /// the selected model is a cloud service (first-minute-speech.md §2.4)
+    var selectedCloud: Bool?
     enum CodingKeys: String, CodingKey {
         case configured, recommended, selected, models, ready, missing
         case selectedInstalled = "selected_installed", configuredInstalled = "configured_installed"
+        case selectedCloud = "selected_cloud"
     }
 
     /// The CLI's shape again, for Dictation (BlurtCore's DictationSpeechModels reads it).
@@ -68,6 +71,7 @@ struct DictationASRState: Decodable {
         if let s = selectedInstalled { d["selected_installed"] = s }
         if let c = configuredInstalled { d["configured_installed"] = c }
         if let m = missing { d["missing"] = m }
+        if let c = selectedCloud { d["selected_cloud"] = c }
         return d
     }
 }

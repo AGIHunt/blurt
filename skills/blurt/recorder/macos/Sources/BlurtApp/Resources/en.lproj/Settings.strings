@@ -458,3 +458,20 @@
 "settings.general.screen_text.detail.cloud" = "Uses your cloud model (%@): about ¥0.001 a capture. The picture is sent to it.";
 "settings.general.screen_text.detail.cloud_missing" = "Add a cloud model and its key under Dictation → Cloud polish first.";
 "settings.general.screen_text.setup" = "Set Up…";
+
+/* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
+"onboarding.start.detail" = "It works now. Add more for better accuracy or offline use.";
+"onboarding.start.ready.title" = "Dictation works now";
+"onboarding.start.ready.detail" = "It uses the speech recognition built into macOS. Nothing to download.";
+"onboarding.start.ready.state" = "Ready";
+"onboarding.start.assets.title" = "macOS is downloading its speech files";
+"onboarding.start.assets.detail" = "Once, about 400 MB, kept by macOS. Dictation works as soon as it's done.";
+"onboarding.key.title" = "AI service key (optional)";
+"onboarding.key.detail" = "Fixes misheard words, punctuation and names. Voice notes and Copy Text from Screen use it too.";
+"onboarding.key.on" = "On · %@";
+"onboarding.key.add" = "Add…";
+"onboarding.key.change" = "Change…";
+"onboarding.upgrade.title" = "Local models (optional)";
+"onboarding.upgrade.detail" = "Work offline, know your word list, and get more words right.";
+"onboarding.upgrade.download" = "Download (%@)";
+"onboarding.upgrade.needs_uv" = "Local models need uv (the tool that runs them) first.";

@@ -188,6 +188,8 @@ public struct DictationSpeechModels: Equatable {
     public var configuredInstalled: Bool
     /// what a download would bring: "silero-vad" and/or the selected model's id
     public var missing: [String]
+    /// the selected model is a cloud service (live text then comes from macOS's recogniser; no hearing again)
+    public var selectedCloud = false
 
     public static let vad = "silero-vad"
 
@@ -210,6 +212,7 @@ public struct DictationSpeechModels: Equatable {
                   recommendedInstalled: row(rec), configured: configured,
                   configuredInstalled: r["configured_installed"] as? Bool ?? configured.map(row) ?? false,
                   missing: r["missing"] as? [String] ?? (selIn ? [] : [selected]))
+        selectedCloud = r["selected_cloud"] as? Bool ?? false
     }
 
     /// Only the VAD is missing (the model is there): the island says that, not "no speech model".

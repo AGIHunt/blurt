@@ -644,6 +644,7 @@
 "dictation.cloud.title" = "Cloud Polish";
 "dictation.cloud.detail" = "Polish dictation with a model you choose: it fixes misheard words, drops filler words and cleans up punctuation.";
 "dictation.cloud.row.off" = "Off · polished on this Mac";
+"dictation.cloud.row.off_none" = "Off · no polish yet: the words as heard";
 "dictation.cloud.row.on" = "%1$@ · %2$@";
 "dictation.cloud.row.no_key" = "On, but no API key yet: polished on this Mac for now";
 "dictation.cloud.row.setup" = "Set Up…";

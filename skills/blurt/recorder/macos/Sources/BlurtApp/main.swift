@@ -22,6 +22,13 @@ import ServiceManagement
 import BlurtCore
 
 
+// macOS's speech recognition for transcribe.py's `apple` backend (Capture/AppleSpeech.swift): answers and exits.
+switch CommandLine.arguments.dropFirst().first {
+case "--speech": AppleSpeech.runCLI(Array(CommandLine.arguments.dropFirst(2)))
+case "--speech-status": AppleSpeech.runCLI(["--status"] + Array(CommandLine.arguments.dropFirst(2)))
+default: break
+}
+
 var opts = Options.parse()
 if let l = opts.lang { Loc.setting = l }
 Loc.applyToSystemStrings()

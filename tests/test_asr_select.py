@@ -125,7 +125,8 @@ class Registry(unittest.TestCase):
             self.assertIn(m["verified"], ("run", "docs"))
             self.assertTrue(m["languages"] == "multi" or (isinstance(m["languages"], list) and m["languages"]))
             if m.get("local", True):
-                self.assertTrue(m.get("install"), m["id"])
+                # macOS's own recogniser has nothing to install (first-minute-speech.md)
+                self.assertTrue(m.get("install") or m.get("builtin"), m["id"])
                 self.assertIn("rtf_ref", m, m["id"])  # measured on the reference machine (asr-benchmark.md)
             if m.get("package"):
                 self.assertEqual(T.EXTRA_PACKAGES.get(m["backend"]), m["package"])
@@ -655,6 +656,173 @@ class Install(unittest.TestCase):
         d = T.build_transcript("r.mp4", "fake", backend, Namespace(model=None), 3, 3, 0, results, 0.1)
         self.assertEqual([s["language"] for s in d["segments"]], ["en", "zh", "en"])
         self.assertEqual(d["languages"], ["en", "zh"])
+
+
+# ------------------------------------------------------------------ macOS's own recogniser (first-minute-speech.md)
+class AppleSpeechSelect(unittest.TestCase):
+    """Nothing downloaded: macOS 26's SpeechTranscriber runs dictation, voice notes and recordings; a local model takes
+    over as soon as one is installed; never for a language it doesn't speak."""
+
+    def test_it_runs_when_nothing_is_downloaded(self):
+        real = fake_installed("apple-speech")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.select("note")["id"], "apple-speech")
+                self.assertEqual(T.select("batch")["id"], "apple-speech")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "apple-speech")
+                self.assertTrue(d["ready"])                 # no VAD needed: it finds its own pauses
+                self.assertEqual(d["missing"], [])
+                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")    # the download still offered (the upgrade)
+                self.assertTrue({m["id"]: m for m in d["models"]}["apple-speech"]["builtin"])
+                # an 8 GB Mac: the voice-note rules' pick is offered, never macOS's own
+                self.assertNotEqual(T.dictation_models(hw(ram=8.0))["recommended"], "apple-speech")
+        finally:
+            T.installed = real
+
+    def test_a_local_model_takes_over(self):
+        real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.dictation_models(hw())["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.select("note")["id"], "qwen3-asr-1.7b-mlx")
+        finally:
+            T.installed = real
+
+    def test_never_for_a_language_it_does_not_speak(self):
+        real = fake_installed("apple-speech")
+        try:
+            with config({"asr": {"languages": ["th"]}}):
+                self.assertNotEqual(T.select("note")["id"], "apple-speech")
+        finally:
+            T.installed = real
+
+    def test_locale(self):
+        with config({"asr": {"languages": ["zh", "en"]}}):
+            self.assertEqual(T.apple_locale(None), "zh-CN")
+            self.assertEqual(T.apple_locale("en"), "en-US")
+            self.assertIsNone(T.apple_locale("th"))
+        with config({"asr": {"languages": ["en", "zh"]}}):
+            self.assertEqual(T.apple_locale("auto"), "en-US")
+
+    def test_whole_audio_through_the_app_without_vad(self):
+        # the Blurt executable's `--speech` answer, faked: one line of JSON with each phrase's time
+        with tempfile.TemporaryDirectory() as d:
+            helper = Path(d) / "blurt-recorder"
+            helper.write_text(textwrap.dedent("""\
+                #!/bin/sh
+                echo '{"event":"apple_speech_assets","result":"installed"}'
+                echo '{"ok":true,"text":"你好。世界。","locale":"'"$4"'","segments":[{"start":0.1,"end":0.9,"text":"你好。"},{"start":1.0,"end":1.4,"text":"世界。"}]}'
+                """))
+            helper.chmod(0o755)
+            old = (os.environ.get("BLURT_APP_BIN"), T._APPLE_OK, T.vad_segments)
+            os.environ["BLURT_APP_BIN"] = str(helper)
+            T._APPLE_OK = True
+
+            def no_vad(*_a, **_k):
+                raise AssertionError("macOS's recogniser needs no VAD")
+            T.vad_segments = no_vad
+            try:
+                with config({"asr": {"languages": ["zh"]}}):
+                    b = T.AppleSpeech(Namespace(language=None))
+                    self.assertTrue(b.set_vocab([{"term": "tmux"}]))
+                    wav = write_wav(Path(d) / "a.wav", 1.5)
+                    res, speech, blank = T.transcribe_track(T.read_wav(wav), b, "apple", 1, quiet=True)
+            finally:
+                os.environ.pop("BLURT_APP_BIN", None)
+                if old[0]:
+                    os.environ["BLURT_APP_BIN"] = old[0]
+                T._APPLE_OK, T.vad_segments = old[1], old[2]
+        self.assertEqual([r[2] for r in res], ["你好。", "世界。"])
+        self.assertEqual(res[1][:2], (1.0, 1.4))
+        self.assertEqual(res[0][4], "zh")
+        self.assertAlmostEqual(speech, 1.5, places=2)
+        self.assertEqual(blank, 0.0)
+
+    def test_it_needs_macos_26_and_the_app(self):
+        old = (os.environ.get("BLURT_APP_BIN"), T._APPLE_OK, T.apple_speech_helper)
+        try:
+            os.environ["BLURT_APP_BIN"] = "/nonexistent/blurt-recorder"
+            T._APPLE_OK = None
+            T.apple_speech_helper = lambda: None
+            self.assertFalse(T.apple_speech_ok())
+            self.assertIsNotNone(T.backend_ready("apple"))
+        finally:
+            T.apple_speech_helper = old[2]
+            os.environ.pop("BLURT_APP_BIN", None)
+            if old[0]:
+                os.environ["BLURT_APP_BIN"] = old[0]
+            T._APPLE_OK = old[1]
+
+
+class CloudSpeed(unittest.TestCase):
+    """asr.cloud.speed: every cloud service hears the audio sped up (default 1.5x); times come back on the original
+    timeline; dictation offers a cloud service once its key is set (first-minute-speech.md §2.4)."""
+
+    def test_setting(self):
+        with config({}):
+            self.assertEqual(T.cloud_speed(), 1.5)
+        with config({"asr": {"cloud": {"speed": 2}}}):
+            self.assertEqual(T.cloud_speed(), 2.0)
+        with config({"asr": {"cloud": {"speed": 1.2, "openai-compatible": {"service": "groq"}}}}):
+            self.assertEqual(T.cloud_speed(), 1.0)      # the nearest offered one
+        with config({"asr": {"cloud": {"speed": "fast"}}}):
+            self.assertEqual(T.cloud_speed(), 1.5)
+
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
+    def test_speed_up_keeps_length_ratio(self):
+        x = (0.3 * np.sin(2 * np.pi * 220 * np.arange(3 * SR) / SR)).astype(np.float32)
+        self.assertEqual(len(T.speed_up(x, 1.0)), len(x))
+        self.assertAlmostEqual(len(T.speed_up(x, 1.5)) / SR, 2.0, delta=0.05)
+        self.assertAlmostEqual(len(T.speed_up(x, 2.0)) / SR, 1.5, delta=0.05)
+
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
+    def test_openai_compatible_times_back_on_the_original_timeline(self):
+        sent = {}
+
+        def fake_post(url, body, headers, retries=4):
+            sent["bytes"] = len(body)
+            return {"language": "english", "segments": [{"start": 0.0, "end": 0.8, "text": "a"}, {"start": 0.8, "end": 1.5, "text": "b"}]}
+        old = (T._post, os.environ.get("BLURT_ASR_API_KEY"))
+        T._post = fake_post
+        os.environ["BLURT_ASR_API_KEY"] = "test"
+        try:
+            with config({"asr": {"cloud": {"speed": 2}}}):
+                b = T.OpenAICompat(Namespace(model="whisper-1", language=None, prompt=None))
+                x = np.zeros(3 * SR, dtype=np.float32)
+                segs = b.transcribe(x)
+        finally:
+            T._post = old[0]
+            if old[1] is None:
+                os.environ.pop("BLURT_ASR_API_KEY", None)
+            else:
+                os.environ["BLURT_ASR_API_KEY"] = old[1]
+        self.assertLess(sent["bytes"], 3 * SR * 2 * 0.6)     # about half the audio went
+        self.assertEqual([s[:2] for s in segs], [(0.0, 1.6), (1.6, 3.0)])
+
+    def test_dictation_offers_a_keyed_cloud_service(self):
+        real = fake_installed("apple-speech")
+        old = os.environ.get("DASHSCOPE_API_KEY")
+        try:
+            with config({"asr": {"languages": ["zh"]}}):
+                os.environ.pop("DASHSCOPE_API_KEY", None)
+                self.assertNotIn("qwen3-asr-flash", [m["id"] for m in T.dictation_models(hw())["models"]])
+                os.environ["DASHSCOPE_API_KEY"] = "test"
+                d = T.dictation_models(hw())
+                self.assertIn("qwen3-asr-flash", [m["id"] for m in d["models"]])
+                self.assertFalse(d["selected_cloud"])
+            with config({"asr": {"languages": ["zh"]}, "record": {"dictation": {"asr_model": "qwen3-asr-flash"}}}):
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "qwen3-asr-flash")
+                self.assertTrue(d["selected_cloud"])
+            with config({"asr": {"languages": ["zh"]}, "privacy": {"local_asr": True}}):
+                self.assertNotIn("qwen3-asr-flash", [m["id"] for m in T.dictation_models(hw())["models"]])
+        finally:
+            T.installed = real
+            if old is None:
+                os.environ.pop("DASHSCOPE_API_KEY", None)
+            else:
+                os.environ["DASHSCOPE_API_KEY"] = old
 
 
 # ------------------------------------------------------------------ the real thing (opt-in: BLURT_ASR_SLOW=1)

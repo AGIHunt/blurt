@@ -60,6 +60,8 @@ final class DictationCloudModel: ObservableObject {
         let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if !k.isEmpty { DictationCloud.Key.write(setup.provider, k) }
         var s = setup
+        // a key just typed means "use it" (the setup assistant's one key, docs/design/first-minute-speech.md §4.3)
+        if !k.isEmpty { s.on = true }
         if s.on && !DictationCloud.Key.has(s.provider) { s.on = false }
         DictationCloud.save(s)
         key = ""
@@ -181,7 +183,8 @@ struct CloudPolishRow: View {
     @State var ready = DictationCloud.ready
 
     var body: some View {
-        let detail: String = !cloud.on ? T("dictation.cloud.row.off")
+        // off with no local polish model (a first run on macOS's recogniser): nothing polishes — said so
+        let detail: String = !cloud.on ? T(Dictation.shared.polishModel == nil ? "dictation.cloud.row.off_none" : "dictation.cloud.row.off")
             : !ready ? T("dictation.cloud.row.no_key")
             : T("dictation.cloud.row.on", T("dictation.cloud.provider.\(cloud.provider.rawValue)"), cloud.effectiveModel)
         SettingRow("speech.cloud_polish", detail: detail, icon: "cloud", detailColor: cloud.on && !ready ? .brandAttnInk : nil) {

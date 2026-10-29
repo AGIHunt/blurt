@@ -644,6 +644,7 @@
 "dictation.cloud.title" = "云端润色";
 "dictation.cloud.detail" = "用你选的大模型润色听写：改正听错的词，去掉口头语，整理标点。";
 "dictation.cloud.row.off" = "关闭 · 用本机模型润色";
+"dictation.cloud.row.off_none" = "关闭 · 现在不润色，打出识别的原文";
 "dictation.cloud.row.on" = "%1$@ · %2$@";
 "dictation.cloud.row.no_key" = "已开启，但还没有 API Key，目前用本机模型润色";
 "dictation.cloud.row.setup" = "设置…";

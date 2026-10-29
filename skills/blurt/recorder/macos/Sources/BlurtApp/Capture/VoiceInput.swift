@@ -102,7 +102,7 @@ final class VoiceInput {
     var maxSeconds: Double { max(30, (settings["max_seconds"] as? Double) ?? 600) }
     /// transcribe while talking (off: the whole wav after stop, the old path)
     var streams: Bool { settings["stream"] as? Bool ?? true }
-    var rehears: Bool { settings["rehear"] as? Bool ?? true }
+    var rehears: Bool { (settings["rehear"] as? Bool ?? true) && !AppleSpeech.cloudSelected }   // a cloud service bills every pass
     /// what the island says it will take to finish: the key, else the Done button
     var endsOnPause: Bool { VoiceInput.endOnPause && !holding }
 
@@ -291,6 +291,8 @@ final class VoiceInput {
     /// dictation: its own model (record.dictation.asr_model / the recommended one) — a running server is asked to
     /// load it, a new one preloads it.
     static func warmSpeechModel(dictation: Bool = false) {
+        // macOS's recogniser runs in this process (AppleSpeech): no speech server to start, no memory held
+        if AppleSpeech.forNotes { return }
         if dictation && WarmServer.running("asr-serve") {
             // a run file can name a server that will never answer (stuck since an app long gone, or ours hung): the
             // key-down asks it, and one that is stuck is replaced — on a relaunch too (v0.9 dogfood: every take
@@ -403,6 +405,11 @@ final class VoiceInput {
     /// One piece of a voice note → its words: the warm server (`note`, the voice-note model), else the CLI (which
     /// asks the server itself, or loads the model). Blocking: off the main thread.
     static func transcribePiece(_ wav: URL, prior: String) -> [String: Any]? {
+        // no local model: macOS's recogniser, in this process (first-minute-speech.md)
+        if AppleSpeech.forNotes {
+            let r = AppleSpeech.transcribe(wav, language: "auto", purpose: "note")
+            return r["ok"] as? Bool == true ? r : nil
+        }
         notesLock.lock(); notesInFlight += 1; notesLock.unlock()
         defer { notesLock.lock(); notesInFlight -= 1; notesLock.unlock() }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto"]
@@ -417,7 +424,11 @@ final class VoiceInput {
             sem.signal()
         }
         sem.wait()
-        return out.flatMap { ($0["ok"] as? Bool ?? true) ? $0 : nil }
+        if let o = out, o["ok"] as? Bool ?? true { return o }
+        // the speech tools couldn't run (no uv yet) or had no model: macOS's recogniser when it is ready
+        guard AppleSpeech.ready() else { return nil }
+        let r = AppleSpeech.transcribe(wav, language: "auto", purpose: "note_fallback")
+        return r["ok"] as? Bool == true ? r : nil
     }
 
     /// Tests (test commands only): the microphone stops delivering mid-note.
@@ -517,6 +528,7 @@ final class VoiceInput {
     /// The voice-note model on the piece still being said (the live text): the warm server only, never a CLI — an
     /// interim answer that has to load a model isn't worth it. Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, prior: String) -> [String: Any]? {
+        if AppleSpeech.forLiveText { return AppleSpeech.transcribe(wav, language: "auto", purpose: "note_interim") }
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": "auto", "interim": true]
         if !prior.isEmpty { req["prior"] = prior }

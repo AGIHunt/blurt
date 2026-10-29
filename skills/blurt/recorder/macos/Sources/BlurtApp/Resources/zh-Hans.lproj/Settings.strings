@@ -457,3 +457,20 @@
 "settings.general.screen_text.detail.cloud" = "使用你配置的云端模型（%@）：每次约 ¥0.001，截图会发送给它。";
 "settings.general.screen_text.detail.cloud_missing" = "先在「听写 → 云端润色」里填好云端模型和 key。";
 "settings.general.screen_text.setup" = "设置…";
+
+/* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
+"onboarding.start.detail" = "现在就能用。想更准、想离线，再往下加。";
+"onboarding.start.ready.title" = "听写现在就能用";
+"onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
+"onboarding.start.ready.state" = "可以用";
+"onboarding.start.assets.title" = "macOS 正在下载语音识别文件";
+"onboarding.start.assets.detail" = "只下一次，约 400 MB，由系统保存。下好就能听写。";
+"onboarding.key.title" = "AI 服务的 Key（可选）";
+"onboarding.key.detail" = "改掉听错的词、补好标点、认对专有名词。语音备注和截图取字也会用。";
+"onboarding.key.on" = "已开启 · %@";
+"onboarding.key.add" = "添加…";
+"onboarding.key.change" = "更改…";
+"onboarding.upgrade.title" = "本机模型（可选）";
+"onboarding.upgrade.detail" = "不联网也能用，认得你的词表，比系统自带的更准。";
+"onboarding.upgrade.download" = "下载（%@）";
+"onboarding.upgrade.needs_uv" = "本机模型要先装 uv（运行模型的工具）。";

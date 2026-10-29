@@ -31,7 +31,9 @@ enum DictationCloud {
             }
         }
         var defaultModel: String { self == .deepseek ? "deepseek-flash" : "" }
-        /// where to get a key (DeepSeek's own page; the others are the user's own service)
+        /// where to get a key (DeepSeek's own page; the others are the user's own service). Not Model Studio's Qwen
+        /// models: with this prompt qwen-flash / qwen-plus rewrote and condensed the takes (15–18 % from what was
+        /// typed, against DeepSeek's 9 %; docs/design/first-minute-speech.md §2.5)
         var keyPage: URL? { self == .deepseek ? URL(string: "https://platform.deepseek.com/api_keys") : nil }
     }
 

@@ -1598,7 +1598,8 @@ rewrite teaches nothing):
 
 `record.dictation.asr_model` (unset = automatic: the recommended model when installed; else the best Qwen3-ASR MLX
 already on this Mac that fits next to the polish model — it takes the Words list — e.g. a 1.7B brought from a bigger
-Mac, or the 0.6B on a pro Mac until the 1.7B is in; else the voice-note model). Memory is judged for the pair a
+Mac, or the 0.6B on a pro Mac until the 1.7B is in; else the voice-note model — which, with nothing downloaded on
+macOS 26, is macOS's own recogniser, `apple-speech`, run in the app's process: first-minute-speech.md). Memory is judged for the pair a
 dictation holds warm, recogniser + polish model (`transcribe.py fits_with_polish`: within the 40 % share of RAM one
 model may take; on a 16 GB Mac 0.6B 2.1 GB + Gemma 4 E2B 3.9 GB fits, 1.7B 3.1 GB + 3.9 GB doesn't; with polish off or
 a smaller polish model it does). The rows' `fits` say the same.
