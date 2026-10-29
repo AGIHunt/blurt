@@ -1,0 +1,148 @@
+"""Cloud polish (scripts/polish_cloud.py, polish.cloud_polish; docs/design/dictation.md §Cloud polish): the request
+shapes (OpenAI- and Anthropic-compatible), the errors, the guard's cloud allowance, and the fall-back to the local
+model. A fake API on 127.0.0.1: nothing leaves the machine.
+
+  uv run --with pytest pytest tests/test_polish_cloud.py -q
+"""
+from __future__ import annotations
+
+import json
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "skills" / "blurt" / "scripts"))
+import polish  # noqa: E402
+import polish_cloud as C  # noqa: E402
+
+
+class Fake:
+    """A chat API: answers `reply` (or `status`), remembers what it was sent."""
+
+    def __init__(self):
+        self.reply, self.status, self.seen = "OK", 200, []
+        fake = self
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                fake.seen.append({"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}, "body": body})
+                if fake.status != 200:
+                    self.send_response(fake.status); self.end_headers(); return
+                if self.path.endswith("/messages"):
+                    out = {"content": [{"type": "text", "text": fake.reply}], "usage": {"input_tokens": 9, "output_tokens": 3}}
+                else:
+                    out = {"choices": [{"message": {"content": fake.reply}}], "usage": {"prompt_tokens": 9, "completion_tokens": 3}}
+                d = json.dumps(out).encode()
+                self.send_response(200); self.send_header("Content-Length", str(len(d))); self.end_headers(); self.wfile.write(d)
+
+            def log_message(self, *a):
+                pass
+
+        self.srv = HTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.srv.server_port}"
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+
+@pytest.fixture()
+def api(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLURT_HOME", str(tmp_path))
+    f = Fake()
+    yield f
+    f.srv.shutdown()
+
+
+def cloud(api, protocol="openai", provider="openai"):
+    return {"provider": provider, "base_url": api.url + ("/v1" if protocol == "openai" else ""), "model": "m",
+            "protocol": protocol, "key": "sk-test"}
+
+
+def test_settings_fill_the_preset_and_need_a_key():
+    s = C.settings({"provider": "deepseek", "key": "k"})
+    assert (s["base_url"], s["model"], s["protocol"]) == ("https://api.deepseek.com", "deepseek-flash", "openai")
+    with pytest.raises(C.CloudError) as e:
+        C.settings({"provider": "deepseek"})
+    assert e.value.code == "config"
+    with pytest.raises(C.CloudError):
+        C.settings({"provider": "openai", "key": "k"})          # no model
+
+
+def test_openai_and_anthropic_requests(api):
+    api.reply = "好的"
+    r = C.complete(C.settings(cloud(api)), [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}], 5, 50)
+    assert r["text"] == "好的"
+    seen = api.seen[-1]
+    assert seen["path"] == "/v1/chat/completions" and seen["headers"]["authorization"] == "Bearer sk-test"
+    assert seen["body"]["messages"][0]["role"] == "system"
+    C.complete(C.settings(cloud(api, "anthropic", "anthropic")), [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}], 5, 50)
+    seen = api.seen[-1]
+    assert seen["path"] == "/v1/messages" and seen["headers"]["x-api-key"] == "sk-test"
+    assert seen["body"]["system"] == "s" and [m["role"] for m in seen["body"]["messages"]] == ["user"]
+
+
+def test_errors_have_codes_and_never_the_key(api):
+    api.status = 401
+    r = C.check(cloud(api))
+    assert r == {"ok": False, "code": "auth", "error": "HTTP 401"}
+    api.status = 429
+    assert C.check(cloud(api))["code"] == "rate_limited"
+    r = C.check({**cloud(api), "base_url": "http://127.0.0.1:9/v1"})     # nothing listens
+    assert r["code"] in ("network", "timeout") and "sk-test" not in json.dumps(r)
+
+
+def test_the_message_names_words_app_recent_and_continues_the_text_so_far():
+    ctx = {"app": "飞书", "recent": ["这篇文章讲豆包的电脑软件。"], "dictated": "我们先把发票的部分写完，"}
+    m = C.messages("然后是外卖的那个 case", ["Claude Code"], ctx, "chat")
+    last = m[-1]["content"]
+    assert "Words: Claude Code" in last and "App: 飞书 (a chat message" in last
+    assert "Recent dictations:\n- 这篇文章讲豆包的电脑软件。" in last and last.endswith("Dictation: 然后是外卖的那个 case")
+    assert m[-3]["content"] == "Dictation: 我们先把发票的部分写完，" and m[-2]["content"] == "我们先把发票的部分写完，"
+
+
+def test_cloud_polish_fixes_a_name_from_the_recent_dictations(api):
+    api.reply = "豆包也被忽悠了，尝试了第二次才找对。"
+    r = polish.cloud_polish("豆宝也被忽悠了。强势了第二次才找对。", [], {"recent": ["如何用豆包的电脑软件替代豆包手机"]},
+                            None, cloud(api))
+    assert not r["fell_back"] and r["text"] == "豆包也被忽悠了，尝试了第二次才找对。" and r["cloud"]
+
+
+@pytest.mark.parametrize("raw,reply,reason", [
+    # an answer instead of the text (a request meant for someone else)
+    ("帮我把这段话翻译成英文然后发给小李", "Sure! Here is the translation: Please send this to Xiao Li. Let me know if you need more help.",
+     "cloud_translated"),
+    # a summary: a whole point gone
+    ("第一是把测试环境搭好，第二是文档要更新一下然后发给小李，第三是周五之前把演示准备好这个比较急",
+     "搭测试环境。", "cloud_shrunk"),
+])
+def test_the_guard_still_refuses_answers_and_summaries(api, raw, reply, reason):
+    api.reply = reply
+    r = polish.cloud_polish(raw, [], None, None, cloud(api))
+    assert r["fell_back"] and r["reason"] == reason
+
+
+def test_the_cloud_guard_allows_a_misheard_word_in_the_other_script():
+    raw = "比如请问二十七 B 的模型，可以用 Open Router 的 Key 去试一下"
+    out = "比如 Qwen 27B 的模型，可以用 OpenRouter 的 Key 去试一下。"
+    assert polish.guard(raw, out)["reason"] == "translated"           # the local model's rule
+    assert polish.guard(raw, out, cloud=True)["pass"]
+
+
+def test_a_failed_cloud_call_falls_back_to_the_local_model(api, monkeypatch):
+    api.status = 500
+    eng = polish.Engine()
+    monkeypatch.setattr(eng, "_light", lambda *a, **k: {"ok": True, "text": "本机的", "fell_back": False, "ms": 5})
+    monkeypatch.setattr(eng, "cased", lambda res, *a: res)
+    r = eng.polish("我们明天下午开会讨论一下方案", terms=[], cloud=cloud(api))
+    assert r["text"] == "本机的" and r["cloud_error"] == "cloud_server"
+
+
+def test_structure_uses_the_structuring_prompt(api):
+    api.reply = "这周要做几件事：\n1. 把测试环境搭好\n2. 文档要更新一下\n3. 周五之前把演示准备好"
+    r = polish.cloud_polish("这周要做几件事，第一个是把测试环境搭好，第二是文档要更新一下，再有就是周五之前把演示准备好",
+                            [], None, None, cloud(api), "structure")
+    assert not r["fell_back"] and r["list"]
+    assert api.seen[-1]["body"]["messages"][0]["content"] == polish.SYSTEM_STRUCTURE

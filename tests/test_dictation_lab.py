@@ -252,7 +252,7 @@ def test_pieces_replay_the_cuts_with_prior_and_seams(home):
     segs = [{"start": 0, "end": 1.0, "pause_after": 0.6}, {"start": 1.0, "end": 3.0, "pause_after": None}]
     c = make_case(home, "c1", 3.0, "我们明天开会讨论方案", segs)
     fake = FakePipeline({1.0: "我们明天开会。", 2.0: "讨论方案。"})
-    r = L.run_case(c, L.parse_spec("current"), fake)
+    r = L.run_case(c, L.parse_spec("rehear=off"), fake)
     assert r["outputs"]["raw"] == "我们明天开会讨论方案。"                  # the breath's full stop went
     assert [x.get("prior") for x in fake.calls if "secs" in x] == ["", "我们明天开会。"]
     assert r["metrics"]["wer"] == 0.0 and r["outputs"]["timings"]["segments"] == 2
@@ -266,19 +266,37 @@ def test_windows_replay_the_apps_polish_windows(home):
     segs = [{"start": 0, "end": 1.0, "pause_after": 0.7}, {"start": 1.0, "end": 3.0, "pause_after": None}]
     c = make_case(home, "w1", 3.0, "明天要做三件事，第一，把测试全部跑完。", segs)
     fake = FakePipeline({1.0: "明天要做三件事，第一，", 2.0: "把测试全部跑完。"}, polish=lambda t: t if t.endswith("。") else t + "。")
-    r = L.run_case(c, L.parse_spec("mode=windows"), fake)
+    r = L.run_case(c, L.parse_spec("mode=windows,rehear=off"), fake)
     pol = [x for x in fake.calls if "polish" in x]
     assert [x["polish"] for x in pol] == ["明天要做三件事，第一", "第一把测试全部跑完。"]
     assert pol[0]["context"] is None and pol[1]["context"] == {"dictated": "明天要做三件事，"}
     assert r["outputs"]["text"] == "明天要做三件事，第一把测试全部跑完。"
     assert r["outputs"]["windows"] == 2 and r["outputs"]["windows_fell_back"] == 0
-    assert L.parse_spec("mode=windows")["key"].endswith("mode=windows")
+    assert L.parse_spec("mode=windows,rehear=off")["key"].endswith("mode=windows")
+
+
+def test_rehear_hears_the_pieces_again_in_windows(home):
+    """rehear (the app's default since v1.0.4): the pieces once more in ~10 s windows, closed only at a pause cut, the
+    windows' text so far as context; polish then works window by window. A window the model gives nothing for keeps
+    its pieces' text."""
+    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 16.0, "pause_after": 0.7},
+            {"start": 16.0, "end": 20.0, "pause_after": None}]
+    c = make_case(home, "r1", 20.0, "豆包也被忽悠了，尝试了第二次才找对。", segs)
+    fake = FakePipeline({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    r = L.run_case(c, L.parse_spec("mode=windows"), fake)
+    asr = [x for x in fake.calls if "secs" in x]
+    assert [x["secs"] for x in asr] == [8.0, 8.0, 4.0, 16.0]          # the pieces, then the first window (0–16 s)
+    assert asr[-1]["prior"] == ""
+    assert [w["pieces"] for w in r["outputs"]["rehear"]] == [[0, 1], [2]]
+    assert r["outputs"]["raw"].startswith("豆包也被忽悠了，尝试了第二次")
+    assert [x["polish"] for x in fake.calls if "polish" in x][0].startswith("豆包也被忽悠了")
+    assert r["outputs"]["timings"]["windows"] == 2
 
 
 def test_config_specs():
     cfg = L.parse_spec("asr=qwen3-asr-0.6b-mlx,polish=off,vocab=off")
     assert (cfg["asr"], cfg["polish"], cfg["vocab"], cfg["context"]) == ("qwen3-asr-0.6b-mlx", False, False, True)
-    assert cfg["key"] == "asr=qwen3-asr-0.6b-mlx,polish=off,vocab=off,context=on,mode=pieces"
+    assert cfg["key"] == "asr=qwen3-asr-0.6b-mlx,polish=off,vocab=off,context=on,mode=pieces,rehear=on"
     assert L.parse_spec("polish=gemma-4-e4b")["polish_model"] == "gemma-4-e4b"
     assert L.parse_spec('{"asr": "x", "label": "mine"}')["label"] == "mine"
     assert L.parse_spec("current")["key"] == L.parse_spec("")["key"]

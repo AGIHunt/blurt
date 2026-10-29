@@ -49,7 +49,7 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 
 ## Privacy
 - On the Mac: recognition and polish for dictation, snap notes and voice notes. About 500 characters around the cursor help get names right. Dictation History keeps each dictation's text, audio and that cursor text for 30 days (adjustable; the audio can be turned off).
-- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself; when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
+- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself (Settings → Models); cloud polish if the user turns it on (the dictated text, never the recording, goes to DeepSeek or their own OpenAI- or Anthropic-compatible API); when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
 
 ## Install
 - Download for Mac: https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg

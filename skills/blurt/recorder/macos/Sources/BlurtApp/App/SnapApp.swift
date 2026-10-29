@@ -557,7 +557,7 @@ extension App {
             VoiceInput.shared.pressed()
             Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
-        case .dictationEsc: Dictation.shared.cancel()
+        case .dictationEsc: Dictation.shared.escFromHotkey()
         case .project: if resident { island.toggleSwitcher() }
         case .cards: if resident { hanging.reveal(via: "hotkey", keyboard: true) }     // the keyboard on the cards too
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)

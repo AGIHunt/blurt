@@ -129,11 +129,15 @@
 /* Cloud */
 "speech.cloud.title" = "云端语音识别";
 "speech.cloud.name.openai" = "OpenAI 兼容接口";
-"speech.cloud.keys" = "口喷鸡不保存云端密钥，而是从 shell 配置文件（例如 ~/.zshrc）里读取。在那里加上其中一行：";
-"speech.cloud.set" = "已找到密钥";
+"speech.cloud.set" = "已设置";
 "speech.cloud.not_set" = "未设置";
 "speech.cloud.off" = "已在「隐私」里关闭";
-"speech.cloud.info" = "如何设置密钥";
+"speech.cloud.setup" = "设置…";
+"speech.cloud.sheet.note" = "用你自己的 API Key 在云端识别。Key 存在这台 Mac 的钥匙串里，只在识别时发给这家服务；发过去的是录音。";
+"speech.cloud.service.openai" = "OpenAI";
+"speech.cloud.service.groq" = "Groq";
+"speech.cloud.service.custom" = "其他兼容 OpenAI 的服务";
+"speech.cloud.key.get" = "获取 API Key";
 "speech.section.mac" = "这台 Mac";
 "speech.section.jobs" = "正在用的模型";
 "speech.machine.short" = "%1$@，%2$@";

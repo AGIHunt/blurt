@@ -376,11 +376,11 @@ struct AgentsPane: View {
         .task { await m.open() }
         // Connect's preview; from the details sheet it opens over that sheet instead (AgentDetailSheet)
         .sheet(isPresented: Binding(get: { m.plan != nil && m.details == nil }, set: { if !$0 { m.plan = nil } })) {
-            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
+            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied).buttonStyle(.automatic) }
         }
         .background {
             Color.clear.sheet(isPresented: Binding(get: { m.details != nil }, set: { if !$0 { m.details = nil } })) {
-                if let id = m.details { AgentDetailSheet(m: m, id: id) }
+                if let id = m.details { AgentDetailSheet(m: m, id: id).buttonStyle(.automatic) }
             }
         }
     }
@@ -526,24 +526,24 @@ struct AgentsPane: View {
     func fixButton(_ a: CoreAgent, ordered: Bool) -> some View {
         if needsSignIn(a, ordered: ordered) {
             Button(TL("agents.sign_in")) { m.fixFor = a.id }
-                .controlSize(.small)
-                .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false) }
+                .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false).buttonStyle(.automatic) }
         } else if !a.installed && a.state != "checking" {
             if !a.headless, let url = AgentFix.site(AgentHub.shared.def(a.id)?.installText ?? "") {
                 Button(TL("agents.get_app", a.name)) {
                     NSWorkspace.shared.open(url)
                     emit(["event": "agents_get_app", "agent": a.id, "url": url.absoluteString])
                 }
-                .controlSize(.small)
+                .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                 .help(url.host ?? url.absoluteString)
             } else {
                 Button(TL("agents.install_cli")) { m.fixFor = a.id }
-                    .controlSize(.small)
-                    .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true) }
+                    .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                    .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true).buttonStyle(.automatic) }
             }
         } else if !a.headless && a.installed && m.connected[a.id] != true {
             // an app of its own: Connect is the one thing to do here (the blurt skill + MCP, by hand in its settings)
-            Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help"))
+            Button(TL("agents.install")) { Task { await m.preview(a) } }.buttonStyle(SettingsOutlinedButtonStyle(compact: true)).help(TL("agents.install.help"))
         }
     }
 

@@ -149,6 +149,9 @@ private final class RunState: @unchecked Sendable {
 
 public final class ScriptRunner {
     public static let shared = ScriptRunner()
+    /// Variables every script gets on top of the login shell's (the app's cloud speech keys from the Keychain:
+    /// CloudSpeech); they win over the shell's.
+    public static var extraEnvironment: () -> [String: String] = { [:] }
     public init() {}
 
     /// uv on the user's PATH (login shell), else ~/.blurt/bin/uv. Looked up each time: onboarding may install it.
@@ -172,7 +175,7 @@ public final class ScriptRunner {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: uv)
         p.arguments = ["run", "-q", try scriptURL(script).path] + args
-        p.environment = ShellEnv.agentEnvironment()
+        p.environment = ShellEnv.agentEnvironment().merging(ScriptRunner.extraEnvironment()) { _, mine in mine }
         return p
     }
 

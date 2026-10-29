@@ -100,13 +100,17 @@ enum SettingsMetrics {
     // One grid for every pane (system.md §3.4): the box's edge at the page column, every text at the box's inset (12),
     // a row with a leading glyph at one gutter (an 18 pt slot, the text 10 pt after it), every trailing control, value,
     // size and keycap flush with the box's inset on the right, and the first thing of every page at one height.
+    /// where a rounded-border text field's text starts inside its outline (a note or link under the field starts there)
+    static let fieldTextInset: CGFloat = 6
     static let pageWidth: CGFloat = 680         // the column's widest; the window's extra width goes to the margins
     static let gutter: CGFloat = 28
-    static let rowPadding: CGFloat = 7
-    static let titleSize: CGFloat = 13
+    // v1.0.4, after Claude Code's settings (the user's reference): sections are open (no box), their headings in the
+    // primary ink and larger, hairlines between rows, a little more air; the brand's colours stay ours
+    static let rowPadding: CGFloat = 10
+    static let titleSize: CGFloat = 13.5
     static let detailSize: CGFloat = 12
-    static let headerSize: CGFloat = 13         // a group's heading: secondary, outside its box
-    static let groupGap: CGFloat = 18
+    static let headerSize: CGFloat = 15         // a group's heading: primary, over its rows
+    static let groupGap: CGFloat = 30
     /// A group's rows sit in a rounded box (the grouped-form look of System Settings): its inner side inset (the row
     /// titles, the hairlines between rows, the headings, leads and footnotes outside it), its corner radius.
     static let boxInset: CGFloat = 12
@@ -122,8 +126,8 @@ enum SettingsMetrics {
     static var iconInset: CGFloat { iconSlot + iconGap }
     static let ground = Color(nsColor: .controlBackgroundColor)
     /// the box on the page's ground: a few percent of ink, so it holds in light, dark and Increase Contrast alike
-    static let boxFill = Color.primary.opacity(0.035)
-    static let boxStroke = Color.primary.opacity(0.07)
+    static let boxFill = Color.clear
+    static let boxStroke = Color.clear
     static let topFade: CGFloat = 10            // under the titlebar: rows scrolled up fade out instead of being cut
     static let bottomFade: CGFloat = 18
     /// Where every page's first thing starts under the toolbar — a lead line, a notice, a heading or a box alike: clear
@@ -198,6 +202,8 @@ struct SettingsPage<Content: View>: View {
                 VStack(alignment: .leading, spacing: 0) {
                     if let l = lead { l }
                     content
+                        // every row button outlined, as the pop-ups (a button that sets its own style keeps it)
+                        .buttonStyle(SettingsOutlinedButtonStyle())
                 }
                 .padding(.horizontal, SettingsMetrics.gutter).padding(.top, SettingsMetrics.pageTop).padding(.bottom, 24)
                 .frame(maxWidth: SettingsMetrics.pageWidth, alignment: .leading)
@@ -438,7 +444,7 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                                     .rotationEffect(.degrees(d.wrappedValue ? 90 : 0))
                                 Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold))
                             }
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.primary)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -446,7 +452,7 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                         .accessibilityValue(d.wrappedValue ? "1" : "0")
                         .accessibilityAddTraits(.isHeader)
                     } else {
-                        Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).foregroundStyle(.secondary)
+                        Text(t).font(.system(size: SettingsMetrics.headerSize, weight: .semibold)).foregroundStyle(.primary)
                             .accessibilityAddTraits(.isHeader)
                             .gridProbe(.head, t)
                     }
@@ -456,7 +462,7 @@ struct SettingsGroup<Content: View, Accessory: View>: View {
                 // over the heading's line at its right end, never making it taller: every heading starts at one height
                 .overlay(alignment: .trailing) { accessory.gridProbe(.trailing, "heading accessory") }
                 .padding(.horizontal, boxed ? SettingsMetrics.boxInset : 0)
-                .padding(.bottom, 5)
+                .padding(.bottom, 4)
                 .background(FlashWash(on: id != nil && flash.row == id))
             }
             if open {
@@ -605,7 +611,7 @@ struct SettingRow<Control: View>: View {
                     }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    control.gridProbe(.trailing, titleText)
+                    control.buttonStyle(SettingsOutlinedButtonStyle()).gridProbe(.trailing, titleText)
                 }
                 if detailBelow, let d = detailText, !d.isEmpty {
                     detailView(d).padding(.leading, icon == nil ? 0 : SettingsMetrics.iconInset)
@@ -736,7 +742,8 @@ struct SettingMenuPicker<Value: Hashable, Choices: View>: View {
 /// A popup at a fixed width (SettingsMetrics.controlWidth: a page's popups line up, left edges too, as in Linear's
 /// and Raycast's settings), and, as System Settings' Shortcut menus, optional check items after a separator: the
 /// choices are one selection; a check item (a SettingMenuToggle) turns its setting on or off and leaves the choice as
-/// it was. The same NSPopUpButton a Picker draws.
+/// it was. The same NSPopUpButton a Picker draws, with one small down chevron on the right instead of the system's
+/// up-and-down pair (v1.0.4: the pair read as a stepper; every popup in Settings is this one).
 struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
     var label: String
     var choices: [(value: Value, title: String)]
@@ -749,8 +756,19 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSPopUpButton {
-        let b = NSPopUpButton(frame: .zero, pullsDown: false)
+        let b = OutlinedPopUpButton(frame: .zero, pullsDown: false)
+        let cell = DownChevronPopUpCell(textCell: "", pullsDown: false)
+        cell.arrowPosition = .noArrow
+        b.cell = cell
+        b.isBordered = false
         (b.cell as? NSPopUpButtonCell)?.altersStateOfSelectedItem = false     // the check items keep their own marks
+        let chevron = NSImageView(image: NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)?
+            .withSymbolConfiguration(.init(pointSize: 9, weight: .semibold)) ?? NSImage())
+        chevron.contentTintColor = .secondaryLabelColor
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+        b.addSubview(chevron)
+        NSLayoutConstraint.activate([chevron.trailingAnchor.constraint(equalTo: b.trailingAnchor, constant: -DownChevronPopUpCell.inset),
+                                     chevron.centerYAnchor.constraint(equalTo: b.centerYAnchor)])
         b.target = context.coordinator
         b.action = #selector(Coordinator.picked(_:))
         b.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)   // the column's width, not its longest item
@@ -758,7 +776,7 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, nsView b: NSPopUpButton, context: Context) -> CGSize? {
-        CGSize(width: width, height: b.intrinsicContentSize.height)
+        CGSize(width: width, height: OutlinedPopUpButton.height)
     }
 
     func updateNSView(_ b: NSPopUpButton, context: Context) {
@@ -800,6 +818,67 @@ struct ChoicePopup<Value: Hashable>: NSViewRepresentable {
                 p.selection.wrappedValue = p.choices[it.tag].value
             }
         }
+    }
+}
+
+/// ChoicePopup's cell: no system arrows; the title starts at the outline's inset and stops short of the chevron drawn
+/// over the right edge.
+final class DownChevronPopUpCell: NSPopUpButtonCell {
+    static let inset: CGFloat = 10
+    override func drawTitle(_ title: NSAttributedString, withFrame frame: NSRect, in view: NSView) -> NSRect {
+        var f = frame
+        let x = DownChevronPopUpCell.inset
+        if f.minX < x { f.origin.x = x }
+        // only where it would run under the chevron (the frame is the title's own width, not the button's)
+        f.size.width = max(0, min(f.width, view.bounds.width - f.minX - (DownChevronPopUpCell.inset + 14)))
+        return super.drawTitle(title, withFrame: f, in: view)
+    }
+}
+
+/// A pop-up as Claude Code's settings draw them (v1.0.4): the control's ground with a hairline outline, 7 pt corners,
+/// one chevron — no bezel. The outline follows light and dark.
+final class OutlinedPopUpButton: NSPopUpButton {
+    static let height: CGFloat = 28
+    override init(frame: NSRect, pullsDown: Bool) {
+        super.init(frame: frame, pullsDown: pullsDown)
+        wantsLayer = true
+        layer?.cornerRadius = 7
+        layer?.borderWidth = 1
+        paint()
+    }
+    required init?(coder: NSCoder) { fatalError() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); paint() }
+    override var isEnabled: Bool { didSet { alphaValue = isEnabled ? 1 : 0.5 } }
+    /// the outline is the whole frame: no bezel margin, so it lines up with the text fields and buttons beside it
+    override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+    private func paint() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            layer?.borderColor = NSColor.separatorColor.cgColor
+        }
+    }
+}
+
+/// A row's button (Set Up…, Manage Models…): drawn as the pop-ups are (OutlinedPopUpButton) — the control's ground, a
+/// hairline outline, 7 pt corners — so a row's controls read as one family. Buttons that set their own style keep it.
+struct SettingsOutlinedButtonStyle: ButtonStyle {
+    /// in a list's row or a heading (Reset, Connect, Add Project Folder…): a smaller one
+    var compact = false
+    @Environment(\.isEnabled) private var enabled
+    @State private var hovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        return configuration.label
+            .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+            .font(.system(size: compact ? 12 : 13))
+            .foregroundStyle(enabled ? Color.primary : Color(nsColor: .tertiaryLabelColor))
+            .padding(.horizontal, compact ? 9 : 12).frame(minHeight: compact ? 22 : OutlinedPopUpButton.height)
+            .background(shape.fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(shape.fill(Color.primary.opacity(configuration.isPressed ? 0.08 : hovering && enabled ? 0.04 : 0)))
+            .overlay(shape.strokeBorder(Color(nsColor: .separatorColor), lineWidth: 1))
+            .contentShape(shape)
+            .onHover { hovering = $0 }
     }
 }
 
@@ -1110,6 +1189,7 @@ struct PermissionRows: View {
                     .accessibilityIdentifier("perm.\(k).open_settings")
             } else {
                 Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [k], source: source) }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
                     .contextMenu {
                         if paneLink { Button(T("settings.kit.system_settings")) { Permissions.openPane(k) } }
                     }
@@ -1144,6 +1224,7 @@ struct PermissionSetupButton: View {
                         Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) {
                             guide.start(flow, source: source)
                         }
+                        .buttonStyle(SettingsOutlinedButtonStyle())
                         Spacer()
                     }
                 }

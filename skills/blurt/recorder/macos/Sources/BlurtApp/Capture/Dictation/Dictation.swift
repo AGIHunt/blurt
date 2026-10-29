@@ -66,7 +66,7 @@
 //  • off while a screen recording runs (it owns the mic) and while a voice note listens.
 // Config record.dictation: enabled (true), key fn|right_option|either_option (unset = fn), mode auto|tap|hold (unset =
 // auto), fn_capture (true: keep Fn from macOS's own 🌐 action), polish off|light, polish_model,
-// polish_timeout_ms, load_budget_ms (12000), streaming (true), precapture (true), builtin_mic (automatic), start_sound
+// polish_timeout_ms, load_budget_ms (12000), streaming (true), rehear (true: §Hearing again), precapture (true), builtin_mic (automatic), start_sound
 // (false), retention_days (30), keep_audio (true), asr_model (automatic), context (true), learn (true),
 // double_tap_send (true), live_partial (automatic: on from 16 GB). Test hooks:
 // DictationTestHooks.swift (`dictation …` on the test channel).
@@ -223,6 +223,9 @@ final class Dictation {
     static var loadBudget: Double { max(1, (settings["load_budget_ms"] as? Double ?? 12000) / 1000) }
     /// transcribe and polish while talking (DictationStream); off = everything after key-up, the old way
     static var streaming: Bool { settings["streaming"] as? Bool ?? true }
+    /// hear the pieces again in ~10 s windows while talking (docs/design/dictation.md §Hearing again)
+    static var rehear: Bool { settings["rehear"] as? Bool ?? true }
+    static var rehearWindow: Double { max(4, settings["rehear_window_s"] as? Double ?? DictationStitch.rehearWindow) }
     /// the live text also shows the piece still being said (interim decodes about once a second): unset = by the
     /// machine (not on the light / minimal tiers, < 16 GB), true / false
     static var livePartial: Bool {
@@ -629,6 +632,11 @@ final class Dictation {
         // a voice note listening: a lone ⇧ is its Structured toggle (VoiceInput.keyEvent; BlurtCore LoneShift)
         if VoiceInput.shared.active { VoiceInput.shared.keyEvent(event) }
         guard Dictation.enabled else { return }
+        // one Esc, one cancel: the system hotkey (escFromHotkey) may have taken this same press already
+        if case let .keyDown(code, _) = event, code == DictationTrigger.escape {
+            if CACurrentMediaTime() - escAt < Dictation.escTwin { return }
+            escAt = CACurrentMediaTime()
+        }
         var e = event
         // a click on Blurt's own island while dictating is the style chip, not "a click joined in" (it never cancels
         // push-to-talk; the island itself ignores it then)
@@ -721,6 +729,8 @@ final class Dictation {
     /// and get the models loaded while the user starts talking.
     private func arm() {
         armedAt = CACurrentMediaTime()
+        // the text around the cursor in an Electron app needs its Accessibility tree on (DictationField)
+        if Dictation.contextOn { DictationField.wakeWebAccessibility(NSWorkspace.shared.frontmostApplication) }
         // no speech model (or no speech tools to run one): nothing to listen for (the start says so) — and nothing
         // to warm, nothing downloaded
         guard !speechModelMissing, !speechToolsMissing else { return }
@@ -857,11 +867,19 @@ final class Dictation {
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
         opt.streaming = Dictation.streaming
+        opt.rehear = Dictation.rehear
+        opt.rehearWindow = Dictation.rehearWindow
         opt.polishTimeout = Dictation.polishTimeout
         opt.structureTimeout = Dictation.structureTimeout
         opt.loadBudget = Dictation.loadBudget
         opt.vocab = DictationVocabulary.shared.payload()
-        opt.polish = Dictation.polishOn && polishModel != nil && base.polishes
+        // the user's cloud model polishes when it is set up (the local one is its fall-back); without a local model
+        // it is the only one
+        opt.cloud = DictationCloud.payload()
+        opt.polish = Dictation.polishOn && (polishModel != nil || opt.cloud != nil) && base.polishes
+        if opt.cloud != nil, Dictation.contextOn {
+            opt.recent = DictationCloud.recent(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
+        }
         opt.variant = styleDecision?.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: styleBundle) ? "terminal" : nil
         opt.interim = Dictation.livePartial && LiveTranscript.enabled
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
@@ -946,6 +964,7 @@ final class Dictation {
     }
 
     private func start() {
+        island.foldForActivity()        // its ears (Peep talking, the clock) show, not an open island over them
         // one take listens at a time (takes still on their way don't stop the next one from starting)
         guard !listening else {
             trigger.reset(active: false, keepTap: true)
@@ -987,10 +1006,12 @@ final class Dictation {
         updatePhase()
         captureContext()
         readCaret()
-        if !keys.installed {        // without the tap, Esc comes as a Carbon hotkey (as for the voice note)
-            registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0)
-            escRegistered = true
+        // Esc also as a system hotkey, whatever the listener (escFromHotkey)
+        if !escRegistered {
+            escRegistered = registerHotkey(.dictationEsc, key: kVK_Escape, mods: 0) == noErr
+            if !escRegistered { emit(["event": "dictation_esc_hotkey_failed"]) }
         }
+        if IsSecureEventInputEnabled() { emit(["event": "dictation_secure_input", "id": entryID, "listener": keys.installed]) }
         // what the island said about the last take (its Undo, the list chip, "nothing heard", its tip, the 5-minute
         // limit, "still recognizing") is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore
         // IslandToasts.swift). A line left up said the opposite of the listening ears under it (v0.9 dogfood).
@@ -1082,6 +1103,21 @@ final class Dictation {
         } else {
             sendSkipped(r.why)
         }
+    }
+
+    /// Esc as a system hotkey (Carbon), held while a dictation listens or is on its way — beside the key listener, not
+    /// only without it: with secure input on somewhere (Terminal's Secure Keyboard Entry, a password manager, a password
+    /// field) the listener still hears Fn (a modifier) but no other key, so Esc did nothing on some Macs (v1.0.2
+    /// report) — a hotkey still fires then. The same press reaching both counts once (`escTwin`).
+    static let escTwin: CFTimeInterval = 0.4
+    private var escAt: CFTimeInterval = 0
+
+    func escFromHotkey() {
+        let now = CACurrentMediaTime()
+        guard now - escAt >= Dictation.escTwin else { return }
+        escAt = now
+        emit(["event": "dictation_esc", "via": "hotkey", "listener": keys.installed, "secure_input": IsSecureEventInputEnabled()])
+        cancel()
     }
 
     private func releaseEsc() {
@@ -1302,7 +1338,7 @@ final class Dictation {
     /// — that time never counts against `timeout`, which the server applies to the generation alone once the model is
     /// loaded. nil = no polish (raw text, not a fall-back). Blocking: off the main thread.
     static func polish(_ raw: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]], context: [String: Any]?,
-                       variant: String? = nil) -> [String: Any]? {
+                       variant: String? = nil, cloud: [String: Any]? = nil) -> [String: Any]? {
         // nothing to tidy: polish.py would answer "short" without its model — no wait for a server or a load
         if DictationStitch.nothingToPolish(raw) {
             var r: [String: Any] = ["ok": true, "raw": raw, "text": raw, "fell_back": false, "reason": "short", "ms": 0, "load_ms": 0]
@@ -1327,7 +1363,10 @@ final class Dictation {
         let waited = Int(Date().timeIntervalSince(t0) * 1000)
         var req: [String: Any] = ["cmd": "polish", "text": raw, "timeout": timeout, "vocab": vocab, "context": context ?? NSNull()]
         if let v = variant { req["variant"] = v }       // "chat": sentence-final particles stay (dictation-styles.md §3.1)
-        guard var r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1) else {
+        // the user's cloud model (DictationCloud), the local one when it fails: its time comes on top
+        if let c = cloud { req["cloud"] = c }
+        let extra = cloud == nil ? 0 : DictationCloud.requestBudget(chars: raw.count)
+        guard var r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra) else {
             return ["ok": true, "text": raw, "fell_back": true, "reason": "timeout", "load_ms": waited]
         }
         guard r["ok"] as? Bool == true else { return nil }
@@ -1337,15 +1376,19 @@ final class Dictation {
 
     /// The warm polish server's structuring pass (Structured): the whole take, its self-corrections resolved and what
     /// was enumerated laid out — or nil (no server: Light's text is typed). Blocking: off the main thread.
-    static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]]) -> [String: Any]? {
+    static func structure(_ text: String, timeout: Double, loadBudget: Double, vocab: [[String: Any]],
+                          cloud: [String: Any]? = nil, localFallback: Bool = true) -> [String: Any]? {
         if DictationStitch.nothingToPolish(text) {
             return ["ok": true, "raw": text, "text": text, "fell_back": false, "reason": "short", "list": false, "ms": 0]
         }
         let until = Date().addingTimeInterval(loadBudget)
         while !WarmServer.running("polish-serve") && Date() < until { usleep(50_000) }
         guard WarmServer.running("polish-serve") else { return nil }
-        let req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
-        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1), r["ok"] as? Bool == true else { return nil }
+        var req: [String: Any] = ["cmd": "structure", "text": text, "timeout": timeout, "vocab": vocab]
+        if let c = cloud { req["cloud"] = c }
+        if !localFallback { req["local_fallback"] = false }
+        let extra = cloud == nil ? 0 : timeout + DictationCloud.requestBudget(chars: text.count)
+        guard let r = WarmServer.call("polish-serve", req, timeout: timeout + loadBudget + 1 + extra), r["ok"] as? Bool == true else { return nil }
         return r
     }
 }

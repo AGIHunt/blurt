@@ -347,6 +347,7 @@ struct DictationPane: View {
                         Button(guide.running ? T("settings.perm.setup_running") : T("settings.kit.allow")) {
                             guide.start(.dictation, source: .dictation)
                         }
+                        .buttonStyle(SettingsOutlinedButtonStyle())
                     }
                 } else if !m.tap {
                     SettingsNotice(title: T("dictation.status.off", Dictation.keyInline(m.key)), detail: T("dictation.status.off.detail")) {
@@ -422,7 +423,7 @@ struct DictationPane: View {
                         if m.styles.learned.contains(b) { Badge(T("dictation.style.learned")) }
                         Spacer()
                         Text(Dictation.styleName(m.styles.apps[b] ?? .light)).foregroundStyle(.secondary)
-                        Button(T("dictation.style.reset")) { m.resetApp(b) }.controlSize(.small).help(T("dictation.style.reset.help"))
+                        Button(T("dictation.style.reset")) { m.resetApp(b) }.buttonStyle(SettingsOutlinedButtonStyle(compact: true)).help(T("dictation.style.reset.help"))
                     }
                     .accessibilityElement(children: .combine)
                 }
@@ -516,6 +517,7 @@ struct DictationPane: View {
 
     enum ModelsState { case loading, coming(ModelDownloadQueue.Job), missing([ModelDownloadQueue.Job]), ready }
 
+
     var modelsState: ModelsState {
         let dl = ModelDownloads.shared
         let polish = m.style != .verbatim
@@ -531,7 +533,10 @@ struct DictationPane: View {
     var modelNames: String? {
         var names: [String] = []
         if let a = models.selectedASR { names.append(a.name ?? models.asrName(a.id)) }
-        if m.style != .verbatim, let p = models.selectedPolish, p.installed { names.append(p.name) }
+        if m.style != .verbatim, DictationCloud.ready {
+            let c = DictationCloud.setup
+            names.append(T("dictation.models.cloud", c.effectiveModel))
+        } else if m.style != .verbatim, let p = models.selectedPolish, p.installed { names.append(p.name) }
         return names.isEmpty ? nil : names.joined(separator: " · ")
     }
 

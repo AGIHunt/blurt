@@ -187,7 +187,7 @@ private struct PermissionsSummary: View {
                     Text(T("settings.privacy.perms.all_allowed")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
                 } else {
                     // the walk through everything still missing
-                    Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) { guide.start(.all, source: .privacy) }
+                    Button(guide.running ? T("settings.perm.setup_running") : T("settings.perm.setup")) { guide.start(.all, source: .privacy) }.buttonStyle(SettingsOutlinedButtonStyle())
                 }
                 Button { toggle(open) } label: {
                     Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
@@ -249,6 +249,7 @@ private struct PermissionsSummary: View {
                 // turned off: macOS won't ask again, so the button says where it goes (the guide opens the exact
                 // pane, with its helper panel beside it); never asked: Allow… (System Settings' pane in its menu)
                 Button(T(off ? "settings.kit.system_settings" : "settings.kit.allow")) { guide.start(.all, only: [k], source: .privacy) }
+                    .buttonStyle(SettingsOutlinedButtonStyle())
                     .contextMenu { if !off { Button(T("settings.kit.system_settings")) { Permissions.openPane(k) } } }
                     .help(off ? "" : T("settings.kit.allow_help"))
                     .accessibilityIdentifier(off ? "perm.\(k).open_settings" : "perm.\(k).allow")

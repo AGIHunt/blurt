@@ -14,8 +14,8 @@
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
 //   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
 //              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
-//              mirror, one row per cloud service with whether its key is found (never stored or shown; the variables'
-//              names and the export line in an info popover).
+//              mirror, one row per cloud service: whether it has a key, and Set Up… (CloudSpeechSheet: the key in the
+//              Keychain, never shown back; a key exported in the shell profile still counts).
 //   library    a sheet (ModelLibrary): one 32 pt row per model that runs here, recognition or polish — what it is
 //              used for, accuracy for your languages, speed, memory, size as a table; numbers measured on this Mac
 //              (`transcribe.py bench`) carry the seal; Download on hover, Measure / Show in Finder / Move to Trash in
@@ -417,7 +417,7 @@ struct SpeechPane: View {
         }
         .task { await m.load() }
         .task { await d.load() }
-        .sheet(isPresented: $library) { ModelLibrary { library = false } }
+        .sheet(isPresented: $library) { ModelLibrary { library = false }.buttonStyle(.automatic) }
         // a search or a link landing on the library: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
             if r?.id == "speech.models" { library = true }
@@ -472,6 +472,7 @@ struct SpeechPane: View {
                 dictationRow
             }
             polishRow
+            CloudPolishRow()
             libraryRow
         }
     }
@@ -832,29 +833,37 @@ private struct ModelPopUp: View {
     }
 }
 
-/// "✓ Key found" (ok + check) or "Not set", and an info button whose popover names the variables and the export line.
+/// "✓ Set" (ok + check) or "Not set", and Set Up… — the key, and for the OpenAI-compatible service its address and
+/// model, in a sheet (CloudSpeechSheet). A key from the shell profile counts as set too.
 private struct CloudKey: View {
     var model: ASRModel
-    @State private var info = false
+    @State private var sheet = false
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             if model.installed {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
-                Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
+                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+                }
             } else {
                 Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
             }
-            Button { info.toggle() } label: { Image(systemName: "info.circle").foregroundStyle(.secondary) }
-                .buttonStyle(.borderless)
-                .help(S("speech.cloud.info")).accessibilityLabel(S("speech.cloud.info"))
-                .popover(isPresented: $info, arrowEdge: .bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(S("speech.cloud.keys")).font(.system(size: SettingsMetrics.detailSize))
-                            .fixedSize(horizontal: false, vertical: true)
-                        ForEach(model.keys ?? [], id: \.self) { CommandText(text: "export \($0)=…") }
-                    }
-                    .padding(14).frame(width: 340, alignment: .leading)
-                }
+            Button(S("speech.cloud.setup")) { sheet = true }
+        }
+        // screenshots: open one service's sheet with the page
+        .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_CLOUD_SHEET"] == model.id { sheet = true } }
+        .sheet(isPresented: $sheet) {
+            CloudSpeechSheet(modelID: model.id, title: model.backend == "openai" ? S("speech.cloud.name.openai") : model.title) { saved in
+                sheet = false
+                guard saved else { return }
+                let m = SpeechModel.shared
+                // a job already on this service: its server started with the old key — the next take starts a new one
+                let inUse = ASRPurpose.allCases.contains { (m.state?.selected[$0.rawValue] ?? nil) == model.id }
+                    || DictationModels.shared.asr?.selected == model.id
+                if inUse { VoiceInput.endUnresponsiveServer(why: "cloud_key") }
+                Task { await m.load() }
+            }
+            .buttonStyle(.automatic)
         }
     }
 }

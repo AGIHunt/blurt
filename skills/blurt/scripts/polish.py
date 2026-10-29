@@ -100,6 +100,7 @@ STRUCT_SPAN = 14          # Structured: one run of the input's units left out ma
 #                           taken back with the words that announced it, and the counting word it said again:
 #                           第四是酒店，不对，酒店不用，第四是保险); a longer one is content lost
 STRUCT_SHRINK = (12, 0.4)  # Structured may lose more in all (what was taken back), but not a summary's share …
+CLOUD_SCRIPT_SHIFT = 0.25  # cloud: the share of CJK units may move this much (a few misheard words in the other script)
 STRUCT_ITEM = 2           # … plus this many units for each list line: the counting word its number stands for (第一,
 #                           首先, first). A short list with a correction lost 50–60 % (issue #14: 31 → 17)
 
@@ -196,8 +197,29 @@ def _lost_runs(src_u: list[str], out_u: list[str]) -> list[list[str]]:
     return lost
 
 
+def _cloud_verdict(core_u: list[str], out_u: list[str], n_raw: int, n_core: int, n_out: int, raw_u: list[str],
+                   raw: str, out: str, out_for_units: str, allowed: set[str], mode: str) -> str | None:
+    """guard(cloud=True): only what is plainly not the dictation any more."""
+    cjk = re.compile(rf"[{_CJK}]")
+    share = lambda us: sum(1 for u in us if cjk.match(u)) / max(1, len(us))  # noqa: E731
+    if core_u and out_u and abs(share(core_u) - share(out_u)) > CLOUD_SCRIPT_SHIFT:
+        return "translated"
+    flat, ratio = STRUCT_SHRINK
+    numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
+    if n_core - n_out > max(flat, ratio * n_core) + numbered:
+        return "shrunk"
+    if n_out > n_raw * GROW_RATIO + GROW_SLACK:
+        return "grew"
+    lined = [u for ln in out_for_units.split("\n") for u in [*units(ln), _LINE]][:-1] if mode == "structured" else out_u
+    if _added_run(lined, raw_u, allowed) >= ADDED_RUN:
+        return "chatty"
+    if mode != "structured" and list_lines(out) > list_lines(raw):
+        return "listed"
+    return None
+
+
 def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] | None = None,
-          context: str | None = None, mode: str = "light") -> dict:
+          context: str | None = None, mode: str = "light", cloud: bool = False) -> dict:
     """Is `out` a safe replacement for `raw`? → {"pass": bool, "reason": None | empty | term | chatty | translated |
     shrunk | grew | novel | copied | listed | dropped | number, "stats": {...}}. Pure and mechanical: the thresholds above.
     `context`: the text around the cursor (a streamed dictation's polished text so far is part of it) — a run of
@@ -207,7 +229,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     `terms`: custom words; one that was spoken must still be there (`term`).
     `mode`: "light" (no list may appear: `listed`) or "structured" (the input is the text to structure; its list
     numbers aren't words, one left-out run longer than STRUCT_SPAN is `dropped`, and a number it wrote that wasn't
-    said is `number`)."""
+    said is `number`).
+    `cloud`: a cloud model's output (§Cloud polish). The word-by-word rules above were made for a 2B model; a large
+    model fixes misheard words (in either script: 请问 → Qwen), leaves restarts and taken-back phrases out and may
+    reword a clause, and it is trusted to. Only what is plainly not the dictation any more is refused: nothing
+    (`empty`), another language (the share of CJK units moved by > CLOUD_SCRIPT_SHIFT: `translated`), a summary
+    (Structured's allowance exceeded: `shrunk`), an answer or a preface added (`grew`, `chatty`), and a list in Light
+    (`listed`: the style the user chose)."""
     if mode == "structured":
         out_for_units = without_list_marks(out)
     else:
@@ -227,6 +255,8 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
 
     if n_raw and not n_out:
         return verdict("empty")
+    if cloud:
+        return verdict(_cloud_verdict(core_u, out_u, n_raw, n_core, n_out, raw_u, raw, out, out_for_units, allowed, mode))
     key = lambda x: re.sub(r"[\s\-]+", "", unicodedata.normalize("NFKC", x or "").lower())  # noqa: E731
     if any(key(t) and key(t) in key(raw) and key(t) not in key(out_for_units) for t in terms or []):
         return verdict("term")
@@ -1238,8 +1268,17 @@ class Engine:
         res["model"] = self.model_id
 
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
-               terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
-        """Light (`_light`), its first word cased for the sentence it continues (`cased`)."""
+               terms: list | None = None, context: dict | str | None = None, variant: str | None = None,
+               cloud: dict | None = None) -> dict:
+        """Light (`_light`), its first word cased for the sentence it continues (`cased`). `cloud`: the user's cloud
+        model (§Cloud polish) does it instead; any failure there → the local model, as before (`cloud_error`)."""
+        if cloud:
+            res = cloud_polish(text, terms, context, variant, cloud, "light", timeout)
+            if not res.get("fell_back"):
+                return res
+            local = self.polish(text, model_id, None, terms, context, variant)
+            return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
+                    "ms": local.get("ms", 0) + res.get("ms", 0)}
         res = self._light(text, model_id, timeout, terms, context, variant)
         if res.get("fell_back") and res.get("reason") in CONTEXT_FAULTS and context:
             # the model followed the context instead of the dictation: once more without it (only then: ~0.1–0.2 s)
@@ -1311,8 +1350,17 @@ class Engine:
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
 
     def structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
-                  terms: list | None = None, context: dict | str | None = None) -> dict:
-        """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`)."""
+                  terms: list | None = None, context: dict | str | None = None, cloud: dict | None = None,
+                  local_fallback: bool = True) -> dict:
+        """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`). `cloud`:
+        the user's cloud model first, the local one when it fails."""
+        if cloud:
+            res = cloud_polish(text, terms, context, None, cloud, "structure", timeout)
+            if not res.get("fell_back") or not local_fallback:
+                return res
+            local = self.structure(text, model_id, timeout, terms, context)
+            return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
+                    "ms": local.get("ms", 0) + res.get("ms", 0)}
         res = self._structure(text, model_id, timeout, terms, context)
         return res if res.get("list") else self.cased(res, context, vocab.load() if terms is None else vocab.normalize(terms))
 
@@ -1355,6 +1403,66 @@ class Engine:
             else:
                 res.update(fell_back=True, reason=g["reason"])
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
+
+
+CLOUD_TIMEOUT = 4.0            # seconds for a Light window in the cloud (DeepSeek Flash: median 0.95 s, p90 2.1 s)
+CLOUD_PER_CHAR = 0.006         # … and this much more a character of input (an 800-character take: 3.5 s)
+
+
+def cloud_polish(text: str, terms: list | None, context: dict | str | None, variant: str | None, cloud: dict,
+                 mode: str = "light", timeout: float | None = None) -> dict:
+    """The user's cloud model (polish_cloud), checked by the guard (cloud=True) → polish's usual answer; a failure is
+    {"fell_back": True, "reason": "cloud_<code>"} — the caller then asks the local model. No repair: the cloud model
+    is asked to leave restarts and taken-back words out."""
+    import polish_cloud
+    t0 = time.perf_counter()
+    raw = (text or "").strip()
+    structured = mode == "structure"
+    res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None, "terms": [],
+           "cloud": True, "context": bool(context_text(context) or (isinstance(context, dict) and
+                                                                    (context.get("dictated") or context.get("recent"))))}
+    if structured:
+        res.update(structured=None, list=False)
+    if len(units(raw)) <= 2:
+        res["reason"] = "short"
+        return {**res, "ms": 0}
+    all_terms = vocab.load() if terms is None else vocab.normalize(terms)
+    ctx = context if isinstance(context, dict) else ({"title": context} if context else None)
+    use = vocab.ranked(vocab.relevant(all_terms, raw, context_all(ctx)), raw, context_all(ctx))
+    try:
+        cfg = polish_cloud.settings(cloud)
+        res["model"] = cfg["provider"] + ":" + cfg["model"]
+        limit = (structure_timeout_s() if structured else CLOUD_TIMEOUT) + CLOUD_PER_CHAR * len(raw)
+        if structured:      # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
+            msgs = messages(raw, mode="structure")
+        else:
+            msgs = polish_cloud.messages(raw, [t["term"] for t in use], ctx, variant)
+        r = polish_cloud.complete(cfg, msgs, min(timeout or limit, limit) if structured else limit,
+                                  max_tokens=int(len(raw) * 2) + 200)
+    except polish_cloud.CloudError as e:
+        res.update(fell_back=True, reason="cloud_" + e.code, error=str(e)[:200])
+        return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
+    res["usage"] = {k: v for k, v in r["usage"].items() if isinstance(v, (int, float))}
+    out = clean_structured(r["text"]) if structured else clean_output(r["text"])
+    res["polished"] = out
+    if structured:
+        res["structured"] = out
+    out, echo = strip_echo(out, context_before(ctx), raw) if not structured else (out, 0)
+    if echo:
+        res["echo"] = echo
+    allowed = vocab.allowed_units(use, context_all(ctx)) if (use or ctx) else None
+    g = guard(raw, out, allowed, [t["term"] for t in use], context_all(ctx) or None,
+              mode="structured" if structured else "light", cloud=True)
+    res["guard"] = g["stats"]
+    if g["pass"]:
+        res["text"] = out
+        if structured:
+            res["list"] = list_lines(out) >= 2
+        low, before = out.lower(), raw.lower()
+        res["terms"] = list(dict.fromkeys(t["term"] for t in use if t["term"].lower() in low and t["term"].lower() not in before))
+    else:
+        res.update(fell_back=True, reason="cloud_" + g["reason"])
+    return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
 
 
 STRUCTURE_TIMEOUT = 10.0       # seconds of generation for a whole take (Structured is opt-in; Light's is 3 s a window)
@@ -1457,13 +1565,17 @@ def cmd_serve(a):
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                          req.get("vocab"), req.get("context"), req.get("variant"))
+                                          req.get("vocab"), req.get("context"), req.get("variant"), req.get("cloud"))
                     elif req.get("cmd") == "structure":   # Structured: one pass over the whole take
                         last = time.time()
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.structure(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                             req.get("vocab"), req.get("context"))
+                                             req.get("vocab"), req.get("context"), req.get("cloud"),
+                                             req.get("local_fallback") is not False)
+                    elif req.get("cmd") == "cloud_check":  # Settings' Test: one tiny request to the user's cloud model
+                        import polish_cloud
+                        resp = polish_cloud.check(req.get("cloud") or {})
                     elif req.get("cmd") == "case":        # a reply too short to polish, cased for the sentence it
                         # continues — only by a model already loaded (never a wait for a load, or behind the preload)
                         text = str(req.get("text") or "")
@@ -1476,7 +1588,7 @@ def cmd_serve(a):
                         allowed = vocab.allowed_units(terms, context_all(ctx)) if (terms or ctx) else None
                         resp = {"ok": True, **stitch_guard(str(req.get("raw") or ""), clean_output(str(req.get("output") or "")),
                                                            allowed, [t["term"] for t in terms], context_all(ctx) or None,
-                                                           req.get("fallback"))}
+                                                           req.get("fallback"), bool(req.get("cloud")))}
                     elif req.get("cmd") == "exit":       # the app is quitting (or someone wants the memory back now)
                         resp = {"ok": True, "pid": os.getpid()}
                         why = "asked"
@@ -1536,10 +1648,11 @@ def cmd_run(a):
 
 
 def stitch_guard(raw: str, out: str, allowed: set[str] | None, terms: list[str], context: str | None,
-                 fallback: str | None = None) -> dict:
+                 fallback: str | None = None, cloud: bool = False) -> dict:
     """The guard for a streamed dictation's joined pieces against the joined transcript (Light: every word kept, so
-    the plain guard). `fallback` (the transcript as a fall-back would type it) comes back as "fallback_text"."""
-    g = guard(raw, out, allowed, terms, context)
+    the plain guard; `cloud`: windows the cloud model polished, its allowance). `fallback` (the transcript as a
+    fall-back would type it) comes back as "fallback_text"."""
+    g = guard(raw, out, allowed, terms, context, cloud=cloud)
     if fallback is not None:
         g["fallback_text"] = fallback
     return g

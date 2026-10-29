@@ -39,8 +39,9 @@
   --cc: #D97757;
   --over: #141414;          /* text set straight on the wallpaper */
   --over-2: rgba(20, 20, 20, .8);
-  --shadow: 0 1px 2px rgba(0, 0, 0, .06), 0 18px 40px -18px rgba(0, 0, 0, .28);
-  --wshadow: 0 0 0 .5px rgba(0, 0, 0, .22), 0 .4em 1em rgba(0, 0, 0, .06), 0 2.4em 5em -1.2em rgba(20, 30, 25, .42);
+  /* flat: a hairline and a faint close shadow, no long drop shadow under anything */
+  --shadow: 0 1px 2px rgba(0, 0, 0, .06);
+  --wshadow: 0 0 0 .5px rgba(0, 0, 0, .22), 0 .3em .8em rgba(0, 0, 0, .05);
   --serif: "Blurt Serif", "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", "Microsoft YaHei", sans-serif;
   --mono: "Blurt Mono", ui-monospace, "SF Mono", Menlo, "PingFang SC", monospace;
@@ -73,8 +74,8 @@
     --issue: #E07A68; --idea: #E2A93A; --note: #7C9BEF; --task: #A3A6A4;
     --over: rgba(255, 255, 255, .94);
     --over-2: rgba(255, 255, 255, .76);
-    --shadow: 0 1px 2px rgba(0, 0, 0, .5), 0 18px 40px -18px rgba(0, 0, 0, .8);
-    --wshadow: 0 0 0 .5px rgba(255, 255, 255, .14), 0 .4em 1em rgba(0, 0, 0, .2), 0 2.4em 5em -1.2em rgba(0, 0, 0, .7);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .5);
+    --wshadow: 0 0 0 .5px rgba(255, 255, 255, .14), 0 .3em .8em rgba(0, 0, 0, .18);
     --media-dim: brightness(.82) contrast(1.04);
   }
 }
@@ -125,6 +126,9 @@ h3{ font-size: 19px; font-weight: 700; }
 .top-r{ display: flex; gap: 26px; font-size: 15px; }
 .top-r a{ color: var(--ink-2); text-decoration: none; }
 .top-r a:hover{ color: var(--ink); }
+/* the repo's star count after "GitHub", once it has loaded (main.js); without it the link is just "GitHub" */
+.gh .stars{ margin-left: 7px; font-variant-numeric: tabular-nums; opacity: .66; }
+.gh .stars::before{ content: "★" / ""; margin-right: 3px; font-size: .86em; }
 
 /* ------------------------------------------------------------------ hero */
 .hero{ padding: clamp(48px, 7vh, 96px) 0 clamp(36px, 5vh, 64px); }
@@ -190,7 +194,7 @@ html[lang="en"] .hero h1{ font-size: clamp(44px, 7.4vw, 108px); letter-spacing: 
 .isl .live{
   position: absolute; top: calc(var(--nh) + 6px); left: 50%; width: min(calc(var(--nw) + 2 * var(--ear) + 48px), calc(100vw - 32px));
   padding: 10px 16px; border-radius: 14px; background: #000; color: rgba(255, 255, 255, .92); font: 400 15px/1.5 var(--sans);
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, .45);
+  box-shadow: none;
   opacity: 0; transform: translate(-50%, -12px) scale(.97); transform-origin: 50% 0; transition: opacity .3s, transform .45s var(--ease);
 }
 .isl.live-on .live{ opacity: 1; transform: translate(-50%, 0); }
@@ -470,7 +474,7 @@ html:not(.motion) .nowl{ display: none; }
 /* the note bubble: the app's light card (14 px corners, a 9 px caret), level bars, the words, undo, bin, Done;
    under it "Goes to Orbit" and the hint, then "Saved" */
 .bub{ position: absolute; left: 72.1em; top: 29.4em; width: 23em; padding: .8em .85em .7em; border-radius: 1em; background: rgba(254, 254, 254, .98); color: #1d1d1f;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 1.2em 2.6em -.8em rgba(0, 0, 0, .45); font: 1em/1.4 var(--sans); transition: opacity .35s, transform .5s var(--ease); }
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 .3em .8em rgba(0, 0, 0, .06); font: 1em/1.4 var(--sans); transition: opacity .35s, transform .5s var(--ease); }
 .bub::before{ content: ""; position: absolute; left: -.62em; top: 1.3em; width: 1.2em; height: 1.2em; background: inherit; transform: rotate(45deg) scale(.72, .72); border-radius: .12em; box-shadow: -1px 1px 0 rgba(0, 0, 0, .1); }
 .sc-snap:not(.on3) .bub, .sc-snap.on10 .bub{ opacity: 0; transform: translateX(-.8em); }
 .bub-row{ position: relative; display: flex; align-items: flex-start; gap: .55em; }
@@ -501,14 +505,14 @@ html.motion .bub-ph:has(+ .bub-w:not(:empty)){ display: none; }
 html:not(.motion) .bub-hint{ display: none; } html:not(.motion) .bub-ok{ display: inline-flex; }
 
 /* Done: the marked picture flies from the selection up to the notch and becomes the card */
-.ghost{ position: absolute; left: 50.3em; top: 28.2em; width: 20.6em; height: 21.8em; border-radius: .3em; overflow: hidden; background: #FCFCFB; box-shadow: 0 1em 3em rgba(0, 0, 0, .35); opacity: 0; pointer-events: none; transform-origin: 0 0; }
+.ghost{ position: absolute; left: 50.3em; top: 28.2em; width: 20.6em; height: 21.8em; border-radius: .3em; overflow: hidden; background: #FCFCFB; box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 .3em .8em rgba(0, 0, 0, .08); opacity: 0; pointer-events: none; transform-origin: 0 0; }
 .ghost .ob, .c-in .ob{ inset: 0; }
 .ghost .ob-sum, .c-in .ob-sum{ left: .8em; right: auto; top: .8em; width: 19em; }
 .sc-snap.on10 .ghost{ animation: fly .9s var(--ease) both; }
 @keyframes fly { 0% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-15.3em, -25em) scale(.68); } }
 
 .hang{ position: absolute; top: calc(var(--nh) + 10px); left: 50%; transform: translateX(-50%); display: flex; gap: 1em; z-index: 5; }
-.card{ position: relative; width: 15em; padding: .5em; border-radius: .9em; background: #1C1C1E; color: #fff; box-shadow: 0 .8em 2em -.4em rgba(0, 0, 0, .55); transition: opacity .4s, transform .6s var(--ease); }
+.card{ position: relative; width: 15em; padding: .5em; border-radius: .9em; background: #1C1C1E; color: #fff; box-shadow: 0 0 0 1px rgba(255, 255, 255, .06), 0 .3em .8em rgba(0, 0, 0, .12); transition: opacity .4s, transform .6s var(--ease); }
 .card p{ font-size: .84em; line-height: 1.38; padding: .55em .35em .2em; color: rgba(255, 255, 255, .9); }
 .c-pic{ display: block; position: relative; height: 7.6em; border-radius: .5em; background: #FCFCFB; overflow: hidden; }
 .c-in{ position: absolute; left: -.2em; top: 0; width: 20.6em; height: 21.8em; transform-origin: 0 0; transform: scale(.7) translateY(-7.3em); }
@@ -571,7 +575,7 @@ html.motion .sc-snap.on12 .draw{ opacity: 0; }
 .tick .num{ color: rgba(255, 255, 255, .5); flex: none; }
 .sc-rec:not(.on1) .tick, .sc-rec.on4 .tick{ opacity: 0; }
 .strip{ position: absolute; left: 34em; top: 54.9em; width: 60em; display: flex; gap: .6em; pointer-events: none; }
-.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=1.0.1-2") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 .4em 1em rgba(0, 0, 0, .3);
+.strip i{ flex: 1; height: 4.2em; border-radius: .35em; background: #ddd url("assets/rec-frame.jpg?v=1.0.1-2") no-repeat; background-size: cover; background-position: calc(var(--i) * 14.2%) 40%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .08);
   transition: transform .9s var(--ease), opacity .5s; transition-delay: calc(var(--i) * 55ms); }
 .sc-rec:not(.on4) .strip{ opacity: 0; }
 .sc-rec.on5 .strip i{ transform: translate(calc((20 - 7.5 * var(--i)) * 1em), calc((-36.1 + 4.4 * var(--i)) * 1em)) scale(.4); opacity: 0; }
@@ -933,7 +937,7 @@ html[lang="en"] :is(h1, h2, .pv-none, .big) { font-feature-settings: "pwid" 1; }
   .draw .cap{ font-size: 12px; }
 }
 @media (prefers-color-scheme: dark) {
-  .bub{ background: rgba(43, 43, 43, .98); color: rgba(255, 255, 255, .92); box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 1.2em 2.6em -.8em rgba(0, 0, 0, .7); }
+  .bub{ background: rgba(43, 43, 43, .98); color: rgba(255, 255, 255, .92); box-shadow: 0 0 0 1px rgba(255, 255, 255, .12), 0 .3em .8em rgba(0, 0, 0, .18); }
   .bub::before{ box-shadow: -1px 1px 0 rgba(255, 255, 255, .12); }
   .bub-ph{ color: rgba(255, 255, 255, .3); } .bub-w{ color: rgba(255, 255, 255, .6); } .bub-w .p{ color: rgba(255, 255, 255, .35); }
   .bub-fin{ color: rgba(255, 255, 255, .92); } .bub-ic{ color: rgba(255, 255, 255, .55); }
@@ -1156,7 +1160,7 @@ html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-st
 /* out of the notch (the snap) */
 .pf{ position: fixed; left: 0; top: 0; z-index: 61; will-change: transform; }
 .sc-snap.pv-c .ghost, .sc-snap.pv-cd .ghost{ animation: none !important; }
-.sc-snap.pv-c .ghost{ opacity: 1; box-shadow: 0 1.4em 3em -.6em rgba(0, 0, 0, .4); }
+.sc-snap.pv-c .ghost{ opacity: 1; box-shadow: 0 0 0 1px rgba(0, 0, 0, .1), 0 .3em .8em rgba(0, 0, 0, .08); }
 .sc-snap.pv-cd .ghost{ opacity: 0; transition: opacity .25s; }
 .sc-snap.pv-c .c-snap{ opacity: 0 !important; transition: none !important; }
 .sc-snap.pv-cd .c-snap{ transition-delay: 0s !important; }
@@ -1180,22 +1184,21 @@ html:not(.motion) .isl .pp, .snotch .ps{ background-image: url("assets/peep/n-st
 @keyframes march { to { background-position: 9px 0, -9px 100%, 0 -9px, 100% 9px; } }
 .pencil.ink{ animation: none; background: none; box-shadow: inset 0 0 0 1.5px var(--mint-ink); opacity: 1; }
 .pencil.gone{ opacity: 0; }
-/* the hero: the idle loop next to the headline */
+/* the hero: Peep's idle loop perches on the first window's top-right corner, facing the window (left). Flat: no
+   contact shadow, no tint behind it. The body is 8 desk ems across and sits 1.4em down into the title bar; it is
+   turned so the beak points down at the window. Light pages play the paper set, dark pages the dark set (only the
+   one on show plays, peep.js). Frame: 412 x 326 px, body centre at 60.4% 49.6%, body bottom at 95.4%. */
 .hero{ position: relative; }
-.hero-peep{ position: absolute; right: 0; top: clamp(30px, 6vh, 80px); width: clamp(220px, 25vw, 380px); pointer-events: none; z-index: -1; }
-html.motion .hero-peep{ top: clamp(20px, 5vh, 70px); }
-.hero-peep video{ width: 100%; height: auto; }
-/* light: the video-model clip sits on its own paper tint, feathered into the wallpaper; dark: the clay loop with
-   alpha over a dark tint. Peep never stands on the gradient itself. */
-.hero-peep .hp-v{ -webkit-mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); mask-image: radial-gradient(closest-side, #000 58%, transparent 100%); }
-.hero-peep:has(.hp-v) .hp-a{ display: none; }
-.hero-peep::before{ content: ""; position: absolute; inset: 4% 2% 0; z-index: -1; border-radius: 50%; background: radial-gradient(closest-side, rgba(237, 232, 224, .9) 45%, rgba(237, 232, 224, 0)); }
-.hero-peep:has(.hp-v)::before{ display: none; }
-@media (prefers-color-scheme: dark) {
-  .hero-peep:has(.hp-v) .hp-a{ display: block; }
-  .hero-peep .hp-v{ display: none; }
-  .hero-peep::before, .hero-peep:has(.hp-v)::before{ display: block; background: radial-gradient(closest-side, rgba(12, 18, 20, .82) 45%, rgba(12, 18, 20, 0)); }
-}
+.perch{ position: absolute; left: 78.35em; top: 2.58em; width: 11.02em; z-index: 2; pointer-events: none;
+  transform-origin: 60.4% 49.6%; transform: rotate(-7deg); }
+.perch video{ display: block; width: 100%; height: auto; }
+.perch .pc-d{ display: none; }
+@media (prefers-color-scheme: dark) { .perch .pc-l{ display: none; } .perch .pc-d{ display: block; } }
+/* as the page scrolls, Peep drifts a little up and right of the window and tips its beak a little further down,
+   so its eyes stay on the window. Only with motion (main.js sets --sy0); reduced motion keeps the resting pose. */
+html.motion .perch{ --s: min(var(--sy0, 0), 480);
+  transform: translate3d(calc(var(--s) * .025px), calc(var(--s) * -.02px), 0) rotate(calc(-7deg - var(--s) * .012deg));
+  transition: transform .35s cubic-bezier(.2, .7, .3, 1); will-change: transform; }
 /* the end: clay Peep peeks up from the bottom edge, only the top of its head and its eyes */
 .peek{ position: relative; height: clamp(110px, 15vw, 210px); margin-top: 40px; overflow: hidden; pointer-events: none; }
 .pk{ position: absolute; left: 50%; bottom: 0; width: clamp(240px, 33vw, 460px); transform: translate(-50%, 6%); }
@@ -1207,8 +1210,8 @@ html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-durat
 @media (max-width: 720px) {
   :root{ --ear: 78px; }
   .isl .el{ padding-left: 8px; }
-  /* phones: the notch Peep is the one on screen (no hero loop), and "To verify" fits a 320 px screen */
-  .hero-peep{ display: none; }
+  /* phones: the notch Peep is the one on screen (no perched loop), and "To verify" fits a 320 px screen */
+  .perch{ display: none; }
   .isl[data-mode="verify"]{ transform: translateX(calc(-50% - 20px)); }
   .isl[data-mode="verify"] .el{ width: calc(var(--ear) + 30px); }
   .isl[data-mode="verify"] .er{ width: calc(var(--ear) + 70px); padding-right: 12px; }
@@ -1216,5 +1219,5 @@ html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-durat
   .isl[data-mode="verify"][data-mode] .el{ transform: translateX(calc(-1 * var(--ear))); }
   .isl[data-mode="verify"] .vf{ font-size: 11.5px; }
 }
-/* zh: the title breaks after 时代的 so the hero Peep has its own room */
+/* zh: the title breaks after 时代的 */
 @media (min-width: 721px) { html[lang="zh-CN"] .hero h1{ max-width: 7.2em; } }

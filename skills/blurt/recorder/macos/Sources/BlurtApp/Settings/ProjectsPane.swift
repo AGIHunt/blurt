@@ -130,7 +130,7 @@ struct ProjectsPane: View {
                     RowMenu(label: T("settings.projects.more"), visible: true) {
                         Button(T("settings.general.open_unassigned")) { m.revealUnassigned() }
                     }
-                    Button(T("settings.projects.add")) { m.addFolder() }.controlSize(.small)
+                    Button(T("settings.projects.add")) { m.addFolder() }.buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                 }
             })
 

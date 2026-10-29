@@ -18,7 +18,9 @@
 //    piece is final) on every tier — the note model is quick (`liveWords`); the text so far shows in LiveTranscript under the island. At stop only the last piece is left, so the card has its words about
 //    as soon as it is caught. A piece that failed → the whole wav through `transcribe.py note`, the old way. (The
 //    pieces run whether or not the panel shows: the words are ready at stop either way. record.voice.stream false =
-//    the old path only.)
+//    the old path only.) The pieces are heard again in ~10 s windows (DictationStitch.rehearGroups, as dictation does —
+//    docs/design/dictation.md §Hearing again; record.voice.rehear, on): the card gets the windows' text, the panel
+//    the pieces'.
 //  • the wav goes to shots/<NNN>.wav of the current store's open shots batch (`said` = the words; K9).
 //    Pressing starts `transcribe.py serve --preload` (once; it exits by itself when idle), so the model is warm by the
 //    time the first piece is complete.
@@ -100,6 +102,7 @@ final class VoiceInput {
     var maxSeconds: Double { max(30, (settings["max_seconds"] as? Double) ?? 600) }
     /// transcribe while talking (off: the whole wav after stop, the old path)
     var streams: Bool { settings["stream"] as? Bool ?? true }
+    var rehears: Bool { settings["rehear"] as? Bool ?? true }
     /// what the island says it will take to finish: the key, else the Done button
     var endsOnPause: Bool { VoiceInput.endOnPause && !holding }
 
@@ -198,6 +201,7 @@ final class VoiceInput {
     // MARK: listening
 
     private func start() {
+        island.foldForActivity()
         guard !active else { return }
         // one listener at a time: dictation has the microphone (and Esc) until it is done
         if Dictation.shared.phase == .listening {
@@ -229,7 +233,7 @@ final class VoiceInput {
         let live = LiveTranscript.shared.begin(.voice)
         liveSession = live
         let st = streams ? VoiceNoteStream(id: "\(ShotBatch.name(k))-\(Int(Date().timeIntervalSince1970))",
-                                           interim: VoiceInput.liveWords) : nil
+                                           interim: VoiceInput.liveWords, rehear: rehears) : nil
         st?.onLive = { [weak self] committed, pending in
             if let self = self, self.stream === st { self.liveText = committed + pending }
             LiveTranscript.shared.update(committed, pending: pending, session: live)
@@ -356,7 +360,7 @@ final class VoiceInput {
     /// Blurt started goes (SIGKILL: a stopped process doesn't take SIGTERM), so the next key-down starts a fresh one;
     /// a server someone else started is left alone. true when a process was ended.
     @discardableResult
-    static func endUnresponsiveServer(hung: Bool = false) -> Bool {
+    static func endUnresponsiveServer(hung: Bool = false, why: String = "unresponsive") -> Bool {
         if hung { return replaceIfStuck("hung") }
         guard let s = server, s.isRunning else { return false }
         WarmSpawn.retire(s.processIdentifier)
@@ -368,7 +372,7 @@ final class VoiceInput {
         }
         kill(s.processIdentifier, SIGKILL)
         DispatchQueue.main.async { server = nil }
-        emit(["event": "asr_server_ended", "why": "unresponsive"])
+        emit(["event": "asr_server_ended", "why": why])
         return true
     }
 
@@ -586,11 +590,18 @@ final class VoiceNoteStream {
     private var finals: [Int: String] = [:]
     private var hards: [Int: Bool] = [:]
     private var interims: [Int: String] = [:]
+    // hearing again (docs/design/dictation.md §Hearing again): the open window's first sample and first piece (main
+    // thread); the windows' texts and the piece each ends with (q)
+    private let rehear: Bool
+    private var windowStart = 0, windowFirst = 0
+    private var windowTexts: [String] = []
+    private var windowLast: [Int] = []
 
     var count: Int { queued }
 
-    init(id: String, interim: Bool = false) {
+    init(id: String, interim: Bool = false, rehear: Bool = true) {
         self.id = id
+        self.rehear = rehear
         live = DictationLiveDecode(sampleRate: NoteVoice.rate, off: interim ? nil : .setting)
         dir = BlurtPaths.home.appendingPathComponent("tmp/voice", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -608,8 +619,11 @@ final class VoiceNoteStream {
             enqueue(start: pieceStart, end: cut.end, hard: pieceHard)
             pieceStart = cut.nextStart
             pieceHard = cut.hard
-            // what no piece will need again (a hard cut's next piece starts 0.8 s back, never before this)
-            let drop = pieceStart - base
+            if rehear, DictationStitch.closesWindow(start: windowStart, end: cut.end, hardCut: cut.hard, sampleRate: NoteVoice.rate) {
+                closeWindow(end: cut.end)
+            }
+            // what no piece or window will need again (a hard cut's next piece starts 0.8 s back, never before this)
+            let drop = (rehear ? min(pieceStart, windowStart) : pieceStart) - base
             if drop > 0 { audio.removeFirst(min(drop, audio.count)); base = pieceStart }
         }
         interimIfDue()
@@ -625,6 +639,40 @@ final class VoiceNoteStream {
         emit(["event": "voice_piece", "id": id, "index": i, "start": Double(start) / NoteVoice.rate, "end": Double(end) / NoteVoice.rate,
               "hard": hard])
         q.async { self.transcribe(i, samples, hard: hard) }
+    }
+
+    /// The open window ends here (main thread): its pieces heard once more in one request, after their own.
+    private func closeWindow(end: Int) {
+        let first = windowFirst, n = queued
+        windowFirst = n
+        let start = windowStart
+        windowStart = end
+        guard n > first else { return }
+        let samples = n - first > 1 ? Array(audio[max(0, start - base)..<max(0, min(end - base, audio.count))]) : []
+        q.async { self.hearAgain(pieces: first..<n, samples) }
+    }
+
+    private func hearAgain(pieces: Range<Int>, _ samples: [Float]) {
+        guard !isCancelled else { return }
+        lock.lock(); let gaps = pauses; lock.unlock()
+        let mine = pieces.map { $0 < gaps.count ? gaps[$0] : nil }
+        let said = DictationStitch.joinPieces(pieces.map { $0 < texts.count ? texts[$0] : "" }, pauses: mine)
+        var text = said
+        if !samples.isEmpty {
+            let url = dir.appendingPathComponent("\(id)-w\(windowTexts.count).wav")
+            DictationStream.writeWav(samples, to: url)
+            let wgaps = windowLast.map { $0 < gaps.count ? gaps[$0] : nil }
+            let t0 = CACurrentMediaTime()
+            let r = VoiceInput.transcribePiece(url, prior: DictationStitch.joinPieces(windowTexts, pauses: wgaps))
+            try? FileManager.default.removeItem(at: url)
+            let again = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !again.isEmpty { text = again }        // nothing back: the pieces' own text, never worse than before
+            emit(["event": "voice_rehear", "id": id, "pieces": pieces.count, "ms": Int((CACurrentMediaTime() - t0) * 1000),
+                  "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100, "ok": !again.isEmpty,
+                  "changed": !again.isEmpty && again != said])
+        }
+        windowTexts.append(text)
+        windowLast.append(pieces.upperBound - 1)
     }
 
     private var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
@@ -724,11 +772,14 @@ final class VoiceNoteStream {
         if queued == 0 || (tail > Int(0.3 * NoteVoice.rate) && segmenter.pieceHasSpeech) {
             enqueue(start: pieceStart, end: total, hard: pieceHard)
         }
+        if rehear { closeWindow(end: total) }
         audio = []
         q.async {
             let lock = self.lock
             lock.lock(); let gaps = self.pauses; lock.unlock()
-            let text = self.failed ? nil : DictationStitch.joinPieces(self.texts, pauses: gaps)
+            let text = self.failed ? nil : self.rehear && !self.windowTexts.isEmpty
+                ? DictationStitch.joinPieces(self.windowTexts, pauses: self.windowLast.map { $0 < gaps.count ? gaps[$0] : nil })
+                : DictationStitch.joinPieces(self.texts, pauses: gaps)
             DispatchQueue.main.async {
                 self.onFinished?(text)
                 self.onFinished = nil

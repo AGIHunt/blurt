@@ -154,7 +154,8 @@ languages.
 - When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
   anything else you give it.
 - No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
-  or DashScope, for recordings), what your agent sends to its provider, and Send Feedback: when you click it on the
+  or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
+  to DeepSeek or the API you set up), what your agent sends to its provider, and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
   and deleted within 14 days.

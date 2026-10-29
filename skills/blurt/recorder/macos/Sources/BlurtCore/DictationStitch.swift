@@ -294,6 +294,32 @@ extension DictationStitch {
         return (commit, carry, end)
     }
 
+    /// Hearing again (docs/design/dictation.md §Hearing again): the pieces are heard once more in windows of about
+    /// `rehearWindow` seconds, with the text so far as context — a 3–8 s piece hears half a sentence, a window the
+    /// whole of it (巨幅 → GIF, 强势了 → 尝试了 on the user's own takes). A window closes after a piece once it is that long
+    /// and the cut after the piece was a pause: never at a hard cut, so two windows never share audio and nothing is
+    /// dropped twice.
+    public static let rehearWindow = 10.0
+
+    public static func closesWindow(start: Int, end: Int, hardCut: Bool, sampleRate: Double, window: Double = rehearWindow) -> Bool {
+        !hardCut && Double(end - start) >= window * sampleRate
+    }
+
+    /// The same windows from a take's pieces (start / end in seconds; `hard`: the piece began at a hard cut): ranges of
+    /// piece indices, the last one ending with the take. The Dictation Lab's port is dictation_stitch.rehear_groups.
+    public static func rehearGroups(_ pieces: [(start: Double, end: Double, hard: Bool)], window: Double = rehearWindow) -> [Range<Int>] {
+        var out: [Range<Int>] = []
+        var first = 0
+        for (i, p) in pieces.enumerated() where i + 1 < pieces.count {
+            if closesWindow(start: Int((pieces[first].start * 1000).rounded()), end: Int((p.end * 1000).rounded()), hardCut: pieces[i + 1].hard,
+                            sampleRate: 1000, window: window) {
+                out.append(first..<(i + 1)); first = i + 1
+            }
+        }
+        if first < pieces.count { out.append(first..<pieces.count) }
+        return out
+    }
+
     /// Numbered or bulleted lines ("1. …", "2、…", "- …" at a line start): Light must never write one; a structured
     /// text with ≥ 2 of them is a list.
     public static func listLines(_ text: String) -> Int {

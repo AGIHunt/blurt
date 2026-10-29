@@ -716,3 +716,13 @@
 "app.record.partial_title" = "录屏中途停了";
 "app.record.partial_kept" = "前 %@ 已保留";
 "app.ear.saved" = "已保存 %@";
+
+/* New Item (NewItemSheet) */
+"main.new_item.button" = "新建";
+"main.new_item.tip" = "手动新建一个条目（⌘N）";
+"main.new_item.menu" = "新建条目…";
+"main.new_item.title" = "新建条目";
+"main.new_item.into" = "存到「%@」";
+"main.new_item.title_placeholder" = "标题";
+"main.new_item.details_placeholder" = "详情（可选）";
+"main.new_item.create" = "新建";

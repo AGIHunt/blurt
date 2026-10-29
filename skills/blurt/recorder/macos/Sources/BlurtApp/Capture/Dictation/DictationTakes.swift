@@ -109,7 +109,9 @@ extension Dictation {
             self.updatePhase()
         }
         updatePhase()
-        take.stream.finish(keyUp: take.keyUp, structure: take.structure) { [weak self] r in self?.landed(take, r) }
+        take.stream.finish(keyUp: take.keyUp, structure: take.structure, onlyForLists: take.style?.style == .auto) { [weak self] r in
+            self?.landed(take, r)
+        }
         // a take that is slow to come (a model loading, a server that stopped answering) says so after a few seconds,
         // with the way out — not only moving dots (v0.9 dogfood: 20 s of dots, and the user dictated it again)
         DispatchQueue.main.asyncAfter(deadline: .now() + Dictation.slowAfter) { [weak self, weak take] in
@@ -463,7 +465,10 @@ extension Dictation {
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
             entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
-            if keep { entry.pieces = r.pieces.compactMap(DictationPieceRecord.init(json:)) }
+            if keep {
+                entry.pieces = r.pieces.compactMap(DictationPieceRecord.init(json:))
+                entry.windows = r.windows.compactMap(DictationWindowRecord.init(json:))
+            }
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }

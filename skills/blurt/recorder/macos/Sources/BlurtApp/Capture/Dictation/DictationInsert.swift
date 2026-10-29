@@ -19,6 +19,7 @@ import AppKit
 import ApplicationServices
 import BlurtCore
 import Carbon.HIToolbox
+import WebKit
 
 enum DictationInsert {
     /// `held`: neither typed nor copied (a password field had the focus): the text is in the history and the island
@@ -203,6 +204,25 @@ enum DictationInsert {
     /// Our own app is in front: a text view in one of our windows gets a paste: (no synthetic key); the island or
     /// anything that isn't a text field gets nothing — the text goes to the clipboard.
     private static func insertHere(_ text: String, done: @escaping (Result) -> Void) {
+        // our own web pages (an item's detail, the review page): their edited field gets it, as any app's would (BA-16:
+        // dictating into an item's "what happened" only copied) — when the page says an editable element has the focus
+        if let w = NSApp.keyWindow, !(w is NSPanel), let web = (w.firstResponder as? NSView).flatMap(webView(around:)) {
+            let js = "(function(){var e=document.activeElement;return !!e&&(e.isContentEditable||/^(INPUT|TEXTAREA)$/.test(e.tagName))&&!e.readOnly&&e.type!=='password'})()"
+            web.evaluateJavaScript(js) { r, _ in
+                guard r as? Bool == true else {
+                    copy(text)
+                    emit(["event": "dictation_insert", "result": "copied", "why": "own_page_no_field"])
+                    return done(.copied)
+                }
+                hold()
+                put(text, transient: true)
+                let ours = pasteboard.changeCount
+                NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: nil)
+                emit(["event": "dictation_insert", "result": "pasted", "app": "self", "window": w.title])
+                land(text, field: nil, before: nil, ours: ours, done: done)
+            }
+            return
+        }
         // panels are the island, the note bubble, cards: never typed into
         guard let w = NSApp.keyWindow, !(w is NSPanel), let tv = w.firstResponder as? NSTextView, tv.isEditable else {
             copy(text)
@@ -210,6 +230,13 @@ enum DictationInsert {
             return done(.copied)
         }
         paste(text, into: tv, window: w, done: done)
+    }
+
+    /// The web view a responder is (or is inside).
+    private static func webView(around v: NSView) -> WKWebView? {
+        var x: NSView? = v
+        while let c = x { if let w = c as? WKWebView { return w }; x = c.superview }
+        return nil
     }
 
     /// Our own text view: the same pasteboard round trip, with the paste: action instead of a keystroke.

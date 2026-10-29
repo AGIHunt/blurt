@@ -191,6 +191,30 @@ extension Dictation {
             }
         }
         checkStyleSuggestion(bundle: lp.bundle)
+        remindCloudPolish()
+    }
+
+    /// The first dictation of the day, while cloud polish isn't on (DictationCloud.remindToday): one line pointing to
+    /// it, Set Up… or Don't Remind Me. It waits its turn behind the take's own toasts and goes by itself.
+    func remindCloudPolish() {
+        guard DictationCloud.remindToday() else { return }
+        emit(["event": "dictation_cloud", "action": "hint"])
+        var t = Island.Toast(text: Loc.t("dictation.cloud.hint", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.cloud.hint.setup", table: "Dictation"), action: {
+            emit(["event": "dictation_cloud", "action": "hint_setup"])
+            // straight to the setting: Models with the row in view, and its sheet open
+            SettingsController.shared.show(pane: "speech/cloud_polish")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(name: CloudPolishRow.openRequest, object: nil)
+            }
+        })
+        t.secondTitle = Loc.t("dictation.cloud.hint.never", table: "Dictation")
+        t.second = {
+            Dictation.set("cloud_hint", false)
+            emit(["event": "dictation_cloud", "action": "hint_never"])
+        }
+        t.seconds = 10
+        island.toast(t)
     }
 
     // MARK: reformat-last
@@ -241,11 +265,12 @@ extension Dictation {
 
     /// Light for a take that was typed verbatim: polish it now (the warm server; off the dictation's path).
     private func withLight(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
-        guard lp.light == nil, !lp.raw.isEmpty, Dictation.polishOn, polishModel != nil else { return then() }
+        let cloud = DictationCloud.payload()
+        guard lp.light == nil, !lp.raw.isEmpty, Dictation.polishOn, polishModel != nil || cloud != nil else { return then() }
         let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: lp.bundle) ? "terminal" : nil
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Dictation.polish(lp.raw, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
-                                     context: nil, variant: variant)
+                                     context: nil, variant: variant, cloud: cloud)
             let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             DispatchQueue.main.async {
                 if r?["fell_back"] as? Bool != true, let t = text { lp.light = t }
@@ -264,7 +289,8 @@ extension Dictation {
         let vocab = DictationVocabulary.shared.payload()
         DispatchQueue.global(qos: .userInitiated).async {
             let t0 = CACurrentMediaTime()
-            let r = Dictation.structure(src, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab)
+            let r = Dictation.structure(src, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                        cloud: DictationCloud.payload())
             let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             DispatchQueue.main.async {
                 if r?["fell_back"] as? Bool != true, let t = text { lp.structured = t }
@@ -285,11 +311,12 @@ extension Dictation {
             var out = edited
             switch style {
             case .structured, .auto:
-                if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab),
+                if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                               cloud: DictationCloud.payload()),
                    r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
             case .light:
                 if let r = Dictation.polish(edited, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
-                                            context: nil, variant: variant),
+                                            context: nil, variant: variant, cloud: DictationCloud.payload()),
                    r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
             case .verbatim:
                 break

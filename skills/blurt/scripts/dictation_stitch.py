@@ -202,6 +202,24 @@ def mid_sentence(text: str) -> bool:
     return bool(t) and t[-1] not in _TERMINATORS and t[-1] not in "\n"
 
 
+# ------------------------------------------------------------------ hearing again (DictationStitch.rehearGroups)
+REHEAR_WINDOW = 10.0     # s (the Lab on the user's 22 takes: 10 s kept the gain of 15 s at a third of the wait at key-up)
+
+
+def rehear_groups(pieces: list[dict], window: float = REHEAR_WINDOW) -> list[list[int]]:
+    """The windows a take is heard again in (docs/design/dictation.md §Hearing again): piece indices, a window closing
+    after a piece once it spans `window` seconds and the next piece didn't begin at a hard cut. pieces: [{"start",
+    "end", "hard"}] (seconds; `hard`: the piece began at a hard cut)."""
+    out, first = [], 0
+    for i in range(len(pieces) - 1):
+        if not pieces[i + 1].get("hard") and pieces[i]["end"] - pieces[first]["start"] >= window:
+            out.append(list(range(first, i + 1)))
+            first = i + 1
+    if first < len(pieces):
+        out.append(list(range(first, len(pieces))))
+    return out
+
+
 # ------------------------------------------------------------------ DictationStream's polish windows
 def stream(pieces: list[dict], pauses: list[float | None], polish, guard=None, context: dict | None = None,
            structure=None) -> dict:

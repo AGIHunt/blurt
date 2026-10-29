@@ -288,7 +288,8 @@ final class IslandButton: NSView {
             }
             var name = t
             while !name.isEmpty && ((name + (name == t ? "" : "…")) as NSString).size(withAttributes: attrs).width > room { name.removeLast() }
-            let shown = name == t ? t : name + "…"
+            // ("Customer…", not "Customer …": the space the cut stopped at goes too)
+            let shown = name == t ? t : name.trimmingCharacters(in: .whitespaces) + "…"
             // the line as AppKit draws it (smoothed: its full weight), measured from the picture itself so it centres
             if let line = TextImage.line(shown, font: titleFont, color: fg.cgColor, scale: scale) {
                 titleLayer.contents = line.image
@@ -556,8 +557,23 @@ final class IslandContent: NSView {
     private var firstRow: CGFloat { (island?.notchGap ?? 0) > 0 ? row : row + 8 }
     private func side(_ w: CGFloat) -> CGFloat { island.map { $0.notchGap > 0 ? (w - $0.notchGap) / 2 : w / 2 } ?? w / 2 }
 
+    /// The open island's Peep: one view kept across rebuilds (a job's progress, a toast, the review count rebuild the
+    /// content often), so its idle — the breath and the blink — runs on instead of starting over at every one.
+    private let homePeep: MascotView = {
+        let p = MascotView(size: 24, backdrop: .dark)
+        p.setAccessibilityElement(false)
+        return p
+    }()
+
+    /// Peep runs only while the open content can be seen (closed, the content is still there under a 0 alpha), and
+    /// waits while the ear's Peep rides over to its spot (`peepHeld`: Island.peepRidesEdge).
+    func contentSeen(_ seen: Bool, peepHeld: Bool = false) {
+        let hide = !seen || peepHeld
+        if homePeep.isHidden != hide { homePeep.isHidden = hide }
+    }
+
     func rebuild() {
-        subviews.forEach { $0.removeFromSuperview() }
+        subviews.forEach { if $0 !== homePeep { $0.removeFromSuperview() } }
         rows = []
         selected = nil
         guard let i = island else { return }
@@ -577,6 +593,7 @@ final class IslandContent: NSView {
             usesRow = true
             y = buildHome(w)
         }
+        if !usesRow || i.drawer != nil { homePeep.removeFromSuperview() }
         fittingHeight = y
     }
 
@@ -585,37 +602,27 @@ final class IslandContent: NSView {
         addSubview(v)
     }
 
-    /// Where the chip goes: its glyph centred on the rows' icon column, its name on their text column.
-    static let chipX: CGFloat = 11
+    /// The project chip, by the open island's Peep: the name alone (Peep stands in the icon column), its text on the rows'
+    /// text column — the chip itself starts 13 pt before it (a title-only button's inset), so its hover film has air.
+    static let chipX: CGFloat = IslandLayout.textColumn - 13
 
-    private func chip(_ w: CGFloat, small: Bool = false) -> IslandButton {
+    private func chip(_ w: CGFloat) -> IslandButton {
         let p = ProjectStore.shared.current
-        // one name for nothing chosen: "Unassigned" / 未归类 (the one term everywhere), drawn with a dashed ring (the
-        // tray glyph is only ever the Inbox)
+        // one name for nothing chosen: "Unassigned" / 未归类 (the one term everywhere), dimmed
         let name = p?.name ?? Loc.t("capture.island.no_project", table: "Capture")
         // the current project's folder is gone: captures hang as cards meanwhile (Snapper.target) — the chip says so,
         // dimmed, and the switcher it opens offers Locate…
         let gone = p.map { !$0.exists } ?? false
-        // a context, not a button-pill: no fill at rest (the white film under the pointer); a project is its folder in
-        // its colour (the one project identity: the chip, the switcher, the drop drawer), the name in the island's white
+        // a context, not a button-pill: no fill at rest (the white film under the pointer), the name in the island's
+        // white; the project's coloured folder is in the switcher it opens and the drop drawer
         let b = IslandButton(title: name, tip: gone ? Loc.t("capture.drawer.missing_sub", table: "Capture")
                                                     : tip("capture.island.switch_project", .project),
                              fg: gone || p == nil ? ink2 : ink) { [weak self] in self?.island?.showSwitcher() }
-        if let p = p {
-            b.drawn = .project(gone ? ink3 : ProjectLook.color(p))
-        } else {
-            b.drawn = .noProject
-            b.iconColor = ink2
-        }
         b.ghost = true
         b.titleWeight = .medium
-        b.iconSize = 15
-        // the glyph on the icon column, the name on the text column (from wherever the chip itself sits)
-        b.symbolInset = small ? 10 : IslandLayout.iconColumn - 7.5 - IslandContent.chipX
-        b.titleGap = small ? 6 : IslandLayout.textColumn - IslandLayout.iconColumn - 7.5
         b.setAccessibilityLabel(Loc.t("capture.island.project_ax", table: "Capture", gone ? name + ", " + T("main.sidebar.missing") : name))
-        let maxW = small ? 200 : max(110, side(w) - 14)
-        b.setFrameSize(NSSize(width: min(maxW, b.intrinsicContentSize.width + 16), height: 26))
+        // the name, the chevron after it (a title-only button keeps 8 pt after its name; the chevron wants 22)
+        b.setFrameSize(NSSize(width: min(side(w) - 6 - IslandContent.chipX, b.intrinsicContentSize.width + 10), height: 26))
         let chev = NSImageView(image: BlurtIcon.chevronDown.image(size: 11, color: inkAcc, weight: 1.35))
         chev.frame = NSRect(x: b.frame.width - 19, y: 7.5, width: 11, height: 11)
         chev.setAccessibilityElement(false); chev.cell?.setAccessibilityElement(false)      // decoration: the button already says what it does
@@ -626,11 +633,19 @@ final class IslandContent: NSView {
     private func buildHome(_ w: CGFloat) -> CGFloat {
         guard let i = island else { return 0 }
         // the ears row: the project on the left of the notch, record / snap / voice on its right — quiet glyphs, a
-        // fill only under the pointer; the chip's glyph on the rows' icon column, its name on their text column
+        // fill only under the pointer; Peep on the rows' icon column, the chip after it
         let row = firstRow
         let rowY = (row - 26) / 2
-        let c = chip(w)
-        place(c, x: IslandContent.chipX, y: rowY)
+        // Peep at the row's left end whenever the island is open (BA-17, v1.0.4), on the rows' icon column, facing
+        // right as everywhere: which app this is, and the brand — never a second one (the ears are hidden while the
+        // island is open; a voice note's open view has its own). The project chip follows it.
+        // as the ear's Peep: thinking while captures are organised, so opening the island never changes its mood
+        let mood = i.earPeepMood
+        homePeep.frame.origin = NSPoint(x: IslandLayout.iconColumn - 12, y: (row - 24) / 2)
+        let fresh = homePeep.superview !== self
+        if fresh { addSubview(homePeep) }
+        if fresh || homePeep.mascot.clip != mood { homePeep.play(mood) }
+        place(chip(w), x: IslandContent.chipX, y: rowY)
         // the brand actions in one stroke: record a ring and a dot drawn at the family's weight (the family's record
         // fills a heavy dot), the snap frame, the mic (the mic that starts a voice note is the mic on its card)
         let buttons: [(BlurtIcon?, IslandGlyph?, String, HotAction, () -> Void)] = [
