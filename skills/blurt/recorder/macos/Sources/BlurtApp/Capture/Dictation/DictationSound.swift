@@ -1,14 +1,14 @@
-// The sounds of a take, for dictation (Fn) and voice notes (⌥V): Peep's cluck when the mic is really listening, a
+// The sounds of a take, for dictation (Fn) and voice notes (⌥V): Peep's peep when the mic is really listening, a
 // double peck when the take stops and its words are on their way, one softer peck when it is cancelled.
 //
 // v1.0.6, the founder: a Fn press that didn't register went unnoticed — they talked, pressed again to stop, and that
 // press started the take instead. With a cue for each edge, silence after a press says nothing started, and a start
-// cluck where a stop peck was expected says the same, before the words are lost.
+// peep where a stop peck was expected says the same, before the words are lost.
 //
 // On unless turned off (record.dictation.sounds; Settings → Dictation). Never while a screen recording runs: the cue
 // would be in it. The start cue waits for the first audio (Dictation.micStarted, NoteVoice.onFirstAudio), so it means
-// "talk now", not "key seen". The clips: assets/sounds/build.py → Resources/Sounds (the film's cluck, public domain,
-// and its synthesized peck), copied into Blurt.app by record.py.
+// "talk now", not "key seen". The clips: assets/sounds/build.py → Resources/Sounds (the film's peep and peck, both
+// synthesized), copied into Blurt.app by record.py.
 import AppKit
 
 enum DictationSound: String, CaseIterable {

@@ -943,7 +943,7 @@ final class Dictation {
         }
     }
 
-    /// The first audio arrived: the island switches to "listening" (the user can talk now), and Peep clucks.
+    /// The first audio arrived: the island switches to "listening" (the user can talk now), and Peep peeps.
     private func micStarted(_ v: NoteVoice) {
         guard voice === v else { return }
         micLive = true
@@ -1034,6 +1034,7 @@ final class Dictation {
         // limit, "still recognizing") is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore
         // IslandToasts.swift). A line left up said the opposite of the listening ears under it (v0.9 dogfood).
         DictationToastKeys.droppedAtStart.forEach { island.dropToasts(key: $0) }
+        remindRemembered()          // Structured / Translate still on here from last time: said after an hour's quiet
         if trigger.key == .fn { fnClashNotice(via: "take") }
         emit(["event": "dictation_start", "id": entryID, "app": front?.localizedName ?? "", "bundle": front?.bundleIdentifier ?? "",
               "key": trigger.key.rawValue, "mode": trigger.mode.rawValue, "push_to_talk": trigger.pushToTalk,
@@ -1237,6 +1238,7 @@ final class Dictation {
             updatePhase()
             return toastNothing()
         }
+        rememberSwitches()          // a ⇧ / ⌘ switch stays on in this app (DictationRemembering)
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish

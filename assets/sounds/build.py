@@ -3,14 +3,14 @@
     python3 assets/sounds/build.py            # write the outputs
     python3 assets/sounds/build.py --check    # exit 1 if an output is stale (tests run this)
 
-Sources
-  src/cluck.wav   a hen's cluck, public domain (Wikimedia Commons, Hen_announcing_shes_lain_an_egg.ogg; the film's
-                  cluck3, blurt-media/film/audio/chicken)
-  the peck        synthesized as the film's (blurt-media/film/audio/mix.py peck(): two clicks of filtered noise)
+Sources: both synthesized, as the film makes them (no recordings)
+  Peep's peep     two quick rising chirps, 2.5 → 4 kHz, the second softer (blurt-media/film/v3/audio/mix.py peep(): the
+                  film's 1:34, when the take is done; the founder picked it over a recorded hen's cluck, v1.0.6)
+  the peck        two clicks of filtered noise (blurt-media/film/audio/mix.py peck())
 
 Outputs (skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Sounds, 48 kHz 16-bit mono WAV; record.py copies them
 into Blurt.app)
-  start.wav    the cluck, high-passed, faded: listening has started, talk now
+  start.wav    Peep's peep: listening has started, talk now
   stop.wav     the double peck: the take is done, the words are on their way
   cancel.wav   one softer, darker peck: the take was thrown away
 
@@ -29,13 +29,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 OUT = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Sounds"
 SR = 48000
-
-
-def read(p: Path) -> list[float]:
-    with wave.open(str(p)) as w:
-        assert w.getnchannels() == 1 and w.getsampwidth() == 2 and w.getframerate() == SR, p
-        raw = w.readframes(w.getnframes())
-    return [s / 32768 for s in struct.unpack(f"<{len(raw) // 2}h", raw)]
+START_PEAK_DB = -19.0
 
 
 def encode(x: list[float]) -> bytes:
@@ -75,6 +69,21 @@ def norm(x: list[float], peak_db: float) -> list[float]:
     return [s * g for s in x]
 
 
+def peep(up: float = 1.0) -> list[float]:
+    """The film's peep: a 0.1 s chirp rising 2.5 → 4 kHz under a soft hump, then the same at 0.75, 0.12 s later."""
+    n = int(0.10 * SR)
+    chirp, ph = [], 0.0
+    for i in range(n):
+        u = i / (n - 1)
+        ph += 2 * math.pi * (2500 + 1500 * u) * up / SR
+        chirp.append(math.sin(ph) * abs(math.sin(math.pi * u)) ** 1.5)
+    out = [0.0] * (int(0.12 * SR) + n)
+    for j, s in enumerate(chirp):
+        out[j] += s
+        out[int(0.12 * SR) + j] += 0.75 * s
+    return out
+
+
 def peck(rng: random.Random, hits=((0.0, 1.0), (0.045, 0.55)), bright=4200.0) -> list[float]:
     """The film's peck: short bursts of decaying noise, a bright click over a low knock."""
     out = [0.0] * int((max(o for o, _ in hits) + 0.045) * SR)
@@ -90,10 +99,10 @@ def peck(rng: random.Random, hits=((0.0, 1.0), (0.045, 0.55)), bright=4200.0) ->
 
 def build() -> dict[str, bytes]:
     rng = random.Random(7)
-    cluck = read(HERE / "src/cluck.wav")
-    # levels by ear-loudness, not peak: the cluck is dense, a peck mostly silence around a click (≈ 25 dB crest), so
-    # the cluck sits 7 dB under its peak room and the pecks near full scale (RMS: start ≈ −23, stop ≈ −27, cancel ≈ −28)
-    start = norm(fade(hp(cluck, 250), 0.004, 0.04), -8)
+    # levels by ear-loudness, not peak: the peep is a pure tone where the ear is most sensitive (2.5–4 kHz), a peck
+    # mostly silence around a click (≈ 25 dB crest), so the peep sits far under full scale and the pecks near it; the
+    # peep matches the stop peck's loudness (ITU-R BS.1770, measured with ffmpeg ebur128 on the clips)
+    start = norm(peep(), START_PEAK_DB)
     stop = norm(peck(rng), -1)
     cancel = norm(fade(peck(rng, hits=((0.0, 1.0),), bright=1800), 0.0, 0.01), -6)
     return {"start.wav": encode(start), "stop.wav": encode(stop), "cancel.wav": encode(cancel)}

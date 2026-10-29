@@ -284,7 +284,7 @@
 "settings.kw.dictation.history_keep" = "history, retention, days, keep";
 "settings.kw.dictation.keep_audio" = "audio, recording, keep audio";
 "settings.kw.dictation.history_saved" = "history, clear history, delete history";
-"settings.kw.dictation.sounds" = "sound, beep, chime, cluck";
+"settings.kw.dictation.sounds" = "sound, beep, chime, chirp";
 "settings.kw.dictation.mic" = "microphone, mic, bluetooth, AirPods, headset, input";
 "settings.kw.dictation.models" = "speech model, polish model, recognition, ASR, LLM, Qwen, Gemma, download";
 "settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";

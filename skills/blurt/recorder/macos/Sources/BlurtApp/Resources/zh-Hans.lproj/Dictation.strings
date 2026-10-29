@@ -422,8 +422,8 @@
 "dictation.style.reset" = "恢复默认";
 "dictation.style.reset.help" = "改回它所属类别的风格";
 "dictation.style.suggest" = "听起来像清单时，提示可以排成清单";
-"dictation.style.learn_toggle" = "根据我的切换习惯，建议 App 的风格";
-"dictation.style.learn_toggle.detail" = "只会问你，不会自己改";
+"dictation.style.learn_toggle" = "在每个 App 里记住结构化和翻译";
+"dictation.style.learn_toggle.detail" = "用 ⇧ 或 ⌘ 打开后，在这个 App 里一直保持，再按一次关掉";
 "dictation.style.verbatim.detail" = "识别出的原话和标点，不润色。";
 "dictation.history.style" = "风格：%@";
 "dictation.history.style.reformatted" = "重排过 %ld 次";
@@ -730,3 +730,9 @@
 "dictation.translate.cloud.setup" = "设置…";
 "dictation.translate.apps" = "总是翻译的 App";
 "dictation.translate.apps.remove" = "移除";
+
+/* Per-app memory of Structured / Translate (DictationRemembering) */
+"dictation.remember.translate" = "翻译";
+"dictation.remember.and" = "和";
+"dictation.remember.saved" = "以后在 %1$@ 里也会%2$@ · 按 %3$@ 换回";
+"dictation.remember.kept" = "沿用 %1$@ 上次的设置：%2$@ · 按 %3$@ 关掉";

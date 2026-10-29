@@ -241,12 +241,12 @@ pronoun + verb; `promo/cases/v0.8-dictation-speed/results/clipped-start.jsonl`):
    - **The island says "listening" only once audio arrives** (`NoteVoice.onFirstAudio` → `Dictation.micLive`):
      until then the keyboard glyph with dots (`shots/island-mic-starting.png`), then the mint level and the clock
      (`shots/island-listening.png`). `dictation_mic_live` records `from_key_ms`.
-   - **Sounds** (v1.0.6, on: `record.dictation.sounds`; `DictationSound`): Peep's cluck when the first audio arrives
+   - **Sounds** (v1.0.6, on: `record.dictation.sounds`; `DictationSound`): Peep's peep (two rising chirps) when the first audio arrives
      (talk now), a double peck when the take stops (after the mic closed, so it isn't in the take), one softer peck
      when Esc cancels it; voice notes the same. Never while a screen recording runs. Why (the founder): a Fn press that
      didn't register went unnoticed — they talked, pressed again to stop, and that press started the take. Silence
-     after a press now says nothing started. The clips come from the film (`assets/sounds/build.py`: its public-domain
-     cluck and synthesized peck). Replaces v0.9's optional Tink (`start_sound`, off).
+     after a press now says nothing started. The clips are the film's (`assets/sounds/build.py`: its synthesized peep, at
+     1:34, and peck; the founder chose the peep over a recorded hen's cluck), level-matched (−24.4 / −24.5 LUFS). Replaces v0.9's optional Tink (`start_sound`, off).
 - Only the user can measure the real devices: the built-in mic's start-up and AirPods' HFP switch on their Mac
   (`dictation_mic_live.from_key_ms` in the log), and whether the prepared engine really leaves the mic indicator off.
 
@@ -1961,7 +1961,7 @@ recordings live in `dictation/lab/` and are never touched.
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
-| `sounds` | `true`: the cluck / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
+| `sounds` | `true`: the peep / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
