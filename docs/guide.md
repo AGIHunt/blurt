@@ -15,12 +15,12 @@ are looking for (`⌘F`), in English or Chinese — "login", "mirror", "快捷�
 to that setting.
 
 **First minute.** Blurt lives in the menu bar (Peep, the little round chick). The first launch walks you through what dictation
-needs — the Microphone and Accessibility (Input Monitoring only if your key needs it) — and the speech models; Screen
-Recording is asked for the first time you snap or record. After that, try `Fn` in any text field to dictate and `⌥A`
-to snap. Setting up speech needs the internet once: if the Mac is offline, the models step says so in one sentence
-with *Try Again* (if the Mac is online and it still fails — a proxy, say — it says that instead), it tries again by
-itself when the Mac is back online, and until then `Fn` says *Dictation isn't set up yet · Set Up…* instead of
-listening. The notch at the top of the screen says one short line when there is something
+needs — the Microphone and Accessibility (Input Monitoring only if your key needs it); Screen Recording is asked for the
+first time you snap or record. There is nothing to download: on macOS 26 dictation uses the Mac's own speech
+recognition, and one optional AI-service key (DeepSeek recommended for polish, Aliyun for speech) fixes misheard words,
+punctuation and names. On macOS 13–15 the key comes first, since those versions lack the new recognizer. Local models
+(more accurate, offline) are an optional download that takes over once it is in. After that, try `Fn` in any text
+field to dictate, `⌥A` to snap and `⌥C` to copy text from the screen. The notch at the top of the screen says one short line when there is something
 to know — at most one at launch. It always says the latest thing you did (a newer line takes the place of an older
 one about the same thing); a line with *Undo* stays at least 5 seconds and waits while the pointer is on it. Clicking the line opens the
 notch; only its button undoes. The main window's messages ("Moved to …", "Done · Undo") show there too, and `⌘Z`
@@ -683,10 +683,10 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
 ——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
-**第一分钟。** 口喷鸡住在菜单栏里（那只圆圆的小鸡 Peep）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）、下好语音模型；
-屏幕录制等你第一次截图或录屏时再开。之后在任意输入框里按 `Fn` 听写，按 `⌥A` 截图。设置语音要联一次网：Mac 没联网（或被代理挡住）时，
-模型这一步只用一句话说明，配一个「重试」（Mac 联着网还是失败，比如被代理挡住，会照实说），联网后会自己再试；在那之前按 `Fn` 会提示
-「听写还没设置好 · 设置…」，而不是听半天。
+**第一分钟。** 口喷鸡住在菜单栏里（那只圆圆的小鸡 Peep）。第一次打开会带你开好听写要用的权限（麦克风、辅助功能；你选的按键需要时才有输入监控）；
+屏幕录制等你第一次截图或录屏时再开。不用下载模型：macOS 26 上听写直接用系统自带的语音识别；再填一个 AI 服务的 key（可选，润色推荐 DeepSeek，
+语音识别推荐阿里云百炼），就会帮你改错字、加标点、认对专有名词。macOS 13–15 没有新的系统识别，设置助手第一步就是填 key。本机模型（更准、能离线）
+是可选的下载，下好后自动换上。之后在任意输入框里按 `Fn` 听写，按 `⌥A` 截图，按 `⌥C` 截图取字。
 屏幕顶部的刘海有事要说时只说一句短话——启动时最多一句。它说的总是你刚做的事
 （关于同一件事的新话会直接替换旧的）；带「撤销」的话至少停留 5 秒，鼠标指着时一直等着。点这句话会打开刘海，只有点它的按钮才会撤销。主窗口的提示（「已移到…」「已完成 · 撤销」）也在这里，提示消失后在主窗口按 `⌘Z` 照样能撤销。
 

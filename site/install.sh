@@ -64,5 +64,5 @@ fi
 open "$DEST/Blurt.app"
 
 echo "Blurt $version is in $DEST and open."
-echo "Finish in the setup window: turn on the microphone and Accessibility, then download the speech models."
+echo "Finish in the setup window: turn on the microphone and Accessibility. Nothing else to download."
 echo "To use Blurt from an agent (\"start blurt\"), connect it in Blurt's Settings > Agents."
