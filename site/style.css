@@ -1249,12 +1249,12 @@ html.motion .peek.up.duck .pk{ transform: translate(-50%, 70%); transition-durat
 .w-tchat{ left: 4em; top: 7.5em; width: 52em; height: 35em; }
 .shot{ position: relative; margin-top: .7em; width: 31em; border-radius: .5em; overflow: hidden; box-shadow: 0 0 0 1px var(--win-line); }
 .shot img{ width: 100%; }
-.sel{ position: absolute; left: var(--sx); top: var(--sy); width: calc(var(--sw) * var(--sel, 1)); height: calc(var(--sh) * var(--sel, 1));
+.shot .sel{ position: absolute; left: var(--sx); top: var(--sy); width: calc(var(--sw) * var(--sel, 1)); height: calc(var(--sh) * var(--sel, 1));
   background: rgba(110, 110, 120, .16); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .95), 0 0 0 1px rgba(0, 0, 0, .45); transition: opacity .5s; }
-.xh{ position: absolute; left: calc(var(--sx) + var(--sw) * var(--sel, 1)); top: calc(var(--sy) + var(--sh) * var(--sel, 1)); width: 1.7em; height: 1.7em; margin: -.85em 0 0 -.85em; opacity: 0; transition: opacity .25s; }
-.xh::before, .xh::after{ content: ""; position: absolute; background: #111; box-shadow: 0 0 0 1px rgba(255, 255, 255, .9); }
-.xh::before{ left: 50%; top: 0; bottom: 0; width: 1.5px; transform: translateX(-50%); }
-.xh::after{ top: 50%; left: 0; right: 0; height: 1.5px; transform: translateY(-50%); }
+.shot .xh{ position: absolute; left: calc(var(--sx) + var(--sw) * var(--sel, 1)); top: calc(var(--sy) + var(--sh) * var(--sel, 1)); width: 1.7em; height: 1.7em; margin: -.85em 0 0 -.85em; opacity: 0; transition: opacity .25s; }
+.shot .xh::before, .shot .xh::after{ content: ""; position: absolute; background: #111; box-shadow: 0 0 0 1px rgba(255, 255, 255, .9); }
+.shot .xh::before{ left: 50%; top: 0; bottom: 0; width: 1.5px; transform: translateX(-50%); }
+.shot .xh::after{ top: 50%; left: 0; right: 0; height: 1.5px; transform: translateY(-50%); }
 html.motion .sc-text:not(.on1) .sel, html.motion .sc-text.on4:not(.on6) .sel{ opacity: 0; }
 .sc-text.on3:not(.on4) .sel{ animation: shut .5s var(--ease); }
 @keyframes shut { 0% { background: rgba(97, 219, 189, .35); } 100% { background: rgba(110, 110, 120, .16); } }
@@ -1384,7 +1384,6 @@ html.motion .sc-first:not(.on3) .kk{ opacity: 0; }
 @media (prefers-color-scheme: dark) { .su-next{ color: var(--on-mint); } }
 @media (min-width: 1101px) { .six{ grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 26px; } }
 /* privacy: the headline's phrases may wrap inside their column (one phrase was wider than the column and ran over the lists) */
-.pv-grid{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); }
 .pv-grid h2 .ph{ white-space: normal; }
 /* hero, centred (founder, 2026-10-29): headline, lede and download centred under the notch, with more room below the
    notch and the live panel that grows out of it */
@@ -1452,3 +1451,19 @@ html[lang="en"] #h-hand{ font-size: 2.6em; }
 }
 @media (max-width: 720px) { .btn-dl{ padding: 14px 24px 14px 20px; font-size: 17px; } }
 @media (prefers-reduced-motion: reduce) { .btn-dl::before{ display: none; } }
+
+/* round 11, phones: the recording reads as a recording. While it runs (steps 1-4) the camera pulls back to the whole
+   shop window inside its red frame, so the frame, the ⌃ circle and the film strip are on screen; from the review list
+   on (step 5) it is back at the phone zoom. */
+@media (max-width: 720px) {
+  html.motion .sc-rec .view{ transition: transform .8s var(--ease), font-size .8s var(--ease); }
+  html.motion .sc-rec:not(.on5) .view{ font-size: 1.5cqw; --cx: -1.9; --cy: 15; }
+}
+/* privacy on phones: one column, the headline first at full width, then the two lists at full width, no forced breaks */
+@media (min-width: 721px) { .pv-grid{ grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); } }
+@media (max-width: 720px) {
+  .pv-grid{ grid-template-columns: minmax(0, 1fr); gap: 36px; align-items: start; }
+  .pv-grid h2{ font-size: clamp(30px, 8.4vw, 36px); line-height: 1.22; }
+  .pv{ grid-template-columns: minmax(0, 1fr); }
+  .pv li br{ display: none; }
+}
