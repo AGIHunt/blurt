@@ -727,4 +727,4 @@
 "main.new_item.create" = "Create";
 
 /* v1.0.5: the default shortcuts lost their ⇧ (AppDelegate, once) */
-"app.toast.hotkeys_v2" = "Shortcuts are one key shorter now: %1$@ snap · %2$@ copy text · %3$@ voice note";
+"app.toast.hotkeys_v2" = "Shortcuts are simpler now: %1$@ snap · %2$@ copy text · %3$@ voice note";

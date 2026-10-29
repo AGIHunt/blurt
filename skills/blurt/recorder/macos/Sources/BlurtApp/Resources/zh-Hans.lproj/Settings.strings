@@ -114,7 +114,7 @@
 "settings.general.dictation_lab" = "显示听写测试台";
 "settings.general.dictation_lab.hint" = "在「听写」页加一个对比模型的测试台。";
 "settings.general.voice_end_on_pause" = "结束语音备注";
-"settings.general.voice_end_on_pause.hint" = "语音备注（⌥V）可以不理会你停下来想一想，等你再按一次快捷键或点「完成」才结束（最长 10 分钟）；也可以安静 1.5 秒就结束。Esc 取消。截图的语音备注始终是停顿即结束。";
+"settings.general.voice_end_on_pause.hint" = "两种结束方式：再按一次快捷键或点「完成」（最长 10 分钟），或停顿 1.5 秒自动结束。按 Esc 取消。截图上的语音备注总是停顿即结束。";
 "settings.general.live_text" = "边说边显示文字";
 "settings.general.live_text.hint" = "语音备注或听写在听的时候，已经识别出的文字显示在刘海下方的小面板里，最新的字淡入。它不会抢焦点，会避开你正在输入的位置，也不会被录进录屏。";
 
@@ -443,36 +443,36 @@
 
 /* 截图取字（⌥C）的二次识别（ScreenTextRefine） */
 "settings.general.section.screen_text" = "截图取字";
-"settings.general.screen_text" = "二次识别";
-"settings.general.screen_text.hint" = "⌥C 会立刻复制 macOS 自带文字识别的结果。二次识别用 OCR 模型把同一张图再读一遍，修正行内认错的字符（l 和 /、0 和 @、漏掉的 →）。如果这期间你没有复制别的内容，剪贴板会换成修正后的文字。";
+"settings.general.screen_text" = "精确识别";
+"settings.general.screen_text.hint" = "⌥C 先用 macOS 自带识别立即复制，再用模型复查一遍，修正认错的符号（如 l 和 /、0 和 @）。复查完时你还没复制别的内容，剪贴板就会换成修正后的文字。";
 "settings.general.screen_text.off" = "关闭";
 "settings.general.screen_text.local" = "本机模型";
 "settings.general.screen_text.cloud" = "云端模型";
-"settings.general.screen_text.detail.off" = "只用 macOS 自带的文字识别：即时，不用下载。";
-"settings.general.screen_text.detail.local" = "PaddleOCR-VL，约 0.3 秒。使用时占约 1 GB 内存，闲置 10 分钟后释放。";
-"settings.general.screen_text.detail.local_small" = "这台 Mac 只有 %d GB 内存，运行时可能拖慢其他应用；云端模型不占本机内存。";
-"settings.general.screen_text.detail.download" = "需要下载一次，%@。";
+"settings.general.screen_text.detail.off" = "只用 macOS 自带识别，即时，无需下载";
+"settings.general.screen_text.detail.local" = "PaddleOCR-VL，约 0.3 秒；使用时占约 1 GB 内存，闲置 10 分钟后释放";
+"settings.general.screen_text.detail.local_small" = "本机只有 %d GB 内存，可能变卡，建议用云端模型";
+"settings.general.screen_text.detail.download" = "需下载 %@";
 "settings.general.screen_text.detail.downloading" = "正在下载… %@";
 "settings.general.screen_text.download" = "下载";
-"settings.general.screen_text.detail.cloud" = "使用你配置的云端模型（%@）：每次约 ¥0.001，截图会发送给它。";
-"settings.general.screen_text.detail.cloud_missing" = "先在「听写 → 云端润色」里填好云端模型和 key。";
+"settings.general.screen_text.detail.cloud" = "使用 %@，每次约 ¥0.001，截图会发送到云端";
+"settings.general.screen_text.detail.cloud_missing" = "请先在「听写 → 云端润色」中填写 Key";
 "settings.general.screen_text.setup" = "设置…";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
-"onboarding.start.detail" = "现在就能用。想更准、想离线，再往下加。";
+"onboarding.start.detail" = "现在就能用。想更准确或离线使用，可再加下面两项。";
 "onboarding.start.ready.title" = "听写现在就能用";
 "onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
 "onboarding.start.ready.state" = "可以用";
-"onboarding.start.assets.title" = "macOS 正在下载语音识别文件";
-"onboarding.start.assets.detail" = "只下一次，约 400 MB，由系统保存。下好就能听写。";
-"onboarding.key.title" = "AI 服务的 Key（可选）";
-"onboarding.key.detail" = "改掉听错的词、补好标点、认对专有名词。语音备注和截图取字也会用。";
+"onboarding.start.assets.title" = "macOS 正在下载语音文件";
+"onboarding.start.assets.detail" = "约 400 MB，只需下载一次，完成后即可听写";
+"onboarding.key.title" = "AI 服务 Key（可选）";
+"onboarding.key.detail" = "纠正听错的词和标点，语音备注和截图取字也会用到";
 "onboarding.key.on" = "已开启 · %@";
 "onboarding.key.add" = "添加…";
 "onboarding.key.change" = "更改…";
-"onboarding.key.cloud.title" = "用云端听写：阿里云百炼的 Key";
-"onboarding.key.cloud.detail" = "这台 Mac 用不了系统自带的语音识别（要 macOS 26，并且支持你说的语言）。填阿里云百炼的 Key 就能马上听写，语音在云端识别，不用下载；也可以下载下面的本机模型。";
+"onboarding.key.cloud.title" = "用阿里云百炼 Key 云端听写";
+"onboarding.key.cloud.detail" = "这台 Mac 不支持系统语音识别（需要 macOS 26）。填入百炼 Key 即可云端听写，无需下载；也可以下载下面的本机模型。";
 "onboarding.upgrade.title" = "本机模型（可选）";
-"onboarding.upgrade.detail" = "不联网也能用，认得你的词表，比系统自带的更准。";
+"onboarding.upgrade.detail" = "离线可用，认得你的词表，更准确";
 "onboarding.upgrade.download" = "下载（%@）";
-"onboarding.upgrade.needs_uv" = "本机模型要先装 uv（运行模型的工具）。";
+"onboarding.upgrade.needs_uv" = "需要先安装 uv（运行本机模型的工具）";

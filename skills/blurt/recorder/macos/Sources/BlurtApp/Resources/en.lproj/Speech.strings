@@ -80,7 +80,7 @@
 "speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words.";
 "speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: fewer mistakes on names and in a noisy room, about 25 ms slower per sentence.";
 "speech.note.cloud" = "Runs in the cloud with your own key.";
-"speech.note.apple" = "Built into macOS 26. Nothing to download; fewer of your words than Qwen3-ASR.";
+"speech.note.apple" = "Built into macOS 26, nothing to download; less accurate on names than Qwen3-ASR";
 
 /* Actions */
 "speech.download.button" = "Download";
@@ -140,10 +140,10 @@
 "speech.cloud.speed" = "Speed";
 "speech.cloud.speed.15" = "1.5× (recommended)";
 "speech.cloud.speed.2" = "2×";
-"speech.cloud.speed.1.hint" = "Most accurate. Billed for the full length.";
-"speech.cloud.speed.15.hint" = "About a third cheaper, slightly more errors (1.2 points more in our test).";
-"speech.cloud.speed.all" = "Every cloud service uses this speed.";
-"speech.cloud.speed.2.hint" = "About half the cost, but noticeably more errors; once it returned the word list instead of the speech.";
+"speech.cloud.speed.1.hint" = "Most accurate; billed at full length";
+"speech.cloud.speed.15.hint" = "About a third cheaper, slightly less accurate";
+"speech.cloud.speed.all" = "Applies to every cloud speech service";
+"speech.cloud.speed.2.hint" = "Half the cost, noticeably more errors";
 "speech.cloud.service.openai" = "OpenAI";
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";

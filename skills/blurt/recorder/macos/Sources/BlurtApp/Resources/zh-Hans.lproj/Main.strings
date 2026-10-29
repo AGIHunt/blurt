@@ -728,4 +728,4 @@
 "main.new_item.create" = "新建";
 
 /* v1.0.5：默认快捷键去掉了 ⇧（AppDelegate，只提示一次） */
-"app.toast.hotkeys_v2" = "快捷键少按一个键了：%1$@ 截图 · %2$@ 截图取字 · %3$@ 语音备注";
+"app.toast.hotkeys_v2" = "快捷键已简化：%1$@ 截图 · %2$@ 截图取字 · %3$@ 语音备注";

@@ -356,13 +356,13 @@
 /* 截图取字（⌥C，ScreenTextCopy.swift） */
 "capture.menu.text" = "截图取字";
 "capture.action.text" = "截图取字";
-"capture.action.text.detail" = "框选屏幕上的文字：复制到剪贴板；光标在输入框里时直接输入";
+"capture.action.text.detail" = "框选屏幕上的文字并复制；光标在输入框里时直接填入";
 "capture.text.copied" = "已复制";
 "capture.text.none" = "这里没有识别到文字";
 "capture.text.failed" = "没能读取屏幕";
 "capture.action.translate" = "截图翻译";
-"capture.action.translate.detail" = "同上，并在中英文之间翻译";
+"capture.action.translate.detail" = "框选文字，翻译成中文或英文";
 "capture.menu.translate" = "截图翻译";
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
-"capture.text.translate_failed" = "没能翻译 · 原文已复制";
+"capture.text.translate_failed" = "翻译失败，已复制原文";

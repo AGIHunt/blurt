@@ -356,7 +356,7 @@
 /* Copy text from screen (⌥C, ScreenTextCopy.swift) */
 "capture.menu.text" = "Copy Text from Screen";
 "capture.action.text" = "Copy text from screen";
-"capture.action.text.detail" = "Drag over text anywhere on screen: it's copied, and typed in when the cursor is in a text field";
+"capture.action.text.detail" = "Copy text from any area of the screen; typed in when the cursor is in a text field";
 "capture.text.copied" = "Copied";
 "capture.text.none" = "No text found in that area";
 "capture.text.failed" = "Couldn't read the screen";
@@ -365,4 +365,4 @@
 "capture.menu.translate" = "Translate Text from Screen";
 "capture.text.typed" = "Pasted";
 "capture.text.translating" = "Translating…";
-"capture.text.translate_failed" = "Couldn't translate · the text is copied";
+"capture.text.translate_failed" = "Couldn't translate · original copied";
