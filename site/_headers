@@ -1,12 +1,15 @@
-# Cloudflare Pages: stylesheets, scripts and font subsets keep stable names, so make browsers revalidate them
-# (cheap 304s via ETag) instead of caching for 4 h. Otherwise a visitor gets new HTML on top of the old CSS.
+# Cloudflare Pages. Every file a page uses is referenced with ?v= (README: bump it whenever one changes), so browsers
+# keep them for a year and never ask again; a new page names new URLs. The pages themselves always revalidate.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
 /style.css
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: public, max-age=31536000, immutable
+# peep.js and main.js are inlined into the pages; the files stay as their source
 /main.js
   Cache-Control: public, max-age=0, must-revalidate
 /peep.js
-  Cache-Control: public, max-age=0, must-revalidate
-/fonts/*
   Cache-Control: public, max-age=0, must-revalidate
 /llms.txt
   Content-Type: text/plain; charset=utf-8
