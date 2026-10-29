@@ -15,7 +15,7 @@
   Still open: a real mic (WASAPI), high DPI, multi-monitor, hardware encoders (#7: h264_qsv passes the lavfi probe but starves)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
 - [x] Logo (口喷鸡, 3 variants in assets/)
-- [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.agihunt.info (`site/README.md`)
+- [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.work (`site/README.md`)
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 
 ## v0.2

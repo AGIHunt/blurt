@@ -2,12 +2,12 @@
 
 > The keyboard for the agent era. The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source. A menu-bar app for macOS that works next to the agents you already use (Claude Code, Codex, Cursor, Claude, ChatGPT). It has no agent of its own and does not replace yours.
 
-Website: https://blurt.agihunt.info/en/ (English), https://blurt.agihunt.info/ (Chinese)
+Website: https://blurt.work/en/ (English), https://blurt.work/ (Chinese)
 Source: https://github.com/AGIHunt/blurt
 User guide: https://github.com/AGIHunt/blurt/blob/main/docs/guide.md
 Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the v1.0.0 release)
-Or have your agent install it: `curl -fsSL https://blurt.agihunt.info/install.sh | sh` (downloads the latest release, checks it is signed and notarized, puts Blurt.app in Applications and opens it; the user turns on the microphone and Accessibility in the setup window).
-Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.agihunt.info/assets/promo.mp4
+Or have your agent install it: `curl -fsSL https://blurt.work/install.sh | sh` (downloads the latest release, checks it is signed and notarized, puts Blurt.app in Applications and opens it; the user turns on the microphone and Accessibility in the setup window).
+Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.work/assets/promo.mp4
 
 ## Facts
 - Name: Blurt; Chinese name 口喷鸡. License: MIT. Made by AGI Hunt. Price: free, no word limit, no account.
@@ -19,11 +19,13 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 - Double-tap Fn instead of the stopping tap: the dictation stops, the text goes in and Return is pressed (send). You can also stop, check, then double-tap.
 - Hold to talk also works: hold Fn while you talk and let go to stop (a press over about 0.3 s counts as a hold).
 - Live text: the words show under the notch while you talk, about a second behind; the part that can still change is grey. On Macs under 16 GB there is no live grey text; words appear after each pause.
-- ⇧ is a switch while you talk: tap it for Structured (a self-correction keeps only what you settled on, and points you list become a numbered list), tap it again to go back to Light. While Structured is on, the notch shows a list mark next to the time. ⌥⇧L re-formats the last dictation (Light, Structured, Verbatim), with Undo.
+- ⇧ is a switch while you talk: tap it for Structured (a self-correction keeps only what you settled on, and points you list become a numbered list), tap it again to go back to Light. While Structured is on, the notch shows a list mark next to the time. ⌥L re-formats the last dictation (Light, Structured, Verbatim), with Undo.
 - Light, the default, removes fillers and stutters and adds punctuation. It does not rewrite, summarise or make lists. If polish adds or drops content, the raw transcript is typed instead.
 - Words: a list of names and terms the speech model listens for. A word you fix twice is learned, with Undo. Words are hints, never replacements.
 - In terminals and code editors the text stays on one line, so Claude Code doesn't fold it into "[Pasted N lines]". Password fields are never read or typed into.
-- Speech recognition runs on your Mac; after a one-time model download no internet is needed (not yet tested with the network switched off). Open-source models: Qwen3-ASR 1.7B (32 GB Macs and up) or 0.6B (16–24 GB) for speech, Gemma 4 E2B for polish (Gemma 3 1B on 8 GB Macs); about 5.9 GB or 4.4 GB to download, nothing until you press Download. One speech model serves dictation, voice notes and recordings in Chinese and English. In use they take about 4.2 GB or 2.8 GB of memory (measured on an M1 Max). Idle models unload after 10 minutes, sooner when memory runs short.
+- Works in the first minute: on macOS 26 dictation uses macOS's own speech recognition, so there is no model to download (if macOS hasn't got its speech files yet, it fetches them once, about 400 MB, kept by macOS). On macOS 13–15, Blurt downloads a local model first. Two optional upgrades: one AI-service key (fixes misheard names and punctuation, and powers translation and the cloud second reading of copied text) and the local models below.
+- Translate while you talk: tap ⌘ (either side) while dictating; speak Chinese and English is typed, or the other way round. The notch shows the translate mark and still shows what you said. With an AI-service key the cloud model translates, about 1 s after you let go (median, own test); without one, the local polish model does, about 0.2 s, rougher. With neither, ⌘ only says how to set one up.
+- Local models: speech recognition runs on your Mac; after a one-time model download no internet is needed (not yet tested with the network switched off). Open-source models: Qwen3-ASR 1.7B (32 GB Macs and up) or 0.6B (16–24 GB) for speech, Gemma 4 E2B for polish (Gemma 3 1B on 8 GB Macs); about 5.9 GB or 4.4 GB to download, nothing until you press Download. One speech model serves dictation, voice notes and recordings in Chinese and English. In use they take about 4.2 GB or 2.8 GB of memory (measured on an M1 Max). Idle models unload after 10 minutes, sooner when memory runs short.
 
 ## Measured (Blurt's own tests on one Apple M5 Max, 128 GB, with speech from macOS `say` as the microphone)
 - Talk for a minute, stop, until it's done: 0.39 s after 60 s of speech (median of three takes; the figure on the website). Shorter takes: 0.29 s after a 3 s sentence, 0.52–0.54 s after 30 s. Long takes with live text on (42–54 s): 0.51–1.55 s, median 0.64 s over 12 takes.
@@ -33,12 +35,18 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 - Next to others (checked 2026-10-25): end of speech to text at the cursor, Wispr Flow about 1.5 s and Typeless about 3.0 s, both from a VoiceDash comparison (https://voicedash.ai/wispr-flow-vs-typeless/; VoiceDash is a competing vendor). Typeless and Wispr Flow transcribe in the cloud; Blurt on your Mac. Blurt is free with no word limit; Typeless Pro is $12/month billed yearly. None of Typeless, Wispr Flow, Superwhisper or Aqua Voice offers snap or voice-note cards for agents, or turns screen recordings into items.
 - Real microphones and accents were not measured; latency was measured on the one test Mac. Other products' published numbers come from different methods and are not directly comparable.
 
-## Snap (⌥⇧A) and Voice Note (⌥⇧V)
-- ⌥⇧A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; a pause of about 2 s saves it.
-- ⌥⇧V: a voice note, up to 10 minutes; pausing to think doesn't end it.
+## Copy Text from Screen (⌥C) and Translate Text from Screen (⌥T)
+- ⌥C: drag over any text you can't select (a screenshot, a video, a shared screen, a locked page, a terminal). Let go and it is on the clipboard in about 0.1–0.2 s, laid out as if you had copied it: a half line the edge cut is left out, wrapped lines are joined, lists, tables (tabs) and code (indentation) are kept. If the cursor is in a text field it is typed in too. Nothing is saved, no card.
+- It reads with macOS's own text recognition (Vision), so nothing is downloaded; layout is rebuilt from geometry. An optional second reading by a small model (PaddleOCR-VL, 720 MB on the Mac, or the user's cloud model) fixes misread characters.
+- Measured on 18 Retina test crops (characters wrong): Vision's lines as they come 15.8%, Blurt 0.70% with nothing downloaded (18 of 18 laid out right), 0.16% with the local second reading.
+- ⌥T does the same and translates between Chinese and English; the translation shows under the notch and is on the clipboard.
+
+## Snap (⌥A) and Voice Note (⌥V)
+- ⌥A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; a pause of about 2 s saves it.
+- ⌥V: a voice note, up to 10 minutes; pausing to think doesn't end it.
 - Snaps and voice notes wait under the notch as cards; several can hang there at once. Drag it into Claude, ChatGPT, Slack, Notion, Feishu/Lark or WeChat: the picture goes in as an attachment, then the note in the same message box. Into a terminal running Claude Code or Codex: the paths of the picture and a Markdown note; nothing runs in the shell. Into Cursor or VS Code: the picture, with the note on the clipboard. Click a card to copy it. Cards you dragged out stay findable for 7 days.
 
-## Record (⌥⇧R) into items
+## Record (⌥R) into items
 - Record your screen while you talk; hold ⌃ to circle things. Your own coding agent turns the recording into items: issues with repro steps and the code most likely involved, ideas, notes and to-dos, each with a frame. Review with the keyboard (A keeps, X discards, J/K move).
 - Recordings made with the app are transcribed while you record, so a recording is ready about a minute after you stop: in a test from the README, a 5-minute recording became 12 items, ready to review 51 s after Finish. A teammate's 5-minute walkthrough became 52 items, each with the quote and the timestamp (time to review not recorded). A 14-minute recording was transcribed locally in 12 s and became 23 items for about $2.6 of agent tokens at API prices.
 
@@ -49,10 +57,10 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.ag
 
 ## Privacy
 - On the Mac: recognition and polish for dictation, snap notes and voice notes. About 500 characters around the cursor help get names right. Dictation History keeps each dictation's text, audio and that cursor text for 30 days (adjustable; the audio can be turned off).
-- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself (Settings → Models); cloud polish if the user turns it on (the dictated text, never the recording, goes to DeepSeek or their own OpenAI- or Anthropic-compatible API); when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
+- Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself (Settings → Models); cloud polish if the user turns it on (the dictated text, never the recording, goes to DeepSeek or their own OpenAI- or Anthropic-compatible API); cloud translation if on (the text); the cloud second reading of Copy Text from Screen if chosen (the picture of the dragged area); when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
 
 ## Install
 - Download for Mac: https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
-- Agent install: `curl -fsSL https://blurt.agihunt.info/install.sh | sh`. The app brings everything it runs; nothing else to install.
+- Agent install: `curl -fsSL https://blurt.work/install.sh | sh`. The app brings everything it runs; nothing else to install.
 - To use Blurt from an agent ("start blurt", questions about your items): Blurt's Settings → Agents → Connect… adds the Blurt skill and MCP server to Claude Code, Codex and other agents.
 - Without the app, from source: `npx skills add AGIHunt/blurt`, then "start blurt" (builds the app; needs the Xcode Command Line Tools and uv).

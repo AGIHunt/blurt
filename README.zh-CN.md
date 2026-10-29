@@ -2,9 +2,9 @@
 <h1 align="center">口喷鸡 Blurt</h1>
 <p align="center"><b>Agent 时代的输入法</b><br>
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>
-<a href="https://blurt.agihunt.info">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a></p>
+<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a></p>
 
-<p align="center"><a href="https://blurt.agihunt.info/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
+<p align="center"><a href="https://blurt.work/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
 <p align="center"><sub>两分钟介绍视频，请打开声音 · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">下载 Mac 版</a></sub></p>
 
 ---
@@ -46,7 +46,7 @@
 也可以把这行命令发给你的 Agent（Claude Code、Codex 等），或者粘到终端里运行：
 
 ```bash
-curl -fsSL https://blurt.agihunt.info/install.sh | sh
+curl -fsSL https://blurt.work/install.sh | sh
 ```
 
 它会下载最新版，确认已签名并经过公证，放进「应用程序」并打开。

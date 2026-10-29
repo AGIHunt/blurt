@@ -2,9 +2,9 @@
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
-<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
+<a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
 
-<p align="center"><a href="https://blurt.agihunt.info/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
+<p align="center"><a href="https://blurt.work/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
 <p align="center"><sub>Watch the 2-minute film, sound on · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">Download for Mac</a></sub></p>
 
 ---
@@ -55,7 +55,7 @@ everything it runs, so there is nothing else to install.
 Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
 
 ```bash
-curl -fsSL https://blurt.agihunt.info/install.sh | sh
+curl -fsSL https://blurt.work/install.sh | sh
 ```
 
 It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.

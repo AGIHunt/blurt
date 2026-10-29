@@ -1,4 +1,4 @@
-/* blurt.agihunt.info, round 7 (round 6's scroll machinery); round 9: Peep (peep.js) lives in the notch all the way
+/* blurt.work, round 7 (round 6's scroll machinery); round 9: Peep (peep.js) lives in the notch all the way
    down. This file tells it the active scene, step and notch mode every frame, and the beats (Blurt's bar stops, the
    52 items stream out).
    1. scenes: each [data-scene] is a tall section with a sticky stage. Scroll progress p (0–1 while pinned) picks the
@@ -92,12 +92,14 @@
   const spaced = root.lang === "en";
   let liveOwner = null, liveSpans = [];
   const setLive = (owner, words, f) => {
-    if (!owner) { isl.classList.remove("live-on"); return; }
+    if (!owner) { isl.classList.remove("live-on", "note"); return; }
+    isl.classList.remove("note");
     if (liveOwner !== owner) {
       liveOwner = owner; lt.textContent = "";
+      const sp = spaced && !owner.cjk;       // a Chinese take on the English page: no spaces between the words
       liveSpans = words.map((w, i) => {
         const s = document.createElement("span");
-        s.className = "w h"; s.textContent = w + (spaced && i < words.length - 1 ? " " : "");
+        s.className = "w h"; s.textContent = w + (sp && i < words.length - 1 ? " " : "");
         lt.appendChild(s); return s;
       });
     }
@@ -109,6 +111,14 @@
     isl.classList.add("live-on");
   };
   const mode = (m) => { if (isl.dataset.mode !== m) isl.dataset.mode = m; };
+  // round 10: a whole text in the live panel at once (⌥T's translation), and the right ear's label
+  const cp = isl.querySelector(".cp");
+  const L10 = root.lang === "en" ? { copied: "Copied", translating: "Translating…" } : { copied: "已复制", translating: "正在翻译…" };
+  const label = (x) => { if (cp && cp.textContent !== x) cp.textContent = x; };
+  const note = (owner, text) => {
+    if (liveOwner !== owner) { liveOwner = owner; lt.textContent = text; liveSpans = []; }
+    isl.classList.add("live-on", "note");
+  };
 
   // the words leave the live panel and land in the field (transform and opacity only)
   const fly = (to) => {
@@ -211,6 +221,43 @@
       if (s.tick) s.tick.style.setProperty("--n", [6, 72, 160, 276].filter((x) => sec >= x).length);
       if (s.count) { const n = Math.round(span(p, s.th[4] + .01, s.th[4] + .1) * 52); s.count.textContent = n; PP.count(k === 5 ? n : 0); }
     },
+    text(s, p, k) {
+      // the drag grows with the scroll (k 1–2), again for ⌥T (k 6); let go: Copied; ⌥T: Translating…, then the text
+      const th = s.th;
+      const sel = k >= 6 ? span(p, th[5], th[5] + .05) : span(p, th[1], th[2] - .03);
+      s.el.style.setProperty("--sel", sel.toFixed(3));
+      s.el.classList.toggle("drag", k >= 6 ? sel < 1 : k >= 1 && k < 3);
+      if (k === 3) { setLive(null); label(L10.copied); mode("copied"); }
+      else if (k >= 6 && sel >= 1) {
+        if (p < th[5] + .1) { setLive(null); label(L10.translating); mode("think"); }
+        else { note(s, s.trans); mode("done"); }
+      } else { setLive(null); mode(k >= 4 && k < 6 ? "hello" : "idle"); }
+    },
+    tr(s, p, k, prev) {
+      // Chinese under the notch while you talk; ⌘ adds the translate mark; after you stop, about a second, then English
+      const th = s.th;
+      if (k >= 1 && k < 3) {
+        mode(k >= 2 ? "trl" : "listen");
+        const f = span(p, th[0] + .02, th[2] - .04);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 7);
+      } else if (k === 3) {
+        setLive(s, s.say, 1); label((span(p, th[2] + .01, th[3] - .01) * 1.0).toFixed(1) + " s"); mode("think");
+      } else {
+        if (k === 4 && prev === 3) fly(s.el.querySelector("[data-target]"));
+        setLive(null); mode(k === 4 ? "done" : k >= 5 ? "hello" : "idle");
+      }
+    },
+    first(s, p, k, prev) {
+      const th = s.th;
+      if (k === 3) {
+        mode("listen");
+        const f = span(p, th[2] + .01, th[3] - .03);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 3);
+      } else {
+        if (k === 4 && prev === 3) fly(s.el.querySelector("[data-target]"));
+        setLive(null); mode(k === 4 ? "done" : k >= 1 ? "hello" : "idle");
+      }
+    },
     hand(s, p, k) {
       setLive(null);
       mode(k === 4 || k === 5 ? "verify" : "hello");
@@ -225,6 +272,7 @@
       clock: el.querySelector("[data-clock-out]"), lanes: [...el.querySelectorAll(".ln")],
       tick: el.querySelector(".tick"), count: el.querySelector("[data-count-out]"),
       bub: el.querySelector("[data-bub]"), bubN: -1, draw: [...el.querySelectorAll(".draw li")],
+      cjk: el.hasAttribute("data-cjk"), trans: el.dataset.trans || "",
     };
   });
   const depthEls = [...document.querySelectorAll("[data-depth]")];

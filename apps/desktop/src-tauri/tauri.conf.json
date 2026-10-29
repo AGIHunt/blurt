@@ -55,7 +55,7 @@
     "category": "Productivity",
     "shortDescription": "Speak, snap, record — Blurt turns it into work for your coding agents",
     "longDescription": "Talk through your screen, take a screenshot or leave a voice note; Blurt organizes it into issues, ideas, notes and tasks, files them into your project folders, and hands them to Claude Code or Codex in a terminal right inside the app — or copies the hand-off for your own agent.",
-    "homepage": "https://blurt.agihunt.info",
+    "homepage": "https://blurt.work",
     "copyright": "MIT",
     "icon": [
       "icons/32x32.png",
@@ -115,7 +115,7 @@
     },
     "updater": {
       "endpoints": [
-        "https://blurt.agihunt.info/updates/desktop/{{target}}-{{arch}}.json"
+        "https://blurt.work/updates/desktop/{{target}}-{{arch}}.json"
       ],
       "pubkey": "",
       "windows": {

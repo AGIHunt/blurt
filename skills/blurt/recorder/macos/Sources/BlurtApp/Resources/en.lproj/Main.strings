@@ -140,7 +140,7 @@
 "main.empty.no_match" = "No items match these filters";
 "main.empty.no_results" = "No results for “%@”";
 "main.empty.no_scripts" = "The blurt skill’s scripts are missing";
-"main.empty.no_scripts.detail" = "Blurt's scripts are missing. Reinstall Blurt from blurt.agihunt.info, then reopen this window.";
+"main.empty.no_scripts.detail" = "Blurt's scripts are missing. Reinstall Blurt from blurt.work, then reopen this window.";
 "main.empty.nothing_in_progress" = "Nothing in progress";
 "main.empty.nothing_in_progress.detail" = "Items you hand off to an agent stay here until you verify them.";
 "main.empty.outdated" = "Updating your items…";
@@ -166,7 +166,7 @@
 "main.error.key_in_use" = "The key can’t change once the project has items.";
 "main.error.key_taken" = "Another project already uses that key.";
 "main.error.needs_project" = "Move the items to a project first.";
-"main.error.no_scripts" = "This needs Blurt's scripts and uv. Reinstall Blurt from blurt.agihunt.info, then try again.";
+"main.error.no_scripts" = "This needs Blurt's scripts and uv. Reinstall Blurt from blurt.work, then try again.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
 "main.error.not_found" = "Blurt can’t find that any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
@@ -423,7 +423,7 @@
 
 "menu.hide" = "Hide Blurt";
 "menu.about" = "About Blurt";
-"menu.about.credits" = "Free and open source · blurt.agihunt.info";
+"menu.about.credits" = "Free and open source · blurt.work";
 
 "menu.item" = "Item";
 "menu.project" = "Project";
