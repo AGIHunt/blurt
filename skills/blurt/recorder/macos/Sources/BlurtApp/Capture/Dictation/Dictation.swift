@@ -1,5 +1,5 @@
 // Dictation (听写, docs/design/dictation.md): talk, and the words are typed into whichever app has the focus —
-// separate from the voice note (⌥⇧V files into Blurt; the two never share a key).
+// separate from the voice note (⌥V files into Blurt; the two never share a key).
 //
 //  • trigger: Fn (default; or right ⌥, or either ⌥) alone, read by an event tap (DictationKeys) and decided by
 //    BlurtCore's DictationTrigger — auto (default: a tap is hands-free, holding is push-to-talk), tap / tap, or hold
@@ -114,7 +114,7 @@ final class Dictation {
     // the takes that stopped and are on their way to the cursor (DictationTakes.swift)
     var takes: [String: DictationTake] = [:]
     var queue = DictationPasteQueue<String>()
-    /// ⌥⇧L came while a take was on its way: run once that take is in (BlurtCore's DictationReformatAfterPaste)
+    /// ⌥L came while a take was on its way: run once that take is in (BlurtCore's DictationReformatAfterPaste)
     var reformatAfterPaste = DictationReformatAfterPaste<String>()
     /// takes whose speech recognition failed, kept (with their audio) for Retry — the last few
     var failedTakes: [String: DictationTake] = [:]

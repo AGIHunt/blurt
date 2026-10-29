@@ -266,6 +266,20 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 LaunchMessages.shared.post(.shortcuts, t)
             }
         }
+        // v1.0.5: the default shortcuts lost their ⇧ (⌥A, ⌥C, ⌥V…). Someone who used the ⌥⇧ ones is told once; a new
+        // user never knew them
+        if recordConfig()["hotkeys_v2"] == nil {
+            if recordConfig()["welcomed"] == nil || assisted {
+                setRecordConfig("hotkeys_v2", true)
+            } else {
+                var t = Island.Toast(text: T("app.toast.hotkeys_v2", hk(.snap), hk(.text), hk(.voice)),
+                                     actionTitle: T("app.toast.change_shortcut")) {
+                    AppEnvironment.settings?.show(pane: SettingsPane.shortcuts.rawValue)
+                }
+                t.seconds = 10
+                LaunchMessages.shared.post(.shortcuts, t, shown: { setRecordConfig("hotkeys_v2", true) })
+            }
+        }
         // `--process <session dir> [--agent <id>]`: process an existing recording (also handy for testing);
         // `--review <url> --review-session <dir>`: review.py asked for its batch (we weren't running) → the main window
         let args = CommandLine.arguments
@@ -366,7 +380,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Opening the app (Finder, Dock, Spotlight, a second launch) shows the main window; recording starts from the
-    /// menu or ⌥⇧R. The one-shot recorder (`record.py start`, not resident) still records straight away.
+    /// menu or ⌥R. The one-shot recorder (`record.py start`, not resident) still records straight away.
     func openFromLaunch() {
         if resident, let mw = AppEnvironment.mainWindow { mw.show(); NSApp.activate(ignoringOtherApps: true) }
         else if !busy { startRecording(useLast: false) }
@@ -461,7 +475,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
            o["pid"] as? Int == Int(getpid()) { try? FileManager.default.removeItem(at: f) }
     }
 
-    /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥⇧B shows the same menu at the pointer.
+    /// The menu-bar icon can be hidden behind the notch on a crowded menu bar — ⌥B shows the same menu at the pointer.
     func popMenu() {
         let m = NSMenu()
         menuNeedsUpdate(m)

@@ -1,7 +1,7 @@
 // The recording's discard question (BlurtApp IslandContent.buildRecording: the trash button while recording).
 // dogfood v0.9-2: the question was drawn under its own buttons, "3 snaps" counted the markers as snaps, and the red
 // Discard sat exactly where Finish had been a click before. So:
-//  • what goes with the take is said as the island counts it: the snaps the user took and the markers (⌥⇧M), apart
+//  • what goes with the take is said as the island counts it: the snaps the user took and the markers (⌥M), apart
 //    (`lost`) — "Discard this recording, with 1 snap and 2 markers?";
 //  • the answers, left to right: Discard · Restart · Keep Recording — the safe one rightmost, where Finish was;
 //  • the question sits beside the answers only when it fits there, else on its own line above them (`ownLine`).
@@ -17,7 +17,7 @@ public enum RecordingDiscard {
         case both(snaps: Int, markers: Int)
     }
 
-    /// `stills`: snaps the user took (⌥⇧A, the island's camera); `markers`: ⌥⇧M's stills, counted apart.
+    /// `stills`: snaps the user took (⌥A, the island's camera); `markers`: ⌥M's stills, counted apart.
     public static func lost(stills: Int, markers: Int) -> Lost {
         switch (max(0, stills), max(0, markers)) {
         case (0, 0): return .nothing

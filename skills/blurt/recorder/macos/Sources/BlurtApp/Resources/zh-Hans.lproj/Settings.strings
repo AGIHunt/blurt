@@ -114,7 +114,7 @@
 "settings.general.dictation_lab" = "显示听写测试台";
 "settings.general.dictation_lab.hint" = "在「听写」页加一个对比模型的测试台。";
 "settings.general.voice_end_on_pause" = "结束语音备注";
-"settings.general.voice_end_on_pause.hint" = "语音备注（⌥⇧V）可以不理会你停下来想一想，等你再按一次快捷键或点「完成」才结束（最长 10 分钟）；也可以安静 1.5 秒就结束。Esc 取消。截图的语音备注始终是停顿即结束。";
+"settings.general.voice_end_on_pause.hint" = "语音备注（⌥V）可以不理会你停下来想一想，等你再按一次快捷键或点「完成」才结束（最长 10 分钟）；也可以安静 1.5 秒就结束。Esc 取消。截图的语音备注始终是停顿即结束。";
 "settings.general.live_text" = "边说边显示文字";
 "settings.general.live_text.hint" = "语音备注或听写在听的时候，已经识别出的文字显示在刘海下方的小面板里，最新的字淡入。它不会抢焦点，会避开你正在输入的位置，也不会被录进录屏。";
 
@@ -441,10 +441,10 @@
 "settings.projects.capture_row" = "新的归到";
 "settings.projects.list_heading" = "项目文件夹";
 
-/* 截图取字（⌥⇧C）的二次识别（ScreenTextRefine） */
+/* 截图取字（⌥C）的二次识别（ScreenTextRefine） */
 "settings.general.section.screen_text" = "截图取字";
 "settings.general.screen_text" = "二次识别";
-"settings.general.screen_text.hint" = "⌥⇧C 会立刻复制 macOS 自带文字识别的结果。二次识别用 OCR 模型把同一张图再读一遍，修正行内认错的字符（l 和 /、0 和 @、漏掉的 →）。如果这期间你没有复制别的内容，剪贴板会换成修正后的文字。";
+"settings.general.screen_text.hint" = "⌥C 会立刻复制 macOS 自带文字识别的结果。二次识别用 OCR 模型把同一张图再读一遍，修正行内认错的字符（l 和 /、0 和 @、漏掉的 →）。如果这期间你没有复制别的内容，剪贴板会换成修正后的文字。";
 "settings.general.screen_text.off" = "关闭";
 "settings.general.screen_text.local" = "本机模型";
 "settings.general.screen_text.cloud" = "云端模型";

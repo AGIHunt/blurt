@@ -21,21 +21,21 @@ recognition (macOS 26) and nothing to download. Open-source local models are an 
 learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
 fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
 talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back; tap `⌘`
-to translate (speak Chinese, type English, or the other way round); `⌥⇧L` reformats the last dictation. Holding `Fn`
+to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
 while you talk works too.
 
-**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong; the note opens right
+**Snap (`⌥A`) and Voice Note (`⌥V`).** Drag over part of the screen and say what's wrong; the note opens right
 beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
 undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
 your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
-**Copy text from screen (`⌥⇧C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
+**Copy text from screen (`⌥C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
 terminal. Let go and it's on the clipboard in about 0.2 s, laid out as if you had copied it: the half line the edge
 cut is left out, wrapped list items are one line again, tables keep their tabs and code its indentation. It reads with
 macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
 (720 MB) or your own cloud model fixes misread symbols in code and paths.
 
-**Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
+**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
 that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
 5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then

@@ -1,4 +1,4 @@
-// ⌥⇧C Copy Text from Screen, ⌥⇧T Translate Text from Screen (docs/design/screen-text.md): a crosshair, one drag,
+// ⌥C Copy Text from Screen, ⌥T Translate Text from Screen (docs/design/screen-text.md): a crosshair, one drag,
 // let go — no dim over the screen, no window to click, no toolbar (as Bob's OCR and ⌘⇧4's drag). The text in the area
 // (BlurtCore ScreenText: what the edges cut is left out, wrapped lines are one again, lists, tables and code keep
 // their shape) — or its translation — is on the clipboard, and when the cursor was in a text field it is typed there

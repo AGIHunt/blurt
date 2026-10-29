@@ -353,7 +353,7 @@
 "capture.drawer.add_project" = "Add Project…";
 "capture.peck.open" = "Open";
 
-/* Copy text from screen (⌥⇧C, ScreenTextCopy.swift) */
+/* Copy text from screen (⌥C, ScreenTextCopy.swift) */
 "capture.menu.text" = "Copy Text from Screen";
 "capture.action.text" = "Copy text from screen";
 "capture.action.text.detail" = "Drag over text anywhere on screen: it's copied, and typed in when the cursor is in a text field";

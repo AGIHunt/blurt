@@ -12,7 +12,7 @@
 //  • InkCanvas: the pen on a picture — the snap's frozen selection (InkStage) and Edit Note's picture (NoteBubble).
 //    Strokes are 0–1 point lists of the picture (shots.jsonl "strokes"); ⌘Z takes back the last one (undo()).
 //  • InkView: the pen while recording. It covers the recorded area, click-through until the pen is on (its key held, or
-//    latched with ⌥⇧D); ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after it
+//    latched with ⌥D); ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after it
 //    share a frame. Unlike the rest of the chrome this window *is* captured, and each stroke is logged to events.jsonl
 //    in the same 0–1 coordinates as clicks ("shape": free | box | ellipse | line | rect, the fitted ones).
 import AppKit
@@ -187,7 +187,7 @@ final class InkCanvas: NSView {
         onStrokeMoved?()
     }
 
-    /// The stroke being drawn becomes a stroke now (mouse-up, or the bubble closing under the pen: ⏎, ⌥⇧A).
+    /// The stroke being drawn becomes a stroke now (mouse-up, or the bubble closing under the pen: ⏎, ⌥A).
     func flush() {
         restTimer?.invalidate()
         restTimer = nil
@@ -260,7 +260,7 @@ final class InkView: NSView {
         CATransaction.commit()
     }
 
-    /// What a drag draws now: the pen key's modifiers (⌃⇧ box, ⌃⌥ ellipse); a latched pen (⌥⇧D) takes ⇧ / ⌥ alone.
+    /// What a drag draws now: the pen key's modifiers (⌃⇧ box, ⌃⌥ ellipse); a latched pen (⌥D) takes ⇧ / ⌥ alone.
     func tool(_ flags: NSEvent.ModifierFlags) -> InkTool {
         if let pen = rec?.penKind,
            let t = InkModifiers.recordingTool(pen: pen, control: flags.contains(.control), option: flags.contains(.option),

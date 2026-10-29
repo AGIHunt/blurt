@@ -9,7 +9,7 @@
 //  • by what: the user's cloud model when it is set up and "use the cloud" is on (it scored 8.2 / 10 on real takes,
 //    the local Gemma 4 E2B 6.5), else the local polish model, else nothing — then ⌘ says what translation needs and
 //    the take is typed as said. One pass at key-up over the text in its style (polish.py `translate`, the same prompt
-//    as ⌥⇧T's), after Structured's.
+//    as ⌥T's), after Structured's.
 //  • learning only suggests: turned on by hand in 3 of an app's last takes (≥ 70 % of the toggles) → asked once.
 //
 // record.dictation.translate = {"target": "auto" | "en" | "zh", "cloud": true, "apps": [bundle ids],

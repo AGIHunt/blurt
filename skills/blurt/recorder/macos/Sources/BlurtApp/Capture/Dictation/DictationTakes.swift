@@ -13,7 +13,7 @@
 //  • recognition failed (no model, a model that didn't answer, an error): the take keeps its audio and a history
 //    row, the island says what failed and that the recording was kept, with Retry (or Download… when a model or the
 //    VAD is missing — once it is there, the island offers Retry for that take). Never "nothing heard";
-//  • ⌥⇧L while a take is on its way is for that take (DictationReformatAfterPaste): it runs when that take is in,
+//  • ⌥L while a take is on its way is for that take (DictationReformatAfterPaste): it runs when that take is in,
 //    and goes with it when it is cancelled, fails or heard nothing;
 //  • the once-a-day notices (a polish or speech model fell back), the quiet tips of the first takes, what a skipped
 //    Return or a press the mode doesn't use means.
@@ -154,7 +154,7 @@ extension Dictation {
         pump()
     }
 
-    /// Out of the line without a paste (a ⌥⇧L meant for it goes too).
+    /// Out of the line without a paste (a ⌥L meant for it goes too).
     private func leave(_ take: DictationTake) {
         takes[take.id] = nil
         queue.drop(take.id)
@@ -533,7 +533,7 @@ extension Dictation {
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)
-            // ⌥⇧L pressed while this take was on its way: it meant this take (never a later one)
+            // ⌥L pressed while this take was on its way: it meant this take (never a later one)
             if let via = self.reformatAfterPaste.delivered(id) { self.reformatLast(via: via) }
             self.pump()
         }

@@ -1,4 +1,4 @@
-// The loupe every area picker shows (⌥⇧A snap, ⌥⇧R record, ⌥⇧C / ⌥⇧T text, as Bob's OCR): the screen frozen into one
+// The loupe every area picker shows (⌥A snap, ⌥R record, ⌥C / ⌥T text, as Bob's OCR): the screen frozen into one
 // still per display the moment the picker opens, magnified 8× around the pointer (nearest neighbour: a pixel grid),
 // the pixel under it framed, a crosshair through it, and a label under it (the point, or the selection's size).
 //

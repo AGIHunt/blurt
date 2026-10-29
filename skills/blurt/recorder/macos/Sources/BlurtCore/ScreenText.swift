@@ -1,4 +1,4 @@
-// Copy text from the screen (⌥⇧C, docs/design/screen-text.md): the area the user drew → the text in it, the way it
+// Copy text from the screen (⌥C, docs/design/screen-text.md): the area the user drew → the text in it, the way it
 // would read if they had selected and copied it. Apple's Vision reads the lines (the engine Bob's "silent screenshot
 // OCR" uses, ~0.1–0.2 s on a few lines); everything after that is geometry, never language rules:
 //

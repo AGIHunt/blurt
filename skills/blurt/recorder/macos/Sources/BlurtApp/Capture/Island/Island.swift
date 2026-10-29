@@ -815,8 +815,8 @@ final class Island: NSObject, IslandHosting {
             right.set(.none)
         } else if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
-            // the stills taken (⌥⇧A, the island's button) — a marker (⌥⇧M) is its own count, with a flag
-            // while the pen is latched (⌥⇧D) it takes the clicks and Esc — or its key is held — the ear shows the pen
+            // the stills taken (⌥A, the island's button) — a marker (⌥M) is its own count, with a flag
+            // while the pen is latched (⌥D) it takes the clicks and Esc — or its key is held — the ear shows the pen
             let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
             right.set(rec.penSticky || rec.inkOn ? .glyph(.pencil, pulse: false) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
                 : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : rec.isPaused ? .none : .level(rec.micLevel))
@@ -1087,7 +1087,7 @@ final class Island: NSObject, IslandHosting {
         if !open && drawer == nil { setOpen(true) }
     }
 
-    // MARK: drawer: switcher (⌥⇧O) and drop targets (a card dragged in)
+    // MARK: drawer: switcher (⌥O) and drop targets (a card dragged in)
 
     /// The switcher's pick form: where one thing already captured goes ("Filed to X · Change" after a recording or a
     /// filed card). The same rows, type to filter; choosing calls `choose` with a project id or "inbox" and leaves the

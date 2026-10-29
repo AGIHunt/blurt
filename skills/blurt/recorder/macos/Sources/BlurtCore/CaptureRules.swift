@@ -15,7 +15,7 @@
 //    without one: "Screenshot 14:32"); a spoken note is transcribed first; one whose words couldn't be had (the
 //    transcription failed, or a voice note the speech model found no words in) waits as a card that remembers its
 //    project and is filed there once Retry has its words — never an empty item.
-//  • VoiceKeep — whether a ⌥⇧V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
+//  • VoiceKeep — whether a ⌥V voice note is kept: one the user ended (key, Done, letting go, quitting) is kept when it
 //    lasted and held a sound above the room (`soundSeconds`: NoteEndpointer's held sound 6 dB over the noise floor),
 //    even if the room hid the speech from the endpointer — the speech model decides, and a take with no words stays as
 //    audio ("No words recognized · Retry"). A take the user ended that the endpointer heard nothing in is never deleted
@@ -355,7 +355,7 @@ public enum VoiceDiscard {
 
 // MARK: - Recordings
 
-/// A recording's snap notes (the island's snap button, ⌥⇧A while recording): the take pauses while a note is open.
+/// A recording's snap notes (the island's snap button, ⌥A while recording): the take pauses while a note is open.
 public enum RecordingNotes {
     /// The bubble opens on a snap of this take. `open`: its notes were already open (the bubble switches to another
     /// snap; the session goes on); `carriedResume`: that session's resume-on-close; `paused`: the take is paused now.

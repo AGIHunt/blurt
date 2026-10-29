@@ -5,7 +5,7 @@
 //    `.translate`). The right ear shows the translate glyph after the style's while it is on; the first two times it
 //    is turned on, a line says into what. Nothing can translate (no cloud model set up, no local polish model): the
 //    line says what is needed, with Settings, and it stays off;
-//  • at key-up, after Structured's pass: one `translate` request to the polish server (the prompt ⌥⇧T uses) over the
+//  • at key-up, after Structured's pass: one `translate` request to the polish server (the prompt ⌥T uses) over the
 //    text in its style, into the other language of the one the speech model heard (or Settings' fixed target), with
 //    the user's words; the cloud model when it is set up and Settings lets it, the local one as its fall-back.
 //    polish.py's guard refuses what is plainly no translation; a refusal or a failure types the take as said, and the
@@ -28,7 +28,7 @@ extension Dictation {
     static func setTranslateConfig(_ c: DictationTranslateConfig) { set("translate", c.json) }
 
     /// The cloud model for translation: the one set up for cloud polish, with its key — whether cloud polish itself is
-    /// on or not (as ⌥⇧T's), when Settings lets the cloud translate. nil: the local model.
+    /// on or not (as ⌥T's), when Settings lets the cloud translate. nil: the local model.
     static var translateCloud: [String: Any]? {
         guard translateConfig.cloud else { return nil }
         return ScreenTextRefine.cloudPayload

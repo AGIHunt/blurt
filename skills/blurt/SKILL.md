@@ -32,7 +32,7 @@ language; write items in the language the user spoke.
   by the user in their env — never ask them to paste keys in chat.
 - `record.py build` — macOS: compiles the native recorder (Xcode Command Line Tools; else a Tk fallback) and
   installs the **Blurt** menu-bar app into ~/Applications. Windows: the Start-menu shortcut appears on first
-  recording. Mention it in one line: "Blurt is also in your Applications — ⌥⇧R records from anywhere".
+  recording. Mention it in one line: "Blurt is also in your Applications — ⌥R records from anywhere".
 - `record.py test` → look at the returned `frame` yourself. Wallpaper-only/black or `ok: false` ⇒ Screen Recording
   permission missing; `mic_silent: true` ⇒ Microphone permission / wrong mic. On macOS the permission belongs to the
   app hosting you (Terminal, iTerm, VS Code, Claude, Codex…) and that app must be restarted after granting.
@@ -49,18 +49,18 @@ what happens:
 - a dimmed overlay: drag to draw the area (or click a window, F = full screen) → **开始录制** / Enter. Only that area
   is recorded — tabs, bookmarks and other windows stay private;
 - 3-2-1 countdown (click to skip), then a small floating bar: timer · mic level · ⏸ pause · ↺ restart/discard ·
-  **完成**. ⌥⇧P pause/resume, ⌥⇧S finish (Windows: Alt+Shift; these are the defaults — the user may have changed
+  **完成**. ⌥P pause/resume, ⌥S finish (Windows: Alt+Shift; these are the defaults — the user may have changed
   them in the app's Settings → Shortcuts / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; ⌃⇧ box,
-  ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥⇧D keeps the pen on, Esc / ⌥⇧D turns it off); click **完成** — no need
+  ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
   to send another chat message.
-- **⌥⇧A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥⇧M too): a full-resolution still of
+- **⌥A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥M too): a full-resolution still of
   the area right now, no pause → `shots/`. Best evidence there is — mention it in one line.
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart | snap`.
 
-**Snap mode** (macOS app, not recording): ⌥⇧A → drag an area, let go = shot, with a spoken (or typed) note; ⌃-drag on
+**Snap mode** (macOS app, not recording): ⌥A → drag an area, let go = shot, with a spoken (or typed) note; ⌃-drag on
 it circles things. With a current project the shot goes straight to it; without one it waits as a card until the
 user files it (or has the cards organized into Unassigned). The batch is `<ts>-shots/` (`meta.json` `"mode": "shots"`, no video; a line of
 `shots.jsonl` may carry the `project` the user filed it into). Suggest it for "one screen + one sentence"
@@ -103,7 +103,7 @@ the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lin
 repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
 Also run `frames.py scan <video>` (visual-activity index for candidates/sheets) and `frames.py marks <video>`: what
-the user drew with the pen — when, where (box), what was being said — plus ⌥⇧M markers.
+the user drew with the pen — when, where (box), what was being said — plus ⌥M markers.
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as
 French into fake English), means the language needs another backend: set it up (`reference/asr.md`) and re-run.
 

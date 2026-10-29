@@ -23,7 +23,7 @@ final class PickerController {
     var snapped = false             // selection came from clicking a window (or F / last area): drag = draw new
     var hovered: NSRect?
     var onDone: ((CGRect?) -> Void)?
-    var snapMode = false            // ⌥⇧A: release (or click a window / F / L) captures right away
+    var snapMode = false            // ⌥A: release (or click a window / F / L) captures right away
     /// the screens frozen when the picker opened, for the loupe (Loupe.swift); the pointer it follows
     let stills = LoupeStills()
     var pointer = NSEvent.mouseLocation

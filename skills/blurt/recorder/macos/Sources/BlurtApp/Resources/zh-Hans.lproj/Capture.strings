@@ -353,7 +353,7 @@
 "capture.drawer.add_project" = "添加项目…";
 "capture.peck.open" = "打开";
 
-/* 截图取字（⌥⇧C，ScreenTextCopy.swift） */
+/* 截图取字（⌥C，ScreenTextCopy.swift） */
 "capture.menu.text" = "截图取字";
 "capture.action.text" = "截图取字";
 "capture.action.text.detail" = "框选屏幕上的文字：复制到剪贴板；光标在输入框里时直接输入";

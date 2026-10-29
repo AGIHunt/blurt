@@ -1,4 +1,4 @@
-// In-place markup (v0.9-next). After ⌥⇧A's selection the picture freezes where it was, at 1:1, the rest of that
+// In-place markup (v0.9-next). After ⌥A's selection the picture freezes where it was, at 1:1, the rest of that
 // screen dimmed as the picker had it (the picker's dim stays up until the stage is there, so nothing flickers), and the
 // user draws straight on it — no enlarged copy under the notch. The note bubble docks beside the selection
 // (NoteBubble, BlurtCore BubbleDock: never over it, flipped near the screen's edges, on the selection's own display).

@@ -1,5 +1,5 @@
 // The island's one-line toasts, as a rule (BlurtApp Capture/Island/Island.swift shows them). The island has one slot;
-// the dogfood run found it a FIFO queue, so a second ⌥⇧L's "Reformatted as …" waited behind the first one's (with
+// the dogfood run found it a FIFO queue, so a second ⌥L's "Reformatted as …" waited behind the first one's (with
 // that one's Undo), and "nothing to reformat" waited behind the launch welcome: the island described the past.
 //
 //  • newest first: what the user just did (`.reply`, the default) is what the island says. A reply arriving while

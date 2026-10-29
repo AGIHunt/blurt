@@ -7,7 +7,7 @@
 //                       (300 ms) it is push-to-talk instead: it starts then, and letting go stops. Like Typeless.
 //   tap mode            a clean tap starts, the next clean tap stops. Clean = the key went down and up within
 //                       `tapMax` (400 ms) with no other key, modifier or click in between, and no other modifier
-//                       held when it went down — so the key as a modifier (⌥-letter, ⌥⇧V, Fn-←) never triggers.
+//                       held when it went down — so the key as a modifier (⌥-letter, ⌥V, Fn-←) never triggers.
 //   hold mode           held alone for `holdMin` (250 ms) starts; letting go stops; another key or a click joining
 //                       in cancels (the user is typing a shortcut, not talking).
 //   all                 Esc cancels a dictation in progress; `arm` on a clean key-down (warm the models, open the mic
@@ -44,7 +44,7 @@
 //                       A click on Blurt's own island (`.islandClick`: the app tells which clicks land there) is the
 //                       same toggle and never cancels. Fn+⇧ as the start press (⇧ held when Fn goes down, or pressed
 //                       while it is down) starts in Structured: `startShift`. Only with Fn: with an ⌥ key, ⇧ stays a
-//                       modifier (⌥⇧V and Blurt's other ⌥⇧ shortcuts never start anything).
+//                       modifier (⌥V and Blurt's other ⌥⇧ shortcuts never start anything).
 //   translate           (docs/design/dictation-translate.md) ⌘ — either one — pressed and released alone while dictating
 //                       says `.translate`: the app turns translation on or off for this take. Like ⇧, it joins
 //                       push-to-talk without cancelling it; ⌘ with a key (⌘V) is a shortcut and cancels as before.

@@ -4,7 +4,7 @@
 //    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
 //    relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor — v0.7's floor froze at the mic's quiet
 //    first moments, so a normal room never counted as silence and the note never ended). Since v0.8.6 the voice note
-//    (⌥⇧V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
+//    (⌥V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
 //  • the words while they are said (v0.9): the voice note's live text (VoiceNoteStream, interim decodes about once a
 //    second) in the field's place, secondary, the part still being said quieter. When the pause ends it, the final
 //    words go into the field in label colour with the ok check and "Saved" for `savedSeconds` (at most `wordsWait` for
@@ -15,7 +15,7 @@
 //  • it closes by itself only when BlurtCore NoteHold says so: never under the pen (a stroke being drawn holds the
 //    pause end too: NoteEndpointer.activity), not within `inkGrace` (1.5 s) of the last stroke, never while typed text
 //    waits for ⏎, never with ink or a frozen picture and nothing said (then: ⏎, Done, or a click outside it),
-//    `emptiedGrace` after the text was cleared. A stroke still being drawn when it closes (⏎, ⌥⇧A) is kept.
+//    `emptiedGrace` after the text was cleared. A stroke still being drawn when it closes (⏎, ⌥A) is kept.
 //  • typing before speaking switches to a text note (the mic stops). Typing after speaking keeps listening until the
 //    pause; if less than 1 s of it was talking, the recording was abandoned for typing and is dropped (no mic mark,
 //    nothing to transcribe). A kept recording is always transcribed (Snapper.settled), also next to typed text. Only
@@ -24,7 +24,7 @@
 //    in Auto it hangs as a card). Esc (BlurtCore NoteEsc): typed text first; then the shot is discarded — Trash,
 //    "Discarded · Undo" for 5 s. Gone to another app: saved `resignSeconds` later, or as soon as it is done listening
 //    and has its words after that (it never floats over every app waiting for ⏎).
-//  • a ⌥⇧V voice note listening already: this bubble is typed only (no second listener), and the voice note's Esc
+//  • a ⌥V voice note listening already: this bubble is typed only (no second listener), and the voice note's Esc
 //    hotkey is the bubble's while it is open (VoiceInput.yieldEsc).
 //  • the microphone gone mid-note (NoteVoice's watchdog, the engine's configuration change): it ends with what it has;
 //    gone before anything was said, the bubble stays, typed only: "Mic disconnected · type a note". A mic that
@@ -44,7 +44,7 @@
 //  • the place chip (ProjectChip.swift): a click, or Tab from the field, lists the recent projects in the bubble;
 //    typing filters, ↩ picks — this capture goes there instead (Snapper.retarget), the island's project stays. While
 //    the list is open the bubble never closes (NoteHold.picking, apart from `pinned`: closing it keeps the words pinned).
-//  • ⌥⇧A while it is open saves the note and takes the next shot. Listening starts the warm speech server
+//  • ⌥A while it is open saves the note and takes the next shot. Listening starts the warm speech server
 //    (VoiceInput.warmSpeechModel), so the note's words come back in well under a second, not a cold model load.
 //  • every open has a generation: a close still fading out never orders out (or takes the focus from) a bubble opened
 //    after it — Edit Note on another card, a snap right after a saved note (v0.9: it vanished while still open).
@@ -788,7 +788,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// in place: the one primary, "Done"
     private var doneBtn: BrandButton!
     private var voice: NoteVoice?
-    /// the words while they are said (VoiceNoteStream, the ⌥⇧V voice note's live text): shown in the field's place
+    /// the words while they are said (VoiceNoteStream, the ⌥V voice note's live text): shown in the field's place
     private var stream: VoiceNoteStream?
     private var heard = (committed: "", pending: "")
     /// committed text in the field (BlurtCore NoteTyping: not an IME composition, not just spaces)
@@ -808,7 +808,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     static let savedSeconds = 1.2
     /// …and waits for them at most this long (else it closes, and the card gets them when they come)
     static let wordsWait = 2.5
-    /// a ⌥⇧V voice note has the microphone: this bubble takes typing only (no second listener)
+    /// a ⌥V voice note has the microphone: this bubble takes typing only (no second listener)
     private var voiceBusy = false
     /// the microphone went before anything was said: typed only now ("Mic disconnected · type a note")
     private var micGone = false
@@ -1271,7 +1271,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func startListening() {
         guard let s = shot, let dir = s.batch?.dir else { return }
         guard Dictation.shared.phase != .listening else { return refreshStatus() }    // dictation has the mic: type instead
-        // a ⌥⇧V voice note is listening: it already hears what is said — this note is typed (one listener at a time)
+        // a ⌥V voice note is listening: it already hears what is said — this note is typed (one listener at a time)
         if VoiceInput.shared.active, mode == .listen {
             voiceBusy = true
             emit(["event": "note_voice_busy", "n": s.n])
@@ -1928,7 +1928,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
               "tools": hoverTools.filter { !$0.isHidden }.map { $0.toolTip ?? "" }])
     }
 
-    /// The bubble's microphone states, for the shots of each (test commands only): `busy` (a ⌥⇧V voice note has the
+    /// The bubble's microphone states, for the shots of each (test commands only): `busy` (a ⌥V voice note has the
     /// mic), `gone` (it went before anything was said), `off` (it never started) — as their own paths leave them.
     func testMic(_ what: String) {
         guard isOpen, mode == .listen else { return }
@@ -1976,7 +1976,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     // MARK: close
 
-    /// Save what's there (⏎, ⌥⇧A again, the pause after speech).
+    /// Save what's there (⏎, ⌥A again, the pause after speech).
     func commit() { if isOpen { close(save: true, flash: voice?.running == true || (voiceKept && wordsInField == nil)) } }
 
     /// Blurt is quitting: saved now, no "Saved" moment.

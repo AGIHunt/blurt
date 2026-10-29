@@ -242,7 +242,7 @@ struct QuietLink: View {
 
 
 extension GeneralPane {
-    /// ⌥⇧C's second reading (ScreenTextRefine): off, this Mac's OCR model, or the cloud model set up for cloud polish —
+    /// ⌥C's second reading (ScreenTextRefine): off, this Mac's OCR model, or the cloud model set up for cloud polish —
     /// the line under it says what each one costs (a download and memory, or a cent a hundred captures) and what is missing.
     var screenTextRow: some View {
         let dl = ModelDownloads.shared

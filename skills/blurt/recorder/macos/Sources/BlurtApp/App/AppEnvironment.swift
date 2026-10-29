@@ -34,7 +34,7 @@ protocol TerminalHosting: AnyObject {
     func newSession(project: String?, items: [String])
 }
 
-/// The notch island (P5): the project switcher (⌥⇧O; type to filter) and the quiet in-island line (K4's rules).
+/// The notch island (P5): the project switcher (⌥O; type to filter) and the quiet in-island line (K4's rules).
 protocol IslandHosting: AnyObject {
     func showSwitcher()
     /// The current project changed (the chip, a recording under way).

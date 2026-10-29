@@ -95,7 +95,7 @@ final class CountdownView: NSView {
     private let number = NSTextField(labelWithString: "")
     private let chick = MascotView(size: 26, backdrop: .dark)
     private let title = NSTextField(labelWithString: Loc.t("capture.countdown.ready", table: "Capture"))
-    /// the keys that pause and finish the take, as keycaps ("[⌥⇧P] Pause  [⌥⇧S] Finish"); nil when both are off
+    /// the keys that pause and finish the take, as keycaps ("[⌥P] Pause  [⌥S] Finish"); nil when both are off
     private let hint: KeyLine? = {
         let pairs = [(hk(.pause), "capture.countdown.pause"), (hk(.finish), "capture.countdown.finish")]
             .filter { !$0.0.isEmpty }.map { (key: $0.0, word: Loc.t($0.1, table: "Capture")) }

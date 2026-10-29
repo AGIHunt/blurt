@@ -19,7 +19,7 @@
 //    with no card hanging, right under the island (and down below the band once Put Back hangs one).
 //  • coming down (CardReveal): only after the pointer has rested on the island `dwell` (brushing past the notch on the
 //    way to a menu drops nothing); up again `away` after it has left the cards' region. Brought down on purpose (the
-//    ear, ⌥⇧H, the menu, the main window) they stay until the pointer has been on them and left — or, if it never
+//    ear, ⌥H, the menu, the main window) they stay until the pointer has been on them and left — or, if it never
 //    comes, `unvisited` after. Esc is taken from the system only while such cards have the pointer on them, or for
 //    `escGrace` after they came down with the pointer elsewhere; with the keyboard on the cards their own panel gets it.
 //  • the hover note (CardTip): only what the card can't show itself — the rest of a note cut short on the card, and the
