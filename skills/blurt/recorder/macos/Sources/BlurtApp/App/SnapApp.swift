@@ -118,6 +118,14 @@ extension App {
             guard p.count == 4 else { return }
             snapper.rememberFrontApp()
             snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"))
+        case "screentext", "screentranslate":           // screentext x,y,w,h [PNG]: ⌥⇧C (⌥⇧T) without the drag; PNG stands in for the screen
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count > 1 { setenv("BLURT_TEST_STILL", a[1], 1) }
+            let p = (a.first ?? "").split(separator: ",").compactMap { Double($0) }
+            let tr = parts.first == "screentranslate"
+            let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr) }
+            if p.count == 4 { ScreenTextRefine.installed == nil ? ScreenTextRefine.refreshInstalled(read) : read() }
+            else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
@@ -561,6 +569,8 @@ extension App {
         case .project: if resident { island.toggleSwitcher() }
         case .cards: if resident { hanging.reveal(via: "hotkey", keyboard: true) }     // the keyboard on the cards too
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)
+        case .text: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey") }           // ⌥⇧C (ScreenTextCopy.swift)
+        case .translateText: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey", translate: true) }    // ⌥⇧T
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
         default: break
@@ -583,6 +593,8 @@ extension App {
             return
         }
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
+        item("capture.menu.text", #selector(mText)).showHotkey(.text)
+        item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
     }
 
@@ -629,6 +641,8 @@ extension App {
         // the menu is still closing: let it go before the picker takes the screen
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() }
     }
+    @objc func mTranslate() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenTextCopy.shared.hotkey(via: "menu", translate: true) } }
+    @objc func mText() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenTextCopy.shared.hotkey(via: "menu") } }
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }

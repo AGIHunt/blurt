@@ -254,6 +254,16 @@ enum DictationInsert {
 
     static func copy(_ text: String) { put(text, transient: false) }
 
+    /// Copy Text from Screen (ScreenTextCopy): `text` on `pb` as a copy the user made — it stays there, as Bob's does —
+    /// and ⌘V into the app in front. Test builds post nothing (false).
+    static func pasteKeeping(_ text: String, on pb: NSPasteboard) -> Bool {
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+        guard !testMode else { return false }
+        postCommandV()
+        return true
+    }
+
     /// Reformat-last: `text` in place of `range` of the field the last take went into — the range selected (the
     /// test pad's text view; another app's field through Accessibility, read back to be sure), then the same paste as
     /// a dictation. `done(false)`: the field isn't focused any more or wouldn't take the selection (the caller copies).

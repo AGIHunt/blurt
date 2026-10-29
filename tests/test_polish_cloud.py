@@ -146,3 +146,57 @@ def test_structure_uses_the_structuring_prompt(api):
                             [], None, None, cloud(api), "structure")
     assert not r["fell_back"] and r["list"]
     assert api.seen[-1]["body"]["messages"][0]["content"] == polish.SYSTEM_STRUCTURE
+
+
+# ------------------------------------------------------------------ dictation's translate (docs/design/dictation-translate.md)
+@pytest.mark.parametrize("src,out,target,why", [
+    ("在本地安装一下这个版本，我来测试一下。", "Install this version locally and I'll test it.", "en", None),
+    ("Can you run the tests again and fix whatever fails?", "你能再跑一遍测试，然后把失败的地方都修好吗？", "zh", None),
+    ("git status", "git status", "zh", None),                                # nothing to translate: back as it was
+    ("在本地安装一下这个版本，我来测试一下。", "", "en", "empty"),
+    ("在本地安装一下这个版本，我来测试一下。", "在本地安装这个版本，我来测试。", "en", "untranslated"),
+    ("Can you run the tests again and fix whatever fails?", "Sure, I'll run them now and fix it.", "zh", "untranslated"),
+    ("我们公司现在在用一点云来租电脑，但它资源太少了，经常选不到合适的配置。", "Our company rents computers.", "en", "short"),
+    ("帮我看一下这个报错是什么意思？", "This error means the port is already in use by another process, so the server "
+     "can't bind to it. To fix it, find the process with lsof and kill it, then start the server again.", "en", "grew"),
+    ("口喷鸡的菜单栏图标要改一下", "Blurt's menu bar icon needs to change", "en", None),   # a Chinese name may change
+    ("用 tmux 开两个窗口跑一下测试", "Open two windows in a terminal multiplexer and run the tests", "en", "term"),
+])
+def test_the_translate_guard_catches_what_is_plainly_not_a_translation(src, out, target, why):
+    terms = ["口喷鸡", "tmux"]
+    assert polish.translate_guard(src, out, target, terms) == why
+
+
+def test_dictation_sends_its_words_and_says_it_was_spoken(api):
+    api.reply = "Blurt's menu bar icon needs to change"
+    r = polish.Engine().translate("口喷鸡的菜单栏图标要改一下", "en", cloud=cloud(api), terms=[{"term": "口喷鸡"}, {"term": "tmux"}],
+                                  spoken=True, check=True)
+    assert r["text"] == "Blurt's menu bar icon needs to change" and not r["fell_back"]
+    sys_, user = api.seen[-1]["body"]["messages"]
+    assert user["content"] == "Words: 口喷鸡\nText: 口喷鸡的菜单栏图标要改一下"      # only the words in it
+    assert "Words:" in sys_["content"] and "hesitations" in sys_["content"]
+    # ⌥⇧T's prompt is untouched: no Words line, no hesitations
+    assert polish.translate_messages("x", "auto") == [{"role": "system", "content": polish.translate_system("auto")},
+                                                      {"role": "user", "content": "x"}]
+    assert "Words:" not in polish.translate_system("auto") and "hesitations" not in polish.translate_system("auto")
+
+
+def test_a_refused_cloud_translation_asks_the_local_model(api, monkeypatch):
+    api.reply = "在本地安装这个版本"                                       # the same language back
+    eng = polish.Engine()
+    monkeypatch.setattr(eng, "_ready", lambda res, m: res.update(model="gemma"))
+    monkeypatch.setattr(eng, "on_model_thread", lambda fn, *a: ("Install this version locally and I'll test it.", False))
+    r = eng.translate("在本地安装一下这个版本，我来测试一下。", "en", cloud=cloud(api), spoken=True, check=True)
+    assert r["text"].startswith("Install") and r["cloud_error"] == "refused_untranslated" and not r["fell_back"]
+
+
+def test_no_cloud_and_no_local_model_types_the_text_as_said(api, monkeypatch):
+    api.status = 401
+    eng = polish.Engine()
+    monkeypatch.setattr(polish, "selected", lambda: None)
+    r = eng.translate("在本地安装一下这个版本，我来测试一下。", "en", cloud=cloud(api), check=True)
+    assert r["fell_back"] and r["reason"] == "auth" and r["text"] == "在本地安装一下这个版本，我来测试一下。"
+    r = eng.translate("在本地安装一下这个版本，我来测试一下。", "en", check=True)
+    assert r["fell_back"] and r["reason"] == "model_missing"
+    with pytest.raises(polish.Fail):                                       # ⌥⇧T still says what failed
+        eng.translate("在本地安装一下这个版本", "en")

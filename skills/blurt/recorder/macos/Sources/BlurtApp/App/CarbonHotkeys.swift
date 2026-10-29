@@ -12,7 +12,7 @@ import ServiceManagement
 
 enum HK: UInt32 {
     case pause = 1, marker = 2, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11,
-         pickFull = 12, voice = 13, project = 14, voiceEsc = 15, cards = 16, cardsEsc = 17, dictationEsc = 18, reformat = 19, pickLast = 20
+         pickFull = 12, voice = 13, project = 14, voiceEsc = 15, cards = 16, cardsEsc = 17, dictationEsc = 18, reformat = 19, pickLast = 20, text = 21, translateText = 22
 }
 var hotkeyHandler: ((HK) -> Void)?
 

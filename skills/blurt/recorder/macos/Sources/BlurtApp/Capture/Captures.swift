@@ -229,7 +229,7 @@ final class Snapper {
     /// No picture came back. Without Screen Recording access that is why: "Open Settings" starts the permission guide.
     /// With access, ScreenCaptureKit is asked once more: refused = a stale grant (an older build's: "re-allow Screen
     /// Recording", the guide's re-add form) — else a passing failure, "try again" (BlurtCore ScreenGrant).
-    private func snapFailed() {
+    func snapFailed() {
         let allowed = SystemAccess.granted(.screen)
         guard allowed else {
             emit(["event": "snap_failed", "screen_recording": false])

@@ -592,6 +592,7 @@ struct OnboardingView: View {
         case .dictation: return GlyphTile.brand(.keyboard)
         case .polish: return GlyphTile.brand(.wand)
         case .note: return GlyphTile.brand(.mic)
+        case .screenText: return GlyphTile.brand(.copy)
         }
     }
 
@@ -601,6 +602,7 @@ struct OnboardingView: View {
         case .dictation: return (T("onboarding.models.kind.dictation"), T("onboarding.models.what.dictation"))
         case .polish: return (T("onboarding.models.kind.polish"), T("onboarding.models.what.polish"))
         case .note: return (T("onboarding.models.kind.note"), T("onboarding.models.what.note"))
+        case .screenText: return (T("settings.general.screen_text"), T("settings.general.screen_text.local"))
         }
     }
 

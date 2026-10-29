@@ -441,3 +441,20 @@
 "settings.projects.capture_heading" = "Snaps and voice notes";
 "settings.projects.capture_row" = "New ones go to";
 "settings.projects.list_heading" = "Project folders";
+
+/* Copy text from screen (⌥⇧C): the second reading (ScreenTextRefine) */
+"settings.general.section.screen_text" = "Copy text from screen";
+"settings.general.screen_text" = "Second reading";
+"settings.general.screen_text.hint" = "⌥⇧C copies what macOS's own text recognition reads, at once. A second reading looks at the same picture with an OCR model and fixes what was misread inside a line (l and /, 0 and @, a missing →). The clipboard gets the fixed text unless you copied something else meanwhile.";
+"settings.general.screen_text.off" = "Off";
+"settings.general.screen_text.local" = "On this Mac";
+"settings.general.screen_text.cloud" = "Cloud model";
+"settings.general.screen_text.detail.off" = "macOS's text recognition only: instant, nothing to download.";
+"settings.general.screen_text.detail.local" = "PaddleOCR-VL, about 0.3 s. Uses about 1 GB of memory while in use, freed after 10 idle minutes.";
+"settings.general.screen_text.detail.local_small" = "With %d GB, other apps may slow down while it runs; the cloud model uses no memory here.";
+"settings.general.screen_text.detail.download" = "Needs a one-time %@ download.";
+"settings.general.screen_text.detail.downloading" = "Downloading… %@";
+"settings.general.screen_text.download" = "Download";
+"settings.general.screen_text.detail.cloud" = "Uses your cloud model (%@): about ¥0.001 a capture. The picture is sent to it.";
+"settings.general.screen_text.detail.cloud_missing" = "Add a cloud model and its key under Dictation → Cloud polish first.";
+"settings.general.screen_text.setup" = "Set Up…";

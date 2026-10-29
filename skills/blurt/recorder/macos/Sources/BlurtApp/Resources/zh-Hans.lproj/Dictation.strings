@@ -678,3 +678,27 @@
 "dictation.cloud.hint.setup" = "设置…";
 "dictation.cloud.hint.never" = "不再提醒";
 "dictation.models.cloud" = "%@（云端润色）";
+
+/* 听写翻译（docs/design/dictation-translate.md） */
+"dictation.translate.toast.on.auto" = "翻译：说中文打出英文，说英文打出中文 · 再按 ⌘ 关闭";
+"dictation.translate.toast.on.en" = "翻译成英文 · 再按 ⌘ 关闭";
+"dictation.translate.toast.on.zh" = "翻译成中文 · 再按 ⌘ 关闭";
+"dictation.translate.toast.off" = "不翻译";
+"dictation.translate.toast.unavailable" = "要翻译，请设置云端模型，或下载本机润色模型";
+"dictation.translate.toast.setup" = "设置…";
+"dictation.translate.toast.failed" = "没翻译成，已按原话输入";
+"dictation.translate.toast.cloud_hint" = "这次用本机模型翻译。云端模型翻得更好";
+"dictation.translate.toast.suggest" = "以后在 %@ 里听写都翻译吗？";
+"dictation.translate.toast.suggest.yes" = "翻译";
+"dictation.translate.settings.title" = "翻译";
+"dictation.translate.settings.detail" = "说话时按一下 ⌘ 或点一下小鸡，说的话会用另一种语言打出来";
+"dictation.translate.target.auto" = "中文 ↔ 英文";
+"dictation.translate.target.en" = "翻译成英文";
+"dictation.translate.target.zh" = "翻译成中文";
+"dictation.translate.cloud.title" = "用云端模型翻译";
+"dictation.translate.cloud.detail" = "文字会发给 %@。云端失败时用本机模型";
+"dictation.translate.cloud.none" = "还没设置云端模型，用本机润色模型翻译";
+"dictation.translate.cloud.nothing" = "设置云端模型或下载本机润色模型后才能翻译";
+"dictation.translate.cloud.setup" = "设置…";
+"dictation.translate.apps" = "这些 App 里总是翻译";
+"dictation.translate.apps.remove" = "移除";

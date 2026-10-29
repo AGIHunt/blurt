@@ -46,6 +46,8 @@ final class DictationTake {
     let stream: DictationStream
     /// Structured / Auto: one structuring pass at the end
     let structure: Bool
+    /// translated at the end (DictationTranslating.swift); nil: typed as said
+    var translate: DictationStream.TranslateJob?
     var stage: Dictation.Phase = .transcribing
     /// a double tap came for it: Return once it is pasted (the island's ears say "sending" meanwhile: Dictation.sendQueued)
     var sendAfterPaste = false { didSet { if sendAfterPaste != oldValue { island.dictationChanged() } } }
@@ -109,7 +111,8 @@ extension Dictation {
             self.updatePhase()
         }
         updatePhase()
-        take.stream.finish(keyUp: take.keyUp, structure: take.structure, onlyForLists: take.style?.style == .auto) { [weak self] r in
+        take.stream.finish(keyUp: take.keyUp, structure: take.structure, onlyForLists: take.style?.style == .auto,
+                           translate: take.translate) { [weak self] r in
             self?.landed(take, r)
         }
         // a take that is slow to come (a model loading, a server that stopped answering) says so after a few seconds,
@@ -358,7 +361,7 @@ extension Dictation {
         queue.add(id)
         updatePhase()
         emit(["event": "dictation_retry", "id": id, "via": via])
-        take.stream.retry(structure: take.structure) { [weak self] r in self?.landed(take, r) }
+        take.stream.retry(structure: take.structure, translate: take.translate) { [weak self] r in self?.landed(take, r) }
     }
 
     /// A failed take from the history (after a relaunch): its audio, today's settings, no app to paste into.
@@ -411,7 +414,7 @@ extension Dictation {
             // that only started a sentence (polish.py `sentence_case`, also for a reply too short to polish; v0.9
             // dogfood: "I think The new layout is fine"). Without polish the words go in as heard, except that a
             // transcript heard in lower case keeps it (keepCase)
-            let cased = !styleRecord.rendered && DictationStitch.midSentence(before)
+            let cased = !styleRecord.rendered && r.translated == nil && DictationStitch.midSentence(before)
                 ? DictationStitch.keepCase(input: r.raw, output: text) : text
             var fit = Dictation.fit(cased, before: before, after: after, list: styleRecord.rendered)
             if cased != text { fit.changes.append("capital") }
@@ -464,6 +467,7 @@ extension Dictation {
                                        timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
+            entry.translate = r.translation
             entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
             if keep {
                 entry.pieces = r.pieces.compactMap(DictationPieceRecord.init(json:))
@@ -511,6 +515,10 @@ extension Dictation {
                 }
             }
             if result == .pasted { self.afterPaste(take, r, category: styleRecord.category, sent: sent) }
+            if let t = r.translation, t.target != nil, result == .pasted {
+                self.afterTranslate(t)
+                if !t.fellBack, t.source != "app" { self.checkTranslateSuggestion(bundle: bundle) }
+            }
             var out: [String: Any] = ["event": "dictation_text", "id": id, "ok": true, "raw": r.raw, "text": text,
                                       "fell_back": r.fellBack, "reason": r.reason ?? NSNull(),
                                       "polished": r.polished ?? NSNull(), "model": r.model ?? NSNull(),
@@ -521,7 +529,7 @@ extension Dictation {
                                       "category": styleRecord.category, "structure_reason": r.structureReason ?? NSNull(),
                                       "rendered": styleRecord.rendered, "variant": styleRecord.variant,
                                       "style_ms": styled.ms, "app_changed": appChanged, "language": r.language ?? NSNull(),
-                                      "tags": r.tags]
+                                      "tags": r.tags, "translate": r.translation?.json ?? NSNull()]
             for (k, v) in timing { out[k] = v }
             self.lastResult = out
             emit(out)

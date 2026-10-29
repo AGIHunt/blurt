@@ -130,7 +130,8 @@ extension Dictation {
         let t0 = CACurrentMediaTime()
         let d = take.style ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: take.bundle)
         let pick = d.style.pick(light: r.text, structured: r.structured)
-        let v = DictationStyleVariant.apply(pick.text, category: d.category, structured: pick.list)
+        // translated: the same text in the other language, its layout kept (DictationTranslating.swift)
+        let v = DictationStyleVariant.apply(r.translated ?? pick.text, category: d.category, structured: pick.list)
         let rec = DictationStyleRecord(style: d.style.rawValue, source: d.source.rawValue, category: d.category.rawValue,
                                        base: d.base.rawValue, explicit: take.explicit?.style.rawValue,
                                        toggles: take.toggles, rendered: pick.list, variant: v.changes)
@@ -153,6 +154,9 @@ extension Dictation {
     /// learning check.
     func rememberPaste(id: String, app: NSRunningApplication?, bundle: String?, r: DictationStream.Result, record: DictationStyleRecord,
                        typed: String, result: DictationInsert.Result, field: DictationField?, location: Int?) {
+        // a translated take has no versions in its own language to cycle through (they are the words as said): ⌥⇧L
+        // and the ≡ chip leave it alone
+        if r.translated != nil { lastPaste = nil; return }
         let cat = DictationAppCategory(rawValue: record.category) ?? .other
         let style = DictationStyle(rawValue: record.style) ?? .light
         let original: DictationStyle = style == .auto ? (record.rendered ? .structured : .light) : style

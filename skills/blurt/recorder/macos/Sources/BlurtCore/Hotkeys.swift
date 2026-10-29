@@ -310,6 +310,10 @@ public final class HotkeyCenter {
         case cards
         /// ⌥⇧L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
         case reformat
+        /// ⌥⇧C: copy the text in an area of the screen (macOS only; ScreenText, docs/design/screen-text.md)
+        case text
+        /// ⌥⇧T: the same, translated (zh ↔ en; the cloud polish model or the local one)
+        case translateText = "translate"
 
         /// nil = off unless the user sets one
         public var defaultKey: String? {
@@ -326,6 +330,8 @@ public final class HotkeyCenter {
             case .project: return "O"
             case .cards: return "H"
             case .reformat: return "L"
+            case .text: return "C"
+            case .translateText: return "T"
             }
         }
         public var title: String {
@@ -342,10 +348,12 @@ public final class HotkeyCenter {
             case .project: return Loc.t("capture.action.project", table: "Capture")
             case .cards: return Loc.t("capture.action.cards", table: "Capture")
             case .reformat: return Loc.t("capture.action.reformat", table: "Capture")
+            case .text: return Loc.t("capture.action.text", table: "Capture")
+            case .translateText: return Loc.t("capture.action.translate", table: "Capture")
             }
         }
         /// Only the menu-bar app registers these (a recording started from the chat has no menu or window to open).
-        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards, .reformat].contains(self) }
+        public var residentOnly: Bool { [.toggleRecord, .openMenu, .openMain, .voice, .project, .cards, .reformat, .text, .translateText].contains(self) }
         public var defaultCombo: KeyCombo? { defaultKey.flatMap { KeyCombo(mods: defaultHotkeyMods, key: $0) } }
         var carbonID: UInt32 { 100 + UInt32(Action.allCases.firstIndex(of: self)!) }
     }

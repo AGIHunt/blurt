@@ -20,6 +20,7 @@ extension App {
                     case let .keyDown(c, t): return (t, .keyDown(keyCode: c, time: base + t))
                     case let .mouseDown(t): return (t, .mouseDown(time: base + t))
                     case let .islandClick(t): return (t, .islandClick(time: base + t))
+                    case let .islandTranslateClick(t): return (t, .islandTranslateClick(time: base + t))
                     case let .tick(t): return (t, .tick(time: base + t))
                     }
                 }()
@@ -117,6 +118,21 @@ extension App {
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
+        case "translate":           // translate toggle [island] | target auto|en|zh | cloud on|off | app BUNDLE | reset | status
+            let a = rest.split(separator: " ").map(String.init)
+            switch a.first ?? "" {
+            case "toggle": d.toggleTranslate(via: a.count > 1 && a[1] == "island" ? "island" : "command")
+            case "target" where a.count > 1:
+                var c = Dictation.translateConfig; c.target = DictationTranslateTarget(rawValue: a[1]) ?? .auto; Dictation.setTranslateConfig(c)
+            case "cloud" where a.count > 1:
+                var c = Dictation.translateConfig; c.cloud = a[1] == "on"; Dictation.setTranslateConfig(c)
+            case "app" where a.count > 1:
+                var c = Dictation.translateConfig; c.apps.insert(a[1]); Dictation.setTranslateConfig(c)
+            case "reset": Dictation.set("translate", nil); Dictation.set("translate_hint_shown", nil); Dictation.set("translate_cloud_hint", nil)
+            default: break
+            }
+            emit(["event": "dictation_translate_status", "on": d.translating.on, "source": d.translating.source,
+                  "toggles": d.translating.toggles, "engine": d.translateEngine.rawValue, "config": Dictation.translateConfig.json ?? [:]])
         case "style":
             // style status | toggle [island] | reformat | chip | undo | set CATEGORY|BUNDLE STYLE|- | suggest BUNDLE |
             // answer yes|no (the island's open question) | reset — dictation styles (DictationStyles.swift)

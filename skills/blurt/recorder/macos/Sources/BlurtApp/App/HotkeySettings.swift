@@ -675,7 +675,7 @@ struct ShortcutsPane: View {
             if m.takenCount > 0 { banner.padding(.top, SettingsMetrics.groupGap) }
 
             SettingsGroup("shortcuts.capture") {
-                ForEach([HotAction.toggleRecord, .snap, .voice], id: \.self) { row($0) }
+                ForEach([HotAction.toggleRecord, .snap, .text, .translateText, .voice], id: \.self) { row($0) }
             }
             SettingsGroup("shortcuts.recording") {
                 ForEach([HotAction.pause, .marker, .pen, .finish], id: \.self) { row($0) }

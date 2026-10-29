@@ -42,7 +42,7 @@ public struct LoneShift {
         case .keyDown, .mouseDown:
             downAt = nil
             return false
-        case .islandClick, .tick:
+        case .islandClick, .islandTranslateClick, .tick:
             return false
         }
     }

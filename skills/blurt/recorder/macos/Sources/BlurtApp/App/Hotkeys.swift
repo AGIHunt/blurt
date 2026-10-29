@@ -24,6 +24,8 @@ extension HotkeyCenter.Action {
         case .project: return .project
         case .cards: return .cards
         case .reformat: return .reformat
+        case .text: return .text
+        case .translateText: return .translateText
         }
     }
 }

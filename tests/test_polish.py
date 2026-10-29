@@ -840,3 +840,50 @@ class FormattingAndContext(unittest.TestCase):
         self.assertEqual((r["text"], r["fell_back"], r.get("retried")), ("空中云汇。", False, "grew"))
         self.assertEqual(len(e.asked), 2)
         self.assertEqual(e.asked[1][1][-1]["content"], "空中云汇")
+
+
+class Translate(unittest.TestCase):
+    """The one translate prompt (⌥⇧T and dictation's translate mode): the new parameters are opt-in, and without them
+    the prompt and the message are what ⌥⇧T has always sent."""
+
+    def test_the_prompt_without_options_is_unchanged(self):
+        base = polish.translate_system("auto")
+        self.assertIn("If the text is mostly Simplified Chinese, translate it into English", base)
+        self.assertNotIn("hesitations", base)            # a 嗯嗯 in a screenshot of a chat is content
+        self.assertNotIn("Words:", base)
+        self.assertEqual(polish.translate_system("auto"), polish.translate_system("auto", terms=False, spoken=False))
+        self.assertEqual(polish.translate_messages("你好", "auto"),
+                         [{"role": "system", "content": base}, {"role": "user", "content": "你好"}])
+
+    def test_speech_drops_fillers_only_when_asked(self):
+        self.assertIn("hesitations", polish.translate_system("en", spoken=True))
+        self.assertIn("Translate it into English.", polish.translate_system("en", spoken=True))
+        self.assertIn("Translate it into Simplified Chinese.", polish.translate_system("zh"))
+
+    def test_words_go_in_a_line_of_their_own(self):
+        m = polish.translate_messages("用 tmux 跑一下", "en", ["tmux"])
+        self.assertIn('"Words:"', m[0]["content"])
+        self.assertEqual(m[1]["content"], "Words: tmux\nText: 用 tmux 跑一下")
+        self.assertEqual(polish.translate_messages("用 tmux 跑一下", "en", [])[1]["content"], "用 tmux 跑一下")
+
+    def test_the_engine_sends_only_the_words_in_the_text(self):
+        e = polish.Engine()
+        seen = []
+        e._ready = lambda res, m: res.update(model="fake")
+        e.on_model_thread = lambda fn, text, target, deadline, terms, spoken: (seen.append((target, terms, spoken)) or
+                                                                               ("Run it in tmux", False))
+        r = e.translate("用 tmux 跑一下", "en", terms=[{"term": "tmux"}, {"term": "Claude Code"}], spoken=True, check=True)
+        self.assertEqual(seen, [("en", ["tmux"], True)])
+        self.assertEqual((r["text"], r["fell_back"]), ("Run it in tmux", False))
+        # auto stays auto (⌥⇧T), unchecked: the model's answer as it is
+        r = e.translate("你好", "auto")
+        self.assertEqual(seen[-1], ("auto", [], False))
+        self.assertNotIn("fell_back", r)
+
+    def test_a_refused_local_answer_types_the_text_as_said(self):
+        e = polish.Engine()
+        e._ready = lambda res, m: res.update(model="fake")
+        e.on_model_thread = lambda *a: ("在本地安装这个版本", False)       # the same language back
+        r = e.translate("在本地安装一下这个版本，我来测试一下。", "en", check=True)
+        self.assertEqual((r["fell_back"], r["reason"], r["text"]), (True, "untranslated", "在本地安装一下这个版本，我来测试一下。"))
+        self.assertEqual(r["translated"], "在本地安装这个版本")

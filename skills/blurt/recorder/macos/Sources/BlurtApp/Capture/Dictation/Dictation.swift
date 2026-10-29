@@ -163,7 +163,7 @@ final class Dictation {
     private var frontKey = ""
     private var holdTimer: Timer?
     private var escRegistered = false
-    private var polishServer: Process?
+    var polishServer: Process?
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
     private var generation = 0
@@ -190,6 +190,8 @@ final class Dictation {
     /// ⇧ / the island / Fn+⇧ this take (the last choice wins), and how often it was switched
     var explicitStyle: (style: DictationStyle, source: DictationStyleSource)?
     var styleToggles = 0
+    /// this take translated (⌘ / the island's left half / the app's setting: DictationTranslating.swift)
+    var translating = TranslateState()
     /// the bundle id the take goes into (the app in front at the key-down)
     var styleBundle: String?
     /// tests (`dictation style app BUNDLE`): the app a take counts as going into (the pad is always the field)
@@ -639,9 +641,9 @@ final class Dictation {
         }
         var e = event
         // a click on Blurt's own island while dictating is the style chip, not "a click joined in" (it never cancels
-        // push-to-talk; the island itself ignores it then)
+        // push-to-talk; the island itself ignores it then): its left half (Peep's ear) translates, the rest Structured
         if case let .mouseDown(t) = e, trigger.active, phase == .listening, island.frameOnScreen.contains(NSEvent.mouseLocation) {
-            e = .islandClick(time: t)
+            e = NSEvent.mouseLocation.x < island.frameOnScreen.midX ? .islandTranslateClick(time: t) : .islandClick(time: t)
         }
         if let l = lab, phase == .idle, voice == nil, MainActor.assumeIsolated({ l.wantsKey }) {
             for out in trigger.handle(e) {
@@ -650,13 +652,14 @@ final class Dictation {
                 case .stop: MainActor.assumeIsolated { l.keyStop() }
                 case .cancel: MainActor.assumeIsolated { l.keyCancel() }
                 case .arm: warm()
-                case .send, .style: break
+                case .send, .style, .translate: break
                 }
             }
             scheduleHoldTick()
             return
         }
         let wasIsland: Bool = { if case .islandClick = e { return true }; return false }()
+        let wasIslandTranslate: Bool = { if case .islandTranslateClick = e { return true }; return false }()
         let outs = trigger.handle(e)
         if Dictation.keyTrace { trace(e, outs) }
         for out in outs {
@@ -669,6 +672,7 @@ final class Dictation {
             case .cancel: cancel(quietly: outs.contains(.send) || joinedEarly(e))
             case .send: send()
             case .style: toggleStyle(via: wasIsland ? .island : .shift)
+            case .translate: toggleTranslate(via: wasIslandTranslate ? "island" : "command")
             }
         }
         // the press became a shortcut (Fn-←, ⌥A), a click joined in, or it was let go too early / too late: the mic
@@ -702,6 +706,7 @@ final class Dictation {
         case let .keyDown(c, at): t = at; o["type"] = c == DictationTrigger.escape ? "esc" : c == 179 ? "globe" : "key"
         case let .mouseDown(at): t = at; o["type"] = "click"
         case let .islandClick(at): t = at; o["type"] = "island"
+        case let .islandTranslateClick(at): t = at; o["type"] = "island_translate"
         case let .tick(at): t = at; o["type"] = "tick"
         }
         if let l = lastTraced { o["dt_ms"] = Int((t - l) * 1000) }
@@ -763,7 +768,8 @@ final class Dictation {
     /// The polish server up (or a stuck one replaced) with its model loaded — dictation's key-down, and a voice note
     /// switched to Structured (its words go through the same structuring pass). Nothing without a polish model.
     func warmPolish() {
-        guard polishModel != nil else { return }
+        // the server runs cloud polish too: with no local model it is the cloud's alone (polish.py never downloads one)
+        guard polishModel != nil || DictationCloud.ready else { return }
         if WarmServer.running("polish-serve") {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 // the polish server's run file can name a stuck process too (VoiceInput.replaceIfStuck): replaced
@@ -863,6 +869,7 @@ final class Dictation {
         // the style: the app in front decides the base now (verbatim skips polish for the whole take); ⇧ or the
         // island can still make it Structured — the structuring pass runs once at key-up, on the stitched text
         beginStyle(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
+        beginTranslate(bundle: styleBundle)
         let base = styleDecision?.base ?? .light
         var opt = DictationStream.Options()
         opt.language = Config.shared["asr.language"] as? String ?? "auto"
@@ -1225,6 +1232,7 @@ final class Dictation {
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
+        take.translate = translateJob(style: styleDecision?.style ?? .light)
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
               "pending": queue.count])
         enqueue(take)

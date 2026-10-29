@@ -18,7 +18,7 @@
 import Foundation
 
 public enum ModelBundle {
-    public enum Kind: String, Equatable, Codable { case dictation, polish, note }
+    public enum Kind: String, Equatable, Codable { case dictation, polish, note, screenText = "screen_text" }
 
     public struct Part: Equatable {
         public var id: String

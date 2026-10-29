@@ -83,6 +83,8 @@ final class EarSlot {
         case dots
         /// one of our icons before a short text: dictation's style chip with the clock (list = Structured)
         case iconText(BlurtIcon, String, attn: Bool = false)
+        /// two of them before the text: Structured (or Verbatim) and Translate together, with the clock
+        case iconsText(BlurtIcon, BlurtIcon, String, attn: Bool = false)
         /// the ok check before a short text: a moment that worked ("Sent", after a double tap)
         case done(String)
         /// new captures just landed in the inbox: the tray and "+n", for a few seconds (Island.inboxNews)
@@ -102,6 +104,7 @@ final class EarSlot {
             case (.peepLevel(let a, _), .peepLevel(let b, _)): return a == b
             case (.glyph(let a, _), .glyph(let b, _)): return a == b
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
+            case (.iconsText(let a, let a2, _, _), .iconsText(let b, let b2, _, _)): return a == b && a2 == b2
             default: return false
             }
         }
@@ -109,6 +112,8 @@ final class EarSlot {
 
     let layer = CALayer()
     private let icon = CALayer()
+    /// the second glyph of `iconsText`
+    private let icon2 = CALayer()
     /// The ear's number or word: a picture of the line drawn with font smoothing (BlurtCore TextImage), as the island's
     /// buttons draw their titles — a CATextLayer draws without it, and its digits came out lighter than the glyph beside them.
     private let label = CALayer()
@@ -159,13 +164,15 @@ final class EarSlot {
         levelMask.strokeColor = NSColor.black.cgColor
         levelMask.lineCap = .round
         level.mask = levelMask
-        for l in [icon, label, dot, bars, level, chick] { layer.addSublayer(l); l.isHidden = true }
+        for l in [icon, icon2, label, dot, bars, level, chick] { layer.addSublayer(l); l.isHidden = true }
         // nothing changes by itself: a CATextLayer renders its new string at the next display pass, outside the
         // transaction that disabled actions, so its implicit 0.25 s "contents" fade drew the new number over the old
         // one ("15" over "0:02" right after a take)
-        for l in [layer, icon, label, dot, bars, level, levelMask, chick] { l.actions = EarSlot.noActions }
-        icon.contentsGravity = .resizeAspect
-        icon.contentsScale = 2
+        for l in [layer, icon, icon2, label, dot, bars, level, levelMask, chick] { l.actions = EarSlot.noActions }
+        for l in [icon, icon2] {
+            l.contentsGravity = .resizeAspect
+            l.contentsScale = 2
+        }
         chick.backdrop = .dark                 // the island is always black
     }
 
@@ -191,7 +198,7 @@ final class EarSlot {
         content = c
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        for l in [icon, label, dot, bars, level] {
+        for l in [icon, icon2, label, dot, bars, level] {
             l.isHidden = true
             l.opacity = 1
             l.setAffineTransform(.identity)
@@ -318,6 +325,14 @@ final class EarSlot {
             icon.frame = CGRect(x: 0, y: -6, width: 12, height: 12)
             icon.isHidden = false
             x = 15
+            text(s, color: attn ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.92))
+        case .iconsText(let a, let b, let s, let attn):
+            for (l, ic) in [(icon, a), (icon2, b)] {
+                l.contents = ic.cgImage(size: 12, scale: 2, color: BrandColor.Island.fill.cgColor, weight: 1.2)
+                l.frame = CGRect(x: x, y: -6, width: 12, height: 12)
+                l.isHidden = false
+                x += 15
+            }
             text(s, color: attn ? BrandColor.Island.attn : NSColor(white: 1, alpha: 0.92))
         case .finished(let s):
             // the disc in the dot's place (centred where the dot's centre was), the check knocked out in black

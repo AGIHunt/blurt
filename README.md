@@ -27,6 +27,12 @@ beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` fo
 undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
 your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
+**Copy text from screen (`⌥⇧C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
+terminal. Let go and it's on the clipboard in about 0.2 s, laid out as if you had copied it: the half line the edge
+cut is left out, wrapped list items are one line again, tables keep their tabs and code its indentation. It reads with
+macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
+(720 MB) or your own cloud model fixes misread symbols in code and paths.
+
 **Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
 that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one

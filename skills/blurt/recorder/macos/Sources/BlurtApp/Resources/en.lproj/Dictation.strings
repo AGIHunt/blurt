@@ -678,3 +678,27 @@
 "dictation.cloud.hint.setup" = "Set Up…";
 "dictation.cloud.hint.never" = "Don't Remind Me";
 "dictation.models.cloud" = "%@ (cloud polish)";
+
+/* Translate mode (docs/design/dictation-translate.md) */
+"dictation.translate.toast.on.auto" = "Translating: Chinese ↔ English · ⌘ to turn off";
+"dictation.translate.toast.on.en" = "Translating into English · ⌘ to turn off";
+"dictation.translate.toast.on.zh" = "Translating into Chinese · ⌘ to turn off";
+"dictation.translate.toast.off" = "Not translating";
+"dictation.translate.toast.unavailable" = "To translate, set up a cloud model or download this Mac's polish model";
+"dictation.translate.toast.setup" = "Set Up…";
+"dictation.translate.toast.failed" = "Couldn't translate: typed as you said it";
+"dictation.translate.toast.cloud_hint" = "Translated on this Mac. A cloud model translates better";
+"dictation.translate.toast.suggest" = "Translate everything you dictate in %@?";
+"dictation.translate.toast.suggest.yes" = "Translate";
+"dictation.translate.settings.title" = "Translate";
+"dictation.translate.settings.detail" = "Press ⌘ while talking, or click Peep, to type what you say in the other language";
+"dictation.translate.target.auto" = "Chinese ↔ English";
+"dictation.translate.target.en" = "Into English";
+"dictation.translate.target.zh" = "Into Chinese";
+"dictation.translate.cloud.title" = "Use the cloud model to translate";
+"dictation.translate.cloud.detail" = "Sends the text to %@. This Mac's model is used if the cloud fails";
+"dictation.translate.cloud.none" = "No cloud model is set up. This Mac's polish model translates";
+"dictation.translate.cloud.nothing" = "Set up a cloud model or download this Mac's polish model to translate";
+"dictation.translate.cloud.setup" = "Set Up…";
+"dictation.translate.apps" = "Always translated in";
+"dictation.translate.apps.remove" = "Remove";

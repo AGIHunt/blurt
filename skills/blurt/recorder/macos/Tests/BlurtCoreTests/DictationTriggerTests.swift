@@ -546,6 +546,33 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(run("ropt-down@0 ropt-up@100 shift-down@500 shift-up@560 ropt-down@900 ropt-up@1000"), [.arm, .start, .style, .stop])
     }
 
+    func testCommandAloneTogglesTranslation() {
+        // hands-free: ⌘ tapped while talking → translate; either ⌘; the dictation goes on and stops normally
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080 fn-down@3000 fn-up@3080"), [.arm, .start, .translate, .stop])
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 rcmd-down@1000 rcmd-up@1080"), [.arm, .start, .translate])
+        // ⇧ and ⌘ each their own toggle, in any order
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@500 shift-up@560 cmd-down@800 cmd-up@860"), [.arm, .start, .style, .translate])
+        // a resting thumb (held past a second) is no toggle; ⌘V is a shortcut, not a toggle; ⇧⌘ is a chord, neither
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@2200"), [.arm, .start])
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 cmd-down@1000 key:9@1040 cmd-up@1080"), [.arm, .start])
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 cmd-down@1020 cmd-up@1060 shift-up@1080"), [.arm, .start])
+        // not dictating: ⌘ is any other modifier (Fn+⌘ is a shortcut: no start)
+        XCTAssertEqual(auto("cmd-down@0 cmd-up@60"), [])
+        XCTAssertEqual(auto("fn-down@0 cmd-down@20 cmd-up@60 fn-up@90"), [.arm])
+        // the island's left half
+        XCTAssertEqual(auto("fn-down@0 fn-up@90 island-translate@500 island@700"), [.arm, .start, .translate, .style])
+    }
+
+    func testCommandInPushToTalkTogglesWithoutCancelling() {
+        var t = DictationTrigger()
+        XCTAssertEqual(t.run("fn-down@0 tick@300"), [.arm, .start])
+        XCTAssertEqual(t.run("cmd-down@800 cmd-up@870"), [.translate])
+        XCTAssertTrue(t.active)
+        XCTAssertEqual(t.run("fn-up@2000"), [.stop])
+        // ⌘ with a key while held: a shortcut — push-to-talk is cancelled, as before
+        XCTAssertEqual(run("ropt-down@0 tick@260 cmd-down@600 key:9@640 cmd-up@660 ropt-up@1500", mode: .hold), [.arm, .start, .cancel])
+    }
+
     func testShiftInPushToTalkTogglesWithoutCancelling() {
         // auto held past 300 ms: push-to-talk; a lone ⇧ while held is the toggle, and letting go still stops
         var t = DictationTrigger()

@@ -53,6 +53,9 @@ final class GeneralModel: ObservableObject {
     @Published var dragNoteFile = false
     @Published var voiceEndOnPause = false
     @Published var liveText = true
+    @Published var screenText = ScreenTextRefine.Mode.off
+    @Published var screenTextInstalled: Bool? = ScreenTextRefine.installed
+    @Published var cloudReady = false
 
     init() { reload() }
 
@@ -68,6 +71,9 @@ final class GeneralModel: ObservableObject {
         dragNoteFile = CardExport.attachNoteFile
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
+        screenText = ScreenTextRefine.mode
+        cloudReady = ScreenTextRefine.cloudPayload != nil
+        ScreenTextRefine.refreshInstalled { [weak self] in self?.screenTextInstalled = ScreenTextRefine.installed }
     }
 
     /// The same switch as the assistant's (LoginItem): a test build never registers itself in the user's Login Items.
@@ -91,6 +97,18 @@ final class GeneralModel: ObservableObject {
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
     func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
+    func setScreenText(_ v: ScreenTextRefine.Mode) {
+        ScreenTextRefine.setMode(v)
+        screenText = v
+        // choosing this Mac's model is asking for it: the download starts (one 720 MB file, the one download manager)
+        if v == .local, screenTextInstalled == false { downloadScreenTextModel() }
+    }
+    func downloadScreenTextModel() {
+        MainActor.assumeIsolated {
+            ModelDownloads.shared.download([.init(id: ScreenTextRefine.modelID, kind: .screenText, name: "PaddleOCR-VL",
+                                                  sizeMB: ScreenTextRefine.modelSizeMB)], via: "settings")
+        }
+    }
 }
 
 struct GeneralPane: View {
@@ -165,6 +183,8 @@ struct GeneralPane: View {
                 SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
             }
 
+            SettingsGroup("general.screen_text") { screenTextRow }
+
             SettingsGroup("general.about", boxed: false) { aboutLine }
         }
         .onAppear { m.reload(); perms.start() }
@@ -217,5 +237,50 @@ struct QuietLink: View {
                 hover = inside
                 if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
+    }
+}
+
+
+extension GeneralPane {
+    /// ⌥⇧C's second reading (ScreenTextRefine): off, this Mac's OCR model, or the cloud model set up for cloud polish —
+    /// the line under it says what each one costs (a download and memory, or a cent a hundred captures) and what is missing.
+    var screenTextRow: some View {
+        let dl = ModelDownloads.shared
+        let id = ScreenTextRefine.modelID
+        let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
+        var detail = T("settings.general.screen_text.detail.off")
+        var action: (String, () -> Void)?
+        switch m.screenText {
+        case .off: break
+        case .local:
+            if dl.isRunning(id) || dl.isQueued(id) {
+                let p = dl.progress(id)
+                detail = T("settings.general.screen_text.detail.downloading",
+                           p.map { "\(modelSize($0.done)) / \(modelSize($0.total))" } ?? modelSize(ScreenTextRefine.modelSizeMB))
+            } else if m.screenTextInstalled == false {
+                detail = T("settings.general.screen_text.detail.download", modelSize(ScreenTextRefine.modelSizeMB))
+                action = (T("settings.general.screen_text.download"), { m.downloadScreenTextModel() })
+            } else {
+                detail = T("settings.general.screen_text.detail.local")
+                if gb < 16 { detail += " " + T("settings.general.screen_text.detail.local_small", gb) }
+            }
+        case .cloud:
+            if m.cloudReady {
+                detail = T("settings.general.screen_text.detail.cloud", DictationCloud.setup.effectiveModel)
+            } else {
+                detail = T("settings.general.screen_text.detail.cloud_missing")
+                action = (T("settings.general.screen_text.setup"), { AppEnvironment.settings?.show(pane: "dictation") })
+            }
+        }
+        return SettingRow("general.screen_text_refine", detail: detail) {
+            HStack(spacing: 8) {
+                if let a = action {
+                    Button(a.0, action: a.1).buttonStyle(SettingsOutlinedButtonStyle()).fixedSize()
+                }
+                ChoicePopup(label: T("settings.general.screen_text"),
+                            choices: ScreenTextRefine.Mode.allCases.map { ($0, T("settings.general.screen_text.\($0.rawValue)")) },
+                            selection: Binding(get: { m.screenText }, set: { m.setScreenText($0) }))
+            }
+        }
     }
 }

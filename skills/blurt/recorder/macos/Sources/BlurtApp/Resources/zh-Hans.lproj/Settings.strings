@@ -440,3 +440,20 @@
 "settings.projects.capture_heading" = "截图和语音备注";
 "settings.projects.capture_row" = "新的归到";
 "settings.projects.list_heading" = "项目文件夹";
+
+/* 截图取字（⌥⇧C）的二次识别（ScreenTextRefine） */
+"settings.general.section.screen_text" = "截图取字";
+"settings.general.screen_text" = "二次识别";
+"settings.general.screen_text.hint" = "⌥⇧C 会立刻复制 macOS 自带文字识别的结果。二次识别用 OCR 模型把同一张图再读一遍，修正行内认错的字符（l 和 /、0 和 @、漏掉的 →）。如果这期间你没有复制别的内容，剪贴板会换成修正后的文字。";
+"settings.general.screen_text.off" = "关闭";
+"settings.general.screen_text.local" = "本机模型";
+"settings.general.screen_text.cloud" = "云端模型";
+"settings.general.screen_text.detail.off" = "只用 macOS 自带的文字识别：即时，不用下载。";
+"settings.general.screen_text.detail.local" = "PaddleOCR-VL，约 0.3 秒。使用时占约 1 GB 内存，闲置 10 分钟后释放。";
+"settings.general.screen_text.detail.local_small" = "这台 Mac 只有 %d GB 内存，运行时可能拖慢其他应用；云端模型不占本机内存。";
+"settings.general.screen_text.detail.download" = "需要下载一次，%@。";
+"settings.general.screen_text.detail.downloading" = "正在下载… %@";
+"settings.general.screen_text.download" = "下载";
+"settings.general.screen_text.detail.cloud" = "使用你配置的云端模型（%@）：每次约 ¥0.001，截图会发送给它。";
+"settings.general.screen_text.detail.cloud_missing" = "先在「听写 → 云端润色」里填好云端模型和 key。";
+"settings.general.screen_text.setup" = "设置…";
