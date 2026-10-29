@@ -154,6 +154,7 @@ struct GeneralPane: View {
                     HStack(spacing: 8) {
                         if needsAccess {
                             Button(T("settings.kit.allow")) { PermissionGuide.shared.start(.all, only: [.accessibility], source: .general) }
+                                .buttonStyle(SettingsOutlinedButtonStyle())
                                 .fixedSize()
                         }
                         ChoicePopup(label: T("settings.general.card_drag"),

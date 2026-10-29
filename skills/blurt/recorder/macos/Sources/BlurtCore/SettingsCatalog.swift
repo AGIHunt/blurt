@@ -84,7 +84,7 @@ public enum SettingsCatalog {
     public static let panes: [SettingsPaneInfo] = [
         pane("general", "settings.kit.general", "Settings", "gearshape", "preferences"),
         pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
-        pane("speech", "settings.kit.speech", "Settings", "waveform", "preferences"),
+        pane("speech", "settings.kit.speech", "Settings", "cpu", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
@@ -109,6 +109,7 @@ public enum SettingsCatalog {
         "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
         "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
         "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
+        "dictation.cloud_polish": "speech.cloud_polish",
         "general.version": "general.about", "general.help": "general.about", "general.assistant": "general.about",
     ]
 
@@ -254,6 +255,7 @@ public enum SettingsCatalog {
             row("speech.recognition", "speech.jobs", P("speech.purpose.recognition"), detail: P("speech.purpose.recognition.detail")),
             row("speech.dictation", "speech.jobs", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
             row("speech.polish", "speech.jobs", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
+            row("speech.cloud_polish", "speech.jobs", D("dictation.cloud.title"), detail: D("dictation.cloud.detail")),
             whole("speech.languages", detail: P("speech.languages.footer")),
             row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
             row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),
@@ -262,7 +264,7 @@ public enum SettingsCatalog {
             row("speech.memory", "speech.advanced", P("speech.limits.memory"), detail: P("speech.limits.memory.detail")),
             row("speech.battery", "speech.advanced", P("speech.limits.battery"), detail: P("speech.limits.battery.detail")),
             row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
-            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.cloud.keys")),
+            row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.note.cloud")),
             whole("speech.models", detail: P("speech.models.footer")),
         ]
 

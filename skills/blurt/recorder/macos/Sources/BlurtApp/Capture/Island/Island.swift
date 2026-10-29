@@ -305,6 +305,15 @@ final class Island: NSObject, IslandHosting {
         refreshReviewCount()
         // often enough that captures landing are news while they are new ("+3" in the ear)
         Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in self?.refreshReviewCount() }
+        // a click anywhere else closes the open island (its projects, the switcher): it no longer stays down over
+        // the app the user went back to (v1.0.4 report). Global: a click in another app; local: another Blurt window.
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            DispatchQueue.main.async { self?.clickedElsewhere() }
+        }
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            if let self, e.window !== self.panel { self.clickedElsewhere() }
+            return e
+        }
         refresh()
         // blurt is running: a short hello in the ear once the panel is up (Alcove and NotchNook say hello too)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in self?.hello() }
@@ -491,8 +500,8 @@ final class Island: NSObject, IslandHosting {
         shape.fillColor = NSColor.black.cgColor
         shape.shadowColor = NSColor.black.cgColor
         shape.shadowOpacity = 0
-        shape.shadowRadius = 18
-        shape.shadowOffset = CGSize(width: 0, height: 8)
+        shape.shadowRadius = 8                 // flat (BA-8): enough to part the open island from the page under it
+        shape.shadowOffset = CGSize(width: 0, height: 3)
         if let g = GlowLayer.make(size: CGSize(width: 240, height: 26), blur: 18) {     // under the shape: its lower part shows
             g.opacity = 0
             root.addSublayer(g)
@@ -630,7 +639,7 @@ final class Island: NSObject, IslandHosting {
         }
         let opacity = Float(max(0, min(1, vis.value)))
         if shape.opacity != opacity { shape.opacity = opacity }
-        let shadow: Float = lifted ? Float(min(0.35, (h.value - geo.row) / 120)) : 0
+        let shadow: Float = lifted ? Float(min(0.2, (h.value - geo.row) / 200)) : 0
         if shape.shadowOpacity != shadow { shape.shadowOpacity = shadow }
         if bump != 1 {
             let c = CGPoint(x: rect.midX, y: geo.top + h.value / 2)
@@ -656,14 +665,24 @@ final class Island: NSObject, IslandHosting {
             l.cornerRadius = corner
             l.maskedCorners = corners
         }
-        let contentFrame = NSRect(x: geo.cx - cw / 2 - rect.minX, y: 0, width: cw, height: Island.maxH)
+        // home grows from its left edge: Peep and the project lead it out as the shape widens (the right side's buttons
+        // are uncovered as it reaches them), so a Peep riding over from the ear never sits on the name
+        var cx0 = geo.cx - cw / 2 - rect.minX
+        if content.usesRow, drawer == nil, toastNow == nil, !isRecording { cx0 = max(cx0, 0) }
+        let contentFrame = NSRect(x: cx0, y: 0, width: cw, height: Island.maxH)
         if content.frame != contentFrame { content.frame = contentFrame }
         let grown = (h.value - geo.row) / max(1, content.fittingHeight - geo.row)
         let showing = open || drawer != nil || toastNow != nil
         let reveal = showing ? max(0, min(1, (grown - 0.55) / 0.35)) : 0
         clip.alphaValue = reveal * CGFloat(shape.opacity)
-        // the ears make way for the open content when it uses their row
-        ears.opacity = shape.opacity * Float(content.usesRow && showing ? 1 - reveal : 1)
+        // the ears make way for the open content when it uses their row — but a riding Peep is handed over, not faded
+        let riding = showing ? peepRide : nil
+        content.contentSeen(clip.alphaValue > 0.01, peepHeld: riding == false)
+        ears.opacity = shape.opacity * Float(content.usesRow && showing && riding == nil ? 1 - reveal : 1)
+        if let arrived = riding {
+            if left.layer.opacity > 0 { left.layer.opacity = arrived ? 0 : 1 }
+            right.layer.opacity *= Float(1 - reveal)
+        }
         CATransaction.commit()
         content.tick(now)
         hanging.islandMoved()
@@ -739,6 +758,35 @@ final class Island: NSObject, IslandHosting {
         switch left.content {
         case .hello, .peep, .peepLevel, .thinking, .sorted: return true
         default: return false
+        }
+    }
+
+    /// Peep in the left ear while the island opens on its home (or closes from it): it rides the shape's left edge out
+    /// to where the open island's Peep stands — and back — and hands over there: the open island's Peep shows only
+    /// once the ear's has arrived, so it is one Peep moving, never two at once. (The ear's Peep is drawn 2 pt before
+    /// its slot's leading x.)
+    private func peepRidesEdge(_ x: CGFloat, _ rect: CGRect) -> CGFloat {
+        peepRide = nil
+        guard open || h.value > geo.row + 1, drawer == nil, toastNow == nil, !isRecording, content.usesRow else { return x }
+        switch left.content {
+        case .hello, .peep, .thinking, .sorted: break
+        default: return x
+        }
+        let home = geo.cx - content.preferredWidth / 2 + IslandLayout.iconColumn - 12 + 2
+        let at = max(home, min(x, rect.minX + IslandLayout.iconColumn - 12 + 2))
+        peepRide = abs(at - home) < 1
+        return at
+    }
+
+    /// While the ear's Peep rides to the open island's (peepRidesEdge): whether it has arrived; nil when it isn't riding.
+    private var peepRide: Bool?
+
+    /// What the open island's Peep does: thinking while the left ear's Peep thinks (captures organised, a take
+    /// transcribed), else idle — the ear's one-off clips (the hello, a done hop) are the ear's alone.
+    var earPeepMood: PeepState {
+        switch left.content {
+        case .thinking, .peep(.thinking): return .thinking
+        default: return .idle
         }
     }
 
@@ -889,10 +937,11 @@ final class Island: NSObject, IslandHosting {
                 lx = min(lx, rect.minX + IslandLayout.bodyInset - 2)       // (a 15 pt glyph's side bearing)
                 rx = max(rx, rect.maxX - IslandLayout.bodyInset - right.width)
             }
-            left.place(leading: CGPoint(x: lx, y: y), now: now)
+            left.place(leading: CGPoint(x: peepRidesEdge(lx, rect), y: y), now: now)
             right.place(leading: CGPoint(x: rx, y: y), now: now)
         } else {
-            left.place(leading: CGPoint(x: IslandLayout.earOrigin(.left, width: left.width, outer: rect.minX, inner: nil), y: y), now: now)
+            let lx = IslandLayout.earOrigin(.left, width: left.width, outer: rect.minX, inner: nil)
+            left.place(leading: CGPoint(x: peepRidesEdge(lx, rect), y: y), now: now)
             right.place(leading: CGPoint(x: IslandLayout.earOrigin(.right, width: right.width, outer: rect.maxX, inner: nil), y: y), now: now)
         }
         let e = earsWanted
@@ -903,6 +952,9 @@ final class Island: NSObject, IslandHosting {
         left.layer.opacity = e.left && roomyL ? 1 : 0
         right.layer.opacity = e.right && roomyR ? 1 : 0
     }
+
+    /// How long a toast holds under a resting pointer before the island opens over it.
+    static let toastHoverHold: CFTimeInterval = 1.2
 
     static func clock(_ t: Double) -> String {
         let s = Int(t)
@@ -941,8 +993,17 @@ final class Island: NSObject, IslandHosting {
             if !cardsCalled, pointerDwelled { cardsCalled = true; hanging.islandAttention() }
             // resting on the ear's count opens it a little later, so the count can still be clicked
             let dwell = earHit(local) ? 0.45 : CardReveal.dwell
-            // a toast under the pointer holds (its clock stops, its button stays): the island opens after it
-            if !open, drawer == nil, !Dictation.shared.busy, toastNow == nil, now - hoverSince! >= dwell { setOpen(true) }
+            // a toast under the pointer holds (its clock stops, its button stays) — for a moment only: resting on the
+            // island longer is asking for the island, so the toast goes and it opens (a toast held until it was clicked
+            // left the island unusable, v1.0.4 report)
+            if !open, drawer == nil, !Dictation.shared.busy, now - hoverSince! >= dwell {
+                if toastNow == nil {
+                    setOpen(true)
+                } else if now - hoverSince! >= dwell + Island.toastHoverHold {
+                    toastQ.dismissCurrent()
+                    setOpen(true)
+                }
+            }
         } else {
             hoverSince = nil
             // the pointer went down onto the hanging cards: the island stays open over them
@@ -965,6 +1026,21 @@ final class Island: NSObject, IslandHosting {
     }
 
     /// `sticky`: opened by a key or a command, not by hovering — it stays until the pointer has come and gone (or Esc).
+    /// A click outside the island: the open island and its switcher close — not while something needs it (a recording's
+    /// discard question, a card being dragged, the hanging cards held, a pick still to answer).
+    func clickedElsewhere() {
+        guard open || drawer == .switcher, !confirmingDiscard, !dragActive, pick == nil, !hanging.holdsIsland else { return }
+        emit(["event": "island_close", "why": "click_elsewhere"])
+        if drawer == .switcher { closeSwitcher() }
+        if open { setOpen(false) }
+    }
+
+    /// A dictation or a voice note starting: the open island folds away, so its ears (Peep, the waveform) show.
+    func foldForActivity() {
+        if drawer == .switcher { closeSwitcher() }
+        if open { setOpen(false) }
+    }
+
     func setOpen(_ on: Bool, sticky: Bool = false) {
         self.sticky = on && sticky
         if on { hanging.islandAttention() }    // opening it drops the cards too

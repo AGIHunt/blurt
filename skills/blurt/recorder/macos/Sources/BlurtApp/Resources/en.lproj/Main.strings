@@ -715,3 +715,13 @@
 "app.record.partial_title" = "Recording stopped early";
 "app.record.partial_kept" = "the first %@ is kept";
 "app.ear.saved" = "Saved %@";
+
+/* New Item (NewItemSheet) */
+"main.new_item.button" = "New";
+"main.new_item.tip" = "Add an item by hand (⌘N)";
+"main.new_item.menu" = "New Item…";
+"main.new_item.title" = "New Item";
+"main.new_item.into" = "Goes to “%@”";
+"main.new_item.title_placeholder" = "Title";
+"main.new_item.details_placeholder" = "Details (optional)";
+"main.new_item.create" = "Create";

@@ -53,6 +53,30 @@ final class DictationField {
         return DictationField(element: el, textView: nil, app: app, pid: pid)
     }
 
+    /// Electron apps (Claude, Slack, VS Code, Notion, Obsidian…) build their Accessibility tree only once a client asks
+    /// for it (`AXManualAccessibility`); until then the focused element is the window and its text can't be read — so
+    /// the fit at the cursor couldn't see the 。 already after it and typed another (「结尾。。」, v1.0.4 report). Asked on
+    /// the key-down (`Dictation.arm`), once per process: the tree is there by the time the context is read. Read-only for
+    /// the app; Chromium only turns its tree on. Never our own process, never test builds.
+    private static var woken = Set<pid_t>()
+    static func wakeWebAccessibility(_ app: NSRunningApplication?) {
+        guard !DictationInsert.testMode, let a = app, a.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              !woken.contains(a.processIdentifier), isElectron(a), AXIsProcessTrusted() else { return }
+        woken.insert(a.processIdentifier)
+        let el = AXUIElementCreateApplication(a.processIdentifier)
+        AXUIElementSetMessagingTimeout(el, 0.25)
+        let r = AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        emit(["event": "dictation_web_ax", "app": a.localizedName ?? "", "ok": r == .success, "code": Int(r.rawValue)])
+    }
+
+    static func isElectron(_ a: NSRunningApplication) -> Bool {
+        guard let u = a.bundleURL else { return false }
+        return FileManager.default.fileExists(atPath: u.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
+    }
+
+    /// The focused element has a text value (a field), not just a window or a web area around one.
+    var readable: Bool { textView != nil || element.map { DictationField.string($0, kAXValueAttribute) != nil } ?? false }
+
     private static func string(_ el: AXUIElement, _ attr: String) -> String? {
         var v: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, attr as CFString, &v) == .success ? v as? String : nil
@@ -156,7 +180,14 @@ struct DictationContext {
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 
     static func capture() -> DictationContext? {
-        guard let f = DictationField.focused() else { return titleOnly() }
+        var field = DictationField.focused()
+        // an Electron app asked for its tree a moment ago (the key-down): the first time, it can take a few hundred ms
+        if field?.readable != true, let a = NSWorkspace.shared.frontmostApplication, DictationField.isElectron(a),
+           !DictationInsert.testMode {
+            usleep(300_000)
+            field = DictationField.focused() ?? field
+        }
+        guard let f = field else { return titleOnly() }
         var c = DictationContext()
         c.app = f.app ?? ""
         c.title = f.windowTitle ?? ""

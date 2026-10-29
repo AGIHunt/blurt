@@ -317,7 +317,8 @@ final class HangingCards: NSObject {
     /// The "+N" tile: as tall as a card, narrower — a quiet way into the overview, not the row's headline.
     static let tileSize = CGSize(width: 72, height: 84)
     /// Resting card shadow (light / dark) and how much a hovered card adds: one tight elevation for the row.
-    static let shadowLight: Float = 0.16, shadowDark: Float = 0.36, shadowLift: Float = 0.1
+    // flat, as the site (BA-8, v1.0.4): the 0.5 pt edge carries the card; the shadow only lifts it off the page
+    static let shadowLight: Float = 0.1, shadowDark: Float = 0.3, shadowLift: Float = 0.06
     static let voiceMicName = "voiceMic"
     static let panelH: CGFloat = 640
 
@@ -438,8 +439,8 @@ final class HangingCards: NSObject {
             l.shadowColor = NSColor.black.cgColor
             l.isHidden = true
         }
-        stack.shadowRadius = 8
-        stack.shadowOffset = CGSize(width: 0, height: 3)
+        stack.shadowRadius = 3
+        stack.shadowOffset = CGSize(width: 0, height: 1)
         stackBack.shadowOpacity = 0
         stackFace.cornerRadius = 7
         stackFace.masksToBounds = true
@@ -467,7 +468,7 @@ final class HangingCards: NSObject {
         selPill.cornerRadius = 12
         selPill.isHidden = true
         selPill.shadowOpacity = 0.2
-        selPill.shadowRadius = 8
+        selPill.shadowRadius = 3
         selPill.shadowOffset = CGSize(width: 0, height: 3)
         selPill.borderWidth = 0.5
         selText.contentsScale = 2
@@ -495,7 +496,7 @@ final class HangingCards: NSObject {
         tip.zPosition = 10_001                        // the hovered card's note goes over its neighbours, never under
         tip.cornerRadius = 10
         tip.shadowOpacity = 0.22
-        tip.shadowRadius = 10
+        tip.shadowRadius = 4
         tip.shadowOffset = CGSize(width: 0, height: 4)
         tip.isHidden = true
         tipText.contentsScale = 2
@@ -768,8 +769,8 @@ final class HangingCards: NSObject {
         c.card.cornerRadius = s.kind == .voice ? 12 : 7
         c.card.borderWidth = 0.5
         c.card.shadowColor = NSColor.black.cgColor
-        c.card.shadowRadius = 8
-        c.card.shadowOffset = CGSize(width: 0, height: 3)
+        c.card.shadowRadius = 3
+        c.card.shadowOffset = CGSize(width: 0, height: 1)
         HangingCards.shadowAlongEdge(c.card)
         c.face.frame = c.card.bounds
         c.face.cornerRadius = c.card.cornerRadius

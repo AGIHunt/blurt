@@ -72,6 +72,8 @@ public struct DictationEntry: Identifiable, Hashable {
     /// each streamed piece — where it was cut, the pause after it, what was heard, what its polish window got and
     /// committed — kept with the audio only (record.dictation.keep_audio), so the Lab can replay the take as it ran
     public var pieces: [DictationPieceRecord]?
+    /// the windows the pieces were heard again in (docs/design/dictation.md §Hearing again), kept like `pieces`
+    public var windows: [DictationWindowRecord]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -84,7 +86,7 @@ public struct DictationEntry: Identifiable, Hashable {
         self.timing = timing; self.repaired = repaired; self.fitted = fitted
     }
 
-    public static let timingKeys = ["asr_ms", "polish_ms", "structure_ms", "load_ms", "total_ms", "segments"]
+    public static let timingKeys = ["asr_ms", "polish_ms", "structure_ms", "load_ms", "total_ms", "segments", "windows", "rehear_ms_all"]
 
     static let iso: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
@@ -113,6 +115,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let c = corrected { o["corrected"] = c }
         if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
         if let p = pieces, !p.isEmpty { o["pieces"] = p.map(\.json) }
+        if let w = windows, !w.isEmpty { o["windows"] = w.map(\.json) }
         style?.write(into: &o)
         return o
     }
@@ -145,6 +148,7 @@ public struct DictationEntry: Identifiable, Hashable {
         corrected = o["corrected"] as? String
         asrTags = (o["asr_tags"] as? [[String: Any]])?.compactMap(DictationLanguageTag.init(json:))
         pieces = (o["pieces"] as? [[String: Any]])?.compactMap(DictationPieceRecord.init(json:))
+        windows = (o["windows"] as? [[String: Any]])?.compactMap(DictationWindowRecord.init(json:))
         style = DictationStyleRecord(json: o)
     }
 }
@@ -162,10 +166,16 @@ public struct DictationPieceRecord: Hashable {
     public var polished: String?
     public var fellBack: Bool
     public var reason: String?
+    /// it began at a hard cut (overlapping the piece before: no pause to cut at for 20 s)
+    public var hard = false
+    /// heard only as part of its window (the last piece, when the take is heard again): no transcript of its own
+    public var covered = false
 
     public init?(json o: [String: Any]) {
         guard let s = (o["start"] as? NSNumber)?.doubleValue, let e = (o["end"] as? NSNumber)?.doubleValue else { return nil }
         start = s; end = e
+        hard = o["hard"] as? Bool ?? false
+        covered = o["covered"] as? Bool ?? false
         pauseAfter = (o["pause_after"] as? NSNumber)?.doubleValue
         raw = o["raw"] as? String ?? ""
         heard = o["asr_text"] as? String ?? raw
@@ -184,7 +194,35 @@ public struct DictationPieceRecord: Hashable {
         if let c = committed { o["text"] = c }
         if let p = polished { o["polished"] = p }
         if let w = reason { o["reason"] = w }
+        if hard { o["hard"] = true }
+        if covered { o["covered"] = true }
         return o
+    }
+}
+
+/// One window of a kept take heard again (DictationStream.Result.windows): which pieces, what they had said and what
+/// the window said.
+public struct DictationWindowRecord: Hashable {
+    public var start: Double
+    public var end: Double
+    public var pieces: [Int]
+    public var piecesText: String
+    public var raw: String
+    /// how long hearing it again took (0: one piece, not heard again)
+    public var asrMS: Int
+
+    public init?(json o: [String: Any]) {
+        guard let s = (o["start"] as? NSNumber)?.doubleValue, let e = (o["end"] as? NSNumber)?.doubleValue else { return nil }
+        start = s; end = e
+        pieces = o["pieces"] as? [Int] ?? []
+        piecesText = o["pieces_text"] as? String ?? ""
+        raw = o["raw"] as? String ?? ""
+        asrMS = o["asr_ms"] as? Int ?? 0
+    }
+
+    public var json: [String: Any] {
+        let r = { (x: Double) in (x * 100).rounded() / 100 }
+        return ["start": r(start), "end": r(end), "pieces": pieces, "pieces_text": piecesText, "raw": raw, "asr_ms": asrMS]
     }
 }
 

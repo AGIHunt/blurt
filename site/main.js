@@ -7,7 +7,7 @@
    2. the notch (#isl): fixed at the top centre; the active scene sets its mode and the live text under it. In the
       snap the words go into the note bubble beside the selection instead, as in the app.
    3. scrubbed values: the words as you talk, the speed clock and bars, the recording timer and transcript, the count.
-   4. the film: loads on click, chapters seek. 5. copy the install command.
+   4. the film: loads on click, chapters seek. 5. copy the install command. 6. the GitHub star count in the nav.
    Without JS or under reduced motion nothing here runs: the HTML has every step on, so each scene rests on its end
    state and every caption is listed. */
 (() => {
@@ -56,6 +56,34 @@
       setTimeout(() => { b.textContent = text0; b.classList.remove("done"); }, 1800);
     });
   });
+
+  /* ---------------------------------------------------------------- 6. GitHub stars next to the nav link
+     From the public API, kept in localStorage for an hour. Any failure (offline, rate limit, storage blocked) leaves
+     the plain "GitHub" link: show nothing rather than a wrong number. */
+  const stars = document.querySelectorAll(".gh .stars");
+  if (stars.length) {
+    const KEY = "blurt-stars", HOUR = 36e5;
+    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n));
+    const show = (n) => stars.forEach((el) => {
+      el.textContent = fmt(n); el.hidden = false;
+      el.parentElement.setAttribute("aria-label", root.lang === "en" ? `GitHub, ${fmt(n)} stars` : `GitHub，${fmt(n)} 个星标`);
+    });
+    let cached = null;
+    try {
+      const c = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (c && Number.isFinite(c.n) && Date.now() - c.t < HOUR) cached = c.n;
+    } catch {}
+    if (cached !== null) show(cached);
+    else {
+      try {
+        fetch("https://api.github.com/repos/AGIHunt/blurt").then((r) => (r.ok ? r.json() : null)).then((d) => {
+          if (!d || !Number.isFinite(d.stargazers_count) || d.stargazers_count < 0) return;
+          try { localStorage.setItem(KEY, JSON.stringify({ n: d.stargazers_count, t: Date.now() })); } catch {}
+          show(d.stargazers_count);
+        }).catch(() => {});
+      } catch {}
+    }
+  }
 
   if (reduce || !isl) return;
   root.classList.add("motion");

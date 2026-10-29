@@ -609,9 +609,9 @@ func flyImage(_ img: CGImage, from: NSRect, to: NSRect, duration: CFTimeInterval
     card.bounds = CGRect(origin: .zero, size: a.size)
     card.position = CGPoint(x: a.midX, y: a.midY)
     card.shadowColor = NSColor.black.cgColor
-    card.shadowOpacity = 0.28
-    card.shadowRadius = 12
-    card.shadowOffset = CGSize(width: 0, height: -5)
+    card.shadowOpacity = 0.14             // flat (BA-8): a close shadow, not a drop
+    card.shadowRadius = 4
+    card.shadowOffset = CGSize(width: 0, height: -1.5)
     let photo = CALayer()                // the picture, clipped to the corners
     photo.frame = card.bounds
     photo.contents = img

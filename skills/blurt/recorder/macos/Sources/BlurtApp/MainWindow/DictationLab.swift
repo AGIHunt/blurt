@@ -59,7 +59,11 @@ final class LabTake {
         opt.polishTimeout = Dictation.polishTimeout
         opt.loadBudget = Dictation.loadBudget
         opt.vocab = DictationVocabulary.shared.payload()
-        opt.polish = Dictation.polishOn && Dictation.shared.polishModel != nil
+        // as a dictation is made now: heard again in windows, polished in the cloud when that is set up
+        opt.rehear = Dictation.rehear
+        opt.rehearWindow = Dictation.rehearWindow
+        opt.cloud = DictationCloud.payload()
+        opt.polish = Dictation.polishOn && (Dictation.shared.polishModel != nil || opt.cloud != nil)
         options = opt
         let s = DictationStream(id: "lab-\(id)", dir: wav.deletingLastPathComponent(), wholeWav: wav, options: opt)
         s.setContext(opt.polish ? context : nil)
@@ -511,10 +515,20 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
         notice = T("dictation.lab.learn.undone")
     }
 
+    /// dictation_lab.py with the cloud polish key when it is set up (DictationCloud): on stdin, so "current" polishes in
+    /// the cloud as the app does and the presets offer cloud and local side by side.
+    static func call(_ args: [String], timeout: TimeInterval, done: @escaping (Result<[String: Any], Scripts.Failure>) -> Void) {
+        if let key = DictationCloud.payload()?["key"] as? String {
+            Scripts.call("dictation_lab.py", args + ["--key-stdin"], stdin: Data((key + "\n").utf8), timeout: timeout, done: done)
+        } else {
+            Scripts.call("dictation_lab.py", args, timeout: timeout, done: done)
+        }
+    }
+
     // MARK: compare (dictation_lab.py rerun)
 
     func loadOptions() {
-        Scripts.call("dictation_lab.py", ["configs"], timeout: 120) { [weak self] r in
+        DictationLabModel.call(["configs"], timeout: 120) { [weak self] r in
             guard let self = self, case .success(let o) = r else { return }
             var out: [Option] = []
             let asr = (o["asr"] as? [String: Any])?["models"] as? [[String: Any]] ?? []
@@ -543,7 +557,7 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
         error = nil
         let id = draft.id
         emit(["event": "dictation_lab", "action": "rerun", "id": id, "configs": specs])
-        Scripts.call("dictation_lab.py", ["rerun", id, "--save"] + specs.flatMap { ["--config", $0] }, timeout: 900) { [weak self] r in
+        DictationLabModel.call(["rerun", id, "--save"] + specs.flatMap { ["--config", $0] }, timeout: 900) { [weak self] r in
             guard let self = self else { return }
             self.rerunning = false
             switch r {
@@ -572,7 +586,7 @@ final class DictationLabModel: ObservableObject, DictationLabSink {
         running = true
         pane = .regression
         emit(["event": "dictation_lab", "action": "run_all", "config": runSpec])
-        Scripts.call("dictation_lab.py", ["run", "--json", "--config", runSpec], timeout: 3600) { [weak self] r in
+        DictationLabModel.call(["run", "--json", "--config", runSpec], timeout: 3600) { [weak self] r in
             guard let self = self else { return }
             self.running = false
             switch r {

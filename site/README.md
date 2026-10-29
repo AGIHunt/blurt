@@ -11,7 +11,7 @@ npx wrangler pages deploy site --project-name blurt --branch main      # publish
 **When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
 preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The agihunt.info zone's Browser
 Cache TTL (4 h) overrides `_headers` on the custom domain, so without a new URL visitors get new HTML on top of old
-CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.3`.
+CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.4-1`.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -77,9 +77,11 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   `n-<state>.webp` the notch sheets (dark set: idle, listening, talking, thinking, done, hello), `n-look.webp` the
   notch's 7 × 5 gaze grid, `f-<state>.webp` Peep out of the notch in the snap (done, peck), `peek.webp` the
   footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only), `fd-<state>.webp` the same on dark pages
-  (dark set), `n-still.webp` one still per scene for reduced motion; the hero: `hero-v.mp4` / `hero-v.jpg` (light pages,
-  the release's video-model idle clip cropped round Peep, feathered into the wallpaper on its own paper tint) and
-  `hero.webm` / `hero.mov` (VP9 and HEVC with alpha) / `hero.webp` (dark pages, the clay three-quarter idle loop); `logo.svg` /
+  (dark set), `n-still.webp` one still per scene for reduced motion; the hero: Peep perched on the first window's
+  top-right corner, facing the window, no contact shadow: `perch.webm` / `perch.mov` / `perch.webp` (light pages,
+  `out/anim/paper-ns/idle`) and `perch-d.*` (dark pages, `out/anim/dark/idle` with the shadow taken out), side view
+  flipped to face left, VP9 and HEVC with alpha, the WebP is the first frame (poster, reduced motion). On desktop it
+  drifts a little with the scroll (`--sy0`), not on phones (the notch Peep is the one there); `logo.svg` /
   `logo-dark.svg` the header mark (3D vector), favicons. `peep.json` is the sheet table, inlined into each page.
   `peep.js` plays them (sprite sheets at 30 fps, lazy-loaded per state); `main.js` tells it the scene and step.
   `assets/favicon.png` and `assets/apple-touch-icon.png` keep their names and now hold Peep; `/favicon.ico` too.

@@ -30,6 +30,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var resident: Bool { opts.standalone }
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        CloudSpeech.install()
         for sig in [SIGTERM, SIGINT] {
             signal(sig, SIG_IGN)
             let s = DispatchSource.makeSignalSource(signal: sig, queue: .main)

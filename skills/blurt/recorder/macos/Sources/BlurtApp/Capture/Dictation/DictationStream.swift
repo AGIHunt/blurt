@@ -10,6 +10,14 @@
 //      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
+// Hearing again (docs/design/dictation.md §Hearing again): a piece is 3–8 s of a sentence, and the speech model hears
+// it without the rest (德宝 for 豆包, 巨幅 for GIF). So the pieces are heard once more in windows of ~10 s
+// (DictationStitch.rehearGroups: a window closes at a pause cut, never at a hard one — windows don't share audio), with
+// the windows' text so far as context, while the user still talks; polish then works window by window. The pieces'
+// own transcripts are the live text. At key-up the open window (the pieces since the last one, the last piece in it
+// heard only there) is what is left. A window of one piece keeps that piece's transcript; one the model fails on keeps
+// its pieces' (`dictation_rehear` logs both).
+//
 // Live text (docs/design/dictation.md §Live text): the words shown while talking (LiveTranscript) are the finished
 // pieces' transcripts and, about once a second, the open piece's audio so far decoded by the same warm server as an
 // *interim* request (on its own queue; BlurtCore's DictationLiveDecode decides when). Interim text shows quieter
@@ -54,6 +62,14 @@ final class DictationStream {
         var structureTimeout = 10.0
         /// decode the piece still being said for the live text (Dictation.livePartial)
         var interim = false
+        /// the user's cloud model for polish (DictationCloud.payload: base URL, model, key), and the last dictations in
+        /// the same app it is told about (DictationCloud.recent); nil / empty: the local model, as before
+        var cloud: [String: Any]?
+        var recent: [String] = []
+        /// hear the pieces again in windows (record.dictation.rehear; §Hearing again), of this many seconds
+        /// (record.dictation.rehear_window_s)
+        var rehear = true
+        var rehearWindow = DictationStitch.rehearWindow
     }
 
     /// One piece of the recording and what became of it.
@@ -86,6 +102,12 @@ final class DictationStream {
         var asrDone = false
         /// when its last sample arrived (the live text's lag is measured from it)
         var arrived: CFTimeInterval = 0
+        /// a window (hearing again): the pieces it covers; nil for a piece
+        var members: Range<Int>?
+        /// the last piece, heard only as part of its window (no transcript of its own: nobody watches the live text then)
+        var covered = false
+        /// a window: what its pieces' transcripts said, joined (the history keeps both)
+        var piecesText = ""
         init(index: Int, start: Int, end: Int, hard: Bool, last: Bool = false) {
             self.index = index; self.start = start; self.end = end; self.hard = hard; self.last = last
         }
@@ -118,6 +140,9 @@ final class DictationStream {
         var asrError: DictationASRFailure?
         /// each piece's language tag and how sure the model was (transcribe.py's `tag`; the history keeps them)
         var tags: [[String: Any]] = []
+        /// the windows the pieces were heard again in (§Hearing again): pieces, start / end, what the pieces said and
+        /// what the window said, asr_ms, ok
+        var windows: [[String: Any]] = []
         var empty: Bool { raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
@@ -140,6 +165,10 @@ final class DictationStream {
     private var pieceStart = 0
     private var pieceHard = false
     private var pieces: [Piece] = []           // appended on main, read on the queues after their block was queued
+    /// the windows heard again (§Hearing again), like `pieces`; and the open window (main thread): its first sample
+    /// and first piece
+    private var windows: [Piece] = []
+    private var windowStart = 0, windowFirst = 0
     private let lock = NSLock()
     private let asrQ = DispatchQueue(label: "blurt.dictation.asr", qos: .userInitiated)
     private let polishQ = DispatchQueue(label: "blurt.dictation.polish", qos: .userInitiated)
@@ -149,6 +178,8 @@ final class DictationStream {
     private var skipped = false, delivered = false
     private var finished: ((Result) -> Void)?
     private var keyUp: CFTimeInterval = 0
+    /// Auto's structuring pass (only a list changes what is typed): finish(onlyForLists:)
+    private var onlyForLists = false
     /// the pause after each piece (DictationSegmenter.pauses, copied on the main thread as it learns them)
     private var pauses: [Double?] = []
     /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
@@ -183,6 +214,10 @@ final class DictationStream {
             enqueue(start: pieceStart, end: cut.end, hard: pieceHard)
             pieceStart = cut.nextStart
             pieceHard = cut.hard
+            if opt.rehear, DictationStitch.closesWindow(start: windowStart, end: cut.end, hardCut: cut.hard, sampleRate: NoteVoice.rate,
+                                                        window: opt.rehearWindow) {
+                closeWindow(end: cut.end)
+            }
         }
         interimIfDue()
     }
@@ -215,21 +250,21 @@ final class DictationStream {
     /// The transcripts joined as a refused polish types them (a comma where a boundary was heard); nil when a piece
     /// failed to transcribe (the safety path then decides, as without Esc).
     private func spokenResult() -> Result? {
-        let ps = lock.locked { pieces }
-        guard !ps.isEmpty, !ps.contains(where: \.asrFailed) else { return nil }
-        let gaps = lock.locked { pauses }
-        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps)
-        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps)
-        let text = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps)
+        let (ps, us, ws, gaps, pgaps) = lock.locked { (pieces, units, windows, unitGaps, pauses) }
+        guard !us.isEmpty, !us.contains(where: \.asrFailed) else { return nil }
+        let raw = DictationStitch.joinPieces(us.map(\.raw), pauses: gaps)
+        let heard = DictationStitch.joinPieces(us.map(\.asrText), pauses: gaps)
+        let text = DictationStitch.joinPiecesForFallback(us.map(\.raw), pauses: gaps)
         var terms: [String] = []
-        for p in ps { for t in p.asr?["terms"] as? [String] ?? [] where !terms.contains(t) { terms.append(t) } }
-        let first = ps.first { $0.asr != nil }?.asr ?? [:]
+        for p in us { for t in p.asr?["terms"] as? [String] ?? [] where !terms.contains(t) { terms.append(t) } }
+        let first = us.first { $0.asr != nil }?.asr ?? [:]
         var r = Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: nil, fellBack: true,
                        reason: "skipped", model: nil, asrModel: first["model"] as? String, language: first["language"] as? String,
                        biased: first["biased"] as? Bool ?? false, terms: terms, contextUsed: false, repaired: [],
-                       segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
+                       segments: ps.count, timing: timing(ps, windows: ws), pieces: ps.map { describe($0, pgaps) })
         r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
-        r.tags = ps.compactMap { $0.asr?["tag"] as? [String: Any] }
+        r.tags = us.compactMap { $0.asr?["tag"] as? [String: Any] }
+        r.windows = ws.map(describeWindow)
         return r
     }
 
@@ -238,30 +273,57 @@ final class DictationStream {
         live.stop()
         let ps = lock.locked { pieces }
         for p in ps { try? FileManager.default.removeItem(at: wav(p.index)) }
+        for w in lock.locked({ windows }) { try? FileManager.default.removeItem(at: dir.appendingPathComponent("\(id)-w\(w.index).wav")) }
         try? FileManager.default.removeItem(at: liveWav)
     }
 
     private func wav(_ i: Int) -> URL { dir.appendingPathComponent("\(id)-p\(i).wav") }
 
-    private func enqueue(start: Int, end: Int, hard: Bool, last: Bool = false) {
+    private func enqueue(start: Int, end: Int, hard: Bool, last: Bool = false, covered: Bool = false) {
         guard end > start else { return }
-        live.finalQueued()          // before the request goes out: no interim is sent from here until it is in
+        if !covered { live.finalQueued() }   // before the request goes out: no interim is sent from here until it is in
         let p = lock.locked { () -> Piece in
             let p = Piece(index: pieces.count, start: start, end: end, hard: hard, last: last)
             p.arrived = CACurrentMediaTime() - Double(max(0, audio.count - end)) / NoteVoice.rate
+            p.covered = covered
+            p.asrDone = covered
             pieces.append(p)
             return p
         }
-        let samples = Array(audio[max(0, start)..<min(end, audio.count)])
         emit(["event": "dictation_piece", "id": id, "index": p.index, "start": Double(start) / NoteVoice.rate,
-              "end": Double(end) / NoteVoice.rate, "hard": hard])
+              "end": Double(end) / NoteVoice.rate, "hard": hard, "covered": covered])
+        guard !covered else { return }
+        let samples = Array(audio[max(0, start)..<min(end, audio.count)])
         asrQ.async { self.transcribe(p, samples) }      // the queues keep the stream alive until its work is done
+    }
+
+    /// The open window ends here (main thread): the pieces since the last window, heard again on the speech queue
+    /// after their own transcripts.
+    private func closeWindow(end: Int, last: Bool = false) {
+        let (w, members) = lock.locked { () -> (Piece?, [Piece]) in
+            guard windowFirst < pieces.count, end > windowStart else { return (nil, []) }
+            let w = Piece(index: windows.count, start: windowStart, end: end, hard: false, last: last)
+            w.members = windowFirst..<pieces.count
+            windows.append(w)
+            return (w, Array(pieces[windowFirst..<pieces.count]))
+        }
+        windowFirst = lock.locked { pieces.count }
+        windowStart = end
+        guard let w else { return }
+        // one piece that was heard already: the same audio, nothing to hear again
+        let again = members.count > 1 || members.contains(where: \.covered)
+        let samples = again ? Array(audio[max(0, w.start)..<min(end, audio.count)]) : []
+        asrQ.async { self.rehear(w, members, samples) }
     }
 
     // MARK: the work (queues)
 
+    /// The unit before this one (a piece, or a window when the take is heard again).
     private func previous(_ p: Piece) -> Piece? {
-        lock.locked { p.index > 0 && p.index - 1 < pieces.count ? pieces[p.index - 1] : nil }
+        lock.locked { () -> Piece? in
+            let us = p.members == nil ? pieces : windows
+            return p.index > 0 && p.index - 1 < us.count ? us[p.index - 1] : nil
+        }
     }
 
     private func transcribe(_ p: Piece, _ samples: [Float]) {
@@ -297,12 +359,73 @@ final class DictationStream {
         DispatchQueue.main.async { self.finalLanded(p.index) }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
               "server_ms": r?["ms"] ?? NSNull(), "chars": text.count, "ok": ok, "code": p.asrCode ?? NSNull()])
-        polishQ.async { self.polish(p) }
+        if !opt.rehear { polishQ.async { self.polish(p) } }
     }
 
-    /// The pause after piece `i` (nil: not known, or no such piece).
+    /// A window heard again (speech queue, after its pieces): its audio in one request, with the windows' text so far
+    /// as context — a piece's prior is the same, only shorter. Then polished as one unit.
+    private func rehear(_ w: Piece, _ members: [Piece], _ samples: [Float]) {
+        guard !cancelled else { return }
+        let gaps = lock.locked { pauses }
+        let mine = members.map { $0.index < gaps.count ? gaps[$0.index] : nil }
+        let said = DictationStitch.joinPieces(members.map(\.raw), pauses: mine)
+        let saidHeard = DictationStitch.joinPieces(members.map(\.asrText), pauses: mine)
+        w.piecesText = said
+        let failed = members.contains(where: \.asrFailed)
+        if samples.isEmpty || failed {
+            // nothing to hear again (one piece), or a piece the model failed on: assemble's safety path decides
+            lock.locked { w.raw = said; w.asrText = saidHeard; w.asr = members.first?.asr; w.asrDone = true }
+            if failed { w.asrFailed = true; w.asrCode = members.first(where: \.asrFailed)?.asrCode }
+            polishQ.async { self.polish(w) }
+            return
+        }
+        let url = dir.appendingPathComponent("\(id)-w\(w.index).wav")
+        DictationStream.writeWav(samples, to: url)
+        let (before, wgaps) = lock.locked { (Array(windows.prefix(w.index).map(\.raw)), windowGaps()) }
+        let prior = String(DictationStitch.joinPieces(before, pauses: wgaps).suffix(200))
+        let t0 = CACurrentMediaTime()
+        let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
+                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          audioSeconds: Double(samples.count) / NoteVoice.rate)
+        w.asrSpan = (t0, CACurrentMediaTime())
+        w.loadMS += answer["load_ms"] as? Int ?? 0
+        try? FileManager.default.removeItem(at: url)
+        let text = (answer["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let ok = answer["ok"] as? Bool == true && !text.isEmpty
+        lock.locked {
+            if ok {
+                w.raw = text
+                w.asrText = (answer["asr_text"] as? String ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
+                w.asr = answer
+            } else {
+                // the pieces' own transcripts: never worse than before
+                w.raw = said; w.asrText = saidHeard; w.asr = members.first?.asr
+                if members.contains(where: \.covered) { w.asrFailed = true; w.asrCode = answer["code"] as? String ?? "error" }
+            }
+            w.asrDone = true
+        }
+        emit(["event": "dictation_rehear", "id": id, "window": w.index, "pieces": members.count,
+              "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100,
+              "ms": Int((w.asrSpan.1 - w.asrSpan.0) * 1000), "ok": ok, "code": ok ? NSNull() : answer["code"] ?? "empty",
+              "changed": ok && text != said])
+        polishQ.async { self.polish(w) }
+    }
+
+    /// The pause after each window (its last piece's) — lock held.
+    private func windowGaps() -> [Double?] {
+        windows.map { w in w.members.flatMap { $0.last }.flatMap { $0 < pauses.count ? pauses[$0] : nil } }
+    }
+
+    /// What polish works through, in order: the windows when the take is heard again, else the pieces — lock held.
+    private var units: [Piece] { opt.rehear ? windows : pieces }
+    private var unitGaps: [Double?] { opt.rehear ? windowGaps() : pauses }
+
+    /// The pause after unit `i` (nil: not known, or no such unit).
     private func pause(after i: Int) -> Double? {
-        lock.locked { i >= 0 && i < pauses.count ? pauses[i] : nil }
+        lock.locked { () -> Double? in
+            let g = unitGaps
+            return i >= 0 && i < g.count ? g[i] : nil
+        }
     }
 
     /// One polish window: the carried, unfinished clause + this piece (its own ending taken off unless it is the
@@ -318,14 +441,15 @@ final class DictationStream {
         carry = ""; carryPolished = ""; carryEnd = ""
         let input = DictationStitch.windowInput(carry: carried, piece: core)
         var ctx = lock.locked { context }?.payload ?? [:]
-        let so = DictationStitch.join(lock.locked { pieces.prefix(p.index).map(\.text) })
+        let so = DictationStitch.join(lock.locked { units.prefix(p.index).map(\.text) })
         // the dictation's own text so far goes as its own key: polish.py shows it as the turn before this one, so the
         // model continues it instead of repeating it (appended to "before", it was repeated in 8 of 15 list windows)
         if !so.isEmpty { ctx["dictated"] = so }
+        if opt.cloud != nil, !opt.recent.isEmpty { ctx["recent"] = opt.recent }
         p.polishInput = input
         let t0 = CACurrentMediaTime()
         let r = Dictation.polish(input, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
-                                 context: ctx.isEmpty ? nil : ctx, variant: opt.variant)
+                                 context: ctx.isEmpty ? nil : ctx, variant: opt.variant, cloud: opt.cloud)
         p.polishSpan = (t0, CACurrentMediaTime())
         p.loadMS += r?["load_ms"] as? Int ?? 0
         p.polish = r
@@ -446,16 +570,25 @@ final class DictationStream {
 
     /// The last piece, then everything joined; `structure` (Structured / Auto at key-up): the joined text then goes
     /// through the polish model's structuring pass once. `done` runs on the main queue.
-    func finish(keyUp: CFTimeInterval, structure: Bool = false, _ done: @escaping (Result) -> Void) {
+    func finish(keyUp: CFTimeInterval, structure: Bool = false, onlyForLists: Bool = false, _ done: @escaping (Result) -> Void) {
         self.keyUp = keyUp
+        self.onlyForLists = onlyForLists
         lock.locked { finished = done; delivered = false }
         live.stop()             // no more interim requests: an answer under way still shows until its piece is in
         lock.locked { finalCounts = (interimSent, interimShown) }
         let n = lock.locked { pieces.count }
         let tail = audio.count - pieceStart
-        if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
-            enqueue(start: pieceStart, end: audio.count, hard: pieceHard, last: true)
+        // the open window's pieces before the last one: under 2 s of them is not worth hearing again at key-up (where
+        // every decode is waited for) — they close as their own window, and the last piece is heard on its own
+        if opt.rehear, windowFirst < n, pieceStart - windowStart < Int(2 * NoteVoice.rate), !pieceHard {
+            closeWindow(end: pieceStart)
         }
+        if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
+            // heard again with the open window's other pieces: its own transcript would only be thrown away
+            enqueue(start: pieceStart, end: audio.count, hard: pieceHard, last: true,
+                    covered: opt.rehear && windowFirst < lock.locked { pieces.count })
+        }
+        if opt.rehear { closeWindow(end: lock.locked { pieces.last?.end } ?? audio.count, last: true) }
         onStage?("asr")
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
         // (strong captures: the controller has let go of the stream by now; the queues hold it until it is done)
@@ -474,7 +607,13 @@ final class DictationStream {
     /// was enumerated, or leaves a paragraph; its guard keeps the content). A refusal keeps Light's text.
     private func structure(_ r: inout Result) {
         let t0 = CACurrentMediaTime()
-        let s = Dictation.structure(r.text, timeout: opt.structureTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab)
+        // Auto asks the pass only whether there is a list: in the cloud it gets the polish's own limit, and when the
+        // cloud is slower than that Light's text is typed (a 4.6 s wait for a one-sentence take, v1.0.4) — no second
+        // wait for the local model
+        let s = onlyForLists && opt.cloud != nil
+            ? Dictation.structure(r.text, timeout: DictationCloud.requestBudget(chars: r.text.count), loadBudget: opt.loadBudget,
+                                  vocab: opt.vocab, cloud: opt.cloud, localFallback: false)
+            : Dictation.structure(r.text, timeout: opt.structureTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab, cloud: opt.cloud)
         let ms = Int((CACurrentMediaTime() - t0) * 1000)
         r.timing["structure_ms"] = ms
         r.timing["total_ms"] = Int((CACurrentMediaTime() - keyUp) * 1000)
@@ -486,31 +625,32 @@ final class DictationStream {
               "fell_back": s?["fell_back"] as? Bool ?? (s == nil), "reason": s?["reason"] ?? NSNull()])
     }
     private func assemble() -> Result {
-        let ps = lock.locked { pieces }
+        let (ps, us, ws, gaps, pgaps) = lock.locked { (pieces, units, windows, unitGaps, pauses) }
         // the safety path: a piece the speech model failed on → the whole recording, the old way
-        if let failed = ps.first(where: \.asrFailed) {
+        if let failed = us.first(where: \.asrFailed) {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "asr_failed", "code": failed.asrCode ?? NSNull()])
             // no model: the whole recording would only fail the same way
             if failed.asrCode == "model_missing" { return failure(.noModel, segments: ps.count) }
             return whole(ps.count)
         }
-        let gaps = lock.locked { pauses }
-        let raw = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps)
-        let heard = DictationStitch.joinPieces(ps.map(\.asrText), pauses: gaps)
+        let raw = DictationStitch.joinPieces(us.map(\.raw), pauses: gaps)
+        let heard = DictationStitch.joinPieces(us.map(\.asrText), pauses: gaps)
         // polish's windows, then the clause still carried (the dictation ended in it: its ending stays)
-        var text = opt.polish ? DictationStitch.join(ps.map(\.text) + [carry + carryEnd]) : raw
-        let pol = ps.compactMap(\.polish)
+        var text = opt.polish ? DictationStitch.join(us.map(\.text) + [carry + carryEnd]) : raw
+        let pol = us.compactMap(\.polish)
         var fellBack = pol.contains { $0["fell_back"] as? Bool == true }
         var reason = pol.first { $0["fell_back"] as? Bool == true }?["reason"] as? String
         let polished: String? = pol.isEmpty ? nil
-            : DictationStitch.join(ps.map(\.polishedPart) + [carryPolished + carryEnd])
+            : DictationStitch.join(us.map(\.polishedPart) + [carryPolished + carryEnd])
         // the joined result once more against the joined transcript: pieces that each passed can still add up wrong
         // a refusal types the transcript with a comma where a boundary was heard (`fallback_text`)
-        let fallback = DictationStitch.joinPiecesForFallback(ps.map(\.raw), pauses: gaps)
-        if opt.polish, ps.count > 1, !pol.isEmpty, text != raw,
+        let fallback = DictationStitch.joinPiecesForFallback(us.map(\.raw), pauses: gaps)
+        if opt.polish, us.count > 1, !pol.isEmpty, text != raw,
            let g = WarmServer.call("polish-serve", ["cmd": "guard", "raw": raw, "output": text, "vocab": opt.vocab,
                                                     "context": lock.locked { context }?.payload ?? NSNull(),
-                                                    "fallback": fallback], timeout: 2),
+                                                    "fallback": fallback,
+                                                    // windows the cloud model polished: its allowance (§Cloud polish)
+                                                    "cloud": pol.contains { $0["cloud"] as? Bool == true }], timeout: 2),
            g["pass"] as? Bool == false {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "stitch_guard", "reason": g["reason"] ?? NSNull()])
             text = (g["fallback_text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallback
@@ -518,19 +658,31 @@ final class DictationStream {
             reason = "stitch_" + (g["reason"] as? String ?? "guard")
         }
         var terms: [String] = []
-        for p in ps {
+        for p in us {
             for t in (p.asr?["terms"] as? [String] ?? []) + (p.polish?["terms"] as? [String] ?? []) where !terms.contains(t) { terms.append(t) }
         }
-        let first = ps.first { $0.asr != nil }?.asr ?? [:]
-        let repaired = ps.flatMap { ($0.polish?["repaired"] as? [String]) ?? [] }
+        let first = us.first { $0.asr != nil }?.asr ?? [:]
+        let repaired = us.flatMap { ($0.polish?["repaired"] as? [String]) ?? [] }
         var r = Result(raw: raw, asrText: heard, text: text.isEmpty ? raw : text, polished: polished, fellBack: fellBack,
                        reason: reason, model: pol.first { $0["model"] is String }?["model"] as? String,
                        asrModel: first["model"] as? String, language: first["language"] as? String,
                        biased: first["biased"] as? Bool ?? false, terms: terms,
                        contextUsed: pol.contains { $0["context"] as? Bool == true }, repaired: repaired,
-                       segments: ps.count, timing: timing(ps), pieces: ps.map { describe($0, gaps) })
-        r.tags = ps.compactMap { $0.asr?["tag"] as? [String: Any] }
+                       segments: ps.count, timing: timing(ps, windows: ws), pieces: ps.map { describe($0, pgaps) })
+        r.tags = us.compactMap { $0.asr?["tag"] as? [String: Any] }
+        r.windows = ws.map(describeWindow)
         return r
+    }
+
+    /// One window for the history and the Dictation Lab: its pieces, what they said and what it said.
+    private func describeWindow(_ w: Piece) -> [String: Any] {
+        let ms = Int(max(0, w.asrSpan.1 - w.asrSpan.0) * 1000)
+        return ["index": w.index, "pieces": w.members.map { Array($0) } ?? [],
+                "start": (Double(w.start) / NoteVoice.rate * 100).rounded() / 100,
+                "end": (Double(w.end) / NoteVoice.rate * 100).rounded() / 100,
+                "pieces_text": w.piecesText, "raw": w.raw, "asr_ms": ms, "heard_again": ms > 0,
+                "polish_in": w.polishInput, "text": w.text, "polish_ms": Int(max(0, w.polishSpan.1 - w.polishSpan.0) * 1000),
+                "fell_back": w.polish?["fell_back"] as? Bool ?? false, "reason": w.polish?["reason"] ?? NSNull()]
     }
 
     /// One piece for the Dictation Lab (what each stage made of it, and how long it took).
@@ -542,7 +694,7 @@ final class DictationStream {
                                 "polish_in": p.polishInput, "polished": p.polishedPart, "polish_ms": ms(p.polishSpan),
                                 "fell_back": p.polish?["fell_back"] as? Bool ?? false, "reason": p.polish?["reason"] ?? NSNull(),
                                 "repaired": p.polish?["repaired"] as? [String] ?? [], "load_ms": p.loadMS,
-                                "tag": p.asr?["tag"] ?? NSNull(), "case": p.polish?["case"] ?? NSNull()]
+                                "tag": p.asr?["tag"] ?? NSNull(), "case": p.polish?["case"] ?? NSNull(), "covered": p.covered]
         let g: Double? = p.index < gaps.count ? gaps[p.index] : nil
         o["pause_after"] = g.map { ($0 * 100).rounded() / 100 as Any } ?? NSNull()
         return o
@@ -582,9 +734,11 @@ final class DictationStream {
         let r = answer
         let t1 = CACurrentMediaTime()
         let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var wctx = lock.locked { context }?.payload
+        if opt.cloud != nil, !opt.recent.isEmpty { wctx = (wctx ?? [:]).merging(["recent": opt.recent]) { a, _ in a } }
         let pol = opt.polish && !raw.isEmpty ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,
-                                                               vocab: opt.vocab, context: lock.locked { context }?.payload,
-                                                               variant: opt.variant) : nil
+                                                               vocab: opt.vocab, context: wctx, variant: opt.variant,
+                                                               cloud: opt.cloud) : nil
         let t2 = CACurrentMediaTime()
         let text = (pol?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
         var timing = ["asr_ms": Int((t1 - t0) * 1000), "polish_ms": Int((t2 - t1) * 1000), "segments": n,
@@ -607,12 +761,15 @@ final class DictationStream {
     }
 
     /// What the user waited for after key-up (the work before it was hidden behind the talking), and the total.
-    private func timing(_ ps: [Piece]) -> [String: Int] {
+    private func timing(_ pieces: [Piece], windows: [Piece] = []) -> [String: Int] {
         func after(_ s: (Double, Double)) -> Double { max(0, s.1 - max(s.0, keyUp)) }
+        let ps = pieces + windows
         let asr = ps.reduce(0) { $0 + after($1.asrSpan) }, pol = ps.reduce(0) { $0 + after($1.polishSpan) }
         let asrAll = ps.reduce(0) { $0 + ($1.asrSpan.1 - $1.asrSpan.0) }, polAll = ps.reduce(0) { $0 + ($1.polishSpan.1 - $1.polishSpan.0) }
+        let again = windows.reduce(0) { $0 + ($1.asrSpan.1 - $1.asrSpan.0) }
         return ["asr_ms": Int(asr * 1000), "polish_ms": Int(pol * 1000), "load_ms": ps.reduce(0) { $0 + $1.loadMS },
-                "segments": ps.count, "asr_ms_all": Int(asrAll * 1000), "polish_ms_all": Int(polAll * 1000),
+                "segments": pieces.count, "windows": windows.count, "rehear_ms_all": Int(again * 1000),
+                "asr_ms_all": Int(asrAll * 1000), "polish_ms_all": Int(polAll * 1000),
                 "total_ms": Int((CACurrentMediaTime() - keyUp) * 1000), "interim_sent": interimCounts.sent,
                 "interim_shown": interimCounts.shown]
     }

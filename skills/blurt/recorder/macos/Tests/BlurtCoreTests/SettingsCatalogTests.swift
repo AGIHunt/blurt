@@ -98,7 +98,8 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertTrue(ids("hotkey").contains("shortcuts.snap"))       // the pane's keywords: its rows
         XCTAssertTrue(ids("voice").contains("general.voice_end_on_pause"))
         XCTAssertFalse(ids("voice").contains("dictation.key"))       // …but not when rows match themselves
-        XCTAssertFalse(ids("model").contains("speech.threads"))      // a pane keyword alone doesn't pull in its rows
+        XCTAssertFalse(ids("voice").contains("dictation.mode"))      // a pane keyword alone doesn't pull in its rows
+        XCTAssertTrue(ids("model").contains("speech.threads"))       // "model" names the Models pane (v1.0.4): its rows come
         XCTAssertTrue(ids("model").contains("storage.models"))
         XCTAssertEqual(ids("shortcuts").first, "shortcuts.record")   // a pane's name: its rows lead, in page order
         XCTAssertEqual(ids("shortcut").first, "shortcuts.record")    // …or the start of it, as it's typed

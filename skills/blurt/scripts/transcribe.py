@@ -1556,7 +1556,8 @@ class DashScope:
         self.key = os.environ.get("DASHSCOPE_API_KEY")
         if not self.key:
             raise Fail("no API key: set DASHSCOPE_API_KEY", "auth")
-        self.base = (os.environ.get("BLURT_ASR_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
+        # its own variable: BLURT_ASR_BASE_URL is the OpenAI-compatible service's (both can be set in the app)
+        self.base = (os.environ.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
         self.model = args.model or "qwen3-asr-flash"
         self.args = args
 

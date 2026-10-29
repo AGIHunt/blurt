@@ -18,6 +18,7 @@
 import AppKit
 import BlurtCore
 import Combine
+import SwiftUI
 import Quartz
 import UniformTypeIdentifiers
 
@@ -258,6 +259,30 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         if m.selection.isEmpty || !m.selection.isSubset(of: ids) { m.select(m.filtered.first?.id) }
     }
 
+    /// New Item (BA-21): the sheet over the window; the item goes to the place on show (a project, the inbox), else
+    /// the current project, and the list selects it once written.
+    @objc func newItem() {
+        show()
+        guard let w = window, w.attachedSheet == nil else { return }
+        let target: String
+        switch model.scope {
+        case .project(let id): target = id
+        case .inbox, .unassigned: target = "inbox"
+        default: target = ProjectStore.shared.currentID ?? "inbox"
+        }
+        let name = target == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: target)?.name ?? T("project.inbox")
+        var sheet: NSWindow?
+        let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name) { [weak self] uid in
+            if let s = sheet { w.endSheet(s) }
+            guard let self, let uid else { return }
+            self.model.reload()
+            self.reveal(uid: uid)
+        })
+        let s = NSWindow(contentViewController: host)
+        sheet = s
+        w.beginSheet(s)
+    }
+
     func reveal(uid: String) {
         show()
         guard let row = model.itemRow(uid: uid) else {
@@ -369,6 +394,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         defer {
             titleView.set(title: window?.title ?? "", subtitle: window?.subtitle ?? "")
             list.heading.set(title: window?.title ?? "", counts: window?.subtitle ?? "")
+            if list.heading.onAdd == nil { list.heading.onAdd = { [weak self] in self?.newItem() } }
+            // a session's page lists what one recording made: items are added in a place, not into a recording
+            if case .session = model.scope { list.heading.add.isHidden = true } else { list.heading.add.isHidden = false }
             syncFilterItem()
         }
         let q = model.text.trimmingCharacters(in: .whitespaces)

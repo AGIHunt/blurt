@@ -55,7 +55,7 @@
 "settings.kit.not_set" = "Not set";
 "settings.kit.privacy" = "Privacy";
 "settings.kit.shortcuts" = "Shortcuts";
-"settings.kit.speech" = "Speech";
+"settings.kit.speech" = "Models";
 "settings.kit.storage" = "Storage";
 "settings.kit.system_settings" = "System Settings…";
 
@@ -141,7 +141,7 @@
 "onboarding.models.stop" = "Stop";
 "onboarding.models.failed_toast" = "The model download stopped";
 "onboarding.models.failed_open" = "Try Again…";
-"onboarding.models.later" = "You can change models later in Settings, under Dictation and Speech.";
+"onboarding.models.later" = "You can change models later in Settings, under Models.";
 "onboarding.uv.needed" = "Blurt needs a small helper, uv, to run its speech models.";
 "onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
 "onboarding.try" = "Try it";
@@ -167,7 +167,7 @@
 "settings.storage.model.vad" = "Voice detection, for every local model";
 "settings.storage.model.polish" = "Dictation clean-up";
 "settings.storage.model.none" = "No models downloaded yet";
-"settings.storage.model.footer" = "Chosen in Speech.";
+"settings.storage.model.footer" = "Chosen in Models.";
 "settings.storage.videos" = "Videos";
 "settings.storage.videos.older" = "Older Than %ld Days";
 "settings.storage.videos.all" = "All Videos";
@@ -179,7 +179,7 @@
 "settings.storage.videos.auto_confirm_title" = "Delete videos after %ld days?";
 "settings.storage.videos.auto_confirm" = "Older ones go to the Trash now:";
 "settings.storage.videos.auto_on" = "Turn On";
-"settings.storage.model.footer_shared" = "Chosen in Speech. Blurt never deletes models in the shared Hugging Face cache.";
+"settings.storage.model.footer_shared" = "Chosen in Models. Blurt never deletes models in the shared Hugging Face cache.";
 "settings.storage.videos.detail" = "%@ of organized recordings; items and transcripts stay";
 "settings.storage.recordings" = "Recordings";
 "settings.storage.app_data" = "App data";
@@ -278,6 +278,7 @@
 "settings.kw.dictation.by_app" = "per app, app category, chat, code, mail, notes";
 "settings.kw.dictation.polish_timeout" = "timeout, wait, seconds, polish";
 "settings.kw.dictation.word_list" = "vocabulary, dictionary, custom words, names, terms, hotwords";
+"settings.kw.speech.cloud_polish" = "cloud, polish, LLM, DeepSeek, OpenAI, Anthropic, API key, base URL";
 "settings.kw.dictation.context" = "context, cursor, surrounding text";
 "settings.kw.dictation.learn" = "learn, corrections, fixes";
 "settings.kw.dictation.history_keep" = "history, retention, days, keep";
@@ -426,7 +427,7 @@
 "settings.privacy.perm.not_allowed" = "Not allowed";
 "settings.privacy.local_asr.auto" = "Automatic";
 "settings.privacy.local_asr.local" = "On This Mac Only";
-"settings.privacy.local_asr.help" = "Cloud services are set up in Speech. Organizing and fixing are done by the agent you chose, under its own terms.";
+"settings.privacy.local_asr.help" = "Cloud services are set up in Models. Organizing and fixing are done by the agent you chose, under its own terms.";
 "settings.kw.shortcuts.pen" = "pen, draw, hold to draw, circle, control, annotate";
 "settings.kw.agents.organize" = "model, effort, cheapest, tokens, cost, organize, cards, recordings, AI fill-in";
 "settings.search.title_query" = "“%@”";

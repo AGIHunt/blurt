@@ -42,7 +42,9 @@ configurations and run them all again after a change (a regression run). Everyth
                                                       agent (agents.py), else the local polish model
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
-vocab=on|off, context=on|off, mode=pieces|windows|whole, language=auto|zh|en…, style=verbatim|light|structured|auto (the
+vocab=on|off, context=on|off, cloud=on|off (polish by the cloud model of record.dictation.cloud_polish, the key from
+BLURT_POLISH_API_KEY — docs/design/dictation.md §Cloud polish; off by default), mode=pieces|windows|whole, rehear=on|off (pieces / windows: the pieces heard again in ~10 s
+windows, as the app does since v1.0.4 — docs/design/dictation.md §Hearing again; default record.dictation.rehear, on), language=auto|zh|en…, style=verbatim|light|structured|auto (the
 dictation styles, docs/design/dictation-styles.md: Structured and Auto run polish.py's structuring pass on Light's
 stitched text, as the app does at key-up, then the app category's variant of light from dictation_styles.py), category=chat|code|mail|notes|other (default: the case's app)
 e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off   rerun ID --config style=light --config style=structured
@@ -496,7 +498,9 @@ def parse_spec(spec: str | dict | None) -> dict:
     s = settings()
     cfg = {"asr": None, "polish": s.get("polish", "light") != "off", "polish_model": None, "vocab": True,
            "context": s.get("context", True) is not False, "mode": "pieces", "language": None, "style": None,
-           "category": None}
+           "category": None, "rehear": s.get("rehear", True) is not False,
+           # "current" polishes as the app does: in the cloud when it is on and the key came along (--key-stdin)
+           "cloud": bool((s.get("cloud_polish") or {}).get("on")) and bool(os.environ.get("BLURT_POLISH_API_KEY"))}
     onoff = lambda v: v if isinstance(v, bool) else str(v).lower() in ("on", "1", "true", "yes")  # noqa: E731
     for k, v in raw.items():
         if k in ("asr", "asr_model"):
@@ -508,7 +512,7 @@ def parse_spec(spec: str | dict | None) -> dict:
                 cfg["polish"], cfg["polish_model"] = True, v
         elif k == "polish_model":
             cfg["polish_model"] = v or None
-        elif k in ("vocab", "context"):
+        elif k in ("vocab", "context", "rehear", "cloud"):
             cfg[k] = onoff(v)
         elif k == "mode":
             if v not in ("pieces", "windows", "whole"):
@@ -539,6 +543,11 @@ def config_key(cfg: dict) -> str:
              f"mode={cfg.get('mode') or 'pieces'}"]
     if cfg.get("language"):
         parts.append(f"language={cfg['language']}")
+    if cfg.get("cloud") and cfg.get("polish"):
+        parts.append("cloud=on")
+    # only when on: the runs from before hearing again keep their keys
+    if cfg.get("rehear") and (cfg.get("mode") or "pieces") != "whole":
+        parts.append("rehear=on")
     # a style only when one was asked for: runs from before the styles keep their keys (light = the default)
     if cfg.get("style") and cfg["style"] != "light":
         parts.append(f"style={cfg['style']}")
@@ -573,6 +582,9 @@ def cmd_configs(_a) -> None:
         {"label": "no context", "spec": "context=off"},
         {"label": "whole take", "spec": "mode=whole"},
     ]
+    # cloud polish set up (record.dictation.cloud_polish): the two side by side — this Mac's model and the cloud's
+    if (settings().get("cloud_polish") or {}).get("on") and os.environ.get("BLURT_POLISH_API_KEY"):
+        presets[1:1] = [{"label": "cloud polish", "spec": "cloud=on"}, {"label": "local polish", "spec": "cloud=off"}]
     emit({"ok": True, "asr": {"selected": asr.get("selected"), "models": [m for m in asr.get("models") or [] if m.get("installed")]},
           "polish": {"selected": pol.get("selected"), "models": [m for m in pol.get("models") or [] if m.get("installed")]},
           "presets": presets})
@@ -653,11 +665,15 @@ class Servers:
             raise Fail((r or {}).get("error") or "speech model failed", (r or {}).get("code") or "asr_failed")
         return r
 
+    cloud: dict | None = None      # run_case sets it for cloud=on (cloud_settings)
+
     def structure(self, text: str, model: str | None, vocab: bool, timeout: float | None = None) -> dict:
         """polish.py serve's structuring pass (Structured, Auto), as the app calls it at key-up."""
         if not self.ensure("polish-serve", "polish.py", ["serve", "--idle", "300", "--exit-after", "900"]):
             return {"ok": True, "text": text, "fell_back": True, "reason": "unavailable"}
         req = {"cmd": "structure", "text": text, "vocab": None if vocab else []}
+        if self.cloud:
+            req["cloud"] = self.cloud
         if timeout:
             req["timeout"] = timeout
         if model:
@@ -672,6 +688,8 @@ class Servers:
         if not self.ensure("polish-serve", "polish.py", ["serve", "--idle", "300", "--exit-after", "900"]):
             return {"ok": True, "text": text, "fell_back": True, "reason": "unavailable"}
         req = {"cmd": "polish", "text": text, "timeout": timeout, "vocab": None if vocab else [], "context": context}
+        if self.cloud:
+            req["cloud"] = self.cloud
         if variant:
             req["variant"] = variant
         if model:
@@ -689,7 +707,7 @@ class Servers:
 
     def guard(self, raw: str, output: str, fallback: str | None, vocab: bool, context: dict | None) -> dict | None:
         """polish.py serve's stitch guard (the joined pieces against the joined transcript), as the app calls it."""
-        req = {"cmd": "guard", "raw": raw, "output": output, "vocab": self.vocab_terms() if vocab else [],
+        req = {"cmd": "guard", "raw": raw, "output": output, "vocab": self.vocab_terms() if vocab else [], "cloud": bool(self.cloud),
                "context": context}
         if fallback is not None:
             req["fallback"] = fallback
@@ -762,12 +780,27 @@ def tag_summary(tags: list[dict]) -> dict:
     return {"tag_margin": m, "fragile_tag": abs(m) < dictation_vocab.FRAGILE_MARGIN}
 
 
+def cloud_settings() -> dict:
+    """The cloud model the app is set to (record.dictation.cloud_polish), the key from BLURT_POLISH_API_KEY (the app
+    keeps its own in the Keychain)."""
+    c = dict(settings().get("cloud_polish") or {})
+    key = os.environ.get("BLURT_POLISH_API_KEY") or ""
+    if not key:
+        raise Fail("cloud=on needs BLURT_POLISH_API_KEY", "usage")
+    return {"provider": os.environ.get("BLURT_POLISH_PROVIDER") or c.get("provider") or "deepseek",
+            "base_url": os.environ.get("BLURT_POLISH_BASE_URL") or c.get("base_url") or "",
+            "model": os.environ.get("BLURT_POLISH_MODEL") or c.get("model") or "",
+            "protocol": c.get("protocol") or "", "key": key}
+
+
 def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
     """One case through one configuration → {"outputs", "metrics", "config"}. `backend` has .asr / .polish (Servers,
     or a fake in tests). `wav`: the recording when it isn't the case's own (a history take under review)."""
     wav = wav or audio_of(c)
     if not wav:
         raise Fail(f"case {c.get('id')} has no audio", "no_audio")
+    if hasattr(backend, "cloud"):
+        backend.cloud = cloud_settings() if cfg.get("cloud") and cfg.get("polish") else None
     x = read_samples(wav)
     segs = (c.get("take") or {}).get("segments") or []
     cuts = []
@@ -775,16 +808,16 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
         for s in segs:
             a, b = int(float(s.get("start", 0)) * SR), int(float(s.get("end", 0)) * SR)
             if b > a:
-                cuts.append((max(0, a), min(len(x), b), s.get("pause_after")))
+                cuts.append((max(0, a), min(len(x), b), s.get("pause_after"), bool(s.get("hard"))))
     if not cuts:
-        cuts = [(0, len(x), None)]
+        cuts = [(0, len(x), None, False)]
     t0 = time.perf_counter()
     pieces, asr_ms, load_ms = [], 0, 0
     model = language = None
     terms: list[str] = []
     hint = asr_hint(context_payload(c)) if cfg.get("context") else ""
     with tempfile.TemporaryDirectory(prefix="blurt-lab-") as td:
-        for i, (a, b, pause) in enumerate(cuts):
+        for i, (a, b, pause, hard) in enumerate(cuts):
             p = Path(td) / f"p{i}.wav"
             write_samples(p, x[a:b])
             prior = join_pieces([q["raw"] for q in pieces], [q["pause_after"] for q in pieces])[-200:] if pieces else ""
@@ -798,14 +831,47 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
             language = language or r.get("language")
             terms += [t for t in r.get("terms") or [] if t not in terms]
             pieces.append({"index": i, "start": round(a / SR, 2), "end": round(b / SR, 2), "pause_after": pause,
+                           "hard": hard, "a": a, "b": b,
                            "raw": (r.get("text") or "").strip(), "asr_text": (r.get("asr_text") or r.get("text") or "").strip(),
                            "asr_ms": ms, "tag": r.get("tag")})
-    raw = join_pieces([q["raw"] for q in pieces], [q["pause_after"] for q in pieces])
-    heard = join_pieces([q["asr_text"] for q in pieces], [q["pause_after"] for q in pieces])
-    tags = [q["tag"] for q in pieces if q.get("tag")]
+        # hearing again (DictationStream: the pieces once more in ~10 s windows, the windows' text so far as context);
+        # polish then works window by window, as in the app
+        windows: list[dict] = []
+        if cfg.get("rehear") and len(pieces) > 1:
+            for g in stitch.rehear_groups(pieces, float(settings().get("rehear_window_s") or stitch.REHEAR_WINDOW)):
+                ms_ = [pieces[i] for i in g]
+                said = join_pieces([q["raw"] for q in ms_], [q["pause_after"] for q in ms_])
+                said_heard = join_pieces([q["asr_text"] for q in ms_], [q["pause_after"] for q in ms_])
+                w = {"pieces": g, "start": ms_[0]["start"], "end": ms_[-1]["end"], "pause_after": ms_[-1]["pause_after"],
+                     "pieces_text": said, "raw": said, "asr_text": said_heard, "asr_ms": 0, "tag": ms_[0].get("tag")}
+                if len(g) > 1:
+                    p = Path(td) / f"w{len(windows)}.wav"
+                    write_samples(p, x[ms_[0]["a"]:ms_[-1]["b"]])
+                    prior = join_pieces([q["raw"] for q in windows], [q["pause_after"] for q in windows])[-200:]
+                    t1 = time.perf_counter()
+                    try:
+                        r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"),
+                                        **({"hint": hint} if hint else {}))
+                        if (r.get("text") or "").strip():
+                            w.update(raw=r["text"].strip(), asr_text=(r.get("asr_text") or r["text"]).strip(), tag=r.get("tag"))
+                    except Fail:
+                        pass        # the pieces' own transcripts, as the app keeps them
+                    w["asr_ms"] = int((time.perf_counter() - t1) * 1000)
+                    asr_ms += w["asr_ms"]
+                windows.append(w)
+    for q in pieces:
+        q.pop("a", None); q.pop("b", None)
+    units = windows or pieces
+    raw = join_pieces([q["raw"] for q in units], [q["pause_after"] for q in units])
+    heard = join_pieces([q["asr_text"] for q in units], [q["pause_after"] for q in units])
+    tags = [q["tag"] for q in units if q.get("tag")]
     out = {"segments": pieces, "raw": raw, "asr_text": heard, "polished": None, "text": raw, "fell_back": False,
            "reason": None, "repaired": [], "terms_applied": terms, "asr_model": model, "polish_model": None,
            "language": language, "tags": tags, **tag_summary(tags)}
+    if windows:
+        out["rehear"] = windows
+    # what is left at key-up of the speech model's work: the last piece, or the open window heard again
+    last_asr_ms = units[-1]["asr_ms"] if units and units[-1]["asr_ms"] else pieces[-1]["asr_ms"]
     polish_ms = structure_ms = 0
     style = cfg.get("style") or "light"
     cat = cfg.get("category") or styles.category((c.get("app") or {}).get("bundle"))
@@ -831,16 +897,16 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
         structure_ms = int((time.perf_counter() - t1) * 1000)
         return r
     if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and \
-            (len(pieces) > 1 or (style == "structured" and can_structure)):
+            (len(units) > 1 or (style == "structured" and can_structure)):
         t1 = time.perf_counter()
         guard = getattr(backend, "guard", None)
-        w = stitch.stream([{"raw": q["raw"]} for q in pieces], [q["pause_after"] for q in pieces], one,
+        w = stitch.stream([{"raw": q["raw"]} for q in units], [q["pause_after"] for q in units], one,
                           (lambda r_, o_, f_: guard(r_, o_, f_, bool(cfg.get("vocab")), ctx)) if guard else None, ctx,
                           structure=structure if style == "structured" and can_structure else None)
         polish_ms = int((time.perf_counter() - t1) * 1000) - structure_ms
         structured = w.get("structured")
         load_ms += sum(int(a.get("load_ms") or 0) for a in answers)
-        for q, wp in zip(pieces, w["pieces"]):
+        for q, wp in zip(units, w["pieces"]):
             q.update(polish_in=wp["polish_in"], text=wp["text"], fell_back=wp["fell_back"], reason=wp["reason"],
                      polish_ms=wp["ms"], echo=wp.get("echo"))
         out.update(text=w["text"] or raw, light=w.get("light"), fell_back=w["fell_back"], reason=w["reason"],
@@ -875,7 +941,8 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
     out.update(text=st["text"], style={"style": style, "category": cat, "rendered": st["rendered"], "variant": st["variant"]})
     out["timings"] = {"asr_ms": asr_ms, "polish_ms": polish_ms, "structure_ms": structure_ms, "load_ms": load_ms,
                       "style_ms": int((time.perf_counter() - t2) * 1000),
-                      "last_polish_ms": out.get("last_polish_ms", 0),
+                      "last_polish_ms": out.get("last_polish_ms", 0), "last_asr_ms": last_asr_ms,
+                      "windows": len(windows),
                       "after_keyup_ms": out.get("last_polish_ms", 0) + structure_ms,
                       "total_ms": int((time.perf_counter() - t0) * 1000), "segments": len(pieces)}
     t = truth(c)
@@ -1633,6 +1700,12 @@ def cmd_learn(a) -> None:
 
 
 def main() -> None:
+    # the app's cloud polish key (the Keychain's) comes on stdin, never on the command line
+    if "--key-stdin" in sys.argv:
+        sys.argv.remove("--key-stdin")
+        k = sys.stdin.readline().strip()
+        if k:
+            os.environ["BLURT_POLISH_API_KEY"] = k
     p = argparse.ArgumentParser(prog="dictation_lab.py", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("list")

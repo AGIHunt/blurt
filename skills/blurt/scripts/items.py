@@ -38,8 +38,11 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
              and, on items with a session in the agent's desktop app, `_work_runner: "desktop"`
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
-  migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items; --all also
-             forgets the sessions unfinished items point at that no longer exist ("repaired": their files)
+  migrate    [--all [--no-projects] | SESSION … | --root DIR] [--dry-run]     v1/v2 sessions → items; --all also
+             forgets the sessions unfinished items point at that no longer exist ("repaired": their files).
+             --no-projects (the app, at every launch): only the v0.6 places — its recordings, the inbox, the repos it
+             had bound — never the projects' own folders: a project opened later that held an old session (a scripted
+             demo's items.json) got it turned into items at the next launch, unasked (v1.0.4)
   path       REF                                       → {"path","store","project","uid","id"}
   ensure-uids SESSION                                  a v2 session not ingested yet: write the missing uids
 
@@ -1371,7 +1374,7 @@ def _add_op(op, b, home, session, now, find, uid_of) -> None:
 
 
 # ------------------------------------------------------------------ v1 / v2 sessions → stores
-def migrate_candidates(root: Path | None = None) -> list[Path]:
+def migrate_candidates(root: Path | None = None, projects_too: bool = True) -> list[Path]:
     import projects  # noqa: PLC0415
     containers = []
     if root is not None:
@@ -1381,7 +1384,8 @@ def migrate_candidates(root: Path | None = None) -> list[Path]:
         from _common import global_config  # noqa: PLC0415
         bound = (global_config().get("record") or {}).get("workspaces") or []  # v0.6, before projects.py migrate
         containers += [st.legacy_recordings(), st.inbox_root() / "sessions"]
-        containers += [Path(e["path"]) / ".blurt" / "sessions" for e in projects.entries()]
+        if projects_too:
+            containers += [Path(e["path"]) / ".blurt" / "sessions" for e in projects.entries()]
         containers += [Path(os.path.expanduser(w)) / ".blurt" / "sessions" for w in bound if isinstance(w, str)]
     out = []
     for c in containers:
@@ -1601,6 +1605,7 @@ def build_parser() -> Parser:
     s = sub.add_parser("migrate")
     s.add_argument("sessions", nargs="*")
     s.add_argument("--all", action="store_true")
+    s.add_argument("--no-projects", action="store_true")
     s.add_argument("--root")
     s.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("path")
@@ -1709,7 +1714,7 @@ def run(a) -> dict:
             import projects  # noqa: PLC0415
             if not a.dry_run:
                 projects.cmd_migrate()
-            out = migrate(migrate_candidates(), a.dry_run)
+            out = migrate(migrate_candidates(projects_too=not a.no_projects), a.dry_run)
             return {**out, "repaired": repair_work(a.dry_run)}
         if a.root:
             sessions = migrate_candidates(Path(a.root))

@@ -64,7 +64,9 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
 - **Hold**: held alone for 250 ms starts (the caller ticks at `deadline`), release stops, and another key or a click
   joining in cancels.
 - `Esc` cancels. `arm` on a clean key-down warms the models and opens the mic while the user starts talking
-  (§Start of speech).
+  (§Start of speech). (v1.0.4) Esc also has a Carbon hotkey for as long as a take listens (`.dictationEsc`): where the
+  event tap doesn't see it — secure event input on, another tool holding the key — the hotkey still cancels. A press
+  both see counts once (`Dictation.escTwin`, 0.4 s); `dictation_secure_input` logs when secure input was on.
 - **⇧ is the style toggle** (§Styles): ⇧ pressed and released alone (within 1 s) while dictating says `.style`, in
   push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still cancels, as
   any shortcut does). A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over
@@ -355,6 +357,44 @@ word (`dictation stop-after`) — the worst case for streaming, the last sentenc
 - The target (< 1 s after a 30 s dictation, no worse for short ones) holds: the last piece's ASR + polish is all
   that is left, ~0.2 + 0.2 s, whatever the length. A one-sentence dictation is one piece: the same work as before
   (~15 ms more, within a run's spread: 265–281 ms before, 283–297 ms now).
+
+### Hearing again (v1.0.4)
+
+What the user saw on long takes: whole words misheard — 德宝 / 豆宝 / 多宝 for 豆包, 巨幅 for GIF, 强势了 for 尝试了,
+请问 for 千问 — and many manual fixes. A piece is cut at the first pause after 3 s, so most pieces are 3–8 s: half a
+sentence, heard without the rest of it. Replayed through the app's own decode (`transcribe.py`'s `NoteEngine.note`,
+the words, the text so far as prior) on 16 of the user's own takes with misheard words in them:
+
+| What was decoded | Fixed (of 17) | Misheard words left (of 21) | The last decode at key-up (median / max) |
+|---|---:|---:|---:|
+| the take's own pieces (replayed) | 3 | 19 | 0.14 / 0.49 s |
+| windows of the pieces, ≥ 10 s | 6 | 11 | 0.20 / 0.55 s |
+| windows, ≥ 15 s | 7 | 11 | 0.25 / 0.76 s |
+| windows, ≥ 20 s | 6 | 11 | 0.33 / 0.76 s |
+
+So `DictationStream` hears the pieces **again in windows** while the user still talks (`DictationStitch.rehearGroups`,
+`rehearWindow` = 10 s; `record.dictation.rehear`, `rehear_window_s`):
+
+- **A window closes after a piece** once it spans 10 s and the cut after the piece was a pause — never at a hard cut,
+  so windows never share audio: no overlap to drop, nothing deduplicated. Its audio (the take's own samples, from
+  its first piece's start to its last piece's end) goes to the warm speech server once, with the windows' text so far
+  as prior (the same request a piece makes).
+- **Polish then works window by window** (the same carried-clause windows as before, §Polish windows), so polish sees
+  whole sentences too. The pieces' own transcripts are still the live text while talking; what is typed comes from
+  the windows.
+- **At key-up the open window is what is left**: the pieces since the last window, with the last piece heard only
+  there (`covered`: its own transcript would be thrown away). It is decoded like every other window — its audio and
+  the text before it — so it is never worse than the old last piece; with a short tail it is just that piece.
+- A window of one piece keeps that piece's transcript (the same audio); one the model fails on, or answers nothing for,
+  keeps its pieces' (`dictation_rehear`: `ok`, `changed`); a covered piece in a failed window sends the take down the
+  safety path (the whole recording), as a failed piece does.
+- The history keeps both: `pieces` (each with `hard`, `covered`) and `windows` (`pieces`, `pieces_text`, `raw`,
+  `asr_ms`), and `timing` has `windows` and `rehear_ms_all`. The Lab replays it (`rehear=on`, the default;
+  `dictation_stitch.rehear_groups` is the port, the same cases in both test suites).
+
+End to end in the Lab (22 of the user's takes, Qwen3-ASR 1.7B + Gemma 4 E2B, `mode=windows`): misheard words left 17 →
+11 of 22 with 10 s windows (10 with 15 s), the work after key-up 266 → 376 ms (median; 601 ms with 15 s windows), so
+10 s it is. Voice notes hear their pieces again the same way (`VoiceNoteStream`, `record.voice.rehear`): the card gets the windows' text, the panel the pieces' (`voice_rehear`).
 
 ### Punctuation at the seams
 
@@ -871,6 +911,45 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   `BlurtCore/NothingHeard`); Change Mic… opens Settings → Dictation's microphone;
 - uses the ASR caps: `asr.limits` threads (3 here), MLX memory limit = 25 % of RAM, utility QoS + nice 10.
   Utility vs user-initiated made no difference to latency (108 vs 118 ms median: the work is on the GPU).
+
+### Cloud polish (v1.0.4)
+
+Opt-in (Settings → Models → Cloud polish, `speech.cloud_polish`; `DictationCloud`, `Settings/DictationCloudSheet.swift`): Light's windows
+and Structured's pass at key-up go to a model the user set up — DeepSeek (the preset: `https://api.deepseek.com`,
+`deepseek-flash`, thinking off), or their own OpenAI- or Anthropic-compatible API (base URL, model) — through the same
+warm polish server (`polish.py` `cloud_polish`, `scripts/polish_cloud.py`). Every failure — no network, a refused key,
+past its time (4 s + 6 ms a character), an answer the guard refuses — is answered by the local model instead
+(`cloud_error` in the answer); without a local polish model the cloud one is the only one.
+
+- **Measured** (30 of the user's takes, blind, Opus subagents and Codex): local Gemma 4 E2B 4.2 / 10, DeepSeek Flash
+  with this prompt and the recent dictations 7.2 (the local prompt on DeepSeek: 6.2; Qwen3.6 27B 6.7, 35B-A3B 6.0,
+  Qwen3.5 9B 5.5, Claude Haiku 5.5 6.3); the manual edits a take 3.9 → 1.4. DeepSeek from Beijing: 0.95 s median a
+  call, p90 2.1 s; ≈ ¥0.0013 a take (¥3–4 a month at 80 takes a day, peak price).
+- **The prompt** (`polish_cloud.LIGHT`): fix misheard words from the sentence, the words, the recent dictations, the
+  app and what the model knows — only to a word that sounds alike; punctuate by meaning, not by pauses; leave out
+  fillers, restarts and taken-back words; keep every point, number, name and the speaker's tone; never answer the
+  text. Its examples name none of the evaluated takes' words.
+- **What it is told besides the text**: the custom words (ranked as for the local model), the app's name (and the chat
+  / terminal note), the text around the cursor, the stream's text so far (as the turn before), and the last 3
+  dictations in the same app in the last 30 minutes (`DictationCloud.recent`, only with `context` on): they named
+  the topic — 豆宝 → 豆包 needed them.
+- **Structured stays two passes** (Light while talking, the structuring prompt over the whole take at key-up, as
+  locally): one combined prompt, even tuned, left the 8-point list of a 241 s take a paragraph (lists in 2 of 3
+  enumerating takes; two passes: 3 of 3).
+- **The guard** trusts a cloud answer (`cloud=True`; the user's call, v1.0.4: the word-by-word rules were made for a 2B
+  model and refused good answers — a fixed word in the other script (请问 → Qwen) was "translated", a joined take with
+  three such fixes went back to the transcript). Only what is plainly not the dictation any more is refused: nothing
+  at all, another language (the text's CJK share moved by > 0.25), a summary (more lost than Structured allows), an
+  answer or a preface added, a list in Light. No word counts, no kept-word check, no number check, no repair. Every
+  answer of the six evaluated models on the 30 takes passes; an answer to the text, or a summary, is still refused
+  (`tests/test_polish_cloud.py`). The stitch guard over the joined windows uses the same allowance.
+- **The key** is in the login Keychain (service "Blurt Cloud Polish", account = provider); the app sends it with each
+  request to the local server, never to a file or a log. Test (in the sheet) runs `polish_cloud.py check` with the key
+  on stdin. Never sent: the recording.
+- **The reminder**: while it isn't on, the first dictation of each day ends with one island line — "Turn on cloud
+  polish…" · Set Up… · Don't Remind Me (`cloud_hint` = false); `cloud_hint_day` is the day it was shown.
+- Everywhere polish runs: dictation's windows and the safety path, Structured, reformat-last, a snap's / voice note's
+  structuring pass. The Lab: `cloud=on` (the key from `BLURT_POLISH_API_KEY`).
 
 ### Why a polish was "unavailable" (A), and model loads
 
@@ -1452,6 +1531,11 @@ while secure event input is on, for Blurt's own windows (test builds read only t
 stores only `context_used`; the text itself only with `keep_audio` (on unless turned off).
 - Apps whose focused element Accessibility can't read (WeChat's input box, some Electron apps): the front app's name
   and its focused window's title only (`DictationContext.titleOnly`: often the chat's or the document's name).
+- (v1.0.4) Electron apps (Claude, VS Code, Slack…: `Contents/Frameworks/Electron Framework.framework`) build their
+  Accessibility tree only when asked: at key-down Blurt sets `AXManualAccessibility` on the app once per pid
+  (`DictationField.wakeWebAccessibility`, `dictation_web_ax`), and when the field still can't be read reads again after
+  0.3 s. Without it the text around the cursor was empty, so a take after "。" started with "。" again and text already
+  in the box was typed a second time.
 - A streamed dictation's pieces get the polished text so far appended to "before the cursor".
 
 ## Auto-learn
@@ -1865,6 +1949,9 @@ recordings live in `dictation/lab/` and are never touched.
 | `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
+| `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` (10) |
+| `cloud_polish` | unset = off. `{"on", "provider": "deepseek"\|"openai"\|"anthropic", "base_url", "model"}` (§Cloud polish; the key is in the Keychain) |
+| `cloud_hint` | unset: the daily reminder of cloud polish while it is off; `false` = never again (`cloud_hint_day`: the day it was last shown) |
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |

@@ -129,11 +129,15 @@
 /* Cloud */
 "speech.cloud.title" = "Cloud speech recognition";
 "speech.cloud.name.openai" = "OpenAI-compatible API";
-"speech.cloud.keys" = "Blurt doesn’t store cloud keys. It reads them from your shell profile (for example ~/.zshrc). Add one of these lines there:";
-"speech.cloud.set" = "Key found";
+"speech.cloud.set" = "Set";
 "speech.cloud.not_set" = "Not set";
 "speech.cloud.off" = "Turned off in Privacy";
-"speech.cloud.info" = "How to set a key";
+"speech.cloud.setup" = "Set Up…";
+"speech.cloud.sheet.note" = "Recognize speech in the cloud with your own API key. The key stays in this Mac’s Keychain and is sent only to this service, with the audio to recognize.";
+"speech.cloud.service.openai" = "OpenAI";
+"speech.cloud.service.groq" = "Groq";
+"speech.cloud.service.custom" = "Other OpenAI-compatible service";
+"speech.cloud.key.get" = "Get an API key";
 "speech.section.mac" = "This Mac";
 "speech.section.jobs" = "Models in use";
 "speech.machine.short" = "%1$@, %2$@";

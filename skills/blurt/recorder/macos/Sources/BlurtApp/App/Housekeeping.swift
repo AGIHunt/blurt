@@ -3,7 +3,9 @@
 //                            runs: when they differ, one line in the island says which to update (once per app
 //                            version and skill contract)
 //   projects.py migrate      v0.6 record.workspace(s) → projects.json (K2; idempotent)
-//   items.py migrate --all   v1/v2 sessions (items.json, no batch.json) → Markdown stores (K1; idempotent)
+//   items.py migrate --all --no-projects   v1/v2 sessions (items.json, no batch.json) in the v0.6 places → Markdown
+//                            stores (K1; idempotent) — never a project's own folder: a project opened later with an
+//                            old session in it (a scripted demo) got 24 items at the next launch, unasked (v1.0.4)
 //   jobs.py gc               jobs that ended 14+ days ago, beyond the last 300 (K4)
 //   transcribe.py auto --apply   speech models for this Mac (K9); after a hardware change that wants a download, one
 //                            quiet line in the island offers Settings → Speech — pending until it was seen (a launch
@@ -31,7 +33,7 @@ enum Housekeeping {
             let r = ScriptRunner.shared
             await MainActor.run { checkSkillContract() }   // first: before any of the skill's scripts run, inside the hold
             await finishInterruptedJobs(launchedAt: launched)
-            for (script, args) in [("projects.py", ["migrate"]), ("items.py", ["migrate", "--all"]), ("jobs.py", ["gc"])] {
+            for (script, args) in [("projects.py", ["migrate"]), ("items.py", ["migrate", "--all", "--no-projects"]), ("jobs.py", ["gc"])] {
                 guard (try? r.scriptURL(script)) != nil else { continue }
                 do { _ = try await r.run(script, args, timeout: 600) } catch { NSLog("blurt: \(script) \(args.joined(separator: " ")): \(error)") }
             }

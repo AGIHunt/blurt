@@ -152,11 +152,11 @@ final class SettingsController: NSObject, SettingsHosting, NSWindowDelegate {
                 if parts.count > 1 { nav.reveal(parts[1].contains(".") ? parts[1] : "\(want.rawValue).\(parts[1])") }
                 MainMenu.ensureEditKeys()       // ⌘V into its fields while the main window has never been open
                 activateApp()
-                if window?.isVisible != true {
-                    window?.center()
-                    sidebar?.focusList()
-                }
+                if window?.isVisible != true { window?.center() }
                 window?.makeKeyAndOrderFront(nil)
+                // ⌘, (or any open without a row to show): the cursor in the search field, ready to type, as Claude Code's
+                // settings do; a link to a row keeps the list's focus (the row is what it came for)
+                if parts.count > 1 { sidebar?.focusList() } else { sidebar?.focusSearch() }
                 // in front even when macOS doesn't hand Blurt the focus (the permission guide brings it back from
                 // System Settings without a click on Blurt)
                 window?.orderFrontRegardless()

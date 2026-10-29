@@ -8,7 +8,7 @@
    2. dictation: the words leave Peep's beak and land at the cursor; a dashed mint pencil box holds the phrase until
       the ink lands.
    3. the snap: Peep leaves the notch, pecks the circled total and carries the card back under the notch.
-   4. the hero idle loop (video with alpha), 5. the footer: clay Peep peeks up from the bottom edge, eyes on the pointer.
+   4. the hero idle loop (video with alpha) perched on the first window, 5. the footer: clay Peep peeks up from the bottom edge, eyes on the pointer.
    Reduced motion: nothing here runs; the CSS shows a still per scene (each scene's end state). */
 (() => {
   const mEl = document.getElementById("peepm");
@@ -330,7 +330,7 @@
   }, { rootMargin: "100% 0px" }).observe(snapEl);
 
   // the hero idle loop plays while it is on screen (the poster is its first frame)
-  // (light pages show the video-model clip, dark pages the clay three-quarter loop; only the one on show plays)
+  // (light pages the paper set, dark pages the dark set, both side view facing left; only the one on show plays)
   function hero() {
     const vs = [...document.querySelectorAll("[data-hero]")];
     if (!vs.length || reduce) return;

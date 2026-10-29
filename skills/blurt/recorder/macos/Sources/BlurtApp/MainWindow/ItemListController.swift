@@ -12,6 +12,7 @@
 import AppKit
 import BlurtCore
 import Quartz
+import Carbon.HIToolbox
 
 protocol ItemListActions: AnyObject {
     func listSelectionChanged()
@@ -613,6 +614,9 @@ final class MissingFolderBanner: NSView {
 final class ListHeading: NSView {
     let title = NSTextField(labelWithString: "")
     let counts = NSTextField(labelWithString: "")
+    /// New Item (BA-21): the list's own way to add one by hand (⌘N too); hidden where items can't be added
+    let add = NSButton()
+    var onAdd: (() -> Void)?
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -627,18 +631,33 @@ final class ListHeading: NSView {
         }
         title.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         counts.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        add.bezelStyle = .accessoryBarAction
+        add.image = Look.symbol("plus", T("main.new_item.button"), size: 12)
+        add.title = T("main.new_item.button")
+        add.imagePosition = .imageLeading
+        add.font = .systemFont(ofSize: 12)
+        add.toolTip = T("main.new_item.tip")
+        add.target = self
+        add.action = #selector(addTapped)
+        add.translatesAutoresizingMaskIntoConstraints = false
+        add.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(add)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             counts.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 8),
             counts.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            counts.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -16),
+            counts.trailingAnchor.constraint(lessThanOrEqualTo: add.leadingAnchor, constant: -10),
+            add.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            add.centerYAnchor.constraint(equalTo: title.centerYAnchor),
             heightAnchor.constraint(equalToConstant: 38),
         ])
         setAccessibilityElement(true)
         setAccessibilityRole(.staticText)
     }
     required init?(coder: NSCoder) { fatalError() }
+
+    @objc func addTapped() { onAdd?() }
 
     func set(title t: String, counts c: String) {
         title.stringValue = t
@@ -1371,6 +1390,54 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         if let f = file { pb.setString(URL(fileURLWithPath: f).absoluteString, forType: .fileURL) }
         pb.setString(it.title, forType: .string)
         return pb
+    }
+
+    /// The rows a drag carries (set as it starts): their text follows a picture into a chat app (below).
+    private var draggedUIDs: [String] = []
+
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
+                   forRowIndexes rowIndexes: IndexSet) {
+        draggedUIDs = rowIndexes.compactMap { model.item(at: $0)?.uid }
+    }
+
+    /// An item dropped into a chat app (WeChat, QQ, a browser's chat…): the app took its picture and nothing else, so
+    /// its text is pasted into the composer after it — the hanging cards' follow-up (DragNoteFollowUp; BA-22: only the
+    /// picture arrived). One item with a picture; the Finder and terminals keep the file alone.
+    func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint,
+                   operation: NSDragOperation) {
+        defer { draggedUIDs = [] }
+        guard operation != [], draggedUIDs.count == 1, let it = model.itemRow(uid: draggedUIDs[0]),
+              it.primaryFrame.map({ FileManager.default.fileExists(atPath: $0) }) == true,
+              SmartPaste.enabled, SmartPaste.accessibility, !IsSecureEventInputEnabled(),
+              let t = DropProbe.target(at: screenPoint), t.cls == .chat else { return }
+        let text = ItemListController.dragText(it)
+        guard !text.isEmpty else { return }
+        emit(["event": "item_drag_note", "bundle": t.bundleID ?? NSNull()])
+        DragNoteFollowUp.run(note: text, target: t, at: screenPoint) { pasted in
+            emit(["event": "item_drag_note_done", "pasted": pasted])
+        }
+    }
+
+    /// What an item says in a chat: its title, then its own words (the Markdown body without its pictures).
+    static func dragText(_ it: ItemRow) -> String {
+        var lines = [it.title]
+        if let md = try? String(contentsOf: it.fileURL, encoding: .utf8) {
+            let parts = md.components(separatedBy: "\n---\n")
+            let body = parts.count > 1 ? parts.dropFirst().joined(separator: "\n---\n") : md
+            var skip = false
+            for ln in body.components(separatedBy: "\n") {
+                let t = ln.trimmingCharacters(in: .whitespaces)
+                if t.hasPrefix("## ") {          // a section: its heading as a plain line; the pictures' section goes
+                    skip = ["## 截图", "## Screenshots"].contains(t)
+                    if !skip { lines += ["", String(t.dropFirst(3))] }
+                    continue
+                }
+                if skip || t.hasPrefix("![") { continue }
+                lines.append(ln)
+            }
+        }
+        let text = lines.joined(separator: "\n").replacingOccurrences(of: "\n\n\n+", with: "\n\n", options: .regularExpression)
+        return String(text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(4000))
     }
 
     // MARK: Quick Look

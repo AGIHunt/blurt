@@ -141,6 +141,12 @@ final class PickerController {
     func closeWindows() {
         windows.forEach { $0.orderOut(nil) }
         windows.removeAll()
+        // the picker took the keyboard (Esc, ↩): the app the user was in gets it back, so a recording never starts
+        // with Blurt in front (BA-12) — unless that app was Blurt itself. A snap's note bubble types next: it keeps it
+        if !snapMode, let pid = frontPID, pid != getpid(), NSApp.isActive,
+           let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated {
+            app.activate()
+        }
     }
 
     func fullScreen() {

@@ -368,7 +368,8 @@ final class Snapper {
         hanging.update(s)
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Snapper.testStructure.map { t -> [String: Any]? in t == "-" ? nil : ["ok": true, "text": t, "list": true] }
-                ?? Dictation.structure(raw, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab)
+                ?? Dictation.structure(raw, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                       cloud: DictationCloud.payload())
             let fellBack = r == nil || r?["fell_back"] as? Bool == true
             let text = fellBack ? nil : r?["text"] as? String
             DispatchQueue.main.async {

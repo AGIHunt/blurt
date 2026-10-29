@@ -55,7 +55,7 @@
 "settings.kit.not_set" = "未设置";
 "settings.kit.privacy" = "隐私";
 "settings.kit.shortcuts" = "快捷键";
-"settings.kit.speech" = "语音";
+"settings.kit.speech" = "模型";
 "settings.kit.storage" = "存储";
 "settings.kit.system_settings" = "系统设置…";
 
@@ -141,7 +141,7 @@
 "onboarding.models.stop" = "停止";
 "onboarding.models.failed_toast" = "模型下载中断了";
 "onboarding.models.failed_open" = "重试…";
-"onboarding.models.later" = "以后可以在设置的「听写」和「语音」里换模型。";
+"onboarding.models.later" = "以后可以在设置的「模型」里换模型。";
 "onboarding.uv.needed" = "口喷鸡要用一个小工具 uv 来运行语音模型。";
 "onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
 "onboarding.try" = "试一下";
@@ -167,7 +167,7 @@
 "settings.storage.model.vad" = "人声检测，本地模型都要用";
 "settings.storage.model.polish" = "听写润色";
 "settings.storage.model.none" = "还没有下载模型";
-"settings.storage.model.footer" = "在「语音」里选择。";
+"settings.storage.model.footer" = "在「模型」里选择。";
 "settings.storage.videos" = "视频";
 "settings.storage.videos.older" = "%ld 天前的";
 "settings.storage.videos.all" = "全部视频";
@@ -179,7 +179,7 @@
 "settings.storage.videos.auto_confirm_title" = "%ld 天后自动删除视频？";
 "settings.storage.videos.auto_confirm" = "已经超过的会马上移到废纸篓：";
 "settings.storage.videos.auto_on" = "打开";
-"settings.storage.model.footer_shared" = "在「语音」里选择。Hugging Face 共享缓存里的模型，口喷鸡不会删除。";
+"settings.storage.model.footer_shared" = "在「模型」里选择。Hugging Face 共享缓存里的模型，口喷鸡不会删除。";
 "settings.storage.videos.detail" = "已整理录屏的 %@，删掉后条目和文字稿都还在";
 "settings.storage.recordings" = "录屏";
 "settings.storage.app_data" = "App 数据";
@@ -277,6 +277,7 @@
 "settings.kw.dictation.by_app" = "按应用, 应用类型, 聊天, 代码, 邮件, 笔记";
 "settings.kw.dictation.polish_timeout" = "超时, 等待, 秒, 润色";
 "settings.kw.dictation.word_list" = "词库, 词典, 自定义词, 名字, 术语, 热词";
+"settings.kw.speech.cloud_polish" = "云端, 润色, 大模型, DeepSeek, OpenAI, Anthropic, API Key, 接口地址";
 "settings.kw.dictation.context" = "上下文, 光标, 周围的文字";
 "settings.kw.dictation.learn" = "学习, 纠正, 改错";
 "settings.kw.dictation.history_keep" = "历史, 保留, 天数";
@@ -425,7 +426,7 @@
 "settings.privacy.perm.not_allowed" = "未允许";
 "settings.privacy.local_asr.auto" = "自动";
 "settings.privacy.local_asr.local" = "只在这台 Mac 上";
-"settings.privacy.local_asr.help" = "云端服务在「语音」里设置。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
+"settings.privacy.local_asr.help" = "云端服务在「模型」里设置。整理和修复由你选的 Agent 完成，按它自己的条款处理数据。";
 "settings.kw.shortcuts.pen" = "画笔, 画图, 按住画图, 圈出, Control, 标注";
 "settings.kw.agents.organize" = "模型, 强度, 最省, token, 费用, 整理, 卡片, 录屏, AI 补全";
 "settings.search.title_query" = "“%@”";
