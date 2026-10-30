@@ -8,8 +8,9 @@
 //  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
-// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
-// same n win key by key; {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
+// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project","kind"} — later lines for
+// the same n win key by key ("kind": the type chosen in the note bubble, issue | idea | note | task, null = undecided:
+// BlurtCore NoteKind; its item takes it); {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
 // remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one, a Structured voice note has
 // "structure": true and, once its words are in, "said" = the structured text and "said_raw" = the transcript,
 // {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
@@ -194,6 +195,8 @@ final class Shot {
     var structure = false        // Structured (⇧ while the voice note listened): its words get the structuring pass
     var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
+    /// the type chosen in the note bubble (⌘1–⌘4, the type chip): its item's kind; nil = undecided (BlurtCore NoteKind)
+    var itemKind: NoteKind?
     var deleted = false
     /// dragged out and taken by another app (seconds since 1970): off its thread, in "Recently Taken" for 7 days
     var taken: Double?
@@ -260,7 +263,8 @@ final class Shot {
         var o: [String: Any] = ["n": n, "type": kind.rawValue, "file": file ?? NSNull(), "marked": marked ?? NSNull(),
                                 "t": t.map { ($0 * 1000).rounded() / 1000 } ?? NSNull(),
                                 "wall": (wall * 1000).rounded() / 1000, "region": region, "voice": voice ?? NSNull(),
-                                "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull()]
+                                "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull(),
+                                "kind": itemKind?.rawValue ?? NSNull()]
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if structure { o["structure"] = true }
@@ -495,6 +499,7 @@ final class ShotBatch {
             s.structure = o["structure"] as? Bool ?? false
             s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
+            s.itemKind = NoteKind.parse(o["kind"])
             s.deleted = o["deleted"] as? Bool ?? false
             s.project = o["project"] as? String
             s.assignedBy = o["assigned_by"] as? String

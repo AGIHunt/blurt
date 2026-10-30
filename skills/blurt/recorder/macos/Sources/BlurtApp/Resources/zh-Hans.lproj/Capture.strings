@@ -132,10 +132,16 @@
 "capture.note.undo" = "撤销上一笔（⌘Z）";
 "capture.note.done" = "完成";
 "capture.note.done_tip" = "完成这张截图（⏎）。按 Esc 丢弃，可以撤销。";
-"capture.note.chip_tip" = "这张截图归到哪里（Tab）。未归类：先作为卡片留在刘海下方，等你选项目。";
+"capture.note.chip_tip" = "项目：这张截图放进哪个项目（Tab）。未归类：先作为卡片留在刘海下方，等你选项目。";
 "capture.note.chip_ax" = "归入 %@";
 "capture.note.unassigned_caption" = "留作卡片";
 "capture.note.unassigned_tip" = "还没有项目：截图先作为卡片留在刘海下方，等你选一个项目。";
+"capture.note.kind_chip" = "类型";
+"capture.note.kind_tip" = "类型：这张截图是问题、想法、笔记还是待办（⌘1–⌘4）。不选的话，整理时根据备注判断。";
+"capture.note.kind_ax" = "类型：%@";
+"capture.note.kind_none" = "不指定";
+"capture.note.kind_none_caption" = "整理时再定";
+"capture.note.kind_none_tip" = "不指定类型：整理成事项时根据备注判断。";
 "capture.note.ph_voice_busy" = "正在录语音备注，可以在这里打字";
 "capture.note.ph_mic_gone" = "麦克风断开了，可以打字";
 "capture.note.ph_no_mic" = "麦克风不可用，可以打字";
@@ -178,7 +184,7 @@
 "capture.rec.menu_goes_to" = "归到 %@…";
 "capture.rec.restart" = "重新录屏";
 "capture.rec.resume" = "继续";
-"capture.rec.snap_note" = "截图并写备注（会暂停）";
+"capture.rec.snap_note" = "框选截图并写备注（录屏不停）";
 "capture.recording.filed" = "已归到 %@";
 "capture.recording.organizing" = "正在整理到 %@";
 "capture.recording.organizing_usual" = "通常约 %@ 分钟 · 好了以后事项就在那里";

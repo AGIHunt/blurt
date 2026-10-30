@@ -57,8 +57,7 @@ final class ProjectChip: NSButton {
         if case .missing = p { said += ", " + Loc.t("capture.project.missing_short", table: "Capture") }
         setAccessibilityLabel(Loc.t("capture.note.chip_ax", table: "Capture", said))
         setAccessibilityValue(label)
-        let w = ceil((label as NSString).size(withAttributes: [.font: ProjectChip.font]).width)
-        let want = ProjectChip.lead + 16 + 8 + w + 5 + 9 + 7
+        let want = ProjectChip.width(label)
         setFrameSize(NSSize(width: min(maxWidth, want), height: ProjectChip.height))
         var tip = [Loc.t("capture.note.chip_tip", table: "Capture")]
         if case .missing = p { tip.insert(Loc.t("capture.drawer.missing_sub", table: "Capture"), at: 0) }
@@ -91,18 +90,31 @@ final class ProjectChip: NSButton {
     }
 
     override func draw(_ dirty: NSRect) {
-        if hovering || isHighlighted || open {
-            NSColor.labelColor.withAlphaComponent(open || isHighlighted ? 0.10 : 0.06).setFill()
+        // the name is quieter than the words it serves: secondary at rest, full ink under the pointer or open
+        let ink: NSColor = { if case .missing = place { return .secondaryLabelColor }; return hovering || open ? .labelColor : .secondaryLabelColor }()
+        ProjectChip.paint(bounds, glyph: ProjectChip.glyph(place), label: label, ink: ink, fill: hovering || isHighlighted || open,
+                          pressed: open || isHighlighted)
+    }
+
+    /// The width a chip with this name wants: the glyph column, the name, the chevrons.
+    static func width(_ label: String) -> CGFloat {
+        let w = ceil((label as NSString).size(withAttributes: [.font: ProjectChip.font]).width)
+        return ProjectChip.lead + 16 + 8 + w + 5 + 9 + 7
+    }
+
+    /// The footer chips' one look (the place chip, the type chip — KindChip): a faint fill under the pointer and while
+    /// its list is open, the glyph on the glyph column, the name on the text column, a pop-up's chevrons after it.
+    static func paint(_ bounds: NSRect, glyph: NSImage?, label: String, ink: NSColor, fill: Bool, pressed: Bool) {
+        if fill {
+            NSColor.labelColor.withAlphaComponent(pressed ? 0.10 : 0.06).setFill()
             NSBezierPath(roundedRect: bounds.insetBy(dx: 0, dy: 1), xRadius: 6, yRadius: 6).fill()
         }
-        if let img = ProjectChip.glyph(place) {
+        if let img = glyph {
             let s = img.size
             img.draw(in: NSRect(x: ProjectChip.lead + (16 - s.width) / 2, y: (bounds.height - s.height) / 2, width: s.width, height: s.height))
         }
         let p = NSMutableParagraphStyle()
         p.lineBreakMode = .byTruncatingMiddle
-        // the name is quieter than the words it serves: secondary at rest, full ink under the pointer or open
-        let ink: NSColor = { if case .missing = place { return .secondaryLabelColor }; return hovering || open ? .labelColor : .secondaryLabelColor }()
         let s = NSAttributedString(string: label, attributes: [.font: ProjectChip.font, .foregroundColor: ink, .paragraphStyle: p])
         let x = ProjectChip.lead + 16 + 8
         let maxText = bounds.width - x - 5 - 9 - 7

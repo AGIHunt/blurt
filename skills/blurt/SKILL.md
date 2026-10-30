@@ -53,7 +53,7 @@ what happens:
   them in the app's Settings → Shortcuts / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; ⌃⇧ box,
-  ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
+  ⌃⌥ ellipse, the keys in any order — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
   to send another chat message.
 - **⌥A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥M too): a full-resolution still of
   the area right now, no pause → `shots/`. Best evidence there is — mention it in one line. In the macOS app ⌥A runs
@@ -130,6 +130,8 @@ Principles — judgement, not rules:
 - A pen mark or a snap (screenshot in `shots.jsonl`) is the user saying "this, exactly": it anchors an item's time
   and subject. What they marked outranks your reading of a vague sentence — but a mark is not an item by itself,
   and items without marks are normal. A snap's image is its item's first frame: put it in `frames` right away.
+  A snap with a `kind` in `shots.jsonl` (issue / idea / note / task) is one the user typed in its note: its item is
+  that kind (ingest keeps it so); without one, decide as usual.
 - One item = one thing. People jump around, revisit, correct themselves ("不对，是…"), or say two things in one
   sentence: merge revisits, drop retracted remarks, split compounds. Pure narration is not an item.
 - Fix ASR errors from context (repo vocabulary, what's on screen). Keep `quote` close to what was said.

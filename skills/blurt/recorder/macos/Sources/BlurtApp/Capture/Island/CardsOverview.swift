@@ -792,6 +792,13 @@ final class OverviewTile: NSView, NSDraggingSource {
             mic.frame = NSRect(x: sz.width - 18, y: sz.height - 17, width: 10, height: 10)
             addSubview(mic)
         }
+        // its type, when the note gave it one (CardKindMark): a voice tile's before its mic, a snap's on the picture's
+        // bottom-left corner (the top right is the actions')
+        if let k = CardKindMark.tileView(s, voice: s.kind == .voice) {
+            k.frame = s.kind == .voice ? NSRect(x: sz.width - 18 - 14, y: sz.height - 17, width: 10, height: 10)
+                : NSRect(x: 6, y: sz.height - 6 - 16, width: HangingCards.badgeWidth(1), height: 16)
+            addSubview(k)
+        }
         ring.frame = face.frame.insetBy(dx: -4, dy: -4)
         ring.cornerRadius = 11
         ring.borderWidth = 2

@@ -1,6 +1,7 @@
 // BlurtCore/NoteKeys.swift: the note bubble's keys in each of its states — ↩ commits (the grey words as they are),
 // ⇧↩ breaks the line, Tab takes the grey words (or opens the place list), typing replaces the words, Esc in two steps,
-// and an input method's composition or the open place list keeps its own keys.
+// and an input method's composition or the open place list keeps its own keys; ⌘1–⌘4 / ⌘0 the snap's type and the
+// type list's keys (NoteKind).
 import XCTest
 @testable import BlurtCore
 
@@ -111,6 +112,68 @@ final class NoteKeysTests: XCTestCase {
         for k: NoteKeys.Key in [.returnKey, .shiftReturn, .tab, .typing] {
             XCTAssertEqual(NoteKeys.action(k, s), .pass, "\(k)")
         }
+    }
+
+    // MARK: the type — ⌘1–⌘4 set it, ⌘0 clears it (NoteKind)
+
+    func testCommandDigitsSetTheTypeInEveryMode() {
+        for m: NoteKeys.Mode in [.fresh, .edit, .recording] {
+            XCTAssertEqual(NoteKeys.action(.command(1), S(mode: m)), .setKind(.issue), "\(m)")
+            XCTAssertEqual(NoteKeys.action(.command(2), S(mode: m, typed: "x")), .setKind(.idea), "\(m)")
+            XCTAssertEqual(NoteKeys.action(.command(3), S(mode: m)), .setKind(.note), "\(m)")
+            XCTAssertEqual(NoteKeys.action(.command(4), S(mode: m)), .setKind(.task), "\(m)")
+            XCTAssertEqual(NoteKeys.action(.command(0), S(mode: m)), .setKind(nil), "\(m): ⌘0 clears it")
+        }
+        // while it listens, over the grey words: the words stay as they are
+        XCTAssertEqual(NoteKeys.action(.command(1), S(mode: .fresh, voice: .listening)), .setKind(.issue))
+        XCTAssertEqual(NoteKeys.action(.command(4), S(mode: .fresh, voice: .words)), .setKind(.task))
+    }
+
+    func testOtherCommandDigitsArentTheBubbles() {
+        for d in 5...9 { XCTAssertEqual(NoteKeys.action(.command(d), S(mode: .fresh)), .pass, "⌘\(d)") }
+    }
+
+    func testCommandDigitsWorkWithEitherListOpen() {
+        XCTAssertEqual(NoteKeys.action(.command(2), S(mode: .fresh, picking: true)), .setKind(.idea))
+        XCTAssertEqual(NoteKeys.action(.command(0), S(mode: .fresh, pickingKind: true)), .setKind(nil))
+    }
+
+    func testAnInputMethodsCompositionKeepsCommandDigits() {
+        XCTAssertEqual(NoteKeys.action(.command(1), S(mode: .fresh, composing: true)), .pass)
+    }
+
+    func testTheTypeListTakesArrowsReturnEscAndTab() {
+        let s = S(mode: .fresh, voice: .words, pickingKind: true)
+        XCTAssertEqual(NoteKeys.action(.up, s), .moveKind(-1))
+        XCTAssertEqual(NoteKeys.action(.down, s), .moveKind(1))
+        XCTAssertEqual(NoteKeys.action(.returnKey, s), .pickKind, "↩ picks the row, it doesn't commit the note")
+        XCTAssertEqual(NoteKeys.action(.escape, s), .closeKinds, "Esc goes back to the note, never discards")
+        XCTAssertEqual(NoteKeys.action(.tab, s), .closeKinds, "Tab doesn't take the words under an open list")
+        XCTAssertEqual(NoteKeys.action(.shiftReturn, s), .ignore)
+        XCTAssertEqual(NoteKeys.action(.escape, S(mode: .edit, typed: "edited", pickingKind: true)), .closeKinds)
+        XCTAssertEqual(NoteKeys.action(.returnKey, S(mode: .recording, pickingKind: true)), .pickKind)
+    }
+
+    func testTypingUnderTheTypeListGoesIntoTheNote() {
+        XCTAssertEqual(NoteKeys.action(.typing, S(mode: .fresh, voice: .words, pickingKind: true)), .typeOver)
+        XCTAssertEqual(NoteKeys.action(.typing, S(mode: .fresh, voice: .listening, pickingKind: true)), .typedNote)
+    }
+
+    func testArrowsAreTheFieldsWithoutTheTypeList() {
+        for s in [S(mode: .fresh, typed: "two\nlines"), S(mode: .edit), S(mode: .recording), S(mode: .fresh, picking: true)] {
+            XCTAssertEqual(NoteKeys.action(.up, s), .pass, "\(s)")
+            XCTAssertEqual(NoteKeys.action(.down, s), .pass, "\(s)")
+        }
+    }
+
+    func testTheKindsDigitsAndShotsJsonlValues() {
+        XCTAssertEqual(NoteKind.allCases.map(\.digit), [1, 2, 3, 4])
+        XCTAssertEqual(NoteKind.allCases.map(\.rawValue), ["issue", "idea", "note", "task"])
+        XCTAssertEqual(NoteKind.forDigit(3), .some(.note))
+        XCTAssertEqual(NoteKind.forDigit(0), .some(nil))
+        XCTAssertNil(NoteKind.forDigit(7))
+        XCTAssertEqual(NoteKind.parse("task"), .task)
+        for raw: Any? in [nil, NSNull(), "", "bug", 3] { XCTAssertNil(NoteKind.parse(raw), "\(String(describing: raw))") }
     }
 
     func testWordsShowOnlyWhileNothingIsTyped() {

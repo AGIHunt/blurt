@@ -48,6 +48,11 @@
 //  • the place chip (ProjectChip.swift): a click, or Tab from the field (when there are no grey words to take), lists
 //    the recent projects in the bubble; typing filters, ↩ picks — this capture goes there instead (Snapper.retarget),
 //    the island's project stays.
+//  • the type chip (KindChip.swift, the founder 2026-10-31), next to the place chip — in a recording's note too: what
+//    this snap is, optional (unset: "Type", undecided — the organizing run decides). A click opens its list in the
+//    bubble; ⌘1–⌘4 set 问题 / 想法 / 笔记 / 待办 and ⌘0 clears it, from anywhere in the bubble (NoteKeys; the panel takes
+//    those keys before the main menu's ⌘1–⌘4). The keys are shown once, in the list. Saved with the note (shots.jsonl
+//    "kind"): Esc on an edit or a recording's note leaves the type as it was.
 //  • ⌥A while it is open saves the note and takes the next shot. Listening starts the warm speech server
 //    (VoiceInput.warmSpeechModel), so the note's words come back in well under a second, not a cold model load.
 //  • every open has a generation: a close still fading out never orders out (or takes the focus from) a bubble opened
@@ -672,6 +677,11 @@ final class NotePanel: NSPanel {
         if e.type == .keyDown, onKey?(e) == true { return }
         super.sendEvent(e)
     }
+    /// ⌘-digits are the bubble's (the type) before the main menu's ⌘1–⌘4 (Go to Inbox…, the main window's) see them.
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        if e.type == .keyDown, NoteBubble.commandDigit(e) != nil, onKey?(e) == true { return true }
+        return super.performKeyEquivalent(with: e)
+    }
 }
 
 /// The bubble's background: a rounded card with a caret pointing at the shot it belongs to — up or down at a card,
@@ -804,6 +814,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private var chip: ProjectChip!
     private let pick = ProjectPickView(frame: .zero)
     private var picking = false
+    /// "Type": what this snap is (BlurtCore NoteKind), and its list
+    private var kindChip: KindChip!
+    private let kindPick = KindPickView(frame: .zero)
+    private var pickingKind = false
+    /// the type chosen in this bubble (nil: not set) — the shot takes it when the note is saved
+    private var chosenKind: NoteKind?
     /// in place: the one primary, "Done"
     private var doneBtn: BrandButton!
     private var voice: NoteVoice?
@@ -909,6 +925,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         penHint.alphaValue = 1
         inkUndoFirst = false
         picking = false
+        pickingKind = false
         editPicked = false
         editProject = nil
         lastSecond = -1
@@ -976,6 +993,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         pick.onCancel = { [weak self] in self?.closePick() }
         pick.onFilterChange = { [weak self] in self?.layout() }
         root.addSubview(pick)
+        kindChip = KindChip { [weak self] in self?.toggleKinds() }
+        root.addSubview(kindChip)
+        kindPick.isHidden = true
+        kindPick.onPick = { [weak self] k in self?.setKind(k, via: "list") }
+        root.addSubview(kindPick)
         // the one primary, with its key on it ("Done ↩", Edit Note's "Save ↩"): no line saying the same
         doneBtn = BrandButton(title: Loc.t("capture.note.done", table: "Capture"), target: self, action: #selector(doneClicked))
         doneBtn.fontSize = 12
@@ -1037,6 +1059,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         // an edit shows the whole note — what was said too — so the words can be fixed (NoteEdit)
         field.stringValue = mode == .listen ? "" : mode == .edit ? NoteEdit.field(typed: s.text, said: s.said) : (s.text ?? "")
+        chosenKind = s.itemKind
+        kindChip.set(chosenKind)
         layout()
         refreshStatus()
     }
@@ -1092,6 +1116,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // them from the start, so the bubble never widens as the words come
         if mode == .listen { inner = max(inner, min(NoteBubble.maxInner, footerWidth())) }
         if picking { inner = max(inner, min(NoteBubble.maxInner, pick.wantWidth)) }
+        if pickingKind { inner = max(inner, min(NoteBubble.maxInner, kindPick.wantWidth)) }
         let width = inner + ins.left + ins.right
         let x0 = ins.left, top = ins.top
         let glyphX = x0 + m, textX = x0 + m + 24, right = x0 + inner - m
@@ -1099,10 +1124,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let fieldW = right - textX + 2
         let fieldH = fieldHeight(fieldW - 4, max: pic ? 90 : 220)
         let footH = NoteBubble.footH
-        let pickH = picking ? pick.height : 0
+        let pickH = picking ? pick.height : pickingKind ? kindPick.height : 0
         // (a caret up or down takes its height; one at the side, its width — the card keeps the same inner size)
         let height = (ins.top + ins.bottom > 0 ? c : 0) + m + (pic ? pv.height + 10 : 0) + fieldH + 6 + footH
-            + (picking ? 4 + pickH : 0) + m - 2
+            + (picking || pickingKind ? 4 + pickH : 0) + m - 2
         panel?.setContentSize(NSSize(width: width, height: height))
         bg.frame = NSRect(x: 0, y: 0, width: width, height: height)
         canvas.isHidden = !pic
@@ -1136,7 +1161,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             doneBtn.title = Loc.t(mode == .edit ? "capture.note.save" : "capture.note.done", table: "Capture")
             doneBtn.toolTip = Loc.t(mode == .edit ? "capture.note.save_tip" : "capture.note.done_tip", table: "Capture")
             // while the list is open its ↩ is the action: the primary steps back (system.md: neutral fill, no gradient)
-            doneBtn.isEnabled = !picking
+            doneBtn.isEnabled = !picking && !pickingKind
             doneBtn.alphaValue = 1
             let sz = doneBtn.intrinsicContentSize
             doneBtn.frame = NSRect(x: right - sz.width, y: midY - 11, width: sz.width, height: 22)
@@ -1145,9 +1170,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             chip.set(place, maxWidth: min(200, inner * 0.56))
             chip.open = picking
             chip.frame.origin = NSPoint(x: glyphX - ProjectChip.lead, y: footY)
-            leftEnd = chip.frame.maxX + 4
-            // the hover tools, after the chip (never over an open list)
-            if hovering && !picking {
+            leftEnd = chip.frame.maxX + 2
+            // the type, beside the place
+            kindChip.set(chosenKind)
+            kindChip.open = pickingKind
+            kindChip.frame.origin = NSPoint(x: leftEnd, y: footY)
+            leftEnd = kindChip.frame.maxX + 4
+            // the hover tools, after the chips (never over an open list)
+            if hovering && !picking && !pickingKind {
                 for t in hoverTools {
                     t.isHidden = false
                     t.contentTintColor = .secondaryLabelColor
@@ -1158,7 +1188,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             }
             leftEnd += 6
         } else {
-            // the note popover while recording: its own line (the shot counter, the keys), the arrows at the right
+            // the note popover while recording: the type chip leads (no place: the snap goes with the recording), then
+            // its own line (the shot counter, the keys), the arrows at the right
+            kindChip.set(chosenKind)
+            kindChip.open = pickingKind
+            kindChip.frame.origin = NSPoint(x: glyphX - ProjectChip.lead, y: footY)
+            leftEnd = kindChip.frame.maxX + 6
             var bx = right
             if recordingShots.count > 1 {
                 nextBtn.isHidden = false; nextBtn.frame.origin = NSPoint(x: bx - 24, y: midY - 12); bx -= 26
@@ -1178,15 +1213,24 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             pick.layoutRows()
             pick.needsDisplay = true
         }
+        kindPick.isHidden = !pickingKind
+        if pickingKind {
+            kindPick.frame = NSRect(x: x0, y: footY + footH + 4, width: inner, height: kindPick.height)
+            kindPick.layoutRows()
+            kindPick.needsDisplay = true
+        }
         position()
     }
 
-    /// The inner width a fresh snap's footer needs: the chip (at most 200 pt), the bin, the keys line, Done ↩.
+    /// The inner width a fresh snap's footer needs: the chip (at most 200 pt), the type chip, the bin, the keys line,
+    /// Done ↩.
     private func footerWidth() -> CGFloat {
         let m = NoteBubble.inset
         chip.set(place, maxWidth: 200)
+        // (sized for the widest kind name, so choosing one never widens the bubble)
+        let kind = ([nil] + NoteKind.allCases.map { Optional($0) }).map { ProjectChip.width($0.map(KindChip.name) ?? kindChip.label) }.max() ?? 0
         let keys = ceil(NoteBubble.keyLine(Loc.t("capture.note.st_voice", table: "Capture")).size().width) + 4
-        return m + (chip.frame.width - ProjectChip.lead) + 4 + 26 + 6 + keys + 10 + doneBtn.intrinsicContentSize.width + m
+        return m + (chip.frame.width - ProjectChip.lead) + 2 + kind + 4 + 26 + 6 + keys + 10 + doneBtn.intrinsicContentSize.width + m
     }
 
     private func fieldHeight(_ w: CGFloat, max cap: CGFloat) -> CGFloat {
@@ -1603,7 +1647,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             } else {
                 plainPlaceholder(Loc.t("capture.note.placeholder_optional", table: "Capture"))
             }
-            if picking {
+            if picking || pickingKind {
                 line = ""
             } else if keyState.wordsShowing {
                 line = Loc.t("capture.note.st_voice", table: "Capture")
@@ -1614,7 +1658,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             chip?.set(place, maxWidth: min(200, (panel?.frame.width ?? 400) * 0.56))
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
             // a re-record: the running time; once something was said, Tab ends it (kept) — Save ↩ keeps it too
-            line = picking || !listening ? "" : Loc.t(speechStarted ? "capture.note.st_rerecord_tab" : "capture.note.st_rerecord",
+            line = picking || pickingKind || !listening ? "" : Loc.t(speechStarted ? "capture.note.st_rerecord_tab" : "capture.note.st_rerecord",
                                                       table: "Capture", fmt(t))
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
@@ -1708,7 +1752,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // the words taken with Tab, untouched, are not typing
         let typedPart = (accepted || wordsInField != nil) && !typed ? "" : field.stringValue
         return NoteKeys.State(mode: mode == .listen ? .fresh : mode == .edit ? .edit : .recording, voice: v, typed: typedPart,
-                              composing: (field.currentEditor() as? NSTextView)?.hasMarkedText() == true, picking: picking)
+                              composing: (field.currentEditor() as? NSTextView)?.hasMarkedText() == true, picking: picking,
+                              pickingKind: pickingKind)
     }
 
     /// Does what NoteKeys decided; false when the key isn't the bubble's (it goes on to the field, the IME, the list).
@@ -1728,6 +1773,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case .clearText: clearText()
         case .close: cancel()
         case .typeOver, .typedNote: stopListening(via: "typing")
+        case .setKind(let kind): setKind(kind, via: "key")
+        case .moveKind(let d): kindPick.select(kindPick.selected + d)
+        case .pickKind: kindPick.pick()
+        case .closeKinds: closeKinds()
         }
         return true
     }
@@ -1741,6 +1790,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // typing over the grey words replaces them (the mic stops, the take is set aside); before anything was said it
         // makes a typed note
         if now && !typed { perform(NoteKeys.action(.typing, keyState), key: .typing) }
+        // typing goes on into the note: the type list steps away
+        if pickingKind, marked == nil { closeKinds() }
         // the words taken with Tab, all deleted: they are the grey words again (↩ keeps them, Tab takes them again)
         if accepted, wordsInField != nil, marked == nil, committed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             accepted = false
@@ -1775,7 +1826,9 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         case kVK_Escape: k = .escape
         case kVK_Return, kVK_ANSI_KeypadEnter: k = mods.isEmpty ? .returnKey : mods == .shift ? .shiftReturn : nil
         case kVK_Tab: k = mods.isEmpty ? .tab : nil
-        default: break
+        case kVK_UpArrow: k = mods.isEmpty ? .up : nil
+        case kVK_DownArrow: k = mods.isEmpty ? .down : nil
+        default: if let d = NoteBubble.commandDigit(e) { k = .command(d) }
         }
         if let k = k { return perform(NoteKeys.action(k, keyState), key: k) }
         if picking { return false }
@@ -1840,6 +1893,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func openPick() {
         guard mode != .recording, let s = shot, !picking else { return }
+        if pickingKind { closeKinds() }
         picking = true
         pick.current = placeID
         pick.showsKeys = firstTimes             // its keys, the first few times (as the pen hint)
@@ -1865,6 +1919,54 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         panel?.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
         emit(["event": "note_chip", "open": false, "n": shot?.n ?? 0])
+    }
+
+    // MARK: the type chip: what it is
+
+    /// ⌘ and a digit, the top row or the keypad, nothing else held: the digit (0–9); nil for any other key.
+    static func commandDigit(_ e: NSEvent) -> Int? {
+        guard e.type == .keyDown, e.modifierFlags.intersection([.command, .option, .control, .shift]) == .command else { return nil }
+        let top = [kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9]
+        let pad = [kVK_ANSI_Keypad0, kVK_ANSI_Keypad1, kVK_ANSI_Keypad2, kVK_ANSI_Keypad3, kVK_ANSI_Keypad4, kVK_ANSI_Keypad5,
+                   kVK_ANSI_Keypad6, kVK_ANSI_Keypad7, kVK_ANSI_Keypad8, kVK_ANSI_Keypad9]
+        return top.firstIndex(of: Int(e.keyCode)) ?? pad.firstIndex(of: Int(e.keyCode))
+    }
+
+    private func toggleKinds() { pickingKind ? closeKinds() : openKinds() }
+
+    /// The type list under the footer; the note's field keeps the keyboard (↑↓ ↩ Esc come here through NoteKeys).
+    private func openKinds() {
+        guard let s = shot, !pickingKind else { return }
+        if picking { closePick() }
+        pickingKind = true
+        kindPick.current = chosenKind
+        kindPick.reload()
+        kindPick.select(kindPick.currentIndex)  // the cursor opens on the type it has now ("Not set" when none)
+        refreshStatus()
+        layout()
+        if !reduceMotion {
+            kindPick.alphaValue = 0
+            NSAnimationContext.runAnimationGroup { c in c.duration = 0.15; kindPick.animator().alphaValue = 1 }
+        }
+        emit(["event": "note_kind_list", "open": true, "n": s.n])
+    }
+
+    private func closeKinds() {
+        guard pickingKind else { return }
+        pickingKind = false
+        refreshStatus()
+        layout()
+        emit(["event": "note_kind_list", "open": false, "n": shot?.n ?? 0])
+    }
+
+    /// ⌘1–⌘4 / ⌘0, or a row of the list: the chip says it at once; the shot takes it when the note is saved.
+    private func setKind(_ k: NoteKind?, via: String) {
+        guard let s = shot else { return }
+        chosenKind = k
+        kindChip.set(k)
+        if pickingKind { closeKinds() }
+        emit(["event": "note_kind", "n": s.n, "kind": k?.rawValue ?? NSNull(), "via": via])
+        layout()
     }
 
     private func picked(_ p: Project?) {
@@ -1944,22 +2046,47 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
     }
 
-    /// A real key event through the bubble's panel — `esc` | `return` | `shift-return` | `tab`: the same path a key
-    /// press takes.
+    /// A real key event through the bubble's panel — `esc` | `return` | `shift-return` | `tab` | `up` | `down` | `cmd-0`…`cmd-9`:
+    /// the same path a key press takes.
     func testKey(_ name: String) {
         guard let p = panel, isOpen else { return }
         let (code, chars, mods): (Int, String, NSEvent.ModifierFlags) = {
+            if name.hasPrefix("cmd-"), let d = Int(name.dropFirst(4)), (0...9).contains(d) {
+                let top = [kVK_ANSI_0, kVK_ANSI_1, kVK_ANSI_2, kVK_ANSI_3, kVK_ANSI_4, kVK_ANSI_5, kVK_ANSI_6, kVK_ANSI_7, kVK_ANSI_8, kVK_ANSI_9]
+                return (top[d], "\(d)", [.command])
+            }
             switch name {
             case "esc": return (kVK_Escape, "\u{1B}", [])
             case "tab": return (kVK_Tab, "\t", [])
             case "shift-return": return (kVK_Return, "\r", [.shift])
+            case "up": return (kVK_UpArrow, "\u{F700}", [])
+            case "down": return (kVK_DownArrow, "\u{F701}", [])
             default: return (kVK_Return, "\r", [])
             }
         }()
         guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                        windowNumber: p.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
                                        isARepeat: false, keyCode: UInt16(code)) else { return }
+        // (as NSApp does: a ⌘ key is a key equivalent first — the panel's, before the main menu's ⌘1–⌘4)
+        if mods.contains(.command), p.performKeyEquivalent(with: e) { return }
         p.sendEvent(e)
+    }
+
+    /// The type chip: `open` | `close` | `click` (the chip itself) | `row N` (a click on row N: 0–3 the kinds, 4 not set)
+    /// | `hover` | `unhover` — then its state ("note_kind_state").
+    func testKind(_ arg: String) {
+        let a = arg.split(separator: " ").map(String.init)
+        switch a.first ?? "" {
+        case "open": openKinds()
+        case "close": closeKinds()
+        case "click": kindChip?.performClick(nil)
+        case "row": if pickingKind, let i = a.count > 1 ? Int(a[1]) : nil { kindPick.pick(i) }
+        case "hover": kindChip?.testHover(true)
+        case "unhover": kindChip?.testHover(false)
+        default: break
+        }
+        emit(["event": "note_kind_state", "open": pickingKind, "kind": chosenKind?.rawValue ?? NSNull(), "selected": kindPick.selected,
+              "chip": kindChip?.label ?? "", "shot_kind": shot?.itemKind?.rawValue ?? NSNull()])
     }
 
     /// The words heard so far while it listens (test commands only): as the live stream shows them, grey in the
@@ -2095,7 +2222,8 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
          "status": status.stringValue, "listening": isListening, "typed": typed, "words_in_field": wordsInField ?? NSNull(),
          "voice_busy": voiceBusy, "strokes": ink.strokes.count, "drawing": ink.isDrawing, "generation": generation,
          "in_place": staged, "dock": dockSide?.rawValue ?? NSNull(), "chip": chip?.title ?? "", "picking": picking, "undo_button": undoBtn.map { !$0.isHidden } ?? false,
-         "project": shot?.project ?? NSNull(), "frame": panel.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] } ?? [],
+         "project": shot?.project ?? NSNull(), "kind": chosenKind?.rawValue ?? NSNull(), "picking_kind": pickingKind,
+         "kind_chip": kindChip?.label ?? "", "frame": panel.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] } ?? [],
          "voice_done": voiceDone, "waiting_words": waitingWords, "voice_kept": voiceKept, "taken": accepted,
          "heard": heard.committed + heard.pending, "keys": "\(keyState.voice)", "mic_gone": micGone,
          "recording_paused": island.rec.map { $0.isPaused as Any } ?? NSNull(), "resume_on_close": recordingResume as Any? ?? NSNull()]
@@ -2116,6 +2244,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func saveText(_ s: Shot) {
         let t = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         s.text = t.isEmpty ? nil : t
+        s.itemKind = chosenKind
         s.batch?.save(s)
     }
 
@@ -2127,6 +2256,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.stop()
         ink.flush()                             // a stroke still being drawn is part of the note
         if picking { picking = false; pick.isHidden = true }
+        if pickingKind { pickingKind = false; kindPick.isHidden = true }
+        // the type goes with the note: saved (or kept with a discarded snap, for its Undo); Esc on an edit or a
+        // recording's note leaves it as it was
+        if save || (!save && mode == .listen) { s.itemKind = chosenKind }
         // (the chip beside it already says where it goes)
         let savedLine = Loc.t("capture.note.saved", table: "Capture")
         // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo

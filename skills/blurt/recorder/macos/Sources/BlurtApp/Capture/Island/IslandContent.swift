@@ -821,7 +821,8 @@ final class IslandContent: NSView {
                               fg: paused ? BrandColor.Island.attn : .white) { rec.togglePause() }
         place(pb, x: inset, y: y)
         pauseBtn = pb
-        let sb = IslandButton(icon: .snap, tip: Loc.t("capture.rec.snap_note", table: "Capture"), fill: CaptureGlass.control) { [weak i] in
+        // the snap button is ⌥A: the whole snap flow (area, note, card) into the take, which keeps going
+        let sb = IslandButton(icon: .snap, tip: tip("capture.rec.snap_note", .snap), fill: CaptureGlass.control) { [weak i] in
             i?.snapWithNote()
         }
         place(sb, x: pb.frame.maxX + 8, y: y)

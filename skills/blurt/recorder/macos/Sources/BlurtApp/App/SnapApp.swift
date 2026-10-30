@@ -50,6 +50,8 @@
 //     noteclear · noteink down|move|up X,Y [shift|option] · noteundo · notestall · notestate (the note bubble: ⌘A⌫, the
 //                             pen — on the frozen picture in place, else the bubble's —, ⌘Z, a mic gone, what it shows)
 //     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
+//     notekind open|close|click|row N|hover|unhover   the bubble's type chip and its list (notekey cmd-1…cmd-4, cmd-0,
+//                             up, down: its keys)
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
@@ -394,6 +396,7 @@ extension App {
         case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
         case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the mic stopped, the final words came in
         case "notechip": NoteBubble.shared.testChip(arg)                            // notechip open|close|type T|down|up|return|pick ID|inbox
+        case "notekind": NoteBubble.shared.testKind(arg)                            // notekind open|close|click|row N|hover|unhover: the type chip
         case "stage":                                   // stage [click]: the in-place markup stage; click = outside the picture
             if arg == "click" { InkStage.shared.testClickOutside() }
             emit(["event": "stage_state"].merging(InkStage.shared.testState) { $1 })

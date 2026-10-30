@@ -306,3 +306,46 @@ final class PanelCloseButton: ClosureButton {
     override func mouseExited(with event: NSEvent) { over = false }
     override var mouseDownCanMoveWindow: Bool { false }
 }
+
+/// A card's type (the one chosen in its note bubble — BlurtCore NoteKind, 2026-10-31): the kind's icon, small, on the
+/// hanging card and on its Cards panel tile. None while the type is not set. A snap card shows it first among its
+/// marks (white, with the mic and the ink: HangingCards.marks); a voice card, in the kind's colour over its mic mark
+/// (the column its words leave free).
+enum CardKindMark {
+    static let name = "kindMark"
+
+    /// The icon for the card's marks (nil: no type).
+    static func icon(_ s: Shot) -> BlurtIcon? { s.itemKind.map { KindStyle.icon($0.rawValue) } }
+
+    /// A voice card's kind mark: a sibling of its mic mark (`mic`), 11 pt, 3 pt over it — added, updated or removed.
+    static func voice(on card: CALayer, mic: CALayer?, shot s: Shot, dark: Bool) {
+        let old = card.sublayers?.first { $0.name == name }
+        guard let k = s.itemKind, let mic = mic else { old?.removeFromSuperlayer(); return }
+        let l = old ?? {
+            let l = CALayer()
+            l.name = name
+            l.bounds = CGRect(x: 0, y: 0, width: 11, height: 11)
+            l.contentsScale = 2
+            card.addSublayer(l)
+            return l
+        }()
+        l.contents = KindStyle.icon(k.rawValue).cgImage(size: 11, scale: 2, color: HangingCards.cardColor(KindStyle.color(k.rawValue), dark: dark))
+        l.position = CGPoint(x: mic.position.x, y: mic.position.y - 11 - 3)
+    }
+
+    /// The Cards panel tile's mark: the kind's icon in its colour (a voice tile, before its mic) or white on the small dark
+    /// capsule the hanging card uses (a snap's picture, its bottom-left corner). nil: no type.
+    static func tileView(_ s: Shot, voice: Bool) -> NSView? {
+        guard let k = s.itemKind else { return nil }
+        if voice {
+            let v = NSImageView(image: KindStyle.image(k.rawValue, size: 10))
+            v.toolTip = KindChip.name(k)
+            return v
+        }
+        guard let img = HangingCards.badgeImage([KindStyle.icon(k.rawValue)]) else { return nil }
+        let v = NSImageView(image: NSImage(cgImage: img, size: NSSize(width: HangingCards.badgeWidth(1), height: 16)))
+        v.toolTip = KindChip.name(k)
+        v.setAccessibilityLabel(KindChip.name(k))
+        return v
+    }
+}

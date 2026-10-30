@@ -1,4 +1,5 @@
-// The island while recording (it replaced the HUD): snaps fly into it, its snap button pauses for a note, it counts
+// The island while recording (it replaced the HUD): snaps fly into it, its snap button is ⌥A (area, note, card; the
+// take goes on), it counts
 // the items live.py spots (<session>/live/drafts.jsonl) and shows the live caption line under itself
 // (live/transcript.jsonl). Nothing pops up while recording (K4) — only the counts change.
 import AppKit
@@ -68,10 +69,13 @@ extension Island {
 
     var spottedCount: Int { watch?.drafts.order.count ?? 0 }
 
-    /// The island's snap button: a still of this moment, then the recording pauses while its note is open.
+    /// The island's snap button: exactly ⌥A while recording (AppDelegate.hotkey(.snap)) — the snap flow (drag an area,
+    /// its note, its card) into the take, and the recording keeps going. (It used to take a still of the whole
+    /// recorded area and paused the take while its note was open; ⌥M still takes such a still, as a marker.)
     func snapWithNote() {
-        guard let r = rec else { return }
-        r.snap(via: "island") { [weak self] shot in self?.openRecordingNotes(at: shot) }
+        guard rec != nil else { return }
+        emit(["event": "rec_snap_button"])
+        (NSApp.delegate as? App)?.hotkey(.snap)
     }
 
     /// The notes for this take's snaps (the "notes" command; the snap button lands here with its new shot).

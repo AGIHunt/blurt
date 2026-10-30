@@ -132,10 +132,16 @@
 "capture.note.undo" = "Undo the last stroke (⌘Z)";
 "capture.note.done" = "Done";
 "capture.note.done_tip" = "Finish this snap (⏎). Esc discards it, with Undo.";
-"capture.note.chip_tip" = "Where this snap goes (Tab). Unassigned: it stays as a card under the notch until you pick a project.";
+"capture.note.chip_tip" = "Project: which project this snap goes into (Tab). Unassigned: it stays as a card under the notch until you pick a project.";
 "capture.note.chip_ax" = "Goes to %@";
 "capture.note.unassigned_caption" = "stays as a card";
 "capture.note.unassigned_tip" = "No project yet: the snap stays as a card under the notch until you pick one.";
+"capture.note.kind_chip" = "Type";
+"capture.note.kind_tip" = "Type: whether this snap is an issue, an idea, a note or a task (⌘1–⌘4). Not set: decided from the note when it’s organized.";
+"capture.note.kind_ax" = "Type: %@";
+"capture.note.kind_none" = "Not set";
+"capture.note.kind_none_caption" = "decided when organized";
+"capture.note.kind_none_tip" = "No type: decided from the note when it’s organized into an item.";
 "capture.note.ph_voice_busy" = "A voice note is recording. Type a note here";
 "capture.note.ph_mic_gone" = "Mic disconnected. Type a note";
 "capture.note.ph_no_mic" = "Mic unavailable. Type a note";
@@ -178,7 +184,7 @@
 "capture.rec.menu_goes_to" = "Goes to %@…";
 "capture.rec.restart" = "Start Over";
 "capture.rec.resume" = "Resume";
-"capture.rec.snap_note" = "Snap and add a note (pauses)";
+"capture.rec.snap_note" = "Snap an area with a note (the recording keeps going)";
 "capture.recording.filed" = "Filed to %@";
 "capture.recording.organizing" = "Organizing into %@";
 "capture.recording.organizing_usual" = "Usually takes about %@ min · the items appear there";

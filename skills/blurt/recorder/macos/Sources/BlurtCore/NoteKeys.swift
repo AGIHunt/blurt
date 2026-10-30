@@ -17,6 +17,11 @@
 //  • Esc (NoteEsc): typed text first, then the snap (with Undo); Edit Note puts the note back; a recording's note resumes.
 //  • an input method's composition keeps its own keys (↩ / Esc / Tab end or cancel the composition); with the place
 //    list open, Esc closes it and the other keys are the list's.
+//  • the type (NoteKind, 2026-10-31): ⌘1–⌘4 set 问题 / 想法 / 笔记 / 待办 and ⌘0 clears it, in every mode and with either
+//    list open (the bubble has no other ⌘-digit; the main menu's ⌘1–⌘4 "Go" items are the main window's, and the
+//    bubble takes those keys first while it has the keyboard). ⌘5–⌘9 aren't the bubble's. The type list (the type
+//    chip's, opened with a click) takes ↑↓ ↩ while it is open; Esc or Tab close it, back to the note; typing goes on
+//    into the note (the bubble closes the list). ↑↓ are otherwise the field's.
 
 import Foundation
 
@@ -25,6 +30,10 @@ public enum NoteKeys {
         case returnKey, shiftReturn, tab, escape
         /// the first committed character typed into the field (not an IME composition: NoteTyping)
         case typing
+        /// ↑ / ↓ (no modifiers)
+        case up, down
+        /// ⌘ and a digit (the top row or the keypad): ⌘1–⌘4 the type, ⌘0 none
+        case command(Int)
     }
 
     public enum Mode: Equatable {
@@ -56,13 +65,17 @@ public enum NoteKeys {
         public var composing: Bool
         /// the place list (the chip's) is open
         public var picking: Bool
+        /// the type list (the type chip's) is open
+        public var pickingKind: Bool
 
-        public init(mode: Mode, voice: Voice = .none, typed: String = "", composing: Bool = false, picking: Bool = false) {
+        public init(mode: Mode, voice: Voice = .none, typed: String = "", composing: Bool = false, picking: Bool = false,
+                    pickingKind: Bool = false) {
             self.mode = mode
             self.voice = voice
             self.typed = typed
             self.composing = composing
             self.picking = picking
+            self.pickingKind = pickingKind
         }
 
         /// the grey words are showing in the field's place
@@ -90,6 +103,12 @@ public enum NoteKeys {
         case typeOver
         /// typing before anything was said: a typed note, the mic stops
         case typedNote
+        /// the snap's type: ⌘1–⌘4, ⌘0 none (nil) — the type list closes if it is open
+        case setKind(NoteKind?)
+        /// the type list: ↑↓ move its cursor, ↩ picks the row under it, Esc / Tab close it
+        case moveKind(Int)
+        case pickKind
+        case closeKinds
         /// nothing happens (and the key goes nowhere)
         case ignore
         /// not the bubble's: the field, the input method or the place list takes it
@@ -98,8 +117,24 @@ public enum NoteKeys {
 
     public static func action(_ key: Key, _ s: State) -> Action {
         if s.composing { return .pass }
+        if case .command(let d) = key {
+            guard let k = NoteKind.forDigit(d) else { return .pass }
+            return .setKind(k)
+        }
+        if s.pickingKind {
+            switch key {
+            case .escape, .tab: return .closeKinds
+            case .returnKey: return .pickKind
+            case .up: return .moveKind(-1)
+            case .down: return .moveKind(1)
+            case .shiftReturn: return .ignore
+            default: break                  // typing: as below (the bubble closes the list)
+            }
+        }
         if s.picking { return key == .escape ? .closePlaces : .pass }
         switch key {
+        case .up, .down, .command:
+            return .pass
         case .returnKey:
             return .commit
         case .escape:
