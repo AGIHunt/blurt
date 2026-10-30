@@ -24,6 +24,7 @@
 "app.menu.countdown.seconds" = "%ld seconds";
 "app.menu.discard" = "Discard Recording";
 "app.menu.finish" = "Finish Recording";
+"app.menu.video_only" = "Save Video Only";
 "app.menu.open" = "Open Blurt";
 "app.menu.pause" = "Pause";
 "app.menu.project" = "Current Project: %@";
@@ -70,6 +71,9 @@
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
 "app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
+"app.record.video_only_saved" = "Video saved · %@";
+"app.record.video_only_detail" = "Not organized · shown in the Finder";
+"app.record.show_in_finder" = "Show in Finder";
 
 "app.status.ax_count" = "Blurt — %@";
 
@@ -92,9 +96,6 @@
 "main.banner.with_agent" = "Handed off to %@ · %@";
 
 "main.captures.tip" = "They’re waiting at the top of your screen, under the notch. This brings them all down there, so you can choose a project for each.";
-"main.captures.taken" = "Recently dragged out · %ld in the last 7 days";
-"main.captures.taken.show" = "Show";
-"main.captures.taken.tip" = "Cards you dragged into other apps in the last 7 days: copy them, drag them out again or put them back under the notch";
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
 
@@ -457,6 +458,11 @@
 "menu.view" = "View";
 "menu.toggle_detail" = "Show or Hide Detail";
 "menu.sort_by" = "Sort By";
+/* the list heading's sort button and View ▸ Sort By: the date key, the two directions, and the button's spoken label */
+"main.sort.updated" = "Updated";
+"main.sort.ascending" = "Ascending";
+"main.sort.descending" = "Descending";
+"main.sort.label" = "Sort By %1$@, %2$@";
 
 "menu.undo" = "Undo";
 
@@ -470,6 +476,7 @@
 "notify.done.generic" = "Organized";
 "notify.done.recording" = "Recording organized";
 "notify.done.snaps" = "Snaps organized";
+"notify.done.recording_in" = "Organized into %@";
 
 "notify.failed" = "%@ didn’t finish";
 
@@ -717,7 +724,6 @@
 "main.project.unpin" = "Unpin";
 "main.project.pin.undo_name" = "Pin";
 "main.search.tip" = "Searches titles, what was said and every field. ⌘F or /";
-"main.sidebar.taken" = "Dragged Out";
 "app.record.not_saved_title" = "Recording not saved";
 "app.record.partial_title" = "Recording stopped early";
 "app.record.partial_kept" = "the first %@ is kept";

@@ -9,7 +9,8 @@
 // "Details" — the style that actually ran, what polish did, and the models by name (DictationModels), not their ids.
 // The lists draw their selection as the brand wash (ListWash / RowWash).
 //
-// Keys (the list focused): ↑↓ (⇧/⌘-click for more), ⌫ deletes (⌘Z puts it back), ⌘C copies, ⌘F searches.
+// Keys (the list focused): ↑↓ (⇧/⌘-click for more), ⌫ deletes (⌘Z puts it back), ⌘C copies, ⌘F searches — the
+// history's own search field, under the header band (ListSearchField; ↓ or ↩ into the results, Esc clears it).
 //
 // Reads DictationHistory (history.jsonl) directly, plus what newer dictation engines add to an entry (the terms they
 // applied, the context they used) straight from its line, so older and newer histories both read. "Turn into item"
@@ -490,7 +491,18 @@ final class DictationPage {
     let model = DictationHistoryModel()
     let lab = DictationLabModel()
     let words = DictationWordsModel()
-    lazy var list: NSViewController = DictationPage.host(DictationPageList(m: model, lab: lab, words: words))
+    /// the history's search field, at the top of its list (the main window is its delegate, as for the items' field)
+    let search: NSSearchField = {
+        let f = NSSearchField()
+        f.placeholderString = T("dictation.history.search")
+        f.sendsSearchStringImmediately = true
+        f.sendsWholeSearchString = false
+        f.controlSize = .regular
+        f.font = .systemFont(ofSize: 13)
+        f.setAccessibilityLabel(T("dictation.history.search"))
+        return f
+    }()
+    lazy var list: NSViewController = DictationPage.host(DictationPageList(m: model, lab: lab, words: words, search: search))
     lazy var detail: NSViewController = DictationPage.host(DictationPageDetail(m: model, lab: lab, words: words))
     private var accessTimer: Timer?
     private var tabWatch: AnyCancellable?
@@ -506,7 +518,6 @@ final class DictationPage {
                     self.lab.visible = self.visible && t == .lab
                     if t == .lab { self.lab.reload() }
                     if t == .words { self.words.reload(); self.words.selectFirstIfNone() }
-                    if self.visible { self.searchFollows(t) }
                     MainWindowController.shared.updateTitle()
                     self.syncDetailColumn()
                     emit(["event": "dictation_page", "tab": t.rawValue])
@@ -585,26 +596,9 @@ final class DictationPage {
     /// The Words tab (Settings → Dictation's "Manage…").
     func showWords() { model.tab = .words }
 
-    /// The toolbar's search field searches the history only: on Words (whose own field finds as it is typed) and the
-    /// Lab it leaves the toolbar, so no field on the page searches something that isn't showing; back on History (or
-    /// on leaving the page) the toolbar is the page's again (MainWindowController.syncToolbar puts it back).
-    private func searchFollows(_ t: DictationHistoryModel.Tab) {
-        let c = MainWindowController.shared
-        guard let tb = c.window?.toolbar else { return }
-        if t == .history || !visible {
-            c.syncToolbar(dictation: visible)
-            if visible, let f = c.searchItem?.searchField {
-                f.placeholderString = T("dictation.history.search")
-                if f.stringValue != model.query { f.stringValue = model.query }
-            }
-        } else if let i = tb.items.firstIndex(where: { $0.itemIdentifier == MainWindowController.searchID }) {
-            tb.removeItem(at: i)
-        }
-    }
-
     func didShow() {
         visible = true
-        searchFollows(model.tab)
+        if search.stringValue != model.query { search.stringValue = model.query }
         lab.visible = model.tab == .lab
         model.reload()
         model.selectFirstIfNone()
@@ -625,7 +619,6 @@ final class DictationPage {
     func didHide() {
         visible = false
         syncDetailColumn()               // the items' detail is never folded away
-        searchFollows(.history)          // the items' pages search with it
         lab.visible = false
         accessTimer?.invalidate()
         accessTimer = nil
@@ -771,15 +764,28 @@ struct DictationPageList: View {
     @ObservedObject var m: DictationHistoryModel
     @ObservedObject var lab: DictationLabModel
     @ObservedObject var words: DictationWordsModel
+    let search: NSSearchField
     var body: some View {
         VStack(spacing: 0) {
             DictationPageHeader(m: m, lab: lab)
             switch m.tab {
             case .lab: LabListView(lab: lab)
             case .words: DictationWordsList(w: words)
-            case .history: DictationListView(m: m)
+            case .history: DictationListView(m: m, search: search)
             }
         }
+    }
+}
+
+/// An AppKit search field placed in a SwiftUI column: the one the page owns (DictationPage.search), so ⌘F, the main
+/// window's delegate (↓ / ↩ / Esc) and the tests all reach the same field the items' list has (ListHeading.search).
+struct ListSearchField: NSViewRepresentable {
+    let field: NSSearchField
+    func makeNSView(context: Context) -> NSSearchField { field }
+    func updateNSView(_ f: NSSearchField, context: Context) {}
+    @available(macOS 13.0, *)
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSSearchField, context: Context) -> CGSize? {
+        CGSize(width: proposal.width ?? 200, height: nsView.intrinsicContentSize.height)
     }
 }
 
@@ -910,11 +916,17 @@ private struct IconButton: View {
 
 struct DictationListView: View {
     @ObservedObject var m: DictationHistoryModel
+    let search: NSSearchField
     @Environment(\.undoManager) private var undo
 
     var body: some View {
         VStack(spacing: 0) {
-            if !m.entries.isEmpty { DictationStatusBanner(m: m) }      // the empty state says it itself
+            if !m.entries.isEmpty {
+                // the history's search, the column's width under the header band (the items' list has the same)
+                ListSearchField(field: search)
+                    .padding(.horizontal, ListHeading.searchInset).padding(.bottom, 8)
+                DictationStatusBanner(m: m)      // the empty state says it itself
+            }
             if let e = m.error {
                 Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr).frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 16).padding(.vertical, 6)
@@ -945,8 +957,8 @@ struct DictationListView: View {
         return parts.joined(separator: " · ") + (s.savedMinutes >= 1 ? "\n" + T("main.dictation.stat.saved.tip") : "")
     }
 
-    /// Days as quiet headings (no rule under them, no counts), rows without separators: the spacing groups them, as in
-    /// "Recently Dragged Out"; the selection is the brand wash.
+    /// Days as quiet headings (no rule under them, no counts), rows without separators: the spacing groups them; the
+    /// selection is the brand wash.
     var list: some View {
         List(selection: $m.selection) {
             ForEach(Array(m.days.enumerated()), id: \.element.day) { n, group in

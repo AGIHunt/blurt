@@ -501,7 +501,7 @@ enum SelfTests {
             }
         case "mainsearch":
             let c = MainWindowController.shared
-            c.searchItem?.searchField.stringValue = arg
+            c.list.heading.search.stringValue = arg
             c.model.text = arg
             c.model.reload()
             c.list.updateEmpty()
@@ -566,7 +566,7 @@ enum SelfTests {
                 NSApp.sendEvent(e)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                out(["search": c.searchItem?.searchField.stringValue ?? "", "responder": "\(type(of: c.window?.firstResponder as Any))"])
+                out(["search": c.searchField?.stringValue ?? "", "responder": "\(type(of: c.window?.firstResponder as Any))"])
             }
         case "mainkey":                 // mainkey CHAR: a key on the list (a d r w x s …), as typed
             let c = MainWindowController.shared
@@ -621,12 +621,12 @@ enum SelfTests {
                 out(["scope": c.model.scope.key, "projects": c.model.projects.filter(\.registered).map(\.name),
                      "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
             }
-        case "mainbanner":              // mainbanner captures|taken N: show that banner with N (no cards needed), for the ↑ walk
+        case "mainbanner":              // mainbanner captures N: show that banner with N (no cards needed), for the ↑ walk
             let c = MainWindowController.shared
             let w = arg.split(separator: " ").map(String.init)
             let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
-            if w.first == "captures" { c.list.captures.set(count: n) } else { c.sidebar.testTaken = n > 0 ? n : nil; c.sidebar.rebuild() }
-            out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
+            if w.first == "captures" { c.list.captures.set(count: n) }
+            out(["captures": !c.list.captures.isHidden])
         case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
             let c = MainWindowController.shared
             out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
@@ -641,10 +641,11 @@ enum SelfTests {
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg
             c.model.reload()
             out(["state": c.model.state ?? NSNull(), "rows": c.model.rowCount])
-        case "mainpopup":               // mainpopup filter|context: open the toolbar's Filter menu / the selection's context menu
+        case "mainpopup":               // mainpopup filter|sort|context: the list heading's Filter / sort menu, the selection's context menu
             let c = MainWindowController.shared
             DispatchQueue.main.async {
                 if arg == "filter" { c.showFilterMenu(); return }
+                if arg == "sort" { c.showSortMenu(); return }
                 guard let r = c.list.table.selectedRowIndexes.first, let m = c.contextMenu(for: c.list.table.selectedRowIndexes) else { return }
                 let rect = c.list.table.rect(ofRow: r)
                 m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 160, y: rect.midY), in: c.list.table)

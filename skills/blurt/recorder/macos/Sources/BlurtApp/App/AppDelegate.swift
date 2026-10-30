@@ -89,14 +89,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .stop: command("stop")
         case .pen: command("pen")
         case .penEsc: if rec?.penSticky == true { command("pen") }
-        case .snap: if let r = rec { r.snap(via: "hotkey") } else if resident { snapper.hotkey() }
+        case .snap: if resident { snapper.hotkey() } else if let r = rec { r.snap(via: "hotkey") }     // the snap flow, also while recording
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .overviewEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
@@ -107,6 +107,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "stop":
             if let r = rec { r.stop() } else if let p = picker { p.finish(false) } else if !resident { sessionEnded(2, ["event": "cancelled"]) }
         case "discard": rec?.stop(discard: true)
+        case "videoonly": rec?.videoOnly = true; rec?.stop()           // Save Video Only (BA-66)
         case "restart": rec?.stop(discard: true, restart: true)
         case "pause": if rec?.isPaused == false { rec?.togglePause() }
         case "resume": if rec?.isPaused == true { rec?.togglePause() }
@@ -144,6 +145,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.lastRegion = region
         let r = Recorder(region: region)
         r.onRestart = { [weak self] in
+            snapper.takeEnded {}            // Start Over: the discarded take's cards go with it
             FileManager.default.createFile(atPath: opts.events ?? "/dev/null", contents: nil)
             self?.rec = nil
             self?.begin(region)
@@ -172,6 +174,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let w = overlayWindow(OverlayFit.frame(region: r, panel: v.panelSize, margin: CountdownView.panelMargin, screen: screen),
                               view: v)
         w.ignoresMouseEvents = false
+        OwnWindows.mark(w, .countdown)          // never in the video (the take starts once it is gone, and it is left out)
         w.orderFrontRegardless()
         countdownWin = w
         MenuGlyph.shared.countdown = true            // Peep listens in the menu bar too
@@ -604,12 +607,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var autoProcess: Bool { (recordConfig()["process"] as? String ?? "auto") != "off" }
 
     func takeEnded(_ code: Int32, _ event: [String: Any]) {
+        let videoOnly = rec?.videoOnly ?? false
         rec = nil
         busy = false
         picker = nil
-        guard let dir = lastSession else { return }
+        guard let dir = lastSession else { return snapper.takeEnded {} }
         cleanupLive(dir)
         if code != 0 {
+            snapper.takeEnded {}
             // a failed take keeps what was taken during it — the video up to its last fragment (Recorder writes 4 s
             // fragments), the stills, their notes, the live transcript (BlurtCore TakeEnd); only a cancelled or empty
             // one leaves no folder behind
@@ -634,23 +639,53 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var m = meta
         for k in App.errorKeys { if let x = event[k] { m[k] = x } }
         if let e = event["ended_early"] { m["ended_early"] = e }
+        // Save Video Only (BA-66): kept, not handed to an agent — the skill can still organize it later
+        if videoOnly { m["video_only"] = true }
         if let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
         App.sayRecovered(event, duration: dur)
-        if autoProcess {
-            process(dir, project: project?.id)
-            // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
-            Refile.offerRecording(dir, project: project?.id)
+        if videoOnly {
+            snapper.takeEnded {}
+            savedVideoOnly(dir, duration: dur)
+        } else if autoProcess {
+            // its ⌥A snaps' words first (a few seconds at most): the run reads them with the rest
+            snapper.takeEnded { [weak self] in self?.process(dir, project: project?.id) }
+            // where its items go, how long that usually takes here, and the way to put them elsewhere (Refile)
+            Refile.offerRecording(dir, project: project?.id, usual: OrganizeProgress.usual(video: dur))
         } else if island.started {
+            snapper.takeEnded {}
             // the take's end already said "✓ 0:42" in place of the dot (RecordingDone): no second moment for one take
             if !RecordingDone.saidRecently {
                 island.doneMoment(T("app.ear.saved", Island.clock(dur)), lead: .record, toast: T("app.toast.saved", Island.clock(dur)))
             }
         } else {
+            snapper.takeEnded {}
             toast(T("app.toast.saved", Island.clock(dur)), icon: .check)
         }
         refreshStatus()
+    }
+
+    /// Save Video Only (BA-66): the take is kept and not organized; its video is shown in the Finder, to send to
+    /// someone. The island says so, with the Finder again. Housekeeping leaves it alone (only organized recordings'
+    /// videos are ever deleted, and only when the user chose so: VideoRetention); the blurt skill can still organize it.
+    func savedVideoOnly(_ dir: URL, duration: Double) {
+        let video = dir.appendingPathComponent("recording.mp4")
+        emit(["event": "take_video_only", "session": dir.path, "video": video.path, "duration": duration])
+        let reveal = {
+            // tests never drive the Finder (no events into other apps): the event says what would be shown
+            if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
+                emit(["event": "reveal_in_finder", "path": video.path])
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([video])
+            }
+        }
+        reveal()
+        var t = Island.Toast(text: T("app.record.video_only_saved", Island.clock(duration)) + "\n" + T("app.record.video_only_detail"),
+                             actionTitle: T("app.record.show_in_finder"), action: reveal)
+        t.icon = .check
+        t.seconds = 8
+        island.toast(t)
     }
 
     /// A saved take that wasn't plain sailing, said once on the island (after its "saved" line): it ended before
@@ -875,6 +910,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if let r = rec {
             add(T("app.menu.finish"), #selector(mStop)).showHotkey(.finish)
+            _ = add(T("app.menu.video_only"), #selector(mVideoOnly))        // BA-66: kept, not organized
             add(r.isPaused ? T("app.menu.resume") : T("app.menu.pause"), #selector(mPause)).showHotkey(.pause)
             _ = add(T("app.menu.restart"), #selector(mRestart))
             _ = add(T("app.menu.discard"), #selector(mDiscard))
@@ -1032,10 +1068,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static func giveSymbols(_ menu: NSMenu) {
         let symbols = [
             "mStart": "record.circle", "mStartLast": "record.circle", "mStop": "stop.circle", "mPause": "playpause",
-            "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
+            "mVideoOnly": "film", "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
             "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
-            "mShowTaken": "clock.arrow.circlepath", "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
+            "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",
         ]
@@ -1082,6 +1118,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mStart() { startRecording(useLast: false) }
     @objc func mStartLast() { startRecording(useLast: true) }
     @objc func mStop() { command("stop") }
+    @objc func mVideoOnly() { command("videoonly") }
     @objc func mPause() { command("toggle") }
     @objc func mRestart() { command("restart") }
     @objc func mDiscard() { command("discard") }

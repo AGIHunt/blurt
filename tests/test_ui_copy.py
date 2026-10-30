@@ -103,14 +103,29 @@ class Glossary(unittest.TestCase):
             island = plural_forms(RES / f"{lang}.lproj" / "Capture.stringsdict", "capture.island.to_review")
             self.assertTrue(all("review" not in f for f in island), island)
 
-    def test_recently_dragged_out_has_one_name(self):
-        # the main window's row said "Recently taken: 6" and opened a panel called "Recently Dragged Out"
+    def test_used_cards_are_the_cards_panels_history_only(self):
+        # v1.0.7: "Recently Dragged Out" (its own panel, menu-bar row, island menu row, main-window row and notice) is
+        # gone; cards used in other apps are the Cards panel's History segment, reached by ⌥H — and the two segments
+        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的")
         for lang in ("en", "zh-Hans"):
             main = strings(RES / f"{lang}.lproj" / "Main.strings")
             cap = strings(RES / f"{lang}.lproj" / "Capture.strings")
-            name = cap["capture.taken.title"].lower()
-            self.assertTrue(main["main.captures.taken"].lower().startswith(name), (lang, main["main.captures.taken"]))
-            self.assertTrue(cap["capture.taken.menu"].lower().startswith(name), (lang, cap["capture.taken.menu"]))
+            for k in ("main.captures.taken", "main.captures.taken.show", "main.captures.taken.tip", "main.sidebar.taken"):
+                self.assertNotIn(k, main, (lang, k))
+            for k in ("capture.taken.title", "capture.taken.menu", "capture.taken.show_all", "capture.taken.hint",
+                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again"):
+                self.assertNotIn(k, cap, (lang, k))
+            for t in (main, cap):
+                for k, v in t.items():
+                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”"):
+                        self.assertNotIn(gone, v, (lang, k))
+        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_current"], "Current %@")
+        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_history"], "History %@")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_current"], "当前 %@")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_history"], "历史 %@")
+        src = "\n".join(p.read_text() for p in (RES.parent).rglob("*.swift"))
+        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu"):
+            self.assertNotIn(gone, src, gone)
 
 
 if __name__ == "__main__":

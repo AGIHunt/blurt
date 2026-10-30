@@ -20,7 +20,7 @@
 "dictation.toast.set_up" = "去设置";
 "dictation.toast.on.tap" = "听写已开启：按一下%@ 开始说话";
 "dictation.toast.on.hold" = "听写已开启：按住%@ 说话";
-"dictation.toast.recording_busy" = "录屏正在使用麦克风，暂时不能听写";
+"dictation.toast.recording_busy" = "录屏时不能听写";
 "dictation.toast.voice_busy" = "正在录语音备注，先结束它";
 "dictation.toast.nothing.named" = "没听到内容（%@）";
 "dictation.toast.nothing.silent" = "%@ 没有声音";

@@ -1,8 +1,9 @@
 // K4's notification rules, for the jobs the app sees change (JobStore), and the menu-bar badge.
 //   • Never opens the review, the main window or a browser by itself.
-//   • Organising finished: the badge goes up; one quiet line in the island (2.4 s, no focus) — "Recording organised ·
-//     5 to review", click = that batch in the main window. A system notification only when the app isn't frontmost,
-//     the job ran 20 s or more and notify.done is on (default); never a sound.
+//   • Organising finished: the badge goes up; one quiet line in the island (2.4 s, no focus) — "Organized into Atlas
+//     Web · 5 new" for a recording (where its items are, BA-61), Open = that batch in the main window. A system
+//     notification only when the app isn't frontmost, the job ran 20 s or more and notify.done is on (default); never
+//     a sound.
 //   • Nothing at all while recording (the counts still update).
 //   • Agent sessions are Terminal/SessionNotifier's (P3): nothing here for type agent, so nothing arrives twice.
 //   • Failures: a line with the reason, a notification when not frontmost.
@@ -61,7 +62,9 @@ final class JobNotifier: NSObject, UNUserNotificationCenterDelegate {
             // a capture filed from its note (no agent) already said "Filed to …" in the island
             if let u = j.usage, u.agent == nil { MenuGlyph.shared.done(); return }
             let n = j.items.isEmpty ? nil : j.items.count
-            let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps") : T("notify.done.recording") } ?? T("notify.done.generic")
+            // a recording says where its items are (BA-61): "Organized into Atlas Web · 5 new", Open = that batch
+            let what = j.session.map { isShotsSession($0) ? T("notify.done.snaps")
+                : T("notify.done.recording_in", Refile.name(j.project ?? "inbox")) } ?? T("notify.done.generic")
             let text = n.map { "\(what) · \(TP("app.menu.new", $0))" } ?? what
             quiet(text, action: T("notify.open"), art: .done) { j.session.map { AppEnvironment.mainWindow?.reveal(session: $0) } ?? AppEnvironment.mainWindow?.showInbox() }
             MenuGlyph.shared.done()

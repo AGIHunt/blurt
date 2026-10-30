@@ -1,7 +1,7 @@
 // Settings → General: the app's everyday choices on one short page, four boxes and a closing line.
 //   App          open at login (LoginItem: the assistant's switch too, so a test build never registers itself),
 //                language (the running app keeps the one it opened with: Relaunch Now next to it).
-//   Recording    what happens after one, the countdown, system audio.
+//   Recording    what happens after one, the countdown, system audio, "Don't record the notch".
 //   Voice notes  how one ends — one choice, press the key again or a 1.5 s pause (record.voice.end_on_pause, off:
 //                Capture/VoiceInput.swift) —, the words while you talk (record.live_text, on: Capture/LiveTranscript.swift).
 //   Cards        macOS's own screenshots as cards (record.collect_system_shots); what a card dragged into an app
@@ -48,6 +48,7 @@ final class GeneralModel: ObservableObject {
     @Published var processMode = "auto"
     @Published var countdown = 3
     @Published var systemAudio = false
+    @Published var hideNotch = false
     @Published var collect = false
     @Published var cardDrag = CardDragMode.paste
     @Published var snapSound = false
@@ -64,6 +65,7 @@ final class GeneralModel: ObservableObject {
         processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
         countdown = recordConfig()["countdown"] as? Int ?? 3
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
+        hideNotch = OwnWindows.hideNotch
         collect = snapper.collecting
         cardDrag = CardDragMode.current
         snapSound = recordConfig()["snap_sound"] as? Bool ?? false
@@ -84,6 +86,12 @@ final class GeneralModel: ObservableObject {
     func setProcess(_ v: String) { setRecordConfig("process", v); processMode = v }
     func setCountdown(_ v: Int) { setRecordConfig("countdown", v); countdown = v }
     func setSystemAudio(_ v: Bool) { setRecordConfig("system_audio", v); systemAudio = v }
+    /// "Don't record the notch" (record.hide_notch): a take running now follows at once.
+    func setHideNotch(_ v: Bool) {
+        setRecordConfig(CaptureExclusion.hideNotchKey, v ? true : nil)
+        hideNotch = v
+        (NSApp.delegate as? App)?.rec?.updateFilter()
+    }
     func setCollect(_ v: Bool) {
         setRecordConfig("collect_system_shots", v)
         snapper.syncCollector()
@@ -137,6 +145,7 @@ struct GeneralPane: View {
                                 selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }))
                 }
                 SettingToggle("general.system_audio", isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
+                SettingToggle("general.hide_notch", isOn: Binding(get: { m.hideNotch }, set: { m.setHideNotch($0) }))
             }
 
             SettingsGroup("general.voice") {

@@ -56,7 +56,10 @@ what happens:
   ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
   to send another chat message.
 - **⌥A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥M too): a full-resolution still of
-  the area right now, no pause → `shots/`. Best evidence there is — mention it in one line.
+  the area right now, no pause → `shots/`. Best evidence there is — mention it in one line. In the macOS app ⌥A runs
+  the normal snap flow while recording (any area, its own note typed or said, a card) and the recording goes on: the
+  shot lands in this session's `shots/` with its note. Blurt's own windows, cards and notch are in the video like any
+  app's (users record Blurt to report Blurt's problems).
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart | snap`.
 
@@ -177,7 +180,9 @@ top-down — the user reviews from the top — and write each item as soon as it
   3. **Look at every annotated frame before using it.** Box not on the point → fix and re-grab.
 - **Shots** (`shots.jsonl`; later lines per `n` win; skip `"deleted": true`): the shot *is* the frame — use
   `shots/NNN.marked.png` when it exists (the user's ink is already on it, add no box), else `NNN.png`; no picking.
-  Its note is `text` / `said` (voice) — plus, for a snap while recording, what was said around its `t`. `frames.py
+  Its note is `text` / `said` (voice) — plus, for a snap while recording, what was said around its `t` (a snap
+  taken with a note while recording: that note is what the item is about; its `project`, when set, is where the
+  user wants it). `frames.py
   grab|grid shots/NNN.png` work on stills (`--crop stroke` = around their ink; `--ring cursor` for snaps while
   recording); `frames.py marks <video or session>` lists every snap.
 - Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB) → `patch --set clip=…`.

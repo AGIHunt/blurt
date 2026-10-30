@@ -12,9 +12,6 @@
 //    the moment the mic opens, before the room was known, still counts.
 //  • "still talking" while 4 of the last 6 frames are loud; 1.8 s without that ends the note. A key press or a mouse
 //    click in the pause doesn't restart the count.
-//  • adaptive end (BA-53): `silenceAfterShort` (nil = `silenceToEnd`) is the pause that ends a note with less than
-//    `shortSpeech` of talking in it — an "嗯…" before the thought isn't the note said. `endsIn`: how long until the
-//    pause ends it (the snap's bubble shows it on Done ↩). The defaults end both alike (dictation, ⌥V unchanged).
 //  • `speechSeconds`: how much of it was talking — a note abandoned for typing after a cough is dropped, not kept.
 //  • `activity(grace:)`: the snap's bubble is being drawn on — the pause or the no-speech end waits for the pen
 //    (v0.9: a circle drawn as the note ended was lost). `peakDB`: the loudest frame, so a take that is digital silence
@@ -34,10 +31,6 @@ public struct NoteEndpointer {
     public var silenceToEnd = 1.8
     public var noSpeechTimeout = 8.0
     public var maxLength = 60.0
-    /// less talking than this (seconds) is a short start: `silenceAfterShort` ends it
-    public var shortSpeech = 1.0
-    /// the pause that ends a note with less than `shortSpeech` of talking; nil = `silenceToEnd`
-    public var silenceAfterShort: Double?
     /// the mic's first moments: not the room
     public var warmup = 0.25
     /// loud: this far above the floor (dB)
@@ -56,14 +49,6 @@ public struct NoteEndpointer {
     /// How long it has been quiet: since the last talking stretch, or since the start when nobody has spoken yet
     /// (dictation's "still listening" reminder; `speaking` stays true through any pause when silence never ends a take).
     public var quietSeconds: Double { speaking ? quietFor : heard }
-    /// Seconds until the pause ends the note (it is talking, or paused after talking); nil before speech, once ended,
-    /// or when silence never ends it. Talking puts it back to the whole pause.
-    public var endsIn: Double? {
-        guard speaking, ended == nil, need.isFinite else { return nil }
-        return max(0, need - quietFor)
-    }
-    /// the pause that ends it now: longer after a short start (BA-53)
-    private var need: Double { speechSeconds < shortSpeech - 1e-9 ? (silenceAfterShort ?? silenceToEnd) : silenceToEnd }
     /// the loudest frame after the mic's warm-up (dBFS): digital silence (a muted or dead input) stays near −120
     public private(set) var peakDB: Float = -120
     /// how long a sound was held above the room (seconds): `soundDelta` over the floor in 3 of the last 5 frames
@@ -110,7 +95,7 @@ public struct NoteEndpointer {
     /// `grace` more seconds of quiet, and the no-speech end moves out as far.
     public mutating func activity(grace: Double) {
         guard ended == nil else { return }
-        quietFor = min(quietFor, need - grace)
+        quietFor = min(quietFor, silenceToEnd - grace)
         noSpeechTimeout = max(noSpeechTimeout, heard + grace)
     }
 
@@ -168,7 +153,7 @@ public struct NoteEndpointer {
             let talking = recent.suffix(NoteEndpointer.talkWindow).filter(loud).count >= NoteEndpointer.talkLoud
             if talking { quietFor = 0; speechSeconds += dt } else { quietFor += dt }
         }
-        if speaking, quietFor >= need - 1e-9 {
+        if speaking, quietFor >= silenceToEnd - 1e-9 {
             ended = .silence
             out.append(.ended(.silence))
         }

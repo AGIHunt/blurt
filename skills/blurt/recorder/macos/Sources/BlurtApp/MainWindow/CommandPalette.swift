@@ -514,7 +514,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         scrolled()
     }
 
-    /// The index's search (the toolbar field's), top 8, as rows: the ID column, the title with the hit semibold, the
+    /// The index's search (the list's search field's), top 8, as rows: the ID column, the title with the hit semibold, the
     /// state on the right, a snippet line only when the title doesn't hold the hit (and not the row above's again).
     private func itemEntries(_ q: String) -> [Entry] {
         guard let r = controller.model.reader else { idWidth = 0; return [] }

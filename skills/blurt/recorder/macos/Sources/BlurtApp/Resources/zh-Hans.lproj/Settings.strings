@@ -32,6 +32,8 @@
 "settings.general.recording" = "录屏";
 "settings.general.remove.help" = "从口喷鸡移除（文件夹和事项都不动）";
 "settings.general.system_audio" = "同时录系统声音";
+"settings.general.hide_notch" = "录屏时不录刘海";
+"settings.general.hide_notch.detail" = "Blurt 的其他窗口照常录进视频，和别的 App 一样。";
 "settings.general.snap_sound" = "截图时播放快门声";
 "settings.general.collect" = "把系统截图也变成卡片";
 "settings.general.collect.hint" = "用 macOS 自带快捷键（⇧⌘3、⇧⌘4、⇧⌘5）截的图，也会变成口喷鸡里的卡片。";
@@ -256,6 +258,7 @@
 "settings.kw.general.after_recording" = "整理, 处理, 事项, 录完";
 "settings.kw.general.countdown" = "倒计时, 延迟, 3 秒";
 "settings.kw.general.system_audio" = "声音, 系统声音, 电脑声音, 内录";
+"settings.kw.general.hide_notch" = "刘海, 隐藏, 不录, 视频, 录屏";
 "settings.kw.general.collect" = "截图, 系统截图, ⌘⇧3, ⌘⇧4";
 "settings.kw.general.voice_end_on_pause" = "停顿, 安静, 结束, 语音备注";
 "settings.kw.general.live_text" = "实时字幕, 文字, 面板, 转写";

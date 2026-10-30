@@ -1,4 +1,4 @@
-// One card dragged out of the app — a hanging card, or a picture in Recently Taken (v0.8.2). What is on the drag
+// One card dragged out of the app — a hanging card, or one in the Cards panel (Current or History). What is on the drag
 // pasteboard follows the app under the pointer: BlurtCore DropTargets says which kind of app it is, CardPasteboard
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
 // v0.8.5: a rich app (Notes, TextEdit, Mail…) gets the rich item (picture file + PNG + HTML + RTFD + RTF + the note as

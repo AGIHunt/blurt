@@ -1,32 +1,32 @@
 // The note bubble under a fresh shot: "Say it or type…", the words as they are heard, and where it will go.
 //
-//  • listens right away (the user usually starts talking as they let go of the mouse); 3 s of silence after speech
-//    ends the note — 5 s when less than a second of it was talking (BA-53: an "嗯" then a moment to think ended the
-//    note at the old 1.8 s, the mic with it; the pause end is only the safety net, ⏎ commits at once) — and its last
-//    1.5 s run out as a hairline inside Done ↩ (talking fills it again; Reduce Motion: it shows, still). 20 s without
-//    speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
-//    relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor — v0.7's floor froze at the mic's quiet
-//    first moments, so a normal room never counted as silence and the note never ended). Since v0.8.6 the voice note
-//    (⌥V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
+//  • listens right away (the user usually starts talking as they let go of the mouse) and never ends the note by
+//    itself (the founder, 2026-10-31 — it replaces BA-53's 3 s / 5 s pause end and its countdown ring on Done): the
+//    user commits it. The mic stops after 20 s with nothing said (the bubble stays, typed only) and at 120 s. Audio →
+//    shots/NNN.wav (16 kHz mono). The keys are BlurtCore NoteKeys (state × key → action):
+//      ↩ / Done — commit: typed text, or the grey words as they are (their recording kept, the card gets its words from
+//        the stream), or nothing — with a project it is filed all the same ("Goes to …"); in Auto it hangs as a card.
+//      ⇧↩ — a new line (⌃↩ / ⌥↩ too); over the grey words it takes them first.
+//      Tab — takes the grey words: they go into the field in label colour, listening stops, the caret at their end,
+//        the keyboard has the note. Voice does not go on after Tab (Tab → keyboard mode): the live text is one
+//        revised string (VoiceNoteStream's committed + pending pieces, re-heard in windows), not pieces that could be
+//        appended after typed text cleanly. The stream's final words replace the taken ones while they are untouched,
+//        so the card says what the bubble shows; committed before they land, or after an edit, the field is the note.
+//        With no words to take, Tab opens the place list (the chip) as before.
+//      typing — over the grey words it replaces them: the mic stops, the take is set aside (an emptied field shows the
+//        words again, and ↩ then keeps them; ↩ with text drops the recording). Before anything was said it makes a
+//        typed note. Only committed text counts as typing (NoteTyping: not an IME composition).
+//      Esc (NoteEsc) — typed text first; then the shot is discarded: Trash, "Discarded · Undo" for 5 s.
+//    "Silence" is relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor); drawing on the picture
+//    pushes the no-speech stop out (NoteEndpointer.activity).
 //  • the words while they are said (v0.9): the voice note's live text (VoiceNoteStream, interim decodes about once a
-//    second) in the field's place, secondary, the part still being said quieter. When the pause ends it, the final
-//    words go into the field in label colour with the ok check and "Saved" for `savedSeconds` (at most `wordsWait` for
-//    them), then it tucks away — not while the pointer is over it (NoteHold.hovering); a click into the words or a key
-//    that moves the caret pins it open until ⏎ / Esc (the user is fixing a word), and a change to them is an edit
-//    (NoteEdit: it replaces them). The stream goes to Snapper, so the card has its words as it lands, not
-//    "Transcribing…". ⏎ shows the same "Saved" (the check in BrandColor.ok, the line secondary), only shorter.
-//  • it closes by itself only when BlurtCore NoteHold says so: never under the pen (a stroke being drawn holds the
-//    pause end too: NoteEndpointer.activity), not within `inkGrace` (1.5 s) of the last stroke, never while typed text
-//    waits for ⏎, never with ink or a frozen picture and nothing said (then: ⏎, Done, or a click outside it),
-//    `emptiedGrace` after the text was cleared. A stroke still being drawn when it closes (⏎, ⌥A) is kept.
-//  • typing before speaking switches to a text note (the mic stops). Typing after speaking keeps listening until the
-//    pause; if less than 1 s of it was talking, the recording was abandoned for typing and is dropped (no mic mark,
-//    nothing to transcribe). A kept recording is always transcribed (Snapper.settled), also next to typed text. Only
-//    committed text counts as typing (NoteTyping: not an IME composition; an emptied field is voice mode again).
-//  • ⏎ (or ✓) keeps the shot — with the note, or without one (with a project it is filed all the same, "Goes to …";
-//    in Auto it hangs as a card). Esc (BlurtCore NoteEsc): typed text first; then the shot is discarded — Trash,
-//    "Discarded · Undo" for 5 s. Gone to another app: saved `resignSeconds` later, or as soon as it is done listening
-//    and has its words after that (it never floats over every app waiting for ⏎).
+//    second) in the field's place, secondary, the part still being said quieter. The footer's status slot says the
+//    keys for them ("Tab accept · type to replace"); before anything is said it shows the running time. The stream
+//    goes to Snapper, so the card has its words as it lands, not "Transcribing…". ↩ shows "Saved" for a moment (the
+//    check in BrandColor.ok, the line secondary).
+//  • it closes only on ↩, Done, Esc, ⌥A (the next snap), a click outside the frozen picture, or `resignSeconds` after
+//    the user went to another app (the mic stops and what was said is kept: it never floats, or listens, over every
+//    app). A stroke still being drawn when it closes is kept.
 //  • a ⌥V voice note listening already: this bubble is typed only (no second listener), and the voice note's Esc
 //    hotkey is the bubble's while it is open (VoiceInput.yieldEsc).
 //  • the microphone gone mid-note (NoteVoice's watchdog, the engine's configuration change): it ends with what it has;
@@ -42,11 +42,12 @@
 //  • r2 of the overlays redesign: one composer for a fresh snap and Edit Note (`layout`): the words on top (15 pt), the
 //    glyph column before them (the live level, the check, the keyboard, mic.slash; Edit Note's play / mic button); one
 //    footer in fixed slots — the place chip, the hover tools (stroke undo, the bin / Record Again), the status slot
-//    pinned against the primary (state only: the running time, "Saved"), "Done ↩" / "Save ↩". No line names a key:
-//    keys are on buttons and in tooltips; the first snaps learn Esc from the stage's pill (InkStage).
-//  • the place chip (ProjectChip.swift): a click, or Tab from the field, lists the recent projects in the bubble;
-//    typing filters, ↩ picks — this capture goes there instead (Snapper.retarget), the island's project stays. While
-//    the list is open the bubble never closes (NoteHold.picking, apart from `pinned`: closing it keeps the words pinned).
+//    pinned against the primary (state: the running time, "Saved"; the keys only for the grey words: "Tab accept ·
+//    type to replace"), "Done ↩" / "Save ↩". Other keys are on buttons and in tooltips; the first snaps learn Esc
+//    from the stage's pill (InkStage).
+//  • the place chip (ProjectChip.swift): a click, or Tab from the field (when there are no grey words to take), lists
+//    the recent projects in the bubble; typing filters, ↩ picks — this capture goes there instead (Snapper.retarget),
+//    the island's project stays.
 //  • ⌥A while it is open saves the note and takes the next shot. Listening starts the warm speech server
 //    (VoiceInput.warmSpeechModel), so the note's words come back in well under a second, not a cold model load.
 //  • every open has a generation: a close still fading out never orders out (or takes the focus from) a bubble opened
@@ -55,7 +56,8 @@
 // and the unmarked picture enlarged with its strokes, editable with the same pen (and ⌘Z) —
 // so words heard wrong can be fixed (BlurtCore NoteEdit: an edited spoken note replaces its words). A voice card
 // has no picture: the bubble is text only. The mic re-records: the new take goes to shots/NNN.retake.wav
-// (VoiceRetake) and replaces the original only when it is kept; Esc, or no speech, leaves the original untouched.
+// (VoiceRetake) and replaces the original only when it is kept (Save ↩, or Tab, which ends the re-record); Esc, or no
+// speech, leaves the original untouched. It records until then: no pause ends it either.
 // While it records, the field holds only what was typed (the take brings new words); a take not kept puts the words
 // said back, and they stay. A kept take's words are fresh: words still coming for the old take are dropped
 // (Snapper.voiceReplaced). Retakes left behind by a quit are swept when the cards come back (Snapper.restore).
@@ -63,7 +65,7 @@
 // the recording pauses while it is open).
 //
 // Tests: BLURT_NOTE_WAV=<file.wav> feeds that file through the same path instead of the microphone; test commands
-// notetype / noteclear / notekey / noteink / notestall / notestate drive and read it (SnapApp).
+// notetype / noteclear / notekey / noteheard / notewords / noteink / notestall / notestate drive and read it (SnapApp).
 
 import AppKit
 import BlurtCore
@@ -114,13 +116,6 @@ final class NoteVoice {
         get { vad.maxLength }
         set { vad.maxLength = newValue }
     }
-    /// the pause that ends it after less than a second of talking (nil = silenceToEnd; the snap's: longer, BA-53)
-    var silenceAfterShort: Double? {
-        get { vad.silenceAfterShort }
-        set { vad.silenceAfterShort = newValue }
-    }
-    /// seconds until the pause ends it (nil: not talking yet, or ended) — the snap's countdown on Done ↩
-    var endsIn: Double? { vad.endsIn }
     /// how much of it was talking (seconds)
     var speechSeconds: Double { vad.speechSeconds }
     /// the loudest frame so far (dBFS): a take that is digital silence stays near −120 (BlurtCore VoiceKeep)
@@ -672,12 +667,9 @@ final class SymbolButton: NSButton {
 /// Key-able, but doesn't activate the app: typing works, the app the user was in stays in front.
 final class NotePanel: NSPanel {
     var onKey: ((NSEvent) -> Bool)?
-    /// every click in the bubble, before it reaches the view under it (the field's editor swallows its own)
-    var onMouseDown: ((NSEvent) -> Void)?
     override var canBecomeKey: Bool { true }
     override func sendEvent(_ e: NSEvent) {
         if e.type == .keyDown, onKey?(e) == true { return }
-        if e.type == .leftMouseDown { onMouseDown?(e) }
         super.sendEvent(e)
     }
 }
@@ -753,7 +745,7 @@ final class BubbleBackground: NSView {
     /// screen), with a white 14 % hairline; light: near-white, a black 12 % hairline and the window's shadow.
     static let darkSurface = NSColor(srgbRed: 44 / 255, green: 44 / 255, blue: 44 / 255, alpha: 1)
     static let lightSurface = NSColor(srgbRed: 0.995, green: 0.995, blue: 0.995, alpha: 1)
-    /// The capture panels' one surface (the note bubble, Recently Dragged Out, the cards overview): opaque, so a titled
+    /// The capture panels' one surface (the note bubble, the Cards panel and its preview): opaque, so a titled
     /// panel's background never picks up the wallpaper's tint beside the bubble's neutral grey in dark mode.
     static let surface = NSColor(name: "captureSurface") { a in
         a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? darkSurface : lightSurface
@@ -821,27 +813,24 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// committed text in the field (BlurtCore NoteTyping: not an IME composition, not just spaces)
     private var typed = false
     private var speechStarted = false
+    /// the recording stopped and is kept (the mic ended by itself after speech, typing set it aside, Tab took it)
     private var voiceKept = false
-    /// how much of the kept recording was talking
-    private var voiceSpeech: Double = 0
-    /// Typed, and said less than this: the voice was abandoned for typing (a word, a cough, the keyboard) — dropped.
-    static let abandonedSpeech = 1.0
-    /// When the bubble may close by itself (BlurtCore NoteHold): never under the pen, never with typed text.
-    private var hold = NoteHold()
-    private var holdWork: DispatchWorkItem?
-    /// the words said are in the field (the "Saved" moment): an edit of them replaces them, like Edit Note (NoteEdit)
+    /// the voice part is over: the mic stopped (or never started, or typing before speech made it a typed note)
+    private var voiceDone = false
+    /// the final words of the kept recording are still coming (Snapper.fetchWords)
+    private var waitingWords = false
+    /// Tab took the words heard: the field holds them (black) and the keyboard has the note — no grey words any more
+    private var accepted = false
+    /// the words taken with Tab, as they are in the field: an edit of them replaces them (NoteEdit); nil = none (yet)
     private var wordsInField: String?
-    /// "Saved" shows the words this long before the bubble tucks away
-    static let savedSeconds = 1.2
-    /// …and waits for them at most this long (else it closes, and the card gets them when they come)
-    static let wordsWait = 2.5
-    /// BA-53: the pause that ends the note after talking, and after less than a second of it (NoteEndpointer's
-    /// silenceAfterShort) — an "嗯" then a moment to think isn't the note; ↩ stays the fast way
-    static let pauseEnds = 3.0
-    static let pauseAfterShort = 5.0
-    /// the pause's last seconds show on Done ↩: a white hairline around it that runs out (talking fills it again)
-    static let countdownFrom = 1.5
-    private let countdown = CAShapeLayer()
+    /// …exactly as they were put in the field (the final words take their place while the field still starts with them)
+    private var takenRaw: String?
+    /// the mic stops after this long with nothing said (the bubble stays, typed only)…
+    static let noSpeechStop = 20.0
+    /// …and after this long in all (nothing ends the note on a pause: the user commits it — NoteKeys)
+    static let maxListen = 120.0
+    /// drawing on the picture keeps the mic open this long past the stroke (the no-speech stop waits for the pen)
+    static let inkGrace = 1.5
     /// a ⌥V voice note has the microphone: this bubble takes typing only (no second listener)
     private var voiceBusy = false
     /// the microphone went before anything was said: typed only now ("Mic disconnected · type a note")
@@ -892,7 +881,6 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // a close of the bubble before this one may still be fading out: it never hides this one
         closeWork?.cancel()
         closeWork = nil
-        holdWork?.cancel()
         resignWork?.cancel()
         shot = s
         mode = m
@@ -900,17 +888,18 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         typed = false
         speechStarted = false
         voiceKept = false
-        voiceSpeech = 0
         takeRel = nil
         retakeKept = false
         retakeSeconds = 0
         fieldHoldsSaid = true
         wordsInField = nil
+        takenRaw = nil
+        accepted = false
+        voiceDone = false
+        waitingWords = false
         heard = ("", "")
-        hold = NoteHold()
         voiceBusy = false
         micGone = false
-        showCountdown(nil)
         // the pen hint, the first few times only (InkHint; the stage counts them)
         let hintsShown = recordConfig()["ink_hint_shown"] as? Int ?? 0
         penHintGone = !InkHint.shows(alreadyShown: hintsShown)
@@ -931,7 +920,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             let st = InkStage.shared
             st.canvas.onChange = { [weak self] in self?.inkChanged() }
             st.canvas.onStrokeBegan = { [weak self] in self?.strokeBegan() }
-            st.canvas.onStrokeMoved = { [weak self] in self?.voice?.activity(grace: NoteHold.inkGrace) }
+            st.canvas.onStrokeMoved = { [weak self] in self?.voice?.activity(grace: NoteBubble.inkGrace) }
             st.canvas.onStrokeEnded = { [weak self] in self?.strokeEnded() }
             st.onClickOutside = { [weak self] in self?.commit() }        // a click outside the picture: done
         }
@@ -961,12 +950,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         p.sharingType = chromeSharing
         p.isMovableByWindowBackground = false
         p.onKey = { [weak self] e in self?.key(e) ?? false }
-        p.onMouseDown = { [weak self] e in self?.pointerDown(e) }
         let root = bg
         p.contentView = root
         canvas.onChange = { [weak self] in self?.inkChanged() }
         canvas.onStrokeBegan = { [weak self] in self?.strokeBegan() }
-        canvas.onStrokeMoved = { [weak self] in self?.voice?.activity(grace: NoteHold.inkGrace) }
+        canvas.onStrokeMoved = { [weak self] in self?.voice?.activity(grace: NoteBubble.inkGrace) }
         canvas.onStrokeEnded = { [weak self] in self?.strokeEnded() }
         root.addSubview(canvas)
         // the pen hint on the enlarged picture (Edit Note): the stage's one hint component (§3.1: 12 pt regular,
@@ -994,13 +982,6 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         doneBtn.hPad = 10
         doneBtn.keyHint = "↩"
         root.addSubview(doneBtn)
-        countdown.fillColor = nil
-        countdown.strokeColor = NSColor(white: 1, alpha: 0.85).cgColor
-        countdown.lineWidth = 1.5
-        countdown.lineCap = .round
-        countdown.opacity = 0
-        countdown.zPosition = 10
-        doneBtn.layer?.addSublayer(countdown)
         root.onHover = { [weak self] on in self?.hover(on) }
         icon.imageScaling = .scaleProportionallyDown
         root.addSubview(icon)
@@ -1077,7 +1058,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     /// place, the list's folders — then 8 pt to the text column — the note, the chip's name, the list's names.
     /// r2: one composer for a fresh snap and Edit Note, with one footer grammar in fixed slots, left to right:
     ///   the place chip · the hover tools (the stroke undo, the bin / Record Again — only under the pointer) · the status
-    ///   slot (right-aligned against the primary: state only, never keys — "0:04 · pause to finish", "Saved") · the one
+    ///   slot (right-aligned against the primary: state — "0:04", "Saved" — and the keys only for the grey words) · the one
     ///   primary with its key on it ("Done ↩", "Save ↩"). The bin sits by the chip, never by the primary.
     static let inset: CGFloat = 12
     static let footH: CGFloat = 24
@@ -1106,8 +1087,10 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let c = BubbleBackground.caret
         let ins = bg.insets
         let composer = mode != .recording
-        // (in place: room in the footer for the chip, the running time with "pause to finish", and Done ↩)
         var inner = max(mode == .recording ? 340 : staged ? 384 : 400, pv.width + m * 2)
+        // a fresh snap's footer holds the chip, the bin, the keys for the grey words and Done ↩ on one line — sized for
+        // them from the start, so the bubble never widens as the words come
+        if mode == .listen { inner = max(inner, min(NoteBubble.maxInner, footerWidth())) }
         if picking { inner = max(inner, min(NoteBubble.maxInner, pick.wantWidth)) }
         let width = inner + ins.left + ins.right
         let x0 = ins.left, top = ins.top
@@ -1198,6 +1181,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         position()
     }
 
+    /// The inner width a fresh snap's footer needs: the chip (at most 200 pt), the bin, the keys line, Done ↩.
+    private func footerWidth() -> CGFloat {
+        let m = NoteBubble.inset
+        chip.set(place, maxWidth: 200)
+        let keys = ceil(NoteBubble.keyLine(Loc.t("capture.note.st_voice", table: "Capture")).size().width) + 4
+        return m + (chip.frame.width - ProjectChip.lead) + 4 + 26 + 6 + keys + 10 + doneBtn.intrinsicContentSize.width + m
+    }
+
     private func fieldHeight(_ w: CGFloat, max cap: CGFloat) -> CGFloat {
         // the live words take the placeholder's place, so they size the field as typed text does
         let s = field.stringValue.isEmpty ? (field.placeholderAttributedString?.string ?? field.placeholderString ?? "x") : field.stringValue
@@ -1282,7 +1273,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // the panel is non-activating: it takes the typing without activating Blurt, so Blurt's main window never
         // jumps above the app the user just snapped; close() still hands focus back
         if mode == .recording { snapper.rememberFrontApp() }
-        p.makeKey()
+        if !NoteBubble.testNoKey { p.makeKey() }
         p.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: field.stringValue.count, length: 0)
         ticker?.invalidate()
@@ -1323,12 +1314,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let rel = mode == .edit ? VoiceRetake.path(for: canonicalVoice(s)) : canonicalVoice(s)
         takeRel = rel
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
-        // BA-53: the pause end is only the safety net (↩ commits at once): forgiving — 3 s after talking, 5 s after
-        // less than a second of it (an "嗯" and a pause to think isn't the note), 20 s to start, 60 s at most
-        v.silenceToEnd = NoteBubble.pauseEnds
-        v.silenceAfterShort = NoteBubble.pauseAfterShort
-        v.noSpeechTimeout = 20
-        v.maxLength = 60
+        // no pause ends it: the user commits the note (↩, Tab, Done — NoteKeys). The mic stops after 20 s with nothing
+        // said (drawing pushes that out) and at 120 s; the bubble stays either way.
+        v.silenceToEnd = .infinity
+        v.noSpeechTimeout = NoteBubble.noSpeechStop
+        v.maxLength = NoteBubble.maxListen
         // a fresh shot's words while they are said (the voice note's live text), in the field's place
         let st = mode == .listen && VoiceInput.shared.streams ? VoiceNoteStream(id: "note-\(ShotBatch.name(s.n))-\(Int(Date().timeIntervalSince1970))",
                                                    interim: VoiceInput.liveWords) : nil
@@ -1354,6 +1344,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 self.retakeFell()
                 self.dropStream()
                 self.micGone = true
+                self.voiceDone = true
                 emit(["event": "note_mic_gone", "n": self.shot?.n ?? 0])
                 self.refreshStatus()
                 return
@@ -1362,22 +1353,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 self.retakeFell()
                 self.dropStream()
             } else {
-                self.voiceKept = true
-                self.voiceSpeech = v.speechSeconds
-                if self.mode == .edit {
-                    self.retakeKept = true                   // it replaces the original when the edit is saved
-                    self.retakeSeconds = v.elapsed
-                } else {
-                    self.shot?.voice = rel
-                    self.shot?.said = nil                    // its words to come
-                    self.wordsComing()
-                }
+                // the mic ended by itself after speech (120 s, the mic gone): what was said is kept and is still the
+                // user's to commit — the grey words stay (a fresh snap), the re-record is kept (Edit Note)
+                self.keepTake(v)
                 if e == .micLost { VoiceInput.say(.micLost) }
             }
-            self.hold.voiceDone = true
+            self.voiceDone = true
             self.refreshStatus()
-            if self.mode == .edit { self.layout() }      // the play / mic button back in the glyph column
-            self.maybeClose()
+            self.layout()                                // (Edit Note: the play / mic button back in the glyph column)
         }
         voice = v
         VoiceInput.warmSpeechModel()            // its words come from the warm server, not a cold model load
@@ -1390,42 +1373,97 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         refreshStatus()
     }
 
-    /// The pause after speech ended a fresh shot's note: its words now (the stream's last piece, else the whole
-    /// wav), shown in the field before the bubble tucks away — at most `wordsWait`, then the card gets them.
+    /// The recording stopped and is kept (the mic ended by itself after speech, Tab, typing over the words): a fresh
+    /// shot's take becomes its voice, its final words coming (Snapper); Edit Note's re-record will replace the original
+    /// when the edit is saved.
+    private func keepTake(_ v: NoteVoice) {
+        voiceKept = true
+        if mode == .edit {
+            retakeKept = true
+            retakeSeconds = v.elapsed
+        } else if let rel = takeRel {
+            shot?.voice = rel
+            shot?.said = nil                    // its words to come
+            wordsComing()
+        }
+    }
+
+    /// Stops listening now (Tab, typing over the words): what was said is kept; with nothing said, nothing is.
+    private func stopListening(via: String) {
+        guard let v = voice else { return }
+        voice = nil
+        // (the live words can come before the endpointer calls it speech: words seen are words said)
+        let keep = speechStarted || !(heard.committed + heard.pending).isEmpty
+        emit(["event": "note_voice_stop", "n": shot?.n ?? 0, "via": via, "kept": keep,
+              "speech": (v.speechSeconds * 100).rounded() / 100])
+        v.stop(keep: keep)
+        voiceDone = true
+        if keep { keepTake(v) } else { retakeFell(); dropStream() }
+    }
+
+    /// A fresh shot's recording stopped and is kept: its final words (the stream's last piece, else the whole wav).
     private func wordsComing() {
         guard let s = shot, mode == .listen else { return }
         if let st = stream { snapper.attach(st, to: s) }
         stream = nil
-        hold.waitingWords = true
+        waitingWords = true
         let g = generation
         snapper.fetchWords(s) { [weak self] said in
             guard let self = self, self.generation == g, self.shot === s else { return }
             self.wordsIn(said)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + NoteBubble.wordsWait) { [weak self] in
-            guard let self = self, self.generation == g, self.hold.waitingWords else { return }
-            emit(["event": "note_words_wait", "n": s.n, "timeout": true])
-            self.hold.waitingWords = false
-            self.maybeClose()
-        }
     }
 
-    /// The words of what was just said are in: they go into the field (label colour), with "Saved" — a click or a key
-    /// in them is an edit (it replaces the words); left alone, the bubble tucks away after `savedSeconds`.
+    /// The final words of what was said are in. Not taken: they are the grey words now. Taken with Tab: while the field
+    /// still starts with the live words as they were put in, the final words take their place (what was typed after
+    /// them stays, the caret with it), so the card says what the bubble shows; once the words themselves were edited,
+    /// the field is the note (NoteEdit). Taken before any words were heard: they go in before what was typed since.
     private func wordsIn(_ said: String?) {
-        hold.waitingWords = false
-        if let w = CardNote.clean(said), !typed {
-            wordsInField = w
-            field.stringValue = w
-            field.currentEditor()?.selectedRange = NSRange(location: (w as NSString).length, length: 0)
-            hold.savedUntil = CACurrentMediaTime() + NoteBubble.savedSeconds
-            emit(["event": "note_words_shown", "n": shot?.n ?? 0, "chars": w.count])
-            // in place: the screen is given back now — only the picture and the bubble wait out the saved window
-            if staged { InkStage.shared.lift() }
-            layout()
+        waitingWords = false
+        guard let w = CardNote.clean(said) else {
+            // no words in it after all (or they couldn't be had): nothing grey to keep unless the live words were seen
+            if (heard.committed + heard.pending).isEmpty && !accepted { voiceKept = false }
+            refreshStatus()
+            return
+        }
+        emit(["event": "note_words_in", "n": shot?.n ?? 0, "chars": w.count, "taken": accepted])
+        heard = (w, "")
+        if accepted, let raw = takenRaw {
+            if field.stringValue.hasPrefix(raw) { settleTaken(raw, into: w) }
+        } else if accepted {
+            setField(NoteBubble.joined(w, then: field.stringValue))
         }
         refreshStatus()
-        maybeClose()
+        layout()
+    }
+
+    /// The words taken, then what was typed after Tab before they came ("" — just the words).
+    static func joined(_ words: String, then typed: String) -> String {
+        let t = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty else { return words }
+        let ascii: (Character?) -> Bool = { c in c.map { $0.isASCII && ($0.isLetter || $0.isNumber || $0.isPunctuation) } ?? false }
+        return words + (ascii(words.last) && ascii(t.first) ? " " : "") + t
+    }
+
+    /// The words taken into the field (black), the caret at their end.
+    private func setField(_ w: String) {
+        field.stringValue = w
+        takenRaw = w
+        wordsInField = CardNote.clean(w) ?? w
+        field.currentEditor()?.selectedRange = NSRange(location: (w as NSString).length, length: 0)
+    }
+
+    /// The final words in place of the live ones the field starts with; what follows them, and the caret, stay.
+    private func settleTaken(_ raw: String, into w: String) {
+        let old = field.stringValue as NSString, rawLen = (raw as NSString).length, wLen = (w as NSString).length
+        let tail = old.substring(from: rawLen)
+        let caret = field.currentEditor()?.selectedRange.location ?? old.length
+        field.stringValue = w + tail
+        takenRaw = w
+        wordsInField = CardNote.clean(w) ?? w
+        let at = caret >= rawLen ? caret - rawLen + wLen : min(caret, wLen)
+        field.currentEditor()?.selectedRange = NSRange(location: at, length: 0)
+        typed = NoteTyping.typed(field.stringValue, marked: nil) && CardNote.clean(field.stringValue) != wordsInField
     }
 
     private func dropStream() {
@@ -1434,56 +1472,15 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         heard = ("", "")
     }
 
-    /// Close by itself when NoteHold says so (now, or ask again later).
-    private func maybeClose() {
-        holdWork?.cancel()
-        guard isOpen, mode != .recording else { return }
-        hold.typed = typed
-        hold.drawing = ink.isDrawing
-        hold.inked = !ink.strokes.isEmpty
-        hold.spoke = voiceKept
-        hold.inPlace = staged
-        hold.hovering = panel.map { $0.isVisible && $0.frame.contains(NSEvent.mouseLocation) } ?? false
-        guard let wait = hold.closeIn(now: CACurrentMediaTime()) else { return }
-        if wait > 0 {
-            let w = DispatchWorkItem { [weak self] in self?.maybeClose() }
-            holdWork = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + wait, execute: w)
-            return
-        }
-        // the words were already shown with "Saved": no second flash
-        close(save: true, flash: voiceKept && wordsInField == nil)
-    }
-
-    /// A click into the words shown with "Saved" (to fix one): the bubble stays until ⏎ or Esc (BlurtCore NoteHold).
-    private func pointerDown(_ e: NSEvent) {
-        guard e.window === panel, field.frame.insetBy(dx: -4, dy: -4).contains(bg.convert(e.locationInWindow, from: nil)) else { return }
-        engageWords(via: "click")
-    }
-
-    /// The user is working on the words shown with "Saved" (a click into them, the caret moved): pinned open.
-    private func engageWords(via: String) {
-        guard wordsInField != nil, hold.savedUntil != nil, !hold.pinned else { return }
-        hold.pinned = true
-        hold.savedUntil = nil
-        holdWork?.cancel()
-        emit(["event": "note_words_engaged", "n": shot?.n ?? 0, "via": via])
-    }
-
     private func strokeBegan() {
-        voice?.activity(grace: NoteHold.inkGrace)
-        hold.drawing = true
-        holdWork?.cancel()
+        voice?.activity(grace: NoteBubble.inkGrace)
         fadePenHint(for: shot, after: 0)
         if staged { InkStage.shared.hideHint() }
     }
 
     private func strokeEnded() {
         inkUndoFirst = true
-        hold.drawing = false
-        hold.lastInk = CACurrentMediaTime()
-        voice?.activity(grace: NoteHold.inkGrace)
-        maybeClose()
+        voice?.activity(grace: NoteBubble.inkGrace)
     }
 
     private func resignedKey() {
@@ -1494,17 +1491,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         scheduleResignSave(after: NoteBubble.resignSeconds)
     }
 
-    /// Saves the bubble once it isn't key and isn't listening or waiting for its words. Still listening (the user
-    /// spoke, typed, then switched apps), it checks again until the voice is done — it never floats over every app.
+    /// The user went to another app: the bubble saves a moment later — listening or not (the mic stops, what was said
+    /// is kept), so it never floats, or listens, over every app.
     private func scheduleResignSave(after delay: Double) {
         resignWork?.cancel()
         let g = generation
         let w = DispatchWorkItem { [weak self] in
             guard let self = self, self.generation == g, self.isOpen, self.panel?.isKeyWindow != true else { return }
-            if self.voice?.running == true || self.hold.waitingWords {
-                return self.scheduleResignSave(after: 0.5)
-            }
-            emit(["event": "note_resign_commit", "n": self.shot?.n ?? 0])
+            emit(["event": "note_resign_commit", "n": self.shot?.n ?? 0, "listening": self.voice?.running == true])
             self.commit()
         }
         resignWork = w
@@ -1526,7 +1520,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         }
         typed = !field.stringValue.isEmpty
         speechStarted = false
-        hold.voiceDone = false
+        voiceDone = false
         let keepTyped = typed
         startListening()
         typed = keepTyped
@@ -1561,24 +1555,25 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         field.placeholderAttributedString = a
     }
 
-    /// What the bubble says now (r2). The glyph column says how the note is taken: the live level while it listens, the
-    /// ok check once the words are saved, the keyboard once it is a typed note, mic.slash when it can't or doesn't
-    /// listen (Edit Note: its play or mic button, the level while it records again). The placeholder says what to do.
-    /// The status slot holds state only, never keys: the running time while it listens ("0:04 · pause to finish" once
-    /// talking), "Saved", how long was said. Keys live on buttons and in tooltips (Done ↩, the bin's Esc, the undo's
-    /// ⌘Z); the first few snaps teach Esc on the stage's pill (InkStage), and the list's keys under the list.
+    /// What the bubble says now (r2). The glyph column says how the note is taken: the live level while it listens, a
+    /// waveform once the mic stopped with words said (they wait for ↩ or Tab), the keyboard once the keyboard has the
+    /// note (typed, or the words taken with Tab), mic.slash when it can't or doesn't listen (Edit Note: its play or mic
+    /// button, the level while it records again). The placeholder says what to do — or, in grey, the words heard.
+    /// The status slot holds state — the running time while it listens, "Saved" — and the keys only for the grey words
+    /// ("Tab accept · type to replace": they are the one thing the keyboard does differently there). Other keys live on
+    /// buttons and in tooltips (Done ↩, the bin's Esc, the undo's ⌘Z); the first few snaps teach Esc on the stage's pill
+    /// (InkStage), and the list's keys under the list.
     private var lastSecond = -1
     private func refreshStatus() {
         let listening = voice?.running == true
-        let saved = wordsInField != nil && !typed
-        bars.isHidden = !listening || saved
+        bars.isHidden = !listening
         var sym: String?
         var tint: NSColor = .tertiaryLabelColor
         switch mode {
         case .listen:
-            if saved { sym = "checkmark"; tint = BrandColor.ok }
-            else if listening { sym = nil }
-            else if typed { sym = "keyboard" }              // a typed note: the column never goes empty
+            if listening { sym = nil }
+            else if accepted || typed { sym = "keyboard" }  // the keyboard has the note: the column never goes empty
+            else if voiceKept { sym = "waveform" }           // said, the mic stopped: the words wait for ↩ or Tab
             else { sym = "mic.slash" }                       // it can't, or doesn't any more, listen
         case .edit:
             sym = nil                                        // (its play / mic button)
@@ -1586,7 +1581,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             sym = "note.text"; tint = .secondaryLabelColor
         }
         icon.isHidden = listening || sym == nil
-        icon.image = sym.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: saved ? .semibold : .regular)) }
+        icon.image = sym.flatMap { NSImage(systemSymbolName: $0, accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .regular)) }
         icon.contentTintColor = tint
         var line = ""
         let t = voice?.elapsed ?? 0
@@ -1594,30 +1589,33 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         switch mode {
         case .listen:
             chip?.set(place, maxWidth: min(200, (panel?.frame.width ?? 352) * 0.56))
-            if listening || (hold.voiceDone && voiceKept && wordsInField == nil) {
+            if accepted {
+                // (the words taken with Tab, still to come: nothing to prompt for meanwhile)
+                plainPlaceholder(wordsInField == nil && waitingWords ? "" : Loc.t("capture.note.placeholder_optional", table: "Capture"))
+            } else if listening || voiceKept {
                 livePlaceholder(Loc.t("capture.note.listening", table: "Capture"))
             } else if voiceBusy {
                 plainPlaceholder(Loc.t("capture.note.ph_voice_busy", table: "Capture"))
             } else if micGone {
                 plainPlaceholder(Loc.t("capture.note.ph_mic_gone", table: "Capture"))
-            } else if !hold.voiceDone {
+            } else if !voiceDone {
                 plainPlaceholder(Loc.t("capture.note.ph_no_mic", table: "Capture"))      // it never listened
             } else {
                 plainPlaceholder(Loc.t("capture.note.placeholder_optional", table: "Capture"))
             }
             if picking {
                 line = ""
-            } else if saved {
-                line = Loc.t("capture.note.saved", table: "Capture")
+            } else if keyState.wordsShowing {
+                line = Loc.t("capture.note.st_voice", table: "Capture")
             } else if listening {
-                line = speechStarted ? Loc.t("capture.note.st_pause", table: "Capture", fmt(t)) : fmt(t)
-            } else if typed && voiceKept {
-                line = Loc.t("capture.note.said", table: "Capture", fmt(voiceSpeech))
+                line = fmt(t)
             }
         case .edit:
             chip?.set(place, maxWidth: min(200, (panel?.frame.width ?? 400) * 0.56))
             plainPlaceholder(Loc.t("capture.note.placeholder", table: "Capture"))
-            line = picking ? "" : listening ? Loc.t("capture.note.st_rerecord", table: "Capture", fmt(t)) : ""
+            // a re-record: the running time; once something was said, Tab ends it (kept) — Save ↩ keeps it too
+            line = picking || !listening ? "" : Loc.t(speechStarted ? "capture.note.st_rerecord_tab" : "capture.note.st_rerecord",
+                                                      table: "Capture", fmt(t))
         case .recording:
             let i = recordingShots.firstIndex(where: { $0 === shot }).map { $0 + 1 } ?? 1
             plainPlaceholder(Loc.t("capture.note.placeholder_shot", table: "Capture"))
@@ -1685,86 +1683,102 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func tick() {
         bars.decay()
-        showCountdown(voice?.running == true && !picking ? voice?.endsIn : nil)
         if let v = voice, v.running, Int(v.elapsed) != lastSecond { refreshStatus() }      // the running time
-        // the pen held still on the picture is still drawing: the pause doesn't end the note under it
-        if ink.isDrawing { voice?.activity(grace: NoteHold.inkGrace) }
+        // the pen held still on the picture is still drawing: the no-speech stop waits for it
+        if ink.isDrawing { voice?.activity(grace: NoteBubble.inkGrace) }
         // follow the card if the cards re-lay out (another capture arrived, a neighbour was removed); docked, it stays
         if let p = panel, p.isVisible, mode != .recording, !staged { position() }
     }
 
-    /// The pause end coming (BA-53): its last `countdownFrom` seconds as a hairline just inside Done ↩ that runs out
-    /// from the top, clockwise; talking (or the pen) fills it again and it fades. Reduce Motion: it stays whole while it
-    /// shows — the same "about to finish", with nothing moving.
-    private func showCountdown(_ endsIn: Double?) {
-        guard let b = doneBtn else { return }
-        let on = endsIn.map { $0 < NoteBubble.countdownFrom } ?? false
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        let r = b.bounds.insetBy(dx: 0.75, dy: 0.75)
-        if on, countdown.frame != b.bounds, r.width > 0 {
-            countdown.frame = b.bounds
-            let rad = min((b.radius ?? r.height / 2) - 0.75, r.height / 2)
-            let p = CGMutablePath()
-            p.move(to: CGPoint(x: r.midX, y: r.maxY))
-            p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.maxY), tangent2End: CGPoint(x: r.maxX, y: r.minY), radius: rad)
-            p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.minY), tangent2End: CGPoint(x: r.minX, y: r.minY), radius: rad)
-            p.addArc(tangent1End: CGPoint(x: r.minX, y: r.minY), tangent2End: CGPoint(x: r.minX, y: r.maxY), radius: rad)
-            p.addArc(tangent1End: CGPoint(x: r.minX, y: r.maxY), tangent2End: CGPoint(x: r.midX, y: r.maxY), radius: rad)
-            p.closeSubpath()
-            countdown.path = p
+    // MARK: input — the keys are BlurtCore NoteKeys (state × key → action)
+
+    /// The bubble's state as NoteKeys reads it.
+    private var keyState: NoteKeys.State {
+        let listening = voice?.running == true
+        let heardAny = !(heard.committed + heard.pending).isEmpty
+        var v: NoteKeys.Voice = .none
+        switch mode {
+        case .listen where !accepted:
+            if listening { v = speechStarted || heardAny ? .words : .listening } else if voiceKept { v = .words }
+        case .edit where listening:
+            v = speechStarted ? .words : .listening
+        default:
+            break
         }
-        if on, let left = endsIn { countdown.strokeEnd = reduceMotion ? 1 : CGFloat(max(0, left) / NoteBubble.countdownFrom) }
-        CATransaction.commit()
-        let alpha: Float = on && !b.isHidden && b.isEnabled ? 1 : 0
-        guard countdown.opacity != alpha else { return }
-        CATransaction.begin()
-        CATransaction.setAnimationDuration(0.15)
-        CATransaction.setDisableActions(reduceMotion)
-        countdown.opacity = alpha
-        CATransaction.commit()
+        // the words taken with Tab, untouched, are not typing
+        let typedPart = (accepted || wordsInField != nil) && !typed ? "" : field.stringValue
+        return NoteKeys.State(mode: mode == .listen ? .fresh : mode == .edit ? .edit : .recording, voice: v, typed: typedPart,
+                              composing: (field.currentEditor() as? NSTextView)?.hasMarkedText() == true, picking: picking)
     }
 
-    // MARK: input
+    /// Does what NoteKeys decided; false when the key isn't the bubble's (it goes on to the field, the IME, the list).
+    @discardableResult
+    private func perform(_ a: NoteKeys.Action, key k: NoteKeys.Key) -> Bool {
+        guard isOpen, a != .pass else { return false }
+        emit(["event": "note_key", "n": shot?.n ?? 0, "key": "\(k)", "action": "\(a)"])
+        switch a {
+        case .pass, .ignore: break
+        case .commit: commit()
+        case .newLine: lineBreak()
+        case .takeWords(let newLine):
+            takeWords()
+            if newLine { lineBreak() }
+        case .openPlaces: openPick()
+        case .closePlaces: closePick()
+        case .clearText: clearText()
+        case .close: cancel()
+        case .typeOver, .typedNote: stopListening(via: "typing")
+        }
+        return true
+    }
 
     func controlTextDidChange(_ n: Notification) {
         let marked = (field.currentEditor() as? NSTextView).flatMap { $0.hasMarkedText() ? $0.markedRange() : nil }
+        let committed = NoteTyping.committed(field.stringValue, marked: marked)
         var now = NoteTyping.typed(field.stringValue, marked: marked)
-        // the words said, shown in the field: only a change to them is typing (an edit of the words)
-        if let w = wordsInField, CardNote.clean(NoteTyping.committed(field.stringValue, marked: marked)) == w { now = false }
-        if now && !typed, mode == .listen, let v = voice, !speechStarted {
-            // typing before speaking: a text note — the mic stops (nothing was said)
-            v.stop(keep: false)
-            voice = nil
-            dropStream()
-            hold.voiceDone = true
+        // the words taken with Tab, in the field: only a change to them is typing (an edit of the words)
+        if let w = wordsInField, CardNote.clean(committed) == w { now = false }
+        // typing over the grey words replaces them (the mic stops, the take is set aside); before anything was said it
+        // makes a typed note
+        if now && !typed { perform(NoteKeys.action(.typing, keyState), key: .typing) }
+        // the words taken with Tab, all deleted: they are the grey words again (↩ keeps them, Tab takes them again)
+        if accepted, wordsInField != nil, marked == nil, committed.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            accepted = false
+            wordsInField = nil
+            takenRaw = nil
+            emit(["event": "note_words_untaken", "n": shot?.n ?? 0])
         }
-        if typed && !now { hold.emptiedAt = CACurrentMediaTime() }
-        if now { hold.pinned = false; hold.savedUntil = nil }
         if field.stringValue != (wordsInField ?? "") { inkUndoFirst = false }
         typed = now
         refreshStatus()
         layout()
-        maybeClose()
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
-        // Tab: to the chip's list (where it goes), the keyboard's way to it
-        if sel == #selector(NSResponder.insertTab(_:)), mode != .recording { openPick(); return true }
-        if sel == #selector(NSResponder.insertNewline(_:)) { commit(); return true }
-        if sel == #selector(NSResponder.cancelOperation(_:)) { escape(); return true }
-        if sel == #selector(NSResponder.insertLineBreak(_:)) { textView.insertText("\n", replacementRange: textView.selectedRange()); return true }
-        return false
+        // (the keys the panel didn't take first — an IME passing one on, ⌃↩ / ⌥↩ — and the scripted checks' keys)
+        let k: NoteKeys.Key
+        switch sel {
+        case #selector(NSResponder.insertNewline(_:)): k = .returnKey
+        case #selector(NSResponder.insertLineBreak(_:)), #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)): k = .shiftReturn
+        case #selector(NSResponder.insertTab(_:)): k = .tab
+        case #selector(NSResponder.cancelOperation(_:)): k = .escape
+        default: return false
+        }
+        return perform(NoteKeys.action(k, keyState), key: k)
     }
 
     private func key(_ e: NSEvent) -> Bool {
-        // the chip's list is open: Esc goes back to the note (its field takes ↑ ↓ ↩)
-        if picking, e.keyCode == UInt16(kVK_Escape) { closePick(); return true }
+        // ↩ ⇧↩ Tab Esc: NoteKeys (an IME composition and the open place list keep their own)
+        let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
+        var k: NoteKeys.Key?
+        switch Int(e.keyCode) {
+        case kVK_Escape: k = .escape
+        case kVK_Return, kVK_ANSI_KeypadEnter: k = mods.isEmpty ? .returnKey : mods == .shift ? .shiftReturn : nil
+        case kVK_Tab: k = mods.isEmpty ? .tab : nil
+        default: break
+        }
+        if let k = k { return perform(NoteKeys.action(k, keyState), key: k) }
         if picking { return false }
-        // (an IME composition takes its own Esc: it cancels the composition, not the note)
-        if e.keyCode == UInt16(kVK_Escape), (field.currentEditor() as? NSTextView)?.hasMarkedText() != true { escape(); return true }
-        // a key in the words shown with "Saved" other than ⏎ (moving the caret to a word): they are being fixed
-        if e.keyCode != UInt16(kVK_Return), e.keyCode != UInt16(kVK_ANSI_KeypadEnter) { engageWords(via: "key") }
         // ⌘Z: the last stroke goes when drawing was the last thing done (or there is no text to undo)
         if e.modifierFlags.contains(.command), !e.modifierFlags.contains(.shift), e.charactersIgnoringModifiers == "z",
            !ink.strokes.isEmpty, inkUndoFirst || field.stringValue.isEmpty {
@@ -1777,24 +1791,34 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         return false
     }
 
-    /// Esc (BlurtCore NoteEsc): on a fresh shot with typed text, the text goes first (the words said come back if
-    /// they were being edited) and the bubble stays; the next Esc discards the shot, with Undo.
-    private func escape() {
-        guard isOpen else { return }
-        let typedPart = wordsInField != nil && !typed ? "" : field.stringValue
-        switch NoteEsc.action(fresh: mode == .listen, field: typedPart) {
-        case .clearText:
-            field.stringValue = wordsInField ?? ""
-            typed = false
-            hold.typed = false
-            hold.pinned = true              // the next step is the user's: ⏎ keeps, Esc discards
-            holdWork?.cancel()
-            emit(["event": "note_esc", "n": shot?.n ?? 0, "action": "clear_text"])
-            refreshStatus()
-            layout()
-        case .close:
-            cancel()
-        }
+    /// Tab over the grey words: they go into the field (label colour, the caret at their end), listening stops and the
+    /// keyboard has the note — the stream's final words replace them while they are untouched (wordsIn). Edit Note: the
+    /// re-record ends, kept (its words replace the note's on Save).
+    private func takeWords() {
+        let live = CardNote.clean(heard.committed + heard.pending)
+        if mode == .listen { accepted = true }
+        stopListening(via: "tab")
+        if mode == .listen, let w = live { setField(w) }
+        emit(["event": "note_take_words", "n": shot?.n ?? 0, "chars": live?.count ?? 0, "waiting": waitingWords])
+        refreshStatus()
+        layout()
+    }
+
+    /// A line break at the caret (the field is multi-line).
+    private func lineBreak() {
+        guard let tv = field.currentEditor() as? NSTextView else { return }
+        tv.insertText("\n", replacementRange: tv.selectedRange())
+    }
+
+    /// Esc's first step (BlurtCore NoteEsc): the typed text goes — the words taken with Tab stay, and over grey words
+    /// they show again — and the bubble stays; the next Esc discards the shot, with Undo.
+    private func clearText() {
+        field.stringValue = takenRaw ?? ""
+        field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
+        typed = false
+        emit(["event": "note_esc", "n": shot?.n ?? 0, "action": "clear_text"])
+        refreshStatus()
+        layout()
     }
 
     private func inkChanged() {
@@ -1806,7 +1830,6 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         guard ink.undo() else { return }
         if ink.strokes.isEmpty { inkUndoFirst = false }
         layout()
-        maybeClose()
     }
 
     // MARK: the chip: where it goes
@@ -1823,8 +1846,6 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         pick.filter.stringValue = ""
         pick.reload()
         pick.select(pick.currentIndex)          // the cursor opens on where it goes now: the wash and the check agree
-        hold.picking = true                      // choosing: it doesn't close by itself under the list
-        holdWork?.cancel()
         refreshStatus()
         layout()
         // the list unfolds from the chip (0.15 s): it comes from what was clicked
@@ -1839,13 +1860,11 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func closePick() {
         guard picking else { return }
         picking = false
-        hold.picking = false                     // `pinned` (words being fixed, text just cleared) stays as it was
         refreshStatus()
         layout()
         panel?.makeFirstResponder(field)
         field.currentEditor()?.selectedRange = NSRange(location: (field.stringValue as NSString).length, length: 0)
         emit(["event": "note_chip", "open": false, "n": shot?.n ?? 0])
-        maybeClose()
     }
 
     private func picked(_ p: Project?) {
@@ -1896,12 +1915,19 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         player?.play()
     }
 
-    // MARK: tests (BLURT_TEST_COMMANDS: SnapApp's "notetype" / "notekey" / "noteink" / "notestall" / "notestate")
+    // MARK: tests (BLURT_TEST_COMMANDS: SnapApp's "notetype" / "notekey" / "noteheard" / "noteink" / "notestall" / "notestate")
 
     /// BLURT_TEST_NOTE_KEEP_KEY=1 (test commands only): losing the key doesn't save the bubble.
     static let testIgnoresResign: Bool = {
         let env = ProcessInfo.processInfo.environment
         return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_NOTE_KEEP_KEY"] == "1"
+    }()
+
+    /// BLURT_TEST_NOTE_NO_KEY=1 (test commands only): the bubble never takes the keyboard — scripted checks on a Mac
+    /// someone is using never catch their typing (the test commands type and press keys through the panel itself).
+    static let testNoKey: Bool = {
+        let env = ProcessInfo.processInfo.environment
+        return env["BLURT_TEST_COMMANDS"] == "1" && env["BLURT_TEST_NOTE_NO_KEY"] == "1"
     }()
 
     /// Typing into the field, as the field editor would.
@@ -1918,14 +1944,33 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         controlTextDidChange(Notification(name: NSControl.textDidChangeNotification, object: field))
     }
 
-    /// A real key event through the bubble's panel (Esc = 53, Return = 36): the same path a key press takes.
-    func testKey(_ code: UInt16) {
+    /// A real key event through the bubble's panel — `esc` | `return` | `shift-return` | `tab`: the same path a key
+    /// press takes.
+    func testKey(_ name: String) {
         guard let p = panel, isOpen else { return }
-        let chars = code == 53 ? "\u{1B}" : "\r"
-        guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        let (code, chars, mods): (Int, String, NSEvent.ModifierFlags) = {
+            switch name {
+            case "esc": return (kVK_Escape, "\u{1B}", [])
+            case "tab": return (kVK_Tab, "\t", [])
+            case "shift-return": return (kVK_Return, "\r", [.shift])
+            default: return (kVK_Return, "\r", [])
+            }
+        }()
+        guard let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: ProcessInfo.processInfo.systemUptime,
                                        windowNumber: p.windowNumber, context: nil, characters: chars, charactersIgnoringModifiers: chars,
-                                       isARepeat: false, keyCode: code) else { return }
+                                       isARepeat: false, keyCode: UInt16(code)) else { return }
         p.sendEvent(e)
+    }
+
+    /// The words heard so far while it listens (test commands only): as the live stream shows them, grey in the
+    /// field's place — `noteheard TEXT` (a "|" splits the final part from the part still being said).
+    func testHeard(_ text: String) {
+        guard isOpen, mode == .listen, voice?.running == true else { return }
+        let parts = text.components(separatedBy: "|")
+        heard = (parts[0], parts.count > 1 ? parts[1] : "")
+        speechStarted = true
+        refreshStatus()
+        layout()
     }
 
     /// A click into the note's field through the panel (down, with its up queued first so the field editor's tracking
@@ -2018,22 +2063,23 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         dropStream()
         switch what {
         case "busy": voiceBusy = true
-        case "gone": micGone = true; hold.voiceDone = true
-        default: hold.voiceDone = false
+        case "gone": micGone = true; voiceDone = true
+        default: voiceDone = false
         }
         refreshStatus()
         layout()
         emit(["event": "note_mic", "state": what, "placeholder": field.placeholderAttributedString?.string ?? field.placeholderString ?? ""])
     }
 
-    /// The words of what was said came in (test commands only): the "Saved" moment, as wordsIn shows it.
+    /// The mic stopped after speech and the final words came in (test commands only): grey, waiting for ↩ or Tab — or,
+    /// taken with Tab already, in the field — as wordsIn shows them.
     func testWords(_ said: String) {
         guard isOpen, mode == .listen else { return }
         voice?.stop(keep: true)
         voice = nil
         voiceKept = true
         speechStarted = true
-        hold.voiceDone = true
+        voiceDone = true
         dropStream()
         shot?.said = CardNote.clean(said)          // (as Snapper.fetchWords leaves it)
         wordsIn(said)
@@ -2050,15 +2096,16 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
          "voice_busy": voiceBusy, "strokes": ink.strokes.count, "drawing": ink.isDrawing, "generation": generation,
          "in_place": staged, "dock": dockSide?.rawValue ?? NSNull(), "chip": chip?.title ?? "", "picking": picking, "undo_button": undoBtn.map { !$0.isHidden } ?? false,
          "project": shot?.project ?? NSNull(), "frame": panel.map { [$0.frame.minX, $0.frame.minY, $0.frame.width, $0.frame.height] } ?? [],
-         "hold": ["voice_done": hold.voiceDone, "waiting_words": hold.waitingWords, "pinned": hold.pinned, "picking": hold.picking,
-                  "saved": hold.savedUntil != nil, "hovering": hold.hovering, "spoke": hold.spoke, "inked": hold.inked], "mic_gone": micGone,
+         "voice_done": voiceDone, "waiting_words": waitingWords, "voice_kept": voiceKept, "taken": accepted,
+         "heard": heard.committed + heard.pending, "keys": "\(keyState.voice)", "mic_gone": micGone,
          "recording_paused": island.rec.map { $0.isPaused as Any } ?? NSNull(), "resume_on_close": recordingResume as Any? ?? NSNull()]
     }
 
     // MARK: close
 
-    /// Save what's there (⏎, ⌥A again, the pause after speech).
-    func commit() { if isOpen { close(save: true, flash: voice?.running == true || (voiceKept && wordsInField == nil)) } }
+    /// Save what's there (↩, Done, ⌥A again, a click outside the picture, another app taking over) — the grey words as
+    /// they are. A spoken note shows "Saved" for a moment; a typed one (or the words taken with Tab) just goes.
+    func commit() { if isOpen { close(save: true, flash: voice?.running == true || (voiceKept && !accepted && !typed)) } }
 
     /// Blurt is quitting: saved now, no "Saved" moment.
     func commitNow() { if isOpen { close(save: true, flash: false) } }
@@ -2075,7 +2122,6 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     private func close(save: Bool, flash: Bool) {
         guard let s = shot else { return }
         showWork?.cancel()
-        holdWork?.cancel()
         resignWork?.cancel()
         ticker?.invalidate()
         player?.stop()
@@ -2086,14 +2132,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         // Esc on a fresh shot discards it; what was said, typed and drawn goes with it, and comes back with Undo
         let discard = !save && mode == .listen
         let rel = takeRel ?? canonicalVoice(s)
-        // (a fresh shot only: in an edit the text was there before the re-record; the words said shown in the field
-        // are not typing)
-        let hadTyping = mode == .listen && wordsInField == nil && typed
+        // typed over the words heard (a fresh shot only: in an edit the text was there before the re-record; the words
+        // taken with Tab are not typing)
+        let hadTyping = mode == .listen && !accepted && wordsInField == nil && typed
             && !field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if let v = voice {
-            // kept: something was said — unless the user went on to type and what was "said" was barely anything (a
-            // word, a cough, the keyboard): then the voice was abandoned for typing, and it goes
-            let keep = (save || discard) && speechStarted && !(hadTyping && v.speechSeconds < NoteBubble.abandonedSpeech)
+            // kept: something was said (words seen count) — unless the note was typed over it: typing replaces the words
+            let said = speechStarted || !(heard.committed + heard.pending).isEmpty
+            let keep = (save || discard) && said && !hadTyping
             emit(["event": "note_voice_close", "n": s.n, "kept": keep, "speech": (v.speechSeconds * 100).rounded() / 100, "typed": hadTyping])
             v.stop(keep: keep)                  // (an edit's retake: not kept = only the retake goes)
             if mode == .edit {
@@ -2105,13 +2151,14 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
                 stream = nil
             } else if s.voice == rel { s.voice = nil; s.said = nil }
             voice = nil
-        } else if voiceKept, hadTyping, voiceSpeech < NoteBubble.abandonedSpeech, save || discard {
-            // it had ended by itself (a pause), then the user typed the note instead
+        } else if voiceKept, hadTyping, save || discard {
+            // the mic had stopped (typing over the words stopped it, or it ended by itself), and the note was typed:
+            // the text replaces the words, the recording goes
             if let u = s.voiceURL { try? FileManager.default.removeItem(at: u) }
             snapper.forgetWords(s)
             s.voice = nil
             s.said = nil
-            emit(["event": "note_voice_close", "n": s.n, "kept": false, "speech": (voiceSpeech * 100).rounded() / 100, "typed": true])
+            emit(["event": "note_voice_close", "n": s.n, "kept": false, "typed": true])
         }
         dropStream()
         if save, mode == .edit, let o = original {
@@ -2137,11 +2184,19 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             applyInk(s)
             s.batch?.save(s)
         } else if save || discard, let w = wordsInField {
-            // the words said were in the field: an edit of them replaces them (an emptied field keeps them)
-            let note = NoteEdit.apply(openedTyped: nil, openedSaid: w, currentSaid: s.said, field: field.stringValue,
+            // the words taken with Tab were in the field: an edit of them replaces them (an emptied field keeps them).
+            // Committed before their final words came, the field is the note as it stands: those words are dropped.
+            if s.said == nil, s.voice != nil { snapper.forgetWords(s) }
+            let note = NoteEdit.apply(openedTyped: nil, openedSaid: w, currentSaid: s.said ?? w, field: field.stringValue,
                                       fieldHoldsSaid: true, retaken: false)
-            s.text = note.typed
-            s.said = note.said
+            if s.voice == nil {
+                // (no recording behind them any more: the words are typed text)
+                s.text = CardNote.clean(field.stringValue) ?? w
+                s.said = nil
+            } else {
+                s.text = note.typed
+                s.said = note.said
+            }
             if mode != .recording { applyInk(s) }
             s.batch?.save(s)
         } else if save || discard {
@@ -2196,8 +2251,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
             plainPlaceholder("")
             if !(heard.committed + heard.pending).isEmpty || wordsInField != nil { livePlaceholder("") }
             icon.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: nil)?.withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
-            // the same "Saved" as when the words are shown (wordsIn): the check in the brand's ok colour, the line
-            // secondary — only shorter, as the user pressed ⏎ and is going on
+            // "Saved": the check in the brand's ok colour, the line secondary — short, as the user pressed ⏎ and is going on
             icon.contentTintColor = BrandColor.ok
             status.attributedStringValue = NoteBubble.keyLine(savedLine, alignment: .right)
             let w = DispatchWorkItem { [weak self] in

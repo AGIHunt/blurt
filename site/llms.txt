@@ -42,7 +42,7 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.wo
 - ⌥T does the same, into the same language; the translation shows under the notch and is on the clipboard.
 
 ## Snap (⌥A) and Voice Note (⌥V)
-- ⌥A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; a pause of about 2 s saves it.
+- ⌥A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; ⏎ (or Done) saves it, Tab takes the words heard into the note to edit, typing replaces them.
 - ⌥V: a voice note, up to 10 minutes; pausing to think doesn't end it.
 - Snaps and voice notes wait under the notch as cards; several can hang there at once. Drag it into Claude, ChatGPT, Slack, Notion, Feishu/Lark or WeChat: the picture goes in as an attachment, then the note in the same message box. Into a terminal running Claude Code or Codex: the paths of the picture and a Markdown note; nothing runs in the shell. Into Cursor or VS Code: the picture, with the note on the clipboard. Click a card to copy it. Cards you dragged out stay findable for 7 days.
 

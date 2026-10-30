@@ -33,18 +33,36 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 
 | | Shortcut | What happens |
 |---|---|---|
-| **Snap** | `⌥A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` (or the undo arrow that shows with the pointer over the note) takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). The place under the note (a project, or *Unassigned* when there is no current project) changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. When the words are saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
+| **Snap** | `⌥A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in grey in the note as you talk, and the note waits for you, however long you pause: `⏎` (or *Done*) saves it with the words as they are; `Tab` takes the words into the note so you can fix or add to them with the keyboard (listening stops); typing straight away replaces them; `⇧⏎` starts a new line. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` (or the undo arrow that shows with the pointer over the note) takes the last stroke back. Finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). The place under the note (a project, or *Unassigned* when there is no current project) changes where this snap goes: click it (or press Tab when there are no grey words), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. When the note is saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥V` | Press once and talk — pauses to think are fine; press `⌥V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Press `⇧` on its own while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
 | **Copy Text from Screen** | `⌥C` | Drag across any text on the screen (a crosshair, nothing dims) and let go: the text is on the clipboard about 0.2 s later, laid out as it was — lists, tables, code indentation — without the half lines cut off at the edges. With another app in front it is pasted there too, wherever dictation would paste (WeChat included; not into a password field, nor when nothing that takes text has the focus). The notch says *Pasted* only once the text shows in the field; where Blurt can't check that (WeChat), it says *Copied · ⌘V to paste*. The clipboard keeps the text either way. Nothing is saved as a card. Esc or a click without a drag cancels. It uses macOS's own text recognition, so nothing to download; with the AI service key (or a local model) a second read corrects it, and the clipboard is swapped for the corrected text only if you haven't copied something else meanwhile. |
 | **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Copy Text from Screen → ⌥T translates into* (⌥T's own; dictation's ⌘ has its own, since reading usually goes the other way). *Auto* (the default) is your own language ↔ the other one, named in the list (*Auto: 简体中文 ↔ English*, *Auto: English ↔ 日本語*): text in your language goes into the other one, anything else into yours; a language you pick is always what you get — text already in it is copied as it is, and the notch says so (*Already in English · original copied*). Line breaks, lists, code, paths and names are kept. The notch says *Translating…*, then what became of it (*Translation pasted*, *Copied · ⌘V to paste* or *Translation copied*); the whole translation shows in a card under the notch, with *Copy*. The card goes after 10 s (not while the pointer is on it); with the pointer on it, Esc closes it — otherwise Esc stays with the app you're typing in. The translation is on the clipboard and pasted by the same rules as ⌥C. It uses the AI service key when you added one, else this Mac's polish model. |
 | **Record** | `⌥R` | Pick an area, a window or the full screen and click *Start recording*; after a 3-second countdown (*Start now* skips it), talk while you use your product. `⌥R` again (or *Finish* at the notch) stops. |
 
-While recording: `⌥P` pause, `⌥A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
+While recording: `⌥P` pause; `⌥A` is the same snap as always — drag an area, say or type the note (its microphone
+hears you while the recording does), draw on it, and it hangs as a card — and the recording keeps going, so the
+snap is in the video too. The snap belongs to the recording: its picture, note and place go into the recording, and
+organizing makes an item of it with your note (its card's menu says *Organized with this recording*; the card leaves
+the thread when you finish). Hold `⌃` and drag to draw on the
 screen — the same strokes as on a snap: `⌃⇧` for a box, `⌃⌥` for an ellipse (press `⌃` first, then add the other
 key: a `⌃⌥` chord pressed all at once stays your window manager's), rest the pointer to straighten a rough
-shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. The notch shows the state: pause bars and the time
-in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it off),
-the stills you took, and markers (`⌥M`) counted apart from them. Use a recording for flows, animations and timing;
+shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. `⌥M` marks the moment (a still of the recorded area,
+counted apart). Dictation is off while recording (the notch says so). The notch shows the state: pause bars and the
+time in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it
+off), and how many snaps you took. Open it for the words: *6 snaps · 4 items spotted* (the items Blurt has heard so
+far), then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
+windows, the cards, the note, the pen's ink and the notch — so a recording can show Blurt's own problems; only the
+countdown and the red frame are never in it. *Settings → General → Don’t record the notch* leaves the notch out of
+your recordings (snaps always show it).
+
+When you finish, the notch says *Organizing into Atlas Web*, with how long that usually takes on your Mac once Blurt
+has organized a few recordings (*Usually takes about 4 min*; until then it doesn't guess), and *Change* to pick
+another project. Hover the notch to see it working, with the time left. When it's done, the notch says *Organized
+into Atlas Web · 5 new* with *Open*. To keep a recording without organizing it — to send the video to someone —
+choose *Save Video Only* in the notch's ··· menu (or the menu-bar menu) instead of *Finish*: the video is saved and
+shown in the Finder. Blurt never deletes it on its own (*Delete videos automatically* only touches organized
+recordings). The app has no button to organize it later; ask the blurt skill in your agent to process that recording.
+Use a recording for flows, animations and timing;
 use a snap or a voice note for everything that fits in one screen or one sentence.
 
 **When something gets in the way.** A snap or a recording without Screen Recording permission says so at the notch
@@ -74,7 +92,7 @@ you cancelled stays cancelled, even if you quit before its *Undo* was gone.
 **Long voice notes.** A voice note no longer ends when you stop to think: it goes on until you press `⌥V` again,
 click *Done*, or let go of the keys if you held them (10 minutes at most; the notch shows the time, and the time left
 in the last minute). Prefer the old way? *Settings → General → End a voice note when I pause* ends it after 1.5 s of
-silence. A snap's spoken note still ends when you pause — it's a sentence about one picture.
+silence. A snap's spoken note doesn't end on a pause either: it waits for `⏎`, *Done* or `Tab`.
 
 **Structured voice notes.** While a voice note listens, press `⇧` on its own (or click *Structured* at the notch, or
 the time in the notch's right ear) to make it a structured note — the same switch as in dictation, any time before you
@@ -158,15 +176,19 @@ right while Peep or its news is on the left) and come back when you need them:
   moves with the notch as it opens. Just passing over the notch on the way to a menu drops nothing. They stay while
   the pointer is on the notch, on a card or on its thread, and tuck away a quarter of a second after it leaves; come
   back while they're going up and they turn round.
-- **Click the count** beside the notch, press **`⌥H`** (*Show cards*), or use the menu's *Show N
-  Cards*: the cards come down and stay until you've pointed at them and moved away (if you never do, they go back up
-  after 10 seconds), or press `Esc` while the pointer is on them or in the first few seconds (an `Esc` meant for
-  another app stays with that app).
-- **With the keyboard**: after `⌥H` the keyboard is on the newest card. `←` `→` (or `Tab`) move between the cards and
-  the **+N** tile, `⌫` deletes, `Esc` sends them up. `↩` or `⌘C` copies the card and hands the keyboard straight back,
-  so `⌘V` pastes it where you were. `↩` on **+N** opens every card with the keyboard in that window (the same keys;
-  `Esc` closes it). Typing anything else hands the keyboard back.
-  VoiceOver reads each card as a button.
+- **Click the count** beside the notch: the cards come down and stay until you've pointed at them and moved away (if
+  you never do, they go back up after 10 seconds), or press `Esc` while the pointer is on them or in the first few
+  seconds (an `Esc` meant for another app stays with that app).
+- **The Cards panel, `⌥H`**: press **`⌥H`** (*Show Cards*; also the menu bar's *Show Cards* and the notch's cards row)
+  for one panel under the notch with two tabs: **Current**, the cards hanging now, and **History**, the cards you
+  dragged or pasted into another app in the last 7 days. `⌥H` opens it on Current, or on History when nothing hangs;
+  `⌥H` again, `Esc` or a click anywhere outside closes it. It floats over the app you're working in, so you can drag a
+  card straight into that app, and it only takes the keyboard when you press `⌥H` or click in it.
+  Keys: `Tab` (or `←` `→` while no card is chosen) switches between Current and History; `↓` goes into the cards and
+  the arrows move between them (`↑` from the top row goes back to the tabs); `Space` shows the chosen card big (there
+  `←` `→` go to the card before or after, `Space` or `Esc` go back); `↩` or `⌘C` copies the card and hands the keyboard
+  straight back, so `⌘V` pastes it where you were; `⌫` deletes it (with *Undo*). The notch's cards row lists these
+  keys in its tooltip. VoiceOver reads each card as a button.
 - In the main window, the Inbox shows **N captures are waiting for a project** while there are cards; click it (or
   **Choose Projects…**) to bring them all down and pick a project for each.
 
@@ -227,33 +249,35 @@ What you can do with a card:
   note* — so `⌘V` brings the words back; this replaces what was on your clipboard, and *Undo* puts the card back on
   its thread and your clipboard as it was. You can turn this off in *Settings → General → If the note didn't go in
   with a drop, copy it*; the two-step paste itself is *Settings → General → Chat apps: the picture, then the note*.
-- **Recently Dragged Out**: cards you dragged out stay findable for 7 days. Right-click the notch (or the count beside
-  it) → *Recently Dragged Out (N)*, or click *Recently dragged out: N* at the top of the Inbox or Unassigned
-  in the main window. Point at a row and it shows one button, *Copy* (picture and note), and a *···* menu (or
-  right-click the row) that copies the picture or the note alone, or *Put Back Under the Notch* to make it a card again;
-  drag its picture (a voice note's tile) out to use it again. After 7 days it goes to the Trash.
+- **History**: cards you dragged or pasted into another app stay in the Cards panel's *History* tab for 7 days
+  (`⌥H`, then `Tab`). Each one is a tile like the cards under the notch: click to copy it (picture and note),
+  double-click it, click its eye or press `Space` to see the picture big, drag it into any app again, and right-click
+  it (or use *···*) to copy the picture or the note alone, *Put Back Under the Notch* to make it a card again, show it
+  in the Finder or delete it. A tile on its last day says so. After 7 days it goes to the Trash.
 - Optional: *Settings → General → Add the note under the picture when dragging* drops a copy of the picture with the
   note in a strip under it, for apps that take one picture and nothing else. Off by default; the capture itself stays
   clean.
 - Hover a card whose note is cut short to read all of it (a spoken note also shows a play button there).
 - Double-click a card to edit its note. *Edit Note…* shows the whole note, the spoken words too, so you can fix what
   was heard wrong; the button before the words plays the voice note (or records one), *Record Again* shows with the
-  pointer over the note, the place under it moves the card to a project when you press *Save*, and `Esc` keeps the
-  note as it was. A card waits until you do something
+  pointer over the note (it records until you press `Tab` or *Save*, not until you pause), the place under it moves the
+  card to a project when you press *Save*, and `Esc` keeps the note as it was. A card waits until you do something
   with it — however long that takes.
 - **Delete**: click ×, choose *Delete*, or press `⌫` with the keyboard on it. Nothing asks first: the notch says
   *Deleted · Undo* for 5 seconds, and *Undo* puts the card back where it was. Delete another while it shows and it
   becomes *Deleted 2 cards · Undo*, bringing both back. *Delete All N Cards* (in the notch's right-click menu) works
   the same way, with one *Undo* for all of them.
 - The newest five cards sit side by side, newest on the left; the others wait behind a **+N** tile at the end of the
-  row (never a *+1* for a card that fits). *Recently Dragged Out* and the all-cards window open below the cards, so a
-  card you put back never covers them. Click it to see every card at once, newest first: click to copy, double-click to edit, right-click for the
-  card's menu, drag one out into any app or onto a project in the notch, `⌫` to delete.
+  row (never a *+1* for a card that fits). Click it for the Cards panel on Current, every card at once, newest first:
+  click to copy, double-click to edit the note, the eye (or `Space`) to see it big, right-click for the card's menu,
+  drag one out into any app or onto a project in the notch, `⌫` to delete. The panel opens below the cards, so a card
+  you put back never covers it.
 - A snap's card takes its picture's shape: a wide screenshot makes a wider card, and a toolbar or a sidebar shows
   whole instead of as a slice of its middle. A spoken note's mic mark sits before the note's first words. If a note
   couldn't be turned into words, the card says so in amber and keeps the mic mark: right-click it to retry.
 - Your very first card says what to do with it: click to copy, or drag it into any app.
-- While you record, the cards stay tucked away (they would cover what you're showing); `⌥H` still brings them down.
+- While you record, the cards stay tucked away (they would cover what you're showing); `⌥H` still opens the Cards
+  panel.
 
 While Blurt processes captures you see a small egg at the notch; when it hatches, the new items are in your Inbox.
 
@@ -282,6 +306,12 @@ Editing, the Mac way:
   waits for that save.
 - `⌫` or `⌘⌫` discards the selected items, as in Finder. Removing a project from Blurt has no key; it's in the
   project's menu.
+- **Search, order and filter sit on the list itself.** The search field is right under the list's title (`⌘F` or `/`
+  to get there): type, then `↓` or `↩` to go into the results; `Esc` clears the search and puts you back in the list.
+  On the title's line, the order button says how the list is sorted — *Updated ↓* is newest first — and opens the sort
+  keys (Updated, Title, ID, Kind, State, Project) with *Ascending* and *Descending* (also in *View ▸ Sort By*). The
+  funnel button next to it filters by kind and state; while a filter is on it is filled in, with how many filters
+  apply, and a line above the list says what it shows, with **Clear**.
 - Search finds an item by its ID too (`AW-11`, or an ID it had before it moved), in the search field, `⌘K` and for
   agents (MCP). When the item isn't in the place you're searching (it's discarded, filtered out or in another project),
   the list says where it is, with a button that shows it.
@@ -608,7 +638,8 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   Settings itself.
 - **Dictation** is a place in the main window's sidebar, under All Items (also menu bar → *Dictation History…*,
   `⌥⌘D`, or the command palette). It lists every dictation by day: the app it went into, the time, the text, and small
-  marks for polished, *Not polished* (polish fell back; the reason on hover) and terms applied. The toolbar's search field searches it.
+  marks for polished, *Not polished* (polish fell back; the reason on hover) and terms applied. The history has its own
+  search field at the top of the list (`⌘F`; `↓` into the results, `Esc` clears it).
   Above the list are today's numbers (dictations, words, roughly the minutes saved) and a link to *Dictation
   Settings…*. Select a dictation to see it on the right: what was typed and what the speech model heard, one at a time
   or side by side, each with its own Copy button. From there you can **turn it into an item** in the current project
@@ -733,20 +764,22 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 
 | | 快捷键 | 做什么 |
 |---|---|---|
-| **截图** | `⌥A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已保存」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。说话的备注不会在你画的时候、也不会在落笔后 1.5 秒内结束；只画了或只打了字，就按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。文字保存后，屏幕其余部分马上恢复亮度。备注下面的项目（没有当前项目时是「未归类」）可以改这张截图去哪：点它（或按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
+| **截图** | `⌥A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候，识别出的文字用灰色显示在备注里；停下来想多久都行，备注会等你：按 `⏎`（或点「完成」）保存，灰字原样采用；按 `Tab` 采用识别结果，文字变黑，可以接着用键盘改或补充（不再收音）；直接打字就替换掉灰字；`⇧⏎` 换行。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。备注保存后，屏幕其余部分马上恢复亮度。备注下面的项目（没有当前项目时是「未归类」）可以改这张截图去哪：点它（没有灰字时也可以按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
 | **语音备注** | `⌥V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥V`（或点刘海上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的 App。说的时候，识别出的文字显示在刘海下方。 |
 | **截图取字** | `⌥C` | 在屏幕上拖过任何文字（十字光标，屏幕不变暗），松手：大约 0.2 秒后文字就在剪贴板里，版面照原样——列表、表格、代码缩进都在，边缘被截掉的半行不会混进来。前台是别的 App 时同时粘贴进去，听写能粘贴的地方都行（包括微信；密码框、没有可输入的焦点时不粘贴）。确认输入框里出现了这段文字，刘海才说「已粘贴」；确认不了（比如微信）就说「已复制 · ⌘V 粘贴」。文字总会留在剪贴板里。不存成卡片。按 `Esc` 或只点不拖就取消。用的是 macOS 自带的文字识别，不用下载；有 AI 服务 Key（或本机模型）时会再读一遍做修正，只有在你这期间没复制别的东西时，剪贴板才换成修正后的版本。 |
 | **截图翻译** | `⌥T` | 同样拖选，识别后翻译成「设置 → 截图取字 → ⌥T 翻译成」里选的语言（⌥T 自己的设置；听写的 ⌘ 翻译另有设置，因为读和写的方向通常相反）。默认「自动」是你的语言 ↔ 另一种，列表里会写出这一对（「自动：简体中文 ↔ English」）：你的语言译成另一种，其他语言译成你的语言；选了某种语言就总是得到这种语言，已经是这种语言的文字原样复制，刘海上会说（「已是英语 · 原文已复制」）。换行、列表、代码、路径和名字都保留。刘海上先显示「正在翻译…」，再说结果（「已粘贴译文」「已复制 · ⌘V 粘贴」或「已复制译文」）；完整译文显示在刘海下面的小卡片里，带「复制」按钮。卡片 10 秒后自己收起（指针在上面时不收）；指针在卡片上时按 Esc 关闭，否则 Esc 照常留给你正在用的 App。译文在剪贴板里，按和 ⌥C 一样的规则粘贴。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型。 |
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
 
-录屏时：`⌥P` 暂停；`⌥A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆（先按 `⌃` 再加另一个键；同时按下的 `⌃⌥` 留给窗口管理工具），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。
-刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；
-截下的画面有几张；标记（`⌥M`）单独计数。
+录屏时：`⌥P` 暂停；`⌥A` 和平时的截图一样——框选区域，说或打备注（录屏在收音的同时，备注也能听到你说话），在图上画，然后挂成一张卡片——录屏不会暂停，截图的过程也录在视频里。这张截图属于这段录屏：图、备注和去处都存进录屏里，整理时会按你的备注生成一个事项（卡片菜单里写着「随这段录屏一起整理」，点完成后卡片会收起）。按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆（先按 `⌃` 再加另一个键；同时按下的 `⌃⌥` 留给窗口管理工具），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。`⌥M` 标记这一刻（截下录制区域的画面，单独计数）。录屏时不能听写，刘海上会说明。
+刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张 · 已识别 4 个事项」（到目前为止听出来的事项），下面一行是去处——「点完成后整理到 Atlas Web」。
+口喷鸡自己也会像别的 App 一样被录进去——它的窗口、卡片、备注框、画笔笔迹和刘海——所以可以用录屏来反馈口喷鸡自己的问题；只有倒计时和红色边框永远不会录进去。不想录到刘海，就打开「设置 → 通用 → 录屏时不录刘海」（截图总会带上刘海）。
+
+点完成后，刘海会说「正在整理到 Atlas Web」；口喷鸡在这台 Mac 上整理过几段录屏之后，还会说通常要多久（「通常约 4 分钟」；在那之前不瞎猜），旁边的「更改」可以换项目。鼠标移到刘海上能看到进度和剩余时间。整理好后，刘海会说「已整理到 Atlas Web · 5 条新的」，点「打开」。只想留下视频、不整理（比如要把视频发给别人）：在刘海的 ··· 菜单（或菜单栏菜单）里选「只保存视频」代替「完成」，视频会保存并在访达中显示。口喷鸡不会自己删它（「自动删除视频」只处理已经整理过的录屏）。App 里暂时没有「之后再整理」的按钮；需要的话，让你的 agent 里的 blurt 技能处理这段录屏。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
 **出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，8 秒内（鼠标停在上面时更久）可以点「留下」，没留下的录音会放进废纸篓，不会直接删掉；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空事项。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
-**长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
+**长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注也不会因为停顿结束：它等你按 `⏎`、点「完成」或按 `Tab`。
 
 **边说边显示文字。** 语音备注或听写在听的时候，已经识别出的文字会显示在刘海下方的深色小面板里：最后两三行，最新的在最下面，淡入；截图时说的备注也一样，文字直接出现在备注框里。听写停下后，面板从头显示打进去的文字（最多八行），清单的标题也在，方便按两下发送前看一眼。即使一直不停顿，文字也会跟上：还在说的那一段用浅一点的灰色显示，这一段说完后变成白色。备注用的语音模型很快，所以每台 Mac 上都这样。它不会抢焦点、不接收点击；如果会挡住你正在听写的那一行，就挪到屏幕底部；也不会被录进屏幕录制。语音备注是边说边分段转写的，所以一停下来，卡片上的文字几乎马上就有了。不需要的话，在「设置 → 通用 → 边说边显示文字」里关掉。
 
@@ -789,8 +822,9 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 没选当前项目时，每张截图、每段语音备注都会变成一张卡片，用一根细线垂在刘海下方。你不看的时候它们会收进刘海（刘海旁边的卡片图标和数字就是有几张：平时在左边，Peep 或它的消息占着左边时在右边），需要时再放下来：
 
 - **鼠标在刘海上停一下**（或者打开刘海）：所有卡片跟着刘海的详情一起垂下来，刘海展开时跟着刘海一起往下走。只是路过刘海去点菜单，卡片不会掉下来。鼠标在刘海上、卡片上或卡片的线上时一直显示，离开后很快收起；收到一半时鼠标回来，卡片就原地停下、重新垂下。
-- **点刘海旁边的卡片数字**、按 **`⌥H`**（「显示卡片」），或者用菜单里的「显示 N 张卡片」：卡片放下来并一直显示，直到你把鼠标移过来再移走（一直没移过来的话，10 秒后收起），或者鼠标在卡片上、或刚放下来的几秒内按 `Esc`（给别的 App 的 `Esc` 不会被拦下）。
-- **用键盘**：按 `⌥H` 后键盘就在最新的那张卡片上。`←` `→`（或 `Tab`）在卡片和「+N」之间移动，`⌫` 删除，`Esc` 收起。`↩` 或 `⌘C` 复制这张卡片，并马上把键盘还给原来的 App，接着按 `⌘V` 就能粘贴。在「+N」上按 `↩` 会打开全部卡片的窗口，键盘也跟过去（按键相同，`Esc` 关闭）。打别的字就把键盘还给原来的 App。旁白（VoiceOver）会把每张卡片读成一个按钮。
+- **点刘海旁边的卡片数字**：卡片放下来并一直显示，直到你把鼠标移过来再移走（一直没移过来的话，10 秒后收起），或者鼠标在卡片上、或刚放下来的几秒内按 `Esc`（给别的 App 的 `Esc` 不会被拦下）。
+- **卡片面板，`⌥H`**：按 **`⌥H`**（「显示卡片」；菜单栏的「显示卡片」和刘海里的卡片那一行也一样）会在刘海下方打开一个面板，分两栏：**当前**是现在挂在刘海下的卡片，**历史**是最近 7 天拖进或粘贴到别的 App 的卡片。`⌥H` 打开时在「当前」，没有卡片挂着时直接在「历史」；再按 `⌥H`、按 `Esc` 或在面板外随便点一下就关上。它浮在你正在用的 App 上面，卡片可以直接拖进那个 App；只有按 `⌥H` 或点进面板时它才拿走键盘。
+  按键：`Tab`（没选中卡片时也可以用 `←` `→`）在「当前」和「历史」之间切换；`↓` 进到卡片里，方向键在卡片之间移动（在第一排按 `↑` 回到上面的两栏）；`Space` 放大看选中的卡片（放大时 `←` `→` 看前一张、后一张，`Space` 或 `Esc` 回去）；`↩` 或 `⌘C` 复制这张卡片，并马上把键盘还给原来的 App，接着按 `⌘V` 就能粘贴；`⌫` 删除（可以撤销）。刘海里卡片那一行的提示里写着这些按键。旁白（VoiceOver）会把每张卡片读成一个按钮。
 - 主窗口「待处理」的顶部会显示「**N 条新记下的内容还没选项目**」，点一下（或点「**选项目…**」）就把它们全部放下来，逐条选项目。
 
 卡片能做的事：
@@ -812,15 +846,15 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 
   备注会贴进你拖进去的那个输入框：口喷鸡把那个窗口带到前面，把光标放到图片后面，粘贴，再把你的剪贴板还原。它不会贴进口喷鸡自己、密码框或者别的窗口。在飞书/Lark 里，只有确认光标在输入框里才会贴；确认不了时，备注放进剪贴板（「⌘V 可粘贴」）。「设置 → 通用 → 同时附上备注的 .md 文件」可以让聊天 App和访达也收到这个 Markdown 文件（默认关闭）。备注也写进了图片自带的描述里（预览的「显示简介」能看到）。语音备注本来就是说出来的文字，所以拖出去只有文字，不会是音频文件。拖进聊天 App——浏览器、Claude、飞书/Lark、Slack、微信、QQ——时，**窗口里任何地方都能松手**，不必正好对准输入框（这些 App 只在输入框上接收拖进来的文字）：卡片移到这类窗口上时会显示「松手粘贴到 Claude」，松手后口喷鸡把文字贴进那个窗口的输入框（需要「辅助功能」权限；没有的话文字放进剪贴板——「已复制，在 Claude 里按 ⌘V 粘贴」）。备忘录、文本编辑、代码编辑器和终端照常接收拖进来的文字；终端里是在提示符处打出一行文字，不会带回车，所以什么命令都不会执行。拖到空白处松手，卡片会回到线上。（语音备注还没转成文字时拖它，会稍等一下；还没好就提示你稍后再拖。）
 - **拖进去以后**：卡片用完了，会从线上离开，但不会被扔掉。刘海上会说放进去了什么：「已拖走 · 图片和备注」，终端里是「已拖走 · 图片和备注的路径」。备注没能贴在图片后面时（没有「辅助功能」权限、关掉了「聊天 App：先放图片，再贴备注」、App 没到前台，或者拖进了访达），备注会改放进剪贴板——「已拖走 · 图片 · 备注已复制，⌘V 可粘贴」——在那里按 `⌘V` 就行；这会替换剪贴板里原来的内容，点「撤销」会把卡片放回线上，剪贴板也还原。不想要这一步，可以在「设置 → 通用 → 拖进去后备注没贴上时，复制到剪贴板」里关掉；两步粘贴本身在「设置 → 通用 → 聊天 App：先放图片，再贴备注」。
-- **最近拖走的**：拖出去的卡片保留 7 天。右键点刘海（或刘海旁边的卡片数字）→「最近拖走的（N）」，或者点主窗口「待处理」「未归类」顶部的「最近拖走的：N 张」。鼠标指到某一行，会出现一个「复制」按钮（图片和备注一起）和「···」菜单（或者右键这一行），里面可以单独复制图片或备注，或者「放回刘海下方」让它重新成为卡片；把图片（语音备注是它的小方块）再拖出去就能再用一次。7 天后移到废纸篓。
+- **历史**：拖进或粘贴到别的 App 的卡片，会在卡片面板的「历史」里保留 7 天（按 `⌥H`，再按 `Tab`）。每张都和刘海下的卡片一样大：点一下复制（图片和备注一起），双击、点眼睛图标或按 `Space` 放大看图，再拖进任意 App 就能再用一次；右键（或「···」）可以单独复制图片或备注、「放回刘海下方」让它重新成为卡片、在访达中显示，或者删除。最后一天时卡片上会写出来。7 天后移到废纸篓。
 - 可选：「设置 → 通用 → 拖出图片时把备注印在图片下方」，拖出去的是一份在下方加了备注条的图片副本，给只收一张图片的 App 用。默认关闭；原来的截图不变。
 - 卡片上备注显示不全时，悬停可以看全文（语音备注那里还有播放按钮）。
-- 双击卡片改备注。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录，按 `Esc` 备注保持原样。卡片会一直留着，直到你处理它，放多久都不会自己消失。
+- 双击卡片改备注。「编辑备注…」显示完整的备注，说的话也在里面，识别错了可以直接改；点麦克风可以重录（停下来不会结束，按 `Tab` 或「保存」才结束），按 `Esc` 备注保持原样。卡片会一直留着，直到你处理它，放多久都不会自己消失。
 - **删除**：点 ×、右键「删除」，或者键盘在卡片上时按 `⌫`。不会先问你：刘海上显示「已删除 · 撤销」5 秒，点「撤销」卡片就回到原处。这时再删一张，会变成「已删除 2 张卡片 · 撤销」，两张一起回来。刘海的右键菜单里的「删除全部 N 张卡片」也一样，一次「撤销」全部回来。
-- 最新的 5 张并排显示，最新的在最左边；其余的在这一排末尾的「+N」后面等着（放得下的那一张不会藏在「+1」后面）。「最近拖走的」和全部卡片的窗口都开在卡片下方，放回去的卡片不会挡住它们。点「+N」可以一次看到所有卡片（最新的在前）：单击复制，双击改备注，右键是卡片的菜单，拖到任意 App 或刘海上的项目，`⌫` 删除。
+- 最新的 5 张并排显示，最新的在最左边；其余的在这一排末尾的「+N」后面等着（放得下的那一张不会藏在「+1」后面）。点「+N」会打开卡片面板的「当前」，一次看到所有卡片（最新的在前）：单击复制，双击改备注，点眼睛图标（或按 `Space`）放大看，右键是卡片的菜单，拖到任意 App 或刘海上的项目，`⌫` 删除。面板开在卡片下方，放回去的卡片不会挡住它。
 - 截图卡片跟着图片的形状走：宽屏截图对应一张更宽的卡片，工具栏、侧边栏这种很宽或很高的图会完整显示，不会只露出中间一截。说过备注的卡片，话筒标记在备注第一行的开头。备注没能转成文字时，卡片会用琥珀色写明，并保留话筒标记：右键卡片可以重试。
 - 第一张卡片出现时，它会提示一句怎么用：点一下复制，或拖进任意 App。
-- 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥H` 仍然可以放下来看。
+- 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥H` 仍然可以打开卡片面板。
 
 整理时刘海上会出现一个小蛋；蛋破壳了，新事项就出现在「待处理」里。
 
@@ -839,6 +873,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 - 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、待办），列表和详情里一样。
 - **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步（「撤销改种类」「撤销编辑标题」）。它只撤销你自己的这一步：Agent 之后写的状态不受影响；口喷鸡还在保存时按下的 `⌘Z` 会等保存完再执行。
 - `⌫` 或 `⌘⌫` 丢弃选中的事项，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
+- **搜索、排序和筛选都在列表上。**搜索框就在列表标题下面（`⌘F` 或 `/` 跳过去）：输入后按 `↓` 或 `↩` 进入结果，`Esc` 清空搜索并回到列表。标题这一行的排序按钮写着列表现在怎么排——「更新时间 ↓」就是最新的在前——点开可以选按更新时间、标题、编号、种类、状态、项目排，以及升序、降序（「显示 ▸ 排序方式」里也有）。旁边的筛选按钮按种类和状态筛选；筛选打开时按钮变成实心并标出几项筛选，列表上方还有一行说明在看什么，带「**清除**」。
 - 搜索也能按编号找事项（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。事项不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
 - 在第一条上按 `↑` 会走到列表上方的横幅和正在运行的任务；在横幅上按回车会打开它。
 - 每个位置有自己的筛选：在「全部事项」里设的状态筛选只留在那里，不会把「待处理」筛空。
@@ -971,7 +1006,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。「保留录音」打开时（默认打开），它随这条听写记录一起保存，供听写实验室和反馈使用，到期一起删除；关掉后只用于这一次听写，不会保存。从不读密码框。这项和自动学习都可以在设置里关掉。
 - **权限**：「辅助功能」用来粘贴、读取光标附近的文字和听到 Fn；「输入监控」用来听到其他按键；还有麦克风。按键还听不到时，「设置 → 听写」最上面会提示；「权限」一栏列出每一项的状态（都开好时收成一行「都已开启」），以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，刘海上大约每天提醒一次。这两处和设置里的「开启…」都会打开**权限向导**（见下）；开关打开后几秒内自动生效，不用重启。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，刘海下方会提示「已复制，⌘V 粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。光标在密码框里时既不输入也不复制：刘海上会说明，真要用的话点**复制**。
 - **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」屏幕录制权限在第一次截图或录屏需要时才问（截图失败的提示上有「允许…」），有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
-- **听写**是主窗口侧栏里的一页，在「全部事项」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、「未润色」（润色没成功，鼠标停在上面能看到原因）、用到了词库里的词。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为事项**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）：粘贴「Claude, Codex, tmux」一次加三个（已经有的会提示，不会重复加）；`Tab` 进入词，`←` `→` 移动，`⌫` 移除，`Return` 或双击改写法。移除、添加和忽略都会在刘海上提示，可以**撤销**（`⌘Z` 也行）。没能识别的听写会标出来，录音还在时可以**重试**。⌥L 替换过的一条，详情里显示现在的文字，下面是最初的版本。按键：`↑` `↓` 切换，`E` / `Return` 改正，`⌘C` 复制，`⌫` 删除（刘海上会提示并可**撤销**，`⌘Z` 也行，录音也一起找回来），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着、还听不到按键或还没有语音模型时也会说明。历史默认保留 30 天（在「设置 → 听写」里改），每天检查一次，不只在启动时。「保留录音」（默认打开，那里单独一个开关）会把每条听写的录音和光标附近的文字随记录保留这 30 天；关掉后，文字输入完录音就删除。口喷鸡在听写处理完之前退出的，会列为没有输入，可以**重试**。
+- **听写**是主窗口侧栏里的一页，在「全部事项」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、「未润色」（润色没成功，鼠标停在上面能看到原因）、用到了词库里的词。历史列表最上面有它自己的搜索框（`⌘F`；`↓` 进入结果，`Esc` 清空）。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为事项**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）：粘贴「Claude, Codex, tmux」一次加三个（已经有的会提示，不会重复加）；`Tab` 进入词，`←` `→` 移动，`⌫` 移除，`Return` 或双击改写法。移除、添加和忽略都会在刘海上提示，可以**撤销**（`⌘Z` 也行）。没能识别的听写会标出来，录音还在时可以**重试**。⌥L 替换过的一条，详情里显示现在的文字，下面是最初的版本。按键：`↑` `↓` 切换，`E` / `Return` 改正，`⌘C` 复制，`⌫` 删除（刘海上会提示并可**撤销**，`⌘Z` 也行，录音也一起找回来），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着、还听不到按键或还没有语音模型时也会说明。历史默认保留 30 天（在「设置 → 听写」里改），每天检查一次，不只在启动时。「保留录音」（默认打开，那里单独一个开关）会把每条听写的录音和光标附近的文字随记录保留这 30 天；关掉后，文字输入完录音就删除。口喷鸡在听写处理完之前退出的，会列为没有输入，可以**重试**。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
 
 #### 听写测试台（开发者选项）

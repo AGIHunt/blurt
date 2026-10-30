@@ -61,6 +61,7 @@ extension Island {
         watch?.stop()
         watch = nil
         if NoteBubble.shared.isOpen, NoteBubble.shared.mode == .recording { NoteBubble.shared.commit() }
+        snapper.takeStopping()          // a note on an ⌥A snap of the take is saved now: it goes with the recording
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.recordingChanged() }
         recordingChanged()
     }

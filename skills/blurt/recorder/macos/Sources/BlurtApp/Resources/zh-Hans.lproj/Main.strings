@@ -24,6 +24,7 @@
 "app.menu.countdown.seconds" = "%ld 秒";
 "app.menu.discard" = "丢弃这次录屏";
 "app.menu.finish" = "完成录屏";
+"app.menu.video_only" = "只保存视频";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
 "app.menu.project" = "当前项目：%@";
@@ -70,6 +71,9 @@
 "app.record.partial" = "%1$@，前 %2$@ 已保留";
 "app.record.low_space" = "这块磁盘只剩 %@，长时间录屏可能放不下";
 "app.record.organize" = "整理";
+"app.record.video_only_saved" = "视频已保存 · %@";
+"app.record.video_only_detail" = "没有整理 · 已在访达中显示";
+"app.record.show_in_finder" = "在访达中显示";
 
 "app.status.ax_count" = "口喷鸡 · %@";
 
@@ -92,9 +96,6 @@
 "main.banner.with_agent" = "已交给 %@ · %@";
 
 "main.captures.tip" = "它们挂在屏幕顶部的刘海下方。点一下会在那里全部展开，给每一条选个项目。";
-"main.captures.taken" = "最近拖走的 · 7 天内 %ld 张";
-"main.captures.taken.show" = "查看";
-"main.captures.taken.tip" = "最近 7 天拖进别的 App 的卡片：可以再复制、再拖出去，或者放回刘海下方";
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
 
@@ -117,7 +118,7 @@
 "main.unreadable.open" = "在编辑器中打开";
 "main.unreadable.show" = "显示";
 "main.unreadable.found" = "%@ 的文件读不出来，先在编辑器里改好它。";
-"main.unreadable.found.many" = "有 %d 条的文件读不出来，先在编辑器里改好它们。";
+"main.unreadable.found.many" = "有 %d 个事项的文件读不出来，先在编辑器里改好它们。";
 "main.skipped.found" = "%@ 没能加进列表，详情见日志。";
 "main.skipped.found.many" = "有 %d 个文件没能加进列表，详情见日志。";
 "main.scan.failed" = "没能刷新列表。";
@@ -210,8 +211,8 @@
 "main.handoff.copied_full" = "全文已复制，截图用路径引用";
 "main.handoff.failed" = "没能准备交接内容";
 
-"main.inbox.new" = "%ld 条新的";
-"main.inbox.verify" = "%ld 条待验证";
+"main.inbox.new" = "%ld 个新的";
+"main.inbox.verify" = "%ld 个待验证";
 "main.item.untitled" = "无标题";
 
 "main.job.error.auth" = "Agent 没有登录。";
@@ -287,7 +288,7 @@
 "main.menu.enrich" = "用 AI 补全详情";
 "main.menu.export_bundle" = "导出交接包…";
 "main.bundle.save" = "导出";
-"main.bundle.message" = "一个 .zip：概要、每一条的详情和截图，在别的电脑上也能打开。";
+"main.bundle.message" = "一个 .zip：概要、每个事项的详情和截图，在别的电脑上也能打开。";
 "main.bundle.saved" = "交接包已保存：%@";
 "main.bundle.failed" = "没能导出交接包";
 "main.bundle.error.io" = "没能写到这个位置，换一个文件夹再试。";
@@ -299,7 +300,7 @@
 "main.suggest.looks_like" = "可能属于 %@";
 "main.suggest.more" = "下面还有 %ld 个项目的建议";
 "main.suggest.move_all" = "全部移过去（%ld）";
-"main.suggest.move_all.tip" = "把这 %1$ld 条移到 %2$@，一次 ⌘Z 全部移回来";
+"main.suggest.move_all.tip" = "把这 %1$ld 个移到 %2$@，一次 ⌘Z 全部移回来";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
@@ -458,6 +459,11 @@
 "menu.view" = "显示";
 "menu.toggle_detail" = "显示或隐藏详情";
 "menu.sort_by" = "排序方式";
+/* the list heading's sort button and View ▸ Sort By: the date key, the two directions, and the button's spoken label */
+"main.sort.updated" = "更新时间";
+"main.sort.ascending" = "升序";
+"main.sort.descending" = "降序";
+"main.sort.label" = "排序方式：%1$@，%2$@";
 
 "menu.undo" = "撤销";
 
@@ -471,6 +477,7 @@
 "notify.done.generic" = "整理好了";
 "notify.done.recording" = "录屏整理好了";
 "notify.done.snaps" = "截图整理好了";
+"notify.done.recording_in" = "已整理到 %@";
 
 "notify.failed" = "%@ 没有完成";
 
@@ -708,7 +715,7 @@
 "main.missing.locate_folder" = "定位文件夹…";
 "main.missing.remove" = "从口喷鸡移除";
 "main.search.title" = "「%@」的搜索结果";
-"main.items.of" = "%2$@ 条中的 %1$@ 条";
+"main.items.of" = "%2$@ 个中的第 %1$@ 个";
 "main.items.of_in" = "%2$@ · %1$@";
 "main.project.current_count" = "当前项目 · %@";
 "main.project.current_mark" = "当前项目：新的录屏和截图会放进这里";
@@ -718,7 +725,6 @@
 "main.project.unpin" = "取消置顶";
 "main.project.pin.undo_name" = "置顶";
 "main.search.tip" = "搜索标题、原话和所有字段。⌘F 或 /";
-"main.sidebar.taken" = "最近拖走的";
 "app.record.not_saved_title" = "录屏没能保存";
 "app.record.partial_title" = "录屏中途停了";
 "app.record.partial_kept" = "前 %@ 已保留";
@@ -751,7 +757,7 @@
 
 /* 会话没回报就结束了的事项 */
 "main.row.session_ended" = "会话已结束";
-"main.row.session_ended.help" = "它的 Agent 会话结束了，但没说做完。打开这条可以重新开始或收回。";
+"main.row.session_ended.help" = "它的 Agent 会话结束了，但没说做完。打开这个事项可以重新开始或收回。";
 
 /* 打开文件夹成了新项目 */
 "main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";

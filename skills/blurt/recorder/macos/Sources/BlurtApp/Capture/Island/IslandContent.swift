@@ -14,12 +14,14 @@
 //   recording   on one grid with the ears (they ride out to the open shape's corners, 14 pt in): pause (paused: the
 //               same circle, Resume's play glyph in amber — nothing moves) · snap + note (pauses) … ··· · Finish (the one
 //               filled thing; paused, a neutral pill with its red stop square, so Resume leads); the ··· menu (dark,
-//               keys right-aligned) holds the rare things: the pen (⌥⇧D), a marker (⌥⇧M), where the take goes
+//               keys right-aligned) holds the rare things: Save Video Only (finish without organizing: BA-66), the pen
+//               (⌥⇧D), a marker (⌥⇧M), where the take goes
 //               (Change…), Discard or Start Over… (asks first: the question alone on its line, what goes with it — the
 //               snaps and the markers apart — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
-//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord) · how many items were spotted
+//               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps ·
+//               4 items spotted") and, under it, where it goes ("Organized into Atlas Web when you finish": BA-64)
 //   voice       two rows on the body's edges (bodyInset — the ears' mic and clock line up with them): Peep
 //               listening (eye wide, swelling with the voice), the live waveform and Done (with the key held there is no Done:
 //               the hint says "Let go to finish"); then the Structured chip (list glyph; on = the mint tint chip — the
@@ -329,7 +331,8 @@ final class IslandButton: NSView {
             if let line = TextImage.line(shown, font: titleFont, color: fg.cgColor, scale: scale) {
                 titleLayer.contents = line.image
                 titleLayer.contentsScale = scale
-                titleLayer.frame = CGRect(x: tx, y: ((b.height - line.size.height) / 2).rounded(), width: line.size.width, height: line.size.height)
+                // centred on its optical middle (BA-60: "完成" sat low when its typographic box was centred)
+                titleLayer.frame = CGRect(x: tx, y: line.top(centredOn: b.height / 2, scale: scale), width: line.size.width, height: line.size.height)
                 if let k = key, let kl = TextImage.line(k, font: IslandButton.keyFont, color: fg.withAlphaComponent(0.6).cgColor, scale: scale) {
                     keyLayer.contents = kl.image
                     keyLayer.contentsScale = scale
@@ -709,7 +712,8 @@ final class IslandContent: NSView {
                 i?.setOpen(false)
                 AppEnvironment.mainWindow?.reveal(job: j.id)
             }
-            r.status = step.map { Loc.t("job.step.\($0.id)") }
+            // a recording being organized: how long is left, as runs on this Mac have taken (BA-61; nothing without a measure)
+            r.status = [step.map { Loc.t("job.step.\($0.id)") }, OrganizeProgress.leftText(j)].compactMap { $0 }.joined(separator: " · ")
             r.working = true
             r.progress = j.progress ?? step?.progress ?? 0
             r.setAccessibilityLabel([r.title, r.status].compactMap { $0 }.joined(separator: ", "))
@@ -736,7 +740,8 @@ final class IslandContent: NSView {
         if cards > 0 {
             // the cards waiting ("2 cards" — one noun; the Inbox is the row under it), and the view's one filled button,
             // the sparkle: with a current project they are organised into it; with none, into Unassigned, each item
-            // with the project the run suggests (one agent run for all). A click on the row brings the cards down.
+            // with the project the run suggests (one agent run for all). A click on the row opens the Cards panel (as
+            // ⌥H does); its tooltip names ⌥H and the panel's keys once.
             let cur = ProjectStore.shared.organizeTarget.flatMap { ProjectStore.shared.project(id: $0) }
             let b = cur.map { p in
                 IslandButton(icon: .spark, title: Loc.t("capture.island.organize", table: "Capture"),
@@ -746,7 +751,8 @@ final class IslandContent: NSView {
                               tip: Loc.plural("capture.island.organize_all_tip", table: "Capture", count: cards),
                               gradient: BrandGradient.buttonStops) { snapper.handToAI() }
             let r = IslandRow(icon: IslandContent.lineIcon(.cards), title: Loc.plural("capture.island.cards_waiting", table: "Capture", count: cards),
-                              height: 36) { hanging.reveal(via: "island_row") }
+                              height: 36) { CardsOverview.shared.show(segment: .hanging) }
+            r.toolTip = tip("capture.action.cards", .cards) + "\n" + Loc.t("capture.cards.panel_keys", table: "Capture")
             r.trailingReserve = b.frame.width + 4
             place(r, x: 0, y: y, w: w, h: 36)
             b.frame.origin = NSPoint(x: w - 18 - b.frame.width, y: ((36 - b.frame.height) / 2).rounded())   // the rows' trailing edge
@@ -834,7 +840,6 @@ final class IslandContent: NSView {
         // the quiet line: the pen's state or its keys (first takes only), then what live.py spotted
         penShown = rec.penSticky || rec.inkOn
         let lineY = bottom + 10
-        var end = inset
         var any = false
         if rec.penSticky {
             let pen = IslandButton(icon: .pencil, title: Loc.t("capture.rec.pen_on", table: "Capture"),
@@ -844,7 +849,6 @@ final class IslandContent: NSView {
             place(pen, x: inset, y: lineY)
             let k = KeyLine([.key("esc"), .text(Loc.t("capture.rec.pen_off", table: "Capture"))], size: 11.5, color: ink2)
             place(k, x: pen.frame.maxX + 10, y: lineY + (24 - k.frame.height) / 2)
-            end = k.frame.maxX
             any = true
         } else if penHintThisTake, !paused, !rec.inkOn, let key = rec.penKey?.1 {
             // (not while the key is held: "Hold for the pen" taught what the user was already doing)
@@ -855,28 +859,41 @@ final class IslandContent: NSView {
                                            (KeyLine.chord(key, ell), Loc.t("capture.rec.pen_ellipse", table: "Capture"))]),
                             size: 11.5, color: ink2)
             place(h, x: inset, y: lineY + (24 - h.frame.height) / 2)
-            end = h.frame.maxX
             any = true
         }
+        if any { bottom = lineY + 24 }
+        // BA-64: what the take holds so far, in plain words ("6 snaps · 4 items spotted" — each snap is also a card on
+        // the thread), then where it all goes once it is finished ("Organized into Atlas Web when you finish")
         let said = spottedText(rec)
         if !said.isEmpty {
+            let room = w - 2 * inset + 4
+            let y2 = any ? bottom + 2 : lineY
             let sp = label(said, size: 11.5, color: ink2)
-            place(sp, x: any ? end + 12 : inset - 2, y: lineY + (24 - sp.frame.height) / 2, w: min(sp.frame.width + 8, 200))
+            place(sp, x: inset - 2, y: y2 + (20 - sp.frame.height) / 2, w: min(sp.frame.width + 8, room))
             spotted = sp
-            any = true
+            bottom = y2 + 20
+            if let goes = whereText(rec) {
+                let wl = label(goes, size: 11.5, color: ink3)
+                place(wl, x: inset - 2, y: bottom, w: min(wl.frame.width + 8, room))
+                wl.toolTip = goes
+                bottom += 18
+            }
         } else {
             spotted = nil
         }
-        if any { bottom = lineY + 24 }
         return bottom + inset
     }
 
-    /// What the take has spotted and marked so far ("3 items spotted · 2 markers").
+    /// What the take holds so far ("6 snaps · 2 markers · 4 items spotted"; BlurtCore TakeLine).
     private func spottedText(_ rec: Recorder) -> String {
-        let n = island?.spottedCount ?? 0, markers = rec.snaps?.markers ?? 0
-        return [n > 0 ? Loc.plural("capture.rec.spotted", table: "Capture", count: n) : nil,
-                markers > 0 ? Loc.plural("capture.rec.markers", table: "Capture", count: markers) : nil]
-            .compactMap { $0 }.joined(separator: " · ")
+        TakeLine.text(snaps: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0, items: island?.spottedCount ?? 0)
+    }
+
+    /// Where the take's items will be: "Organized into Atlas Web when you finish" (nothing when takes are only saved).
+    private func whereText(_ rec: Recorder) -> String? {
+        let app = NSApp.delegate as? App
+        return TakeLine.whereTo(project: app?.takeProject?.name ?? Loc.t("project.inbox"), organizes: app?.autoProcess ?? true,
+                                anything: !spottedText(rec).isEmpty)
     }
 
     /// The ··· menu: the rare things, each with its key as the menu's own right-aligned key equivalent. Dark, as the
@@ -886,6 +903,12 @@ final class IslandContent: NSView {
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.appearance = NSAppearance(named: .darkAqua)
+        // BA-66: finish without organizing — the video is kept and shown in the Finder, to send to someone (beside
+        // Finish, which organizes: this menu's button sits next to it)
+        if (NSApp.delegate as? App)?.resident == true {
+            menu.addItem(ClosureMenuItem(Loc.t("capture.rec.video_only", table: "Capture")) { rec.videoOnly = true; rec.stop() })
+            menu.addItem(.separator())
+        }
         let pen = ClosureMenuItem(Loc.t("capture.rec.menu_pen", table: "Capture")) { rec.togglePen() }
         pen.state = rec.penSticky ? .on : .off
         pen.showHotkey(.pen)
@@ -1482,7 +1505,7 @@ final class IslandContent: NSView {
                 rebuild()
             } else if let sp = spotted, sp.stringValue != said {
                 sp.stringValue = said
-                sp.frame.size.width = min(ceil(sp.intrinsicContentSize.width) + 8, 200)
+                sp.frame.size.width = min(ceil(sp.intrinsicContentSize.width) + 8, bounds.width - 2 * IslandLayout.earInset + 4)
             }
         } else if VoiceInput.shared.active {
             wave?.values = VoiceInput.shared.levels

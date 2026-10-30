@@ -208,6 +208,7 @@ public enum SettingsCatalog {
             row("general.after_recording", "general.recording", "settings.general.after_recording"),
             row("general.countdown", "general.recording", SettingsText("app.menu.countdown", "Main")),
             row("general.system_audio", "general.recording", "settings.general.system_audio"),
+            row("general.hide_notch", "general.recording", "settings.general.hide_notch", detail: S("settings.general.hide_notch.detail")),
             row("general.voice_end_on_pause", "general.voice", "settings.general.voice_end_on_pause",
                 more: S("settings.general.voice_end_on_pause.hint")),
             row("general.live_text", "general.voice", "settings.general.live_text", more: S("settings.general.live_text.hint")),

@@ -35,8 +35,8 @@
 // Toasts: BlurtCore ToastQueue — the newest reply first, replaced by key, passive lines (launch, jobs) behind replies,
 // stale ones dropped, ≥ 5 s and held while the pointer is on one (hovering a toast doesn't open the island under it;
 // a click on its line does, and only its button runs its action — ToastQueue.bodyClick).
-// Right-click (on the count, anywhere on it): Show N Hanging Cards · Recently Taken (N) — the cards dragged out into
-// other apps in the last 7 days, each with Copy / Copy Image / Copy Note / Put Back (TakenPanel.swift).
+// Right-click (on the count, anywhere on it): Show N Hanging Cards · Copy All · Organize All · Delete All
+// (TakenPanel.islandMenu; cards used in other apps are the Cards panel's History, ⌥H).
 //
 // Motion: the shape is three springs (width, height, corner) — response 0.42 s, damping 0.78 — so it can be
 // interrupted at any point; a bump (1.04 → 1, 0.25 s) when it swallows a capture; Reduce Motion = 0.2 s cross-fades.
@@ -63,7 +63,7 @@ final class IslandView: NSView {
     override var acceptsFirstResponder: Bool { true }
     override func keyDown(with e: NSEvent) { if island?.key(e) != true { super.keyDown(with: e) } }
     override func mouseDown(with e: NSEvent) { island?.clicked(at: convert(e.locationInWindow, from: nil)) }
-    /// Right-click (the ear's count, anywhere on the island): Show Hanging Cards, Recently Taken (N) — TakenPanel.
+    /// Right-click (the ear's count, anywhere on the island): what concerns every hanging card — TakenPanel.islandMenu.
     override func rightMouseDown(with e: NSEvent) {
         let p = convert(e.locationInWindow, from: nil)
         emit(["event": "island_menu"])
@@ -1043,7 +1043,7 @@ final class Island: NSObject, IslandHosting {
             hoverSince = nil
             // the pointer went down onto the hanging cards: the island stays open over them
             let pinned = sticky || drawer == .switcher || confirmingDiscard || dragActive || VoiceInput.shared.active
-                || NoteBubble.shared.isOpen && isRecording || hanging.holdsIsland
+                || NoteBubble.shared.isOpen && NoteBubble.shared.mode == .recording && isRecording || hanging.holdsIsland
             if pinned {
                 awaySince = nil                // (counting starts when it lets go, not from before)
             } else if open || revealed {

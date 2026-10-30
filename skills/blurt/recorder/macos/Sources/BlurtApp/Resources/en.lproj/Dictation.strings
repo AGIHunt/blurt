@@ -20,7 +20,7 @@
 "dictation.toast.set_up" = "Set Up";
 "dictation.toast.on.tap" = "Dictation is on: tap %@ to talk";
 "dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
-"dictation.toast.recording_busy" = "A screen recording is using the microphone, so dictation is paused";
+"dictation.toast.recording_busy" = "Dictation is off while recording";
 "dictation.toast.voice_busy" = "A voice note is recording — finish it first";
 "dictation.toast.nothing.named" = "Didn’t catch anything (%@)";
 "dictation.toast.nothing.silent" = "No sound from %@";

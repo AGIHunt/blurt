@@ -1,8 +1,9 @@
 // The middle column: the place's heading, the running jobs (K4) and the notices above one view-based NSTableView with
 // fixed row heights. One dense row grammar in every place (kind, id, title, the state only where the list doesn't say
 // it, a short date), grouped where it helps (ListSections: the Inbox by project in the one project order, Unassigned
-// last; In Progress, All Items and a project by state). The kind / state filter and the sort live in the toolbar's
-// Filter menu (and the View menu); a quiet line above the list says which filter is on, with Clear, only while one is.
+// last; In Progress, All Items and a project by state). The list's own controls sit at its top (ListHeading): the
+// order, named ("Updated ↓"), the Filter button and New Item on the heading's line, the search field under it (the View
+// menu has Sort By and the filter too); a quiet line above the rows says which filter is on, with Clear, only while one is.
 // Keyboard-first: J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick
 // Look), ⌘C (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen /
 // restore), W won't do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a
@@ -541,20 +542,6 @@ final class CapturesBanner: NoticeCard {
     }
 }
 
-/// "Recently dragged out: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
-/// days — a click opens Recently Dragged Out (TakenPanel: copy, drag out again, put back). Information only: the quiet
-/// tone. Hidden when there are none.
-final class TakenBanner: NoticeCard {
-    init() { super.init(tone: .quiet, glyph: Look.symbol("arrow.up.right.square", "", size: 14)) }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(count: Int) {
-        isHidden = count == 0
-        guard count > 0 else { return }
-        say(T("main.captures.taken", count), count: count, action: T("main.captures.taken.show"), tip: T("main.captures.taken.tip"))
-    }
-}
-
 /// The dense list's time: right-aligned on the column's trailing edge, so every row's time (and the notices' buttons
 /// above the list) end on one line.
 final class TimeCell: NSTableCellView {
@@ -630,14 +617,34 @@ final class MissingFolderBanner: NSView {
 }
 
 /// The top of the list: the place's name in 17 pt semibold (system.md §7) with its counts beside it in secondary
-/// ("Inbox  9 new · 6 to verify") — Linear's and Reminders' page heading. In the content, not the toolbar: a bar
-/// item is drawn washed out whenever the window isn't key, and the list's anchor should outweigh its rows.
+/// ("Inbox  9 new · 6 to verify") — Linear's and Reminders' page heading — and on the same line the controls that act
+/// on the list: its order, named ("Updated ↓", Mail's "Sort by Date"), the Filter button (filled, in brand ink, with how
+/// many filters are on) and New Item; under it the list's own search field, the column's width (System Settings'
+/// sidebar, Mail's list). In the content, not the toolbar: a bar item is drawn washed out whenever the window isn't
+/// key, sits over the detail rather than the list, and the list's anchor should outweigh its rows.
+/// Narrow (the window at its minimum), New Item drops its word before the name or its counts are cut.
 final class ListHeading: NSView {
     let title = NSTextField(labelWithString: "")
     let counts = NSTextField(labelWithString: "")
+    /// the order, named: a click opens the sort keys and the direction (MainWindowController.sortMenu)
+    let sort = NSButton()
+    /// the kind / state filter (MainWindowController.filterMenu)
+    let filter = NSButton()
     /// New Item (BA-21): the list's own way to add one by hand (⌘N too); hidden where items can't be added
     let add = NSButton()
+    /// the list's search (⌘F or /; ↓ or ↩ into the results, Esc clears it and goes back to the list)
+    let search = NSSearchField()
     var onAdd: (() -> Void)?
+    var onSort: ((NSView) -> Void)?
+    var onFilter: ((NSView) -> Void)?
+
+    static let titleRow: CGFloat = 38
+    /// the field's edges: the selected row's wash (the inset table's 10 pt), so field and rows read as one column
+    static let searchInset: CGFloat = 10
+    private let controls = NSStackView()
+    private var withSearch: NSLayoutConstraint!
+    private var withoutSearch: NSLayoutConstraint!
+    private var addTitled = true
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -645,50 +652,164 @@ final class ListHeading: NSView {
         title.textColor = .labelColor
         counts.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         counts.textColor = .secondaryLabelColor
+        counts.setAccessibilityElement(false)       // the title says both
         for t in [title, counts] {
             t.lineBreakMode = .byTruncatingTail
             t.translatesAutoresizingMaskIntoConstraints = false
             addSubview(t)
         }
-        title.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-        counts.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(.init(740), for: .horizontal)
+        counts.setContentCompressionResistancePriority(.init(730), for: .horizontal)
+
+        sort.bezelStyle = .accessoryBarAction
+        sort.showsBorderOnlyWhileMouseInside = true
+        sort.font = .systemFont(ofSize: 12)
+        sort.target = self
+        sort.action = #selector(sortTapped)
+        filter.bezelStyle = .accessoryBarAction
+        filter.showsBorderOnlyWhileMouseInside = true
+        filter.imagePosition = .imageLeading
+        filter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        filter.target = self
+        filter.action = #selector(filterTapped)
+        filter.setAccessibilityLabel(T("main.toolbar.filter"))
         add.bezelStyle = .accessoryBarAction
         add.image = Look.symbol("plus", T("main.new_item.button"), size: 12)
         add.title = T("main.new_item.button")
         add.imagePosition = .imageLeading
         add.font = .systemFont(ofSize: 12)
         add.toolTip = T("main.new_item.tip")
+        add.setAccessibilityLabel(T("main.new_item.button"))
         add.target = self
         add.action = #selector(addTapped)
-        add.translatesAutoresizingMaskIntoConstraints = false
-        add.setContentCompressionResistancePriority(.required, for: .horizontal)
-        addSubview(add)
+        for b in [sort, filter, add] {
+            b.setContentCompressionResistancePriority(.required, for: .horizontal)
+            b.setContentHuggingPriority(.required, for: .horizontal)
+        }
+        controls.orientation = .horizontal
+        controls.spacing = 0
+        controls.setViews([sort, filter, add], in: .trailing)
+        controls.setCustomSpacing(6, after: filter)
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        controls.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(controls)
+
+        search.placeholderString = T("main.search.placeholder")
+        search.sendsSearchStringImmediately = true
+        search.sendsWholeSearchString = false
+        search.controlSize = .regular
+        search.font = .systemFont(ofSize: 13)
+        search.setAccessibilityLabel(T("main.search.label"))
+        search.toolTip = T("main.search.tip")
+        search.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(search)
+
+        withSearch = bottomAnchor.constraint(equalTo: search.bottomAnchor, constant: 8)
+        withoutSearch = heightAnchor.constraint(equalToConstant: Self.titleRow)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             counts.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 8),
             counts.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            counts.trailingAnchor.constraint(lessThanOrEqualTo: add.leadingAnchor, constant: -10),
-            add.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            add.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 38),
+            counts.trailingAnchor.constraint(lessThanOrEqualTo: controls.leadingAnchor, constant: -8),
+            controls.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            controls.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            search.topAnchor.constraint(equalTo: topAnchor, constant: Self.titleRow),
+            search.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.searchInset),
+            search.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.searchInset),
+            withSearch,
         ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
+        setAccessibilityElement(false)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     @objc func addTapped() { onAdd?() }
+    @objc func sortTapped() { onSort?(sort) }
+    @objc func filterTapped() { onFilter?(filter) }
 
     func set(title t: String, counts c: String) {
         title.stringValue = t
         counts.stringValue = c
-        setAccessibilityLabel([t, c].filter { !$0.isEmpty }.joined(separator: ", "))
+        title.setAccessibilityLabel([t, c].filter { !$0.isEmpty }.joined(separator: ", "))
+        needsLayout = true
     }
+
+    /// The order the list is in, said on its button: "Updated ↓" (newest first), "Title ↑" (A to Z).
+    func set(sortTitle: String, ascending: Bool, label: String) {
+        let s = "\(sortTitle) \(ascending ? "↑" : "↓")"
+        sort.attributedTitle = NSAttributedString(string: s, attributes: [
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
+        sort.toolTip = label
+        sort.setAccessibilityLabel(label)
+        needsLayout = true
+    }
+
+    /// The Filter button: the outline glyph while nothing is filtered; filled in brand ink with how many filters are on
+    /// (kinds picked, a state) — Mail's filter button, with the count.
+    func set(filters n: Int, tip: String) {
+        let on = n > 0
+        // the bar-button bezel draws a template image in its own grey: the "on" glyph carries the brand ink itself
+        filter.image = on
+            ? Look.symbol("line.3.horizontal.decrease.circle.fill", T("main.toolbar.filter"), size: 14)?
+                .withSymbolConfiguration(.init(paletteColors: [.white, BrandColor.ink]))      // the lines, the disc
+            : Look.symbol("line.3.horizontal.decrease.circle", T("main.toolbar.filter"), size: 14)
+        filter.contentTintColor = on ? nil : .secondaryLabelColor
+        filter.attributedTitle = on ? NSAttributedString(string: Loc.number(n), attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: BrandColor.ink]) : NSAttributedString()
+        filter.imagePosition = on ? .imageLeading : .imageOnly
+        filter.toolTip = tip
+        filter.setAccessibilityValue(on ? tip : nil)
+        needsLayout = true
+    }
+
+    /// The search row comes with something to search: an empty place (first run, inbox zero) has its empty state alone.
+    func showSearch(_ on: Bool) {
+        guard search.isHidden == on else { return }
+        search.isHidden = !on
+        withSearch.isActive = on
+        withoutSearch.isActive = !on
+    }
+
+    /// New Item gives up its word before the place's name or its counts are cut; a cut name says itself on hover.
+    override func layout() {
+        super.layout()
+        let room = bounds.width - 18 - 8 - 14
+        let text = ceil(title.intrinsicContentSize.width) + (counts.stringValue.isEmpty ? 0 : 8 + ceil(counts.intrinsicContentSize.width))
+        func controlsWidth(titled: Bool) -> CGFloat {
+            var w: CGFloat = 0
+            for v in controls.views where !v.isHidden {
+                w += v === add ? (titled ? addWidth.titled : addWidth.bare) : ceil(v.intrinsicContentSize.width)
+            }
+            return w + 6 + 4
+        }
+        let titled = add.isHidden || text + controlsWidth(titled: true) <= room
+        if titled != addTitled {
+            addTitled = titled
+            add.imagePosition = titled ? .imageLeading : .imageOnly
+            add.title = titled ? T("main.new_item.button") : ""
+            needsLayout = true
+        }
+        title.toolTip = title.intrinsicContentSize.width > title.frame.width + 0.5 ? title.stringValue : nil
+        counts.toolTip = counts.intrinsicContentSize.width > counts.frame.width + 0.5 ? counts.stringValue : nil
+    }
+
+    /// New Item's width with its word and without (measured once: its font and word don't change).
+    private lazy var addWidth: (titled: CGFloat, bare: CGFloat) = {
+        let b = NSButton()
+        b.bezelStyle = add.bezelStyle
+        b.image = add.image
+        b.font = add.font
+        b.title = T("main.new_item.button")
+        b.imagePosition = .imageLeading
+        let titled = ceil(b.intrinsicContentSize.width)
+        b.title = ""
+        b.imagePosition = .imageOnly
+        return (titled, ceil(b.intrinsicContentSize.width))
+    }()
 }
 
 /// The filter in effect, said above the list only while one is on ("Showing Issues, Ideas · To Verify  Clear") — the
-/// filter itself is the toolbar's Filter menu (Linear's display menu, Mail's filter button): no band of unlabelled
+/// filter itself is the heading's Filter menu (Linear's display menu, Mail's filter button): no band of unlabelled
 /// segments for a control that's rarely changed. A click on the line opens that menu right there.
 final class FilterBar: NSView {
     let summary = NSButton()
@@ -766,7 +887,6 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let table = ItemTableView()
     let jobs = JobsSection()
     let captures = CapturesBanner()
-    let taken = TakenBanner()
     let missing = MissingFolderBanner()
     let suggestions = SuggestionsBanner()
     let bar = FilterBar()
@@ -859,22 +979,17 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
         captures.onClick = { AppEnvironment.island?.revealCards() }
-        for n in [captures, taken] as [NoticeCard] { n.onShow = { [weak self] in self?.noticesChanged() } }
+        captures.onShow = { [weak self] in self?.noticesChanged() }
         missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
-        taken.onClick = { [weak self] in
-            let w = self?.view.window
-            TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
-        }
-        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
         suggestions.onMoveAll = { [weak self] p, uids in self?.actions?.move(uids: uids, to: p) }
-        let stack = NSStackView(views: [heading, captures, taken, missing, jobs, suggestions, bar])
+        let stack = NSStackView(views: [heading, captures, missing, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            captures.widthAnchor.constraint(equalTo: stack.widthAnchor), taken.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            captures.widthAnchor.constraint(equalTo: stack.widthAnchor),
             missing.widthAnchor.constraint(equalTo: stack.widthAnchor), suggestions.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
@@ -933,7 +1048,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     /// Measured from the table's own columns, so they follow a resized column, the inset style's margins and the
     /// scroller.
     func alignNotices() {
-        let cards: [NoticeCard] = [captures, taken].filter { !$0.isHidden }
+        let cards: [NoticeCard] = [captures].filter { !$0.isHidden }
         guard !cards.isEmpty, view.bounds.width > 0, table.bounds.width > 0 else { return }
         func rect(_ id: String) -> NSRect? {
             let i = table.column(withIdentifier: .init(id))
@@ -1108,11 +1223,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
-    /// "N captures are waiting for a project" on top of the inbox while cards hang under the island.
-    /// "Recently dragged out: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
+    /// "N captures are waiting for a project" on top of the inbox while cards hang under the island. (Cards used in
+    /// other apps have no notice or place here: they are the Cards panel's History, ⌥H.)
     func reloadCaptures() {
         captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0)
-        taken.set(count: 0)         // Recently Dragged Out is a sidebar row now (SidebarController), not a notice over the list
     }
 
     /// A notice came or went: put it on the grid once the stack has laid it out.

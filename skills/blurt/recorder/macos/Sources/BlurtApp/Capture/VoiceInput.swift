@@ -10,8 +10,8 @@
 //    nothing heard within 20 s (8 s with end_on_pause) = nothing filed.
 //  • hold longer than 0.35 s: push-to-talk — it ends when you let go.
 //  • record.voice.mode: auto (both, default) | toggle | hold.
-//  • the snap's spoken note (⌥A, NoteBubble) keeps its silence end: it is a sentence about one picture (3 s, 5 s after
-//    a short start — BA-53; ⏎ ends it at once).
+//  • the snap's spoken note (⌥A, NoteBubble) has no silence end either (2026-10-31): ⏎, Done or Tab ends it
+//    (BlurtCore NoteKeys).
 //  • the words while you talk (record.live_text, on — "Show text while I talk"): VoiceNoteStream cuts the audio at
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
 //    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second

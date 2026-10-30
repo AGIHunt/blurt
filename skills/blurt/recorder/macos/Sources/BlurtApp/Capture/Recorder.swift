@@ -28,6 +28,12 @@ import ServiceManagement
 //    still gone after the last try ends it as display_gone.
 //  • a saved take whose writer failed says what's missing, even when the new piece never started (Finish came first):
 //    the kept file's playable length against the take's, as lost_seconds.
+// 2026-10-31 (BA-60…66 round): Blurt's own windows are recorded like any app's — the main window, Settings, the
+// island, the hanging cards, the note bubble, the snap flow, the pen's ink. Left out (OwnWindows; BlurtCore
+// CaptureExclusion): the countdown, the frame round the area, and the island with its caption line when "Don't record
+// the notch" (record.hide_notch) is on. The stream's filter is made when the take starts — after the countdown is gone
+// (the countdown is left out as well, should it still be on screen) — and updated when one of those windows comes or
+// goes. The pen's ink reaches the video once: its window is recorded (nothing burns strokes into frames later).
 
 func audioInputDevices() -> [AVCaptureDevice] {
     if #available(macOS 14.0, *) {
@@ -51,6 +57,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var lastVideo = CMTime.invalid
     var stopping = false
     var discard = false
+    /// Save Video Only (BA-66): the take is kept as a video and not organized (App.takeEnded).
+    var videoOnly = false
     var micLevel: Float = 0
     var captureSession: AVCaptureSession?
     var testMic: TestMic?             // BLURT_TEST_MIC_WAV (tests): a file instead of the microphone
@@ -66,7 +74,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     var inkTicker: Timer?
     var penSticky = false             // toggled with ⌥D
     var inkOn = false
-    var penArm = PenArm()             // the pen key first, then ⇧ / ⌥ (a ⌃⌥ chord is the window manager's)
+    var penArm = PenArm()             // the pen's keys held a moment (PenArm.settle), in any order: the shape is theirs
     var testFlags: CGEventFlags?      // scripted checks (recflags): the modifiers the poll sees instead of the keyboard's
     /// record.draw_key in ~/.blurt/config.json: "control" (default) | "option" | "fn" | "off"
     let penKey: (CGEventFlags, String)? = {
@@ -144,7 +152,6 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
             throw NSError(domain: "blurt", code: 2, userInfo: [NSLocalizedDescriptionKey: "no display"])
         }
         let clipped = region.intersection(display.frame)
-        let mine = content.windows.filter { $0.owningApplication?.processID == getpid() }
         let cfg = SCStreamConfiguration()
         let scale = NSScreen.screens.first(where: {
             ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == display.displayID
@@ -202,7 +209,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         streamConfig = cfg
         displayID = display.displayID
         self.scMic = scMic
-        let s = try makeStream(SCContentFilter(display: display, excludingWindows: mine))
+        let s = try makeStream(OwnWindows.filter(content, display: display, leaveOut: OwnWindows.recordingLeavesOut()))
         stream = s
         if opts.mic && !scMic && TestMic.wanted == nil { try setupLegacyMic() }
         if let e = opts.events {
@@ -270,7 +277,70 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     }
 
     // --- run
+    /// After the countdown: the stream is made again with what to leave out as the screen is now (the countdown has
+    /// just gone; the island may have been made meanwhile), then started.
     func start() {
+        // the frame first, so the stream's first filter already leaves it out (made after the stream started, it was
+        // in the first frames: on a full-screen take macOS keeps the window on the display, over the recorded pixels)
+        showFrame()
+        let leaveOut = OwnWindows.recordingLeavesOut()
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, _ in
+            DispatchQueue.main.async {
+                if let c = content, let d = c.displays.first(where: { $0.displayID == self.displayID }),
+                   let s = try? self.makeStream(OwnWindows.filter(c, display: d, leaveOut: leaveOut)) {
+                    self.stream = s
+                    self.leftOut = leaveOut
+                    self.emitFilter(leaveOut, via: "start")
+                }
+                self.startStream()
+            }
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(ownWindowsChanged(_:)), name: .blurtOwnWindowsChanged, object: nil)
+    }
+
+    /// What the stream leaves out now (this process's window ids).
+    private var leftOut = Set<UInt32>()
+    private var filterWork: DispatchWorkItem?
+
+    private func emitFilter(_ ids: Set<UInt32>, via: String) {
+        let kinds = OwnWindows.all.filter { ids.contains($0.id) }.map(\.kind.rawValue).sorted()
+        emit(["event": "rec_filter", "via": via, "left_out": kinds, "hide_notch": OwnWindows.hideNotch])
+        log("filter", ["left_out": kinds])
+    }
+
+    /// One of the windows a recording may leave out came or went: the filter follows (a moment later: several at once
+    /// are one update).
+    @objc private func ownWindowsChanged(_ n: Notification) {
+        if let w = n.object as? NSWindow, [.snapChrome, .other].contains(OwnWindows.kind(w)) { return }
+        scheduleFilterUpdate()
+    }
+
+    func scheduleFilterUpdate() {
+        filterWork?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.updateFilter() }
+        filterWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: w)
+    }
+
+    /// The running stream's filter, made again when what it should leave out changed (main thread).
+    func updateFilter() {
+        guard !stopping, let s = stream else { return }
+        let leaveOut = OwnWindows.recordingLeavesOut()
+        guard leaveOut != leftOut else { return }
+        SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: false) { content, _ in
+            DispatchQueue.main.async {
+                guard !self.stopping, s === self.stream, let c = content,
+                      let d = c.displays.first(where: { $0.displayID == self.displayID }) else { return }
+                s.updateContentFilter(OwnWindows.filter(c, display: d, leaveOut: leaveOut)) { err in
+                    if let e = err { DispatchQueue.main.async { emit(["event": "rec_filter_failed", "error": "\(e)"]) } }
+                }
+                self.leftOut = leaveOut
+                self.emitFilter(leaveOut, via: "update")
+            }
+        }
+    }
+
+    private func startStream() {
         stream?.startCapture { err in
             if let err = err {
                 DispatchQueue.main.async {
@@ -285,9 +355,15 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         DispatchQueue.main.async { self.showChrome() }
     }
 
-    /// The frame around the recorded area: `rec` solid while it rolls, `attn` dashed while paused.
+    /// The frame around the recorded area: `rec` solid while it rolls, `attn` dashed while paused. Never in the video:
+    /// it is left out by the stream's filter (made before the stream starts) — it lies outside the area, except on a
+    /// full-screen take, where macOS keeps it on the display and it would draw over the recorded pixels.
     func showFrame() {
-        border = overlayWindow(toNS(region).insetBy(dx: -4, dy: -4), view: borderView)
+        if border == nil {
+            let b = overlayWindow(toNS(region).insetBy(dx: -4, dy: -4), view: borderView)
+            OwnWindows.mark(b, .recordingFrame)
+            border = b
+        }
         border?.orderFrontRegardless()
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
@@ -307,13 +383,19 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         makeInk()
         showFrame()
         island.recordingStarted(self, on: NSScreen.screens.first(where: { $0.frame.intersects(toNS(region)) }))
+        updateFilter()           // the island may have been made just now (it is known by its class, not marked)
         cursorTicker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             guard let self = self, !self.isPaused, self.sessionStart.isValid else { return }
             self.logCursor()
         }
+        // clicks in other apps come to the global monitor, clicks in Blurt's own windows (now in the video too) to the
+        // local one — an event goes to one of them, never both; ClickLog drops a repeat of the same event all the same
         clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
-            guard let self = self, !self.isPaused, let p = self.relative(NSEvent.mouseLocation) else { return }
-            self.log("click", ["x": p.x, "y": p.y, "button": e.type == .rightMouseDown ? "right" : "left"])
+            self?.logClick(e, own: false)
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] e in
+            self?.logClick(e, own: true)
+            return e
         }
     }
 
@@ -324,8 +406,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         iv.rec = self
         iv.lineWidth = inkWidth(for: NSScreen.screens.first(where: { $0.frame.intersects(r) }))
         let ip = NSPanel(contentRect: r, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+        ip.isFloatingPanel = true                 // (before the level: setting it afterwards resets the level to .floating)
         ip.level = .statusBar
-        ip.isFloatingPanel = true
         ip.hidesOnDeactivate = false
         ip.isOpaque = false
         ip.backgroundColor = .clear
@@ -360,6 +442,19 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         case "up": iv.end()
         default: iv.move(to: p, tool: iv.tool(f))
         }
+    }
+
+    var localClickMonitor: Any?
+    private var clicks = ClickLog()
+
+    /// A click inside the recorded area → events.jsonl "click" (0–1 of the area); `own`: in one of Blurt's windows.
+    func logClick(_ e: NSEvent, own: Bool) {
+        guard !isPaused, !stopping, let p = relative(NSEvent.mouseLocation) else { return }
+        let button = e.type == .rightMouseDown ? "right" : "left"
+        guard clicks.fresh(time: e.timestamp, button: button) else { return }
+        var o: [String: Any] = ["x": p.x, "y": p.y, "button": button]
+        if own { o["blurt"] = true }
+        log("click", o)
     }
 
     func relative(_ ns: NSPoint) -> CGPoint? {
@@ -399,7 +494,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
 
     /// The pen is on while its key is held — alone, or with ⇧ (a box) or ⌥ (an ellipse; ⌃ when ⌥ is the pen key), the
     /// same modifiers as a snap's (BlurtCore InkModifiers) — polled: needs no Accessibility permission; or after a toggle.
-    /// The pen key has to go down first (PenArm): a ⌃⌥ / ⌃⇧ chord pressed together stays the window manager's.
+    /// The shape depends only on the keys held now (InkModifiers.recordingTool), whatever order they went down in;
+    /// PenArm turns the pen on once they have been held a moment (a quick shortcut never draws).
     func syncInk() {
         var held = false
         if let pen = penKind {
@@ -552,9 +648,11 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
             return restartFailed(nil, after: error, outage: outage, attempt: attempt, displayMissing: true)
         }
-        let mine = content.windows.filter { $0.owningApplication?.processID == getpid() }
+        let leaveOut = OwnWindows.recordingLeavesOut()
         do {
-            let s = try makeStream(SCContentFilter(display: display, excludingWindows: mine))
+            // the same windows left out as before (v1.0.7 left every window of Blurt's out here — the pen's ink too)
+            let s = try makeStream(OwnWindows.filter(content, display: display, leaveOut: leaveOut))
+            leftOut = leaveOut
             stream = s
             s.startCapture { e in
                 DispatchQueue.main.async {
@@ -771,6 +869,8 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
     func stop(discard: Bool = false, restart: Bool = false) {
         guard !stopping else { return }
         self.discard = discard
+        NotificationCenter.default.removeObserver(self, name: .blurtOwnWindowsChanged, object: nil)
+        filterWork?.cancel()
         let endAt = CMTimeSubtract(pausedAt ?? hostNow(), offset)
         stopping = true
         penSticky = false
@@ -781,6 +881,7 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         inkWin?.orderOut(nil)
         island.recordingStopping()
         if let m = clickMonitor { NSEvent.removeMonitor(m) }
+        if let m = localClickMonitor { NSEvent.removeMonitor(m) }
         log("stop")
         try? events?.close()
         border?.orderOut(nil)

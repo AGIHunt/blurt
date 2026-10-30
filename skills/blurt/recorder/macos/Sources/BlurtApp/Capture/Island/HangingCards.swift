@@ -1037,8 +1037,9 @@ final class HangingCards: NSObject {
     func refresh(quiet: Bool = false) {
         let want = snapper.cards
         // a capture that came with a project hangs only until it is pulled into the island (pullIn removes it)
+        // (a take's snap, filed with the take's project, leaves with the take)
         for c in cards where !want.contains(where: { $0 === c.shot }) && dragging !== c
-            && !(c.shot.assignedBy == "capture" && !c.shot.deleted) { remove(c, fall: false) }
+            && !(c.shot.assignedBy == "capture" && !c.shot.deleted && c.shot.batch?.inRecording != true) { remove(c, fall: false) }
         for s in want where !cards.contains(where: { $0.shot === s }) {
             if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
             let c = makeCard(s, x: anchor.x)
@@ -1472,7 +1473,7 @@ final class HangingCards: NSObject {
     var isShown: Bool { shown }
 
     /// Where a panel that opens under the cards starts (global Cocoa y, its top edge): below the strip they hang in,
-    /// whether they are down now or not (BlurtCore CardRow.panelTop) — Recently Dragged Out and the overview, so a
+    /// whether they are down now or not (BlurtCore CardRow.panelTop) — the Cards panel and its History, so a
     /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows; right under the
     /// island while no card hangs.
     var panelTop: CGFloat { panelTop(cardsHang: count > 0) }
@@ -2232,6 +2233,15 @@ final class HangingCards: NSObject {
         m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
         m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
         m.addItem(.separator())
+        // a snap taken while recording goes with the recording (its organizing run makes its item): no Move To / Organize
+        if s.batch?.inRecording == true {
+            let i = NSMenuItem(title: Loc.t("capture.card.in_take", table: "Capture"), action: nil, keyEquivalent: "")
+            i.isEnabled = false
+            m.addItem(i)
+            m.addItem(.separator())
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+            return m
+        }
         let these = withSelection(s)
         let move = NSMenuItem(title: these.count > 1 ? Loc.plural("capture.card.move_n", table: "Capture", count: these.count)
                                                      : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")

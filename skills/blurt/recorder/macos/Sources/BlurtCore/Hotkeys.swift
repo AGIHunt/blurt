@@ -310,7 +310,7 @@ public final class HotkeyCenter {
     /// Raw values are the config keys (record.hotkeys) — shared with _common.py / the Windows recorder.
     public enum Action: String, CaseIterable {
         case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
-        /// ⌥H: every hanging card comes down and stays (K7; macOS only — the island's cards)
+        /// ⌥H: the Cards panel — Current, or History when nothing hangs; again: closes it (CardsPanel; macOS only)
         case cards
         /// ⌥L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
         case reformat

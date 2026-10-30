@@ -32,6 +32,8 @@
 "settings.general.recording" = "Recording";
 "settings.general.remove.help" = "Remove from Blurt (the folder and its items stay)";
 "settings.general.system_audio" = "Record system audio";
+"settings.general.hide_notch" = "Don’t record the notch";
+"settings.general.hide_notch.detail" = "Blurt’s other windows are recorded like any app’s.";
 "settings.general.snap_sound" = "Play the shutter sound when you snap";
 "settings.general.collect" = "Turn macOS screenshots into cards";
 "settings.general.collect.hint" = "Screenshots you take with macOS’s own shortcuts (⇧⌘3, ⇧⌘4, ⇧⌘5) also become cards in Blurt.";
@@ -257,6 +259,7 @@
 "settings.kw.general.after_recording" = "organize, process, items, after recording";
 "settings.kw.general.countdown" = "timer, delay, 3 seconds";
 "settings.kw.general.system_audio" = "sound, audio, computer sound, internal audio";
+"settings.kw.general.hide_notch" = "notch, hide, leave out, video, screen recording";
 "settings.kw.general.collect" = "screenshot, cmd shift 3, cmd shift 4, macOS screenshots";
 "settings.kw.general.voice_end_on_pause" = "silence, pause, stop, voice note";
 "settings.kw.general.live_text" = "live caption, transcript, words, panel, subtitles";
