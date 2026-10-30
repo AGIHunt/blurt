@@ -8,22 +8,96 @@
 1. ⌥C（菜单栏「截图取字」，设置 → 快捷键可改；想和 Bob 一样用 ⌥C 就在那里改）→ 十字光标，直接拖：
    不加蒙板、不能点窗口、没有工具栏（和 Bob、⌘⇧4 的拖选一样）。Esc 或只点不拖 = 取消。
 2. 松手即识别：约 0.1–0.2 秒后刘海耳朵里出现「已复制」。不存卡片、不存文件、没有快门声。
-   按快捷键时光标在输入框里（辅助功能能认出是可编辑文本、不是密码框）：同时 ⌘V 输入进去，剪贴板保留这段文字（和 Bob 一样），
-   耳朵里显示「已粘贴」。本机二次识别已热着时，等它（最多 1.2 秒）再输入，输入的是修正后的版本。
+   前台是别的 App 时，按听写的规则（BlurtCore `DictationPastePolicy`，§1c）同时 ⌘V 粘贴进去，剪贴板保留这段文字（和 Bob 一样）。
+   刘海只说确认过的事：粘贴后读回输入框、看到了这段文字才说「已粘贴」；确认不了（微信这类读不出内容的输入框，或 1.5 秒内没看到）
+   说「已复制 · ⌘V 粘贴」；没有粘贴说「已复制」。本机二次识别已热着时，等它（最多 1.2 秒）再粘贴，粘贴的是修正后的版本。
 3. 没识别到字：「这里没有识别到文字」。没有屏幕录制权限：和截图一样的权限引导。
 4. 开了二次识别：剪贴板先是第一段结果；第二段读完后，**只要剪贴板还是这份草稿**（这期间没复制别的），就换成修正后的版本。
    立刻粘贴拿到草稿，稍后粘贴拿到修正版，永远不会覆盖用户自己复制的东西。
 
 ## 1b. 截图翻译（⌥T）
 
-同样拖选 → 取字 → `polish.py translate`（`translate_system`：模型自己判断语种，主要是中文就译成英文，否则译成简体中文；
-保留换行、列表、Tab、代码、路径、URL 和产品名）。配了云端润色就先走云端，失败或没配走本机润色模型。刘海里先显示
-「正在翻译…」，出结果后显示译文（前 280 字），译文在剪贴板里；光标在输入框里就直接输入。听写的翻译模式复用同一个请求。
+同样拖选 → 取字 → `polish.py translate`（`translate_system`：保留换行、列表、Tab、代码、路径、URL 和产品名）。
+翻成什么：「设置 → 截图取字 → ⌥T 翻译成」，⌥T 自己的设置（§1f；2026-10-30 起不再和听写共用）。
+「自动」是你的语言 ↔ 另一种（§1f，比如「自动：简体中文 ↔ English」），由模型判断语种：是你的语言就译成另一种，否则译成你的语言；选了某种语言（比如 English）就**总是**
+得到这种语言（2026-10-30，§1d）。配了云端润色就先走云端，失败或没配走本机润色模型。
+刘海里先显示「正在翻译…」，出结果后：刘海那一行只说状态（「已粘贴译文」/「已复制 · ⌘V 粘贴」/「已复制译文」），
+完整译文在刘海下面的小卡片里（§1e）；译文在剪贴板里，按 §1c 的规则粘贴。翻译失败：照旧 ⚠「翻译失败，已复制原文」+「再试一次」。
+听写的翻译模式复用同一个请求。
 
 | | 质量（6 段：路径、列表、英文段落、混排列表、代码、勾选列表） | 时间 | 费用 |
 |---|---|---|---|
 | 云端 DeepSeek（用户自己的 key，直连） | 自然；路径、代码、列表原样 | 1.4 s（App 端到端） | 每次约 ¥0.0013 |
 | 本机 Gemma 4 E2B（已装的润色模型） | 可用；会把路径里的中文文件名翻掉，混排列表有一次没翻 | 0.6–1.6 s | 免费 |
+
+## 1c. 粘贴规则和「已粘贴」（2026-10-30，创始人反馈）
+
+- 问题：光标在 Claude Code、飞书的输入框里，⌥C / ⌥T 会粘贴进去；在微信里只复制。原因是 `fieldInFront()` 要求辅助功能
+  认出可编辑的文本控件，微信的输入框不是。听写在微信里能粘贴，因为它走 `DictationPastePolicy`。
+- 现在 ⌥C / ⌥T 用同一套规则（`BlurtCore/DictationPastePolicy.swift` 的 `ScreenTextPaste.decide`，调的就是
+  `DictationPastePolicy.decide`，不另写一份）：前台是别的 App 就 ⌘V，除非没有前台 App、开着安全输入或焦点是密码框、
+  没有辅助功能权限、拖选期间换了 App，或者辅助功能读到焦点不是输入框（桌面、没有焦点输入框的网页）——这一条是 ⌥C
+  比听写多的：听写会粘贴并在刘海里留着文字，⌥C 的文字本来就在剪贴板里。按键时记下前台 App（拖选窗口不抢焦点），
+  交付时（和听写粘贴时一样）用 `DictationInsert.situation()` 读当时的情况，前台换了 App 就只复制。Electron App 在按键时
+  和听写一样先唤醒辅助功能树（`wakeWebAccessibility`），交付时输入框才读得到、粘贴才确认得了。
+- 「已粘贴」必须是真的：以前 ⌘V 一发出去就说「已粘贴」。现在粘贴前读一次输入框（`DictationField.focused().read()`），
+  粘贴后用听写的落地检查（`DictationInsert.confirmLanding`，即 `DictationPasteLanding.landed`，每 30 ms 读一次，最多 1.5 秒）
+  看到文字才说「已粘贴」/「已粘贴译文」；确认不了说「已复制 · ⌘V 粘贴」。文字始终留在剪贴板（`pasteKeeping`）。
+  选哪句话：`ScreenTextPaste.outcome` / `lineKey`（`DictationPastePolicyTests`）。
+
+## 1d. 翻成固定语言时：总是这种语言（2026-10-30）
+
+- 1.0.6 的规则：选了 X，原文已经是 X 就翻成系统语言（`request(home:)` 发 `X|home`）。设成 English 时，⌥T 一段英文得到的是中文。
+- 现在：选了 X 就总是得到 X。⌥T 发 `X|keep`（`DictationTranslateTarget.request`）：polish.py 让模型「翻成 X；已经是 X 就原样返回」，
+  守卫对 `X|keep` 按 X 检查（原样返回本来就通过）。App 看到返回的和原文一样（只比较空白以外的字符：
+  `DictationTranslateRoute.keptAsIs`；判断语种的是模型，不是规则），就原样复制原文、不粘贴、不弹卡片，
+  刘海说「已是英语 · 原文已复制」（语言名按界面语言本地化）。
+- 听写共用这个设置，规则也改成一样（代码里本来共用 `request`，否则「同一个设置」在两处意思不同）：说的已经是 X 就不发请求、
+  按原话输入（1.0.6 之前就是这样）；语音模型没判出语种时发 `X|keep`。`DictationTranslateRoute.home` 和 `Dictation.homeLanguage` 删掉了。
+- 「自动」见 §1f（2026-10-30 起按用户自己的语言来，不再固定中文 ↔ 英文）。
+
+## 1e. ⌥T 的译文卡片（2026-10-30）
+
+以前译文前 280 字塞进刘海的 toast：折成好几行、字号不一、不能点也不能复制，也没说已在剪贴板。现在（`Capture/ScreenTextCard.swift`）：
+
+- 是刘海的下半部分，和听写的实时字幕面板同一族（system.md §3.2「Live-text panel」）：刘海的黑色，刘海下 6 pt
+  （吊着卡片时在卡片下），宽度和圆角同字幕面板（`IslandLayout.livePanelWidth` / `livePanelRadius`），系统柔和阴影，无模糊无边框；
+  没有刘海的屏幕上胶囊同样加宽（`liveCapsuleWidth`）。
+- 一种字号：14 pt、92 % 白、20 pt 行高；最多 8 行（`IslandLayout.liveTypedLines`），多了滚动（覆盖式滚动条）。
+- 右下角「复制」：toast 动作的同款安静胶囊（`IslandButton.quiet`）；点了变成 ✓「已复制」1.6 秒。
+- Esc 关闭，但**只在指针停在卡片上时**：指针进入卡片才注册 Carbon 热键（`HK.translateEsc`），离开或卡片关闭就注销
+  （和吊卡片的 Esc 同一规则）。用户在前台 App 里按的 Esc（打断 Claude Code、关对话框）从不被卡片吃掉（2026-10-30 复审：
+  最初是卡片显示的 10 秒里一直占着 Esc）。指针不在卡片上时，卡片靠 10 秒计时或点「复制」后自己收起。卡片是不能成为
+  key 的非激活面板，点「复制」、滚动都不会把焦点从正在打字的 App 抢走。
+- 10 秒后自己收起；指针在卡片上时不收，离开后再等 10 秒。下一次 ⌥C / ⌥T、听写的实时字幕出现时它让位。
+- 测试命令：`textcard TEXT | state | copy | esc | close | hover on|off | line OUTCOME`。
+- 隔离测试版 App 里验证过（2026-10-30，只截测试 App 自己的窗口）：⌥C 粘贴进测试输入框，读回确认「已粘贴」；13 行英文 /
+  10 行中文译文显示 8 行、可滚动、最后一行淡出；「复制」→「已复制」；Esc 热键只在指针在卡片上时注册，离开即注销；10 秒自动收起，指针停留 11 秒仍在、
+  离开 5 秒仍在、离开 11 秒收起。截图：`promo/cases/screen-text/translate-card-2026-10-30/`（卡片 + 刘海、已复制、
+  「已是英语」、设置 → 通用 / 听写，中英各一套）；§1f 的设置页截图在 `promo/cases/screen-text/settings-2026-10-30/`。
+
+## 1f. 设置：截图取字自己一页，⌥T 和听写各有各的目标语言（2026-10-30，创始人定的设计）
+
+- 想清楚用法：听写的 ⌘ 翻译是把**你自己说的话**译成别的语言（写给外国人）；⌥T 是把**屏幕上的外文**译成你的语言（读）。
+  方向通常相反，所以两者的目标语言、云端开关各自独立；云端模型和 Key 仍只在「模型 → 云端润色」设置一次。
+- 设置侧栏：通用 / 听写 / **截图取字** / 模型 / 快捷键 …（`SettingsCatalog` 的 pane `screentext`，`ScreenTextPane.swift`）。
+  页面两组：「取字（⌥C）」——精确识别（原「通用 → 截图取字」，旧行 id 在 `movedRows` 里重定向）；「翻译（⌥T）」——
+  「⌥T 翻译成」[自动 ▾ + 各语言] 和它自己的「用云端模型翻译」。通用页不再有这一组。
+- 存储：`record.screen_text.translate = {"cloud": bool, "target": …}`（BlurtCore `ScreenTranslateConfig`）。迁移：第一次启动时
+  （`ScreenTextCopy.migrateTranslateConfig`）原来的 `record.dictation.translate.target / cloud` 留给听写，⌥T 从「自动」开始，
+  云端开关沿用听写当时的值；写入后键存在就不再迁移。
+- **「自动」以用户为准（global-first），两个功能同一条规则**（BlurtCore `TranslateAutoPair`）：home = 用户自己的语言——在口喷鸡
+  里选了界面语言就用它，否则用系统的首选语言列表里第一个在翻译列表里的（都没有就是 English）；other = home 不是英语时是
+  English；home 是英语时是系统里下一个在列表里的语言，没有就没有配对：「自动」只把别的语言译成英语，英语原样保留，
+  行下面一行字提示「要翻译英语，请选一种语言」。规则：home 的文字 → other，其他 → home。标签照列表里的写法（各语言自己的名字）：
+  「自动：简体中文 ↔ English」「Auto: English ↔ 日本語」；没有配对时「自动：译成English」/「Auto: into English」。系统语言从用户的全局偏好读
+  （口喷鸡选了界面语言时会改掉本进程的 AppleLanguages）。
+- polish.py：目标写成 `auto:H|O`（`auto_pair`），prompt 里的那对语言就是 H 和 O；旧的 `auto`（中文 ↔ 英文）照样认。没有配对时发 `H|keep`。
+  判断语种仍然是模型的事，不加规则。听写的「自动」：语音模型判出的语种是 home → other（没有 other 就按原话输入），
+  是列表里别的语言 → home，没判出 → `auto:H|O`。
+- 固定语言照旧：总是这种语言；原文已经是这种语言就原样保留并说明（`keptAsIs(request:)`：请求以 `|keep` 结尾、模型原样返回）。
+- 测试：`DictationTranslateTests`（`testAutoIsYourLanguageAndTheOtherOne`、`testTheTargetIsTheOtherLanguageOfTheOneHeard`、
+  `testScreenTranslateHasItsOwnSettings`），`SettingsCatalogTests`（旧行重定向），`tests/test_polish_cloud.py`（`auto:H|O`）。
 
 ## 2. 两段式
 
@@ -110,3 +184,9 @@
 - `uv run screen_text.py eval`：本机模型对 fixture 的实时评测（错误率、耗时）。
 - `BLURT_GUI_TESTS=1 [BLURT_SCREEN_TEXT_REFINE=1] uv run pytest tests/test_screen_text_app.py -s`：隔离的 App、私有剪贴板，
   第一段 + 第二段端到端。
+- `swift test --filter DictationPastePolicyTests`：⌥C / ⌥T 的粘贴规则（听写会粘贴的地方 ⌥C 也粘贴，除了读到不是输入框）、
+  只有确认了才说「已粘贴」、每种结果的文案两种语言都有。`--filter DictationTranslateTests`：固定语言总是这种语言（`X|keep`）、
+  听写已是 X 不发请求、`keptAsIs`。
+- `uv run pytest tests/test_polish_cloud.py`：`X|keep` 的 prompt 和守卫。
+- 测试版 App：`dictation testpad` 打开测试输入框后，`screentext …` 粘贴进它并确认（`screen_text_delivered` 的 `outcome`）；
+  `textcard TEXT` 显示译文卡片。

@@ -110,3 +110,45 @@ def test_screen_text_end_to_end():
             assert read_pasteboard(PASTEBOARD) == t["text"]
         finally:
             app.stop()
+
+
+def test_translation_card_takes_esc_only_under_the_pointer():
+    """⌥T's card (ScreenTextCard): Esc is a system-wide hotkey only while the pointer is over the card — an Esc for the
+    app in front (interrupting Claude Code) is never swallowed; otherwise the card goes on its 10 s timer."""
+    with tempfile.TemporaryDirectory() as t:
+        tmp = Path(t).resolve()
+        app_path = Path(os.environ["BLURT_GUI_APP"]) if os.environ.get("BLURT_GUI_APP") else gui.build_app(tmp)
+        app_path = gui.isolated_copy(app_path, tmp)
+        home, ws = gui.make_world(tmp)
+        app = gui.App(app_path, home, ws, "en", tmp / "app.log")
+        app.extra_env = {"BLURT_TEST_PASTEBOARD": PASTEBOARD}
+        app.start()
+        try:
+            for _ in range(20):
+                app.mark()
+                app.post("hello", "shell")
+                try:
+                    app.wait("test_command", timeout=0.5)
+                    break
+                except TimeoutError:
+                    pass
+
+            def card(cmd: str) -> dict:
+                app.mark()
+                app.post(f"textcard {cmd}", "shell")
+                return app.wait("text_card_state", timeout=5)
+
+            s = card("The replica is billed by the hour.")
+            assert s["shown"] and not s["esc"], s                 # shown, Esc left to the app in front
+            s = card("esc")
+            assert s["shown"], "an Esc with the pointer elsewhere closed the card"
+            assert card("hover on")["esc"]                         # the pointer on it: Esc is the card's
+            assert not card("hover off")["esc"]                    # gone again when it leaves
+            card("hover on")
+            s = card("esc")
+            assert not s["shown"] and not s["esc"], s              # Esc closed it and let the key go
+            s = card("Another one")
+            assert s["shown"] and not s["esc"], s
+            assert not card("close")["esc"]
+        finally:
+            app.stop()

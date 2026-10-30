@@ -1,7 +1,7 @@
 /* Common — 各平台共用的词（docs/design/next-round.md K10）。拥有者：P4。
    键和占位符与 en.lproj/Common.strings 一致（tests/test_l10n.py）。 */
 
-/* 条目种类 */
+/* 事项种类 */
 "job.title.enrich" = "AI 补全";
 "job.title.filed" = "按备注直接归档";
 "job.usage.cli_default" = "CLI 默认模型";
@@ -13,7 +13,7 @@
 "kind.note" = "笔记";
 "kind.task" = "待办";
 
-/* 条目状态——K3 的一条生命线（与 web/packages/i18n 的 state.* / action.* 同词） */
+/* 事项状态——K3 的一条生命线（与 web/packages/i18n 的 state.* / action.* 同词） */
 "state.new" = "新";
 "state.todo" = "要做";
 "state.handed_off" = "已交给 Agent";
@@ -43,7 +43,7 @@
 "action.reopen" = "重新打开";
 "action.reopen.hint" = "回到要做";
 "action.wontfix" = "不做";
-"action.wontfix.hint" = "关闭，仍可在全部条目里找到";
+"action.wontfix.hint" = "关闭，仍可在全部事项里找到";
 "action.discard" = "丢弃";
 "action.discard.hint" = "可以恢复";
 "action.restore" = "恢复";
@@ -81,7 +81,7 @@
 "job.step.transcribe" = "转写语音";
 "job.step.file" = "归档";
 "job.step.prepare" = "准备中";
-"job.step.write" = "写入条目";
+"job.step.write" = "写入事项";
 "job.step.frames" = "挑选截图";
 "job.step.route" = "归类";
 "job.step.launch" = "启动";

@@ -109,8 +109,8 @@
 "dictation.history.show_polished" = "显示润色后的文字";
 "dictation.history.copy" = "复制";
 "dictation.history.copy_raw" = "复制识别原文";
-"dictation.history.make_item" = "转为条目";
-"dictation.history.item_exists" = "条目 %@";
+"dictation.history.make_item" = "转为事项";
+"dictation.history.item_exists" = "事项 %@";
 "dictation.history.item_made" = "已转为 %@";
 "dictation.history.show" = "查看";
 "dictation.history.delete" = "删除";
@@ -576,10 +576,10 @@
 
 /* The Dictation page (v0.9 redesign, round 1) */
 "dictation.history.no_match.hint" = "搜索会查听写的文字和它输入到的 App。";
-"dictation.history.making_item" = "正在写条目…";
+"dictation.history.making_item" = "正在写事项…";
 "dictation.history.making_item.note" = "你可以继续做别的";
 "dictation.history.making_item.tip" = "AI 正在根据这条听写写标题和描述";
-"dictation.history.make_item.tip" = "把这条听写写成当前项目里的一个条目（⌘↩）";
+"dictation.history.make_item.tip" = "把这条听写写成当前项目里的一个事项（⌘↩）";
 "dictation.history.reason.skipped" = "润色时你按了 Esc";
 "dictation.words.add.hint" = "按 Return 添加“%@”";
 "dictation.words.add.hint.many" = "按 Return 添加 %@";
@@ -717,7 +717,7 @@
 "dictation.models.cloud" = "%@（云端润色）";
 
 /* 听写翻译（docs/design/dictation-translate.md） */
-"dictation.translate.toast.on.auto" = "已开启翻译：中英互译 · 再按 ⌘ 关闭";
+"dictation.translate.toast.on.auto" = "已开启翻译：%1$@ ↔ %2$@ · 再按 ⌘ 关闭";
 "dictation.translate.toast.off" = "已关闭翻译";
 "dictation.translate.toast.unavailable" = "翻译需要云端模型或本机润色模型";
 "dictation.translate.toast.setup" = "设置…";
@@ -725,15 +725,21 @@
 "dictation.translate.toast.cloud_hint" = "本次用本机模型翻译，云端模型效果更好";
 "dictation.translate.toast.suggest" = "以后在%@里听写都翻译吗？";
 "dictation.translate.toast.suggest.yes" = "翻译";
-"dictation.translate.settings.title" = "翻译成";
-"dictation.translate.settings.detail" = "说话时按 ⌘ 或点小鸡开启；⌥T 截图翻译也用这里的设置";
-"dictation.translate.target.auto" = "自动：中文 ↔ 英文";
+"dictation.translate.section" = "翻译（⌘）";
+"dictation.translate.settings.title" = "按 ⌘ 翻译成";
+"dictation.translate.settings.detail" = "说话时按 ⌘ 或点小鸡，把说的话翻译后再输入";
+"dictation.translate.target.auto" = "自动：%1$@ ↔ %2$@";
+"dictation.translate.target.auto_one" = "自动：译成%@";
+"dictation.translate.target.auto_one.note" = "%@ 的文字会原样保留；要翻译它，请选一种语言";
+"dictation.translate.toast.learned" = "以后在%@里听写都会翻译";
+"dictation.translate.toast.undo" = "撤销";
 "dictation.translate.cloud.title" = "用云端模型翻译";
 "dictation.translate.cloud.detail" = "文字会发送到 %@，失败时改用本机模型";
 "dictation.translate.cloud.none" = "未设置云端模型，将用本机润色模型翻译";
 "dictation.translate.cloud.nothing" = "需要先设置云端模型或下载本机润色模型";
 "dictation.translate.cloud.setup" = "设置…";
-"dictation.translate.apps" = "总是翻译的 App";
+"dictation.translate.apps" = "这些 App 里听写自动翻译";
+"dictation.translate.apps.note" = "在某个 App 里按 ⌘ 开启翻译，以后在那里一直翻译；再按 ⌘ 关掉，就从这里移除。";
 "dictation.translate.apps.remove" = "移除";
 
 /* Per-app memory of Structured / Translate (DictationRemembering) */

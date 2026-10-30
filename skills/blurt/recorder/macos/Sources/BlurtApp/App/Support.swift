@@ -113,9 +113,11 @@ var primaryHeight: CGFloat { NSScreen.screens.first?.frame.maxY ?? 0 }
 func toCG(_ r: NSRect) -> CGRect { CGRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height) }
 func toNS(_ r: CGRect) -> NSRect { NSRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height) }
 
-/// Our chrome is hidden from every screen capture; BLURT_DEBUG_CHROME=1 makes it screenshot-able (still excluded
-/// from blurt's own recording via the content filter).
-let chromeSharing: NSWindow.SharingType = ProcessInfo.processInfo.environment["BLURT_DEBUG_CHROME"] == nil ? .none : .readOnly
+/// Our chrome (the island, hanging cards, the note bubble, live captions, the ink stage, flashes) can be captured by
+/// other tools — ⌘⇧4, WeChat's screenshot, a screen share — so people can show and report it (the founder,
+/// 2026-10-30: "otherwise I can't even screenshot it"). Blurt's own recordings, snaps and loupe stills leave it out
+/// through their content filters (Recorder / Snap: every window of this process above the normal level).
+let chromeSharing: NSWindow.SharingType = .readOnly
 
 func activateApp() {
     if #available(macOS 14.0, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }

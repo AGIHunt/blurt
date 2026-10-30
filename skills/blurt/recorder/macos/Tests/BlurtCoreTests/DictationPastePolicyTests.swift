@@ -71,6 +71,55 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertEqual(P.decide(s()), .paste(confirmed: true))
     }
 
+    /// ⌥C / ⌥T paste by the same rules (2026-10-30: WeChat only got a copy — the old check wanted an AX text role):
+    /// wherever dictation pastes, except a focus Accessibility reads as no text field (the desktop: the text is on
+    /// the clipboard already).
+    func testScreenTextPastesByDictationsRules() {
+        typealias T = ScreenTextPaste
+        XCTAssertEqual(T.decide(s()), .paste)
+        XCTAssertEqual(T.decide(s(text: nil)), .paste)                      // WeChat: nothing Accessibility can read
+        XCTAssertEqual(T.decide(s(text: false)), .copy(reason: "no_field")) // the desktop, a page with no field
+        XCTAssertEqual(T.decide(s(front: false)), .copy(reason: "no_front_app"))
+        XCTAssertEqual(T.decide(s(blurt: true)), .copy(reason: "blurt_in_front"))
+        XCTAssertEqual(T.decide(s(secure: true)), .copy(reason: "secure_input"))
+        XCTAssertEqual(T.decide(s(secureField: true)), .copy(reason: "secure_input"))
+        XCTAssertEqual(T.decide(s(ax: false)), .copy(reason: "no_accessibility"))
+        var moved = s()
+        moved.appChanged = true                                              // the user switched apps during the drag
+        XCTAssertEqual(T.decide(moved), .copy(reason: "app_changed"))
+        // every situation dictation pastes into, ⌥C pastes into too — unless the focus is read as no field
+        for front in [true, false] { for blurt in [true, false] { for secure in [true, false] { for ax in [true, false] {
+            for text in [true, false, nil] as [Bool?] {
+                let x = s(front: front, blurt: blurt, secure: secure, ax: ax, text: text)
+                if case .paste = P.decide(x) { XCTAssertEqual(T.decide(x) == .paste, text != false) } else {
+                    XCTAssertNotEqual(T.decide(x), .paste)
+                }
+            }
+        } } } }
+    }
+
+    /// "Pasted" only once the field shows it; ⌘V that can't be confirmed says the text is on the clipboard.
+    func testScreenTextSaysPastedOnlyWhenSeen() {
+        typealias T = ScreenTextPaste
+        XCTAssertEqual(T.outcome(pasted: true, seen: true), .pasted)
+        XCTAssertEqual(T.outcome(pasted: true, seen: false), .unconfirmed)
+        XCTAssertEqual(T.outcome(pasted: false, seen: false), .copied)
+        XCTAssertEqual(T.outcome(pasted: false, seen: true), .copied)
+        XCTAssertEqual(T.lineKey(.pasted, translate: false), "capture.text.typed")
+        XCTAssertEqual(T.lineKey(.pasted, translate: true), "capture.text.translation_pasted")
+        XCTAssertEqual(T.lineKey(.unconfirmed, translate: false), "capture.text.copied_paste")
+        XCTAssertEqual(T.lineKey(.unconfirmed, translate: true), "capture.text.copied_paste")
+        XCTAssertEqual(T.lineKey(.copied, translate: false), "capture.text.copied")
+        XCTAssertEqual(T.lineKey(.copied, translate: true), "capture.text.translation_copied")
+        XCTAssertEqual(T.lineKey(.alreadyInTarget, translate: true), "capture.text.already")
+        // every line exists in both languages
+        for o in [T.Outcome.pasted, .unconfirmed, .copied, .alreadyInTarget] { for tr in [true, false] {
+            for lang in Loc.languages {
+                XCTAssertNotNil(Loc.string(T.lineKey(o, translate: tr), table: "Capture", language: lang), "\(o) \(tr) \(lang)")
+            }
+        } }
+    }
+
     func testBuiltInMicChoice() {
         let c = DictationMicChoice.useBuiltIn
         XCTAssertTrue(c(nil, true, true))          // automatic: AirPods are the default input → the Mac's mic

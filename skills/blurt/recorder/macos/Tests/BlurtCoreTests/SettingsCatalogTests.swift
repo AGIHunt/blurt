@@ -139,6 +139,9 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.redirect("general/general.login"), "general/general.login")
         XCTAssertEqual(SettingsCatalog.redirect("general"), "general")
         XCTAssertEqual(SettingsCatalog.redirect("export/target"), "agents/agents.ask")
+        // Copy Text from Screen left General for its own page (2026-10-30)
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.screen_text_refine"), "screentext/screentext.refine")
+        XCTAssertEqual(SettingsCatalog.redirect("general/screen_text_translate"), "screentext/screentext.translate")
         for (old, new) in SettingsCatalog.movedRows {
             XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
             XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")

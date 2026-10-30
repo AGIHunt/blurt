@@ -167,6 +167,52 @@ def test_the_translate_guard_catches_what_is_plainly_not_a_translation(src, out,
     assert polish.translate_guard(src, out, target, terms) == why
 
 
+@pytest.mark.parametrize("src,out,target,why", [
+    # "X|keep" (the app's fixed language, 2026-10-30): into X, or the text back as it was when it is X already
+    ("The replica is billed by the hour.", "The replica is billed by the hour.", "en|keep", None),
+    ("The replica is billed\nby the hour.", "The replica is billed by the hour.", "en|keep", None),   # spacing aside
+    ("副本按小时计费。", "The replica is billed by the hour.", "en|keep", None),
+    ("副本按小时计费，所以用完就关掉，别让它整晚开着。", "副本按小时计费，所以用完就关掉。", "en|keep", "untranslated"),
+    ("The replica is billed by the hour.", "", "zh|keep", "empty"),
+    ("The replica is billed by the hour, so shut it down when you are done with it.", "副本按小时计费，用完就关掉。", "zh|keep", None),
+])
+def test_a_fixed_language_keeps_text_already_in_it(src, out, target, why):
+    assert polish.translate_guard(src, out, target, []) == why
+
+
+def test_a_fixed_language_asks_for_the_text_as_it_is_never_another_language():
+    keep = polish.translate_system("en|keep")
+    assert "Translate it into English; if it is already in English, reply with it exactly as it is." in keep
+    assert "Chinese" not in keep                     # v1.0.6's "X|home" sent English text into the user's Chinese
+    # v1.0.6's form is still understood
+    assert "translate it into Simplified Chinese" in polish.translate_system("en|zh")
+    assert polish.translate_system("ja|keep").startswith("You translate") and "into Japanese" in polish.translate_system("ja|keep")
+
+
+def test_auto_names_the_users_pair_global_first():
+    # "auto:H|O" (2026-10-30): text in the user's own language into the other one, anything else into theirs
+    ja = polish.translate_system("auto:ja|en")
+    assert "If the text is mostly Japanese, translate it into English; otherwise translate it into Japanese." in ja
+    assert "Chinese" not in ja
+    en = polish.translate_system("auto:en|de")
+    assert "If the text is mostly English, translate it into German; otherwise translate it into English." in en
+    # the old "auto" (an app before 2026-10-30) is still Chinese ↔ English
+    assert "mostly Simplified Chinese, translate it into English" in polish.translate_system("auto")
+    assert polish.auto_pair("auto:ja|en") == ("ja", "en") and polish.auto_pair("auto") == ("zh", "en")
+    assert polish.auto_pair("en|keep") is None and polish.auto_pair("auto:ja|") is None
+    # the guard checks only the plain failures, as for "auto"
+    assert polish.translate_guard("お疲れさまです。明日の会議は十時からです。", "Good work today. Tomorrow's meeting starts at ten.",
+                                  "auto:ja|en") is None
+    assert polish.translate_guard("お疲れさまです。", "", "auto:ja|en") == "empty"
+
+
+def test_screen_translate_sends_the_fixed_language_as_asked(api):
+    api.reply = "The replica is billed by the hour."
+    r = polish.Engine().translate("The replica is billed by the hour.", "en|keep", cloud=cloud(api))
+    assert r["text"] == "The replica is billed by the hour."
+    assert "reply with it exactly as it is" in api.seen[-1]["body"]["messages"][0]["content"]
+
+
 def test_dictation_sends_its_words_and_says_it_was_spoken(api):
     api.reply = "Blurt's menu bar icon needs to change"
     r = polish.Engine().translate("口喷鸡的菜单栏图标要改一下", "en", cloud=cloud(api), terms=[{"term": "口喷鸡"}, {"term": "tmux"}],

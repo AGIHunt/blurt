@@ -898,7 +898,7 @@ def session_command(agent: str, prompt: str, cwd: str | Path, *, job: str, setti
 WORK_PROMPT = {
     "en": "{title}\n\nRead {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
           "mark_fixed with its uid (or, without the MCP, run the items.py command the note gives).",
-    "zh": "{title}\n\n读 {note}，处理里面的条目。{rule}每做完一条，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
+    "zh": "{title}\n\n读 {note}，处理里面的事项。{rule}每做完一个，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
           "items.py 命令）。",
 }
 # The desktop app's prompt carries the note itself: the app starts in the worktree and would have to ask before it
@@ -910,14 +910,14 @@ DESKTOP_PROMPT = {
     "en": "{title}\n\nHandle the items below (the same note is saved at {note}). When you start an item, call the blurt "
           "MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state \"fixed\" "
           "(or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
-    "zh": "{title}\n\n处理下面的条目（同一份交接单也存在 {note}）。开始做某一条时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
+    "zh": "{title}\n\n处理下面的事项（同一份交接单也存在 {note}）。开始做某一个时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
           "state 填 \"fixing\"；做完后再调用 mark_fixed，state 填 \"fixed\"（或 \"wontfix\"），附一句说明。口喷鸡只能通过这些报告"
           "告诉用户进度。\n\n{body}",
 }
 TITLE = {"en": {"one": "{id} · {title} (Blurt hand-off)", "id_only": "{id} (Blurt hand-off)",
                 "many": "{n} items · {project} (Blurt hand-off)", "bare": "{n} items (Blurt hand-off)"},
          "zh": {"one": "{id} · {title}（口喷鸡交接）", "id_only": "{id}（口喷鸡交接）",
-                "many": "{n} 个条目 · {project}（口喷鸡交接）", "bare": "{n} 个条目（口喷鸡交接）"}}
+                "many": "{n} 个事项 · {project}（口喷鸡交接）", "bare": "{n} 个事项（口喷鸡交接）"}}
 TITLE_MAX = 120
 
 

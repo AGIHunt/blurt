@@ -123,9 +123,13 @@ extension App {
             if a.count > 1 { setenv("BLURT_TEST_STILL", a[1], 1) }
             let p = (a.first ?? "").split(separator: ",").compactMap { Double($0) }
             let tr = parts.first == "screentranslate"
-            let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr) }
+            // where it would be pasted, as at a key-down: a test build's is the test pad when it is open (`dictation testpad`)
+            let target = ScreenTextCopy.target()
+            let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr, target: target) }
             if p.count == 4 { ScreenTextRefine.installed == nil ? ScreenTextRefine.refreshInstalled(read) : read() }
             else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
+        case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
+            ScreenTextCard.shared.testCommand(arg)
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
             if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥H / the ear's count / the menu
@@ -571,6 +575,7 @@ extension App {
         case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥L (dictation-styles.md)
         case .text: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey") }           // ⌥C (ScreenTextCopy.swift)
         case .translateText: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey", translate: true) }    // ⌥T
+        case .translateEsc: ScreenTextCard.shared.close(why: "esc")                      // Esc while ⌥T's card shows
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
         default: break

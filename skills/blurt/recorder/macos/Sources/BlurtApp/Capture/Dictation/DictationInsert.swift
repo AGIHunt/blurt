@@ -106,16 +106,9 @@ enum DictationInsert {
             }
             return paste(text, into: tv, window: tv.window, before: before ?? (tv.string, tv.selectedRange()), done: done)
         }
-        let front = NSWorkspace.shared.frontmostApplication
-        let me = ProcessInfo.processInfo.processIdentifier
-        let trusted = AXIsProcessTrusted()
-        // the focused element only says whether the paste is confirmed (and catches a password field); it no longer
-        // decides: WeChat's input box and many Electron / web editors aren't an Accessibility text role
-        let focus = trusted && front != nil && front?.processIdentifier != me ? focusedElement() : Focus()
-        let isText: Bool? = focus.role == nil && focus.pid == nil ? nil : focus.editable && (focus.pid == nil || focus.pid == front?.processIdentifier)
-        let decision = DictationPastePolicy.decide(.init(
-            hasFrontApp: front != nil, frontIsBlurt: front?.processIdentifier == me, secureInput: IsSecureEventInputEnabled(),
-            accessibility: trusted, focusSecure: focus.secure, focusIsText: isText))
+        let now = situation()
+        let front = now.front, focus = now.focus, isText = now.situation.focusIsText
+        let decision = DictationPastePolicy.decide(now.situation)
         lastNoField = isText == false
         switch decision {
         case .own:
@@ -145,6 +138,46 @@ enum DictationInsert {
         }
     }
 
+    /// What DictationPastePolicy needs to know now: the app in front, secure input, Accessibility and the focused
+    /// element (read only for another app). Dictation's paste and ⌥C / ⌥T's (ScreenTextPaste) decide from the same.
+    static func situation() -> (situation: DictationPastePolicy.Situation, focus: Focus, front: NSRunningApplication?) {
+        let front = NSWorkspace.shared.frontmostApplication
+        let me = ProcessInfo.processInfo.processIdentifier
+        let trusted = AXIsProcessTrusted()
+        // the focused element only says whether the paste is confirmed (and catches a password field); it no longer
+        // decides: WeChat's input box and many Electron / web editors aren't an Accessibility text role
+        let focus = trusted && front != nil && front?.processIdentifier != me ? focusedElement() : Focus()
+        let isText: Bool? = focus.role == nil && focus.pid == nil ? nil : focus.editable && (focus.pid == nil || focus.pid == front?.processIdentifier)
+        return (.init(hasFrontApp: front != nil, frontIsBlurt: front?.processIdentifier == me, secureInput: IsSecureEventInputEnabled(),
+                      accessibility: trusted, focusSecure: focus.secure, focusIsText: isText), focus, front)
+    }
+
+    /// Reads `field` every 30 ms (another app's off the main thread) until it shows `text` where `before` had the
+    /// cursor (DictationPasteLanding.landed) → `seen` with the seconds since the call, on the main queue; nil once
+    /// DictationPasteLanding.confirmTimeout has gone by without it.
+    static func confirmLanding(_ text: String, field f: DictationField, before b: (text: String, selection: NSRange),
+                               seen: @escaping (Double?) -> Void) {
+        let t0 = CACurrentMediaTime()
+        func check() {
+            let read = { f.read()?.text }
+            let wait = { (now: String?) in
+                let t = CACurrentMediaTime() - t0
+                if now.map({ DictationPasteLanding.landed(before: b.text, selection: b.selection, now: $0, inserted: text) }) == true {
+                    return seen(t)
+                }
+                if t >= DictationPasteLanding.confirmTimeout { return seen(nil) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + DictationPasteLanding.poll) { check() }
+            }
+            // our own text view on the main thread; another app's field through Accessibility off it
+            if testMode { return wait(read()) }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let now = read()
+                DispatchQueue.main.async { wait(now) }
+            }
+        }
+        check()
+    }
+
     /// After ⌘V: `done(.pasted)` (a double tap's Return) once the field shows the text — read every 30 ms, off the main
     /// thread — or after 0.6 s at the latest; the user's clipboard back 0.15 s after the text was seen, else after
     /// 1.5 s (DictationPasteLanding.returnAfter / restoreAfter).
@@ -168,25 +201,10 @@ enum DictationInsert {
             giveReturn(field == nil || before == nil ? "unread" : "not_yet")
         }
         guard let f = field, let b = before else { return releaseAt(nil) }
-        func check() {
-            let read = { f.read()?.text }
-            let seen = { (now: String?) -> Bool in
-                now.map { DictationPasteLanding.landed(before: b.text, selection: b.selection, now: $0, inserted: text) } ?? false
-            }
-            let wait = { (now: String?) in
-                let t = CACurrentMediaTime() - t0
-                if seen(now) { giveReturn("seen"); return releaseAt(t) }
-                if t >= DictationPasteLanding.confirmTimeout { return releaseAt(nil) }
-                DispatchQueue.main.asyncAfter(deadline: .now() + DictationPasteLanding.poll) { check() }
-            }
-            // our own text view on the main thread; another app's field through Accessibility off it
-            if testMode { return wait(read()) }
-            DispatchQueue.global(qos: .userInitiated).async {
-                let now = read()
-                DispatchQueue.main.async { wait(now) }
-            }
+        confirmLanding(text, field: f, before: b) { t in
+            if t != nil { giveReturn("seen") }
+            releaseAt(t)
         }
-        check()
     }
 
     /// Why the last insert copied instead of pasting (app_changed, secure_input, no_accessibility …).
@@ -258,11 +276,15 @@ enum DictationInsert {
     static func copy(_ text: String) { put(text, transient: false) }
 
     /// Copy Text from Screen (ScreenTextCopy): `text` on `pb` as a copy the user made — it stays there, as Bob's does —
-    /// and ⌘V into the app in front. Test builds post nothing (false).
+    /// and ⌘V into the app in front. Test builds post nothing: the test pad, when it is open, gets a paste: from `pb`
+    /// (as a dictation's does); else false.
     static func pasteKeeping(_ text: String, on pb: NSPasteboard) -> Bool {
         pb.clearContents()
         pb.setString(text, forType: .string)
-        guard !testMode else { return false }
+        if testMode {
+            guard let tv = DictationTestPad.textView else { return false }
+            return tv.readSelection(from: pb, type: .string)
+        }
         postCommandV()
         return true
     }

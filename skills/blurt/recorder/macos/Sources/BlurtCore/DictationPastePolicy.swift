@@ -98,6 +98,59 @@ public enum DictationPastePolicy {
     }
 }
 
+/// ⌥C / ⌥T (docs/design/screen-text.md §Paste): whether the text read from the screen (or its translation) is also
+/// ⌘V'd into the app in front. DictationPastePolicy decides, as for a dictation (WeChat's input box, Electron and web
+/// editors that aren't an Accessibility text role get the paste), with one more refusal: a focus Accessibility reads
+/// as something other than a text field (the desktop, a page with nothing focused) — dictation pastes there and keeps
+/// the text on the island; the screen's text is on the clipboard already, so ⌘V into nothing would only beep. The
+/// result stays on the clipboard whatever is decided (⌥C's design: a copy the user made).
+public enum ScreenTextPaste {
+    public enum Decision: Equatable {
+        /// ⌘V into the app in front
+        case paste
+        /// the clipboard only
+        case copy(reason: String)
+    }
+
+    public static func decide(_ s: DictationPastePolicy.Situation) -> Decision {
+        switch DictationPastePolicy.decide(s) {
+        case .paste: return s.focusIsText == false ? .copy(reason: "no_field") : .paste
+        case .own: return .copy(reason: "blurt_in_front")
+        case .copy(let why), .hold(let why): return .copy(reason: why)
+        }
+    }
+
+    /// What became of the result.
+    public enum Outcome: String, Equatable {
+        /// ⌘V went in and the field, read back, shows the text (DictationPasteLanding.landed)
+        case pasted
+        /// ⌘V went in but couldn't be confirmed: a field Accessibility can't read (WeChat), or one that didn't show
+        /// the text within DictationPasteLanding.confirmTimeout — "Copied · ⌘V to paste", never a "Pasted" that may
+        /// be untrue
+        case unconfirmed
+        /// no ⌘V (ScreenTextPaste.decide said copy)
+        case copied
+        /// ⌥T into a fixed language the text was in already: the original, copied as it is (never pasted)
+        case alreadyInTarget = "already"
+    }
+
+    /// `pasted`: ⌘V was posted; `seen`: the field showed the text afterwards.
+    public static func outcome(pasted: Bool, seen: Bool) -> Outcome {
+        guard pasted else { return .copied }
+        return seen ? .pasted : .unconfirmed
+    }
+
+    /// The island's line (a Capture.strings key) for what happened to ⌥C's text or ⌥T's translation.
+    public static func lineKey(_ o: Outcome, translate: Bool) -> String {
+        switch o {
+        case .pasted: return translate ? "capture.text.translation_pasted" : "capture.text.typed"
+        case .unconfirmed: return "capture.text.copied_paste"
+        case .copied: return translate ? "capture.text.translation_copied" : "capture.text.copied"
+        case .alreadyInTarget: return "capture.text.already"
+        }
+    }
+}
+
 /// Whether a double tap of the dictation key may press Return (`record.dictation.double_tap_send`): only into another
 /// app in front, never while secure input is on (a password field anywhere: Return would submit it), and only with
 /// Accessibility (a posted key wouldn't arrive otherwise). Test builds never post it at all (DictationInsert.testMode).

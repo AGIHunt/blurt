@@ -365,7 +365,7 @@
 "capture.text.none" = "No text found in that area";
 "capture.text.failed" = "Couldn’t read the screen";
 "capture.action.translate" = "Translate text from screen";
-"capture.action.translate.detail" = "The same, translated between Chinese and English";
+"capture.action.translate.detail" = "The same, translated into the language set in Settings → Copy Text from Screen → “⌥T translates into”";
 "capture.menu.translate" = "Translate Text from Screen";
 "capture.text.typed" = "Pasted";
 "capture.text.translating" = "Translating…";
@@ -373,6 +373,13 @@
 "capture.text.try_again" = "Try Again";
 "capture.text.no_permission" = "Copying text from the screen needs Screen Recording";
 "capture.text.stale" = "Can’t read the screen — allow Screen Recording again";
+"capture.text.copied_paste" = "Copied · ⌘V to paste";
+"capture.text.translation_pasted" = "Translation pasted";
+"capture.text.translation_copied" = "Translation copied";
+"capture.text.already" = "Already in %@ · original copied";
+"capture.text.card.copy" = "Copy";
+"capture.text.card.copied" = "Copied";
+"capture.text.card.ax" = "Translation";
 "capture.card.ax_follow_up" = "To paste a card’s note for you, Blurt needs Accessibility";
 "capture.taken.empty_expired_title" = "Nothing from the last 7 days";
 "capture.taken.empty_expired_hint" = "Older cards you dragged out are in the Trash.";

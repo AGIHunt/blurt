@@ -447,7 +447,6 @@
 "settings.projects.list_heading" = "Project folders";
 
 /* Copy text from screen (⌥C): the second reading (ScreenTextRefine) */
-"settings.general.section.screen_text" = "Copy text from screen";
 "settings.general.screen_text" = "Extra accuracy";
 "settings.general.screen_text.hint" = "⌥C copies macOS’s reading at once, then a model checks it and fixes misread symbols (l and /, 0 and @). If you haven’t copied anything else by then, the clipboard gets the fixed text.";
 "settings.general.screen_text.off" = "Off";
@@ -460,8 +459,17 @@
 "settings.general.screen_text.detail.downloading" = "Downloading… %@";
 "settings.general.screen_text.download" = "Download";
 "settings.general.screen_text.detail.cloud" = "Uses %@, about ¥0.001 a capture; the picture is sent to the cloud";
-"settings.general.screen_text.detail.cloud_missing" = "Add a key under Dictation → Cloud polish first";
+"settings.general.screen_text.detail.cloud_missing" = "Add a key under Models → Cloud Polish first";
 "settings.general.screen_text.setup" = "Set Up…";
+"settings.kit.screen_text" = "Copy Text from Screen";
+"settings.kw.pane.screentext" = "OCR, screenshot text, copy text, translate, screen, option C, option T";
+"settings.screen_text.section.copy" = "Copy (⌥C)";
+"settings.screen_text.section.translate" = "Translate (⌥T)";
+"settings.screen_text.translate" = "⌥T translates into";
+"settings.screen_text.translate.hint" = "For reading: text on the screen into your language. Auto turns text in your own language into the other one, and anything else into yours. A language you pick is always what you get: text already in it is copied as it is. Dictation’s ⌘ has its own setting.";
+"settings.kw.screentext.refine" = "OCR, accuracy, recognition, PaddleOCR, misread, symbols";
+"settings.kw.screentext.translate" = "translate, translation, language, target, auto, screen, option T";
+"settings.kw.screentext.translate_cloud" = "cloud, DeepSeek, API key, translate, online";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "It works now. Add these for better accuracy or offline use.";

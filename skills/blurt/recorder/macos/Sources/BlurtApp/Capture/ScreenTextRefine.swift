@@ -3,7 +3,7 @@
 // and layout; the model's characters fix what Vision misread inside a line — l / I / /, 0 / @, a missing →).
 // ScreenTextCopy decides where the merge goes (the clipboard, still holding the draft; or the field it types into).
 //
-// record.screen_text.refine = off (unset) | local | cloud — Settings → General → Copy text from screen:
+// record.screen_text.refine = off (unset) | local | cloud — Settings → Copy Text from Screen:
 //   local   PaddleOCR-VL 1.6 (720 MB, through the one download manager), kept warm by `screen_text.py serve` (~1.1 GB
 //           while warm, ended after 10 idle minutes and with Blurt, like the speech and polish servers); ~0.2 s a
 //           capture on an M5 Max. Offered from 16 GB; an 8 GB Mac gets the choice with its cost said.

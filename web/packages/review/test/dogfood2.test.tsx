@@ -97,7 +97,7 @@ describe("the item detail", () => {
     const bad = new ReviewStore(host(() => { throw new Error("items.py load failed: exit 1: Traceback"); }), { lang: "zh" });
     await bad.load();
     const b = await render(bad, <App store={bad} onTheme={() => {}} />);
-    expect(b.el.textContent).toContain("条目没能加载");
+    expect(b.el.textContent).toContain("事项没能加载");
     expect(b.el.textContent).not.toMatch(/items\.py|Traceback|exit 1/);
     b.done();
     bad.dispose();

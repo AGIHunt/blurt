@@ -149,7 +149,7 @@
 //    into the island, which swallows it with a small bump.
 //  • 12 pt apart, straight (the row itself: above).
 //  • Reduce Motion: 0.2 s fades, no sway.
-// Window: a non-activating panel on all spaces, never captured, mouse-transparent except over a card; it lives on the
+// Window: a non-activating panel on all spaces, never in Blurt's own captures, mouse-transparent except over a card; it lives on the
 // island's screen. The display link runs only while something moves, and stops before the panel is ordered out (an
 // off-screen window's link never fires again: the idle polls that bring the cards back on hover would stop with it).
 

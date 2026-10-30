@@ -40,8 +40,8 @@
 //
 // Motion: the shape is three springs (width, height, corner) — response 0.42 s, damping 0.78 — so it can be
 // interrupted at any point; a bump (1.04 → 1, 0.25 s) when it swallows a capture; Reduce Motion = 0.2 s cross-fades.
-// Window: a non-activating panel above the menu bar, on all spaces, never captured (sharingType none, and excluded
-// from every recording by process), on the screen with the pointer; mouse-transparent except over the island itself.
+// Window: a non-activating panel above the menu bar, on all spaces, left out of Blurt's own recordings and snaps by
+// their content filters (other tools can capture it: chromeSharing), on the screen with the pointer; mouse-transparent except over the island itself.
 
 import AppKit
 import BlurtCore
@@ -573,7 +573,10 @@ final class Island: NSObject, IslandHosting {
         // live text hangs under it: the capsule takes the panel's width family (as the notch with its ears does), so
         // the two read as one shape, not a 340 pt panel under a 120 pt pill
         if anyEar, LiveTranscript.shared.shown { cw = max(cw, IslandLayout.liveCapsuleWidth()) }
-        return (anyEar || revealed ? max(cw, revealed && !anyEar ? 150 : 0) : 120, 30, 15, 0)
+        // ⌥T's card hangs under it (ScreenTextCard, the live panel's family): the same widening, ears or not
+        let card = ScreenTextCard.shared.shown
+        if card { cw = max(cw, IslandLayout.liveCapsuleWidth()) }
+        return (anyEar || revealed || card ? max(cw, revealed && !anyEar ? 150 : 0) : 120, 30, 15, 0)
     }
 
     /// A toast's shape is never narrower than this: the notch with both ears, or the capsule's minimum — and its
@@ -696,6 +699,7 @@ final class Island: NSObject, IslandHosting {
         content.tick(now)
         hanging.islandMoved()
         LiveTranscript.shared.islandMoved()
+        ScreenTextCard.shared.islandMoved()
         let moving = !w.resting || !h.resting || !r.resting || !dx.resting || abs(vis.value - vis.target) > 0.01 || bt < 0.3
         // While the shape grows, AppKit draws the open content piece by piece as the clip uncovers it; the seams of
         // those pieces show through translucent fills (the Let AI sort and Finish pills). Once it rests: whole again.

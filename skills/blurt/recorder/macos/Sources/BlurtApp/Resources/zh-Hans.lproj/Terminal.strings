@@ -28,9 +28,9 @@
 
 /* 会话列表 */
 "list.new" = "新建会话…";
-"list.new.help" = "把一个项目里的条目交给 Claude Code 或 Codex，开一个新会话";
+"list.new.help" = "把一个项目里的事项交给 Claude Code 或 Codex，开一个新会话";
 "list.empty.title" = "还没有会话";
-"list.empty.body" = "交给 Agent 的条目会在这里以会话的形式运行，按项目分组。";
+"list.empty.body" = "交给 Agent 的事项会在这里以会话的形式运行，按项目分组。";
 "row.ready_to_review" = "可以查看改动";
 "session.items.more" = "%1$@ +%2$ld";
 /* 终端上方的标题栏 */
@@ -66,22 +66,22 @@
 "overlay.elsewhere.body" = "这个会话在口喷鸡里运行，正显示在另一个窗口中。";
 "overlay.pick" = "选择一个会话来查看它的终端。";
 "overlay.empty.title" = "Agent 在这里工作";
-"overlay.empty.body" = "把条目交给 Claude Code 或 Codex 处理，\n它们各自在终端里工作，需要你时会提醒。";
+"overlay.empty.body" = "把事项交给 Claude Code 或 Codex 处理，\n它们各自在终端里工作，需要你时会提醒。";
 "overlay.ended.title" = "会话已结束";
 "overlay.ended.review_hint" = "Agent 的改动在单独的分支上，等你查看。";
-"overlay.ended.verify_hint" = "相关条目现在等你验证，确认没问题后标为完成。";
-"overlay.ended.unreported_hint" = "Agent 没有报告做完，条目还在进行中。看过之后，在条目上标为完成或收回。";
+"overlay.ended.verify_hint" = "相关事项现在等你验证，确认没问题后标为完成。";
+"overlay.ended.unreported_hint" = "Agent 没有报告做完，事项还在进行中。看过之后，在事项上标为完成或收回。";
 
 /* 派发面板 */
 "dispatch.title" = "交给 Agent";
-"dispatch.subtitle.none" = "选择要处理的条目";
+"dispatch.subtitle.none" = "选择要处理的事项";
 "dispatch.agent" = "Agent";
 "dispatch.agent.logged_out" = "%@（未登录）";
 "dispatch.agent.none" = "还没有装能跑会话的 Agent。装好 Claude Code 或 Codex 后，到「设置」的「Agent」里重新检查。";
 "dispatch.mode" = "方式";
 "dispatch.mode.together" = "一起处理";
 "dispatch.mode.parallel" = "并行";
-"dispatch.mode.together.help" = "一个对话按顺序处理全部条目。";
+"dispatch.mode.together.help" = "一个对话按顺序处理全部事项。";
 "dispatch.worktree" = "位置";
 "dispatch.worktree.toggle" = "在单独的分支上做";
 "dispatch.worktree.on" = "在项目旁边建一个 git worktree。做完后由你选择合并、创建 PR 或丢弃。";
@@ -89,8 +89,8 @@
 "dispatch.worktree.on.parallel" = "每条各在自己的分支上做，worktree 放在项目旁边。哪条做完了，由你选择合并、创建 PR 或丢弃。";
 "dispatch.worktree.off" = "直接改 %@ 里的文件，Agent 不会提交。";
 "dispatch.project" = "项目";
-"dispatch.pick.empty" = "这个项目里没有待处理的条目。";
-"dispatch.pick.failed" = "没能列出这个项目的条目。";
+"dispatch.pick.empty" = "这个项目里没有待处理的事项。";
+"dispatch.pick.failed" = "没能列出这个项目的事项。";
 "dispatch.start" = "开始会话";
 
 /* 派发前的提醒（sessions.py dispatch --dry-run） */
@@ -99,7 +99,7 @@
 "warning.concurrent_edit.continue" = "继续";
 "warning.no_git" = "这个文件夹不是 git 仓库，Agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";
-"warning.draft_confirmed" = "还是新的条目，交出去就算接受了。";
+"warning.draft_confirmed" = "还是新的事项，交出去就算接受了。";
 
 /* 收尾面板（worktree 的结果） */
 "finish.title" = "查看改动";
@@ -127,7 +127,7 @@
 "finish.done.keep" = "已保留，之后可以在会话里再次查看。";
 "finish.done.pushed" = "分支已推送到 origin，但没有自动创建 PR，请到你的 Git 托管平台上创建。";
 "finish.done.compare" = "分支已推送，在浏览器里完成 PR：";
-"finish.done.verify" = "相关条目在等你验证。";
+"finish.done.verify" = "相关事项在等你验证。";
 
 /* 系统通知 */
 "notify.title.waiting_input" = "等你回答 · %@";
@@ -138,7 +138,7 @@
 "notify.more" = "等 %ld 条";
 "notify.exit" = "它出错停止了";
 
-/* 条目到了「待验证」（鸡来啄一下） */
+/* 事项到了「待验证」（鸡来啄一下） */
 "verify.by" = "%@ 说已经修好";
 "verify.by.wontfix" = "%@ 建议不处理";
 "verify.by.none" = "%@ 交回来了";
@@ -155,9 +155,9 @@
 "error.no_window" = "这个会话的终端窗口已经不在了。";
 "error.no_job" = "这个会话已经不存在。";
 "error.app_runner_lost" = "这个会话在口喷鸡里运行，口喷鸡退出时就结束了。";
-"error.needs_project" = "这些条目还没归到有文件夹的项目里，先把它们移到一个项目。";
-"error.mixed_projects" = "这些条目属于不同的项目，请一次只把一个项目的条目交给 Agent。";
-"error.deleted" = "已丢弃的条目不能交给 Agent。";
+"error.needs_project" = "这些事项还没归到有文件夹的项目里，先把它们移到一个项目。";
+"error.mixed_projects" = "这些事项属于不同的项目，请一次只把一个项目的事项交给 Agent。";
+"error.deleted" = "已丢弃的事项不能交给 Agent。";
 "error.bad_agent" = "这个 Agent 还不能用来跑会话。";
 "error.tmux" = "tmux 没能启动这个会话。";
 "error.git" = "git 没能准备好 worktree。";
@@ -184,7 +184,7 @@
 "agents.footer" = "Agent 负责整理录屏、截图和语音备注，也负责 AI 补全。";
 "agents.check_again" = "重新检查";
 "agents.drag" = "拖动排序";
-"agents.sessions_badge.help" = "可以在口喷鸡的会话里处理条目。";
+"agents.sessions_badge.help" = "可以在口喷鸡的会话里处理事项。";
 "agents.install" = "连接…";
 "agents.test" = "测试";
 "agents.test.help" = "发一句极短的提示词，确认能跑（花很少的 token）";
@@ -201,16 +201,16 @@
 "agents.state.unchecked.help" = "不花 token 就问不到它有没有登录。第一次用它整理时就知道了：没登录的话，口喷鸡会换下一个 Agent，并在这里提示。";
 "agents.state.manual.help" = "它是一个单独的 App，口喷鸡不会自动把活交给它。在它的设置 → Skills / MCP 里导入 blurt，或者点「连接…」看要做什么。";
 "agents.manual.header" = "其他 Agent 应用";
-"agents.manual.footer" = "口喷鸡不能直接运行它们，用「复制指令」把条目交给它们。";
+"agents.manual.footer" = "口喷鸡不能直接运行它们，用「复制指令」把事项交给它们。";
 "agents.sessions.header" = "会话";
 "agents.project_agent" = "%@ 的默认 Agent";
 "agents.project_agent.default" = "上面排第一的";
-"agents.project_agent.hint" = "交这个项目的条目时默认用它，每次仍可另选。";
+"agents.project_agent.hint" = "交这个项目的事项时默认用它，每次仍可另选。";
 "agents.move_up" = "上移";
-"agents.connected.help" = "已接入：它能查找、读取和更新你的条目。";
+"agents.connected.help" = "已接入：它能查找、读取和更新你的事项。";
 "agents.not_connected.help" = "还没接入。点「连接…」会先列出要改的地方。";
 "agents.ask.header" = "可以这样跟 Agent 说";
-"agents.ask.footer" = "口喷鸡把条目交给它；别人也要看时，再给一个交接包（一个带截图的 .zip）。";
+"agents.ask.footer" = "口喷鸡把事项交给它；别人也要看时，再给一个交接包（一个带截图的 .zip）。";
 "agents.ask.1" = "把结账页的问题打包，发到 Slack 的 #web 频道";
 "agents.ask.2" = "把这个项目要做的问题建到 Linear 里，带上截图";
 "agents.ask.3" = "修好 BA-12，改完标成待验证";
@@ -221,9 +221,9 @@
 "install.title.applied" = "口喷鸡已连接到 %@";
 "install.title.failed" = "口喷鸡没能完全连接到 %@";
 "install.title.nothing" = "口喷鸡已经装在 %@ 里了";
-"install.benefit" = "连接后，%@ 就能查找、读取和更新你的口喷鸡条目。";
-"install.benefit.applied" = "现在 %@ 能查找、读取和更新你的口喷鸡条目了。";
-"install.benefit.nothing" = "%@ 已经能查找、读取和更新你的口喷鸡条目。";
+"install.benefit" = "连接后，%@ 就能查找、读取和更新你的口喷鸡事项。";
+"install.benefit.applied" = "现在 %@ 能查找、读取和更新你的口喷鸡事项了。";
+"install.benefit.nothing" = "%@ 已经能查找、读取和更新你的口喷鸡事项。";
 "install.benefit.failed" = "有几步没有成功，需要你处理的已在下面标出。";
 "install.footnote" = "点「连接」之前，什么都不会改动。";
 "install.confirm" = "连接";
@@ -238,8 +238,8 @@
 "install.row.failed.skill" = "没能添加口喷鸡技能";
 "install.row.failed.mcp" = "没能添加口喷鸡 MCP 服务";
 "install.row.failed.detail" = "%@ 报了错。执行的命令在「详细信息」里。";
-"install.row.about.skill" = "让 %@ 知道怎么处理你的条目，所有项目都生效";
-"install.row.about.mcp" = "让 %@ 能读取你的条目、汇报进度，所有项目都生效";
+"install.row.about.skill" = "让 %@ 知道怎么处理你的事项，所有项目都生效";
+"install.row.about.mcp" = "让 %@ 能读取你的事项、汇报进度，所有项目都生效";
 "install.row.in_place.skill" = "口喷鸡技能";
 "install.row.in_place.mcp" = "口喷鸡 MCP 服务";
 "install.row.exists" = "已经装好";
@@ -266,8 +266,8 @@
 "finish.state.keep" = "已保留";
 "finish.state.restart" = "已重新开始";
 "finish.state.take_back" = "已收回";
-"take_back.changes_kept" = "条目已收回。这个会话留下的改动还在它的分支上，可以先查看改动。";
-"header.show_items" = "在列表中显示条目";
+"take_back.changes_kept" = "事项已收回。这个会话留下的改动还在它的分支上，可以先查看改动。";
+"header.show_items" = "在列表中显示事项";
 "header.show_log" = "显示日志";
 "overlay.show_output" = "查看输出";
 "overlay.take_back" = "收回";
@@ -277,10 +277,10 @@
 "overlay.no_changes.title" = "已结束，没有改动";
 "finish.commit_merge" = "提交并合并";
 "finish.show_item" = "查看 %@";
-"finish.show_items" = "查看条目";
+"finish.show_items" = "查看事项";
 "error.commit" = "提交 Agent 的改动失败，可能被 git hook 拒绝了。在 worktree 里提交后再试。";
 "error.has_changes" = "这个会话留下了改动，先查看改动。";
-"error.already_dispatched" = "这些条目已经在进行中的会话里。";
+"error.already_dispatched" = "这些事项已经在进行中的会话里。";
 "dispatch.logged_out" = "%@ 还没登录。";
 "dispatch.logged_out.fix" = "%1$@ 还没登录：%2$@。";
 "dispatch.use_agent" = "改用 %@";
@@ -295,23 +295,23 @@
 "dispatch.run_in.terminal" = "在口喷鸡终端运行（推荐）";
 "dispatch.run_in.desktop" = "在 %@ 桌面端运行";
 "dispatch.desktop.send" = "在 %@ 里确认文件夹并点发送。";
-"dispatch.desktop.no_mcp" = "%@ 还没装 blurt MCP，Agent 没法回报进度。不装的话，做完后要你自己标记条目。";
+"dispatch.desktop.no_mcp" = "%@ 还没装 blurt MCP，Agent 没法回报进度。不装的话，做完后要你自己标记事项。";
 "dispatch.desktop.install" = "安装…";
 "header.go_desktop" = "前往 %@";
 "header.continue_desktop" = "在 %@ 桌面端继续…";
 "header.end_desktop" = "不再跟进…";
 "end_desktop.title" = "不再跟进这个会话？";
-"end_desktop.body" = "%@ 里的对话照常继续。条目保持现状，做完后自己标记。";
+"end_desktop.body" = "%@ 里的对话照常继续。事项保持现状，做完后自己标记。";
 "end_desktop.confirm" = "不再跟进";
 "continue_desktop.title" = "在 %@ 桌面端继续？";
 "continue_desktop.body" = "Agent 会在口喷鸡终端里停下，同一个对话在 %@ 里打开。之后口喷鸡看不到它的实时状态，进度由 Agent 回报。";
 "continue_desktop.confirm" = "继续";
-"continue_desktop.body_nomcp" = "Agent 会在口喷鸡终端里停下，同一个对话在 %@ 里打开。那里没装 blurt MCP，Agent 没法回报进度：做完后要你自己标记条目，或者先装上。";
-"overlay.desktop.body_nomcp" = "口喷鸡看不到这个对话的实时状态，%@ 也没装 blurt MCP，Agent 没法回报进度。做完后自己标记条目。";
+"continue_desktop.body_nomcp" = "Agent 会在口喷鸡终端里停下，同一个对话在 %@ 里打开。那里没装 blurt MCP，Agent 没法回报进度：做完后要你自己标记事项，或者先装上。";
+"overlay.desktop.body_nomcp" = "口喷鸡看不到这个对话的实时状态，%@ 也没装 blurt MCP，Agent 没法回报进度。做完后自己标记事项。";
 "mark.elsewhere" = "在桌面端";
 "error.desktop_no_mcp" = "桌面端没装 blurt MCP，那里不会有任何进度回报。";
 "overlay.desktop.title" = "在 %@ 里进行中";
-"overlay.desktop.body" = "口喷鸡看不到这个对话的实时状态。进度由 Agent 回报：它报告了，条目才会更新。";
+"overlay.desktop.body" = "口喷鸡看不到这个对话的实时状态。进度由 Agent 回报：它报告了，事项才会更新。";
 "overlay.desktop.body_continued" = "这个会话从口喷鸡终端移到了这里。口喷鸡看不到它的实时状态，进度由 Agent 回报。";
 "row.desktop" = "在 %@ 桌面端";
 "row.desktop.no_mcp" = "在 %@ 桌面端 · 等你标记";
@@ -323,7 +323,7 @@
 "error.desktop_login" = "需要用 Claude 订阅账号登录 Claude Code。";
 "error.desktop_unsupported" = "这个 Agent 不能在桌面端继续。";
 "error.desktop_not_installed" = "没有安装 Claude Code。";
-"error.desktop_failed" = "桌面端没有接过这个对话，这里的 Agent 也已经停下。「重新开始会话」会在口喷鸡终端里为这些条目开一个新会话。";
+"error.desktop_failed" = "桌面端没有接过这个对话，这里的 Agent 也已经停下。「重新开始会话」会在口喷鸡终端里为这些事项开一个新会话。";
 "error.no_session_id" = "Agent 还没报告这是哪个对话，稍后再试。";
 "error.bad_runner" = "只有在口喷鸡终端里运行的会话才能这样做。";
 "dispatch.start.desktop" = "在 %@ 里打开";
@@ -331,14 +331,14 @@
 /* sessions.py codes that had no sentence (they used to show raw) */
 "error.auth" = "%@ 还没登录，登录后再开始。";
 "error.auth.fix" = "%1$@ 还没登录：%2$@。登录后再开始。";
-"error.bad_transition" = "这些条目在等你验证或已经做完，先重新打开，才能再交给 Agent。";
+"error.bad_transition" = "这些事项在等你验证或已经做完，先重新打开，才能再交给 Agent。";
 "error.finished" = "这个会话已经处理过了。";
 "error.already_dispatched.named" = "%@ 已经在一个进行中的会话里。";
 "error.io" = "口喷鸡没能读写需要的文件，请再试一次。";
-"error.unparseable" = "有条目的文件读不出来，先在编辑器里改好它。";
-"error.not_found" = "找不到这些条目了，可能已经被移走或删除。";
+"error.unparseable" = "有个事项的文件读不出来，先在编辑器里改好它。";
+"error.not_found" = "找不到这些事项了，可能已经被移走或删除。";
 "error.locked" = "另一个操作正在进行，稍等一下再试。";
-"warning.taken_back" = "之前那个会话已经结束，这些条目会从它那里收回，交给新的会话。";
+"warning.taken_back" = "之前那个会话已经结束，这些事项会从它那里收回，交给新的会话。";
 "warning.taken_back.one" = "之前那个会话已经结束，这一条会从它那里收回，交给新的会话。";
 "dispatch.untitled" = "没有标题";
 "install.error" = "有一处设置文件的格式口喷鸡不认得，没有改它。";
@@ -375,18 +375,18 @@
 "agents.details.connected" = "已接入";
 "agents.details.test" = "试运行";
 "agents.details.sessions" = "会话";
-"agents.details.no_sessions" = "不能在口喷鸡的会话里处理条目。";
+"agents.details.no_sessions" = "不能在口喷鸡的会话里处理事项。";
 "agents.keep_sessions" = "退出后会话继续运行";
 "agents.keep_sessions.ok" = "用 tmux %@，再打开口喷鸡时会话还在。";
 "agents.keep_sessions.missing" = "需要 tmux。没有它，退出口喷鸡会话就会结束。";
 "agents.keep_sessions.old" = "需要 tmux 3.2 或更新。在那之前，退出口喷鸡会话就会结束。";
 "agents.keep_sessions.on" = "已开启";
-"agents.sessions.footer" = "%@ 可以在会话里处理条目。";
+"agents.sessions.footer" = "%@ 可以在会话里处理事项。";
 "agents.sessions.about" = "退出口喷鸡后会话继续运行。交给 Agent 的去处，项目的默认 Agent。";
 "agents.handoff.recommended" = "推荐";
 "agents.handoff.terminal" = "口喷鸡终端";
 "agents.handoff.desktop" = "%@ 桌面端";
-"agents.ask.line" = "Agent 会用它自己的工具把条目发到别处，比如 Slack、Linear。";
+"agents.ask.line" = "Agent 会用它自己的工具把事项发到别处，比如 Slack、Linear。";
 "agents.ask.examples" = "示例…";
 "agents.details" = "详细信息…";
 "agents.missing" = "未安装";
@@ -405,7 +405,7 @@
 /* hand-off panels (v0.9 redesign) */
 "handoff.title.new" = "新建会话";
 "handoff.pick.count" = "已选 %ld 条";
-"handoff.pick.loading" = "正在读取条目…";
+"handoff.pick.loading" = "正在读取事项…";
 "handoff.pick.all" = "全选";
 "handoff.pick.none" = "全不选";
 "handoff.pick.hint" = "至少选一条。";
@@ -434,7 +434,7 @@
 "handoff.model.default" = "默认";
 "handoff.model.default_named" = "默认（%@）";
 "handoff.note.todo.one" = "%@ 还是新的，交出去就算接受了。";
-"handoff.note.todo.many" = "还是新的条目，交出去就算接受了。";
+"handoff.note.todo.many" = "还是新的事项，交出去就算接受了。";
 "handoff.starting" = "正在开始…";
 "review.more" = "更多";
 "review.discard" = "丢弃…";
@@ -464,7 +464,7 @@
 "row.folder_gone" = "文件夹已不在";
 "overlay.gone.title" = "它的文件夹已不在";
 "overlay.gone.body" = "分支所在的文件夹已被删除，没有可查看的改动了。";
-"overlay.gone.take_back" = "收回条目";
+"overlay.gone.take_back" = "收回事项";
 "overlay.gone.remove" = "移除会话";
 "header.open_in" = "在 %@ 中打开";
 "review.folder_gone.title" = "它的文件夹已不在";
@@ -485,9 +485,9 @@
 "finish.working.end" = "正在结束会话…";
 "finish.review_again" = "重新查看";
 "error.changed" = "打开这次查看后，分支又有了新改动。重新查看后再合并。";
-"error.outdated" = "这个 Agent 版本太旧，不能接手条目。更新后再检查一次。";
+"error.outdated" = "这个 Agent 版本太旧，不能接手事项。更新后再检查一次。";
 
-"handoff.block.outdated" = "%1$@ %2$@ 版本太旧，不能接手条目（需要 %3$@ 或更新）。在终端里更新它，再检查一次。";
+"handoff.block.outdated" = "%1$@ %2$@ 版本太旧，不能接手事项（需要 %3$@ 或更新）。在终端里更新它，再检查一次。";
 
 /* 启动时的询问，以及在询问处退出的会话 */
 "hint.trust" = "%@ 每个仓库只问一次是否信任这个文件夹：在下面回答，它才会开始。";

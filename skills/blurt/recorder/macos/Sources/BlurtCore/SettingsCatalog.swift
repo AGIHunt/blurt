@@ -84,6 +84,8 @@ public enum SettingsCatalog {
     public static let panes: [SettingsPaneInfo] = [
         pane("general", "settings.kit.general", "Settings", "gearshape", "preferences"),
         pane("dictation", "dictation.settings.tab", "Dictation", "character.cursor.ibeam", "preferences"),
+        // ⌥C and ⌥T (2026-10-30: its own page; before, a box in General)
+        pane("screentext", "settings.kit.screen_text", "Settings", "text.viewfinder", "preferences"),
         pane("speech", "settings.kit.speech", "Settings", "cpu", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
@@ -111,6 +113,9 @@ public enum SettingsCatalog {
         "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
         "dictation.cloud_polish": "speech.cloud_polish",
         "general.version": "general.about", "general.help": "general.about", "general.assistant": "general.about",
+        // 2026-10-30: Copy Text from Screen got its own page
+        "general.screen_text_refine": "screentext.refine", "general.screen_text_translate": "screentext.translate",
+        "general.screen_text": "screentext.copy",
     ]
 
     /// "export" or "export/target" → "agents/agents.ask"; "general/general.capture_into" (or "general/capture_into") →
@@ -131,7 +136,6 @@ public enum SettingsCatalog {
         sec("general.recording", "settings.general.recording"),
         sec("general.voice", "settings.general.section.voice"),
         sec("general.cards", "settings.general.section.cards"),
-        sec("general.screen_text", "settings.general.section.screen_text"),
         sec("general.about", "settings.general.about"),
 
         sec("projects.list", "main.sidebar.projects", "Main"),
@@ -141,11 +145,16 @@ public enum SettingsCatalog {
         // the history, the models. Permissions are a notice at the top only while one is missing.
         sec("dictation.main", "dictation.settings.section", "Dictation"),
         sec("dictation.text", "dictation.text.section", "Dictation"),
+        sec("dictation.translation", "dictation.translate.section", "Dictation"),
         sec("dictation.data", "dictation.data.section", "Dictation"),
         sec("dictation.advanced", "settings.general.section.developer"),
 
         // Speech: which model does each job (and is the recommended set in), the languages, a folded Advanced; the
         // model library is a sheet ("Manage Models…") that a search or a link opens
+        // Copy Text from Screen: ⌥C's reading, then ⌥T's translation
+        sec("screentext.copy", "settings.screen_text.section.copy"),
+        sec("screentext.translation", "settings.screen_text.section.translate"),
+
         sec("speech.use", "speech.section.mac", "Speech"),
         sec("speech.jobs", "speech.section.jobs", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
@@ -206,7 +215,6 @@ public enum SettingsCatalog {
             row("general.snap_sound", "general.cards", "settings.general.snap_sound"),
             row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
             row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
-            row("general.screen_text_refine", "general.screen_text", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
             whole("general.about"),
 
             // Projects
@@ -236,9 +244,10 @@ public enum SettingsCatalog {
             row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
             row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
-            // translate mode (docs/design/dictation-translate.md): into what, and whether the cloud model does it
-            row("dictation.translate", "dictation.text", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
-            row("dictation.translate_cloud", "dictation.text", D("dictation.translate.cloud.title")),
+            // translate mode (docs/design/dictation-translate.md): into what, and whether the cloud model does it — its
+            // own, not ⌥T's (2026-10-30)
+            row("dictation.translate", "dictation.translation", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
+            row("dictation.translate_cloud", "dictation.translation", D("dictation.translate.cloud.title")),
             // the words' menu: reading the context, learning
             row("dictation.word_list", "dictation.text", D("dictation.vocab.summary.title"), detail: D("dictation.vocab.summary.detail")),
             row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),
@@ -252,6 +261,12 @@ public enum SettingsCatalog {
             // chosen and listed in Settings → Speech
             row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
+
+            // Copy Text from Screen: ⌥C's second reading; ⌥T's target and cloud switch (its own, not dictation's)
+            row("screentext.refine", "screentext.copy", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
+            row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
+                more: S("settings.screen_text.translate.hint")),
+            row("screentext.translate_cloud", "screentext.translation", D("dictation.translate.cloud.title")),
 
             // Speech
         ]

@@ -96,7 +96,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
@@ -214,6 +214,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
         Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
         Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
+        ScreenTextCopy.migrateTranslateConfig()     // ⌥T's own translate settings, once (from dictation's)
         watchNetwork()
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends

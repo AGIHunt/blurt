@@ -1,6 +1,7 @@
 // The Settings window (⌘, from the menu; blurt://settings/<pane>[/<row>]): one resizable window, a sidebar and a page.
 //   Sidebar  the search field on top (⌘F focuses it, Esc clears it, ↓ / ↑ walk the results, ↩ opens one), then the
-//            panes in three small groups — Preferences: General, Dictation, Speech, Shortcuts · Work: Projects, Agents ·
+//            panes in three small groups — Preferences: General, Dictation, Copy Text from Screen, Speech, Shortcuts ·
+//            Work: Projects, Agents ·
 //            This Mac: Privacy, Storage (SettingsCatalog.panes) — in an NSOutlineView like the main window's sidebar:
 //            the brand-tint selection (BrandRowView), ↑ / ↓ move between panes. While searching, the panes with
 //            matches show how many; the others are dimmed (with no match anywhere, none are).
@@ -19,7 +20,7 @@ import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
     // the sidebar's order (SettingsCatalog.panes)
-    case general, dictation, speech, shortcuts, projects, agents, privacy, storage
+    case general, dictation, screenText = "screentext", speech, shortcuts, projects, agents, privacy, storage
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
@@ -34,6 +35,7 @@ enum SettingsPane: String, CaseIterable {
         case .shortcuts: view = AnyView(ShortcutsPane())
         case .speech: view = AnyView(SpeechPane())
         case .dictation: view = AnyView(DictationPane())
+        case .screenText: view = AnyView(ScreenTextPane())
         case .projects: view = AnyView(ProjectsPane())
         case .agents: view = AnyView(AgentsPane())
         case .privacy: view = AnyView(PrivacyPane())

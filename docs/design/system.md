@@ -558,7 +558,7 @@ Test builds force them with `BLURT_REDUCE_TRANSPARENCY=1`, `BLURT_INCREASE_CONTR
   first: ⌃ held alone a moment, then ⇧ or ⌥ joins. A chord pressed together (⌃⌥-drag moves windows in some window
   managers) stays the window manager's and never draws. One colour (`markup`), one width rule, one hint wording. The
   recording's hint is the open island's key line ("Hold ⌃ to draw · ⇧ box · ⌥ ellipse"), not a pill over the
-  recorded area: nothing but the ink itself may land in the video, and the island is never captured.
+  recorded area: nothing but the ink itself may land in the video, and the island is never in Blurt's own recordings (left out by window; other tools such as ⌘⇧4 can capture Blurt's chrome, so it can be shown and reported).
 - **Never cover what the user is pointing at.** The note bubble docks beside the frozen selection (right, left, below,
   above, on the selection's display), with its caret toward it.
 

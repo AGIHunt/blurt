@@ -544,7 +544,7 @@ func renderMarked(_ img: CGImage, strokes: [[[Double]]], lineWidthPx: CGFloat) -
 
 // MARK: - Chrome: shutter flash, border flash, flying thumbnails
 
-/// A short-lived click-through window that is never captured.
+/// A short-lived click-through window, never in Blurt's own captures.
 func chromeWindow(_ frame: NSRect) -> NSWindow {
     let w = overlayWindow(frame, view: NSView())
     w.contentView?.wantsLayer = true

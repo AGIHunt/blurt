@@ -52,7 +52,7 @@ class Glossary(unittest.TestCase):
 
     def test_the_glossary_holds_in_every_table(self):
         # docs/positioning/facts.md and the README use the same words: the notch (never "the island"), cards (never
-        # "hanging"), 条目, 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
+        # "hanging"), 事项 (never 条目, BA-57), 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
         def every(lang):
             out = {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
             for p in (RES / f"{lang}.lproj").glob("*.stringsdict"):
@@ -61,7 +61,7 @@ class Glossary(unittest.TestCase):
             return out
         for name, t in every("zh-Hans").items():
             for k, v in t.items():
-                for word in ("挂成", "挂着", "挂回", "岛", "其它", "归过去", "像是", "智能体", "事项", "交接单", "一键", "随手", "递给"):
+                for word in ("挂成", "挂着", "挂回", "岛", "其它", "归过去", "像是", "智能体", "条目", "交接单", "一键", "随手", "递给"):
                     self.assertNotIn(word, v, f"{name} {k}: {word}")
         for name, t in every("en").items():
             for k, v in t.items():

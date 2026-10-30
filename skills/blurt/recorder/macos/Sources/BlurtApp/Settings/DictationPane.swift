@@ -256,6 +256,7 @@ struct DictationPane: View {
             notice
             SettingsGroup("dictation.main") { mainRows }
             SettingsGroup("dictation.text") { textRows }
+            SettingsGroup("dictation.translation") { translateRows }
             SettingsGroup("dictation.data") {
                 historyRow
                 SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }),
@@ -421,17 +422,18 @@ struct DictationPane: View {
                     .disabled(!m.enabled)
             }
         }
-        translateRows
         wordsRow
     }
 
-    /// Translate: into what (⌘ while talking turns it on), the cloud or this Mac, the apps where it is always on.
+    /// Translate (⌘), its own box (2026-10-30): into what — dictation's own target, not ⌥T's (writing your words in
+    /// another language usually goes the other way from reading) —, the cloud or this Mac (its own switch), and the apps
+    /// where it starts on (read and remove; ⌘ in an app adds it, ⌘ again removes it).
     @ViewBuilder var translateRows: some View {
-        SettingRow("dictation.translate", detail: T("dictation.translate.settings.detail")) {
-            // auto first, then every language by its own name (日本語, Español); ⌥T uses the same setting
-            ChoicePopup(label: T("dictation.translate.settings.title"),
-                        choices: DictationTranslateTarget.allCases.map { ($0, $0 == .auto ? T("dictation.translate.target.auto") : $0.endonym) },
-                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }), dividers: [1])
+        SettingRow("dictation.translate", detail: TranslateTargets.autoNote(m.translate.target) ?? T("dictation.translate.settings.detail")) {
+            // Auto first, named by its pair (TranslateTargets: global-first), then every language by its own name
+            ChoicePopup(label: T("dictation.translate.settings.title"), choices: TranslateTargets.choices(),
+                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }),
+                        width: TranslateTargets.popupWidth, dividers: [1])
         }
         .disabled(!m.enabled)
         let cloud = ScreenTextRefine.cloudPayload != nil, local = Dictation.shared.polishModel != nil
@@ -451,7 +453,13 @@ struct DictationPane: View {
             }
         }
         if !m.translate.apps.isEmpty {
-            SettingsLine(padding: 8) { Hint(T("dictation.translate.apps")) }
+            SettingsLine(padding: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Hint(T("dictation.translate.apps"))
+                    Text(T("dictation.translate.apps.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             ForEach(m.translate.apps.sorted(), id: \.self) { b in
                 SettingsLine(padding: 8) {
                     HStack(spacing: 8) {

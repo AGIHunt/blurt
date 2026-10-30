@@ -1,7 +1,7 @@
 // BlurtRecorder — native macOS recorder for blurt (ScreenCaptureKit + AVAssetWriter).
 //
 // Flow: region picker (drag / click a window / F = full screen) → 3-2-1 countdown → recording with a floating
-// control bar (timer, mic level, pause, pen, stop) that is never captured. Output: H.264/AAC mp4 + events.jsonl
+// control bar (timer, mic level, pause, pen, stop) that is never in the recording. Output: H.264/AAC mp4 + events.jsonl
 // (pauses, markers, clicks, cursor samples, pen strokes). Built on first use by record.py with `swiftc`.
 // Pen: hold ⌃ and drag to circle / underline / point at things — the ink is in the video and in events.jsonl.
 //

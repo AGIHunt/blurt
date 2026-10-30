@@ -52,7 +52,7 @@
   "island.hatching_other": "正在整理 {n} 条",
   "island.toast.sorted_one": "整理好了 · {n} 条待审",
   "island.toast.sorted_other": "整理好了 · {n} 条待审",
-  "island.toast.sorted_none": "整理好了 · 没有新条目",
+  "island.toast.sorted_none": "整理好了 · 没有新事项",
   "island.toast.failed": "{what}没能完成",
   "island.toast.retry": "重试",
   "island.toast.log": "查看日志",

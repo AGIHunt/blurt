@@ -1512,18 +1512,34 @@ class Engine:
 TRANSLATE_TARGETS = {"en": "English", "zh": "Simplified Chinese", "zh-Hant": "Traditional Chinese", "ja": "Japanese",
                      "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese",
                      "it": "Italian", "ru": "Russian"}
-# A target is "auto" (Chinese ↔ English, the model picks the direction), a language ("ja"), or "X|Y" (v1.0.6, the
-# app's "Translate into" list): into X, and into Y — the user's own language — when the text is already in X.
+# A target is "auto:H|O" (2026-10-30, global-first: H the user's own language, O the other one — text in H goes into O,
+# anything else into H; the model picks the direction), "auto" (the same with Chinese and English: the app before
+# that, still understood), a language ("ja"), "X|keep" (a fixed language, 2026-10-30: into X, and a text already in X
+# given back as it is — the app sees it came back unchanged and says "Already in X"), or "X|Y" (v1.0.6, still
+# understood: into Y — the user's own language — when the text is already in X).
+
+
+def auto_pair(target: str) -> tuple[str, str] | None:
+    """"auto:ja|en" → ("ja", "en"); "auto" → ("zh", "en"); anything else → None."""
+    if target == "auto":
+        return ("zh", "en")
+    if target.startswith("auto:") and "|" in target:
+        h, _, o = target[5:].partition("|")
+        if h and o:
+            return (h, o)
+    return None
 
 
 def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"), terms: bool = False,
                      spoken: bool = False) -> str:
     """`terms`: the message starts with a "Words:" line (dictation: the user's own names and terms — without it 口喷鸡
     came out as "spray chicken"); `spoken`: the text is a dictation, which may still have hesitations in it."""
-    a, b = (TRANSLATE_TARGETS.get(x, x) for x in pair)
+    auto = auto_pair(target)
+    a, b = (TRANSLATE_TARGETS.get(x, x) for x in (auto or pair))
     into, _, also = target.partition("|")
     x, y = TRANSLATE_TARGETS.get(into, into), TRANSLATE_TARGETS.get(also, also)
-    rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if target == "auto"
+    rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if auto
+            else f"Translate it into {x}; if it is already in {x}, reply with it exactly as it is." if also == "keep"
             else f"Translate it into {x}; if it is already in {x}, translate it into {y}." if also
             else f"Translate it into {x}.")
     return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
@@ -1564,6 +1580,10 @@ def translate_guard(src: str, out: str, target: str, terms: list[str] | None = N
         return "empty"
     if " ".join(out.split()) == " ".join(src.split()):
         return None
+    if auto_pair(target):       # either way: the model picks the direction (only the plain failures are caught)
+        target = "auto"
+    if target.endswith("|keep"):    # into X, or the text as it was (already X): that passes above
+        return translate_guard(src, out, target[:-len("|keep")], terms)
     if "|" in target:           # into X, or into Y when the text was in X already
         into, _, also = target.partition("|")
         first = translate_guard(src, out, into, terms)

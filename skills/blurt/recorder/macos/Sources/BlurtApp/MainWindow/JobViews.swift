@@ -140,7 +140,7 @@ extension JobLook {
         return min((done + part) / Double(s.count), 1)
     }
 
-    /// What it is doing now, as a status ("Preparing…", "正在写入条目…"): the step's name reads as a heading, this as
+    /// What it is doing now, as a status ("Preparing…", "正在写入事项…"): the step's name reads as a heading, this as
     /// what is happening.
     static func doing(_ j: Job) -> String {
         guard j.agent == nil, j.isActive, let s = j.currentStep else { return status(j) }

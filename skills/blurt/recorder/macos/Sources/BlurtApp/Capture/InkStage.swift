@@ -17,7 +17,7 @@
 //  • finishing: the stage drops below the flight and fades while the marked picture flies from the selection to the
 //    notch and becomes the card (HangingCards.catchCapture; Reduce Motion: it fades in at the card instead). Discarded
 //    (Esc), it just fades. The unmarked picture stays as shots/NNN.png; the strokes stay editable (Edit Note).
-//  • its window is never captured (chromeSharing) and never takes the keys (the bubble has them).
+//  • its window is never in Blurt's own captures (left out by window; chromeSharing) and never takes the keys (the bubble has them).
 // Tests: the bubble's `noteink` command draws here while the stage is up; `stage` reports it (SnapApp).
 import AppKit
 import BlurtCore

@@ -56,7 +56,7 @@
 "capture.drawer.no_projects" = "还没有项目 · 打开一个文件夹，它就是一个项目";
 "capture.drawer.none_sub" = "录屏放进未归类，截图作为卡片留在刘海下方";
 "capture.drawer.open_failed" = "没能把这个文件夹打开成项目";
-"capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
+"capture.drawer.open_message" = "选一个文件夹。它的事项保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
 "capture.drawer.pick_title" = "移到";
 "capture.drawer.switch_title" = "切换项目";
@@ -154,7 +154,7 @@
 "capture.picker.start" = "开始录制";
 "capture.picker.window_record" = "单击选择这个窗口";
 "capture.picker.window_snap" = "单击截取这个窗口";
-"capture.prompt.shots" = "用 blurt skill 处理这批素材：%@\n这是截图模式的 session（mode: shots，没有录屏视频）。shots.jsonl 的每一行是一条素材，锚定一条条目：\"type\": \"shot\" 是截图（就是这一条的首帧；.marked.png 上已经有用户的笔迹；有 .wav 的是语音备注，先转写），\"type\": \"voice\" 是没有图的语音备注（\"said\" 有就是转写，没有就转写 wav）。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页；写好 items.json 后用两三句话总结。";
+"capture.prompt.shots" = "用 blurt skill 处理这批素材：%@\n这是截图模式的 session（mode: shots，没有录屏视频）。shots.jsonl 的每一行是一条素材，锚定一个事项：\"type\": \"shot\" 是截图（就是这个事项的首帧；.marked.png 上已经有用户的笔迹；有 .wav 的是语音备注，先转写），\"type\": \"voice\" 是没有图的语音备注（\"said\" 有就是转写，没有就转写 wav）。\n这是口喷鸡 App 发起的无人值守后台运行：不要提问，也不要启动审核页；写好 items.json 后用两三句话总结。";
 "capture.rec.discard" = "丢弃";
 "capture.rec.discard_q" = "丢弃这段录屏？";
 "capture.rec.discard_also" = "会一起丢弃：%@";
@@ -365,7 +365,7 @@
 "capture.text.none" = "这里没有识别到文字";
 "capture.text.failed" = "没能读取屏幕";
 "capture.action.translate" = "截图翻译";
-"capture.action.translate.detail" = "框选文字，翻译成中文或英文";
+"capture.action.translate.detail" = "框选文字，翻译成「设置 → 截图取字 → ⌥T 翻译成」里选的语言";
 "capture.menu.translate" = "截图翻译";
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
@@ -373,6 +373,13 @@
 "capture.text.try_again" = "再试一次";
 "capture.text.no_permission" = "从屏幕复制文字需要「屏幕录制」权限";
 "capture.text.stale" = "读不了屏幕：需要重新授权屏幕录制";
+"capture.text.copied_paste" = "已复制 · ⌘V 粘贴";
+"capture.text.translation_pasted" = "已粘贴译文";
+"capture.text.translation_copied" = "已复制译文";
+"capture.text.already" = "已是%@ · 原文已复制";
+"capture.text.card.copy" = "复制";
+"capture.text.card.copied" = "已复制";
+"capture.text.card.ax" = "译文";
 "capture.card.ax_follow_up" = "开启「辅助功能」权限后，口喷鸡会自动把卡片的备注贴进去";
 "capture.taken.empty_expired_title" = "最近 7 天没有拖走的卡片";
 "capture.taken.empty_expired_hint" = "更早拖走的卡片在废纸篓里。";

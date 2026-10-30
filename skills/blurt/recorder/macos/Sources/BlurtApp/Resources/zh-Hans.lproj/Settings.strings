@@ -28,9 +28,9 @@
 "settings.general.login" = "登录时打开口喷鸡";
 "settings.general.none" = "未归类，之后再选项目";
 "settings.general.open_unassigned" = "在访达中显示未归类";
-"settings.general.projects.hint" = "每个项目是一个文件夹，条目放在它的 .blurt 里，不进 git。";
+"settings.general.projects.hint" = "每个项目是一个文件夹，事项放在它的 .blurt 里，不进 git。";
 "settings.general.recording" = "录屏";
-"settings.general.remove.help" = "从口喷鸡移除（文件夹和条目都不动）";
+"settings.general.remove.help" = "从口喷鸡移除（文件夹和事项都不动）";
 "settings.general.system_audio" = "同时录系统声音";
 "settings.general.snap_sound" = "截图时播放快门声";
 "settings.general.collect" = "把系统截图也变成卡片";
@@ -69,7 +69,7 @@
 "settings.privacy.deleted_by_default_once" = "单独的音频文件；视频里本来就有声音。";
 "settings.privacy.freed" = "释放了 ";
 "settings.privacy.index_can_be_deleted" = "索引随时可以重建。";
-"settings.privacy.items_appear_spotlight" = "在 Spotlight 中显示条目";
+"settings.privacy.items_appear_spotlight" = "在 Spotlight 中显示事项";
 "settings.privacy.keep_raw_live_caption" = "转写后保留麦克风音频";
 "settings.privacy.local_speech_recognition_only" = "语音识别";
 "settings.privacy.macos_applies_screen_recording" = "重新打开口喷鸡后，macOS 才会应用这项更改。";
@@ -173,13 +173,13 @@
 "settings.storage.videos.auto" = "自动删除视频";
 "settings.storage.videos.never" = "从不";
 "settings.storage.videos.after" = "%ld 天后";
-"settings.storage.videos.footer" = "视频移到废纸篓，条目和文字稿保留。";
-"settings.storage.videos.confirm" = "条目、画面和文字稿都会保留。";
+"settings.storage.videos.footer" = "视频移到废纸篓，事项和文字稿保留。";
+"settings.storage.videos.confirm" = "事项、画面和文字稿都会保留。";
 "settings.storage.videos.auto_confirm_title" = "%ld 天后自动删除视频？";
 "settings.storage.videos.auto_confirm" = "已经超过的会马上移到废纸篓：";
 "settings.storage.videos.auto_on" = "打开";
 "settings.storage.model.footer_shared" = "在「模型」里选择。Hugging Face 共享缓存里的模型，口喷鸡不会删除。";
-"settings.storage.videos.detail" = "已整理录屏的 %@，删掉后条目和文字稿都还在";
+"settings.storage.videos.detail" = "已整理录屏的 %@，删掉后事项和文字稿都还在";
 "settings.storage.recordings" = "录屏";
 "settings.storage.app_data" = "App 数据";
 "settings.storage.uses" = "口喷鸡占用 %@";
@@ -240,7 +240,7 @@
 "settings.general.assistant.detail" = "权限、模型和第一次试用，四步完成。";
 "settings.general.language.relaunch" = "现在重新打开";
 "settings.kit.allow_help" = "按住 Control 点按可打开「系统设置」";
-"settings.privacy.spotlight.detail" = "用 ⌘空格 按标题找到条目。";
+"settings.privacy.spotlight.detail" = "用 ⌘空格 按标题找到事项。";
 
 "settings.kw.pane.general" = "应用, 偏好, 选项, 通用";
 "settings.kw.pane.dictation" = "听写, 语音输入法, 说话打字, 语音转文字";
@@ -253,7 +253,7 @@
 "settings.kw.general.projects" = "文件夹, 仓库, 添加项目, 移除项目, 未归类";
 "settings.kw.general.login" = "开机启动, 自动启动, 登录项, 开机";
 "settings.kw.general.language" = "英文, 中文, 界面语言, 翻译";
-"settings.kw.general.after_recording" = "整理, 处理, 条目, 录完";
+"settings.kw.general.after_recording" = "整理, 处理, 事项, 录完";
 "settings.kw.general.countdown" = "倒计时, 延迟, 3 秒";
 "settings.kw.general.system_audio" = "声音, 系统声音, 电脑声音, 内录";
 "settings.kw.general.collect" = "截图, 系统截图, ⌘⇧3, ⌘⇧4";
@@ -335,7 +335,7 @@
 "onboarding.step_of" = "第 %ld 步，共 %ld 步";
 "onboarding.use.snap.detail" = "截一块屏幕，存成卡片";
 "onboarding.use.voice.detail" = "说一句备注，存成卡片";
-"onboarding.use.record.detail" = "边录屏边讲，整理成条目交给 Agent";
+"onboarding.use.record.detail" = "边录屏边讲，整理成事项交给 Agent";
 "onboarding.use.text" = "截图取字";
 "onboarding.use.text.detail" = "拖过一段文字，复制下来，光标在输入框里就直接打进去";
 "onboarding.use.translate" = "截图翻译";
@@ -405,7 +405,7 @@
 "settings.general.about.version" = "口喷鸡 %@";
 "settings.general.assistant.link" = "设置助手…";
 "settings.projects.add" = "添加项目文件夹…";
-"settings.projects.key_help" = "这个项目的条目编号以 %@ 开头。";
+"settings.projects.key_help" = "这个项目的事项编号以 %@ 开头。";
 "settings.projects.missing" = "找不到文件夹";
 "settings.projects.empty" = "还没有项目。添加一个文件夹，截图和语音备注就能归到里面。";
 "settings.projects.more" = "更多";
@@ -446,7 +446,6 @@
 "settings.projects.list_heading" = "项目文件夹";
 
 /* 截图取字（⌥C）的二次识别（ScreenTextRefine） */
-"settings.general.section.screen_text" = "截图取字";
 "settings.general.screen_text" = "精确识别";
 "settings.general.screen_text.hint" = "⌥C 先用 macOS 自带识别立即复制，再用模型复查一遍，修正认错的符号（如 l 和 /、0 和 @）。复查完时你还没复制别的内容，剪贴板就会换成修正后的文字。";
 "settings.general.screen_text.off" = "关闭";
@@ -459,8 +458,17 @@
 "settings.general.screen_text.detail.downloading" = "正在下载… %@";
 "settings.general.screen_text.download" = "下载";
 "settings.general.screen_text.detail.cloud" = "使用 %@，每次约 ¥0.001，截图会发送到云端";
-"settings.general.screen_text.detail.cloud_missing" = "请先在「听写 → 云端润色」中填写 Key";
+"settings.general.screen_text.detail.cloud_missing" = "请先在「模型 → 云端润色」中填写 Key";
 "settings.general.screen_text.setup" = "设置…";
+"settings.kit.screen_text" = "截图取字";
+"settings.kw.pane.screentext" = "OCR, 截图文字, 取字, 复制文字, 截图翻译, 翻译, 屏幕";
+"settings.screen_text.section.copy" = "取字（⌥C）";
+"settings.screen_text.section.translate" = "翻译（⌥T）";
+"settings.screen_text.translate" = "⌥T 翻译成";
+"settings.screen_text.translate.hint" = "用来读：把屏幕上的文字译成你的语言。「自动」把你自己语言的文字译成另一种，其他语言译成你的语言。选了某种语言就总是得到这种语言：已经是这种语言的文字原样复制。听写的 ⌘ 翻译有它自己的设置。";
+"settings.kw.screentext.refine" = "OCR, 精确识别, 识别, 认错, 符号, PaddleOCR";
+"settings.kw.screentext.translate" = "翻译, 译文, 语言, 目标语言, 自动, 截图翻译";
+"settings.kw.screentext.translate_cloud" = "云端, DeepSeek, Key, 翻译, 在线";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "现在就能用。想更准确或离线使用，可再加下面两项。";

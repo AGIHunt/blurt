@@ -118,7 +118,7 @@ extension App {
                   "last_other_app": d.lastKeyFromOtherApp.map { $0.timeIntervalSince1970 } ?? NSNull(),
                   "history": DictationHistory.shared.load().count, "last": d.lastResult ?? NSNull()])
         case "testpad": DictationTestPad.command(rest)
-        case "translate":           // translate toggle [island] | target auto|en|zh | cloud on|off | app BUNDLE | reset | status
+        case "translate":           // translate toggle [island] | target auto|en|zh | cloud on|off | app BUNDLE | learned BUNDLE | auto | reset | status
             let a = rest.split(separator: " ").map(String.init)
             switch a.first ?? "" {
             case "toggle": d.toggleTranslate(via: a.count > 1 && a[1] == "island" ? "island" : "command")
@@ -128,6 +128,9 @@ extension App {
                 var c = Dictation.translateConfig; c.cloud = a[1] == "on"; Dictation.setTranslateConfig(c)
             case "app" where a.count > 1:
                 var c = Dictation.translateConfig; c.apps.insert(a[1]); Dictation.setTranslateConfig(c)
+            case "learned" where a.count > 1: d.announceLearned(bundle: a[1])     // the suggestion accepted: said, with Undo
+            case "auto": emit(["event": "dictation_translate_auto", "home": TranslateTargets.pair.home.rawValue,
+                               "other": TranslateTargets.pair.other?.rawValue ?? NSNull(), "label": TranslateTargets.autoLabel()])
             case "reset": Dictation.set("translate", nil); Dictation.set("translate_hint_shown", nil); Dictation.set("translate_cloud_hint", nil)
             default: break
             }

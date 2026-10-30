@@ -35,8 +35,8 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 |---|---|---|
 | **Snap** | `⌥A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in the note as you talk; stop talking for about 2 s and it's saved, with what was heard shown next to *Saved* for a moment — it stays while the pointer is over it, and once you click into the words it waits for `⏎` so you can fix one. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` (or the undo arrow that shows with the pointer over the note) takes the last stroke back. A spoken note never ends while you draw or within 1.5 s of a stroke; with only drawing or typing, finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). The place under the note (a project, or *Unassigned* when there is no current project) changes where this snap goes: click it (or press Tab), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. When the words are saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
 | **Voice note** | `⌥V` | Press once and talk — pauses to think are fine; press `⌥V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Press `⇧` on its own while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
-| **Copy Text from Screen** | `⌥C` | Drag across any text on the screen (a crosshair, nothing dims) and let go: the text is on the clipboard about 0.2 s later, laid out as it was — lists, tables, code indentation — without the half lines cut off at the edges. With the cursor in a text field it is typed there too. Nothing is saved as a card. Esc or a click without a drag cancels. It uses macOS's own text recognition, so nothing to download; with the AI service key (or a local model) a second read corrects it, and the clipboard is swapped for the corrected text only if you haven't copied something else meanwhile. |
-| **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Dictation → Translate into* (Auto: Chinese ↔ English, the default; text already in that language goes into your system's language), keeping line breaks, lists, code, paths and names. The notch says *Translating…*, then shows the result, which is on the clipboard (and typed in when the cursor is in a text field). It uses the AI service key when you added one, else this Mac's polish model. |
+| **Copy Text from Screen** | `⌥C` | Drag across any text on the screen (a crosshair, nothing dims) and let go: the text is on the clipboard about 0.2 s later, laid out as it was — lists, tables, code indentation — without the half lines cut off at the edges. With another app in front it is pasted there too, wherever dictation would paste (WeChat included; not into a password field, nor when nothing that takes text has the focus). The notch says *Pasted* only once the text shows in the field; where Blurt can't check that (WeChat), it says *Copied · ⌘V to paste*. The clipboard keeps the text either way. Nothing is saved as a card. Esc or a click without a drag cancels. It uses macOS's own text recognition, so nothing to download; with the AI service key (or a local model) a second read corrects it, and the clipboard is swapped for the corrected text only if you haven't copied something else meanwhile. |
+| **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Copy Text from Screen → ⌥T translates into* (⌥T's own; dictation's ⌘ has its own, since reading usually goes the other way). *Auto* (the default) is your own language ↔ the other one, named in the list (*Auto: 简体中文 ↔ English*, *Auto: English ↔ 日本語*): text in your language goes into the other one, anything else into yours; a language you pick is always what you get — text already in it is copied as it is, and the notch says so (*Already in English · original copied*). Line breaks, lists, code, paths and names are kept. The notch says *Translating…*, then what became of it (*Translation pasted*, *Copied · ⌘V to paste* or *Translation copied*); the whole translation shows in a card under the notch, with *Copy*. The card goes after 10 s (not while the pointer is on it); with the pointer on it, Esc closes it — otherwise Esc stays with the app you're typing in. The translation is on the clipboard and pasted by the same rules as ⌥C. It uses the AI service key when you added one, else this Mac's polish model. |
 | **Record** | `⌥R` | Pick an area, a window or the full screen and click *Start recording*; after a 3-second countdown (*Start now* skips it), talk while you use your product. `⌥R` again (or *Finish* at the notch) stops. |
 
 While recording: `⌥P` pause, `⌥A` snap a full-resolution still without pausing, hold `⌃` and drag to draw on the
@@ -490,13 +490,19 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   Esc cancels it. Silence after a press means nothing started. Voice notes do the same; nothing plays while a screen
   recording runs. *Settings → Dictation* has a switch for each (*Sound when listening starts / stops*).
 - **Translate while you talk.** Tap ⌘ (either side) while dictating, or click Peep in the notch: the take is typed
-  translated. *Settings → Dictation → Translate into*: *Auto: Chinese ↔ English* (default), or English, 简体中文,
-  繁體中文, 日本語, 한국어, Français, Deutsch, Español, Português, Italiano, Русский; what you said in that language
-  already goes into your system's language instead. ⌥T (translate from screen) uses the same setting. The cloud model
-  translates when you have one set up (better, about 1 s); otherwise the local polish model.
+  translated. *Settings → Dictation → ⌘ translates into*: *Auto* (default) — your own language ↔ the other one, named
+  in the list (for example *Auto: 简体中文 ↔ English*, or *Auto: English ↔ 日本語* when your Mac is in English with
+  Japanese as its next language): what you say in your language goes into the other one, anything else into yours —
+  or English, 简体中文, 繁體中文, 日本語, 한국어, Français, Deutsch, Español, Português, Italiano, Русский; what you
+  said in that language already goes in as you said it. ⌥T (translate from screen) has its own setting, since reading
+  usually goes the other way. The cloud model translates when you have one set up and *Use the cloud model to
+  translate* is on (better, about 1 s); otherwise the local polish model.
 - **Each app remembers.** Turn on Structured (⇧) or Translate (⌘) in an app and it stays on there until you switch it
   back; after an hour away the notch reminds you as the next take starts. *Settings → Dictation → Remember Structured
-  and Translate for each app* turns this off; the apps are listed there with Reset.
+  and Translate for each app* turns this off; the apps are listed there with Reset. The apps where dictation is translated are
+  listed under *Dictation is translated in these apps*: ⌘ in an app turns translation on and it stays on there, ⌘ again
+  turns it off and removes the app; you can also remove one there. With remembering turned off, the notch may suggest
+  translating in an app you keep translating in; accepting it says so, with *Undo*.
 - **Nothing heard?** The notch names the microphone it listened with — "Didn't catch anything (AirPods)", or "No
   sound from AirPods" when that mic gave only silence (muted, the wrong input, a headset still connecting) — and
   *Change Mic…* opens *Settings → Dictation*'s microphone.
@@ -537,7 +543,7 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
     dictation in Structured. A click on the notch while it listens does the same. Whatever you dictate right after a
     list starts a paragraph of its own;
   - **press ⌘ on its own while you talk** (or click Peep at the notch) to **translate**: what you say is typed in
-    the language set in *Translate into* (above). The notch shows a small language tag while it is on (EN, 中, ⇄ for
+    the language set in *⌘ translates into* (above). The notch shows a small language tag while it is on (EN, 中, ⇄ for
     Auto…) and the words as you said them; the translation goes in when you stop. It uses the AI service key when you
     added one, else this Mac's polish model; if it can't translate, the original goes in and the notch says so. Press
     ⌘ again to turn it off;
@@ -708,7 +714,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 
 ## 中文
 
-口喷鸡把你说的、截的、录的整理成条目——问题、想法、笔记、待办——放在你的项目里，再交给写代码的 Agent 去做。
+口喷鸡把你说的、截的、录的整理成事项——问题、想法、笔记、待办——放在你的项目里，再交给写代码的 Agent 去做。
 在 Mac 上，它还能把你说的话直接打在光标处（**听写**，按 `Fn`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
 「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。
 所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
@@ -729,8 +735,8 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 |---|---|---|
 | **截图** | `⌥A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候文字就显示在备注里；停下来 2 秒左右就保存，「已保存」旁边会显示听到的内容一会儿——鼠标停在上面时不会关，点进文字后会等你按 `⏎`，方便改错字。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。说话的备注不会在你画的时候、也不会在落笔后 1.5 秒内结束；只画了或只打了字，就按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。文字保存后，屏幕其余部分马上恢复亮度。备注下面的项目（没有当前项目时是「未归类」）可以改这张截图去哪：点它（或按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
 | **语音备注** | `⌥V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥V`（或点刘海上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的 App。说的时候，识别出的文字显示在刘海下方。 |
-| **截图取字** | `⌥C` | 在屏幕上拖过任何文字（十字光标，屏幕不变暗），松手：大约 0.2 秒后文字就在剪贴板里，版面照原样——列表、表格、代码缩进都在，边缘被截掉的半行不会混进来。光标在输入框里时也会直接输入进去。不存成卡片。按 `Esc` 或只点不拖就取消。用的是 macOS 自带的文字识别，不用下载；有 AI 服务 Key（或本机模型）时会再读一遍做修正，只有在你这期间没复制别的东西时，剪贴板才换成修正后的版本。 |
-| **截图翻译** | `⌥T` | 同样拖选，识别后翻译成「设置 → 听写 → 翻译成」里选的语言（默认「自动」：中文 ↔ 英文；已经是那种语言的文字会翻译成系统语言），换行、列表、代码、路径和名字都保留。刘海上先显示「正在翻译…」，再显示译文；译文在剪贴板里（光标在输入框里时直接输入）。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型。 |
+| **截图取字** | `⌥C` | 在屏幕上拖过任何文字（十字光标，屏幕不变暗），松手：大约 0.2 秒后文字就在剪贴板里，版面照原样——列表、表格、代码缩进都在，边缘被截掉的半行不会混进来。前台是别的 App 时同时粘贴进去，听写能粘贴的地方都行（包括微信；密码框、没有可输入的焦点时不粘贴）。确认输入框里出现了这段文字，刘海才说「已粘贴」；确认不了（比如微信）就说「已复制 · ⌘V 粘贴」。文字总会留在剪贴板里。不存成卡片。按 `Esc` 或只点不拖就取消。用的是 macOS 自带的文字识别，不用下载；有 AI 服务 Key（或本机模型）时会再读一遍做修正，只有在你这期间没复制别的东西时，剪贴板才换成修正后的版本。 |
+| **截图翻译** | `⌥T` | 同样拖选，识别后翻译成「设置 → 截图取字 → ⌥T 翻译成」里选的语言（⌥T 自己的设置；听写的 ⌘ 翻译另有设置，因为读和写的方向通常相反）。默认「自动」是你的语言 ↔ 另一种，列表里会写出这一对（「自动：简体中文 ↔ English」）：你的语言译成另一种，其他语言译成你的语言；选了某种语言就总是得到这种语言，已经是这种语言的文字原样复制，刘海上会说（「已是英语 · 原文已复制」）。换行、列表、代码、路径和名字都保留。刘海上先显示「正在翻译…」，再说结果（「已粘贴译文」「已复制 · ⌘V 粘贴」或「已复制译文」）；完整译文显示在刘海下面的小卡片里，带「复制」按钮。卡片 10 秒后自己收起（指针在上面时不收）；指针在卡片上时按 Esc 关闭，否则 Esc 照常留给你正在用的 App。译文在剪贴板里，按和 ⌥C 一样的规则粘贴。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型。 |
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
 
 录屏时：`⌥P` 暂停；`⌥A` 截下这一刻的全分辨率画面，不用暂停；按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆（先按 `⌃` 再加另一个键；同时按下的 `⌃⌥` 留给窗口管理工具），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。
@@ -738,7 +744,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 截下的画面有几张；标记（`⌥M`）单独计数。
 操作流程、动画、时序问题用录屏；一个画面、一句话能说清的，用截图或语音备注。
 
-**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，8 秒内（鼠标停在上面时更久）可以点「留下」，没留下的录音会放进废纸篓，不会直接删掉；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空条目。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
+**出了状况时。** 没有「屏幕录制」权限时，截图和录屏会在选区域之前就在刘海上说明，点「去设置」。更新之后，macOS 有时还留着旧版本的授权、实际已经用不了：这时会提示「截不了图：需要重新授权屏幕录制」，点「重新授权…」会告诉你在列表里删掉口喷鸡、再加回来，然后重新打开口喷鸡。你自己结束的语音备注，就算环境吵也会留下，也不会不打招呼就删掉：要是什么也没听到，刘海上会提示「没听到声音」，8 秒内（鼠标停在上面时更久）可以点「留下」，没留下的录音会放进废纸篓，不会直接删掉；要是没识别出文字，会先作为卡片留着，写着「没识别出文字」，可以「重试」——有当前项目时也一样，重试拿到文字后才归进项目，不会放进去一条空事项。备注没能转成文字时，刘海上会提示并给「重试」，重试拿到文字后照样归到原来的项目。说着说着麦克风断开了（比如摘下 AirPods），备注会带着已说的部分结束；还没开口就断开的话，截图的备注会提示「麦克风断开了」，可以改成打字。录屏没能录完时会说明原因（比如「磁盘满了」「屏幕录制被拒绝」），并留下已有的内容：停下之前录到的那段视频（「磁盘满了，前 3:12 已保留」）和录屏期间截的图，可以直接「整理」；磁盘一满就马上停下，不会空跑到你点「完成」；开始前磁盘空间不多时也会先提醒。退出口喷鸡不会丢掉还在处理的截图或语音备注：要么先存好，要么下次打开时接着处理；已经取消的语音备注，就算在「撤销」消失前退出，也不会再回来。
 
 **长语音备注。** 语音备注不再因为你停下来思考就结束：再按一次 `⌥V`、点「完成」，或者按住说话时松开，才会结束（最长 10 分钟；刘海上显示已录时长，最后一分钟显示剩余时间）。想要以前那样？打开「设置 → 通用 → 停顿时结束语音备注」，安静 1.5 秒就结束。截图时说的备注仍然是停顿即结束——它只是关于一张图的一句话。
 
@@ -751,29 +757,29 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 ### 2. 项目和当前项目
 
 **项目**就是你电脑上的一个文件夹，跟编辑器打开文件夹一样：在主窗口里「打开文件夹…」（`⌘O`），或者把文件夹拖进来。
-条目存在这个文件夹的 `.blurt/` 里，口喷鸡会自动让它不进 git。
+事项存在这个文件夹的 `.blurt/` 里，口喷鸡会自动让它不进 git。
 
-**当前项目**决定新的截图、语音备注和录屏去哪。由你来选：口喷鸡不会按你正在用的 App 去猜，也不会自己移动条目。按
+**当前项目**决定新的截图、语音备注和录屏去哪。由你来选：口喷鸡不会按你正在用的 App 去猜，也不会自己移动事项。按
 `⌥O`（或点刘海上的项目名），打几个字母（项目名或代号）就能切换；菜单栏的「当前项目 ▸」（最近用过的在前）、「设置 →
 通用」和主窗口的命令面板（`⌘K`）也一样。
-- **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的条目也进这里。
-- **未归类**（不选当前项目）：截图和语音备注先作为卡片留在刘海下方（见下），等你决定放哪；录屏的条目进「**未归类**」。
+- **某个项目**：截图和语音备注直接进这个项目，有没有备注都一样，马上开始整理。录屏的事项也进这里。
+- **未归类**（不选当前项目）：截图和语音备注先作为卡片留在刘海下方（见下），等你决定放哪；录屏的事项进「**未归类**」。
 
-如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（条目、代号和编号都在），之后的内容也会归到这里；选错了文件夹，面板里会直接说「这不是「billing-api」的文件夹」，可以重选。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」，在那里（或截图备注的列表里）选它，会问你它现在在哪。
+如果你移动了项目文件夹或改了名，口喷鸡不会往原来的位置写：截图和语音备注先留作卡片，录屏进「**未归类**」，刘海上会提示「找不到「billing-api」的文件夹」和「**找到它…**」。选一下它现在的位置，就还是原来那个项目（事项、代号和编号都在），之后的内容也会归到这里；选错了文件夹，面板里会直接说「这不是「billing-api」的文件夹」，可以重选。切换项目的列表里，这样的项目显示成带问号的文件夹，写着「文件夹不见了」，在那里（或截图备注的列表里）选它，会问你它现在在哪。
 
 录屏结束时，刘海上会写明它去了哪——「已归到 Atlas Web · 更改」——点「**更改**」就能换个项目（还在整理的话，整理完再移过去）。
 直接归进项目的截图也一样：「已归到 Atlas Web · AW-14 · 更改」。换了之后会提示「已移到 … · 撤销」，点撤销就移回来。
-你自己已经挪走的条目留在你放的地方：「更改」和「撤销」只移动还在原处的那些。
+你自己已经挪走的事项留在你放的地方：「更改」和「撤销」只移动还在原处的那些。
 
 没选项目的内容整理时，Agent 会拿到你的项目列表（名字、描述、文件夹和最近几条的标题），可以给每一条**建议**一个项目。
-这只是建议：在「**未归类**」里，这一条后面会写「可能属于 Atlas Web · 移过去」，点一下就移过去；建议同一个项目的条目排在一起，
+这只是建议：在「**未归类**」里，这一条后面会写「可能属于 Atlas Web · 移过去」，点一下就移过去；建议同一个项目的事项排在一起，
 上方有一行「可能属于 Atlas Web」和「**全部移过去（3）**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
 
-在主窗口里选中条目（`⌘` 点、`⇧` 点、`⌘A`）后按 **`M`**：在选中的地方弹出一个小列表，打字筛选，`↩` 全部移过去，`Esc` 关闭。
+在主窗口里选中事项（`⌘` 点、`⇧` 点、`⌘A`）后按 **`M`**：在选中的地方弹出一个小列表，打字筛选，`↩` 全部移过去，`Esc` 关闭。
 也可以拖到侧栏的项目上，或者用工具栏、右键菜单、`⌘K` 里的「移到项目」。每次移动都能 `⌘Z`。
 
 侧栏里的项目按你的顺序排：新打开的文件夹排在最后，拖动项目就能调整，用哪个都不会改变顺序——所以 `⌘5`…`⌘9` 永远对应同样的五个项目。
-双击项目（或选中后按回车）可以直接改名。「**从口喷鸡移除**」立刻生效（文件夹和条目都不动），「**撤销**」会把项目原样放回来。
+双击项目（或选中后按回车）可以直接改名。「**从口喷鸡移除**」立刻生效（文件夹和事项都不动），「**撤销**」会把项目原样放回来。
 「**项目**」菜单里是同样的操作，作用于当前打开的项目。
 
 项目的文件夹被移走或改了名，口喷鸡会在它旁边显示带问号的文件夹：「文件夹不见了」。这期间不会往旧位置存任何东西：要放进去的截图、语音备注先留成卡片，录屏放进「未归类」，刘海上会说明，并给出「**找到它…**」。选出文件夹现在的位置，它就还是原来的项目，卡片也会放进去。选的如果是另一个项目的文件夹，口喷鸡会说明，其他什么都不变。
@@ -816,7 +822,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 - 第一张卡片出现时，它会提示一句怎么用：点一下复制，或拖进任意 App。
 - 录屏时卡片收着不放下来（免得挡住你要演示的东西），按 `⌥H` 仍然可以放下来看。
 
-整理时刘海上会出现一个小蛋；蛋破壳了，新条目就出现在「待处理」里。
+整理时刘海上会出现一个小蛋；蛋破壳了，新事项就出现在「待处理」里。
 
 ### 4. 审核
 
@@ -827,19 +833,19 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 `A` 要做，`X` 丢弃，`Z` 撤销，`M` 并进上一条，`G` 列表视图，`?` 查看全部快捷键（「帮助」菜单里的 `⌘/` 也行）。
 
 按 Mac 的习惯编辑：
-- `M` 把选中的条目移到项目：打字筛选，`↩` 移过去（见「项目和当前项目」）。
+- `M` 把选中的事项移到项目：打字筛选，`↩` 移过去（见「项目和当前项目」）。
 - `E` 直接在列表里改标题（回车保存，Esc 恢复原标题）；回车进入右边的详情，光标停在标题末尾。在字段里按 Esc 恢复原来的内容，再按一次（或在第一个控件上按 `⇧Tab`）回到列表。
 - 在「**复现步骤**」里，回车开始下一步，在空的一步上回车结束列表，`⌃⌘↑` / `⌃⌘↓` 移动一步。
 - 种类、严重程度、类型这几个标签点开是选项菜单；`1`–`4` 设种类（问题、想法、笔记、待办），列表和详情里一样。
 - **整个窗口一个撤销**：`⌘Z` / `⇧⌘Z` 撤销或重做最近一步，不管是在哪做的——改状态、移动、改标题、在详情里改的字段——「编辑」菜单会写明是哪一步（「撤销改种类」「撤销编辑标题」）。它只撤销你自己的这一步：Agent 之后写的状态不受影响；口喷鸡还在保存时按下的 `⌘Z` 会等保存完再执行。
-- `⌫` 或 `⌘⌫` 丢弃选中的条目，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
-- 搜索也能按编号找条目（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。条目不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
+- `⌫` 或 `⌘⌫` 丢弃选中的事项，和访达一样。把项目从口喷鸡移除没有快捷键，在项目的菜单里。
+- 搜索也能按编号找事项（`AW-11`，或者它移走之前的编号），搜索框、`⌘K` 和 Agent（MCP）都一样。事项不在当前位置时（已丢弃、被筛选隐藏或在别的项目里），列表会说明它在哪，并有按钮直接显示它。
 - 在第一条上按 `↑` 会走到列表上方的横幅和正在运行的任务；在横幅上按回车会打开它。
-- 每个位置有自己的筛选：在「全部条目」里设的状态筛选只留在那里，不会把「待处理」筛空。
+- 每个位置有自己的筛选：在「全部事项」里设的状态筛选只留在那里，不会把「待处理」筛空。
 - `⌘Q` 退出口喷鸡，和其他 Mac App 一样（在设置窗口里也是）。`⌘W` 只关掉这个窗口，口喷鸡留在菜单栏里，听写和截图照常能用。
-- 待办的「**完成标准**」就是交给 Agent 时说的「做到什么算完成」，和待办的详情放在一起，能看也能改。条目里存着的字段一个都不会藏起来。
-- 你或同步工具把条目文件改成了口喷鸡读不懂的样子，它还留在列表里，标题前有个小警示标记，详情写着「这一条的文件读不出来」，带
-  「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他条目照常更新，口喷鸡只提醒一次是哪个文件要改。
+- 待办的「**完成标准**」就是交给 Agent 时说的「做到什么算完成」，和待办的详情放在一起，能看也能改。事项里存着的字段一个都不会藏起来。
+- 你或同步工具把事项文件改成了口喷鸡读不懂的样子，它还留在列表里，标题前有个小警示标记，详情写着「这一条的文件读不出来」，带
+  「**在编辑器中打开**」和「**在访达中显示**」。口喷鸡不会覆盖它，也不会因为它停下别的：其他事项照常更新，口喷鸡只提醒一次是哪个文件要改。
   改好保存，它就回来了。同一个文件换成了另一条（切分支、同步、手改了 uid），列表里显示的就是新的那条。
 
 ### 5. 交给 Agent
@@ -851,28 +857,28 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 - **复制指令**：一句话的指令，指向一份交接说明，Agent 需要的东西（包括截图）都在里面。粘贴给你平时用的 Agent 就行。「**复制全文**」复制的是交接说明本身。
 - **导出交接包…**：给人看，而不是给 Agent：一个 `.zip`，里面有概要（按种类、按状态的条数，然后每一条的状态、你的原话、复现步骤、
   疑似代码位置和截图）、每条一个文件，以及截图和录屏片段。里面只用相对路径，同事的电脑上也能打开。选好保存位置即可，文件名是
-  项目、日期和条数。打包时刘海会显示进度，完成后告诉你存在哪里，并带「**在访达中显示**」。条目的状态不会变。你这台 Mac 上的路径
-  不会写进去：项目里的路径变成相对路径，其他路径只留文件名；已经找不到的截图会注明没有打包进来。「条目」菜单、右键菜单、
+  项目、日期和条数。打包时刘海会显示进度，完成后告诉你存在哪里，并带「**在访达中显示**」。事项的状态不会变。你这台 Mac 上的路径
+  不会写进去：项目里的路径变成相对路径，其他路径只留文件名；已经找不到的截图会注明没有打包进来。「事项」菜单、右键菜单、
   工具栏的「**交给 Agent**」菜单和 `⌘K` 里都有。
 
-想把条目发到别处——Slack 频道、飞书群、Linear、GitHub、Notion——直接跟 Agent 说，比如「把结账页的问题打包，发到 Slack 的 #web 频道」。
+想把事项发到别处——Slack 频道、飞书群、Linear、GitHub、Notion——直接跟 Agent 说，比如「把结账页的问题打包，发到 Slack 的 #web 频道」。
 它会打包（`bundle_items` 工具），再用它自己已有的工具发出去；口喷鸡本身不接任何第三方服务。「设置 → Agent → 可以这样跟 Agent 说」
 里还有几个例子。
 
-装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到条目变成「进行中」，再变成「待验证」。
-如果会话结束了 Agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），条目会留在「进行中」，上方写着「会话已结束，Agent 没有回报结果」：
-点「**打开会话**」看看它做了什么，再「**重新开始会话**」「**标为完成**」或「**收回**」。「条目」菜单和右键菜单里也有「打开会话」。
+装了口喷鸡 MCP 的 Agent（首次设置时口喷鸡会帮你装）会自己回报：你会看到事项变成「进行中」，再变成「待验证」。
+如果会话结束了 Agent 却没回报（它退出了、崩溃了，或者 Mac 重启过），事项会留在「进行中」，上方写着「会话已结束，Agent 没有回报结果」：
+点「**打开会话**」看看它做了什么，再「**重新开始会话**」「**标为完成**」或「**收回**」。「事项」菜单和右键菜单里也有「打开会话」。
 
 会话结束后，终端那里说的是它怎么结束的，而不是一个死掉的窗口：「Codex 启动失败」并附上 Agent 最后说的话（登录失效、报错），
-分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些条目再跑一遍
-（只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。条目上方的提示条
+分支上有改动时是「可以查看改动」，没有就是「已结束 · 没有改动」。「**重新开始会话**」用同一个 Agent 把这些事项再跑一遍
+（只会跑一次，启动时按钮是灰的）；「**收回**」把它们放回「要做」；「**查看输出**」看 Agent 最后留在屏幕上的内容。事项上方的提示条
 最多两个按钮，其余的在「**⋯**」里。Agent 启动后一分钟都没有动静，会显示「没有反应」：看看它的窗口，或者重新开始。
 没登录的 Agent 在「交给 Agent」面板里选不了：面板会写明要运行什么，并给出另一个 Agent；Agent 从命令行交接也会得到同样的答复。
 
-面板用的总是这些条目自己的项目（它的默认 Agent、上次给它选的模型），和当前项目是哪个无关。交不了的条目在面板打开之前就说明原因，
-并给出出路：已丢弃的（「**恢复**」）、待验证或已完成的（「**重新打开**」）、还有会话在做的（「**打开会话**」）。上一个会话没回报就结束了的条目，
+面板用的总是这些事项自己的项目（它的默认 Agent、上次给它选的模型），和当前项目是哪个无关。交不了的事项在面板打开之前就说明原因，
+并给出出路：已丢弃的（「**恢复**」）、待验证或已完成的（「**重新打开**」）、还有会话在做的（「**打开会话**」）。上一个会话没回报就结束了的事项，
 可以直接再交：会先从那个会话收回。对已经结束、什么都没改的会话按「**收回**」，它的 worktree、`blurt/…` 分支和窗口也会一起清掉，
-不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。只收回会话里的一条（`R`、状态菜单）时，其他条目还跟着它，
+不会在你的仓库旁边留下东西；改过东西的，worktree 留着，可以「**查看改动…**」。只收回会话里的一条（`R`、状态菜单）时，其他事项还跟着它，
 等一条都不剩了才清理。Codex 会请你信任一次口喷鸡的 hooks（选「Trust all and continue」）；
 hooks 的命令不会再因为 Python 或口喷鸡更新而变，所以不会再问。Agent 停在这类第一次的询问（信任文件夹、信任 hooks）时，
 会话标题下面会有一行字说明它在问什么、该怎么答。如果你在信任询问那一步直接退出，会话会说它停在了那里、什么都没开始；
@@ -884,16 +890,16 @@ hooks 的命令不会再因为 Python 或口喷鸡更新而变，所以不会再
 
 **Claude 桌面端。** 装了 Claude 桌面端时，「交给 Agent」面板会问 Claude Code 在哪运行：「**在口喷鸡终端运行**」（推荐）或
 「**在 Claude 桌面端运行**」。选择按 Agent 记住（设置 → Agent 里也能改）。选桌面端时，口喷鸡照样建好 worktree，然后在 Claude
-里开一个新对话、填好这些条目：在 Claude 里确认文件夹并点发送。口喷鸡看不到那个对话的实时状态，条目上方写着「在 Claude 桌面端进行 ·
-进度由 Agent 回报」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，条目才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
-不装就自己标记条目：这时条目上写着「这里收不到进度，做完后回来标为完成」，「**标为完成**」就在「**前往 Claude**」旁边，会话列表里写「在 Claude 桌面端 · 等你标记」。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
+里开一个新对话、填好这些事项：在 Claude 里确认文件夹并点发送。口喷鸡看不到那个对话的实时状态，事项上方写着「在 Claude 桌面端进行 ·
+进度由 Agent 回报」，带「**前往 Claude**」；Agent 通过口喷鸡 MCP 回报后，事项才会变。Claude 没装 MCP 时，面板会给「**安装…**」，
+不装就自己标记事项：这时事项上写着「这里收不到进度，做完后回来标为完成」，「**标为完成**」就在「**前往 Claude**」旁边，会话列表里写「在 Claude 桌面端 · 等你标记」。「**查看改动…**」和「**合并**」照常作用在 worktree 上。已经在口喷鸡终端里跑的 Claude 会话，可以用「**⋯**」菜单里的
 「**在 Claude 桌面端继续…**」移过去（需要 Claude Code 2.1.285 或更高、用 Claude 订阅登录）；Agent 会在这里停下，实时状态也随之停止。
 Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度，并先给「**安装…**」。桌面端没接过对话时，「**重新开始会话**」会在口喷鸡终端里
-为这些条目开一个新会话。
+为这些事项开一个新会话。
 
 「**查看改动…**」列出会话分支上改了什么。「**合并**」（`⌘↩`）把它并进项目文件夹；Agent 没提交的改动（Codex 在 worktree
 里提交不了），按钮会变成「**提交并合并**」，由口喷鸡先提交，提交说明形如「HS-5 Create done.txt (Blurt hand-off)」。
-没有改动的分支只能丢弃，不会被推送。「**丢弃**」会把条目放回「要做」。随时按 `Esc` 关掉这个面板。Agent 还开在它的窗口里时
+没有改动的分支只能丢弃，不会被推送。「**丢弃**」会把事项放回「要做」。随时按 `Esc` 关掉这个面板。Agent 还开在它的窗口里时
 （一轮做完了在那儿等着），按钮是「**结束会话并查看**」：先结束 Agent，再重新显示改动（包括它结束前刚写的），然后再从这里合并。
 合并只会并入面板上显示的内容：打开面板后分支又有了改动，口喷鸡会请你重新查看。
 
@@ -903,7 +909,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 所以登录后直接点就行。排在前面的 Agent 用不了时，由下一个来整理：每次换都会在刘海里说，整理记录里也留着（「由 Codex 整理（Claude Code 没登录）」）。
 一个都用不了时，会按你排的顺序列出每个 Agent 和它自己的解决办法。
 
-### 6. 条目状态
+### 6. 事项状态
 
 每条只有一个状态。
 
@@ -917,14 +923,14 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **新**：刚记下，你还没看。**要做**：你留下了。
 - **已交给 Agent** → **进行中**：Agent 接手了，正在做。
 - **待验证**：Agent 说做好了。看一眼：没问题就「**标为完成**」，不对就「**退回**」。
-- **完成**：你确认过了。**不做**：你决定不做（没结束的条目都能标）。两者都能重新打开。
-- **已丢弃**：垃圾桶；「**恢复**」会把条目放回丢弃前的状态。
+- **完成**：你确认过了。**不做**：你决定不做（没结束的事项都能标）。两者都能重新打开。
+- **已丢弃**：垃圾桶；「**恢复**」会把事项放回丢弃前的状态。
 
-待处理 = 新 + 待验证：标了不做、完成或丢弃的条目会立刻从待处理里消失。Agent 永远不能把条目标为完成——Agent 说「修好了」，一律是待验证。
+待处理 = 新 + 待验证：标了不做、完成或丢弃的事项会立刻从待处理里消失。Agent 永远不能把事项标为完成——Agent 说「修好了」，一律是待验证。
 
-点条目前面的状态圆环就能改状态，菜单里只列现在说得通的几步。列表里的快捷键：`A` 要做 · `D` 标为完成 ·
-`R` 往回（退回、收回、重新打开或恢复，哪个适用就是哪个）· `W` 不做 · `X` 丢弃 · `S` 打开菜单。按完会有一行提示说条目去了哪，带「**撤销**」；
-按了用不上的键，也会说明原因（已丢弃的条目要先按 `R` 恢复）。
+点事项前面的状态圆环就能改状态，菜单里只列现在说得通的几步。列表里的快捷键：`A` 要做 · `D` 标为完成 ·
+`R` 往回（退回、收回、重新打开或恢复，哪个适用就是哪个）· `W` 不做 · `X` 丢弃 · `S` 打开菜单。按完会有一行提示说事项去了哪，带「**撤销**」；
+按了用不上的键，也会说明原因（已丢弃的事项要先按 `R` 恢复）。
 
 ### 7. 听写（macOS）
 
@@ -946,8 +952,8 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
   按两下只用来发送刚听写的内容：一分钟内没往这个 App 里听写过、也没有还在处理的，就什么都不按。
   按两下稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时按两下，会等文字填进去再发送——输入框里出现文字就马上回车，之后才还原你的剪贴板。刘海右侧会显示一个对勾和「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了），刘海上会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「按两下 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「按两下 Fn 发送（回车）」。
 - **提示音。** 麦克风真正开始收音时小鸡叫一声（可以说了），结束时啄两下；按 Esc 取消是轻轻啄一下。按了没声音，就是没开始。语音备注也一样；录屏时不出声。「设置 → 听写」里开始和结束各有一个开关。
-- **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 翻译成」：「自动：中文 ↔ 英文」（默认），或 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский；说的已经是这种语言时，改翻成系统语言。⌥T 截图翻译也用这个设置。设置了云端模型就用云端（更好，约 1 秒），否则用本机润色模型。
-- **每个 App 记住你的选择。** 在某个 App 里打开结构化（⇧）或翻译（⌘）后，在这个 App 里一直保持，直到你再切回；隔一小时再用，开始时刘海会提示一句。在「设置 → 听写 → 在每个 App 里记住结构化和翻译」里可以关掉，用过的 App 也列在那里，可以重置。
+- **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 按 ⌘ 翻译成」：「自动」（默认）是你的语言 ↔ 另一种，列表里会写出这一对（比如「自动：简体中文 ↔ English」；系统是英文、第二语言是日语时是「自动：English ↔ 日本語」）：说你自己的语言就译成另一种，说别的语言就译成你的语言；也可以选 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский，说的已经是这种语言时按原话输入。⌥T 截图翻译有它自己的设置（读和写的方向通常相反）。设置了云端模型并打开「用云端模型翻译」就用云端（更好，约 1 秒），否则用本机润色模型。
+- **每个 App 记住你的选择。** 在某个 App 里打开结构化（⇧）或翻译（⌘）后，在这个 App 里一直保持，直到你再切回；隔一小时再用，开始时刘海会提示一句。在「设置 → 听写 → 在每个 App 里记住结构化和翻译」里可以关掉，用过的 App 也列在那里，可以重置。自动翻译的 App 列在「这些 App 里听写自动翻译」下面：在某个 App 里按 ⌘ 开启翻译，以后在那里一直翻译；再按 ⌘ 关掉，就从列表里移除；也可以在那里移除。关掉「记住」时，刘海可能会建议在你常翻译的 App 里一直翻译，接受后会说一句并带「撤销」。
 - **没听到？** 刘海上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单独按一下），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。
 - **Fn 和 macOS。** macOS 自己也会用 Fn（「系统设置 → 键盘 → 按下 🌐 键时」：表情、切换输入法或系统听写）。开启「辅助功能」后，口喷鸡会把 Fn 留给自己，macOS 的这个功能就不会同时触发（「Fn 只用来听写」，默认开启）。这项系统设置也会响应 Fn 时，「设置 → 听写」会提示，点**去设置…**会打开键盘设置，并告诉你改哪一项。口喷鸡不会替你改它。如果 Typeless 或 Wispr Flow 正在运行，设置页会提示：两边都会响应 Fn，退出其中一个，或者给其中一个换个键。用 Fn 听写完一段、或者它们刚打开时，刘海上也会提示一次（每天一次），点**改用右 Option** 就马上换键。
@@ -955,7 +961,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），这次就不润色，直接输入识别原文。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 模型」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
   - **说话时按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，刘海右侧会出现清单标记（头两次还会有一句短话说明它做什么）。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下刘海也一样。紧跟在清单后面说的内容，会另起一段。
-  - **说话时单按一下 ⌘**（或点刘海里的小鸡）**翻译**：说的话翻译成上面「翻译成」里选的语言再输入。打开时刘海上有一个小的语言标签（EN、中，「自动」是 ⇄……），字幕显示的是你说的原话，停下后输入译文。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型；翻译不成时输入原文，刘海上会说明。再按一次 ⌘ 关掉。
+  - **说话时单按一下 ⌘**（或点刘海里的小鸡）**翻译**：说的话翻译成上面「按 ⌘ 翻译成」里选的语言再输入。打开时刘海上有一个小的语言标签（EN、中，「自动」是 ⇄……），字幕显示的是你说的原话，停下后输入译文。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型；翻译不成时输入原文，刘海上会说明。再按一次 ⌘ 关掉。
   - **⌥L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，刘海上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，会按你改过的文字重排，放进剪贴板，输入框里的文字不动。文字还在输入时按下，会等它输入完：重排的就是你刚看到的那一条。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，刘海上会出现几秒「排成清单」。「排成清单」和「撤销」只属于它们那一条：开始下一段听写时就会消失，不会改到更新的文字。
   - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI Agent 的指令。
   - 「设置 → 听写」风格下的「按 App 类型」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他 App）选：跟随上面、轻整理、原话、结构化，或「自动」（只有模型排成了清单才用结构化的版本）。如果你在某个 App 里总是同样地切换（三次以上），刘海上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。
@@ -965,7 +971,7 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **光标附近的文字**也有帮助：开始说话时，口喷鸡会读取光标前后各约 500 个字和窗口标题，让名字和文档里的写法一致。「保留录音」打开时（默认打开），它随这条听写记录一起保存，供听写实验室和反馈使用，到期一起删除；关掉后只用于这一次听写，不会保存。从不读密码框。这项和自动学习都可以在设置里关掉。
 - **权限**：「辅助功能」用来粘贴、读取光标附近的文字和听到 Fn；「输入监控」用来听到其他按键；还有麦克风。按键还听不到时，「设置 → 听写」最上面会提示；「权限」一栏列出每一项的状态（都开好时收成一行「都已开启」），以及上次在其他 App 里听到按键的时间。听不到的时候，菜单栏菜单第一行是「开启听写…」，刘海上大约每天提醒一次。这两处和设置里的「开启…」都会打开**权限向导**（见下）；开关打开后几秒内自动生效，不用重启。没有辅助功能权限、或者焦点不在输入框上时，文字会复制到剪贴板，刘海下方会提示「已复制，⌘V 粘贴」，按 `⌘V` 粘贴即可。粘贴之后，你原来的剪贴板内容会还原。光标在密码框里时既不输入也不复制：刘海上会说明，真要用的话点**复制**。
 - **权限向导。**「设置权限…」（设置助手、「设置 → 隐私」「设置 → 听写」）和每项权限的「允许…」会替你跑腿，一次处理一项还没开的权限：口喷鸡先把自己加进列表（第一次 macOS 可能弹出自己的提示），打开「系统设置」里正好那一页，再在「系统设置」窗口旁边放一个小面板告诉你怎么做，通常就是「在这里打开口喷鸡的开关」。列表里没有口喷鸡时，把面板上的口喷鸡图标拖进列表就行。面板跟着窗口走，显示每一步的状态，开关一打开就自动进入下一步；「跳过」可以留到以后。全部完成后口喷鸡回到最前面，打个勾：「好了，现在在任何 App 里都能听写。」屏幕录制权限在第一次截图或录屏需要时才问（截图失败的提示上有「允许…」），有时要重新打开口喷鸡才生效，面板和「设置 → 隐私」里有**重新打开口喷鸡**按钮。口喷鸡从不替你点击或修改「系统设置」里的任何东西。
-- **听写**是主窗口侧栏里的一页，在「全部条目」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、「未润色」（润色没成功，鼠标停在上面能看到原因）、用到了词库里的词。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为条目**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）：粘贴「Claude, Codex, tmux」一次加三个（已经有的会提示，不会重复加）；`Tab` 进入词，`←` `→` 移动，`⌫` 移除，`Return` 或双击改写法。移除、添加和忽略都会在刘海上提示，可以**撤销**（`⌘Z` 也行）。没能识别的听写会标出来，录音还在时可以**重试**。⌥L 替换过的一条，详情里显示现在的文字，下面是最初的版本。按键：`↑` `↓` 切换，`E` / `Return` 改正，`⌘C` 复制，`⌫` 删除（刘海上会提示并可**撤销**，`⌘Z` 也行，录音也一起找回来），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着、还听不到按键或还没有语音模型时也会说明。历史默认保留 30 天（在「设置 → 听写」里改），每天检查一次，不只在启动时。「保留录音」（默认打开，那里单独一个开关）会把每条听写的录音和光标附近的文字随记录保留这 30 天；关掉后，文字输入完录音就删除。口喷鸡在听写处理完之前退出的，会列为没有输入，可以**重试**。
+- **听写**是主窗口侧栏里的一页，在「全部事项」下面（也可以从菜单栏 →「听写历史…」、`⌥⌘D` 或命令面板进入）。它按天列出所有听写：打到了哪个 App、时间、文字，以及几个小标记：润色过、「未润色」（润色没成功，鼠标停在上面能看到原因）、用到了词库里的词。工具栏的搜索框搜的就是这一页。列表上方是今天的数字（听写次数、字数、大约省下的分钟）和「听写设置…」入口。选中一条，右边显示详情：输入的文字和语音模型识别的原文，可以分开看，也可以对照看，各有复制按钮。在这里还能**转为事项**（进当前项目，没有当前项目就进「未归类」）或删除，并能看到 App、时长、输入方式、文字实际是哪种风格，以及识别和润色模型的名字。第二个标签**词库**用来添加、筛选和移除你的自定义词（见上）：粘贴「Claude, Codex, tmux」一次加三个（已经有的会提示，不会重复加）；`Tab` 进入词，`←` `→` 移动，`⌫` 移除，`Return` 或双击改写法。移除、添加和忽略都会在刘海上提示，可以**撤销**（`⌘Z` 也行）。没能识别的听写会标出来，录音还在时可以**重试**。⌥L 替换过的一条，详情里显示现在的文字，下面是最初的版本。按键：`↑` `↓` 切换，`E` / `Return` 改正，`⌘C` 复制，`⌫` 删除（刘海上会提示并可**撤销**，`⌘Z` 也行，录音也一起找回来），`⌘F` 搜索。还没有听写时，这一页会告诉你按哪个键，听写关着、还听不到按键或还没有语音模型时也会说明。历史默认保留 30 天（在「设置 → 听写」里改），每天检查一次，不只在启动时。「保留录音」（默认打开，那里单独一个开关）会把每条听写的录音和光标附近的文字随记录保留这 30 天；关掉后，文字输入完录音就删除。口喷鸡在听写处理完之前退出的，会列为没有输入，可以**重试**。
 - 录屏时听写不可用，因为麦克风正被录屏占用。听写和语音备注不会同时听：先开始的那个用完麦克风，另一个才能用。
 
 #### 听写测试台（开发者选项）
@@ -984,9 +990,9 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 ### 8. 设置、存储和隐私
 
 - **Agent**：口喷鸡用来整理录屏、截图和语音备注以及 AI 补全的 Agent，按顺序用：排在前面、能用的先用，没登录或额度用完时自动换下一个。用不到的取消勾选。每个 Agent 下面的「**录屏**」和「**卡片**」是各自用的模型和思考强度：录屏默认用 Agent 自己的模型、低思考强度，卡片（和 AI 补全）默认用最省的模型，都能在这里改。只有会让口喷鸡用不了的问题才标红。装好的 Agent 里有 blurt skill 和 MCP 时显示「skill + MCP」；还没装时有「连接…」，装之前先列出要改的地方。最下面的「**可以这样跟 Agent 说**」有三句可以直接用的话（点旁边的按钮复制）：发到群里、建到项目管理工具里、修一条。「导出」设置页已经去掉：发到哪里由 Agent 用它自己的工具完成，以前指向「导出」的链接会打开这里。
-- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的名字和大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型（包括这个版本用不到的旧模型）可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），条目、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
+- **存储**：看清空间都用在哪：每个文件夹里的录屏和截图、每个模型的名字和大小（是否在用）、听写历史和录音、口喷鸡自己的文件。没被用到的模型（包括这个版本用不到的旧模型）可以移到废纸篓。视频最占地方（每分钟约 9 MB）：「删除」可以删掉 30、90、180 天前或全部已整理录屏的视频，「自动删除视频」可以替你定期删（打开时如果马上就会删掉视频，会先问你）。默认关闭——你不开口，口喷鸡不删你的东西。只删视频本身（移到废纸篓），事项、画面和文字稿都会保留。「移到废纸篓」像访达一样直接移，刘海上有「撤销」（⌘Z 也行）；只有打开「自动删除视频」时才先问。如果有东西放不回去（废纸篓已经清空），刘海上会说。
 - **快捷键**也能用键盘改：Tab 到输入框，按空格开始录，按删除键去掉，任何修改都能 ⌘Z 撤销。所有 App 都在用的键会被拒绝并说明原因——⌘ 加任何字母或键（⌘C 复制、⌘Q、⌘W、⌘空格）、标准的 ⇧⌘ 组合（⇧⌘Z 重做、⇧⌘Q 退出登录、⇧⌘S…），以及 ⌃⌘Q、⌃⌘F、⌥⌘H、⌥⌘W、⌥⌘M；macOS 自己的快捷键（⇧⌘3 等截屏键）会说明是 macOS 在用。其他 ⇧⌘ 组合（⇧⌘1、⇧⌘2…）可以用。别的动作已经在用的键，会先问你：「互换」会把这个动作原来的键换给它。
-- **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API 密钥时，语音本来就只在你的 Mac 上识别；打开它，以后设置了密钥也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。录屏、截图、条目都存在你的 Mac 上；整理或交给 Agent 时，需要的内容会发给你用的 Agent，按它的条款处理（开着 Agent 时，页面底部会写明）。
+- **隐私**：完整的权限列表、Spotlight，还有「不用云端语音识别」：没设置云端 API 密钥时，语音本来就只在你的 Mac 上识别；打开它，以后设置了密钥也不会用云端。现在用不到的权限（辅助功能已经能听到 Fn 时的输入监控）显示「不需要」；你关掉的权限写着「已关闭」，旁边是「系统设置…」（macOS 不会再问一次）。口喷鸡自己的数据（`~/.blurt`、`~/Blurt`）只有你的 macOS 账户能读。录屏、截图、事项都存在你的 Mac 上；整理或交给 Agent 时，需要的内容会发给你用的 Agent，按它的条款处理（开着 Agent 时，页面底部会写明）。
 - **手改 `~/.blurt/config.json`**：`}` 或 `]` 前面多一个逗号没关系。文件完全读不了时，口喷鸡和它的脚本都先用默认设置（听写、语音备注和整理照常能用），把原文件另存为 `config.json.bad-<时间>`，启动时说一次，配「显示文件」；改好之前，设置的改动不会保存（第一次没存上的改动也会提示）。不管 skill 装在哪，口喷鸡都还能找到它的脚本。
 - **菜单**里只给能用的快捷键标上按键；被别的 App 或另一个口喷鸡占着的不标，鼠标停上去会说明原因。听写还用不了时，菜单第一行会说为什么：「开启听写…」（权限）、「设置听写…」（语音工具没下载下来）或「下载语音模型…」。
 - **同时开着两个口喷鸡**（正式版和开发版）：先打开的那个负责快捷键；听写键交给能听到它的那个（macOS 没给权限的版本不会占着它）；它退出后，另一个接管。

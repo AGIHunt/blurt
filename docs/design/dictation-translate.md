@@ -150,3 +150,31 @@ Kimi Code 2、Code 1、备忘录 1；中位 29 字，最长 495 字）+ 20 条�
   已经是 X 就翻成 Y），守卫只在原文确实是 X 时才接受 Y。
 - 实测（DeepSeek V3.1，经 OpenRouter）：中文、英文句子翻成日语、法语都对；目标英文、原文英文时翻成了中文。本机
   润色模型在中英以外的语言上没测，设置里的说明写「用云端更好」。
+
+## 8. 2026-10-30：固定语言总是这种语言（和 ⌥T 一致）
+
+- 创始人对 ⌥T 的决定：选了 X 就总是得到 X；原文已经是 X 就原样复制，刘海上说「已是英语 · 原文已复制」
+  （docs/design/screen-text.md §1d）。⌥T 和听写本来共用 `DictationTranslateTarget.request(home:)`，同一个设置在两处意思
+  不同说不过去，所以听写也改了：**说的已经是 X 就不发请求、按原话输入**（1.0.6 之前就是这样），语音模型没判出语种时
+  发 `X|keep`（polish.py：翻成 X，已经是 X 就原样返回；守卫按 X 检查）。§7 里「翻成系统语言」那条作废，
+  `DictationTranslateRoute.home` / `Dictation.homeLanguage` 删掉；polish.py 仍认得 `X|Y`。
+- 「自动：中文 ↔ 英文」不变。设置 → 通用里加了一行「⌥T 翻译成」，改的是同一个 `record.dictation.translate.target`，
+  下面一行小字说明听写翻译也用这个设置。
+- 测试：`DictationTranslateTests`（`testTheTargetIsTheOtherLanguageOfTheOneHeard`、`testTheScreenRequestKeepsAFixedLanguage`、
+  `testKeptAsIsComparesTheAnswerWithTheText`），`tests/test_polish_cloud.py`（`X|keep` 的 prompt 和守卫）。
+
+## 9. 2026-10-30（创始人定的设计）：⌘ 和 ⌥T 各有各的设置；「自动」以用户为准；自动翻译的 App 列表
+
+- **两个目标语言**：听写的 ⌘ 是把自己说的话译成别的语言（写），⌥T 是把屏幕上的外文译成自己的语言（读），方向通常相反。
+  §8 的「共用一个设置」作废：设置 → 听写 →「翻译（⌘）」一组有「按 ⌘ 翻译成」、它自己的「用云端模型翻译」、自动翻译的 App 列表；
+  ⌥T 的在新的「设置 → 截图取字」页（screen-text.md §1f）。原来的 `record.dictation.translate.target / cloud` 留给听写，
+  ⌥T 从「自动」开始，云端开关沿用迁移时听写的值。云端模型和 Key 仍只在一处设置。
+- **「自动」global-first，两边同一条规则**（`TranslateAutoPair`，screen-text.md §1f）：home = 用户自己的语言，other = English
+  （home 是英语时是系统里的下一种语言，没有就没有配对）；home 的话 → other，其他 → home。标签写出这一对（「自动：简体中文 ↔ English」），
+  刘海的提示也一样（「已开启翻译：简体中文 ↔ English · 再按 ⌘ 关闭」）。代码里不再有写死的中文 ↔ 英文；polish.py 收 `auto:H|O`。
+- **自动翻译的 App**：保持 v1.0.6 的对称规则（`DictationRemember.translate`，和结构化一样）——在某个 App 里按 ⌘ 打开翻译，
+  以后在那里一直翻译；按 ⌘ 关掉，就把这个 App 移除；刘海提示「以后在 X 里也会翻译 · 按 ⌘ 换回」。
+  - 「问一次」的建议（`DictationTranslateLearn`）只在关掉「在每个 App 里记住结构化和翻译」时才会出现（开着时按 ⌘ 已经记住了）；
+    接受后刘海说「以后在 X 里听写都会翻译」并带「撤销」——那时按 ⌘ 关掉不会移除它，所以撤销留在刘海上。
+  - 设置里的列表只看和移除，标题「这些 App 里听写自动翻译」，下面一行说明：按 ⌘ 开启就一直翻译，再按 ⌘ 关掉就移除；空的时候不显示。
+- 测试：`DictationRememberTests.testTranslateSticksAndSwitchingOffForgetsIt`（v1.0.6 原样）。
