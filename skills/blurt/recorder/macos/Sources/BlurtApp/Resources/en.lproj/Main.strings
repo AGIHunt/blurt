@@ -36,6 +36,11 @@
 "app.menu.selecting" = "Choosing an area…";
 "app.menu.shortcuts" = "Shortcuts…";
 "app.menu.updates" = "Check for Updates…";
+"app.menu.update_to" = "Update to Blurt %@…";
+"app.update.found" = "Blurt %@ is available";
+"app.update.found.action" = "Update…";
+"app.update.ready" = "Blurt %@ is downloaded · it installs when you quit";
+"app.update.ready.action" = "Restart Now";
 
 "app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or wait in Unassigned until you pick a project?";
 "app.migrate.keep" = "Keep %@";

@@ -36,6 +36,11 @@
 "app.menu.selecting" = "正在选择区域…";
 "app.menu.shortcuts" = "快捷键…";
 "app.menu.updates" = "检查更新…";
+"app.menu.update_to" = "更新到口喷鸡 %@…";
+"app.update.found" = "口喷鸡 %@ 可以更新了";
+"app.update.found.action" = "更新…";
+"app.update.ready" = "口喷鸡 %@ 已下载 · 退出时安装";
+"app.update.ready.action" = "立即重启";
 
 "app.migrate.ask" = "截图和语音备注以后还是默认放进 %@（沿用之前的设置），还是先放进未归类、之后再选项目？";
 "app.migrate.keep" = "继续放进 %@";

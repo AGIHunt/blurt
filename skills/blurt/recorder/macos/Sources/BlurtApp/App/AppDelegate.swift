@@ -1014,9 +1014,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
         else { add(T("app.menu.shortcuts"), #selector(mShortcuts), key: ",") }
         if Updater.shared.available {
-            let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
+            // a version found in the background and not looked at yet: the row names it
+            let found = Updater.shared.pending
+            let u = add(found.map { T("app.menu.update_to", $0) } ?? T("app.menu.updates"),
+                        Updater.shared.canCheck || found != nil ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
-            u.image = App.menuSymbol("arrow.down.circle")   // with no action giveSymbols can't tell which row it is
+            u.image = App.menuSymbol(found == nil ? "arrow.down.circle" : "arrow.down.circle.fill")   // with no action giveSymbols can't tell which row it is
         }
         menu.addItem(.separator())
         _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
