@@ -121,7 +121,7 @@ extension Dictation {
             guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
                   take.failure == nil else { return }
             emit(["event": "dictation_slow", "id": take.id, "stage": take.stage.rawValue])
-            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr",
+            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr", Dictation.cancelKey.label,
                        key: Dictation.slowToastKey, seconds: 60)
         }
     }
@@ -298,18 +298,36 @@ extension Dictation {
                     SpeechPane.showDictationModels()
                 }
             }
-            if dl.queue.contains(j.id) {
-                let p = dl.progress(j.id) ?? (0, j.sizeMB)
+            let first = DictationModels.shared.firstModelJob
+            for q in [j, first].compactMap({ $0 }) where dl.queue.contains(q.id) {
+                let p = dl.progress(q.id) ?? (0, q.sizeMB)
                 return island.toast(Loc.t("dictation.toast.model_downloading", table: "Dictation", modelSize(p.done),
-                                          modelSize(max(p.total, j.sizeMB))), key: Dictation.modelToastKey, seconds: 6,
+                                          modelSize(max(p.total, q.sizeMB))), key: Dictation.modelToastKey, seconds: 6,
                                     actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) {
                     ModelDownloads.showProgress()
                 }
             }
+            // no model at all (macOS 13–15): the small one first, or a cloud service's key; the recommended one stays
+            // in Settings
+            if !kept, let f = first {
+                emit(["event": "dictation_no_model_offer", "model": f.id, "size_mb": f.sizeMB])
+                var t = Island.Toast(text: Loc.t("dictation.toast.no_model", table: "Dictation"),
+                                     actionTitle: Loc.t("dictation.toast.no_model.action_size", table: "Dictation", modelSize(f.sizeMB)),
+                                     action: { Dictation.getSpeechModel(from: "island", job: f) })
+                t.secondTitle = Loc.t("dictation.toast.no_model.cloud", table: "Dictation")
+                t.second = {
+                    emit(["event": "dictation_no_model_cloud"])
+                    AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                }
+                t.key = Dictation.modelToastKey
+                t.icon = .warning
+                t.seconds = 10
+                return island.toast(t)
+            }
             let vad = self.speechModels?.onlyVADMissing ?? (j.sizeMB == DictationModels.vadMB)
             let text = kept ? Loc.t(vad ? "dictation.toast.no_vad.kept" : "dictation.toast.no_model.kept", table: "Dictation")
                 : vad ? Loc.t("dictation.toast.no_vad", table: "Dictation")
-                : Loc.t("dictation.toast.no_model", table: "Dictation", modelSize(j.sizeMB))
+                : Loc.t("dictation.toast.no_model", table: "Dictation")
             // needs you: the attention mark, as a failed take's; the button says what it brings and how big
             island.toast(text, key: Dictation.modelToastKey, icon: .warning, seconds: 8,
                          actionTitle: Loc.t("dictation.toast.no_model.action_size", table: "Dictation", modelSize(j.sizeMB))) {
@@ -467,6 +485,7 @@ extension Dictation {
                                        timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
+            entry.fellBackParts = r.fellBackParts
             entry.translate = r.translation
             entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
             if keep {
@@ -481,14 +500,20 @@ extension Dictation {
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
             // one line about how it went (DictationDeliveredLine: never two that replace each other in one frame)
+            // a double tap soon after a take that was only copied holds its Return (DictationCopiedGuard)
+            self.copiedAt = result == .copied ? CACurrentMediaTime() : nil
+            self.keyAfterCopy = false
             let line = DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
                                                    confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged,
                                                    noField: DictationInsert.lastNoField)
             switch line {
             case .copied, .copiedNotSent:
                 // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
-                // carries the ok check as every done line
-                if let k = line.copyKey { self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : nil) }
+                // carries the ok check as every done line; a copy because the app changed is a ⚠ toast (not typed)
+                if let k = line.copyKey {
+                    self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds,
+                               icon: line.checked ? .check : line.warns ? .warning : nil)
+                }
             case .notSent:
                 self.sendSkipped(nil)               // nothing went in: "Not sent"
             case .held:
@@ -574,15 +599,20 @@ extension Dictation {
         }
     }
 
-    /// A press this mode doesn't use: once a day, how it starts (not when the tap was a double tap's first one).
+    /// A press this mode doesn't use: how it starts. Tap mode's held press is said every time and at once, while the
+    /// key is still down (the trigger reports it past `tapMax`), so the user lets go before talking into nothing; hold
+    /// mode's tap once a day, after the double-tap window (it may be a double tap's first tap).
     func missedPress(_ m: DictationTrigger.Miss) {
+        if m == .heldInTapMode {
+            emit(["event": "dictation_miss", "miss": "\(m)", "down": trigger.armedDown])
+            return toast("dictation.toast.tap_mode", Dictation.keyShort, key: "dictation.miss", seconds: 4)
+        }
         let at = CACurrentMediaTime()
         DispatchQueue.main.asyncAfter(deadline: .now() + trigger.doubleTapWindow + 0.15) { [weak self] in
             guard let self = self, self.lastSendAt < at, !self.listening else { return }
-            let key = m == .tappedInHoldMode ? "dictation.toast.hold_mode" : "dictation.toast.tap_mode"
-            guard Dictation.onceADay("miss_\(m == .tappedInHoldMode ? "hold" : "tap")") else { return }
+            guard Dictation.onceADay("miss_hold") else { return }
             emit(["event": "dictation_miss", "miss": "\(m)"])
-            self.toast(key, Dictation.keyShort, key: "dictation.miss", seconds: 4)
+            self.toast("dictation.toast.hold_mode", Dictation.keyShort, key: "dictation.miss", seconds: 4)
         }
     }
 
@@ -624,7 +654,11 @@ extension Dictation {
         }
         let chat = category == DictationAppCategory.chat.rawValue
         guard let tip = DictationTip.next(chat: chat, sendOn: Dictation.doubleTapSend, sent: sent || take.sendAfterPaste, shown: tips),
-              tip != .reformat || !hk(.reformat).isEmpty else { return }
+              tip != .reformat || !hk(.reformat).isEmpty else {
+            // no notice, no tip on this take: the one cloud-polish reminder may come (DictationCloudReminder)
+            let inBlurt = take.front?.processIdentifier == ProcessInfo.processInfo.processIdentifier || Onboarding.needed
+            return remindCloudPolish(takes: tips["takes"] ?? 0, inBlurt: inBlurt)
+        }
         // after the double-tap window (a send then makes the tip moot), never over a result toast
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self, island.currentToast == nil, self.lastSendAt < take.keyUp, !self.listening else { return }
@@ -668,12 +702,13 @@ extension Dictation {
     /// missing, else the recommended one; only the VAD → the selected model's setup, which brings just that (0.6 MB),
     /// without changing the choice. The island then says it started, with Show; once it is in, the key works and a
     /// take that failed for it is offered again (modelArrived). Nothing known to get: the models' page.
-    static func getSpeechModel(from source: String) {
+    /// `job`: a model the island offered (the first, small one); nil: what `dictationJob` says.
+    static func getSpeechModel(from source: String, job: ModelDownloadQueue.Job? = nil) {
         MainActor.assumeIsolated {
             let m = DictationModels.shared
             Task { @MainActor in
                 if m.asr == nil { await m.load() }
-                guard let j = m.dictationJob else {
+                guard let j = job ?? m.dictationJob else {
                     emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": NSNull()])
                     return SpeechPane.showDictationModels()
                 }

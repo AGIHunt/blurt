@@ -246,15 +246,17 @@ final class ProjectPopover: NSViewController, NSTextFieldDelegate, NSTableViewDa
         let here = e.id == checked && e.kind != .none
         let c = PickCell()
         let top = lineAbove(row) ? PickRowView.gap : 0
-        // the sidebar's glyphs in its secondary ink: an outline folder, the tray for Unassigned (no project colours)
-        let symbol: String?
-        switch e.kind {
-        case .project: symbol = "folder"
-        case .inbox: symbol = "tray.2"
-        case .open: symbol = "folder.badge.plus"
-        case .none: symbol = nil
-        }
-        let icon = NSImageView(image: symbol.flatMap { Look.symbol($0, "", size: 13) } ?? NSImage())
+        // the sidebar's marks, one per concept (IslandGlyph.place): the project's coloured folder (a missing one's
+        // question mark), Unassigned's dashed ring — in its secondary ink where they are templates
+        let symbol: String? = e.kind == .open ? "folder.badge.plus" : nil
+        let drawn: NSImage? = {
+            switch e.kind {
+            case .project: return ProjectStore.shared.project(id: e.id).flatMap { IslandGlyph.place($0, size: 16) }
+            case .inbox: return IslandGlyph.place(nil, size: 16)
+            case .open, .none: return nil
+            }
+        }()
+        let icon = NSImageView(image: drawn ?? symbol.flatMap { Look.symbol($0, "", size: 13) } ?? NSImage())
         icon.contentTintColor = .secondaryLabelColor
         let name = NSTextField(labelWithString: "")
         let p = NSMutableParagraphStyle()
@@ -479,9 +481,10 @@ final class SuggestionsBanner: NSView {
 
     private func row(_ g: SuggestionGroup, _ p: ProjectEntry) -> NSView {
         let v = NSView()
-        let color = ProjectStore.shared.project(id: p.id).map(ProjectLook.color) ?? .systemGray
-        let icon = NSImageView(image: Look.symbol("folder.fill", p.name, size: 12) ?? NSImage())
-        icon.contentTintColor = color
+        // the project's one mark (IslandGlyph.place): its coloured folder, as the sidebar and the island draw it
+        let icon = NSImageView(image: ProjectStore.shared.project(id: p.id).flatMap { IslandGlyph.place($0, size: 14) }
+                                   ?? Look.symbol("folder.fill", p.name, size: 12) ?? NSImage())
+        icon.contentTintColor = .secondaryLabelColor
         let text = NSTextField(labelWithString: "")
         text.lineBreakMode = .byTruncatingTail
         // the count is on the button (Move All (3)): the line names the project only

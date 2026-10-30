@@ -1128,6 +1128,7 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
     doc["items"] = items
     doc["_removed"] = removed
     doc["agents"] = _agent_names()
+    doc["me"] = _user_name()  # who "by …" in an item's provenance is on this Mac: the page says "by you"
     if include is not None:  # the one item a detail pane asked for, when its file can't be read: the page says so
         doc["_unreadable"] = [u for u in unreadable if include in (u["uid"], u["id"], *u["aliases"])]
     doc["projects"] = plist

@@ -260,6 +260,92 @@ final class NoteEndpointerTests: XCTestCase {
         XCTAssertEqual(events.last, .ended(.silence))
     }
 
+    // MARK: the snap's adaptive end (BA-53): an "嗯" and a pause to think isn't the note
+
+    /// The snap's bubble: 3 s after real talking, 5 s after a short start.
+    static func snap(_ e: inout NoteEndpointer) {
+        e.silenceToEnd = 3
+        e.silenceAfterShort = 5
+        e.noSpeechTimeout = 20
+    }
+
+    func testAShortStartThenAPauseToThinkDoesntEndIt() {
+        let lead = 0.6, burst = 0.6
+        for pause in [3.2, 4.0, 4.7] {
+            let voice = [Float](repeating: 0, count: Int(lead * Self.sr)) + Self.talk(burst, db: -24)
+            let r = Self.run(Self.mix(Self.room(lead + burst + pause, db: -44), voice), configure: Self.snap)
+            XCTAssertNotNil(r.started, "the burst wasn't heard as speech")
+            XCTAssertLessThan(r.speech, 1.0, "the burst should be a short start")
+            XCTAssertNil(r.ended.map { "\($0.0) at \($0.1)" }, "a \(pause) s pause after a short start ended it")
+        }
+        // … the longer pause still does
+        let voice = [Float](repeating: 0, count: Int(lead * Self.sr)) + Self.talk(burst, db: -24)
+        let r = Self.run(Self.mix(Self.room(lead + burst + 7, db: -44), voice), configure: Self.snap)
+        XCTAssertEqual(r.ended?.0, .silence)
+        XCTAssertGreaterThan(r.ended?.1 ?? 0, lead + burst + 4.9)
+        XCTAssertLessThan(r.ended?.1 ?? 99, lead + burst + 5.6)
+    }
+
+    func testAfterRealTalkingThreeSecondsEndIt() {
+        let lead = 0.6, said = 2.0
+        let voice = [Float](repeating: 0, count: Int(lead * Self.sr)) + Self.talk(said, db: -24)
+        let r = Self.run(Self.mix(Self.room(lead + said + 6, db: -44), voice), configure: Self.snap)
+        XCTAssertGreaterThan(r.speech, 1.0)
+        XCTAssertEqual(r.ended?.0, .silence)
+        XCTAssertGreaterThan(r.ended?.1 ?? 0, lead + said + 2.9, "ended before the 3 s pause")
+        XCTAssertLessThan(r.ended?.1 ?? 99, lead + said + 3.6, "the 3 s pause didn't end it")
+    }
+
+    func testEndsInCountsDownAndTalkingPutsItBack() {
+        var e = NoteEndpointer(sampleRate: Self.sr)
+        Self.snap(&e)
+        _ = e.feed(Self.room(1, db: -44))
+        XCTAssertNil(e.endsIn, "nothing said yet")
+        _ = e.feed(Self.mix(Self.noise(2, db: -44, seed: 21), Self.talk(2, db: -24)))
+        XCTAssertGreaterThan(e.speechSeconds, 1.0)
+        let talking = e.endsIn ?? 0
+        XCTAssertGreaterThan(talking, 2.5)
+        XCTAssertLessThanOrEqual(talking, 3.0)
+        _ = e.feed(Self.noise(1, db: -44, seed: 22))
+        XCTAssertEqual(e.endsIn ?? 0, talking - 1, accuracy: 0.2, "a second of quiet: a second less")
+        _ = e.feed(Self.noise(1, db: -44, seed: 23))
+        XCTAssertEqual(e.endsIn ?? 0, talking - 2, accuracy: 0.2)
+        XCTAssertLessThan(e.endsIn ?? 9, 1.5, "the bubble's countdown shows from here")
+        _ = e.feed(Self.mix(Self.noise(1, db: -44, seed: 24), Self.talk(1, db: -24)))
+        XCTAssertGreaterThan(e.endsIn ?? 0, 2.5, "talking again puts the whole pause back")
+        _ = e.feed(Self.noise(3.5, db: -44, seed: 25))
+        XCTAssertEqual(e.ended, .silence)
+        XCTAssertNil(e.endsIn, "ended")
+        // a short start: the longer pause
+        var s = NoteEndpointer(sampleRate: Self.sr)
+        Self.snap(&s)
+        _ = s.feed(Self.room(1, db: -44))
+        _ = s.feed(Self.mix(Self.noise(0.6, db: -44, seed: 26), Self.talk(0.6, db: -24)))
+        XCTAssertLessThan(s.speechSeconds, 1.0)
+        XCTAssertGreaterThan(s.endsIn ?? 0, 4.5)
+        // silence that never ends a take (dictation hands-free): no countdown
+        var d = NoteEndpointer(sampleRate: Self.sr)
+        d.silenceToEnd = .infinity
+        _ = d.feed(Self.talk(2, db: -20))
+        XCTAssertTrue(d.speaking)
+        XCTAssertNil(d.endsIn)
+    }
+
+    func testDefaultsUnchanged() {
+        let e = NoteEndpointer()
+        XCTAssertEqual(e.silenceToEnd, 1.8)
+        XCTAssertEqual(e.noSpeechTimeout, 8)
+        XCTAssertEqual(e.maxLength, 60)
+        XCTAssertEqual(e.shortSpeech, 1.0)
+        XCTAssertNil(e.silenceAfterShort)
+        // a short start ends on the same 1.8 s pause as before (dictation, ⌥V)
+        let lead = 0.6, burst = 0.6
+        let voice = [Float](repeating: 0, count: Int(lead * Self.sr)) + Self.talk(burst, db: -24)
+        let r = Self.run(Self.mix(Self.room(lead + burst + 4, db: -44), voice))
+        XCTAssertEqual(r.ended?.0, .silence)
+        XCTAssertLessThan(r.ended?.1 ?? 99, lead + burst + 2.4)
+    }
+
     // MARK: a real voice (macOS `say`), in the room
 
     /// `say` → 16 kHz mono samples at `db` dBFS (skips the test where there is no `say`).

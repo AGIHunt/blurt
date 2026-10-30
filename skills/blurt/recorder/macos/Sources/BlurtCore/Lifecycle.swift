@@ -34,7 +34,7 @@ public enum Lifecycle {
     public static let transitions: [String: Transition] = [
         "keep": Transition(from: ["new"], to: "todo", key: "a"),
         "hand_off": Transition(from: ["new", "todo"], to: "handed_off", key: "cmd+enter"),
-        "done": Transition(from: ["todo", "handed_off", "in_progress", "to_verify"], to: "done", key: "d"),
+        "done": Transition(from: ["new", "todo", "handed_off", "in_progress", "to_verify"], to: "done", key: "d"),
         "send_back": Transition(from: ["to_verify"], to: "todo", key: "r"),
         "take_back": Transition(from: ["handed_off", "in_progress"], to: "todo", key: "r"),
         "reopen": Transition(from: ["done", "wontfix"], to: "todo", key: "r"),
@@ -45,7 +45,7 @@ public enum Lifecycle {
 
     /// What clicking a state offers, in order.
     public static let menus: [String: [String]] = [
-        "new": ["keep", "hand_off", "wontfix", "discard"],
+        "new": ["keep", "hand_off", "done", "wontfix", "discard"],
         "todo": ["hand_off", "done", "wontfix", "discard"],
         "handed_off": ["done", "take_back", "wontfix", "discard"],
         "in_progress": ["done", "take_back", "wontfix", "discard"],

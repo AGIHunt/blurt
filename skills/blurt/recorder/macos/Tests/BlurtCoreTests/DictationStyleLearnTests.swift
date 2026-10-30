@@ -172,4 +172,12 @@ final class DictationStyleLearnTests: XCTestCase {
         // an older entry has no style
         XCTAssertNil(DictationEntry(json: ["id": "d-0", "raw": "x"])?.style)
     }
+
+    /// Dogfood: "以后在 Safari浏览器 里" spaced the app name unevenly.
+    func testAnAppNameSitsInAChineseQuestionWithoutStraySpaces() {
+        XCTAssertEqual(DictationStyleLearn.inline("Notes", cjk: true), " Notes ")
+        XCTAssertEqual(DictationStyleLearn.inline("Safari浏览器", cjk: true), " Safari浏览器")
+        XCTAssertEqual(DictationStyleLearn.inline("微信", cjk: true), "微信")
+        XCTAssertEqual(DictationStyleLearn.inline("Notes", cjk: false), "Notes")
+    }
 }

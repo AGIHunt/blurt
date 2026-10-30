@@ -90,6 +90,15 @@ class Guard(unittest.TestCase):
         self.check("帮我把下面这段话翻译成英文", "Please translate the following paragraph into English.", "translated")
         self.check("我们的API现在response time大概是两百毫秒", "我们的 API 现在响应时间大概是两百毫秒。", "translated")
 
+    def test_a_long_mixed_take_is_not_translated_by_a_dropped_filler(self):
+        # dogfood: a 79 s zh/en take lost an English filler in one place and gained 的/了 in others — counted over the
+        # whole take that read as `translated`, and the take was typed as heard
+        raw = ("okay 那我们先看一下这个 feature 现在的状态 就是 deploy 之后 latency 有点高 然后我觉得可以先把 cache 加上 "
+               "再看 dashboard 上面的数字 如果还是不行就回滚 我们明天 standup 的时候再讨论一下 具体谁来跟进这个 issue")
+        out = ("那我们先看一下这个 feature 现在的状态，就是 deploy 之后 latency 有点高了。然后我觉得可以先把 cache 加上，"
+               "再看 dashboard 上面的数字的变化，如果还是不行就回滚。我们明天 standup 的时候再讨论一下具体谁来跟进这个 issue。")
+        self.assertNotEqual(polish.guard(raw, polish.clean_output(out))["reason"], "translated")
+
     def test_light_never_lists(self):
         raw = "明天要做三件事第一跑测试第二写文档第三提交代码"
         self.check(raw, "明天要做三件事：\n1. 跑测试\n2. 写文档\n3. 提交代码", "listed")
@@ -753,8 +762,9 @@ class ServeWhileLoading(unittest.TestCase):
         return polish._server_call(req, timeout)
 
     def test_what_needs_no_model_is_answered_at_once_and_a_wait_is_load_time(self):
-        saved = (polish.Engine, polish.ensure_mlx)
-        polish.Engine, polish.ensure_mlx = self.Slow, (lambda: None)
+        # throttle() would lower the whole test runner's priority (and with it pytest's own output was lost)
+        saved = (polish.Engine, polish.ensure_mlx, polish.throttle)
+        polish.Engine, polish.ensure_mlx, polish.throttle = self.Slow, (lambda: None), (lambda _p=None: {})
         args = argparse.Namespace(preload=True, model_id="fake", priority=None, idle=600, exit_after=1800, parent=None)
         th = threading.Thread(target=lambda: polish.cmd_serve(args), daemon=True)
         try:
@@ -781,7 +791,7 @@ class ServeWhileLoading(unittest.TestCase):
                 self.call({"cmd": "exit"})
                 th.join(5)
         finally:
-            polish.Engine, polish.ensure_mlx = saved
+            polish.Engine, polish.ensure_mlx, polish.throttle = saved
         self.assertFalse(polish.SERVE_FILE.exists())
 
 

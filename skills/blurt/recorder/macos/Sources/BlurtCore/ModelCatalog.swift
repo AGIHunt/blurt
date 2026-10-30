@@ -80,6 +80,45 @@ public enum ModelCatalog {
         entries(dir: dir).first { $0.folders.contains(folder) || $0.id == folder }
     }
 
+    /// What of a model not yet installed is already on disk (bytes) — the partial files a stopped or cut-short download
+    /// keeps and the next one continues (the scripts resume `<name>.part` and Hugging Face's `*.incomplete`): every file
+    /// under its folders in `models` (asr/, polish/, the top) and in the Hugging Face cache (`hfCache`), plus a
+    /// `<folder>….part` beside them (an archive on its way). Counted as the scripts count it (_common.landed_bytes):
+    /// the blocks written, not a size set up front. Links are not followed.
+    public static func keptBytes(_ id: String, models: URL, hfCache: URL? = nil, dir: URL = BlurtPaths.scripts) -> Int64 {
+        guard let e = entries(dir: dir).first(where: { $0.id == id }) else { return 0 }
+        let fm = FileManager.default
+        func landed(_ u: URL) -> Int64 {
+            guard let v = try? u.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .fileAllocatedSizeKey]),
+                  v.isRegularFile == true, v.isSymbolicLink != true else { return 0 }
+            return Int64(min(v.fileSize ?? 0, v.fileAllocatedSize ?? v.fileSize ?? 0))
+        }
+        func walk(_ d: URL) -> Int64 {
+            guard let en = fm.enumerator(at: d, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey,
+                                                                             .fileSizeKey, .fileAllocatedSizeKey]) else { return 0 }
+            var t: Int64 = 0
+            for case let u as URL in en { t += landed(u) }
+            return t
+        }
+        var roots = [models, models.appendingPathComponent("asr"), models.appendingPathComponent("polish")]
+        if let h = hfCache { roots.append(h) }
+        var total: Int64 = 0
+        var seen = Set<String>()
+        for r in roots {
+            let names = (try? fm.contentsOfDirectory(atPath: r.path)) ?? []
+            for f in e.folders {
+                for n in names where n == f || (n.hasPrefix(f) && n.hasSuffix(".part")) {
+                    let u = r.appendingPathComponent(n)
+                    guard seen.insert(u.standardizedFileURL.path).inserted else { continue }
+                    var isDir: ObjCBool = false
+                    fm.fileExists(atPath: u.path, isDirectory: &isDir)
+                    total += isDir.boolValue ? walk(u) : landed(u)
+                }
+            }
+        }
+        return total
+    }
+
     /// Where a model's files land: its archive's folder, its file paths' first folder, its Hugging Face repo's
     /// last part (and the HF cache's models--org--name), the polish repo's last part.
     static func folders(_ m: [String: Any]) -> [String] {

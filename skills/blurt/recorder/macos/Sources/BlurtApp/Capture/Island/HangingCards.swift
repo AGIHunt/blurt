@@ -644,7 +644,14 @@ final class HangingCards: NSObject {
             // the card's own opaque surface, as the "+N" tile and the overview tiles: a picture shown whole (a toolbar,
             // a sidebar) is letterboxed on it — a translucent grey picked up the wallpaper, half blue and half grey
             c.card.backgroundColor = HangingCards.surface(dark: dark).cgColor
-            c.face.contents = s.markedThumb ?? s.thumb
+            // a picture that fills is cut from its top-left corner, as its overview tile is (OverviewTile.topLeading):
+            // the card and its tile show the same slice (the centre crop showed "kout" where the tile said "heckout")
+            if let t = s.markedThumb ?? s.thumb, HangingCards.shotFit(s).fills, c.face.bounds.width > 0, c.face.bounds.height > 0 {
+                c.face.contents = OverviewTile.topLeading(t, box: c.face.bounds.size)
+                c.face.contentsGravity = .resize
+            } else {
+                c.face.contents = s.markedThumb ?? s.thumb
+            }
             layoutCaption(c, note, marks: HangingCards.marks(s))
         }
         c.card.shadowOpacity = dark ? HangingCards.shadowDark : HangingCards.shadowLight
@@ -2233,9 +2240,7 @@ final class HangingCards: NSObject {
             // a folder that is gone: shown so; choosing it keeps the cards and offers Locate… (Snapper.assign)
             let gone = !proj.exists
             let i = ClosureMenuItem(proj.name) { snapper.assign(these, to: proj.id) }
-            i.image = gone ? NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)
-                           : NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-                                 .withSymbolConfiguration(.init(paletteColors: [ProjectLook.color(proj)]))
+            i.image = IslandGlyph.place(proj, size: 16)
             if gone {
                 i.toolTip = Loc.t("capture.drawer.missing_sub", table: "Capture")
                 i.setAccessibilityLabel(proj.name + ", " + T("main.sidebar.missing"))
@@ -2243,7 +2248,9 @@ final class HangingCards: NSObject {
             sub.addItem(i)
         }
         if !ProjectStore.shared.projects.isEmpty { sub.addItem(.separator()) }
-        sub.addItem(ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(these, to: "inbox") })
+        let un = ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(these, to: "inbox") }
+        un.image = IslandGlyph.place(nil, size: 16)
+        sub.addItem(un)
         move.submenu = sub
         m.addItem(move)
         m.addItem(ClosureMenuItem(these.count > 1 ? Loc.plural("capture.card.organize_n", table: "Capture", count: these.count)

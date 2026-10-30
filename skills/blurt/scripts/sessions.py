@@ -34,9 +34,11 @@ or in the agent's desktop app (Claude: --runner desktop).
   sessions.py open-external JOB [--terminal auto|terminal|iterm|ghostty|wezterm|kitty|gnome-terminal|konsole|wt]
   sessions.py send JOB --text T [--enter]
   sessions.py stop JOB [--kill]
-  sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch]
+  sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch] [--expect TOKEN]
                        merge / pr commit what the agent left uncommitted in its worktree first ("Commit and Merge":
-                       a sandboxed agent can't commit there); discard takes the items back to To Do
+                       a sandboxed agent can't commit there); discard takes the items back to To Do. diff also says
+                       "alive" (the agent is still in its window: merge / pr refuse with code running) and
+                       "reviewed" (a token of what it shows: merge / pr --expect it, code changed when it moved on)
   sessions.py take-back JOB                  收回: the items still with it go back to To Do; a session that is over
                                              and left no change also goes (its window, worktree and branch: finish
                                              action take_back) — with changes, they stay ({"has_changes"}) for review
@@ -168,6 +170,17 @@ def write_conf() -> Path:
     p.parent.mkdir(parents=True, exist_ok=True)
     if not p.exists() or p.read_text(encoding="utf-8") != text:
         p.write_text(text, encoding="utf-8")
+    return p
+
+
+def apply_conf() -> Path:
+    """write_conf(), and a server that is already running takes it too. tmux reads -f only when its server starts,
+    and Blurt's server outlives app updates (remain-on-exit keeps windows, so it seldom dies): without this, a fix
+    to the options (focus-events off, escape-time 50) never reached the user's sessions. source-file is cheap and
+    idempotent, and does nothing when no server runs (the next one starts with -f)."""
+    p = write_conf()
+    if tmux_info():
+        tmux("source-file", str(p), check=False)
     return p
 
 
@@ -429,9 +442,14 @@ def exit_error(tail: list[str], exit_code: int | None, agent: str | None = None,
            "message": (last or f"exit {exit_code}")[:300], "hint_key": None, "detail": text[-2000:] or None}
     if cls and agent:
         defn = agents.definitions(agents.config(cwd)).get(agent) or {}
-        lang = handoff.ui_lang()
-        fix = (defn.get("fix") or {}).get(lang) or ""
-        out["reason"] = agents.failure_reason(cls, defn.get("name") or agent, fix, lang)
+        name = defn.get("name") or agent
+        # both languages: the app shows its own (the monitor that writes this may not know it), the CLI `reason`
+        fixes = defn.get("install" if cls == "outdated" else "fix") or {}  # too old: the update, not the login
+        out["reason_i18n"] = {lg: agents.failure_reason(cls, name, fixes.get(lg) or "", lg) for lg in ("en", "zh")}
+        out["reason"] = out["reason_i18n"][handoff.ui_lang()]
+        if cls == "outdated":  # what to run, and from which version it works (version_gate says the same up front)
+            info = version_gate_info(agent, cwd)
+            out.update({k: info.get(k) for k in ("version", "need", "fix") if info.get(k)})
     return out
 
 
@@ -439,6 +457,14 @@ def _hooks_kind(a: dict) -> str | None:
     import agents
     defn = agents.definitions(agents.config(a.get("cwd"))).get(a.get("id")) or {}
     return (agents.session_spec(defn) or {}).get("hooks")
+
+
+def _at_startup_question(a: dict) -> str | None:
+    """The trust / hook-review question the terminal shows while none of the agent's hooks has spoken yet."""
+    if a.get("status") == "waiting_input" and a.get("status_source") == "tty" and not a.get("hooks_live") \
+            and a.get("waiting_hint") in ("trust", "hooks"):
+        return a["waiting_hint"]
+    return None
 
 
 def _tty_fallback(job: dict, w: dict, now: float) -> None:
@@ -453,7 +479,8 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
         return
     # Codex's hooks report turns and command approvals, not the questions its tools ask (an MCP tool's "Allow
     # Browser use to access …?" elicitation): those still come from the terminal while its hooks are live
-    patterns = agents.waiting_patterns(defn)
+    hints = agents.waiting_hints(defn)
+    patterns = [pat for pat, _ in hints]
     errors = [] if a.get("hooks_live") else agents.error_patterns(defn)
     since = jobs.parse_iso(a.get("status_at")) or 0
     text = ""
@@ -468,7 +495,8 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
             _set_status(job, "error", "tty")
             job["error"] = {**exit_error([bad.strip()], None, a.get("id"), a.get("cwd")), "detail": text[-2000:]}
         return
-    hit = any(re.search(pat, text, re.I | re.M) for pat in patterns) if text else False
+    found = [hint for pat, hint in hints if re.search(pat, text, re.I | re.M)] if text else []
+    hit = bool(found)
     if hit and hooks and a.get("hooks_live") and a.get("status_source") != "tty" and w["activity"] <= since:
         hit = False  # drawn before the hooks' latest word (an approval they already reported): not a new question
     status = a.get("status")
@@ -476,6 +504,12 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
     if hit:
         if status != "waiting_input":
             _set_status(job, "waiting_input", "tty")
+        # which question it is (the app says one line about the trust and hook-review prompts)
+        hint = next((h for h in found if h), None)
+        if hint:
+            a["waiting_hint"] = hint
+        else:
+            a.pop("waiting_hint", None)
     elif status == "waiting_input" and a.get("status_source") in ("tty", "watchdog") and w["activity"] > since:
         _set_status(job, "running", "tty")
     elif hooks and not a.get("hooks_live") and status == "running" and a.get("status_source") in (None, "app") \
@@ -509,6 +543,8 @@ def sync(only: list[str] | None = None) -> list[dict]:
                 before = json.dumps(job, sort_keys=True)
                 jobs.absorb(job, _owner_extras)
                 a = job.setdefault("agent", {})
+                if a.get("status") != "waiting_input" or a.get("status_source") != "tty":
+                    a.pop("waiting_hint", None)  # the question it named was answered (or a hook says what it is)
                 w = wins.get(job["id"]) if a.get("runner") == "tmux" else None
                 active = job.get("state") in ("running", "queued")
                 other = (a.get("tmux") or {}).get("socket") not in (None, socket_name())
@@ -519,6 +555,10 @@ def sync(only: list[str] | None = None) -> list[dict]:
                         if active and a.get("tmux") and tmux_info():
                             _set_status(job, "exited", "tmux")
                     elif w["dead"]:
+                        if active and _at_startup_question(a) == "trust":
+                            # it quit at its folder-trust question (Esc, No): it never started — not "ended without
+                            # reporting back"; its items stay handed off and Restart is the way on
+                            a["stopped_at"] = "trust"
                         if active or a.get("exit") is None:
                             # what it said last stays on the job: the app shows it, and it is a failure's reason
                             if "last_output" not in a:
@@ -542,8 +582,11 @@ def sync(only: list[str] | None = None) -> list[dict]:
                     _step(job, "work", "done" if job["state"] != "failed" else "failed")
                 # up = the agent is known to be working. Never assumed for the desktop app: its items move only when
                 # the agent says so (mark_fixed state "fixing")
-                up = a.get("runner") != "desktop" and (a.get("status_source") not in (None, "app") or (
-                    w is not None and not w["dead"] and _hooks_kind(a) is None))
+                # A startup question read from the terminal (folder trust, hook review) is not work: an agent that
+                # quits there never started, so its items aren't "in progress by" it
+                up = a.get("runner") != "desktop" and not _at_startup_question(a) and (
+                    a.get("status_source") not in (None, "app") or (
+                        w is not None and not w["dead"] and _hooks_kind(a) is None))
                 _advance_items(job, up)
                 if json.dumps(job, sort_keys=True) != before:
                     job["updated"] = jobs.now_iso()
@@ -965,13 +1008,14 @@ def _public(entry: dict) -> dict:
 def _session_env(job_id: str, agent: str, project: str) -> dict:
     env = {"BLURT_JOB": job_id, "BLURT_RUN_ID": job_id, "BLURT_AGENT": agent, "BLURT_PROJECT": project,
            "BLURT_HOME": str(jobs.home())}
-    if os.environ.get("BLURT_WORKSPACE"):
-        env["BLURT_WORKSPACE"] = os.environ["BLURT_WORKSPACE"]
+    for k in ("BLURT_WORKSPACE", "BLURT_LANG"):  # BLURT_LANG: the hooks' monitor passes write reasons in it
+        if os.environ.get(k):
+            env[k] = os.environ[k]
     return env
 
 
 def _new_window(session: str, name: str, cwd: str, env: dict, argv: list[str]) -> str:
-    write_conf()
+    apply_conf()  # before the agent starts: it must never see the old options
     e_args = [x for k, v in env.items() for x in ("-e", f"{k}={v}")]
     exists = tmux("has-session", "-t", f"={session}", check=False).returncode == 0
     if exists:
@@ -998,12 +1042,46 @@ def login_gate(agent_id: str, project: dict, lang: str | None = None) -> None:
                            agent=agent_id, fix=r.get("fix") or "")
 
 
+def version_gate_info(agent_id: str, cwd: str | None = None, lang: str | None = None) -> dict:
+    """An agent with interactive.session.min_version: {"version", "need", "fix", "outdated"} — its installed version
+    (the --version line), the minimum, and the command that updates it (agents.json install). {} for the others."""
+    import agents
+    import handoff
+    defn = agents.definitions(agents.config(cwd)).get(agent_id) or {}
+    need = (agents.session_spec(defn) or {}).get("min_version")
+    if not need:
+        return {}
+    env = agents.clean_env(None)
+    bin_ = agents.find_bin(defn, env)
+    line = agents.version_of(defn, bin_, env) if bin_ else None
+    have = agents.version_tuple(line)
+    lg = "zh" if (lang or handoff.ui_lang()).startswith("zh") else "en"
+    return {"version": ".".join(map(str, have)) if have else None, "need": need,
+            "fix": (defn.get("install") or {}).get(lg) or "",
+            "outdated": have is not None and have < (agents.version_tuple(need) or ())}
+
+
+def version_gate(agent_id: str, project: dict, lang: str | None = None) -> None:
+    """An agent older than its interactive.session.min_version fails at start in a way Restart can only repeat
+    (Codex < 0.164 timed out on the terminal input an attaching terminal sends): refuse it before anything is made,
+    with code outdated, the version, the minimum and the update command. A version that can't be read: let it try."""
+    info = version_gate_info(agent_id, project.get("path"), lang)
+    if info.get("outdated"):
+        import agents
+        name = (agents.definitions(agents.config(project.get("path"))).get(agent_id) or {}).get("name") or agent_id
+        raise SessionError("outdated", f"{name} {info['version']} is too old for hand-offs (needs {info['need']} or "
+                           f"later)" + (f" — {info['fix']}" if info["fix"] else ""), agent=agent_id,
+                           version=info["version"], need=info["need"], fix=info["fix"])
+
+
 def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", worktree: str = "auto",
              runner: str = "auto", dry_run: bool = False, lang: str | None = None, model: str | None = None,
              force: bool = False) -> dict:
     """force: skip the login check (the caller checked, as the app's dispatch panel does)."""
     if dry_run:
         pl = plan(refs, agent, mode, worktree, runner)
+        if pl["runner"] != "desktop":  # the panel says so before Start, with the update command
+            version_gate(pl["agent"], pl["project"], lang)
         out = {"ok": True, "dry_run": True, "agent": pl["agent"], "model": model, "mode": mode, "runner": pl["runner"],
                "worktree": pl["worktree"], "jobs": [_public(e) for e in pl["jobs"]], "warnings": pl["warnings"]}
         if pl["runner"] == "desktop":  # no MCP there = nothing reports progress: the app says items need marking by hand
@@ -1014,6 +1092,8 @@ def dispatch(refs: list[str], agent: str | None = None, mode: str = "together", 
     # never start two sessions on one item
     with jobs.file_lock(jobs.home() / "run" / "dispatch.lock", timeout=60):
         pl = plan(refs, agent, mode, worktree, runner)
+        if pl["runner"] != "desktop":
+            version_gate(pl["agent"], pl["project"], lang)
         if not force and pl["runner"] != "desktop":  # the desktop app signs in on its own, not through the CLI
             login_gate(pl["agent"], pl["project"], lang)
         return _dispatch(pl, mode, lang, model)
@@ -1192,6 +1272,7 @@ def attach_cmd(job_id: str, status: bool = False) -> dict:
     (destroy-unattached), and views nobody attached to within a minute are cleared on the next call."""
     job = _job(job_id)
     w = _window(job)
+    apply_conf()  # a server started by an older Blurt: the app's terminal attaches with today's options
     session = w["session"].split("~")[0]
     p = tmux("list-sessions", "-F", "#{session_name}|#{session_attached}|#{session_created}", check=False)
     taken = set()
@@ -1346,8 +1427,35 @@ def diff(job: dict) -> dict:
     out.write_text(patch, encoding="utf-8")
     uncommitted = len([ln for ln in git(cwd, "status", "--porcelain", check=False).stdout.splitlines() if ln.strip()])
     ahead = changes(wt)["ahead"] if wt else 0
+    # alive: the agent is still in its window (a finished turn waits there) — merging what it may still change
+    # is refused, so the sheet offers to end it and review again; reviewed: what merge / pr must still find
+    w = panes().get(job["id"]) if a.get("runner") == "tmux" else None
+    alive = bool(w and not w["dead"]) or (a.get("runner") == "app" and job.get("state") == "running")
     return {"base": (wt or {}).get("base") or base, "branch": (wt or {}).get("branch"), "stat": stat,
-            "patch": str(out), "uncommitted": uncommitted, "ahead": ahead}
+            "patch": str(out), "uncommitted": uncommitted, "ahead": ahead, "alive": alive,
+            "agent_status": a.get("status") if alive else None, "reviewed": reviewed_token(wt) if wt else None}
+
+
+def reviewed_token(wt: dict) -> str:
+    """What the user is looking at in the review, as one string: the branch's HEAD plus the tree its worktree would
+    commit now (everything added, ignored files left out). Computed on a copy of the worktree's index, so the real
+    one is untouched (and the copy keeps git's stat cache: hashing only what changed). Merge / PR compare it with
+    the token the review was loaded with: an agent that wrote more after the review, or a turn cut short by ending
+    the session, never lands in the base branch unseen (code changed)."""
+    path = Path(wt["path"])
+    head = git(path, "rev-parse", "HEAD").stdout.strip()
+    real = Path(git(path, "rev-parse", "--path-format=absolute", "--git-path", "index").stdout.strip())
+    tmp = jobs.home() / "run" / f"review-index-{os.getpid()}"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        if real.exists():
+            shutil.copyfile(real, tmp)
+        env = {"GIT_INDEX_FILE": str(tmp)}
+        git(path, "add", "-A", env_extra=env)
+        tree = git(path, "write-tree", env_extra=env).stdout.strip()
+    finally:
+        tmp.unlink(missing_ok=True)
+    return f"{head}:{tree}"
 
 
 def _compare_url(remote: str, base: str, branch: str) -> str | None:
@@ -1469,7 +1577,9 @@ def _clean_up_ended(job_id: str, job: dict, out: dict, taken: list[str]) -> dict
     return {**out, "cleaned": True}
 
 
-def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
+def finish(job_id: str, action: str, keep_branch: bool = False, expect: str | None = None) -> dict:
+    """expect (merge / pr): the `reviewed` token of the diff the user saw; when the worktree no longer matches it,
+    nothing is committed, pushed or merged (code changed: review again)."""
     import handoff
     job = _job(job_id)
     a = job.get("agent") or {}
@@ -1494,6 +1604,8 @@ def finish(job_id: str, action: str, keep_branch: bool = False) -> dict:
         ch = changes(wt)
         if ch["ahead"] == 0 and ch["dirty"] == 0:
             raise SessionError("nothing", "the session's branch has no changes")
+        if expect and reviewed_token(wt) != expect:
+            raise SessionError("changed", "the worktree changed after the review was loaded — review it again")
     if action == "merge":
         head = git(main, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
         if head != wt["base"]:
@@ -1607,6 +1719,7 @@ def _restart(job_id: str, lang: str | None) -> dict:
     # still logged out: say so now, while the old session is still there to look at (not for the desktop app, which
     # signs in on its own — as dispatch)
     if a.get("id") and project and a.get("runner") != "desktop":
+        version_gate(a["id"], project, lang)  # still too old: Restart would fail the same way
         login_gate(a["id"], project, lang)
     try:
         _take_back(job_id, again)
@@ -1647,7 +1760,13 @@ def _shared_worktree(job: dict, wt: dict) -> bool:
 def doctor() -> dict:
     import agents
     defs = agents.definitions(agents.config())
-    return {"ok": True, "tmux": tmux_info(), "socket": socket_name(),
+    options = None
+    if tmux_info():  # what a running server really uses, after giving it today's conf
+        apply_conf()
+        p = tmux("show-options", "-s", "escape-time", ";", "show-options", "-g", "focus-events", check=False)
+        if p.returncode == 0:
+            options = dict(ln.split(" ", 1) for ln in p.stdout.splitlines() if " " in ln)
+    return {"ok": True, "tmux": tmux_info(), "socket": socket_name(), "options": options,
             "agents": [{"id": k, "session": agents.session_spec(d) is not None,
                         "hooks": (agents.session_spec(d) or {}).get("hooks"),
                         "installed": agents.find_bin(d) is not None} for k, d in defs.items()]}
@@ -1712,6 +1831,7 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("job")
     s.add_argument("--action", required=True, choices=["diff", "merge", "pr", "discard", "keep"])
     s.add_argument("--keep-branch", action="store_true")
+    s.add_argument("--expect", help="merge / pr: the `reviewed` token from --action diff (code changed when it differs)")
     s = sub.add_parser("take-back")
     s.add_argument("job")
     s = sub.add_parser("clean-up")
@@ -1753,7 +1873,7 @@ def main(argv: list[str] | None = None) -> None:
         elif a.cmd == "stop":
             emit(stop(a.job, a.kill))
         elif a.cmd == "finish":
-            emit(finish(a.job, a.action, a.keep_branch))
+            emit(finish(a.job, a.action, a.keep_branch, a.expect))
         elif a.cmd == "take-back":
             emit(take_back(a.job))
         elif a.cmd == "clean-up":

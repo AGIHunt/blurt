@@ -588,7 +588,7 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 |---|---|---|---|---|---|
 | `keep` | new | todo | A（审核模式还有 ↩） | Accept — leaves the inbox as To do | 放进要做 — 移出待处理，记为要做 |
 | `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — run it in Blurt, or copy the instruction | 交给 Agent… — 在口喷鸡里运行，或复制指令 |
-| `done` | todo, handed_off, in_progress, to_verify | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
+| `done` | new, todo, handed_off, in_progress, to_verify（new：不用先接受，BA-56，2026-10-30） | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
 | `wontfix` | new, todo, handed_off, in_progress, to_verify | wontfix | W | Won't do — closes it; it stays in All Items | 不做 — 关闭，仍可在全部条目里找到 |

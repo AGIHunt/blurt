@@ -1,7 +1,10 @@
 // The note bubble under a fresh shot: "Say it or type…", the words as they are heard, and where it will go.
 //
-//  • listens right away (the user usually starts talking as they let go of the mouse); ~1.8 s of silence after
-//    speech ends the note, 8 s without speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
+//  • listens right away (the user usually starts talking as they let go of the mouse); 3 s of silence after speech
+//    ends the note — 5 s when less than a second of it was talking (BA-53: an "嗯" then a moment to think ended the
+//    note at the old 1.8 s, the mic with it; the pause end is only the safety net, ⏎ commits at once) — and its last
+//    1.5 s run out as a hairline inside Done ↩ (talking fills it again; Reduce Motion: it shows, still). 20 s without
+//    speech = no note, 60 s max. Audio → shots/NNN.wav (16 kHz mono). "Silence" is
 //    relative to the room (BlurtCore NoteEndpointer: an adaptive noise floor — v0.7's floor froze at the mic's quiet
 //    first moments, so a normal room never counted as silence and the note never ended). Since v0.8.6 the voice note
 //    (⌥V) ends when you say so; this one keeps ending on the pause — it is a sentence about one picture.
@@ -111,6 +114,13 @@ final class NoteVoice {
         get { vad.maxLength }
         set { vad.maxLength = newValue }
     }
+    /// the pause that ends it after less than a second of talking (nil = silenceToEnd; the snap's: longer, BA-53)
+    var silenceAfterShort: Double? {
+        get { vad.silenceAfterShort }
+        set { vad.silenceAfterShort = newValue }
+    }
+    /// seconds until the pause ends it (nil: not talking yet, or ended) — the snap's countdown on Done ↩
+    var endsIn: Double? { vad.endsIn }
     /// how much of it was talking (seconds)
     var speechSeconds: Double { vad.speechSeconds }
     /// the loudest frame so far (dBFS): a take that is digital silence stays near −120 (BlurtCore VoiceKeep)
@@ -157,7 +167,8 @@ final class NoteVoice {
         guard denied else {
             return island.toast(Loc.t("capture.voice.no_mic", table: "Capture"), actionTitle: nil, action: nil)
         }
-        island.toast(Loc.t("capture.voice.mic_denied", table: "Capture"), actionTitle: Loc.t("capture.voice.mic_settings", table: "Capture")) {
+        island.toast(Loc.t("capture.voice.mic_denied", table: "Capture"), key: nil, icon: .warning,
+                     actionTitle: Loc.t("capture.voice.mic_settings", table: "Capture")) {
             if let u = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") { NSWorkspace.shared.open(u) }
         }
     }
@@ -174,11 +185,21 @@ final class NoteVoice {
         started = Date()
         startedAt = CACurrentMediaTime()
         if NoteVoice.testDenied { failReason = "test_denied"; ready(false); return }
-        if let wav = inject ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"] {
+        // tests: BLURT_TEST_MIC_WAV (the documented hook, as voice notes and dictation read it) or BLURT_NOTE_WAV; a test
+        // run with neither never opens the real microphone (a dogfood run recorded the room into a card) — it says the
+        // no-mic state instead
+        let env = ProcessInfo.processInfo.environment
+        if let wav = inject ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"] {
             running = true                  // the feed checks it as it begins
             running = startInjected(URL(fileURLWithPath: wav))
             if !running { failReason = "inject_unreadable" }
             ready(running)
+            return
+        }
+        if env["BLURT_TEST_COMMANDS"] == "1" {
+            emit(["event": "note_mic_blocked_in_test"])
+            failReason = "test_no_wav"
+            ready(false)
             return
         }
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
@@ -731,10 +752,16 @@ final class BubbleBackground: NSView {
     /// surface, #2C2C2C as rendered (sRGB, opaque — r1's calibrated 0.19 came out #3F3F3F, a grey HUD on a dimmed
     /// screen), with a white 14 % hairline; light: near-white, a black 12 % hairline and the window's shadow.
     static let darkSurface = NSColor(srgbRed: 44 / 255, green: 44 / 255, blue: 44 / 255, alpha: 1)
+    static let lightSurface = NSColor(srgbRed: 0.995, green: 0.995, blue: 0.995, alpha: 1)
+    /// The capture panels' one surface (the note bubble, Recently Dragged Out, the cards overview): opaque, so a titled
+    /// panel's background never picks up the wallpaper's tint beside the bubble's neutral grey in dark mode.
+    static let surface = NSColor(name: "captureSurface") { a in
+        a.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? darkSurface : lightSurface
+    }
     override func draw(_ dirty: NSRect) {
         let dark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         let p = shape()
-        (dark ? BubbleBackground.darkSurface : NSColor(srgbRed: 0.995, green: 0.995, blue: 0.995, alpha: 1)).setFill()
+        (dark ? BubbleBackground.darkSurface : BubbleBackground.lightSurface).setFill()
         p.fill()
         (dark ? NSColor(white: 1, alpha: 0.14) : NSColor(white: 0, alpha: 0.12)).setStroke()
         p.lineWidth = 1
@@ -808,6 +835,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
     static let savedSeconds = 1.2
     /// …and waits for them at most this long (else it closes, and the card gets them when they come)
     static let wordsWait = 2.5
+    /// BA-53: the pause that ends the note after talking, and after less than a second of it (NoteEndpointer's
+    /// silenceAfterShort) — an "嗯" then a moment to think isn't the note; ↩ stays the fast way
+    static let pauseEnds = 3.0
+    static let pauseAfterShort = 5.0
+    /// the pause's last seconds show on Done ↩: a white hairline around it that runs out (talking fills it again)
+    static let countdownFrom = 1.5
+    private let countdown = CAShapeLayer()
     /// a ⌥V voice note has the microphone: this bubble takes typing only (no second listener)
     private var voiceBusy = false
     /// the microphone went before anything was said: typed only now ("Mic disconnected · type a note")
@@ -876,6 +910,7 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         hold = NoteHold()
         voiceBusy = false
         micGone = false
+        showCountdown(nil)
         // the pen hint, the first few times only (InkHint; the stage counts them)
         let hintsShown = recordConfig()["ink_hint_shown"] as? Int ?? 0
         penHintGone = !InkHint.shows(alreadyShown: hintsShown)
@@ -959,6 +994,13 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         doneBtn.hPad = 10
         doneBtn.keyHint = "↩"
         root.addSubview(doneBtn)
+        countdown.fillColor = nil
+        countdown.strokeColor = NSColor(white: 1, alpha: 0.85).cgColor
+        countdown.lineWidth = 1.5
+        countdown.lineCap = .round
+        countdown.opacity = 0
+        countdown.zPosition = 10
+        doneBtn.layer?.addSublayer(countdown)
         root.onHover = { [weak self] on in self?.hover(on) }
         icon.imageScaling = .scaleProportionallyDown
         root.addSubview(icon)
@@ -1281,6 +1323,12 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
         let rel = mode == .edit ? VoiceRetake.path(for: canonicalVoice(s)) : canonicalVoice(s)
         takeRel = rel
         let v = NoteVoice(url: dir.appendingPathComponent(rel))
+        // BA-53: the pause end is only the safety net (↩ commits at once): forgiving — 3 s after talking, 5 s after
+        // less than a second of it (an "嗯" and a pause to think isn't the note), 20 s to start, 60 s at most
+        v.silenceToEnd = NoteBubble.pauseEnds
+        v.silenceAfterShort = NoteBubble.pauseAfterShort
+        v.noSpeechTimeout = 20
+        v.maxLength = 60
         // a fresh shot's words while they are said (the voice note's live text), in the field's place
         let st = mode == .listen && VoiceInput.shared.streams ? VoiceNoteStream(id: "note-\(ShotBatch.name(s.n))-\(Int(Date().timeIntervalSince1970))",
                                                    interim: VoiceInput.liveWords) : nil
@@ -1637,11 +1685,44 @@ final class NoteBubble: NSObject, NSTextFieldDelegate {
 
     private func tick() {
         bars.decay()
+        showCountdown(voice?.running == true && !picking ? voice?.endsIn : nil)
         if let v = voice, v.running, Int(v.elapsed) != lastSecond { refreshStatus() }      // the running time
         // the pen held still on the picture is still drawing: the pause doesn't end the note under it
         if ink.isDrawing { voice?.activity(grace: NoteHold.inkGrace) }
         // follow the card if the cards re-lay out (another capture arrived, a neighbour was removed); docked, it stays
         if let p = panel, p.isVisible, mode != .recording, !staged { position() }
+    }
+
+    /// The pause end coming (BA-53): its last `countdownFrom` seconds as a hairline just inside Done ↩ that runs out
+    /// from the top, clockwise; talking (or the pen) fills it again and it fades. Reduce Motion: it stays whole while it
+    /// shows — the same "about to finish", with nothing moving.
+    private func showCountdown(_ endsIn: Double?) {
+        guard let b = doneBtn else { return }
+        let on = endsIn.map { $0 < NoteBubble.countdownFrom } ?? false
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        let r = b.bounds.insetBy(dx: 0.75, dy: 0.75)
+        if on, countdown.frame != b.bounds, r.width > 0 {
+            countdown.frame = b.bounds
+            let rad = min((b.radius ?? r.height / 2) - 0.75, r.height / 2)
+            let p = CGMutablePath()
+            p.move(to: CGPoint(x: r.midX, y: r.maxY))
+            p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.maxY), tangent2End: CGPoint(x: r.maxX, y: r.minY), radius: rad)
+            p.addArc(tangent1End: CGPoint(x: r.maxX, y: r.minY), tangent2End: CGPoint(x: r.minX, y: r.minY), radius: rad)
+            p.addArc(tangent1End: CGPoint(x: r.minX, y: r.minY), tangent2End: CGPoint(x: r.minX, y: r.maxY), radius: rad)
+            p.addArc(tangent1End: CGPoint(x: r.minX, y: r.maxY), tangent2End: CGPoint(x: r.midX, y: r.maxY), radius: rad)
+            p.closeSubpath()
+            countdown.path = p
+        }
+        if on, let left = endsIn { countdown.strokeEnd = reduceMotion ? 1 : CGFloat(max(0, left) / NoteBubble.countdownFrom) }
+        CATransaction.commit()
+        let alpha: Float = on && !b.isHidden && b.isEnabled ? 1 : 0
+        guard countdown.opacity != alpha else { return }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.15)
+        CATransaction.setDisableActions(reduceMotion)
+        countdown.opacity = alpha
+        CATransaction.commit()
     }
 
     // MARK: input

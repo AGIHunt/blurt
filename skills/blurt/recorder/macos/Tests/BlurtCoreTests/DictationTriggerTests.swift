@@ -447,6 +447,15 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(t.miss, .heldInTapMode)
         XCTAssertEqual(t.run("ropt-down@2000 ropt-up@2080"), [.arm, .start])
         XCTAssertNil(t.miss)
+        // the founder (2026-10-30): said while the key is still down, once the press is past a tap — and once per press
+        var held = DictationTrigger(key: .rightOption, mode: .tap)
+        _ = held.run("ropt-down@0")
+        XCTAssertEqual(held.deadline ?? 0, 0.4, accuracy: 0.001)
+        _ = held.run("tick@450")
+        XCTAssertEqual(held.takeMiss(), .heldInTapMode)
+        XCTAssertNil(held.deadline)
+        XCTAssertEqual(held.run("ropt-up@1500"), [])
+        XCTAssertNil(held.miss)
         // auto mode uses both: never a miss
         var a = DictationTrigger()
         _ = a.run("fn-down@0 fn-up@90 fn-down@900 fn-up@990")

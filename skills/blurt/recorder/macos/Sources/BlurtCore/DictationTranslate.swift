@@ -144,6 +144,20 @@ public enum DictationTranslateRoute {
 public enum DictationTranslateHint {
     public static let explainTimes = 2
     public static func says(shown: Int) -> Bool { shown < explainTimes }
+
+    /// What the ear says beside the translate glyph and the clock, so the take's target reads without the line:
+    /// "EN", "中", "繁", "日", "한", "FR"…, "⇄" (either way).
+    public static func earTarget(_ t: DictationTranslateTarget) -> String {
+        switch t {
+        case .auto: return "⇄"
+        case .en: return "EN"
+        case .zh: return "中"
+        case .zhHant: return "繁"
+        case .ja: return "日"
+        case .ko: return "한"
+        case .fr, .de, .es, .pt, .it, .ru: return t.rawValue.uppercased()
+        }
+    }
 }
 
 /// The history's `translate`: on for the take, how, into what, by what, and what came of it.

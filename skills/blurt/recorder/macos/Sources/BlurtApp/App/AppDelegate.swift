@@ -254,6 +254,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
         watchOtherInstances()
+        watchConfigEdits()
         // an unreadable config.json reads as empty: that's no first launch (its own line says what happened)
         if Config.shared.readable, recordConfig()["welcomed"] == nil, !assisted {
             postWelcome()
@@ -303,7 +304,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
                 : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
+            // counted as Settings → Shortcuts counts them: the dictation key another copy listens to is one of them
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
+                + (HotkeySettings.shared.dictationTaken ? [Dictation.keyShort.trimmingCharacters(in: .whitespaces)] : [])
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
                                            record: working(.toggleRecord), conflicts: conflicts)
             let text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
@@ -373,6 +376,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         RunLoop.main.add(t, forMode: .common)
     }
 
+    /// BA-49: shortcuts and the dictation key changed outside Settings (~/.blurt/config.json by hand or by an agent)
+    /// work without a relaunch: looked at when Blurt comes to the front and every 2 s (Config caches by the file's
+    /// signature: a look is a stat()). Settings' own writes load themselves, so they never count twice.
+    func watchConfigEdits() {
+        func look(_ via: String) {
+            // a file that stopped parsing: the last good settings stay (Config keeps them), the bad version is copied
+            // aside and the island says so once — never the defaults registered over the user's own keys
+            guard Config.shared.checkReadable() else { return }
+            if Hotkeys.shared.reloadIfChanged() { emit(["event": "hotkeys_reloaded", "via": via, "taken": Hotkeys.shared.conflicts.map(\.rawValue)]) }
+            Dictation.shared.reloadIfChanged()
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in look("activate") }
+        let t = Timer(timeInterval: 2, repeats: true) { _ in look("timer") }
+        t.tolerance = 0.5
+        RunLoop.main.add(t, forMode: .common)
+    }
+
     static func otherInstancesChanged(_ why: String) {
         let before = Hotkeys.shared.states
         Hotkeys.shared.apply()
@@ -424,7 +444,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// logout, restart or shutdown (the quit Apple Event carries kAEQuitReason: a modal would hold the Mac up behind
     /// it) nor on SIGTERM / SIGINT; the organisers stop all the same (applicationWillTerminate) and their jobs say so.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard resident, !quitting else { return .terminateNow }
+        guard resident, !quitting else { App.terminating = true; return .terminateNow }
         if !organisers.isEmpty, !quitBySignal, !Self.quitBySystem {
             let jobs = organisers.keys.compactMap { JobStore.shared.job($0) }
             let a = NSAlert()
@@ -440,10 +460,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard a.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         }
         quitting = true
-        snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+        App.terminating = true
+        // a dictation listening or on its way is typed, or kept as interrupted with Retry (never lost), then the
+        // captures' own work
+        Dictation.shared.prepareForQuit { snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) } }
         return .terminateLater
     }
     private var quitting = false
+    /// The app is on its way out (the quit was not cancelled): windows closing now are not the user closing them —
+    /// the setup assistant isn't "skipped" by a quit (Onboarding.windowWillClose).
+    static private(set) var terminating = false
 
     /// The quit comes from a logout, restart or shutdown.
     static var quitBySystem: Bool {
@@ -466,6 +492,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        App.terminating = true
         guard resident else { return }
         stopOrganisers()
         Housekeeping.atQuit()
@@ -961,15 +988,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             pItem = NSMenuItem(title: T("app.menu.project", current?.name ?? T("project.inbox")), action: nil, keyEquivalent: "")
         }
-        pItem.image = App.menuSymbol(current == nil ? "tray.2" : current?.exists == false ? "questionmark.folder" : "folder")
+        // one mark per concept, as the island and the sidebar (IslandGlyph.place): the project's coloured folder,
+        // Unassigned's dashed ring, a missing folder's question mark
+        pItem.image = IslandGlyph.place(current, size: 16)
         let pMenu = NSMenu()
         let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
         none.toolTip = T("app.menu.project.none_tip")
-        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
+        none.image = IslandGlyph.place(nil, size: 16)    // Unassigned, as the island and the sidebar (the tray is the Inbox)
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
             let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
-            i.image = App.menuSymbol(p.exists ? "folder" : "questionmark.folder")
+            i.image = IslandGlyph.place(p, size: 16)
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
         pMenu.addItem(.separator())
@@ -1000,6 +1029,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let symbols = [
             "mStart": "record.circle", "mStartLast": "record.circle", "mStop": "stop.circle", "mPause": "playpause",
             "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
+            "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
             "mShowTaken": "clock.arrow.circlepath", "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
@@ -1052,12 +1082,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mRestart() { command("restart") }
     @objc func mDiscard() { command("discard") }
     @objc func mUseProject(_ it: NSMenuItem) {
-        let id = it.representedObject as? String
-        Task { @MainActor in
-            do { try await ProjectStore.shared.use(id) }
-            catch { self.toast(T("main.error.generic")) }
-            island.projectChanged()
-        }
+        // a project whose folder is gone asks where it is first (MissingFolder.use)
+        MissingFolder.use(it.representedObject as? String, via: "menu") { [weak self] in self?.toast(T("main.error.generic")) }
     }
     @objc func mOpenFolder() {
         if let mw = AppEnvironment.mainWindow { mw.show(); MainWindowController.shared.openFolder() }
@@ -1090,7 +1116,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// changes can't be saved. It was copied aside; the file stays as it is. One line at launch, with Show File.
     static func configUnreadable(_ backup: URL) {
         emit(["event": "config_unreadable", "backup": backup.path])
-        var t = Island.Toast(text: T("app.config.unreadable"), actionTitle: T("app.config.show")) {
+        // broken while Blurt runs: the settings it read last stay; broken at launch: the defaults
+        var t = Island.Toast(text: T(Config.shared.keepsLast ? "app.config.unreadable_kept" : "app.config.unreadable"),
+                             actionTitle: T("app.config.show")) {
             NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
         }
         t.seconds = 10

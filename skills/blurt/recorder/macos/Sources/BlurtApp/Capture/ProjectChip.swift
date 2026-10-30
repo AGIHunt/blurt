@@ -1,13 +1,13 @@
 // The note bubble's destination chip (v0.9-next; r1 of the overlays redesign): where this capture goes, switched right
 // there. It names the place the way its list does — one name for one choice: the project's coloured folder and its
-// name, or tray.2 and "Unassigned" (the list's row says what that means: it stays as a card). A click (or Tab from the
+// name, or the dashed ring and "Unassigned" (the list's row says what that means: it stays as a card). A click (or Tab from the
 // note's field) opens the list under it, in the bubble — the same rows and the same grid as the main window's Move
 // popover (ProjectPopover: 12 pt to a 16 pt glyph column, 8 pt more to the text, 28 pt rows, a borderless filter with
 // the magnifier, a hairline under it): BlurtCore ProjectPick.choices (recent projects first, typing filters them by
 // name or key, Unassigned last, under a line), ↑↓ move, ↩ picks, Esc goes back to the note. The cursor opens on the
 // row the capture goes to now, so the wash and the check never disagree. Only this capture moves (Snapper.retarget);
-// the island's current project stays as it is. A project whose folder is gone: questionmark.folder, its name dimmed,
-// "folder not found" after it — picked, the capture stays a card and the island offers Locate… (Snapper.file,
+// the island’s current project stays as it is. A project whose folder is gone: the question-mark folder, its name dimmed,
+// "folder not found" in its tooltip — picked, the capture stays a card and the island offers Locate… (Snapper.file,
 // MissingFolder).
 import AppKit
 import BlurtCore
@@ -39,11 +39,13 @@ final class ProjectChip: NSButton {
     }
     @objc private func fire() { onClick?() }
 
+    /// The name alone — a missing folder too: its question-mark folder says what is wrong, the tooltip and VoiceOver
+    /// say it in words (the dogfood's "billing-api: f…er not found" cut out exactly the words that explained it).
     var label: String {
         switch place {
         case .unassigned: return Loc.t("project.inbox")
         case .project(let p): return p.name
-        case .missing(let name): return Loc.t("capture.note.goes_missing", table: "Capture", name)
+        case .missing(let name): return name
         }
     }
 
@@ -51,12 +53,17 @@ final class ProjectChip: NSButton {
     func set(_ p: Place, maxWidth: CGFloat) {
         place = p
         title = label
-        setAccessibilityLabel(Loc.t("capture.note.chip_ax", table: "Capture", label))
+        var said = label
+        if case .missing = p { said += ", " + Loc.t("capture.project.missing_short", table: "Capture") }
+        setAccessibilityLabel(Loc.t("capture.note.chip_ax", table: "Capture", said))
+        setAccessibilityValue(label)
         let w = ceil((label as NSString).size(withAttributes: [.font: ProjectChip.font]).width)
         let want = ProjectChip.lead + 16 + 8 + w + 5 + 9 + 7
         setFrameSize(NSSize(width: min(maxWidth, want), height: ProjectChip.height))
-        toolTip = want > maxWidth ? label + "\n" + Loc.t("capture.note.chip_tip", table: "Capture")
-                                  : Loc.t("capture.note.chip_tip", table: "Capture")
+        var tip = [Loc.t("capture.note.chip_tip", table: "Capture")]
+        if case .missing = p { tip.insert(Loc.t("capture.drawer.missing_sub", table: "Capture"), at: 0) }
+        if want > maxWidth { tip.insert(label, at: 0) }
+        toolTip = tip.joined(separator: "\n")
         needsDisplay = true
     }
 
@@ -71,22 +78,15 @@ final class ProjectChip: NSButton {
     /// Tests: the pointer on the chip (its fill, its name in full ink).
     func testHover(_ on: Bool) { hovering = on }
 
-    /// The place's glyph, as the list draws it (16 pt column). Unassigned is a real place: tray.2 in secondary ink on
-    /// every layer (r1 gave the palette one colour for a two-layer symbol: its back tray came out tertiary, disabled-
-    /// looking next to the coloured folders).
+    /// The place's glyph, as the list draws it (16 pt column): one mark per concept, the island's (IslandGlyph.place) —
+    /// the project's coloured folder, Unassigned's dashed ring in secondary ink, a missing folder's question mark in
+    /// tertiary. Drawn now, in the bubble's appearance.
     static func glyph(_ p: Place) -> NSImage? {
-        let cfg = NSImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        let size: CGFloat = 16
         switch p {
-        case .unassigned:
-            let ink = NSColor.labelColor.withAlphaComponent(0.62)
-            return NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)?
-                .withSymbolConfiguration(cfg.applying(.init(paletteColors: [ink, ink, ink])))
-        case .project(let pr):
-            return NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-                .withSymbolConfiguration(cfg.applying(.init(paletteColors: [ProjectLook.color(pr)])))
-        case .missing:
-            return NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)?
-                .withSymbolConfiguration(cfg.applying(.init(paletteColors: [.tertiaryLabelColor])))
+        case .unassigned: return IslandGlyph.noProject.image(size: size, color: NSColor.labelColor.withAlphaComponent(0.62))
+        case .project(let pr): return IslandGlyph.project(ProjectLook.color(pr)).image(size: size, color: .labelColor)
+        case .missing: return IslandGlyph.missing.image(size: size, color: .tertiaryLabelColor)
         }
     }
 

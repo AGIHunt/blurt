@@ -159,8 +159,14 @@ enum CloudSpeech {
             defer { CloudSpeech.invalidate() }
             let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
             if testing { testKeys[account] = k.isEmpty ? nil : k; return true }
-            SecItemDelete(query(account) as CFDictionary)
-            guard !k.isEmpty else { return true }
+            // deleted only when asked to (an empty key); a new key replaces the old one in place, so a failed write
+            // (a locked Keychain, an item another signature made) never loses the key that was there
+            guard !k.isEmpty else {
+                let r = SecItemDelete(query(account) as CFDictionary)
+                return r == errSecSuccess || r == errSecItemNotFound
+            }
+            let update = SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: Data(k.utf8)] as CFDictionary)
+            guard update == errSecItemNotFound else { return update == errSecSuccess }
             var q = query(account)
             q[kSecValueData as String] = Data(k.utf8)
             q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -259,7 +265,7 @@ struct CloudSpeechSheet: View {
                     ChoicePopup(label: S("speech.cloud.speed"),
                                 choices: CloudSpeech.speeds.map { ($0, S("speech.cloud.speed.\(CloudSpeech.speedKey($0))")) },
                                 selection: $speed, width: 220)
-                    Text(S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint") + " " + S("speech.cloud.speed.all"))
+                    Text(S("speech.cloud.speed.line", S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint"), S("speech.cloud.speed.all")))
                         .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, SettingsMetrics.fieldTextInset)

@@ -5,6 +5,9 @@
 // Keys: Esc cancels in every phase; ⌘Return merges — the sheet's one default — and Return alone does nothing destructive
 // (an empty branch has no default; Discard's confirmation defaults to Cancel). After a merge or a PR
 // the sheet's primary shows the items now waiting to be verified; after Discard they are back in To Do.
+// Only what the user saw lands: while the agent is still in its window (a finished turn waits there) the primary is End
+// Session and Review — it ends the agent and loads the diff again, and Merge comes after that; and merge / pr carry the
+// review's token (`--expect`), so a worktree that changed since the diff loaded is refused (code changed: review again).
 import AppKit
 import SwiftUI
 import BlurtCore
@@ -25,6 +28,12 @@ final class FinishModel: ObservableObject {
     @Published var prURL: String?
     @Published var failedCode: String?          // the sessions.py code of the last failure ("running": end the session)
     @Published var takenBack = 0                // discard: items back in To Do
+    /// The agent is still in its window: merging is refused, the primary ends it and reviews again.
+    @Published var alive = false
+    /// Its status while alive ("running" = mid-turn, not just waiting at its prompt).
+    @Published var agentStatus: String?
+    /// What the diff showed (sessions.py `reviewed`): merge / pr land only that.
+    private(set) var reviewed: String?
     private(set) var lastAction: String?
 
     init(job: String) { self.job = job }
@@ -34,6 +43,7 @@ final class FinishModel: ObservableObject {
     var empty: Bool { files.isEmpty && ahead == 0 && uncommitted == 0 }
     /// The session's items ("HS-1"), for the header and the button that shows them after a merge.
     var items: [SessionItemLabel] { SessionsModel.shared.row(job)?.items ?? [] }
+    var agentName: String { SessionsModel.shared.row(job)?.agentName ?? "Agent" }
     /// The first item's kind (its icon in the header), from the index.
     var kind: String? { SessionsModel.shared.row(job)?.job.items.first.flatMap { IndexLookup.item(uid: $0)?.kind } }
 
@@ -46,6 +56,9 @@ final class FinishModel: ObservableObject {
             branch = o["branch"] as? String ?? ""
             uncommitted = o["uncommitted"] as? Int ?? 0
             ahead = o["ahead"] as? Int ?? 0
+            alive = o["alive"] as? Bool ?? false
+            agentStatus = o["agent_status"] as? String
+            reviewed = o["reviewed"] as? String
             patch = (o["patch"] as? String).map { URL(fileURLWithPath: $0) }
             files = (o["stat"] as? [[String: Any]] ?? []).map {
                 FileStat(path: $0["path"] as? String ?? "", added: $0["added"] as? Int ?? 0, deleted: $0["deleted"] as? Int ?? 0)
@@ -63,7 +76,8 @@ final class FinishModel: ObservableObject {
         lastAction = action
         failedCode = nil
         do {
-            let o = try await AgentSessions.shared.finish(job: job, action: action)
+            let o = try await AgentSessions.shared.finish(job: job, action: action,
+                                                          expect: ["merge", "pr"].contains(action) ? reviewed : nil)
             prURL = o["pr"] as? String ?? o["compare"] as? String
             takenBack = (o["taken_back"] as? [String])?.count ?? 0
             // without gh (or a host it knows) nothing was opened: say what did happen
@@ -80,18 +94,19 @@ final class FinishModel: ObservableObject {
         }
     }
 
-    /// Merge refused because the agent is still in its window (a finished turn still waits for you): end the
-    /// session (Ctrl-C, as Stop does), give the window a moment to close, then do what was asked.
-    func endSessionThen(_ action: String) async {
-        phase = .working(action)
+    /// The agent is still in its window (a finished turn waits there): end the session (Ctrl-C, as Stop does; its
+    /// window closed when that isn't enough), then load the diff again — what it changed on the way out included.
+    /// Never straight on to a merge: the user merges what the sheet then shows.
+    func endSessionAndReview() async {
+        phase = .working("end")
+        lastAction = nil
         try? await AgentSessions.shared.stop(job: job, kill: false)
-        for _ in 0..<10 {
-            await run(action)
-            guard failedCode == "running" else { return }
-            phase = .working(action)
-            try? await Task.sleep(nanoseconds: 600_000_000)
+        await load()
+        if alive {
+            try? await AgentSessions.shared.stop(job: job, kill: true)
+            await load()
         }
-        await run(action)
+        emit(["event": "session_finish", "job": job, "action": "end_review", "alive": alive])
     }
 }
 
@@ -238,8 +253,15 @@ struct FinishView: View {
         return (plus + minus).font(.system(size: size, weight: .regular).monospacedDigit()).fixedSize()
     }
 
+    /// While the agent is still open: one line on what the primary does first (mid-turn: that it stops the turn).
+    var aliveNote: String? {
+        guard m.alive else { return nil }
+        return TL(m.agentStatus == "running" ? "finish.alive.working" : "finish.alive", m.agentName)
+    }
+
     var actions: some View {
-        let mergeTitle = TL(m.uncommitted > 0 ? "finish.commit_merge" : "finish.merge")
+        let mergeTitle = TL(m.alive ? "finish.end_review" : m.uncommitted > 0 ? "finish.commit_merge" : "finish.merge")
+        let primaryOff = busy != nil || (m.empty && !m.alive)
         return HStack(spacing: 8) {
             // the rare ways out, never a button at rest: keep it as it is, or throw it away (asks first)
             Menu {
@@ -247,37 +269,47 @@ struct FinishView: View {
                 Divider()
                 Button(TL("review.discard"), role: .destructive) { confirmDiscard = true }
             } label: {
-                Image(systemName: "ellipsis")
+                // the one ⋯ of every header and panel: the circled ellipsis, borderless
+                Image(systemName: "ellipsis.circle").font(.system(size: 15))
             }
-            .menuStyle(.button).menuIndicator(.hidden).fixedSize()
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
             .disabled(busy != nil)
             .help(TL("review.more"))
             .accessibilityLabel(TL("review.more"))
-            PanelFootnote(text: nil, busy: busy.map { TL("finish.working.\($0)") })
-            Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction).disabled(busy != nil)
-            // the one default, split: Merge on a click (⌘↩, not a bare Return: it changes the base branch); its menu
-            // holds the other way to land it, Open Pull Request (nothing is pushed until then)
-            Button { Task { await m.run("merge") } } label: {
-                HStack(spacing: 8) {
-                    Text(mergeTitle)
-                    Rectangle().fill(Color.white.opacity(0.4)).frame(width: 1, height: 13).accessibilityHidden(true)
-                    Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).accessibilityHidden(true)
+            // the footnote gives up width first: the buttons' titles are never cut
+            PanelFootnote(text: aliveNote, busy: busy.map { TL("finish.working.\($0)") }).layoutPriority(-1)
+            Button(TL("common.cancel"), action: close).keyboardShortcut(.cancelAction).disabled(busy != nil).fixedSize()
+            if m.alive {
+                // nothing to merge yet: the agent may still change the worktree. End it, then review what it left
+                Button(mergeTitle) { Task { await m.endSessionAndReview() } }
+                    .panelDefault().fixedSize().layoutPriority(1)
+                    .keyboardShortcut(.return, modifiers: .command).disabled(primaryOff)
+                    .help(TL("finish.end_review.help", m.agentName) + "  ⌘↩")
+            } else {
+                // the one default, split: Merge on a click (⌘↩, not a bare Return: it changes the base branch); its
+                // menu holds the other way to land it, Open Pull Request (nothing is pushed until then)
+                Button { Task { await m.run("merge") } } label: {
+                    HStack(spacing: 8) {
+                        Text(mergeTitle)
+                        Rectangle().fill(Color.white.opacity(0.4)).frame(width: 1, height: 13).accessibilityHidden(true)
+                        Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)).accessibilityHidden(true)
+                    }
                 }
+                .panelDefault().fixedSize().layoutPriority(1)
+                    .keyboardShortcut(.return, modifiers: .command).disabled(primaryOff)
+                    .help(TL("finish.help", m.base) + "  ⌘↩")
+                    // the arrow's part of the button opens its menu
+                    .overlay(alignment: .trailing) {
+                        Menu {
+                            Button(TL("finish.pr")) { Task { await m.run("pr") } }.help(TL("finish.pr.help"))
+                        } label: { Rectangle().fill(Color.white.opacity(0.001)).frame(width: 26, height: 22) }
+                        .menuStyle(.borderlessButton).menuIndicator(.hidden)
+                        .frame(width: 26, height: 22)
+                        .disabled(primaryOff)
+                        .accessibilityHidden(true)      // the button itself carries it, as a named action
+                    }
+                    .accessibilityAction(named: TL("finish.pr")) { if !primaryOff { Task { await m.run("pr") } } }
             }
-            .panelDefault()
-                .keyboardShortcut(.return, modifiers: .command).disabled(busy != nil || m.empty)
-                .help(TL("finish.help", m.base) + "  ⌘↩")
-                // the arrow's part of the button opens its menu
-                .overlay(alignment: .trailing) {
-                    Menu {
-                        Button(TL("finish.pr")) { Task { await m.run("pr") } }.help(TL("finish.pr.help"))
-                    } label: { Rectangle().fill(Color.white.opacity(0.001)).frame(width: 26, height: 22) }
-                    .menuStyle(.borderlessButton).menuIndicator(.hidden)
-                    .frame(width: 26, height: 22)
-                    .disabled(busy != nil || m.empty)
-                    .accessibilityHidden(true)      // the button itself carries it, as a named action
-                }
-                .accessibilityAction(named: TL("finish.pr")) { if busy == nil && !m.empty { Task { await m.run("pr") } } }
         }
     }
 
@@ -302,15 +334,16 @@ struct FinishView: View {
             HStack(spacing: 8) {
                 Spacer()
                 if verify, let first = m.items.first {
-                    // the next step is checking the work: show the items waiting for it
-                    Button(TL("common.done"), action: close).keyboardShortcut(.cancelAction)
+                    // the next step is checking the work: show the items waiting for it. Close, not "Done": that
+                    // is an item state here
+                    Button(TL("common.close"), action: close).keyboardShortcut(.cancelAction)
                     Button(m.items.count == 1 ? TL("finish.show_item", first.id) : TL("finish.show_items")) {
                         close()
                         if let uid = SessionsModel.shared.row(m.job)?.job.items.first { AppEnvironment.mainWindow?.reveal(uid: uid) }
                     }
                     .panelDefault().keyboardShortcut(.defaultAction)
                 } else {
-                    Button(TL("common.done"), action: close).panelDefault().keyboardShortcut(.defaultAction)
+                    Button(TL("common.close"), action: close).panelDefault().keyboardShortcut(.defaultAction)
                 }
             }
         }
@@ -320,7 +353,8 @@ struct FinishView: View {
 
     /// The session or its worktree is gone: say so and close (Esc or ↩) — and the session's card and row behind say the
     /// same from then on (its folder gone: Take Back Items instead of a review). Anything else may pass: the reason,
-    /// Close, and Try Again — or, when the agent still sits in its window, End Session and Merge.
+    /// Close, and Try Again — or, when the agent still sits in its window, End Session and Review (never a Try Again
+    /// that can only fail the same way); when the worktree changed after the review loaded, Review Again.
     func failed(_ why: String) -> some View {
         let code = m.failedCode ?? ""
         let gone = Self.gone.contains(code)
@@ -346,10 +380,13 @@ struct FinishView: View {
                 if gone {
                     Button(TL("common.close"), action: dismiss).panelDefault().keyboardShortcut(.defaultAction)
                 } else {
-                    Button(TL("common.close"), action: close).keyboardShortcut(.cancelAction)
-                    if m.failedCode == "running", let a = m.lastAction {
-                        Button(TL("overlay.retry")) { Task { await m.load() } }
-                        Button(TL("finish.end_and.\(a)")) { Task { await m.endSessionThen(a) } }.panelDefault().keyboardShortcut(.defaultAction)
+                    Button(TL("common.close"), action: close).keyboardShortcut(.cancelAction).fixedSize()
+                    if m.failedCode == "running" {
+                        Button(TL("finish.end_review")) { Task { await m.endSessionAndReview() } }
+                            .panelDefault().fixedSize().keyboardShortcut(.defaultAction)
+                    } else if m.failedCode == "changed" {
+                        Button(TL("finish.review_again")) { Task { await m.load() } }
+                            .panelDefault().fixedSize().keyboardShortcut(.defaultAction)
                     } else {
                         Button(TL("overlay.retry")) { Task { await m.load() } }.panelDefault().keyboardShortcut(.defaultAction)
                     }
@@ -358,7 +395,7 @@ struct FinishView: View {
             .padding(.top, 14)
         }
         .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 360)
+        .frame(width: PanelMetrics.width)
     }
 }
 

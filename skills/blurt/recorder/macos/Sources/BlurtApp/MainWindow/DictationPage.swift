@@ -228,6 +228,12 @@ final class DictationHistoryModel: ObservableObject {
         }
     }
 
+    /// Some of a long take's parts weren't polished (not all: the take isn't "not polished"): said under the text only.
+    static func partsLine(_ e: DictationEntry) -> String? {
+        guard !e.fellBack, let p = e.fellBackParts else { return nil }
+        return T("main.dictation.status.parts", p.n, p.of, reasonText(e.reason))
+    }
+
     /// ⌘Z — or the island's "Deleted · Undo" — puts them back: the text, the item link and a recording kept with them
     /// (it waits in audio/.deleted/ for a couple of minutes: DictationHistory.delete). The row after the last deleted
     /// one is selected, as in Mail.
@@ -403,7 +409,11 @@ final class DictationHistoryModel: ObservableObject {
 
     /// What the list shows for a dictation that wasn't recognised.
     static func failedText(_ e: DictationEntry) -> String {
-        e.reason == "asr_failed:model_missing" ? T("dictation.history.failed.no_model") : T("dictation.history.failed")
+        switch e.reason {
+        case "asr_failed:model_missing": return T("dictation.history.failed.no_model")
+        case DictationHistory.interruptedReason: return T("dictation.history.failed.interrupted")
+        default: return T("dictation.history.failed")
+        }
     }
 
     func openSettings() { AppEnvironment.settings?.show(pane: "dictation") }
@@ -446,7 +456,7 @@ final class DictationHistoryModel: ObservableObject {
     }
 
     static func duration(_ s: Double) -> String {
-        s < 60 ? T("dictation.history.seconds", Int(s.rounded())) : Loc.duration(s)
+        Island.clock(s.rounded())          // one form wherever a take's length shows: the island's 0:05, 1:20
     }
 
     // MARK: app icons (the app a dictation went into)
@@ -1243,8 +1253,8 @@ struct DictationEmptyView: View {
         case .noModel:
             VStack(spacing: 8) {
                 if let j = models.dictationJob {
-                    pill(T("dictation.toast.no_model", modelSize(j.sizeMB)), .warn)
-                    Button(T("dictation.toast.no_model.action")) { Dictation.getSpeechModel(from: "page") }
+                    pill(T("dictation.toast.no_model"), .warn)
+                    Button(T("dictation.toast.no_model.action_size", modelSize(j.sizeMB))) { Dictation.getSpeechModel(from: "page") }
                         .buttonStyle(.brand).keyboardShortcut(.defaultAction)
                 } else {
                     // what is missing can't be fetched from here: the models' page
@@ -1623,18 +1633,47 @@ struct DictationDetailView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Several selected: the items' SelectionView grammar (system.md) — top-aligned at the detail's inset, the count,
+    /// one primary (Copy All), the rest in ⋯ (Delete; ⌫ still works), then the takes on a quiet card.
     func several(_ es: [DictationEntry]) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: "square.stack").font(.system(size: 28, weight: .light)).foregroundStyle(.tertiary)
-                .accessibilityHidden(true)
-            Text(TP("main.dictation.multi", es.count)).font(.system(size: 15, weight: .semibold))
-            HStack(spacing: 8) {
-                Button(T("main.dictation.copy_all")) { m.copySelection() }
-                Button(T("dictation.history.delete"), role: .destructive) { m.delete(es, undo: undo) }
+        let shown = es.prefix(8)
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(TP("main.dictation.multi", es.count)).font(.system(size: 17, weight: .semibold))
+                HStack(spacing: 10) {
+                    Button(T("main.dictation.copy_all")) { m.copySelection() }.buttonStyle(.brand)
+                    Menu {
+                        Button(T("dictation.history.delete"), role: .destructive) { m.delete(es, undo: undo) }
+                    } label: {
+                        glyph(.more, 13).accessibilityLabel(T("dictation.history.more"))
+                    }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+                    .foregroundStyle(.secondary)
+                    .help(T("dictation.history.more"))
+                    .accessibilityLabel(T("dictation.history.more"))
+                    Spacer(minLength: 0)
+                }
+                .controlSize(.regular)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(shown)) { e in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Text(DictationHistoryModel.time(e.time)).font(.system(size: 11.5)).monospacedDigit()
+                                .foregroundStyle(.secondary).frame(width: 44, alignment: .leading)
+                            Text(DictationEntry.preview(e.finalText)).font(.system(size: 13)).lineLimit(1)
+                        }
+                    }
+                    if es.count > shown.count {
+                        Text(T("main.dictation.multi.more", es.count - shown.count)).font(.system(size: 11.5)).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.045)))
             }
-            .padding(.top, 4)
+            .padding(.horizontal, DictationDetailView.inset).padding(.top, 24).padding(.bottom, 28)
+            .frame(maxWidth: 720, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     static func isFailed(_ e: DictationEntry) -> Bool { e.text.isEmpty && (e.reason ?? "").hasPrefix("asr_failed") }
@@ -1652,9 +1691,9 @@ struct DictationDetailView: View {
                 } else {
                     texts(e, differs: differs)
                 }
-                if let x = DictationHistoryModel.exception(e), !editing {
+                if let line = DictationHistoryModel.exception(e)?.line ?? DictationHistoryModel.partsLine(e), !editing {
                     // how it went in, in the row chip's words with the reason: a fact, in secondary (never attention)
-                    Text(x.line).font(.system(size: 12)).foregroundStyle(.secondary)
+                    Text(line).font(.system(size: 12)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 10)
                 }
@@ -1672,14 +1711,23 @@ struct DictationDetailView: View {
     /// The app and when (the one place they are said), and the text's views — off while a correction is open.
     func header(_ e: DictationEntry, differs: Bool, editing: Bool) -> some View {
         let app = AppNames.display(name: e.app, bundle: e.bundle) ?? T("main.dictation.unknown_app")
-        var when = "\(DictationHistoryModel.dayTitle(e.time)) \(DictationHistoryModel.time(e.time)) · \(DictationHistoryModel.duration(e.duration))"
-        if e.corrected != nil { when += " · " + T("main.dictation.corrected") }
+        let time = DictationHistoryModel.time(e.time), length = DictationHistoryModel.duration(e.duration)
+        let fixed = e.corrected != nil ? " · " + T("main.dictation.corrected") : ""
+        // narrower and narrower: the day goes first (the list's section says it), then the length; the time and
+        // length never end in "…" — the app's name gives way instead
+        let whens = ["\(DictationHistoryModel.dayTitle(e.time)) \(time) · \(length)\(fixed)", "\(time) · \(length)\(fixed)", time]
         return HStack(alignment: .center, spacing: 8) {
             // the app as the list draws it, one size up: a label for the text below, not the pane's loudest object
             DictationAppIcon(bundle: e.bundle, name: app, size: 18)
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(app).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                Text(when).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                Text(app).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.tail)
+                    .frame(minWidth: 56, alignment: .leading)
+                ViewThatFits(in: .horizontal) {
+                    when(whens[0])
+                    when(whens[1])
+                    when(whens[2])
+                }
+                .layoutPriority(2)
             }
             .layoutPriority(1)
             Spacer(minLength: 12)
@@ -1690,6 +1738,10 @@ struct DictationDetailView: View {
                     .fixedSize()
             }
         }
+    }
+
+    private func when(_ s: String) -> some View {
+        Text(s).font(.system(size: 11.5)).monospacedDigit().foregroundStyle(.secondary).lineLimit(1).fixedSize()
     }
 
     @ViewBuilder func texts(_ e: DictationEntry, differs: Bool) -> some View {
@@ -1941,9 +1993,12 @@ struct DictationDetailView: View {
                 polishRow(e)
                 if let s = e.style, let ran = DictationEntryReport.styleRan(e) {
                     // the style the text is in (what ran, not only what was asked for), and how often reformat-last
-                    // changed it (dictation-styles.md)
+                    // changed it (dictation-styles.md); a fall-back: the style asked for, "not polished" (the reason is
+                    // the line under the text)
                     let n = s.reformats.filter { $0.action == "reformat" }.count
-                    row(T("dictation.style.section"), Dictation.styleName(ran) + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
+                    let name = e.fellBack ? Dictation.styleName(DictationStyle(rawValue: s.style) ?? .light) + " · " + T("dictation.history.badge.fell_back")
+                        : Dictation.styleName(ran)
+                    row(T("dictation.style.section"), name + (n > 0 ? " · " + T("dictation.history.style.reformatted", n) : ""))
                 }
                 if let l = e.language { row(T("main.dictation.info.language"), Loc.locale.localizedString(forIdentifier: l) ?? l) }
                 if let t = x?.terms, !t.isEmpty { row(T("main.dictation.info.terms"), t.joined(separator: T("main.dictation.correct.sep"))) }

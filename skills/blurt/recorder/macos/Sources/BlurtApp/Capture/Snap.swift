@@ -402,7 +402,8 @@ final class ShotBatch {
     /// `{"n", "deleted": true}`; the files go to the Trash (recoverable). `done` gets where each one went (for Undo).
     /// `recycleAfter`: the files stay where they are that long first (an app a card was dragged into may still be
     /// reading its file); undone meanwhile, they never move.
-    func delete(_ s: Shot, recycleAfter delay: TimeInterval = 0, done: (([URL: URL]) -> Void)? = nil) {
+    /// `into`: tests — the files go to that scratch folder instead of the user's Trash.
+    func delete(_ s: Shot, recycleAfter delay: TimeInterval = 0, into trash: URL? = nil, done: (([URL: URL]) -> Void)? = nil) {
         s.deleted = true
         s.deletions += 1
         let gen = s.deletions
@@ -413,6 +414,15 @@ final class ShotBatch {
         guard !files.isEmpty else { done?([:]); return }
         let recycle = {
             guard s.deleted, s.deletions == gen else { return }
+            if let t = trash {
+                try? FileManager.default.createDirectory(at: t, withIntermediateDirectories: true)
+                var moved: [URL: URL] = [:]
+                for f in files {
+                    let to = t.appendingPathComponent("\(s.n)-\(UUID().uuidString.prefix(6))-" + f.lastPathComponent)
+                    if (try? FileManager.default.moveItem(at: f, to: to)) != nil { moved[f] = to }
+                }
+                return done?(moved) ?? ()
+            }
             NSWorkspace.shared.recycle(files) { moved, _ in DispatchQueue.main.async { done?(moved) } }
         }
         if delay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: recycle) } else { recycle() }

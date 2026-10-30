@@ -79,6 +79,20 @@ class History(TmpCase):
         ok("dictation.py", "prune", env=self.e.env())
         self.assertEqual(sorted(p.name for p in audio.iterdir()), ["d-kept.wav", "d-now.wav"])
 
+    def test_prune_keeps_an_interrupted_take_for_the_app(self):
+        # quit mid-take: the take's own recording (no entry) stays within the retention — the app turns it into an
+        # "interrupted" entry with Retry; its pieces go, and so does one older than the retention
+        audio = self.e.home / "dictation" / "audio"
+        audio.mkdir(parents=True)
+        two_h, forty_d = time.time() - 2 * 3600, time.time() - 40 * 86400
+        for n, t in (("d-20261030-141400-dccd.wav", two_h), ("d-20261030-141400-dccd-p1.wav", two_h),
+                     ("d-20260901-101010-abcd.wav", forty_d)):
+            (audio / n).write_bytes(b"RIFF")
+            os.utime(audio / n, (t, t))
+        self.write([entry("d-1", 1)])
+        ok("dictation.py", "prune", env=self.e.env())
+        self.assertEqual(sorted(p.name for p in audio.iterdir()), ["d-20261030-141400-dccd.wav"])
+
     def test_turn_into_item(self):
         repo = make_repo(self.tmp / "web-app")
         proj = ok("projects.py", "add", repo, env=self.e.env())["project"]

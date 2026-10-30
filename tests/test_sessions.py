@@ -385,6 +385,23 @@ def test_doctor(p2):
     assert p2.tmux("show-options", "-gv", "remain-on-exit").strip() == "on"
 
 
+def test_a_server_started_with_an_old_conf_gets_todays_options(p2):
+    """Dogfood: tmux reads -f only when its server starts, and Blurt's server outlived the update that turned
+    focus-events off (the Codex 'timed out discarding buffered terminal input' start failure): every hand-off still
+    ran with the old options."""
+    old = p2.tmp / "old.conf"
+    old.write_text("set -g focus-events on\nset -s escape-time 10\n")
+    subprocess.run([TMUX, "-L", p2.socket, "-f", str(old), "new-session", "-d", "-s", "old"], check=True, env=p2.env)
+    assert p2.tmux("show-options", "-gv", "focus-events").strip() == "on"
+    proj = p2.project(p2.repo(), worktree=False)
+    dispatch(p2, p2.item(proj["id"])["uid"], agent="claude")
+    assert p2.tmux("show-options", "-gv", "focus-events").strip() == "off"
+    assert p2.tmux("show-options", "-sv", "escape-time").strip() == "50"
+    # and doctor says what the running server uses
+    p2.tmux("set-option", "-g", "focus-events", "on")
+    assert p2.run("sessions.py", "doctor")["options"] == {"escape-time": "50", "focus-events": "off"}
+
+
 def test_monitor_leaves_a_job_alone_until_its_window_exists(p2):
     """e2e v0.7: dispatch writes the job (running) before the worktree and the tmux window exist; the resident monitor
     saw a running job with no window, called it exited and finished it at once ("Session ended" as it started)."""

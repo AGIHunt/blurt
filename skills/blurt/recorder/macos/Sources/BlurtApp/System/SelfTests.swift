@@ -210,8 +210,19 @@ enum SelfTests {
                 let m = StorageModel()
                 SelfTests.storage = m
                 let u = BlurtPaths.home.appendingPathComponent(arg)
-                m.trash([u], name: arg, window: NSApp.keyWindow)
-                out(["trashing": u.path])
+                // a model goes through its Storage row, as the page does: only one the row offers to trash, by its name
+                Task { @MainActor in
+                    await m.load()
+                    let p = u.standardizedFileURL.path
+                    if let r = m.models.first(where: { $0.path.standardizedFileURL.path == p }) {
+                        guard r.removable else { out(["error": "in use", "name": r.name]); return }
+                        m.trash(r.items, name: r.name, window: NSApp.keyWindow)
+                        out(["trashing": u.path, "name": r.name])
+                        return
+                    }
+                    m.trash([u], name: arg, window: NSApp.keyWindow)
+                    out(["trashing": u.path])
+                }
             }
         case "storagehover":            // storagehover NAME: Settings → Storage shows that row's ⋯ as on hover (empty: none)
             MainActor.assumeIsolated { StorageHover.shared.forced = arg.isEmpty ? nil : arg }

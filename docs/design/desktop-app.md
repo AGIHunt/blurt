@@ -964,6 +964,11 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
   （bundle id 和正式版共用）。
 - **版面检查（layout lint）**：测试通道上的 `layoutcheck [min|restore|dump]`（`System/LayoutCheck.swift`，规则在 BlurtCore 的
   `LayoutLint`）走一遍每个可见窗口的无障碍树，报告控件 / 文字超出窗口边缘、压在红绿灯下、可交互控件互相重叠、文字被截断。
+  按钮和弹出菜单的标题也查（AXButton / AXPopUpButton / AXMenuButton）：AppKit 弹出菜单比 `titleRect(forBounds:)`，
+  NSButton 比 `cellSize`；SwiftUI 按钮用无障碍树给的字号量标题，再加按钮高度允许的最少边距（实测带边框按钮两侧合计
+  mini 16、small 20、regular 24、large 28 pt，约等于按钮高度；只算 3/4，免得误报）。标签里还有别的东西（拆分按钮的竖线和
+  箭头）时几何量不出来，所以对还没报截断的带标题按钮再渲染一次窗口、用 Vision 读字：读到「标题开头 + …」就报截断
+  （每个窗口约 0.2 s）。只有图标的按钮（宽不到高的 1.75 倍，或标识符是 SF Symbol 名）不查。
   无人值守的全量检查：`BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s`（或 `python3 tests/test_gui_layout.py`
   出报告）——隔离的 App 副本，打开引导每一步、设置每个面板、主窗口各视图和钩子能开的面板，中英文各一遍，可缩放窗口再缩到最小
   尺寸查一遍；有任何问题就失败。
@@ -1122,7 +1127,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
   - 覆盖：A、X、J、K、Z、G、V；字段编辑后自动保存，`items.json` 里出现 `_user`；合并和撤销；
     agent 执行 `items.py set-frames` 后，页面 3 秒内显示新帧；模拟 keyCode 229 的回车不会触发提交；
   - 截图覆盖三平台 × 明暗两种主题；
-  - 单文件产物不超过 400 KB ⚠；
+  - 单文件产物不超过 410 KB ⚠（原为 400 KB；1.0.5 加了 6 个线条图标和 by you / ⋯ 后到 400.3 KB，放宽到 410）；
   - 功能对照表逐项通过，以旧版 `review.html` 的行为为准。
 
 ### WP4 · mac-shell

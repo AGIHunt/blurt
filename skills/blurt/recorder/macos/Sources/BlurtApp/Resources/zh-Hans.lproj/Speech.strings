@@ -110,6 +110,9 @@
 "speech.advanced.language" = "识别语言";
 "speech.advanced.language.detail" = "每句自动识别语言，或固定用一种。";
 "speech.advanced.language.auto" = "自动检测";
+"speech.advanced.language.auto.system" = "自动（%@）";
+"speech.language.system" = "macOS 自带的识别器一次只听一种语言，现在听%@，夹在里面的英文词也认得。只说英文就选 English。";
+"speech.language.system.one" = "macOS 自带的识别器一次只听一种语言，现在听%@，别的语言听不出来。说别的语言就在这里选。";
 
 /* Advanced (folded) */
 "speech.more.title" = "高级";
@@ -184,3 +187,6 @@
 "speech.tag.qwen3-0.6b" = "适合内存很小的 Mac";
 "speech.tag.qwen3-1.7b" = "适合内存小的 Mac";
 "speech.tag.gemma3-1b" = "适合内存小的 Mac";
+"speech.cloud.speed.line" = "%1$@，%2$@。";
+"speech.auto.plain" = "自动";
+"speech.auto.using" = "%1$@现在用：%2$@";

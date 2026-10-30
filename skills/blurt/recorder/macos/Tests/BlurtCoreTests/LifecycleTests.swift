@@ -87,7 +87,8 @@ final class LifecycleTests: XCTestCase {
     /// A list key that does nothing says why (the dogfood's bare beep on D for a discarded item).
     func testRefusalSaysWhy() {
         XCTAssertEqual(Lifecycle.refusal(forKey: "d", states: ["discarded"]), .discarded)
-        XCTAssertEqual(Lifecycle.refusal(forKey: "d", states: ["new"]), .state("new"))
+        XCTAssertNil(Lifecycle.refusal(forKey: "d", states: ["new"]))             // BA-56: D marks a new one done too
+        XCTAssertEqual(Lifecycle.refusal(forKey: "a", states: ["todo"]), .state("todo"))
         XCTAssertEqual(Lifecycle.refusal(forKey: "a", states: ["done", "wontfix"]), .state(nil))
         XCTAssertNil(Lifecycle.refusal(forKey: "d", states: ["new", "todo"]))      // D marks the to-do one done
         XCTAssertNil(Lifecycle.refusal(forKey: "r", states: ["discarded"]))       // R restores

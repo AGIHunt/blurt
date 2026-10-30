@@ -43,7 +43,7 @@ final class ScreenTextCopy {
         guard let app = app, app.resident, app.picker == nil, drag == nil else { return }
         guard Snapper.screenAllowed else {
             emit(["event": "screen_text_failed", "screen_recording": false, "stage": "picker"])
-            return ScreenHelp.show(.snap, grant: .missing)
+            return ScreenHelp.show(.text, grant: .missing)
         }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
         // the second pass on this Mac (or the translation's model): asked to warm up while the user drags
@@ -72,7 +72,7 @@ final class ScreenTextCopy {
         }
         take { [weak self] img, _ in
             guard let self = self else { return }
-            guard let img = img else { return snapper.snapFailed() }
+            guard let img = img else { return snapper.snapFailed(use: .text) }
             let words = Array(DictationVocabulary.shared.active().prefix(100).map(\.term))
             let shot = CACurrentMediaTime()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -125,8 +125,10 @@ final class ScreenTextCopy {
     }
 
     /// `text` on the clipboard, and typed into `field` when it is still the app in front → the clipboard's changeCount.
+    /// `icon`/`action`: the toast's own (a failure's ⚠ and Try Again), else the done check.
     @discardableResult
-    private func deliver(_ text: String, field: Field?, toast: String? = nil) -> Int {
+    private func deliver(_ text: String, field: Field?, toast: String? = nil, icon: BlurtIcon? = nil,
+                         action: (title: String, run: () -> Void)? = nil) -> Int {
         let pb = Self.pasteboard
         var typed = false
         if let f = field, NSWorkspace.shared.frontmostApplication?.processIdentifier == f.pid {
@@ -137,15 +139,23 @@ final class ScreenTextCopy {
         }
         emit(["event": "screen_text_delivered", "typed": typed, "field": field != nil, "chars": text.count])
         island.toast(toast ?? Loc.t(typed ? "capture.text.typed" : "capture.text.copied", table: "Capture"),
-                     key: Self.toastKey, icon: toast == nil ? .check : nil, seconds: toast == nil ? 2 : 8)
+                     key: Self.toastKey, icon: toast == nil ? .check : icon, seconds: toast == nil ? 2 : 8,
+                     actionTitle: action?.title, action: action?.run)
         return pb.changeCount
     }
 
     // MARK: translate
 
+    /// When this run asked polish-serve to start (⌥T's key-down): the translation waits for it from then, rather than
+    /// loading a second copy of the model through the CLI.
+    private static var warmSpawned: CFTimeInterval?
+    /// How long a translation waits for a server it started (its run file appears ~0.7 s after the spawn with a warm uv
+    /// cache; the model loads after — the request's own allowance covers that).
+    static let serverWait: CFTimeInterval = 4
+
     static func warmTranslator() {
         guard ScreenTextRefine.cloudPayload == nil, !WarmServer.running("polish-serve") else { return }
-        _ = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
+        if WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve") != nil { warmSpawned = CACurrentMediaTime() }
     }
 
     private func translate(_ text: String, image: CGImage, field: Field?) {
@@ -155,8 +165,12 @@ final class ScreenTextCopy {
         // the user's own when the text is in it already (v1.0.6)
         let target = Dictation.translateConfig.target.request(home: Dictation.homeLanguage)
         let t0 = CACurrentMediaTime()
+        // the server this press started: wait for it (from the key-down), not the CLI — the dogfood's first ⌥T after
+        // every launch checked once, found nothing yet, and fell to the CLI
+        let until = Self.warmSpawned.map { $0 + Self.serverWait } ?? 0
         DispatchQueue.global(qos: .userInitiated).async {
             var r: [String: Any]?
+            while !WarmServer.running("polish-serve") && CACurrentMediaTime() < until { usleep(50_000) }
             if WarmServer.running("polish-serve") {
                 var req: [String: Any] = ["cmd": "translate", "text": text, "target": target]
                 if let c = cloud { req["cloud"] = c }
@@ -181,8 +195,14 @@ final class ScreenTextCopy {
                 if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { ev["text"] = out }
                 emit(ev)
                 guard !out.isEmpty else {
-                    // the text itself still helps: copied, and said so
-                    self.deliver(text, field: nil, toast: Loc.t("capture.text.translate_failed", table: "Capture"))
+                    // the text itself still helps: copied, and said so — with Try Again on the same text (a server
+                    // still loading answers the next try)
+                    self.deliver(text, field: nil, toast: Loc.t("capture.text.translate_failed", table: "Capture"), icon: .warning,
+                                 action: (Loc.t("capture.text.try_again", table: "Capture"), { [weak self] in
+                                     emit(["event": "screen_translate_retry"])
+                                     Self.warmTranslator()
+                                     self?.translate(text, image: image, field: field)
+                                 }))
                     return
                 }
                 // the translation shows in the island (to read it here), and is on the clipboard / in the field
@@ -237,6 +257,12 @@ final class TextDragPicker {
             guard let self = self, !self.finished else { return }
             self.windows.forEach { $0.alphaValue = 1 }
             self.redraw()
+            // no still at all with Screen Recording allowed: a stale grant, said before the drag
+            Snapper.checkStills(self.stills.stills.count, use: .text) { [weak self] in
+                guard let self = self, !self.finished else { return }
+                self.start = nil
+                self.finish()
+            }
         }
         // the key window under the pointer takes Esc without activating Blurt; the crosshair from the first move
         windows.first { $0.frame.contains(NSEvent.mouseLocation) }?.makeKey()
@@ -307,7 +333,6 @@ final class TextDragView: NSView {
                 edge.stroke()
             }
         }
-        Loupe.draw(pointer: p.pointer, in: self, stills: p.stills,
-                   label: p.selection.map(Loupe.sizeLabel) ?? Loupe.pointLabel(p.pointer))
+        Loupe.draw(pointer: p.pointer, in: self, stills: p.stills, label: p.selection.map(Loupe.sizeLabel))
     }
 }

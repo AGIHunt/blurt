@@ -23,7 +23,8 @@ enum SettingsPane: String, CaseIterable {
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
-    var symbol: String { info?.symbol ?? "gearshape" }
+    /// Agents: a terminal, what they run in here — not a "send" paper plane
+    var symbol: String { self == .agents ? "terminal" : info?.symbol ?? "gearshape" }
 
     @MainActor
     func makeController() -> NSViewController {

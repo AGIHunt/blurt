@@ -680,7 +680,50 @@ class AppleSpeechSelect(unittest.TestCase):
         finally:
             T.installed = real
 
+    def vad(self, present: bool):
+        """silero_vad.onnx in (or out of) the test models dir for this test, as it was afterwards"""
+        f = T.MODELS_DIR / "silero_vad.onnx"
+        was = f.read_bytes() if f.exists() else None
+        if present:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(was or b"vad")
+        else:
+            f.unlink(missing_ok=True)
+            # and none shipped with the skill (v1.0.6's models/silero_vad.onnx, which bundled_vad() would copy in)
+            bundled = T.BUNDLED_VAD
+            T.BUNDLED_VAD = f.parent / "no-bundled-vad.onnx"
+            self.addCleanup(setattr, T, "BUNDLED_VAD", bundled)
+        self.addCleanup(lambda: f.write_bytes(was) if was is not None else f.unlink(missing_ok=True))
+
+    def test_model_files_without_the_vad_dont_beat_macos_speech(self):
+        # a Whisper in a shared Hugging Face cache, no silero_vad.onnx yet: the first Fn must listen, not ask for 1 MB
+        self.vad(False)
+        real = fake_installed("apple-speech", "whisper-large-v3-turbo-mlx")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.select("note")["id"], "apple-speech")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "apple-speech")
+                self.assertTrue(d["ready"])
+                self.assertEqual(d["missing"], [])
+                self.vad(True)
+                self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")   # the VAD is in: it takes over
+        finally:
+            T.installed = real
+
+    def test_a_chosen_model_still_asks_for_the_vad(self):
+        self.vad(False)
+        real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}, "record": {"dictation": {"asr_model": "qwen3-asr-1.7b-mlx"}}}):
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(d["missing"], ["silero-vad"])
+        finally:
+            T.installed = real
+
     def test_a_local_model_takes_over(self):
+        self.vad(True)
         real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
         try:
             with config({"asr": {"languages": ["zh", "en"]}}):
@@ -702,8 +745,14 @@ class AppleSpeechSelect(unittest.TestCase):
             self.assertEqual(T.apple_locale(None), "zh-CN")
             self.assertEqual(T.apple_locale("en"), "en-US")
             self.assertIsNone(T.apple_locale("th"))
+        # English first, Chinese too: the Chinese recogniser, which hears the English words as well (as the app's
+        # AppleSpeech.automatic) — an English Mac whose user speaks Chinese
         with config({"asr": {"languages": ["en", "zh"]}}):
-            self.assertEqual(T.apple_locale("auto"), "en-US")
+            self.assertEqual(T.apple_locale("auto"), "zh-CN")
+        with config({"asr": {"languages": ["en", "fr"]}}):
+            self.assertEqual(T.apple_locale(None), "en-US")
+        with config({"asr": {"languages": ["en", "zh"], "language": "en"}}):
+            self.assertEqual(T.apple_locale(None), "en-US")
 
     def test_whole_audio_through_the_app_without_vad(self):
         # the Blurt executable's `--speech` answer, faked: one line of JSON with each phrase's time

@@ -177,7 +177,10 @@ public final class ScriptRunner {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: uv)
         p.arguments = ["run", "-q", try scriptURL(script).path] + args
+        // BLURT_LANG: the app's own UI language (its --lang or per-app language), which a script can't read from
+        // config or the global AppleLanguages — handoff.ui_lang() reads it first
         p.environment = ShellEnv.agentEnvironment().merging(ScriptRunner.extraEnvironment()) { _, mine in mine }
+            .merging(["BLURT_LANG": Loc.language.hasPrefix("zh") ? "zh" : "en"]) { _, mine in mine }
         return p
     }
 

@@ -39,6 +39,9 @@ class Layout(unittest.TestCase):
         self.assertTrue(p["SUFeedURL"].startswith("https://"))
         self.assertIn("SUPublicEDKey", p)
         self.assertTrue(p["CFBundleVersion"])
+        # a source build says its version once in About ("Version 1.0.4", not "1.0.4 (0.5.0)"); the release script
+        # stamps the real build number (the commit count) into the bundle it ships
+        self.assertEqual(p["CFBundleVersion"], p["CFBundleShortVersionString"])
 
     def test_hanging_cards_are_accessible(self):
         # The hanging cards (K7) are drawn in CALayers: without these overrides VoiceOver / the AX tree would see an
@@ -58,11 +61,17 @@ class Layout(unittest.TestCase):
 
     def test_finish_panel_can_end_the_session_before_merging(self):
         # e2e v0.7: after a finished turn Codex still sits in its window, so Merge was refused ("running") with only
-        # Close / Try Again, and Try Again just reloaded the diff
+        # Close / Try Again, and Try Again just reloaded the diff. Dogfood (work): the sheet now knows (diff's
+        # `alive`) and offers End Session and Review — it ends the agent and loads the diff again, never straight on
+        # to a merge — and merge carries the review's token, so nothing lands unseen.
         src = (MAC / "Sources/BlurtApp/Terminal/FinishPanel.swift").read_text()
         self.assertIn('failedCode == "running"', src)
-        self.assertIn("func endSessionThen(", src)
+        self.assertIn("func endSessionAndReview(", src)
+        self.assertNotIn("endSessionThen", src)
         self.assertIn("AgentSessions.shared.stop(job: job, kill: false)", src)
+        self.assertIn('alive = o["alive"]', src)
+        self.assertIn('expect: ["merge", "pr"].contains(action) ? reviewed : nil', src)
+        self.assertIn(".frame(width: PanelMetrics.width)", src.split("func failed(")[1])  # never a 360 pt alert
 
     def test_open_pull_request_says_when_it_only_pushed(self):
         # e2e v0.7: with a remote gh doesn't know, sessions.py pushed and returned pr: null, compare: null — the panel
@@ -151,7 +160,9 @@ class SessionRecoveryWiring(unittest.TestCase):
         fin = self.src("Terminal/FinishPanel.swift")
         self.assertEqual(fin.count(".keyboardShortcut(.cancelAction)"), 4)   # Esc in every phase
         self.assertIn(".keyboardShortcut(.return, modifiers: .command)", fin)   # ⌘⏎ merges, ⏎ alone doesn't
-        self.assertIn("disabled(busy != nil || m.empty)", fin)                  # no PR or merge of an empty branch
+        # no PR or merge of an empty branch — but End Session and Review stays on (the agent may still change it)
+        self.assertIn("let primaryOff = busy != nil || (m.empty && !m.alive)", fin)
+        self.assertIn(".disabled(primaryOff)", fin)
         self.assertIn('"finish.commit_merge"', fin)
 
     def test_dispatch_blocks_a_logged_out_agent_and_says_why_before(self):
@@ -215,7 +226,8 @@ class SessionRecoveryWiring(unittest.TestCase):
     def test_finish_sheet_primary_and_no_destructive_default(self):
         fin = self.src("Terminal/FinishPanel.swift")
         # a sheet's one default is the native filled button in the sheet accent (system.md §3.5), on ⌘⏎
-        self.assertIn(".panelDefault()\n                .keyboardShortcut(.return, modifiers: .command)", fin)
+        # (fixed size, first claim on the row's width: its title is never cut — dogfood "Commit and Mer…")
+        self.assertIn(".panelDefault().fixedSize().layoutPriority(1)\n                    .keyboardShortcut(.return, modifiers: .command)", fin)
         self.assertNotIn(".buttonStyle(.brand)", fin)
         # the rare ways out are in the ⋯ menu, never buttons at rest; a gone session is an alert with one button
         self.assertIn('Button(TL("review.discard"), role: .destructive) { confirmDiscard = true }', fin)
@@ -271,7 +283,7 @@ class SessionRecoveryWiring(unittest.TestCase):
         # panels r2: whatever stops Start is one notice under the items with the way out as the default; the footer
         # counts all the items; the button says how many sessions start; a disabled default is the system's grey
         d = self.src("Terminal/DispatchPanel.swift")
-        self.assertIn("enum Block: Equatable { case busy(String), loggedOut, noAgent, failed(String) }", d)
+        self.assertIn("enum Block: Equatable { case busy(String), loggedOut, outdated, noAgent, failed(String) }", d)
         self.assertIn("PanelNotice(text: blockText(b))", d)
         self.assertIn("if m.block != nil { return nil }", d)                    # no promise next to a missing Start
         self.assertIn('TL("handoff.note.todo.count", m.count, todo)', d)

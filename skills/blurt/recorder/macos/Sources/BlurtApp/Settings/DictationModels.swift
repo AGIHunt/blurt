@@ -41,7 +41,11 @@ struct DictationASRModel: Decodable, Identifiable, Hashable {
     var recommended: Bool
     /// none | prompt | context | hotwords: how the model takes the custom words
     var vocab: String
-    enum CodingKeys: String, CodingKey { case id, name, installed, files, recommended, vocab, sizeMB = "size_mb" }
+    /// it runs here beside the polish model (nil from an older script)
+    var fits: Bool?
+    /// macOS's own recogniser: nothing to download
+    var builtin: Bool?
+    enum CodingKeys: String, CodingKey { case id, name, installed, files, recommended, vocab, fits, builtin, sizeMB = "size_mb" }
 }
 
 struct DictationASRState: Decodable {
@@ -140,6 +144,15 @@ final class DictationModels: ObservableObject {
         guard let r = row else { return nil }
         return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
     }
+    /// The island's first offer when this Mac has no speech model at all (DictationSpeechModels.firstOffer): the
+    /// smallest model that fits; the recommended one stays in Settings. nil: `dictationJob` is what to get.
+    var firstModelJob: ModelDownloadQueue.Job? {
+        guard let a = asr, let sm = Dictation.shared.speechModels ?? speechModels else { return nil }
+        let rows = a.models.map { (id: $0.id, sizeMB: $0.builtin == true ? 0 : $0.sizeMB, fits: $0.fits ?? true) }
+        guard let o = sm.firstOffer(rows), let r = a.models.first(where: { $0.id == o.id }) else { return nil }
+        return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
+    }
+
     /// silero_vad.onnx
     static let vadMB = 0.6
 

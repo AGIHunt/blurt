@@ -115,3 +115,46 @@ class Glossary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShellCopy(unittest.TestCase):
+    """The setup assistant's and Settings' words (dogfood, shell): one term per thing, templates that read as sentences."""
+
+    def every(self, lang):
+        return {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
+
+    def test_the_dictation_key_fills_its_slot_without_doubling(self):
+        # zh's inline key is " Fn 键" (its own leading space, its own 键): a template wraps it as 按%@就能, never "%@ 键"
+        zh = self.every("zh-Hans")
+        self.assertTrue(zh["Dictation.strings"]["dictation.key.fn.inline"].endswith("键"))
+        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下一步下载语音模型，之后按%@就能随处听写。")
+        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在听%@")
+
+    def test_one_word_for_the_words_list_and_one_name_for_the_provider(self):
+        zh, en = self.every("zh-Hans"), self.every("en")
+        for name, t in zh.items():
+            for k, v in t.items():
+                if k.startswith("settings.kw."):
+                    continue            # search keywords keep the other words people may type
+                for word in ("词表", "词汇", "自定义词"):
+                    self.assertNotIn(word, v, f"{name} {k}: 词库, not {word}")
+        for lang, tables in (("zh", zh), ("en", en)):
+            for name, t in tables.items():
+                for k, v in t.items():
+                    if k.startswith("settings.kw."):
+                        continue
+                    self.assertNotIn("DashScope", v, f"{lang} {name} {k}")
+                    self.assertNotIn("(MLX)", v, f"{lang} {name} {k}")
+        catalog = json.loads((ROOT / "skills/blurt/scripts/asr_models.json").read_text(encoding="utf-8"))
+        names = [m["name"] for m in catalog["models"]]
+        self.assertFalse([n for n in names if "(MLX)" in n or "DashScope" in n], names)
+        self.assertEqual(len(names), len(set(names)), "two models never share a name")
+
+    def test_the_setup_assistant_has_one_forward_action(self):
+        src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Onboarding/Onboarding.swift").read_text(encoding="utf-8")
+        footer = src[src.index("var footer: some View"):src.index("/// The headline and its line")]
+        # beside the step's own action, going on without it is the quiet Not Now — never a second bordered Next
+        self.assertIn('T("onboarding.not_now")', footer)
+        self.assertNotIn("Button(nextTitle) { advance() }\n                Button(a.title)", footer)
+        self.assertNotIn(".pickerStyle(.menu)", src, "the dictation key is a ChoicePopup, as the language row")
+        self.assertNotIn("GlyphTile.symbol(", src, "one glyph family on every step: the line glyphs")

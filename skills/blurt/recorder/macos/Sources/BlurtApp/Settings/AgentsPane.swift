@@ -92,12 +92,22 @@ final class AgentsModel: ObservableObject {
                 guard let id = a["id"] as? String else { return nil }
                 var r = CoreAgent(id: id, name: a["name"] as? String ?? id, installed: false, state: "checking")
                 r.headless = a["headless"] as? Bool != false
+                // the last check found it missing: folded into "not installed" from the first frame, so the rows
+                // don't re-flow under the pointer when this check comes in (it is checked again all the same)
+                if lastInstalled[id] == false { r.state = "not_installed" }
                 return r
             }
             let order = Agents.shared.order ?? []
             return rows.sorted { (order.firstIndex(of: $0.id) ?? 1000) < (order.firstIndex(of: $1.id) ?? 1000) }
         }
         return []
+    }
+
+    /// Which agents the last check found installed (UserDefaults): the first frame of the next open.
+    static let lastInstalledKey = "BlurtAgentsLastInstalled"
+    static var lastInstalled: [String: Bool] {
+        get { UserDefaults.standard.dictionary(forKey: lastInstalledKey) as? [String: Bool] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: lastInstalledKey) }
     }
 
     /// For each installed agent: would installing the skill + MCP change anything? (a dry run, one at a time)
@@ -131,6 +141,7 @@ final class AgentsModel: ObservableObject {
                 }
             }
             rows = fresh
+            Self.lastInstalled = Dictionary(fresh.map { ($0.id, $0.installed) }, uniquingKeysWith: { a, _ in a })
             // the first usable one in the shown order (the same rule as agents.py detect)
             let order = d.order
             pick = ["ready", "configured", "unknown"].lazy.compactMap { want in
@@ -748,7 +759,7 @@ struct AgentsPane: View {
     static func quoted(_ s: String) -> String { Loc.isChinese ? "「\(s)」" : "“\(s)”" }
 }
 
-/// The Organizing columns' names, on the section heading's line: each over its pop-up's text, the heading's size.
+/// The Organizing columns' names, on the section heading's line: each over its pop-up's text, as 11 pt captions.
 /// The widest fix button among the Agents rows (AgentsPane.fixSlot).
 struct AgentFixWidth: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -762,7 +773,8 @@ struct AgentsColumnNames: View {
             Text(TL("agents.details.model")).padding(.leading, 9).frame(width: AgentsLayout.modelWidth, alignment: .leading)
             Text(TL("agents.effort")).padding(.leading, 9).frame(width: AgentsLayout.effortWidth, alignment: .leading)
         }
-        .font(.system(size: SettingsMetrics.headerSize)).foregroundStyle(.secondary)
+        // captions over the pop-ups (11 pt), not a second heading beside the section's
+        .font(.system(size: 11)).foregroundStyle(.secondary)
         .accessibilityHidden(true)
     }
 }

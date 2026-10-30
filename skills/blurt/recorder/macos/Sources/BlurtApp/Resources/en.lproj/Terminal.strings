@@ -2,7 +2,7 @@
 
 /* Shared verbs */
 "agents.effort" = "Effort";
-"agents.effort.default" = "CLI’s effort";
+"agents.effort.default" = "Agent’s default effort";
 "agents.effort.high" = "High";
 "agents.effort.low" = "Low";
 "agents.effort.max" = "Maximum";
@@ -12,10 +12,10 @@
 "agents.processing.cards.help" = "Snaps, voice notes and AI fill-in. By default, the cheapest model at low effort: enough for a picture and a note, with far fewer tokens.";
 "agents.processing.cheapest" = "Cheapest model";
 "agents.processing.cheapest_named" = "Cheapest model (%@)";
-"agents.processing.default" = "CLI’s model";
-"agents.processing.default_named" = "CLI’s model (%@)";
+"agents.processing.default" = "Agent’s default model";
+"agents.processing.default_named" = "Agent’s default model (%@)";
 "agents.processing.recording" = "Organizing recordings";
-"agents.processing.recording.help" = "By default, the CLI’s own model at low effort: a long recording needs it.";
+"agents.processing.recording.help" = "By default, the agent’s default model at low effort: a long recording needs it.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
@@ -99,7 +99,7 @@
 "warning.concurrent_edit.continue" = "Continue";
 "warning.no_git" = "This folder isn’t a git repository, so the agents work in it directly.";
 "warning.no_tmux" = "tmux isn’t installed: the session runs inside Blurt and ends when you quit it.";
-"warning.draft_confirmed" = "Items still to review will be marked To do.";
+"warning.draft_confirmed" = "Items that are still new are accepted when you hand them off.";
 
 /* Finish panel (worktree results) */
 "finish.title" = "Review Changes";
@@ -109,7 +109,6 @@
 "finish.no_changes" = "No changes on this branch.";
 "finish.help" = "Merge brings the branch into %@ in your project folder. Nothing is pushed unless you open a pull request.";
 "finish.merge" = "Merge";
-"finish.end_and.merge" = "End Session and Merge";
 "finish.merge.help" = "Merge into %@ and remove the worktree";
 "finish.pr" = "Open Pull Request";
 "finish.pr.help" = "Push the branch and open a pull request";
@@ -122,9 +121,9 @@
 "finish.working.pr" = "Opening a pull request…";
 "finish.working.discard" = "Discarding…";
 "finish.working.keep" = "Saving…";
-"finish.done.merge" = "Merged.";
-"finish.done.pr" = "Pull request opened.";
-"finish.done.discard" = "Discarded.";
+"finish.done.merge" = "Merged";
+"finish.done.pr" = "Pull request opened";
+"finish.done.discard" = "Discarded";
 "finish.done.keep" = "Kept. You can review it again from the session.";
 "finish.done.pushed" = "Branch pushed to origin. No pull request was opened — open one on your Git host.";
 "finish.done.compare" = "Branch pushed. Finish the pull request in your browser:";
@@ -434,8 +433,8 @@
 "handoff.run_in.terminal.detail" = "Recommended — live progress";
 "handoff.model.default" = "Default";
 "handoff.model.default_named" = "Default (%@)";
-"handoff.note.todo.one" = "%@ will be marked To Do.";
-"handoff.note.todo.many" = "Items not yet reviewed will be marked To Do.";
+"handoff.note.todo.one" = "%@ is new: handing it off accepts it.";
+"handoff.note.todo.many" = "Handing off accepts the items that are still new.";
 "handoff.starting" = "Starting…";
 "review.more" = "More";
 "review.discard" = "Discard…";
@@ -458,7 +457,7 @@
 "handoff.block.logged_out" = "%@ isn’t signed in, so it can’t start.";
 "handoff.block.no_agent" = "No agent that can run a session is installed.";
 "handoff.open_agents" = "Open Agents Settings…";
-"handoff.note.todo.count" = "%1$ld items · %2$ld will be marked To Do";
+"handoff.note.todo.count" = "%1$ld items · %2$ld new, accepted when handed off";
 "handoff.start.many" = "Start %ld Sessions";
 "list.count.working" = "%ld working";
 "list.count.waiting" = "%ld waiting on you";
@@ -477,3 +476,25 @@
 "mark.done" = "Done";
 "mark.failed" = "Failed";
 "mark.idle" = "Ended";
+
+/* Review Changes while the agent is still open; outdated agents */
+"finish.end_review" = "End Session and Review";
+"finish.end_review.help" = "Ends %@, then shows its changes again, including any it made on the way out. You merge after that.";
+"finish.alive" = "%@ is still open.";
+"finish.alive.working" = "%@ is still working.";
+"finish.working.end" = "Ending the session…";
+"finish.review_again" = "Review Again";
+"error.changed" = "The branch changed after this review opened. Review it again before you merge.";
+"error.outdated" = "This agent is too old for hand-offs. Update it, then check again.";
+
+"handoff.block.outdated" = "%1$@ %2$@ is too old for hand-offs (needs %3$@ or later). Update it in a terminal, then check again.";
+
+/* Startup questions and a session that quit at one */
+"hint.trust" = "%@ asks once per repository whether to trust this folder: answer below to let it start.";
+"hint.hooks" = "%@ asks once whether to trust its hooks: choose Trust all so Blurt can follow along.";
+"overlay.stopped_trust.title" = "%@ stopped at its trust question";
+
+/* After a merge: what waits now */
+"finish.items_n" = "%ld items";
+"overlay.merged.verify_hint" = "Merged into %1$@ · %2$@ is waiting for you to verify.";
+"overlay.pr.verify_hint" = "%@ is waiting for you to verify once the pull request is merged.";

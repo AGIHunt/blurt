@@ -867,11 +867,18 @@ def apple_speech_ok() -> bool:
 
 
 def apple_locale(language: str | None) -> str | None:
-    """The locale for an explicit language, else the user's first language macOS's recogniser speaks."""
+    """The locale for an explicit language (or asr.language), else the app's "Automatic" (AppleSpeech.automatic, the
+    same rule so recordings and dictation hear the same language): of the user's languages the first one people mix
+    English into (SWITCH_LANGUAGES: its recogniser hears the English words too), else the first one macOS's
+    recogniser speaks. An English Mac that lists Chinese too listens for Chinese, English included."""
+    picked = asr_config().get("language")
     if language and language not in ("auto", ""):
         langs = [language]
+    elif picked and picked != "auto":
+        langs = [picked]
     else:
-        langs = user_languages()
+        spoken = [x for x in user_languages() if x in APPLE_LOCALES]
+        langs = [x for x in spoken if x in SWITCH_LANGUAGES] + spoken
     for lang in langs:
         if lang == "zh" and chinese_script() == "hant":
             lang = "zh-hant"
@@ -1916,15 +1923,20 @@ def select(purpose: str, a=None) -> dict:
     rec = recommend(purpose=purpose, cfg=cfg)
     order = ([chosen] if chosen else []) + [rec["pick"]["model"]] + [c["id"] for c in rec["candidates"]
                                                                      if c["fits"] and len(c["speaks"]) == len(rec["languages"])]
+    apple = entry(APPLE)
+    apple_ok = bool(apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]))
+    # a local model hears through the VAD (0.6 MB) too: one whose own files are already here from elsewhere (a Whisper
+    # in a shared Hugging Face cache) doesn't beat macOS's recogniser, which needs nothing, until the VAD is in
+    bundled_vad()
+    vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     for mid in dict.fromkeys(order):
         m = entry(mid)
-        if m and m.get("local", True) and runs_here(m) and installed(m):
+        if m and m.get("local", True) and runs_here(m) and installed(m) and (vad or m.get("builtin") or not apple_ok):
             return m
         if m and not m.get("local", True) and not local_only() and installed(m) and mid == chosen:
             return m
     # nothing downloaded: macOS's own recogniser when it speaks the user's languages (first-minute-speech.md)
-    apple = entry(APPLE)
-    if apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]):
+    if apple_ok:
         return apple
     # no macOS recogniser (macOS 13–15, ~23 % of Macs): a cloud service whose key the user set — the setup assistant's
     # one key (Model Studio in China) says it recognises speech too — before a model that would have to download
@@ -2706,13 +2718,16 @@ def dictation_models(hw: dict | None = None) -> dict:
     # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
     # voice-note model
     usable = [mid for mid in (QWEN_MLX_17, QWEN_MLX) if mid != rec and apple and fits(mid)]
-    selected = next((mid for mid in (configured, rec, *usable) if mid and entry(mid) and runs_here(entry(mid))
-                     and installed(entry(mid))), note_pick["id"])
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
     bundled_vad()
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
+    # without the VAD, macOS's recogniser (the voice-note pick then) runs before a model whose files only are here —
+    # unless the user chose that model
+    pick = (configured,) if not vad and note_pick["id"] == APPLE else (configured, rec, *usable)
+    selected = next((mid for mid in pick if mid and entry(mid) and runs_here(entry(mid))
+                     and installed(entry(mid))), note_pick["id"])
     rows = []
     for mid in DICTATION_MODELS + DICTATION_CLOUD:
         m = entry(mid)

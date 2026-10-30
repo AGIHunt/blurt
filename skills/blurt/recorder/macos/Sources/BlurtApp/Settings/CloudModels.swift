@@ -15,13 +15,16 @@ struct CloudModelChoice: Hashable {
     let id: String
     /// the measurement's line (Dictation.strings `dictation.cloud.model.note.*`), nil = not measured
     let note: String?
+    /// the product's name where the id is only an API's ("Qwen3-ASR Flash" for qwen3-asr-flash); nil: the id is the name
+    var name: String? = nil
+    var title: String { name ?? id }
 }
 
 enum CloudModels {
     /// The provider's list for a job, the default first. provider: DictationCloud.Provider's raw value, or for speech
     /// "dashscope" / CloudSpeech.Service's raw value.
     static func choices(_ job: CloudJob, provider: String) -> [CloudModelChoice] {
-        func c(_ id: String, _ note: String? = nil) -> CloudModelChoice { CloudModelChoice(id: id, note: note) }
+        func c(_ id: String, _ note: String? = nil, name: String? = nil) -> CloudModelChoice { CloudModelChoice(id: id, note: note, name: name) }
         switch (job, provider) {
         case (.polish, "deepseek"): return [c("deepseek-flash", "polish.deepseek_flash"), c("deepseek-v4-pro")]
         case (.polish, "dashscope"): return [c("deepseek-v4.1-flash", "polish.ds41"), c("qwen3.8-flash", "polish.qwen38"),
@@ -34,7 +37,7 @@ enum CloudModels {
         case (.vision, "dashscope"): return [c("qwen3.6-flash", "vision.qwen36"), c("qwen3.5-flash", "vision.qwen35"),
                                              c("qwen3-vl-plus", "vision.qwen3_vl_plus"), c("qwen3.5-ocr", "vision.qwen35_ocr"),
                                              c("qwen-vl-ocr", "vision.qwen_vl_ocr")]
-        case (.speech, "dashscope"): return [c("qwen3-asr-flash", "speech.qwen3_asr")]
+        case (.speech, "dashscope"): return [c("qwen3-asr-flash", "speech.qwen3_asr", name: "Qwen3-ASR Flash")]
         case (.speech, "openai"): return [c("whisper-1"), c("gpt-4o-mini-transcribe"), c("gpt-4o-transcribe")]   // whisper-1 gives timestamps
         case (.speech, "groq"): return [c("whisper-large-v3-turbo"), c("whisper-large-v3")]
         default: return []          // the user's own service: Custom… only
@@ -93,7 +96,7 @@ struct CloudModelPicker: View {
         if inherit != nil { out.append(("", T("dictation.cloud.model.same_as"))) }
         for c in choices {
             let isDefault = inherit == nil && c.id == defaultID
-            out.append((isDefault ? "" : c.id, isDefault ? T("dictation.cloud.model.default", c.id) : c.id))
+            out.append((isDefault ? "" : c.id, isDefault ? T("dictation.cloud.model.default", c.title) : c.title))
         }
         out.append((Self.customTag, T("dictation.cloud.model.custom")))
         return out

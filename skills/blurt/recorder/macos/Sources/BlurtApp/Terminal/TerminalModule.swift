@@ -40,7 +40,9 @@ final class TerminalHost: @preconcurrency TerminalHosting {
 
     func makePane() -> TerminalPaneHosting {
         panes += 1
-        return SessionsPaneController(paneID: panes == 1 ? "main" : "pane-\(panes)")
+        let p = SessionsPaneController(paneID: panes == 1 ? "main" : "pane-\(panes)")
+        p.state.embedded = true         // the main window's: its list is the In Progress place
+        return p
     }
 
     func newSession(project: String?, items: [String]) { DispatchPanel.show(items: items, project: project) }

@@ -280,7 +280,12 @@ final class SpeechModel: ObservableObject {
         Task { await reapply() }
     }
 
-    func setLanguage(_ l: String) { language = l; Config.shared.set("asr.language", l == "auto" ? nil : l) }
+    /// macOS's recogniser listens for one language: its files are asked for at once, so the next take uses it.
+    func setLanguage(_ l: String) {
+        language = l
+        Config.shared.set("asr.language", l == "auto" ? nil : l)
+        AppleSpeech.prepare(via: "settings") { _ in Dictation.shared.refreshSpeechModels() }
+    }
     func setMirror(_ on: Bool) { mirror = on; Config.shared.set("asr.hf_mirror", on) }     // explicit either way: off stays off in China
     func setLimit(_ key: String, _ value: Any?) { Config.shared.set("asr.limits.\(key)", value); Task { await load() } }
     var onBattery: String { Config.shared["asr.on_battery"] as? String ?? "lighter" }
@@ -380,7 +385,7 @@ private func languageName(_ code: String) -> String {
 }
 
 /// A language's name in itself ("日本語"), for the list a person picks their own languages from.
-private func endonym(_ code: String) -> String {
+func endonym(_ code: String) -> String {
     let l = Locale(identifier: code)
     let n = l.localizedString(forLanguageCode: code) ?? code
     return n.prefix(1).uppercased(with: l) + n.dropFirst()
@@ -509,7 +514,7 @@ struct SpeechPane: View {
     }
 
     /// One line per group of jobs the download changes, in the jobs' own words: "Voice notes would use SenseVoice
-    /// Small", "Dictation would use Qwen3-ASR 1.7B (MLX) and Gemma 4 E2B" — so the rows under it and this agree: they
+    /// Small", "Dictation would use Qwen3-ASR 1.7B and Gemma 4 E2B" — so the rows under it and this agree: they
     /// say what is used now, this says what Download changes.
     func pickLines(_ ps: [Pick]) -> [String] {
         var groups: [(uses: [String], names: [String])] = []
@@ -561,7 +566,9 @@ struct SpeechPane: View {
                                 .gridProbe(.text, "recommended")
                             // one line per job group: a structured list, never a sentence wrapped mid-name
                             ForEach(pickLines(ps), id: \.self) { l in
-                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                                // wraps at the narrowest window rather than cutting a model's name off
+                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             if failed {
                                 Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
@@ -598,8 +605,17 @@ struct SpeechPane: View {
 
     // the jobs
 
+    /// An automatic row's line: what the row is for, then the model it runs on now ("…Now: Qwen3-ASR 0.6B") — the pop-up
+    /// itself says only "Automatic", so the model's name is never cut off in it.
+    func autoDetail(_ id: String, auto: Bool, _ value: String) -> String? {
+        guard auto else { return nil }
+        let base = SettingsCatalog.entry(id).flatMap(SettingsCatalog.detail) ?? ""
+        return S("speech.auto.using", base, value)
+    }
+
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
+        SettingRow("speech.\(p.rawValue)", detail: m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p)),
+                   icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
             } else {
@@ -616,7 +632,8 @@ struct SpeechPane: View {
     func recognitionRow(_ one: ASRModel) -> some View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
-        return SettingRow("speech.recognition", icon: "waveform") {
+        return SettingRow("speech.recognition", detail: autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)),
+                          icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
                        auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true }) { id in
                 if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
@@ -640,7 +657,8 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", icon: "character.cursor.ibeam") {
+        SettingRow("speech.dictation", detail: d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) },
+                   icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 // a model whose own files are in can be chosen (its setup then fetches only the VAD)
                 let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
@@ -662,7 +680,8 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var polishRow: some View {
-        SettingRow("speech.polish", icon: "wand.and.stars") {
+        SettingRow("speech.polish", detail: d.polish.flatMap { p in p.supported ? autoDetail("speech.polish", auto: m.auto && d.polishAuto, polishValue(p)) : nil },
+                   icon: "wand.and.stars") {
             if let p = d.polish {
                 if !p.supported {
                     ModelName(text: S("speech.purpose.polish.unsupported"))
@@ -734,10 +753,15 @@ struct SpeechPane: View {
                     }
                 }
             }
-            SettingRow("speech.language") {
+            // macOS's recogniser hears one language, no detection: "Automatic" says which one it is
+            let apple = AppleSpeech.forDictation
+            let system = apple ? AppleSpeech.code(AppleSpeech.automatic) : nil
+            let now = apple ? AppleSpeech.code(AppleSpeech.locale()) : nil
+            SettingRow("speech.language", detail: now.map { S(AppleSpeech.mixed.contains($0) ? "speech.language.system" : "speech.language.system.one", endonym($0)) }) {
                 let langs = m.languages + (m.language != "auto" && !m.languages.contains(m.language) ? [m.language] : [])
                 ChoicePopup(label: S("speech.advanced.language"),
-                            choices: [("auto", S("speech.advanced.language.auto"))] + langs.map { ($0, endonym($0)) },
+                            choices: [("auto", system.map { S("speech.advanced.language.auto.system", endonym($0)) } ?? S("speech.advanced.language.auto"))]
+                                + langs.map { ($0, endonym($0)) },
                             selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), dividers: [1])
             }
         }
@@ -820,7 +844,8 @@ private struct ModelPopUp: View {
     var more: () -> Void
     var pick: (String) -> Void
     var body: some View {
-        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.choice", auto))]
+        // "Automatic" alone: the model it picked is the row's line (a long name cut off in the pop-up told nobody)
+        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.plain"))]
         let top = items.count
         let missing = current != ModelPopUp.auto && (current == nil || !choices.contains(where: { $0.id == current }))
         if missing { items.append((current ?? "", S("speech.purpose.none_yet"))) }

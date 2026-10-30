@@ -10,6 +10,9 @@ final class SidebarNode: NSObject {
     let title: String
     let scope: Scope?            // nil = a group header
     let symbol: String?
+    /// a drawn mark instead of the symbol: a project's coloured folder, Unassigned's dashed ring, a missing folder's
+    /// question mark — the island's one mark per concept (IslandGlyph.place)
+    var image: NSImage?
     var count: Int?
     var children: [SidebarNode] = []
     var accessibility: String?
@@ -93,7 +96,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.setAccessibilityLabel(T("main.sidebar.label"))
         outline.menu = NSMenu()
         outline.menu?.delegate = self
-        outline.registerForDraggedTypes([.fileURL, .blurtItems, .blurtProject])
+        outline.registerForDraggedTypes([.fileURL, .blurtItems, .blurtProject, capturePasteboardType])
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.target = self
@@ -179,7 +182,11 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
-            place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
+            { () -> SidebarNode in
+                let n = place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax"))
+                n.image = IslandGlyph.place(nil, size: 16)
+                return n
+            }(),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
             dictation,
         ] + taken
@@ -189,6 +196,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
                                 count: p.inbox > 0 ? p.inbox : nil)
             n.alert = false
+            n.image = !p.exists ? IslandGlyph.missing.template(size: 16)
+                : ProjectStore.shared.project(id: p.id).flatMap { IslandGlyph.project(ProjectLook.color($0)).image(size: 16, color: .black) }
             n.tip = p.key.isEmpty ? p.name : T("main.sidebar.project_tip", p.name, p.key)
             n.dimmed = !p.registered || !p.exists
             n.current = ProjectStore.shared.currentID == p.id
@@ -307,7 +316,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             if at != index { o.setDropItem(g, dropChildIndex: at) }
             return .move
         }
-        if pb.types?.contains(.blurtItems) == true {
+        // items from the list, or a hanging card (BA-50: filed here as on the island's project rows)
+        if pb.types?.contains(.blurtItems) == true || pb.types?.contains(capturePasteboardType) == true {
             guard let n = item as? SidebarNode, index == NSOutlineViewDropOnItemIndex, let s = n.scope else { return [] }
             switch s {
             case .project(let p) where model.project(id: p)?.registered == true: return .move
@@ -336,6 +346,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             switch s {
             case .project(let p): actions?.move(uids: items, to: p)
             case .unassigned: actions?.move(uids: items, to: "inbox")
+            default: return false
+            }
+            return true
+        }
+        if let raw = pb.pasteboardItems?.first?.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
+            guard let s = (item as? SidebarNode)?.scope else { return false }
+            switch s {
+            case .project(let p): snapper.assign(hanging.withSelection(shot), to: p)
+            case .unassigned: snapper.assign(hanging.withSelection(shot), to: "inbox")
             default: return false
             }
             return true
@@ -458,7 +477,7 @@ final class SourceCell: NSTableCellView, InlineEditable {
         title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
         key.stringValue = n.detail ?? ""
         key.isHidden = n.detail == nil
-        icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
+        icon.image = n.image ?? n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.alphaValue = 1
         toolTip = n.current ? [n.tip, T("main.project.current_mark")].compactMap { $0 }.joined(separator: "\n") : n.tip
         mark.isHidden = !n.current

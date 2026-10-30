@@ -4,7 +4,9 @@
 //   folder, short ("~/…/proj/atlas-web"; the whole path, and the key its item IDs start with, in the tooltip). Nothing
 //   is drawn on a row at rest: the pointer over it shows its ⋯ menu (Show in Finder, Send New Snaps Here, Remove from
 //   Blurt — the same as its context menu); a click selects it (the brand tint, §3.3), a double-click shows it in the
-//   Finder. A folder that is gone says so in attention ink. Unassigned's folder is in the heading's ⋯.
+//   Finder. Rename (the menus, or Return on the selected row) turns the name into a field in place: Return or a click
+//   away keeps it, Esc puts it back; ⌘Z undoes it, as the main window's rename does. A folder that is gone says so
+//   in attention ink. Unassigned's folder is in the heading's ⋯.
 //   Snaps and voice notes: where new ones go — one pop-up row (a project, or Unassigned).
 //   Removing is at once — the folder and its items stay — with Undo (the island's button and ⌘Z on this window, like
 //   the main window's Remove). Projects are in the sidebar's order (the user's own). Errors are said in a sentence;
@@ -83,6 +85,30 @@ final class ProjectsModel: ObservableObject {
         }
     }
 
+    /// A new name, at once, with ⌘Z on this window (the old name back) — the main window's rename, from here.
+    func rename(_ p: Project, to raw: String, window: NSWindow?) {
+        let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name != p.name else { return }
+        let old = p.name
+        Task { @MainActor in
+            do {
+                try await ProjectStore.shared.update(p.id, ["name": name])
+                error = nil
+                emit(["event": "project_renamed", "id": p.id, "via": "settings"])
+                if let um = window?.undoManager {
+                    um.registerUndo(withTarget: self) { m in
+                        Task { @MainActor in
+                            do { try await ProjectStore.shared.update(p.id, ["name": old]) } catch { m.error = peopleText(error, context: "projects") }
+                            m.reload()
+                        }
+                    }
+                    um.setActionName(T("main.project.rename.undo_name"))
+                }
+            } catch { self.error = peopleText(error, context: "projects") }
+            reload()
+        }
+    }
+
     func addFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -117,6 +143,22 @@ final class ProjectsModel: ObservableObject {
 struct ProjectsPane: View {
     @StateObject var m = ProjectsModel()
     @State private var hovered: String?
+    /// the project whose name is a field now, and what is typed in it
+    @State private var editing: String?
+    @State private var draft = ""
+    @FocusState private var fieldFocused: Bool
+
+    func startRename(_ p: Project) {
+        m.selected = p.id
+        draft = p.name
+        editing = p.id
+        DispatchQueue.main.async { fieldFocused = true }
+    }
+    func commitRename(_ p: Project) {
+        guard editing == p.id else { return }
+        editing = nil
+        m.rename(p, to: draft, window: NSApp.keyWindow)
+    }
 
     var body: some View {
         SettingsPage(.projects) {
@@ -125,6 +167,11 @@ struct ProjectsPane: View {
                     SettingsLine { Text(T("settings.projects.empty")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary) }
                 }
                 ForEach(m.projects, id: \.id) { p in row(p) }
+                // Return on the selected row renames it (Finder, the main window's sidebar)
+                if editing == nil, let id = m.selected, let p = m.projects.first(where: { $0.id == id }) {
+                    Button("") { startRename(p) }.keyboardShortcut(.return, modifiers: [])
+                        .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+                }
             }, accessory: {
                 HStack(spacing: 4) {
                     RowMenu(label: T("settings.projects.more"), visible: true) {
@@ -163,9 +210,18 @@ struct ProjectsPane: View {
                         .foregroundStyle(Color(nsColor: ProjectLook.color(p)).opacity(missing ? 0.4 : 1))
                         .frame(width: SettingsMetrics.iconSlot).accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(p.name).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(missing ? .secondary : .primary)
-                            .lineLimit(1).truncationMode(.tail)
-                            .gridProbe(.iconText, p.name)
+                        if editing == p.id {
+                            TextField(T("main.project.rename"), text: $draft)
+                                .textFieldStyle(.roundedBorder).font(.system(size: SettingsMetrics.titleSize))
+                                .focused($fieldFocused)
+                                .onSubmit { commitRename(p) }
+                                .onExitCommand { editing = nil }
+                                .onChange(of: fieldFocused) { f in if !f { commitRename(p) } }      // a click away keeps it
+                        } else {
+                            Text(p.name).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(missing ? .secondary : .primary)
+                                .lineLimit(1).truncationMode(.tail)
+                                .gridProbe(.iconText, p.name)
+                        }
                         Text(missing ? T("settings.projects.missing") : ProjectsModel.shortPath(p.path)).font(.system(size: SettingsMetrics.detailSize))
                             .foregroundStyle(missing ? AnyShapeStyle(Color.brandAttnInk) : AnyShapeStyle(.secondary))
                             .lineLimit(1).truncationMode(.middle)
@@ -196,6 +252,7 @@ struct ProjectsPane: View {
     /// A project's actions: its ⋯ menu and its context menu alike.
     @ViewBuilder func items(_ p: Project) -> some View {
         Button(T("action.reveal_in_finder")) { m.reveal(p) }.disabled(!p.exists)
+        Button(T("main.project.rename")) { startRename(p) }
         Button(T("settings.projects.make_current")) { m.setCurrent(p.id) }.disabled(m.current == p.id)
         Divider()
         Button(T("main.project.remove")) { m.remove(p, window: NSApp.keyWindow) }

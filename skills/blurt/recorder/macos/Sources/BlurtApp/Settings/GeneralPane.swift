@@ -50,6 +50,7 @@ final class GeneralModel: ObservableObject {
     @Published var systemAudio = false
     @Published var collect = false
     @Published var cardDrag = CardDragMode.paste
+    @Published var snapSound = false
     @Published var dragNoteFile = false
     @Published var voiceEndOnPause = false
     @Published var liveText = true
@@ -68,6 +69,7 @@ final class GeneralModel: ObservableObject {
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
         collect = snapper.collecting
         cardDrag = CardDragMode.current
+        snapSound = recordConfig()["snap_sound"] as? Bool ?? false
         dragNoteFile = CardExport.attachNoteFile
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
@@ -94,6 +96,7 @@ final class GeneralModel: ObservableObject {
         collect = snapper.collecting
     }
     func setCardDrag(_ v: CardDragMode) { v.apply(); cardDrag = CardDragMode.current }
+    func setSnapSound(_ v: Bool) { setRecordConfig("snap_sound", v ? true : nil); snapSound = v }
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
     func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
@@ -165,6 +168,7 @@ struct GeneralPane: View {
 
             SettingsGroup("general.cards") {
                 SettingToggle("general.collect", isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
+                SettingToggle("general.snap_sound", isOn: Binding(get: { m.snapSound }, set: { m.setSnapSound($0) }))
                 // pasting the note in needs Accessibility: said only while that choice is made and it is missing
                 let needsAccess = m.cardDrag == .paste && perms.accessibility != .granted
                 SettingRow("general.card_drag", detail: needsAccess ? T("settings.general.card_drag.needs_ax") : nil,

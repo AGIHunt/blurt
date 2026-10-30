@@ -120,6 +120,8 @@ final class DictationStream {
         var polished: String?     // polish's own output, joined (nil: no polish)
         var fellBack: Bool
         var reason: String?
+        /// some of a streamed take's polish windows fell back, not all (`fellBack` is then false)
+        var fellBackParts: DictationParts?
         var model: String?
         var asrModel: String?
         var language: String?
@@ -528,8 +530,11 @@ final class DictationStream {
         let code = r?["code"] as? String
         // a model still loading isn't the decode's own time
         let load = Double(r?["load_ms"] as? Int ?? 0) / 1000
+        // a model that can't give live text (Whisper): macOS's recogniser gives it from the next request on, when ready
+        let unsupported = code == "interim_unsupported" && !Dictation.shared.noLiveText()
         let a: DictationLiveDecode.Answer = r?["ok"] as? Bool == true ? .text(seconds: max(0, seconds - load))
-            : code == "interrupted" || code == "no_server" ? .interrupted : code == "interim_unsupported" ? .unsupported : .failed
+            : code == "interrupted" || code == "no_server" || code == "interim_unsupported" && !unsupported ? .interrupted
+            : unsupported ? .unsupported : .failed
         let show = !cancelled && live.done(t, a)
         let text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         emit(["event": "dictation_interim", "id": id, "piece": t.piece, "audio_s": Double(t.end) / NoteVoice.rate,
@@ -684,7 +689,10 @@ final class DictationStream {
         // polish's windows, then the clause still carried (the dictation ended in it: its ending stays)
         var text = opt.polish ? DictationStitch.join(us.map(\.text) + [carry + carryEnd]) : raw
         let pol = us.compactMap(\.polish)
-        var fellBack = pol.contains { $0["fell_back"] as? Bool == true }
+        // not polished only when every window fell back; some of them: how many (DictationWindowFallback)
+        let fb = DictationWindowFallback.of(pol.map { $0["fell_back"] as? Bool == true })
+        var fellBack = fb.all
+        var parts = fb.parts
         var reason = pol.first { $0["fell_back"] as? Bool == true }?["reason"] as? String
         let polished: String? = pol.isEmpty ? nil
             : DictationStitch.join(us.map(\.polishedPart) + [carryPolished + carryEnd])
@@ -701,6 +709,7 @@ final class DictationStream {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "stitch_guard", "reason": g["reason"] ?? NSNull()])
             text = (g["fallback_text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallback
             fellBack = true
+            parts = nil
             reason = "stitch_" + (g["reason"] as? String ?? "guard")
         }
         var terms: [String] = []
@@ -717,6 +726,7 @@ final class DictationStream {
                        segments: ps.count, timing: timing(ps, windows: ws), pieces: ps.map { describe($0, pgaps) })
         r.tags = us.compactMap { $0.asr?["tag"] as? [String: Any] }
         r.windows = ws.map(describeWindow)
+        r.fellBackParts = parts
         return r
     }
 

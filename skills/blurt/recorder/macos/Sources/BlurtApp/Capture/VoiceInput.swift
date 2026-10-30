@@ -10,7 +10,8 @@
 //    nothing heard within 20 s (8 s with end_on_pause) = nothing filed.
 //  • hold longer than 0.35 s: push-to-talk — it ends when you let go.
 //  • record.voice.mode: auto (both, default) | toggle | hold.
-//  • the snap's spoken note (⌥A, NoteBubble) keeps its silence end: it is a sentence about one picture.
+//  • the snap's spoken note (⌥A, NoteBubble) keeps its silence end: it is a sentence about one picture (3 s, 5 s after
+//    a short start — BA-53; ⏎ ends it at once).
 //  • the words while you talk (record.live_text, on — "Show text while I talk"): VoiceNoteStream cuts the audio at
 //    pauses as it comes in (BlurtCore's DictationSegmenter, as dictation does) and each piece goes to the warm speech
 //    server as soon as it is complete (`note`, the voice-note model, the text so far as context); about once a second
@@ -541,8 +542,10 @@ final class VoiceInput {
 
     /// A cancelled voice note: "Voice note discarded · Undo" for `undoSeconds` — Undo files it as if it had been
     /// finished (Snapper.voiceFinished); else its audio goes. `unsure`: a take the user ended in which nothing was
-    /// heard — "Didn't hear anything · Keep", the same wait; Keep files it and the speech model decides (no words: a
-    /// card that says "No words recognized" with Retry).
+    /// heard — "Didn't hear anything · Keep", for `unsureSeconds`; Keep files it and the speech model decides (no
+    /// words: a card that says "No words recognized" with Retry). Unkept, its audio goes to the Trash, never deleted:
+    /// Blurt judged it, not the user. Either way it goes when the toast goes (its clock stops while pointed at), not
+    /// on a timer of its own — the dogfood's pointer on Keep lost the take at 5.5 s.
     private func discarded(batch b: ShotBatch, n: Int, duration: Double, project: String?, stream st: VoiceNoteStream?, wav: URL,
                            unsure: Bool = false, structured: Bool = false) {
         var settled = false
@@ -558,15 +561,34 @@ final class VoiceInput {
             emit(["event": "voice_undo", "n": n])
             snapper.voiceFinished(batch: b, n: n, duration: duration, project: project, stream: st, structured: structured)
         }
-        t.seconds = VoiceInput.undoSeconds
-        island.toast(t)
-        DispatchQueue.main.asyncAfter(deadline: .now() + VoiceInput.undoSeconds + 0.5) {
+        t.seconds = unsure ? VoiceInput.unsureSeconds : VoiceInput.undoSeconds
+        let settle = {
             guard !settled else { return }
             settled = true
             st?.cancel()
-            try? FileManager.default.removeItem(at: moved ? parked : wav)
-            emit(["event": "voice_discard_done", "n": n])
+            let audio = moved ? parked : wav
+            if unsure { VoiceInput.trash(audio) } else { try? FileManager.default.removeItem(at: audio) }
+            emit(["event": "voice_discard_done", "n": n, "trashed": unsure])
         }
+        t.gone = settle
+        island.toast(t)
+        // (a toast taken off without going — the hello's test hook — never leaves the audio parked for good)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 90) { settle() }
+    }
+
+    /// "Didn't hear anything · Keep" stays at least this long (and while pointed at).
+    static let unsureSeconds: Double = 8
+
+    /// Into the Trash (recoverable) — a test run's into $BLURT_HOME/trash, never the user's.
+    static func trash(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
+            let t = BlurtPaths.home.appendingPathComponent("trash")
+            try? FileManager.default.createDirectory(at: t, withIntermediateDirectories: true)
+            try? FileManager.default.moveItem(at: url, to: t.appendingPathComponent(UUID().uuidString.prefix(6) + "-" + url.lastPathComponent))
+            return
+        }
+        NSWorkspace.shared.recycle([url], completionHandler: nil)
     }
 }
 

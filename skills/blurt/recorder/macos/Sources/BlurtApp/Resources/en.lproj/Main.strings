@@ -140,7 +140,7 @@
 "main.empty.no_match" = "No items match these filters";
 "main.empty.no_results" = "No results for “%@”";
 "main.empty.no_scripts" = "The blurt skill’s scripts are missing";
-"main.empty.no_scripts.detail" = "Blurt's scripts are missing. Reinstall Blurt from blurt.work, then reopen this window.";
+"main.empty.no_scripts.detail" = "Blurt’s scripts are missing. Reinstall Blurt from blurt.work, then reopen this window.";
 "main.empty.nothing_in_progress" = "Nothing in progress";
 "main.empty.nothing_in_progress.detail" = "Items you hand off to an agent stay here until you verify them.";
 "main.empty.outdated" = "Updating your items…";
@@ -166,7 +166,7 @@
 "main.error.key_in_use" = "The key can’t change once the project has items.";
 "main.error.key_taken" = "Another project already uses that key.";
 "main.error.needs_project" = "Move the items to a project first.";
-"main.error.no_scripts" = "This needs Blurt's scripts and uv. Reinstall Blurt from blurt.work, then try again.";
+"main.error.no_scripts" = "This needs Blurt’s scripts and uv. Reinstall Blurt from blurt.work, then try again.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
 "main.error.not_found" = "Blurt can’t find that any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
@@ -486,7 +486,7 @@
 "main.dictation.mark.terms" = "Words used: %@";
 "main.dictation.mode.label" = "Show";
 "main.dictation.mode.polished" = "Polished";
-"main.dictation.mode.raw" = "As Spoken";
+"main.dictation.mode.raw" = "Heard";
 "main.dictation.mode.compare" = "Changes";
 "main.dictation.typed" = "Typed";
 "main.dictation.heard" = "Heard";
@@ -534,6 +534,7 @@
 "app.toast.welcome_no_dictation" = "Blurt is in the menu bar · %1$@ to snap · %2$@ to record";
 "app.toast.change_shortcut" = "Change…";
 "app.config.unreadable" = "Can’t read config.json · using defaults, can’t save";
+"app.config.unreadable_kept" = "Can’t read config.json · keeping the last settings that worked, can’t save";
 "app.config.not_saved" = "That change wasn’t saved · config.json can’t be read";
 "app.contract.skill_older" = "The Blurt skill is older than this app";
 "app.contract.app_older" = "The Blurt skill is newer than this app";
@@ -588,6 +589,7 @@
 "app.menu.cards" = "Show Cards";
 "app.menu.project_header" = "Project";
 "app.menu.key_off" = "%@ isn’t working";
+"app.menu.key_taken" = "%@ is held by another copy of Blurt";
 "app.alert.not_now" = "Not Now";
 "app.record.again" = "Record Again";
 
@@ -618,10 +620,11 @@
 "main.dictation.correct.caption.found" = "Words found:";
 
 /* The Dictation page (v0.9 redesign, round 2) */
-"main.dictation.chip.copied_raw" = "Copied · as spoken";
+"main.dictation.chip.copied_raw" = "Copied · not polished";
 "main.dictation.status.copied" = "Copied to the clipboard, not typed: no text field had the focus.";
-"main.dictation.status.copied_raw" = "Copied as spoken, not typed: no text field had the focus, and %@.";
-"main.dictation.status.raw" = "Typed as spoken: %@.";
+"main.dictation.status.copied_raw" = "Copied, not typed or polished: no text field had the focus, and %@.";
+"main.dictation.status.raw" = "Not polished: %@.";
+"main.dictation.status.parts" = "%1$ld of %2$ld parts not polished: %3$@.";
 "main.dictation.changes.key" = "Struck-through words were left out; underlined words were added or respelled.";
 "main.dictation.banner.download" = "Download Model";
 
@@ -724,6 +727,26 @@
 "main.new_item.title_placeholder" = "Title";
 "main.new_item.details_placeholder" = "Details (optional)";
 "main.new_item.create" = "Create";
+"main.new_item.add_image" = "Add Image…";
+"main.new_item.remove_image" = "Remove this image";
+"main.new_item.image_hint" = "Or paste with ⌘V, or drag one in";
+"main.new_item.image_title" = "Image · %@";
 
 /* v1.0.5: the default shortcuts lost their ⇧ (AppDelegate, once) */
 "app.toast.hotkeys_v2" = "Shortcuts are simpler now: %1$@ snap · %2$@ copy text · %3$@ voice note";
+
+"main.dictation.multi.more" = "+%ld more";
+
+"main.job.error.stopped_trust" = "%@ quit at its “Trust this folder?” question, so nothing was started.";
+
+/* The running section heading */
+"main.jobs.title" = "Running";
+"main.jobs.title.failed" = "Failed";
+
+/* An item whose session ended without reporting back */
+"main.row.session_ended" = "Session ended";
+"main.row.session_ended.help" = "Its agent session ended without saying the work is done. Open the item to restart it or take it back.";
+
+/* A folder opened as a new project */
+"main.open.added" = "Added %1$@ · items get %2$@-1…";
+"main.open.rename" = "Rename";

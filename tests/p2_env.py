@@ -60,7 +60,8 @@ if os.environ.get("FAKE_TRUST"):  # the workspace-trust dialog: no hook fires be
     print(" ❯ 1. Yes, proceed", flush=True)
     print("   2. No, exit", flush=True)
     print(" Enter to confirm · Esc to exit", flush=True)
-    input()
+    if input().strip() == "2":  # No, exit: it quits there, with no hook fired
+        sys.exit(0)
 fire("SessionStart", source="startup")
 fire("UserPromptSubmit", prompt=a[-1])
 print("Claude needs your permission to use Bash", flush=True)
@@ -84,7 +85,7 @@ if a[:2] == ["login", "status"]:
 if a[:2] == ["mcp", "get"]:
     sys.exit(0)
 if a[:1] == ["--version"]:
-    print("codex-cli 0.157.0"); sys.exit(0)
+    print("codex-cli " + os.environ.get("FAKE_CODEX_VERSION", "0.165.0")); sys.exit(0)
 if a[:1] == ["app-server"]:  # JSON-RPC on stdio, one object per line, as codex 0.164 speaks it; FAKE_RPC_LOG records
     log = os.environ.get("FAKE_RPC_LOG")
     for line in sys.stdin:

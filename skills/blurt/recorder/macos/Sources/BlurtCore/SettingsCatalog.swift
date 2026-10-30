@@ -203,6 +203,7 @@ public enum SettingsCatalog {
                 more: S("settings.general.voice_end_on_pause.hint")),
             row("general.live_text", "general.voice", "settings.general.live_text", more: S("settings.general.live_text.hint")),
             row("general.collect", "general.cards", "settings.general.collect", more: S("settings.general.collect.hint")),
+            row("general.snap_sound", "general.cards", "settings.general.snap_sound"),
             row("general.card_drag", "general.cards", "settings.general.card_drag", more: S("settings.general.card_drag.hint")),
             row("general.drag_note_file", "general.cards", "settings.general.drag_note_file", more: S("settings.general.drag_note_file.hint")),
             row("general.screen_text_refine", "general.screen_text", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
@@ -218,6 +219,7 @@ public enum SettingsCatalog {
             row("dictation.key", "dictation.main", D("dictation.settings.key")),
             row("dictation.fn_capture", "dictation.main", D("dictation.fn.capture"), detail: D("dictation.fn.capture.detail"), fold: "dictation.key"),
             row("dictation.mode", "dictation.main", D("dictation.settings.mode")),
+            row("dictation.cancel_key", "dictation.main", D("dictation.settings.cancel_key"), detail: D("dictation.settings.cancel_key.detail")),
             row("dictation.double_tap", "dictation.main", D("dictation.settings.double_tap"), detail: D("dictation.settings.double_tap.detail")),
             row("dictation.mic", "dictation.main", D("dictation.mic.section"), detail: D("dictation.mic.detail"), more: D("dictation.mic.builtin.detail")),
             row("dictation.sounds", "dictation.main", D("dictation.sounds")),
@@ -242,11 +244,11 @@ public enum SettingsCatalog {
             row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),
                 fold: "dictation.word_list"),
             row("dictation.learn", "dictation.text", D("dictation.vocab.learn"), detail: D("dictation.vocab.learn.detail"), fold: "dictation.word_list"),
-            // the history's menu: how long it is kept, the audio, clearing it
+            // the history's menu: how long it is kept, clearing it; keeping the audio is a row of its own (what is kept
+            // is said where it is seen)
             row("dictation.history_saved", "dictation.data", D("dictation.history.saved"), detail: D("dictation.history.saved.detail")),
             row("dictation.history_keep", "dictation.data", D("dictation.history.keep"), fold: "dictation.history_saved"),
-            row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail"),
-                fold: "dictation.history_saved"),
+            row("dictation.keep_audio", "dictation.data", D("dictation.history.keep_audio"), detail: D("dictation.history.keep_audio.detail")),
             // chosen and listed in Settings → Speech
             row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),

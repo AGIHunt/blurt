@@ -290,7 +290,9 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
         var out: [Entry] = []
         if has {
             out += [
-                e(T("main.menu.start_session"), "paperplane", "⌘↩", hint: T("main.toolbar.handoff.tip"), section: .selected, pinned: true) { c.handOffSelection() },
+                // the Handed off ring, as the state actions below show the state each leads to
+                Entry(T("main.menu.start_session"), image: Look.target("handed_off", size: 14), keys: "⌘↩", hint: T("main.toolbar.handoff.tip"),
+                      kind: .command, mutates: false, enabled: true, section: .selected, pinned: true) { c.handOffSelection() },
                 e(T("main.cmd.copy_instruction"), "doc.on.doc", "⇧⌘C", hint: T("main.palette.hint.copy_instruction"), section: .selected, pinned: true) { c.mCopyInstruction() },
                 e(T("main.cmd.copy_full"), "text.alignleft", hint: T("main.palette.hint.copy_full"), section: .selected) { c.mCopyFull() },
             ]

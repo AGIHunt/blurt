@@ -24,7 +24,7 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 **When `style.css`, a font or an asset changes, bump `?v=`** (`V` in the generator: both pages' `<link>`, font and
 image preloads, `<video>`/`poster`, og images; by hand: the `url()`s in `style.css`). `_headers` lets browsers keep
 `style.css`, `fonts/` and `assets/` for a year without asking (immutable), so a file changed under the same `?v=`
-never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-1`.
+never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-2`.
 
 **The first paint.** `peep.js` and `main.js` are inlined at the end of each page (the generator reads them from this
 folder), and the `<head>` script sets `motion` before anything renders. The scripts then run before the first paint

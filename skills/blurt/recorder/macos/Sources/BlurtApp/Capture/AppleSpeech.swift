@@ -4,7 +4,7 @@
 // 58 ms from key-up to text, no Speech Recognition permission; the recognition runs in the system's
 // localspeechrecognition process (~0.45 GB while in use). DictationTranscriber was worse everywhere (it drops the ends
 // of sentences): not used. One locale a recogniser, no language detection — the Chinese one hears the English words
-// inside Chinese speech, so `locale` follows the user's first language that it supports.
+// inside Chinese speech, so `locale` prefers a language people mix English into (`mixed`) among the user's languages.
 //
 // The model id is "apple-speech" (asr_models.json): `transcribe.py dictation-models` / `models` select it when no local
 // model is installed, and the app runs it in-process (Dictation.transcribe, VoiceInput.transcribePiece) rather than
@@ -37,19 +37,36 @@ enum AppleSpeech {
         return false
     }
 
-    /// The locale for `language` ("zh", "en", "auto"…): an explicit one, else the user's languages (asr.languages,
-    /// else the system's), the first one SpeechTranscriber speaks; nil when it speaks none of them.
+    /// Languages people speak with English words inside (transcribe.py SWITCH_LANGUAGES): their recogniser hears both.
+    /// The other way round fails: on en-US a Chinese sentence comes back empty, on zh-CN an English one comes back
+    /// close (docs/design/first-minute-speech.md §2.3, 2026-10-30).
+    static let mixed: Set<String> = ["zh", "zh-hant", "yue", "ja", "ko"]
+
+    /// The locale for `language` ("zh", "en", "auto"…): an explicit one, else the recognition language the user picked
+    /// (asr.language), else `automatic`; nil for a picked language SpeechTranscriber doesn't speak.
     static func locale(for language: String? = nil) -> String? {
         if let l = language?.lowercased(), l != "auto", !l.isEmpty { return locales[l] ?? locales[String(l.prefix(2))] }
+        if let l = Config.shared["asr.language"] as? String, l != "auto", !l.isEmpty { return locale(for: l) }
+        return automatic
+    }
+
+    /// The locale "Automatic" stands for: of the user's languages (asr.languages, else the system's — the list Settings
+    /// shows) the first one people mix English into, else the first one SpeechTranscriber speaks, else English. So an
+    /// English Mac that lists Chinese too (Settings: English + 中文) listens for Chinese, English words included,
+    /// instead of English alone.
+    static var automatic: String? {
         let configured = Config.shared["asr.languages"] as? [String] ?? []
         let system = Locale.preferredLanguages.map { tag -> String in
             let t = tag.lowercased()
             if t.hasPrefix("zh-hant") || t.hasPrefix("zh-tw") || t.hasPrefix("zh-hk") { return "zh-hant" }
             return String(t.prefix(while: { $0 != "-" && $0 != "_" }))
         }
-        for l in (configured.isEmpty ? system : configured) + ["en"] { if let loc = locales[l] { return loc } }
-        return nil
+        let spoken = (configured.isEmpty ? system : configured).filter { locales[$0] != nil }
+        return (spoken.first { mixed.contains($0) } ?? spoken.first).flatMap { locales[$0] } ?? locales["en"]
     }
+
+    /// The language code a locale listens for ("zh", "en"…), for the rows that say it.
+    static func code(_ locale: String?) -> String? { locale.flatMap { loc in locales.first { $0.value == loc }?.key } }
 
     /// Dictation runs on it: `transcribe.py dictation-models` selected it (no local model is installed), or — before
     /// that list can be read (no speech tools yet) — the app put it in (`dictationModels`).
@@ -60,7 +77,9 @@ enum AppleSpeech {
     /// Recognition goes to a cloud service (a key the user set, every job on it): the live text while talking comes
     /// from macOS's recogniser instead — free and local — and only the finished pieces are sent (each pass is billed).
     static var cloudSelected: Bool { Dictation.shared.speechModels?.selectedCloud == true }
-    static var forLiveText: Bool { forDictation || (cloudSelected && ready()) }
+    /// A local model that can't give live text (Whisper: its decode can't stop halfway — `interim_unsupported`) gets
+    /// it from macOS's recogniser too; the final text is still the selected model's.
+    static var forLiveText: Bool { forDictation || ((cloudSelected || Dictation.selectedHasNoLiveText) && ready()) }
 
     /// `dictation-models`' answer while the list can't be read and macOS's recogniser is ready: nothing to offer
     /// (no sizes without the list), nothing missing.

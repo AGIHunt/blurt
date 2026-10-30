@@ -141,6 +141,7 @@ final class CardsOverview: NSObject, NSWindowDelegate {
         // close button read as an inactive window
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
+        w.backgroundColor = BubbleBackground.surface        // the bubble's neutral grey, not the wallpaper-tinted default
         for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { w.standardWindowButton(b)?.isHidden = true }
         let root = NSView()
         let moreTitle = Loc.t("capture.taken.more", table: "Capture")

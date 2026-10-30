@@ -2,7 +2,7 @@
 
 /* 通用 */
 "agents.effort" = "思考强度";
-"agents.effort.default" = "CLI 自己的强度";
+"agents.effort.default" = "Agent 默认强度";
 "agents.effort.high" = "高";
 "agents.effort.low" = "低";
 "agents.effort.max" = "最高";
@@ -12,10 +12,10 @@
 "agents.processing.cards.help" = "截图、语音备注和 AI 补全。默认最省的模型、低思考强度：一张图一段话足够，token 少很多。";
 "agents.processing.cheapest" = "最便宜的模型";
 "agents.processing.cheapest_named" = "最便宜的模型（%@）";
-"agents.processing.default" = "CLI 自己的模型";
-"agents.processing.default_named" = "CLI 自己的模型（%@）";
+"agents.processing.default" = "Agent 默认模型";
+"agents.processing.default_named" = "Agent 默认模型（%@）";
 "agents.processing.recording" = "整理录屏";
-"agents.processing.recording.help" = "默认用 CLI 自己的模型、低思考强度，长录屏需要它。";
+"agents.processing.recording.help" = "默认用 Agent 默认模型、低思考强度，长录屏需要它。";
 "common.cancel" = "取消";
 "common.close" = "关闭";
 "common.done" = "完成";
@@ -99,7 +99,7 @@
 "warning.concurrent_edit.continue" = "继续";
 "warning.no_git" = "这个文件夹不是 git 仓库，Agent 会直接在里面改。";
 "warning.no_tmux" = "没有安装 tmux：会话在口喷鸡里运行，退出口喷鸡就会结束。";
-"warning.draft_confirmed" = "其中还没审核的条目会标为「要做」。";
+"warning.draft_confirmed" = "还是新的条目，交出去就算接受了。";
 
 /* 收尾面板（worktree 的结果） */
 "finish.title" = "查看改动";
@@ -109,7 +109,6 @@
 "finish.no_changes" = "这个分支上没有改动。";
 "finish.help" = "合并会把分支并进项目文件夹里的 %@。只有创建 PR 时才会推送。";
 "finish.merge" = "合并";
-"finish.end_and.merge" = "结束会话并合并";
 "finish.merge.help" = "合并进 %@，并删除 worktree";
 "finish.pr" = "创建 PR";
 "finish.pr.help" = "推送分支并创建 PR";
@@ -122,9 +121,9 @@
 "finish.working.pr" = "正在创建 PR…";
 "finish.working.discard" = "正在丢弃…";
 "finish.working.keep" = "正在保存…";
-"finish.done.merge" = "已合并。";
-"finish.done.pr" = "PR 已创建。";
-"finish.done.discard" = "已丢弃。";
+"finish.done.merge" = "已合并";
+"finish.done.pr" = "PR 已创建";
+"finish.done.discard" = "已丢弃";
 "finish.done.keep" = "已保留，之后可以在会话里再次查看。";
 "finish.done.pushed" = "分支已推送到 origin，但没有自动创建 PR，请到你的 Git 托管平台上创建。";
 "finish.done.compare" = "分支已推送，在浏览器里完成 PR：";
@@ -434,8 +433,8 @@
 "handoff.run_in.terminal.detail" = "推荐，进度显示在这里";
 "handoff.model.default" = "默认";
 "handoff.model.default_named" = "默认（%@）";
-"handoff.note.todo.one" = "%@ 会标为待办。";
-"handoff.note.todo.many" = "还没审核的条目会标为待办。";
+"handoff.note.todo.one" = "%@ 还是新的，交出去就算接受了。";
+"handoff.note.todo.many" = "还是新的条目，交出去就算接受了。";
 "handoff.starting" = "正在开始…";
 "review.more" = "更多";
 "review.discard" = "丢弃…";
@@ -447,7 +446,7 @@
 "review.failed.discard" = "没能丢弃这个分支";
 "review.failed.keep" = "没能保留这个分支";
 "handoff.items.count" = "%ld 条";
-"handoff.pick.heading" = "待办";
+"handoff.pick.heading" = "要做";
 "handoff.agent.none" = "没有可用的 Agent";
 "handoff.agent.signed_out" = "未登录";
 "handoff.agent.model_signed_in" = "%@ · 已登录";
@@ -458,7 +457,7 @@
 "handoff.block.logged_out" = "%@ 还没登录，没法开始。";
 "handoff.block.no_agent" = "没有装能运行会话的 Agent。";
 "handoff.open_agents" = "打开 Agent 设置…";
-"handoff.note.todo.count" = "%1$ld 条 · %2$ld 条会标为待办";
+"handoff.note.todo.count" = "%1$ld 条 · 其中 %2$ld 条新的，交出去就算接受了";
 "handoff.start.many" = "开始 %ld 个会话";
 "list.count.working" = "%ld 个运行中";
 "list.count.waiting" = "%ld 个等你处理";
@@ -477,3 +476,25 @@
 "mark.done" = "完成";
 "mark.failed" = "出错";
 "mark.idle" = "已结束";
+
+/* Agent 还开着时查看改动；版本太旧的 Agent */
+"finish.end_review" = "结束会话并查看";
+"finish.end_review.help" = "先结束 %@，再重新显示它的改动（包括结束前刚写的），之后再合并。";
+"finish.alive" = "%@ 还开着。";
+"finish.alive.working" = "%@ 还在干活。";
+"finish.working.end" = "正在结束会话…";
+"finish.review_again" = "重新查看";
+"error.changed" = "打开这次查看后，分支又有了新改动。重新查看后再合并。";
+"error.outdated" = "这个 Agent 版本太旧，不能接手条目。更新后再检查一次。";
+
+"handoff.block.outdated" = "%1$@ %2$@ 版本太旧，不能接手条目（需要 %3$@ 或更新）。在终端里更新它，再检查一次。";
+
+/* 启动时的询问，以及在询问处退出的会话 */
+"hint.trust" = "%@ 每个仓库只问一次是否信任这个文件夹：在下面回答，它才会开始。";
+"hint.hooks" = "%@ 只问一次是否信任它的 hooks：选 Trust all，Blurt 才能跟上进度。";
+"overlay.stopped_trust.title" = "%@ 停在了信任询问那一步";
+
+/* 合并之后：接下来等什么 */
+"finish.items_n" = "%ld 条";
+"overlay.merged.verify_hint" = "已并入 %1$@ · %2$@ 在等你验证。";
+"overlay.pr.verify_hint" = "PR 合并后，%@ 在等你验证。";

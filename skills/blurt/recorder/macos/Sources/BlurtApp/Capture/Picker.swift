@@ -89,6 +89,11 @@ final class PickerController {
             guard let self = self else { return }
             self.windows.forEach { $0.alphaValue = 1 }
             self.refresh()
+            // no still at all with Screen Recording allowed: a stale grant, said before an area is dragged for nothing
+            Snapper.checkStills(self.stills.stills.count, use: self.snapMode ? .snap : .record) { [weak self] in
+                guard let self = self, !self.windows.isEmpty, !self.frozen else { return }
+                self.finish(false)
+            }
         }
         toolbar.controller = self
         if let p = preselect { selection = toNS(p) }
@@ -100,6 +105,17 @@ final class PickerController {
         if let w = keyWin { w.makeFirstResponder(w.contentView) }
         refresh()
         emit(["event": "ready"])
+    }
+
+    /// The loupe shows while it helps place an edge: not with the pointer on (or by) the toolbar, and with a selection
+    /// only near its edges or while a drag draws it.
+    var loupeWanted: Bool {
+        if let host = toolbarHost, toolbar.superview != nil, let w = host.window {
+            let local = NSPoint(x: pointer.x - w.frame.minX, y: pointer.y - w.frame.minY)
+            if toolbar.frame.insetBy(dx: -12, dy: -12).contains(local) { return false }
+        }
+        guard let sel = selection, !dragging else { return true }
+        return sel.insetBy(dx: -24, dy: -24).contains(pointer) && !sel.insetBy(dx: 24, dy: 24).contains(pointer)
     }
 
     func screenFrame(containing p: NSPoint) -> NSRect {
@@ -244,7 +260,9 @@ final class PickerView: NSView {
         }
 
         if c.frozen { return }      // taken: only the dim, until the stage is up
-        defer { Loupe.draw(pointer: c.pointer, in: self, stills: c.stills, label: Loupe.pointLabel(c.pointer)) }
+        // the loupe is for placing an edge: not over the toolbar (it covered Full screen and Start recording as the
+        // pointer went to them), nor its size while a selection exists and the pointer is away from it
+        defer { if c.loupeWanted { Loupe.draw(pointer: c.pointer, in: self, stills: c.stills, label: nil) } }
         if let sel = c.selection.map(local) {
             // the outline and the handles are layers (SelectionOutline); the size: one value, the snap's pixels, on
             // the chrome's one surface (the mint stays on the outline and handles)

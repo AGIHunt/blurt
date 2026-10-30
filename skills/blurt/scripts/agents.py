@@ -747,8 +747,21 @@ def session_spec(defn: dict) -> dict | None:
     return sp if isinstance(sp, dict) else None
 
 
+def waiting_hints(defn: dict) -> list[tuple[str, str | None]]:
+    """interactive.waiting_patterns as (regex, hint): an entry is a regex, or {"pattern", "hint"} where hint names a
+    question the app explains in one line ("trust": the agent's folder-trust question; "hooks": Codex's hook review).
+    A session that quits at a "trust" question never started (sessions.py: agent.stopped_at)."""
+    out: list[tuple[str, str | None]] = []
+    for p in (defn.get("interactive") or {}).get("waiting_patterns") or []:
+        if isinstance(p, str):
+            out.append((p, None))
+        elif isinstance(p, dict) and isinstance(p.get("pattern"), str):
+            out.append((p["pattern"], p.get("hint") if isinstance(p.get("hint"), str) else None))
+    return out
+
+
 def waiting_patterns(defn: dict) -> list[str]:
-    return [p for p in (defn.get("interactive") or {}).get("waiting_patterns") or [] if isinstance(p, str)]
+    return [p for p, _ in waiting_hints(defn)]
 
 
 def error_patterns(defn: dict) -> list[str]:
@@ -823,8 +836,9 @@ def codex_hook_args(job: str, python: str | None = None, hooks: bool = True) -> 
     out = ["-c", "notify=[" + ", ".join(_toml_str(x) for x in notify) + "]"]
     if hooks:
         cmd = _toml_str(hook_command("codex", None, py))
-        for ev in CODEX_HOOKS:
-            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout=5}}]}}]"]
+        for ev in CODEX_HOOKS:  # Codex clamps a SessionEnd hook's timeout to 3 s (and warns): ask for 3 there
+            t = 3 if ev == "SessionEnd" else 5
+            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout={t}}}]}}]"]
     return out
 
 

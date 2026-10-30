@@ -31,7 +31,7 @@ enum SettingsModule {
 
         SelfTests.install()
         if Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { Onboarding.shared.show() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { Onboarding.shared.show(step: Onboarding.resumeStep) }
         }
     }
 }

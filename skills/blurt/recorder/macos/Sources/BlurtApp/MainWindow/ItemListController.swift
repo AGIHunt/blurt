@@ -10,6 +10,7 @@
 // Move", and the groups of them sit above the list with Move All (ProjectPicking.swift). The empty states
 // (EmptyStateView) own the window when a place has nothing: first run, inbox zero, nothing listed yet, a missing folder.
 import AppKit
+import UniformTypeIdentifiers
 import BlurtCore
 import Quartz
 import Carbon.HIToolbox
@@ -33,6 +34,8 @@ protocol ItemListActions: AnyObject {
     /// Items to a project, the user's move (⌘Z puts them back): a row's "Looks like X · Move", a group's Move All
     func move(uids: [String], to project: String)
     func pickProject()                         // M: the Move popover at the selection
+    /// New Item holding what came: ⌘V in the list, pictures dropped on it (BA-52)
+    func newItemHolding(_ prefill: NewItemSheet.Prefill)
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -87,6 +90,15 @@ final class ItemTableView: NSTableView {
     }
 
     @objc func copy(_ sender: Any?) { actions?.copyPaths() }
+    /// ⌘V: a new item from the clipboard's picture or text (the sheet opens with it; nothing is written yet). Not
+    /// from rows copied here (⌘C puts their files on the clipboard: pasting them back would only duplicate).
+    @objc func paste(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        let images = NewItemImages.files(from: pb).filter { !$0.path.contains("/.blurt/") && !$0.path.contains("/Blurt/inbox/") }
+        let text = images.isEmpty ? (pb.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard !images.isEmpty || !text.isEmpty else { NSSound.beep(); return }
+        actions?.newItemHolding(NewItemSheet.Prefill(text: text, images: images))
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let p = convert(event.locationInWindow, from: nil)
@@ -94,6 +106,15 @@ final class ItemTableView: NSTableView {
         guard r >= 0 else { return nil }
         if !selectedRowIndexes.contains(r) { selectRowIndexes([r], byExtendingSelection: false) }
         return actions?.contextMenu(for: selectedRowIndexes)
+    }
+
+    // A row dragged out: its pasteboard follows the app under the pointer (CardDrag, BA-22). NSTableView's delegate
+    // isn't told of moves: they are passed on here (super only where AppKit implements it — today it doesn't).
+    override func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+        if NSTableView.instancesRespond(to: #selector(NSDraggingSource.draggingSession(_:movedTo:))) {
+            super.draggingSession(session, movedTo: screenPoint)
+        }
+        (delegate as? ItemListController)?.rowDragMoved(to: screenPoint)
     }
 
     // Quick Look panel (Space): the controller supplies the items
@@ -566,7 +587,7 @@ final class MissingFolderBanner: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.image = Look.symbol("questionmark.folder", "", size: 15)
+        icon.image = IslandGlyph.missing.template(size: 18)     // a missing folder's one mark (IslandGlyph.place)
         icon.contentTintColor = .secondaryLabelColor
         icon.setAccessibilityElement(false)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -822,6 +843,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         table.quickLook = { [weak self] in self?.toggleQuickLook() }
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
+        // rows onto another project's section (BA-51), a hanging card the same way (BA-50)
+        // …and pictures from other apps (a new item holding them, BA-52)
+        table.registerForDraggedTypes([.blurtItems, capturePasteboardType, .fileURL, .png, .tiff] + NSFilePromiseReceiver.readableDraggedTypes.map { .init($0) })
         header = table.headerView
         table.tableColumns.forEach { $0.resizingMask = $0.identifier.rawValue == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask }
         scroll.documentView = table
@@ -1238,6 +1262,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
+    /// Still with an agent session that is over and never said it was done (In Progress' stuck work), not one the
+    /// user already finished (merged, taken back…).
+    static func sessionEnded(_ it: ItemRow) -> Bool {
+        guard ["handed_off", "in_progress"].contains(it.state), it.workTo == "session" || it.workJob != nil,
+              let j = it.workJob.flatMap({ JobStore.shared.job($0) }), let a = j.agent else { return false }
+        return !j.isActive && a.finishAction == nil && !a.isDesktop
+    }
+
     var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }
 
     func itemCell(_ col: String, _ it: ItemRow) -> NSView? {
@@ -1262,7 +1294,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             c.ring.isEnabled = !it.legacy
             // a row shows its state only where the list doesn't already say it: never "new" (the default of a fresh
             // item), nothing in a list grouped by state (its header says it) — pointed at or selected, it shows
-            c.quietAtRest = model.grouping == .state || it.state == "new"
+            // — except an item whose session ended without reporting back: its ring stays, as in the project list
+            c.quietAtRest = (model.grouping == .state || it.state == "new") && !Self.sessionEnded(it)
             return c
         case "title":
             let c = make("title") { TitleCell() }
@@ -1301,8 +1334,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             return c
         case "time":
             let c = make("time") { TimeCell() }
-            c.label.stringValue = MainModel.listDate(it.updated)
-            c.toolTip = MainModel.shortDate(it.updated)
+            if Self.sessionEnded(it) {
+                // stuck work says so where people look for it: "Session ended", in the attention ink
+                c.label.stringValue = T("main.row.session_ended")
+                c.label.textColor = BrandColor.attnInk
+                c.toolTip = T("main.row.session_ended.help") + "\n" + MainModel.shortDate(it.updated)
+            } else {
+                c.label.stringValue = MainModel.listDate(it.updated)
+                c.label.textColor = .secondaryLabelColor
+                c.toolTip = MainModel.shortDate(it.updated)
+            }
             return c
         default: return nil
         }
@@ -1378,10 +1419,20 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         actions?.openSelection()
     }
 
-    // drag rows: the uids (onto a project), the primary frame (else the item's .md) as a file (Finder makes a copy,
-    // Terminal pastes the path)
+    // drag rows. One row goes out like a hanging card (BA-22: into WeChat it brought only its picture) — CardDrag: what
+    // it carries follows the app under the pointer (the first frame; its text pasted in after it in a chat app, in the
+    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's and the .md's paths
+    // in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the list's own
+    // drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
+    // Terminal pastes the paths).
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let it = model.item(at: row) else { return nil }
+        let sel = tableView.selectedRowIndexes
+        if !(sel.contains(row) && sel.count > 1), let d = CardDrag(item: it, text: ItemListController.dragText(it)),
+           let first = d.pasteboardItems().first {
+            rowDrag = d
+            return first
+        }
         let pb = NSPasteboardItem()
         pb.setString(it.uid, forType: .blurtItems)
         // no frame (a voice note, a typed one): the item's own .md — like Reveal in Finder and Copy Path
@@ -1392,29 +1443,35 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return pb
     }
 
-    /// The rows a drag carries (set as it starts): their text follows a picture into a chat app (below).
-    private var draggedUIDs: [String] = []
+    /// One row being dragged out (set by its writer; several rows: none).
+    private var rowDrag: CardDrag?
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
                    forRowIndexes rowIndexes: IndexSet) {
-        draggedUIDs = rowIndexes.compactMap { model.item(at: $0)?.uid }
+        guard rowIndexes.count == 1 else { rowDrag = nil; return }
+        rowDrag?.began(session)
     }
 
-    /// An item dropped into a chat app (WeChat, QQ, a browser's chat…): the app took its picture and nothing else, so
-    /// its text is pasted into the composer after it — the hanging cards' follow-up (DragNoteFollowUp; BA-22: only the
-    /// picture arrived). One item with a picture; the Finder and terminals keep the file alone.
+    /// The pointer moved during a row's drag (ItemTableView): into another kind of app, its pasteboard is written again.
+    func rowDragMoved(to p: NSPoint) { rowDrag?.moved(to: p) }
+
+    /// A row taken by another app: the same end as a card's (DragOutEnd) — in a chat app its text is pasted after the
+    /// picture, else it goes on the clipboard; the island says so only when there is something to do (⌘V, or
+    /// Accessibility missing: Allow…). Dropped on our own windows (a project, the list): nothing here.
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint,
                    operation: NSDragOperation) {
-        defer { draggedUIDs = [] }
-        guard operation != [], draggedUIDs.count == 1, let it = model.itemRow(uid: draggedUIDs[0]),
-              it.primaryFrame.map({ FileManager.default.fileExists(atPath: $0) }) == true,
-              SmartPaste.enabled, SmartPaste.accessibility, !IsSecureEventInputEnabled(),
-              let t = DropProbe.target(at: screenPoint), t.cls == .chat else { return }
-        let text = ItemListController.dragText(it)
-        guard !text.isEmpty else { return }
-        emit(["event": "item_drag_note", "bundle": t.bundleID ?? NSNull()])
-        DragNoteFollowUp.run(note: text, target: t, at: screenPoint) { pasted in
-            emit(["event": "item_drag_note_done", "pasted": pasted])
+        let drag = rowDrag
+        rowDrag = nil
+        guard let d = drag, operation != [], let landed = DropProbe.target(at: screenPoint) else { return }
+        let got = d.delivered(at: screenPoint)
+        DragOutEnd.finish(card: d.card, delivered: got, noteFile: got.map(d.noteFile) ?? false, landed: landed, at: screenPoint,
+                          who: d.who) { done in
+            let key = DragReceipt.itemToastKey(done.outcome, noteCopied: done.noteCopied, noAccessibility: done.asksAccessibility)
+            emit(d.who.merging(["event": "item_drag_out", "delivered": got?.rawValue ?? NSNull(), "outcome": done.outcome.rawValue,
+                                "note_pasted": done.notePasted, "note_copied": done.noteCopied, "toast": key ?? NSNull()]) { $1 })
+            guard let key else { return }
+            let text = Loc.t(key, table: "Capture")
+            if island.started { island.toast(DragOutEnd.toast(done, text: text, undo: nil)) } else { appDelegate?.toast(text) }
         }
     }
 
@@ -1442,12 +1499,37 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: Quick Look
 
+    /// Every picture of the selected items (BA-55: Space showed only each one's first; ←/→ step through them in the
+    /// panel).
     var previewURLs: [URL] {
-        selectedItems.compactMap { $0.primaryFrame.map { URL(fileURLWithPath: $0) } }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let items = selectedItems
+        let key = items.map { "\($0.uid)@\($0.updated)" }
+        if let c = previewCache, c.key == key { return c.urls }     // the panel asks again for every picture
+        let urls = items.flatMap(Self.frameURLs)
+        previewCache = (key, urls)
+        return urls
+    }
+    private var previewCache: (key: [String], urls: [URL])?
+
+    /// An item's pictures in order, from its file's `frames` (paths relative to its store, or to its session for a
+    /// session's item); the index's first picture when the file doesn't list them.
+    static func frameURLs(_ it: ItemRow) -> [URL] {
+        let fm = FileManager.default
+        let first = it.primaryFrame.map { [URL(fileURLWithPath: $0)] } ?? []
+        guard let frames = FixWatcher.frontMatter(it.fileURL)?["frames"] as? [[String: Any]] else {
+            return first.filter { fm.fileExists(atPath: $0.path) }
+        }
+        let bases = [it.fileURL.deletingLastPathComponent().deletingLastPathComponent()] + (it.sessionDir.map { [URL(fileURLWithPath: $0)] } ?? [])
+        let urls: [URL] = frames.compactMap { f in
+            guard let p = f["path"] as? String, !p.isEmpty else { return nil }
+            if p.hasPrefix("/") { return URL(fileURLWithPath: p) }
+            return bases.map { $0.appendingPathComponent(p) }.first { fm.fileExists(atPath: $0.path) }
+        }.filter { fm.fileExists(atPath: $0.path) }
+        return urls.isEmpty ? first.filter { fm.fileExists(atPath: $0.path) } : urls
     }
     var quickLookOverride: [URL]?
 
-    func toggleQuickLook(_ urls: [URL]? = nil) {
+    func toggleQuickLook(_ urls: [URL]? = nil, start: Int = 0) {
         quickLookOverride = urls
         let p = QLPreviewPanel.shared()!
         if p.isVisible && urls == nil {
@@ -1457,6 +1539,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             view.window?.makeFirstResponder(table)
             p.makeKeyAndOrderFront(nil)
             p.reloadData()
+            p.currentPreviewItemIndex = start
         }
     }
 
@@ -1476,5 +1559,81 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         guard quickLookOverride == nil, let r = table.selectedRowIndexes.first, let w = view.window else { return .zero }
         let cell = table.frameOfCell(atColumn: 0, row: r)
         return w.convertToScreen(table.convert(cell, to: nil))
+    }
+}
+
+// MARK: drops on the list
+
+extension ItemListController {
+    /// The project a drop at this point files into: the Inbox's group under the pointer (grouped by project), a
+    /// registered project or Unassigned ("inbox"); nil anywhere else.
+    func dropProject(_ info: NSDraggingInfo) -> (project: String, start: Int)? {
+        guard model.grouping == .project, table.numberOfRows > 0 else { return nil }
+        let at = table.row(at: table.convert(info.draggingLocation, from: nil))
+        let row = at >= 0 ? at : table.numberOfRows - 1
+        guard let key = model.groupKey(at: row) else { return nil }
+        let p = key.isEmpty ? "inbox" : key
+        guard p == "inbox" || model.project(id: p)?.registered == true else { return nil }
+        return (p, model.groupStart(at: row))
+    }
+
+    /// Pictures from another app on the pasteboard (files, data, or a promise of files: a chat's drag).
+    func dropsPictures(_ pb: NSPasteboard) -> Bool {
+        guard pb.types?.contains(.blurtItems) != true, pb.types?.contains(capturePasteboardType) != true else { return false }
+        if pb.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil) { return true }
+        return !NewItemImages.files(from: pb).isEmpty
+    }
+
+    func tableView(_ t: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        let pb = info.draggingPasteboard
+        if dropsPictures(pb) {
+            t.setDropRow(-1, dropOperation: .on)       // the whole list
+            return .copy
+        }
+        guard let d = dropProject(info) else { return [] }
+        if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
+            // somewhere else than where they all are already
+            guard model.items(uids: uids).contains(where: { $0.projectID != d.project && !$0.readOnly }) else { return [] }
+        } else if pb.string(forType: capturePasteboardType) == nil {
+            return []
+        }
+        t.setDropRow(d.start, dropOperation: .on)       // the group's first row, where its header is
+        return .move
+    }
+
+    func tableView(_ t: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        let pb = info.draggingPasteboard
+        if dropsPictures(pb) {
+            let now = NewItemImages.files(from: pb)
+            if !now.isEmpty { actions?.newItemHolding(NewItemSheet.Prefill(images: now)); return true }
+            // promised files: written into a temporary folder first, then the sheet
+            let promises = (pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver]) ?? []
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-new-item/\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let group = DispatchGroup()
+            var got: [URL] = []
+            for r in promises {
+                group.enter()
+                r.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: .main) { u, e in
+                    if e == nil, UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { got.append(u) }
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) { [weak self] in
+                if got.isEmpty { NSSound.beep() } else { self?.actions?.newItemHolding(NewItemSheet.Prefill(images: got)) }
+            }
+            return !promises.isEmpty
+        }
+        guard let d = dropProject(info) else { return false }
+        if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
+            actions?.move(uids: uids, to: d.project)
+            return true
+        }
+        if let raw = pb.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
+            snapper.assign(hanging.withSelection(shot), to: d.project)
+            return true
+        }
+        return false
     }
 }

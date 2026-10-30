@@ -205,9 +205,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Discarded. Its item is back in To Do.</string>
+			<string>Discarded. Its item is back in To do.</string>
 			<key>other</key>
-			<string>Discarded. Its %ld items are back in To Do.</string>
+			<string>Discarded. Its %ld items are back in To do.</string>
 		</dict>
 	</dict>
 </dict>

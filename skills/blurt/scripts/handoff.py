@@ -91,8 +91,10 @@ def project(pid: str | None) -> dict | None:
 
 # ------------------------------------------------------------------ language
 def ui_lang(lang: str | None = None) -> str:
-    """"en" | "zh": --lang, else config "lang" (auto = the system's first preferred language)."""
-    v = (lang or "").strip().lower()
+    """"en" | "zh": --lang, else $BLURT_LANG (the app sets it on every script it runs: its own UI language, which may
+    be a per-app language the global AppleLanguages doesn't show), else config "lang" (auto = the system's first
+    preferred language)."""
+    v = (lang or os.environ.get("BLURT_LANG") or "").strip().lower()
     if not v:
         try:
             from _common import parse_config_text  # noqa: PLC0415 — read as every script reads it

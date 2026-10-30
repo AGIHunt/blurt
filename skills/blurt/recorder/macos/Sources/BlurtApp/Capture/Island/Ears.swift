@@ -77,8 +77,9 @@ final class EarSlot {
         /// the organising ended: a peep and a hop, then "+n" (ok), or a head shake and a droop (it failed)
         case sorted(since: CFTimeInterval, ok: Bool, n: Int)
         case alert
-        /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand)
-        case glyph(BlurtIcon, pulse: Bool)
+        /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand); `lit`: in
+        /// mint, still (a recording's pen while it is on: "on", not a passive count)
+        case glyph(BlurtIcon, pulse: Bool, lit: Bool = false)
         /// three dots taking turns: working on it
         case dots
         /// one of our icons before a short text: dictation's style chip with the clock (list = Structured)
@@ -102,7 +103,7 @@ final class EarSlot {
             case (.mark(let a), .mark(let b)): return a == b
             case (.peep(let a), .peep(let b)): return a == b
             case (.peepLevel(let a, _), .peepLevel(let b, _)): return a == b
-            case (.glyph(let a, _), .glyph(let b, _)): return a == b
+            case (.glyph(let a, _, let la), .glyph(let b, _, let lb)): return a == b && la == lb
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
             case (.iconsText(let a, let a2, _, _), .iconsText(let b, let b2, _, _)): return a == b && a2 == b2
             default: return false
@@ -185,7 +186,7 @@ final class EarSlot {
         case .sorted(let s, _, _): return CACurrentMediaTime() - s < EarSlot.sortedSeconds + 0.3
         case .alert: return CACurrentMediaTime() - pulseAt < 1
         case .peepLevel, .dots: return true
-        case .glyph(_, let p): return p && !reduceMotion
+        case .glyph(_, let p, _): return p && !reduceMotion
         default: return false
         }
     }
@@ -314,8 +315,8 @@ final class EarSlot {
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
             dot.isHidden = false
             x = 8
-        case .glyph(let ic, let pulse):
-            glyph(ic, 15, color: pulse ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
+        case .glyph(let ic, let pulse, let lit):
+            glyph(ic, 15, color: pulse || lit ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
             x -= 3
         case .dots:
             drawDots(t: 0)
@@ -474,7 +475,7 @@ final class EarSlot {
             let p = now - pulseAt
             let s: CGFloat = p < 1 && !reduce ? 1 + 0.5 * CGFloat(sin(.pi * p)) : 1
             dot.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
-        case .glyph(_, let pulse):
+        case .glyph(_, let pulse, _):
             icon.opacity = pulse && !reduce ? Float(0.5 + 0.5 * (0.5 + 0.5 * cos(t * 2 * .pi * 0.9))) : 1
         case .hello:
             // in for the hello, then away: it fades and slips 6 pt out (Reduce Motion: the still Peep, then a fade)

@@ -54,6 +54,18 @@ final class ModelSetup: ObservableObject {
 
     var pending: [ModelBundle.Part] { ModelBundle.pending(parts.map { p in var p = p; p.installed = p.installed || finished.contains(p.id); return p }) }
     var totalMB: Double { ModelBundle.totalMB(parts) }
+    /// What a stopped or cut-short download left on disk for the models still to come (MB, by id): the next download
+    /// continues it, so the step says what is left, not the whole size again. Read with the list (ModelCatalog.keptBytes).
+    @Published private(set) var kept: [String: Double] = [:]
+    /// Already on disk of what is still to come, never more than a model's size (a model whose files are in but that
+    /// still misses its detector counts as nearly whole).
+    var keptMB: Double {
+        downloading ? 0 : pending.reduce(0) { $0 + min(kept[$1.id] ?? 0, $1.sizeMB) }
+    }
+    /// What Download still has to fetch.
+    var leftMB: Double { max(totalMB - keptMB, 0) }
+    /// Some of it is on disk from before: "Resume (5.2 GB left)", "707 MB of 5.9 GB downloaded".
+    var resumable: Bool { keptMB >= 1 && leftMB >= 1 }
     /// this step's models that are in the manager's batch, in order
     var running: [ModelBundle.Part] { dl.queue.jobs.filter { ids.contains($0.id) }.map(\.part) }
     var finished: Set<String> { Set(dl.queue.finished).intersection(ids) }
@@ -71,7 +83,8 @@ final class ModelSetup: ObservableObject {
 
     /// The recogniser dictation runs on is in (installed, or came down in this batch): Try it works now.
     var dictationReady: Bool {
-        if systemReady { return true }
+        // macOS's recogniser, unless the app's own answer says dictation can't run yet (it picked a model still missing a file)
+        if systemReady, DictationModels.shared.dictationReady != false { return true }
         guard let d = parts.first(where: { $0.kind == .dictation }) else { return DictationModels.shared.dictationReady == true }
         return d.installed || finished.contains(d.id) || DictationModels.shared.dictationReady == true
     }
@@ -111,15 +124,48 @@ final class ModelSetup: ObservableObject {
         if !(downloading && plan == nil) { parts = plan ?? [] }
         listRead = plan != nil || downloading
         loaded = true
+        let ids = pending.map(\.id), models = BlurtPaths.home.appendingPathComponent("models"), hub = Self.hfCache
+        kept = await Task.detached(priority: .utility) {
+            Dictionary(ids.map { ($0, Double(ModelCatalog.keptBytes($0, models: models, hfCache: hub)) / 1_048_576) }) { a, _ in a }
+        }.value
         emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
                                                                    "installed": $0.installed] },
               "total_mb": totalMB])
     }
 
+    /// Hugging Face's cache, as the scripts find it (polish.py hf_cache).
+    nonisolated static var hfCache: URL {
+        let env = ProcessInfo.processInfo.environment
+        if let c = env["HF_HUB_CACHE"], !c.isEmpty { return URL(fileURLWithPath: c) }
+        let home = env["HF_HOME"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".cache/huggingface")
+        return home.appendingPathComponent("hub")
+    }
+
     /// macOS's language files asked for (nothing to fetch when they are here); dictation re-reads its model then.
     func prepareSystem() {
         guard AppleSpeech.available, system != .installed else { return }
+        AppleSpeech.prepare(via: "onboarding") { [weak self] a in
+            self?.system = a
+            Dictation.shared.refreshSpeechModels()
+        }
+    }
+
+    /// The languages macOS's recogniser can listen for that this user speaks (Settings' list), the one it listens for
+    /// now first; English always offered.
+    var systemLanguages: [String] {
+        let now = AppleSpeech.code(AppleSpeech.locale())
+        let all = [now].compactMap { $0 } + SpeechModel.shared.languages + ["en"]
+        return Array(NSOrderedSet(array: all.filter { AppleSpeech.locales[$0] != nil })) as? [String] ?? []
+    }
+
+    /// The language dictation listens for, picked on this step: "Automatic" stays unpinned (Settings → Speech →
+    /// Recognition language), another one is pinned there; macOS's files for it are asked for now.
+    func chooseLanguage(_ code: String) {
+        SpeechModel.shared.setLanguage(code == AppleSpeech.code(AppleSpeech.automatic) ? "auto" : code)
+        emit(["event": "onboarding_language", "language": code])
+        system = nil
         AppleSpeech.prepare(via: "onboarding") { [weak self] a in
             self?.system = a
             Dictation.shared.refreshSpeechModels()
@@ -150,7 +196,7 @@ final class ModelSetup: ObservableObject {
 
     /// The assistant closed while the set downloads: one line says it carries on, and where to see it.
     func closedWhileDownloading() {
-        guard downloading else { return }
+        guard downloading, !App.terminating else { return }      // a quit stops the downloads: nothing carries on
         let left = modelSize(dl.remainingMB)       // what came down of the running model isn't counted again
         var t = Island.Toast(text: T("app.models.background", left), actionTitle: T("app.models.show")) { ModelDownloads.showProgress() }
         t.seconds = 6

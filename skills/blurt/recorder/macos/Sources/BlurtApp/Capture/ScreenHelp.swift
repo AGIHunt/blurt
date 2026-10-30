@@ -15,7 +15,14 @@ import BlurtCore
 import ScreenCaptureKit
 
 enum ScreenHelp {
-    enum Use: String { case snap, record }
+    /// `text`: ⌥C / ⌥T read the screen — told as copying text, not as a snap (the dogfood's Copy Text said "Snapping
+    /// needs Screen Recording").
+    enum Use: String {
+        case snap, record, text
+        var missingKey: String { ["snap": "capture.snap.no_permission", "record": "capture.record.no_permission",
+                                  "text": "capture.text.no_permission"][rawValue]! }
+        var staleKey: String { ["snap": "capture.snap.stale", "record": "capture.record.stale", "text": "capture.text.stale"][rawValue]! }
+    }
 
     /// Does ScreenCaptureKit answer (main queue)? false: a stale grant when macOS says it is allowed.
     static func probe(_ done: @escaping (Bool) -> Void) {
@@ -33,19 +40,21 @@ enum ScreenHelp {
         emit(["event": "screen_help", "use": use.rawValue, "grant": grant.rawValue])
         switch grant {
         case .passing:
-            island.toast(Loc.t("capture.snap.failed", table: "Capture"), actionTitle: nil, action: nil)
+            island.toast(Loc.t(use == .text ? "capture.text.failed" : "capture.snap.failed", table: "Capture"), key: nil, icon: .warning)
         case .missing:
-            var t = Island.Toast(text: Loc.t(use == .snap ? "capture.snap.no_permission" : "capture.record.no_permission", table: "Capture"),
+            var t = Island.Toast(text: Loc.t(use.missingKey, table: "Capture"),
                                  actionTitle: Loc.t("capture.snap.open_settings", table: "Capture")) {
-                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: use == .snap ? .island : .capture) }
+                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: use == .record ? .capture : .island) }
             }
+            t.icon = .warning
             t.seconds = 8
             island.toast(t)
         case .stale:
-            var t = Island.Toast(text: Loc.t(use == .snap ? "capture.snap.stale" : "capture.record.stale", table: "Capture"),
+            var t = Island.Toast(text: Loc.t(use.staleKey, table: "Capture"),
                                  actionTitle: Loc.t("capture.screen.reallow", table: "Capture")) {
                 MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.screen], source: .capture, reauthorize: true) }
             }
+            t.icon = .warning
             t.seconds = 10
             island.toast(t)
         }

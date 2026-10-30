@@ -75,4 +75,74 @@ final class LayoutLintTests: XCTestCase {
         XCTAssertEqual(p.map(\.kind), ["truncated"])
         XCTAssertEqual(p.first?.json["frame"] as? [Double], [10, 10, 40, 16])
     }
+
+    // MARK: control titles (widths are SF 13 pt measurements)
+
+    func testTheReviewChangesFailureAlertsCutButtonIsFlaggedByGeometry() {
+        // w42-after-merge-codex: the 360-pt alert, "End Session and Mer…" in a 147 x 24 bordered button
+        XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 142.0, fontSize: 13, frame: CGSize(width: 147, height: 24)))
+        // Close and Try Again beside it fit (their measured bezels: 24 pt)
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 34.1, fontSize: 13, frame: CGSize(width: 58.5, height: 24)))
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 56.6, fontSize: 13, frame: CGSize(width: 81, height: 24)))
+        // the same button at its natural width (text + 24) and the 480-pt panel's: clean
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 142.0, fontSize: 13, frame: CGSize(width: 166, height: 24)))
+    }
+
+    func testPlainButtonsHaveNoBezelAndSmallOnesAreMeasuredAtTheirFont() {
+        // a borderless text button is as tall as its line and exactly as wide as its text
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 115.3, fontSize: 13, frame: CGSize(width: 115.5, height: 16)))
+        XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 115.3, fontSize: 13, frame: CGSize(width: 90, height: 16)))
+        // small (11 pt, 20 high): "Commit and Merge" is 99.6 wide, natural 120
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 99.6, fontSize: 11, frame: CGSize(width: 120, height: 20)))
+        XCTAssertTrue(LayoutLint.controlTitleClipped(titleWidth: 99.6, fontSize: 11, frame: CGSize(width: 100, height: 20)))
+    }
+
+    func testIconOnlyButtonsAreNotTitles() {
+        XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 14, height: 14)))                      // square.and.pencil
+        XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 42, height: 25)))                      // a template image
+        XCTAssertTrue(LayoutLint.iconOnly(frame: CGSize(width: 38, height: 12.5), symbolIdentifier: true)) // the ⋯ capsule
+        XCTAssertFalse(LayoutLint.iconOnly(frame: CGSize(width: 65, height: 24)))                     // "Co…" is text
+    }
+
+    func testAPopUpWhoseTitleDoesntFit() {
+        // "A very long popup choice title" (156 pt) in a 90-pt pop-up: its cell draws the title in 55.5 pt
+        XCTAssertTrue(LayoutLint.popupTitleClipped(titleWidth: 156.1, titleRectWidth: 55.5))
+        // "GPT-6-Astra (default)" in the hand-off panel's model pop-up at its width
+        XCTAssertFalse(LayoutLint.popupTitleClipped(titleWidth: 132.4, titleRectWidth: 140))
+        XCTAssertFalse(LayoutLint.popupTitleClipped(titleWidth: 0, titleRectWidth: 0))                // an icon menu
+    }
+
+    func testTheReviewChangesSplitButtonIsFoundInTheRendering() {
+        // w42-review-changes-codex: the 480 x 215 panel; "Commit and Merge" + divider + chevron in a 148-pt button.
+        // Geometry alone can't see it (115.3 + its bezel fits 148; the chevron's 26 pt are invisible to it) …
+        let merge = LayoutNode(role: "AXButton", label: "Commit and Merge", frame: CGRect(x: 308, y: 167, width: 148, height: 24))
+        let cancel = LayoutNode(role: "AXButton", label: "Cancel", frame: CGRect(x: 234, y: 167, width: 66, height: 24))
+        let more = LayoutNode(role: "AXMenuButton", label: "More", frame: CGRect(x: 24, y: 171, width: 38, height: 17))
+        XCTAssertFalse(LayoutLint.controlTitleClipped(titleWidth: 115.3, fontSize: 13, frame: merge.frame.size))
+        // … the rendering read back shows it: "Commit and Mer…" inside the button
+        let texts: [(String, CGRect)] = [("Cancel", CGRect(x: 248, y: 172, width: 40, height: 14)),
+                                         ("Commit and Mer... | v", CGRect(x: 314, y: 172, width: 115, height: 14)),
+                                         ("1 file changed", CGRect(x: 36, y: 78, width: 100, height: 16))]
+        let nodes = [more, cancel, merge]
+        XCTAssertEqual(LayoutLint.cutTitles(nodes, texts: texts), [2])
+        var flagged = nodes
+        for i in LayoutLint.cutTitles(nodes, texts: texts) { flagged[i].truncated = true }
+        let p = LayoutLint.check(flagged, window: CGSize(width: 480, height: 215))
+        XCTAssertEqual(p.map(\.kind), ["truncated"])
+        XCTAssertEqual(p.first?.label, "Commit and Merge")
+        // the fixed panel shows the whole title: nothing
+        XCTAssertEqual(LayoutLint.cutTitles(nodes, texts: [("Commit and Merge", CGRect(x: 314, y: 172, width: 115, height: 14))]), [])
+    }
+
+    func testShowsCut() {
+        XCTAssertTrue(LayoutLint.showsCut(label: "End Session and Merge", shown: "End Session and Mer…"))
+        XCTAssertTrue(LayoutLint.showsCut(label: "结束会话并合并", shown: "结束会话并…"))
+        XCTAssertTrue(LayoutLint.showsCut(label: "Commit and Merge", shown: "commit and mer..."))   // case, the dots
+        XCTAssertFalse(LayoutLint.showsCut(label: "Sign In…", shown: "Sign In…"))                 // the title's own …
+        XCTAssertFalse(LayoutLint.showsCut(label: "Open Diff", shown: "Open Diff"))
+        XCTAssertFalse(LayoutLint.showsCut(label: "Commit and Merge", shown: "Discard…"))          // another text
+        XCTAssertTrue(LayoutLint.showsCut(label: "A very long popup choice title", shown: "A very l... ="))  // the arrows
+        XCTAssertFalse(LayoutLint.showsCut(label: "Commit and Merge", shown: "Commit and Mer… then more words"))
+        XCTAssertFalse(LayoutLint.showsCut(label: "Commit", shown: "C…"))                         // one letter says nothing
+    }
 }

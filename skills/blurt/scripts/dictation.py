@@ -16,10 +16,13 @@ The file is append-only: an entry per dictation, then edit lines applied in orde
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import os
+import re
 import sys
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -78,13 +81,27 @@ def load(path: Path = HISTORY) -> list[dict]:
     return sorted((by_id[i] for i in order if i in by_id), key=_time, reverse=True)
 
 
-def append(o: dict, path: Path = HISTORY) -> None:
+@contextmanager
+def exclusive(path: Path = HISTORY):
+    """One writer of history.jsonl at a time, with the app (DictationHistory.exclusive): an advisory flock on
+    .history.lock beside it, so an append never lands between a prune's read and its rewrite."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+    fd = os.open(path.parent / ".history.lock", os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        os.write(fd, (json.dumps(o, ensure_ascii=False, sort_keys=True) + "\n").encode())
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
     finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
         os.close(fd)
+
+
+def append(o: dict, path: Path = HISTORY) -> None:
+    with exclusive(path):
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        try:
+            os.write(fd, (json.dumps(o, ensure_ascii=False, sort_keys=True) + "\n").encode())
+        finally:
+            os.close(fd)
 
 
 def retention_days() -> int:
@@ -92,11 +109,16 @@ def retention_days() -> int:
     return int(d) if isinstance(d, (int, float)) and d >= 0 else 30
 
 
+TAKE_WAV = re.compile(r"d-\d{8}-\d{6}-[0-9a-f]{4}\.wav")
+
+
 def prune_orphan_audio(entries: list[dict], path: Path = HISTORY, min_age: float = 3600,
-                       now: float | None = None) -> list[str]:
+                       now: float | None = None, days: int | None = None) -> list[str]:
     """Recordings in audio/ (a take's <id>.wav, its streamed pieces <id>-pN.wav) that no entry keeps: a take dropped,
     cancelled, or cut short by a quit or a crash. Only those older than `min_age` (a take still running is never that
-    old); the Lab's own recordings (dictation/lab/) are not here. The same rule as DictationHistory.pruneOrphanAudio."""
+    old); the Lab's own recordings (dictation/lab/) are not here. A take's own recording younger than `days` stays:
+    the app turns it into an "interrupted" entry with Retry (DictationHistory.recoverInterrupted). The same rule as
+    DictationHistory.pruneOrphanAudio."""
     audio = path.parent / "audio"
     if not audio.is_dir():
         return []
@@ -104,15 +126,24 @@ def prune_orphan_audio(entries: list[dict], path: Path = HISTORY, min_age: float
     now = now or time.time()
     gone = []
     for f in sorted(audio.glob("*.wav")):
-        if f.resolve() not in kept and now - f.stat().st_mtime >= min_age:
-            f.unlink(missing_ok=True)
-            gone.append(f.name)
+        age = now - f.stat().st_mtime
+        if f.resolve() in kept or age < min_age:
+            continue
+        if days is not None and TAKE_WAV.fullmatch(f.name) and age < days * 86400:
+            continue
+        f.unlink(missing_ok=True)
+        gone.append(f.name)
     return gone
 
 
 def prune(days: int, path: Path = HISTORY, now: datetime | None = None) -> int:
+    with exclusive(path):
+        return _prune(days, path, now)
+
+
+def _prune(days: int, path: Path, now: datetime | None) -> int:
     entries = load(path)
-    prune_orphan_audio(entries, path)
+    prune_orphan_audio(entries, path, days=days)
     if not path.exists():
         return 0
     cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)

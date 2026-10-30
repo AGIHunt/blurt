@@ -10,9 +10,9 @@
 // and the last few dictations in the same app (§Cloud polish: they named what the speaker was talking about: 豆宝 →
 // 豆包). Never the recording.
 //
-// The reminder: while cloud polish isn't on, the first dictation of each day ends with one line in the island
-// pointing to the setting, with "Don't remind me" (record.dictation.cloud_hint = false); the day it was shown is
-// record.dictation.cloud_hint_day.
+// The reminder: while cloud polish isn't on, once ever — after 10 dictations, into a quiet island, a timed line with
+// Set Up… (BlurtCore DictationCloudReminder; record.dictation.cloud_hint_shown once it was seen). An older
+// "Don't remind me" (record.dictation.cloud_hint = false) still counts as seen.
 import Foundation
 import Security
 import BlurtCore
@@ -65,6 +65,15 @@ enum DictationCloud {
         var visionModel = ""
         var effectiveBaseURL: String { baseURL.trimmingCharacters(in: .whitespaces).isEmpty ? provider.defaultBaseURL : baseURL.trimmingCharacters(in: .whitespaces) }
         var effectiveModel: String { model.trimmingCharacters(in: .whitespaces).isEmpty ? provider.defaultModel : model.trimmingCharacters(in: .whitespaces) }
+        /// Where the text goes, for people: the service's name ("DeepSeek", "阿里云百炼"), or the host of the user's
+        /// own endpoint — never a model id.
+        var destination: String {
+            switch provider {
+            case .deepseek: return "DeepSeek"
+            case .dashscope: return Loc.t("dictation.cloud.provider.dashscope", table: "Dictation")
+            case .openai, .anthropic: return URL(string: effectiveBaseURL)?.host ?? effectiveBaseURL
+            }
+        }
     }
 
     static var setup: Setup {
@@ -120,10 +129,16 @@ enum DictationCloud {
             [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: p.rawValue]
         }
 
+        /// A test build (BLURT_TEST_COMMANDS=1) never touches the login Keychain — never reads the user's real key
+        /// (it would go to the provider), never deletes it: BLURT_TEST_CLOUD_KEY, else what this run saved.
+        static var testBuild: Bool { ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" }
+        private static var testKeys: [Provider: String] = [:]
+
         static func read(_ p: Provider) -> String? {
-            // tests (test commands only): a key from the environment, so a test build never touches the login Keychain
-            let env = ProcessInfo.processInfo.environment
-            if env["BLURT_TEST_COMMANDS"] == "1", let k = env["BLURT_TEST_CLOUD_KEY"] { return k.isEmpty ? nil : k }
+            if testBuild {
+                if let k = testKeys[p] { return k.isEmpty ? nil : k }
+                return ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_KEY"].flatMap { $0.isEmpty ? nil : $0 }
+            }
             var q = query(p)
             q[kSecReturnData as String] = true
             q[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -134,11 +149,16 @@ enum DictationCloud {
 
         @discardableResult
         static func write(_ p: Provider, _ key: String) -> Bool {
-            if ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_KEY"] != nil,
-               ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { return true }
+            if testBuild { testKeys[p] = key.trimmingCharacters(in: .whitespacesAndNewlines); return true }
             let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            SecItemDelete(query(p) as CFDictionary)
-            guard !k.isEmpty else { return true }
+            // an empty key is the one way to remove it; otherwise update in place, and add only when there is none —
+            // never delete first (a failed add, a locked Keychain, would lose the key that worked)
+            guard !k.isEmpty else {
+                let r = SecItemDelete(query(p) as CFDictionary)
+                return r == errSecSuccess || r == errSecItemNotFound
+            }
+            let update = SecItemUpdate(query(p) as CFDictionary, [kSecValueData as String: Data(k.utf8)] as CFDictionary)
+            guard update == errSecItemNotFound else { return update == errSecSuccess }
             var q = query(p)
             q[kSecValueData as String] = Data(k.utf8)
             q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -163,17 +183,7 @@ enum DictationCloud {
         return mine.sorted { $0.time < $1.time }.suffix(recentCount).map { $0.finalText }.filter { !$0.isEmpty }
     }
 
-    // MARK: the daily reminder
-
-    /// Whether this take's end shows the reminder (and marks today as shown): cloud polish isn't on, the user hasn't
-    /// said "Don't remind me", and it wasn't shown today.
-    static func remindToday(now: Date = Date()) -> Bool {
-        guard !ready, Dictation.settings["cloud_hint"] as? Bool != false else { return false }
-        let day = dayString(now)
-        guard Dictation.settings["cloud_hint_day"] as? String != day else { return false }
-        Dictation.set("cloud_hint_day", day)
-        return true
-    }
+    // MARK: days
 
     static func dayString(_ d: Date) -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: d)

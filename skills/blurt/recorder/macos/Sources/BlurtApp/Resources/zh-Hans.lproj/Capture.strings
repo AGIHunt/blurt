@@ -58,7 +58,7 @@
 "capture.drawer.open_failed" = "没能把这个文件夹打开成项目";
 "capture.drawer.open_message" = "选一个文件夹。它的条目保存在其中的 .blurt 文件夹里，不进 git。";
 "capture.drawer.open_prompt" = "打开";
-"capture.drawer.pick_title" = "归到";
+"capture.drawer.pick_title" = "移到";
 "capture.drawer.switch_title" = "切换项目";
 "capture.filed" = "已归到 %1$@ · %2$@";
 "capture.hotkey.hint" = "%1$@ %2$@";
@@ -117,7 +117,6 @@
 "capture.project.found" = "找到「%@」了，之后的内容会归到这里";
 "capture.drawer.missing_sub" = "文件夹不见了 · 找到它…";
 "capture.note.discard_tip" = "丢弃这张截图（Esc）";
-"capture.note.goes_missing" = "%@：文件夹不见了";
 "capture.note.keep_tip" = "留下（⏎）";
 "capture.note.listening" = "说出来，或者打字";
 "capture.note.next" = "下一张";
@@ -160,7 +159,7 @@
 "capture.rec.discard_q" = "丢弃这段录屏？";
 "capture.rec.discard_also" = "会一起丢弃：%@";
 "capture.rec.and" = "%1$@和 %2$@";
-"capture.rec.discard_tip" = "丢弃或重录…";
+"capture.rec.discard_tip" = "丢弃或重新录屏…";
 "capture.rec.done_ax" = "录制结束，%@";
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
@@ -177,7 +176,7 @@
 "capture.rec.pen_box" = "方框";
 "capture.rec.pen_ellipse" = "椭圆";
 "capture.rec.menu_goes_to" = "归到 %@…";
-"capture.rec.restart" = "重录";
+"capture.rec.restart" = "重新录屏";
 "capture.rec.resume" = "继续";
 "capture.rec.snap_note" = "截图并写备注（会暂停）";
 "capture.recording.filed" = "已归到 %@";
@@ -200,6 +199,11 @@
 "capture.taken_out_files_note" = "已拖走，附备注文件 · 备注已复制，⌘V 粘贴";
 "capture.taken_out_picture" = "已拖走 · 图片";
 "capture.taken_out_picture_note" = "已拖走 · 备注已复制，⌘V 粘贴";
+"capture.taken_out_no_ax" = "已拖走 · 备注已复制，⌘V 粘贴\n开启「辅助功能」权限后，口喷鸡会自动把备注贴在图片后面";
+"capture.taken_out_picture_no_ax" = "已拖走 · 图片\n开启「辅助功能」权限后，口喷鸡会自动把备注贴在图片后面";
+"capture.item_out_note" = "已拖走 · 文字已复制，⌘V 粘贴";
+"capture.item_out_no_ax" = "已拖走 · 文字已复制，⌘V 粘贴\n开启「辅助功能」权限后，口喷鸡会自动把文字贴在图片后面";
+"capture.item_out_picture_no_ax" = "已拖走 · 图片\n开启「辅助功能」权限后，口喷鸡会自动把文字贴在图片后面";
 "capture.smart_paste.done" = "图片和备注已粘贴";
 "capture.file.shot" = "截图";
 "capture.file.note" = "备注";
@@ -327,7 +331,7 @@
 "capture.action.marker.detail" = "同时截一张图";
 "capture.action.cards.detail" = "刘海下还没归类的截图和语音备注";
 "capture.action.reformat.detail" = "把刚才的听写换成下一种风格";
-"capture.keys.section.capture" = "录制";
+"capture.keys.section.capture" = "截图、录屏和备注";
 "capture.keys.section.open" = "打开与切换";
 "capture.keys.dictation_key" = "开始听写";
 "capture.keys.restore.help" = "把所有快捷键恢复成口喷鸡的默认设置。可以用 ⌘Z 撤销。";
@@ -366,3 +370,9 @@
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
 "capture.text.translate_failed" = "翻译失败，已复制原文";
+"capture.text.try_again" = "再试一次";
+"capture.text.no_permission" = "从屏幕复制文字需要「屏幕录制」权限";
+"capture.text.stale" = "读不了屏幕：需要重新授权屏幕录制";
+"capture.card.ax_follow_up" = "开启「辅助功能」权限后，口喷鸡会自动把卡片的备注贴进去";
+"capture.taken.empty_expired_title" = "最近 7 天没有拖走的卡片";
+"capture.taken.empty_expired_hint" = "更早拖走的卡片在废纸篓里。";

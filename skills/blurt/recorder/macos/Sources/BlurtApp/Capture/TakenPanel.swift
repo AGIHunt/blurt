@@ -95,6 +95,7 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         // right — no traffic lights
         w.titlebarAppearsTransparent = true
         w.titleVisibility = .hidden
+        w.backgroundColor = BubbleBackground.surface        // the bubble's neutral grey, not the wallpaper-tinted default
         for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { w.standardWindowButton(b)?.isHidden = true }
         // the 7 days, said once for every row (a row says it again only on its last day)
         kept.stringValue = Loc.t("capture.taken.kept", table: "Capture")
@@ -166,6 +167,13 @@ final class TakenPanel: NSObject, NSWindowDelegate {
         }
         let none = rows.isEmpty
         header?.count.stringValue = none ? "" : Loc.number(rows.count)
+        // once anything has gone after its 7 days, the empty list says where it went (not "nothing dragged out yet",
+        // which read as data loss)
+        if none {
+            let expired = snapper.takenExpiredAny
+            empty.rootView = EmptyStateContent(title: Loc.t(expired ? "capture.taken.empty_expired_title" : "capture.taken.empty_title", table: "Capture"),
+                                               message: Loc.t(expired ? "capture.taken.empty_expired_hint" : "capture.taken.empty_hint", table: "Capture"))
+        }
         empty.isHidden = !none
         for v in [scroll, rule, hint, kept] as [NSView] { v.isHidden = none }
         // up to 6 rows, then it scrolls; the hairline and the footer under them — or the empty state alone

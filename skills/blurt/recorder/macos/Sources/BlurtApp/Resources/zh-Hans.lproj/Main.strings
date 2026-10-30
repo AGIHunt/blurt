@@ -487,7 +487,7 @@
 "main.dictation.mark.terms" = "用到的词：%@";
 "main.dictation.mode.label" = "显示";
 "main.dictation.mode.polished" = "润色后";
-"main.dictation.mode.raw" = "原话";
+"main.dictation.mode.raw" = "识别原文";
 "main.dictation.mode.compare" = "改动";
 "main.dictation.typed" = "输入的文字";
 "main.dictation.heard" = "识别原文";
@@ -535,6 +535,7 @@
 "app.toast.welcome_no_dictation" = "口喷鸡在菜单栏里 · %1$@ 截图 · %2$@ 录屏";
 "app.toast.change_shortcut" = "更换…";
 "app.config.unreadable" = "读不了 config.json · 先用默认设置，改动不会保存";
+"app.config.unreadable_kept" = "读不了 config.json · 先用上次读到的设置，改动不会保存";
 "app.config.not_saved" = "这项改动没保存 · config.json 读不了";
 "app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
 "app.contract.app_older" = "口喷鸡 skill 比 App 新";
@@ -589,6 +590,7 @@
 "app.menu.cards" = "显示卡片";
 "app.menu.project_header" = "项目";
 "app.menu.key_off" = "%@ 用不了";
+"app.menu.key_taken" = "%@ 被另一个口喷鸡占用";
 "app.alert.not_now" = "以后再说";
 "app.record.again" = "重新录";
 
@@ -619,10 +621,11 @@
 "main.dictation.correct.caption.found" = "发现的词：";
 
 /* The Dictation page (v0.9 redesign, round 2) */
-"main.dictation.chip.copied_raw" = "仅复制 · 原话";
+"main.dictation.chip.copied_raw" = "仅复制 · 未润色";
 "main.dictation.status.copied" = "只复制到了剪贴板，没有打出：当时没有可输入的地方。";
-"main.dictation.status.copied_raw" = "原话只复制到了剪贴板，没有打出：当时没有可输入的地方，而且%@。";
-"main.dictation.status.raw" = "打出的是原话：%@。";
+"main.dictation.status.copied_raw" = "只复制到了剪贴板，没有打出，也没有润色：当时没有可输入的地方，而且%@。";
+"main.dictation.status.raw" = "未润色：%@。";
+"main.dictation.status.parts" = "%2$ld 段里有 %1$ld 段未润色：%3$@。";
 "main.dictation.changes.key" = "删除线是去掉的词，下划线是加上或改写的词。";
 "main.dictation.banner.download" = "下载模型";
 
@@ -725,6 +728,26 @@
 "main.new_item.title_placeholder" = "标题";
 "main.new_item.details_placeholder" = "详情（可选）";
 "main.new_item.create" = "新建";
+"main.new_item.add_image" = "添加图片…";
+"main.new_item.remove_image" = "移除这张图片";
+"main.new_item.image_hint" = "也可以 ⌘V 粘贴或拖进来";
+"main.new_item.image_title" = "图片 · %@";
 
 /* v1.0.5：默认快捷键去掉了 ⇧（AppDelegate，只提示一次） */
 "app.toast.hotkeys_v2" = "快捷键已简化：%1$@ 截图 · %2$@ 截图取字 · %3$@ 语音备注";
+
+"main.dictation.multi.more" = "还有 %ld 条";
+
+"main.job.error.stopped_trust" = "%@ 在「信任这个文件夹？」那一步退出了，什么都还没开始。";
+
+/* 正在运行的分组标题 */
+"main.jobs.title" = "正在运行";
+"main.jobs.title.failed" = "失败";
+
+/* 会话没回报就结束了的条目 */
+"main.row.session_ended" = "会话已结束";
+"main.row.session_ended.help" = "它的 Agent 会话结束了，但没说做完。打开这条可以重新开始或收回。";
+
+/* 打开文件夹成了新项目 */
+"main.open.added" = "已添加 %1$@ · 条目编号从 %2$@-1 开始";
+"main.open.rename" = "重命名";

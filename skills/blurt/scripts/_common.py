@@ -744,7 +744,7 @@ _LIVE = STATES[:-1]
 ACTIONS = {
     "keep": (("new",), "todo"),
     "hand_off": (("new", "todo"), "handed_off"),
-    "done": (("todo", "handed_off", "in_progress", "to_verify"), "done"),
+    "done": (("new", "todo", "handed_off", "in_progress", "to_verify"), "done"),
     "send_back": (("to_verify",), "todo"),
     "take_back": (("handed_off", "in_progress"), "todo"),
     "reopen": (("done", "wontfix"), "todo"),

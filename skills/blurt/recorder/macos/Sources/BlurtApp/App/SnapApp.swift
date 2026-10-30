@@ -298,7 +298,7 @@ extension App {
             if let i = move?.submenu?.items.first(where: { $0.title == target }) as? ClosureMenuItem { i.fire() }
         case "pick":                                    // pick PROJECT|inbox: choose a row of the island's switcher / pick form
             if let p = island.pick { island.closeSwitcher(); p.choose(arg) }
-            else { Task { try? await ProjectStore.shared.use(arg == "inbox" ? nil : arg); await MainActor.run { island.projectChanged() } } }
+            else { MissingFolder.use(arg == "inbox" ? nil : arg, via: "test") }
         case "pickrows":                                // pickrows [QUERY]: the switcher's rows as shown, after typing QUERY
             if island.drawer != .switcher { island.showSwitcher() }
             island.content.query = arg

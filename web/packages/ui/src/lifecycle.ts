@@ -28,7 +28,7 @@ const LIVE: readonly State[] = STATES.filter((s) => s !== "discarded");
 export const TRANSITIONS: Record<Action, Transition> = {
   keep: { from: ["new"], to: "todo", key: "a" },
   hand_off: { from: ["new", "todo"], to: "handed_off", key: "cmd+enter" },
-  done: { from: ["todo", "handed_off", "in_progress", "to_verify"], to: "done", key: "d" },
+  done: { from: ["new", "todo", "handed_off", "in_progress", "to_verify"], to: "done", key: "d" },
   send_back: { from: ["to_verify"], to: "todo", key: "r" },
   take_back: { from: ["handed_off", "in_progress"], to: "todo", key: "r" },
   reopen: { from: ["done", "wontfix"], to: "todo", key: "r" },
@@ -39,7 +39,7 @@ export const TRANSITIONS: Record<Action, Transition> = {
 
 /** what clicking a state offers, in order */
 export const MENUS: Record<State, readonly Action[]> = {
-  new: ["keep", "hand_off", "wontfix", "discard"],
+  new: ["keep", "hand_off", "done", "wontfix", "discard"],
   todo: ["hand_off", "done", "wontfix", "discard"],
   handed_off: ["done", "take_back", "wontfix", "discard"],
   in_progress: ["done", "take_back", "wontfix", "discard"],

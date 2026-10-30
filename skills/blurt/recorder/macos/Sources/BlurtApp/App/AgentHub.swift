@@ -460,6 +460,15 @@ extension App {
             }
             return job.id
         }
+        // tests: BLURT_TEST_AGENTS=none — no agent is usable, whichever way Organize came (the cards, a failed take's
+        // toast, the main window, the menu): it ends as "no agent" and starts nothing (the take toast's Organize used
+        // to skip the cards' gate and start real Codex runs in a test session)
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_TEST_AGENTS"] == "none" {
+            emit(["event": "process_no_agent_test", "session": dir.path])
+            noAgent(dir, [], job: job)
+            return job.id
+        }
         let hub = AgentHub.shared
         hub.reload()
         let order = only.flatMap { hub.def($0) }.map { [$0] } ?? hub.order()

@@ -876,9 +876,14 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   attention colour with one quiet "还剩 30 秒". A new take drops what the island said about the last one: its tip, the
   5-minute line, "还在识别…"; the stop drops ⇧'s Structured line (⇧ works only while listening).
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
-  "文字已复制，没有发送"); a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
-  tap mode) says how this mode starts, once a day — reported once (`DictationTrigger.takeMiss`), not again on every
-  key and click that follows; a polish model or the recommended speech model missing says so once a day with
+  "文字已复制，没有发送"); a take only copied because the user switched apps is a ⚠ toast that says so ("你换了 App，
+  没有输入 · 已复制，⌘V 粘贴", 6 s — not the ears' 2 s ✓), and a double tap within 15 s of a take left on the
+  clipboard, with no key pressed since, holds its Return ("已复制，没有发送 · ⌘V 粘贴"; `DictationCopiedGuard`) —
+  the dogfood's Return went into the app now in front, where nothing was pasted; a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
+  tap mode) says how this mode starts — a tap in hold mode once a day; a long press in tap mode every time, while the
+  key is still down (a `.tick` at `tapMax`), so the user lets go before talking into a take that won't start (the
+  founder, 2026-10-30: tap mode stays strict) — reported once (`DictationTrigger.takeMiss`), not again on every key
+  and click that follows; a polish model or the recommended speech model missing says so once a day with
   Download… (not when the model that ran is the one the user chose in Settings).
 - **Reformat and its toasts belong to a take.** ⌥⇧L while a take is on its way waits for it — the take said last,
   bound by id (`DictationReformatAfterPaste`): when that take is cancelled, fails or hears nothing, the request goes
@@ -955,8 +960,10 @@ past its time (4 s + 6 ms a character), an answer the guard refuses — is answe
 - **The key** is in the login Keychain (service "Blurt Cloud Polish", account = provider); the app sends it with each
   request to the local server, never to a file or a log. Test (in the sheet) runs `polish_cloud.py check` with the key
   on stdin. Never sent: the recording.
-- **The reminder**: while it isn't on, the first dictation of each day ends with one island line — "Turn on cloud
-  polish…" · Set Up… · Don't Remind Me (`cloud_hint` = false); `cloud_hint_day` is the day it was shown.
+- **The reminder** (the founder, 2026-10-30): while it isn't on, once ever — after 10 dictations that went in, on a
+  take with no notice or tip of its own, into a quiet island, never in Blurt's own windows (the setup assistant's Try
+  it) — one timed line (8 s), "Turn on cloud polish…" · Set Up…, not a question (`DictationCloudReminder`;
+  `cloud_hint_shown` once it was seen; an older `cloud_hint` = false counts as seen). After that, Settings only.
 - Everywhere polish runs: dictation's windows and the safety path, Structured, reformat-last, a snap's / voice note's
   structuring pass. The Lab: `cloud=on` (the key from `BLURT_POLISH_API_KEY`).
 
@@ -1932,12 +1939,22 @@ the generic app icon), the marks are 13 pt, and a take that fell back says **未
 hover. Models are named from the skill's catalogs before the live list answers (`ModelCatalog`), apps never by a
 bundle id (`AppNames`: else "未知 App"), and an old entry's raw context dict says only that it was used.
 
-Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
-(`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on, and with the take whenever its
-result is dropped. A take cut short by a quit or a crash, or by a path that once forgot its file (dict025: five wavs
-no entry referenced), is caught at launch: retention also removes every wav in `audio/` (pieces included) that no
-entry points at and that is over an hour old (`DictationHistory.pruneOrphanAudio`, `dictation.py prune`). The Lab's
-recordings live in `dictation/lab/` and are never touched.
+Retention (`record.dictation.retention_days`, 30) rewrites the file at launch, on waking, once a day while the app
+stays up (a menu-bar app runs for weeks: the 2026-10-30 dogfood found nothing deleted between restarts) and when the
+setting changes — never while a take listens or is on its way. The read and the rewrite hold one lock with every
+append: the app's threads and `dictation.py` (an advisory `flock` on `dictation/.history.lock`), so a line written
+meanwhile is never lost. Audio (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on,
+and with the take whenever its result is dropped.
+
+A quit during a take loses nothing (dogfood: a 20.8 s take and a hands-free take left only their wavs, deleted a
+launch later): `Dictation.prepareForQuit` ends a listening take as a key-up would, gives the takes on their way 3 s
+to be typed, and writes any still unfinished as `asr_failed:interrupted` with its recording (the page: "Not typed:
+Blurt quit before it finished", Retry). A crash or a kill leaves the take's own `<id>.wav`; retention turns one
+within `retention_days`, over a second long, not a take still running, into the same entry
+(`DictationHistory.recoverInterrupted`; `dictation.py prune` leaves such a wav for the app). Every other wav in
+`audio/` (pieces included) that no entry points at goes once it is over an hour old
+(`DictationHistory.pruneOrphanAudio`, `dictation.py prune`). The Lab's recordings live in `dictation/lab/` and are
+never touched.
 
 *Turn into item* runs `dictation.py item ID --project <current|inbox>`. That calls `items.py add` with:
 - `title` = the first sentence, `quote` = the whole text;
@@ -1961,13 +1978,14 @@ recordings live in `dictation/lab/` and are never touched.
 | `streaming` | `true`: transcribe and polish pieces while talking |
 | `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` (10) |
 | `cloud_polish` | unset = off. `{"on", "provider": "deepseek"\|"openai"\|"anthropic", "base_url", "model"}` (§Cloud polish; the key is in the Keychain) |
-| `cloud_hint` | unset: the daily reminder of cloud polish while it is off; `false` = never again (`cloud_hint_day`: the day it was last shown) |
+| `cloud_hint_shown` | `true` once the one cloud-polish reminder was seen (§Cloud polish); an older `cloud_hint` = false counts the same |
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
 | `sounds` | `true`: the peep / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
+| `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
 | `context` | `true`: read the text around the cursor for polish |

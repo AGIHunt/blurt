@@ -22,6 +22,56 @@ final class DictationTakeFlowTests: XCTestCase {
                                                    noField: true), .noField)
     }
 
+    /// Dogfood: a copy because the app changed showed as a 2 s "✓ Copied" in the ears; a double tap then pressed
+    /// Return in the app now in front, where nothing was pasted.
+    func testACopyBecauseTheAppChangedWarnsAndHoldsReturn() {
+        let changed = DictationDeliveredLine.copied(appChanged: true)
+        XCTAssertFalse(changed.checked)
+        XCTAssertTrue(changed.warns)
+        XCTAssertEqual(changed.copyKey, "dictation.toast.copied_app")
+        XCTAssertGreaterThanOrEqual(changed.copySeconds, 5)
+        XCTAssertTrue(DictationDeliveredLine.copied(appChanged: false).checked)
+        XCTAssertFalse(DictationDeliveredLine.copied(appChanged: false).warns)
+        XCTAssertTrue(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: false, now: 104))
+        XCTAssertFalse(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: true, now: 104))     // ⌘V, typing
+        XCTAssertFalse(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: false, now: 130))    // long ago
+        XCTAssertFalse(DictationCopiedGuard.holdsReturn(copiedAt: nil, keyAfter: false, now: 104))    // it was typed
+    }
+
+    /// macOS 13–15, first Fn, nothing on the Mac: the island offers the small model, not the recommended 2.5 GB.
+    func testTheFirstModelOfferedIsTheSmallestThatFits() {
+        let rows: [(id: String, sizeMB: Double, fits: Bool)] = [("qwen3-asr-1.7b-mlx", 2468, true), ("sensevoice-small", 228, true),
+                                                                 ("tiny-but-too-big-ram", 100, false), ("apple-speech", 0, true)]
+        let none = DictationSpeechModels(selected: "qwen3-asr-1.7b-mlx", ready: false, selectedInstalled: false,
+                                         recommended: "qwen3-asr-1.7b-mlx", recommendedInstalled: false)
+        XCTAssertEqual(none.firstOffer(rows)?.id, "sensevoice-small")
+        XCTAssertEqual(none.firstOffer(rows)?.sizeMB, 228)
+        var vadOnly = none
+        vadOnly.selectedInstalled = true
+        XCTAssertNil(vadOnly.firstOffer(rows))                      // only the 0.6 MB VAD is missing
+        var configured = none
+        configured.configured = "qwen3-asr-1.7b-mlx"
+        XCTAssertNil(configured.firstOffer(rows))                   // the user's own choice is what "Download" gets
+        var ready = none
+        ready.ready = true
+        XCTAssertNil(ready.firstOffer(rows))
+    }
+
+    /// The founder (2026-10-30): the cloud-polish reminder once ever, after 10 takes, into a quiet island only.
+    func testTheCloudReminderComesOnceAfterTenTakesIntoAQuietIsland() {
+        func due(_ takes: Int, shown: Bool = false, ready: Bool = false, blurt: Bool = false, other: Bool = false, idle: Bool = true) -> Bool {
+            DictationCloudReminder.due(takes: takes, shown: shown, cloudReady: ready, inBlurt: blurt, otherLine: other, islandIdle: idle)
+        }
+        XCTAssertFalse(due(9))
+        XCTAssertTrue(due(10))
+        XCTAssertFalse(due(30, shown: true))           // once, ever
+        XCTAssertFalse(due(10, ready: true))
+        XCTAssertFalse(due(10, blurt: true))           // the setup assistant's Try it
+        XCTAssertFalse(due(10, other: true))           // a notice or a tip on this take
+        XCTAssertFalse(due(10, idle: false))
+        XCTAssertLessThan(DictationCloudReminder.seconds, 30)
+    }
+
     func testTheKeptTextIsItsStart() {
         XCTAssertEqual(DictationKeptText.preview("  short\nline  "), "short line")
         let zh = String(repeating: "这是一段很长的话", count: 12) + "，最后几个字"

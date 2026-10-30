@@ -16,7 +16,10 @@
 // Next, the speech model — then Fn dictates anywhere." Nothing in System Settings is ever clicked or changed by Blurt.
 // The step count ("1 of 2") is the walk's live list. With Fn as the key, Input Monitoring isn't planned while
 // Accessibility is still to come (the Fn filter hears the key with Accessibility alone), so the count doesn't promise
-// a step and then drop it; only if the filter still can't hear the key once Accessibility is on does it join the walk.
+// a step and then drop it; only if the filter still can't hear the key once Accessibility is on does it join the walk —
+// so until Accessibility is on the panel names the step without a total (`mayGrow`): a count never grows mid-walk. A
+// row's Allow (`only`) is judged on its own kinds when it ends ("Screen Recording is on", not "Done for now"); Screen
+// Recording turned on while Blurt runs ends with macOS's relaunch line and Restart Blurt.
 // Re-add (`reauthorize`, v0.9): macOS lists Blurt as allowed but ScreenCaptureKit refuses — the grant was made for an
 // older build (ScreenHelp, BlurtCore ScreenGrant.stale). The Screen Recording step then isn't satisfied by the switch
 // being on: the panel says to remove Blurt with − and add it again, and Restart Blurt is what finishes it.
@@ -42,6 +45,9 @@ final class PermissionGuide: ObservableObject {
     /// ("Permissions are set"), and what comes next, if anything, as a quieter line under it (`finishedDetail`)
     @Published private(set) var finished: String?
     @Published private(set) var finishedDetail: String?
+    /// the walk turned Screen Recording on while Blurt runs: macOS applies it after a relaunch — the done line says so
+    /// and has Restart Blurt
+    @Published private(set) var finishedRestart = false
     /// the panel's side of the System Settings window (its notch points that way): under its list, or beside it
     @Published var dock: HelperDock.Side = .free
     /// the panel's card width: the list's width under it, a fixed one beside it (HelperDock.dock)
@@ -97,6 +103,7 @@ final class PermissionGuide: ObservableObject {
         self.reauthorize = reauthorize && (only ?? []).contains(.screen)
         finished = nil
         finishedDetail = nil
+        finishedRestart = false
         let walk = PermissionPlan.steps(flow, only: only, satisfied: satisfiedSet)
         emit(["event": "perm_guide", "op": "start", "flow": flow.rawValue, "source": source.rawValue, "steps": walk.map(\.rawValue),
               "reauthorize": self.reauthorize])
@@ -170,6 +177,15 @@ final class PermissionGuide: ObservableObject {
         }
     }
 
+    /// The walk may still gain a step: Input Monitoring, with Fn as the key, while Accessibility is still to come (only
+    /// once it is on does it tell whether the Fn filter hears the key). The panel then names the step without a total
+    /// ("Accessibility", not "1 of 2" that turns into "2 of 3").
+    var mayGrow: Bool {
+        guard running, only == nil, !steps.contains(.inputMonitoring), Dictation.enabled, Dictation.key == .fn,
+              !SystemAccess.granted(.inputMonitoring), !SystemAccess.granted(.accessibility) else { return false }
+        return PermissionPlan.steps(flow, satisfied: []).contains(.inputMonitoring)
+    }
+
     /// The steps done so far (the current one included) and the ones still to come.
     private func upcoming() -> (done: [PermissionKind], rest: [PermissionKind]) {
         let done = Array(steps.prefix { $0 != current } + (current.map { [$0] } ?? []))
@@ -228,26 +244,42 @@ final class PermissionGuide: ObservableObject {
 
     private func finish(already: Bool) {
         stop()
-        let everything = PermissionPlan.steps(flow, satisfied: satisfiedSet).isEmpty
+        // what was asked for: a row's Allow is judged on its own kinds, not on the whole flow ("Done for now" after
+        // the user did exactly what they set out to)
+        let everything = PermissionPlan.steps(flow, only: only, satisfied: satisfiedSet).isEmpty
         let heard = Dictation.enabled && Dictation.shared.tapInstalled
         // "dictation works in every app" only when it does: the key is heard and a speech model is there
         let model = DictationModels.shared.dictationReady != false
         let dictationWorks = heard && model
         let aboutDictation = flow == .dictation || source == .menu || source == .island
-        let (msg, detail): (String, String?) = aboutDictation && dictationWorks ? (T("settings.perm.done.dictation"), nil)
-            : aboutDictation && heard ? (T("settings.perm.done.no_model.title"), T("settings.perm.done.no_model", Dictation.keyInline))
-            : everything ? (T("settings.perm.done.all"), nil) : (T("settings.perm.done.some.title"), T("settings.perm.done.some"))
+        // Screen Recording turned on while Blurt runs: it applies after a relaunch (as Settings → Privacy's row says)
+        let restart = (only ?? PermissionPlan.steps(flow, satisfied: [])).contains(.screen) && SystemAccess.screenAskedThisRun
+            && satisfied(.screen)
+        let rowKinds = only.map { ListFormatter.localizedString(byJoining: $0.map(PermissionGuide.name)) }
+        let (msg, detail): (String, String?) = {
+            if aboutDictation && dictationWorks { return (T("settings.perm.done.dictation"), nil) }
+            if aboutDictation && heard { return (T("settings.perm.done.no_model.title"), T("settings.perm.done.no_model", Dictation.keyInline)) }
+            guard everything else { return (T("settings.perm.done.some.title"), T("settings.perm.done.some")) }
+            if restart {
+                return (T("settings.perm.step_done", rowKinds ?? PermissionGuide.name(.screen)), T("settings.privacy.macos_applies_screen_recording"))
+            }
+            if let r = rowKinds { return (T("settings.perm.step_done", r), nil) }
+            return (T("settings.perm.done.all"), nil)
+        }()
         finished = msg
         finishedDetail = detail
+        finishedRestart = everything && restart
         finishedAt = Date()
-        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "detail": detail ?? NSNull(),
+        emit(["event": "perm_guide", "op": "done", "already": already, "message": msg, "detail": detail ?? NSNull(), "restart": finishedRestart,
               "dictation_works": dictationWorks, "model": model,
               "missing": PermissionPlan.steps(flow, satisfied: satisfiedSet).map(\.rawValue)])
         HelperPanel.shared.showDone(msg, after: already ? 0 : 0.2)
         bringBack()
         let at = finishedAt
         DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
-            MainActor.assumeIsolated { if self?.finishedAt == at { self?.finished = nil; self?.finishedDetail = nil } }
+            MainActor.assumeIsolated {
+                if self?.finishedAt == at { self?.finished = nil; self?.finishedDetail = nil; self?.finishedRestart = false }
+            }
         }
     }
 
@@ -329,6 +361,7 @@ struct PermissionDoneBanner: View {
                     }
                 }
                 Spacer()
+                if g.finishedRestart { Button(T("settings.perm.restart")) { SystemAccess.relaunch() } }
             }
             .padding(.vertical, 2)
             .accessibilityElement(children: .combine)

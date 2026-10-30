@@ -15,8 +15,8 @@
 //               same circle, Resume's play glyph in amber — nothing moves) · snap + note (pauses) … ··· · Finish (the one
 //               filled thing; paused, a neutral pill with its red stop square, so Resume leads); the ··· menu (dark,
 //               keys right-aligned) holds the rare things: the pen (⌥⇧D), a marker (⌥⇧M), where the take goes
-//               (Change…), Discard or Restart… (asks first: the question alone on its line, what goes with it — the
-//               snaps and the markers apart — on a quiet second line, then Discard · Restart · Keep Recording ↩, the
+//               (Change…), Discard or Start Over… (asks first: the question alone on its line, what goes with it — the
+//               snaps and the markers apart — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
 //               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord) · how many items were spotted
@@ -58,6 +58,26 @@ enum IslandGlyph {
     /// A project: the family's folder in the project's colour, its body washed at 28 % so the colour reads at 15 pt (a
     /// red line alone came out brown on the black) — the one project identity (chip, switcher, drop drawer, filings).
     case project(NSColor)
+    /// A project whose folder is gone: the family's folder, outlined, with a question mark in it — the same family as
+    /// `project` and `noProject` (SF's questionmark.folder was a second icon set beside them).
+    case missing
+
+    /// One mark per concept, everywhere a place is named — the island, the note's chip and list, the cards, the main
+    /// window's sidebar, Move popover and suggestions: a project's coloured folder, Unassigned's dashed ring, a missing
+    /// folder's question mark. `nil`: Unassigned. The ring and the question mark come back as templates (the view's
+    /// tint colours them, light or dark); a project's folder keeps its own colour.
+    static func place(_ p: Project?, size: CGFloat) -> NSImage? {
+        guard let p = p else { return IslandGlyph.noProject.template(size: size) }
+        guard p.exists else { return IslandGlyph.missing.template(size: size) }
+        return IslandGlyph.project(ProjectLook.color(p)).image(size: size, color: .black)
+    }
+
+    /// Drawn in black and marked a template: the image view's (or the menu's, the button's) tint colours it.
+    func template(size: CGFloat, weight: CGFloat = 1.1) -> NSImage? {
+        let im = image(size: size, color: .black, weight: weight)
+        im?.isTemplate = true
+        return im
+    }
 
     func cgImage(size: CGFloat, scale: CGFloat = 2, color: CGColor, weight: CGFloat) -> CGImage? {
         let px = Int((size * scale).rounded(.up))
@@ -92,6 +112,21 @@ enum IslandGlyph {
                 ctx.setStrokeColor(cg.cgColor)
                 ctx.strokePath()
             }
+        case .missing:
+            ctx.translateBy(x: 0, y: 24)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.setLineJoin(.round)
+            for l in BlurtIcon.folder.layers {
+                ctx.addPath(l.path)
+                ctx.strokePath()
+            }
+            // the question mark inside the body (y down, as the family's paths): its hook, its stem, its dot
+            let q = CGMutablePath()
+            q.addArc(center: CGPoint(x: 12, y: 11.9), radius: 1.9, startAngle: .pi, endAngle: .pi * 2.3, clockwise: false)
+            q.addLine(to: CGPoint(x: 12, y: 14.6))
+            ctx.addPath(q)
+            ctx.strokePath()
+            ctx.fillEllipse(in: CGRect(x: 11.2, y: 16.4, width: 1.6, height: 1.6))
         }
         return ctx.makeImage()
     }
@@ -507,7 +542,7 @@ final class IslandContent: NSView {
     private(set) weak var structuredChip: IslandButton?
     private weak var spotted: NSTextField?
     private weak var pauseBtn: IslandButton?
-    /// the recording row's ··· (its menu: the pen, a marker, Discard or Restart…)
+    /// the recording row's ··· (its menu: the pen, a marker, Discard or Start Over…)
     private(set) weak var moreBtn: IslandButton?
     /// The pen was latched when the recording row was built (it changes from the key, ⌥D): rebuilt when it differs.
     private var penShown = false
@@ -766,7 +801,7 @@ final class IslandContent: NSView {
     /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
     /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
     /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen, a marker,
-    /// where the take goes (Change…), Discard or Restart… (the question below).
+    /// where the take goes (Change…), Discard or Start Over… (the question below).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
         let y: CGFloat = top + 6
@@ -797,7 +832,7 @@ final class IslandContent: NSView {
         var bottom = y + 30
 
         // the quiet line: the pen's state or its keys (first takes only), then what live.py spotted
-        penShown = rec.penSticky
+        penShown = rec.penSticky || rec.inkOn
         let lineY = bottom + 10
         var end = inset
         var any = false
@@ -811,7 +846,8 @@ final class IslandContent: NSView {
             place(k, x: pen.frame.maxX + 10, y: lineY + (24 - k.frame.height) / 2)
             end = k.frame.maxX
             any = true
-        } else if penHintThisTake, !paused, let key = rec.penKey?.1 {
+        } else if penHintThisTake, !paused, !rec.inkOn, let key = rec.penKey?.1 {
+            // (not while the key is held: "Hold for the pen" taught what the user was already doing)
             // every key of the pen as one keycap per chord: the box and the ellipse are the pen key plus one more
             let ell = rec.penKind == .option ? "⌃" : "⌥"
             let h = KeyLine(KeyLine.pairs([(key, Loc.t("capture.rec.pen_hold", table: "Capture")),
@@ -863,12 +899,8 @@ final class IslandContent: NSView {
             let p = ProjectStore.shared.current
             let goes = Loc.t("capture.rec.menu_goes_to", table: "Capture", p?.name ?? Loc.t("project.inbox"))
             let item = ClosureMenuItem(goes) { [weak self] in self?.island?.showSwitcher() }
-            if let p = p {
-                let c = ProjectLook.color(p), bs = ProjectLook.badgeSize(p.key)
-                item.image = NSImage(size: bs, flipped: true) { r in ProjectLook.drawBadge(p.key, color: c, in: r); return true }
-            } else {
-                item.image = NSImage(systemSymbolName: "tray.2", accessibilityDescription: nil)
-            }
+            // one mark per concept (IslandGlyph.place): the project's folder, Unassigned's dashed ring
+            item.image = IslandGlyph.place(p, size: 16)
             item.showHotkey(.project)
             menu.addItem(item)
         }
@@ -881,7 +913,7 @@ final class IslandContent: NSView {
 
     /// Discard's question, the way a Mac asks: the question alone on its line (13 semibold, never cut), what goes with
     /// it on a quiet second line, then the answers on the right — Discard furthest from the hand that stops, a neutral
-    /// pill with its title in `err` (a destructive answer is never the one that stands out), Restart, and Keep Recording
+    /// pill with its title in `err` (a destructive answer is never the one that stands out), Start Over, and Keep Recording
     /// where Finish was: the default, filled like every suggested answer in the island, its "↩" after it (Island.key).
     /// On the open island's grid: the question at the time's x, the answers ending at Finish's right edge.
     private func buildDiscardQuestion(_ rec: Recorder, _ w: CGFloat, top: CGFloat) -> CGFloat {
@@ -934,22 +966,23 @@ final class IslandContent: NSView {
 
     // MARK: voice input
 
+    /// How the voice note ends, alone ("⌥V to finish", "Pause to finish", "Let go to finish"): the closed island's right
+    /// ear says it for the note's first seconds (Island.voiceHintSeconds), then the clock.
+    static func voiceEndHint() -> String {
+        let v = VoiceInput.shared
+        if v.holding { return Loc.t("capture.voice.hold_hint", table: "Capture") }
+        if v.endsOnPause { return Loc.t("capture.voice.hint", table: "Capture") }
+        if !Hotkeys.shared.label(.voice).isEmpty { return Loc.t("capture.voice.hint_key", table: "Capture", Hotkeys.shared.label(.voice)) }
+        return Loc.t("capture.voice.hint_done", table: "Capture")
+    }
+
     /// How the voice note ends, said on the island in the hints' one grammar — key, then verb, as the note bubble and
     /// the picker say it: "⌥V to finish · Esc discard" (the user's key; "Click Done to finish" without one), "Pause
     /// to finish" with record.voice.end_on_pause, "Let go to finish" while held — and in its last minute, the time
     /// left. Not "Listening": the waveform and Peep say that.
     static func voiceHint() -> String {
         let v = VoiceInput.shared
-        var s: String
-        if v.holding {
-            s = Loc.t("capture.voice.hold_hint", table: "Capture")
-        } else if v.endsOnPause {
-            s = Loc.t("capture.voice.hint", table: "Capture")
-        } else if !Hotkeys.shared.label(.voice).isEmpty {
-            s = Loc.t("capture.voice.hint_key", table: "Capture", Hotkeys.shared.label(.voice))
-        } else {
-            s = Loc.t("capture.voice.hint_done", table: "Capture")
-        }
+        var s = voiceEndHint()
         // Esc cancels only in the note's first seconds (VoiceInput.escSeconds): then it is the other apps' again
         if v.escCancels { s += " · " + Loc.t("capture.voice.esc_hint", table: "Capture") }
         // rounded up, so it adds up with the clock in the ear ("0:37" · "0:03 left" on a 40 s limit)
@@ -1024,7 +1057,9 @@ final class IslandContent: NSView {
 
     private func buildDrawer(_ d: Island.Drawer, _ w: CGFloat) -> CGFloat {
         let store = ProjectStore.shared
-        func folder(_ p: Project) -> NSImage? { IslandGlyph.project(p.exists ? ProjectLook.color(p) : ink3).image(size: 15, color: ink) }
+        func folder(_ p: Project) -> NSImage? {
+            p.exists ? IslandGlyph.project(ProjectLook.color(p)).image(size: 15, color: ink) : IslandGlyph.missing.image(size: 15, color: ink3)
+        }
         let noProject = IslandGlyph.noProject.image(size: 15, color: ink2)
         // the ears row: the filter field on the left of the notch (a real field: the magnifier on the icon column, the
         // placeholder or what was typed on the text column, the caret after it), what this is across the notch
@@ -1177,10 +1212,7 @@ final class IslandContent: NSView {
             }
             island?.closeSwitcher()
             island?.setOpen(false)
-            Task {
-                do { try await ProjectStore.shared.use(id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
-                await MainActor.run { island?.projectChanged() }
-            }
+            MissingFolder.use(id, via: "switch")
         case .inbox, .organize:
             perform(t, shot: nil)
         case .locate(let id):
@@ -1192,10 +1224,7 @@ final class IslandContent: NSView {
             // found again: the pick form files its one thing there, the switcher makes it current
             MissingFolder.locate(p) { found in
                 if let pick = pick { pick.choose(found.id); return }
-                Task {
-                    do { try await ProjectStore.shared.use(found.id) } catch { await MainActor.run { appDelegate?.toast(T("main.project.use_failed")) } }
-                    await MainActor.run { Island.shared.projectChanged() }
-                }
+                MissingFolder.use(found.id, via: "switch")
             }
         }
     }
@@ -1254,8 +1283,19 @@ final class IslandContent: NSView {
         return a
     }
 
-    /// The mark a toast leads with when it names none: Peep's glyph at rest, quiet — Blurt telling you something.
-    static func toastDefaultMark(_ color: NSColor) -> NSImage { MenuGlyph.tinted(color, size: 15) }
+    /// The mark a toast leads with: the ok check for done, the attention triangle for needs you / a failure, a
+    /// project's folder for a filing, else the source's own line glyph (snap, mic, keyboard…). A toast that names
+    /// none leads with nothing — its text still starts on the text column. (It was Peep's menu-bar glyph: a second,
+    /// filled chick under the clay Peep in the ear, in another icon set — "one Peep, never two".)
+    static func toastMark(_ t: Island.Toast) -> NSImage? {
+        if let b = t.badge { return IslandGlyph.project(b.color).image(size: 15, color: ink) }
+        switch t.icon {
+        case .check?: return BlurtIcon.check.image(size: 15, color: BrandColor.Island.ok, weight: 1.35)
+        case .warning?: return BlurtIcon.warning.image(size: 15, color: BrandColor.Island.attn, weight: 1.15)
+        case let i?: return i.image(size: 15, color: ink2, weight: 1.15)
+        case nil: return nil
+        }
+    }
 
     private func buildToast(_ t: Island.Toast, _ w: CGFloat, top: CGFloat) -> CGFloat {
         // one component, one layout: the leading slot (always filled) centred on the icon column, the headline (13
@@ -1298,6 +1338,13 @@ final class IslandContent: NSView {
                                      floor: island?.toastFloor ?? IslandLayout.capsuleToastWidth, maxWidth: Island.openW,
                                      buttonGap: 16)
         toastWidth = fit.width
+        // "headline · detail" that doesn't fit one line breaks at its " · " into the two-line form (the detail 11.5
+        // under it), instead of wrapping one orphan word ("…the cards / stay", "… · ⇧ / to go back")
+        if detail == nil, !working, fit.wraps, l.frame.width > fit.textWidth + 0.5, let r = headline.range(of: " · ") {
+            var two = t
+            two.text = String(headline[..<r.lowerBound]) + "\n" + String(headline[r.upperBound...])
+            return buildToast(two, w, top: top)
+        }
         // too long for one line at the open width: the text wraps (up to three lines; the row grows a line for each)
         // instead of "Couldn't snap — macOS needs Screen Recording allo…"; the mark keeps to its first line
         var text: NSTextField = l
@@ -1344,19 +1391,10 @@ final class IslandContent: NSView {
             addSubview(IslandSpinner(frame: NSRect(x: ic - 6.5, y: (mid - 6.5).rounded(), width: 13, height: 13)))
         } else {
             // done = the ok check, needs you = the attention triangle (never colour alone: each has its shape), a
-            // filing = the project's folder in its colour, anything else Peep's quiet glyph — one 15 pt slot
-            let (mark, color): (BlurtIcon?, NSColor) = {
-                switch t.icon {
-                case .check?: return (.check, BrandColor.Island.ok)
-                case .warning?: return (.warning, BrandColor.Island.attn)
-                case let i?: return (i, ink2)
-                case nil: return (nil, ink2)
-                }
-            }()
-            let im = t.badge.flatMap { IslandGlyph.project($0.color).image(size: 15, color: ink) }
-                ?? mark.map { $0.image(size: 15, color: color, weight: $0 == .check ? 1.35 : 1.15) }
-                ?? IslandContent.toastDefaultMark(color)
-            place(NSImageView(image: im), x: ic - 7.5, y: (mid - 7.5).rounded(), w: 15, h: 15)
+            // filing = the project's folder in its colour, else the source's glyph — one 15 pt slot (toastMark)
+            if let im = IslandContent.toastMark(t) {
+                place(NSImageView(image: im), x: ic - 7.5, y: (mid - 7.5).rounded(), w: 15, h: 15)
+            }
         }
         // (a label draws 2 pt inside its frame: its first letter on the text column, as a row's)
         place(text, x: textX - 2, y: textTop, w: fit.textWidth + 4, h: textH)
@@ -1383,29 +1421,39 @@ final class IslandContent: NSView {
         return top + rowH
     }
 
-    /// A question (Island.ask): the text, wrapped, then the two answers on the right — the suggested one filled.
+    /// A question (two answers): on the toasts' grid — its mark (when it names one) in the leading slot, the text
+    /// wrapped on the text column, the quoted text under it, then the two answers on their own row ending on the
+    /// island's 14 pt edge, the suggested one filled. (It had its own layout: the text at 20 pt with no slot, so a
+    /// question started at a different x from every other line.)
     private func buildQuestion(_ t: Island.Toast, top: CGFloat) -> CGFloat {
         let w = Island.openW
         toastWidth = w
+        let textX = IslandLayout.textColumn
+        let textW = w - textX - IslandLayout.earInset
         let l = NSTextField(wrappingLabelWithString: t.text)
         l.font = .systemFont(ofSize: 13, weight: .medium)
         l.textColor = ink
-        l.preferredMaxLayoutWidth = w - 40
-        let h = ceil(l.sizeThatFits(NSSize(width: w - 40, height: 200)).height)
-        place(l, x: 20, y: top + 10, w: w - 40, h: h)
-        var y = top + 10 + h + 10
+        l.preferredMaxLayoutWidth = textW
+        let h = ceil(l.sizeThatFits(NSSize(width: textW, height: 200)).height)
+        // (a label draws 2 pt inside its frame: its first letter on the text column)
+        place(l, x: textX - 2, y: top + 12, w: textW + 4, h: h)
+        if let mark = IslandContent.toastMark(t) {
+            let first = l.font.map { ceil($0.ascender - $0.descender + $0.leading) } ?? 16
+            place(NSImageView(image: mark), x: IslandLayout.iconColumn - 7.5, y: (top + 12 + first / 2 - 7.5).rounded(), w: 15, h: 15)
+        }
+        var y = top + 12 + h + 10
         if let quote = t.quote {
             let q = NSTextField(wrappingLabelWithString: quote)
             q.font = .systemFont(ofSize: 13)
             q.textColor = ink2
             q.maximumNumberOfLines = 3
             q.cell?.truncatesLastVisibleLine = true      // wraps, and the third line ends with "…" (DictationKeptText)
-            q.preferredMaxLayoutWidth = w - 40
-            let qh = ceil(q.sizeThatFits(NSSize(width: w - 40, height: 200)).height)
-            place(q, x: 20, y: y - 6, w: w - 40, h: qh)
+            q.preferredMaxLayoutWidth = textW
+            let qh = ceil(q.sizeThatFits(NSSize(width: textW, height: 200)).height)
+            place(q, x: textX - 2, y: y - 6, w: textW + 4, h: qh)
             y += qh + 4
         }
-        var bx = w - 16
+        var bx = w - IslandLayout.earInset
         for (title, act, filled) in [(t.secondTitle, t.second, false), (t.actionTitle, t.action, true)].reversed() {
             guard let title = title, let act = act else { continue }
             let b = IslandButton(symbol: "", title: title, tip: title, fill: NSColor(white: 1, alpha: 0.14),
@@ -1430,7 +1478,7 @@ final class IslandContent: NSView {
             level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
             // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
             let said = spottedText(rec)
-            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != rec.penSticky || (spotted == nil) != said.isEmpty {
+            if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (spotted == nil) != said.isEmpty {
                 rebuild()
             } else if let sp = spotted, sp.stringValue != said {
                 sp.stringValue = said

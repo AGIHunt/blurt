@@ -98,6 +98,8 @@ GROW_SLACK = 8
 NOVEL_SLACK = 4           # words / characters not in the input: homophone fixes add one or two
 NOVEL_RATIO = 0.15
 ADDED_RUN = 3             # this many words in a row at the start or end that were never said: a preface or a sign-off
+# guard's `translated`: up to this many units the take is judged whole; a longer one by place (_swapped_script)
+TRANSLATED_SPAN = 40
 STRUCT_SPAN = 14          # Structured: one run of the input's units left out may be at most this long (a correction
 #                           taken back with the words that announced it, and the counting word it said again:
 #                           第四是酒店，不对，酒店不用，第四是保险); a longer one is content lost
@@ -199,6 +201,31 @@ def _lost_runs(src_u: list[str], out_u: list[str]) -> list[list[str]]:
     return lost
 
 
+def _swapped_script(src_u: list[str], out_u: list[str], lost_latin: set[str], novel_cjk: set[str], lost_cjk: set[str],
+                    novel_latin: set[str]) -> bool:
+    """guard's `translated`, by place: a stretch where `src_u` and `out_u` differ (consecutive changes as one) that
+    lost a Latin word and gained ≥ 2 new CJK units there, or lost ≥ 2 CJK units and gained ≥ 2 new Latin ones."""
+    import difflib
+    ops = difflib.SequenceMatcher(None, src_u, out_u, autojunk=False).get_opcodes()
+    regions, cur = [], None
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal":
+            if cur:
+                regions.append(cur)
+            cur = None
+            continue
+        cur = (cur[0], i2, cur[2], j2) if cur else (i1, i2, j1, j2)
+    if cur:
+        regions.append(cur)
+    for i1, i2, j1, j2 in regions:
+        a, b = src_u[i1:i2], out_u[j1:j2]
+        if any(u in lost_latin for u in a) and sum(u in novel_cjk for u in b) >= 2:
+            return True
+        if sum(u in lost_cjk for u in a) >= 2 and sum(u in novel_latin for u in b) >= 2:
+            return True
+    return False
+
+
 def _cloud_verdict(core_u: list[str], out_u: list[str], n_raw: int, n_core: int, n_out: int, raw_u: list[str],
                    raw: str, out: str, out_for_units: str, allowed: set[str], mode: str) -> str | None:
     """guard(cloud=True): only what is plainly not the dictation any more."""
@@ -274,7 +301,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     novel_cjk = [u for u in novel if cjk.match(u)]
     novel_latin = [u for u in novel if u.isascii()]
     if (lost_latin and len(novel_cjk) >= 2) or (len(lost_cjk) >= 2 and len(novel_latin) >= 2):
-        return verdict("translated")
+        # counted over the whole take, a long mixed one always has an English filler left out somewhere and a 的 or
+        # 了 added somewhere else: past TRANSLATED_SPAN units a translation is the two in the same place — what was
+        # said in one script, replaced there by the other. A short take keeps the whole-take count (a misheard word
+        # turned into the other script is refused there: the local model isn't trusted with it)
+        if n_core <= TRANSLATED_SPAN or _swapped_script(core_u, out_u, set(lost_latin), set(novel_cjk), set(lost_cjk),
+                                                         set(novel_latin)):
+            return verdict("translated")
     flat, ratio = STRUCT_SHRINK if mode == "structured" else (SHRINK_SLACK, SHRINK_RATIO)
     numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
     if n_core - n_out > max(flat, ratio * n_core) + numbered:
@@ -948,9 +981,11 @@ def timeout_s() -> float:
 
 
 # ------------------------------------------------------------------ packages, caps
-def ensure_mlx() -> None:
+def ensure_mlx(stdin: str | None = None) -> None:
     """mlx-lm is only needed to run a model: re-run this command under `uv run --with mlx-lm` when it is missing
-    (through a PyPI mirror when the download mirror is on)."""
+    (through a PyPI mirror when the download mirror is on). `stdin`: what this run already read from its stdin — the
+    re-run gets it as its own (an exec left it an empty stdin: `translate --stdin` answered ok with "", so ⌥T's first
+    use after every launch said "Couldn't translate")."""
     import importlib.util
     if importlib.util.find_spec("mlx_lm") is not None:
         return
@@ -965,7 +1000,11 @@ def ensure_mlx() -> None:
         os.environ.setdefault("UV_DEFAULT_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
     sys.stdout.flush()
     sys.stderr.flush()
-    os.execvp(uv, [uv, "run", "-q", "--with", MLX_PACKAGE, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+    argv = [uv, "run", "-q", "--with", MLX_PACKAGE, os.path.abspath(sys.argv[0]), *sys.argv[1:]]
+    if stdin is not None:
+        import subprocess
+        sys.exit(subprocess.run(argv, input=stdin.encode()).returncode)
+    os.execvp(uv, argv)
 
 
 def throttle(priority: str | None = None) -> dict:
@@ -1785,7 +1824,7 @@ def cmd_serve(a):
 
 # ------------------------------------------------------------------ commands
 def cmd_translate(a):
-    text, target, cloud, extra = a.text or "", a.target, None, {}
+    text, target, cloud, extra, raw = a.text or "", a.target, None, {}, None
     if a.stdin:
         raw = sys.stdin.read()
         try:
@@ -1794,6 +1833,9 @@ def cmd_translate(a):
             extra = {k: o[k] for k in ("vocab", "spoken", "check") if k in o}
         except ValueError:
             text = raw
+    if not text.strip():
+        # nothing to translate is never a success: a payload lost on the way answered {"ok": true, "text": ""}
+        raise Fail("nothing to translate", "empty_input")
     if not a.no_server:
         r = _server_call({"cmd": "translate", "text": text, "target": target, "model": a.model_id, "cloud": cloud, **extra}, 60)
         if r is not None:
@@ -1801,7 +1843,7 @@ def cmd_translate(a):
                 raise Fail(r.get("error") or "server error", r.get("code") or "error")
             return emit({**r, "server": True})
     if not cloud:
-        ensure_mlx()
+        ensure_mlx(stdin=raw)
     else:
         # stdin is read: re-running under `uv run --with mlx-lm` would lose it, so the local model answers only when
         # mlx-lm is already here (a cloud-only Mac, Windows, Linux: the cloud's answer or the text as it was)
@@ -1811,7 +1853,8 @@ def cmd_translate(a):
 
 
 def cmd_run(a):
-    text = sys.stdin.read() if a.stdin else (a.text or "")
+    raw = sys.stdin.read() if a.stdin else None
+    text = raw if raw is not None else (a.text or "")
     timeout = a.timeout or timeout_s()
     terms = [] if a.no_vocab else None
     # --before: the field's text before the cursor, as the app sends it (the first word's case follows it)
@@ -1825,7 +1868,7 @@ def cmd_run(a):
                 if not r.get("ok"):
                     raise Fail(r.get("error") or "server error", r.get("code") or "error")
                 return emit({**r, "server": True})
-        ensure_mlx()
+        ensure_mlx(stdin=raw)
         throttle(a.priority)
         return emit(Engine().structure(text, a.model_id or selected(), timeout, terms))
     if not a.no_server:
@@ -1841,7 +1884,7 @@ def cmd_run(a):
     want = a.model_id or selected()
     if not want or not entry(want) or not model_path(entry(want)):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
-    ensure_mlx()
+    ensure_mlx(stdin=raw)
     throttle(a.priority)
     emit(Engine().polish(text, want, timeout, terms, context, a.variant))
 

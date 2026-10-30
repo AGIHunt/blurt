@@ -20,8 +20,14 @@ final class DictationCloudModel: ObservableObject {
 
     init() { refreshKeys() }
 
+    /// One Keychain read per service: off the main thread, so the sheet shows at once (each read can take a moment,
+    /// longer when macOS asks); the key line follows when they are in.
     func refreshKeys() {
-        for p in DictationCloud.Provider.allCases { hasKey[p] = DictationCloud.Key.has(p) }
+        Task.detached(priority: .userInitiated) {
+            var found: [DictationCloud.Provider: Bool] = [:]
+            for p in DictationCloud.Provider.allCases { found[p] = DictationCloud.Key.has(p) }
+            await MainActor.run { [found] in self.hasKey = found }
+        }
     }
 
     var keyStored: Bool { hasKey[setup.provider] ?? false }
@@ -64,6 +70,7 @@ final class DictationCloudModel: ObservableObject {
         if !k.isEmpty { s.on = true }
         if s.on && !DictationCloud.Key.has(s.provider) { s.on = false }
         DictationCloud.save(s)
+        if !k.isEmpty { hasKey[s.provider] = true }      // at once; the read below confirms it
         key = ""
         refreshKeys()
         CloudSpeech.invalidate()        // a Model Studio key is cloud speech's too
@@ -72,6 +79,7 @@ final class DictationCloudModel: ObservableObject {
 
     func forgetKey() {
         DictationCloud.Key.write(setup.provider, "")
+        hasKey[setup.provider] = false
         key = ""
         refreshKeys()
         emit(["event": "dictation_cloud", "action": "forget_key", "provider": setup.provider.rawValue])

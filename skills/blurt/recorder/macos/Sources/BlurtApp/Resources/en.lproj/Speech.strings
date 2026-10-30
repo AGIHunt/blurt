@@ -110,6 +110,9 @@
 "speech.advanced.language" = "Recognition language";
 "speech.advanced.language.detail" = "Detect each sentence’s language, or always use one.";
 "speech.advanced.language.auto" = "Detect automatically";
+"speech.advanced.language.auto.system" = "Automatic (%@)";
+"speech.language.system" = "macOS’s own recognizer listens for one language at a time: %@ now, English words inside it included. If you only speak English, choose English.";
+"speech.language.system.one" = "macOS’s own recognizer listens for one language at a time: %@ now, so it won’t hear others. If you speak another language, choose it here.";
 
 /* Advanced (folded) */
 "speech.more.title" = "Advanced";
@@ -164,7 +167,7 @@
 "speech.auto.footer" = "Automatic picks for this Mac (%@) and the languages you speak.";
 
 /* Model library: what each model is for (v1.0.6) */
-"speech.lib.note2" = "Recommended models are picked for this Mac's memory. Speed and memory are measured; ✓ means measured on this Mac.";
+"speech.lib.note2" = "Recommended models are picked for this Mac’s memory. Speed and memory are measured; ✓ means measured on this Mac.";
 "speech.lib.more" = "More models (%d)";
 "speech.lib.in_use" = "In use: %@";
 "speech.tag.recommended" = "Recommended";
@@ -184,3 +187,6 @@
 "speech.tag.qwen3-0.6b" = "For Macs with little memory";
 "speech.tag.qwen3-1.7b" = "For Macs with less memory";
 "speech.tag.gemma3-1b" = "For Macs with less memory";
+"speech.cloud.speed.line" = "%1$@. %2$@.";
+"speech.auto.plain" = "Automatic";
+"speech.auto.using" = "%1$@ Now: %2$@";

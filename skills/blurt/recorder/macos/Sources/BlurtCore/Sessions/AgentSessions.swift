@@ -90,6 +90,8 @@ public struct SessionsError: Error, CustomStringConvertible {
     /// What sessions.py adds for people: auth's fix ("run `claude` and log in"), the item id it is about (BA-12), the
     /// agent. The message itself is for the log only.
     public var fix: String? = nil, itemID: String? = nil, agent: String? = nil
+    /// outdated: the installed version and the one hand-offs need ("0.157.0", "0.164.0").
+    public var version: String? = nil, need: String? = nil
     public var description: String { "\(code): \(message)" }
 
     public init(code: String, message: String, job: String? = nil, fix: String? = nil, itemID: String? = nil, agent: String? = nil) {
@@ -101,6 +103,8 @@ public struct SessionsError: Error, CustomStringConvertible {
         self.init(code: o["code"] as? String ?? fallback, message: o["error"] as? String ?? "", job: o["job"] as? String,
                   fix: (o["fix"] as? String).flatMap { $0.isEmpty ? nil : $0 }, itemID: (o["id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                   agent: o["agent"] as? String)
+        version = o["version"] as? String
+        need = o["need"] as? String
     }
 }
 
@@ -244,9 +248,12 @@ public final class AgentSessions {
         _ = try await call(["stop", job] + (kill ? ["--kill"] : []), timeout: 30)
     }
 
-    /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted).
-    public func finish(job: String, action: String) async throws -> [String: Any] {
-        try await call(["finish", job, "--action", action], timeout: action == "pr" ? 180 : 90)
+    /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted, alive,
+    /// reviewed). `expect` (merge / pr): diff's `reviewed` token — what the user saw; anything else fails with code
+    /// changed, so nothing lands unreviewed.
+    public func finish(job: String, action: String, expect: String? = nil) async throws -> [String: Any] {
+        try await call(["finish", job, "--action", action] + (expect.map { ["--expect", $0] } ?? []),
+                       timeout: action == "pr" ? 180 : 90)
     }
 
     /// 收回 (`sessions.py take-back`): its items back to To Do; an ended session with no change also goes (window,

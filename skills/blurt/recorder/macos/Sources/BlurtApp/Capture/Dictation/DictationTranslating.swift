@@ -63,6 +63,7 @@ extension Dictation {
             })
             t.key = Dictation.styleToastKey
             t.seconds = 6
+            t.icon = .warning
             island.toast(t)
             return
         }
@@ -76,11 +77,20 @@ extension Dictation {
         // the ear's glyph says it is on; the line explains it the first couple of times only (as Structured's)
         let shown = Dictation.settings["translate_hint_shown"] as? Int ?? 0
         guard DictationTranslateHint.says(shown: shown) else { return }
-        if translating.on { Dictation.set("translate_hint_shown", shown + 1) }
         let target = Dictation.translateConfig.target
-        if !translating.on { toast("dictation.translate.toast.off", key: Dictation.styleToastKey, seconds: 3) }
-        else if target == .auto { toast("dictation.translate.toast.on.auto", key: Dictation.styleToastKey, seconds: 3) }
-        else { toast("dictation.translate.toast.on.into", Dictation.languageName(target), key: Dictation.styleToastKey, seconds: 3) }
+        let text: String
+        if !translating.on { text = Loc.t("dictation.translate.toast.off", table: "Dictation") }
+        else if target == .auto { text = Loc.t("dictation.translate.toast.on.auto", table: "Dictation") }
+        else {
+            text = String(format: Loc.string("dictation.translate.toast.on.into", table: "Dictation"), locale: Loc.locale,
+                          Dictation.languageName(target))
+        }
+        var t = Island.Toast(text: text, actionTitle: nil, action: nil)
+        t.key = Dictation.styleToastKey
+        t.seconds = 3
+        // counted when it is seen, not when it is posted (one that waited and went stale was never read)
+        if translating.on { t.onShown = Dictation.countOnce("translate_hint_shown") }
+        island.toast(t)
     }
 
     /// A target language in the app's own language ("日语", "Japanese").
@@ -168,7 +178,7 @@ extension Dictation {
         guard DictationTranslateLearn.suggest(entries: DictationHistory.shared.load(), bundle: b, config: cfg) else { return }
         cfg.asked.insert(b)
         Dictation.setTranslateConfig(cfg)
-        let name = AppNames.name(for: b, running: nil) ?? b
+        let name = Dictation.appInline(bundle: b, fallback: nil)
         emit(["event": "dictation_translate", "action": "suggest", "bundle": b])
         var t = Island.Toast(text: Loc.t("dictation.translate.toast.suggest", table: "Dictation", name),
                              actionTitle: Loc.t("dictation.translate.toast.suggest.yes", table: "Dictation"), action: {

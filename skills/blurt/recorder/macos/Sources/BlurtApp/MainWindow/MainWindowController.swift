@@ -102,7 +102,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         side.maximumThickness = 320
         side.canCollapse = true
         let content = NSSplitViewItem(contentListWithViewController: listColumn)
-        content.minimumThickness = 360
+        content.minimumThickness = 330     // 190 + 330 + 380 = the window's 900 pt minimum
         let det = NSSplitViewItem(viewController: detailColumn)
         det.minimumThickness = 380
         det.canCollapse = true
@@ -156,6 +156,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         ProjectStore.shared.onChange = { [weak self] in self?.model.reloadSidebar(); self?.updateTitle(); self?.list.updateEmpty() }
         NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
             self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
+        }
+        // a changed shortcut (Settings, or the config edited by hand): Record's and Snap's tooltips say the new keys
+        NotificationCenter.default.addObserver(forName: HotkeyCenter.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                for i in self?.window?.toolbar?.items ?? [] {
+                    if i.itemIdentifier == Self.recordID { i.toolTip = T("main.toolbar.record.tip", hk(.toggleRecord)) }
+                    if i.itemIdentifier == Self.snapID { i.toolTip = T("main.toolbar.snap.tip", hk(.snap)) }
+                }
+            }
         }
 
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
@@ -260,7 +269,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// New Item (BA-21): the sheet over the window; the item goes to the place on show (a project, the inbox), else
     /// the current project, and the list selects it once written.
-    @objc func newItem() {
+    @objc func newItem() { openNewItem(nil) }
+
+    /// …holding what ⌘V or a drop on the list brought (BA-52).
+    func newItemHolding(_ prefill: NewItemSheet.Prefill) { openNewItem(prefill) }
+
+    private func openNewItem(_ prefill: NewItemSheet.Prefill?) {
         show()
         guard let w = window, w.attachedSheet == nil else { return }
         let target: String
@@ -271,13 +285,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         let name = target == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: target)?.name ?? T("project.inbox")
         var sheet: NSWindow?
-        let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name) { [weak self] uid in
+        let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name, prefill: prefill) { [weak self] uid in
             if let s = sheet { w.endSheet(s) }
             guard let self, let uid else { return }
             self.model.reload()
             self.reveal(uid: uid)
         })
         let s = NSWindow(contentViewController: host)
+        // its name in the Window menu and for VoiceOver (an untitled window said "Untitled")
+        s.title = T("main.new_item.title")
+        s.setAccessibilityLabel(s.title)
         sheet = s
         w.beginSheet(s)
     }
@@ -901,6 +918,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func openFolders(_ urls: [URL], then: ((Project) -> Void)?) {
         Task { @MainActor in
             var last: Project?
+            let known = Set(ProjectStore.shared.projects.map(\.id))
             for u in urls {
                 do { last = try await ProjectStore.shared.open(folder: u) }
                 catch { alert(T("main.open.failed", u.lastPathComponent), peopleText(error, context: "open folder")) }
@@ -908,6 +926,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             if let p = last {
                 model.reloadSidebar()
                 if let then = then { then(p) } else { reveal(project: p.id) }
+                // a new project says so, with the key its items get, and Rename right there (the sidebar keeps its
+                // order: it is the one selected)
+                if !known.contains(p.id) {
+                    AppEnvironment.island?.toast(T("main.open.added", p.name, p.key), key: "project-added", icon: .check,
+                                                 seconds: 6, actionTitle: T("main.open.rename")) { [weak self] in
+                        guard let self = self else { return }
+                        self.reveal(project: p.id)
+                        _ = self.sidebar.renameSelected()
+                    }
+                }
             }
         }
     }
@@ -1128,10 +1156,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// The current project — where new captures go — set by the user (nil = none: Unassigned).
     func useProject(_ id: String?) {
-        Task { @MainActor in
-            do { try await ProjectStore.shared.use(id) } catch { appDelegate?.toast(T("main.project.use_failed")) }
-            AppEnvironment.island?.projectChanged()
-        }
+        // a project whose folder is gone asks where it is first (MissingFolder.use)
+        MissingFolder.use(id, via: "main_window")
     }
 
     // MARK: handing off (K5 in Blurt, K6 to your own agent)
@@ -1321,7 +1347,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
         let one = items.map { $0.count == 1 } ?? true
-        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
+        let hand = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), key: "\r")
+        hand.image = Look.target("handed_off")      // the state it leads to, as the ring's menu draws it
         if items == nil || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
             _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
         }
@@ -1602,7 +1629,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: WebHostActions
 
     func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
-    func quickLook(files: [URL]) { list.toggleQuickLook(files) }
+    /// The detail page's eye on one picture: the item's other pictures come along (←/→), starting at that one.
+    func quickLook(files: [URL]) {
+        let all = detail.currentItem.map(ItemListController.frameURLs) ?? []
+        if files.count == 1, let i = all.firstIndex(where: { $0.standardizedFileURL == files[0].standardizedFileURL }) {
+            list.toggleQuickLook(all, start: i)
+        } else {
+            list.toggleQuickLook(files)
+        }
+    }
     func webWrote() { detail.currentItem.map { Scripts.indexUpdate([$0.fileURL]) } }
     /// ⌘Z took back a step the detail page made on another item than the one selected: show that one, like the
     /// list's own undo does.
@@ -1987,11 +2022,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let sv = self.split.splitView
             if s?.sidebarCollapsed == true { self.split.splitViewItems[0].isCollapsed = true }
             else if let sb = s?.sidebar { sv.setPosition(CGFloat(sb), ofDividerAt: 0) }
-            if let d = s?.detail, d > 0 { sv.setPosition(sv.bounds.width - CGFloat(d) - sv.dividerThickness, ofDividerAt: 1) }
+            // an empty place folded the detail away (fitDetailToPlace): setting its divider would bring back a blank
+            // column beside the empty state (dogfood: the first launch's empty Inbox kept one, a new project didn't)
+            if self.split.splitViewItems[2].isCollapsed {
+            } else if let d = s?.detail, d > 0 { sv.setPosition(sv.bounds.width - CGFloat(d) - sv.dividerThickness, ofDividerAt: 1) }
             else {
                 let side = self.split.splitViewItems[0].isCollapsed ? 0 : self.sidebar.view.frame.width
                 sv.setPosition(min(sv.bounds.width - 460, side + 560), ofDividerAt: 1)
             }
+            self.fitDetailToPlace()
         }
     }
 

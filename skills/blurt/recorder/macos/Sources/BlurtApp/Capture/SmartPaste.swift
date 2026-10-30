@@ -22,7 +22,9 @@
 //    note goes in as one paste — the user's clipboard is saved first and put back after. It counts only if the app
 //    read the note. Can't (no Accessibility, setting off, secure input, the app didn't come forward, the focus is in
 //    another window, an unknown native app without a text focus, the note never read): the drag_copy_note safety net
-//    instead — the note on the clipboard, "⌘V to paste the note".
+//    instead — the note on the clipboard, "⌘V to paste the note" (no Accessibility: once a session the toast says
+//    that is why, with Allow…; DragOutEnd). An Electron app's web content is woken for Accessibility first
+//    (WebAXWake): its composer isn't there to find until a client asks.
 // The posted events carry a marker (eventSourceUserData) so the tap lets them through.
 //
 // Test builds (DictationInsert.testMode) never install a tap, never post an event and read no Accessibility:
@@ -431,14 +433,14 @@ enum DragNoteFollowUp {
     static var focusRole: String?
 
     /// Bring the app forward at the drop point, find the composer, put the caret after the picture, paste the note,
-    /// give the clipboard back. `done(true)`: pasted, and the app read it.
-    static func run(note: String, target t: DropTarget, at p: NSPoint, done: @escaping (Bool) -> Void) {
+    /// give the clipboard back. `done`: the app read it, the keys went but the read wasn't seen, or not sent.
+    static func run(note: String, target t: DropTarget, at p: NSPoint, done: @escaping (VoiceCardDrop.Pasted) -> Void) {
         // the drop has to finish in the app first
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
             bringForward(pid: t.pid, at: p) { ok, window in
                 guard ok else {
                     emit(["event": "drag_note_follow_up", "result": "not_front"])
-                    return done(false)
+                    return done(.notSent)
                 }
                 focus(target: t, at: p, window: window) { facts in
                     let decision = FollowUpFocus.decide(facts)
@@ -447,14 +449,14 @@ enum DragNoteFollowUp {
                           "same_window": facts.sameWindow.map { $0 as Any } ?? NSNull(),
                           "editable": facts.editable.map { $0 as Any } ?? NSNull(),
                           "selection": facts.selection.map { $0 as Any } ?? NSNull(), "decision": "\(decision)"])
-                    guard case .paste(let caret) = decision else { return done(false) }
+                    guard case .paste(let caret) = decision else { return done(.notSent) }
                     let pb = capturePasteboard
                     let saved = DictationInsert.Saved.take(pb)
                     // (the runner restores only while the clipboard still holds its own step: nothing copied since)
                     var r: PasteRunner? = PasteRunner(steps: [.text(note)], pasteboard: pb, pid: t.pid) { saved.restore(pb) }
                     r?.done = { run in
                         emit(["event": "drag_note_follow_up", "result": "\(run.state)", "read": run.read])
-                        done(run.state == .done && run.read > 0)
+                        done(run.state != .done ? .notSent : run.read > 0 ? .confirmed : .unconfirmed)
                         r = nil
                     }
                     r?.start(prelude: caret.map(PasteKeys.Key.init))
@@ -516,6 +518,18 @@ enum DragNoteFollowUp {
         f.secureInput = IsSecureEventInputEnabled()
         // Qt: nothing to ask; a code editor: no paste of ours (and no focus moved toward its source code)
         guard AXIsProcessTrusted(), f.frontIsTarget, t.kind != .qt, t.kind != .editor else { return then(f) }
+        // an Electron app shows its web content to Accessibility only once asked (BA-54: the composer wasn't found when
+        // the pointer wasn't over it); asked only just now — not while the drag passed over it — its tree needs a moment
+        let wait = t.kind == .web ? WebAXWake.wake(t.pid) : 0
+        guard wait <= 0 else {
+            return DispatchQueue.main.asyncAfter(deadline: .now() + wait) { probe(target: t, at: p, window: window, facts: f, then) }
+        }
+        probe(target: t, at: p, window: window, facts: f, then)
+    }
+
+    /// focus(…)'s Accessibility part: read the focus, move it to the composer that received the drop if it isn't there.
+    private static func probe(target t: DropTarget, at p: NSPoint, window: AXUIElement?, facts f: FollowUpFocus.Facts,
+                              _ then: @escaping (FollowUpFocus.Facts) -> Void) {
         let app = AXUIElementCreateApplication(t.pid)
         AXUIElementSetMessagingTimeout(app, 0.3)
         let read = { (moved: Bool) -> FollowUpFocus.Facts in
@@ -563,6 +577,105 @@ enum DragNoteFollowUp {
         default: testFacts = [:]
         }
         emit(["event": "followup_facts", "facts": testFacts])
+    }
+}
+
+// MARK: - the end of a drag out
+
+/// A drag out that another app took ends the same way wherever it started — a hanging card or a Recently Taken thumb
+/// (Snapper.takeOut), a row of the main window's list (ItemListController, BA-22): DragFollowUp.plan says whether the
+/// note is pasted after the picture (DragNoteFollowUp); where it didn't go in, the safety net puts it on the
+/// clipboard (record.drag_copy_note; BlurtCore DragReceipt); the caller's toast says what went in. When the paste
+/// couldn't run only for lack of Accessibility (BA-54 — the one reason the user can fix, and the toast used to say
+/// just "note copied"), the toast says so once a session and its one action is Allow… (the permission guide, as a
+/// card copy's "only the picture pastes" does) instead of the caller's Undo.
+enum DragOutEnd {
+    struct Done {
+        let plan: DragFollowUp.Plan
+        let outcome: DragReceipt.Outcome
+        /// a picture with a note (or an item with its text)
+        let hasNote: Bool
+        let notePasted: Bool
+        /// the clipboard as it was before the safety net put the note on it (an Undo gives it back)
+        let saved: DragClipboard?
+        /// the toast says Accessibility is missing, and offers Allow…
+        let asksAccessibility: Bool
+        /// the note went on the clipboard without a word (pasted, unconfirmed: DragReceipt.followUp)
+        var quietCopy = false
+        /// the toast tells the user the note is on the clipboard (⌘V to paste)
+        var noteCopied: Bool { saved != nil && !quietCopy }
+    }
+
+    /// "Blurt needs Accessibility to paste the note" was said this session (once is enough)
+    private static var toldAccessibility = false
+
+    /// `card`: what was dragged (its picture, its note); `delivered`: the class whose layout the app got (nil: not
+    /// sure); `noteFile`: the .md went with it; `landed` / `p`: the app it was dropped into and where. `who` goes
+    /// into the log ("n" / "uid").
+    static func finish(card: CardPasteboard.Card, delivered: DropClass?, noteFile: Bool, landed: DropTarget?, at p: NSPoint?,
+                       who: [String: Any], then: @escaping (Done) -> Void) {
+        let plan = DragFollowUp.plan(delivered: delivered, card: card, enabled: SmartPaste.enabled, accessibility: SmartPaste.accessibility,
+                                     secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(), kind: landed?.kind)
+        let hasNote = card.image != nil && card.note != nil
+        if hasNote {
+            emit(who.merging(["event": "drag_note_plan", "bundle": landed?.bundleID ?? NSNull(), "kind": landed?.kind.rawValue ?? NSNull(),
+                              "plan": "\(plan)"]) { $1 })
+        }
+        let settle = { (r: VoiceCardDrop.Pasted) in
+            let f = DragReceipt.followUp(r)
+            let outcome = DragReceipt.outcome(delivered: delivered, notePasted: f.notePasted, noteFile: noteFile)
+            let copy = CardExport.copyNoteAfterDrag && (DragReceipt.copiesNote(outcome) || f.quietCopy)
+            let note = hasNote && copy ? card.note : nil
+            let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
+            let ask = hasNote && DragFollowUp.needsAccessibility(plan) && !toldAccessibility
+            if ask { toldAccessibility = true }
+            var d = Done(plan: plan, outcome: outcome, hasNote: hasNote, notePasted: f.notePasted, saved: saved, asksAccessibility: ask)
+            d.quietCopy = f.quietCopy
+            then(d)
+        }
+        if case .pasteNote(let note) = plan, let t = landed {
+            DragNoteFollowUp.run(note: note, target: t, at: p ?? NSEvent.mouseLocation) { settle($0) }
+            return
+        }
+        settle(.notSent)
+    }
+
+    /// The island's toast for `d`: `text` and `undo` (nil: no action) — 5 s with the note on the clipboard, else 4.
+    /// When it asks for Accessibility: with an Undo, the Undo stays (the dogfood's first drag swapped it for Allow…, and
+    /// the user's clipboard couldn't be got back), 8 s, and Allow… follows as its own line once it has gone, answered
+    /// or not; with nothing to undo, Allow… is its action.
+    static func toast(_ d: Done, text: String, undo: (() -> Void)?) -> Island.Toast {
+        if d.asksAccessibility, let undo = undo {
+            var t = Island.Toast(text: text, actionTitle: Loc.t("capture.undo", table: "Capture")) {
+                undo()
+                island.toast(axFollowUp())
+            }
+            t.gone = { island.toast(axFollowUp()) }
+            t.seconds = 8
+            return t
+        }
+        if d.asksAccessibility {
+            var t = Island.Toast(text: text, actionTitle: Loc.t("capture.card.allow_ax", table: "Capture")) {
+                MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.accessibility], source: .island) }
+            }
+            t.seconds = 8
+            return t
+        }
+        var t = Island.Toast(text: text, actionTitle: undo == nil ? nil : Loc.t("capture.undo", table: "Capture"), action: undo)
+        t.seconds = d.noteCopied ? 5 : 4
+        return t
+    }
+
+    /// After the Undo line: why the note wasn't pasted, and Allow… (passive: behind any reply).
+    static func axFollowUp() -> Island.Toast {
+        var t = Island.Toast(text: Loc.t("capture.card.ax_follow_up", table: "Capture"),
+                             actionTitle: Loc.t("capture.card.allow_ax", table: "Capture")) {
+            MainActor.assumeIsolated { PermissionGuide.shared.start(.all, only: [.accessibility], source: .island) }
+        }
+        t.icon = .warning
+        t.passive = true
+        t.seconds = 8
+        return t
     }
 }
 

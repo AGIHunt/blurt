@@ -101,7 +101,9 @@ enum Keycaps {
 /// the keycaps, the × that turns it off. Clicked (or Space / Return): it listens — a brand-ink ring on the brand tint
 /// across the well (§3.4), "Type shortcut…" and an Esc keycap, centred; the modifiers held so far show as keycaps. Esc
 /// cancels, ⌫ turns the shortcut off. Global hotkeys are suspended meanwhile, or pressing the current one would fire it
-/// instead of being recorded. The whole well is the click target.
+/// instead of being recorded — so it stops listening as soon as its window or Blurt loses the focus (BA-49: a combo
+/// macOS took for itself, then off to another app to try it, left every Blurt key dead until a relaunch). The whole
+/// well is the click target.
 final class ShortcutField: NSView {
     let action: HotAction
     var onSet: ((Shortcut?) -> Void)?
@@ -114,9 +116,14 @@ final class ShortcutField: NSView {
     /// it doesn't work here (a conflict of its own, another copy of Blurt holding it, or the keys another row asks to
     /// swap for): the "!" before the keycaps, which keep their ink
     var warn = false { didSet { if warn != oldValue { needsDisplay = true } } }
+    /// another copy of Blurt holds it: the keycaps in tertiary ink, no "!" — the page's one notice says why (an amber
+    /// mark on every row only repeated it)
+    var muted = false { didSet { if muted != oldValue { needsDisplay = true } } }
     /// keys another action has, waiting for the row's Swap / Cancel: shown in brand ink on the tint, as while listening
     var pending: [String]? { didSet { if pending != oldValue { needsDisplay = true } } }
     var monitor: Any?
+    /// while listening: Blurt or the field's window lost the focus → stop() (the hotkeys come back)
+    private var focusObservers: [NSObjectProtocol] = []
     var refuse: String?                 // "needs ⌃ / ⌥ / ⌘" flash
     /// the last refusal (tests read it)
     private(set) var lastRefusal: String?
@@ -241,7 +248,9 @@ final class ShortcutField: NSView {
             NSColor.labelColor.withAlphaComponent(0.05).setFill()
             wellPath(full).fill()
         }
-        let start = Keycaps.draw(k, maxX: bounds.maxX, midY: midY)
+        let start = muted ? Keycaps.draw(k, maxX: bounds.maxX, midY: midY, ink: .tertiaryLabelColor,
+                                          fill: NSColor.labelColor.withAlphaComponent(0.04))
+            : Keycaps.draw(k, maxX: bounds.maxX, midY: midY)
         if warn { Keycaps.drawWarn(midX: start - 6 - Self.warnD / 2, midY: midY, d: Self.warnD) }
         if let c = clearRect, let x = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 12, weight: .regular).applying(.init(paletteColors: [.secondaryLabelColor]))) {
@@ -263,6 +272,17 @@ final class ShortcutField: NSView {
         Hotkeys.shared.suspended = true
         window?.makeFirstResponder(self)
         noteFocusRingMaskChanged()
+        // gone to another app, or to another window, with nothing pressed: the keys work again (no relaunch needed)
+        let nc = NotificationCenter.default
+        focusObservers.forEach { nc.removeObserver($0) }
+        focusObservers = [nc.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.focusLost("app")
+        }]
+        if let w = window {
+            focusObservers.append(nc.addObserver(forName: NSWindow.didResignKeyNotification, object: w, queue: .main) { [weak self] _ in
+                self?.focusLost("window")
+            })
+        }
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged, .leftMouseDown]) { [weak self] e in
             guard let self = self else { return e }
             switch e.type {
@@ -316,9 +336,17 @@ final class ShortcutField: NSView {
         }
     }
 
+    private func focusLost(_ what: String) {
+        guard recording else { return }
+        emit(["event": "shortcut_field_stopped", "action": action.rawValue, "why": "\(what)_resigned"])
+        stop()
+    }
+
     func stop() {
         if let m = monitor { NSEvent.removeMonitor(m) }
         monitor = nil
+        focusObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        focusObservers = []
         recording = false
         if ShortcutField.active === self { ShortcutField.active = nil }
         Hotkeys.shared.suspended = false
@@ -344,9 +372,10 @@ struct ShortcutRecorder: NSViewRepresentable {
     func updateNSView(_ f: ShortcutField, context: Context) {
         let note = model.note(action)
         f.warn = note?.mark == true
+        f.muted = note?.muted == true
         f.pending = model.swap?.action == action ? model.swap.map { Keycaps.keys($0.keys) } : nil
         // why it doesn't work, or how the recorder works
-        let why = note?.mark == true ? note?.text : nil
+        let why = note?.mark == true || note?.muted == true ? note?.text : nil
         f.toolTip = why ?? Loc.t("capture.keys.field_help", table: "Capture")
         f.setAccessibilityHelp(why ?? Loc.t("capture.keys.field_ax_hint", table: "Capture"))
         f.needsDisplay = true
@@ -573,7 +602,7 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
     /// Why an action doesn't work here, or nothing. `mark`: the "!" before its keycaps — one treatment for every reason,
     /// its own conflict or another copy of Blurt holding the keys (the page's notice says that one once, for all of
     /// them, so its rows have no line of their own); `line`: said under the action's name too.
-    struct Note { var text: String; var mark: Bool; var line: Bool }
+    struct Note { var text: String; var mark: Bool; var line: Bool; var muted = false }
 
     /// Test builds (BLURT_TEST_SHORTCUTS_SOLO=1 with BLURT_TEST_COMMANDS): the page as on a Mac with no other copy of
     /// Blurt running — for screenshots taken beside the user's own Blurt, which holds the real keys (the keys are not
@@ -588,7 +617,9 @@ final class HotkeySettings: NSObject, ObservableObject, NSWindowDelegate {
         if let p = swap, p.other == a { return Note(text: swapOutcome(p), mark: true, line: false) }
         if let bad = hk.invalid[a] { return Note(text: Loc.t("capture.keys.unreadable", table: "Capture", bad), mark: true, line: true) }
         let st = hk.states[a] ?? .ok
-        if case .taken = st { return Self.solo ? nil : Note(text: st.text, mark: true, line: false) }
+        // another Blurt: the page's notice says it once; the row's keys are quiet, with no "!" ("!" is for a key this
+        // copy can do something about — another app's, a duplicate, a refusal)
+        if case .taken = st { return Self.solo ? nil : Note(text: st.text, mark: false, line: false, muted: true) }
         if st == .reserved, let s = hk.shortcut(a), let r = s.reserved { return Note(text: r.reason(s), mark: true, line: true) }
         if st.isConflict { return Note(text: st.text, mark: true, line: true) }
         if st == .notHere { return Note(text: Loc.t("capture.keys.menu_bar_only", table: "Capture"), mark: false, line: true) }
@@ -748,7 +779,7 @@ struct ShortcutsPane: View {
 
 /// The dictation key on the Shortcuts page: read-only keycaps (it is set in Settings → Dictation) in the same fixed well
 /// as every recorder, flush with the trailing edge; the whole well is one button there, with the recorders' faint
-/// ground under the pointer. While another copy of Blurt hears the key: the "!" before it (the page's notice says why).
+/// ground under the pointer. While another copy of Blurt hears the key: the keycaps quiet (the page's notice says why).
 struct DictationKeyButton: View {
     var taken: Bool
     var action: () -> Void
@@ -757,9 +788,9 @@ struct DictationKeyButton: View {
         Button(action: action) {
             HStack(spacing: 6) {
                 Spacer(minLength: 0)
-                if taken { WarnDisc() }
                 if Dictation.enabled {
-                    KeyCaps([Dictation.keyName])
+                    // held by another copy: quiet, as the recorders' keys are (the page's notice says why)
+                    KeyCaps([Dictation.keyName]).opacity(taken ? 0.45 : 1)
                 } else {
                     Text(Loc.t("capture.keys.off", table: "Capture")).font(.system(size: 12)).foregroundStyle(.secondary).padding(.trailing, 6)
                 }

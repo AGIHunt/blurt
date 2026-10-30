@@ -257,6 +257,24 @@ public enum DragFollowUp {
         guard !secureInput else { return .none("secure_input") }
         return .pasteNote(note)
     }
+
+    /// The note wasn't pasted only because Accessibility is missing (BA-54): the toast says so and offers Allow….
+    public static func needsAccessibility(_ p: Plan) -> Bool { p == .none("no_accessibility") }
+
+    /// A shot card with a note, dragged over a chat app's window, while the follow-up can't paste for lack of
+    /// Accessibility (BA-54): the drag image says what letting go does — the picture goes in, then ⌘V there for the
+    /// note ("Let go, then ⌘V in Claude": VoiceCardDrop.Hint.copy, the pill a voice card shows). Only when the note
+    /// will be on the clipboard (`copiesNote`: record.drag_copy_note) and smart paste is on (off: the user chose the
+    /// picture alone). Not over a code editor (its note goes on the clipboard by design, nothing to warn about), a rich
+    /// app (it takes both), a terminal, the Finder, or Blurt's own windows (`cls` nil). With Accessibility: no pill —
+    /// the note simply follows.
+    public static func noteHint(cls: DropClass?, kind: ComposerKind?, app: String?, card: CardPasteboard.Card, enabled: Bool,
+                                accessibility: Bool, copiesNote: Bool) -> VoiceCardDrop.Hint? {
+        guard cls == .chat, let k = kind, k != .editor, card.image != nil, CardNote.clean(card.note) != nil,
+              enabled, !accessibility, copiesNote else { return nil }
+        let name = app.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? "App"
+        return .copy(app: name)
+    }
 }
 
 /// A key the follow-up presses before its paste, to put the caret after the dropped picture.

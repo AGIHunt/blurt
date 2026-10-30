@@ -16,7 +16,7 @@ public enum DragLog {
         "card_drag_target", "card_drag_provide", "card_drag_end", "card_taken_out", "card_drag_refused", "voice_drag_hint",
         "overview_drag_end", "taken_drag_end", "drag_note_plan", "drag_note_activate", "drag_note_composer",
         "drag_note_focus", "drag_note_follow_up", "voice_drop_plan", "take_out", "paste_key", "paste_step",
-        "paste_step_read", "paste_run",
+        "paste_step_read", "paste_run", "drag_web_ax", "card_drag_hint", "item_drag_out",
     ]
 
     /// Fields that may carry what the card says.

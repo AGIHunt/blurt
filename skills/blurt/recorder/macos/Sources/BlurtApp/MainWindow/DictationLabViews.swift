@@ -611,11 +611,13 @@ struct LabWorkbench: View {
     /// call is flagged (v0.9: a sentence 0.0006 over the line was typed as an English translation, and scored perfect).
     @ViewBuilder func tagLine(_ outputs: [String: Any]) -> some View {
         if let t = DictationLanguageTag.closest(outputs["tags"] as? [[String: Any]] ?? []), let m = t.margin {
-            let margin = String(format: "%+.2f", m)
-            Text(t.fragile ? T("dictation.lab.tag.fragile", margin)
-                 : T("dictation.lab.tag", Loc.locale.localizedString(forLanguageCode: outputs["language"] as? String ?? "") ?? (t.tag ?? "—"), margin))
-                .font(.system(size: 11)).monospacedDigit()
+            // the language and how sure the model was in words; the raw score is the tooltip (the Lab's readers
+            // tune it, nobody else needs it)
+            let lang = Loc.locale.localizedString(forLanguageCode: outputs["language"] as? String ?? "") ?? (t.tag ?? "—")
+            Text(T(t.fragile ? "dictation.lab.tag.unsure" : "dictation.lab.tag.sure", lang))
+                .font(.system(size: 11))
                 .foregroundStyle(t.fragile ? Color.brandAttnInk : .secondary)
+                .help(T("dictation.lab.tag.score", String(format: "%+.2f", m)))
         }
     }
 
@@ -1211,8 +1213,9 @@ struct LabRegressionView: View {
                         Text(e).font(.system(size: 11)).foregroundStyle(Color.brandErr)
                     }
                     if row["fragile_tag"] as? Bool == true, let m = row["tag_margin"] as? Double {
-                        Text(T("dictation.lab.tag.fragile", String(format: "%+.2f", m)))
+                        Text(T("dictation.lab.tag.unsure_any"))
                             .font(.system(size: 11)).foregroundStyle(Color.brandAttnInk)
+                            .help(T("dictation.lab.tag.score", String(format: "%+.2f", m)))
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

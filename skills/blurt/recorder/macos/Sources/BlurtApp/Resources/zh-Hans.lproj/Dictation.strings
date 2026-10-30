@@ -81,6 +81,7 @@
 "dictation.history.days" = "%ld 天";
 "dictation.history.keep_audio" = "保留录音";
 "dictation.history.keep_audio.detail" = "录音和光标周围的文字随听写记录一起保留，到期删除。关闭时，文字输入完录音就删除。";
+"dictation.history.keep_audio.detail.days" = "每条听写的录音和光标周围的文字随它的记录保留，%@后一起删除。关闭后，文字输入完录音就删除，光标周围的文字也不保留。";
 "dictation.history.open" = "打开听写历史…";
 "dictation.history.clear" = "清空历史…";
 "dictation.history.clear.title" = "清空听写历史？";
@@ -102,12 +103,12 @@
 "dictation.history.seconds" = "%ld 秒";
 "dictation.history.badge.polished" = "已润色";
 "dictation.history.badge.original" = "识别原文";
-"dictation.history.badge.fell_back" = "原话";
+"dictation.history.badge.fell_back" = "未润色";
 "dictation.history.badge.copied" = "已复制";
 "dictation.history.show_raw" = "显示识别原文";
 "dictation.history.show_polished" = "显示润色后的文字";
 "dictation.history.copy" = "复制";
-"dictation.history.copy_raw" = "复制原话";
+"dictation.history.copy_raw" = "复制识别原文";
 "dictation.history.make_item" = "转为条目";
 "dictation.history.item_exists" = "条目 %@";
 "dictation.history.item_made" = "已转为 %@";
@@ -129,7 +130,7 @@
 "dictation.history.reason.error" = "润色出错";
 
 /* Words, speech model */
-"dictation.toast.learned" = "记住了 %@";
+"dictation.toast.learned" = "记住了“%@”";
 "dictation.toast.undo" = "撤销";
 "dictation.vocab.section" = "词库";
 "dictation.vocab.add" = "添加";
@@ -269,6 +270,10 @@
 "dictation.lab.fell_back" = "未润色：%@";
 "dictation.lab.tag" = "语言：%1$@ · 离英文判定线 %2$@";
 "dictation.lab.tag.fragile" = "语言判断很接近（离英文判定线 %@）";
+"dictation.lab.tag.sure" = "语言：%@（确定）";
+"dictation.lab.tag.unsure" = "语言：%@（不确定）";
+"dictation.lab.tag.score" = "离英文判定线 %@";
+"dictation.lab.tag.unsure_any" = "语言判断不确定";
 "dictation.lab.guard.passed" = "通过";
 "dictation.lab.piece.whole" = "整段";
 "dictation.lab.piece.committed" = "润色：%@";
@@ -398,10 +403,10 @@
 "dictation.style.copied.edited" = "已把你改过的文字按%@复制，输入框里的文字没动";
 "dictation.style.copied.original" = "你改过这段，已按原始听写排成%@并复制";
 "dictation.style.undone" = "已还原为%@";
-"dictation.style.learn.auto" = "以后在 %@ 里自动排清单？";
-"dictation.style.learn.structured" = "以后在 %@ 里自动排清单？";
-"dictation.style.learn.light" = "以后在 %@ 里不再排清单？";
-"dictation.style.learn.verbatim" = "以后在 %@ 里只写原话，不整理？";
+"dictation.style.learn.auto" = "以后在%@里自动排成清单？";
+"dictation.style.learn.structured" = "以后在%@里自动排成清单？";
+"dictation.style.learn.light" = "以后在%@里不再排成清单？";
+"dictation.style.learn.verbatim" = "以后在%@里只写原话，不整理？";
 "dictation.style.learn.yes" = "好";
 "dictation.style.learn.no" = "不用";
 "dictation.style.learn.done" = "好了。可以在「设置」的「听写」里改。";
@@ -440,15 +445,15 @@
 "dictation.style.follow" = "跟随上面（%@）";
 "dictation.models.section" = "模型";
 "dictation.models.change" = "在「模型」里更换…";
-"dictation.vocab.summary.title" = "名字和术语";
-"dictation.vocab.summary.mine" = "你加的 %ld 个";
+"dictation.vocab.summary.title" = "词库";
+"dictation.vocab.summary.mine" = "你的词 %ld 个";
 "dictation.vocab.summary.suggested" = "%ld 个待确认";
 "dictation.vocab.manage" = "管理…";
 "dictation.mic.section" = "麦克风";
 "dictation.words.tab" = "词库";
 "dictation.words.add.placeholder" = "添加或查找词";
 "dictation.words.filter" = "筛选";
-"dictation.words.mine" = "你加的";
+"dictation.words.mine" = "你的词";
 "dictation.words.projects" = "来自你的项目";
 "dictation.words.projects.detail" = "项目的名字和缩写会自动加进来。用不上的可以删掉。";
 "dictation.words.mine.empty" = "还没有。把常说的名字和术语加进来；在听写历史里改正一个词，口喷鸡也会记下来。";
@@ -482,31 +487,31 @@
 "dictation.style.toast.structured.first" = "%@：说完会排成清单，只留改正后的说法 · 再按 ⇧ 切回";
 "dictation.toast.cancelled" = "已取消";
 "dictation.toast.limit" = "已到 5 分钟上限，听写已结束";
-"dictation.toast.ends_soon" = "还剩 30 秒";
-"dictation.toast.still_listening" = "还在听 · 按%@ 结束 · Esc 取消";
-"dictation.toast.no_model" = "还没有语音模型（%@）";
+"dictation.toast.ends_soon" = "快到 5 分钟上限了";
+"dictation.toast.still_listening" = "还在听 · 按%1$@ 结束 · %2$@ 取消";
+"dictation.toast.no_model" = "听写要先装语音模型";
 "dictation.toast.no_model.get" = "下载…";
 "dictation.toast.no_model.kept" = "语音模型还没装 · 录音还在";
-"dictation.toast.no_vad" = "语音模型还没装好";
-"dictation.toast.no_vad.kept" = "语音模型还没装好 · 录音还在";
+"dictation.toast.no_vad" = "还差一个小文件（语音检测）";
+"dictation.toast.no_vad.kept" = "还差一个小文件（语音检测）· 录音还在";
 "dictation.toast.model_ready" = "语音模型准备好了，刚才那段录音还在";
 "dictation.toast.asr_failed" = "没能识别这段话，录音还在";
 "dictation.toast.asr_slow" = "语音模型没有回应，录音还在";
-"dictation.toast.slow.asr" = "还在识别… Esc 取消";
+"dictation.toast.slow.asr" = "还在识别… %@ 取消";
 "dictation.toast.fn_clash" = "%@ 也在听 Fn，文字可能输入两次";
 "dictation.toast.fn_clash.switch" = "改用右 Option";
 "dictation.toast.fn_clash.settings" = "设置…";
-"dictation.toast.slow.polish" = "还在润色… 按 Esc 直接输入原话";
+"dictation.toast.slow.polish" = "还在润色… 按 %@ 不润色直接输入";
 "dictation.toast.retry" = "重试";
 "dictation.toast.retry_gone" = "这段录音已经不在了";
-"dictation.toast.copied_app" = "已复制，⌘V 粘贴";
+"dictation.toast.copied_app" = "你换了 App，没有输入 · 已复制，⌘V 粘贴";
 "dictation.toast.not_sent" = "没有发送";
 "dictation.toast.not_sent.ax" = "没有发送：需要辅助功能权限";
 "dictation.toast.not_sent.secure" = "没有发送：光标在密码框里";
 "dictation.toast.not_sent.copied" = "文字已复制，没有发送";
 "dictation.toast.copied.not_sent" = "已复制，没有发送 · ⌘V 粘贴";
 "dictation.toast.hold_mode" = "按住%@ 说话（设置里可以改成按一下）";
-"dictation.toast.tap_mode" = "按一下%@ 开始说话（设置里可以改成按住）";
+"dictation.toast.tap_mode" = "松开，再按一下%@ 开始说话（设置里可以改成按住）";
 "dictation.toast.no_polish" = "润色模型还没下载，这次没润色";
 "dictation.toast.weaker_asr" = "推荐的语音模型还没下载，名字可能写不对";
 "dictation.tip.send" = "按两下%@ 发送";
@@ -514,6 +519,7 @@
 "dictation.tip.reformat" = "%@ 换个风格";
 "dictation.history.failed" = "没能识别";
 "dictation.history.failed.no_model" = "没能识别：还没有语音模型";
+"dictation.history.failed.interrupted" = "没有输入：口喷鸡在处理完之前退出了";
 "dictation.history.retry" = "重试";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
@@ -543,7 +549,7 @@
 "dictation.menu.get_model.subtitle_plain" = "听写要用";
 "dictation.models.queued" = "等待下载 · %@";
 "dictation.models.show" = "查看";
-"dictation.mode.help" = "Esc 取消这一段。想把说的话存进口喷鸡、而不是打出来，用语音备注（%@）。";
+"dictation.mode.help" = "%1$@ 取消这一段。想把说的话存进口喷鸡、而不是打出来，用语音备注（%2$@）。";
 "dictation.settings.double_tap.key" = "连按两下%@，打完字后按回车。";
 "dictation.settings.double_tap.help" = "按一下结束，看一眼文字，再按两下发送；也可以直接按两下，代替结束的那一下。";
 "dictation.settings.fn_clash.help" = "退出它，或者给其中一个换个键。";
@@ -553,7 +559,7 @@
 "dictation.mic.detail" = "自动：避开蓝牙耳机开头的延迟。";
 "dictation.style.by_app.pair" = "%1$@：%2$@";
 "dictation.style.by_app.apps" = "%ld 个 App 单独设置";
-"dictation.text.section" = "风格和词汇";
+"dictation.text.section" = "风格和词库";
 "dictation.vocab.summary.detail" = "照你的写法拼出来。";
 "dictation.history.summary" = "已存 %1$ld 条 · %2$@后删除";
 "dictation.models.detail" = "听写用的语音模型和润色模型。";
@@ -564,7 +570,7 @@
 "dictation.models.asr_missing" = "语音模型还没下载";
 "dictation.models.polish_missing" = "润色模型还没下载";
 "dictation.models.get_in_speech" = "去「模型」下载…";
-"dictation.status.other_instance_key" = "另一个口喷鸡正在听 %@ 键";
+"dictation.status.other_instance_key" = "另一个口喷鸡正在听%@";
 "dictation.models.small_missing" = "还差一个小文件";
 "dictation.models.n_missing" = "还有 %ld 个要下载";
 
@@ -608,23 +614,25 @@
 "dictation.words.info.seen.value" = "%ld 次";
 "dictation.words.rename.one" = "修改“%@”的拼写";
 "dictation.words.project.tip" = "%1$@ · 词：%2$@";
+"dictation.words.project.not_sent" = "不会告诉听写：%@";
 "dictation.lab.record.again" = "点按钮重录，或按%@";
 "dictation.lab.detail.pieces" = "分段";
 "dictation.lab.result" = "结果";
 "dictation.lab.metric.exact" = "完全一致";
 "dictation.toast.no_model.action_size" = "下载（%@）";
+"dictation.toast.no_model.cloud" = "用云端…";
 
 /* Send Feedback (DictationFeedback.swift, docs/design/feedback.md) */
 "dictation.feedback.button" = "发送反馈";
 "dictation.feedback.button.tip" = "把听写发给口喷鸡开发者，用来复现和改进识别";
 "dictation.feedback.title" = "发送反馈";
-"dictation.feedback.note" = "勾选识别或排版不对的听写发给我们。AI 将会自行进行重放、评分、迭代改进。";
+"dictation.feedback.note" = "勾选识别或排版不对的听写发给我们，我们会用它们改进听写。";
 "dictation.feedback.all" = "全选";
 "dictation.feedback.count" = "已选 %ld 条 · %@";
 "dictation.feedback.text_only" = "仅文字";
 "dictation.feedback.context" = "附带光标周围的文字";
 "dictation.feedback.context.detail" = "听写时光标前后的文字。很多问题要有它才能复现。";
-"dictation.feedback.what" = "会发送：每条的原始录音、识别和润色每一步的结果、最终文字和你的更正，以及设备配置、口喷鸡版本、听写设置、模型和自定义词。";
+"dictation.feedback.what" = "会发送：每条的原始录音、识别和润色每一步的结果、最终文字和你的更正，以及设备配置、口喷鸡版本、听写设置、模型和词库里的词。";
 "dictation.feedback.where" = "上传到口喷鸡在 Cloudflare 上的私有存储，只有口喷鸡开发者能读取，不记录账号和 IP，14 天内从存储中删除。";
 "dictation.feedback.too_large" = "超过 100 MB，少选几条再发";
 "dictation.feedback.sending" = "正在发送…";
@@ -671,8 +679,8 @@
 "dictation.cloud.model.note.polish.ds41" = "准确，约 0.8 秒";
 "dictation.cloud.model.note.polish.qwen38" = "较准确，约 1 秒";
 "dictation.cloud.model.note.polish.qwen36" = "快，但专有名词常认错";
-"dictation.cloud.model.note.polish.qwen_flash" = "会改写原话，不推荐";
-"dictation.cloud.model.note.polish.qwen_plus" = "会改写原话，不推荐";
+"dictation.cloud.model.note.polish.qwen_flash" = "会改写你说的话，不推荐";
+"dictation.cloud.model.note.polish.qwen_plus" = "会改写你说的话，不推荐";
 "dictation.cloud.model.note.translate.deepseek_flash" = "翻译质量好";
 "dictation.cloud.model.note.translate.ds41" = "翻译质量好";
 "dictation.cloud.model.note.translate.qwen38" = "翻译质量好";
@@ -689,9 +697,9 @@
 "dictation.cloud.key.stored" = "已存在钥匙串里，输入新的会替换";
 "dictation.cloud.key.get" = "获取 DeepSeek API Key";
 "dictation.cloud.key.get.dashscope" = "获取阿里云百炼 API Key";
-"dictation.cloud.dashscope.what" = "一个百炼 Key 可同时用于润色、翻译、截图取字和语音识别。";
+"dictation.cloud.dashscope.what" = "一个阿里云百炼 Key 可同时用于润色、翻译、截图取字和语音识别。";
 "dictation.cloud.key.forget" = "删除已保存的 Key";
-"dictation.cloud.what" = "发给这个服务的：听写的文字、你的词表和目标应用的名字；开着「参考光标附近的文字」时，还有光标附近的文字和同一应用里最近 3 条听写。API Key 只存在这台 Mac 的钥匙串里。";
+"dictation.cloud.what" = "发给这个服务的：听写的文字、你的词库和目标应用的名字；开着「参考光标附近的文字」时，还有光标附近的文字和同一应用里最近 3 条听写。API Key 只存在这台 Mac 的钥匙串里。";
 "dictation.cloud.cost" = "DeepSeek Flash 每条约 ¥0.001，每天 100 条，一个月约 ¥3。";
 "dictation.cloud.test" = "测试连接";
 "dictation.cloud.check.ok" = "连接正常 · %@ 秒";
@@ -713,9 +721,9 @@
 "dictation.translate.toast.off" = "已关闭翻译";
 "dictation.translate.toast.unavailable" = "翻译需要云端模型或本机润色模型";
 "dictation.translate.toast.setup" = "设置…";
-"dictation.translate.toast.failed" = "翻译失败，已输入原话";
+"dictation.translate.toast.failed" = "翻译失败，输入了原文";
 "dictation.translate.toast.cloud_hint" = "本次用本机模型翻译，云端模型效果更好";
-"dictation.translate.toast.suggest" = "以后在 %@ 里听写都翻译吗？";
+"dictation.translate.toast.suggest" = "以后在%@里听写都翻译吗？";
 "dictation.translate.toast.suggest.yes" = "翻译";
 "dictation.translate.settings.title" = "翻译成";
 "dictation.translate.settings.detail" = "说话时按 ⌘ 或点小鸡开启；⌥T 截图翻译也用这里的设置";
@@ -734,3 +742,6 @@
 "dictation.remember.saved" = "以后在 %1$@ 里也会%2$@ · 按 %3$@ 换回";
 "dictation.remember.kept" = "沿用 %1$@ 上次的设置：%2$@ · 按 %3$@ 关掉";
 "dictation.translate.toast.on.into" = "翻译成%@ · 再按 ⌘ 关闭";
+"dictation.settings.cancel_key" = "取消听写";
+"dictation.settings.cancel_key.default" = "%@（默认）";
+"dictation.settings.cancel_key.detail" = "在 Claude Code 这类终端里，Esc 会打断正在跑的任务。换成 ⌃Esc 或 ⇧Esc，单按 Esc 就不会被当成取消听写。";
