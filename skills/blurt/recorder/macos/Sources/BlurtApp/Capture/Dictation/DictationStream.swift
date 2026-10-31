@@ -184,6 +184,9 @@ final class DictationStream {
         var structureReason: String?
         /// the speech model couldn't recognise the take (nil: it did — an empty text is then silence)
         var asrError: DictationASRFailure?
+        /// cloud polish failed and the local model (or nothing) polished instead: polish.py's code (auth, rate_limited,
+        /// network …) — a key refused is said once a day (Dictation.afterPaste), not left to fall back unseen
+        var polishCloudError: String?
         /// each piece's language tag and how sure the model was (transcribe.py's `tag`; the history keeps them)
         var tags: [[String: Any]] = []
         /// the windows the pieces were heard again in (§Hearing again): pieces, start / end, what the pieces said and
@@ -927,6 +930,7 @@ final class DictationStream {
         r.tags = us.compactMap { $0.asr?["tag"] as? [String: Any] }
         r.windows = ws.map(describeWindow)
         r.fellBackParts = parts
+        r.polishCloudError = pol.lazy.compactMap { $0["cloud_error"] as? String }.first
         return r
     }
 
@@ -1055,6 +1059,7 @@ final class DictationStream {
                                 "reason": pol?["reason"] ?? NSNull(), "repaired": pol?["repaired"] as? [String] ?? [],
                                 "case": pol?["case"] ?? NSNull()]])
         if let t = r["tag"] as? [String: Any] { out.tags = [t] }
+        out.polishCloudError = pol?["cloud_error"] as? String
         return out
     }
 

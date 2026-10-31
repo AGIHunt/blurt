@@ -191,4 +191,16 @@ final class DictationTranslateTests: XCTestCase {
         e.translate = translate
         return e
     }
+
+    func testTranslateFailureSaysWhy() {
+        XCTAssertEqual(TranslateFailure("auth"), .key)
+        XCTAssertEqual(TranslateFailure("cloud_auth"), .key)
+        XCTAssertEqual(TranslateFailure("cloud_rate_limited"), .quota)
+        XCTAssertEqual(TranslateFailure("network"), .offline)
+        XCTAssertEqual(TranslateFailure("model_missing"), .noModel)
+        XCTAssertEqual(TranslateFailure("cloud_timeout"), .other)
+        XCTAssertEqual(TranslateFailure(nil), .other)
+        XCTAssertTrue(TranslateFailure("cloud_auth").needsSettings)
+        XCTAssertFalse(TranslateFailure("network").needsSettings)
+    }
 }

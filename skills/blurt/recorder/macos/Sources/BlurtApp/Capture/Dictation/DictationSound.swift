@@ -5,8 +5,9 @@
 // press started the take instead. With a cue for each edge, silence after a press says nothing started, and a start
 // peep where a stop peck was expected says the same, before the words are lost.
 //
-// On unless turned off, the start and the stop each (record.dictation.sounds / stop_sound; Settings → Dictation; the
-// cancel peck goes with the stop's). Never while a screen recording runs: the cue
+// The start's peep on unless turned off, the stop's off unless turned on (v1.0.8: two cues on every take were too
+// much on a fresh install; the start alone still tells a missed press) — record.dictation.sounds / stop_sound;
+// Settings → Dictation; the cancel peck goes with the stop's. Never while a screen recording runs: the cue
 // would be in it. The start cue waits for the first audio (Dictation.micStarted, NoteVoice.onFirstAudio), so it means
 // "talk now", not "key seen". The clips: assets/sounds/build.py → Resources/Sounds (the film's peep and peck, both
 // synthesized), copied into Blurt.app by record.py.
@@ -18,7 +19,7 @@ enum DictationSound: String, CaseIterable {
     /// the start's peep (the key `sounds` predates the stop's own switch)
     static var startOn: Bool { Dictation.settings["sounds"] as? Bool ?? true }
     /// the stop's peck, and the cancel's
-    static var stopOn: Bool { Dictation.settings["stop_sound"] as? Bool ?? true }
+    static var stopOn: Bool { Dictation.settings["stop_sound"] as? Bool ?? false }
 
     /// Plays it when its switch is on and nothing is being recorded; a cue already playing is cut, not doubled.
     func play() {

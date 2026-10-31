@@ -252,6 +252,28 @@ public enum DictationTranslateHint {
     }
 }
 
+/// Why a translation didn't come, for the line that says so (⌥T and dictation's): the cloud's key refused or no model
+/// to translate with (Settings is the fix — Retry would fail the same way), out of quota or too many requests, the
+/// service unreachable — else just "couldn't".
+public enum TranslateFailure: Equatable {
+    case key, quota, offline, noModel, other
+
+    /// polish.py's code: a cloud error as it is ("auth", dictation's `cloud_error`) or prefixed ("cloud_auth": ⌥T's
+    /// translate, which fails rather than falls back); model_missing: nothing local to translate with.
+    public init(_ code: String?) {
+        let c = code ?? ""
+        switch c.hasPrefix("cloud_") ? String(c.dropFirst(6)) : c {
+        case "auth": self = .key
+        case "rate_limited", "quota": self = .quota
+        case "network": self = .offline
+        case "model_missing": self = .noModel
+        default: self = .other
+        }
+    }
+
+    public var needsSettings: Bool { self == .key || self == .noModel }
+}
+
 /// The history's `translate`: on for the take, how, into what, by what, and what came of it.
 public struct DictationTranslateRecord: Hashable {
     /// command (⌘) | island | app (the app is in the list)

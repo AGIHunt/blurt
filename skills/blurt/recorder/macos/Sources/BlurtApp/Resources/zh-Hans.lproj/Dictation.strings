@@ -27,6 +27,7 @@
 "dictation.toast.nothing.change" = "换麦克风…";
 "dictation.toast.nothing" = "未检测到语音";
 "dictation.toast.copied" = "已复制，⌘V 粘贴";
+"dictation.toast.copied.ax" = "已复制 · 开启辅助功能后可自动粘贴";
 "dictation.toast.pasted_unsure" = "已粘贴";
 /* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
 "dictation.toast.no_list" = "无法排成清单，已保留原文";
@@ -516,6 +517,7 @@
 "dictation.toast.hold_mode" = "按住%@ 说话（可在设置中改为按一下）";
 "dictation.toast.tap_mode" = "松开后按一下%@ 开始说话（可在设置中改为按住）";
 "dictation.toast.no_polish" = "未下载润色模型，本次未润色";
+"dictation.toast.polish_cloud_key" = "云端润色的 Key 无效，本次未用云端润色";
 "dictation.toast.weaker_asr" = "未下载推荐的语音模型，名字可能不准确";
 "dictation.tip.send" = "按两下%@ 发送";
 "dictation.tip.list" = "说话时按一下 ⇧，排成清单";
@@ -698,6 +700,9 @@
 "dictation.translate.toast.unavailable" = "翻译需要云端模型或本机润色模型";
 "dictation.translate.toast.setup" = "设置…";
 "dictation.translate.toast.failed" = "翻译失败，输入了原文";
+"dictation.translate.toast.key" = "翻译服务的 Key 无效，输入了原文";
+"dictation.translate.toast.quota" = "翻译服务额度已用完或请求过于频繁，输入了原文";
+"dictation.translate.toast.offline" = "无法连接翻译服务，输入了原文";
 "dictation.translate.toast.cloud_hint" = "本次用本机模型翻译，云端模型效果更好";
 "dictation.translate.toast.suggest" = "以后在%@里听写都翻译吗？";
 "dictation.translate.toast.suggest.yes" = "翻译";

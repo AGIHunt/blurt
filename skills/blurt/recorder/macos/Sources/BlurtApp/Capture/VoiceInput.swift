@@ -410,6 +410,14 @@ final class VoiceInput {
     private static let notesLock = NSLock()
     private static var notesInFlight = 0
     static var notesWaiting: Int { notesLock.lock(); defer { notesLock.unlock() }; return notesInFlight }
+    /// Why the last piece came back without words (transcribe.py's code: model_missing, auth, quota, network …; nil:
+    /// not known) — a voice note's island line says it rather than a bare "Couldn't transcribe" (Snapper.wordsArrived).
+    private static var pieceFailure: String?
+    static var lastPieceFailure: String? { notesLock.lock(); defer { notesLock.unlock() }; return pieceFailure }
+    private static func failed(_ code: String?) -> [String: Any]? {
+        notesLock.lock(); pieceFailure = code; notesLock.unlock()
+        return nil
+    }
 
     /// Our server process runs but hasn't written its address yet (dictation's pieces wait for it, not for a CLI).
     static var serverStarting: Bool { replacing || (server?.isRunning == true && !WarmServer.running("asr-serve")) }
@@ -428,19 +436,30 @@ final class VoiceInput {
         if !prior.isEmpty { req["prior"] = String(prior.suffix(200)) }
         let until = Date().addingTimeInterval(15)
         while !WarmServer.running("asr-serve") && Date() < until && serverStarting { usleep(50_000) }
-        if let r = WarmServer.call("asr-serve", req, timeout: 60), r["ok"] as? Bool == true { return r }
+        var code: String?
+        if let r = WarmServer.call("asr-serve", req, timeout: 60) {
+            if r["ok"] as? Bool == true { return r }
+            code = r["code"] as? String
+        }
         let sem = DispatchSemaphore(value: 0)
         var out: [String: Any]?
         Task.detached {
-            out = try? await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
+            do {
+                out = try await ScriptRunner.shared.json("transcribe.py", ["note", wav.path, "--language", "auto"], timeout: 120)
+            } catch ScriptError.failed(_, let stdout, _) {
+                out = Scripts.json(stdout)      // a non-zero exit still printed its {"ok": false, "code": …} line
+            } catch ScriptError.timeout {
+                out = ["ok": false, "code": "timeout"]
+            } catch {}
             sem.signal()
         }
         sem.wait()
         if let o = out, o["ok"] as? Bool ?? true { return o }
+        code = out?["code"] as? String ?? code
         // the speech tools couldn't run (no uv yet) or had no model: macOS's recogniser when it is ready
-        guard AppleSpeech.ready() else { return nil }
+        guard AppleSpeech.ready() else { return failed(code) }
         let r = AppleSpeech.transcribe(wav, language: "auto", purpose: "note_fallback")
-        return r["ok"] as? Bool == true ? r : nil
+        return r["ok"] as? Bool == true ? r : failed(code)
     }
 
     /// Tests (test commands only): the microphone stops delivering mid-note.

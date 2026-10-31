@@ -1276,6 +1276,10 @@ class Engine:
             self._ready(res, model_id)
         except Fail as e:
             if not check:
+                # the cloud's failure is the one to tell (a key refused, out of quota, offline: the user can act on
+                # it), not that no local model was there to fall back on — `cloud_auth`, `cloud_rate_limited`, …
+                if cloud_error:
+                    raise Fail(f"cloud: {cloud_error}; {e}", "cloud_" + cloud_error) from None
                 raise
             return {"ok": True, "text": src, "fell_back": True, "reason": cloud_error or e.code, "cloud": bool(cloud),
                     "ms": int((time.perf_counter() - t0) * 1000), **({"cloud_error": cloud_error} if cloud_error else {})}
