@@ -677,10 +677,17 @@ class AppleSpeechSelect(unittest.TestCase):
                 self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")
                 self.assertEqual(d["plan"]["recognizer"], "qwen3-asr-1.7b-mlx")
                 self.assertTrue({m["id"]: m for m in d["models"]}["apple-speech"]["builtin"])
-                # an 8 GB Mac: the 0.6B (no local polish beside it), never macOS's own
-                self.assertEqual(T.dictation_models(hw(ram=8.0))["recommended"], "qwen3-asr-0.6b-mlx")
+                # an 8 GB Mac: Fun-ASR-Nano for a Chinese + English speaker (no local polish beside it), never macOS's own
+                self.assertEqual(T.dictation_models(hw(ram=8.0))["recommended"], "fun-asr-nano-mlx")
                 # 16 GB: the 1.7B, unless the chip is a base M1 / M2 or the 1.7B measured too slow here
                 self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models({**hw(ram=16.0), "chip": "Apple M1"})["recommended"],
+                                 "fun-asr-nano-mlx")
+            with config({"asr": {"languages": ["de", "en"]}}):
+                # a language Fun-ASR-Nano doesn't speak: the 0.6B, and no Fun-ASR-Nano row
+                d = T.dictation_models(hw(ram=8.0))
+                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")
+                self.assertNotIn("fun-asr-nano-mlx", [m["id"] for m in d["models"]])
                 self.assertEqual(T.dictation_models({**hw(ram=16.0), "chip": "Apple M1"})["recommended"],
                                  "qwen3-asr-0.6b-mlx")
         finally:
@@ -818,7 +825,7 @@ class DictationTier(unittest.TestCase):
         rows = [json.loads(l) for l in (ROOT / "tests" / "fixtures" / "dictation_tier.jsonl").read_text().splitlines() if l.strip()]
         self.assertGreaterEqual(len(rows), 10)
         for r in rows:
-            got = T.dictation_tier(r["ram_gb"], r["rtf"], r["slow"], r["cloud"])
+            got = T.dictation_tier(r["ram_gb"], r["rtf"], r["slow"], r["cloud"], r.get("languages"))
             for k, v in r["want"].items():
                 self.assertEqual(got[k], v, f"{r['case']}: {k}")
             self.assertEqual(got["second_transcript"], got["cloud_polish"])
@@ -833,8 +840,10 @@ class DictationTier(unittest.TestCase):
         real = T._bench_results
         try:
             T._bench_results = lambda: {"qwen3-asr-1.7b-mlx": {"rtf": 0.09}}
-            with config({}):
+            with config({"asr": {"languages": ["fr", "en"]}}):
                 self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "fun-asr-nano-mlx")
         finally:
             T._bench_results = real
 

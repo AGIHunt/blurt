@@ -94,6 +94,56 @@ def test_errors_have_codes_and_never_the_key(api):
     assert r["code"] in ("network", "timeout") and "sk-test" not in json.dumps(r)
 
 
+def test_a_custom_models_test_runs_its_own_job(api):
+    # Settings → Models → Custom Model…: Save runs the job itself and saves only when its answer is there
+    api.reply = "We meet at 3 pm tomorrow."
+    assert C.check(cloud(api), job="translate")["ok"]
+    assert C.check(cloud(api), job="polish")["ok"]
+    sent = api.seen[-1]["body"]["messages"]
+    assert sent[0]["role"] == "system" and C.CHECK_SPEECH in sent[-1]["content"]
+    api.reply = ""                                              # thought, wrote nothing: never put on a job
+    assert C.check(cloud(api), job="polish")["code"] == "empty"
+    assert C.check(cloud(api))["ok"]                            # the service's own Test still takes it
+
+
+def test_a_custom_models_vision_test_must_read_the_picture(api):
+    api.reply = "Blurt 4721"
+    assert C.check(cloud(api), job="vision")["ok"]
+    part = api.seen[-1]["body"]["messages"][0]["content"][1]
+    assert part["image_url"]["url"].startswith("data:image/png;base64,iVBOR")
+    api.reply = "I can't see any image."
+    assert C.check(cloud(api), job="vision") == {"ok": False, "code": "vision", "error": "the answer doesn't say what the picture says"}
+    api.reply = "Blurt 4721"
+    assert C.check(cloud(api, protocol="anthropic", provider="anthropic"), job="vision")["ok"]
+    assert api.seen[-1]["body"]["messages"][0]["content"][0]["source"]["media_type"] == "image/png"
+    api.status = 400                                            # a model that takes no pictures
+    assert C.check(cloud(api), job="vision")["code"] == "vision"
+
+
+def test_a_model_the_service_doesnt_know_says_so(api):
+    api.status = 404
+    assert C.check(cloud(api), job="polish")["code"] == "model"
+    api.status = 400
+    assert C.check(cloud(api), job="translate")["code"] == "model"
+    api.status = 401
+    assert C.check(cloud(api), job="translate")["code"] == "auth"
+
+
+def test_the_curated_list_is_one_file_in_the_skill_and_on_the_site():
+    # BlurtCore CloudCurated reads it (schema 1); the app fetches the site's copy at most once a day
+    skill = ROOT / "skills" / "blurt" / "scripts" / "curated_models.json"
+    site = ROOT / "site" / "models" / "curated.json"
+    assert skill.read_bytes() == site.read_bytes()
+    d = json.loads(skill.read_text(encoding="utf-8"))
+    assert d["schema"] == 1 and set(d["jobs"]) == {"polish", "translate", "vision", "speech"}
+    for job, opts in d["jobs"].items():
+        assert 1 <= len(opts) <= 3, job
+        for o in opts:
+            assert o["service"] in C.PRESETS and "base_url" not in o and o["measured"] <= d["updated"], o
+    # the measured best first (dictation-eval-2026-10-31.md §2.3): DeepSeek V4.1 Flash on Model Studio, then DeepSeek's own
+    assert [o["model"] for o in d["jobs"]["polish"]] == ["deepseek-v4.1-flash", "deepseek-flash"]
+
+
 def test_the_message_names_words_app_recent_and_continues_the_text_so_far():
     ctx = {"app": "飞书", "recent": ["这篇文章讲豆包的电脑软件。"], "dictated": "我们先把发票的部分写完，"}
     m = C.messages("然后是外卖的那个 case", ["Claude Code"], ctx, "chat")

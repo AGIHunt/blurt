@@ -1,9 +1,10 @@
-// Dictation's five choices side by side (Settings → Models: the lead line and Compare…; the setup assistant's speech
+// Dictation's choices side by side (Settings → Models: the lead line and Compare…; the setup assistant's speech
 // step): how often each gets a word wrong, the wait after you stop talking, the cost, and what leaves the Mac — and
 // which fits this Mac. Pure: DictationChoicesTests.
 //
 // Source of every number: docs/design/dictation-eval-2026-10-31.md (§1 summary, §3 public speech, §5 latency after
-// key-up, §6 the three tiers, §7 what to tell users). Mixed = the founder's 95 takes (Mandarin with English terms),
+// key-up, §6 the three tiers, §7 what to tell users; Fun-ASR-Nano: §2.1, §3, §4.4, §5 and its re-measure through the
+// app's path in docs/design/dictation.md §Defaults by Mac). Mixed = the founder's 95 takes (Mandarin with English terms),
 // error per unit (a Chinese character or an English word); per language = §3's public sets (English: LibriSpeech
 // clean, Chinese: AISHELL-1, German: Common Voice de). Japanese is left out on purpose: §3 says its CER mixes kanji and
 // kana spellings — "read the order, not the level" — so a level would mislead. A new eval changes this
@@ -17,15 +18,19 @@
 import Foundation
 
 /// One way to dictate. The raw value is the recogniser's id in asr_models.json, except cloud polish, which runs on a
-/// local Qwen3-ASR and sends only the text out.
+/// local model (Qwen3-ASR or Fun-ASR-Nano) and sends only the text out.
 public enum DictationChoice: String, CaseIterable, Hashable, Sendable {
     case macOSSpeech = "apple-speech"
     case qwenSmall = "qwen3-asr-0.6b-mlx"
+    /// Chinese, English and Japanese only: shown to people who speak only those (DictationChoices.choices)
+    case funNano = "fun-asr-nano-mlx"
     case qwenLarge = "qwen3-asr-1.7b-mlx"
     case cloudPolish = "cloud-polish"
     case cloudRecognizer = "qwen3-asr-flash"
 
-    public var local: Bool { self == .macOSSpeech || self == .qwenSmall || self == .qwenLarge }
+    public var local: Bool { self == .macOSSpeech || localModel }
+    /// a downloaded local model cloud polish can sit on
+    public var localModel: Bool { self == .qwenSmall || self == .funNano || self == .qwenLarge }
     /// the dictation recogniser it sets (cloud polish: the local Qwen3-ASR under it, chosen by the caller)
     public var recognizer: String? { self == .cloudPolish ? nil : rawValue }
 }
@@ -59,12 +64,16 @@ public struct DictationFacts: Hashable, Sendable {
 }
 
 public enum DictationChoices {
-    /// The comparison, in the order it is shown: out of the box, the two local models, then the cloud.
+    /// The comparison, in the order it is shown: out of the box, the local models, then the cloud.
     public static let table: [DictationFacts] = [
         DictationFacts(choice: .macOSSpeech, mixed: 0.0672, languages: ["en": 0.0154, "zh": 0.0434, "de": 0.0844],
                        termsRight: 0.45, delay: 0.2...0.2, downloadMB: 0, memoryGB: 0, minRAMGB: 0, cost: .free, leaves: .nothing),
         DictationFacts(choice: .qwenSmall, mixed: 0.0334, languages: ["en": 0.0154, "zh": 0.0317, "de": 0.0931],
                        termsRight: 0.75, delay: 0.1...0.2, downloadMB: 1010, memoryGB: 2.1, minRAMGB: 8, cost: .free, leaves: .nothing),
+        // Fun-ASR-Nano as the app runs it (30 s windows, the Words as hotwords: 2.92 %, the eval's own runner 2.84 %;
+        // 0.07 / 0.17 s after key-up on ~5 s / ~60 s takes — dictation.md §Defaults by Mac); §3: no German
+        DictationFacts(choice: .funNano, mixed: 0.0292, languages: ["en": 0.0162, "zh": 0.0246],
+                       termsRight: 0.77, delay: 0.1...0.2, downloadMB: 1598, memoryGB: 2.6, minRAMGB: 8, cost: .free, leaves: .nothing),
         DictationFacts(choice: .qwenLarge, mixed: 0.0250, languages: ["en": 0.0116, "zh": 0.0164, "de": 0.0758],
                        termsRight: 0.79, delay: 0.2...0.3, downloadMB: 2468, memoryGB: 3.1, minRAMGB: 16, cost: .free, leaves: .nothing),
         // on the 1.7B; on the 0.6B see `cloudPolishOnSmall`. Delay: the 1.7B's plus DeepSeek V4.1 Flash's 0.8–1.1 s.
@@ -82,9 +91,22 @@ public enum DictationChoices {
         choice: .cloudPolish, mixed: 0.0284, languages: [:], termsRight: nil, delay: 0.9...1.3, downloadMB: 1010, memoryGB: 2.1,
         minRAMGB: 8, cost: .perDictation(cny: 0.002, usd: 0.0003), leaves: .text)
 
+    /// Cloud polish over Fun-ASR-Nano (2.73 %, names 89 %: one run through the app's path, DeepSeek V4.1 Flash with macOS's
+    /// transcript as "Also heard" — docs/design/dictation.md §Defaults by Mac).
+    public static let cloudPolishOnFun = DictationFacts(
+        choice: .cloudPolish, mixed: 0.0273, languages: [:], termsRight: 0.89, delay: 0.9...1.3, downloadMB: 1598, memoryGB: 2.6,
+        minRAMGB: 8, cost: .perDictation(cny: 0.002, usd: 0.0003), leaves: .text)
+
     public static func facts(_ c: DictationChoice, on base: DictationChoice = .qwenLarge) -> DictationFacts {
         if c == .cloudPolish && base == .qwenSmall { return cloudPolishOnSmall }
+        if c == .cloudPolish && base == .funNano { return cloudPolishOnFun }
         return table.first { $0.choice == c }!
+    }
+
+    /// The rows shown on this Mac, in the table's order: Fun-ASR-Nano only for people who speak only its languages
+    /// (or when dictation already uses it).
+    public static func choices(_ mac: Mac, inUse: DictationChoice? = nil) -> [DictationChoice] {
+        DictationChoice.allCases.filter { $0 != .funNano || DictationTier.funSpeaks(mac.languages) || inUse == .funNano }
     }
 
     // MARK: the words
@@ -135,10 +157,13 @@ public enum DictationChoices {
         public var rtf: Double?
         /// a base M1 / M2 (DictationTier.slowChip): the 1.7B is too slow there when nothing was measured
         public var slowChip: Bool
+        /// the languages the user speaks (the scripts' user_languages, else the Mac's): Fun-ASR-Nano or the 0.6B
+        public var languages: [String]
         public init(ramGB: Double, appleSilicon: Bool, macOSSpeech: Bool, textKey: Bool, speechKey: Bool, rtf: Double? = nil,
-                    slowChip: Bool = false) {
+                    slowChip: Bool = false, languages: [String] = []) {
             self.ramGB = ramGB; self.appleSilicon = appleSilicon; self.macOSSpeech = macOSSpeech
             self.textKey = textKey; self.speechKey = speechKey; self.rtf = rtf; self.slowChip = slowChip
+            self.languages = languages
         }
     }
 
@@ -149,7 +174,7 @@ public enum DictationChoices {
         switch c {
         case .macOSSpeech:
             return mac.macOSSpeech ? .fits : .needsMacOS26
-        case .qwenSmall, .qwenLarge, .cloudPolish:
+        case .qwenSmall, .funNano, .qwenLarge, .cloudPolish:
             if !mac.appleSilicon { return .needsAppleSilicon }
             if mac.ramGB + 0.5 < f.minRAMGB { return .needsMemory(Int(f.minRAMGB)) }
             return c == .cloudPolish && !mac.textKey ? .needsKey : .fits
@@ -158,19 +183,21 @@ public enum DictationChoices {
         }
     }
 
-    /// The local model cloud polish sits on: the Qwen3-ASR dictation uses now, else the one recommended here.
+    /// The local model cloud polish sits on: the one dictation uses now (Qwen3-ASR or Fun-ASR-Nano), else the one
+    /// recommended here.
     public static func polishBase(recognizer: String?, mac: Mac) -> DictationChoice {
-        if let r = recognizer, let c = DictationChoice(rawValue: r), c == .qwenSmall || c == .qwenLarge { return c }
+        if let r = recognizer, let c = DictationChoice(rawValue: r), c.localModel { return c }
         let l = recommendedLocal(mac)
         return l == .macOSSpeech ? .qwenSmall : l
     }
 
-    /// The best choice on this Mac without the cloud (§6.2): the 1.7B from 16 GB, the 0.6B on 8 GB and on a slow GPU
-    /// (rtf over ~0.05: base M1 / M2 — §6.2 says pick by measured speed, not by chip name); macOS Speech where neither
-    /// runs (Intel).
+    /// The best choice on this Mac without the cloud (§6.2): the 1.7B from 16 GB; on 8 GB and on a slow GPU (rtf over
+    /// ~0.05: base M1 / M2 — §6.2 says pick by measured speed, not by chip name) Fun-ASR-Nano for Chinese, English and
+    /// Japanese speakers, else the 0.6B; macOS Speech where none runs (Intel).
     public static func recommendedLocal(_ mac: Mac) -> DictationChoice {
         guard mac.appleSilicon else { return .macOSSpeech }
-        let t = DictationTier.recommended(ramGB: mac.ramGB, rtf: mac.rtf, hasCloudKey: false, slowChip: mac.slowChip)
+        let t = DictationTier.recommended(ramGB: mac.ramGB, rtf: mac.rtf, hasCloudKey: false, slowChip: mac.slowChip,
+                                          languages: mac.languages)
         return t.recognizer.flatMap(DictationChoice.init(rawValue:)) ?? .macOSSpeech
     }
 
@@ -181,17 +208,17 @@ public enum DictationChoices {
     /// Every caller (the Models page's lead, Compare…, the setup assistant) reads this one function.
     public static func recommended(_ mac: Mac) -> DictationChoice {
         let local = recommendedLocal(mac)
-        if mac.textKey, local == .qwenSmall || local == .qwenLarge { return .cloudPolish }
+        if mac.textKey, local.localModel { return .cloudPolish }
         return local
     }
 
     /// The row dictation runs on now: the recogniser it uses (nil: nothing yet), and whether polish goes to a cloud
-    /// service. Cloud polish counts only over a local Qwen3-ASR (the configuration measured); macOS Speech with cloud
+    /// service. Cloud polish counts only over a downloaded local model (the configurations measured); macOS Speech with cloud
     /// polish, or another model, is no row of the table (nil) — never a row whose privacy column isn't true.
     public static func inUse(recognizer: String?, cloudPolish: Bool) -> DictationChoice? {
         guard let r = recognizer, let c = DictationChoice(rawValue: r), c != .cloudPolish else { return nil }
         if c == .cloudRecognizer { return c }
-        if cloudPolish { return c == .qwenSmall || c == .qwenLarge ? .cloudPolish : nil }
+        if cloudPolish { return c.localModel ? .cloudPolish : nil }
         return c
     }
 }

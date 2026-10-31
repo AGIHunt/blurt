@@ -54,6 +54,8 @@ Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   qwen3-asr-onnx  local CPU (any OS), sherpa-onnx + Qwen3-ASR 0.6B int8, 30 languages. Hotwords per stream.
   qwen3-asr-mlx   local, Apple Silicon (MLX), Qwen3-ASR 0.6B 8-bit, 30 languages, `context` biasing per request
                   (dictation's default: docs/design/dictation.md §Recognition model).  needs mlx-qwen3-asr
+  fun-asr-mlx     local, Apple Silicon (MLX), Fun-ASR-Nano 0.8B, zh / en / ja, the Words as hotwords
+                  (dictation on 8 GB and slower Macs: docs/design/dictation.md §Defaults by Mac).  needs mlx-audio
   mlx-whisper     local, Apple Silicon (MLX), Whisper large-v3-turbo (fp16 / 4-bit).  needs mlx-whisper
   faster-whisper  local, NVIDIA CUDA (or CPU), Whisper large-v3-turbo (CTranslate2).  needs faster-whisper
   openai          any OpenAI-compatible /audio/transcriptions API (OpenAI, Groq, SiliconFlow, ...)
@@ -1184,6 +1186,30 @@ def group_chunks(segs: list[tuple[float, float]], max_len: float, max_gap: float
     return [(s, e) for s, e in chunks]
 
 
+def pause_spans(samples: np.ndarray, max_len: float) -> list[tuple[float, float]]:
+    """The audio cut into contiguous spans of at most `max_len` s, each cut in the middle of a pause the VAD heard (a
+    hard cut only inside speech longer than that); spans with no speech in them are left out. Nothing at a span's edges
+    is trimmed: for a model that hears an utterance whole (Fun-ASR-Nano: its piece's first 0.18 s of silence cut off
+    turned 语音输入 into 语音水软, a 1.1 s VAD chunk of a 5.9 s piece came back as "Puritan")."""
+    dur = len(samples) / SR
+    segs = vad_segments(samples, max_speech=min(25, max_len))
+    if not segs:
+        return []
+    cuts = [(a[1] + b[0]) / 2 for a, b in zip(segs, segs[1:]) if b[0] > a[1]]
+    spans, start = [], 0.0
+    for i, c in enumerate(cuts + [dur]):
+        nxt = cuts[i + 1] if i + 1 < len(cuts) else dur
+        while c - start > max_len:            # one stretch of speech longer than a span
+            spans.append((start, start + max_len))
+            start += max_len
+        if nxt - start > max_len and c > start:
+            spans.append((start, c))
+            start = c
+    if dur > start:
+        spans.append((start, dur))
+    return [(a, b) for a, b in spans if any(s < b and e > a for s, e in segs)]
+
+
 def wav_bytes(samples: np.ndarray) -> bytes:
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
@@ -1619,6 +1645,84 @@ class Qwen3Mlx(MlxBackend):
         return ("" if lang in ("Chinese", "Japanese", "Cantonese") else " ").join(t for t in texts if t).strip(), lang_code(lang)
 
 
+class FunAsrMlx(MlxBackend):
+    """Fun-ASR-Nano (Alibaba, 0.8B: SenseVoice's encoder + Qwen3-0.6B) on MLX (mlx-audio). On the founder's 95 takes
+    2.84 % errors against the 0.6B's 3.34 % (2.92 % through the app's path), the best local model on Chinese with
+    English inside it (ASCEND 6.6 %), and ~0.1 s after key-up (docs/design/dictation-eval-2026-10-31.md §2.1, §3, §5;
+    docs/design/dictation.md §Defaults by Mac). Chinese, English and Japanese only
+    (asr_models.json `languages`). The Words go in as hotwords; it takes no other context (no text so far, no field
+    text: it wasn't measured with any). One whole utterance per call, ≤ 30 s (max_chunk). Interruptible: the decode is
+    our loop over mlx-audio's tokens, so an interim request stops between tokens."""
+    stop_check = None
+    interruptible = True
+    whole_spans = True      # never VAD-trimmed (transcribe_track: pause_spans)
+    max_terms = dictation_vocab.QWEN_MAX_TERMS     # its hotword list goes into the prompt like Qwen3-ASR's context
+    LANGS = {"zh": "zh", "yue": "zh", "en": "en", "ja": "ja"}     # what its prompt can name; anything else: automatic
+    EOS = (151643, 151645)
+
+    def _check(self):
+        if self.stop_check is not None and self.stop_check():
+            raise Interrupted("another request is waiting")
+
+    def load(self, args):
+        try:
+            import mlx.core as mx
+            from mlx_audio.stt import load as load_stt
+        except ImportError:
+            raise Fail("mlx-audio not installed (uv run --with mlx-audio …)", "deps", 4)
+        self.mx = mx
+        self.repo = self.model = args.model or "mlx-community/Fun-ASR-Nano-2512"
+        self.net = load_stt(self.repo)
+        self.language = self.LANGS.get((args.language or "").lower())
+        self.hotwords: list[str] = []
+        self.last: dict = {}
+
+    def release(self):
+        self.net = None
+        super().release()
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.hotwords = [t["term"] for t in terms[:self.max_terms] if str(t.get("term") or "").strip()]
+        return bool(self.hotwords)
+
+    def decode(self, x):
+        self.last = {}
+        text = self._decode(x, self.hotwords)
+        # the hotword list written out as the answer (a noisy piece it couldn't make out): once more without it
+        if self.hotwords and dictation_vocab.context_dump(text, self.hotwords):
+            text = self._decode(x, [])
+            self.last["context_dump"] = True
+        return [(0.0, len(x) / SR, text, self._lang(text))]
+
+    def _decode(self, x, hotwords: list[str]) -> str:
+        mx, net = self.mx, self.net
+        from mlx_audio.lm.generate import generate_step
+        self._check()
+        ids, embeds = net._build_inputs_embeds(mx.array(np.asarray(x, np.float32)), language=self.language,
+                                               hotwords=hotwords or None, itn=True)
+        # a loop, if it ever starts, stops well before the model's 512: speech is under ~8 tokens a second
+        budget = min(512, 32 + int(20 * len(x) / SR))
+        out: list[int] = []
+        for token, _ in generate_step(prompt=ids[0], input_embeddings=embeds[0], model=net, max_tokens=budget):
+            t = int(token)
+            if t in self.EOS:
+                break
+            out.append(t)
+            self._check()
+        text = net._tokenizer.decode(out, skip_special_tokens=True)
+        mx.clear_cache()
+        return cjk_punctuation(re.sub(r"\s+", " ", text.replace("/sil", " ")).strip())
+
+    @staticmethod
+    def _lang(text: str) -> str | None:
+        """It names no language: kana → ja, any Chinese character → zh, Latin letters only → en."""
+        if not text:
+            return None
+        if _KANA.search(text):
+            return "ja"
+        return "zh" if re.search(r"[㐀-鿿]", text) else "en" if re.search(r"[A-Za-z]", text) else None
+
+
 class FasterWhisper:
     max_chunk = 30
 
@@ -1887,14 +1991,17 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float
 
 
 BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
-            "qwen3-asr-mlx": Qwen3Mlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech, "openai": OpenAICompat,
-            "dashscope": DashScope}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper", "apple"}
+            "qwen3-asr-mlx": Qwen3Mlx, "fun-asr-mlx": FunAsrMlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech,
+            "openai": OpenAICompat, "dashscope": DashScope}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
-                  "qwen3-asr-mlx": "mlx-qwen3-asr"}  # backend → `uv run --with` package
+                  "qwen3-asr-mlx": "mlx-qwen3-asr", "fun-asr-mlx": "mlx-audio"}  # backend → `uv run --with` package
 # The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
 # release, like the script header's). faster-whisper (NVIDIA, Windows / Linux) is pinned when it is next verified.
-PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4"}
+# mlx-audio 0.6.3 pins mlx 0.32.4, the version the other two resolve to as well: one server holds all three
+# (serve_packages).
+PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4",
+                "mlx-audio": "mlx-audio==0.6.3"}
 API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
 CLOUD_WORKERS = 4       # a cloud service's parts of one take in flight at once (NoteEngine.note)
 
@@ -2083,7 +2190,7 @@ def resolve_backend(a, purpose: str = "batch") -> str:
     cfg = asr_config()
     m = select(purpose, a)
     a.model = None if m["backend"] == "sensevoice" else m.get("model")
-    if m["backend"] in ("qwen3-asr-mlx", "mlx-whisper"):
+    if m["backend"] in ("qwen3-asr-mlx", "mlx-whisper", "fun-asr-mlx"):
         # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline. Whisper got its repo id, and
         # mlx-whisper asked huggingface.co about it on every load (`Fetching 4 files`: +2 s here, longer where the
         # site is slow or blocked) before reading the files it already had
@@ -2138,7 +2245,7 @@ def make_backend(name: str, a, purpose: str = "batch"):
                 raise Fail(f"{m['id']} is not downloaded", "model_missing")
             install_model(m)
     b = BACKENDS[name](a)
-    if name == "qwen3-asr-mlx" and purpose in ("batch", "live"):
+    if name in ("qwen3-asr-mlx", "fun-asr-mlx") and purpose in ("batch", "live"):
         b.max_chunk = 15      # a segment per chunk: a recording's timestamps (frames, items) stay this fine
     return b
 
@@ -2225,8 +2332,13 @@ def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, labe
         dur = len(samples) / SR
         r = decode_slice(backend, samples, 0.0, dur) if dur > 0 else []
         return [(s_, e_, t, label, *lg) for s_, e_, t, *lg in r], dur, dur if is_blank(r) else 0.0
-    segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
-    chunks = group_chunks(segs, backend.max_chunk)
+    if getattr(backend, "whole_spans", False):
+        # a model that hears utterances whole (Fun-ASR-Nano): a piece or window as it is, a longer one cut in pauses
+        dur = len(samples) / SR
+        chunks = [(0.0, dur)] if 0 < dur <= backend.max_chunk else pause_spans(samples, backend.max_chunk)
+    else:
+        segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
+        chunks = group_chunks(segs, backend.max_chunk)
     sp = sum(e - s for s, e in chunks)
     if not quiet:
         print(f"audio {fmt_ts(len(samples) / SR)}{f' ({label})' if label else ''}, speech {fmt_ts(sp)} "
@@ -2849,7 +2961,8 @@ def cmd_auto(a):
 # --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
-DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
+DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
 DICTATION_CLOUD = ("qwen3-asr-flash", "openai-compatible")   # offered once their key is set (first-minute-speech.md §2.4)
 
@@ -2882,11 +2995,29 @@ def fits_with_polish(m: dict, hw: dict, polish_mb: float) -> bool:
 # 3.34 %; Gemma 4 E2B as local polish is within ±0.2 points (fillers and punctuation, not words). The 1.7B needs ~3.1 GB
 # and its last 30 s window decoded at key-up: on a slow chip (a base M1 / M2, 7–10 GPU cores against the M5 Max's 40)
 # that is over a second, so it goes where its measured rtf (`transcribe.py bench`, asr-bench.json) is at most
-# TIER_RTF_LIMIT — or, not measured, where the chip isn't a base M1 / M2. BlurtCore DictationTier.recommended is the
-# same rule for the app (Settings shows it); tests/fixtures/dictation_tier.jsonl checks both.
+# TIER_RTF_LIMIT — or, not measured, where the chip isn't a base M1 / M2. Where the 1.7B doesn't go (8 GB, slow chips),
+# Fun-ASR-Nano for users who speak only Chinese, English and Japanese (2.92 % through the app's path, 0.07 / 0.17 s
+# after key-up, 2.6 GB at peak: it fits 8 GB as the 0.6B does), else the 0.6B (small_recognizer). BlurtCore
+# DictationTier.recommended is the same rule for the app (Settings shows it); tests/fixtures/dictation_tier.jsonl checks
+# both.
 TIER_RTF_LIMIT = 0.05
 SLOW_CHIPS = ("Apple M1", "Apple M2")
 TIER_POLISH = "gemma4-e2b"
+
+
+def speaks_all(m: dict | None, langs: list[str] | None) -> bool:
+    """Every one of `langs` is a language of model `m` (asr_models.json `languages`); False for no languages (nothing
+    known about the user is no reason for a model that speaks three)."""
+    return bool(m) and bool(langs) and all(speaks(m, x) for x in langs)
+
+
+def small_recognizer(langs: list[str] | None) -> str:
+    """The recogniser for Macs the 1.7B doesn't suit (8 GB, or too slow for it): Fun-ASR-Nano when it speaks every
+    language of the user's (Chinese, English, Japanese) — fewer errors than the 0.6B (2.92 vs 3.34 % on the founder's
+    takes through the app's path; Chinese with English inside it ASCEND 6.6 vs 8.9 %, English level, Japanese 16.0 vs
+    20.2 %) and as fast after key-up (dictation-eval-2026-10-31.md §2.1, §3, §5; docs/design/dictation.md §Defaults by
+    Mac) — else the 0.6B (30 languages)."""
+    return FUN_MLX if speaks_all(entry(FUN_MLX), langs) else QWEN_MLX
 
 
 def slow_chip(chip: str | None) -> bool:
@@ -2894,15 +3025,18 @@ def slow_chip(chip: str | None) -> bool:
     return " ".join(str(chip or "").split()) in SLOW_CHIPS
 
 
-def dictation_tier(ram_gb: float, rtf: float | None = None, slow: bool = False, cloud_key: bool = False) -> dict:
+def dictation_tier(ram_gb: float, rtf: float | None = None, slow: bool = False, cloud_key: bool = False,
+                   languages: list[str] | None = None) -> dict:
     """What dictation runs on for a Mac with `ram_gb` of memory (Apple Silicon): the recogniser (its window and field
     context come with it from asr_models.json), the local polish model (None: off), and — with a cloud key —
     cloud polish with macOS's transcript as the second opinion (§6.3 A: the recogniser stays local). `rtf`: the 1.7B's
-    measured real-time factor here (None: not measured — then `slow`, a base M1 / M2, decides). Pure."""
+    measured real-time factor here (None: not measured — then `slow`, a base M1 / M2, decides). `languages`: the
+    user's (user_languages): where the 1.7B doesn't go, Fun-ASR-Nano for Chinese / English / Japanese speakers, else
+    the 0.6B (small_recognizer). Pure."""
     tier = "minimal" if ram_gb < 7.5 else "light" if ram_gb < 15 else "standard" if ram_gb < 30 else "pro"
     fast = (rtf <= TIER_RTF_LIMIT) if rtf is not None else not slow
     big = tier in ("standard", "pro") and fast
-    rec = QWEN_MLX_17 if big else QWEN_MLX if tier != "minimal" else None
+    rec = QWEN_MLX_17 if big else small_recognizer(languages) if tier != "minimal" else None
     m = entry(rec) or {}
     return {"tier": tier, "recognizer": rec, "window_s": m.get("rehear_window_s") or (30 if big else 20 if rec else None),
             "field_context": bool(m.get("field_context_chars")) if m else False,
@@ -2927,18 +3061,23 @@ def dictation_models(hw: dict | None = None) -> dict:
     def fits(mid: str) -> bool:
         m = entry(mid)
         return bool(m) and fits_with_polish(m, hw, pmb)
-    # by Mac (dictation_tier: the 2026-10-31 eval): the 1.7B on 16 GB+ Macs fast enough for it, else the 0.6B — each
-    # only where it fits beside the polish model; else the voice-note pick (the voice-note pick is macOS's own
-    # recogniser while nothing is downloaded: the download to offer is then the one the voice-note rules would choose)
+    # by Mac (dictation_tier: the 2026-10-31 eval): the 1.7B on 16 GB+ Macs fast enough for it, else Fun-ASR-Nano for
+    # Chinese / English / Japanese speakers, else the 0.6B — each only where it fits beside the polish model; else the
+    # voice-note pick (the voice-note pick is macOS's own recogniser while nothing is downloaded: the download to offer
+    # is then the one the voice-note rules would choose)
     note_rec = note_pick["id"] if note_pick["id"] != APPLE else recommend(purpose="note", hw=hw)["pick"]["model"]
-    plan = dictation_tier(hw["ram_gb"], (_bench_results().get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")))
-    rec = next((mid for mid in ((plan["recognizer"], QWEN_MLX) if plan["recognizer"] else ()) if apple and fits(mid)),
-               note_rec)
-    # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
-    # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
-    # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
-    # voice-note model
-    usable = [mid for mid in (QWEN_MLX_17, QWEN_MLX) if mid != rec and apple and fits(mid)]
+    langs = user_languages()
+    small = small_recognizer(langs)
+    plan = dictation_tier(hw["ram_gb"], (_bench_results().get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")),
+                          languages=langs)
+    rec = next((mid for mid in ((plan["recognizer"], small, QWEN_MLX) if plan["recognizer"] else ())
+                if apple and fits(mid)), note_rec)
+    # what runs: the configured one (the user's choice, as it is), else the recommended one, else any of the 1.7B,
+    # Fun-ASR-Nano (for its languages) or the 0.6B already here that runs next to polish, best first for this Mac (the
+    # 1.7B last where it is too slow or too big) — they take the Words list; the voice-note model doesn't — a 1.7B
+    # brought from a bigger Mac, or a 0.6B until Fun-ASR-Nano is in — all only when installed; else the voice-note model
+    order = (QWEN_MLX_17, small, QWEN_MLX) if plan["recognizer"] == QWEN_MLX_17 else (small, QWEN_MLX, QWEN_MLX_17)
+    usable = [mid for mid in dict.fromkeys(order) if mid != rec and apple and fits(mid)]
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
@@ -2956,6 +3095,8 @@ def dictation_models(hw: dict | None = None) -> dict:
             continue
         if not m.get("local", True) and (local_only() or not installed(m)):
             continue        # a cloud service: only with its key, never when recognition stays on this Mac
+        if mid == FUN_MLX and not speaks_all(m, langs) and mid not in (configured, selected):
+            continue        # three languages: not offered to someone who speaks another (unless already chosen)
         have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
                      "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True) or bool(m.get("builtin"))),

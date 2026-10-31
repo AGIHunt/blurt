@@ -207,7 +207,8 @@ final class DictationModels: ObservableObject {
     var tier: DictationTier.Choice {
         DictationTier.recommended(ramGB: (Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 * 10).rounded() / 10,
                                   rtf: SpeechModel.shared.model(DictationTier.large)?.bench?.rtf,
-                                  hasCloudKey: DictationCloud.ready, slowChip: DictationTier.slowChip(Self.chip))
+                                  hasCloudKey: DictationCloud.ready, slowChip: DictationTier.slowChip(Self.chip),
+                                  languages: SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages)
     }
     /// "Apple M5 Max" (machdep.cpu.brand_string), as transcribe.py's probe reads it
     static let chip: String? = {

@@ -13,3 +13,7 @@
   Cache-Control: public, max-age=0, must-revalidate
 /llms.txt
   Content-Type: text/plain; charset=utf-8
+# the app's curated model list (skills/blurt/scripts/curated_models.json; the app checks it at most once a day)
+/models/*
+  Cache-Control: public, max-age=3600
+  Content-Type: application/json; charset=utf-8

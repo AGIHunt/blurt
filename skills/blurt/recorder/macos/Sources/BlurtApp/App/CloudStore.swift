@@ -1,7 +1,7 @@
 // The cloud services the user connected and which model does each text job (Settings → Models; the rules are BlurtCore's
-// CloudServices.swift): record.cloud, the keys in the login Keychain, the services' model lists (cached in
-// $BLURT_HOME/cloud-models.json), and what each job's request carries — read by dictation's polish and translate, ⌥T and
-// ⌥C's second reading. The speech jobs keep their own settings (asr.*); a Model Studio or OpenAI key connected here is
+// CloudServices.swift and CloudCurated.swift): record.cloud, the keys in the login Keychain, and what each job's request
+// carries — read by dictation's polish and translate, ⌥T and ⌥C's second reading. Which models a job offers is the
+// curated list's (CuratedModels); no service's own model list is read any more. The speech jobs keep their own settings (asr.*); a Model Studio or OpenAI key connected here is
 // also what cloud speech uses (CloudSpeech.environment).
 //
 // Keys: service "Blurt Cloud Polish", account = the service's id — the accounts cloud polish used before (deepseek,
@@ -10,7 +10,8 @@
 // (stdin or the warm server's local socket), never written to a file or a log.
 //
 // Migration (once, the first time record.cloud is read): CloudMigration — every old service with a key is connected,
-// every job stays where it ran.
+// every job stays where it ran. record.cloud v1 (Auto took a service's newest model): CuratedMigration pins an Auto job
+// that ran on a model the curated list doesn't have, read from the model lists v1 cached ($BLURT_HOME/cloud-models.json).
 import Foundation
 import Security
 import BlurtCore
@@ -22,7 +23,7 @@ enum CloudStore {
     private static let lock = NSLock()
     private static var cachedSetup: CloudSetup?
     private static var keyed: [String: Bool] = [:]
-    private static var lists: [String: Listed]?
+    private static var lists: [String: [CloudModelInfo]]?
 
     // MARK: record.cloud
 
@@ -57,7 +58,20 @@ enum CloudStore {
     }
 
     private static func loadOrMigrate() -> CloudSetup {
-        if let o = recordConfig()["cloud"] as? [String: Any] { return CloudSetup(json: o) }
+        if let o = recordConfig()["cloud"] as? [String: Any] {
+            let s = CloudSetup(json: o)
+            guard (o["v"] as? Int ?? 1) < 2 else { return s }
+            // v1: an Auto job keeps the model it ran on when the curated list doesn't have it
+            let services = s.services.filter { key($0) != nil }
+            let pinned = CuratedMigration.pin(s, connected: services, list: CuratedModels.list) { job in
+                CloudRouting.resolve(job, choice: .auto, connected: services, models: { v1Models($0) })
+            }
+            setRecordConfig("cloud", pinned.json)
+            if pinned != s {
+                emit(["event": "cloud_pinned", "jobs": Dictionary(uniqueKeysWithValues: pinned.jobs.map { ($0.key.rawValue, choiceName($0.value)) })])
+            }
+            return pinned
+        }
         let dictation = recordConfig()["dictation"] as? [String: Any] ?? [:]
         let screen = recordConfig()["screen_text"] as? [String: Any] ?? [:]
         var keys = Set<String>()
@@ -95,7 +109,8 @@ enum CloudStore {
         return nil
     }
 
-    /// Connect (or change) a service: its key (when one was typed) and its address; the jobs on Auto take it up.
+    /// Connect (or change) a service: its key (when one was typed) and its address; the jobs on Auto take it up when
+    /// it runs one of their curated models.
     static func connect(_ svc: CloudService, key: String?) {
         var s = setup
         if let i = s.services.firstIndex(where: { $0.id == svc.id }) { s.services[i] = svc } else { s.services.append(svc) }
@@ -118,15 +133,13 @@ enum CloudStore {
         Key.write(svc.id, "")
         lock.lock(); keyed[svc.id] = nil; lock.unlock()
         save(s)
-        lock.lock(); lists?[svc.id] = nil; lock.unlock()
-        saveLists()
         CloudSpeech.invalidate()
         emit(["event": "cloud_service", "action": "remove", "service": svc.id])
     }
 
     static func invalidateKeys() { lock.lock(); keyed = [:]; lock.unlock() }
 
-    private static func didChange() {
+    static func didChange() {
         DispatchQueue.main.async { NotificationCenter.default.post(name: changed, object: nil) }
     }
 
@@ -154,100 +167,48 @@ enum CloudStore {
         }
     }
 
-    // MARK: model lists
+    // MARK: v1's model lists (read once, to pin v1 setups)
 
-    struct Listed { var base: String; var at: Date; var models: [CloudModelInfo] }
-
-    private static var listFile: URL { BlurtPaths.home.appendingPathComponent("cloud-models.json") }
-
-    private static func loadLists() -> [String: Listed] {
+    /// The list v1 cached for a service at its current address (nil: none).
+    private static func v1Models(_ s: CloudService) -> [CloudModelInfo]? {
         lock.lock()
-        if let l = lists { lock.unlock(); return l }
+        if let l = lists { lock.unlock(); return l[s.id] }
         lock.unlock()
-        var out: [String: Listed] = [:]
-        if let d = try? Data(contentsOf: listFile), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+        var out: [String: [CloudModelInfo]] = [:]
+        let file = BlurtPaths.home.appendingPathComponent("cloud-models.json")
+        if let d = try? Data(contentsOf: file), let o = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+            let setup = CloudSetup(json: recordConfig()["cloud"] as? [String: Any])
             for (id, v) in o {
-                guard let e = v as? [String: Any], let base = e["base"] as? String else { continue }
-                out[id] = Listed(base: base, at: Date(timeIntervalSince1970: e["at"] as? Double ?? 0),
-                                 models: (e["models"] as? [[String: Any]] ?? []).compactMap(CloudModelInfo.init(json:)))
+                guard let e = v as? [String: Any], let base = e["base"] as? String,
+                      setup.service(id)?.effectiveBaseURL == base else { continue }
+                out[id] = (e["models"] as? [[String: Any]] ?? []).compactMap(CloudModelInfo.init(json:))
             }
         }
-        lock.lock(); if lists == nil { lists = out }; let l = lists ?? out; lock.unlock()
-        return l
+        lock.lock(); lists = out; lock.unlock()
+        return out[s.id]
     }
 
-    private static func saveLists() {
-        lock.lock(); let l = lists ?? [:]; lock.unlock()
-        var o: [String: Any] = [:]
-        for (id, e) in l { o[id] = ["base": e.base, "at": e.at.timeIntervalSince1970, "models": e.models.map(\.json)] }
-        if let d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) { try? d.write(to: listFile, options: .atomic) }
-    }
-
-    /// The service's list as last read (nil: never read at its current address).
-    static func models(_ s: CloudService) -> [CloudModelInfo]? {
-        guard let e = loadLists()[s.id], e.base == s.effectiveBaseURL else { return nil }
-        return e.models
-    }
-
-    static func listedAt(_ s: CloudService) -> Date? {
-        guard let e = loadLists()[s.id], e.base == s.effectiveBaseURL else { return nil }
-        return e.at
-    }
-
-    static func store(_ models: [CloudModelInfo], for s: CloudService) {
-        _ = loadLists()
-        lock.lock(); lists?[s.id] = Listed(base: s.effectiveBaseURL, at: Date(), models: models); lock.unlock()
-        saveLists()
-        didChange()
-    }
-
-    enum FetchError: Error, Equatable { case noKey, auth, noList, network, server }
-
-    /// GET the service's model list with its key (10 s); stored when it came. `key`: one just typed (else the saved one).
-    static func fetchModels(_ s: CloudService, key typed: String? = nil) async -> Result<[CloudModelInfo], FetchError> {
-        guard let k = (typed?.isEmpty == false ? typed : nil) ?? key(s) else { return .failure(.noKey) }
-        guard let url = s.modelsURL else { return .failure(.noList) }
-        var req = URLRequest(url: url, timeoutInterval: 10)
-        if s.api == .anthropic {
-            req.setValue(k, forHTTPHeaderField: "x-api-key")
-            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        } else {
-            req.setValue("Bearer " + k, forHTTPHeaderField: "Authorization")
-        }
-        do {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            switch code {
-            case 200:
-                guard let m = CloudModelList.parse(data), !m.isEmpty else { return .failure(.noList) }
-                store(m, for: s)
-                return .success(m)
-            case 401, 402, 403: return .failure(.auth)
-            case 404, 405: return .failure(.noList)
-            default: return .failure(.server)
-            }
-        } catch {
-            return .failure(.network)
-        }
-    }
-
-    /// The lists of the connected services read more than a day ago (or never): read again, quietly (at launch,
-    /// when Settings → Models opens).
+    /// At launch and when Settings → Models opens: record.cloud read (its one-time moves) and the keys looked up off
+    /// the main thread, and the curated list fetched again when a day old.
     static func refreshStale() {
-        Task.detached(priority: .utility) {
-            for s in connected where (listedAt(s).map { Date().timeIntervalSince($0) > 86_400 } ?? true) {
-                _ = await fetchModels(s)
-            }
-        }
+        Task.detached(priority: .utility) { _ = connected }
+        CuratedModels.refreshIfDue()
     }
-
-    /// The service's models a job can pick from: its list, else the ids its docs named, else none.
-    static func choices(_ s: CloudService) -> [CloudModelInfo]? { models(s) ?? (s.known.isEmpty ? nil : s.known) }
 
     // MARK: where a job goes
 
     static func route(_ job: CloudJob) -> CloudRoute {
-        CloudRouting.resolve(job, choice: setup.choice(job), connected: connected, models: { models($0) })
+        CuratedRouting.resolve(job, choice: setup.choice(job), connected: connected, list: CuratedModels.list)
+    }
+
+    /// A model Blurt didn't measure on a job: the curated option to switch to (CuratedRouting.recommendation).
+    static func recommendation(_ job: CloudJob) -> CuratedRouting.Pick? {
+        CuratedRouting.recommendation(job, route: route(job), connected: connected, list: CuratedModels.list)
+    }
+
+    /// The services connected with a key that run a curated option of the job (Compare's "a key for cloud polish").
+    static func curatedConnected(_ job: CloudJob) -> Bool {
+        CuratedModels.list.options(job).contains { o in connected.contains(where: o.runs(on:)) }
     }
 
     /// What a job's request carries to the scripts ({"provider", "base_url", "model", "protocol", "key"}, the model
@@ -262,10 +223,11 @@ enum CloudStore {
          "key": key, "translate_model": model, "vision_model": model]
     }
 
-    /// The job's model and where it runs, for a line: ("deepseek-flash", "DeepSeek"), or nil on this Mac.
+    /// The job's model and where it runs, for a line: ("DeepSeek V4.1 Flash", "DeepSeek") — a curated model by its
+    /// name, any other by its id —, or nil on this Mac.
     static func cloudModel(_ job: CloudJob) -> (model: String, service: String)? {
         guard case .cloud(let id, let model) = route(job), let s = setup.service(id) else { return nil }
-        return (model, name(s))
+        return (CuratedModels.list.option(job, on: s, model: model)?.name ?? model, name(s))
     }
 
     // MARK: the key (login Keychain)

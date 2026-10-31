@@ -79,6 +79,7 @@
 "speech.note.qwen3_cpu" = "Thirty languages on the processor, on any computer.";
 "speech.note.qwen3_mlx" = "Fast on the GPU, and it uses your Words.";
 "speech.note.qwen3_mlx_17" = "The larger Qwen3-ASR: fewer mistakes on names and in a noisy room, about 25 ms slower per sentence.";
+"speech.note.fun_asr" = "Chinese, English and Japanese on the GPU, and it uses your Words.";
 "speech.note.cloud" = "Runs in the cloud with your own key.";
 "speech.note.apple" = "Built into macOS 26, nothing to download; less accurate on names than Qwen3-ASR";
 
@@ -175,6 +176,7 @@
 "speech.tag.apple-speech" = "Built in, no download; more sound-alike mistakes";
 "speech.tag.qwen3-asr-0.6b-mlx" = "Accurate, knows your words";
 "speech.tag.qwen3-asr-1.7b-mlx" = "A little better at English; 2.5× the size";
+"speech.tag.fun-asr-nano-mlx" = "Better at Chinese mixed with English; fast";
 "speech.tag.sensevoice-small" = "Smallest and fastest; ignores your words";
 "speech.tag.whisper-large-v3-turbo-mlx" = "The most languages";
 "speech.tag.whisper-large-v3-turbo-q4-mlx" = "Many languages, small download";

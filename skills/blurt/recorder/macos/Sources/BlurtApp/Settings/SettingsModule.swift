@@ -29,8 +29,8 @@ enum SettingsModule {
             await MainActor.run { Spotlight.shared.refresh() }
         }
 
-        // the cloud services (record.cloud; the one-time move from cloud polish happens on this first read) and their
-        // model lists, read again when a day old
+        // the cloud services (record.cloud; the one-time move from cloud polish happens on this first read) and the
+        // curated model list, fetched from the site when a day old
         CloudStore.refreshStale()
 
         SelfTests.install()

@@ -178,16 +178,6 @@ final class CloudServicesTests: XCTestCase {
         XCTAssertNil(CloudModelList.defaultModel(.vision, preset: kimi, models: [CloudModelInfo(id: "kimi-k3", vision: false)]))
     }
 
-    func testTheMenuLeadsWithTheDefaultKeepsThePickAndIsShort() {
-        let or = CloudPreset.preset("openrouter")!
-        let many = (1...40).map { CloudModelInfo(id: "v/model-\($0)", created: Double($0)) } + [CloudModelInfo(id: "v/model-mini", created: 10)]
-        let menu = CloudModelList.menu(.polish, preset: or, models: many, keep: "v/model-3")
-        XCTAssertEqual(menu.first?.id, "v/model-mini")
-        XCTAssertEqual(menu.count, 9)
-        XCTAssertEqual(menu.last?.id, "v/model-3")
-        XCTAssertEqual(CloudModelList.menu(.polish, preset: or, models: many, keep: "typed/by-hand").last?.id, "typed/by-hand")
-    }
-
     func testMeasuredNotesAreOnlyForWhatWasMeasured() {
         XCTAssertEqual(CloudModelList.note(.polish, preset: "dashscope", model: "deepseek-v4.1-flash"), "dictation.cloud.model.note.polish.ds41")
         XCTAssertNil(CloudModelList.note(.polish, preset: "openrouter", model: "deepseek-flash"))

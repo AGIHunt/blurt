@@ -13,8 +13,10 @@ mattered more than the history (the local prompt on DeepSeek: 6.2).
 The key never touches a file here: the app reads it from the Keychain and sends it with each request to the local
 polish server (127.0.0.1, its token); the Lab and the CLI take BLURT_POLISH_API_KEY. Nothing here logs a request.
 
-  polish_cloud.py check        reads {"cloud": {...}} on stdin (the key never on the command line) → {"ok", "ms"} or
-                               {"ok": false, "code", "error"}: Settings → Models → Cloud services' Test
+  polish_cloud.py check        reads {"cloud": {...}, "job"?} on stdin (the key never on the command line) → {"ok", "ms"}
+                               or {"ok": false, "code", "error"}: Settings → Models → Cloud services' Test (no job: one
+                               tiny request), and a Custom Model's Save (job: polish | translate | vision — the job itself
+                               on one short sentence or a small picture with text)
 """
 from __future__ import annotations
 
@@ -268,11 +270,59 @@ def _error(e: Exception) -> CloudError:
     raise e
 
 
-def check(cloud: dict, timeout: float = 15) -> dict:
-    """Settings' Test: one tiny request → {"ok", "ms"} or {"ok": False, "code", "error"}."""
+# A Custom Model's test (Settings → Models → a job's Advanced → Custom Model…): the job itself, small. A model that
+# answers nothing (thinking within its budget: MiniMax M3.1 Flash on ~10 % of takes), can't take a picture, or reads
+# one it can't see fails here, before it is ever put on a job.
+CHECK_SPEECH = "嗯 我们明天下午三点开会 讨论一下 release 的计划"
+CHECK_TRANSLATE = "我们明天下午三点开会。"
+CHECK_IMAGE_TEXT = "4721"      # the picture says "Blurt 4721" (Helvetica, 190 × 48)
+CHECK_IMAGE = ("iVBORw0KGgoAAAANSUhEUgAAAL4AAAAwAgMAAADSoCimAAAADFBMVEX////AwMA1NTUAAAAMc3DCAAABdElEQVR42u2Uv07CUBjFf7dA"
+               "AR3owIAOwuokk5pIpLo48gSaDmxuTiZGKXFXH4CBxBdwxMXcsLnhG+CfkQEHo4aW61AgFHrdnOQs7Xfac7/73XNaWOD/IKNUk/NpxujGlFKu"
+               "+XAD+fDLRnA5nBAtgERwv75XnVvdAKgb7TCbwxeiICv7j1AIP4oDoBw7xFoAR5etlI8pRYQAbH+arQDsCI93u0zkDEiSHb6ST4ODDohTwCjh"
+               "0Y+eYbQHYAkA0QMSPQFQL0YJxLUMyuzHfRHSTSDeHVqThWYEteHmuIMFkJVA1gUqUrOl9KgcALAmgYwEUdP4IE7coOwBcDY+qdVP3dCNkQ99"
+               "ALENUAaqjTnByAdvejqzC1AC8yKm6xA+jg0/7woPVl7RCuYcEj1wHL0AYByabxF7dhPArtQKUvMZ6CO20AocF88ypj4F4v0gIdFOqyuJyuYA2p"
+               "1JHEVeKVvT4RbU8osE7mZy/wuO3xa/twUW+GP8ALaAWS5XP4fVAAAAAElFTkSuQmCC")
+
+
+def check_messages(job: str, protocol: str) -> tuple[list[dict], int]:
+    """The test's request for a job, and its token budget."""
+    if job == "translate":
+        return [{"role": "system", "content": "Translate the user's text into English. Reply with the translation only."},
+                {"role": "user", "content": CHECK_TRANSLATE}], 200
+    if job == "vision":
+        prompt = "Transcribe the text in this image exactly. Reply with the text only."
+        if protocol == "anthropic":
+            content = [{"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": CHECK_IMAGE}},
+                       {"type": "text", "text": prompt}]
+        else:
+            content = [{"type": "text", "text": prompt},
+                       {"type": "image_url", "image_url": {"url": "data:image/png;base64," + CHECK_IMAGE}}]
+        return [{"role": "user", "content": content}], 200
+    return messages(CHECK_SPEECH, [], None, None), 300
+
+
+def check(cloud: dict, timeout: float = 15, job: str | None = None) -> dict:
+    """Settings' Test → {"ok", "ms"} or {"ok": False, "code", "error"}. No job: one tiny request (the key, the address).
+    A job (polish | translate | vision): the job on a short sentence or a small picture with text, and its answer must
+    be there — a picture's must say what the picture says (code "vision" when it doesn't); a model id the service
+    refuses is code "model"."""
     try:
         cfg = settings(cloud)
-        r = complete(cfg, [{"role": "user", "content": "Reply with: OK"}], timeout, 16, allow_empty=True)
+        if job not in ("polish", "translate", "vision"):
+            r = complete(cfg, [{"role": "user", "content": "Reply with: OK"}], timeout, 16, allow_empty=True)
+            return {"ok": True, "ms": r["ms"], "model": cfg["model"]}
+        msgs, budget = check_messages(job, cfg["protocol"])
+        try:
+            r = complete(cfg, msgs, max(timeout, 30), budget)
+        except CloudError as e:
+            # 404: no such model; 400: a model that can't take this request (a picture, for a model that can't see)
+            if str(e) == "HTTP 404" or (str(e) == "HTTP 400" and job != "vision"):
+                raise CloudError(str(e), "model") from None
+            if str(e) == "HTTP 400":
+                raise CloudError(str(e), "vision") from None
+            raise
+        if job == "vision" and CHECK_IMAGE_TEXT not in r["text"]:
+            return {"ok": False, "code": "vision", "error": "the answer doesn't say what the picture says"}
         return {"ok": True, "ms": r["ms"], "model": cfg["model"]}
     except CloudError as e:
         return {"ok": False, "code": e.code, "error": str(e)}
@@ -287,7 +337,7 @@ def main() -> None:
         req = json.loads(sys.stdin.read() or "{}")
     except ValueError:
         req = {}
-    r = check(req.get("cloud") or {})
+    r = check(req.get("cloud") or {}, job=req.get("job"))
     print(json.dumps(r, ensure_ascii=False))
     sys.exit(0 if r.get("ok") else 1)
 

@@ -18,7 +18,8 @@ final class DictationTierTests: XCTestCase {
             let name = r["case"] as? String ?? ""
             let want = r["want"] as! [String: Any]
             let c = DictationTier.recommended(ramGB: (r["ram_gb"] as! NSNumber).doubleValue, rtf: (r["rtf"] as? NSNumber)?.doubleValue,
-                                              hasCloudKey: r["cloud"] as? Bool ?? false, slowChip: r["slow"] as? Bool ?? false)
+                                              hasCloudKey: r["cloud"] as? Bool ?? false, slowChip: r["slow"] as? Bool ?? false,
+                                              languages: r["languages"] as? [String] ?? [])
             XCTAssertEqual(c.tier.rawValue, want["tier"] as? String, name)
             XCTAssertEqual(c.recognizer, want["recognizer"] as? String, name)
             XCTAssertEqual(c.window, (want["window_s"] as? NSNumber)?.doubleValue, name)
@@ -47,5 +48,21 @@ final class DictationTierTests: XCTestCase {
         let scripts = u.appendingPathComponent("scripts")
         XCTAssertEqual(ModelCatalog.rehearWindow(DictationTier.large, dir: scripts), 30)
         XCTAssertEqual(ModelCatalog.rehearWindow(DictationTier.small, dir: scripts), 20)
+        XCTAssertEqual(ModelCatalog.rehearWindow(DictationTier.fun, dir: scripts), DictationTier.funWindow)
+    }
+
+    /// Fun-ASR-Nano's languages are the catalogue's, and only people who speak nothing else get it.
+    func testFunASRLanguages() throws {
+        var u = URL(fileURLWithPath: #filePath)
+        for _ in 0..<5 { u.deleteLastPathComponent() }
+        let d = try Data(contentsOf: u.appendingPathComponent("scripts/asr_models.json"))
+        let models = (try JSONSerialization.jsonObject(with: d) as? [String: Any])?["models"] as? [[String: Any]] ?? []
+        let fun = models.first { $0["id"] as? String == DictationTier.fun }
+        XCTAssertEqual(Set(fun?["languages"] as? [String] ?? []), DictationTier.funLanguages)
+        XCTAssertTrue(DictationTier.funSpeaks(["zh-Hans-CN", "en-US"]))
+        XCTAssertTrue(DictationTier.funSpeaks(["ja"]))
+        XCTAssertFalse(DictationTier.funSpeaks(["zh", "en", "de"]))
+        XCTAssertFalse(DictationTier.funSpeaks(["yue"]))
+        XCTAssertFalse(DictationTier.funSpeaks([]))
     }
 }

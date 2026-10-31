@@ -1,18 +1,23 @@
 // Settings → Models: Cloud services and the text jobs' rows (2026-10-31; docs/design/system.md §3.4). CloudStore holds the
-// data, BlurtCore's CloudServices the rules.
+// data, BlurtCore's CloudServices and CloudCurated the rules.
 //
 //   Cloud services   one line per connected service — its name (DeepSeek marked Recommended), where it is (China /
-//                    International, a custom service's host), whether its key does speech too — and Edit…; then
-//                    Add Service…. Empty: one line on what a key is for, and DeepSeek's price, the one shown anywhere.
-//   the sheet        Service (the presets, DeepSeek first; Custom for any OpenAI- or Anthropic-compatible API), Region
-//                    where a service has a China and an international address (from the system region), the base URL
-//                    filled in (editable), the API key (Keychain; never shown back; a key with characters no key has
-//                    is refused), Test: the model list, then one tiny request → "OK · 320 ms" or one plain sentence
-//                    (Model Studio and OpenAI: the speech check too, CloudSpeech.check). Connect tests first.
-//   the job rows     Polish, Translate, Copy Text from Screen: Auto / this Mac / a connected service's models (its live
-//                    list, the default first, newest first; measured ids carry their note) / Other Model… / Add
-//                    Service…; the line under says where the content goes.
-//   feature pages    one row per job they use: "Uses deepseek-flash · cloud" (CloudText.uses) with Change…
+//                    International, a custom service's host), whether its key does speech too, "Not tested by Blurt"
+//                    for a service the curated list doesn't use — and Edit…; then Add Service… while a curated
+//                    service is left to add. Empty: one line on what a key is for, and DeepSeek's price.
+//   the sheet        Service (the curated list's: DeepSeek, Model Studio), Region where a service has a China and an
+//                    international address (from the system region), the base URL filled in (editable), the API key
+//                    (Keychain; never shown back; a key with characters no key has is refused; another service's key,
+//                    known by its start, points to Custom Model), Test: one tiny request on the service's curated
+//                    model → "OK · 320 ms" or one plain sentence (Model Studio and OpenAI: the speech check too,
+//                    CloudSpeech.check). Connect tests first.
+//   the job rows     Polish, Translate, Copy Text from Screen: This Mac, then the curated models for the job (a
+//                    service with no key yet says so: picking it adds the key, then uses it), then Advanced: a model
+//                    kept from an earlier setup ("Not tested by Blurt") and Custom Model…. The line under says where
+//                    the content goes; on a model Blurt didn't measure, "Recommended: DeepSeek V4.1 Flash" with Switch.
+//   Custom Model     any service's model for the job by its id (a connected service, or a new one: base URL and key);
+//                    Save runs the job itself first (polish_cloud.py check --job) and saves only when it passes.
+//   feature pages    one row per job they use: "Uses DeepSeek V4.1 Flash · cloud" (CloudText.uses) with Change…
 //                    (JobChangeButton), which opens the job's row here.
 // Test hooks: `settings speech/speech.services` (the section), `dictation settings-scroll cloud_sheet` or
 // BLURT_TEST_CLOUD_SHEET=add opens Add Service, BLURT_TEST_CLOUD_SHEET=<service id> that service's sheet.
@@ -39,10 +44,14 @@ final class CloudModelsUI: ObservableObject {
 enum CloudText {
     static func region(_ r: CloudRegion) -> String { r == .china ? M("models.region.china") : M("models.region.global") }
 
-    /// "deepseek-flash" with its measured note when it has one.
-    static func note(_ job: CloudJob, _ s: CloudService, _ model: String) -> String? {
-        CloudModelList.note(job, preset: s.preset, model: model).map { Loc.string($0, table: "Dictation") }
+    /// A curated option's measured line ("Accurate, about 0.8 s"), nil when it has none (or this build lacks it).
+    static func note(_ o: CuratedOption) -> String? {
+        guard let k = o.noteKey, Loc.has(k, table: "Dictation") else { return nil }
+        return Loc.string(k, table: "Dictation")
     }
+
+    /// Whether a service is one the curated list uses (else: "Not tested by Blurt").
+    static func curated(_ s: CloudService) -> Bool { CuratedModels.list.services.contains(s.preset) }
 
     /// What runs a job on this Mac (its name), nil: nothing yet.
     @MainActor static func localModel(_ job: CloudJob) -> String? {
@@ -56,18 +65,16 @@ enum CloudText {
         }
     }
 
-    /// The row's line: where the job's content goes (and, on Auto, which model it is now).
+    /// The row's line: where the job's content goes — or, on a model Blurt didn't measure, the one it recommends.
     @MainActor static func line(_ job: CloudJob) -> String {
-        let auto = CloudStore.setup.choice(job) == .auto
+        if let r = CloudStore.recommendation(job) { return M("models.job.recommend", r.option.name) }
         if let c = CloudStore.cloudModel(job) {
-            let goes = job == .vision ? M("models.job.goes.images", c.service) : M("models.job.goes.text", c.service)
-            return auto ? sentences([M("models.job.auto", c.model), goes]) : goes
+            return job == .vision ? M("models.job.goes.images", c.service) : M("models.job.goes.text", c.service)
         }
-        guard let local = localModel(job) else { return M("models.job.none") }
-        return auto ? M("models.job.auto_local", local) : M("models.job.local")
+        return localModel(job) == nil ? M("models.job.none") : M("models.job.local")
     }
 
-    /// A feature page's line: "deepseek-flash · cloud", "Gemma 4 E2B · this Mac", "No model yet".
+    /// A feature page's line: "DeepSeek V4.1 Flash · cloud", "Gemma 4 E2B · this Mac", "No model yet".
     @MainActor static func uses(_ job: CloudJob) -> String {
         if let c = CloudStore.cloudModel(job) { return M("models.uses.cloud", c.model) }
         return localModel(job).map { M("models.uses.local", $0) } ?? M("models.uses.none")
@@ -82,6 +89,9 @@ enum CloudText {
         case "rate_limited": return M("models.check.rate")
         case "no_key": return M("models.check.no_key")
         case "no_model": return M("models.check.no_model")
+        case "model": return M("models.check.model")
+        case "vision": return M("models.check.vision")
+        case "empty": return M("models.check.empty")
         default: return M("models.check.other")
         }
     }
@@ -108,7 +118,11 @@ struct CloudServicesSection: View {
         let setup = CloudStore.setup
         SettingsGroup("speech.services") {
             ForEach(setup.services) { s in serviceLine(s) }
-            addLine(empty: setup.services.isEmpty)
+            // each curated service once; the rest are added as a Custom Model in a job's pop-up
+            let taken = Set(setup.services.map(\.preset))
+            if CuratedModels.list.services.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
+                addLine(empty: setup.services.isEmpty)
+            }
         }
         .sheet(isPresented: $adding) {
             CloudServiceSheet(editing: nil) { adding = false }.buttonStyle(.automatic)
@@ -134,6 +148,7 @@ struct CloudServicesSection: View {
         else if s.info.regional, let r = s.region ?? s.endpoint?.region { parts.append(CloudText.region(r)) }
         if !s.baseURL.isEmpty && !s.info.custom { parts.append(s.host) }
         if s.info.speech { parts.append(M("models.service.speech")) }
+        if !CloudText.curated(s) { parts.append(M("models.untested")) }
         return (parts.isEmpty ? M("models.service.connected") : parts.joined(separator: " · "), false)
     }
 
@@ -210,11 +225,21 @@ final class CloudServiceSheetModel: ObservableObject {
     /// Model Studio / OpenAI: the speech check's line
     @Published var speech: String?
     @Published var connecting = false
+    /// a pasted key another service's (by its start): that service's name, for the line pointing to Custom Model
+    @Published var otherService: String?
+
+    /// The services Add Service offers: the curated list's (DeepSeek, Model Studio), in its order.
+    static var curated: [String] {
+        let l = CuratedModels.list.services
+        return l.isEmpty ? ["dashscope", "deepseek"] : l
+    }
 
     init(editing: CloudService?, preset: String? = nil) {
         self.editing = editing
         let taken = Set(CloudStore.setup.services.map(\.preset))
-        let first = preset ?? CloudPreset.all.first { !taken.contains($0.id) }?.id ?? "custom-openai"
+        // DeepSeek first when both are free (the founder: it leads the list), else the first one left
+        let order = Self.curated.sorted { ($0 == "deepseek" ? 0 : 1) < ($1 == "deepseek" ? 0 : 1) }
+        let first = preset ?? order.first { !taken.contains($0) } ?? order.first ?? "deepseek"
         let p = editing?.preset ?? first
         self.preset = p
         region = editing?.region ?? editing?.endpoint?.region ?? CloudRegion.forSystem(Locale.current.region?.identifier)
@@ -231,10 +256,12 @@ final class CloudServiceSheetModel: ObservableObject {
 
     var info: CloudPreset { CloudPreset.preset(preset) ?? CloudPreset.all.last! }
 
-    /// Presets offered when adding: each service once (the user's own, any number of times).
+    /// Presets offered when adding: each curated service once (DeepSeek first, as everywhere); any other is a Custom
+    /// Model's.
     var presets: [CloudPreset] {
         let taken = Set(CloudStore.setup.services.map(\.preset))
-        return CloudPreset.all.filter { $0.custom || !taken.contains($0.id) || $0.id == editing?.preset }
+        let offered = Set(Self.curated)
+        return CloudPreset.all.filter { (offered.contains($0.id) && !taken.contains($0.id)) || $0.id == editing?.preset || $0.id == preset }
     }
 
     func pick(_ p: String) {
@@ -256,7 +283,9 @@ final class CloudServiceSheetModel: ObservableObject {
     func keyChanged(_ k: String) {
         key = k
         check = .idle; speech = nil
-        if editing == nil, let p = CloudPreset.detect(key: k), presets.contains(where: { $0.id == p }) { pick(p) }
+        otherService = nil
+        guard editing == nil, let p = CloudPreset.detect(key: k) else { return }
+        if presets.contains(where: { $0.id == p }) { pick(p) } else { otherService = CloudStore.presetName(p) }
     }
 
     /// The service as it would be saved.
@@ -270,6 +299,16 @@ final class CloudServiceSheetModel: ObservableObject {
 
     var canSave: Bool {
         !service.effectiveBaseURL.isEmpty && (stored || !key.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
+    /// The model Test asks: the service's curated model (polish's first), else one a job uses on it; nil: nothing to ask.
+    var testModel: String? {
+        let svc = service
+        for job in CloudJob.allCases {
+            if let o = CuratedModels.list.options(job).first(where: { $0.runs(on: svc) }) { return o.model }
+        }
+        for (_, c) in CloudStore.setup.jobs { if case .cloud(let id, let m) = c, id == svc.id, !m.isEmpty { return m } }
+        return nil
     }
 
     /// The key to use: typed, else saved. nil + the sentence when there is none or it can't be a key.
@@ -286,37 +325,21 @@ final class CloudServiceSheetModel: ObservableObject {
         return (k, nil)
     }
 
-    /// Test: the model list (the key and the address), then one tiny request on the polish default (the protocol and
-    /// the model); Model Studio and OpenAI also hear a short clip (CloudSpeech.check). true when it works.
+    /// Test: one tiny request on the service's curated model (the key, the address, the protocol); Model Studio and
+    /// OpenAI also hear a short clip (CloudSpeech.check). true when it works.
     @discardableResult
     func test() async -> Bool {
         check = .running; speech = nil
         let (k, problem) = await keyToUse()
         guard let key = k else { check = .failed(problem ?? CloudText.checkFailure("no_key")); return false }
+        guard let model = testModel else { check = .failed(CloudText.checkFailure("no_model")); return false }
         let svc = service
         emit(["event": "cloud_service", "action": "test", "preset": svc.preset])
-        let t0 = Date()
-        let listed = await CloudStore.fetchModels(svc, key: key)
-        let listMs = Int(Date().timeIntervalSince(t0) * 1000)
-        var models: [CloudModelInfo]?
-        var listOK = false
-        switch listed {
-        case .success(let m): models = m; listOK = true
-        case .failure(.auth): check = .failed(CloudText.checkFailure("auth")); return false
-        case .failure(.network): check = .failed(CloudText.checkFailure("network")); return false
-        case .failure: models = svc.known.isEmpty ? nil : svc.known
-        }
-        guard let model = CloudModelList.defaultModel(.polish, preset: svc.info, models: models)
-                ?? models.flatMap({ CloudModelList.suitable($0, .polish, preset: svc.info).first?.id }) else {
-            check = .failed(CloudText.checkFailure("no_model")); return false
-        }
         let body = try? JSONSerialization.data(withJSONObject: ["cloud": CloudStore.payload(svc, model: model, key: key)])
         let result: Check = await withCheckedContinuation { c in
             Scripts.call("polish_cloud.py", ["check"], stdin: body, timeout: 30) { r in
                 switch r {
                 case .success(let o): c.resume(returning: .ok(o["ms"] as? Int ?? 0))
-                // the scripts can't run yet (uv still installing, a first launch): the list already proved the key
-                case .failure(let f) where listOK && ["no_uv", "no_scripts", "failed"].contains(f.code): c.resume(returning: .ok(listMs))
                 case .failure(let f): c.resume(returning: .failed(CloudText.checkFailure(f.code)))
                 }
             }
@@ -341,8 +364,7 @@ final class CloudServiceSheetModel: ObservableObject {
         }
     }
 
-    /// Save: the key (when typed) and the service. A new service is tested first and saved when the key works (a
-    /// service that lists no models but takes the key is saved too).
+    /// Save: the key (when typed) and the service. A new service is tested first and saved when the key works.
     func save(then done: @escaping () -> Void) {
         Task {
             let typed = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -357,8 +379,7 @@ final class CloudServiceSheetModel: ObservableObject {
             let speechBefore = CloudSpeech.environment()
             CloudStore.connect(svc, key: typed.isEmpty ? nil : typed)
             key = ""
-            if case .ok = check {} else { Task.detached { _ = await CloudStore.fetchModels(svc) } }
-            afterChange(speechBefore: speechBefore)
+            Self.afterChange(speechBefore: speechBefore)
             done()
         }
     }
@@ -367,12 +388,12 @@ final class CloudServiceSheetModel: ObservableObject {
         guard let e = editing else { return done() }
         let speechBefore = CloudSpeech.environment()
         CloudStore.remove(e)
-        afterChange(speechBefore: speechBefore)
+        Self.afterChange(speechBefore: speechBefore)
         done()
     }
 
     /// The jobs follow: polish and translate on their next request, ⌥C's server, the speech jobs' list.
-    private func afterChange(speechBefore: [String: String]) {
+    static func afterChange(speechBefore: [String: String]) {
         Dictation.shared.apply()
         ScreenTextRefine.modeChanged()
         if CloudSpeech.environment() != speechBefore {
@@ -463,6 +484,9 @@ struct CloudServiceSheet: View {
                 SecureField(m.stored ? M("models.sheet.key.stored") : M("models.sheet.key.placeholder"),
                             text: Binding(get: { m.key }, set: { m.keyChanged($0) }))
                     .textFieldStyle(.roundedBorder)
+                if let other = m.otherService {
+                    detail(M("models.key.custom", other))
+                }
                 if let page = m.info.endpoint(m.region)?.keyPage, let u = URL(string: page) {
                     TextLinkButton(M("models.sheet.key.get")) { NSWorkspace.shared.open(u) }
                         .font(.system(size: SettingsMetrics.detailSize))
@@ -483,7 +507,7 @@ struct CloudServiceSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
                 Button(M("models.sheet.test")) { Task { await m.test() } }
-                    .disabled(m.check == .running || !m.canSave)
+                    .disabled(m.check == .running || !m.canSave || m.testModel == nil)
                 result
                 Spacer()
                 if m.editing != nil {
@@ -543,21 +567,29 @@ struct CloudObserving<Content: View>: View {
     }
 }
 
-/// A job row's control (Settings → Models): the pop-up, and the sheets it opens.
+/// A job row's control (Settings → Models): Switch while the job is on a model Blurt didn't measure, the pop-up, and the
+/// sheets they open.
 struct JobModelControl: View {
     let job: CloudJob
     /// the model library (Get More Models…)
     var library: () -> Void
     @ObservedObject var ui = CloudModelsUI.shared
     @ObservedObject var d = DictationModels.shared
-    @State private var adding = false
-    @State private var other = false
+    /// a curated option whose service has no key yet: Add Service for it, then the job uses it
+    @State private var adding: Adding?
+    @State private var custom = false
 
-    private static let auto = "auto", add = "add", more = "more", otherTag = "other"
+    struct Adding: Identifiable { var preset: String; var id: String { preset } }
+
+    private static let custom = "custom", more = "more"
 
     var body: some View {
         _ = ui.tick
-        return Group {
+        return HStack(spacing: 8) {
+            if let r = CloudStore.recommendation(job) {
+                Button(M("models.job.switch")) { use(r.option, on: r.service) }
+                    .help(M("models.job.recommend", r.option.name))
+            }
             if job != .vision, d.polish == nil, CloudStore.setup.services.isEmpty {
                 BrandSpinnerView(size: 12)
             } else {
@@ -565,23 +597,28 @@ struct JobModelControl: View {
                                current: current) { pick($0) }
             }
         }
-        .sheet(isPresented: $adding) { CloudServiceSheet(editing: nil) { adding = false }.buttonStyle(.automatic) }
-        .sheet(isPresented: $other) { OtherModelSheet(job: job) { other = false }.buttonStyle(.automatic) }
+        .sheet(item: $adding) { a in
+            // a service of it kept without a key: that one's sheet, to paste the key
+            CloudServiceSheet(editing: CloudStore.setup.services.first { $0.preset == a.preset }, preset: a.preset) {
+                adding = nil
+                // the key went in: the job takes the service's curated model
+                if let s = CloudStore.connected.first(where: { $0.preset == a.preset }) { set(.cloud(service: s.id, model: "")) }
+            }
+            .buttonStyle(.automatic)
+        }
+        .sheet(isPresented: $custom) { CustomModelSheet(job: job) { custom = false }.buttonStyle(.automatic) }
     }
 
-    /// The pop-up's value now.
+    /// The pop-up's value now: where the job runs (Auto shows the option it took).
     var current: String {
-        switch CloudStore.setup.choice(job) {
-        case .auto: return Self.auto
+        switch CloudStore.route(job) {
         case .local: return "local:" + (job == .polish ? d.polish?.selected ?? "" : "")
-        case .cloud(let s, let m):
-            let model = m.isEmpty ? CloudStore.route(job).model ?? "" : m
-            return "cloud:\(s)\t\(model)"
+        case .cloud(let s, let m): return "cloud:\(s)\t\(m)"
         }
     }
 
     var items: [ModelMenuPopup.Item] {
-        var out: [ModelMenuPopup.Item] = [.init(value: Self.auto, title: M("models.job.auto_item"))]
+        var out: [ModelMenuPopup.Item] = []
         // this Mac
         var local: [ModelMenuPopup.Item] = []
         switch job {
@@ -595,99 +632,285 @@ struct JobModelControl: View {
             local = [.init(value: "local:", title: "PaddleOCR-VL")]
         }
         if !local.isEmpty { out.append(.header(M("models.job.this_mac"))); out += local }
-        // each connected service: its models for the job, the default first
-        let keep: (CloudService) -> String? = { s in
-            if case .cloud(let id, let m) = CloudStore.setup.choice(job), id == s.id { return m }
-            return nil
+        // the curated models: on a connected service, or "No API key" (picking it adds the key)
+        let connected = CloudStore.connected
+        var cloud: [ModelMenuPopup.Item] = []
+        for o in CuratedModels.list.options(job) {
+            let service = CloudStore.presetName(o.service)
+            if let s = connected.first(where: o.runs(on:)) {
+                let note = [service, CloudText.note(o)].compactMap { $0 }.joined(separator: " · ")
+                cloud.append(.init(value: "cloud:\(s.id)\t\(o.model)", title: o.name, note: note))
+            } else if !connected.contains(where: { $0.preset == o.service }) {
+                cloud.append(.init(value: "add:\(o.service)", title: o.name, note: service + " · " + M("models.service.no_key")))
+            }
         }
-        for s in CloudRouting.ranked(CloudStore.connected) {
-            let list = CloudModelList.menu(job, preset: s.info, models: CloudStore.choices(s) ?? [], keep: keep(s) ?? nil)
-            guard !list.isEmpty else { continue }
-            out.append(.header(CloudStore.name(s)))
-            out += list.map { .init(value: "cloud:\(s.id)\t\($0.id)", title: $0.name ?? $0.id, note: CloudText.note(job, s, $0.id)) }
+        if !cloud.isEmpty { out.append(.header(M("models.section.services"))); out += cloud }
+        // Advanced: a model kept from before (or added as a Custom Model), and Custom Model…
+        out.append(.header(M("models.job.advanced")))
+        if case .cloud(let id, let m) = CloudStore.route(job), let s = CloudStore.setup.service(id),
+           CuratedModels.list.option(job, on: s, model: m) == nil {
+            out.append(.init(value: current, title: m, note: CloudStore.name(s) + " · " + M("models.untested")))
         }
-        out.append(.divider)
-        if !CloudStore.connected.isEmpty { out.append(.init(value: Self.otherTag, title: M("models.job.other"))) }
-        out.append(.init(value: Self.add, title: M("models.job.add")))
-        if job == .polish && d.polish?.supported == true { out.append(.init(value: Self.more, title: M("models.job.more"))) }
+        out.append(.init(value: Self.custom, title: M("models.job.custom")))
+        if job == .polish && d.polish?.supported == true {
+            out.append(.divider)
+            out.append(.init(value: Self.more, title: M("models.job.more")))
+        }
         return out
     }
 
     func pick(_ v: String) {
         switch v {
-        case Self.auto:
-            CloudStore.setChoice(.auto, for: job)
-            if job == .polish { d.unpinPolish() }
-        case Self.add: adding = true; return
-        case Self.otherTag: other = true; return
-        case Self.more: library(); return
+        case Self.custom: custom = true
+        case Self.more: library()
         default:
             if v.hasPrefix("local:") {
-                CloudStore.setChoice(.local, for: job)
+                set(.local)
                 let id = String(v.dropFirst("local:".count))
                 if job == .polish, let x = d.polish?.models.first(where: { $0.id == id }) { d.choose(x) }
+            } else if v.hasPrefix("add:") {
+                adding = Adding(preset: String(v.dropFirst("add:".count)))
             } else if v.hasPrefix("cloud:") {
                 let parts = v.dropFirst("cloud:".count).split(separator: "\t", maxSplits: 1).map(String.init)
                 guard parts.count == 2 else { return }
-                CloudStore.setChoice(.cloud(service: parts[0], model: parts[1]), for: job)
+                // a curated model is kept as the service alone: a better one in the list reaches the user
+                let svc = CloudStore.setup.service(parts[0])
+                let curated = svc.flatMap { CuratedModels.list.option(job, on: $0, model: parts[1]) } != nil
+                set(.cloud(service: parts[0], model: curated ? "" : parts[1]))
             }
         }
+    }
+
+    /// Switch: the recommended model on its connected service, or its key first.
+    func use(_ o: CuratedOption, on s: CloudService?) {
+        if let s = s { set(.cloud(service: s.id, model: "")) } else { adding = Adding(preset: o.service) }
+        emit(["event": "cloud_job", "action": "switch", "job": job.rawValue, "to": o.service + ":" + o.model])
+    }
+
+    func set(_ c: CloudJobChoice) {
+        CloudStore.setChoice(c, for: job)
         Dictation.shared.apply()
         if job == .vision { ScreenTextRefine.modeChanged() }
         ui.bump()
     }
 }
 
-/// Any model of a connected service by its id: the service, a field, and the service's models that match it.
-struct OtherModelSheet: View {
-    let job: CloudJob
-    var close: () -> Void
-    @State private var service: String = CloudRouting.ranked(CloudStore.connected).first?.id ?? ""
-    @State private var model = ""
+// MARK: - Custom Model
 
-    var matches: [CloudModelInfo] {
-        guard let s = CloudStore.setup.service(service) else { return [] }
-        let all = CloudModelList.suitable(CloudStore.choices(s) ?? [], job, preset: s.info)
-        let q = model.trimmingCharacters(in: .whitespaces).lowercased()
-        return Array((q.isEmpty ? all : all.filter { $0.id.lowercased().contains(q) || ($0.name ?? "").lowercased().contains(q) }).prefix(12))
+/// Advanced → Custom Model…: any service's model for one job, by its id — a connected service (its key), or a new one
+/// (its address and key). Save runs the job itself first (polish_cloud.py check with the job: a sentence, or a small
+/// picture with text) and saves nothing when it fails, with one short reason.
+@MainActor
+final class CustomModelModel: ObservableObject {
+    enum Check: Equatable { case idle, running, failed(String) }
+
+    let job: CloudJob
+    /// "svc:<id>" (a connected service) or "new:<preset>"
+    @Published var choice: String
+    @Published var region: CloudRegion = CloudRegion.forSystem(Locale.current.region?.identifier)
+    @Published var baseURL = ""
+    @Published var name = ""
+    @Published var key = ""
+    @Published var model = ""
+    @Published var check: Check = .idle
+
+    init(job: CloudJob) {
+        self.job = job
+        // the service the job is on, else the first connected one, else the first preset
+        let on: String? = { if case .cloud(let id, _) = CloudStore.route(job) { return id }; return nil }()
+        let connected = CloudStore.connected
+        if let id = on ?? connected.first?.id { choice = "svc:" + id }
+        else { choice = "new:" + (CustomModelModel.newPresets.first?.id ?? "custom-openai") }
+        if case .cloud(let id, let m) = CloudStore.route(job), let s = CloudStore.setup.service(id),
+           CuratedModels.list.option(job, on: s, model: m) == nil { model = m }
+        fillAddress()
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(M("models.other.title")).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            ChoicePopup(label: M("models.sheet.service"),
-                        choices: CloudRouting.ranked(CloudStore.connected).map { ($0.id, CloudStore.name($0)) },
-                        selection: $service, width: 260)
-            TextField(M("models.other.placeholder"), text: $model).textFieldStyle(.roundedBorder)
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(matches, id: \.id) { x in
-                    Button { model = x.id } label: {
-                        Text(x.id).font(.system(size: SettingsMetrics.detailSize)).frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
+    /// Presets with no service yet: every one the app knows, the user's own (OpenAI- / Anthropic-compatible) last.
+    static var newPresets: [CloudPreset] {
+        let taken = Set(CloudStore.setup.services.map(\.preset))
+        return CloudPreset.all.filter { $0.custom || !taken.contains($0.id) }
+    }
+
+    /// The connected services (their keys), then a new one of any preset not added yet.
+    var choices: [(String, String)] {
+        CloudStore.connected.map { ("svc:" + $0.id, CloudStore.name($0)) }
+            + Self.newPresets.map { ("new:" + $0.id, CloudStore.presetName($0.id)) }
+    }
+    var divider: Set<Int> { CloudStore.connected.isEmpty ? [] : [CloudStore.connected.count] }
+
+    var existing: CloudService? {
+        choice.hasPrefix("svc:") ? CloudStore.setup.service(String(choice.dropFirst(4))) : nil
+    }
+    var preset: CloudPreset {
+        if let e = existing { return e.info }
+        return CloudPreset.preset(String(choice.dropFirst(4))) ?? CloudPreset.all.last!
+    }
+
+    func pick(_ c: String) {
+        guard c != choice else { return }
+        choice = c
+        fillAddress()
+        check = .idle
+    }
+
+    func pickRegion(_ r: CloudRegion) {
+        let wasDefault = baseURL.isEmpty || preset.endpoints.contains { $0.baseURL == baseURL }
+        region = r
+        if wasDefault { fillAddress() }
+        check = .idle
+    }
+
+    private func fillAddress() { baseURL = existing?.effectiveBaseURL ?? preset.endpoint(preset.regional ? region : nil)?.baseURL ?? "" }
+
+    /// The service as it would be saved: the connected one, or a new one of the preset.
+    var service: CloudService {
+        if let e = existing { return e }
+        let p = preset
+        let b = baseURL.trimmingCharacters(in: .whitespaces)
+        let own = b == p.endpoint(p.regional ? region : nil)?.baseURL ? "" : b
+        return CloudService(id: CloudService.newID(preset: p.id, taken: Set(CloudStore.setup.services.map(\.id))), preset: p.id,
+                            region: p.regional ? region : nil, baseURL: own, name: p.custom ? name.trimmingCharacters(in: .whitespaces) : "")
+    }
+
+    var canSave: Bool {
+        let m = model.trimmingCharacters(in: .whitespaces)
+        return check != .running && !m.isEmpty && (existing != nil || !baseURL.isEmpty && !key.trimmingCharacters(in: .whitespaces).isEmpty)
+    }
+
+    /// Save: what can be checked here first (address, model id, key), then the job itself; saved only when it passes.
+    func save(then done: @escaping () -> Void) {
+        let svc = service
+        let m = model.trimmingCharacters(in: .whitespaces)
+        let typed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let p = CloudCustom.problem(baseURL: svc.effectiveBaseURL, model: m, typedKey: typed, keySaved: existing != nil) {
+            switch p {
+            case .address: check = .failed(M("models.check.address"))
+            case .model: check = .failed(M("models.check.model_id"))
+            case .key(let k): check = .failed(CloudText.keyProblem(k))
             }
-            HStack {
-                Spacer()
-                Button(M("models.cancel"), action: close).keyboardShortcut(.cancelAction)
-                Button(M("models.other.use")) {
-                    CloudStore.setChoice(.cloud(service: service, model: model.trimmingCharacters(in: .whitespaces)), for: job)
-                    Dictation.shared.apply()
-                    if job == .vision { ScreenTextRefine.modeChanged() }
-                    close()
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(service.isEmpty || model.trimmingCharacters(in: .whitespaces).isEmpty)
-            }
+            return
         }
-        .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 440)
-        .fixedSize(horizontal: false, vertical: true)
+        check = .running
+        Task {
+            let key: String? = typed.isEmpty ? await Task.detached { CloudStore.key(svc) }.value : typed
+            guard let k = key else { check = .failed(CloudText.checkFailure("no_key")); return }
+            emit(["event": "cloud_custom", "action": "test", "job": job.rawValue, "preset": svc.preset])
+            let body = try? JSONSerialization.data(withJSONObject: ["cloud": CloudStore.payload(svc, model: m, key: k), "job": job.rawValue])
+            let answer: [String: Any] = await withCheckedContinuation { c in
+                Scripts.call("polish_cloud.py", ["check"], stdin: body, timeout: 45) { r in
+                    switch r {
+                    case .success(let o): c.resume(returning: o)
+                    case .failure(let f): c.resume(returning: ["ok": false, "code": f.code])
+                    }
+                }
+            }
+            let outcome = CloudCustom.outcome(answer)
+            emit(["event": "cloud_custom", "action": "tested", "job": job.rawValue, "preset": svc.preset, "ok": outcome == .save])
+            guard outcome == .save else {
+                if case .refuse(let code) = outcome { check = .failed(CloudText.checkFailure(code)) }
+                return
+            }
+            let speechBefore = CloudSpeech.environment()
+            if existing == nil || !typed.isEmpty { CloudStore.connect(svc, key: typed.isEmpty ? nil : typed) }
+            CloudStore.setChoice(.cloud(service: svc.id, model: m), for: job)
+            CloudServiceSheetModel.afterChange(speechBefore: speechBefore)
+            CloudModelsUI.shared.bump()
+            check = .idle
+            done()
+        }
     }
 }
 
-/// A feature page's Change… for a job (its row: "Uses deepseek-flash · cloud", CloudText.uses): opens Settings → Models
+struct CustomModelSheet: View {
+    @StateObject var m: CustomModelModel
+    var close: () -> Void
+
+    init(job: CloudJob, close: @escaping () -> Void) {
+        _m = StateObject(wrappedValue: CustomModelModel(job: job))
+        self.close = close
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(M("models.custom.title")).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
+            Text(M("models.custom.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+            form.padding(.top, 16)
+            footer.padding(.top, 18)
+        }
+        .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
+        .frame(width: 540)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    var form: some View {
+        Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 12, verticalSpacing: 10) {
+            GridRow {
+                label(M("models.sheet.service"))
+                ChoicePopup(label: M("models.sheet.service"), choices: m.choices,
+                            selection: Binding(get: { m.choice }, set: { m.pick($0) }), width: 260, dividers: m.divider)
+            }
+            if m.existing == nil {
+                if m.preset.regional {
+                    GridRow {
+                        label(M("models.sheet.region"))
+                        ChoicePopup(label: M("models.sheet.region"), choices: CloudRegion.allCases.map { ($0, CloudText.region($0)) },
+                                    selection: Binding(get: { m.region }, set: { m.pickRegion($0) }), width: 260)
+                    }
+                }
+                if m.preset.custom {
+                    GridRow {
+                        label(M("models.sheet.name"))
+                        TextField(M("models.sheet.name.placeholder"), text: $m.name).textFieldStyle(.roundedBorder)
+                    }
+                }
+                GridRow {
+                    label(M("models.sheet.base_url"))
+                    TextField("https://…/v1", text: Binding(get: { m.baseURL }, set: { m.baseURL = $0; m.check = .idle }))
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    label(M("models.sheet.key"))
+                    VStack(alignment: .leading, spacing: 5) {
+                        SecureField(M("models.sheet.key.placeholder"), text: Binding(get: { m.key }, set: { m.key = $0; m.check = .idle }))
+                            .textFieldStyle(.roundedBorder)
+                        if let page = m.preset.endpoint(m.preset.regional ? m.region : nil)?.keyPage, let u = URL(string: page) {
+                            TextLinkButton(M("models.sheet.key.get")) { NSWorkspace.shared.open(u) }
+                                .font(.system(size: SettingsMetrics.detailSize))
+                                .padding(.leading, SettingsMetrics.fieldTextInset)
+                        }
+                    }
+                }
+            }
+            GridRow {
+                label(M("models.other.placeholder"))
+                TextField(M("models.other.placeholder"), text: Binding(get: { m.model }, set: { m.model = $0; m.check = .idle }))
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    func label(_ s: String) -> some View { Text(s).foregroundStyle(.secondary).fixedSize().gridColumnAlignment(.trailing) }
+
+    var footer: some View {
+        HStack(alignment: .center, spacing: 10) {
+            switch m.check {
+            case .idle: EmptyView()
+            case .running: BrandSpinnerView(size: 12)
+            case .failed(let s):
+                Text(s).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Button(M("models.cancel"), action: close).keyboardShortcut(.cancelAction)
+            Button(M("models.custom.save")) { m.save(then: close) }
+                .keyboardShortcut(.defaultAction).disabled(!m.canSave)
+        }
+    }
+}
+
+/// A feature page's Change… for a job (its row: "Uses DeepSeek V4.1 Flash · cloud", CloudText.uses): opens Settings → Models
 /// at the job's row.
 struct JobChangeButton: View {
     let job: CloudJob

@@ -79,6 +79,7 @@
 "speech.note.qwen3_cpu" = "三十种语言，用处理器运行，任何电脑都能用。";
 "speech.note.qwen3_mlx" = "用 GPU 运行，速度快，能参考词库里的词来识别。";
 "speech.note.qwen3_mlx_17" = "更大的 Qwen3-ASR：专有名词和嘈杂环境下错得更少，每句慢约 25 毫秒。";
+"speech.note.fun_asr" = "中文、英文、日文，用 GPU 运行，能参考词库里的词来识别。";
 "speech.note.cloud" = "在云端运行，使用你自己的密钥。";
 "speech.note.apple" = "macOS 26 自带，无需下载；专有名词不如 Qwen3-ASR 准";
 
@@ -175,6 +176,7 @@
 "speech.tag.apple-speech" = "系统自带，不用下载；同音字错得多";
 "speech.tag.qwen3-asr-0.6b-mlx" = "准，认得你加的词";
 "speech.tag.qwen3-asr-1.7b-mlx" = "英文稍好，体积是 0.6B 的 2.5 倍";
+"speech.tag.fun-asr-nano-mlx" = "中英混说更准，速度快";
 "speech.tag.sensevoice-small" = "最小最快，不认你加的词";
 "speech.tag.whisper-large-v3-turbo-mlx" = "支持的语言最多";
 "speech.tag.whisper-large-v3-turbo-q4-mlx" = "语言多，下载小";

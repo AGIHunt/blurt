@@ -1,19 +1,18 @@
 // Settings → Models (docs/design/system.md §3.4; dictation.md §Cloud polish): the cloud services the user connected and
 // which model does each text job — polish, translate, Copy Text from Screen — as data. The app keeps the keys (login
-// Keychain) and fetches the model lists; this file is the part without side effects: the presets, a service's stored
-// shape, a /models answer read into CloudModelInfo, which models fit a job (newest first), the default for a job,
-// "Auto" (the best connected service that can do the job, else this Mac), the key's first sanity check, and the
-// one-time migration from the single "cloud polish" service (record.dictation.cloud_polish) to this.
+// Keychain); this file is the part without side effects: the presets (their addresses: the only hosts a key ever goes
+// to), a service's stored shape, the key's first sanity check, and the one-time migration from the single "cloud
+// polish" service (record.dictation.cloud_polish) to this. Which models a job offers is the curated list's
+// (CloudCurated.swift, since 2026-10-31); the open-list code below (a /models answer read into CloudModelInfo, which
+// models fit a job, the newest default, CloudRouting.resolve) is v1's rule, kept only to pin v1 setups' Auto jobs.
 //
-// record.cloud = {"v": 1,
+// record.cloud = {"v": 2,
 //                 "services": [{"id", "preset", "region"?, "base_url"?, "name"?}],     id = the Keychain account
 //                 "jobs": {"polish" | "translate" | "vision": "local" | {"service", "model"}}}   absent = Auto
 //
-// The presets' addresses, protocols and model lists were read from each service's docs on 2026-10-31 (the report in
-// docs/design/system.md §3.4). No model id is a default by itself: a job's default comes from the service's live list
-// (newest first, by the list's own dates where it has them) — except the two measured on the founder's takes
-// (first-minute-speech.md §2.5), used while they are still in the list. Services whose API has no list (Volcengine Ark,
-// Zhipu, MiniMax) carry the ids their docs named that day, used only when the list can't be read.
+// The presets' addresses and protocols were read from each service's docs on 2026-10-31 (the report in
+// docs/design/first-minute-speech.md §10.1). DeepSeek and Model Studio are the curated list's services today; the others
+// are offered for a Custom Model.
 import Foundation
 
 public enum CloudRegion: String, CaseIterable, Hashable {
@@ -285,7 +284,8 @@ public enum CloudJobChoice: Hashable {
 
 /// record.cloud as a whole.
 public struct CloudSetup: Hashable {
-    public static let version = 1
+    /// 2: Auto takes only curated models (CloudCurated.swift); v1 setups had their Auto jobs pinned on the way
+    public static let version = 2
     public var services: [CloudService] = []
     public var jobs: [CloudJob: CloudJobChoice] = [:]
 
@@ -446,19 +446,6 @@ public enum CloudModelList {
         let fit = suitable(all, job, preset: preset)
         if let m = measured, all.contains(where: { $0.id == m }) { return m }
         return fit.first { fast($0.id) }?.id ?? fit.first?.id
-    }
-
-    /// The pop-up's list for a job: the default first, then the rest newest first — `limit` of them, and the chosen one
-    /// always (a list with hundreds, OpenRouter's, shows its newest; the rest are a search away).
-    public static func menu(_ job: CloudJob, preset: CloudPreset, models: [CloudModelInfo], keep: String? = nil, limit: Int = 8) -> [CloudModelInfo] {
-        let fit = suitable(models, job, preset: preset)
-        let d = defaultModel(job, preset: preset, models: models)
-        var out = fit.filter { $0.id == d } + fit.filter { $0.id != d }
-        out = Array(out.prefix(limit))
-        if let k = keep, !k.isEmpty, !out.contains(where: { $0.id == k }) {
-            out.append(fit.first { $0.id == k } ?? CloudModelInfo(id: k))
-        }
-        return out
     }
 
     // what was measured (first-minute-speech.md §2.5): only on these two services, only these ids

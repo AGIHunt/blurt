@@ -312,7 +312,7 @@ struct CloudSpeechSheet: View {
                 }
                 Spacer()
                 Button(T("dictation.cloud.cancel")) { close(false) }.keyboardShortcut(.cancelAction)
-                Button(T("dictation.cloud.done")) { save() }.keyboardShortcut(.defaultAction).disabled(!canSave)
+                Button(T("dictation.cloud.done")) { save() }.keyboardShortcut(.defaultAction).disabled(!canSave || testing)
             }
             .padding(.top, 18)
         }
@@ -399,6 +399,22 @@ struct CloudSpeechSheet: View {
     func save() {
         // a key with characters no key has (what ⌥C types, "ç", after the founder's key): not kept, said here
         guard let k = CloudSpeechCheck.clean(key) else { checked = .failed("speech.cloud.check.bad_key"); return }
+        // a service Blurt didn't test (OpenAI, Groq, another address): saved only once its clip comes back
+        // (Settings → Models' Custom Model rule, docs/design/first-minute-speech.md §10.5)
+        if openAI && (!k.isEmpty || stored) {
+            testing = true
+            CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
+                testing = false
+                checked = r
+                emit(["event": "speech_cloud", "action": "save_tested", "model": modelID, "ok": { if case .ok = r { return true }; return false }()])
+                if case .ok = r { commit(k) }
+            }
+            return
+        }
+        commit(k)
+    }
+
+    private func commit(_ k: String) {
         if openAI { CloudSpeech.save(setup) }
         if speed != CloudSpeech.speed { CloudSpeech.setSpeed(speed) }
         if !openAI, dsModel != CloudSpeech.dashScopeChoice { CloudSpeech.saveDashScope(model: dsModel) }

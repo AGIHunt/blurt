@@ -419,7 +419,8 @@ worse than the whole take (Option M → OpenM). Longer windows recover most of i
 | Qwen3-ASR 0.6B | 4.76 % | **3.82 %** | 3.78 % | 3.71 % | 215 → 254 ms (+39; +84 on takes ≥ 20 s) |
 
 So the window is a property of the model in the registry, `asr_models.json` `rehear_window_s`: **30 s for the 1.7B, 20 s
-for the 0.6B** (30 s buys the 0.6B 0.04 points for twice the extra wait). Every other model keeps 10 s, the length it
+for the 0.6B** (30 s buys the 0.6B 0.04 points for twice the extra wait), and 30 s for Fun-ASR-Nano, which hears each
+window whole (§Defaults by Mac → Fun-ASR-Nano). Every other model keeps 10 s, the length it
 was measured with: macOS Speech (streamed 8.44 % vs 7.60 % whole, not measured with longer windows), SenseVoice,
 Whisper (its own 30 s window; its dictation path is being fixed separately), Qwen3-ASR on the CPU (rtf 0.25: a 30 s
 window would be ~7 s at key-up); a cloud service isn't heard again at all (each pass is billed). The app reads it for
@@ -1895,17 +1896,20 @@ Chinese and leave a correction unapplied; before them, nothing else changed.
 
 dictation-eval-2026-10-31.md §6 measured what each Mac should run, on the founder's 95 takes. One rule, in two places:
 `transcribe.py dictation_tier` decides what Automatic runs (`dictation-models`' `recommended`, and its `plan`), and
-BlurtCore `DictationTier.recommended(ramGB:rtf:hasCloudKey:slowChip:)` is the same rule for the app (Settings shows
-it: `DictationModels.tier`); `tests/fixtures/dictation_tier.jsonl` checks both.
+BlurtCore `DictationTier.recommended(ramGB:rtf:hasCloudKey:slowChip:languages:)` is the same rule for the app
+(Settings shows it: `DictationModels.tier`); `tests/fixtures/dictation_tier.jsonl` checks both. "Speaks only zh / en /
+ja" is the user's languages (`user_languages`: `asr.languages`, else the Mac's preferred languages + English), every
+one of them Chinese, English or Japanese.
 
 | Mac | Recogniser (window, field context) | Local polish | Founder's takes | Download / memory |
 |---|---|---|---:|---:|
 | first minutes, any (macOS 26) | macOS Speech, while the recogniser downloads | — | 6.72 % | 0 |
-| 8 GB (light) | Qwen3-ASR 0.6B (20 s, no) | none | 3.34 % | 1.0 / 2.1 GB |
+| 8 GB (light), speaks only zh / en / ja | **Fun-ASR-Nano (30 s, no)** | none | 2.92 % | 1.6 / 2.6 GB |
+| 8 GB (light), any other language | Qwen3-ASR 0.6B (20 s, no) | none | 3.34 % | 1.0 / 2.1 GB |
 | 16–24 GB (standard), fast enough | **Qwen3-ASR 1.7B (30 s, yes)** | Gemma 4 E2B | 2.50 % (2.68 % with Gemma) | 2.5 + 3.4 / 3.1 + 2.3 GB |
 | 32 GB+ (pro) | Qwen3-ASR 1.7B (30 s, yes) | Gemma 4 E2B | 2.68 % | as above |
-| a base M1 / M2, or the 1.7B measured too slow | Qwen3-ASR 0.6B (20 s, no) | by memory, as above | 3.34 % | 1.0 / 2.1 GB |
-| any, with a cloud key | the same local recogniser | the same (the cloud's fall-back) + cloud polish with macOS's transcript | 2.2–2.5 % (1.7B) | text only leaves |
+| a base M1 / M2, or the 1.7B measured too slow | Fun-ASR-Nano (zh / en / ja only), else Qwen3-ASR 0.6B | by memory, as above | 2.92 / 3.34 % | as on 8 GB |
+| any, with a cloud key | the same local recogniser | the same (the cloud's fall-back) + cloud polish with macOS's transcript | 2.2–2.5 % (1.7B), 2.73 % (Fun-ASR-Nano) | text only leaves |
 
 - **Fast enough**: the 1.7B's real-time factor here, when measured (`transcribe.py bench`, Settings → Speech's Measure:
   `asr-bench.json`), at most `TIER_RTF_LIMIT` 0.05 (the M5 Max: 0.033); not measured, any chip but a base M1 / M2
@@ -1928,6 +1932,55 @@ it: `DictationModels.tier`); `tests/fixtures/dictation_tier.jsonl` checks both.
 - **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
   `deepseek-v4.1-flash` on Model Studio, `deepseek-flash` on deepseek.com — for Auto; a model picked by hand stays (the
   founder's `qwen3.8-27b` measured 3.30 %, worse than no polish).
+
+#### Fun-ASR-Nano where the 1.7B doesn't go (2026-10-31)
+
+Fun-ASR-Nano (Alibaba, 0.8B: SenseVoice's encoder + Qwen3-0.6B; `fun-asr-nano-mlx`, mlx-audio 0.6.3,
+`mlx-community/Fun-ASR-Nano-2512`) was the eval's best small local candidate (dictation-eval-2026-10-31.md §4.4). It is
+now a downloadable model, and **the default where the 1.7B doesn't go — 8 GB Macs, base M1 / M2, a 1.7B measured too
+slow — for people who speak only Chinese, English and Japanese**; everyone else keeps the 0.6B there, and fast 16 GB+
+Macs keep the 1.7B.
+
+| On the founder's 95 takes (as in the eval) | Error | Names / terms | After key-up, ~5 s / ~60 s takes (p50, p90) |
+|---|---:|---:|---|
+| Qwen3-ASR 1.7B, 30 s windows + field context (eval) | 2.50 % | 79 % | 0.16 / 0.20 s, 0.32 / 0.59 s (eval §5) |
+| **Fun-ASR-Nano as shipped** (30 s windows, the Words as hotwords) | **2.92 %** | 77 % | **0.07 / 0.09 s, 0.17 / 0.28 s** |
+| Fun-ASR-Nano, the eval's own runner (≤ 30 s pieces at the take's cuts) | 2.84 % | 74 % | 0.08 / 0.10 s, 0.14 / 0.22 s (eval §5) |
+| Qwen3-ASR 0.6B, 20 s windows (shipped) | 3.34 % | 75 % | 0.09 / 0.12 s, 0.18 / 0.28 s (same session) |
+| Fun-ASR-Nano as shipped + cloud polish (DeepSeek V4.1 Flash, macOS's transcript as "Also heard"), one run | 2.73 % | 89 % | + ~0.8 s |
+
+Public sets (eval §3): Fun-ASR-Nano against the 0.6B — AISHELL-1 2.46 vs 3.17 %, ASCEND (Chinese with English in it)
+6.59 vs 8.86 % (the best local; the 1.7B 7.50 %), LibriSpeech clean / other 1.62 / 3.70 vs 1.54 / 3.93 % (level),
+Common Voice ja 16.0 vs 20.2 %; no German or other language.
+
+- **Why the small default changes**: fewer errors than the 0.6B on every set it speaks, at least as fast after key-up,
+  and it fits an 8 GB Mac (2.6 GB at peak for the whole process in `transcribe.py bench`, 2.1 GB of it GPU memory; the
+  0.6B 1.8 GB in the same bench; no local polish beside either on 8 GB). It takes the Words as hotwords (names 77 % vs
+  the 0.6B's 75 %).
+- **Why the 1.7B stays the 16 GB+ default**: it is still more accurate (2.50 vs 2.92 %, AISHELL 1.64 vs 2.46 %) and
+  hears the field's text; Fun-ASR-Nano wins only on ASCEND. On a slow chip the 1.7B's last 30 s window is what is too
+  slow, and Fun-ASR-Nano's last window (0.17 s on a minute-long take here) is the 0.6B's.
+- **Only for its languages**: Chinese, English and Japanese (`asr_models.json` `languages`; Cantonese is not measured,
+  so a Cantonese speaker gets the 0.6B). Someone with any other language among theirs never has it picked or listed in
+  the dictation rows (`dictation-models` leaves the row out unless it is already the configured or selected one;
+  Settings' Compare… leaves out its row the same way, `DictationChoices.choices`); the model library still lists it,
+  with the languages it lacks in its tooltip, as for SenseVoice.
+- **How it hears** (`FunAsrMlx`): a piece or window whole, never trimmed by the VAD. The first integration sent it the
+  VAD's chunks like the other local models and measured 3.38 % (whole take 3.23 %): a 5.9 s piece split at a 1.1 s
+  pause came back as "所以 Puritan", and the first 0.18 s of silence cut off a 2.5 s piece turned 语音输入 into 语音水软.
+  So `transcribe_track` gives a `whole_spans` backend the audio as it is, and cuts only audio longer than 30 s, in the
+  middle of the VAD's pauses (`pause_spans`; no speech dropped, a span with no speech left out). Windows: 30 s
+  (`rehear_window_s`; 20 s measured 2.94 %, the whole take cut in pauses 2.79 % — within the noise of each other). It
+  takes no other context (no text so far, no field text: not measured), and an interim request stops between tokens.
+- **Existing installs**: only Automatic changes, as above. An installed 0.6B keeps running on a Mac whose
+  recommendation is now Fun-ASR-Nano until it is downloaded (Settings offers it: 1.6 GB, from Hugging Face or, with the
+  mirror on, ModelScope); the 1.7B comes last among installed fall-backs where the 1.7B isn't this Mac's pick.
+- **Measured** through the working copy's `dictation_lab.run_case` (the Lab's replay of the app's pieces and windows,
+  `transcribe.py serve --purpose dictation` on a scratch `BLURT_HOME`), the eval's harness and scorer
+  (`/Users/john/blurt-eval-2026-10-31/`, engines `ship-fun-*` in `raw/founder.jsonl`, latency `ship-fun` / `ship-q06` in
+  `raw/latency.jsonl`, one engine at a time). `transcribe.py bench` (the `say` samples, M5 Max): rtf 0.0138 against the
+  0.6B's 0.0146 in the same session (`rtf_ref` 0.027 is that ratio on the 0.6B's reference 0.029), errors zh 0 / en 1.9 /
+  ja 0 %.
 
 ### Qwen3-ASR 1.7B (the v0.8 speed eval)
 

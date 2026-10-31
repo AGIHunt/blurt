@@ -12,6 +12,7 @@
 "models.service.no_key" = "No API key";
 "models.service.connected" = "Connected";
 "models.service.speech" = "Also does speech recognition";
+"models.untested" = "Not tested by Blurt";
 "models.region.china" = "Mainland China";
 "models.region.global" = "International";
 
@@ -58,29 +59,35 @@
 "models.check.no_key" = "Paste an API key first.";
 "models.check.no_model" = "Connected, but no model to use was found.";
 "models.check.other" = "The service returned an error. Check the base URL.";
+"models.check.model" = "The service doesn’t know this model ID.";
+"models.check.vision" = "This model can’t read images.";
+"models.check.empty" = "The model returned nothing.";
+"models.check.address" = "Enter an https:// base URL.";
+"models.check.model_id" = "Enter a model ID.";
 "models.check.speech_ok" = "Speech recognition: OK · %@ ms";
 "models.check.speech_failed" = "Speech recognition: %@";
 "models.key.spaces" = "An API key has no spaces in it.";
 "models.key.characters" = "The key has extra characters. Paste it again.";
+"models.key.custom" = "This is a %@ key. Add it under Custom Model.";
 
 "models.job.translate" = "Translate";
 "models.job.translate.detail" = "Dictation’s ⌘ and ⌥T.";
 "models.job.vision" = "Copy Text from Screen";
 "models.job.vision.detail" = "Reads ⌥C’s text a second time.";
-"models.job.auto_item" = "Automatic";
-"models.job.auto" = "Now: %@.";
-"models.job.auto_local" = "Now: %@, on this Mac.";
 "models.job.goes.text" = "Text goes to %@.";
 "models.job.goes.images" = "Screenshots go to %@.";
 "models.job.local" = "Stays on this Mac.";
 "models.job.none" = "Nothing yet. Add a service or download a model.";
+"models.job.recommend" = "Recommended: %@.";
+"models.job.switch" = "Switch";
 "models.job.this_mac" = "This Mac";
-"models.job.other" = "Other Model…";
-"models.job.add" = "Add Service…";
+"models.job.advanced" = "Advanced";
+"models.job.custom" = "Custom Model…";
 "models.job.more" = "Get More Models…";
-"models.other.title" = "Other Model";
 "models.other.placeholder" = "Model ID";
-"models.other.use" = "Use";
+"models.custom.title" = "Custom Model";
+"models.custom.note" = "Not tested by Blurt. Save tries it first.";
+"models.custom.save" = "Save";
 
 "models.uses.translate" = "Translation model";
 "models.uses.cloud" = "%@ · cloud";

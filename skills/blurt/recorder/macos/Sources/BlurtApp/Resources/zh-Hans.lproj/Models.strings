@@ -12,6 +12,7 @@
 "models.service.no_key" = "没有 API Key";
 "models.service.connected" = "已连接";
 "models.service.speech" = "也能做语音识别";
+"models.untested" = "未经口喷鸡测试";
 "models.region.china" = "中国大陆";
 "models.region.global" = "国际";
 
@@ -58,29 +59,35 @@
 "models.check.no_key" = "先粘贴 API Key。";
 "models.check.no_model" = "连上了，但没找到能用的模型。";
 "models.check.other" = "服务返回了错误。检查接口地址。";
+"models.check.model" = "这家服务没有这个模型 ID。";
+"models.check.vision" = "这个模型读不了图片。";
+"models.check.empty" = "模型没有返回内容。";
+"models.check.address" = "接口地址要以 https:// 开头。";
+"models.check.model_id" = "填写模型 ID。";
 "models.check.speech_ok" = "语音识别：正常 · %@ 毫秒";
 "models.check.speech_failed" = "语音识别：%@";
 "models.key.spaces" = "API Key 里不会有空格。";
 "models.key.characters" = "Key 里有多余的字符，请重新粘贴。";
+"models.key.custom" = "这是 %@ 的 Key，请到「自定义模型」里添加。";
 
 "models.job.translate" = "翻译";
 "models.job.translate.detail" = "听写里的 ⌘ 和 ⌥T。";
 "models.job.vision" = "截图取字";
 "models.job.vision.detail" = "把 ⌥C 取到的字再读一遍。";
-"models.job.auto_item" = "自动";
-"models.job.auto" = "现在：%@。";
-"models.job.auto_local" = "现在：%@，在本机。";
 "models.job.goes.text" = "文字会发给 %@。";
 "models.job.goes.images" = "截图会发给 %@。";
 "models.job.local" = "只在本机。";
 "models.job.none" = "还没有。添加云服务，或下载本机模型。";
+"models.job.recommend" = "推荐：%@。";
+"models.job.switch" = "切换";
 "models.job.this_mac" = "这台 Mac";
-"models.job.other" = "其他模型…";
-"models.job.add" = "添加云服务…";
+"models.job.advanced" = "高级";
+"models.job.custom" = "自定义模型…";
 "models.job.more" = "获取更多模型…";
-"models.other.title" = "其他模型";
 "models.other.placeholder" = "模型 ID";
-"models.other.use" = "使用";
+"models.custom.title" = "自定义模型";
+"models.custom.note" = "未经口喷鸡测试。保存前会先试一次。";
+"models.custom.save" = "保存";
 
 "models.uses.translate" = "翻译模型";
 "models.uses.cloud" = "%@ · 云端";

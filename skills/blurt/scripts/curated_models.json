@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "updated": "2026-10-31",
+  "about": "Blurt's measured cloud models for each job, best first (This Mac is always offered too). Settings shows these and nothing else; any other model is a Custom Model. Sources: docs/design/dictation-eval-2026-10-31.md §2.3, §6.3; docs/design/first-minute-speech.md §2.5. Served at https://blurt.work/models/curated.json; keep site/models/curated.json the same file.",
+  "jobs": {
+    "polish": [
+      {"service": "dashscope", "model": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash", "regions": ["china", "global"], "note": "polish.ds41", "measured": "2026-10-31"},
+      {"service": "deepseek", "model": "deepseek-flash", "name": "DeepSeek V4.1 Flash", "note": "polish.deepseek_flash", "measured": "2026-10-31"}
+    ],
+    "translate": [
+      {"service": "dashscope", "model": "deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash", "regions": ["china", "global"], "note": "translate.ds41", "measured": "2026-10-29"},
+      {"service": "deepseek", "model": "deepseek-flash", "name": "DeepSeek V4.1 Flash", "note": "translate.deepseek_flash", "measured": "2026-10-29"}
+    ],
+    "vision": [
+      {"service": "dashscope", "model": "qwen3.6-flash", "name": "Qwen3.6 Flash", "regions": ["china", "global"], "note": "vision.qwen36", "measured": "2026-10-29"},
+      {"service": "deepseek", "model": "deepseek-flash", "name": "DeepSeek V4.1 Flash", "note": "vision.deepseek_flash", "measured": "2026-10-29"}
+    ],
+    "speech": [
+      {"service": "dashscope", "model": "qwen3-asr-flash", "name": "Qwen3-ASR Flash", "regions": ["china", "global"], "note": "speech.qwen3_asr", "measured": "2026-10-31"}
+    ]
+  }
+}

@@ -343,7 +343,7 @@ class BiasedNote(unittest.TestCase):
         T = A.T
         real = A.fake_installed("sensevoice-small")
         try:
-            with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["de", "en"]}}):
                 d = T.dictation_models(A.hw())
                 # by Mac (dictation_tier, 2026-10-31): the 1.7B on 16 GB+ Macs fast enough for it
                 self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")
@@ -369,9 +369,12 @@ class BiasedNote(unittest.TestCase):
                            "record": {"dictation": {"asr_model": "sensevoice-small"}}}):
                 d = T.dictation_models(A.hw())
                 self.assertEqual((d["configured"], d["selected"]), ("sensevoice-small", "sensevoice-small"))
-            with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["de", "en"]}}):
                 # 8 GB: the 0.6B, with no local polish beside it (dictation-eval-2026-10-31 §6.2)
                 self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "qwen3-asr-0.6b-mlx")
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["zh", "en"]}}):
+                # … Fun-ASR-Nano for someone who speaks only its languages (docs/design/dictation.md §Defaults by Mac)
+                self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "fun-asr-nano-mlx")
         finally:
             T.installed = real
 

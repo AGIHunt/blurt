@@ -5,13 +5,14 @@ import XCTest
 
 final class DictationChoicesTests: XCTestCase {
     typealias C = DictationChoice
-    func mac(_ ram: Double, apple: Bool = true, speech: Bool = true, text: Bool = false, asr: Bool = false, rtf: Double? = nil) -> DictationChoices.Mac {
-        .init(ramGB: ram, appleSilicon: apple, macOSSpeech: speech, textKey: text, speechKey: asr, rtf: rtf)
+    func mac(_ ram: Double, apple: Bool = true, speech: Bool = true, text: Bool = false, asr: Bool = false, rtf: Double? = nil,
+             langs: [String] = []) -> DictationChoices.Mac {
+        .init(ramGB: ram, appleSilicon: apple, macOSSpeech: speech, textKey: text, speechKey: asr, rtf: rtf, languages: langs)
     }
 
     func testAccuracyIsAMeterNeverAMistakeCount() {
-        // §7 on Chinese + English: macOS 3, 0.6B 4, 1.7B 5, + cloud polish 5, cloud recogniser 5
-        XCTAssertEqual(C.allCases.map { DictationChoices.level(DictationChoices.facts($0).mixed) }, [3, 4, 5, 5, 5])
+        // §7 on Chinese + English: macOS 3, 0.6B 4, Fun-ASR-Nano 4, 1.7B 5, + cloud polish 5, cloud recogniser 5
+        XCTAssertEqual(C.allCases.map { DictationChoices.level(DictationChoices.facts($0).mixed) }, [3, 4, 4, 5, 5, 5])
         // cloud polish over the 0.6B (§6.3: 2.84 %)
         XCTAssertEqual(DictationChoices.level(DictationChoices.facts(.cloudPolish, on: .qwenSmall).mixed), 4)
         // English (LibriSpeech clean): macOS Speech is a 5 there
@@ -60,6 +61,31 @@ final class DictationChoicesTests: XCTestCase {
         XCTAssertEqual(DictationChoices.polishBase(recognizer: nil, mac: mac(8)), .qwenSmall)
         XCTAssertEqual(DictationChoices.polishBase(recognizer: "qwen3-asr-0.6b-mlx", mac: mac(64)), .qwenSmall)
         XCTAssertEqual(DictationChoices.polishBase(recognizer: "apple-speech", mac: mac(64)), .qwenLarge)
+    }
+
+    /// Fun-ASR-Nano: where the 1.7B doesn't go, for people who speak only Chinese, English and Japanese.
+    func testFunASRNanoForItsLanguages() {
+        let zh = ["zh-Hans", "en"]
+        XCTAssertEqual(DictationChoices.recommended(mac(8, langs: zh)), .funNano)
+        XCTAssertEqual(DictationChoices.recommended(mac(8, langs: ["de", "en"])), .qwenSmall)
+        XCTAssertEqual(DictationChoices.recommended(mac(16, rtf: 0.09, langs: ["ja"])), .funNano)
+        XCTAssertEqual(DictationChoices.recommended(mac(16, langs: zh)), .qwenLarge, "the 1.7B stays on fast 16 GB Macs")
+        XCTAssertEqual(DictationChoices.fit(.funNano, mac: mac(8, langs: zh)), .fits)
+        XCTAssertEqual(DictationChoices.fit(.funNano, mac: mac(32, apple: false, langs: zh)), .needsAppleSilicon)
+        // with a key: cloud polish over Fun-ASR-Nano
+        let key = mac(8, text: true, langs: zh)
+        XCTAssertEqual(DictationChoices.recommended(key), .cloudPolish)
+        XCTAssertEqual(DictationChoices.polishBase(recognizer: nil, mac: key), .funNano)
+        XCTAssertEqual(DictationChoices.facts(.cloudPolish, on: .funNano), DictationChoices.cloudPolishOnFun)
+        XCTAssertEqual(DictationChoices.inUse(recognizer: "fun-asr-nano-mlx", cloudPolish: false), .funNano)
+        XCTAssertEqual(DictationChoices.inUse(recognizer: "fun-asr-nano-mlx", cloudPolish: true), .cloudPolish)
+        // the row: only for its languages, unless dictation already uses it
+        XCTAssertTrue(DictationChoices.choices(mac(8, langs: zh)).contains(.funNano))
+        XCTAssertFalse(DictationChoices.choices(mac(8, langs: ["de", "en"])).contains(.funNano))
+        XCTAssertTrue(DictationChoices.choices(mac(8, langs: ["de"]), inUse: .funNano).contains(.funNano))
+        XCTAssertEqual(DictationChoices.choices(mac(8, langs: ["fr"])).count, C.allCases.count - 1)
+        // no German line: a German speaker never sees the row, so the meter never needs one
+        XCTAssertNil(DictationChoices.facts(.funNano).languages["de"])
     }
 
     func testTheRowInUseIsOnlyATrueRow() {

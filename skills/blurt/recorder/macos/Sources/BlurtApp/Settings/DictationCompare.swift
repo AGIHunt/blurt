@@ -4,7 +4,8 @@
 //   the lead     the Models page's one lead line: "Recommended for this Mac: Qwen3-ASR 1.7B", with Compare… at its
 //                right end (the page stays as it was under it).
 //   the sheet    "Dictation choices": this Mac (chip, memory) and how it was measured in one line, then one row per
-//                choice — macOS Speech, Qwen3-ASR 0.6B, 1.7B, the local model + cloud polish, cloud recognition — with
+//                choice — macOS Speech, Qwen3-ASR 0.6B, Fun-ASR-Nano (Chinese / English / Japanese speakers only),
+//                1.7B, the local model + cloud polish, cloud recognition — with
 //                Accuracy (a 5-mark meter, DictationChoices.level: how good, never a count of mistakes — in the
 //                user's own language when it isn't Chinese and was measured), Delay (after you stop talking), Cost (free + the download; per dictation; per hour)
 //                and what leaves the Mac (nothing / your text / your voice, and to whom). Under a row's name:
@@ -52,9 +53,10 @@ struct DictationNow {
         let mac = DictationChoices.Mac(
             ramGB: ram, appleSilicon: hw.map { $0.gpu.kind == "apple" } ?? arm,
             macOSSpeech: models.contains { $0.id == DictationChoice.macOSSpeech.rawValue } || AppleSpeech.available,
-            textKey: !connected.isEmpty,
+            textKey: CloudStore.curatedConnected(.polish) || CloudStore.cloudModel(.polish) != nil,
             speechKey: connected.contains { $0.preset == "dashscope" } || models.contains { $0.id == DictationChoice.cloudRecognizer.rawValue },
-            rtf: m.model(DictationChoice.qwenLarge.rawValue)?.bench?.rtf, slowChip: DictationTier.slowChip(hw?.chip))
+            rtf: m.model(DictationChoice.qwenLarge.rawValue)?.bench?.rtf, slowChip: DictationTier.slowChip(hw?.chip),
+            languages: m.languages.isEmpty ? Locale.preferredLanguages : m.languages)
         let rec = d.asr.flatMap { a in (a.selectedInstalled ?? true) ? a.selected : nil }
         let machine = hw.map { S("speech.machine.short", $0.chip ?? S("speech.machine.unknown"), ChoiceText.memory($0.ramGB)) }
         return DictationNow(mac: mac, recognizer: rec,
@@ -170,7 +172,7 @@ enum DictationChoiceAction {
     /// polish. Every other job keeps its setting.
     static func use(_ c: DictationChoice, now: DictationNow) {
         switch c {
-        case .macOSSpeech, .qwenSmall, .qwenLarge:
+        case .macOSSpeech, .qwenSmall, .funNano, .qwenLarge:
             if CloudStore.cloudModel(.polish) != nil { CloudStore.setChoice(.local, for: .polish) }
             recognizer(c.rawValue)
         case .cloudPolish:
@@ -237,7 +239,9 @@ struct DictationCompareSheet: View {
                 .padding(.top, 6)
             SettingsGroup("speech.compare", title: "") {
                 header
-                ForEach(DictationChoice.allCases, id: \.self) { c in row(c, now: now, lang: lang) }
+                ForEach(DictationChoices.choices(now.mac, inUse: now.inUse == .cloudPolish ? now.base : now.inUse), id: \.self) { c in
+                    row(c, now: now, lang: lang)
+                }
             }
             .padding(.top, -12)
             HStack {
