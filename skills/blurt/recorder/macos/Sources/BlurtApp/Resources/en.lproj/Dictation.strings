@@ -399,6 +399,7 @@
 "dictation.style.chip.action" = "Make a List";
 "dictation.style.reformat.nothing" = "No dictation to reformat";
 "dictation.style.reformat.same" = "Same result in every style";
+"dictation.style.needs_polish" = "Changing styles needs a polish model";
 "dictation.style.reformatted" = "Reformatted as %@";
 "dictation.style.copied" = "Copied as %@ — the text in the field is unchanged";
 "dictation.style.copied.edited" = "Copied your edited text as %@ — the field is unchanged";

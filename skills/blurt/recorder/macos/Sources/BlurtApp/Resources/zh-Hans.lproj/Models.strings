@@ -1,10 +1,10 @@
 /* 设置 → 模型：用户用自己的 API Key 连接的云服务，以及文字类任务各用哪个模型（CloudServicesPane.swift、
    App/CloudStore.swift）。每行最多一句；只写 DeepSeek 的价格。 */
 
-"models.section.services" = "云服务";
+"models.section.services" = "云端模型";
 "models.services.detail" = "使用你的 API Key 连接云端模型。";
-"models.services.add.title" = "添加云服务";
-"models.services.add" = "添加云服务…";
+"models.services.add.title" = "添加云端模型";
+"models.services.add" = "添加云端模型…";
 "models.services.empty" = "添加 API Key 后，可用云端模型润色、翻译和识别截图文字。";
 "models.price.deepseek" = "DeepSeek：每次听写约 ¥0.002。";
 "models.recommended" = "推荐";
@@ -32,7 +32,7 @@
 "models.preset.custom_anthropic" = "其他（兼容 Anthropic）";
 "models.preset.recommended" = "%@（推荐）";
 
-"models.sheet.add_title" = "添加云服务";
+"models.sheet.add_title" = "添加云端模型";
 "models.sheet.paste_title" = "添加 API Key";
 "models.sheet.note" = "API Key 保存在钥匙串中。";
 "models.sheet.service" = "服务";
@@ -90,7 +90,7 @@
 "models.job.goes.text" = "文字由 %@ 处理。";
 "models.job.goes.images" = "截图由 %@ 处理。";
 "models.job.local" = "在本机处理。";
-"models.job.none" = "未设置。可添加云服务或下载本机模型。";
+"models.job.none" = "未设置。可添加云端模型或下载本机模型。";
 "models.job.recommend" = "推荐：%@。";
 "models.job.switch" = "切换";
 "models.job.this_mac" = "本机";
@@ -111,7 +111,7 @@
 /* 通过 Agent 设置（docs/design/agent-setup.md）：用户自己的编程 Agent 通过 scripts/setup.py 和 App 的本地控制接口设置模型。
    AgentSetupViews.swift、App/AgentSetupServer.swift。 */
 "models.agent.button" = "通过 Agent 设置…";
-"models.agent.note" = "API Key 会经过 Agent。也可以手动添加云服务。";
+"models.agent.note" = "API Key 会经过 Agent。也可以手动添加云端模型。";
 "models.agent.sheet.title" = "通过 Agent 设置模型";
 "models.agent.sheet.detail" = "Agent 会在终端中打开，询问几个问题，并打开各服务的 API Key 页面。登录和创建 Key 由你完成。";
 "models.agent.sheet.agent" = "Agent";

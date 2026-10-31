@@ -291,7 +291,7 @@
 "settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "听写模型, 识别模型, 下载, Qwen";
 "settings.kw.speech.polish" = "润色模型, 整理, 标点, Gemma";
-"settings.kw.speech.services" = "云服务, 云端, API Key, 大模型, DeepSeek, 千问, 百炼, 豆包, 火山方舟, 月之暗面, 智谱, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, 接口地址";
+"settings.kw.speech.services" = "云端模型, 云服务, 云端, API Key, 大模型, DeepSeek, 千问, 百炼, 豆包, 火山方舟, 月之暗面, 智谱, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, 接口地址";
 "settings.kw.speech.translate" = "翻译, 翻译模型, 云端, DeepSeek";
 "settings.kw.speech.vision" = "OCR, 截图, 图片, 看图模型, 截图取字";
 "settings.kw.speech.compare" = "对比, 比较, 准确, 准确率, 错字, 延迟, 速度, 费用, 价格, 隐私, 云端, 推荐, 哪个模型";

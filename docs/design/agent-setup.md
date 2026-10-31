@@ -100,7 +100,7 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 
 ## 4. In the app
 
-- **Set Up with Agent…** beside *Add Service…* (Settings → Models → Cloud services) and beside *Add…* on onboarding's
+- **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and beside *Add…* on onboarding's
   cloud row; shown only when an agent with an interactive session is installed (agents.py detect + sessions.py doctor,
   as the hand-off panel reads them). Disabled while a session it started runs. When every curated service is in (the
   Add row is gone), it keeps a row of its own ("Set Up Models with an Agent"). The line about the key is in the sheet

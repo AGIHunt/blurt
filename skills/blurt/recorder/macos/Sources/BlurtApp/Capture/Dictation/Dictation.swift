@@ -203,7 +203,11 @@ final class Dictation {
     /// what reformat-last works on: the last paste, its versions and where it went
     var lastPaste: DictationLastPaste?
     /// the style the island's ear shows while listening (nil: light, the quiet default)
-    var listeningStyle: DictationStyle? { phase == .listening ? styleDecision?.style : nil }
+    var listeningStyle: DictationStyle? {
+        guard phase == .listening, let s = styleDecision?.style else { return nil }
+        // no model to structure with: the ear doesn't show a list it can't make (stylesNeedModel)
+        return s.structures && stylesNeedModel ? nil : s
+    }
 
     var elapsed: Double { phase == .listening ? voice?.elapsed ?? Date().timeIntervalSince(startedAt) : 0 }
     /// The right ear's clock while listening: the time so far, from 4:30 the time left ("−0:29") before the limit.
