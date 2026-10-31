@@ -6,7 +6,7 @@
 //   the sheet    "Dictation choices": this Mac (chip, memory) and how it was measured in one line, then one row per
 //                choice — macOS Speech, Qwen3-ASR 0.6B, Fun-ASR-Nano (Chinese / English / Japanese speakers only),
 //                1.7B, the local model + cloud polish, cloud recognition — with
-//                Accuracy (a 5-mark meter, DictationChoices.level: how good, never a count of mistakes — in the
+//                Accuracy (five stars, DictationChoices.level: how good, never a count of mistakes — in the
 //                user's own language when it isn't Chinese and was measured), Delay (after you stop talking), Cost (free + the download; per dictation; per hour)
 //                and what leaves the Mac (nothing / your text / your voice, and to whom). Under a row's name:
 //                Recommended (badge), In use (check, brand ink), or what it needs here (16 GB of memory, Apple
@@ -84,6 +84,12 @@ enum ChoiceText {
     }
 
     @MainActor static func model(_ id: String) -> String { DictationModels.shared.asrName(id) }
+
+    /// What the figures are based on: the user's own language when it was measured, else Chinese mixed with English.
+    static func note(_ lang: String?) -> String {
+        guard let l = lang else { return S("speech.compare.note") }
+        return S("speech.compare.note.lang", Loc.locale.localizedString(forLanguageCode: l) ?? l)
+    }
 
     /// The error the meter shows for a choice: the user's own language's when it is measured, else the mixed one.
     static func error(_ f: DictationFacts, _ lang: String?) -> Double { lang.flatMap { f.languages[$0] } ?? f.mixed }
@@ -237,7 +243,7 @@ struct DictationCompareSheet: View {
         let lang = DictationChoices.ownLanguage(m.languages.isEmpty ? Locale.preferredLanguages : m.languages)
         return VStack(alignment: .leading, spacing: 0) {
             Text(S("speech.compare.title")).font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            Text(CloudText.sentences([now.machine.map { S("speech.compare.mac", $0) } ?? "", S("speech.compare.note")].filter { !$0.isEmpty }))
+            Text([now.machine.map { S("speech.compare.mac", $0) } ?? "", ChoiceText.note(lang)].filter { !$0.isEmpty }.joined(separator: " · "))
                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 6)
@@ -274,7 +280,7 @@ struct DictationCompareSheet: View {
     var header: some View {
         HStack(spacing: Col.gap) {
             Color.clear.frame(maxWidth: .infinity)
-            headerCell(S("speech.compare.col.accuracy"), Col.accuracy, help: S("speech.compare.col.accuracy.help"))
+            headerCell(S("speech.compare.col.accuracy"), Col.accuracy)
             headerCell(S("speech.compare.col.delay"), Col.delay, help: S("speech.compare.col.delay.help"))
             headerCell(S("speech.compare.col.cost"), Col.cost)
             headerCell(S("speech.compare.col.leaves"), Col.leaves)
@@ -331,7 +337,6 @@ struct DictationCompareSheet: View {
                 .help(help)
                 AccuracyMeter(level: DictationChoices.level(ChoiceText.error(f, lang)), dim: !runs)
                     .frame(width: Col.accuracy, alignment: .leading)
-                    .help(S("speech.compare.col.accuracy.help"))
                 cell(ChoiceText.delay(f.delay), nil, Col.delay, dim: !runs)
                 cell(cost, per, Col.cost, dim: !runs)
                 cell(leaves, to, Col.leaves, dim: !runs)
@@ -381,17 +386,17 @@ struct DictationCompareSheet: View {
 
 }
 
-/// Accuracy as five marks, the filled ones in the brand's ink (DictationChoices.level).
+/// Accuracy as five stars (DictationChoices.level), the way ratings are shown everywhere.
 struct AccuracyMeter: View {
     let level: Int
     var dim = false
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2) {
             ForEach(1...5, id: \.self) { i in
-                Capsule()
-                    .fill(i <= level ? AnyShapeStyle(dim ? Color.secondary : Color.brandInk) : AnyShapeStyle(.quaternary))
-                    .frame(width: 12, height: 5)
+                Image(systemName: i <= level ? "star.fill" : "star")
+                    .font(.system(size: 11))
+                    .foregroundStyle(i <= level && !dim ? AnyShapeStyle(.secondary) : AnyShapeStyle(.tertiary))
             }
         }
         .accessibilityElement()

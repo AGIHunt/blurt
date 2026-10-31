@@ -38,7 +38,7 @@
 "speech.purpose.more" = "Get More Models…";
 
 /* The one recommendation */
-"speech.rec.title" = "Recommended for this Mac";
+"speech.rec.title" = "Recommended";
 "speech.rec.item" = "%1$@ for %2$@";
 "speech.rec.one" = "Download %1$@ · %2$@";
 "speech.rec.choose" = "Choose what to download";
@@ -152,20 +152,20 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";
 "speech.cloud.key.get" = "Get an API key";
-"speech.section.mac" = "On this Mac";
-"speech.section.jobs" = "Which model does each job";
+"speech.section.mac" = "On Your Mac";
+"speech.section.jobs" = "Models by Feature";
 "speech.machine.short" = "%1$@, %2$@";
 "speech.rec.title_size" = "Recommended download · %@";
 "speech.rec.line" = "After it, %1$@ uses %2$@";
 "speech.rec.help" = "Download gets these models. Each job switches to its model once it’s in.";
-"speech.manage.count" = "%@ on this Mac";
+"speech.manage.count" = "%@ downloaded";
 
 "speech.purpose.recognition" = "Speech recognition";
 "speech.purpose.recognition.detail" = "Dictation, voice notes, live captions and recordings all use this model.";
 "speech.auto.choice" = "Automatic (%@)";
 "speech.lib.use" = "Use";
 "speech.lib.use.help" = "Dictation, voice notes, live captions and recordings all switch to this model.";
-"speech.auto.footer" = "Automatic picks for this Mac (%@), the languages you speak and the services you connected.";
+"speech.auto.footer" = "Automatic chooses models based on your Mac (%@), your languages and connected services.";
 
 /* Model library: what each model is for (v1.0.6) */
 "speech.lib.note2" = "Recommended models are picked for this Mac’s memory. Speed and memory are measured; ✓ means measured on this Mac.";
@@ -203,18 +203,18 @@
 
 /* Dictation’s choices compared (Settings → Models: the lead line and Compare…; DictationCompare.swift). Numbers come
    from BlurtCore DictationChoices (docs/design/dictation-eval-2026-10-31.md §7), never from these strings. */
-"speech.compare.lead" = "Recommended for this Mac: %1$@";
+"speech.compare.lead" = "Recommended: %1$@";
 "speech.compare.open" = "Compare…";
 "speech.compare.menu" = "Compare Choices…";
 "speech.compare.title" = "Dictation choices";
-"speech.compare.note" = "Measured on Chinese mixed with English.";
-"speech.compare.mac" = "This Mac: %@.";
+"speech.compare.note.lang" = "Based on tests in %@.";
+"speech.compare.note" = "Based on tests with Chinese mixed with English.";
+"speech.compare.mac" = "%@";
 "speech.compare.col.accuracy" = "Accuracy";
-"speech.compare.col.accuracy.help" = "More filled is more accurate.";
 "speech.compare.col.delay" = "Delay";
-"speech.compare.col.delay.help" = "From when you stop to the text.";
+"speech.compare.col.delay.help" = "Time from when you stop speaking to when the text appears.";
 "speech.compare.col.cost" = "Cost";
-"speech.compare.col.leaves" = "Sent";
+"speech.compare.col.leaves" = "Uploaded";
 "speech.compare.delay.one" = "~%@ s";
 "speech.compare.delay.range" = "%1$@–%2$@ s";
 "speech.compare.installed" = "Downloaded";
@@ -227,13 +227,13 @@
 "speech.compare.leaves.text" = "Your text";
 "speech.compare.leaves.voice" = "Voice";
 "speech.compare.to" = "to %@";
-"speech.compare.to.any" = "To the service you connected";
+"speech.compare.to.any" = "To your connected service";
 "speech.compare.alibaba" = "Alibaba Cloud";
 "speech.compare.cloud_polish" = "%@ + cloud polish";
 "speech.compare.cloud_asr" = "Cloud recognition";
-"speech.compare.cloud_asr.help" = "Qwen3-ASR Flash on Alibaba Cloud Model Studio. Each dictation’s voice is uploaded.";
-"speech.compare.cloud_polish.help" = "Recognized on this Mac by %@; only the text is sent. Names and terms come out more accurate.";
-"speech.compare.in_use" = "In use";
+"speech.compare.cloud_asr.help" = "Uses Qwen3-ASR Flash on Alibaba Cloud Model Studio. Audio is uploaded.";
+"speech.compare.cloud_polish.help" = "Speech is recognized on your Mac by %@; only the text goes to the cloud.";
+"speech.compare.in_use" = "In Use";
 "speech.compare.needs_memory" = "Needs %@ of memory";
 "speech.compare.needs_apple" = "Needs Apple silicon";
 "speech.compare.needs_macos" = "Needs macOS 26";

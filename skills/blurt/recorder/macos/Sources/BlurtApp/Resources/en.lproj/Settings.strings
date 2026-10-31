@@ -133,7 +133,7 @@
 "onboarding.models.kind.note" = "Voice notes";
 "onboarding.models.download" = "Download Models";
 "onboarding.models.progress" = "%@ of %@";
-"onboarding.models.background" = "It keeps downloading if you go on or close this window.";
+"onboarding.models.background" = "You can continue or close this window. The download continues in the background.";
 "onboarding.models.ready" = "All on this Mac.";
 "onboarding.models.ready_toast" = "Speech models are ready";
 "onboarding.models.failed" = "The download stopped. Check your connection and try again.";
@@ -142,7 +142,7 @@
 "onboarding.models.stop" = "Stop";
 "onboarding.models.failed_toast" = "The model download stopped";
 "onboarding.models.failed_open" = "Try Again…";
-"onboarding.models.later" = "You can change models later in Settings, under Models.";
+"onboarding.models.later" = "You can change this later in Settings > Models.";
 "onboarding.uv.needed" = "Blurt needs a small helper, uv, to run its speech models.";
 "onboarding.uv.failed" = "uv didn’t install. Check your connection and try again.";
 "onboarding.try" = "Try it";
@@ -473,15 +473,15 @@
 "settings.kw.screentext.translate" = "translate, translation, language, target, auto, screen, option T";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
-"onboarding.start.detail" = "It works now. Add these for better accuracy or offline use.";
-"onboarding.start.ready.title" = "Dictation works now";
+"onboarding.start.detail" = "You can start dictating now. The options below can improve accuracy.";
+"onboarding.start.ready.title" = "macOS Speech Recognition";
 "onboarding.start.ready.state" = "Ready";
 "onboarding.start.assets.title" = "macOS is downloading speech files";
 "onboarding.start.assets.detail" = "About 400 MB, once. Dictation works when it’s done.";
 "onboarding.start.language.title" = "The language you speak";
-"onboarding.start.language.mixed" = "macOS’s recognizer listens for one language at a time; English words inside it are heard too.";
-"onboarding.start.language.one" = "macOS’s recognizer listens for one language at a time. Speak Chinese? Choose it, English words included.";
-"onboarding.key.title" = "AI service key (optional)";
+"onboarding.start.language.mixed" = "Choose the language you speak most. English words in your speech are recognized too.";
+"onboarding.start.language.one" = "Choose the language you speak most.";
+"onboarding.key.title" = "Cloud Polish (Optional)";
 "onboarding.key.detail" = "Fixes misheard words and punctuation. Voice notes and Copy Text from Screen use it too.";
 "onboarding.key.on" = "On · %@";
 "onboarding.key.add" = "Add…";
@@ -505,9 +505,9 @@
 "settings.perm.screen.minus_button" = "Minus button";
 "onboarding.models.resume" = "Resume Download";
 "onboarding.upgrade.resume" = "Resume (%@ left)";
-"onboarding.start.ready.detail" = "It uses the speech recognition built into macOS. Nothing to download.";
-"onboarding.upgrade.better" = "%1$@ (%2$@) recognizes better and works offline.";
-"onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It’s used once it’s in.";
-"onboarding.key.compare" = "Cloud polish gets names and terms right more often, %@ a dictation. Only text is sent.";
+"onboarding.start.ready.detail" = "Built in. No download needed.";
+"onboarding.upgrade.better" = "%1$@ (%2$@): more accurate, works offline.";
+"onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It turns on when done.";
+"onboarding.key.compare" = "Improves names and terms, about %@ per dictation. Audio isn’t uploaded.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";
 "onboarding.models.left_label" = "Left";

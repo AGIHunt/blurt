@@ -38,7 +38,7 @@
 "speech.purpose.more" = "获取更多模型…";
 
 /* The one recommendation */
-"speech.rec.title" = "推荐这台 Mac 使用";
+"speech.rec.title" = "推荐";
 "speech.rec.item" = "%1$@ 用于%2$@";
 "speech.rec.one" = "下载 %1$@ · %2$@";
 "speech.rec.choose" = "选择要下载的模型";
@@ -46,7 +46,7 @@
 "speech.rec.downloading" = "正在下载 %@";
 
 /* The library row and sheet */
-"speech.manage.detail" = "各模型在你的语言上的准确率和速度。这台 Mac 上已有 %@。";
+"speech.manage.detail" = "各模型在你所用语言上的准确率和速度。已下载 %@。";
 "speech.manage.detail.none" = "各模型在你的语言上的准确率和速度。";
 "speech.manage.button" = "管理模型…";
 "speech.lib.recognition" = "语音识别";
@@ -152,20 +152,20 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "其他兼容 OpenAI 的服务";
 "speech.cloud.key.get" = "获取 API Key";
-"speech.section.mac" = "这台 Mac 上";
-"speech.section.jobs" = "各项任务用哪个模型";
+"speech.section.mac" = "本机";
+"speech.section.jobs" = "各功能使用的模型";
 "speech.machine.short" = "%1$@，%2$@";
 "speech.rec.title_size" = "推荐下载 · %@";
 "speech.rec.line" = "下载后，%1$@改用 %2$@";
 "speech.rec.help" = "下载这些模型。每个用途在它的模型下载好后自动换用。";
-"speech.manage.count" = "这台 Mac 上有 %@ 个";
+"speech.manage.count" = "已下载 %@ 个";
 
 "speech.purpose.recognition" = "语音识别";
 "speech.purpose.recognition.detail" = "听写、语音备注、实时字幕和录屏都用这个模型。";
 "speech.auto.choice" = "自动（%@）";
 "speech.lib.use" = "使用";
 "speech.lib.use.help" = "听写、语音备注、实时字幕和录屏都改用这个模型。";
-"speech.auto.footer" = "「自动」按这台 Mac（%@）、你说的语言和已连接的云服务挑选模型。";
+"speech.auto.footer" = "「自动」会根据你的 Mac（%@）、语言和已连接的服务选择模型。";
 
 /* Model library: what each model is for (v1.0.6) */
 "speech.lib.note2" = "推荐的模型按这台 Mac 的内存挑选。速度和内存是实测值，带 ✓ 的是在这台 Mac 上测的。";
@@ -191,7 +191,7 @@
 "speech.tag.gemma3-1b" = "适合内存小的 Mac";
 "speech.cloud.speed.line" = "%1$@，%2$@。";
 "speech.auto.plain" = "自动";
-"speech.auto.using" = "%1$@现在用：%2$@";
+"speech.auto.using" = "%1$@当前：%2$@";
 "speech.cloud.check.ok_silent" = "连接正常 · %@ 秒，但测试音频没识别出字";
 "speech.cloud.check.auth" = "Key 不对或已失效";
 "speech.cloud.check.bad_key" = "这个 Key 里有不该有的字符，请重新粘贴";
@@ -203,18 +203,18 @@
 
 /* 听写方案对比（设置 → 模型：页首一行和「对比…」；DictationCompare.swift）。数字来自 BlurtCore DictationChoices
    （docs/design/dictation-eval-2026-10-31.md §7），不写在这些文案里。 */
-"speech.compare.lead" = "这台 Mac 推荐：%1$@";
+"speech.compare.lead" = "推荐：%1$@";
 "speech.compare.open" = "对比…";
 "speech.compare.menu" = "对比各方案…";
 "speech.compare.title" = "听写方案";
-"speech.compare.note" = "按中英混说实测。";
-"speech.compare.mac" = "这台 Mac：%@。";
+"speech.compare.note.lang" = "基于%@语音的测试结果。";
+"speech.compare.note" = "基于中英混合语音的测试结果。";
+"speech.compare.mac" = "%@";
 "speech.compare.col.accuracy" = "准确度";
-"speech.compare.col.accuracy.help" = "越满越准。";
 "speech.compare.col.delay" = "延迟";
-"speech.compare.col.delay.help" = "说完到出字的时间。";
+"speech.compare.col.delay.help" = "从说完到文字出现的时间。";
 "speech.compare.col.cost" = "费用";
-"speech.compare.col.leaves" = "发出的内容";
+"speech.compare.col.leaves" = "上传内容";
 "speech.compare.delay.one" = "约 %@ 秒";
 "speech.compare.delay.range" = "%1$@–%2$@ 秒";
 "speech.compare.installed" = "已下载";
@@ -223,17 +223,17 @@
 "speech.compare.download" = "需下载 %@";
 "speech.compare.per_dictation" = "每次听写";
 "speech.compare.per_hour" = "每小时语音";
-"speech.compare.leaves.nothing" = "不发出";
+"speech.compare.leaves.nothing" = "不上传";
 "speech.compare.leaves.text" = "文字";
 "speech.compare.leaves.voice" = "语音";
 "speech.compare.to" = "发往 %@";
-"speech.compare.to.any" = "发往你连接的服务";
+"speech.compare.to.any" = "发往已连接的服务";
 "speech.compare.alibaba" = "阿里云";
 "speech.compare.cloud_polish" = "%@ + 云端润色";
 "speech.compare.cloud_asr" = "云端识别";
-"speech.compare.cloud_asr.help" = "阿里云百炼 Qwen3-ASR Flash，每次听写会上传语音。";
-"speech.compare.cloud_polish.help" = "在这台 Mac 上用 %@ 识别，只把文字发出去，人名和术语更准。";
-"speech.compare.in_use" = "正在用";
+"speech.compare.cloud_asr.help" = "使用阿里云百炼 Qwen3-ASR Flash，录音会上传。";
+"speech.compare.cloud_polish.help" = "语音在本机由 %@ 识别，云端只处理文字。";
+"speech.compare.in_use" = "使用中";
 "speech.compare.needs_memory" = "需要 %@ 内存";
 "speech.compare.needs_apple" = "需要 Apple 芯片";
 "speech.compare.needs_macos" = "需要 macOS 26";

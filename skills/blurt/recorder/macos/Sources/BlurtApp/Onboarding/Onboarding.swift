@@ -698,7 +698,8 @@ struct OnboardingView: View {
     /// The key row's line before a key is in: what cloud polish adds and costs.
     var keyCompare: String {
         guard case .perDictation(let cny, let usd) = DictationChoices.facts(.cloudPolish).cost else { return T("onboarding.key.detail") }
-        return T("onboarding.key.compare", ChoiceText.money(cny: cny, usd: usd))
+        // the line says "about" itself: the figure without its "≈"
+        return T("onboarding.key.compare", ChoiceText.money(cny: cny, usd: usd).replacingOccurrences(of: "≈ ", with: ""))
     }
 
     /// The local models' one trailing element: Install uv, Try Again, Download (size), a spinner, or installed.

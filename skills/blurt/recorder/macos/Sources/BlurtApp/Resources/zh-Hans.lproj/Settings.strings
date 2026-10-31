@@ -133,7 +133,7 @@
 "onboarding.models.kind.note" = "语音备注";
 "onboarding.models.download" = "下载模型";
 "onboarding.models.progress" = "%@ / %@";
-"onboarding.models.background" = "继续下一步或关掉这个窗口，下载都会在后台继续。";
+"onboarding.models.background" = "可以继续下一步或关闭窗口，下载会在后台进行。";
 "onboarding.models.ready" = "都在这台 Mac 上了。";
 "onboarding.models.ready_toast" = "语音模型下载好了";
 "onboarding.models.failed" = "下载中断了。检查一下网络再试。";
@@ -142,7 +142,7 @@
 "onboarding.models.stop" = "停止";
 "onboarding.models.failed_toast" = "模型下载中断了";
 "onboarding.models.failed_open" = "重试…";
-"onboarding.models.later" = "以后可以在设置的「模型」里换模型。";
+"onboarding.models.later" = "之后可在「设置 > 模型」中更改。";
 "onboarding.uv.needed" = "口喷鸡要用一个小工具 uv 来运行语音模型。";
 "onboarding.uv.failed" = "uv 没装上。检查一下网络再试。";
 "onboarding.try" = "试一下";
@@ -472,15 +472,15 @@
 "settings.kw.screentext.translate" = "翻译, 译文, 语言, 目标语言, 自动, 截图翻译";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
-"onboarding.start.detail" = "现在就能用。想更准确或离线使用，可再加下面两项。";
-"onboarding.start.ready.title" = "听写现在就能用";
-"onboarding.start.ready.state" = "可以用";
+"onboarding.start.detail" = "已可开始听写。以下两项为可选，可提高准确度。";
+"onboarding.start.ready.title" = "macOS 语音识别";
+"onboarding.start.ready.state" = "已就绪";
 "onboarding.start.assets.title" = "macOS 正在下载语音文件";
 "onboarding.start.assets.detail" = "约 400 MB，只需下载一次，完成后即可听写";
 "onboarding.start.language.title" = "你说的语言";
-"onboarding.start.language.mixed" = "macOS 的识别器一次只听一种语言，夹在里面的英文词也认得。";
-"onboarding.start.language.one" = "macOS 的识别器一次只听一种语言。说中文就选中文，英文词也认得。";
-"onboarding.key.title" = "AI 服务 Key（可选）";
+"onboarding.start.language.mixed" = "选择你主要使用的语言，句中的英文单词也能识别。";
+"onboarding.start.language.one" = "选择你主要使用的语言。";
+"onboarding.key.title" = "云端润色（可选）";
 "onboarding.key.detail" = "纠正听错的词和标点。语音备注和截图取字也会用到。";
 "onboarding.key.on" = "已开启 · %@";
 "onboarding.key.add" = "添加…";
@@ -504,9 +504,9 @@
 "settings.perm.screen.minus_button" = "减号按钮";
 "onboarding.models.resume" = "继续下载";
 "onboarding.upgrade.resume" = "继续下载（还剩 %@）";
-"onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
-"onboarding.upgrade.better" = "%1$@（%2$@）识别更准，离线可用。";
-"onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），好了自动换上。";
-"onboarding.key.compare" = "云端润色让人名和术语更准，每次 %@，只发送文字。";
+"onboarding.start.ready.detail" = "系统自带，无需下载。";
+"onboarding.upgrade.better" = "%1$@（%2$@）：识别更准确，可离线使用。";
+"onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），完成后自动启用。";
+"onboarding.key.compare" = "提高人名和术语的准确度，每次约 %@。录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";

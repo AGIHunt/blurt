@@ -2,17 +2,17 @@
    (CloudServicesPane.swift, App/CloudStore.swift). One short line per row; DeepSeek's is the only price shown. */
 
 "models.section.services" = "Cloud services";
-"models.services.detail" = "Your own API keys for cloud models.";
+"models.services.detail" = "Connect cloud models with your API key.";
 "models.services.add.title" = "Add a service";
 "models.services.add" = "Add Service…";
-"models.services.empty" = "Paste an API key to polish, translate and read screenshots with a cloud model.";
-"models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) a dictation.";
+"models.services.empty" = "Add an API key to polish, translate and read text in screenshots with cloud models.";
+"models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) per dictation.";
 "models.recommended" = "Recommended";
 "models.service.edit" = "Edit…";
 "models.service.no_key" = "No API key";
 "models.service.connected" = "Connected";
-"models.service.speech" = "Also does speech recognition";
-"models.untested" = "Not tested by Blurt";
+"models.service.speech" = "Supports speech recognition";
+"models.untested" = "Not tested";
 "models.region.china" = "Mainland China";
 "models.region.global" = "International";
 
@@ -33,7 +33,7 @@
 
 "models.sheet.add_title" = "Add a Cloud Service";
 "models.sheet.paste_title" = "Add an API Key";
-"models.sheet.note" = "The key stays in this Mac’s Keychain and goes only to this service.";
+"models.sheet.note" = "Your API key is stored in Keychain.";
 "models.sheet.service" = "Service";
 "models.sheet.region" = "Region";
 "models.sheet.name" = "Name";
@@ -41,7 +41,7 @@
 "models.sheet.base_url" = "Base URL";
 "models.sheet.key" = "API key";
 "models.sheet.key.placeholder" = "Paste an API key";
-"models.sheet.key.stored" = "Saved. Paste a new one to replace it.";
+"models.sheet.key.stored" = "Saved. Paste a new key to replace it.";
 "models.sheet.key.get" = "Get a key";
 "models.sheet.test" = "Test";
 "models.sheet.connect" = "Connect";
@@ -49,48 +49,48 @@
 "models.cancel" = "Cancel";
 "models.remove.button" = "Remove";
 "models.remove.title" = "Remove %@?";
-"models.remove.message" = "Its key is deleted from this Mac. Jobs that used it go back to this Mac’s models.";
+"models.remove.message" = "Its key is removed from Keychain, and features using it switch to models on your Mac.";
 "models.remove.confirm" = "Remove";
 
-"models.check.ok" = "OK · %@ ms";
-"models.check.auth" = "The key was refused. Check the key and the region.";
-"models.check.network" = "Can’t reach the service. Check the network and the base URL.";
-"models.check.rate" = "Too many requests. Try again in a moment.";
-"models.check.no_key" = "Paste an API key first.";
-"models.check.no_model" = "Connected, but no model to use was found.";
+"models.check.ok" = "Connected · %@ ms";
+"models.check.auth" = "Invalid key. Check the key and region.";
+"models.check.network" = "Can’t connect. Check your network and the base URL.";
+"models.check.rate" = "Too many requests. Try again later.";
+"models.check.no_key" = "Enter an API key.";
+"models.check.no_model" = "Connected, but no models are available.";
 "models.check.other" = "The service returned an error. Check the base URL.";
-"models.check.model" = "The service doesn’t know this model ID.";
-"models.check.vision" = "This model can’t read images.";
+"models.check.model" = "Model ID not found.";
+"models.check.vision" = "This model doesn’t support images.";
 "models.check.empty" = "The model returned nothing.";
-"models.check.address" = "Enter an https:// base URL.";
+"models.check.address" = "The base URL must start with https://.";
 "models.check.model_id" = "Enter a model ID.";
-"models.check.speech_ok" = "Speech recognition: OK · %@ ms";
+"models.check.speech_ok" = "Speech recognition: connected · %@ ms";
 "models.check.speech_failed" = "Speech recognition: %@";
-"models.key.spaces" = "An API key has no spaces in it.";
-"models.key.characters" = "The key has extra characters. Paste it again.";
+"models.key.spaces" = "API keys can’t contain spaces.";
+"models.key.characters" = "The API key has invalid characters. Paste it again.";
 "models.key.custom" = "This is a %@ key. Add it under Custom Model.";
 
 "models.job.translate" = "Translate";
-"models.job.translate.detail" = "Dictation’s ⌘ and ⌥T.";
+"models.job.translate.detail" = "Dictation translation (⌘) and screen translation (⌥T).";
 "models.job.vision" = "Copy Text from Screen";
-"models.job.vision.detail" = "Reads ⌥C’s text a second time.";
-"models.job.goes.text" = "Text goes to %@.";
-"models.job.goes.images" = "Screenshots go to %@.";
-"models.job.local" = "Stays on this Mac.";
-"models.job.none" = "Nothing yet. Add a service or download a model.";
+"models.job.vision.detail" = "Improves Copy Text from Screen (⌥C).";
+"models.job.goes.text" = "Text is processed by %@.";
+"models.job.goes.images" = "Screenshots are processed by %@.";
+"models.job.local" = "Processed on your Mac.";
+"models.job.none" = "Not set. Add a cloud service or download a model.";
 "models.job.recommend" = "Recommended: %@.";
 "models.job.switch" = "Switch";
-"models.job.this_mac" = "This Mac";
+"models.job.this_mac" = "On Your Mac";
 "models.job.advanced" = "Advanced";
 "models.job.custom" = "Custom Model…";
 "models.job.more" = "Get More Models…";
 "models.other.placeholder" = "Model ID";
 "models.custom.title" = "Custom Model";
-"models.custom.note" = "Not tested by Blurt. Save tries it first.";
+"models.custom.note" = "It’s tested before saving.";
 "models.custom.save" = "Save";
 
 "models.uses.translate" = "Translation model";
 "models.uses.cloud" = "%@ · cloud";
 "models.uses.local" = "%@ · this Mac";
-"models.uses.none" = "No model yet";
+"models.uses.none" = "Not set";
 "models.uses.change" = "Change…";

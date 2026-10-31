@@ -111,7 +111,7 @@ public enum DictationChoices {
 
     // MARK: the words
 
-    /// How accurate, for people: 3–5 filled marks, never a count of mistakes (the founder, 2026-10-31: "1 mistake every
+    /// How accurate, for people: 3–5 of five stars, never a count of mistakes (the founder, 2026-10-31: "1 mistake every
     /// 40 words" reads as poor quality — say how good it is). 5 at ≤ 2.7 % (1.7B, the cloud), 4 at ≤ 4 % (0.6B,
     /// Fun-ASR-Nano), else 3 (macOS Speech on Chinese + English; on English alone it is a 5).
     public static func level(_ error: Double) -> Int {
