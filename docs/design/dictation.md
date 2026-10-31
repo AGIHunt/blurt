@@ -480,6 +480,55 @@ shipped prompt 2.42 % (whole-take replays of the eval's Flash output with the ev
 the Lab 2.62–2.72 % (macOS's pieces as the second transcript, the Lab's app context). Latency after key-up (eval §5,
 M5 Max, Beijing): Flash 0.52 s on ~5 s takes, 1.47 s on ~60 s ones, plus ~0.8–1.1 s of cloud polish.
 
+### Cloud recognition streamed while you talk: Volcengine Seed-ASR 2.0 (2026-10-31)
+
+The afternoon of the eval (dictation-eval-2026-10-31.md §2.1, §5, §6.3 B′) found one cloud recogniser with a
+dictation-grade delay: Volcengine 豆包 Seed-ASR 2.0 on its streamed `bigmodel_nostream` endpoint, 2.18 % on the founder's
+95 takes and ~0.5 s after key-up however long the take (it re-recognises the audio in ~15 s blocks while it comes in, so
+only the last block is left at key-up; Flash on a whole take grows from 0.5 to 1.5 s). It is now a cloud recogniser in
+Blurt — an option, never the recommendation (DictationTier unchanged: local 1.7B + DeepSeek polish stays the default).
+
+- **The service** is a curated one for the speech job only, mainland China (`CloudPreset` `volcengine-speech`,
+  curated_models.json `speech`; Add Service offers it to Macs set to China or people who speak Chinese). Its credential
+  is an App ID + Access Token pair from the speech console: the sheet asks for both, they are one Keychain item
+  (`<App ID>:<Access Token>`, BlurtCore `VolcengineSpeech`), the scripts get `VOLC_APP_ID` / `VOLC_ACCESS_TOKEN`
+  (`CloudSpeech.environment`). Test is a real recognition of the `say` clip (`transcribe.py check-cloud --model-id
+  volcengine-seedasr`, the pair on stdin when not saved yet). The registry entry `volcengine-seedasr` is offered in the
+  dictation pop-up once both are set (`keys_all`).
+- **The take streams up while it is said.** The microphone's samples go to the warm speech server on one connection per
+  take (BlurtCore `WarmServerStream` → `transcribe.py serve` cmd "stream": one JSON line, raw 16 kHz s16 PCM, shut at
+  key-up, one answer line), which passes them on as 200 ms packets over one websocket session (`VolcStream`: the
+  docs' 4-byte binary frames, gzip JSON request, a negative sequence on the last packet; resource
+  `volc.seedasr.sauc.duration`). The request goes out once the field's text is read (or after 1.5 s without it): the
+  words as inline `hotwords` (up to 100, the app's name first, as every recogniser gets them), the field's last 300
+  characters as one `dialog_ctx` turn, no language for Chinese speakers (its zh-en default: 2.18 % against 2.84 % with
+  automatic language), `enable_auto_lang` for others, the language the user set when there is one. The live text on the
+  island still comes from macOS's recogniser, as for Flash; polish (cloud polish with macOS's pieces as "Also heard")
+  runs once at key-up — the configuration that fixes Volcengine's weak names (79 → 91 %, §6.3 B′).
+- **Bounded, with the same failure lines.** The server waits 10 s for the final text after key-up, plus 0.4 s per second
+  of audio that reached it faster than it was spoken (a server that came up late gets the take so far at once; the
+  service works through it at ~4× real time). Refusals come back in the codes the island already words: a wrong App ID
+  / token is `auth` (HTTP 401 "requested grant not found"), "quota exceeded for types: concurrency" (45000292: the trial
+  allows only a few sessions at once) is `quota` ("busy or out of quota · Retry"), a dropped session `network`. The
+  recording is kept; Retry sends it whole through one session (`Volcengine.transcribe`, the same request, as fast as it
+  goes). A stream that couldn't be used at all (no server, the connection broke) falls back to the whole take at key-up.
+
+Re-measured through the shipped path (the eval's harness, a scratch server from the working copy, each take streamed to
+`serve` exactly as the app does — the eval's words, the take's app name and field text; keys from the eval's file):
+
+| Volcengine Seed-ASR 2.0 on the founder's 95 takes | Error | Terms |
+|---|---:|---:|
+| the eval's client (unpaced, words + field) | 2.18 % | 79 % |
+| **the shipped stream path (unpaced, words + app + field)** | **2.29 %** | 77 % |
+| … again without the app's name | 2.46 % | 77 % |
+| the eval, no words, no field | 2.33 % | 75 % |
+
+The same request answers differently from run to run on ~20 of the 95 takes (punctuation, a word here and there): the
+three runs above are within that spread. After key-up, streamed at 1× in 200 ms packets from this Mac in Beijing, two
+takes at a time: 0.52 s median / 0.62 s p90 on 4–7 s takes, 0.62 / 0.69 s on 50–70 s takes (eval: 0.45 / 0.58 and
+0.52 / 0.70 s). Settings → Models' comparison shows it as its own row for Chinese speakers (five stars, ~0.5 s,
+≈ ¥1 an hour of speech, voice to Volcengine; DictationChoices `.volcengine`).
+
 ### Punctuation at the seams
 
 What the user saw: the meaning was kept, but there was **a full stop at every pause**, in the middle of sentences

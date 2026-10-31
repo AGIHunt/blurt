@@ -10,7 +10,9 @@
 //                    (Keychain; never shown back; a key with characters no key has is refused; another service's key,
 //                    known by its start, points to Custom Model), Test: one tiny request on the service's curated
 //                    model → "OK · 320 ms" or one plain sentence (Model Studio and OpenAI: the speech check too,
-//                    CloudSpeech.check). Connect tests first.
+//                    CloudSpeech.check). Connect tests first. Volcengine Speech (speech only, China) asks for its
+//                    App ID and Access Token instead of a key and an address; its Test is the speech clip
+//                    (CloudSpeech.checkVolcengine), and the pair is one Keychain item (BlurtCore VolcengineSpeech).
 //   the job rows     Polish, Translate, Copy Text from Screen: This Mac, then the curated models for the job (a
 //                    service with no key yet says so: picking it adds the key, then uses it), then Advanced: a model
 //                    kept from an earlier setup ("Not tested by Blurt") and Custom Model…. The line under says where
@@ -96,6 +98,19 @@ enum CloudText {
         }
     }
 
+    /// A speech-only service's Test (CloudSpeechCheck's sentence key) in the sheet's words: no base URL to check there.
+    static func speechFailure(_ key: String) -> String {
+        switch key {
+        case "speech.cloud.check.auth": return M("models.check.pair_auth")
+        case "speech.cloud.check.network": return M("models.check.offline")
+        case "speech.cloud.check.quota": return M("models.check.rate")
+        case "speech.cloud.check.privacy": return Loc.string(key, table: "Speech")
+        case "speech.cloud.check.bad_key": return M("models.token.invalid")
+        case "speech.cloud.check.no_key": return M("models.check.no_token")
+        default: return M("models.check.error")
+        }
+    }
+
     static func keyProblem(_ p: CloudKeyCheck.Problem) -> String {
         switch p {
         case .empty: return M("models.check.no_key")
@@ -120,7 +135,7 @@ struct CloudServicesSection: View {
             ForEach(setup.services) { s in serviceLine(s) }
             // each curated service once; the rest are added as a Custom Model in a job's pop-up
             let taken = Set(setup.services.map(\.preset))
-            if CuratedModels.list.services.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
+            if CloudServiceSheetModel.curated.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
                 addLine(empty: setup.services.isEmpty)
             }
         }
@@ -220,6 +235,8 @@ final class CloudServiceSheetModel: ObservableObject {
     @Published var baseURL: String
     @Published var name: String
     @Published var key = ""
+    /// Volcengine Speech: the App ID typed (or the saved one, when editing); `key` is then its Access Token
+    @Published var appID = ""
     @Published var stored = false
     @Published var check: Check = .idle
     /// Model Studio / OpenAI: the speech check's line
@@ -228,10 +245,15 @@ final class CloudServiceSheetModel: ObservableObject {
     /// a pasted key another service's (by its start): that service's name, for the line pointing to Custom Model
     @Published var otherService: String?
 
-    /// The services Add Service offers: the curated list's (DeepSeek, Model Studio), in its order.
+    /// The services Add Service offers: the curated list's (DeepSeek, Model Studio, Volcengine Speech), in its order —
+    /// Volcengine Speech only where it can serve (VolcengineSpeech.offered).
     static var curated: [String] {
-        let l = CuratedModels.list.services
+        let l = CuratedModels.list.services.filter { $0 != VolcengineSpeech.preset || volcengineOffered }
         return l.isEmpty ? ["dashscope", "deepseek"] : l
+    }
+
+    static var volcengineOffered: Bool {
+        VolcengineSpeech.offered(regionCode: Locale.current.region?.identifier, languages: Locale.preferredLanguages)
     }
 
     init(editing: CloudService?, preset: String? = nil) {
@@ -247,8 +269,13 @@ final class CloudServiceSheetModel: ObservableObject {
         name = editing?.name ?? ""
         if let e = editing {
             Task.detached(priority: .userInitiated) {
-                let has = CloudStore.key(e) != nil
-                await MainActor.run { self.stored = has }
+                let k = CloudStore.key(e)
+                // the App ID is no secret: shown again, so a new token can go with it
+                let id = e.info.pairCredential ? VolcengineSpeech.split(k)?.appID : nil
+                await MainActor.run {
+                    self.stored = k != nil
+                    if let id, self.appID.isEmpty { self.appID = id }
+                }
             }
         }
         if editing == nil { baseURL = info.endpoint(region)?.baseURL ?? "" }
@@ -269,6 +296,11 @@ final class CloudServiceSheetModel: ObservableObject {
         preset = p
         baseURL = info.endpoint(region)?.baseURL ?? ""
         check = .idle; speech = nil
+    }
+
+    func appIDChanged(_ s: String) {
+        appID = s
+        check = .idle
     }
 
     func pickRegion(_ r: CloudRegion) {
@@ -298,8 +330,14 @@ final class CloudServiceSheetModel: ObservableObject {
     }
 
     var canSave: Bool {
-        !service.effectiveBaseURL.isEmpty && (stored || !key.trimmingCharacters(in: .whitespaces).isEmpty)
+        if info.pairCredential {
+            return !appID.trimmingCharacters(in: .whitespaces).isEmpty && (stored || !key.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+        return !service.effectiveBaseURL.isEmpty && (stored || !key.trimmingCharacters(in: .whitespaces).isEmpty)
     }
+
+    /// Test can run: a model to ask, or (a speech-only service) the clip.
+    var canTest: Bool { canSave && (info.speechOnly || testModel != nil) }
 
     /// The model Test asks: the service's curated model (polish's first), else one a job uses on it; nil: nothing to ask.
     var testModel: String? {
@@ -311,9 +349,23 @@ final class CloudServiceSheetModel: ObservableObject {
         return nil
     }
 
-    /// The key to use: typed, else saved. nil + the sentence when there is none or it can't be a key.
+    /// The key to use: typed, else saved. nil + the sentence when there is none or it can't be a key. Volcengine
+    /// Speech: the App ID with the token typed, else with the saved one, as the pair's one item.
     func keyToUse() async -> (String?, String?) {
         let typed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        if info.pairCredential {
+            let id = appID.trimmingCharacters(in: .whitespacesAndNewlines)
+            var token = typed
+            if token.isEmpty, let e = editing {
+                token = await Task.detached { VolcengineSpeech.split(CloudStore.key(e))?.token }.value ?? ""
+            }
+            guard !token.isEmpty else { return (nil, M(VolcengineSpeech.validAppID(id) ? "models.check.no_token" : "models.check.app_id")) }
+            switch VolcengineSpeech.problem(appID: id, token: token) {
+            case .appID?: return (nil, M("models.check.app_id"))
+            case .token?: return (nil, M("models.token.invalid"))
+            case nil: return (VolcengineSpeech.credential(appID: id, token: token), nil)
+            }
+        }
         if !typed.isEmpty {
             if let p = CloudKeyCheck.problem(typed) { return (nil, CloudText.keyProblem(p)) }
             return (typed, nil)
@@ -332,6 +384,7 @@ final class CloudServiceSheetModel: ObservableObject {
         check = .running; speech = nil
         let (k, problem) = await keyToUse()
         guard let key = k else { check = .failed(problem ?? CloudText.checkFailure("no_key")); return false }
+        if info.speechOnly { return await testSpeechOnly(key) }
         guard let model = testModel else { check = .failed(CloudText.checkFailure("no_model")); return false }
         let svc = service
         emit(["event": "cloud_service", "action": "test", "preset": svc.preset])
@@ -351,6 +404,22 @@ final class CloudServiceSheetModel: ObservableObject {
         return false
     }
 
+    /// A speech-only service (Volcengine Speech): Test is the short clip itself.
+    private func testSpeechOnly(_ credential: String) async -> Bool {
+        guard let pair = VolcengineSpeech.split(credential) else { check = .failed(M("models.check.app_id")); return false }
+        emit(["event": "cloud_service", "action": "test", "preset": preset])
+        let r: CloudSpeechCheck.Result = await withCheckedContinuation { c in
+            CloudSpeech.checkVolcengine(appID: pair.appID, token: pair.token) { c.resume(returning: $0) }
+        }
+        let ok: Bool
+        switch r {
+        case .ok(let ms, _): check = .ok(ms); ok = true
+        case .failed(let k): check = .failed(CloudText.speechFailure(k)); ok = false
+        }
+        emit(["event": "cloud_service", "action": "tested", "preset": preset, "ok": ok])
+        return ok
+    }
+
     private func checkSpeech(_ key: String) {
         let dashscope = preset == "dashscope"
         let id = dashscope ? CloudSpeech.dashScopeModel : CloudSpeech.openAIModel
@@ -359,7 +428,7 @@ final class CloudServiceSheetModel: ObservableObject {
         CloudSpeech.check(modelID: id, typedKey: key, setup: setup, dsModel: CloudSpeech.dashScopeChoice) { [weak self] r in
             switch r {
             case .ok(let ms, _): self?.speech = M("models.check.speech_ok", Loc.number(ms))
-            case .failed(let k): self?.speech = M("models.check.speech_failed", Loc.string(k, table: "Dictation"))
+            case .failed(let k): self?.speech = M("models.check.speech_failed", Loc.string(k, table: "Speech"))
             }
         }
     }
@@ -367,13 +436,28 @@ final class CloudServiceSheetModel: ObservableObject {
     /// Save: the key (when typed) and the service. A new service is tested first and saved when the key works.
     func save(then done: @escaping () -> Void) {
         Task {
-            let typed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !typed.isEmpty, let p = CloudKeyCheck.problem(typed) { check = .failed(CloudText.keyProblem(p)); return }
-            if editing == nil {
-                connecting = true
-                let ok = await test()
-                connecting = false
-                guard ok else { return }
+            var typed = key.trimmingCharacters(in: .whitespacesAndNewlines)
+            if info.pairCredential {
+                // the pair as one item: saved when the token or the App ID changed, tested first like a new service
+                let (k, problem) = await keyToUse()
+                guard let pair = k else { check = .failed(problem ?? M("models.check.no_token")); return }
+                let e = editing
+                let saved = await Task.detached { e.flatMap { CloudStore.key($0) } }.value
+                typed = pair == saved ? "" : pair
+                if !typed.isEmpty || editing == nil {
+                    connecting = true
+                    let ok = await test()
+                    connecting = false
+                    guard ok else { return }
+                }
+            } else {
+                if !typed.isEmpty, let p = CloudKeyCheck.problem(typed) { check = .failed(CloudText.keyProblem(p)); return }
+                if editing == nil {
+                    connecting = true
+                    let ok = await test()
+                    connecting = false
+                    guard ok else { return }
+                }
             }
             let svc = service
             let speechBefore = CloudSpeech.environment()
@@ -422,7 +506,7 @@ struct CloudServiceSheet: View {
         VStack(alignment: .leading, spacing: 0) {
             Text(m.editing.map(CloudStore.name) ?? M(keyFirst ? "models.sheet.paste_title" : "models.sheet.add_title"))
                 .font(.system(size: 17, weight: .semibold)).accessibilityAddTraits(.isHeader)
-            Text(M("models.sheet.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            Text(M(m.info.pairCredential ? "models.sheet.note.pair" : "models.sheet.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
             form.padding(.top, 16)
             footer.padding(.top, 18)
@@ -466,7 +550,7 @@ struct CloudServiceSheet: View {
                     TextField(M("models.sheet.name.placeholder"), text: $m.name).textFieldStyle(.roundedBorder)
                 }
             }
-            if !keyFirst || m.info.custom {
+            if (!keyFirst || m.info.custom) && !m.info.speechOnly {
                 GridRow {
                     label(M("models.sheet.base_url"))
                     TextField("https://…/v1", text: Binding(get: { m.baseURL }, set: { m.baseURL = $0; m.check = .idle }))
@@ -478,6 +562,32 @@ struct CloudServiceSheet: View {
     }
 
     @ViewBuilder var keyRow: some View {
+        if m.info.pairCredential { pairRows } else { apiKeyRow }
+    }
+
+    /// Volcengine Speech: App ID, then Access Token (Keychain, never shown back), then where to get them.
+    @ViewBuilder var pairRows: some View {
+        GridRow {
+            label(M("models.sheet.app_id"))
+            TextField(M("models.sheet.app_id.placeholder"), text: Binding(get: { m.appID }, set: { m.appIDChanged($0) }))
+                .textFieldStyle(.roundedBorder)
+        }
+        GridRow {
+            label(M("models.sheet.token"))
+            VStack(alignment: .leading, spacing: 5) {
+                SecureField(m.stored ? M("models.sheet.token.stored") : M("models.sheet.token.placeholder"),
+                            text: Binding(get: { m.key }, set: { m.key = $0; m.check = .idle }))
+                    .textFieldStyle(.roundedBorder)
+                if let page = m.info.endpoint(nil)?.keyPage, let u = URL(string: page) {
+                    TextLinkButton(M("models.sheet.key.get")) { NSWorkspace.shared.open(u) }
+                        .font(.system(size: SettingsMetrics.detailSize))
+                        .padding(.leading, SettingsMetrics.fieldTextInset)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder var apiKeyRow: some View {
         GridRow {
             label(M("models.sheet.key"))
             VStack(alignment: .leading, spacing: 5) {
@@ -507,7 +617,7 @@ struct CloudServiceSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 10) {
                 Button(M("models.sheet.test")) { Task { await m.test() } }
-                    .disabled(m.check == .running || !m.canSave || m.testModel == nil)
+                    .disabled(m.check == .running || !m.canTest)
                 result
                 Spacer()
                 if m.editing != nil {
@@ -718,7 +828,7 @@ final class CustomModelModel: ObservableObject {
         self.job = job
         // the service the job is on, else the first connected one, else the first preset
         let on: String? = { if case .cloud(let id, _) = CloudStore.route(job) { return id }; return nil }()
-        let connected = CloudStore.connected
+        let connected = Self.textServices
         if let id = on ?? connected.first?.id { choice = "svc:" + id }
         else { choice = "new:" + (CustomModelModel.newPresets.first?.id ?? "custom-openai") }
         if case .cloud(let id, let m) = CloudStore.route(job), let s = CloudStore.setup.service(id),
@@ -726,18 +836,22 @@ final class CustomModelModel: ObservableObject {
         fillAddress()
     }
 
-    /// Presets with no service yet: every one the app knows, the user's own (OpenAI- / Anthropic-compatible) last.
+    /// Presets with no service yet: every one the app knows, the user's own (OpenAI- / Anthropic-compatible) last — not
+    /// a speech-only one (Volcengine Speech has no text models).
     static var newPresets: [CloudPreset] {
         let taken = Set(CloudStore.setup.services.map(\.preset))
-        return CloudPreset.all.filter { $0.custom || !taken.contains($0.id) }
+        return CloudPreset.all.filter { ($0.custom || !taken.contains($0.id)) && !$0.speechOnly }
     }
+
+    /// The connected services a text job can run on (a speech-only one can't).
+    static var textServices: [CloudService] { CloudStore.connected.filter { !$0.info.speechOnly } }
 
     /// The connected services (their keys), then a new one of any preset not added yet.
     var choices: [(String, String)] {
-        CloudStore.connected.map { ("svc:" + $0.id, CloudStore.name($0)) }
+        Self.textServices.map { ("svc:" + $0.id, CloudStore.name($0)) }
             + Self.newPresets.map { ("new:" + $0.id, CloudStore.presetName($0.id)) }
     }
-    var divider: Set<Int> { CloudStore.connected.isEmpty ? [] : [CloudStore.connected.count] }
+    var divider: Set<Int> { Self.textServices.isEmpty ? [] : [Self.textServices.count] }
 
     var existing: CloudService? {
         choice.hasPrefix("svc:") ? CloudStore.setup.service(String(choice.dropFirst(4))) : nil

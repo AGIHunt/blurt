@@ -822,11 +822,14 @@ struct SpeechPane: View {
 
     /// One cloud service: whether its key is found, and how to set one (the variables' names) in a popover.
     @ViewBuilder func cloudRow(_ x: ASRModel, first: Bool) -> some View {
-        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.backend == "dashscope" ? S("speech.cloud.name.dashscope") : x.title
+        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.backend == "dashscope" ? S("speech.cloud.name.dashscope")
+            : x.backend == "volcengine" ? S("speech.cloud.name.volcengine") : x.title
         let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
         // the first row is the catalogue's (search lands on it); the others are the same row for another service
         if first {
             SettingRow("speech.cloud", title: title, detail: detail) { CloudKey(model: x) }
+        } else if x.backend == "volcengine" {
+            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { VolcengineKey(model: x) }
         } else {
             SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { CloudKey(model: x) }
         }
@@ -906,6 +909,34 @@ private struct CloudKey: View {
                     || DictationModels.shared.asr?.selected == model.id
                 if inUse { VoiceInput.endUnresponsiveServer(why: "cloud_key") }
                 Task { await m.load() }
+            }
+            .buttonStyle(.automatic)
+        }
+    }
+}
+
+/// Volcengine Speech's row: whether its App ID and Access Token are set, and Set Up… — the Cloud services sheet (the
+/// pair is a connected service there, not a key of this page's own).
+private struct VolcengineKey: View {
+    var model: ASRModel
+    @State private var sheet = false
+    var body: some View {
+        HStack(spacing: 10) {
+            if model.installed {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
+                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+                }
+            } else {
+                Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
+            }
+            Button(S("speech.cloud.setup")) { sheet = true }
+        }
+        .sheet(isPresented: $sheet) {
+            CloudServiceSheet(editing: CloudStore.setup.services.first { $0.preset == VolcengineSpeech.preset },
+                              preset: VolcengineSpeech.preset) {
+                sheet = false
+                Task { await SpeechModel.shared.load() }
             }
             .buttonStyle(.automatic)
         }

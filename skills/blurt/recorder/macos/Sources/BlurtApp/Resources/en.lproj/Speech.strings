@@ -135,6 +135,7 @@
 "speech.cloud.title" = "Cloud speech recognition";
 "speech.cloud.name.openai" = "OpenAI-compatible API";
 "speech.cloud.name.dashscope" = "Alibaba Cloud Model Studio · Qwen3-ASR (recommended)";
+"speech.cloud.name.volcengine" = "Volcengine · Doubao Seed-ASR 2.0";
 "speech.cloud.set" = "Set";
 "speech.cloud.not_set" = "Not set";
 "speech.cloud.off" = "Turned off in Privacy";
@@ -232,6 +233,8 @@
 "speech.compare.cloud_polish" = "%@ + cloud polish";
 "speech.compare.cloud_asr" = "Cloud recognition";
 "speech.compare.cloud_asr.help" = "Uses Qwen3-ASR Flash on Alibaba Cloud Model Studio. Audio is uploaded.";
+"speech.compare.volcengine" = "Volcengine";
+"speech.compare.volcengine.help" = "Uses Doubao Seed-ASR 2.0 on Volcengine. Audio is uploaded while you speak. Names and terms are more accurate with cloud polish.";
 "speech.compare.cloud_polish.help" = "Speech is recognized on your Mac by %@; only the text goes to the cloud.";
 "speech.compare.in_use" = "In Use";
 "speech.compare.needs_memory" = "Needs %@ of memory";

@@ -19,6 +19,7 @@
 "models.preset.deepseek" = "DeepSeek";
 "models.preset.dashscope" = "阿里云百炼";
 "models.preset.volcengine" = "火山方舟（豆包）";
+"models.preset.volcengine_speech" = "豆包语音（火山引擎）";
 "models.preset.moonshot" = "月之暗面（Kimi）";
 "models.preset.zhipu" = "智谱（GLM）";
 "models.preset.minimax" = "MiniMax";
@@ -43,6 +44,12 @@
 "models.sheet.key.placeholder" = "粘贴 API Key";
 "models.sheet.key.stored" = "已保存。粘贴新 Key 可替换。";
 "models.sheet.key.get" = "获取 Key";
+"models.sheet.note.pair" = "App ID 和 Access Token 保存在钥匙串中。";
+"models.sheet.app_id" = "App ID";
+"models.sheet.app_id.placeholder" = "粘贴 App ID";
+"models.sheet.token" = "Access Token";
+"models.sheet.token.placeholder" = "粘贴 Access Token";
+"models.sheet.token.stored" = "已保存。粘贴新 Token 可替换。";
 "models.sheet.test" = "测试";
 "models.sheet.connect" = "连接";
 "models.sheet.done" = "完成";
@@ -66,6 +73,12 @@
 "models.check.model_id" = "请输入模型 ID。";
 "models.check.speech_ok" = "语音识别：连接成功 · %@ 毫秒";
 "models.check.speech_failed" = "语音识别：%@";
+"models.check.pair_auth" = "App ID 或 Access Token 无效，请在火山引擎控制台中检查。";
+"models.check.offline" = "无法连接服务，请检查网络。";
+"models.check.error" = "服务返回错误，请稍后再试。";
+"models.check.app_id" = "请输入有效的 App ID。";
+"models.check.no_token" = "请输入 Access Token。";
+"models.token.invalid" = "Access Token 含有无效字符，请重新粘贴。";
 "models.key.spaces" = "API Key 不能包含空格。";
 "models.key.characters" = "API Key 含有无效字符，请重新粘贴。";
 "models.key.custom" = "这是 %@ 的 Key，请在「自定义模型」中添加。";

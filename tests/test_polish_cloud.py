@@ -139,7 +139,9 @@ def test_the_curated_list_is_one_file_in_the_skill_and_on_the_site():
     for job, opts in d["jobs"].items():
         assert 1 <= len(opts) <= 3, job
         for o in opts:
-            assert o["service"] in C.PRESETS and "base_url" not in o and o["measured"] <= d["updated"], o
+            # a speech-only service (Volcengine Speech: transcribe.py's backend) has no text preset here
+            known = o["service"] in C.PRESETS or (job == "speech" and o["service"] == "volcengine-speech")
+            assert known and "base_url" not in o and o["measured"] <= d["updated"], o
     # the measured best first (dictation-eval-2026-10-31.md §2.3): DeepSeek V4.1 Flash on Model Studio, then DeepSeek's own
     assert [o["model"] for o in d["jobs"]["polish"]] == ["deepseek-v4.1-flash", "deepseek-flash"]
 

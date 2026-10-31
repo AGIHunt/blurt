@@ -679,6 +679,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "准确度较低，不推荐";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "常返回空结果，不推荐";
 "dictation.cloud.model.note.speech.qwen3_asr" = "准确，约 0.7 秒";
+"dictation.cloud.model.note.speech.seedasr" = "准确，约 0.5 秒";
 "dictation.cloud.key" = "API Key";
 "dictation.cloud.key.placeholder" = "粘贴 API Key";
 "dictation.cloud.key.stored" = "已保存在钥匙串中。输入新 Key 可替换。";

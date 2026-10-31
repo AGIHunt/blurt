@@ -131,6 +131,14 @@ enum CloudSpeech {
             env["BLURT_ASR_MODEL"] = s.service == .openai && !s.model.trimmingCharacters(in: .whitespaces).isEmpty
                 ? s.effectiveModel : Service.openai.defaultModel
         }
+        // Volcengine Speech: its App ID and Access Token, one Keychain item (VolcengineSpeech) — only a pair that can be
+        // sent; a value that isn't one is left out (the model then isn't offered: transcribe.py needs both)
+        if let v = services.first(where: { $0.preset == VolcengineSpeech.preset }),
+           let pair = VolcengineSpeech.split(CloudStore.Key.read(v.id)),
+           VolcengineSpeech.problem(appID: pair.appID, token: pair.token) == nil {
+            env[VolcengineSpeech.appIDVariable] = pair.appID
+            env[VolcengineSpeech.tokenVariable] = pair.token
+        }
         // DashScope: Model Studio's key under Cloud services (one key: first-minute-speech.md §4.3), else the key set
         // for speech alone, at that service's address (Singapore for an international account). Cloud services first:
         // the key the user last pasted and tested there must be the one dictation sends (2026-10-31: an older
@@ -192,6 +200,20 @@ enum CloudSpeech {
         }
         let body = try? JSONSerialization.data(withJSONObject: given)
         Scripts.call("transcribe.py", ["check-cloud", "--model-id", modelID], stdin: body, timeout: 45) { r in
+            switch r {
+            case .success(let o): done(CloudSpeechCheck.result(o))
+            case .failure(let f): done(.failed(CloudSpeechCheck.sentence(f.code)))
+            }
+        }
+    }
+
+    /// Settings' Test for Volcengine Speech: the same short clip through `transcribe.py check-cloud`, with an App ID and
+    /// Access Token typed and not saved yet on stdin (never on the command line or in a log), else the saved pair (from
+    /// the environment, as every script gets it). `done` on the main queue.
+    static func checkVolcengine(appID: String, token: String, done: @escaping (CloudSpeechCheck.Result) -> Void) {
+        let given: [String: String] = token.isEmpty ? [:] : ["app_id": appID, "token": token]
+        let body = try? JSONSerialization.data(withJSONObject: given)
+        Scripts.call("transcribe.py", ["check-cloud", "--model-id", VolcengineSpeech.modelID], stdin: body, timeout: 45) { r in
             switch r {
             case .success(let o): done(CloudSpeechCheck.result(o))
             case .failure(let f): done(.failed(CloudSpeechCheck.sentence(f.code)))

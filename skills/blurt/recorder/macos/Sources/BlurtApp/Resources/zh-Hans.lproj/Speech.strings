@@ -135,6 +135,7 @@
 "speech.cloud.title" = "云端语音识别";
 "speech.cloud.name.openai" = "OpenAI 兼容接口";
 "speech.cloud.name.dashscope" = "阿里云百炼 · Qwen3-ASR（推荐）";
+"speech.cloud.name.volcengine" = "火山引擎 · 豆包 Seed-ASR 2.0";
 "speech.cloud.set" = "已设置";
 "speech.cloud.not_set" = "未设置";
 "speech.cloud.off" = "已在「隐私」里关闭";
@@ -232,6 +233,8 @@
 "speech.compare.cloud_polish" = "%@ + 云端润色";
 "speech.compare.cloud_asr" = "云端识别";
 "speech.compare.cloud_asr.help" = "使用阿里云百炼 Qwen3-ASR Flash，录音会上传。";
+"speech.compare.volcengine" = "火山引擎";
+"speech.compare.volcengine.help" = "使用火山引擎豆包 Seed-ASR 2.0，说话时录音会上传。配合云端润色，人名和术语更准。";
 "speech.compare.cloud_polish.help" = "语音在本机由 %@ 识别，云端只处理文字。";
 "speech.compare.in_use" = "使用中";
 "speech.compare.needs_memory" = "需要 %@ 内存";

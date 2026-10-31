@@ -679,6 +679,7 @@
 "dictation.cloud.model.note.vision.qwen35_ocr" = "Less accurate; not recommended";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "Often returns nothing; not recommended";
 "dictation.cloud.model.note.speech.qwen3_asr" = "Accurate, about 0.7 s";
+"dictation.cloud.model.note.speech.seedasr" = "Accurate, about 0.5 s";
 "dictation.cloud.key" = "API key";
 "dictation.cloud.key.placeholder" = "Paste an API key";
 "dictation.cloud.key.stored" = "Saved in your Keychain. Type a new one to replace it.";

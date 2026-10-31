@@ -53,6 +53,15 @@
 // against 2.0 % for the whole take). Without macOS's recogniser the take isn't cut at all (Dictation: streaming off):
 // one request at key-up, as before for a short take.
 //
+// A cloud recogniser that hears the take as it is said (`streamCloud`: Volcengine Seed-ASR 2.0, dictation-eval
+// §6.3 B′): the microphone's samples go to it all along through the warm speech server (BlurtCore WarmServerStream,
+// transcribe.py `serve` cmd "stream"; one session per take), and at key-up only its final text is waited for — ~0.5 s
+// however long the take, where a whole take sent at key-up grows with it (Flash: 0.5 → 1.5 s). The request goes out
+// once the field's text is read (or after 1.5 s of audio without it); until the server is up the samples wait. A stream
+// that couldn't be used (no server, the connection broke) → the whole take at key-up, as above; one the service refused
+// (key, quota: "quota exceeded for types: concurrency") → the failure line, the recording kept for Retry, which sends
+// the kept recording whole through the same service.
+//
 // Safety: a piece the speech model failed on → the whole recording is transcribed (and polished) in one go, the old
 // way; when that fails too, the result says why (`asrError`: no model, too slow, failed) — never an empty "nothing
 // heard" — and the app keeps the audio for Retry (`retry`). A hard cut (no pause for 20 s) overlaps the pieces by 0.8 s and DictationStitch drops the doubled words. Each
@@ -91,6 +100,10 @@ final class DictationStream {
         var second = false
         /// a cloud recogniser: the pieces go to macOS's recogniser (live text), the whole take to the service at key-up
         var wholeAtKeyUp = false
+        /// …one that hears the take while it is said (Volcengine): the samples stream to it, its text comes at key-up
+        var streamCloud = false
+        /// the field's text is being read (Dictation.contextOn): the stream's request waits for it (setContext)
+        var contextComing = false
         /// polish once over the whole take at key-up instead of window by window (cloud polish with the second
         /// transcript: `second`)
         var polishAtKeyUp: Bool { second }
@@ -202,7 +215,20 @@ final class DictationStream {
     private(set) var opt: Options
     /// the text around the cursor: read at the start, while the first piece may already be under way
     private var context: DictationContext?
-    func setContext(_ c: DictationContext?) { lock.locked { context = c } }
+    func setContext(_ c: DictationContext?) {
+        lock.locked { context = c }
+        if let cs = cloudStream {
+            var f: [String: Any] = [:]
+            if let app = c?.app, !app.isEmpty { f["app"] = app }
+            if let h = c?.hint, !h.isEmpty { f["hint"] = h }
+            if let b = c?.asrBefore, !b.isEmpty { f["before"] = b }
+            cs.update(f)
+            cs.release()
+        }
+    }
+    /// the take's audio, streamed to a recogniser that hears it as it comes (`streamCloud`)
+    private let cloudStream: WarmServerStream?
+    private var cloudReleased = false       // main thread
     /// the whole recording's wav (NoteVoice writes it): the safety path transcribes it in one go
     let wholeWav: URL
     /// stage changes after key-up (transcribing → polishing), on the main queue
@@ -255,6 +281,11 @@ final class DictationStream {
 
     init(id: String, dir: URL, wholeWav: URL, options: Options) {
         self.id = id; self.dir = dir; self.wholeWav = wholeWav; self.opt = options
+        cloudStream = options.streamCloud
+            ? WarmServerStream(server: "asr-serve", header: ["model_id": VolcengineSpeech.modelID, "language": options.language,
+                                                           "vocab": options.vocab, "purpose": "dictation"],
+                               hold: options.contextComing)
+            : nil
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if !options.interim || !options.streaming { live = DictationLiveDecode(sampleRate: NoteVoice.rate, off: .setting) }
     }
@@ -265,6 +296,11 @@ final class DictationStream {
         guard !cancelled else { return }
         if audio.isEmpty { firstAudio = CACurrentMediaTime() }
         audio += x
+        if let cs = cloudStream {
+            cs.append(x)
+            // the field's text didn't come: the request goes without it rather than wait longer
+            if !cloudReleased, audio.count >= Int(1.5 * NoteVoice.rate) { cloudReleased = true; cs.release() }
+        }
         guard opt.streaming else { return }
         let cuts = segmenter.feed(x)
         let known = segmenter.pauses
@@ -332,6 +368,7 @@ final class DictationStream {
 
     func cancel() {
         cancelled = true
+        cloudStream?.cancel()
         live.stop()
         let ps = lock.locked { pieces }
         for p in ps { try? FileManager.default.removeItem(at: wav(p.index)) }
@@ -694,7 +731,9 @@ final class DictationStream {
         if opt.rehear, windowFirst < n, pieceStart - windowStart < Int(2 * NoteVoice.rate), !pieceHard {
             closeWindow(end: pieceStart)
         }
-        if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
+        // (a streamed cloud take without macOS's recogniser has no live text to finish: nothing is cut)
+        if !(opt.streamCloud && !opt.streaming),
+           n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
             // heard again with the open window's other pieces: its own transcript would only be thrown away
             enqueue(start: pieceStart, end: audio.count, hard: pieceHard, last: true,
                     covered: opt.rehear && windowFirst < lock.locked { pieces.count })
@@ -740,16 +779,29 @@ final class DictationStream {
         cloudDone.enter()
         DispatchQueue.global(qos: .userInitiated).async {
             defer { self.cloudDone.leave() }
-            DictationStream.writeWav(samples, to: url)
-            let a = Dictation.transcribe(url, vocab: self.opt.vocab, language: self.opt.language, prior: "", budget: 30,
+            // streamed while it was said: only the final text is left (the server's wait is bounded too). An
+            // answer that the model can't take a stream ("usage": the choice changed mid-take) or no answer at all →
+            // the whole take, as for any cloud recogniser
+            var streamed = false
+            var a: [String: Any]
+            // the server waits 10 s for the final text, more for audio that reached it late (transcribe.py final_wait)
+            let wait = 15 + 0.4 * Double(samples.count) / NoteVoice.rate
+            if let cs = self.cloudStream, let r = cs.finish(timeout: wait), r["code"] as? String != "usage" {
+                a = r
+                streamed = true
+            } else {
+                DictationStream.writeWav(samples, to: url)
+                a = Dictation.transcribe(url, vocab: self.opt.vocab, language: self.opt.language, prior: "", budget: 30,
                                          hint: ctx?.hint ?? "", app: ctx?.app ?? "", before: ctx?.asrBefore ?? "",
                                          audioSeconds: Double(samples.count) / NoteVoice.rate)
-            try? FileManager.default.removeItem(at: url)
+                try? FileManager.default.removeItem(at: url)
+            }
             self.lock.locked { self.cloudAnswer = a; self.hearingWhole = false }
             emit(["event": "dictation_cloud_take", "id": self.id, "ok": a["ok"] as? Bool ?? false, "code": a["code"] ?? NSNull(),
                   "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100,
                   "ms": Int((CACurrentMediaTime() - self.lock.locked { self.cloudAsked }) * 1000),
-                  "echo": (a["tag"] as? [String: Any])?["echo"] ?? false])
+                  "echo": (a["tag"] as? [String: Any])?["echo"] ?? false, "streamed": streamed,
+                  "stream_tried": self.cloudStream != nil])
         }
     }
 

@@ -11,8 +11,9 @@ final class DictationChoicesTests: XCTestCase {
     }
 
     func testAccuracyIsAMeterNeverAMistakeCount() {
-        // §7 on Chinese + English: macOS 3, 0.6B 4, Fun-ASR-Nano 4, 1.7B 5, + cloud polish 5, cloud recogniser 5
-        XCTAssertEqual(C.allCases.map { DictationChoices.level(DictationChoices.facts($0).mixed) }, [3, 4, 4, 5, 5, 5])
+        // §7 on Chinese + English: macOS 3, 0.6B 4, Fun-ASR-Nano 4, 1.7B 5, + cloud polish 5, cloud recogniser 5,
+        // Volcengine 5 (§2.1: 2.18 %)
+        XCTAssertEqual(C.allCases.map { DictationChoices.level(DictationChoices.facts($0).mixed) }, [3, 4, 4, 5, 5, 5, 5])
         // cloud polish over the 0.6B (§6.3: 2.84 %)
         XCTAssertEqual(DictationChoices.level(DictationChoices.facts(.cloudPolish, on: .qwenSmall).mixed), 4)
         // English (LibriSpeech clean): macOS Speech is a 5 there
@@ -83,9 +84,37 @@ final class DictationChoicesTests: XCTestCase {
         XCTAssertTrue(DictationChoices.choices(mac(8, langs: zh)).contains(.funNano))
         XCTAssertFalse(DictationChoices.choices(mac(8, langs: ["de", "en"])).contains(.funNano))
         XCTAssertTrue(DictationChoices.choices(mac(8, langs: ["de"]), inUse: .funNano).contains(.funNano))
-        XCTAssertEqual(DictationChoices.choices(mac(8, langs: ["fr"])).count, C.allCases.count - 1)
+        // (and no Volcengine row: a French speaker isn't offered a mainland China service)
+        XCTAssertEqual(DictationChoices.choices(mac(8, langs: ["fr"])).count, C.allCases.count - 2)
         // no German line: a German speaker never sees the row, so the meter never needs one
         XCTAssertNil(DictationChoices.facts(.funNano).languages["de"])
+    }
+
+    /// Volcengine Seed-ASR 2.0 streamed (§6.3 B′): an option for Chinese speakers with its key, never the recommendation.
+    func testVolcengineIsAnOptionNeverTheRecommendation() {
+        let zh = ["zh-Hans", "en"]
+        XCTAssertEqual(DictationChoices.fit(.volcengine, mac: mac(8, asr: true, langs: zh)), .needsKey, "Model Studio's key isn't it")
+        var m = mac(8, langs: zh)
+        m.volcengineKey = true
+        XCTAssertEqual(DictationChoices.fit(.volcengine, mac: m), .fits)
+        // the recommendation stays the local model (+ cloud polish with a text key)
+        XCTAssertEqual(DictationChoices.recommended(m), .funNano)
+        var big = mac(16, text: true, langs: zh)
+        big.volcengineKey = true
+        XCTAssertEqual(DictationChoices.recommended(big), .cloudPolish)
+        XCTAssertEqual(DictationChoices.inUse(recognizer: "volcengine-seedasr", cloudPolish: true), .volcengine)
+        XCTAssertTrue(C.volcengine.cloudRecognition && !C.volcengine.local)
+        // its row: Chinese speakers, or whoever already uses it
+        XCTAssertTrue(DictationChoices.choices(mac(16, langs: zh)).contains(.volcengine))
+        XCTAssertTrue(DictationChoices.choices(mac(16, langs: ["yue"])).contains(.volcengine))
+        XCTAssertFalse(DictationChoices.choices(mac(16, langs: ["en"])).contains(.volcengine))
+        XCTAssertTrue(DictationChoices.choices(mac(16, langs: ["en"]), inUse: .volcengine).contains(.volcengine))
+        // ~0.5 s however long the take, ¥1 an hour, the voice to Volcengine
+        let f = DictationChoices.facts(.volcengine)
+        XCTAssertEqual(f.delay, 0.5...0.5)
+        XCTAssertEqual(f.cost, .perHour(cny: 1.0, usd: 0.14))
+        XCTAssertEqual(f.leaves, .voiceToVolcengine)
+        XCTAssertEqual(DictationChoices.level(f.languages["en"]!), 5)
     }
 
     func testTheRowInUseIsOnlyATrueRow() {

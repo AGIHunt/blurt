@@ -84,6 +84,10 @@ public struct CloudPreset: Hashable, Identifiable {
     public let keyPrefixes: [String]
 
     public var custom: Bool { endpoints.isEmpty }
+    /// it only recognises speech (no text models): its Test is a short clip, it takes no base URL
+    public var speechOnly: Bool { id == VolcengineSpeech.preset }
+    /// its credential is an App ID + Access Token pair (VolcengineSpeech), not one API key
+    public var pairCredential: Bool { id == VolcengineSpeech.preset }
     /// DeepSeek: listed first, marked Recommended, and the one price the app shows (it is cheap: the founder)
     public var recommended: Bool { id == "deepseek" }
     public var regional: Bool { endpoints.count > 1 }
@@ -119,6 +123,13 @@ public struct CloudPreset: Hashable, Identifiable {
                               key: "https://console.byteplus.com/ark/region:ark+ap-southeast-1/apiKey",
                               known: ["dola-seed-2-1-turbo-260628", "seed-2-0-pro-260328"].map { m($0, vision: true) }),
             ], speech: false, allSeeImages: true, keyPrefixes: []),
+            // ByteDance's Volcengine Speech (火山引擎豆包语音): speech recognition only, mainland China — Seed-ASR 2.0
+            // streamed while the user talks (VolcengineSpeech.swift). Its credential is an App ID + Access Token pair,
+            // made in the speech console; the address is the websocket transcribe.py opens (not editable).
+            CloudPreset(id: VolcengineSpeech.preset, api: .openai, endpoints: [
+                CloudEndpoint(.china, "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream",
+                              key: "https://console.volcengine.com/speech/app"),
+            ], speech: true, allSeeImages: false, keyPrefixes: []),
             CloudPreset(id: "moonshot", api: .openai, endpoints: [
                 CloudEndpoint(.china, "https://api.moonshot.cn/v1", key: "https://platform.kimi.com/"),
                 CloudEndpoint(.global, "https://api.moonshot.ai/v1", key: "https://platform.kimi.ai/"),

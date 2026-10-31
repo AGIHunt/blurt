@@ -15,6 +15,9 @@
 //                    made the 1.7B worse (2.50 → 3.16 %).
 //   cloudRecognizer  2.0 % is the whole take with the field text; the app's own piece-by-piece path echoed the field
 //                    and the word list (26.6 %, §4.1) — the adapter below never recommends it.
+//   volcengine       Seed-ASR 2.0 streamed while the user talks (§2.1, §5, §6.3 B′): 2.18 %, ~0.5 s after key-up
+//                    however long the take, ¥1 an hour. Its names are weaker (79 %); with cloud polish 91 %. An option,
+//                    never the recommendation; offered to Chinese speakers (the service is mainland China's).
 import Foundation
 
 /// One way to dictate. The raw value is the recogniser's id in asr_models.json, except cloud polish, which runs on a
@@ -27,6 +30,11 @@ public enum DictationChoice: String, CaseIterable, Hashable, Sendable {
     case qwenLarge = "qwen3-asr-1.7b-mlx"
     case cloudPolish = "cloud-polish"
     case cloudRecognizer = "qwen3-asr-flash"
+    /// Volcengine Seed-ASR 2.0, streamed (VolcengineSpeech)
+    case volcengine = "volcengine-seedasr"
+
+    /// a cloud service hears the voice
+    public var cloudRecognition: Bool { self == .cloudRecognizer || self == .volcengine }
 
     public var local: Bool { self == .macOSSpeech || localModel }
     /// a downloaded local model cloud polish can sit on
@@ -36,7 +44,13 @@ public enum DictationChoice: String, CaseIterable, Hashable, Sendable {
 }
 
 public struct DictationFacts: Hashable, Sendable {
-    public enum Leaves: Hashable, Sendable { case nothing, text, voice }
+    public enum Leaves: Hashable, Sendable {
+        case nothing, text
+        /// the voice, to Alibaba Cloud (Model Studio)
+        case voice
+        /// the voice, to ByteDance's Volcengine
+        case voiceToVolcengine
+    }
     public enum Cost: Hashable, Sendable {
         case free
         /// per dictation (~1,500 tokens) — in yuan and in US dollars
@@ -84,6 +98,13 @@ public enum DictationChoices {
         DictationFacts(choice: .cloudRecognizer, mixed: 0.0200, languages: ["en": 0.0147, "zh": 0.0152, "de": 0.0368],
                        termsRight: nil, delay: 0.5...1.5, downloadMB: 0, memoryGB: 0, minRAMGB: 0,
                        cost: .perHour(cny: 0.8, usd: 0.11), leaves: .voice),
+        // Volcengine Seed-ASR 2.0 streamed (`bigmodel_nostream`, the words as hotwords, the field text as a dialogue
+        // turn): 2.18 %, names 79 %; 0.45 / 0.52 s after key-up on ~5 s / ~60 s takes (§5); ¥1 an hour ≈ $0.14 (§6.3 B′).
+        // Per language (§3): English and German with automatic language (as for a non-Chinese speaker), Chinese
+        // (AISHELL) with its zh-en default (as for a Chinese speaker).
+        DictationFacts(choice: .volcengine, mixed: 0.0218, languages: ["en": 0.0108, "zh": 0.0270, "de": 0.0455],
+                       termsRight: 0.79, delay: 0.5...0.5, downloadMB: 0, memoryGB: 0, minRAMGB: 0,
+                       cost: .perHour(cny: 1.0, usd: 0.14), leaves: .voiceToVolcengine),
     ]
 
     /// Cloud polish over the 0.6B (§6.3 A: 2.84 %), for Macs that run the small model.
@@ -103,11 +124,20 @@ public enum DictationChoices {
         return table.first { $0.choice == c }!
     }
 
-    /// The rows shown on this Mac, in the table's order: Fun-ASR-Nano only for people who speak only its languages
-    /// (or when dictation already uses it).
+    /// The rows shown on this Mac, in the table's order: Fun-ASR-Nano only for people who speak only its languages,
+    /// Volcengine only for people who speak Chinese (a mainland China service) — either one also when dictation already
+    /// uses it.
     public static func choices(_ mac: Mac, inUse: DictationChoice? = nil) -> [DictationChoice] {
-        DictationChoice.allCases.filter { $0 != .funNano || DictationTier.funSpeaks(mac.languages) || inUse == .funNano }
+        DictationChoice.allCases.filter { c in
+            switch c {
+            case .funNano: return DictationTier.funSpeaks(mac.languages) || inUse == .funNano
+            case .volcengine: return speaksChinese(mac.languages) || inUse == .volcengine
+            default: return true
+            }
+        }
     }
+
+    static func speaksChinese(_ languages: [String]) -> Bool { languages.contains { ["zh", "yue"].contains(base($0)) } }
 
     // MARK: the words
 
@@ -153,6 +183,8 @@ public enum DictationChoices {
         public var textKey: Bool
         /// a connected service that also recognises speech (Model Studio)
         public var speechKey: Bool
+        /// Volcengine Speech is connected (its App ID and Access Token)
+        public var volcengineKey: Bool
         /// `transcribe.py bench` real-time factor of the 1.7B here (nil: not measured)
         public var rtf: Double?
         /// a base M1 / M2 (DictationTier.slowChip): the 1.7B is too slow there when nothing was measured
@@ -160,10 +192,10 @@ public enum DictationChoices {
         /// the languages the user speaks (the scripts' user_languages, else the Mac's): Fun-ASR-Nano or the 0.6B
         public var languages: [String]
         public init(ramGB: Double, appleSilicon: Bool, macOSSpeech: Bool, textKey: Bool, speechKey: Bool, rtf: Double? = nil,
-                    slowChip: Bool = false, languages: [String] = []) {
+                    slowChip: Bool = false, languages: [String] = [], volcengineKey: Bool = false) {
             self.ramGB = ramGB; self.appleSilicon = appleSilicon; self.macOSSpeech = macOSSpeech
             self.textKey = textKey; self.speechKey = speechKey; self.rtf = rtf; self.slowChip = slowChip
-            self.languages = languages
+            self.languages = languages; self.volcengineKey = volcengineKey
         }
     }
 
@@ -180,6 +212,8 @@ public enum DictationChoices {
             return c == .cloudPolish && !mac.textKey ? .needsKey : .fits
         case .cloudRecognizer:
             return mac.speechKey ? .fits : .needsKey
+        case .volcengine:
+            return mac.volcengineKey ? .fits : .needsKey
         }
     }
 
@@ -217,7 +251,7 @@ public enum DictationChoices {
     /// polish, or another model, is no row of the table (nil) — never a row whose privacy column isn't true.
     public static func inUse(recognizer: String?, cloudPolish: Bool) -> DictationChoice? {
         guard let r = recognizer, let c = DictationChoice(rawValue: r), c != .cloudPolish else { return nil }
-        if c == .cloudRecognizer { return c }
+        if c.cloudRecognition { return c }
         if cloudPolish { return c.localModel ? .cloudPolish : nil }
         return c
     }

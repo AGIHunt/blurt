@@ -5,7 +5,8 @@
 //                right end (the page stays as it was under it).
 //   the sheet    "Dictation choices": this Mac (chip, memory) and how it was measured in one line, then one row per
 //                choice — macOS Speech, Qwen3-ASR 0.6B, Fun-ASR-Nano (Chinese / English / Japanese speakers only),
-//                1.7B, the local model + cloud polish, cloud recognition — with
+//                1.7B, the local model + cloud polish, cloud recognition (Qwen3-ASR Flash), Doubao Seed-ASR 2.0 on
+//                Volcengine (Chinese speakers only: streamed while you talk, best with cloud polish) — with
 //                Accuracy (five stars, DictationChoices.level: how good, never a count of mistakes — in the
 //                user's own language when it isn't Chinese and was measured), Delay (after you stop talking), Cost (free + the download; per dictation; per hour)
 //                and what leaves the Mac (nothing / your text / your voice, and to whom). Under a row's name:
@@ -56,7 +57,8 @@ struct DictationNow {
             textKey: CloudStore.curatedConnected(.polish) || CloudStore.cloudModel(.polish) != nil,
             speechKey: connected.contains { $0.preset == "dashscope" } || models.contains { $0.id == DictationChoice.cloudRecognizer.rawValue },
             rtf: m.model(DictationChoice.qwenLarge.rawValue)?.bench?.rtf, slowChip: DictationTier.slowChip(hw?.chip),
-            languages: m.languages.isEmpty ? Locale.preferredLanguages : m.languages)
+            languages: m.languages.isEmpty ? Locale.preferredLanguages : m.languages,
+            volcengineKey: connected.contains { $0.preset == VolcengineSpeech.preset })
         let rec = d.asr.flatMap { a in (a.selectedInstalled ?? true) ? a.selected : nil }
         let machine = hw.map { S("speech.machine.short", $0.chip ?? S("speech.machine.unknown"), ChoiceText.memory($0.ramGB)) }
         return DictationNow(mac: mac, recognizer: rec,
@@ -79,7 +81,7 @@ enum ChoiceText {
             let b = model(base.rawValue)
             return S("speech.compare.cloud_polish", short ? b.replacingOccurrences(of: "Qwen3-ASR ", with: "") : b)
         case .cloudRecognizer: return S("speech.compare.cloud_asr")
-        default: return model(c.rawValue)
+        default: return model(c.rawValue)       // Volcengine's by its model: Doubao Seed-ASR 2.0
         }
     }
 
@@ -155,6 +157,7 @@ enum ChoiceText {
             let to = CloudStore.cloudModel(.polish)?.service ?? CloudRouting.ranked(CloudStore.connected).first.map(CloudStore.name)
             return (S("speech.compare.leaves.text"), to.map(Self.to) ?? S("speech.compare.to.any"))
         case .voice: return (S("speech.compare.leaves.voice"), to(S("speech.compare.alibaba")))
+        case .voiceToVolcengine: return (S("speech.compare.leaves.voice"), to(S("speech.compare.volcengine")))
         }
     }
 
@@ -190,7 +193,7 @@ enum DictationChoiceAction {
             if now.recognizer != now.base.rawValue, DictationChoices.inUse(recognizer: now.recognizer, cloudPolish: true) != .cloudPolish {
                 recognizer(now.base.rawValue)
             }
-        case .cloudRecognizer:
+        case .cloudRecognizer, .volcengine:
             recognizer(c.rawValue)
         }
         Dictation.shared.apply()
@@ -213,7 +216,7 @@ enum DictationChoiceAction {
 
     /// Its recogniser needs downloading first.
     static func needsDownload(_ c: DictationChoice, now: DictationNow) -> Bool {
-        guard c != .cloudRecognizer, c != .macOSSpeech else { return false }
+        guard !c.cloudRecognition, c != .macOSSpeech else { return false }
         let id = c == .cloudPolish ? now.base.rawValue : c.rawValue
         return DictationModels.shared.asr?.models.first { $0.id == id }?.installed != true
     }
@@ -264,8 +267,10 @@ struct DictationCompareSheet: View {
         .frame(width: 800)
         .fixedSize(horizontal: false, vertical: true)
         .sheet(item: $adding) { a in
-            // Model Studio for cloud recognition (its key recognises speech); any service for polish
-            CloudServiceSheet(editing: nil, preset: a.choice == .cloudRecognizer ? "dashscope" : nil) {
+            // Model Studio for cloud recognition (its key recognises speech), Volcengine Speech for its row; any service
+            // for polish
+            CloudServiceSheet(editing: nil, preset: a.choice == .cloudRecognizer ? "dashscope"
+                              : a.choice == .volcengine ? VolcengineSpeech.preset : nil) {
                 adding = nil
                 Task { @MainActor in
                     await d.load()
@@ -322,6 +327,7 @@ struct DictationCompareSheet: View {
             switch c {
             case .cloudPolish: return S("speech.compare.cloud_polish.help", ChoiceText.model(now.base.rawValue))
             case .cloudRecognizer: return S("speech.compare.cloud_asr.help")
+            case .volcengine: return S("speech.compare.volcengine.help")
             default: return ""
             }
         }()

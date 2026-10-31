@@ -15,7 +15,8 @@ final class CloudServicesTests: XCTestCase {
         for p in CloudPreset.all {
             XCTAssertTrue([.openai, .anthropic].contains(p.api), p.id)
             for e in p.endpoints {
-                XCTAssertTrue(e.baseURL.hasPrefix("https://"), "\(p.id) \(e.baseURL)")
+                // a speech-only service's address is the websocket transcribe.py opens
+                XCTAssertTrue(e.baseURL.hasPrefix(p.speechOnly ? "wss://" : "https://"), "\(p.id) \(e.baseURL)")
                 XCTAssertFalse(e.baseURL.hasSuffix("/"), "\(p.id): base URLs end without a slash (polish_cloud adds the path)")
                 XCTAssertNotNil(URL(string: e.keyPage), p.id)
             }
@@ -25,8 +26,12 @@ final class CloudServicesTests: XCTestCase {
         XCTAssertEqual(CloudPreset.all.filter(\.custom).map(\.id), ["custom-openai", "custom-anthropic"])
         // the regions the founder asked for
         for id in ["dashscope", "volcengine", "moonshot", "zhipu", "minimax"] { XCTAssertTrue(CloudPreset.preset(id)!.regional, id) }
-        // speech: Model Studio and OpenAI only (transcribe.py speaks those)
-        XCTAssertEqual(CloudPreset.all.filter(\.speech).map(\.id), ["dashscope", "openai"])
+        // speech: Model Studio, Volcengine Speech and OpenAI only (transcribe.py speaks those); Volcengine Speech does
+        // nothing else and takes an App ID + Access Token pair
+        XCTAssertEqual(CloudPreset.all.filter(\.speech).map(\.id), ["dashscope", "volcengine-speech", "openai"])
+        XCTAssertEqual(CloudPreset.all.filter(\.speechOnly).map(\.id), ["volcengine-speech"])
+        XCTAssertEqual(CloudPreset.all.filter(\.pairCredential).map(\.id), ["volcengine-speech"])
+        XCTAssertFalse(CloudPreset.preset("volcengine-speech")!.regional)
     }
 
     func testTheSystemRegionPicksTheAddress() {

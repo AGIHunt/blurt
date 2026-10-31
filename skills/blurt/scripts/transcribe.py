@@ -37,10 +37,11 @@ video, so any backend (even ones without timestamps) works.
                                                      built-in `say` samples) the error rate per language
                                                      → $BLURT_HOME/asr-bench.json
   transcribe.py backends                             backends and whether they are ready (legacy)
-  transcribe.py check-cloud [--model-id qwen3-asr-flash|openai-compatible]   Settings' Test: one small spoken clip
-                                                     (macOS `say`) to the cloud service → {"ok","ms","text"} or
-                                                     {"ok": false, "code"}; a key / base_url / model not saved yet
-                                                     comes as JSON on stdin ({"key": …}), never as an argument
+  transcribe.py check-cloud [--model-id qwen3-asr-flash|volcengine-seedasr|openai-compatible]   Settings' Test: one
+                                                     small spoken clip (macOS `say`) to the cloud service →
+                                                     {"ok","ms","text"} or {"ok": false, "code"}; a key / base_url /
+                                                     model not saved yet comes as JSON on stdin ({"key": …};
+                                                     Volcengine: {"app_id": …, "token": …}), never as an argument
 
 Which model: --model ID / --backend B win; else config asr (auto: per purpose from `recommend`, only what is
 installed; asr.auto false: asr.models / the legacy asr.backend + asr.model). Resource caps (asr.limits): threads,
@@ -61,6 +62,8 @@ Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   openai          any OpenAI-compatible /audio/transcriptions API (OpenAI, Groq, SiliconFlow, ...)
                   env: BLURT_ASR_API_KEY (or OPENAI_API_KEY / GROQ_API_KEY), BLURT_ASR_BASE_URL, BLURT_ASR_MODEL
   dashscope       Alibaba Qwen3-ASR (qwen3-asr-flash) via DashScope OpenAI-compatible chat API. env: DASHSCOPE_API_KEY
+  volcengine      Volcengine 豆包 Seed-ASR 2.0 (bigmodel_nostream), streamed over a websocket while a dictation is said
+                  (serve "stream"). env: VOLC_APP_ID, VOLC_ACCESS_TOKEN
 Backends that need a package re-run themselves with `uv run --with <package>` when it is missing.
 """
 from __future__ import annotations
@@ -68,6 +71,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import base64
+import gzip
 import io
 import json
 import os
@@ -76,6 +80,7 @@ import re
 import select as _select  # `select` is this module's model pick
 import shutil
 import socket
+import struct
 import subprocess
 import tempfile
 import sys
@@ -84,6 +89,7 @@ import time
 import unicodedata
 import http.client
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import wave
@@ -834,7 +840,8 @@ def _own_legacy_complete(d: Path) -> bool:
 
 def installed(m: dict) -> bool:
     if not m.get("local", True):
-        return any(os.environ.get(k) for k in m.get("keys", []))
+        # every one of its variables when it needs a pair (Volcengine: App ID + Access Token), else any one
+        return (all if m.get("keys_all") else any)(os.environ.get(k) for k in m.get("keys", []))
     if m.get("builtin"):
         return apple_speech_ok()
     return model_path(m) is not None
@@ -1962,6 +1969,364 @@ class DashScope:
         return (text or "").strip()
 
 
+# ------------------------------------------------------------------ Volcengine 豆包 Seed-ASR 2.0 (docs/design/dictation.md §Cloud recognition)
+# The streamed `bigmodel_nostream` endpoint (dictation-eval-2026-10-31.md §2.1, §5, §6.3 B′): on the founder's 95 takes
+# 2.18 % with the words as hotwords and the field's text as a dialogue turn, ~0.45–0.52 s after key-up however long the
+# take — it hears the audio while it is said and re-recognises it in ~15 s blocks, so at key-up only the last block is
+# left. The app streams a take's microphone packets through the warm server (`serve` cmd "stream", VolcStream); Retry,
+# the Lab, Settings' Test and a voice note send a whole recording through the same session as fast as it goes (the
+# result doesn't depend on the pace: §2.1 note ⁴). Credentials are an App ID and an Access Token (VOLC_APP_ID,
+# VOLC_ACCESS_TOKEN: the app's Keychain item for the "volcengine-speech" service), resource volc.seedasr.sauc.duration.
+# The protocol (the docs' binary frames): a 4-byte header (version 1, header size 1; message type, flags; JSON / raw
+# serialisation, gzip), a signed sequence where the flags say so, a 4-byte size, the payload. The first frame is the
+# request (gzip JSON), then raw 16 kHz s16 mono PCM packets; the last packet's sequence is negative. The final result
+# comes back flagged last; an error is message type 0b1111 with a code and a message.
+VOLC_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
+VOLC_RESOURCE = "volc.seedasr.sauc.duration"
+VOLC_PACKET = 6400                  # 200 ms of 16 kHz s16 mono: the microphone's pace and the docs' recommended size
+# a language set by the user (asr.language) → the service's code; "zh" and anything else unlisted: the zh-en default
+VOLC_LANGS = {"en": "en-US", "ja": "ja-JP", "ko": "ko-KR", "de": "de-DE", "fr": "fr-FR", "es": "es-MX", "pt": "pt-BR",
+              "id": "id-ID", "ms": "ms-MY", "th": "th-TH", "ar": "ar-SA", "fil": "fil-PH"}
+
+
+def volc_frame(kind: int, flags: int, serial: int, payload: bytes, seq: int | None = None, gz: bool = True) -> bytes:
+    p = gzip.compress(payload) if gz else payload
+    return (bytes([0x11, (kind << 4) | flags, (serial << 4) | (1 if gz else 0), 0])
+            + (struct.pack(">i", seq) if seq is not None else b"") + struct.pack(">I", len(p)) + p)
+
+
+def volc_parse(b: bytes) -> tuple[dict, bool]:
+    """One frame from the service → (its JSON, or {"error": (code, message)}; whether it is the last)."""
+    hs = (b[0] & 0x0F) * 4
+    kind, fl, comp = b[1] >> 4, b[1] & 0x0F, b[2] & 0x0F
+    p = b[hs:]
+    seq = None
+    if fl & 1:
+        seq = struct.unpack(">i", p[:4])[0]
+        p = p[4:]
+    if kind == 0b1111:
+        code = struct.unpack(">I", p[:4])[0]
+        n = struct.unpack(">I", p[4:8])[0]
+        msg = p[8:8 + n]
+        try:
+            msg = gzip.decompress(msg) if comp == 1 else msg
+        except OSError:
+            pass
+        return {"error": (code, msg.decode(errors="replace")[:300])}, True
+    n = struct.unpack(">I", p[:4])[0]
+    body = p[4:4 + n]
+    if comp == 1 and body:
+        body = gzip.decompress(body)
+    return (json.loads(body) if body else {}), bool(fl & 2) or (seq is not None and seq < 0)
+
+
+def volc_fail(code: int, msg: str) -> Fail:
+    """The service's error frame → a Fail the app words plainly. 45000292 "quota exceeded for types: concurrency" (the
+    trial allows only a few sessions at once; the eval met it at 6) and 55000031 (busy) are "quota"; a token or app the
+    service doesn't accept, "auth"; its own time-outs and server errors, "network"."""
+    low = msg.lower()
+    if code == 45000292 or code == 55000031 or "quota" in low or "concurrency" in low:
+        return Fail(f"Volcengine refused ({code}): {msg}", "quota")
+    if any(w in low for w in ("auth", "token", "permission", "grant", "app key", "appkey", "access key")):
+        return Fail(f"Volcengine refused the App ID or Access Token ({code}): {msg}", "auth")
+    if code == 45000081 or code >= 55000000:
+        return Fail(f"Volcengine answered {code}: {msg}", "network")
+    return Fail(f"Volcengine answered {code}: {msg}", "bad_response")
+
+
+class _WebSocket:
+    """The least of a websocket client (RFC 6455) a recognition session needs — binary frames out (masked), frames in,
+    ping / pong, close — on the standard library (transcribe.py's own dependencies stay as they are). The handshake's
+    refusal is a Fail: 401 / 403 auth, 429 quota, anything else network or bad_response."""
+
+    def __init__(self, url: str, headers: dict, timeout: float = 10):
+        u = urllib.parse.urlsplit(url)
+        host, port = u.hostname or "", u.port or (443 if u.scheme == "wss" else 80)
+        try:
+            raw = socket.create_connection((host, port), timeout=timeout)
+            if u.scheme == "wss":
+                import ssl
+                raw = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+        except (OSError, ValueError) as e:
+            raise Fail(f"can't reach {host}: {e}", "network")
+        self.sock = raw
+        self.lock = threading.Lock()
+        self.closed = False
+        key = base64.b64encode(os.urandom(16)).decode()
+        lines = [f"GET {u.path or '/'}{'?' + u.query if u.query else ''} HTTP/1.1", f"Host: {host}", "Upgrade: websocket",
+                 "Connection: Upgrade", f"Sec-WebSocket-Key: {key}", "Sec-WebSocket-Version: 13"]
+        lines += [f"{k}: {v}" for k, v in headers.items()]
+        try:
+            self.sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+            head = b""
+            while b"\r\n\r\n" not in head and len(head) < 65536:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    break
+                head += chunk
+        except UnicodeEncodeError:
+            self.close()
+            raise Fail("the Access Token has characters a token can't have: paste it again", "auth")
+        except OSError as e:
+            self.close()
+            raise Fail(f"{host} didn't answer: {e}", "network")
+        top, _, rest = head.partition(b"\r\n\r\n")
+        status_line, *hdr = top.decode("latin-1").split("\r\n")
+        try:
+            status = int(status_line.split()[1])
+        except (IndexError, ValueError):
+            self.close()
+            raise Fail(f"{host} answered something that isn't HTTP: {status_line[:80]!r}", "network")
+        h = {k.strip().lower(): v.strip() for k, _, v in (x.partition(":") for x in hdr)}
+        if status != 101:
+            msg = (h.get("x-api-message") or rest.decode(errors="replace"))[:300]
+            self.close()
+            code = "auth" if status in (401, 403) else "quota" if status == 429 else \
+                "network" if status >= 500 else "bad_response"
+            # a resource the app wasn't granted (the streaming model not enabled for this App ID) is the key's setup
+            if status == 400 and any(w in msg.lower() for w in ("resource", "grant", "app key", "appid", "app id", "token")):
+                code = "auth"
+            raise Fail(f"Volcengine refused the session (HTTP {status}): {msg}", code)
+        self.logid = h.get("x-tt-logid")
+        self.buf = rest
+        self.sock.settimeout(None)
+
+    def _read(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            chunk = self.sock.recv(max(65536, n - len(self.buf)))
+            if not chunk:
+                raise ConnectionError("closed")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _send(self, opcode: int, payload: bytes) -> None:
+        n = len(payload)
+        head = bytes([0x80 | opcode])
+        head += bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n) if n < 65536 \
+            else bytes([0x80 | 127]) + struct.pack(">Q", n)
+        mask = os.urandom(4)
+        if n:
+            m = int.from_bytes((mask * (n // 4 + 1))[:n], "big")
+            payload = (int.from_bytes(payload, "big") ^ m).to_bytes(n, "big")
+        with self.lock:
+            self.sock.sendall(head + mask + payload)
+
+    def send(self, payload: bytes) -> None:
+        self._send(0x2, payload)
+
+    def recv(self) -> bytes | None:
+        """The next whole data message; None when the connection closed."""
+        data = b""
+        while True:
+            b0, b1 = self._read(2)
+            op, n = b0 & 0x0F, b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._read(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._read(8))[0]
+            mask = self._read(4) if b1 & 0x80 else b""
+            p = self._read(n)
+            if mask:
+                p = bytes(c ^ mask[i % 4] for i, c in enumerate(p))
+            if op == 0x8:
+                return None
+            if op == 0x9:
+                self._send(0xA, p)
+                continue
+            if op == 0xA:
+                continue
+            data += p
+            if b0 & 0x80:
+                return data
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        with contextlib.suppress(OSError):
+            self._send(0x8, struct.pack(">H", 1000))
+        with contextlib.suppress(OSError):
+            self.sock.shutdown(socket.SHUT_RDWR)
+        with contextlib.suppress(OSError):
+            self.sock.close()
+
+
+class VolcStream:
+    """One recognition session (one take): open → feed PCM as it comes (sent in 200 ms packets) → finish (the last
+    packet, then the final text within `wait` s). Thread-safe between the feeder and the reader it starts."""
+
+    def __init__(self, app_id: str, token: str, request: dict, timeout: float = 10):
+        hdr = {"X-Api-App-Key": app_id, "X-Api-Access-Key": token, "X-Api-Resource-Id": VOLC_RESOURCE,
+               "X-Api-Request-Id": str(uuid.uuid4()), "X-Api-Connect-Id": str(uuid.uuid4())}
+        self.ws = _WebSocket(VOLC_URL, hdr, timeout)
+        self.seq = 1
+        self.pending = b""
+        self.sent = 0                       # bytes of PCM sent
+        self.text: str | None = None
+        self.error: Fail | None = None
+        self.final = threading.Event()
+        self.t_final: float | None = None
+        self.t_last: float | None = None
+        try:
+            self.ws.send(volc_frame(0b0001, 0b0001, 1, json.dumps(request, ensure_ascii=False).encode(), self.seq))
+        except OSError as e:
+            self.ws.close()
+            raise Fail(f"Volcengine dropped the session: {e}", "network")
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
+
+    def _read(self) -> None:
+        try:
+            while True:
+                m = self.ws.recv()
+                if m is None:
+                    break
+                d, last = volc_parse(m)
+                if "error" in d:
+                    code, msg = d["error"]
+                    # 45000002: no audio at all (an empty take) — nothing was said
+                    if code == 45000002:
+                        self.text = ""
+                    else:
+                        self.error = volc_fail(code, msg)
+                    break
+                r = d.get("result") or {}
+                if isinstance(r, list):
+                    r = r[0] if r else {}
+                if r.get("text") is not None:
+                    self.text = r.get("text")
+                if last:
+                    break
+        except (OSError, ConnectionError, ValueError, struct.error) as e:
+            if not self.ws.closed and self.error is None:
+                self.error = Fail(f"Volcengine dropped the session: {e}", "network")
+        finally:
+            self.t_final = time.perf_counter()
+            self.final.set()
+
+    @property
+    def failed(self) -> bool:
+        return self.error is not None
+
+    def feed(self, pcm: bytes) -> None:
+        """PCM (16 kHz s16 mono) as it comes; whole 200 ms packets go out, the rest waits for more. A session the
+        service already ended takes nothing more (finish says why)."""
+        if self.final.is_set():
+            return
+        self.pending += pcm
+        while len(self.pending) >= 2 * VOLC_PACKET:      # one packet always held back: the last one is flagged
+            self._packet(self.pending[:VOLC_PACKET], last=False)
+            self.pending = self.pending[VOLC_PACKET:]
+
+    def _packet(self, p: bytes, last: bool) -> None:
+        self.seq += 1
+        try:
+            self.ws.send(volc_frame(0b0010, 0b0011 if last else 0b0001, 0, p, -self.seq if last else self.seq))
+            self.sent += len(p)
+        except OSError as e:
+            if self.error is None and not self.final.is_set():
+                self.error = Fail(f"Volcengine dropped the session: {e}", "network")
+            self.final.set()
+
+    def finish(self, wait: float = 10) -> str:
+        """The rest of the audio as the last packet(s), then the final text — waited for at most `wait` s (then
+        "network": the service didn't answer)."""
+        try:
+            if not self.final.is_set():
+                rest = self.pending
+                self.pending = b""
+                while len(rest) > VOLC_PACKET:
+                    self._packet(rest[:VOLC_PACKET], last=False)
+                    rest = rest[VOLC_PACKET:]
+                self._packet(rest, last=True)
+            self.t_last = time.perf_counter()
+            if not self.final.wait(wait):
+                raise Fail(f"Volcengine gave no final text within {wait:.0f} s", "network")
+            if self.error is not None:
+                raise self.error
+            if self.text is None:
+                raise Fail("Volcengine closed the session without a final text", "network")
+            return self.text.strip()
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        self.ws.close()
+
+
+def volc_pcm(x: np.ndarray) -> bytes:
+    return (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
+
+
+class Volcengine:
+    """Volcengine Seed-ASR 2.0 (`bigmodel_nostream`): the words as inline hotwords, the field's text before the cursor
+    as one dialogue turn; no language set for a Chinese speaker (its zh-en default: the founder's takes 2.18 % against
+    2.84 % with automatic language), automatic language for everyone else (best measured on English: §3), or the
+    language the user set. `transcribe` sends a whole recording through one session; `open` starts one a take streams
+    into (serve "stream")."""
+    max_chunk = 600         # one session per recording up to 10 min (a dictation stops at 5)
+    max_terms = 100
+    retries, timeout = 2, 60.0
+    streams = True
+
+    def __init__(self, args):
+        self.app_id = api_key("VOLC_APP_ID")
+        self.token = api_key("VOLC_ACCESS_TOKEN")
+        if not self.app_id or not self.token:
+            raise Fail("no Volcengine App ID and Access Token: set VOLC_APP_ID and VOLC_ACCESS_TOKEN", "auth")
+        self.model = "seed-asr-2.0 (bigmodel_nostream)"
+        self.args = args
+        self.terms: list[str] = []
+        self.field = ""
+        self.last: dict = {}
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.terms = [str(t["term"]).strip() for t in terms if str(t.get("term") or "").strip()][:self.max_terms]
+        return bool(self.terms)
+
+    def set_field(self, text: str) -> None:
+        self.field = (text or "").strip()
+
+    def request(self) -> dict:
+        req = {"model_name": "bigmodel", "enable_itn": True, "enable_punc": True, "enable_ddc": False,
+               "show_utterances": False, "result_type": "full"}
+        ctx: dict = {}
+        if self.terms:
+            ctx["hotwords"] = [{"word": w} for w in self.terms]
+        if self.field:
+            ctx["context_type"] = "dialog_ctx"
+            ctx["context_data"] = [{"text": self.field}]
+        if ctx:
+            req["corpus"] = {"context": json.dumps(ctx, ensure_ascii=False)}
+        audio = {"format": "pcm", "codec": "raw", "rate": SR, "bits": 16, "channel": 1}
+        lang = (self.args.language or "").lower().split("-")[0] or None
+        if lang in VOLC_LANGS:
+            audio["language"] = VOLC_LANGS[lang]
+        elif lang is None and not any(x.split("-")[0] in ("zh", "yue") for x in user_languages()):
+            req["enable_auto_lang"] = True
+        return {"user": {"uid": "blurt"}, "audio": audio, "request": req}
+
+    def open(self, timeout: float = 10) -> VolcStream:
+        return VolcStream(self.app_id, self.token, self.request(), timeout)
+
+    def transcribe(self, x):
+        pcm = volc_pcm(x)
+        for attempt in range(self.retries):
+            try:
+                s = self.open(timeout=min(10, self.timeout))
+                s.feed(pcm)
+                # the whole recording at once: the service works through it at ~4× real time
+                text = s.finish(wait=max(self.timeout, final_wait(len(x) / SR, 0)))
+                return [(0.0, len(x) / SR, text)]
+            except Fail as e:
+                # a dropped connection is tried once more; a refusal (key, quota) is final
+                if e.code != "network" or attempt == self.retries - 1:
+                    raise
+                time.sleep(1)
+        return [(0.0, len(x) / SR, "")]
+
+
 def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float = 120) -> dict:
     """One cloud request → its JSON. Every way it can fail is a Fail with a code the app words plainly (auth, quota,
     network, bad_response): an exception of any other kind came back from the speech server as a bare "error"."""
@@ -1992,7 +2357,7 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float
 
 BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
             "qwen3-asr-mlx": Qwen3Mlx, "fun-asr-mlx": FunAsrMlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech,
-            "openai": OpenAICompat, "dashscope": DashScope}
+            "openai": OpenAICompat, "dashscope": DashScope, "volcengine": Volcengine}
 LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
                   "qwen3-asr-mlx": "mlx-qwen3-asr", "fun-asr-mlx": "mlx-audio"}  # backend → `uv run --with` package
@@ -2002,7 +2367,9 @@ EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whispe
 # (serve_packages).
 PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4",
                 "mlx-audio": "mlx-audio==0.6.3"}
-API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
+API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",),
+            "volcengine": ("VOLC_APP_ID", "VOLC_ACCESS_TOKEN")}
+KEYS_ALL = {"volcengine"}     # needs every variable of its API_KEYS (an App ID and an Access Token), not any one
 CLOUD_WORKERS = 4       # a cloud service's parts of one take in flight at once (NoteEngine.note)
 
 
@@ -2217,7 +2584,8 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
     if not (MODELS_DIR / "silero_vad.onnx").exists():
         return "VAD model not downloaded (transcribe.py setup)"
     if name in API_KEYS:
-        return None if any(os.environ.get(k) for k in API_KEYS[name]) else \
+        have = (all if name in KEYS_ALL else any)(os.environ.get(k) for k in API_KEYS[name])
+        return None if have else \
             f"no API key in the environment ({' / '.join(API_KEYS[name])})"
     m = entry(model_id) if model_id else entry_for(name)
     if m and m.get("install") and not installed(m):
@@ -2659,19 +3027,7 @@ class NoteEngine:
             stop = None     # one short pass: nothing to look at halfway
 
         x = read_wav(wav)
-        terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
-        biased = False
-        if hasattr(self.backend, "set_vocab"):
-            # the most relevant `cap` of them: ranked() cuts by relevance, then names them in a fixed order — a
-            # backend that took fewer than it was given would cut alphabetically (Whisper's 40 of 64: a third of the
-            # right words gone, contextual-earnings22)
-            cap = getattr(self.backend, "max_terms", dictation_vocab.QWEN_MAX_TERMS)
-            limit = min(PRIOR_TERMS, cap) if prior else cap
-            use = dictation_vocab.ranked(terms, prior or "", hint or "", limit)
-            name = " ".join(str(app or "").split())[:40]
-            if name and not any(t["term"] == name for t in use):
-                use = [{"term": name, "sounds_like": [], "source": "app", "hits": 0}] + use[:max(0, limit - 1)]
-            biased = self.backend.set_vocab(use)
+        biased = bias(self.backend, vocab, prior, hint, app)
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
         field = ""
@@ -2721,6 +3077,127 @@ class NoteEngine:
             out.update(asr_text=text, biased=biased)
         self.last = time.time()
         return out
+
+
+def bias(backend, vocab, prior: str | None = None, hint: str | None = None, app: str | None = None) -> bool:
+    """The request's words (None: none; True: the file's; a list: these) given to a backend that takes them: the most
+    relevant `max_terms` of them — ranked() cuts by relevance, then names them in a fixed order (a backend that took
+    fewer than it was given would cut alphabetically: Whisper's 40 of 64, a third of the right words gone,
+    contextual-earnings22) — with the app's name first. True when the backend was biased."""
+    if not hasattr(backend, "set_vocab"):
+        return False
+    terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
+    cap = getattr(backend, "max_terms", dictation_vocab.QWEN_MAX_TERMS)
+    limit = min(PRIOR_TERMS, cap) if prior else cap
+    use = dictation_vocab.ranked(terms, prior or "", hint or "", limit)
+    name = " ".join(str(app or "").split())[:40]
+    if name and not any(t["term"] == name for t in use):
+        use = [{"term": name, "sounds_like": [], "source": "app", "hits": 0}] + use[:max(0, limit - 1)]
+    return backend.set_vocab(use)
+
+
+# --- a take streamed while it is said (serve "stream"; docs/design/dictation.md §Cloud recognition)
+# A recogniser that hears audio as it comes (Volcengine's `streams`) gets a dictation's microphone packets during the
+# take, so at key-up only its last ~15 s block is left (dictation-eval-2026-10-31.md §5: ~0.5 s however long the take,
+# against 1.5 s for a minute-long take sent whole). The app opens one connection per take: one JSON line
+# ({"token", "cmd": "stream", "model_id", "language", "vocab", "app", "hint", "before"}), then raw 16 kHz s16 mono PCM
+# as the microphone gives it, then shuts its side for writing at key-up. The answer is one JSON line, a note's answer
+# (+ "streamed", "after_keyup_ms"), after the end of the audio — a refusal (no key, quota: "quota exceeded for types:
+# concurrency", a model that can't take a stream) too: the PCM is read to its end first, so the answer is never lost
+# to a reset. A connection the app resets (a cancelled take) ends the session unanswered. Each stream runs on its own
+# thread beside the server's loop; the server doesn't end while one is open.
+STREAM_FINAL_WAIT = 10.0         # s after key-up for the final text (measured p90: 0.58–0.70 s)
+# …plus this much per second of audio that came faster than it is spoken (a server that came up late gets the take so
+# far at once): the service works through a backlog at ~4× real time (the eval's unpaced takes: ~0.23 s per second)
+STREAM_BACKLOG_WAIT = 0.4
+
+
+def final_wait(audio_s: float, streamed_s: float) -> float:
+    """How long a take's final text is waited for after key-up: `audio_s` of audio arrived over `streamed_s` s."""
+    return STREAM_FINAL_WAIT + STREAM_BACKLOG_WAIT * max(0.0, audio_s - streamed_s)
+_streams = 0
+_streams_lock = threading.Lock()
+
+
+def streams_open() -> int:
+    with _streams_lock:
+        return _streams
+
+
+def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
+    global _streams
+    with _streams_lock:
+        _streams += 1
+    sess = None
+    fail: Fail | None = None
+    got = 0
+    odd = b""
+    t0 = time.perf_counter()
+    model_id = req.get("model_id")
+    biased = False
+    field = ""
+    try:
+        conn.settimeout(120)        # a take sends a packet every ~0.1 s: two minutes of nothing is an app gone
+        try:
+            if local_only():
+                raise Fail("local-only recognition is on (privacy.local_asr): cloud ASR is not allowed", "privacy")
+            model_id = model_id or dictation_models()["selected"]
+            m = entry(model_id)
+            cls = BACKENDS.get((m or {}).get("backend"))
+            if not m or not getattr(cls, "streams", False):
+                raise Fail(f"{model_id} doesn't take a stream", "usage")
+            lang = req.get("language")
+            a = argparse.Namespace(model=None, model_id=model_id, prompt=None,
+                                   language=None if lang in (None, "", "auto") else lang)
+            backend = cls(a)
+            biased = bias(backend, req.get("vocab"), None, req.get("hint"), req.get("app"))
+            if req.get("before") and (n := field_context_chars(model_id)):
+                field = prior_tail(req["before"], n)
+                backend.set_field(field)
+            sess = backend.open()
+        except Fail as e:
+            fail = e
+        data = extra
+        t_first = None
+        while True:
+            if data:
+                t_first = t_first or time.perf_counter()
+                got += len(data)
+                data = odd + data
+                odd = data[len(data) & ~1:]             # whole samples only
+                if sess is not None:
+                    sess.feed(data[:len(data) & ~1])
+            data = conn.recv(65536)
+            if not data:
+                break
+        t_up = time.perf_counter()
+        text = ""
+        if fail is None and sess is not None:
+            try:
+                text = to_user_script(sess.finish(wait=final_wait(got / 2 / SR, t_up - (t_first or t_up))), None)
+            except Fail as e:
+                fail = e
+        if fail is not None:
+            resp = {"ok": False, "error": str(fail), "code": fail.code, "streamed": True}
+        else:
+            resp = {"ok": True, "text": text, "asr_text": text, "language": a.language, "model": model_id,
+                    "audio_seconds": round(got / 2 / SR, 2), "ms": int((time.perf_counter() - t_up) * 1000),
+                    "after_keyup_ms": int((time.perf_counter() - t_up) * 1000), "load_ms": 0, "biased": biased,
+                    "streamed": True, "stream_s": round(t_up - t0, 2)}
+            if field:
+                resp["field_context"] = len(field)
+        with contextlib.suppress(OSError):
+            conn.sendall((json.dumps(resp, ensure_ascii=False) + "\n").encode())
+    except (OSError, ValueError) as e:
+        # the app reset the connection (a cancelled take) or went away: the session ends unanswered
+        serve_said(f"serve: stream ended ({type(e).__name__})")
+    finally:
+        if sess is not None:
+            sess.close()
+        with contextlib.suppress(OSError):
+            conn.close()
+        with _streams_lock:
+            _streams -= 1
 
 
 SERVE_FILE = RUN_DIR / "asr-serve.json"
@@ -2783,7 +3260,9 @@ def cmd_serve(a):
     …}), one JSON line out. A "note" with "interim": true (dictation's live text: the piece still being said) is
     stopped as soon as another connection waits — a final piece never waits for it — and answers
     {"ok": false, "code": "interrupted"}; a quick model (SenseVoice) decodes it whole; a slow model that can't stop
-    halfway answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
+    halfway answers "interim_unsupported". A "stream" (a dictation's audio while it is said, for a recogniser that hears it
+    as it comes: serve_stream) runs on its own thread; the server doesn't end while one is open. Ends
+    (serve_exit_reason) when its model went unused for --idle s — an unload left most of
     the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
     started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
     global SERVING
@@ -2835,6 +3314,8 @@ def cmd_serve(a):
         tier = probe()["tier"]
         while not why:
             now = time.time()
+            if streams_open():
+                last = now          # a take is streaming: never idle
             why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, a.idle,
                                     a.exit_after, a.parent)
             if why:
@@ -2847,14 +3328,23 @@ def cmd_serve(a):
                 conn.settimeout(10)
                 try:
                     buf = b""
-                    while not buf.endswith(b"\n") and len(buf) < 1 << 20:      # a vocabulary can be long
+                    while b"\n" not in buf and len(buf) < 1 << 20:      # a vocabulary can be long
                         chunk = conn.recv(65536)
                         if not chunk:
                             break
                         buf += chunk
-                    req = json.loads(buf or b"{}")
+                    line, _, extra = buf.partition(b"\n")     # a stream's PCM may follow its line
+                    req = json.loads(line or b"{}")
                     if req.get("token") != token:
                         resp = {"ok": False, "error": "bad token", "code": "auth"}
+                    elif req.get("cmd") == "stream":
+                        # its own thread, its own copy of the connection (this one closes with the block)
+                        last = time.time()
+                        if req.get("purpose", "dictation") == "dictation":
+                            uses.append(last)
+                            del uses[:-50]
+                        threading.Thread(target=serve_stream, args=(conn.dup(), req, extra), daemon=True).start()
+                        continue
                     elif req.get("cmd") == "ping":
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.backend is not None}
                     elif req.get("cmd") == "note":
@@ -2964,7 +3454,8 @@ QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
 FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
 DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
-DICTATION_CLOUD = ("qwen3-asr-flash", "openai-compatible")   # offered once their key is set (first-minute-speech.md §2.4)
+# offered once their key is set (first-minute-speech.md §2.4; Volcengine: dictation-eval-2026-10-31.md §6.3 B′)
+DICTATION_CLOUD = ("qwen3-asr-flash", "volcengine-seedasr", "openai-compatible")
 
 
 def polish_ram_mb(hw: dict, cfg: dict | None = None) -> float:
@@ -3210,6 +3701,7 @@ def cmd_setup(a):
 CHECK_PHRASE = "Testing, one, two, three."
 # the variables each cloud backend reads, for a key / address / model typed in Settings but not saved yet
 CLOUD_ENV = {"dashscope": {"key": "DASHSCOPE_API_KEY", "base_url": "DASHSCOPE_BASE_URL", "model": "DASHSCOPE_ASR_MODEL"},
+             "volcengine": {"app_id": "VOLC_APP_ID", "token": "VOLC_ACCESS_TOKEN"},
              "openai": {"key": "BLURT_ASR_API_KEY", "base_url": "BLURT_ASR_BASE_URL", "model": "BLURT_ASR_MODEL"}}
 
 

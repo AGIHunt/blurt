@@ -39,8 +39,10 @@ final class CloudCuratedTests: XCTestCase {
         XCTAssertEqual(l.options(CuratedJob.polish).map(\.service), ["dashscope", "deepseek"])
         XCTAssertEqual(l.options(CuratedJob.translate).map(\.model), ["deepseek-v4.1-flash", "deepseek-flash"])
         XCTAssertEqual(l.options(CuratedJob.vision).map(\.model), ["qwen3.6-flash", "deepseek-flash"])
-        XCTAssertEqual(l.options(CuratedJob.speech).map(\.model), ["qwen3-asr-flash"])
-        XCTAssertEqual(l.services, ["dashscope", "deepseek"])
+        // Volcengine Speech: streamed while the user talks (dictation-eval-2026-10-31.md §6.3 B′), China only
+        XCTAssertEqual(l.options(CuratedJob.speech).map(\.model), ["qwen3-asr-flash", "volcengine-seedasr"])
+        XCTAssertEqual(l.services, ["dashscope", "deepseek", "volcengine-speech"])
+        XCTAssertEqual(l.options(CuratedJob.speech).last?.noteKey, "dictation.cloud.model.note.speech.seedasr")
         XCTAssertEqual(l.options(CuratedJob.polish).first?.name, "DeepSeek V4.1 Flash")
         XCTAssertEqual(l.options(CuratedJob.polish).first?.noteKey, "dictation.cloud.model.note.polish.ds41")
         for job in CuratedJob.allCases { XCTAssertLessThanOrEqual(l.options(job).count, 3, job.rawValue) }

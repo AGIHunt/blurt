@@ -1052,8 +1052,13 @@ final class Dictation {
         // key-up while macOS's gives the live text — or, where macOS's can't run, the take isn't cut at all
         let appleBeside = !AppleSpeech.forDictation && AppleSpeech.ready()
         if AppleSpeech.cloudSelected {
-            opt.wholeAtKeyUp = opt.streaming && appleBeside
-            if !opt.wholeAtKeyUp { opt.streaming = false }
+            // a recogniser that hears the take while it is said (Volcengine): the samples stream to it from the first
+            // one, with or without macOS's live text beside it (DictationStream §streamCloud)
+            opt.streamCloud = speechModels?.selected == VolcengineSpeech.modelID
+            opt.contextComing = Dictation.contextOn
+            let live = opt.streaming && appleBeside
+            opt.wholeAtKeyUp = live || opt.streamCloud
+            if !live { opt.streaming = false }
         }
         opt.second = opt.polish && opt.cloud != nil && appleBeside
         if opt.polish, opt.cloud != nil, !AppleSpeech.forDictation, !appleBeside, AppleSpeech.available {

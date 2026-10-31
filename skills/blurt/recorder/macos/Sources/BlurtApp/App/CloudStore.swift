@@ -154,6 +154,7 @@ enum CloudStore {
         case "deepseek": return M("models.preset.deepseek")
         case "dashscope": return M("models.preset.dashscope")
         case "volcengine": return M("models.preset.volcengine")
+        case VolcengineSpeech.preset: return M("models.preset.volcengine_speech")
         case "moonshot": return M("models.preset.moonshot")
         case "zhipu": return M("models.preset.zhipu")
         case "minimax": return M("models.preset.minimax")
