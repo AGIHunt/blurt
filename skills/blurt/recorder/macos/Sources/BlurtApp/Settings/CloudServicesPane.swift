@@ -69,7 +69,7 @@ enum CloudText {
     @MainActor static func line(_ job: CloudJob) -> String {
         if let r = CloudStore.recommendation(job) { return M("models.job.recommend", r.option.name) }
         if let c = CloudStore.cloudModel(job) {
-            return job == .vision ? M("models.job.goes.images", c.service) : M("models.job.goes.text", c.service)
+            return ChoiceText.tight(job == .vision ? M("models.job.goes.images", c.service) : M("models.job.goes.text", c.service), c.service)
         }
         return localModel(job) == nil ? M("models.job.none") : M("models.job.local")
     }

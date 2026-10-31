@@ -508,6 +508,6 @@
 "onboarding.start.ready.detail" = "It uses the speech recognition built into macOS. Nothing to download.";
 "onboarding.upgrade.better" = "%1$@ (%2$@) recognizes better and works offline.";
 "onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It’s used once it’s in.";
-"onboarding.key.compare" = "Cloud polish gets names and terms right more often, about %@ a dictation. Only text is sent.";
+"onboarding.key.compare" = "Cloud polish gets names and terms right more often, %@ a dictation. Only text is sent.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";
 "onboarding.models.left_label" = "Left";

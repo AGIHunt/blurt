@@ -507,6 +507,6 @@
 "onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
 "onboarding.upgrade.better" = "%1$@（%2$@）识别更准，离线可用。";
 "onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），好了自动换上。";
-"onboarding.key.compare" = "云端润色让人名和术语更准，每次约 %@，只发送文字。";
+"onboarding.key.compare" = "云端润色让人名和术语更准，每次 %@，只发送文字。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";

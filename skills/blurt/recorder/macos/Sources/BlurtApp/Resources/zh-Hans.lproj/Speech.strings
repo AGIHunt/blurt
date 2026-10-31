@@ -208,7 +208,7 @@
 "speech.compare.menu" = "对比各方案…";
 "speech.compare.title" = "听写方案";
 "speech.compare.note" = "按中英混说实测。";
-"speech.compare.mac" = "这台 Mac：%@";
+"speech.compare.mac" = "这台 Mac：%@。";
 "speech.compare.col.accuracy" = "准确度";
 "speech.compare.col.accuracy.help" = "越满越准。";
 "speech.compare.col.delay" = "延迟";
@@ -217,6 +217,7 @@
 "speech.compare.col.leaves" = "发出的内容";
 "speech.compare.delay.one" = "约 %@ 秒";
 "speech.compare.delay.range" = "%1$@–%2$@ 秒";
+"speech.compare.installed" = "已下载";
 "speech.compare.free" = "免费";
 "speech.compare.builtin" = "macOS 自带";
 "speech.compare.download" = "需下载 %@";

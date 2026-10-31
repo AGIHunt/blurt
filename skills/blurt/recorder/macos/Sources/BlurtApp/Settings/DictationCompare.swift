@@ -120,9 +120,10 @@ enum ChoiceText {
     }
 
     /// The cost cell: what it costs, and per what (or the download).
-    static func cost(_ f: DictationFacts, sizeMB: Double?) -> (String, String) {
+    static func cost(_ f: DictationFacts, sizeMB: Double?, installed: Bool = false) -> (String, String) {
         switch f.cost {
         case .free:
+            if installed { return (S("speech.compare.free"), S("speech.compare.installed")) }
             let mb = sizeMB ?? f.downloadMB
             return (S("speech.compare.free"), mb > 0 ? S("speech.compare.download", modelSize(mb)) : S("speech.compare.builtin"))
         case .perDictation(let cny, let usd): return (money(cny: cny, usd: usd), S("speech.compare.per_dictation"))
@@ -131,8 +132,11 @@ enum ChoiceText {
     }
 
     /// "to DeepSeek" / 「发往 DeepSeek」, 「发往阿里云」 (no space before a Chinese name).
-    static func to(_ name: String) -> String {
-        let s = S("speech.compare.to", name)
+    static func to(_ name: String) -> String { tight(S("speech.compare.to", name), name) }
+
+    /// Chinese puts a space between Chinese and Latin words, none between two Chinese ones: 「发给 DeepSeek」,
+    /// 「发给阿里云百炼」.
+    static func tight(_ s: String, _ name: String) -> String {
         guard Loc.isChinese, let c = name.unicodeScalars.first, c.properties.isIdeographic else { return s }
         return s.replacingOccurrences(of: " " + name, with: name)
     }
@@ -294,7 +298,8 @@ struct DictationCompareSheet: View {
                 Text(u).font(.system(size: 11)).monospacedDigit().foregroundStyle(.secondary)
             }
         }
-        .lineLimit(1)
+        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
         .frame(width: width, alignment: .leading)
         .help(help)
     }
@@ -304,8 +309,8 @@ struct DictationCompareSheet: View {
         let fit = now.fit(c)
         let runs = fit == .fits || fit == .needsKey
         let inUse = now.inUse == c
-        let size = c.local ? d.asr?.models.first { $0.id == c.rawValue }?.sizeMB : nil
-        let (cost, per) = ChoiceText.cost(f, sizeMB: size)
+        let model = c.local ? d.asr?.models.first { $0.id == c.rawValue } : nil
+        let (cost, per) = ChoiceText.cost(f, sizeMB: model?.sizeMB, installed: model?.installed == true && c != .macOSSpeech)
         let (leaves, to) = ChoiceText.leaves(f)
         let help: String = {
             switch c {
@@ -317,7 +322,8 @@ struct DictationCompareSheet: View {
         return SettingsLine(padding: 6) {
             HStack(alignment: .center, spacing: Col.gap) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(ChoiceText.name(c, base: now.base)).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1)
+                    Text(ChoiceText.name(c, base: now.base)).font(.system(size: SettingsMetrics.titleSize)).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(runs ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                     marks(c, now: now, fit: fit, inUse: inUse)
                 }

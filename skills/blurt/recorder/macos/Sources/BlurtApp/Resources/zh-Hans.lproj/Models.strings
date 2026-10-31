@@ -6,7 +6,7 @@
 "models.services.add.title" = "添加云服务";
 "models.services.add" = "添加云服务…";
 "models.services.empty" = "粘贴一个 API Key，就能用云端模型润色、翻译和截图取字。";
-"models.price.deepseek" = "DeepSeek：一条听写约 ¥0.001。";
+"models.price.deepseek" = "DeepSeek：一条听写约 ¥0.002。";
 "models.recommended" = "推荐";
 "models.service.edit" = "编辑…";
 "models.service.no_key" = "没有 API Key";

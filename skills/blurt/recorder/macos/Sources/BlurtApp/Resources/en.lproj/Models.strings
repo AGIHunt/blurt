@@ -6,7 +6,7 @@
 "models.services.add.title" = "Add a service";
 "models.services.add" = "Add Service…";
 "models.services.empty" = "Paste an API key to polish, translate and read screenshots with a cloud model.";
-"models.price.deepseek" = "DeepSeek: about ¥0.001 ($0.0002) a dictation.";
+"models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) a dictation.";
 "models.recommended" = "Recommended";
 "models.service.edit" = "Edit…";
 "models.service.no_key" = "No API key";
