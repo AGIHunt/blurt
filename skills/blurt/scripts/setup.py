@@ -26,7 +26,8 @@ file, never takes one as an argument and never prints one.
                                         what was said, what it heard, the polished text, the timings
 
 Every command prints one JSON line: {"ok": true, …} or {"ok": false, "code", "error"} (exit 1). The app must be running
-for every command but status and recommend: "code": "app_not_running" says so ("open -a Blurt"). Changes need the
+for every command but status and recommend: "code": "app_not_running" says so ("open -a Blurt"); "code": "sandboxed"
+means the agent's sandbox blocked the socket (run setup.py outside it, with the user's approval). Changes need the
 user's consent in Blurt: a session started from Settings → Models → Set Up with Agent… carries it
 ($BLURT_SETUP_TOKEN); otherwise Blurt asks the user (Allow / Don't Allow) the first time, and "code": "denied" means
 they said no.
@@ -67,6 +68,10 @@ NOT_RUNNING = {"ok": False, "code": "app_not_running",
                "error": "Blurt isn't running. Open it (open -a Blurt), then run this again.", "fix": "open -a Blurt"}
 
 
+SANDBOXED = ("this command's sandbox blocks the connection to Blurt; run setup.py outside the sandbox (ask the user "
+             "to approve it)")
+
+
 class SetupError(Exception):
     def __init__(self, code: str, message: str):
         super().__init__(message)
@@ -104,6 +109,10 @@ def call(req: dict, timeout: float = 30) -> dict:
             s.connect(path)
         except (ConnectionRefusedError, FileNotFoundError):
             raise SetupError("app_not_running", NOT_RUNNING["error"]) from None
+        except PermissionError:
+            # the socket is there but this process may not connect: an agent's sandbox (Codex's seatbelt) — not "Blurt
+            # isn't running", which sent agents to open an app that was open
+            raise SetupError("sandboxed", SANDBOXED) from None
         s.sendall(json.dumps(req, ensure_ascii=False).encode() + b"\n")
         buf = b""
         while b"\n" not in buf:
@@ -454,7 +463,10 @@ class _Parser(argparse.ArgumentParser):
     """Usage errors as one JSON line, without repeating what was typed (a key pasted as an argument stays unsaid)."""
 
     def error(self, message):
-        said = message.split(":", 1)[0] if "unrecognized arguments" in message or "invalid choice" in message else message
+        # "argument cmd: invalid choice: 'hello'…" read as "argument cmd": say what was wrong, never what was typed
+        said = ("unrecognized arguments" if "unrecognized arguments" in message
+                else "unknown " + {"cmd": "command"}.get(*[message.split(":", 1)[0].removeprefix("argument ")] * 2)
+                if "invalid choice" in message else message)
         emit({"ok": False, "code": "bad_args", "error": f"{said} (see setup.py --help; a key goes on stdin, never as an "
                                                          "argument)"})
         sys.exit(2)

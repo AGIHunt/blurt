@@ -52,11 +52,13 @@ curl -fsSL https://blurt.work/install.sh | sh
 它会下载最新版，确认已签名并经过公证，放进「应用程序」并打开。
 
 **在 Agent 里用口喷鸡。** 在口喷鸡的「设置 → Agent」里点「连接…」，会把口喷鸡的 skill 和 MCP 加到 Claude Code、Codex
-等它找到的 Agent 里。之后对 Agent 说 **「开始口喷」**，或者让它查你的事项。
+等它找到的 Agent 里（Gemini CLI、Kimi Code、OpenCode、Grok、CodeBuddy Code、WorkBuddy、Cursor）。在 Agent 里新开一个会话，
+然后说 **「开始口喷」**（Claude Code 里也可以用 `/blurt`，Codex 里用 `$blurt`），或者让它查你的事项。也可以让 Agent
+自己连接，步骤见 [llms.txt](https://blurt.work/llms.txt)。
 
-<sub>不装 App、从源码用：<code>npx skills add AGIHunt/blurt</code>（Claude Code 里也可以用 <code>/plugin marketplace add
-AGIHunt/blurt</code>），然后说「开始口喷」。第一次运行会把口喷鸡编译安装到 <code>~/Applications</code>，需要 Xcode Command
-Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会提出帮你安装。</sub>
+<sub>不装 App、从源码用：<code>npx skills add AGIHunt/blurt -g</code>，或者在 Claude Code 里先运行 <code>/plugin marketplace add
+AGIHunt/blurt</code>，再运行 <code>/plugin install blurt@blurt</code>。然后说「开始口喷」。第一次运行会把口喷鸡编译安装到
+<code>~/Applications</code>，需要 Xcode Command Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会提出帮你安装。</sub>
 
 **第一分钟。** 设置助手会请你开启麦克风和「辅助功能」权限（听写键不用 `Fn` 时还需要「输入监控」）。之后在任意输入框里按 `Fn`
 就能听写，用的是 macOS 自带的识别。两个可选升级：一个 AI 服务的 key（纠正听错的名字和标点，翻译和截图取字的云端二次识别也用它），

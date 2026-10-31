@@ -226,6 +226,7 @@
 "install.benefit.nothing" = "%@ 已经能查找、读取和更新你的口喷鸡事项。";
 "install.benefit.failed" = "部分步骤未成功，需要你处理的已在下方标出。";
 "install.footnote" = "点「连接」之前，什么都不会改动。";
+"install.next" = "在 %@ 里新开会话后生效。";
 "install.confirm" = "连接";
 "install.working" = "正在连接…";
 "install.details" = "详细信息";

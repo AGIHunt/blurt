@@ -138,6 +138,10 @@ struct CloudServicesSection: View {
             let taken = Set(setup.services.map(\.preset))
             if CloudServiceSheetModel.curated.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
                 addLine(empty: setup.services.isEmpty)
+            } else if !agents.list.isEmpty {
+                // every curated service is in, so the Add row is gone: Set Up with Agent… keeps a row of its own
+                // (it went with the Add row — dogfood 2026-10-31)
+                agentLine
             }
             // what an agent set up (Set Up with Agent…, or one the user allowed), as it happens
             AgentSetupProgressView(look: .settings)
@@ -155,6 +159,7 @@ struct CloudServicesSection: View {
         }
         .onAppear {
             CloudStore.refreshStale()
+            agents.loadIfNeeded()       // the agent row needs the list before any button of it appears
             if let id = ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_SHEET"], let s = setup.service(id) { editing = s }
         }
     }
@@ -195,6 +200,20 @@ struct CloudServicesSection: View {
         }
     }
 
+    var agentLine: some View {
+        SettingsLine(flashID: "speech_agent_setup_start") {
+            HStack(alignment: .center, spacing: 14) {
+                HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
+                    SettingsIcon("terminal")
+                    Text(M("models.agent.sheet.title")).font(.system(size: SettingsMetrics.titleSize))
+                        .gridProbe(.iconText, "agent setup")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                AgentSetupButton(look: .settings).gridProbe(.trailing, "agent setup")
+            }
+        }
+    }
+
     func addLine(empty: Bool) -> some View {
         SettingsLine(flashID: "speech_service_add") {
             HStack(alignment: .center, spacing: 14) {
@@ -206,10 +225,6 @@ struct CloudServicesSection: View {
                         if empty {
                             Text(sentencesOf([M("models.services.empty"), M("models.price.deepseek")]))
                                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        if !agents.list.isEmpty {
-                            Text(M("models.agent.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }

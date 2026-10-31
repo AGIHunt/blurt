@@ -129,7 +129,7 @@
 "models.agent.session" = "模型设置";
 "models.agent.step.connecting" = "正在连接 %@…";
 "models.agent.step.connected" = "%@ 已连接";
-"models.agent.step.connect_failed" = "%@ 未连接";
+"models.agent.step.connect_failed" = "%@：连接失败";
 "models.agent.step.use" = "%1$@：%2$@";
 "models.agent.step.use_failed" = "%@：测试未通过";
 "models.agent.step.downloading" = "正在下载 %@…";

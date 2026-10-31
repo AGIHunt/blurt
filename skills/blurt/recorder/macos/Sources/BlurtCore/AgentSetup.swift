@@ -320,12 +320,28 @@ public struct AgentSetupSteps: Equatable {
     public private(set) var steps: [AgentSetupStep] = []
     public init() {}
 
-    /// A report: replaces the row for the same thing in place (its order is when it first happened).
+    /// A report: replaces the row for the same thing in place (its order is when it first happened) — but a new
+    /// attempt at something already over (a second test dictation at the end) moves to the end, where it happens.
     public mutating func record(_ s: AgentSetupStep) {
-        if let i = steps.firstIndex(where: { $0.id == s.id }) { steps[i] = s } else { steps.append(s) }
+        guard let i = steps.firstIndex(where: { $0.id == s.id }) else { return steps.append(s) }
+        if s.state == .running, steps[i].state != .running {
+            steps.remove(at: i)
+            steps.append(s)
+        } else {
+            steps[i] = s
+        }
     }
 
     public mutating func clear() { steps = [] }
+
+    /// At most `n` rows for a page that can't grow (onboarding): the newest, a failed one kept over a done one, in
+    /// the order they happened.
+    public func latest(_ n: Int) -> [AgentSetupStep] {
+        guard steps.count > n else { return steps }
+        var keep = Set(steps.filter { $0.state == .failed }.suffix(n).map(\.id))
+        for s in steps.reversed() where keep.count < n { keep.insert(s.id) }
+        return steps.filter { keep.contains($0.id) }
+    }
 
     public var failed: Bool { steps.contains { $0.state == .failed } }
     public var running: Bool { steps.contains { $0.state == .running } }

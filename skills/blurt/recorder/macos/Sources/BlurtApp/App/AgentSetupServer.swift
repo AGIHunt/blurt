@@ -82,22 +82,34 @@ enum AgentSetupServer {
     /// The question, in Blurt (blocking this connection's thread, never the main one): Allow / Don't Allow.
     private static func ask(_ who: String?) -> Bool {
         let env = ProcessInfo.processInfo.environment
-        if env["BLURT_TEST_COMMANDS"] == "1" { return env["BLURT_TEST_SETUP_ALLOW"] == "1" }
+        var wait: TimeInterval = 180
+        if env["BLURT_TEST_COMMANDS"] == "1" {
+            // tests answer it, unless they want to see it (ask; BLURT_TEST_SETUP_ASK_SECONDS: how long it waits)
+            guard env["BLURT_TEST_SETUP_ALLOW"] == "ask" else { return env["BLURT_TEST_SETUP_ALLOW"] == "1" }
+            wait = env["BLURT_TEST_SETUP_ASK_SECONDS"].flatMap(Double.init) ?? wait
+        }
         let sem = DispatchSemaphore(value: 0)
-        var ok = false
+        let box = Box<Bool>()
         DispatchQueue.main.async {
             let a = NSAlert()
             a.messageText = who.map { M("models.agent.ask.title", $0) } ?? M("models.agent.ask.unknown")
             a.informativeText = M("models.agent.ask.detail")
-            a.addButton(withTitle: M("models.agent.ask.allow"))
-            a.addButton(withTitle: M("models.agent.ask.deny"))
+            // asked while the user may be typing in the agent's terminal: Return must not allow (only a click does);
+            // Esc is Don't Allow
+            a.addButton(withTitle: M("models.agent.ask.allow")).keyEquivalent = ""
+            a.addButton(withTitle: M("models.agent.ask.deny")).keyEquivalent = "\u{1b}"
             activateApp()
-            ok = a.runModal() == .alertFirstButtonReturn
+            // nobody there: no — and the question goes, so a late click can't answer a request already refused (it
+            // stayed on screen before: dogfood 2026-10-31). A timer of the modal loop's own mode ends it.
+            let t = Timer(timeInterval: wait, repeats: false) { _ in NSApp.abortModal() }
+            RunLoop.main.add(t, forMode: .modalPanel)
+            box.value = a.runModal() == .alertFirstButtonReturn
+            t.invalidate()
             sem.signal()
         }
-        // nobody there: no
-        if sem.wait(timeout: .now() + 180) == .timedOut { return false }
-        return ok
+        // the main thread busy for good: no
+        if sem.wait(timeout: .now() + wait + 60) == .timedOut { return false }
+        return box.value ?? false
     }
 
     // MARK: requests
@@ -355,7 +367,8 @@ enum AgentSetupServer {
             let name: String = onMain {
                 let now = DictationNow.read()
                 DictationChoiceAction.use(c, now: now)
-                return ChoiceText.name(c, base: now.base)
+                // the live list names the model in full ("Qwen3-ASR 1.7B + cloud polish"), as its other rows do
+                return ChoiceText.name(c, base: now.base, short: false)
             }
             step(.use, "dictation", missing ? .running : .done, name)
             var out: [String: Any] = ["ok": true, "job": "dictation", "choice": c.rawValue]
@@ -419,6 +432,9 @@ enum AgentSetupServer {
         let seconds = Double((try? FileManager.default.attributesOfItem(atPath: wav.path)[.size] as? Int) ?? 0) / 32_000
         let vocab = onMain { DictationVocabulary.shared.payload() }
         let language = Config.shared["asr.language"] as? String ?? "auto"
+        // a take's key-down starts the polish server; nothing had here, so verify reported cloud polish "unavailable"
+        // (dogfood 2026-10-31): start it now, so it comes up while the clip is heard
+        if Dictation.polishOn { onMain { Dictation.shared.warmPolish() } }
         let t0 = Date()
         let heard = Dictation.transcribe(wav, vocab: vocab, language: language, prior: "", budget: 30, audioSeconds: seconds)
         let asrMS = Int(Date().timeIntervalSince(t0) * 1000)
@@ -433,8 +449,9 @@ enum AgentSetupServer {
         var polishMS = 0
         if Dictation.polishOn, onMain({ Dictation.shared.polishModel != nil }) || cloud != nil {
             let t1 = Date()
-            polished = Dictation.polish(raw, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
-                                        context: nil, cloud: cloud)
+            // a cold server (uv, then the local model the cloud falls back to) can take longer than a take's budget
+            polished = Dictation.polish(raw, timeout: Dictation.polishTimeout, loadBudget: max(Dictation.loadBudget, 60),
+                                        vocab: vocab, context: nil, cloud: cloud)
             polishMS = Int(Date().timeIntervalSince(t1) * 1000)
         }
         let text = polished?["text"] as? String ?? raw

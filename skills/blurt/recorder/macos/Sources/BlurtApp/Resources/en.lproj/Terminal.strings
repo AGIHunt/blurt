@@ -226,6 +226,7 @@
 "install.benefit.nothing" = "%@ can already find, read and update your Blurt items.";
 "install.benefit.failed" = "Some steps didn’t work. The ones that need you are marked below.";
 "install.footnote" = "Nothing changes until you click Connect.";
+"install.next" = "Takes effect in new %@ sessions.";
 "install.confirm" = "Connect";
 "install.working" = "Connecting…";
 "install.details" = "Details";

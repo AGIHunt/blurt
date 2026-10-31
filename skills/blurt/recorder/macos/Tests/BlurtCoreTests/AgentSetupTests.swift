@@ -174,8 +174,30 @@ final class AgentSetupTests: XCTestCase {
         XCTAssertFalse(s.failed)
         s.record(AgentSetupStep(.verify, "", .failed, name: ""))
         XCTAssertTrue(s.failed)
+        // a second attempt at something already over moves to where it happens (dogfood: a test dictation run again
+        // at the end sat above the connect)
+        s.record(AgentSetupStep(.use, "dictation", .done, name: "x"))
+        s.record(AgentSetupStep(.verify, "", .running, name: ""))
+        XCTAssertEqual(s.steps.map(\.id), ["connect:deepseek", "use:polish", "use:dictation", "verify:"])
+        s.record(AgentSetupStep(.verify, "", .done, name: ""))
+        XCTAssertEqual(s.steps.last?.state, .done)
+        XCTAssertEqual(s.steps.count, 4)
         s.clear()
         XCTAssertTrue(s.steps.isEmpty)
+    }
+
+    func testOnboardingShowsTheLatestRowsAndKeepsAFailedOne() {
+        // dogfood 2026-10-31: seven rows pushed onboarding's Back / Next out of its window
+        var s = AgentSetupSteps()
+        s.record(AgentSetupStep(.connect, "dashscope", .failed, name: "Model Studio"))
+        s.record(AgentSetupStep(.connect, "deepseek", .done, name: "DeepSeek"))
+        for j in ["polish", "translate", "vision", "dictation"] { s.record(AgentSetupStep(.use, j, .done, name: "x")) }
+        s.record(AgentSetupStep(.verify, "", .running, name: ""))
+        XCTAssertEqual(s.latest(3).map(\.id), ["connect:dashscope", "use:dictation", "verify:"])
+        XCTAssertEqual(s.latest(10).count, 7)
+        var two = AgentSetupSteps()
+        two.record(AgentSetupStep(.connect, "deepseek", .done, name: "DeepSeek"))
+        XCTAssertEqual(two.latest(3).map(\.id), ["connect:deepseek"])
     }
 
     // MARK: status

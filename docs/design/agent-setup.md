@@ -36,7 +36,9 @@ address holds (103 bytes; deep test folders), both sides use `/tmp/blurt-<uid>/<
     constant time; *Stop* or the session's end revokes it;
   - or the user's **Allow**: a request without a live grant makes Blurt ask (an alert naming the agent it finds among
     the requesting process's ancestors — `AgentSetupPeer` against agents.json's `bins`; else "an app on your Mac").
-    Allow opens changes for 30 minutes; Don't Allow (or no answer in 3 minutes) answers `denied`. One question at a
+    Allow opens changes for 30 minutes; Don't Allow (or no answer in 3 minutes, when the alert closes itself) answers
+    `denied`. Return doesn't press Allow (the user may be typing in the agent's terminal when it comes up); Esc is
+    Don't Allow. One question at a
     time; requests waiting behind it get its answer.
 - **Keys.** A key is read only from a `connect` request (`key`, or `app_id` + `access_token` for Volcengine Speech; a
   key on any other request is refused). It is checked (`CloudKeyCheck`, `VolcengineSpeech.problem`), sent to the test
@@ -71,7 +73,8 @@ Every answer has `ok`; a failure has `code` and an English `error` for the agent
 
 `setup.py` adds `recommend` (below) and, without the app, `status` from config.json + `transcribe.py dictation-models`
 (`"source": "config"`; services with `"key": null`, no levels, no progress). Every other command answers
-`app_not_running` with `"fix": "open -a Blurt"`. `download --wait` polls `status` until the model is in.
+`app_not_running` with `"fix": "open -a Blurt"` (`sandboxed` when a sandbox blocks the socket: EPERM). `download --wait`
+polls `status` until the model is in.
 
 ## 3. The plan (`setup.py recommend`)
 
@@ -99,27 +102,34 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 
 - **Set Up with Agent…** beside *Add Service…* (Settings → Models → Cloud services) and beside *Add…* on onboarding's
   cloud row; shown only when an agent with an interactive session is installed (agents.py detect + sessions.py doctor,
-  as the hand-off panel reads them). Under the Add row, one line: "The API key passes through the agent. You can also
-  add services by hand."
+  as the hand-off panel reads them). Disabled while a session it started runs. When every curated service is in (the
+  Add row is gone), it keeps a row of its own ("Set Up Models with an Agent"). The line about the key is in the sheet
+  only (the Add row keeps one detail line).
 - **The sheet** (460 pt): title, one line on what happens and what the user does, the Agent pop-up (installed agents;
   the last one used for sessions first), the same line about the key, Cancel / Start. Start issues the token, runs
-  `sessions.py setup-session --agent ID --lang …` (token on stdin): a job in project `blurt-setup` (Sessions shows it
+  `sessions.py setup-session --agent ID --lang …` (token on stdin; refused like a hand-off when the agent is
+  logged out or too old: the sheet shows the fix): a job in project `blurt-setup` (Sessions shows it
   as "Model Setup"), cwd `$BLURT_HOME/setup` (0700), no items, no worktree, the agent's own interactive command with
-  the prompt (title + "follow reference/setup-models.md, run `uv run …/setup.py`, ask before changing, never write a
-  key back") in tmux on Blurt's socket, else in the app's own terminal; then Blurt shows that terminal.
+  the prompt (title + "follow reference/setup-models.md, run `uv run …/setup.py`, ask before changing, help find or
+  create each key, never write a key back"; Codex also gets `approval_policy="on-request"`, §7) in tmux on Blurt's
+  socket (window `model-setup`), else in the app's own terminal; then Blurt shows that terminal.
 - **The live list** (`AgentSetupProgress`): under the services in Settings, and under the cloud row in onboarding. A
   heading ("Setting up with Claude Code"; "Agent setup ended" after), Show Terminal and Stop (Stop: `sessions.py stop`,
   every grant revoked), Done once it's over. One row per thing as the endpoint does it: "Connecting DeepSeek…" →
-  "DeepSeek connected" / "DeepSeek not connected", "Polish: DeepSeek V4.1 Flash", "Downloading Qwen3-ASR 1.7B…" →
-  "… downloaded", "Testing dictation…" → "Dictation test passed". A later report about the same thing replaces its row.
+  "DeepSeek connected" / "DeepSeek: connection failed" (an older key may still be there), "Dictation polish: DeepSeek
+  V4.1 Flash", "Dictation: Qwen3-ASR 1.7B + cloud polish", "Downloading Qwen3-ASR 1.7B…" → "… downloaded", "Testing
+  dictation…" → "Dictation test passed". A later report about the same thing replaces its row; a new attempt at
+  something already over (a second test dictation) moves to the end. Onboarding shows the latest three rows (a
+  failed one kept): its page doesn't scroll. A new Allow window after an ended session starts a fresh list.
   The rows above it (services, job pop-ups, onboarding's key line) follow live: `CloudStore.changed`.
 
 ## 5. MCP
 
 `mcp_server.py` adds `setup_status`, `setup_recommend`, `setup_connect` (the key as a parameter — MCP has no stdin; it
 goes to the app once and is never logged or returned), `setup_test`, `setup_use`, `setup_download`, `setup_verify`.
-They import setup.py's functions (one implementation). The skill prefers the CLI with `pbpaste`, so the key never
-enters the conversation.
+They import setup.py's functions (one implementation). The skill prefers the CLI with the key on stdin (from wherever
+the user keeps it: the clipboard, an environment variable, a file they name), so the key never enters the
+conversation.
 
 ## 6. Provider pages (checked 2026-10-31)
 
@@ -132,11 +142,27 @@ enters the conversation.
 
 `setup.py KEY_PAGES` must equal `CloudPreset.all`'s `keyPage` (a test reads the Swift source).
 
-## 7. Not verified yet
+## 7. Dogfood (2026-10-31)
 
-Built and unit-tested without launching the GUI (another session was taking screenshots): the sheet, the live list's
-layout in both panes and both themes, the Allow alert, a real agent session going through the flow end to end, a real
-key on each provider, `verify` through a warm server on a Mac with each recogniser, and how each agent's sandbox treats
-the socket (Codex's seatbelt may block it: the skill says to run setup.py outside the sandbox then). Next: a dogfood
-pass (blurt-dogfood) with a test build (`BLURT_TEST_COMMANDS=1`, `BLURT_TEST_SETUP_ALLOW=1`, keys in memory) and the
-visual gate on the two new surfaces.
+An isolated test build (`dev.blurt.recorder.layouttest`, scratch BLURT_HOME, keys in memory), screens in zh + en
+(`~/blurt-shots-2026-10-31b/agent-setup/`, layoutcheck clean), and real sessions started from the button.
+
+- **Claude Code**: the CLI on the test Mac wasn't logged in; the session sat at "Not logged in · Please run /login".
+  setup-session now refuses a logged-out (or too old) agent first, as dispatch does. A logged-in Claude Code run is
+  still to do. Its first screen in a new `$BLURT_HOME/setup` is the trust-this-folder question.
+- **Codex** (0.165): its seatbelt blocks the socket (EPERM; setup.py said `app_not_running`, now `sandboxed`). With
+  Blurt's hooks the session came up as "Workspace (granular)", where Codex may not ask to run a command outside the
+  sandbox: the setup stopped at `status`. Started with `-c approval_policy="on-request"` it asks before each setup.py
+  command (approve once per command, or the `setup.py` prefix) and ran status → recommend → connect (key piped from a
+  file the user named) → use ×4 → verify zh + en → summary, the live list following each step. Stop ended it. A
+  permission profile with `network.enabled = true` would let the socket through without approvals but opens all
+  network to the session, so it isn't used. Codex also asks to review Blurt's hooks the first time (new paths).
+- **verify** reported cloud polish `unavailable`: nothing had started the polish server (a take's key-down does).
+  It starts it now and allows the cold load.
+- **Keys**: grepped for each key's first and last characters in the tmux panes, the app logs, both Codex
+  transcripts and history, the Claude transcript, every file under the scratch BLURT_HOME: not found.
+- DeepSeek, Model Studio (China) and Volcengine Speech connected with real keys (one test call each); a wrong key
+  answers `auth` and leaves the stored key as it was.
+
+Still not verified: a logged-in Claude Code session end to end, `download` of a real model through the agent (the
+recogniser was installed), dark mode of the new surfaces, Gemini CLI / Kimi / OpenCode sandboxes.

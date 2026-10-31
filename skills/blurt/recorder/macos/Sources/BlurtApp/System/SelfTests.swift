@@ -31,6 +31,9 @@
 //                                written straight to PATH (no panel); cancel closes the sheet
 //   mainsuggest [moveall P | move ROW]   Unassigned's suggestion groups and rows ("Looks like X · Move"), pressing one
 //   mainmovepop [open | QUERY | return | esc]   M on the list: the Move popover, typing into it, choosing
+//   agentsetup allowed [NAME] | step KIND STATE SUBJECT [NAME] | stop | done   Set Up with Agent's live list
+//                                (AgentSetupProgress) in a given state: Allow for NAME, a row (KIND connect|use|download|
+//                                verify, STATE running|done|failed, SUBJECT "-" for none), Stop, Done → {"steps", "active"}
 //   layoutcheck [min|restore|dump]   the layout lint: every visible window's controls and texts inside the window, not
 //                                on top of each other, not truncated → {"event": "layoutcheck", "windows": [{"title",
 //                                "size", "problems": [{"kind", "role", "label", "frame", "bounds"}]}]} (LayoutCheck.swift)
@@ -136,6 +139,22 @@ enum SelfTests {
             let m = MainWindowController.shared.dictation.model
             if arg == "off" || arg.isEmpty { m.working = [] } else { m.working.insert(arg == "first" ? m.entries.first?.id ?? "" : arg) }
             out(["working": Array(m.working)])
+        case "agentsetup":
+            let p = AgentSetupProgress.shared
+            let a = arg.split(separator: " ", maxSplits: 4).map(String.init)
+            switch a.first ?? "" {
+            case "allowed":
+                let name = arg.dropFirst("allowed".count).trimmingCharacters(in: .whitespaces)
+                p.allowed(agent: name.isEmpty ? nil : name)
+            case "step":
+                if a.count >= 4, let k = AgentSetupStep.Kind(rawValue: a[1]), let st = AgentSetupStep.State(rawValue: a[2]) {
+                    p.record(AgentSetupStep(k, a[3] == "-" ? "" : a[3], st, name: a.count > 4 ? a[4] : ""))
+                }
+            case "stop": p.stop()
+            case "done": p.dismiss()
+            default: break
+            }
+            out(["steps": p.steps.steps.count, "active": p.active])
         case "toastdone":       // a take saved (no arg: "✓ Saved 0:42" in the ears, as after a take) or a done line
             if arg.isEmpty { island.doneMoment(T("app.ear.saved", Island.clock(42)), lead: .record, toast: T("app.toast.saved", Island.clock(42))) }
             else { appDelegate?.toast(arg, icon: .check) }

@@ -7,7 +7,7 @@ description: >-
   a hand-off bundle (.zip), or any tracker or chat through the tools you already have) or start fixing. Use when the user
   wants to record feedback / QA / ideas by talking while using their screen, hands over such a video, wants to
   process recordings from the Blurt app, or wants their Blurt items packed up and sent somewhere.
-  Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
+  Triggers: "blurt", "/blurt", "start blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
   "turn this recording into issues", "处理我录的视频", "process my recordings", "把这些问题打包发给…",
   "bundle these items for…", "set up Blurt's models", "帮我设置口喷鸡的模型", "配置听写模型 / API Key".
 ---
@@ -42,6 +42,21 @@ language; write items in the language the user spoke.
   `.gitignore`) the first time they write there.
 
 ## 1. Record (or pick up a recording)
+
+**Just "/blurt" or "blurt", nothing else:** don't start a recording. Say where things stand in one or two lines —
+the current project (`projects.py current`), new items (`items.py list --state new`), recordings not organized yet
+(`record.py inbox`) — and offer three choices: record now, organize the new recordings, work on the items (fix or
+export). Start a recording right away only when the user asked for one ("开始录", "录屏提 bug", "record feedback",
+"start blurt").
+
+**With the Blurt app installed** (`/Applications/Blurt.app` or `~/Applications/Blurt.app`, macOS): start the
+recording in the app, so it records with the app's own Screen Recording permission — `record.py start` runs the
+recorder under the app hosting you (Terminal, iTerm, Codex…), which then needs that permission too and a restart.
+`pgrep -xq blurt-recorder || { open -a Blurt; sleep 3; }` then `open blurt://record`: the notch asks once (one click),
+the user picks the area and talks, ⌥R or *Finish* stops, and the app organizes the recording into items in its
+project (Settings → Agents picks the agent). Tell the user that in two lines; afterwards `index.py search` / the MCP
+tools find the items. Use `record.py start` (below) when there is no app, on Windows/Linux, or when the user wants
+the recording processed here in this chat.
 
 **From the chat:** if the thing to look at is a local dev server/app in this repo, check it is running. Start
 `record.py start` **in the background** (`--last-region` to reuse the last area) and tell the user in a few lines
@@ -289,8 +304,9 @@ Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off not
 
 When the user asks you to set up Blurt's speech and AI models (or Blurt started you with a "Set Up Models" prompt),
 follow `reference/setup-models.md`: `setup.py status` → ask at most three questions (may the voice leave the Mac, may
-the text go to a cloud model, main languages) → `setup.py recommend …` and say the plan → open each provider's key
-page; the user signs in, verifies, pays and creates the key — you never do those → `pbpaste | setup.py connect
-<preset>` (the key never goes through the chat, never on a command line) → `download`, `use`, `verify` → a short
-summary. Blurt must be running; it tests and stores each key itself and asks the user before the first change unless
-it started you. The same operations are MCP tools (`setup_*`).
+the text go to a cloud model, main languages) → `setup.py recommend …` and say the plan → for each key, ask the user
+whether they have one and where, or want to create one (the provider's key page); the user signs in, verifies and
+pays — you never do those → the key goes to `setup.py connect <preset>` on stdin only (never in the chat, on a
+command line or in a log; a file with secrets is read only with the user's OK) → `download`, `use`, `verify` → a
+short summary. Blurt must be running; it tests and stores each key itself and asks the user before the first change
+unless it started you. The same operations are MCP tools (`setup_*`).

@@ -1223,12 +1223,19 @@ def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
 SETUP_PROJECT = "blurt-setup"
 SETUP_TITLE = {"en": "Set Up Models (Blurt)", "zh": "设置模型（口喷鸡）"}
 SETUP_PROMPT = {
-    "en": "{title}\n\nSet up Blurt's speech and AI models for me. Follow {guide} step by step; run its commands as "
-          "`uv run {setup} …`. Ask me its questions before you change anything, open each service's key page for me, "
-          "and never write an API key back into this chat.",
-    "zh": "{title}\n\n帮我设置口喷鸡的语音和 AI 模型。按 {guide} 一步步来，命令用 `uv run {setup} …` 运行。改动之前先问我里面列出的问题，"
-          "帮我打开各服务获取 Key 的页面，不要把任何 API Key 写回对话里。",
+    "en": "{title}\n\nSet up Blurt's speech and AI models for me, following {guide}; run its commands as "
+          "`uv run {setup} …`. Ask me its questions before you change anything, help me find or create each "
+          "service's API key, and never write a key back into this chat.",
+    "zh": "{title}\n\n帮我设置口喷鸡的语音和 AI 模型，参照 {guide}，命令用 `uv run {setup} …` 运行。改动之前先问我里面列出的问题，"
+          "帮我找到或创建各服务的 API Key，不要把任何 Key 写回对话里。",
 }
+
+
+# More of an agent's own arguments for a setup session. Codex: its sandbox blocks Blurt's socket (setup.py answers
+# "sandboxed"), and with Blurt's hooks a session came up as "Workspace (granular)", where the agent may not ask to run
+# a command outside the sandbox — the setup stopped at its first command (dogfood 2026-10-31). On request, Codex asks
+# the user before each setup.py command it runs outside the sandbox; nothing runs there without that approval.
+SETUP_ARGS = {"codex": ["-c", 'approval_policy="on-request"']}
 
 
 def setup_prompt(lang: str | None) -> tuple[str, str]:
@@ -1255,6 +1262,10 @@ def setup_session(agent: str, runner: str = "auto", lang: str | None = None, tok
     use_runner = runner if runner != "auto" else ("tmux" if have_tmux and os.name != "nt" else "app")
     title, prompt = setup_prompt(lang)
     cwd = jobs.home() / "setup"
+    if not dry_run:
+        # as a hand-off: an agent that is too old or logged out would only sit at its update or login screen
+        version_gate(agent, {"path": None}, lang)
+        login_gate(agent, {"path": None}, lang)
     if dry_run:
         return {"ok": True, "dry_run": True, "agent": agent, "runner": use_runner, "cwd": str(cwd), "title": title,
                 "prompt": prompt}
@@ -1272,13 +1283,16 @@ def setup_session(agent: str, runner: str = "auto", lang: str | None = None, tok
         jobs.path(jid, ".prompt.md").write_text(prompt + "\n", encoding="utf-8")
         cmd = agents.session_command(agent, prompt, cwd, job=jid, mcp=False,
                                      settings=jobs.path(jid, ".claude-settings.json"))
+        cmd["argv"][1:1] = SETUP_ARGS.get(agent, [])
         env = _session_env(jid, agent, SETUP_PROJECT)
         if token:
             env["BLURT_SETUP_TOKEN"] = token
         launch = []
         if use_runner == "tmux":
             session = "blurt-setup"
-            wid = _new_window(session, title, str(cwd), env, cmd["argv"])
+            # tmux's own name stays ASCII (a server started without a UTF-8 locale shows other text as "_"); the
+            # app names the window from the job's title
+            wid = _new_window(session, "model-setup", str(cwd), env, cmd["argv"])
             tmux("set-option", "-w", "-t", wid, "@blurt_job", jid)
             tmux("set-option", "-w", "-t", wid, "@blurt_agent", agent)
             agent_obj["tmux"] = {"socket": socket_name(), "session": session, "window": wid, "name": title}

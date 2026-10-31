@@ -44,7 +44,8 @@ final class AgentSetupProgress: ObservableObject {
     /// The user clicked Allow for an agent of their own.
     func allowed(agent name: String?) {
         if !active || job == nil {
-            if !active { steps.clear() }
+            // a new Allow window after an ended session: that session's rows and job go (Show Terminal pointed at it)
+            if !active { steps.clear(); job = nil; stopError = nil }
             agentName = name
             active = true
         }
@@ -176,6 +177,7 @@ struct AgentSetupButton: View {
     enum Look { case settings, onboarding }
     var look: Look = .settings
     @ObservedObject private var agents = AgentSetupAgents.shared
+    @ObservedObject private var progress = AgentSetupProgress.shared
     @State private var sheet = false
 
     var body: some View {
@@ -184,11 +186,15 @@ struct AgentSetupButton: View {
                 // nothing to show, but something to appear: the list is read from here
                 Color.clear.frame(width: 0, height: 0)
             } else {
+                // one session at a time: a second Start while one runs would leave the first agent working unseen
+                // (an Allow window doesn't count: the user may still start a session)
+                let running = progress.active && progress.job != nil
                 switch look {
                 case .settings:
                     Button(M("models.agent.button")) { sheet = true }.buttonStyle(SettingsOutlinedButtonStyle())
+                        .disabled(running)
                 case .onboarding:
-                    Button(M("models.agent.button")) { sheet = true }.controlSize(.small)
+                    Button(M("models.agent.button")) { sheet = true }.controlSize(.small).disabled(running)
                 }
             }
         }
@@ -315,7 +321,9 @@ struct AgentSetupProgressView: View {
                 buttons.controlSize(.small)
             }
             if let e = p.stopError { Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr) }
-            ForEach(p.steps.steps) { s in
+            // the page doesn't scroll: a long list pushed Back / Next out of the window (dogfood 2026-10-31); Settings
+            // keeps every row
+            ForEach(p.steps.latest(3)) { s in
                 HStack(spacing: 6) {
                     mark(s.state).frame(width: 14)
                     Text(AgentSetupProgress.text(s)).font(.system(size: 12))

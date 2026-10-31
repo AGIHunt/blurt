@@ -468,5 +468,19 @@ def test_setup_session_runs_the_agent_on_the_setup_prompt_with_its_token(p2):
     # Stop ends it like any session
     p2.run("sessions.py", "stop", jid)
     assert p2.job(jid)["state"] == "cancelled"
+    # Codex: on request, so it can ask to run setup.py outside its sandbox (which blocks Blurt's socket)
+    out = p2.run("sessions.py", "setup-session", "--agent", "codex", "--runner", "app", input=json.dumps({"token": "t"}))
+    argv = out["launch"][0]["argv"]
+    assert argv[1:3] == ["-c", 'approval_policy="on-request"']
+    p2.run("sessions.py", "stop", out["job"])
     # an agent that can't run a session, or isn't there
     assert p2.run("sessions.py", "setup-session", "--agent", "zcode", ok=False)["code"] == "bad_agent"
+    # dogfood 2026-10-31: a logged-out Claude Code sat at "Not logged in · Please run /login" — refused first, as a
+    # hand-off is, with the fix the sheet shows
+    p2.env["FAKE_AUTH_OUT"] = "1"
+    out = p2.run("sessions.py", "setup-session", "--agent", "claude", "--runner", "app", ok=False,
+                 input=json.dumps({"token": "tok-456"}))
+    assert out["code"] == "auth" and out["agent"] == "claude" and out.get("fix")
+    assert jid in [j["job"] for j in p2.run("sessions.py", "list", "--all")["sessions"]
+                   if j.get("project") == "blurt-setup"]
+    assert len([j for j in p2.run("sessions.py", "list", "--all")["sessions"] if j.get("project") == "blurt-setup"]) == 2

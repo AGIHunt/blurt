@@ -1281,6 +1281,10 @@ struct InstallSheet: View {
             } else if !applied && !nothingToDo {
                 Text(TL("install.footnote")).font(.system(size: 12)).foregroundStyle(.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            } else if applied && !failed {
+                // agents read their skills and MCP servers when a session starts: a session already open doesn't see them
+                Text(TL("install.next", agent.name)).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             if applied || nothingToDo {

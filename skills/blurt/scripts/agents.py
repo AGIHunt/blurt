@@ -653,7 +653,9 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     if not d:
         raise ValueError(f"unknown agent {agent!r}")
     env = dict(os.environ if env is None else env)  # CODEX_HOME & co. decide which config gets written
-    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT)}
+    # {uv} = uv's absolute path: desktop apps (Cursor, WorkBuddy) start MCP servers without the login shell's PATH
+    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT),
+            "uv": shutil.which("uv", path=env.get("PATH")) or "uv"}
     changes, ok = [], True
     if skill:
         if not d.get("skill_dir"):

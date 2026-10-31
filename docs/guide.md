@@ -757,6 +757,37 @@ updates with that command. A Blurt you built yourself runs the scripts in your c
 `uv run skills/blurt/scripts/record.py build`; when the app and those scripts don't speak the same version, the notch
 says which one to update, and the menu-bar menu and *Settings → General* keep saying so until they match.
 
+### 10. Installing, and Blurt in your agents
+
+**Install.** Download [Blurt.dmg](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg), open it and drag
+Blurt into Applications. Or paste `curl -fsSL https://blurt.work/install.sh | sh` into a terminal, or give that line to
+your agent: it downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications (or
+replaces the copy you have) and opens it. Either way you switch on the Microphone and Accessibility yourself, in the
+setup window.
+
+**Connect your agents.** *Settings → Agents → Connect…* adds the Blurt skill and MCP server to an agent: Claude Code,
+Codex, Gemini CLI, Kimi Code, OpenCode, Grok, CodeBuddy Code, WorkBuddy and Cursor. It shows what it will change first.
+Your agent can do the same: [llms.txt](https://blurt.work/llms.txt) has the steps. Start a new session of the agent
+afterwards; agents load skills and MCP servers when a session starts.
+
+**Start from your agent.** Say *start blurt*, *开始口喷* or *record a bug* in the agent's chat. In Claude Code, `/blurt`
+works too; in Codex, type `$blurt`. With the app installed, the agent starts the recording in Blurt: the notch asks
+once, you pick the area, and Blurt organizes the recording when you finish.
+
+**What needs a restart.**
+
+| Change | Takes effect |
+|---|---|
+| Microphone, Accessibility, Input Monitoring | Right away |
+| Screen Recording | After Blurt restarts (*Restart Blurt* in Settings) |
+| Connecting an agent | In that agent's next session (Claude Code: `/reload-skills` also loads the skill) |
+| Blurt update | When you click *Restart Now* |
+
+**Without the app** (developers): `npx skills add AGIHunt/blurt -g` puts the skill into your agents, or in Claude Code
+`/plugin marketplace add AGIHunt/blurt` and then `/plugin install blurt@blurt` (the skill is `/blurt:blurt` there). The
+first *start blurt* builds Blurt into `~/Applications`. A recording started this way runs under the app the agent
+runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart after you allow it.
+
 ---
 
 ## 中文
@@ -1053,3 +1084,30 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 ### 9. 更新
 
 Mac App 会自己更新（菜单和「设置 → 通用」里的「检查更新…」）。App 自带一份 skill 脚本（放在 `~/.blurt/skill`，每次更新一起换新），在「设置 → Agent」里连接的 Agent 用的也是这一份，所以会跟着一起更新。单独装的 skill（`npx skills add AGIHunt/blurt`）用这条命令更新。自己编译的口喷鸡用代码目录里的脚本，运行 `uv run skills/blurt/scripts/record.py build` 更新；App 和脚本的版本对不上时，刘海里会提示该更新哪边，菜单栏菜单和「设置 → 通用」也会一直写着，直到对上为止。
+
+### 10. 安装，以及在 Agent 里用口喷鸡
+
+**安装。** 下载 [Blurt.dmg](https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg)，打开后把口喷鸡拖进「应用程序」。
+也可以把 `curl -fsSL https://blurt.work/install.sh | sh` 粘到终端里运行，或者发给你的 Agent：它会下载最新版，确认已签名并经过公证，
+放进「应用程序」（或替换已有的版本）并打开。两种方式都需要你自己在设置窗口里打开麦克风和辅助功能权限。
+
+**连接 Agent。** 「设置 → Agent → 连接…」会把口喷鸡的 skill 和 MCP 加到 Agent 里：Claude Code、Codex、Gemini CLI、Kimi Code、
+OpenCode、Grok、CodeBuddy Code、WorkBuddy 和 Cursor。改动之前会先列出要改的地方。也可以让 Agent 自己连接，步骤见
+[llms.txt](https://blurt.work/llms.txt)。连接后在 Agent 里新开一个会话：Agent 在会话开始时读取 skill 和 MCP。
+
+**在 Agent 里开始。** 在 Agent 的对话里说「开始口喷」「录屏提 bug」或 *start blurt*。Claude Code 里也可以用 `/blurt`，Codex
+里输入 `$blurt`。装了 App 时，Agent 会让口喷鸡开始录屏：刘海里确认一次，选好区域，录完后口喷鸡整理成事项。
+
+**哪些改动需要重启。**
+
+| 改动 | 何时生效 |
+|---|---|
+| 麦克风、辅助功能、输入监控 | 立即生效 |
+| 屏幕录制 | 重新打开口喷鸡后（设置里的「重新打开口喷鸡」） |
+| 连接 Agent | 在该 Agent 里新开会话后（Claude Code 里运行 `/reload-skills` 也能载入 skill） |
+| 更新口喷鸡 | 点「立即重启」后 |
+
+**不装 App**（开发者）：`npx skills add AGIHunt/blurt -g` 把 skill 装进你的 Agent；或者在 Claude Code 里先运行
+`/plugin marketplace add AGIHunt/blurt`，再运行 `/plugin install blurt@blurt`（这时 skill 是 `/blurt:blurt`）。第一次说「开始口喷」
+会把口喷鸡编译安装到 `~/Applications`。这样开始的录屏运行在 Agent 所在的 App 下（终端、iTerm 等），所以这个 App 需要屏幕录制权限，
+允许后要重启它。

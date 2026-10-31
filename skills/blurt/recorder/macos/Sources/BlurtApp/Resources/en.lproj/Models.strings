@@ -129,7 +129,7 @@
 "models.agent.session" = "Model Setup";
 "models.agent.step.connecting" = "Connecting %@…";
 "models.agent.step.connected" = "%@ connected";
-"models.agent.step.connect_failed" = "%@ not connected";
+"models.agent.step.connect_failed" = "%@: connection failed";
 "models.agent.step.use" = "%1$@: %2$@";
 "models.agent.step.use_failed" = "%@: test failed";
 "models.agent.step.downloading" = "Downloading %@…";
