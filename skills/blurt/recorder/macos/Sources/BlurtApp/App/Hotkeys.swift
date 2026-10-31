@@ -16,7 +16,6 @@ extension HotkeyCenter.Action {
         case .openMenu: return .menu
         case .snap: return .snap
         case .pause: return .pause
-        case .marker: return .marker
         case .pen: return .pen
         case .finish: return .stop
         case .openMain: return nil
@@ -58,7 +57,10 @@ extension NSMenuItem {
         guard st.worksInMenu else {
             toolTip = Loc.t("capture.keys.menu_not_working", table: "Capture", s.label, st.text)
             // the key column never just goes blank: the row says, under its title, that its key isn't working
-            if #available(macOS 14.4, *) { subtitle = T("app.menu.key_off", s.label) }
+            // …and why, when it is another copy of Blurt (the one cause the user may not guess)
+            if #available(macOS 14.4, *) {
+                if case .taken = st { subtitle = T("app.menu.key_taken", s.label) } else { subtitle = T("app.menu.key_off", s.label) }
+            }
             return
         }
         let (k, f) = s.menuKeyEquivalent

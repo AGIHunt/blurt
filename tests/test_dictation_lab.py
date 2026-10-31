@@ -211,10 +211,10 @@ class FakePipeline:
         self.heard, self.calls, self.polish_fn, self.structure_fn = heard, [], polish, structure
         self.tags = tags or {}
 
-    def asr(self, wav, model, vocab, prior, language, hint=""):
+    def asr(self, wav, model, vocab, prior, language, hint="", before=""):
         with wave.open(str(wav)) as w:
             secs = round(w.getnframes() / 16000, 1)
-        self.calls.append({"secs": secs, "model": model, "vocab": vocab, "prior": prior, "hint": hint})
+        self.calls.append({"secs": secs, "model": model, "vocab": vocab, "prior": prior, "hint": hint, "before": before})
         r = {"ok": True, "text": self.heard.get(secs, ""), "asr_text": self.heard.get(secs, ""), "model": model or "m-current",
              "language": "zh", "terms": []}
         if secs in self.tags:
@@ -275,6 +275,38 @@ def test_windows_replay_the_apps_polish_windows(home):
     assert L.parse_spec("mode=windows,rehear=off")["key"].endswith("mode=windows")
 
 
+def test_cloud_polish_hears_a_second_transcript_and_polishes_the_take_once(home, monkeypatch):
+    """cloud=on (the app's DictationStream.polishAtKeyUp, docs/design/dictation.md §Second transcript): macOS's
+    recogniser hears each window too, and polish runs once over the whole take at key-up with its text joined as
+    "Also heard" (context "second"); second=off: window by window, as before."""
+    monkeypatch.setenv("BLURT_POLISH_API_KEY", "k")
+    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 16.0, "pause_after": 0.7},
+            {"start": 16.0, "end": 20.0, "pause_after": None}]
+    c = make_case(home, "s1", 20.0, "豆包也被忽悠了，尝试了第二次才找对。", segs)
+
+    class WithSecond(FakePipeline):
+        cloud = None
+
+        def second(self, wav, language):
+            with wave.open(str(wav)) as w:
+                secs = round(w.getnframes() / 16000, 1)
+            self.calls.append({"second": secs})
+            return {16.0: "豆包也被忽悠了强势了第二次", 4.0: "才找对"}.get(secs, "")
+    fake = WithSecond({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    r = L.run_case(c, L.parse_spec("mode=windows,cloud=on"), fake)
+    assert [x["second"] for x in fake.calls if "second" in x] == [16.0, 4.0]       # each window's audio
+    pol = [x for x in fake.calls if "polish" in x]
+    assert len(pol) == 1 and pol[0]["polish"] == r["outputs"]["raw"]               # once, the whole take
+    assert pol[0]["context"]["second"] == "豆包也被忽悠了强势了第二次才找对"
+    assert r["outputs"]["second"] == "豆包也被忽悠了强势了第二次才找对"
+    assert L.parse_spec("mode=windows,cloud=on")["key"].endswith("cloud=on,second=apple,rehear=on")
+    fake = WithSecond({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    L.run_case(c, L.parse_spec("mode=windows,cloud=on,second=off"), fake)
+    assert not [x for x in fake.calls if "second" in x]
+    assert len([x for x in fake.calls if "polish" in x]) == 2 and \
+        not any("second" in (x["context"] or {}) for x in fake.calls if "polish" in x)
+
+
 def test_rehear_hears_the_pieces_again_in_windows(home):
     """rehear (the app's default since v1.0.4): the pieces once more in ~10 s windows, closed only at a pause cut, the
     windows' text so far as context; polish then works window by window. A window the model gives nothing for keeps
@@ -291,6 +323,37 @@ def test_rehear_hears_the_pieces_again_in_windows(home):
     assert r["outputs"]["raw"].startswith("豆包也被忽悠了，尝试了第二次")
     assert [x["polish"] for x in fake.calls if "polish" in x][0].startswith("豆包也被忽悠了")
     assert r["outputs"]["timings"]["windows"] == 2
+
+
+def test_windows_are_the_models_length(home):
+    """The window is the model's (asr_models.json rehear_window_s: 1.7B 30 s, 0.6B 20 s, others 10 s), as the app
+    picks it; record.dictation.rehear_window_s, when set, wins."""
+    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 16.0, "pause_after": 0.7},
+            {"start": 16.0, "end": 24.0, "pause_after": 0.6}, {"start": 24.0, "end": 32.0, "pause_after": None}]
+    c = make_case(home, "r30", 32.0, "一二三四", segs)
+    heard = {8.0: "一", 16.0: "一二", 24.0: "一二三", 32.0: "一二三四"}
+
+    def groups(spec):
+        return [w["pieces"] for w in L.run_case(c, L.parse_spec(spec), FakePipeline(heard))["outputs"]["rehear"]]
+    assert groups("mode=windows,asr=apple-speech") == [[0, 1], [2, 3]]               # 10 s
+    assert groups("mode=windows,asr=qwen3-asr-0.6b-mlx") == [[0, 1, 2], [3]]         # 20 s
+    assert groups("mode=windows,asr=qwen3-asr-1.7b-mlx") == [[0, 1, 2, 3]]           # 30 s: one window
+    (home / "config.json").write_text(json.dumps({"record": {"dictation": {"rehear_window_s": 10}}}))
+    assert groups("mode=windows,asr=qwen3-asr-1.7b-mlx") == [[0, 1], [2, 3]]
+
+
+def test_the_fields_text_goes_to_the_speech_model_with_context_on(home):
+    """context=on: the field's last 300 characters before the cursor go with every speech request (`before`; the
+    server gives them to a model that takes them); context=off or a case without kept context: nothing."""
+    segs = [{"start": 0, "end": 1.0, "pause_after": 0.6}, {"start": 1.0, "end": 3.0, "pause_after": None}]
+    c = make_case(home, "f1", 3.0, "我刚截了一张图", segs, context={"before": "字" * 400 + "我刚截了", "after": "后面"})
+    fake = FakePipeline({1.0: "我刚", 2.0: "截了一张图"})
+    L.run_case(c, L.parse_spec("rehear=off,polish=off"), fake)
+    sent = [x["before"] for x in fake.calls if "secs" in x]
+    assert len(sent) == 2 and all(b == ("字" * 400 + "我刚截了")[-300:] for b in sent)
+    fake = FakePipeline({1.0: "我刚", 2.0: "截了一张图"})
+    L.run_case(c, L.parse_spec("rehear=off,polish=off,context=off"), fake)
+    assert [x["before"] for x in fake.calls if "secs" in x] == ["", ""]
 
 
 def test_config_specs():

@@ -1,13 +1,14 @@
-// The cards' small shared parts (v0.9.2, docs/design/system.md §3.2) — one family for the hanging row's hover note, the
-// cards overview and Recently Dragged Out, so the same thing never looks two ways:
+// The cards' small shared parts (v0.9.2, docs/design/system.md §3.2) — one family for the hanging row's hover note and
+// the Cards panel (Hanging and Used, CardsOverview.swift) with its preview (CardPreview.swift), so the same thing never
+// looks two ways:
 //   • CardTime: one relative time ("Just now", "1 min ago" / "刚刚", "1 分钟前"), never a live count of seconds.
 //   • KeyHint: the keys as drawn keycaps (KeyCap, Capture/KeyCaps.swift: the app's one keycap) with one verb each ("← → Choose · ↩ Copy · ⌫ Delete · esc Close") — the
-//     row's hover note and both panels' footers use the same items and the same words.
-//   • CardActions: a card's actions in one cluster, [··· chip][Copy chip], the same order, size and "···" everywhere;
-//     shown on hover and on keyboard focus only.
-//   • PanelHeader: a panel's one header row — its title left-aligned (13 semibold) with the count in secondary, an
-//     accessory on the right ("Kept for 7 days", "···") and a real × that closes it (never a grey traffic light that
-//     reads as an inactive window).
+//     row's hover note and the panels' footers use the same items and the same words.
+//   • CardActions: a card's actions in one cluster, [preview chip][··· chip][Copy chip], the same order, size and "···"
+//     everywhere; shown on hover and on keyboard focus only.
+//   • PanelHeader: a panel's one header row — its title left-aligned (13 semibold) with the count in secondary (or a
+//     control after it: the Cards panel's Hanging | Used segments), an accessory on the right ("···") and a real × that
+//     closes it (never a grey traffic light that reads as an inactive window).
 
 import AppKit
 import BlurtCore
@@ -33,6 +34,18 @@ enum KeyHint {
     static var cards: [Item] {
         [(["←", "→"], Loc.t("capture.keys.choose", table: "Capture")), (["↩"], Loc.t("capture.keys.copy", table: "Capture")),
          (["⌫"], Loc.t("capture.keys.delete", table: "Capture")), (["esc"], Loc.t("capture.keys.close", table: "Capture"))]
+    }
+
+    /// The Cards panel's keys: the cards' own, with Space for the big preview.
+    static var overview: [Item] {
+        var k = cards
+        k.insert((["space"], Loc.t("capture.keys.preview", table: "Capture")), at: 2)
+        return k
+    }
+
+    /// The preview's keys: the arrows go to the card before / after it, Space (or Esc) closes it.
+    static var preview: [Item] {
+        [(["←", "→"], Loc.t("capture.keys.choose", table: "Capture")), (["space"], Loc.t("capture.keys.close", table: "Capture"))]
     }
 
     static let verbFont = NSFont.systemFont(ofSize: 11)
@@ -177,15 +190,22 @@ final class CardChip: ClosureButton {
     override func mouseExited(with event: NSEvent) { over = false }
 }
 
-/// A card's actions, one cluster everywhere: [··· chip][Copy chip] — "···" opens `menu()`, Copy runs `copy`.
+/// A card's actions, one cluster everywhere: [preview chip][··· chip][Copy chip] — the eye opens the big preview
+/// (`preview`, when given), "···" opens `menu()`, Copy runs `copy`.
 final class CardActions: NSStackView {
     let more: CardChip
     let copy: CardChip
+    private(set) var preview: CardChip?
 
-    init(menu: @escaping () -> NSMenu?, copy run: @escaping () -> Void) {
+    init(menu: @escaping () -> NSMenu?, copy run: @escaping () -> Void, preview look: (() -> Void)? = nil) {
         let moreTitle = Loc.t("capture.taken.more", table: "Capture")
         more = CardChip.symbol("ellipsis", label: moreTitle)
         copy = CardChip.text(Loc.t("capture.taken.copy", table: "Capture"), run)
+        if let look {
+            let p = CardChip.symbol("eye", label: Loc.t("capture.card.preview", table: "Capture"))
+            p.set(look)
+            preview = p
+        }
         super.init(frame: .zero)
         more.set { [weak more] in
             guard let b = more, let m = menu() else { return }
@@ -193,6 +213,7 @@ final class CardActions: NSStackView {
         }
         orientation = .horizontal
         spacing = 6
+        if let p = preview { addArrangedSubview(p) }
         addArrangedSubview(more)
         addArrangedSubview(copy)
         setHuggingPriority(.required, for: .horizontal)
@@ -201,14 +222,15 @@ final class CardActions: NSStackView {
     required init?(coder: NSCoder) { fatalError() }
 }
 
-/// A panel's header row: the title (left, 13 semibold) and its count (secondary), an accessory on the right, then ×.
+/// A panel's header row: the title (left, 13 semibold) and its count (secondary) — or `lead`, a control right after the
+/// title — an accessory on the right, then ×.
 final class PanelHeader: NSView {
     static let height: CGFloat = 40
     let title = NSTextField(labelWithString: "")
     let count = NSTextField(labelWithString: "")
     let close: NSButton
 
-    init(title t: String, accessory: NSView?, close fn: @escaping () -> Void) {
+    init(title t: String, lead: NSView? = nil, accessory: NSView?, close fn: @escaping () -> Void) {
         close = PanelCloseButton.make(fn)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
@@ -219,6 +241,11 @@ final class PanelHeader: NSView {
         count.textColor = .secondaryLabelColor
         let head = NSStackView(views: [title, count])
         head.spacing = 6
+        if let l = lead {                   // the control says the counts: no count of its own
+            count.isHidden = true
+            head.addArrangedSubview(l)
+            head.setCustomSpacing(12, after: title)
+        }
         var views: [NSView] = [head, close]
         if let a = accessory { views.insert(a, at: 1) }
         for v in views { v.translatesAutoresizingMaskIntoConstraints = false; addSubview(v) }
@@ -278,4 +305,47 @@ final class PanelCloseButton: ClosureButton {
     override func mouseEntered(with event: NSEvent) { over = true }
     override func mouseExited(with event: NSEvent) { over = false }
     override var mouseDownCanMoveWindow: Bool { false }
+}
+
+/// A card's type (the one chosen in its note bubble — BlurtCore NoteKind, 2026-10-31): the kind's icon, small, on the
+/// hanging card and on its Cards panel tile. None while the type is not set. A snap card shows it first among its
+/// marks (white, with the mic and the ink: HangingCards.marks); a voice card, in the kind's colour over its mic mark
+/// (the column its words leave free).
+enum CardKindMark {
+    static let name = "kindMark"
+
+    /// The icon for the card's marks (nil: no type).
+    static func icon(_ s: Shot) -> BlurtIcon? { s.itemKind.map { KindStyle.icon($0.rawValue) } }
+
+    /// A voice card's kind mark: a sibling of its mic mark (`mic`), 11 pt, 3 pt over it — added, updated or removed.
+    static func voice(on card: CALayer, mic: CALayer?, shot s: Shot, dark: Bool) {
+        let old = card.sublayers?.first { $0.name == name }
+        guard let k = s.itemKind, let mic = mic else { old?.removeFromSuperlayer(); return }
+        let l = old ?? {
+            let l = CALayer()
+            l.name = name
+            l.bounds = CGRect(x: 0, y: 0, width: 11, height: 11)
+            l.contentsScale = 2
+            card.addSublayer(l)
+            return l
+        }()
+        l.contents = KindStyle.icon(k.rawValue).cgImage(size: 11, scale: 2, color: HangingCards.cardColor(KindStyle.color(k.rawValue), dark: dark))
+        l.position = CGPoint(x: mic.position.x, y: mic.position.y - 11 - 3)
+    }
+
+    /// The Cards panel tile's mark: the kind's icon in its colour (a voice tile, before its mic) or white on the small dark
+    /// capsule the hanging card uses (a snap's picture, its bottom-left corner). nil: no type.
+    static func tileView(_ s: Shot, voice: Bool) -> NSView? {
+        guard let k = s.itemKind else { return nil }
+        if voice {
+            let v = NSImageView(image: KindStyle.image(k.rawValue, size: 10))
+            v.toolTip = KindChip.name(k)
+            return v
+        }
+        guard let img = HangingCards.badgeImage([KindStyle.icon(k.rawValue)]) else { return nil }
+        let v = NSImageView(image: NSImage(cgImage: img, size: NSSize(width: HangingCards.badgeWidth(1), height: 16)))
+        v.toolTip = KindChip.name(k)
+        v.setAccessibilityLabel(KindChip.name(k))
+        return v
+    }
 }

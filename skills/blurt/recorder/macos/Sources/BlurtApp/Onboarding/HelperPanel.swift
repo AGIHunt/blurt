@@ -54,11 +54,14 @@ final class HelperPanel {
         guard panel?.isVisible == true else { return }
         let w = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.hide() } }
         hideWork = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + after + HelperPanel.doneFor, execute: w)
+        // with Restart Blurt on it: long enough to read and press (Settings keeps the same button)
+        let stay = PermissionGuide.shared.finishedRestart ? HelperPanel.doneWithRestartFor : HelperPanel.doneFor
+        DispatchQueue.main.asyncAfter(deadline: .now() + after + stay, execute: w)
     }
 
     /// How long the last "Done" stays before the panel closes by itself.
     static let doneFor: Double = 1.2
+    static let doneWithRestartFor: Double = 8
 
     private func build() {
         let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: HelperDock.sideWidth + 2 * HelperPanelView.notch, height: 120),
@@ -73,7 +76,9 @@ final class HelperPanel {
         p.isMovableByWindowBackground = false
         p.isReleasedWhenClosed = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
-        p.sharingType = chromeSharing
+        // seen by screenshots (⌘⇧4, other apps' tools: a user reporting a problem with this step shows it, BA-48);
+        // Blurt's own captures still leave it out (Snap: our windows above layer 0; Recorder: all our windows)
+        p.sharingType = .readOnly
         p.title = T("settings.perm.panel_title")
         // an opaque card drawn by the view itself (HelperPanelView: the surface, the hairline, the notch); the window
         // is clear around it and its shadow follows the card's shape
@@ -228,6 +233,14 @@ struct HelperPanelView: View {
                 stepView(k)
             } else if let f = g.finished {
                 doneView(f, detail: g.finishedDetail)
+                if g.finishedRestart {
+                    // Screen Recording applies after a relaunch: the way to it, here as in Settings → Privacy
+                    HStack {
+                        Spacer()
+                        Button(T("settings.perm.restart")) { SystemAccess.relaunch() }.controlSize(.small)
+                    }
+                    .padding(.top, 10)
+                }
             }
         }
         .padding(.horizontal, HelperPanelView.pad).padding(.top, 10).padding(.bottom, 12)
@@ -245,7 +258,7 @@ struct HelperPanelView: View {
 
     var header: some View {
         HStack(spacing: 8) {
-            if g.steps.count > 1 { GuideDots(g: g) }
+            if g.steps.count > 1 && !g.mayGrow { GuideDots(g: g) }
             Text(progress).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 8)
@@ -265,15 +278,16 @@ struct HelperPanelView: View {
 
     private var progress: String {
         guard let k = g.current, let i = g.steps.firstIndex(of: k) else { return T("settings.perm.panel_title") }
-        return g.steps.count > 1 ? T("onboarding.guide.progress", PermissionGuide.name(k), i + 1, g.steps.count) : PermissionGuide.name(k)
+        // a walk that may still gain a step (Input Monitoring after Accessibility) promises no total
+        return g.steps.count > 1 && !g.mayGrow ? T("onboarding.guide.progress", PermissionGuide.name(k), i + 1, g.steps.count) : PermissionGuide.name(k)
     }
 
     @ViewBuilder func stepView(_ k: PermissionKind) -> some View {
         if g.stepDone {
             doneView(g.headline(k), detail: nil)
+        } else if k == .screen && g.reauthorize {
+            readdSteps
         } else {
-            // re-adding a stale Screen Recording grant: the tile is its second step, not a "not in the list?" aside
-            let readd = k == .screen && g.reauthorize
             HStack(alignment: .center, spacing: 12) {
                 if k.acceptsDrop {
                     AppTile().frame(width: HelperPanelView.tile - 8, height: HelperPanelView.tile - 8)
@@ -286,19 +300,16 @@ struct HelperPanelView: View {
                     Text(g.headline(k)).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
                     Text(g.guideWhy(k)).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     if k.acceptsDrop {
-                        if readd {
-                            Text(T("settings.perm.screen.readd_drag") + " · " + T("settings.perm.screen.readd_drag_detail"))
-                                .font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        } else {
-                            Text(T("onboarding.guide.drag")).font(.system(size: 12)).foregroundStyle(.tertiary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
+                        Text(T("onboarding.guide.drag")).font(.system(size: 12)).foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer(minLength: 0)
             }
+            // the whole card drags the app, not only its icon (BA-48): a bigger thing to grab
+            .background { if k.acceptsDrop { AppTile(drawsIcon: false) } }
             .padding(.top, 10)
-            if k == .screen && g.suggestRestart && !readd {
+            if k == .screen && g.suggestRestart {
                 Text(T("settings.perm.restart_hint")).font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 8)
             }
@@ -316,6 +327,51 @@ struct HelperPanelView: View {
                 .padding(.top, 10)
             }
         }
+    }
+
+    /// Re-adding a stale Screen Recording grant: what it is and why, then its three steps, each a card of its own —
+    /// 1 remove Blurt with the list's minus button (drawn as that button, so it never reads as a dash), 2 drag Blurt
+    /// back in (the tile), 3 turn it on and restart (the button).
+    var readdSteps: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(T("settings.perm.screen.readd_title")).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                Text(T("settings.perm.screen.readd_why")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            readdCard(1, T("settings.perm.screen.readd_step1")) { MinusButtonGlyph() }
+            readdCard(2, T("settings.perm.screen.readd_step2")) {
+                AppTile().frame(width: 30, height: 30)
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.28), style: StrokeStyle(lineWidth: 1, dash: [3, 2.5])))
+                    .help(T("settings.perm.drag_hint"))
+            }
+            .background(AppTile(drawsIcon: false))          // the whole card drags Blurt, as on the other steps
+            readdCard(3, T("settings.perm.screen.readd_step3")) {
+                Button(T("settings.perm.restart")) { g.restartForScreen() }.controlSize(.small)
+            }
+            if g.noWindow {
+                HStack { Spacer(); Button(T("settings.perm.open_settings")) { g.reopenPane() }.controlSize(.small) }
+            }
+        }
+        .padding(.top, 10)
+    }
+
+    func readdCard<Trailing: View>(_ n: Int, _ text: String, @ViewBuilder trailing: () -> Trailing) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text("\(n)").font(.system(size: 11, weight: .semibold).monospacedDigit()).foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .background(Circle().fill(Color.primary.opacity(0.07)))
+                .accessibilityHidden(true)
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            trailing()
+        }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(minHeight: 44)
+        .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
     }
 
     /// The step or the walk done: the ok disc (16 pt, the same check as everywhere) and one line, a quieter one under it.
@@ -408,14 +464,17 @@ struct NotchedCard: Shape {
 }
 
 /// Blurt's icon, to drag into a System Settings list (the "+" lists accept an app dropped on them).
+/// `drawsIcon` false: an invisible surface behind the step's text that drags the same thing.
 struct AppTile: NSViewRepresentable {
-    func makeNSView(context: Context) -> AppTileView { AppTileView() }
-    func updateNSView(_ v: AppTileView, context: Context) {}
+    var drawsIcon = true
+    func makeNSView(context: Context) -> AppTileView { let v = AppTileView(); v.drawsIcon = drawsIcon; return v }
+    func updateNSView(_ v: AppTileView, context: Context) { v.drawsIcon = drawsIcon }
 }
 
 final class AppTileView: NSView, NSDraggingSource {
     private var icon: NSImage { NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath) }
     private var dragging = false
+    var drawsIcon = true { didSet { needsDisplay = true } }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -425,7 +484,7 @@ final class AppTileView: NSView, NSDraggingSource {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draw(_ dirtyRect: NSRect) {
-        icon.draw(in: bounds.insetBy(dx: 2, dy: 2))
+        if drawsIcon { icon.draw(in: bounds.insetBy(dx: 2, dy: 2)) }
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
@@ -438,7 +497,10 @@ final class AppTileView: NSView, NSDraggingSource {
         guard !dragging else { return }
         dragging = true
         let item = NSDraggingItem(pasteboardWriter: AppTileView.pasteboardWriter())
-        item.setDraggingFrame(bounds, contents: icon)
+        // from the surface: the icon at its tile's size, under the pointer
+        let at = convert(event.locationInWindow, from: nil)
+        let frame = drawsIcon ? bounds : NSRect(x: at.x - 22, y: at.y - 22, width: 44, height: 44)
+        item.setDraggingFrame(frame, contents: icon)
         emit(["event": "perm_drag", "op": "begin"])
         beginDraggingSession(with: [item], event: event, source: self)
     }
@@ -452,5 +514,17 @@ final class AppTileView: NSView, NSDraggingSource {
         emit(["event": "perm_drag", "op": "end", "operation": Int(operation.rawValue)])
         // a drop into the list usually grants nothing yet (the switch is off): look again now anyway
         Task { @MainActor in PermissionGuide.shared.poll() }
+    }
+}
+
+/// System Settings' minus button under a list, drawn as that button (a small bordered square with a minus symbol): in
+/// a sentence a bare "−" reads as a dash.
+struct MinusButtonGlyph: View {
+    var body: some View {
+        Image(systemName: "minus").font(.system(size: 10, weight: .semibold)).foregroundStyle(.primary)
+            .frame(width: 22, height: 20)
+            .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Color(nsColor: .controlBackgroundColor)))
+            .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Color.primary.opacity(0.25), lineWidth: 0.5))
+            .accessibilityLabel(T("settings.perm.screen.minus_button"))
     }
 }

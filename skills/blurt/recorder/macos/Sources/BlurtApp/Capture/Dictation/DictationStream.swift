@@ -5,13 +5,15 @@
 // (BlurtCore's DictationSegmenter: ≥ 0.5 s of quiet, pieces of ≥ 3 s, at most 20 s), and each piece is
 //   1. transcribed as soon as it is complete (the warm speech server; the text so far goes along as context, so a name
 //      is spelled the same way all through — transcribe.py keeps only its last 80 characters and decodes a piece
-//      that echoes it once more without it), on one serial queue;
+//      that echoes it once more without it; with "Use the text around the cursor" on, the field's last 300 characters
+//      before the cursor go too, which a model that takes them hears ahead of it: §Field context), on one serial queue;
 //   2. polished right after, on another (the polished text so far goes along as the turn before, so polish sees what
 //      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
 // Hearing again (docs/design/dictation.md §Hearing again): a piece is 3–8 s of a sentence, and the speech model hears
-// it without the rest (德宝 for 豆包, 巨幅 for GIF). So the pieces are heard once more in windows of ~10 s
+// it without the rest (德宝 for 豆包, 巨幅 for GIF). So the pieces are heard once more in windows of the speech model's
+// length (ModelCatalog.rehearWindow: Qwen3-ASR 1.7B 30 s, 0.6B 20 s, others 10 s)
 // (DictationStitch.rehearGroups: a window closes at a pause cut, never at a hard one — windows don't share audio), with
 // the windows' text so far as context, while the user still talks; polish then works window by window. The pieces'
 // own transcripts are the live text. At key-up the open window (the pieces since the last one, the last piece in it
@@ -35,6 +37,30 @@
 // carried clause + the last piece. Structured then runs one structuring pass over the joined text (`finish(structure:)`).
 // Nothing here reads the words for meaning: no correction markers, no stop words (docs/design/dictation.md §Rules vs
 // model).
+//
+// Second transcript (docs/design/dictation.md §Second transcript): with cloud polish, macOS's own recogniser hears
+// each window's audio too (each piece's when the take isn't heard again), on its own queue beside the speech model,
+// and polish gets its text as "Also heard" — evidence about the sounds where the two differ (dictation-eval-2026-10-31
+// §4.2: cloud polish of the 1.7B's text 2.50 → 3.16 % without it, → 2.20 % with it). Polish then runs once, over the
+// whole take at key-up (`polishAtKeyUp`), as the eval measured it: window by window the same polish made 2.57–2.92 %
+// on the same takes (worse than none), at key-up 2.20–2.28 %; it costs ~0.3 s more after key-up on a minute-long take
+// (one cloud request either way). Polish waits for the last second transcript at most `secondWait`; without one
+// (macOS 13–15, a language it doesn't speak) polish runs window by window as before.
+//
+// A cloud recogniser (`wholeAtKeyUp`, §Cloud recognition): the pieces are heard by macOS's recogniser only — the live
+// text, and the second transcript — and at key-up the whole take goes to the cloud service once, with the words and
+// the field's text (dictation-eval §4.1: short pieces with the field's text made it type that text back, 26.6 % errors
+// against 2.0 % for the whole take). Without macOS's recogniser the take isn't cut at all (Dictation: streaming off):
+// one request at key-up, as before for a short take.
+//
+// A cloud recogniser that hears the take as it is said (`streamCloud`: Volcengine Seed-ASR 2.0, dictation-eval
+// §6.3 B′): the microphone's samples go to it all along through the warm speech server (BlurtCore WarmServerStream,
+// transcribe.py `serve` cmd "stream"; one session per take), and at key-up only its final text is waited for — ~0.5 s
+// however long the take, where a whole take sent at key-up grows with it (Flash: 0.5 → 1.5 s). The request goes out
+// once the field's text is read (or after 1.5 s of audio without it); until the server is up the samples wait. A stream
+// that couldn't be used (no server, the connection broke) → the whole take at key-up, as above; one the service refused
+// (key, quota: "quota exceeded for types: concurrency") → the failure line, the recording kept for Retry, which sends
+// the kept recording whole through the same service.
 //
 // Safety: a piece the speech model failed on → the whole recording is transcribed (and polished) in one go, the old
 // way; when that fails too, the result says why (`asrError`: no model, too slow, failed) — never an empty "nothing
@@ -70,7 +96,21 @@ final class DictationStream {
         /// (record.dictation.rehear_window_s)
         var rehear = true
         var rehearWindow = DictationStitch.rehearWindow
+        /// cloud polish gets macOS's transcript of the same audio (§Second transcript)
+        var second = false
+        /// a cloud recogniser: the pieces go to macOS's recogniser (live text), the whole take to the service at key-up
+        var wholeAtKeyUp = false
+        /// …one that hears the take while it is said (Volcengine): the samples stream to it, its text comes at key-up
+        var streamCloud = false
+        /// the field's text is being read (Dictation.contextOn): the stream's request waits for it (setContext)
+        var contextComing = false
+        /// polish once over the whole take at key-up instead of window by window (cloud polish with the second
+        /// transcript: `second`)
+        var polishAtKeyUp: Bool { second }
     }
+
+    /// The longest polish waits for a window's second transcript (macOS's recogniser: ~0.2 s for a 10 s window).
+    static let secondWait = 2.0
 
     /// One piece of the recording and what became of it.
     final class Piece {
@@ -108,6 +148,10 @@ final class DictationStream {
         var covered = false
         /// a window: what its pieces' transcripts said, joined (the history keeps both)
         var piecesText = ""
+        /// macOS's transcript of the same audio (§Second transcript; nil: not asked or nothing came) — lock
+        var second: String?
+        var secondAsked = false
+        let secondDone = DispatchGroup()
         init(index: Int, start: Int, end: Int, hard: Bool, last: Bool = false) {
             self.index = index; self.start = start; self.end = end; self.hard = hard; self.last = last
         }
@@ -120,6 +164,8 @@ final class DictationStream {
         var polished: String?     // polish's own output, joined (nil: no polish)
         var fellBack: Bool
         var reason: String?
+        /// some of a streamed take's polish windows fell back, not all (`fellBack` is then false)
+        var fellBackParts: DictationParts?
         var model: String?
         var asrModel: String?
         var language: String?
@@ -155,6 +201,8 @@ final class DictationStream {
     /// translation is of that text), the cloud model (nil: the local one), how it was turned on.
     struct TranslateJob {
         var setting: DictationTranslateTarget
+        /// what Auto means on this Mac (TranslateTargets.pair, read on the main thread at key-up)
+        var auto: TranslateAutoPair
         var style: DictationStyle
         var cloud: [String: Any]?
         var engine: DictationTranslateRoute.Engine
@@ -167,7 +215,20 @@ final class DictationStream {
     private(set) var opt: Options
     /// the text around the cursor: read at the start, while the first piece may already be under way
     private var context: DictationContext?
-    func setContext(_ c: DictationContext?) { lock.locked { context = c } }
+    func setContext(_ c: DictationContext?) {
+        lock.locked { context = c }
+        if let cs = cloudStream {
+            var f: [String: Any] = [:]
+            if let app = c?.app, !app.isEmpty { f["app"] = app }
+            if let h = c?.hint, !h.isEmpty { f["hint"] = h }
+            if let b = c?.asrBefore, !b.isEmpty { f["before"] = b }
+            cs.update(f)
+            cs.release()
+        }
+    }
+    /// the take's audio, streamed to a recogniser that hears it as it comes (`streamCloud`)
+    private let cloudStream: WarmServerStream?
+    private var cloudReleased = false       // main thread
     /// the whole recording's wav (NoteVoice writes it): the safety path transcribes it in one go
     let wholeWav: URL
     /// stage changes after key-up (transcribing → polishing), on the main queue
@@ -188,10 +249,18 @@ final class DictationStream {
     private let lock = NSLock()
     private let asrQ = DispatchQueue(label: "blurt.dictation.asr", qos: .userInitiated)
     private let polishQ = DispatchQueue(label: "blurt.dictation.polish", qos: .userInitiated)
+    /// macOS's recogniser for the second transcript, beside the speech model's queue
+    private let secondQ = DispatchQueue(label: "blurt.dictation.second", qos: .userInitiated)
+    /// a cloud recogniser's whole take at key-up (`wholeAtKeyUp`): its answer and when it was asked — lock
+    private var cloudAnswer: [String: Any]?
+    private var cloudAsked: CFTimeInterval = 0
+    private let cloudDone = DispatchGroup()
     private var cancelled = false
     /// Esc while polishing (skipPolish): no more polish windows; the result is handed over once (`delivered`), through
     /// `finished` (finish's `done`) — lock
     private var skipped = false, delivered = false
+    /// the whole recording is being heard again (a piece failed: `whole`) — lock; the take's deadline counts it
+    private var hearingWhole = false
     private var finished: ((Result) -> Void)?
     private var keyUp: CFTimeInterval = 0
     /// Auto's structuring pass (only a list changes what is typed): finish(onlyForLists:)
@@ -212,6 +281,11 @@ final class DictationStream {
 
     init(id: String, dir: URL, wholeWav: URL, options: Options) {
         self.id = id; self.dir = dir; self.wholeWav = wholeWav; self.opt = options
+        cloudStream = options.streamCloud
+            ? WarmServerStream(server: "asr-serve", header: ["model_id": VolcengineSpeech.modelID, "language": options.language,
+                                                           "vocab": options.vocab, "purpose": "dictation"],
+                               hold: options.contextComing)
+            : nil
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         if !options.interim || !options.streaming { live = DictationLiveDecode(sampleRate: NoteVoice.rate, off: .setting) }
     }
@@ -222,6 +296,11 @@ final class DictationStream {
         guard !cancelled else { return }
         if audio.isEmpty { firstAudio = CACurrentMediaTime() }
         audio += x
+        if let cs = cloudStream {
+            cs.append(x)
+            // the field's text didn't come: the request goes without it rather than wait longer
+            if !cloudReleased, audio.count >= Int(1.5 * NoteVoice.rate) { cloudReleased = true; cs.release() }
+        }
         guard opt.streaming else { return }
         let cuts = segmenter.feed(x)
         let known = segmenter.pauses
@@ -245,6 +324,9 @@ final class DictationStream {
     /// answer, when it comes, is dropped. The take falls back the way a refused polish does (reason "skipped").
     func skipPolish() {
         lock.locked { skipped = true }
+        // the whole take in the cloud: what it heard goes in unpolished (whole() looks at `skipped`); the pieces were
+        // only macOS's live text
+        if opt.wholeAtKeyUp { return }
         asrQ.async {
             guard !self.cancelled, let r = self.spokenResult() else { return }
             emit(["event": "dictation_polish_skipped", "id": self.id])
@@ -286,6 +368,7 @@ final class DictationStream {
 
     func cancel() {
         cancelled = true
+        cloudStream?.cancel()
         live.stop()
         let ps = lock.locked { pieces }
         for p in ps { try? FileManager.default.removeItem(at: wav(p.index)) }
@@ -310,6 +393,7 @@ final class DictationStream {
               "end": Double(end) / NoteVoice.rate, "hard": hard, "covered": covered])
         guard !covered else { return }
         let samples = Array(audio[max(0, start)..<min(end, audio.count)])
+        if opt.second, !opt.rehear, !opt.wholeAtKeyUp { hearSecond(p, samples) }
         asrQ.async { self.transcribe(p, samples) }      // the queues keep the stream alive until its work is done
     }
 
@@ -328,8 +412,42 @@ final class DictationStream {
         guard let w else { return }
         // one piece that was heard already: the same audio, nothing to hear again
         let again = members.count > 1 || members.contains(where: \.covered)
-        let samples = again ? Array(audio[max(0, w.start)..<min(end, audio.count)]) : []
+        let audioW = Array(audio[max(0, w.start)..<min(end, audio.count)])
+        let samples = again ? audioW : []
+        if opt.second { hearSecond(w, audioW) }
         asrQ.async { self.rehear(w, members, samples) }
+    }
+
+    /// macOS's recogniser on a unit's audio, on its own queue (§Second transcript): its text is the unit's `second`.
+    private func hearSecond(_ u: Piece, _ samples: [Float]) {
+        guard !samples.isEmpty else { return }
+        u.secondAsked = true
+        u.secondDone.enter()
+        let url = dir.appendingPathComponent("\(id)-\(u.members == nil ? "p" : "w")\(u.index)-second.wav")
+        secondQ.async {
+            defer { u.secondDone.leave() }
+            guard !self.cancelled else { return }
+            DictationStream.writeWav(samples, to: url)
+            let t0 = CACurrentMediaTime()
+            let r = AppleSpeech.transcribe(url, language: self.opt.language, vocab: self.opt.vocab, purpose: "dictation_second")
+            try? FileManager.default.removeItem(at: url)
+            let text = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            self.lock.locked { u.second = r["ok"] as? Bool == true && !text.isEmpty ? text : nil }
+            emit(["event": "dictation_second", "id": self.id, "unit": u.members == nil ? "piece" : "window", "index": u.index,
+                  "ok": r["ok"] as? Bool ?? false, "code": r["code"] ?? NSNull(), "chars": text.count,
+                  "ms": Int((CACurrentMediaTime() - t0) * 1000)])
+        }
+    }
+
+    /// A unit's second transcript once it is in (waiting until `until`: at most `secondWait` for all of a take's);
+    /// nil without one.
+    private func secondOf(_ u: Piece, until: DispatchTime) -> String? {
+        guard opt.second, u.secondAsked else { return nil }
+        if u.secondDone.wait(timeout: until) == .timedOut {
+            emit(["event": "dictation_second", "id": id, "index": u.index, "ok": false, "code": "late"])
+            return nil
+        }
+        return lock.locked { u.second }
     }
 
     // MARK: the work (queues)
@@ -350,16 +468,21 @@ final class DictationStream {
         let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
-        let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
-                                          hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
-                                          audioSeconds: Double(samples.count) / NoteVoice.rate)
+        // a cloud recogniser hears the whole take at key-up: the pieces are macOS's live text only (never billed,
+        // never a reason for the safety path)
+        let answer = opt.wholeAtKeyUp
+            ? AppleSpeech.transcribe(url, language: opt.language, vocab: opt.vocab, purpose: "dictation_live")
+            : Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
+                                   hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                   before: lock.locked { context }?.asrBefore ?? "",
+                                   audioSeconds: Double(samples.count) / NoteVoice.rate)
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += answer["load_ms"] as? Int ?? 0
         try? FileManager.default.removeItem(at: url)
         let ok = answer["ok"] as? Bool == true
         let r: [String: Any]? = ok ? answer : nil
         p.asr = r
-        if !ok { p.asrFailed = true; p.asrCode = answer["code"] as? String ?? "error" }
+        if !ok, !opt.wholeAtKeyUp { p.asrFailed = true; p.asrCode = answer["code"] as? String ?? "error" }
         var text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         var heard = (r?["asr_text"] as? String ?? text).trimmingCharacters(in: .whitespacesAndNewlines)
         if p.hard, let prev = previous(p) {
@@ -375,7 +498,7 @@ final class DictationStream {
         DispatchQueue.main.async { self.finalLanded(p.index) }
         emit(["event": "dictation_piece_text", "id": id, "index": p.index, "ms": Int((p.asrSpan.1 - p.asrSpan.0) * 1000),
               "server_ms": r?["ms"] ?? NSNull(), "chars": text.count, "ok": ok, "code": p.asrCode ?? NSNull()])
-        if !opt.rehear { polishQ.async { self.polish(p) } }
+        if !opt.rehear, !opt.wholeAtKeyUp { polishQ.async { self.polish(p) } }
     }
 
     /// A window heard again (speech queue, after its pieces): its audio in one request, with the windows' text so far
@@ -402,6 +525,7 @@ final class DictationStream {
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          before: lock.locked { context }?.asrBefore ?? "",
                                           audioSeconds: Double(samples.count) / NoteVoice.rate)
         w.asrSpan = (t0, CACurrentMediaTime())
         w.loadMS += answer["load_ms"] as? Int ?? 0
@@ -450,8 +574,9 @@ final class DictationStream {
     /// is the model's call from the words on both sides (no stop-word list makes it, and no pause length does).
     private func polish(_ p: Piece) {
         guard !cancelled, !lock.locked({ skipped }) else { return }
-        // without polish the transcripts are joined with the seam rule at the end (assemble)
-        guard opt.polish, !p.raw.isEmpty else { return }
+        // without polish the transcripts are joined with the seam rule at the end (assemble); polished once at key-up
+        // (cloud polish with the second transcript): assemble too
+        guard opt.polish, !opt.polishAtKeyUp, !p.raw.isEmpty else { return }
         let core = p.last ? p.raw : DictationStitch.splitTrailing(p.raw).core
         let carried = carry
         carry = ""; carryPolished = ""; carryEnd = ""
@@ -509,7 +634,9 @@ final class DictationStream {
         let samples = Array(audio[t.start..<t.end])
         let issued = CACurrentMediaTime()
         // the text so far as context, as a final piece gets it (names spelled the same way)
-        let (done, gaps, hint, app) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "") }
+        let (done, gaps, hint, app, field) = lock.locked {
+            (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "", context?.asrBefore ?? "")
+        }
         let prior = String(DictationStitch.joinPieces(done, pauses: gaps).suffix(200))
         let url = liveWav, vocab = opt.vocab, language = opt.language
         interimSent += 1
@@ -517,7 +644,8 @@ final class DictationStream {
             guard let self = self, !self.cancelled else { return }
             DictationStream.writeWav(samples, to: url)
             let t0 = CACurrentMediaTime()
-            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app)
+            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app,
+                                                before: field)
             let secs = CACurrentMediaTime() - t0
             try? FileManager.default.removeItem(at: url)
             DispatchQueue.main.async { self.interimDone(t, r, seconds: secs, arrived: issued) }
@@ -528,8 +656,11 @@ final class DictationStream {
         let code = r?["code"] as? String
         // a model still loading isn't the decode's own time
         let load = Double(r?["load_ms"] as? Int ?? 0) / 1000
+        // a model that can't give live text (Whisper): macOS's recogniser gives it from the next request on, when ready
+        let unsupported = code == "interim_unsupported" && !Dictation.shared.noLiveText()
         let a: DictationLiveDecode.Answer = r?["ok"] as? Bool == true ? .text(seconds: max(0, seconds - load))
-            : code == "interrupted" || code == "no_server" ? .interrupted : code == "interim_unsupported" ? .unsupported : .failed
+            : code == "interrupted" || code == "no_server" || code == "interim_unsupported" && !unsupported ? .interrupted
+            : unsupported ? .unsupported : .failed
         let show = !cancelled && live.done(t, a)
         let text = (r?["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         emit(["event": "dictation_interim", "id": id, "piece": t.piece, "audio_s": Double(t.end) / NoteVoice.rate,
@@ -600,25 +731,93 @@ final class DictationStream {
         if opt.rehear, windowFirst < n, pieceStart - windowStart < Int(2 * NoteVoice.rate), !pieceHard {
             closeWindow(end: pieceStart)
         }
-        if n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
+        // (a streamed cloud take without macOS's recogniser has no live text to finish: nothing is cut)
+        if !(opt.streamCloud && !opt.streaming),
+           n == 0 || (tail > Int(0.3 * NoteVoice.rate) && (segmenter.pieceSpeech >= 3 || !opt.streaming)) {
             // heard again with the open window's other pieces: its own transcript would only be thrown away
             enqueue(start: pieceStart, end: audio.count, hard: pieceHard, last: true,
                     covered: opt.rehear && windowFirst < lock.locked { pieces.count })
         }
         if opt.rehear { closeWindow(end: lock.locked { pieces.last?.end } ?? audio.count, last: true) }
+        if opt.wholeAtKeyUp { askCloud() }
         onStage?("asr")
+        // never open-ended (DictationTakeDeadline): words not in by then → "the speech model didn't answer", the
+        // recording kept for Retry; what still comes later is dropped (`delivered`), the pieces not yet started skip
+        let deadline = DictationTakeDeadline.seconds(audioSeconds: Double(audio.count) / NoteVoice.rate)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + deadline) { [weak self] in
+            guard let self, !self.cancelled, !self.lock.locked({ self.delivered }) else { return }
+            let (n, waiting) = self.lock.locked {
+                (self.pieces.count, self.hearingWhole || (self.pieces + self.windows).contains { !$0.asrDone })
+            }
+            guard waiting else { return }       // the words are in: polish has its own time limits
+            emit(["event": "dictation_take_deadline", "id": self.id, "after_s": deadline, "segments": n])
+            self.cancelled = true
+            self.deliver(self.failure(.timedOut, segments: n))
+        }
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
         // (strong captures: the controller has let go of the stream by now; the queues hold it until it is done)
         asrQ.async {
             if self.opt.polish || structure || translate != nil { DispatchQueue.main.async { self.onStage?("polish") } }
             self.polishQ.async {
                 guard !self.cancelled, !self.lock.locked({ self.delivered }) else { return }
-                var r = self.assemble()
+                var r = self.opt.wholeAtKeyUp ? self.cloudWhole() : self.assemble()
                 if structure, !r.empty, !self.lock.locked({ self.skipped }) { self.structure(&r) }
                 if let j = translate, !r.empty, !self.lock.locked({ self.skipped }) { self.translate(&r, j) }
                 self.deliver(r)
             }
         }
+    }
+
+    /// A cloud recogniser at key-up (`wholeAtKeyUp`): the whole take in one request (the service cuts a long one at
+    /// its pauses: transcribe.py DashScope.max_chunk), with the words and the field's text, while macOS's recogniser
+    /// finishes the last piece. The take's deadline counts it (`hearingWhole`).
+    private func askCloud() {
+        let samples = audio
+        let url = dir.appendingPathComponent("\(id)-take.wav")
+        let ctx = lock.locked { context }
+        lock.locked { hearingWhole = true; cloudAsked = CACurrentMediaTime() }
+        cloudDone.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            defer { self.cloudDone.leave() }
+            // streamed while it was said: only the final text is left (the server's wait is bounded too). An
+            // answer that the model can't take a stream ("usage": the choice changed mid-take) or no answer at all →
+            // the whole take, as for any cloud recogniser
+            var streamed = false
+            var a: [String: Any]
+            // the server waits 10 s for the final text, more for audio that reached it late (transcribe.py final_wait)
+            let wait = 15 + 0.4 * Double(samples.count) / NoteVoice.rate
+            if let cs = self.cloudStream, let r = cs.finish(timeout: wait), r["code"] as? String != "usage" {
+                a = r
+                streamed = true
+            } else {
+                DictationStream.writeWav(samples, to: url)
+                a = Dictation.transcribe(url, vocab: self.opt.vocab, language: self.opt.language, prior: "", budget: 30,
+                                         hint: ctx?.hint ?? "", app: ctx?.app ?? "", before: ctx?.asrBefore ?? "",
+                                         audioSeconds: Double(samples.count) / NoteVoice.rate)
+                try? FileManager.default.removeItem(at: url)
+            }
+            self.lock.locked { self.cloudAnswer = a; self.hearingWhole = false }
+            emit(["event": "dictation_cloud_take", "id": self.id, "ok": a["ok"] as? Bool ?? false, "code": a["code"] ?? NSNull(),
+                  "audio_s": (Double(samples.count) / NoteVoice.rate * 100).rounded() / 100,
+                  "ms": Int((CACurrentMediaTime() - self.lock.locked { self.cloudAsked }) * 1000),
+                  "echo": (a["tag"] as? [String: Any])?["echo"] ?? false, "streamed": streamed,
+                  "stream_tried": self.cloudStream != nil])
+        }
+    }
+
+    /// The cloud's whole take, polished once with macOS's pieces (the live text) joined as the second transcript.
+    private func cloudWhole() -> Result {
+        cloudDone.wait()
+        let (ps, gaps, answer, asked) = lock.locked {
+            (pieces, pauses, cloudAnswer ?? ["ok": false, "code": "error"], cloudAsked)
+        }
+        let heard = DictationStitch.joinPieces(ps.map(\.raw), pauses: gaps)
+        var r = whole(ps.count, second: heard.isEmpty ? nil : heard, heard: (answer, asked))
+        // the history keeps the cuts (what macOS heard of each piece): the Lab replays the take from them
+        if r.asrError == nil, !ps.isEmpty {
+            r.pieces = ps.map { var d = describe($0, gaps); d["heard_by"] = AppleSpeech.modelID; return d }
+        }
+        return r
     }
 
     /// Structured: the stitched text through polish.py's `structure` (it resolves self-corrections and lays out what
@@ -648,7 +847,7 @@ final class DictationStream {
     private func translate(_ r: inout Result, _ j: TranslateJob) {
         let t0 = CACurrentMediaTime()
         let said = j.style.pick(light: r.text, structured: r.structured).text
-        guard let target = DictationTranslateRoute.target(j.setting, spoken: r.language, home: Dictation.homeLanguage) else {
+        guard let target = DictationTranslateRoute.target(j.setting, spoken: r.language, auto: j.auto) else {
             r.translation = DictationTranslateRecord(source: j.source, toggles: j.toggles, target: nil, engine: j.engine.rawValue)
             emit(["event": "dictation_translate", "action": "skipped", "id": id, "language": r.language ?? NSNull()])
             return
@@ -677,21 +876,30 @@ final class DictationStream {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "asr_failed", "code": failed.asrCode ?? NSNull()])
             // no model: the whole recording would only fail the same way
             if failed.asrCode == "model_missing" { return failure(.noModel, segments: ps.count) }
-            return whole(ps.count)
+            let secs = us.compactMap { u in lock.locked { u.second } }
+            return whole(ps.count, second: secs.count == us.count ? DictationStitch.joinPieces(secs, pauses: gaps) : nil)
         }
         let raw = DictationStitch.joinPieces(us.map(\.raw), pauses: gaps)
         let heard = DictationStitch.joinPieces(us.map(\.asrText), pauses: gaps)
-        // polish's windows, then the clause still carried (the dictation ended in it: its ending stays)
-        var text = opt.polish ? DictationStitch.join(us.map(\.text) + [carry + carryEnd]) : raw
+        if opt.polish, opt.polishAtKeyUp, let last = us.last, !raw.isEmpty, !lock.locked({ skipped }) {
+            polishTake(raw, into: last, units: us, gaps: gaps)
+        }
+        // polish's windows, then the clause still carried (the dictation ended in it: its ending stays); or the one
+        // polish at key-up
+        var text = !opt.polish ? raw : opt.polishAtKeyUp ? (us.last.map(\.text).flatMap { $0.isEmpty ? nil : $0 } ?? raw)
+            : DictationStitch.join(us.map(\.text) + [carry + carryEnd])
         let pol = us.compactMap(\.polish)
-        var fellBack = pol.contains { $0["fell_back"] as? Bool == true }
+        // not polished only when every window fell back; some of them: how many (DictationWindowFallback)
+        let fb = DictationWindowFallback.of(pol.map { $0["fell_back"] as? Bool == true })
+        var fellBack = fb.all
+        var parts = fb.parts
         var reason = pol.first { $0["fell_back"] as? Bool == true }?["reason"] as? String
-        let polished: String? = pol.isEmpty ? nil
+        let polished: String? = pol.isEmpty ? nil : opt.polishAtKeyUp ? us.last?.polishedPart
             : DictationStitch.join(us.map(\.polishedPart) + [carryPolished + carryEnd])
         // the joined result once more against the joined transcript: pieces that each passed can still add up wrong
         // a refusal types the transcript with a comma where a boundary was heard (`fallback_text`)
         let fallback = DictationStitch.joinPiecesForFallback(us.map(\.raw), pauses: gaps)
-        if opt.polish, us.count > 1, !pol.isEmpty, text != raw,
+        if opt.polish, !opt.polishAtKeyUp, us.count > 1, !pol.isEmpty, text != raw,
            let g = WarmServer.call("polish-serve", ["cmd": "guard", "raw": raw, "output": text, "vocab": opt.vocab,
                                                     "context": lock.locked { context }?.payload ?? NSNull(),
                                                     "fallback": fallback,
@@ -701,6 +909,7 @@ final class DictationStream {
             emit(["event": "dictation_stream_fallback", "id": id, "why": "stitch_guard", "reason": g["reason"] ?? NSNull()])
             text = (g["fallback_text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? fallback
             fellBack = true
+            parts = nil
             reason = "stitch_" + (g["reason"] as? String ?? "guard")
         }
         var terms: [String] = []
@@ -717,7 +926,33 @@ final class DictationStream {
                        segments: ps.count, timing: timing(ps, windows: ws), pieces: ps.map { describe($0, pgaps) })
         r.tags = us.compactMap { $0.asr?["tag"] as? [String: Any] }
         r.windows = ws.map(describeWindow)
+        r.fellBackParts = parts
         return r
+    }
+
+    /// The whole take's transcript polished once at key-up (`polishAtKeyUp`), with every unit's second transcript
+    /// joined as "Also heard": what it gives is the last unit's text (the history's `polish_in` / `text` show it there).
+    private func polishTake(_ raw: String, into last: Piece, units us: [Piece], gaps: [Double?]) {
+        var ctx = lock.locked { context }?.payload ?? [:]
+        if opt.cloud != nil, !opt.recent.isEmpty { ctx["recent"] = opt.recent }
+        let until = DispatchTime.now() + DictationStream.secondWait
+        let secs = us.map { secondOf($0, until: until) ?? "" }
+        let second = DictationStitch.joinPieces(secs, pauses: gaps)
+        if !second.isEmpty { ctx["second"] = second }
+        last.polishInput = raw
+        let t0 = CACurrentMediaTime()
+        let r = Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget, vocab: opt.vocab,
+                                 context: ctx.isEmpty ? nil : ctx, variant: opt.variant, cloud: opt.cloud)
+        last.polishSpan = (t0, CACurrentMediaTime())
+        last.loadMS += r?["load_ms"] as? Int ?? 0
+        last.polish = r
+        let out = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
+        last.text = out
+        last.polishedPart = (r?["polished"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? out
+        emit(["event": "dictation_polish_take", "id": id, "units": us.count, "in_units": DictationStitch.units(raw).count,
+              "second_units": DictationStitch.units(second).count, "seconds": secs.filter { !$0.isEmpty }.count,
+              "ms": Int((last.polishSpan.1 - last.polishSpan.0) * 1000), "fell_back": r?["fell_back"] as? Bool ?? (r == nil),
+              "reason": r?["reason"] ?? NSNull(), "cloud": r?["cloud"] as? Bool ?? false])
     }
 
     /// One window for the history and the Dictation Lab: its pieces, what they said and what it said.
@@ -728,7 +963,8 @@ final class DictationStream {
                 "end": (Double(w.end) / NoteVoice.rate * 100).rounded() / 100,
                 "pieces_text": w.piecesText, "raw": w.raw, "asr_ms": ms, "heard_again": ms > 0,
                 "polish_in": w.polishInput, "text": w.text, "polish_ms": Int(max(0, w.polishSpan.1 - w.polishSpan.0) * 1000),
-                "fell_back": w.polish?["fell_back"] as? Bool ?? false, "reason": w.polish?["reason"] ?? NSNull()]
+                "fell_back": w.polish?["fell_back"] as? Bool ?? false, "reason": w.polish?["reason"] ?? NSNull(),
+                "second": lock.locked { w.second } ?? NSNull()]
     }
 
     /// One piece for the Dictation Lab (what each stage made of it, and how long it took).
@@ -768,12 +1004,23 @@ final class DictationStream {
         }
     }
 
-    /// The old path on the whole recording: one transcription, one polish.
-    private func whole(_ n: Int) -> Result {
-        let t0 = CACurrentMediaTime()
-        let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
+    /// The old path on the whole recording: one transcription, one polish. `heard`: the transcription already made
+    /// (a cloud recogniser's take at key-up) and when it was asked; `second`: macOS's transcript of the take, for
+    /// cloud polish (§Second transcript).
+    private func whole(_ n: Int, second: String? = nil, heard: (answer: [String: Any], t0: CFTimeInterval)? = nil) -> Result {
+        let t0: CFTimeInterval
+        let answer: [String: Any]
+        if let h = heard {
+            (answer, t0) = (h.answer, h.t0)
+        } else {
+            t0 = CACurrentMediaTime()
+            lock.locked { hearingWhole = true }
+            answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          before: lock.locked { context }?.asrBefore ?? "",
                                           audioSeconds: DictationStream.seconds(of: wholeWav))
+            lock.locked { hearingWhole = false }
+        }
         guard answer["ok"] as? Bool == true else {
             emit(["event": "dictation_asr_failed", "id": id, "code": answer["code"] ?? "error"])
             return failure(DictationASRFailure(code: answer["code"] as? String), segments: n)
@@ -783,16 +1030,20 @@ final class DictationStream {
         let raw = (r["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         var wctx = lock.locked { context }?.payload
         if opt.cloud != nil, !opt.recent.isEmpty { wctx = (wctx ?? [:]).merging(["recent": opt.recent]) { a, _ in a } }
-        let pol = opt.polish && !raw.isEmpty ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,
-                                                               vocab: opt.vocab, context: wctx, variant: opt.variant,
-                                                               cloud: opt.cloud) : nil
+        if opt.second, let sec = second, !sec.isEmpty { wctx = (wctx ?? [:]).merging(["second": sec]) { a, _ in a } }
+        // Esc while it is still polishing (skipPolish, a cloud recogniser's take): what was heard, unpolished
+        let skip = lock.locked { skipped }
+        let pol = opt.polish && !raw.isEmpty && !skip ? Dictation.polish(raw, timeout: opt.polishTimeout, loadBudget: opt.loadBudget,
+                                                                        vocab: opt.vocab, context: wctx, variant: opt.variant,
+                                                                        cloud: opt.cloud) : nil
         let t2 = CACurrentMediaTime()
         let text = (pol?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? raw
         var timing = ["asr_ms": Int((t1 - t0) * 1000), "polish_ms": Int((t2 - t1) * 1000), "segments": n,
                       "load_ms": (r["load_ms"] as? Int ?? 0) + (pol?["load_ms"] as? Int ?? 0)]
         timing["total_ms"] = Int((t2 - keyUp) * 1000)
         var out = Result(raw: raw, asrText: r["asr_text"] as? String ?? raw, text: text, polished: pol?["polished"] as? String,
-                      fellBack: pol?["fell_back"] as? Bool ?? false, reason: pol?["reason"] as? String,
+                      fellBack: pol?["fell_back"] as? Bool ?? (skip && opt.polish && !raw.isEmpty),
+                      reason: pol?["reason"] as? String ?? (skip && opt.polish && !raw.isEmpty ? "skipped" : nil),
                       model: pol?["model"] as? String, asrModel: r["model"] as? String, language: r["language"] as? String,
                       biased: r["biased"] as? Bool ?? false, terms: (r["terms"] as? [String] ?? []) + (pol?["terms"] as? [String] ?? []),
                       contextUsed: pol?["context"] as? Bool ?? false, repaired: pol?["repaired"] as? [String] ?? [],

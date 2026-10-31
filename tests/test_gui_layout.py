@@ -40,7 +40,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "skills" / "blurt" / "scripts"
 MACOS = ROOT / "skills" / "blurt" / "recorder" / "macos"
 BUNDLE_ID = "dev.blurt.recorder.layouttest"
-SETTINGS_PANES = ["general", "projects", "dictation", "speech", "shortcuts", "agents", "privacy", "storage"]
+SETTINGS_PANES = ["general", "projects", "dictation", "screentext", "speech", "shortcuts", "agents", "privacy", "storage"]
 ONBOARDING_STEPS = 4
 MAIN_SCOPES = ["inbox", "progress", "unassigned", "all", "dictation"]
 EMPTY_STATES = ["first", "inbox_zero", "project", "no_results", "no_index", "failed", "missing", "scanning", "discarded"]
@@ -225,14 +225,20 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     # the recording's countdown alone over an area (no take: nothing is captured)
     s.append(("panels", "countdown", [("shell", "countdown 3 300,200,700,460 hold")]))
     s.append(("panels", "countdown closed", [("shell", "countdown close")]))
-    s.append(("panels", "recently taken", [("shell", "taken show")]))
-    s.append(("panels", "recently taken hidden", [("shell", "taken hide")]))
+    # the Cards panel with nothing in it: History's empty state (no card yet)
+    s.append(("panels", "cards panel empty", [("shell", "taken show")]))
+    s.append(("panels", "cards panel empty closed", [("shell", "taken hide")]))
     # a snap (a PNG stands in for the screen: nothing is captured) → its note bubble, then the hanging cards
     still = ROOT / "assets" / "brand" / "legacy" / "logo-1.png"
     s.append(("panels", "snap note bubble", [("shell", f"snapregion 200,200,480,320 {still}")]))
     s.append(("panels", "snap note saved", [("shell", "commit")]))
     s.append(("panels", "hanging cards", [("shell", "cards show")]))
     s.append(("panels", "cards overview", [("shell", "cards older")]))
+    s.append(("panels", "cards overview keys", [("shell", "cards overview open keyboard nofocus")]))
+    s.append(("panels", "cards preview", [("shell", "cards overview preview")]))
+    s.append(("panels", "cards preview closed", [("shell", "cards overview previewclose")]))
+    s.append(("panels", "cards history empty", [("shell", "cards overview segment used")]))
+    s.append(("panels", "cards overview closed", [("shell", "cards overview close")]))
     s.append(("panels", "cards dismissed", [("shell", "cards dismiss")]))
     return s
 

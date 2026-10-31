@@ -119,6 +119,33 @@ final class ShellDataTests: XCTestCase {
         XCTAssertTrue(fresh.checkReadable())
     }
 
+    func testAFileThatBreaksWhileRunningKeepsTheLastSettings() {
+        // a hand edit (or an editor's truncate-then-write) breaks the file while Blurt runs: the shortcuts it read stay,
+        // the bad version is copied aside once, and nothing is written over it
+        let u = dir.appendingPathComponent("config.json")
+        try! #"{"record": {"hotkeys": {"snap": "ctrl+opt+F8"}}}"#.write(to: u, atomically: true, encoding: .utf8)
+        let c = Config(url: u)
+        var told: [URL] = []
+        c.onUnreadable = { told.append($0) }
+        XCTAssertEqual(c["record.hotkeys.snap"] as? String, "ctrl+opt+F8")
+        XCTAssertFalse(c.keepsLast)
+        let broken = #"{"record": {"hotkeys": {"snap": "ctrl+opt+F9""#
+        try! broken.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertFalse(c.readable)
+        XCTAssertTrue(c.keepsLast)
+        XCTAssertEqual(c["record.hotkeys.snap"] as? String, "ctrl+opt+F8", "the last version that parsed, not the default")
+        XCTAssertFalse(c.checkReadable())
+        XCTAssertFalse(c.checkReadable())
+        XCTAssertEqual(told.count, 1, "one backup, one notice for this bad version")
+        XCTAssertFalse(c.set("lang", "en"), "still never written over")
+        XCTAssertEqual(try String(contentsOf: u, encoding: .utf8), broken)
+        // fixed: the new values
+        try! #"{"record": {"hotkeys": {"snap": "ctrl+opt+F9"}}}"#.write(to: u, atomically: true, encoding: .utf8)
+        XCTAssertTrue(c.readable)
+        XCTAssertFalse(c.keepsLast)
+        XCTAssertEqual(c["record.hotkeys.snap"] as? String, "ctrl+opt+F9")
+    }
+
     func testTheSkillStaysWhereItWasWhenConfigBreaks() {
         // a skill installed somewhere other than ~/.claude/skills/blurt (Codex, a custom path, a dev checkout)
         let skill = dir.appendingPathComponent("my skill/blurt")

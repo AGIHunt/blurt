@@ -1026,6 +1026,16 @@ button.chip:hover {
   background: var(--hover);
   color: var(--ink);
 }
+/* one ⋯ everywhere: the dots in a thin circle, as the native headers and panels draw it (SF ellipsis.circle) */
+.more-btn > svg,
+.vmore > svg {
+  box-sizing: content-box;
+  width: 13px;
+  height: 13px;
+  padding: 1.5px;
+  border: 1.25px solid currentColor;
+  border-radius: 50%;
+}
 .more-btn select {
   position: absolute;
   inset: 0;

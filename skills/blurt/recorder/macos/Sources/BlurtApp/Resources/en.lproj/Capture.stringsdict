@@ -74,12 +74,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 snap</string><key>other</key><string>%d snaps</string></dict>
   </dict>
-  <key>capture.rec.markers</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>1 marker</string><key>other</key><string>%d markers</string></dict>
-  </dict>
   <key>capture.rec.n_snaps</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
@@ -162,7 +156,7 @@
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
     <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card into Unassigned (uses AI once), with a suggested project</string><key>other</key><string>Organize the %d cards into Unassigned (uses AI once), each with a suggested project</string></dict>
+    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Organize the card into Unassigned with a suggested project (uses AI once)</string><key>other</key><string>Organize the %d cards into Unassigned with suggested projects (uses AI once)</string></dict>
   </dict>
   <key>capture.keys.taken_banner</key>
   <dict>

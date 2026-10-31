@@ -2,31 +2,123 @@ import XCTest
 @testable import BlurtCore
 
 final class DictationTranslateTests: XCTestCase {
+    let zhEn = TranslateAutoPair(home: .zh, other: .en)
+    let jaEn = TranslateAutoPair(home: .ja, other: .en)
+
     func testTheTargetIsTheOtherLanguageOfTheOneHeard() {
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "zh"), "en")
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "en"), "zh")
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "zh-Hans"), "en")
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "yue"), "en")
-        // the speech model said nothing (or something else): the model decides
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: nil), "auto")
-        XCTAssertEqual(DictationTranslateRoute.target(.auto, spoken: "ja"), "auto")
-        // a fixed target: nothing to send when the take is already in it
-        XCTAssertEqual(DictationTranslateRoute.target(.en, spoken: "zh"), "en")
-        // already in the target: into the user's own language (v1.0.6), nothing when that is the target too
-        XCTAssertEqual(DictationTranslateRoute.target(.en, spoken: "en", home: "zh"), "zh")
-        XCTAssertNil(DictationTranslateRoute.target(.en, spoken: "en", home: "en"))
-        XCTAssertNil(DictationTranslateRoute.target(.zh, spoken: "zh", home: "zh"))
-        // nothing heard: the model gets both ("into X, or home if it was X")
-        XCTAssertEqual(DictationTranslateRoute.target(.zh, spoken: nil, home: "zh"), "zh|en")
-        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: nil, home: "zh"), "ja|zh")
+        let t = DictationTranslateRoute.target
+        // Auto, a Chinese user: Chinese → English, anything else → Chinese
+        XCTAssertEqual(t(.auto, "zh", zhEn), "en")
+        XCTAssertEqual(t(.auto, "en", zhEn), "zh")
+        XCTAssertEqual(t(.auto, "zh-Hans", zhEn), "en")
+        XCTAssertEqual(t(.auto, "yue", zhEn), "en")
+        XCTAssertEqual(t(.auto, "Chinese", zhEn), "en")
+        XCTAssertEqual(t(.auto, "ja", zhEn), "zh")                // another language of the list: into home
+        // Auto, a Japanese user (global-first: nothing hard-codes Chinese ↔ English)
+        XCTAssertEqual(t(.auto, "ja", jaEn), "en")
+        XCTAssertEqual(t(.auto, "Japanese", jaEn), "en")
+        XCTAssertEqual(t(.auto, "en", jaEn), "ja")
+        XCTAssertEqual(t(.auto, "zh", jaEn), "ja")
+        // the speech model said nothing (or a language the list hasn't): the model decides, with the pair
+        XCTAssertEqual(t(.auto, nil, zhEn), "auto:zh|en")
+        XCTAssertEqual(t(.auto, "sw", jaEn), "auto:ja|en")
+        // Auto with no pair (English, no second language): English is typed as said, the rest into English
+        let enOnly = TranslateAutoPair(home: .en, other: nil)
+        XCTAssertNil(t(.auto, "en", enOnly))
+        XCTAssertEqual(t(.auto, "de", enOnly), "en")
+        XCTAssertEqual(t(.auto, nil, enOnly), "en|keep")
+        // a fixed target: always that language, whatever Auto would be
+        XCTAssertEqual(t(.en, "zh", zhEn), "en")
+        // already in the target: nothing to send, typed as said (2026-10-30, ⌥T's rule; v1.0.6 went into the system's
+        // language instead)
+        XCTAssertNil(t(.en, "en", zhEn))
+        XCTAssertNil(t(.en, "en-US", zhEn))
+        XCTAssertNil(t(.zh, "zh", zhEn))
+        XCTAssertNil(t(.ja, "ja", zhEn))
+        // nothing heard: the model decides whether it is X already ("into X, or as it is")
+        XCTAssertEqual(t(.zh, nil, zhEn), "zh|keep")
+        XCTAssertEqual(t(.ja, nil, zhEn), "ja|keep")
         // the other languages (v1.0.6)
-        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: "zh", home: "zh"), "ja")
-        XCTAssertEqual(DictationTranslateRoute.target(.ja, spoken: "ja", home: "zh"), "zh")
-        XCTAssertEqual(DictationTranslateRoute.target(.zhHant, spoken: "zh", home: "zh"), "zh-Hant")
-        XCTAssertEqual(DictationTranslateRoute.home(["ja-JP", "en-US"]), "ja")
-        XCTAssertEqual(DictationTranslateRoute.home(["zh-Hans-CN"]), "zh")
-        XCTAssertEqual(DictationTranslateTarget.en.request(home: "zh"), "en|zh")
-        XCTAssertEqual(DictationTranslateTarget.auto.request(home: "zh"), "auto")
+        XCTAssertEqual(t(.ja, "zh", zhEn), "ja")
+        XCTAssertEqual(t(.fr, "en", zhEn), "fr")
+        // Chinese speech into Traditional is still a translation
+        XCTAssertEqual(t(.zhHant, "zh", zhEn), "zh-Hant")
+    }
+
+    /// Auto's pair (the founder, 2026-10-30, global-first): home = Blurt's language when picked, else the system's
+    /// first that the list has; other = English, or — home being English — the next system language in the list.
+    func testAutoIsYourLanguageAndTheOtherOne() {
+        let of = TranslateAutoPair.of
+        XCTAssertEqual(of(nil, ["zh-Hans-CN", "en-US"]), zhEn)
+        XCTAssertEqual(of(nil, ["ja-JP", "en-US"]), jaEn)
+        XCTAssertEqual(of(nil, ["zh-Hant-TW"]), TranslateAutoPair(home: .zhHant, other: .en))
+        XCTAssertEqual(of(nil, ["zh-HK"]), TranslateAutoPair(home: .zhHant, other: .en))
+        XCTAssertEqual(of(nil, ["de-DE"]), TranslateAutoPair(home: .de, other: .en))
+        // English first: the next language of the list is the other one
+        XCTAssertEqual(of(nil, ["en-US", "ja-JP"]), TranslateAutoPair(home: .en, other: .ja))
+        XCTAssertEqual(of(nil, ["en-GB", "sw-KE", "fr-FR"]), TranslateAutoPair(home: .en, other: .fr))
+        // English alone (or with languages the list hasn't): no pair — Settings says to pick one
+        XCTAssertEqual(of(nil, ["en-US"]), TranslateAutoPair(home: .en, other: nil))
+        XCTAssertEqual(of(nil, ["en-US", "sw-KE"]), TranslateAutoPair(home: .en, other: nil))
+        // Blurt's own language, when picked, comes first
+        XCTAssertEqual(of("zh-Hans", ["en-US"]), zhEn)
+        XCTAssertEqual(of("en", ["zh-Hans-CN", "en-US"]), TranslateAutoPair(home: .en, other: .zh))
+        // nothing the list has at all: English
+        XCTAssertEqual(of(nil, ["sw-KE"]), TranslateAutoPair(home: .en, other: nil))
+        // polish.py's target
+        XCTAssertEqual(zhEn.request, "auto:zh|en")
+        XCTAssertEqual(TranslateAutoPair(home: .en, other: .ja).request, "auto:en|ja")
+        XCTAssertEqual(TranslateAutoPair(home: .en, other: nil).request, "en|keep")
+        // codes and names the system and the speech model give
+        XCTAssertEqual(DictationTranslateTarget.of("zh_CN"), .zh)
+        XCTAssertEqual(DictationTranslateTarget.of("zh-Hans-HK"), .zh)
+        XCTAssertEqual(DictationTranslateTarget.of("pt-BR"), .pt)
+        XCTAssertEqual(DictationTranslateTarget.of("Korean"), .ko)
+        XCTAssertNil(DictationTranslateTarget.of("sw"))
+    }
+
+    /// ⌥T sends its setting (it can't know what it will read): Auto's pair, or "X|keep" — never the user's own
+    /// language in place of the one they chose.
+    func testTheScreenRequestKeepsAFixedLanguage() {
+        XCTAssertEqual(DictationTranslateTarget.auto.request(auto: zhEn), "auto:zh|en")
+        XCTAssertEqual(DictationTranslateTarget.auto.request(auto: jaEn), "auto:ja|en")
+        XCTAssertEqual(DictationTranslateTarget.en.request(auto: zhEn), "en|keep")
+        XCTAssertEqual(DictationTranslateTarget.zh.request(auto: jaEn), "zh|keep")
+        XCTAssertEqual(DictationTranslateTarget.zhHant.request(auto: zhEn), "zh-Hant|keep")
+        for t in DictationTranslateTarget.allCases where t != .auto { XCTAssertEqual(t.request(auto: jaEn), t.rawValue + "|keep") }
+    }
+
+    /// The model's answer is the text as it was: "already in X" — for a request that keeps it (a fixed language, Auto
+    /// without a pair), and only when nothing but spacing changed.
+    func testKeptAsIsComparesTheAnswerWithTheText() {
+        let k = DictationTranslateRoute.keptAsIs
+        let src = "The replica is billed\nby the hour."
+        XCTAssertEqual(k("en|keep", src, "The replica is billed by the hour. "), .en)
+        XCTAssertEqual(k("en|keep", src, src), .en)
+        XCTAssertNil(k("en|keep", src, "The replica is billed per hour."))
+        XCTAssertNil(k("zh|keep", src, "副本按小时计费。"))
+        // Auto with a pair: a command or a name back as it is was simply nothing to translate
+        XCTAssertNil(k("auto:zh|en", "git status", "git status"))
+        XCTAssertNil(k("auto", "git status", "git status"))
+        XCTAssertNil(k("en|keep", "  ", "  "))
+    }
+
+    /// ⌥T's own settings (2026-10-30): the first launch starts it at Auto, with the cloud as dictation's switch was;
+    /// dictation keeps its own.
+    func testScreenTranslateHasItsOwnSettings() {
+        var d = DictationTranslateConfig()
+        d.target = .en
+        d.cloud = false
+        let m = ScreenTranslateConfig.migrated(from: d)
+        XCTAssertEqual(m.target, .auto)
+        XCTAssertFalse(m.cloud)
+        XCTAssertTrue(ScreenTranslateConfig.migrated(from: DictationTranslateConfig()).cloud)
+        // always written (the key says the migration happened), and read back
+        XCTAssertEqual(m.json["cloud"] as? Bool, false)
+        var c = ScreenTranslateConfig()
+        c.target = .ja
+        XCTAssertEqual(ScreenTranslateConfig(json: c.json), c)
+        XCTAssertEqual(ScreenTranslateConfig(json: nil), ScreenTranslateConfig())
     }
 
     func testCloudFirstWithItsSwitchThenThisMacThenNothing() {

@@ -120,6 +120,8 @@ export interface ReviewDoc {
   projects?: ProjectRef[];
   /** agent id → its display name (agents.json + the user's agent_defs) and its desktop app's name, if it has one */
   agents?: Record<string, { name: string; desktop?: string | null }>;
+  /** this Mac's user name (items.py): an item recorded "by" it was recorded by you */
+  me?: string;
   /** item mode: the item asked for, when its file can't be read (it is there; Blurt won't overwrite it) */
   _unreadable?: { uid: string | null; id: string; title?: string | null; path: string }[];
   [k: string]: unknown;

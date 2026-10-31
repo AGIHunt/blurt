@@ -114,10 +114,24 @@ extension Dictation {
         // (DictationStyleToggleHint — every toast stays ≥ 5 s, so a line on every ⇧ would be noise), "Back to …" too
         let shown = Dictation.settings["style_hint_shown"] as? Int ?? 0
         guard DictationStyleToggleHint.says(shown: shown) else { return }
-        if to == .structured { Dictation.set("style_hint_shown", shown + 1) }
         // its own key: a second ⇧ replaces the first's line, and it never takes the place of the last take's Undo
-        island.toast(Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
-                           table: "Dictation", Dictation.styleName(to)), key: Dictation.styleToastKey, seconds: 3)
+        var t = Island.Toast(text: Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
+                                         table: "Dictation", Dictation.styleName(to)), actionTitle: nil, action: nil)
+        t.key = Dictation.styleToastKey
+        t.seconds = 3
+        if to == .structured { t.onShown = Dictation.countOnce("style_hint_shown") }      // counted when seen
+        island.toast(t)
+    }
+
+    /// A toast's `onShown` that adds one to record.dictation.<key> the first time the toast goes up (not again when it
+    /// comes back after a newer one).
+    static func countOnce(_ key: String) -> () -> Void {
+        var counted = false
+        return {
+            guard !counted else { return }
+            counted = true
+            Dictation.set(key, (Dictation.settings[key] as? Int ?? 0) + 1)
+        }
     }
 
     static func styleName(_ s: DictationStyle) -> String { Loc.t("dictation.style.\(s.rawValue)", table: "Dictation") }
@@ -195,30 +209,37 @@ extension Dictation {
             }
         }
         checkStyleSuggestion(bundle: lp.bundle)
-        remindCloudPolish()
     }
 
-    /// The first dictation of the day, while cloud polish isn't on (DictationCloud.remindToday): one line pointing to
-    /// it, Set Up… or Don't Remind Me. It waits its turn behind the take's own toasts and goes by itself.
-    func remindCloudPolish() {
-        guard DictationCloud.remindToday() else { return }
-        emit(["event": "dictation_cloud", "action": "hint"])
-        var t = Island.Toast(text: Loc.t("dictation.cloud.hint", table: "Dictation"),
-                             actionTitle: Loc.t("dictation.cloud.hint.setup", table: "Dictation"), action: {
-            emit(["event": "dictation_cloud", "action": "hint_setup"])
-            // straight to the setting: Models with the row in view, and its sheet open
-            SettingsController.shared.show(pane: "speech/cloud_polish")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                NotificationCenter.default.post(name: CloudPolishRow.openRequest, object: nil)
-            }
-        })
-        t.secondTitle = Loc.t("dictation.cloud.hint.never", table: "Dictation")
-        t.second = {
-            Dictation.set("cloud_hint", false)
-            emit(["event": "dictation_cloud", "action": "hint_never"])
+    /// The cloud-polish reminder (DictationCloudReminder): once ever, after 10 dictations, a timed line into a quiet
+    /// island with Set Up…; afterwards the setting lives only in Settings. Called by afterPaste when the take has no
+    /// other line; `inBlurt`: the take went into Blurt's own window (the setup assistant's Try it).
+    func remindCloudPolish(takes: Int, inBlurt: Bool) {
+        // a second later, when the take's own lines (the list chip, its Undo) would be up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self = self else { return }
+            let idle = island.currentToast == nil && island.waitingToasts.isEmpty && !self.listening && self.queue.isEmpty
+            let shown = Dictation.settings["cloud_hint_shown"] as? Bool == true || Dictation.settings["cloud_hint"] as? Bool == false
+            // a connected service counts, whatever Polish runs on (set to this Mac on purpose: no reminder)
+            let cloud = DictationCloud.ready || !CloudStore.connected.isEmpty
+            guard DictationCloudReminder.due(takes: takes, shown: shown, cloudReady: cloud, inBlurt: inBlurt,
+                                             otherLine: false, islandIdle: idle) else { return }
+            emit(["event": "dictation_cloud", "action": "hint", "takes": takes])
+            var t = Island.Toast(text: Loc.t("dictation.cloud.hint", table: "Dictation"),
+                                 actionTitle: Loc.t("dictation.cloud.hint.setup", table: "Dictation"), action: {
+                emit(["event": "dictation_cloud", "action": "hint_setup"])
+                // straight to the setting: Models with Cloud services in view, and Add Service open
+                SettingsController.shared.show(pane: "speech/speech.services")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    NotificationCenter.default.post(name: CloudServicesSection.addRequest, object: nil)
+                }
+            })
+            t.seconds = DictationCloudReminder.seconds
+            t.passive = true
+            // once ever, counted when it is seen
+            t.onShown = { Dictation.set("cloud_hint_shown", true) }
+            island.toast(t)
         }
-        t.seconds = 10
-        island.toast(t)
     }
 
     // MARK: reformat-last
@@ -435,7 +456,7 @@ extension Dictation {
         asked.append(s.key)
         Dictation.set("style_asked", asked)           // asked once, whatever the answer
         emit(["event": "dictation_style", "action": "suggest_default", "bundle": s.bundle, "style": s.style.rawValue, "signals": s.signals])
-        let app = Dictation.appName(bundle: s.bundle, fallback: s.app)
+        let app = Dictation.appInline(bundle: s.bundle, fallback: s.app)
         // a question that goes away by itself (12 s; unanswered = no): it must never hold up the toasts behind it
         // (reformat's Undo, the list chip)
         var t = Island.Toast(text: Loc.t("dictation.style.learn.\(s.style.rawValue)", table: "Dictation", app),
@@ -457,5 +478,10 @@ extension Dictation {
     /// it is a name, else "Unknown app" — never the id.
     static func appName(bundle: String, fallback: String?) -> String {
         AppNames.display(name: nil, bundle: bundle) ?? AppNames.displayOrUnknown(name: fallback, bundle: nil)
+    }
+
+    /// `appName` for a question's "in %@" (the Chinese formats have no spaces of their own: DictationStyleLearn.inline).
+    static func appInline(bundle: String, fallback: String?) -> String {
+        DictationStyleLearn.inline(appName(bundle: bundle, fallback: fallback), cjk: Loc.language.hasPrefix("zh"))
     }
 }

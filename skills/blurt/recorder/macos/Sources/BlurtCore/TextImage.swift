@@ -16,6 +16,38 @@ public enum TextImage {
         public var image: CGImage
         /// In points (the picture is `scale` times as many pixels).
         public var size: CGSize
+        /// From the picture's top, in points: the baseline, and the first and last rows that carry ink (BA-60).
+        public var baseline: CGFloat = 0
+        public var inkTop: CGFloat = 0
+        public var inkBottom: CGFloat = 0
+        /// Han, kana or hangul in it: those glyphs sit in their own em box, centred as drawn (not on the baseline).
+        public var ideographic = false
+        /// From the picture's top: the font's cap height above the baseline.
+        public var capTop: CGFloat = 0
+
+        /// The height, from the picture's top, to centre in a control (BA-60: "完成" sat 1 pt low in the recording's
+        /// Finish, centred by its typographic box, whose CJK fallback font hangs further below the baseline). Latin:
+        /// between the baseline and the cap height — descenders and lowercase don't move it (for SF that is about the
+        /// typographic box's own middle, so Latin titles stay where they were). Ideographic text: the middle of its ink.
+        public var opticalMid: CGFloat {
+            if ideographic, inkBottom > inkTop { return (inkTop + inkBottom) / 2 }
+            return capTop < baseline ? (capTop + baseline) / 2 : size.height / 2
+        }
+
+        /// The picture's y (top) that puts its optical middle on `mid` (pixel-aligned at `scale`).
+        public func top(centredOn mid: CGFloat, scale: CGFloat) -> CGFloat {
+            ((mid - opticalMid) * max(1, scale)).rounded() / max(1, scale)
+        }
+    }
+
+    /// Han, kana or hangul in `text`.
+    public static func isIdeographic(_ text: String) -> Bool {
+        text.unicodeScalars.contains { s in
+            switch s.value {
+            case 0x3040...0x30FF, 0x3400...0x4DBF, 0x4E00...0x9FFF, 0xAC00...0xD7AF, 0xF900...0xFAFF, 0x20000...0x2FA1F: return true
+            default: return false
+            }
+        }
     }
 
     /// `text` in `font` and `color`, `scale` pixels a point; nil for an empty string.
@@ -50,6 +82,13 @@ public enum TextImage {
         let rgb = (color.converted(to: CGColorSpaceCreateDeviceRGB(), intent: .defaultIntent, options: nil) ?? color).components ?? [1, 1, 1, 1]
         let (r, g, b) = rgb.count >= 3 ? (rgb[0], rgb[1], rgb[2]) : (rgb[0], rgb[0], rgb[0])
         let alpha = color.alpha
+        // the rows with ink (coverage over a quarter: the anti-aliased fringe doesn't move the middle)
+        var first = -1, last = -1
+        for row in 0..<ph {
+            var hit = false
+            for col in 0..<pw where px[(row * pw + col) * 4] > 64 { hit = true; break }
+            if hit { if first < 0 { first = row }; last = row }
+        }
         for i in stride(from: 0, to: pw * ph * 4, by: 4) {
             let cov = CGFloat(px[i]) / 255 * alpha
             px[i] = UInt8((r * cov * 255).rounded())
@@ -58,7 +97,16 @@ public enum TextImage {
             px[i + 3] = UInt8((cov * 255).rounded())
         }
         guard let img = ctx.makeImage() else { return nil }
-        return Line(image: img, size: size)
+        var line = Line(image: img, size: size)
+        // the bitmap's first row is the picture's top (CGBitmapContext memory runs top-down)
+        line.baseline = size.height - descent
+        if first >= 0 {
+            line.inkTop = CGFloat(first) / scale
+            line.inkBottom = CGFloat(last + 1) / scale
+        }
+        line.ideographic = isIdeographic(text)
+        line.capTop = line.baseline - CTFontGetCapHeight(font)
+        return line
     }
 
     /// The ink a picture carries (the sum of its alpha, in whole pixels): tests compare weights with it.

@@ -5,12 +5,9 @@
 //  • ScreenGrant — a snap or a recording got no picture: Screen Recording is missing (preflight false), stale (macOS
 //    says it is on, but ScreenCaptureKit refuses: a grant made for an older build — "re-allow Screen Recording"), or
 //    it was a passing failure ("try again").
-//  • NoteTyping / NoteHold / NoteEsc — the snap's note bubble: only committed text counts as typed (an IME composition
-//    doesn't, and an emptied field is voice mode again); when the bubble may close by itself (never under the pen, not
-//    within 1.5 s of the last stroke, never while text waits for ⏎, never with ink and nothing said); and Esc in two
-//    steps (typed text first, then the shot).
-//  • NoteHold also holds the "Saved" moment while the pointer is over the bubble, and once the user clicks into the
-//    words or moves the caret in them (they are fixing a word): then only ⏎ or Esc closes it.
+//  • NoteTyping / NoteEsc — the snap's note bubble: only committed text counts as typed (an IME composition doesn't,
+//    and an emptied field shows the words heard again); Esc in two steps (typed text first, then the shot). The bubble
+//    never closes by itself (2026-10-31: no pause end, no "Saved" moment): its keys are NoteKeys.
 //  • CaptureRoute — where a capture goes once its note is complete: with a project it is filed (with a note, or
 //    without one: "Screenshot 14:32"); a spoken note is transcribed first; one whose words couldn't be had (the
 //    transcription failed, or a voice note the speech model found no words in) waits as a card that remembers its
@@ -78,64 +75,6 @@ public enum NoteTyping {
     /// Typed = something committed that isn't just spaces. An emptied field is not typed any more.
     public static func typed(_ text: String, marked: NSRange?) -> Bool {
         !committed(text, marked: marked).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-}
-
-/// When the snap's note bubble may close by itself, once its voice is done (the pause after speech, nothing said, the
-/// mic unavailable). Never under the pen, never while typed text waits for ⏎, never with ink and nothing said, nor on
-/// a picture frozen in place with nothing said (those end with ⏎, Done or a click outside the picture); `inkGrace` after the last stroke (the user says it, then
-/// circles it); `emptiedGrace` after the typed text was cleared again.
-public struct NoteHold: Equatable {
-    /// a spoken note never ends within this long of a stroke (v0.9-next: the user says it, then circles it)
-    public static let inkGrace = 1.5
-    public static let emptiedGrace = 1.5
-
-    /// the voice part is over: it ended by itself, or there is no mic for this bubble
-    public var voiceDone = false
-    /// committed text in the field
-    public var typed = false
-    /// a stroke is being drawn (mouse down on the picture)
-    public var drawing = false
-    /// when the last stroke ended (seconds, any clock)
-    public var lastInk: Double?
-    /// when the field was emptied (it held text)
-    public var emptiedAt: Double?
-    /// the words said are still coming (the bubble shows them before it closes; the app caps the wait)
-    public var waitingWords = false
-    /// "Saved" shows the words until then
-    public var savedUntil: Double?
-    /// the user is deciding (an Esc just cleared the typed text, they clicked into the words): only ⏎ or Esc closes it
-    public var pinned = false
-    /// the pointer is over the bubble: the "Saved" moment waits until it leaves (and `hoverGrace` after)
-    public var hovering = false
-    public static let hoverGrace = 0.6
-    /// something was said and kept: the pause after it may end the note
-    public var spoke = false
-    /// the picture has ink on it
-    public var inked = false
-    /// the picture is frozen in place for the pen (a fresh snap): only speech ends it by itself
-    public var inPlace = false
-    /// the "Goes to X" list is open: it never closes under the list (kept apart from `pinned`, which the list
-    /// must not clear)
-    public var picking = false
-
-    public init() {}
-
-    /// nil: stay open (⏎ / Esc, or the voice decides); 0: close now; t > 0: ask again in t seconds.
-    public func closeIn(now: Double) -> Double? {
-        guard voiceDone, !typed, !drawing, !pinned, !picking, !waitingWords else { return nil }
-        // nothing said (only ink, or nothing yet on a picture frozen for the pen): the user says when it is done —
-        // ⏎, Done, or a click outside the picture
-        if (inked || inPlace) && !spoke { return nil }
-        var wait = 0.0
-        if let i = lastInk { wait = max(wait, NoteHold.inkGrace - (now - i)) }
-        if let e = emptiedAt { wait = max(wait, NoteHold.emptiedGrace - (now - e)) }
-        if let s = savedUntil {
-            wait = max(wait, s - now)
-            // reading the words: never sooner than a moment after the pointer leaves
-            if hovering { wait = max(wait, NoteHold.hoverGrace) }
-        }
-        return max(0, wait)
     }
 }
 

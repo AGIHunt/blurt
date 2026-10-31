@@ -165,6 +165,25 @@
     ],
     "flag": [
       "flag"
+    ],
+    "globe": [
+      "globe"
+    ],
+    "accessibility": [
+      "accessibility"
+    ],
+    "power": [
+      "power"
+    ],
+    "screen": [
+      "display"
+    ],
+    "cloud": [
+      "cloud"
+    ],
+    "text-cursor": [
+      "character.cursor.ibeam",
+      "character.textbox"
     ]
   },
   "nearest": {

@@ -30,12 +30,12 @@
 
 /* What you can do from a state: the verb, and one line saying what it does */
 "action.keep" = "Accept";
-"action.keep.hint" = "Leaves the inbox as To do";
+"action.keep.hint" = "Moves it out of the inbox as To do";
 "action.hand_off" = "Hand off to agent…";
 "action.hand_off.hint" = "Run it in Blurt, or copy the instruction";
 "action.done" = "Mark as done";
 "action.done.hint" = "It’s handled";
-"action.done.hint_verify" = "You checked — it’s fixed";
+"action.done.hint_verify" = "Confirms it’s fixed";
 "action.send_back" = "Send back";
 "action.send_back.hint" = "Not fixed yet — back to To do";
 "action.take_back" = "Take back";
@@ -45,13 +45,13 @@
 "action.wontfix" = "Won’t do";
 "action.wontfix.hint" = "Closes it; it stays in All Items";
 "action.discard" = "Discard";
-"action.discard.hint" = "You can restore it";
+"action.discard.hint" = "Can be restored";
 "action.restore" = "Restore";
 "action.restore.hint" = "Put it back where it was";
 
 /* Agent session status */
 "session.running" = "Working";
-"session.waiting_input" = "Needs your input";
+"session.waiting_input" = "Waiting for input";
 "session.turn_done" = "Waiting for you";
 "session.exited" = "Exited";
 "session.error" = "Error";

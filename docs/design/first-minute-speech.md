@@ -109,6 +109,14 @@
 
 云端识别比 Apple 好 1.8 个点，每月多花约 ¥8.5（1.5 倍速是 ¥5.6）。
 
+**2026-10-31：key 里多了两个 “ç”。** 创始人选了 qwen3-asr-flash 听写，每一段都“没能识别”：Keychain 里的 key 是一段正确的
+key 后面跟着两个 “ç”（c + U+0327，⌥C 打出来的字），HTTP 头带不了它们，urllib 抛 UnicodeEncodeError，服务端回 `error`，
+CLI 兜底再失败一次，“重试”也只会同样失败。去掉这两个字符后，同一段录音 470 ms 识别出“测试一下，看看效果如何。”。
+边说边出的字来自 macOS 的识别器（选了云端时 `AppleSpeech.forLiveText`），不用这个 key，所以那时能看到字。现在：
+transcribe.py 先查 key（`api_key`：有 key 不该有的字符 → `auth`，只报码位，不报 key）；设置里存之前也查
+（`CloudSpeechCheck.clean`），并加了“测试连接”（`transcribe.py check-cloud`：macOS `say` 生成约 1.5 s 的英文
+语音，按听写的方式发一次，回 `ok in N ms` 或一句原因；没存的 key 从 stdin 传，不进命令行）。
+
 ### 2.5 一个阿里云百炼的 key：润色、翻译、截图取字
 
 创始人定：国内默认推荐阿里的 key（2026-10-29）。百炼上能用的模型很多（`/compatible-mode/v1/models` 列出 184 个），
@@ -346,3 +354,114 @@ qwen3.6-flash（看图的模型；百炼上的 DeepSeek 看图太慢），语音
   sha256 9e2449e1…）。新装的 Mac 上，本机模型唯一缺的常常就是它，刘海和设置助手因此说「还没有语音模型 · 1 MB」，
   设置页却显示 0 MB。现在 `transcribe.py` 在任何地方找它之前先把带的这份放进 `~/.blurt/models`。ONNX 文件与系统、
   芯片无关。
+
+## 10. v1.0.8：云服务和「各项任务用哪个模型」（§4.3 落地，2026-10-31）
+
+创始人 2026-10-31：原来两套云端配置各管各的（模型 → 高级里的云端识别；「云端润色」一家服务 + 翻译 / 截图取字借用它），
+用户以为那家服务只管润色，看不出翻译用的是哪个模型，服务商列表也太偏 DeepSeek。改成「模型」页三块：
+
+1. **这台 Mac 上**：推荐下载（缺什么时才出现）+「全部模型」。
+2. **云服务**：用户连接一个或多个服务，每个一行（名称、地区或地址、「也能做语音识别」）、「编辑…」；最后「添加云服务…」。
+   表单：服务、地区（有中国大陆 / 国际两个地址的服务才有，默认按系统地区）、接口地址（预填可改）、API Key（钥匙串，
+   不回显；有空格或 API Key 不会有的字符直接拒绝——创始人的百炼 Key 末尾多了两个 ⌥C 打出的「ç」）、测试（先读模型列表，
+   再发一个很小的请求：「正常 · 320 毫秒」或一句话的原因；百炼和 OpenAI 再测一段语音）。新服务点「连接」先测试，通过才存。
+3. **各项任务用哪个模型**：录屏、实时字幕、语音备注、听写（识别）——照旧；润色、翻译、截图取字——新的三行，各自
+   「自动 / 这台 Mac / 已连接服务的模型 / 其他模型… / 添加云服务…」，下面一行写内容发给谁（「文字发给 DeepSeek。」）。
+   自动 = 已连接服务里排第一个能做这件事的（顺序见下表），没有就用本机。语音几行的「自动」不变（`transcribe.py` 的选择），
+   列出的云端识别只有百炼（qwen3-asr-flash）和 OpenAI；在「云服务」里连上百炼或 OpenAI，它的 Key 就能做识别
+   （`CloudSpeech.environment`：高级里单独设置的识别 Key 优先；Groq 等其他识别服务仍在「高级」里设置）。
+
+听写页、截图取字页不再配置云端，只有一行「用 deepseek-flash · 云端」+「更改…」（跳到「模型」页那一行）；两边各自的
+「用云端模型翻译」开关去掉了（翻译只有一行，听写和 ⌥T 共用），目标语言照旧各管各的。设置助手只问一件事：「添加 API Key」，
+粘贴后按开头认出服务（`sk-ant-` Anthropic、`sk-or-` OpenRouter、`AIza` Gemini、`sk-proj-` OpenAI；`sk-` 开头的
+很多家都用，不猜，也不拿 Key 去别家试——那等于把 Key 发给了不相干的公司），默认 DeepSeek，所有任务保持「自动」。
+
+**价格只写 DeepSeek 的**（创始人：它便宜，作参照）：一条听写约 ¥0.001（实测 ¥0.0013 / 条；官方 deepseek-flash
+高峰 ¥2 / ¥8 每百万输入 / 输出 token，闲时半价，按 600 输入 + 80 输出算高峰 ¥0.0018、闲时 ¥0.0009）。别家不标价。
+
+### 10.1 预设（2026-10-31 按各家官方文档核对；没有用真实 Key 调用）
+
+核对方式：一个子 agent 读各家当天的官方文档（地址、鉴权、模型列表接口和字段、关思考的参数、当前模型 id），
+每家给出处；文档里查不到的标「未确认」。没有用任何人的 Key 做线上调用（这台 Mac 上读钥匙串会弹系统授权框，
+而且 Key 只能走 app 自己的读取路径）。协议上每家都走 `polish_cloud.py` 已有的 openai 或 anthropic 两种之一。
+
+| 服务（排序 = 自动的优先顺序） | 地址 | 协议 | 模型列表 | 关思考 | 备注 |
+|---|---|---|---|---|---|
+| DeepSeek（推荐） | `https://api.deepseek.com` | openai | `/models`，无日期，有 `input_modalities` | `thinking: {type: disabled}` | deepseek-flash（V4.1-Flash-1017，能看图）、deepseek-v4-pro（只文字） |
+| 阿里云百炼 | 大陆 `dashscope.aliyuncs.com/compatible-mode/v1`；国际 `dashscope-intl.aliyuncs.com/compatible-mode/v1` | openai | `/models`（§2.5 实测列出 184 个） | `enable_thinking: false` | Key 只在自己的地区有效；也做语音识别（国际版经 `DASHSCOPE_BASE_URL`） |
+| 火山方舟（豆包） | 大陆 `ark.cn-beijing.volces.com/api/v3`；国际（BytePlus）`ark.ap-southeast.bytepluses.com/api/v3` | openai | 用 API Key 读不到（控制面接口要 AK/SK 签名）→ 用文档里的 id | `thinking: {type: disabled}` | doubao-seed-2-1-pro/lite-260915、2-1-turbo-260628、2-0-lite/mini-260428；Seed 2.x 都能看图。BytePlus 的 id 未确认 |
+| 月之暗面（Kimi） | 大陆 `api.moonshot.cn/v1`；国际 `api.moonshot.ai/v1` | openai | `/models`，有 `created`、`supports_image_in` | K3 系列总在思考、关不掉；不发 temperature | kimi-k3.1-pro、-highspeed、kimi-k3；K2 已停止新用户 |
+| 智谱（GLM） | 大陆 `open.bigmodel.cn/api/paas/v4`；国际 `api.z.ai/api/paas/v4` | openai | 没有列表接口 → 文档里的 id | `thinking: {type: disabled}`（glm-5.3 / 5.3-flash 关不掉） | 看图：glm-5.3-flash、glm-4.6v 系列 |
+| MiniMax | 大陆 `api.minimax.cn/v1`；国际 `api.minimax.io/v1` | openai | 文档没写（未确认）→ 先试，读不到用文档 id | M3.1-Flash 发了会 400 → 走「去掉可选字段重发」 | MiniMax-M3.1-Flash、MiniMax-M3（能看图）；不发 temperature |
+| 小米 MiMo | `api.xiaomimimo.com/v1` | openai | `/models`（未确认）→ 读不到用文档 id | `thinking: {type: disabled}` | mimo-v2.6-flash / pro、v2.5 能看图，v2.5-pro 只文字 |
+| OpenAI | `api.openai.com/v1` | openai | `/models`，有 `created` | `reasoning_effort: none`（astra 拒绝 → 重发）；`max_completion_tokens`、不发 temperature | 识别：gpt-4o-transcribe 已弃用，菜单改为 whisper-1（默认）、gpt-transcribe |
+| Anthropic | `api.anthropic.com` | anthropic | `/v1/models`，`created_at`、`display_name`、`capabilities.image_input` | 不发 thinking；4.7 以后的模型 temperature < 1 会 400 → 不发 | 都能看图 |
+| Google Gemini | `generativelanguage.googleapis.com/v1beta/openai` | openai | `/models`（id 带 `models/` 前缀，去掉；`created` 未确认） | 3.x 关不掉 | 都能看图 |
+| OpenRouter | `openrouter.ai/api/v1` | openai | `/models`，`created`、`architecture.input_modalities` | `reasoning: {enabled: false}`（必须思考的模型会拒绝 → 重发） | |
+| 其他（兼容 OpenAI / Anthropic） | 用户填 | 对应协议 | 先试 `/models` | — | 名称可填，默认显示主机名 |
+
+`polish_cloud.request`：按主机加关思考的字段、去掉不接受 temperature 的服务的 temperature；任何一个 400 都去掉这些可选字段
+再发一次，并记住这家服务 + 模型（同一进程内不再重试）。测试时允许空回答（只思考没写字的模型也算连上了）。
+
+### 10.2 默认模型：不写死（已被 §10.5 取代）
+
+- 模型选项来自服务自己的模型列表（缓存在 `~/.blurt/cloud-models.json`，按服务 + 地址；连接 / 测试时读，打开「模型」页和
+  启动时超过一天的再读一次；离线就用缓存，没有缓存就用文档 id 或实测默认）。
+- 按任务过滤：去掉嵌入、语音、生图 / 视频、重排、审核、搜索类；润色 / 翻译再去掉 -vl / ocr / omni 这类看图专用的；
+  截图取字只留列表标明能看图的（或该服务的模型都能看图，或 id 写明 vl / vision / ocr / omni，或实测过）。
+- 排序：有日期按列表的日期，最新在前；没有日期按版本号（qwen3.8 在 qwen3.6 前）；带日期的快照在别名也在列表里时不列。
+- 预选：实测过的默认（DeepSeek：deepseek-flash；百炼：润色 / 翻译 deepseek-v4.1-flash、截图取字 qwen3.6-flash——
+  2026-10-31 三个 id 都还在各自的列表 / 文档里，保留）只在它还在列表里时用；否则选最新的「快档」模型（id 里有
+  flash / lite / mini / nano / turbo / haiku / fast / speed / air / small：每条听写都要跑，要快），没有快档就选最新的。
+- 实测说明（「准确，约 1 秒」等）只挂在 DeepSeek、百炼这两家、列表里还在的那几个 id 上。
+
+### 10.3 迁移（老用户什么都不用重填）
+
+第一次读 `record.cloud` 时一次性做（`CloudMigration`，单元测试覆盖）：
+- 钥匙串「Blurt Cloud Polish」里有 Key 的老服务（deepseek / dashscope / openai / anthropic）都变成已连接的服务，
+  账号名不变，Key 原地不动；只在「Blurt Cloud Speech」里有百炼识别 Key 的也连上百炼（读 Key 时回落到那一条）。
+- 老的 openai / anthropic 填了别的地址 → 「其他（兼容…）」服务，地址照旧；百炼填了国际地址 → 国际地区。
+- 任务照原来的走向：云端润色开着 → 润色 = 那家服务 + 原模型（空 = 默认）；关着 → 本机。翻译：原来有 Key 且任一「用云端
+  翻译」开着 → 那家服务 + 翻译模型（没有就用润色模型）；否则本机。截图取字：原来选云端 → 那家服务 + 看图模型；选本机 → 本机。
+  一个 Key 都没有的用户全部「自动」。旧的 `record.dictation.cloud_polish` 原样留着（回退旧版本时还能用）。
+
+### 10.4 还没做 / 没验证
+
+- 没有截图检查新页面和表单（不能在这台 Mac 上开 GUI）：需要跑 `blurt-visual-gate` 看「模型」页（空、一个服务、多个服务）、
+  添加表单（中英文）、三个任务的弹出菜单。
+- 没用真实 Key 测过任何一家；火山方舟国际版、MiniMax、MiMo、Gemini 的模型列表字段是「未确认」。
+- 自定义服务如果没有 `/models`，连接时测试会说「没找到能用的模型」而连不上（可改为允许连接后在「其他模型…」里填 id）。
+- 「高级」里的云端识别几行（Groq / 其他 OpenAI 兼容的识别地址、识别模型、倍速）还在原处。
+
+### 10.5 只列实测过的选项（创始人拍板，2026-10-31）
+
+原因：每件事的弹出菜单列的是服务自己的 `/models`，用户看不出哪个能看图、哪个要想几秒、哪个会改写或答空；选错了就失败或
+变差（实测：Seed 2.1 Turbo 改写 6.4 %，MiniMax 约一成空回答，Kimi / Gemini 6–7 秒，创始人自己的 qwen3.8-27b 比不润色还差，
+见 dictation-eval-2026-10-31.md §2.3、§4.3）。改成：
+
+- **每件事 2–3 个选项**：这台 Mac，加上口喷鸡实测过的云端模型，好的在前。
+  润色、翻译：DeepSeek V4.1 Flash（百炼 `deepseek-v4.1-flash`，然后 DeepSeek 官方 `deepseek-flash`）；
+  截图取字：Qwen3.6 Flash（百炼），然后 DeepSeek 官方的 deepseek-flash（§2.5 也测过：合并后 0.16 %，约 1.1 秒）；
+  云端识别：百炼 Qwen3-ASR Flash。听写的三个选择（这台 Mac / 这台 Mac + 云端润色 / 云端识别）仍是「对比」表
+  （DictationChoices，本机模型按 DictationTier）。没有「自动」这一项：没设过的那件事用第一个有 Key 的实测选项，没有就用本机，
+  菜单里勾的就是它。还没 Key 的选项写「没有 API Key」，选它就弹出添加 Key，填好后直接用上。
+- **只连两家**：「添加云服务」只有 DeepSeek 和阿里云百炼（中国大陆 / 国际），填 Key 就行，不选模型。其他几家（月之暗面、智谱、
+  MiniMax、小米、火山方舟 / BytePlus、OpenAI、Anthropic、Gemini、OpenRouter、兼容 OpenAI / Anthropic 的地址）在每件事菜单
+  最后的「高级 → 自定义模型…」：服务、地址、Key、模型 ID，标「未经口喷鸡测试」。「保存」先跑这件事自己的测试，不通过就不存，
+  只说一句原因：润色一句话（必须有回答：只想不写的模型过不了）、翻译一句话、截图取字一张写着「Blurt 4721」的小图（回答里
+  必须有 4721）——`polish_cloud.py check` 带 `job`；云端识别（「高级」里 OpenAI / Groq / 其他地址）用原来的
+  `CloudSpeech.check` 短录音，通过才存。
+- **列表是数据**：`skills/blurt/scripts/curated_models.json`（随 App 带上），站点上同一个文件
+  `site/models/curated.json` → https://blurt.work/models/curated.json（这次没部署）。App 启动和打开「模型」页时，距上次
+  拿到站点回复满一天才再取一次；离线就用缓存 `~/.blurt/curated-models.json` 或自带的；两份里 `updated` 更新的那份生效。
+  格式（schema 1）：`{"schema": 1, "updated": "YYYY-MM-DD", "jobs": {"polish" | "translate" | "vision" | "speech":
+  [{"service": 预设 id, "model", "name", "regions"?: ["china", "global"], "note"?: 说明的 key, "measured": "YYYY-MM-DD"}]}}`。
+  严格校验（BlurtCore `CloudCurated.swift`）：服务必须是 App 自带的预设（不能是自定义），列表里没有地址字段——就算有也不读，
+  请求永远发到这个版本自带的预设地址，所以被篡改的列表不可能把 Key 发到新主机；模型 id、名称、日期、地区、说明 key 不合格
+  的那一项丢掉；整份读不出（不是 JSON、schema 不对、一项有效的都没有、超过 64 KB）就保留上一份好的。每件事最多 4 项。
+- **老用户不受影响**：选过的模型（包括不在列表里的，比如 qwen3.8-27b）照旧用；那一行只多一句「推荐：DeepSeek V4.1 Flash。」
+  和「切换」（有这家的 Key 就直接换，没有先添加）。从旧设置迁移来的服务（OpenAI、Anthropic、自定义地址）都留着，显示
+  「未经口喷鸡测试」，在菜单「高级」下面。`record.cloud` v1 → v2：v1 里「自动」落在不在列表里的模型上的那件事，按 v1 缓存的
+  模型列表（`~/.blurt/cloud-models.json`）钉在原来的模型上（`CuratedMigration.pin`）。不再读任何服务的 `/models`。
+- 未定：百炼国际版上的 `deepseek-v4.1-flash` 和 `qwen3.6-flash` 没用真实 Key 测过（实测都在北京）；如果国际版没有，改列表里
+  这两项的 `regions` 即可，不用发版。

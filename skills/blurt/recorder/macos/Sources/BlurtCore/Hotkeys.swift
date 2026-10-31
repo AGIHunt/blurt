@@ -302,11 +302,16 @@ public enum HotkeyResult: Equatable {
 
 public final class HotkeyCenter {
     public static let shared = HotkeyCenter()
+    /// Posted (object: the center) at the end of every apply(): a binding or a state changed — from Settings, a
+    /// config edited outside the app (reloadIfChanged), or a recorder field taking the keys and giving them back.
+    /// Whatever shows the keys (tooltips, menus) refreshes on it.
+    public static let didChange = Notification.Name("BlurtHotkeyCenterDidChange")
 
     /// Raw values are the config keys (record.hotkeys) — shared with _common.py / the Windows recorder.
     public enum Action: String, CaseIterable {
-        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
-        /// ⌥H: every hanging card comes down and stays (K7; macOS only — the island's cards)
+        case toggleRecord = "record", openMenu = "menu", snap, pause, pen, finish = "stop", openMain = "main", voice, project
+        // (no "marker": ⌥M went in 1.0.7 — ⌥A snaps without pausing while recording; a config entry for it is ignored)
+        /// ⌥H: the Cards panel — Current, or History when nothing hangs; again: closes it (CardsPanel; macOS only)
         case cards
         /// ⌥L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
         case reformat
@@ -322,7 +327,6 @@ public final class HotkeyCenter {
             case .openMenu: return "B"
             case .snap: return "A"
             case .pause: return "P"
-            case .marker: return "M"
             case .pen: return "D"
             case .finish: return "S"
             case .openMain: return nil
@@ -340,7 +344,6 @@ public final class HotkeyCenter {
             case .openMenu: return Loc.t("capture.action.menu", table: "Capture")
             case .snap: return Loc.t("capture.action.snap", table: "Capture")
             case .pause: return Loc.t("capture.action.pause", table: "Capture")
-            case .marker: return Loc.t("capture.action.marker", table: "Capture")
             case .pen: return Loc.t("capture.action.pen", table: "Capture")
             case .finish: return Loc.t("capture.action.stop", table: "Capture")
             case .openMain: return Loc.t("capture.action.main", table: "Capture")
@@ -378,6 +381,8 @@ public final class HotkeyCenter {
 
     private var refs: [UInt32: EventHotKeyRef] = [:]
     private var handlerInstalled = false
+    /// record.hotkeys as load() last read it: reloadIfChanged tells an edit made outside the app from it
+    private var loaded: NSDictionary?
 
     public init() { load() }
 
@@ -387,7 +392,9 @@ public final class HotkeyCenter {
 
     /// Re-read record.hotkeys.
     public func load() {
-        let user = Config.shared["record.hotkeys"] as? [String: Any] ?? [:]
+        let raw = Config.shared["record.hotkeys"]
+        loaded = raw as? NSDictionary
+        let user = raw as? [String: Any] ?? [:]
         map = [:]
         invalid = [:]
         for a in Action.allCases {
@@ -400,6 +407,18 @@ public final class HotkeyCenter {
             }
             map[a] = a.defaultCombo
         }
+    }
+
+    /// BA-49: record.hotkeys changed outside Settings (~/.blurt/config.json edited by hand or by an agent) since the
+    /// last load(): load it and re-register now, not at the next launch. True when it had. Cheap (Config caches by the
+    /// file's signature): the resident app calls it on activation and every 2 s. set() / swap() load() themselves, so
+    /// their own writes never count as a change.
+    @discardableResult
+    public func reloadIfChanged() -> Bool {
+        guard (Config.shared["record.hotkeys"] as? NSDictionary) != loaded else { return false }
+        load()
+        apply()
+        return true
     }
 
     /// Save one action (nil = off; only differences from the defaults are stored), re-register everything now, and
@@ -454,6 +473,7 @@ public final class HotkeyCenter {
 
     /// (Re-)register every action and work out each one's state.
     public func apply() {
+        defer { NotificationCenter.default.post(name: HotkeyCenter.didChange, object: self) }
         installHandler()
         for a in Action.allCases { unregisterRaw(a.carbonID) }
         states = [:]

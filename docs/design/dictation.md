@@ -381,10 +381,11 @@ the words, the text so far as prior) on 16 of the user's own takes with misheard
 | windows, ≥ 15 s | 7 | 11 | 0.25 / 0.76 s |
 | windows, ≥ 20 s | 6 | 11 | 0.33 / 0.76 s |
 
-So `DictationStream` hears the pieces **again in windows** while the user still talks (`DictationStitch.rehearGroups`,
-`rehearWindow` = 10 s; `record.dictation.rehear`, `rehear_window_s`):
+So `DictationStream` hears the pieces **again in windows** while the user still talks (`DictationStitch.rehearGroups`;
+the window's length is the speech model's — §Windows by model —, `DictationStitch.rehearWindow` = 10 s for every model
+without one; `record.dictation.rehear`, and `rehear_window_s` overrides the model's):
 
-- **A window closes after a piece** once it spans 10 s and the cut after the piece was a pause — never at a hard cut,
+- **A window closes after a piece** once it spans the window (10 s by default) and the cut after the piece was a pause — never at a hard cut,
   so windows never share audio: no overlap to drop, nothing deduplicated. Its audio (the take's own samples, from
   its first piece's start to its last piece's end) goes to the warm speech server once, with the windows' text so far
   as prior (the same request a piece makes).
@@ -403,7 +404,130 @@ So `DictationStream` hears the pieces **again in windows** while the user still 
 
 End to end in the Lab (22 of the user's takes, Qwen3-ASR 1.7B + Gemma 4 E2B, `mode=windows`): misheard words left 17 →
 11 of 22 with 10 s windows (10 with 15 s), the work after key-up 266 → 376 ms (median; 601 ms with 15 s windows), so
-10 s it is. Voice notes hear their pieces again the same way (`VoiceNoteStream`, `record.voice.rehear`): the card gets the windows' text, the panel the pieces' (`voice_rehear`).
+10 s it is. Voice notes hear their pieces again the same way (`VoiceNoteStream`, `record.voice.rehear`, 10 s windows
+whatever the model): the card gets the windows' text, the panel the pieces' (`voice_rehear`).
+
+#### Windows by model (2026-10-31)
+
+On 43 of the founder's real takes (18 min, 2,961 units, hand-written references; dictation-quality-2026-10-31.md) the
+10 s windows still dropped words at the seams (a short piece that heard nothing: 备忘录, 这样的风格。然后) and spelled names
+worse than the whole take (Option M → OpenM). Longer windows recover most of it, and how much depends on the model:
+
+| Speech model (recognizer output, pooled error) | 10 s | 20 s | 30 s | whole take | at key-up, median: 10 → shipped |
+|---|---:|---:|---:|---:|---:|
+| Qwen3-ASR 1.7B | 3.65 % | 3.55 % | **3.21 %** | 3.04 % | 272 → 376 ms (+104; +294 on takes ≥ 20 s) |
+| Qwen3-ASR 0.6B | 4.76 % | **3.82 %** | 3.78 % | 3.71 % | 215 → 254 ms (+39; +84 on takes ≥ 20 s) |
+
+So the window is a property of the model in the registry, `asr_models.json` `rehear_window_s`: **30 s for the 1.7B, 20 s
+for the 0.6B** (30 s buys the 0.6B 0.04 points for twice the extra wait), and 30 s for Fun-ASR-Nano, which hears each
+window whole (§Defaults by Mac → Fun-ASR-Nano). Every other model keeps 10 s, the length it
+was measured with: macOS Speech (streamed 8.44 % vs 7.60 % whole, not measured with longer windows), SenseVoice,
+Whisper (its own 30 s window; its dictation path is being fixed separately), Qwen3-ASR on the CPU (rtf 0.25: a 30 s
+window would be ~7 s at key-up); a cloud service isn't heard again at all (each pass is billed). The app reads it for
+the selected model (`ModelCatalog.rehearWindow`, `Dictation.rehearWindow`); the Lab for the model it replays
+(`dictation_stitch.rehear_window`, the same file). `record.dictation.rehear_window_s`, when set, wins over the model's
+(never under 4 s). In the Lab's own numbers on the 34 saved cases (per-case WER, polish on): 1.7B 9.47 → 8.72 %, 0.6B
+11.66 → 10.80 %.
+
+Re-measured with the shipped code (2026-10-31, the study's harness: each take's own cuts through `dictation_lab.run_case`,
+scratch servers, the 43 references): 1.7B 3.21 %, 0.6B 3.82 % — the prototype's numbers exactly; with
+`rehear_window_s` = 10 the same code gives the old 3.65 / 4.76 %. (The latencies above are the study's; the re-runs ran
+four at a time and their timings aren't comparable.)
+
+### Cloud recognition: the whole take at key-up (2026-10-31)
+
+The 2026-10-31 eval (dictation-eval-2026-10-31.md §4.1) replayed the app's cloud path — Qwen3-ASR Flash on Model Studio
+hearing each streamed piece at 1.5×, the words and the field's text before the cursor as context — and got **26.6 %**
+errors on the founder's 95 takes, against 2.0 % for the same service on the whole take: on 13 takes it typed part of the
+field's text, on 3 the word list. A short piece is little speech and a lot of context to repeat, and the DashScope
+backend had no echo net. Now:
+
+- **A cloud recogniser hears the whole take at key-up** (`DictationStream.Options.wholeAtKeyUp`, set by `Dictation` when
+  `selected_cloud`): one request with the words and the field's last 300 characters (`DashScope.max_chunk` 50 s: a
+  longer take is cut at its pauses into ≤ 50 s parts, sent side by side — `CLOUD_WORKERS` 4). While talking, the pieces
+  are heard by macOS's recogniser only: the live text, as before (its interim text too), and the second transcript cloud
+  polish gets (§Second transcript) — never billed, never a reason for the safety path. Polish then runs once over the
+  whole take. Where macOS's recogniser can't run (macOS 13–15, a language it doesn't speak, its files not here yet), the
+  take isn't cut at all (`streaming` off for it): the same one request at key-up, no live text.
+- **The echo net on the DashScope backend** (`DashScope.transcribe`, the MLX backend's `echoes_prior` rule): an answer
+  that repeats the field's text (≥ 12 characters of it in a row, or more syllables than the audio can hold) is asked
+  once more with the words only, and the second answer is kept when it is clearly shorter (< 80 %) — or when it is empty
+  and the first was the field itself (≥ 80 % of it one run of the field: breath that came back as the field). An answer
+  that is the word list is asked once more with the field only (`context_dump`). `tag.echo` / `tag.context_dump` in the
+  answer; a second request only when a net fires.
+- **1× by default** (`asr.cloud.speed`, `CloudSpeech.defaultSpeed`, "Normal (recommended)" in the sheet): on whole takes
+  1.5× costs 64 % more errors (below); 1× is $0.11 (≈ ¥0.8) an hour of speech. A speed the user picked stays.
+- The bounded wait and the failure lines stay: the take's deadline counts the cloud request (`hearingWhole`), and a
+  failure is `dictation_asr_failed` with its code (auth, quota, network…), the recording kept for Retry.
+
+Re-measured with the shipped code (the eval's harness with `EVAL_SCRIPTS` = the working copy: each take through
+`dictation_lab.run_case` with `asr=qwen3-asr-flash,mode=whole,context=on`, the eval's references and scorer; Model Studio
+key from the eval's loader):
+
+| Qwen3-ASR Flash on the founder's 95 takes | Error | Terms |
+|---|---:|---:|
+| as the app sent it before (pieces, 1.5×, words + field; the eval) | 26.6 % | 77 % |
+| … the same pieces with the echo net (without / with the empty-answer rule; it fired on 6 / 8 takes) | 22.5 % / 15.5 % | 76 % |
+| **whole take at key-up, words + field, 1× (shipped)** | **2.02 %** (eval: 2.00 %) | 83 % |
+| whole take at key-up, 1.5× | 3.32 % | 77 % |
+| … + cloud polish with macOS's transcript (§Second transcript; three runs, the Lab's context) | 2.62 / 2.68 / 2.72 % | 89 % |
+
+On whole takes the echo net never fired (0 of 95); on the old pieces it halves the damage but can't undo an answer that
+mixes the field with the piece's own words — the whole take is the fix, the net the guard behind it (voice notes still
+send pieces). Cloud polish on top of Flash's text gets names right (terms 83 →
+89 %) but is not better on words: the eval's 2.17 % was one run; its own script run again gave 2.44 / 2.44 %, the
+shipped prompt 2.42 % (whole-take replays of the eval's Flash output with the eval's macOS windows), the app's path in
+the Lab 2.62–2.72 % (macOS's pieces as the second transcript, the Lab's app context). Latency after key-up (eval §5,
+M5 Max, Beijing): Flash 0.52 s on ~5 s takes, 1.47 s on ~60 s ones, plus ~0.8–1.1 s of cloud polish.
+
+### Cloud recognition streamed while you talk: Volcengine Seed-ASR 2.0 (2026-10-31)
+
+The afternoon of the eval (dictation-eval-2026-10-31.md §2.1, §5, §6.3 B′) found one cloud recogniser with a
+dictation-grade delay: Volcengine 豆包 Seed-ASR 2.0 on its streamed `bigmodel_nostream` endpoint, 2.18 % on the founder's
+95 takes and ~0.5 s after key-up however long the take (it re-recognises the audio in ~15 s blocks while it comes in, so
+only the last block is left at key-up; Flash on a whole take grows from 0.5 to 1.5 s). It is now a cloud recogniser in
+Blurt — an option, never the recommendation (DictationTier unchanged: local 1.7B + DeepSeek polish stays the default).
+
+- **The service** is a curated one for the speech job only, mainland China (`CloudPreset` `volcengine-speech`,
+  curated_models.json `speech`; Add Service offers it to Macs set to China or people who speak Chinese). Its credential
+  is an App ID + Access Token pair from the speech console: the sheet asks for both, they are one Keychain item
+  (`<App ID>:<Access Token>`, BlurtCore `VolcengineSpeech`), the scripts get `VOLC_APP_ID` / `VOLC_ACCESS_TOKEN`
+  (`CloudSpeech.environment`). Test is a real recognition of the `say` clip (`transcribe.py check-cloud --model-id
+  volcengine-seedasr`, the pair on stdin when not saved yet). The registry entry `volcengine-seedasr` is offered in the
+  dictation pop-up once both are set (`keys_all`).
+- **The take streams up while it is said.** The microphone's samples go to the warm speech server on one connection per
+  take (BlurtCore `WarmServerStream` → `transcribe.py serve` cmd "stream": one JSON line, raw 16 kHz s16 PCM, shut at
+  key-up, one answer line), which passes them on as 200 ms packets over one websocket session (`VolcStream`: the
+  docs' 4-byte binary frames, gzip JSON request, a negative sequence on the last packet; resource
+  `volc.seedasr.sauc.duration`). The request goes out once the field's text is read (or after 1.5 s without it): the
+  words as inline `hotwords` (up to 100, the app's name first, as every recogniser gets them), the field's last 300
+  characters as one `dialog_ctx` turn, no language for Chinese speakers (its zh-en default: 2.18 % against 2.84 % with
+  automatic language), `enable_auto_lang` for others, the language the user set when there is one. The live text on the
+  island still comes from macOS's recogniser, as for Flash; polish (cloud polish with macOS's pieces as "Also heard")
+  runs once at key-up — the configuration that fixes Volcengine's weak names (79 → 91 %, §6.3 B′).
+- **Bounded, with the same failure lines.** The server waits 10 s for the final text after key-up, plus 0.4 s per second
+  of audio that reached it faster than it was spoken (a server that came up late gets the take so far at once; the
+  service works through it at ~4× real time). Refusals come back in the codes the island already words: a wrong App ID
+  / token is `auth` (HTTP 401 "requested grant not found"), "quota exceeded for types: concurrency" (45000292: the trial
+  allows only a few sessions at once) is `quota` ("busy or out of quota · Retry"), a dropped session `network`. The
+  recording is kept; Retry sends it whole through one session (`Volcengine.transcribe`, the same request, as fast as it
+  goes). A stream that couldn't be used at all (no server, the connection broke) falls back to the whole take at key-up.
+
+Re-measured through the shipped path (the eval's harness, a scratch server from the working copy, each take streamed to
+`serve` exactly as the app does — the eval's words, the take's app name and field text; keys from the eval's file):
+
+| Volcengine Seed-ASR 2.0 on the founder's 95 takes | Error | Terms |
+|---|---:|---:|
+| the eval's client (unpaced, words + field) | 2.18 % | 79 % |
+| **the shipped stream path (unpaced, words + app + field)** | **2.29 %** | 77 % |
+| … again without the app's name | 2.46 % | 77 % |
+| the eval, no words, no field | 2.33 % | 75 % |
+
+The same request answers differently from run to run on ~20 of the 95 takes (punctuation, a word here and there): the
+three runs above are within that spread. After key-up, streamed at 1× in 200 ms packets from this Mac in Beijing, two
+takes at a time: 0.52 s median / 0.62 s p90 on 4–7 s takes, 0.62 / 0.69 s on 50–70 s takes (eval: 0.45 / 0.58 and
+0.52 / 0.70 s). Settings → Models' comparison shows it as its own row for Chinese speakers (five stars, ~0.5 s,
+≈ ¥1 an hour of speech, voice to Volcengine; DictationChoices `.volcengine`).
 
 ### Punctuation at the seams
 
@@ -733,8 +857,34 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    quotes or emoji into its own — only delays the clipboard). While pastes overlap (a
    reformat right after a dictation) one snapshot is held: the last paste to finish puts it back, so the user's
    clipboard is never replaced by dictated text (v0.9 dogfood #27).
-5. Only into the app the take started in: when the app in front isn't the one at the key-down (compared by pid), the
-   policy says `copy(app_changed)` — "已复制，⌘V 粘贴" / "Copied — paste with ⌘V" — and a queued Return is dropped.
+5. **Into the app in front when the text is ready**, also when it isn't the one at the key-down (2026-10-31, the
+   founder: people speak while in A meaning to type into B — "I'm in A now, I'll put it in B"; Typeless does the
+   same). Until then a switch got `copy(app_changed)` and a ⚠ 「你换了 App，没有输入 · 已复制，⌘V 粘贴」 — a refusal
+   for something users do on purpose. Now the steps above apply to the app in front as to any take: a password field
+   there is still held, Blurt in front is still `own`, no Accessibility is still a copy. The focused field of the new
+   app is read as usual (fitting, the after-typing watch and learning follow the field the text really goes into), and
+   the island shows the typed text. A switch says nothing, and **a double tap's queued Return goes after the paste in
+   the new app** exactly as without a switch (`DictationSendPolicy.queued`,
+   `DictationPastePolicyTests.testAQueuedReturnFollowsThePaste`; `DictationSendPolicy.decide`'s checks — secure input,
+   Blurt in front, Accessibility — and the no-field check still apply). From the commit before (12188180) until the
+   founder's call the same day, it was held with 「没有发送：你换了 App」 / "Not sent: you switched apps" (the worry: a
+   message sent into another chat can't be taken back); dropped because by the double tap the user is already in the
+   new app and can see what was recognised.
+   - "Changed" is still measured (the pid at the key-down against the one at paste time) and logged: `app_changed` in
+     `dictation_text`.
+   - The history entry's app is the one the text went into (the app in front at paste time), not the one at the
+     key-down; so are reformat-last (⌥L acts on the text where it is: `DictationLastPaste.bundle`) and the per-app
+     suggestions that read the history (translate, Structured).
+   - Per-app switches (⇧ to Structured, ⌘ to Translate, `DictationRemembering.swift`) are **not remembered** after a
+     switch, in either app: they were made while speaking in A for text meant for B — on A the next takes would start
+     translated where the user never wanted it (a translation left on going out unnoticed is the risk the reminder
+     exists for), and on B they would be measured against A's starting state (turning A's remembered translation off
+     would drop B's). They are taken as the take stops listening and remembered once its text is in
+     (`dictation_remember skipped app_changed` when not); the next take in B starts with B's own settings.
+   - A retry from the history (after a relaunch: no app to go to, and Blurt's history window — its search field — is
+     in front) is still only copied (`from_history`).
+   - ⌥C / ⌥T follow the same rule: pasted into the app in front when the text is ready (docs/design/screen-text.md
+     §1c).
    Test builds compare a simulated front app (`dictation front NAME`) and use a private pasteboard
    (`BLURT_TEST_PASTEBOARD`, else one of their own): a test never touches the user's clipboard.
 
@@ -802,7 +952,7 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app they started in, else copied). Esc while listening says "已取消" too (it used to vanish silently; nothing is
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently; nothing is
   kept — the take was in front of the user). A paste already under way (⌘V until it has landed) can't be taken back.
   Another key or a click in push-to-talk's first second, before anything was cut, is a shortcut (Fn+← is Home): the
   take goes without "已取消" (`DictationTrigger.joinedEarly`).
@@ -868,17 +1018,40 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   fresh server started (`VoiceInput.replaceIfStuck`; the polish server the same way in `Dictation.warm`). A request
   that hung does the same. `dictation_asr_server given_up` says `ended` only when a process really went. A `uv` ended
   on purpose is not started again online (`WarmSpawn.retire`).
+- **A model switch never restarts the server mid-request; a take never waits forever** (2026-10-31, the founder:
+  dictation switched to Whisper large-v3-turbo "一直卡着"). A server started for Qwen3-ASR (`uv run --with
+  mlx-qwen3-asr`) re-ran itself under `uv run --with … mlx-whisper` inside the first Whisper request: that request got
+  no answer, and until the new process was up its run file named a live pid with a closed port (measured: the `load`
+  answered nothing in 0.07 s, every request after it "connection refused"; on the founder's Mac one such `uv` took
+  10:27:13 → 10:29:10 to start its Python). Each piece then went to a cold CLI run (`uv run` + a ~30 s Whisper load,
+  up to 120 s), one after another. Now `serve` adds the package of every installed local model before it writes its
+  run file (`serve_packages`: switching Qwen3-ASR → Whisper answered in 3.2 s, same process); one it still lacks is a
+  clean restart between requests (`NeedsRestart`: answers `restarting`, removes its run file, re-runs itself;
+  `Dictation.transcribe` waits for the new server once instead of the CLI — measured back in 2 s). An answer the CLI
+  would only repeat (`model_missing`, `auth`, `privacy`: `DictationASRFailure.definite`) is final. After key-up a take
+  waits for its words at most `DictationTakeDeadline` (45 s + ½ × the audio, ≤ 180 s; the whole-recording pass
+  included), then "语音模型没有回应，录音还在 · 重试" (`dictation_take_deadline`). Whisper loads from its folder, not its
+  repo id: mlx-whisper asked huggingface.co on every load (`Fetching 4 files`, +2 s here).
+- **A cloud failure says what failed** (`DictationASRFailure.line`): a key refused or unsendable → "云端识别的 Key 不对或
+  已失效，录音还在 · 设置…" (Retry would fail the same way; the history keeps the take for later), unreachable →
+  "连不上云端识别服务" · Retry, 429 → "额度用完或请求太频繁" · Retry. transcribe.py gives every cloud error a code
+  (`auth`, `quota`, `network`, `bad_response`); an exception of any other kind used to come back as a bare `error`.
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
-  分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 4 s — as long as
+  分钟上限，听写已结束" and the text goes in (into the app in front then, §Insert); the next tap within 4 s — as long as
   that line shows (`DictationTrigger.limitGrace`, `endedByItself`) — is taken as the stop that came late, not a new
   take (v0.9 dogfood: a tap 2–4 s later started one under the line). The last 30 s show the clock in the island's
   attention colour with one quiet "还剩 30 秒". A new take drops what the island said about the last one: its tip, the
   5-minute line, "还在识别…"; the stop drops ⇧'s Structured line (⇧ works only while listening).
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
-  "文字已复制，没有发送"); a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
-  tap mode) says how this mode starts, once a day — reported once (`DictationTrigger.takeMiss`), not again on every
-  key and click that follows; a polish model or the recommended speech model missing says so once a day with
+  "文字已复制，没有发送"; a take whose user switched apps is pasted, and sent after a double tap, in the app in front:
+  §Insert 5 — until 2026-10-31 such a take was only copied, with a ⚠ toast), and a double tap within 15 s of a take
+  left on the clipboard, with no key pressed since, holds its Return ("已复制，没有发送 · ⌘V 粘贴"; `DictationCopiedGuard`) —
+  the dogfood's Return went into the app now in front, where nothing was pasted; a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
+  tap mode) says how this mode starts — a tap in hold mode once a day; a long press in tap mode every time, while the
+  key is still down (a `.tick` at `tapMax`), so the user lets go before talking into a take that won't start (the
+  founder, 2026-10-30: tap mode stays strict) — reported once (`DictationTrigger.takeMiss`), not again on every key
+  and click that follows; a polish model or the recommended speech model missing says so once a day with
   Download… (not when the model that ran is the one the user chose in Settings).
 - **Reformat and its toasts belong to a take.** ⌥⇧L while a take is on its way waits for it — the take said last,
   bound by id (`DictationReformatAfterPaste`): when that take is cancelled, fails or hears nothing, the request goes
@@ -923,10 +1096,10 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
 
 ### Cloud polish (v1.0.4)
 
-Opt-in (Settings → Models → Cloud polish, `speech.cloud_polish`; `DictationCloud`, `Settings/DictationCloudSheet.swift`): Light's windows
-and Structured's pass at key-up go to a model the user set up — DeepSeek (the preset: `https://api.deepseek.com`,
-`deepseek-flash`, thinking off), or their own OpenAI- or Anthropic-compatible API (base URL, model) — through the same
-warm polish server (`polish.py` `cloud_polish`, `scripts/polish_cloud.py`). Every failure — no network, a refused key,
+Settings → Models, the Polish row (`speech.polish`; v1.0.8: `CloudStore`, `Settings/CloudServicesPane.swift`, the rules in
+BlurtCore `CloudServices.swift`): Light's windows and Structured's pass at key-up go to the Polish job's model — Auto is
+the best connected cloud service (DeepSeek first: `deepseek-flash`, thinking off), else this Mac's model; or a model the
+user picked from a connected service's live list — through the same warm polish server (`polish.py` `cloud_polish`, `scripts/polish_cloud.py`). Every failure — no network, a refused key,
 past its time (4 s + 6 ms a character), an answer the guard refuses — is answered by the local model instead
 (`cloud_error` in the answer); without a local polish model the cloud one is the only one.
 
@@ -952,13 +1125,65 @@ past its time (4 s + 6 ms a character), an answer the guard refuses — is answe
   answer or a preface added, a list in Light. No word counts, no kept-word check, no number check, no repair. Every
   answer of the six evaluated models on the 30 takes passes; an answer to the text, or a summary, is still refused
   (`tests/test_polish_cloud.py`). The stitch guard over the joined windows uses the same allowance.
-- **The key** is in the login Keychain (service "Blurt Cloud Polish", account = provider); the app sends it with each
-  request to the local server, never to a file or a log. Test (in the sheet) runs `polish_cloud.py check` with the key
-  on stdin. Never sent: the recording.
-- **The reminder**: while it isn't on, the first dictation of each day ends with one island line — "Turn on cloud
-  polish…" · Set Up… · Don't Remind Me (`cloud_hint` = false); `cloud_hint_day` is the day it was shown.
+- **The key** is in the login Keychain (service "Blurt Cloud Polish", account = the service's id: deepseek, dashscope,
+  openai, anthropic as before, `custom-N` for the user's own); the app sends it with each request to the local server,
+  never to a file or a log. Test (in the service's sheet) reads the model list, then runs `polish_cloud.py check` with
+  the key on stdin. Never sent: the recording.
+- **v1.0.8: Cloud services.** The one provider became a list of connected services (`record.cloud`), each job its own
+  row on Settings → Models; see system.md §3.4 for the page and first-minute-speech.md §10 for the presets, how each was
+  checked, and the migration. `polish_cloud.request` turns thinking off where a service lets it, sends no temperature
+  where a model refuses one, and on an HTTP 400 sends the request once more without those fields (remembered per
+  service and model).
+- **The reminder** (the founder, 2026-10-30): while it isn't on, once ever — after 10 dictations that went in, on a
+  take with no notice or tip of its own, into a quiet island, never in Blurt's own windows (the setup assistant's Try
+  it) — one timed line (8 s), "Add a cloud model…" · Set Up… (Settings → Models, Add Service open), not a question; never
+  once a service is connected (`DictationCloudReminder`;
+  `cloud_hint_shown` once it was seen; an older `cloud_hint` = false counts as seen). After that, Settings only.
 - Everywhere polish runs: dictation's windows and the safety path, Structured, reformat-last, a snap's / voice note's
   structuring pass. The Lab: `cloud=on` (the key from `BLURT_POLISH_API_KEY`).
+
+### Second transcript: cloud polish hears macOS's reading too (2026-10-31)
+
+The eval (dictation-eval-2026-10-31.md §2.3, §4.2) found cloud polish given the recogniser's text alone made the
+founder's takes *worse* (Qwen3-ASR 1.7B 2.50 → 3.16 %: it deletes what the speaker said and guesses names from the
+context), and better with a second recogniser's transcript of the same audio as evidence about the sounds (→ 2.20 %,
+names 79 → 89 %). macOS's own recogniser runs on every Mac with macOS 26, in-process, at no cost. So they ship together:
+
+- **When**: cloud polish is on (`DictationCloud.payload`), Light or Structured, macOS's recogniser is ready in the
+  dictation's language (`AppleSpeech.ready`), and it isn't the recogniser itself (`Options.second`). Not yet ready →
+  asked for in the background (`AppleSpeech.prepare(via: "second")`), and this take polishes as before. Local polish
+  never gets it (the eval: neutral at best).
+- **What it hears**: each window's audio (the 1.7B's 30 s, the 0.6B's 20 s windows: `closeWindow`), or each piece's
+  when the take isn't heard again, on its own queue (`secondQ`) beside the speech model — the same words as contextual
+  strings. With a cloud recogniser (§Cloud recognition) the pieces it already heard for the live text are it.
+- **Polish runs once, over the whole take at key-up** (`Options.polishAtKeyUp`, `DictationStream.polishTake`), with
+  the units' second transcripts joined as context `second`: `polish_cloud.messages` puts `Also heard: …` right before
+  `Dictation: …` and one paragraph after the prompt (`SECOND_NOTE`, the eval's `run_polish.py` prompt word for word).
+  Window by window — the streaming design for the local model — the same polish made the takes worse (below); at
+  key-up it is one cloud request either way (~0.8 s, ~1.1 s for a minute-long take: eval §5), so the wait after
+  key-up grows by about 0.3 s on long takes. It waits for the last second transcript at most `secondWait` (2 s);
+  a unit without one is left out. Esc while it polishes types the transcript, as before.
+- **The request** (≈ 100 tokens more): the words, the app, the recent dictations, the text near the cursor, `Also
+  heard`, the dictation; thinking off where the host allows it (`polish_cloud.THINKING_OFF`; checked live 2026-10-31:
+  DeepSeek V4.1 Flash on Model Studio with `enable_thinking: false` and `deepseek-flash` on deepseek.com with
+  `thinking: disabled` answer with no reasoning tokens, 0.72 / 0.84 s). The history keeps each window's `second`
+  (`windows[].second`), and `dictation_second` / `dictation_polish_take` are logged.
+- **The Lab** replays it: `cloud=on` hears each window with macOS's recogniser (`Servers.second`: the Blurt executable's
+  `--speech`) and polishes the take once (`second=off`: window by window without it, as before); its config key adds
+  `second=apple`.
+
+Re-measured with the shipped code on the founder's 95 takes (the eval's harness, references and scorer; DeepSeek V4.1
+Flash on Model Studio; each cloud row run two or three times — one run moves by up to ±0.2 points, a single take that
+the model rewrites or deletes from is 0.1–0.3 points):
+
+| Qwen3-ASR 1.7B (30 s windows, field context) | Error | Terms |
+|---|---:|---:|
+| recogniser alone (the Lab, shipped code) | 2.50 % (eval 2.50 %) | 79 % |
+| macOS's transcript of the same windows (the second) | 6.15 % | 52 % |
+| cloud polish, whole take, with macOS's — the eval's script, three runs | 2.20 / 2.29 / 2.29 % | 87–89 % |
+| … the shipped `polish_cloud` prompt, same inputs, three runs | 2.51 / 2.28 / 2.28 % | 87 % |
+| **the app's path in the Lab** (macOS on each window, polish once at key-up), three runs | **2.20 / 2.28 / 2.55 %** | 89 % |
+| … window by window with macOS's per window (built first, not shipped), three runs | 2.92 / 2.57 / 2.72 % | 87–89 % |
 
 ### Why a polish was "unavailable" (A), and model loads
 
@@ -1546,6 +1771,43 @@ stores only `context_used`; the text itself only with `keep_audio` (on unless tu
   0.3 s. Without it the text around the cursor was empty, so a take after "。" started with "。" again and text already
   in the box was typed a second time.
 - A streamed dictation's pieces get the polished text so far appended to "before the cursor".
+- The speech model gets the last 300 characters before the cursor too (§Field context), and is read for it with
+  polish off as well (before 2026-10-31 the field was read only when polish was on).
+
+### Field context (2026-10-31)
+
+The speech model used to see the field's text only as a ranking for the word list (`hint`: which custom words appear
+in it go first). Given the text itself as context, a model that takes free text hears what the speech is about:
+
+| On 43 of the founder's takes (recognizer output) | without | with the last 300 characters | |
+|---|---:|---:|---|
+| Qwen3-ASR 1.7B, whole take | 3.04 % | **2.63 %** (shipped code: 2.67 %) | 截了 (the field said 我刚截了), blurt, Typeless, macOS Speech |
+| Qwen3-ASR 1.7B, 30 s windows | 3.21 % | **2.90 %** (shipped: 2.90 %) | terms 82 → 83 % |
+| … after local polish (Gemma 4 E2B, window by window) | — | 3.07 % (shipped: 2.97 %) | against 5.17 % for the 0.6B, 10 s windows and polish as shipped before |
+| Qwen3-ASR 0.6B, whole take | 3.71 % | 3.58 % (shipped: 3.55 %) | |
+| Qwen3-ASR 0.6B, 20 s windows | 3.82 % | 4.09 % (shipped: 4.09 %) | worse: not for the 0.6B |
+
+- **Which models**: `asr_models.json` `field_context_chars` — 300 for Qwen3-ASR 1.7B and for the cloud Qwen3-ASR Flash
+  (Model Studio's "context enhancement": background text and words in the same system message; not measured here, the
+  cloud service failed on the day of the study — measured later that day on whole takes: 2.00 % with it, 2.24 %
+  without, and sent only with the whole take since: §Cloud recognition), none for the 0.6B (mixed: better on whole takes, worse in the 20 s
+  windows the app uses), macOS Speech (contextual strings only), SenseVoice (no context), Whisper (its prompt with the
+  words made it worse: 6.86 → 7.43 %), the OpenAI-compatible service.
+- **The request**: the app sends `before` (`DictationContext.asrBefore`: the last 300 characters before the cursor)
+  with every dictation request — pieces, windows, interim requests, the whole-recording safety path — whenever
+  `record.dictation.context` is on, the field could be read, and it isn't a password field (`DictationField` skips
+  `AXSecureTextField` and secure input: `before` is then empty). `transcribe.py` (`NoteEngine.note`) gives its last
+  `field_context_chars` (`prior_tail`: not starting inside a Latin word) to a backend with `set_field`; for any other
+  model it is dropped.
+- **Where it goes** (Qwen3-ASR on MLX): the system prompt is the words, then the field's text, then the text so far
+  (80 characters, as before). The language tag is still read from the text so far alone (`tag_context`), so a Chinese
+  field can't push an English sentence's tag. The nets stay: an answer that echoes the field's text or the text so far
+  (`echoes_prior`) is decoded once more with the words only; an empty answer for heard speech once more without
+  either; a word-list dump once more without the words.
+- **Privacy**: the server never logs it and never answers it back (only `field_context`: how many characters were
+  heard); the history keeps the field's text only with `keep_audio`, as before. Cost: a few dozen prefill tokens, no
+  measurable latency.
+- **The Lab** replays it: `context=on` (the default) sends a case's kept `before` (`dictation_lab.asr_before`).
 
 ## Auto-learn
 
@@ -1678,6 +1940,96 @@ The 41-case polish eval with the new prompt (no words, no context, so the same p
 fall-backs, similarity 0.946 (model) / 0.970 (final), every untouched sentence kept, fillers removed 91 % (97 %
 before: one 那个 more is kept). Putting the two custom-word examples after the old four made it translate en-04 into
 Chinese and leave a correction unapplied; before them, nothing else changed.
+
+### Defaults by Mac (2026-10-31)
+
+dictation-eval-2026-10-31.md §6 measured what each Mac should run, on the founder's 95 takes. One rule, in two places:
+`transcribe.py dictation_tier` decides what Automatic runs (`dictation-models`' `recommended`, and its `plan`), and
+BlurtCore `DictationTier.recommended(ramGB:rtf:hasCloudKey:slowChip:languages:)` is the same rule for the app
+(Settings shows it: `DictationModels.tier`); `tests/fixtures/dictation_tier.jsonl` checks both. "Speaks only zh / en /
+ja" is the user's languages (`user_languages`: `asr.languages`, else the Mac's preferred languages + English), every
+one of them Chinese, English or Japanese.
+
+| Mac | Recogniser (window, field context) | Local polish | Founder's takes | Download / memory |
+|---|---|---|---:|---:|
+| first minutes, any (macOS 26) | macOS Speech, while the recogniser downloads | — | 6.72 % | 0 |
+| 8 GB (light), speaks only zh / en / ja | **Fun-ASR-Nano (30 s, no)** | none | 2.92 % | 1.6 / 2.6 GB |
+| 8 GB (light), any other language | Qwen3-ASR 0.6B (20 s, no) | none | 3.34 % | 1.0 / 2.1 GB |
+| 16–24 GB (standard), fast enough | **Qwen3-ASR 1.7B (30 s, yes)** | Gemma 4 E2B | 2.50 % (2.68 % with Gemma) | 2.5 + 3.4 / 3.1 + 2.3 GB |
+| 32 GB+ (pro) | Qwen3-ASR 1.7B (30 s, yes) | Gemma 4 E2B | 2.68 % | as above |
+| a base M1 / M2, or the 1.7B measured too slow | Fun-ASR-Nano (zh / en / ja only), else Qwen3-ASR 0.6B | by memory, as above | 2.92 / 3.34 % | as on 8 GB |
+| any, with a cloud key | the same local recogniser | the same (the cloud's fall-back) + cloud polish with macOS's transcript | 2.2–2.5 % (1.7B), 2.73 % (Fun-ASR-Nano) | text only leaves |
+
+- **Fast enough**: the 1.7B's real-time factor here, when measured (`transcribe.py bench`, Settings → Speech's Measure:
+  `asr-bench.json`), at most `TIER_RTF_LIMIT` 0.05 (the M5 Max: 0.033); not measured, any chip but a base M1 / M2
+  (`slow_chip`: 7–10 GPU cores against 40, where the last 30 s window at key-up would take over a second). A measured
+  rtf wins over the chip's name.
+- **Local polish**: Gemma 4 E2B from 16 GB (`polish_models.json` defaults: standard and pro); none on 8 GB and under
+  (light / minimal: `null`, `polish.recommended` → None — beside the 0.6B it doesn't fit, and on the founder's takes local
+  polish was within ±0.2 points on words on every recogniser). On 16 GB the eval left it open (off or Gemma); it stays
+  Gemma — what such Macs ran before, for the fillers and punctuation the error measure doesn't credit — and the pair
+  fits (`fits_with_polish`: 3.1 + 2.3 GB within 40 % of 16 GB).
+- **Only Automatic changes**: a recogniser or polish model picked by hand (`asr_model`, `polish_model`) stays, and so
+  does a cloud polish model picked by hand (§Cloud polish: `record.cloud.jobs.polish`). An installed 0.6B keeps running
+  on a Mac whose recommendation is now the 1.7B until the 1.7B is downloaded (Settings offers it); nothing downloads
+  by itself for an existing install.
+- **At install** (`ModelSetup.startAtInstall`): with macOS's recogniser dictating from the first minute (the setup
+  assistant's "start now" step), this Mac's recogniser starts downloading in the background as soon as the model list is
+  read — the recogniser alone (the polish and voice-note models stay the step's optional Download), once ever
+  (`first_download`), only while dictation is automatic and the Mac is online; a Stop is final. Before, nothing
+  downloaded until the user pressed Download on that optional row, and Apple Speech (Blurt 0 of 9, 45 % of terms) stayed.
+- **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
+  `deepseek-v4.1-flash` on Model Studio, `deepseek-flash` on deepseek.com — for Auto; a model picked by hand stays (the
+  founder's `qwen3.8-27b` measured 3.30 %, worse than no polish).
+
+#### Fun-ASR-Nano where the 1.7B doesn't go (2026-10-31)
+
+Fun-ASR-Nano (Alibaba, 0.8B: SenseVoice's encoder + Qwen3-0.6B; `fun-asr-nano-mlx`, mlx-audio 0.6.3,
+`mlx-community/Fun-ASR-Nano-2512`) was the eval's best small local candidate (dictation-eval-2026-10-31.md §4.4). It is
+now a downloadable model, and **the default where the 1.7B doesn't go — 8 GB Macs, base M1 / M2, a 1.7B measured too
+slow — for people who speak only Chinese, English and Japanese**; everyone else keeps the 0.6B there, and fast 16 GB+
+Macs keep the 1.7B.
+
+| On the founder's 95 takes (as in the eval) | Error | Names / terms | After key-up, ~5 s / ~60 s takes (p50, p90) |
+|---|---:|---:|---|
+| Qwen3-ASR 1.7B, 30 s windows + field context (eval) | 2.50 % | 79 % | 0.16 / 0.20 s, 0.32 / 0.59 s (eval §5) |
+| **Fun-ASR-Nano as shipped** (30 s windows, the Words as hotwords) | **2.92 %** | 77 % | **0.07 / 0.09 s, 0.17 / 0.28 s** |
+| Fun-ASR-Nano, the eval's own runner (≤ 30 s pieces at the take's cuts) | 2.84 % | 74 % | 0.08 / 0.10 s, 0.14 / 0.22 s (eval §5) |
+| Qwen3-ASR 0.6B, 20 s windows (shipped) | 3.34 % | 75 % | 0.09 / 0.12 s, 0.18 / 0.28 s (same session) |
+| Fun-ASR-Nano as shipped + cloud polish (DeepSeek V4.1 Flash, macOS's transcript as "Also heard"), one run | 2.73 % | 89 % | + ~0.8 s |
+
+Public sets (eval §3): Fun-ASR-Nano against the 0.6B — AISHELL-1 2.46 vs 3.17 %, ASCEND (Chinese with English in it)
+6.59 vs 8.86 % (the best local; the 1.7B 7.50 %), LibriSpeech clean / other 1.62 / 3.70 vs 1.54 / 3.93 % (level),
+Common Voice ja 16.0 vs 20.2 %; no German or other language.
+
+- **Why the small default changes**: fewer errors than the 0.6B on every set it speaks, at least as fast after key-up,
+  and it fits an 8 GB Mac (2.6 GB at peak for the whole process in `transcribe.py bench`, 2.1 GB of it GPU memory; the
+  0.6B 1.8 GB in the same bench; no local polish beside either on 8 GB). It takes the Words as hotwords (names 77 % vs
+  the 0.6B's 75 %).
+- **Why the 1.7B stays the 16 GB+ default**: it is still more accurate (2.50 vs 2.92 %, AISHELL 1.64 vs 2.46 %) and
+  hears the field's text; Fun-ASR-Nano wins only on ASCEND. On a slow chip the 1.7B's last 30 s window is what is too
+  slow, and Fun-ASR-Nano's last window (0.17 s on a minute-long take here) is the 0.6B's.
+- **Only for its languages**: Chinese, English and Japanese (`asr_models.json` `languages`; Cantonese is not measured,
+  so a Cantonese speaker gets the 0.6B). Someone with any other language among theirs never has it picked or listed in
+  the dictation rows (`dictation-models` leaves the row out unless it is already the configured or selected one;
+  Settings' Compare… leaves out its row the same way, `DictationChoices.choices`); the model library still lists it,
+  with the languages it lacks in its tooltip, as for SenseVoice.
+- **How it hears** (`FunAsrMlx`): a piece or window whole, never trimmed by the VAD. The first integration sent it the
+  VAD's chunks like the other local models and measured 3.38 % (whole take 3.23 %): a 5.9 s piece split at a 1.1 s
+  pause came back as "所以 Puritan", and the first 0.18 s of silence cut off a 2.5 s piece turned 语音输入 into 语音水软.
+  So `transcribe_track` gives a `whole_spans` backend the audio as it is, and cuts only audio longer than 30 s, in the
+  middle of the VAD's pauses (`pause_spans`; no speech dropped, a span with no speech left out). Windows: 30 s
+  (`rehear_window_s`; 20 s measured 2.94 %, the whole take cut in pauses 2.79 % — within the noise of each other). It
+  takes no other context (no text so far, no field text: not measured), and an interim request stops between tokens.
+- **Existing installs**: only Automatic changes, as above. An installed 0.6B keeps running on a Mac whose
+  recommendation is now Fun-ASR-Nano until it is downloaded (Settings offers it: 1.6 GB, from Hugging Face or, with the
+  mirror on, ModelScope); the 1.7B comes last among installed fall-backs where the 1.7B isn't this Mac's pick.
+- **Measured** through the working copy's `dictation_lab.run_case` (the Lab's replay of the app's pieces and windows,
+  `transcribe.py serve --purpose dictation` on a scratch `BLURT_HOME`), the eval's harness and scorer
+  (`/Users/john/blurt-eval-2026-10-31/`, engines `ship-fun-*` in `raw/founder.jsonl`, latency `ship-fun` / `ship-q06` in
+  `raw/latency.jsonl`, one engine at a time). `transcribe.py bench` (the `say` samples, M5 Max): rtf 0.0138 against the
+  0.6B's 0.0146 in the same session (`rtf_ref` 0.027 is that ratio on the 0.6B's reference 0.029), errors zh 0 / en 1.9 /
+  ja 0 %.
 
 ### Qwen3-ASR 1.7B (the v0.8 speed eval)
 
@@ -1847,8 +2199,8 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 |---|---|---:|---|
 | pro | Apple silicon ≥ 32 GB | 8 GB | Gemma 4 E2B (Gemma 4 E4B and Qwen3.5 4B offered) |
 | standard | 16–24 GB | 4 GB | Gemma 4 E2B (2.2 GB peak since v1.0.2, §Memory; 3.5 GB before) |
-| light | 8 GB | 2 GB | Gemma 3 1B since v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
-| minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
+| light | 8 GB | 2 GB | none since 2026-10-31 (§Defaults by Mac); Gemma 3 1B from v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
+| minimal | < 8 GB | — | none since 2026-10-31; Gemma 3 1B before (rarely harmful, rarely useful) |
 
 **Memory together (arch098, v0.9).** What a 16 GB Mac holds while it dictates is the sum: dictation's speech model,
 polish, and the voice-note model (one `asr-serve` holds one speech model at a time). Pro Macs (≥ 32 GB) keep
@@ -1932,12 +2284,22 @@ the generic app icon), the marks are 13 pt, and a take that fell back says **未
 hover. Models are named from the skill's catalogs before the live list answers (`ModelCatalog`), apps never by a
 bundle id (`AppNames`: else "未知 App"), and an old entry's raw context dict says only that it was used.
 
-Retention (`record.dictation.retention_days`, 30) rewrites the file at launch and when the setting changes. Audio
-(`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on, and with the take whenever its
-result is dropped. A take cut short by a quit or a crash, or by a path that once forgot its file (dict025: five wavs
-no entry referenced), is caught at launch: retention also removes every wav in `audio/` (pieces included) that no
-entry points at and that is over an hour old (`DictationHistory.pruneOrphanAudio`, `dictation.py prune`). The Lab's
-recordings live in `dictation/lab/` and are never touched.
+Retention (`record.dictation.retention_days`, 30) rewrites the file at launch, on waking, once a day while the app
+stays up (a menu-bar app runs for weeks: the 2026-10-30 dogfood found nothing deleted between restarts) and when the
+setting changes — never while a take listens or is on its way. The read and the rewrite hold one lock with every
+append: the app's threads and `dictation.py` (an advisory `flock` on `dictation/.history.lock`), so a line written
+meanwhile is never lost. Audio (`dictation/audio/<id>.wav`) is deleted after transcription unless `keep_audio` is on,
+and with the take whenever its result is dropped.
+
+A quit during a take loses nothing (dogfood: a 20.8 s take and a hands-free take left only their wavs, deleted a
+launch later): `Dictation.prepareForQuit` ends a listening take as a key-up would, gives the takes on their way 3 s
+to be typed, and writes any still unfinished as `asr_failed:interrupted` with its recording (the page: "Not typed:
+Blurt quit before it finished", Retry). A crash or a kill leaves the take's own `<id>.wav`; retention turns one
+within `retention_days`, over a second long, not a take still running, into the same entry
+(`DictationHistory.recoverInterrupted`; `dictation.py prune` leaves such a wav for the app). Every other wav in
+`audio/` (pieces included) that no entry points at goes once it is over an hour old
+(`DictationHistory.pruneOrphanAudio`, `dictation.py prune`). The Lab's recordings live in `dictation/lab/` and are
+never touched.
 
 *Turn into item* runs `dictation.py item ID --project <current|inbox>`. That calls `items.py add` with:
 - `title` = the first sentence, `quote` = the whole text;
@@ -1954,23 +2316,25 @@ recordings live in `dictation/lab/` and are never touched.
 | `mode` | `auto` (unset) \| `tap` \| `hold` |
 | `fn_capture` | `true`: with Fn and Accessibility, keep the Fn press from macOS (the filter) |
 | `polish` | `light` \| `off` |
-| `polish_model` | by tier |
+| `polish_model` | by tier (§Defaults by Mac: Gemma 4 E2B from 16 GB, none on 8 GB) |
 | `polish_timeout_ms` | `3000` (the generation only, once the model is loaded) |
 | `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
-| `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` (10) |
-| `cloud_polish` | unset = off. `{"on", "provider": "deepseek"\|"openai"\|"anthropic", "base_url", "model"}` (§Cloud polish; the key is in the Keychain) |
-| `cloud_hint` | unset: the daily reminder of cloud polish while it is off; `false` = never again (`cloud_hint_day`: the day it was last shown) |
+| `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` unset = the speech model's (`asr_models.json`: 1.7B 30, 0.6B 20, others 10) |
+| `cloud_polish` | ≤ v1.0.7 (kept as it was, read once by the migration to `record.cloud`). `{"on", "provider": "deepseek"\|"dashscope"\|"openai"\|"anthropic", "base_url", "model", "translate_model", "vision_model"}` |
+| `cloud_hint_shown` | `true` once the one cloud-polish reminder was seen (§Cloud polish); an older `cloud_hint` = false counts the same |
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |
 | `builtin_mic` | automatic (unset: on while the default input is Bluetooth) \| `true` \| `false` |
 | `sounds` | `true`: the peep / peck / soft peck when a take starts, stops, is cancelled (`false` = silent) |
 | `polish_priority` | `utility` |
 | `retention_days` | `30` |
+| `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
-| `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
-| `context` | `true`: read the text around the cursor for polish |
+| `asr_model` | automatic (§Defaults by Mac: Qwen3-ASR 1.7B MLX on 16 GB+ Macs fast enough for it, else the 0.6B, when installed — an installed 0.6B runs until the 1.7B is in —, else the voice-note model) |
+| `first_download` | unset: the recogniser the setup assistant started downloading at install (§Defaults by Mac), once ever |
+| `context` | `true`: read the text around the cursor for polish and the speech model (§Context, §Field context) |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
 | `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |

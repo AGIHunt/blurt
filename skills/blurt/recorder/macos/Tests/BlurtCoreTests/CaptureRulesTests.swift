@@ -1,6 +1,6 @@
 // BlurtCore/CaptureRules.swift (+ NoteEndpointer.activity / peakDB / soundSeconds, CardNote.noWords,
 // CardPasteSequence.arm): the capture rules the v0.9 dogfood run asked for — stale Screen Recording, the note bubble's
-// close / typing / Esc / Saved moment, where a capture goes, which voice notes are kept, the mic watchdog, what a quit
+// typing / Esc, where a capture goes, which voice notes are kept, the mic watchdog, what a quit
 // leaves behind (a cancelled note never comes back), a failed recording, a recording's note sessions.
 import XCTest
 @testable import BlurtCore
@@ -30,65 +30,6 @@ final class CaptureRulesTests: XCTestCase {
         XCTAssertEqual(NoteTyping.committed("你好ni", marked: NSRange(location: 2, length: 2)), "你好")
         XCTAssertEqual(NoteTyping.committed("abc", marked: NSRange(location: NSNotFound, length: 0)), "abc")
         XCTAssertEqual(NoteTyping.committed("abc", marked: NSRange(location: 2, length: 9)), "ab")
-    }
-
-    func testTheBubbleNeverClosesUnderThePen() {
-        var h = NoteHold()
-        XCTAssertNil(h.closeIn(now: 10), "still listening: the voice decides")
-        h.voiceDone = true
-        XCTAssertEqual(h.closeIn(now: 10), 0)
-        h.drawing = true
-        XCTAssertNil(h.closeIn(now: 10), "a stroke is being drawn: never closed under the pen")
-        h.drawing = false
-        h.lastInk = 10
-        XCTAssertEqual(h.closeIn(now: 10.5)!, NoteHold.inkGrace - 0.5, accuracy: 1e-9)
-        XCTAssertEqual(h.closeIn(now: 10 + NoteHold.inkGrace + 0.1), 0)
-    }
-
-    func testTypingKeepsItOpenOnlyWhileThereIsText() {
-        var h = NoteHold()
-        h.voiceDone = true
-        h.typed = true
-        XCTAssertNil(h.closeIn(now: 0), "typed text waits for ⏎")
-        h.typed = false
-        h.emptiedAt = 5
-        XCTAssertEqual(h.closeIn(now: 5)!, NoteHold.emptiedGrace, accuracy: 1e-9)
-        XCTAssertEqual(h.closeIn(now: 5 + NoteHold.emptiedGrace), 0)
-    }
-
-    func testSavedShowsTheWordsBeforeItCloses() {
-        var h = NoteHold()
-        h.voiceDone = true
-        h.waitingWords = true
-        XCTAssertNil(h.closeIn(now: 0), "the words are still coming")
-        h.waitingWords = false
-        h.savedUntil = 1.2
-        XCTAssertEqual(h.closeIn(now: 0)!, 1.2, accuracy: 1e-9)
-        XCTAssertEqual(h.closeIn(now: 2), 0)
-        h.pinned = true
-        XCTAssertNil(h.closeIn(now: 2), "an Esc just cleared the text: the user decides")
-    }
-
-    func testTheSavedMomentWaitsForTheReader() {
-        var h = NoteHold()
-        h.voiceDone = true
-        h.savedUntil = 1.2
-        // the pointer is over the bubble: it stays a moment after it leaves, however long the words were shown
-        h.hovering = true
-        XCTAssertEqual(h.closeIn(now: 5)!, NoteHold.hoverGrace, accuracy: 1e-9)
-        XCTAssertEqual(h.closeIn(now: 0)!, 1.2, accuracy: 1e-9)
-        h.hovering = false
-        XCTAssertEqual(h.closeIn(now: 5), 0)
-        // hovering doesn't hold anything but the Saved moment (the pen rests on the picture after a circle)
-        var ink = NoteHold()
-        ink.voiceDone = true
-        ink.lastInk = 0
-        ink.hovering = true
-        XCTAssertEqual(ink.closeIn(now: 10), 0)
-        // a click into the words (the app pins it and drops the Saved timer): only ⏎ or Esc closes it
-        h.savedUntil = nil
-        h.pinned = true
-        XCTAssertNil(h.closeIn(now: 10))
     }
 
     func testEscClearsTypedTextFirstThenDiscards() {

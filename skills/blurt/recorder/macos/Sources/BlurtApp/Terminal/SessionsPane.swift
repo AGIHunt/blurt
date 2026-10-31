@@ -17,6 +17,9 @@ final class PaneState: ObservableObject {
     @Published var job: String?
     @Published var attach: AttachState = .none
     @Published var listShown = true
+    /// In the main window's detail (TerminalHost.makePane), whose In Progress place is the session list: the header
+    /// draws no list toggle or compose button of its own.
+    @Published var embedded = false
     /// the header's extra leading inset (clear of the traffic lights while the list is hidden)
     @Published var headerLead: CGFloat = 0
     @Published var finishing: String?           // job whose worktree result is being reviewed (sheet)
@@ -59,14 +62,24 @@ final class SessionsPaneController: NSViewController, @preconcurrency TerminalPa
         let header = NSHostingView(rootView: SessionHeader(model: model, pane: state, actions: self))
         let overlay = NSHostingView(rootView: SessionOverlay(model: model, pane: state, actions: self))
         self.overlay = overlay
-        for v in [header, surface, overlay] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; detail.addSubview(v) }
+        // under the header, as tall as its one line while the agent waits at a startup question, else nothing
+        let hint = NSHostingView(rootView: SessionHintBar(model: model, pane: state))
+        hint.sizingOptions = [.intrinsicContentSize]
+        hint.setContentHuggingPriority(.required, for: .vertical)
+        // its one line truncates: never a minimum width for the pane (or the window)
+        hint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        hint.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        for v in [header, hint, surface, overlay] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; detail.addSubview(v) }
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: detail.topAnchor),
             header.heightAnchor.constraint(equalToConstant: 52),
             header.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
             header.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            hint.topAnchor.constraint(equalTo: header.bottomAnchor),
+            hint.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
+            hint.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
             // the terminal runs to the window's edges (its own margin is inside it, in its own colour)
-            surface.topAnchor.constraint(equalTo: header.bottomAnchor),
+            surface.topAnchor.constraint(equalTo: hint.bottomAnchor),
             surface.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
             surface.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
             surface.bottomAnchor.constraint(equalTo: detail.bottomAnchor),

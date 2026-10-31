@@ -85,18 +85,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func hotkey(_ k: HK) {
         switch k {
         case .pause: command("toggle")
-        case .marker: command("marker")
         case .stop: command("stop")
         case .pen: command("pen")
         case .penEsc: if rec?.penSticky == true { command("pen") }
-        case .snap: if let r = rec { r.snap(via: "hotkey") } else if resident { snapper.hotkey() }
+        case .snap: if resident { snapper.hotkey() } else if let r = rec { r.snap(via: "hotkey") }     // the snap flow, also while recording
         case .toggleRec: rec != nil ? command("stop") : (busy ? nil : startRecording(useLast: false))
         case .menu: popMenu()
         case .pickEnter: picker?.finish(true)
         case .pickEsc: picker?.finish(false); ScreenTextCopy.shared.cancel()
         case .pickFull: picker?.fullScreen()
         case .pickLast: picker?.useLast()
-        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .dictationEsc, .reformat, .text, .translateText: captureHotkey(k)     // K7 (P5, SnapApp.swift)
+        case .voice, .project, .voiceEsc, .cards, .cardsEsc, .overviewEsc, .dictationEsc, .reformat, .text, .translateText, .translateEsc: captureHotkey(k)     // K7 (P5, SnapApp.swift)
         }
         // voice input started or stopped: the menu-bar Peep follows now, not at the idle timer's next tick
         if k == .voice || k == .voiceEsc { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in self?.refreshStatus() } }
@@ -107,12 +106,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "stop":
             if let r = rec { r.stop() } else if let p = picker { p.finish(false) } else if !resident { sessionEnded(2, ["event": "cancelled"]) }
         case "discard": rec?.stop(discard: true)
+        case "videoonly": rec?.videoOnly = true; rec?.stop()           // Save Video Only (BA-66)
         case "restart": rec?.stop(discard: true, restart: true)
         case "pause": if rec?.isPaused == false { rec?.togglePause() }
         case "resume": if rec?.isPaused == true { rec?.togglePause() }
         case "toggle": rec?.togglePause()
-        case "marker": rec?.marker()
-        case "snap": if let r = rec { r.snap(via: "command") } else if resident { snapper.hotkey() }
+        // "marker": an older record.py (⌥M went in 1.0.7) — the still it took, without a marker of its own
+        case "snap", "marker": if let r = rec { r.snap(via: "command") } else if resident, c == "snap" { snapper.hotkey() }
         case "notes": island.openRecordingNotes()     // K7 (P5): the island replaced the HUD
         case "pen": rec?.togglePen()
         default: break
@@ -144,6 +144,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         opts.lastRegion = region
         let r = Recorder(region: region)
         r.onRestart = { [weak self] in
+            snapper.takeEnded {}            // Start Over: the discarded take's cards go with it
             FileManager.default.createFile(atPath: opts.events ?? "/dev/null", contents: nil)
             self?.rec = nil
             self?.begin(region)
@@ -172,6 +173,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let w = overlayWindow(OverlayFit.frame(region: r, panel: v.panelSize, margin: CountdownView.panelMargin, screen: screen),
                               view: v)
         w.ignoresMouseEvents = false
+        OwnWindows.mark(w, .countdown)          // never in the video (the take starts once it is gone, and it is left out)
         w.orderFrontRegardless()
         countdownWin = w
         MenuGlyph.shared.countdown = true            // Peep listens in the menu bar too
@@ -214,6 +216,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.shared.onUnreadable = { bak in DispatchQueue.main.async { App.configUnreadable(bak) } }
         Config.shared.onWriteRefused = { key in DispatchQueue.main.async { App.configWriteRefused(key) } }
         Config.shared.checkReadable()   // a hand edit gone wrong: said at launch (defaults until fixed), not at the first write
+        ScreenTextCopy.migrateTranslateConfig()     // ⌥T's own translate settings, once (from dictation's)
         watchNetwork()
         ensureDefaultWorkspace()
         DispatchQueue.global().async { _ = agentEnvironment() }   // ask the login shell now, not when a recording ends
@@ -222,6 +225,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProjectStore.shared.watch()
         JobStore.shared.start()
         JobNotifier.shared.start()
+        AgentSetupServer.start()        // setup.py's control socket (docs/design/agent-setup.md)
         Housekeeping.atLaunch()
         MemoryPressure.shared.start()
         AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) ?? nil }
@@ -254,6 +258,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on
         watchOtherInstances()
+        watchConfigEdits()
         // an unreadable config.json reads as empty: that's no first launch (its own line says what happened)
         if Config.shared.readable, recordConfig()["welcomed"] == nil, !assisted {
             postWelcome()
@@ -303,7 +308,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let d: WelcomeLine.Dictation = !Dictation.enabled ? .off : Dictation.shared.needsSetup ? .needsSetup
                 : DictationModels.shared.asrUnreadable ? .unknown : DictationModels.shared.dictationReady == false ? .noModel : .works
             func working(_ a: HotAction) -> String? { Hotkeys.shared.state(a) == .ok ? hk(a) : nil }
+            // counted as Settings → Shortcuts counts them: the dictation key another copy listens to is one of them
             let conflicts = Hotkeys.shared.conflicts.map { Hotkeys.shared.label($0) }
+                + (HotkeySettings.shared.dictationTaken ? [Dictation.keyShort.trimmingCharacters(in: .whitespaces)] : [])
             let line = WelcomeLine.compose(dictation: d, dictationKey: Dictation.keyShort, snap: working(.snap),
                                            record: working(.toggleRecord), conflicts: conflicts)
             let text = Loc.format(Loc.string(line.key, table: "Main"), line.args)
@@ -373,6 +380,23 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         RunLoop.main.add(t, forMode: .common)
     }
 
+    /// BA-49: shortcuts and the dictation key changed outside Settings (~/.blurt/config.json by hand or by an agent)
+    /// work without a relaunch: looked at when Blurt comes to the front and every 2 s (Config caches by the file's
+    /// signature: a look is a stat()). Settings' own writes load themselves, so they never count twice.
+    func watchConfigEdits() {
+        func look(_ via: String) {
+            // a file that stopped parsing: the last good settings stay (Config keeps them), the bad version is copied
+            // aside and the island says so once — never the defaults registered over the user's own keys
+            guard Config.shared.checkReadable() else { return }
+            if Hotkeys.shared.reloadIfChanged() { emit(["event": "hotkeys_reloaded", "via": via, "taken": Hotkeys.shared.conflicts.map(\.rawValue)]) }
+            Dictation.shared.reloadIfChanged()
+        }
+        NotificationCenter.default.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in look("activate") }
+        let t = Timer(timeInterval: 2, repeats: true) { _ in look("timer") }
+        t.tolerance = 0.5
+        RunLoop.main.add(t, forMode: .common)
+    }
+
     static func otherInstancesChanged(_ why: String) {
         let before = Hotkeys.shared.states
         Hotkeys.shared.apply()
@@ -424,7 +448,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// logout, restart or shutdown (the quit Apple Event carries kAEQuitReason: a modal would hold the Mac up behind
     /// it) nor on SIGTERM / SIGINT; the organisers stop all the same (applicationWillTerminate) and their jobs say so.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard resident, !quitting else { return .terminateNow }
+        guard resident, !quitting else { App.terminating = true; return .terminateNow }
         if !organisers.isEmpty, !quitBySignal, !Self.quitBySystem {
             let jobs = organisers.keys.compactMap { JobStore.shared.job($0) }
             let a = NSAlert()
@@ -440,10 +464,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard a.runModal() == .alertSecondButtonReturn else { return .terminateCancel }
         }
         quitting = true
-        snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+        App.terminating = true
+        // a dictation listening or on its way is typed, or kept as interrupted with Retry (never lost), then the
+        // captures' own work
+        Dictation.shared.prepareForQuit { snapper.prepareForQuit { NSApp.reply(toApplicationShouldTerminate: true) } }
         return .terminateLater
     }
     private var quitting = false
+    /// The app is on its way out (the quit was not cancelled): windows closing now are not the user closing them —
+    /// the setup assistant isn't "skipped" by a quit (Onboarding.windowWillClose).
+    static private(set) var terminating = false
 
     /// The quit comes from a logout, restart or shutdown.
     static var quitBySystem: Bool {
@@ -466,6 +496,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        App.terminating = true
         guard resident else { return }
         stopOrganisers()
         Housekeeping.atQuit()
@@ -576,12 +607,14 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var autoProcess: Bool { (recordConfig()["process"] as? String ?? "auto") != "off" }
 
     func takeEnded(_ code: Int32, _ event: [String: Any]) {
+        let videoOnly = rec?.videoOnly ?? false
         rec = nil
         busy = false
         picker = nil
-        guard let dir = lastSession else { return }
+        guard let dir = lastSession else { return snapper.takeEnded {} }
         cleanupLive(dir)
         if code != 0 {
+            snapper.takeEnded {}
             // a failed take keeps what was taken during it — the video up to its last fragment (Recorder writes 4 s
             // fragments), the stills, their notes, the live transcript (BlurtCore TakeEnd); only a cancelled or empty
             // one leaves no folder behind
@@ -606,23 +639,53 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var m = meta
         for k in App.errorKeys { if let x = event[k] { m[k] = x } }
         if let e = event["ended_early"] { m["ended_early"] = e }
+        // Save Video Only (BA-66): kept, not handed to an agent — the skill can still organize it later
+        if videoOnly { m["video_only"] = true }
         if let d = try? JSONSerialization.data(withJSONObject: m, options: [.prettyPrinted, .sortedKeys]) {
             try? d.write(to: dir.appendingPathComponent("meta.json"))
         }
         App.sayRecovered(event, duration: dur)
-        if autoProcess {
-            process(dir, project: project?.id)
-            // where its items go, and the way to put them elsewhere (Refile) — the user's pick, never a guess
-            Refile.offerRecording(dir, project: project?.id)
+        if videoOnly {
+            snapper.takeEnded {}
+            savedVideoOnly(dir, duration: dur)
+        } else if autoProcess {
+            // its ⌥A snaps' words first (a few seconds at most): the run reads them with the rest
+            snapper.takeEnded { [weak self] in self?.process(dir, project: project?.id) }
+            // where its items go, how long that usually takes here, and the way to put them elsewhere (Refile)
+            Refile.offerRecording(dir, project: project?.id, usual: OrganizeProgress.usual(video: dur))
         } else if island.started {
+            snapper.takeEnded {}
             // the take's end already said "✓ 0:42" in place of the dot (RecordingDone): no second moment for one take
             if !RecordingDone.saidRecently {
                 island.doneMoment(T("app.ear.saved", Island.clock(dur)), lead: .record, toast: T("app.toast.saved", Island.clock(dur)))
             }
         } else {
+            snapper.takeEnded {}
             toast(T("app.toast.saved", Island.clock(dur)), icon: .check)
         }
         refreshStatus()
+    }
+
+    /// Save Video Only (BA-66): the take is kept and not organized; its video is shown in the Finder, to send to
+    /// someone. The island says so, with the Finder again. Housekeeping leaves it alone (only organized recordings'
+    /// videos are ever deleted, and only when the user chose so: VideoRetention); the blurt skill can still organize it.
+    func savedVideoOnly(_ dir: URL, duration: Double) {
+        let video = dir.appendingPathComponent("recording.mp4")
+        emit(["event": "take_video_only", "session": dir.path, "video": video.path, "duration": duration])
+        let reveal = {
+            // tests never drive the Finder (no events into other apps): the event says what would be shown
+            if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" {
+                emit(["event": "reveal_in_finder", "path": video.path])
+            } else {
+                NSWorkspace.shared.activateFileViewerSelecting([video])
+            }
+        }
+        reveal()
+        var t = Island.Toast(text: T("app.record.video_only_saved", Island.clock(duration)) + "\n" + T("app.record.video_only_detail"),
+                             actionTitle: T("app.record.show_in_finder"), action: reveal)
+        t.icon = .check
+        t.seconds = 8
+        island.toast(t)
     }
 
     /// A saved take that wasn't plain sailing, said once on the island (after its "saved" line): it ended before
@@ -847,6 +910,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if let r = rec {
             add(T("app.menu.finish"), #selector(mStop)).showHotkey(.finish)
+            _ = add(T("app.menu.video_only"), #selector(mVideoOnly))        // BA-66: kept, not organized
             add(r.isPaused ? T("app.menu.resume") : T("app.menu.pause"), #selector(mPause)).showHotkey(.pause)
             _ = add(T("app.menu.restart"), #selector(mRestart))
             _ = add(T("app.menu.discard"), #selector(mDiscard))
@@ -961,15 +1025,17 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         } else {
             pItem = NSMenuItem(title: T("app.menu.project", current?.name ?? T("project.inbox")), action: nil, keyEquivalent: "")
         }
-        pItem.image = App.menuSymbol(current == nil ? "tray.2" : current?.exists == false ? "questionmark.folder" : "folder")
+        // one mark per concept, as the island and the sidebar (IslandGlyph.place): the project's coloured folder,
+        // Unassigned's dashed ring, a missing folder's question mark
+        pItem.image = IslandGlyph.place(current, size: 16)
         let pMenu = NSMenu()
         let none = add(T("project.inbox"), #selector(mUseProject(_:)), to: pMenu, obj: nil, on: store.currentID == nil)
         none.toolTip = T("app.menu.project.none_tip")
-        none.image = App.menuSymbol("tray.2")            // Unassigned, as the island and the sidebar (the tray is the Inbox)
+        none.image = IslandGlyph.place(nil, size: 16)    // Unassigned, as the island and the sidebar (the tray is the Inbox)
         if !store.projects.isEmpty { pMenu.addItem(.separator()) }
         for p in store.projects.prefix(12) {
             let i = add(p.name, #selector(mUseProject(_:)), to: pMenu, obj: p.id, on: store.currentID == p.id)
-            i.image = App.menuSymbol(p.exists ? "folder" : "questionmark.folder")
+            i.image = IslandGlyph.place(p, size: 16)
             i.toolTip = (p.path.path as NSString).abbreviatingWithTildeInPath
         }
         pMenu.addItem(.separator())
@@ -984,9 +1050,12 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if AppEnvironment.settings != nil { add(T("menu.settings"), #selector(mSettings), key: ",") }
         else { add(T("app.menu.shortcuts"), #selector(mShortcuts), key: ",") }
         if Updater.shared.available {
-            let u = add(T("app.menu.updates"), Updater.shared.canCheck ? #selector(Updater.checkForUpdates(_:)) : nil)
+            // a version found in the background and not looked at yet: the row names it
+            let found = Updater.shared.pending
+            let u = add(found.map { T("app.menu.update_to", $0) } ?? T("app.menu.updates"),
+                        Updater.shared.canCheck || found != nil ? #selector(Updater.checkForUpdates(_:)) : nil)
             u.target = Updater.shared
-            u.image = App.menuSymbol("arrow.down.circle")   // with no action giveSymbols can't tell which row it is
+            u.image = App.menuSymbol(found == nil ? "arrow.down.circle" : "arrow.down.circle.fill")   // with no action giveSymbols can't tell which row it is
         }
         menu.addItem(.separator())
         _ = add(T("app.menu.quit"), #selector(mQuit), key: "q")
@@ -999,9 +1068,10 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static func giveSymbols(_ menu: NSMenu) {
         let symbols = [
             "mStart": "record.circle", "mStartLast": "record.circle", "mStop": "stop.circle", "mPause": "playpause",
-            "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
+            "mVideoOnly": "film", "mRestart": "arrow.counterclockwise", "mDiscard": "trash", "mSnap": "camera.viewfinder", "mVoice": "mic",
+            "mText": "text.viewfinder", "mTranslate": "translate",
             "mLiveCaption": "captions.bubble", "mDictationHistory": "text.bubble", "mShowCards": "rectangle.stack",
-            "mShowTaken": "clock.arrow.circlepath", "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
+            "mOpenMain": "macwindow", "mOpenInbox": "tray", "mSettings": "gearshape",
             "mShortcuts": "keyboard", "checkForUpdates:": "arrow.down.circle", "mQuit": "power",
             "mSwitchProject": "arrow.left.arrow.right", "mOpenFolder": "folder.badge.plus",
         ]
@@ -1048,16 +1118,13 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func mStart() { startRecording(useLast: false) }
     @objc func mStartLast() { startRecording(useLast: true) }
     @objc func mStop() { command("stop") }
+    @objc func mVideoOnly() { command("videoonly") }
     @objc func mPause() { command("toggle") }
     @objc func mRestart() { command("restart") }
     @objc func mDiscard() { command("discard") }
     @objc func mUseProject(_ it: NSMenuItem) {
-        let id = it.representedObject as? String
-        Task { @MainActor in
-            do { try await ProjectStore.shared.use(id) }
-            catch { self.toast(T("main.error.generic")) }
-            island.projectChanged()
-        }
+        // a project whose folder is gone asks where it is first (MissingFolder.use)
+        MissingFolder.use(it.representedObject as? String, via: "menu") { [weak self] in self?.toast(T("main.error.generic")) }
     }
     @objc func mOpenFolder() {
         if let mw = AppEnvironment.mainWindow { mw.show(); MainWindowController.shared.openFolder() }
@@ -1090,7 +1157,9 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// changes can't be saved. It was copied aside; the file stays as it is. One line at launch, with Show File.
     static func configUnreadable(_ backup: URL) {
         emit(["event": "config_unreadable", "backup": backup.path])
-        var t = Island.Toast(text: T("app.config.unreadable"), actionTitle: T("app.config.show")) {
+        // broken while Blurt runs: the settings it read last stay; broken at launch: the defaults
+        var t = Island.Toast(text: T(Config.shared.keepsLast ? "app.config.unreadable_kept" : "app.config.unreadable"),
+                             actionTitle: T("app.config.show")) {
             NSWorkspace.shared.activateFileViewerSelecting([BlurtPaths.config])
         }
         t.seconds = 10

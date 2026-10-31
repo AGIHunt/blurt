@@ -298,6 +298,8 @@ def marks(video: Path) -> dict:
         o = {"n": sh.get("n"), "t": None if t is None else round(t, 2), "file": sh.get("file"),
              "marked": sh.get("marked"), "text": sh.get("text"), "said_note": sh.get("said"),
              "has_voice": bool(sh.get("voice")), "ink": len(sh.get("strokes") or [])}
+        if sh.get("kind") in ("issue", "idea", "note", "task"):
+            o["kind"] = sh["kind"]  # the type the user gave it in the note bubble: its item's kind
         if t is not None:
             o["said"] = said(t, t)
         return o

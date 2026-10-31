@@ -283,6 +283,10 @@ describe("v3 UI", () => {
     expect(el.querySelector("#provenance")?.textContent).toMatch(/Screen recording.*at 0:12/);
     // one footer line (how · when · who); captured in its own project says nothing the breadcrumb doesn't: not repeated
     expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/^Screen recording at 0:12·.+·by max$/);
+    // the Mac's own account name is you (dogfood: "by john"), never the raw login
+    await act(async () => { s.data.me = "max"; s.go(0); });
+    expect(el.querySelector("#provenance .prov-line")?.textContent).toMatch(/·by you$/);
+    await act(async () => { delete s.data.me; s.go(0); });
     expect(el.querySelector("#provenance")?.textContent).not.toContain("Captured in this project");
     expect(el.querySelector("#provenance")?.textContent).toContain("blurt.dev/login");
     expect(el.querySelector("#handoffRow")).toBeNull(); // to verify: nothing to hand off

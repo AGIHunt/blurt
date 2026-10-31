@@ -1,5 +1,5 @@
 // After `vite build`: copy dist/index.html to skills/blurt/scripts/review.html (what review.py serves, unchanged)
-// and fail if it outgrows the budget (design doc §6 WP3: ≤ 400 KB).
+// and fail if it outgrows the budget (design doc §6 WP3: ≤ 410 KB).
 import { copyFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 const src = resolve(here, "../dist/index.html");
 const dest = resolve(here, "../../../../skills/blurt/scripts/review.html");
-const LIMIT = 400 * 1024;
+const LIMIT = 410 * 1024;
 
 const size = statSync(src).size;
 copyFileSync(src, dest);

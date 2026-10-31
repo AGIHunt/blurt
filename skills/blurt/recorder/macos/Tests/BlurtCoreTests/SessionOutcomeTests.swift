@@ -34,6 +34,17 @@ final class SessionOutcomeTests: XCTestCase {
                                                   ended: "2026-10-25T10:00:04+08:00")), .failed(atStart: true))
         XCTAssertEqual(SessionOutcome.of(agentJob(worktree: false)), .ended)
         XCTAssertEqual(SessionOutcome.of(agentJob(changes: ["ahead": 3, "dirty": 0], finish: "merge")), .finished("merge"))
+        // quit at its folder-trust question: it never started (dogfood W41), even with exit 0 and an empty worktree
+        var trust = agentJob(changes: ["ahead": 0, "dirty": 0], started: false).raw
+        trust["agent"] = (trust["agent"] as! [String: Any]).merging(["stopped_at": "trust"]) { $1 }
+        let stopped = JobFold.job(trust)!
+        XCTAssertTrue(stopped.stoppedAtTrust)
+        XCTAssertEqual(SessionOutcome.of(stopped), .failed(atStart: true))
+        // a startup question's hint is only read while it is live and waiting
+        var waiting = agentJob(state: "running", status: "waiting_input").raw
+        waiting["agent"] = (waiting["agent"] as! [String: Any]).merging(["waiting_hint": "hooks"]) { $1 }
+        XCTAssertEqual(JobFold.job(waiting)!.waitingHint, "hooks")
+        XCTAssertNil(agentJob().waitingHint)
         XCTAssertTrue(SessionOutcome.failed(atStart: true).canRestart)
         XCTAssertFalse(SessionOutcome.review.canRestart)
     }

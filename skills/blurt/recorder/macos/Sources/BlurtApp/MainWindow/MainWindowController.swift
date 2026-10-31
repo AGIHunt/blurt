@@ -1,7 +1,7 @@
 // Blurt's main window: sidebar (places + projects) | items | detail in an NSSplitViewController, a unified toolbar
-// (the place's title and counts, Record and Snap, Filter, search; on the Dictation page the title and search only —
-// moving and handing off belong to the selection: the detail, the Item menu, the context menu, M / ⌘↩, ⌘K), a
-// command palette, context
+// (Record and Snap; on the Dictation page its title — what acts on the list sits on the list: its heading's order,
+// Filter, New Item and search field, ListHeading; moving and handing off belong to the selection: the detail, the Item
+// menu, the context menu, M / ⌘↩, ⌘K), a command palette, context
 // menus, Quick Look, a blank detail while there are no items at all (the list's first-run state speaks), window state
 // restored from $BLURT_HOME/ui/main-window.json (not UserDefaults: test builds share the bundle id with the user's
 // real app and must not disturb its state).
@@ -55,7 +55,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     var dictationIfLoaded: DictationPage? { page }
     private var entriesWatch: AnyCancellable?
-    var searchItem: NSSearchToolbarItem?
+    /// The search field of the list on show: the items' (their heading's) or the Dictation history's.
+    var searchField: NSSearchField? {
+        model.scope == .dictation ? (dictation.model.tab == .history ? dictation.search : nil) : list.heading.search
+    }
     var watcher: IndexWatcher?
     var watchedRoots: [String] = []
     lazy var palette = CommandPalette(controller: self)
@@ -102,7 +105,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         side.maximumThickness = 320
         side.canCollapse = true
         let content = NSSplitViewItem(contentListWithViewController: listColumn)
-        content.minimumThickness = 360
+        content.minimumThickness = 330     // 190 + 330 + 380 = the window's 900 pt minimum
         let det = NSSplitViewItem(viewController: detailColumn)
         det.minimumThickness = 380
         det.canCollapse = true
@@ -122,6 +125,10 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
         list.actions = self
         list.bar.makeMenu = { [weak self] in self?.filterMenu() }
+        list.heading.onAdd = { [weak self] in self?.newItem() }
+        list.heading.onSort = { [weak self] v in self?.popUp(self?.sortMenu(), under: v) }
+        list.heading.onFilter = { [weak self] v in self?.popUp(self?.filterMenu(), under: v) }
+        list.heading.search.delegate = self
         detail.actions = self
         sidebar.actions = self
         model.onReload = { [weak self] in
@@ -157,6 +164,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NotificationCenter.default.addObserver(forName: .blurtJobsChanged, object: nil, queue: .main) { [weak self] n in
             self?.jobsChanged(n.userInfo?["jobs"] as? [Job] ?? [])
         }
+        // a changed shortcut (Settings, or the config edited by hand): Record's and Snap's tooltips say the new keys
+        NotificationCenter.default.addObserver(forName: HotkeyCenter.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                for i in self?.window?.toolbar?.items ?? [] {
+                    if i.itemIdentifier == Self.recordID { i.toolTip = T("main.toolbar.record.tip", hk(.toggleRecord)) }
+                    if i.itemIdentifier == Self.snapID { i.toolTip = T("main.toolbar.snap.tip", hk(.snap)) }
+                }
+            }
+        }
 
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.saveState(open: self?.window?.isVisible == true)
@@ -169,7 +185,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     /// Search follows the index: off (with a placeholder that says when it comes) while nothing is listed yet. A
     /// window that finds no index starts reading one by itself — there is nothing to ask.
     func syncIndexChrome() {
-        guard let f = searchItem?.searchField, model.scope != .dictation else { return }
+        let f = list.heading.search
+        guard model.scope != .dictation else { return }
         let ready = !model.nothingListed
         if f.isEnabled != ready {
             if !ready, window?.firstResponder === f.currentEditor() { window?.makeFirstResponder(list.table) }
@@ -219,35 +236,31 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
     }
 
-    /// The columns follow the scope: the Dictation page in place of the items and their detail, the toolbar's search
-    /// field searching what is showing, and the toolbar without the items' actions there.
+    /// The columns follow the scope: the Dictation page in place of the items and their detail (each list with its own
+    /// search field), and the toolbar without the items' actions there.
     func syncPage() {
         let on = model.scope == .dictation
         let showing = listColumn.current !== list
         guard on != showing else { return }
         syncToolbar(dictation: on)
-        let field = searchItem?.searchField
         if on {
             let p = dictation
+            p.search.delegate = self
             listColumn.show(p.list)
             detailColumn.show(p.detail)
             p.didShow()
-            field?.placeholderString = T("dictation.history.search")
-            field?.stringValue = p.model.query
             if QLPreviewPanel.sharedPreviewPanelExists(), QLPreviewPanel.shared().isVisible { QLPreviewPanel.shared().orderOut(nil) }
         } else {
             page?.didHide()
             listColumn.show(list)
             detailColumn.show(detail)
-            field?.placeholderString = T("main.search.placeholder")
-            field?.stringValue = model.text
         }
     }
 
     /// Tests and the search field: the Dictation page's search.
     func setDictationQuery(_ q: String) {
         dictation.model.query = q
-        if model.scope == .dictation { searchItem?.searchField.stringValue = q }
+        if dictation.search.stringValue != q { dictation.search.stringValue = q }
         dictationFollowsSearch()
     }
 
@@ -260,7 +273,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// New Item (BA-21): the sheet over the window; the item goes to the place on show (a project, the inbox), else
     /// the current project, and the list selects it once written.
-    @objc func newItem() {
+    @objc func newItem() { openNewItem(nil) }
+
+    /// …holding what ⌘V or a drop on the list brought (BA-52).
+    func newItemHolding(_ prefill: NewItemSheet.Prefill) { openNewItem(prefill) }
+
+    private func openNewItem(_ prefill: NewItemSheet.Prefill?) {
         show()
         guard let w = window, w.attachedSheet == nil else { return }
         let target: String
@@ -271,13 +289,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         let name = target == "inbox" ? T("project.inbox") : ProjectStore.shared.project(id: target)?.name ?? T("project.inbox")
         var sheet: NSWindow?
-        let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name) { [weak self] uid in
+        let host = NSHostingController(rootView: NewItemSheet(target: target, targetName: name, prefill: prefill) { [weak self] uid in
             if let s = sheet { w.endSheet(s) }
             guard let self, let uid else { return }
             self.model.reload()
             self.reveal(uid: uid)
         })
         let s = NSWindow(contentViewController: host)
+        // its name in the Window menu and for VoiceOver (an untitled window said "Untitled")
+        s.title = T("main.new_item.title")
+        s.setAccessibilityLabel(s.title)
         sheet = s
         w.beginSheet(s)
     }
@@ -290,7 +311,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             return
         }
         model.text = ""
-        searchItem?.searchField.stringValue = ""
+        list.heading.search.stringValue = ""
         // the place on show if it lists the item (with the filters that show it), else its project, else All Items
         func look(in s: Scope) -> Bool {
             model.scope = s
@@ -393,10 +414,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         defer {
             titleView.set(title: window?.title ?? "", subtitle: window?.subtitle ?? "")
             list.heading.set(title: window?.title ?? "", counts: window?.subtitle ?? "")
-            if list.heading.onAdd == nil { list.heading.onAdd = { [weak self] in self?.newItem() } }
             // a session's page lists what one recording made: items are added in a place, not into a recording
             if case .session = model.scope { list.heading.add.isHidden = true } else { list.heading.add.isHidden = false }
-            syncFilterItem()
+            syncListControls()
         }
         let q = model.text.trimmingCharacters(in: .whitespaces)
         // a search is a mode of its own: the heading says what it looks for, the counts how much of the place it found
@@ -586,13 +606,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         list.table.deselectRow(row)
     }
 
-    /// The rows above the list from the keyboard (micro 15): the "Unfiled captures" and "Recently dragged out"
-    /// banners, then the running jobs. ↑ on the first item goes to the last of them, ↑ / ↓ walk them (the detail
+    /// The rows above the list from the keyboard (micro 15): the "Unfiled captures" banner, then the running jobs. ↑ on the first item goes to the last of them, ↑ / ↓ walk them (the detail
     /// shows a job, as a click does), ↓ from the last one is the first item again; ↩ on a banner opens what it opens.
     func stepJobs(_ d: Int, fromRow row: Int) -> Bool {
         var tops: [String] = []
         if !list.captures.isHidden { tops.append("banner:captures") }
-        if !list.taken.isHidden { tops.append("banner:taken") }
         tops += model.jobs.map(\.id)
         switch TopRows.step(tops, current: focusedBanner.map { "banner:" + $0 } ?? shownJob, by: d, fromRow: row, hasItems: model.rowCount > 0) {
         case .pass: return false
@@ -610,7 +628,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         return true
     }
 
-    /// The banner the keyboard cursor is on ("captures" | "taken"), drawn selected like a job row.
+    /// The banner the keyboard cursor is on ("captures"), drawn selected like a job row.
     private(set) var focusedBanner: String?
     func focusBanner(_ name: String?) {
         if name != nil {
@@ -620,7 +638,6 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         }
         focusedBanner = name
         list.captures.selected = name == "captures"
-        list.taken.selected = name == "taken"
     }
 
     func selectJob(_ id: String) {
@@ -635,7 +652,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// ↩: into the detail, the caret at the end of its title (E renames in the row instead).
     func openSelection() {
-        if let b = focusedBanner { (b == "captures" ? list.captures.onClick : list.taken.onClick)?(); return }
+        if focusedBanner == "captures" { list.captures.onClick?(); return }
         // ↩ on a list with no rows: the empty state's primary (Open Folder…, Record, Locate Folder…)
         if model.rowCount == 0, list.empty.pressPrimary() { return }
         guard !detail.web.isHidden else { return }
@@ -828,8 +845,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
     }
 
+    /// ⌘F, / and Find: the search field at the top of the list on show (its text selected, to type over). A list with
+    /// none showing (an empty place, the Dictation page's Words and Lab) has nothing to search: a beep.
     func focusSearch() {
-        if let s = searchItem { s.beginSearchInteraction(); window?.makeFirstResponder(s.searchField) }
+        guard let f = searchField, f.window != nil, !f.isHiddenOrHasHiddenAncestor, f.isEnabled else { return NSSound.beep() }
+        window?.makeFirstResponder(f)
+        f.currentEditor()?.selectAll(nil)
     }
 
     func emptyAction(_ tag: Int) {
@@ -868,7 +889,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     func clearFilters() {
         model.kinds = []; model.state = nil; model.text = ""
-        searchItem?.searchField.stringValue = ""
+        list.heading.search.stringValue = ""
         model.reload()
         list.scrollToStart()
     }
@@ -901,6 +922,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func openFolders(_ urls: [URL], then: ((Project) -> Void)?) {
         Task { @MainActor in
             var last: Project?
+            let known = Set(ProjectStore.shared.projects.map(\.id))
             for u in urls {
                 do { last = try await ProjectStore.shared.open(folder: u) }
                 catch { alert(T("main.open.failed", u.lastPathComponent), peopleText(error, context: "open folder")) }
@@ -908,6 +930,16 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             if let p = last {
                 model.reloadSidebar()
                 if let then = then { then(p) } else { reveal(project: p.id) }
+                // a new project says so, with the key its items get, and Rename right there (the sidebar keeps its
+                // order: it is the one selected)
+                if !known.contains(p.id) {
+                    AppEnvironment.island?.toast(T("main.open.added", p.name, p.key), key: "project-added", icon: .check,
+                                                 seconds: 6, actionTitle: T("main.open.rename")) { [weak self] in
+                        guard let self = self else { return }
+                        self.reveal(project: p.id)
+                        _ = self.sidebar.renameSelected()
+                    }
+                }
             }
         }
     }
@@ -1128,10 +1160,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
 
     /// The current project — where new captures go — set by the user (nil = none: Unassigned).
     func useProject(_ id: String?) {
-        Task { @MainActor in
-            do { try await ProjectStore.shared.use(id) } catch { appDelegate?.toast(T("main.project.use_failed")) }
-            AppEnvironment.island?.projectChanged()
-        }
+        // a project whose folder is gone asks where it is first (MissingFolder.use)
+        MissingFolder.use(id, via: "main_window")
     }
 
     // MARK: handing off (K5 in Blurt, K6 to your own agent)
@@ -1321,7 +1351,8 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     func handOffActions(into m: NSMenu, items: [ItemRow]?) {
         let n = items?.count ?? 1
         let one = items.map { $0.count == 1 } ?? true
-        _ = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), "paperplane", key: "\r")
+        let hand = add(m, n > 1 ? TP("main.menu.start_session_n", n) : T("main.menu.start_session"), #selector(mHandOff), key: "\r")
+        hand.image = Look.target("handed_off")      // the state it leads to, as the ring's menu draws it
         if items == nil || (one && items.flatMap { $0.first }.flatMap(sessionJob) != nil) {
             _ = add(m, T("main.menu.open_session"), #selector(mOpenSession), "apple.terminal")
         }
@@ -1587,6 +1618,9 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         case #selector(mSort(_:)):
             item.state = item.representedObject as? String == model.sort ? .on : .off
             return model.scope != .dictation
+        case #selector(mSortDirection(_:)):
+            item.state = item.representedObject as? Bool == model.ascending ? .on : .off
+            return model.scope != .dictation
         case #selector(mClearFilters):
             return model.filtered
         case #selector(mEnrich):
@@ -1602,7 +1636,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: WebHostActions
 
     func reveal(file: URL) { NSWorkspace.shared.activateFileViewerSelecting([file]) }
-    func quickLook(files: [URL]) { list.toggleQuickLook(files) }
+    /// The detail page's eye on one picture: the item's other pictures come along (←/→), starting at that one.
+    func quickLook(files: [URL]) {
+        let all = detail.currentItem.map(ItemListController.frameURLs) ?? []
+        if files.count == 1, let i = all.firstIndex(where: { $0.standardizedFileURL == files[0].standardizedFileURL }) {
+            list.toggleQuickLook(all, start: i)
+        } else {
+            list.toggleQuickLook(files)
+        }
+    }
     func webWrote() { detail.currentItem.map { Scripts.indexUpdate([$0.fileURL]) } }
     /// ⌘Z took back a step the detail page made on another item than the one selected: show that one, like the
     /// list's own undo does.
@@ -1693,21 +1735,20 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     // MARK: toolbar
 
     static let recordID = NSToolbarItem.Identifier("record"), snapID = NSToolbarItem.Identifier("snap")
-    static let filterID = NSToolbarItem.Identifier("filter"), titleID = NSToolbarItem.Identifier("title")
-    static let searchID = NSToolbarItem.Identifier("search")
+    static let titleID = NSToolbarItem.Identifier("title")
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.toolbarItems(dictation: false) }
 
-    /// The items' toolbar: Record and Snap (the capture pair), Filter and search; the place's name is the list's
-    /// heading. Moving and handing off act on the selection, so they live with it (the detail, the Item and context
-    /// menus, M / ⌘↩, ⌘K) — not twice on screen. The Dictation page has its own: its title and search (its header
-    /// links to Dictation Settings).
+    /// The items' toolbar: Record and Snap (the capture pair, the window's own actions); the place's name, its order,
+    /// Filter and search are the list's (ListHeading), so they sit on the list, not over the detail. Moving and handing
+    /// off act on the selection, so they live with it (the detail, the Item and context menus, M / ⌘↩, ⌘K) — not twice
+    /// on screen. The Dictation page has its own: its title (its history's search is on its list).
     static func toolbarItems(dictation: Bool) -> [NSToolbarItem.Identifier] {
-        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, titleID, .flexibleSpace, searchID]
-                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID, .space, filterID, searchID]
+        dictation ? [.toggleSidebar, .sidebarTrackingSeparator, titleID]
+                  : [.toggleSidebar, .sidebarTrackingSeparator, .flexibleSpace, recordID, snapID]
     }
 
-    /// Swap the toolbar's items for the page's (the search item and the sidebar button stay as they are).
+    /// Swap the toolbar's items for the page's (the sidebar button stays as it is).
     func syncToolbar(dictation: Bool) {
         guard let tb = window?.toolbar else { return }
         let want = Self.toolbarItems(dictation: dictation)
@@ -1730,29 +1771,11 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             i.isBordered = true
             return i
         }
-        func menuItem(_ label: String, _ sym: String, tip: String, tag: Int) -> NSToolbarItem {
-            let i = NSMenuToolbarItem(itemIdentifier: id)
-            i.label = label
-            i.paletteLabel = label
-            i.toolTip = tip
-            i.image = Look.symbol(sym, label, size: 15)
-            let m = NSMenu()
-            m.delegate = self
-            m.identifier = .init("toolbar-\(tag)")
-            i.menu = m
-            i.showsIndicator = true
-            return i
-        }
         switch id {
         case Self.recordID:
             return button(T("main.action.record"), "record.circle", #selector(record), tip: T("main.toolbar.record.tip", hk(.toggleRecord)))
         case Self.snapID:
             return button(T("main.action.snap"), "camera.viewfinder", #selector(snap), tip: T("main.toolbar.snap.tip", hk(.snap)))
-        case Self.filterID:
-            let i = menuItem(T("main.toolbar.filter"), "line.3.horizontal.decrease.circle", tip: T("main.toolbar.filter.tip"), tag: 3)
-            (i as? NSMenuToolbarItem)?.showsIndicator = false
-            filterItem = i as? NSMenuToolbarItem
-            return i
         case Self.titleID:
             let i = NSToolbarItem(itemIdentifier: id)
             i.view = titleView
@@ -1761,38 +1784,33 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             i.isBordered = false
             i.visibilityPriority = .high
             return i
-        case Self.searchID:
-            let s = NSSearchToolbarItem(itemIdentifier: id)
-            s.searchField.placeholderString = T("main.search.placeholder")
-            s.searchField.delegate = self
-            s.searchField.sendsSearchStringImmediately = true
-            s.searchField.sendsWholeSearchString = false
-            s.searchField.setAccessibilityLabel(T("main.search.label"))
-            s.searchField.toolTip = T("main.search.tip")
-            s.preferredWidthForSearchField = 220
-            // a fixed field (Mail's, Linear's), not one that takes a third of the window
-            let cap = s.searchField.widthAnchor.constraint(lessThanOrEqualToConstant: 240)
-            cap.priority = .required
-            cap.isActive = true
-            searchItem = s
-            return s
         default: return nil
         }
     }
 
-    /// The toolbar's Filter menu, built when it opens (the counts are the place's, now).
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        menu.removeAllItems()
-        switch menu.identifier?.rawValue {
-        case "toolbar-3":
-            for it in filterMenu().items { it.menu?.removeItem(it); menu.addItem(it) }
-        default: break
-        }
+    /// A menu of the list's heading, under the button that opens it (left edges aligned, as a pull-down's).
+    func popUp(_ menu: NSMenu?, under v: NSView) {
+        guard let m = menu else { return }
+        m.popUp(positioning: nil, at: NSPoint(x: 0, y: v.isFlipped ? v.bounds.maxY + 4 : -4), in: v)
     }
 
-    // MARK: the filter (toolbar Filter, View ▸ Filter, the filter line above the list)
+    // MARK: the order (the heading's sort button, View ▸ Sort By)
 
-    private(set) var filterItem: NSMenuToolbarItem?
+    /// The sort keys, the current one checked, then the direction: one menu on the heading's button and in View ▸ Sort By.
+    func sortMenu() -> NSMenu {
+        let m = NSMenu()
+        m.autoenablesItems = false
+        m.addItem(menuHeader(T("menu.sort_by")))
+        for (key, title) in Self.sortKeys {
+            add(m, title, #selector(mSort(_:)), obj: key).state = model.sort == key ? .on : .off
+        }
+        m.addItem(.separator())
+        add(m, T("main.sort.ascending"), #selector(mSortDirection(_:)), obj: true).state = model.ascending ? .on : .off
+        add(m, T("main.sort.descending"), #selector(mSortDirection(_:)), obj: false).state = model.ascending ? .off : .on
+        return m
+    }
+
+    // MARK: the filter (the heading's Filter button, View ▸ Filter, the filter line above the list)
 
     /// Kinds (any number; none = all, each with its count here) and, where the place has one, the State filter; then
     /// Clear Filters. The same menu everywhere it opens.
@@ -1826,30 +1844,22 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             for s in Lifecycle.live { st(Look.stateName(s), s, ring: s) }
             st(Look.stateName("discarded"), "discarded", ring: "discarded")
         }
-        // the order lives here too (and in View ▸ Sort By): the list has no column header to click
-        m.addItem(.separator())
-        let sort = NSMenu()
-        for (key, title) in Self.sortKeys {
-            let i = add(sort, title, #selector(mSort(_:)), obj: key)
-            i.state = model.sort == key ? .on : .off
-        }
-        m.addItem(submenu(T("menu.sort_by"), "arrow.up.arrow.down", sort))
         m.addItem(.separator())
         let clear = add(m, T("main.empty.clear_filters"), #selector(mClearKindAndState))
         clear.isEnabled = !model.kinds.isEmpty || model.shownState != nil
         return m
     }
 
-    /// The Filter menu at the top of the list (tests and View ▸ Filter…; the toolbar button opens its own).
+    /// The Filter menu under the heading's Filter button, as a click on it opens it (tests and View ▸ Filter…).
     @objc func showFilterMenu() {
-        // under the toolbar's Filter button (it sits just before the search field), as a click on it opens it
-        if let f = searchItem?.searchField, let sv = f.superview, f.window != nil {
-            filterMenu().popUp(positioning: nil, at: NSPoint(x: f.frame.minX - 44, y: sv.isFlipped ? f.frame.maxY + 6 : f.frame.minY - 6), in: sv)
-            return
-        }
+        let f = list.heading.filter
+        if f.window != nil, !f.isHiddenOrHasHiddenAncestor { return popUp(filterMenu(), under: f) }
         let v = list.view
         filterMenu().popUp(positioning: nil, at: NSPoint(x: 16, y: v.isFlipped ? 8 : v.bounds.maxY - 8), in: v)
     }
+
+    /// The sort menu under the heading's sort button (tests).
+    func showSortMenu() { popUp(sortMenu(), under: list.heading.sort) }
 
     @objc func mFilterKind(_ i: NSMenuItem) {
         guard let k = i.representedObject as? String else { return }
@@ -1863,44 +1873,54 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
     }
     @objc func mClearKindAndState() { list.clearKindAndState() }
 
-    /// The Filter button says when a filter is on: the filled glyph in brand ink.
-    func syncFilterItem() {
-        guard let i = filterItem else { return }
-        let on = !model.kinds.isEmpty || model.shownState != nil
-        i.image = Look.symbol(on ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", T("main.toolbar.filter"), size: 15)
-        i.toolTip = on ? (FilterBar.describe(model) ?? T("main.toolbar.filter.tip")) : T("main.toolbar.filter.tip")
+    /// The heading's controls follow the list: the order on the sort button, the Filter button's state and count, and
+    /// the search row only where there is something to search (or a search or filter is what emptied the list).
+    func syncListControls() {
+        let h = list.heading
+        let key = Self.sortKeys.first { $0.0 == model.sort }?.1 ?? T("main.sort.updated")
+        let dir = T(model.ascending ? "main.sort.ascending" : "main.sort.descending")
+        h.set(sortTitle: key, ascending: model.ascending, label: T("main.sort.label", key, dir))
+        let n = model.kinds.count + (model.shownState != nil ? 1 : 0)
+        h.set(filters: n, tip: n > 0 ? (FilterBar.describe(model) ?? T("main.toolbar.filter.tip")) : T("main.toolbar.filter.tip"))
+        let something = !model.nothingListed && !model.placeIsEmpty
+        h.sort.isHidden = !something
+        h.filter.isHidden = !something
+        h.showSearch(something)
     }
 
     func controlTextDidChange(_ n: Notification) {
-        guard let f = n.object as? NSSearchField, f === searchItem?.searchField else { return }
-        if model.scope == .dictation { return setDictationQuery(f.stringValue) }
-        model.text = f.stringValue
+        guard let f = n.object as? NSSearchField else { return }
+        if let p = page, f === p.search { return setDictationQuery(f.stringValue) }
+        guard f === list.heading.search else { return }
+        searchItems(f.stringValue)
+    }
+
+    /// The items' search, as typed: the place's rows that match, the first selected if nothing still is.
+    func searchItems(_ q: String) {
+        model.text = q
         model.reload()
         if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
         list.scrollToStart()
     }
 
+    /// In a list's search field: ↓ or ↩ go into the results (the first one selected if none is), Esc clears the search
+    /// and goes back to the list — Mail's and Finder's list search.
     func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
-        guard control === searchItem?.searchField else { return false }
-        if model.scope == .dictation {
-            if sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:))
-                || (sel == #selector(NSResponder.cancelOperation(_:)) && control.stringValue.isEmpty) {
-                dictation.model.selectFirstIfNone()
-                focusList()
-                return true
-            }
-            return false
-        }
-        if sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:)) {
-            window?.makeFirstResponder(list.table)
-            if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        let down = sel == #selector(NSResponder.moveDown(_:)) || sel == #selector(NSResponder.insertNewline(_:))
+        let esc = sel == #selector(NSResponder.cancelOperation(_:))
+        guard down || esc else { return false }
+        if let p = page, control === p.search {
+            if esc, !control.stringValue.isEmpty { control.stringValue = ""; setDictationQuery("") }
+            dictation.model.selectFirstIfNone()
+            focusList()
             return true
         }
-        if sel == #selector(NSResponder.cancelOperation(_:)) {
-            if control.stringValue.isEmpty { window?.makeFirstResponder(list.table); return true }
-            return false
-        }
-        return false
+        guard control === list.heading.search else { return false }
+        if esc, !control.stringValue.isEmpty { control.stringValue = ""; searchItems("") }
+        window?.makeFirstResponder(list.table)
+        if list.table.selectedRow < 0, model.rowCount > 0 { list.table.selectRowIndexes([0], byExtendingSelection: false) }
+        if let r = list.table.selectedRowIndexes.first { list.table.scrollRowToVisible(r) }
+        return true
     }
 
     // MARK: index watcher (FSEvents → index.py update)
@@ -1975,7 +1995,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
         model.text = ""          // like Finder and Mail: a new window starts without the last search
         model.sort = s.flatMap { ["status", "work"].contains($0.sort) ? "state" : $0.sort } ?? "updated"
         model.ascending = s?.ascending ?? false
-        searchItem?.searchField.stringValue = model.text
+        list.heading.search.stringValue = model.text
         list.table.sortDescriptors = [NSSortDescriptor(key: model.sort, ascending: model.ascending)]
         model.reloadAll()
         sidebar.select(model.scope)
@@ -1987,11 +2007,15 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, NSToolba
             let sv = self.split.splitView
             if s?.sidebarCollapsed == true { self.split.splitViewItems[0].isCollapsed = true }
             else if let sb = s?.sidebar { sv.setPosition(CGFloat(sb), ofDividerAt: 0) }
-            if let d = s?.detail, d > 0 { sv.setPosition(sv.bounds.width - CGFloat(d) - sv.dividerThickness, ofDividerAt: 1) }
+            // an empty place folded the detail away (fitDetailToPlace): setting its divider would bring back a blank
+            // column beside the empty state (dogfood: the first launch's empty Inbox kept one, a new project didn't)
+            if self.split.splitViewItems[2].isCollapsed {
+            } else if let d = s?.detail, d > 0 { sv.setPosition(sv.bounds.width - CGFloat(d) - sv.dividerThickness, ofDividerAt: 1) }
             else {
                 let side = self.split.splitViewItems[0].isCollapsed ? 0 : self.sidebar.view.frame.width
                 sv.setPosition(min(sv.bounds.width - 460, side + 560), ofDividerAt: 1)
             }
+            self.fitDetailToPlace()
         }
     }
 

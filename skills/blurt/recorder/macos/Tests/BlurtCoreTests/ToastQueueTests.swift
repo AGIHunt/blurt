@@ -167,7 +167,7 @@ final class ToastQueueTests: XCTestCase {
 
     func testAQuestionComesBackUntilAnswered() {
         let q = Q()
-        q.post(entry("Record the last area?", question: true), now: 0)
+        q.post(entry("Record the last area?", seconds: .infinity, question: true), now: 0)
         run(q, from: 0, to: 30)
         XCTAssertEqual(q.current?.text, "Record the last area?", "a question stays until it is answered")
         q.post(entry("Copied"), now: 30)
@@ -177,6 +177,47 @@ final class ToastQueueTests: XCTestCase {
         XCTAssertEqual(q.current?.text, "Record the last area?", "a question never goes stale")
         q.dismissCurrent()
         XCTAssertNil(q.current)
+    }
+
+    /// The dogfood's cloud-polish reminder (two answers, 10 s) sat on the notch for minutes: two answers are not
+    /// "waits forever". It goes by itself after its seconds, as its "no" (onGone), and a newer reply doesn't bring it
+    /// back after that.
+    func testATimedQuestionGoesByItself() {
+        let q = Q()
+        var gone: [String] = []
+        q.onGone = { gone.append($0.text) }
+        q.post(entry("Turn on cloud polish?", seconds: 10, actionable: true, question: true), now: 0)
+        XCTAssertFalse(q.current!.sticky)
+        run(q, from: 0, to: 9.9)
+        XCTAssertEqual(q.current?.text, "Turn on cloud polish?")
+        run(q, from: 9.9, to: 10.2)
+        XCTAssertNil(q.current, "gone after its 10 s")
+        XCTAssertEqual(gone, ["Turn on cloud polish?"], "going unanswered is reported once (its no)")
+        q.post(entry("Copied"), now: 11)
+        run(q, from: 11, to: 30)
+        XCTAssertNil(q.current)
+        XCTAssertTrue(q.waiting.isEmpty, "it never comes back")
+    }
+
+    /// Pushed out by a newer reply, a timed question comes back only for the time it had left, and a timed question
+    /// waiting behind something goes stale like an Undo.
+    func testATimedQuestionPushedOutComesBackForItsTimeLeft() {
+        let q = Q()
+        q.post(entry("Always make lists in Safari?", seconds: 12, actionable: true, question: true), now: 0)
+        run(q, from: 0, to: 2)
+        q.post(entry("Reformatted as Verbatim"), now: 2)
+        run(q, from: 2, to: 3.2)
+        XCTAssertEqual(q.current?.text, "Reformatted as Verbatim")
+        XCTAssertEqual(q.waiting.map(\.text), ["Always make lists in Safari?"])
+        run(q, from: 3.2, to: 8.3)
+        XCTAssertEqual(q.current?.text, "Always make lists in Safari?")
+        run(q, from: 8.3, to: 30)
+        XCTAssertNil(q.current, "it had about 10 s left, not forever")
+
+        let q2 = Q()
+        q2.post(entry("Always make lists in Safari?", seconds: 12, actionable: true, question: true), now: 0, canShowNow: false)
+        run(q2, from: 0, to: Q.staleReply + 0.5, canShow: { _ in false })
+        XCTAssertTrue(q2.waiting.isEmpty, "a timed question that never got the island goes stale")
     }
 
     /// A reply that couldn't go up for a while (the island was open) describes the past by then: dropped.

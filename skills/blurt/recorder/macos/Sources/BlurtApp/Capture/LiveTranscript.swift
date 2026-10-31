@@ -25,8 +25,8 @@
 //    it fades it stays the island's lower half: the width its words were laid out at, on the island's bottom edge,
 //    never re-placed below cards that came down meanwhile; under an open island that closes (a voice note finishing:
 //    its card has the words) it goes at once (IslandLayout.livePanelGoes) rather than narrowing and floating loose.
-//  • It never takes the focus or a click (a non-activating panel that ignores the mouse), is never captured
-//    (sharingType none, like the other chrome; excluded from Blurt's own recordings by process), and stays clear of
+//  • It never takes the focus or a click (a non-activating panel that ignores the mouse), is never in
+//    Blurt's own recordings (left out by window, like the other chrome; other tools can capture it: chromeSharing), and stays clear of
 //    what you type into: when dictation's caret (Accessibility, read once at the start, read-only) is under where
 //    the panel would be, it sits at the bottom of the screen instead, like subtitles.
 //  • Nothing here changes what is typed or filed, or when: it only shows the pieces that were transcribed anyway.

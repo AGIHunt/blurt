@@ -54,7 +54,10 @@
 //    top-left corner; its note, under the whole row (never over a neighbour), has the card's words (all of them) and
 //    the play button of a spoken one (mint, `brand.on` glyph), then what it is and when ("Snap · 19:03"), then how to
 //    use it until a card has been used once (record.cards_used) — or the keys as keycaps (KeyHint), with the keyboard
-//    on the row · click = copy (rich content, see below), once the
+//    on the row; then, on the same sheet, the card's picture larger (a shot; at most 360 pt wide and 40 % of the
+//    visible screen under the row) so pictures that look alike can be told apart. The note comes after a 0.3 s rest,
+//    then switches at once along the row, and goes the moment the pointer leaves the row or a card is dragged (BlurtCore
+//    CardPeek, CardPeekLayout); the picture never takes the pointer · click = copy (rich content, see below), once the
 //    double-click interval has passed (DeferredClick): double-click = edit the note, and never copies first · ⌘-click =
 //    add the card to a selection that is copied as one (a neutral ring and an accent check in its corner, "✓ 2
 //    selected · Copied" under the row; a plain click or the cards going up ends it) — and moved as one: drag any card of it onto a project in the island, or Move N Cards To ▸ in its
@@ -149,7 +152,7 @@
 //    into the island, which swallows it with a small bump.
 //  • 12 pt apart, straight (the row itself: above).
 //  • Reduce Motion: 0.2 s fades, no sway.
-// Window: a non-activating panel on all spaces, never captured, mouse-transparent except over a card; it lives on the
+// Window: a non-activating panel on all spaces, never in Blurt's own captures, mouse-transparent except over a card; it lives on the
 // island's screen. The display link runs only while something moves, and stops before the panel is ordered out (an
 // off-screen window's link never fires again: the idle polls that bring the cards back on hover would stop with it).
 
@@ -320,7 +323,10 @@ final class HangingCards: NSObject {
     // flat, as the site (BA-8, v1.0.4): the 0.5 pt edge carries the card; the shadow only lifts it off the page
     static let shadowLight: Float = 0.1, shadowDark: Float = 0.3, shadowLift: Float = 0.06
     static let voiceMicName = "voiceMic"
-    static let panelH: CGFloat = 640
+    /// The panel spans the top of the screen down to here: the cards, their hover note and its picture (up to half the
+    /// screen's height under the row: CardPeekLayout) — the whole screen, as the pointer only reaches the panel over
+    /// what it draws (`interactive`).
+    static func panelH(_ s: NSScreen) -> CGFloat { max(640, s.frame.height) }
 
     /// A dynamic brand colour resolved for the cards' appearance (they follow the app's light / dark — isDarkMode —
     /// not the drawing appearance of whatever happens to be current when a layer is styled). Increase Contrast still
@@ -356,6 +362,16 @@ final class HangingCards: NSObject {
     /// The row as laid out last (CardRow.layout): which cards hang, newest first, and where the tile is.
     private var row = CardRow.Layout.empty
     private let tip = CALayer(), tipText = CATextLayer(), tipPlay = CALayer()
+    /// The hover note's picture (BlurtCore CardPeek): the hovered card's picture, larger, under its words — one
+    /// surface. `peek` says when it shows; `tipNoteH` is the words' part of the surface (the part that takes the
+    /// pointer: the picture never does); `tipShownAt` when the surface last came in (its entrance).
+    private let tipPic = CALayer()
+    private var peek = CardPeek<ObjectIdentifier>()
+    private var tipNoteH: CGFloat = 0
+    private var tipShownAt: CFTimeInterval = 0
+    /// The pictures decoded for the preview (sharper than the card's thumbnail), by card, with the file they came from.
+    private var peekImages: [ObjectIdentifier: (path: String, image: CGImage)] = [:]
+    private var peekLoading = Set<String>()
     /// The hover note's quiet lines: what the card is and when ("Snap · 19:03"), then how to use it (until the
     /// user has used a card once) or, with the keyboard on the row, its keys.
     private let tipMeta = CATextLayer(), tipHint = CATextLayer()
@@ -396,7 +412,7 @@ final class HangingCards: NSObject {
     // MARK: window
 
     private func ensurePanel(on s: NSScreen) {
-        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - HangingCards.panelH, width: s.frame.width, height: HangingCards.panelH)
+        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - HangingCards.panelH(s), width: s.frame.width, height: HangingCards.panelH(s))
         if panel == nil {
             let p = CardsPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
             p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
@@ -505,6 +521,12 @@ final class HangingCards: NSObject {
         tip.addSublayer(tipText)
         tipPlay.cornerRadius = 11
         tip.addSublayer(tipPlay)
+        tipPic.cornerRadius = 6
+        tipPic.masksToBounds = true
+        tipPic.borderWidth = 0.5
+        tipPic.contentsGravity = .resize            // (sized to the picture's own aspect: CardPeekLayout.size)
+        tipPic.isHidden = true
+        tip.addSublayer(tipPic)
         stage.addSublayer(tip)
         restyle()
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(themeChanged),
@@ -640,11 +662,20 @@ final class HangingCards: NSObject {
             if let mic = c.card.sublayers?.first(where: { $0.name == HangingCards.voiceMicName }) {
                 mic.contents = BlurtIcon.mic.cgImage(size: 11, scale: mic.contentsScale, color: HangingCards.cardColor(BrandColor.ink, dark: dark))
             }
+            // its type, when the note gave it one (CardKindMark)
+            CardKindMark.voice(on: c.card, mic: c.card.sublayers?.first { $0.name == HangingCards.voiceMicName }, shot: s, dark: dark)
         } else {
             // the card's own opaque surface, as the "+N" tile and the overview tiles: a picture shown whole (a toolbar,
             // a sidebar) is letterboxed on it — a translucent grey picked up the wallpaper, half blue and half grey
             c.card.backgroundColor = HangingCards.surface(dark: dark).cgColor
-            c.face.contents = s.markedThumb ?? s.thumb
+            // a picture that fills is cut from its top-left corner, as its overview tile is (OverviewTile.topLeading):
+            // the card and its tile show the same slice (the centre crop showed "kout" where the tile said "heckout")
+            if let t = s.markedThumb ?? s.thumb, HangingCards.shotFit(s).fills, c.face.bounds.width > 0, c.face.bounds.height > 0 {
+                c.face.contents = OverviewTile.topLeading(t, box: c.face.bounds.size)
+                c.face.contentsGravity = .resize
+            } else {
+                c.face.contents = s.markedThumb ?? s.thumb
+            }
             layoutCaption(c, note, marks: HangingCards.marks(s))
         }
         c.card.shadowOpacity = dark ? HangingCards.shadowDark : HangingCards.shadowLight
@@ -670,7 +701,8 @@ final class HangingCards: NSObject {
 
     /// What a card is marked with: its words were spoken (when they are here, or the audio waits for a retry), ink.
     static func marks(_ s: Shot) -> [BlurtIcon] {
-        (s.kind == .shot && s.note.marksMic ? [.mic] : []) + (s.marked != nil ? [.ink] : [])
+        (s.kind == .shot ? CardKindMark.icon(s).map { [$0] } ?? [] : []) + (s.kind == .shot && s.note.marksMic ? [.mic] : [])
+            + (s.marked != nil ? [.ink] : [])
     }
 
     /// "Transcribing…" / "Couldn't transcribe" / "No words recognized" (nil: nothing pending).
@@ -1030,8 +1062,9 @@ final class HangingCards: NSObject {
     func refresh(quiet: Bool = false) {
         let want = snapper.cards
         // a capture that came with a project hangs only until it is pulled into the island (pullIn removes it)
+        // (a take's snap, filed with the take's project, leaves with the take)
         for c in cards where !want.contains(where: { $0 === c.shot }) && dragging !== c
-            && !(c.shot.assignedBy == "capture" && !c.shot.deleted) { remove(c, fall: false) }
+            && !(c.shot.assignedBy == "capture" && !c.shot.deleted && c.shot.batch?.inRecording != true) { remove(c, fall: false) }
         for s in want where !cards.contains(where: { $0.shot === s }) {
             if panel == nil { ensurePanel(on: island.screen ?? NSScreen.main ?? NSScreen.screens[0]) }
             let c = makeCard(s, x: anchor.x)
@@ -1456,6 +1489,7 @@ final class HangingCards: NSObject {
         hoverCard?.hovered = false
         hoverCard = nil
         tip.isHidden = true
+        peek = CardPeek()
         panel?.ignoresMouseEvents = true
         emit(["event": "cards_retracted", "count": cards.count, "wall": Date().timeIntervalSince1970])
         wake()
@@ -1465,7 +1499,7 @@ final class HangingCards: NSObject {
     var isShown: Bool { shown }
 
     /// Where a panel that opens under the cards starts (global Cocoa y, its top edge): below the strip they hang in,
-    /// whether they are down now or not (BlurtCore CardRow.panelTop) — Recently Dragged Out and the overview, so a
+    /// whether they are down now or not (BlurtCore CardRow.panelTop) — the Cards panel and its History, so a
     /// card hung back (Put Back, Undo) or brought down by the pointer never covers their title or rows; right under the
     /// island while no card hangs.
     var panelTop: CGFloat { panelTop(cardsHang: count > 0) }
@@ -1590,7 +1624,8 @@ final class HangingCards: NSObject {
         CATransaction.commit()
         if HangingCards.trace { traceFrame(now) }
         if !leaving.isEmpty { moving = true }
-        if tipNeed != nil, tip.isHidden, now - hoverSince < 0.6 { moving = true }
+        // the hover note waiting out its rest (CardPeek), then its entrance
+        if peek.waiting(now: now) || (!tip.isHidden && now - tipShownAt < CardPeekLayout.entranceSeconds + 0.05) { moving = true }
         if !visible || (!moving && !shown) {
             // reeled in: out of the way — and the display link stops first (an off-screen window's link never fires
             // again, so it would never settle into the idle polls that notice the pointer on the island)
@@ -1774,7 +1809,7 @@ final class HangingCards: NSObject {
             out.append(r.insetBy(dx: -margin, dy: -margin))
             if r.minY > isl.maxY { out.append(CGRect(x: r.minX, y: isl.maxY, width: r.width, height: r.minY - isl.maxY).insetBy(dx: -margin, dy: 0)) }
         }
-        if !tip.isHidden { out.append(tip.frame.insetBy(dx: -margin, dy: -margin)) }
+        if !tip.isHidden { out.append(tipNoteFrame.insetBy(dx: -margin, dy: -margin)) }
         return out
     }
 
@@ -1801,7 +1836,7 @@ final class HangingCards: NSObject {
             return
         }
         let over = testHover != nil || card(at: local) != nil || (stack.isHidden == false && stack.frame.insetBy(dx: -6, dy: -6).contains(local))
-            || (!tip.isHidden && tip.frame.insetBy(dx: -6, dy: -10).contains(local))
+            || (!tip.isHidden && tipNoteFrame.insetBy(dx: -6, dy: -10).contains(local))
         // anywhere in the region holds the island open too (the gap under it, a card's edge)
         pointerOver = over || inRegion
         // down on purpose: until the pointer has been on the cards and left them (and the island), or Esc — or, if it
@@ -1820,18 +1855,42 @@ final class HangingCards: NSObject {
         }
         // the pointer's card, else the keyboard's (it lifts and shows its note the same way)
         let hit = testHover ?? (dragging == nil ? card(at: local) : nil) ?? (down == nil ? focusCard : nil)
+        // the hover note's clock (CardPeek): a rest before it shows, then warm along the row; off the row (or a card
+        // being dragged) it is gone at once
+        let before = peek
+        if dragging != nil { peek.pointer(on: nil, onRow: false, now: now) } else {
+            let on = down == nil ? hit : hoverCard
+            peek.pointer(on: on.map(ObjectIdentifier.init), onRow: on != nil || down != nil || rowBand.contains(local), now: now)
+        }
+        if peek != before { wake() }
         if hit !== hoverCard && down == nil {
             hoverCard?.hovered = false
             hoverCard = hit; tipNeed = hit.flatMap(tipContent)
             hit?.hovered = true
             hoverSince = now
-            if hit == nil { tip.isHidden = true }
+            if peek.card == nil { tip.isHidden = true }
             layout()
         }
         // (never during a drag: the panel spans the top of the screen, and the apps under it must get the drop)
         let interactive = dragging == nil && (hit != nil || down != nil || onStack(local)
-            || (!tip.isHidden && tip.frame.insetBy(dx: -4, dy: -10).contains(local)))
+            || (!tip.isHidden && tipNoteFrame.insetBy(dx: -4, dy: -10).contains(local)))
         if p.ignoresMouseEvents == interactive { p.ignoresMouseEvents = !interactive }
+    }
+
+    /// The row's band for the hover note (CardPeek): the hanging cards and the gaps between them, as far as a card's
+    /// own hit area reaches (card(at:)) — not the "+N" tile, the island or the strip above.
+    private var rowBand: CGRect {
+        let rects = shownCards.filter { !$0.flying }.map { c in
+            CGRect(x: c.x.value - c.size.width / 2, y: c.grip.value - 8, width: c.size.width, height: c.size.height + 8).insetBy(dx: -5, dy: -4)
+        }
+        return rects.dropFirst().reduce(rects.first ?? .null) { $0.union($1) }
+    }
+
+    /// The words' part of the hover note: the part that takes the pointer (the picture under them never does).
+    private var tipNoteFrame: CGRect {
+        var f = tip.frame
+        if tipNoteH > 0 { f.size.height = min(f.height, tipNoteH) }
+        return f
     }
 
     private func onStack(_ p: NSPoint) -> Bool { !stack.isHidden && shown && stack.frame.insetBy(dx: -4, dy: -4).contains(p) }
@@ -1891,18 +1950,61 @@ final class HangingCards: NSObject {
         positionSelection()
         // (it steps aside while the card says "Copied" — that sits where the note would — and while a ⌘-click
         // selection has the line under the row)
-        let copying = (hoverCard?.copiedUntil ?? 0) > now
-        guard let c = hoverCard, !c.dragging, now - hoverSince > 0.35, !NoteBubble.shared.isOpen, !copying,
-              tipNeed != nil, picked.isEmpty else {
+        // which card: CardPeek's (a rest first, then warm along the row; the last one across a gap); hidden while any
+        // card is dragged
+        let id = peek.shown(now: now)
+        let c = id.flatMap { id in cards.first { ObjectIdentifier($0) == id } }
+        let copying = (c?.copiedUntil ?? 0) > now
+        guard let c, !c.dragging, dragging == nil, !NoteBubble.shared.isOpen, !copying, picked.isEmpty else {
             if !tip.isHidden { tip.isHidden = true }
             return
         }
-        if tip.isHidden || tipFor !== c || tipKeyed != (focus != nil) { buildTip(c) }
+        let coming = tip.isHidden                   // a cold start gets the entrance; a warm switch changes in place
+        if coming || tipFor !== c || tipKeyed != (focus != nil) { buildTip(c) }
+        if coming { tipShownAt = now }
         tip.isHidden = false
-        // under the whole row, never over a neighbour, centred under its card (kept on the screen)
-        let w = tip.bounds.width
+        // under the whole row, never over a neighbour, centred under its card (kept on the screen: CardPeekLayout)
+        tip.anchorPoint = CGPoint(x: 0.5, y: 0)     // its top edge: it grows down from under the row
         let bottom = rowBottom ?? c.grip.value + c.size.height
-        tip.position = CGPoint(x: min(max(c.x.value, w / 2 + 12), width - w / 2 - 12), y: bottom + 12 + tip.bounds.height / 2)
+        tip.position = CGPoint(x: CardPeekLayout.centreX(card: c.x.value, width: tip.bounds.width, screen: 0...width), y: bottom + 12)
+        let e = CardPeekLayout.entrance(elapsed: now - tipShownAt, reduceMotion: reduceMotion)
+        tip.opacity = Float(e.opacity)
+        tip.transform = e.scale == 1 ? CATransform3DIdentity : CATransform3DMakeScale(e.scale, e.scale, 1)
+    }
+
+    /// The picture for the hover note: the sharp one decoded for it once ready (marked up if it was), else the card's
+    /// thumbnail meanwhile; nil for a voice card.
+    private func peekImage(_ c: HangingCard, pixels: CGFloat) -> CGImage? {
+        let s = c.shot
+        guard s.kind == .shot else { return nil }
+        let key = ObjectIdentifier(c)
+        let url = [s.markedURL, s.url].compactMap { $0 }.first { FileManager.default.fileExists(atPath: $0.path) }
+        // (by the file and its date: a note edited with new ink rewrites the marked picture in place)
+        let stamp = url.map { u in u.path + "@" + String(((try? u.resourceValues(forKeys: [.contentModificationDateKey]))?
+            .contentModificationDate?.timeIntervalSince1970) ?? 0) }
+        if let st = stamp, let have = peekImages[key], have.path == st { return have.image }
+        if let u = url, let path = stamp, peekLoading.insert(path).inserted {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self, weak c] in
+                let img = CGImageSourceCreateWithURL(u as CFURL, nil).flatMap { src in
+                    CGImageSourceCreateThumbnailAtIndex(src, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                                                 kCGImageSourceCreateThumbnailWithTransform: true,
+                                                                 kCGImageSourceThumbnailMaxPixelSize: Int(pixels)] as CFDictionary)
+                }
+                DispatchQueue.main.async {
+                    self?.peekLoading.remove(path)
+                    guard let self, let c, let img else { return }
+                    self.peekImages = self.peekImages.filter { k, _ in self.cards.contains { ObjectIdentifier($0) == k } }
+                    self.peekImages[key] = (path, img)
+                    if self.tipFor === c, !self.tipPic.isHidden {
+                        CATransaction.begin()
+                        CATransaction.setDisableActions(true)
+                        self.tipPic.contents = img
+                        CATransaction.commit()
+                    }
+                }
+            }
+        }
+        return s.markedThumb ?? s.thumb
     }
 
     /// The lowest card edge of the row at rest (the hovered card's lift and scale not counted: the note doesn't jump).
@@ -1920,7 +2022,8 @@ final class HangingCards: NSObject {
     private func buildTip(_ c: HangingCard) {
         tipFor = c
         tipKeyed = focus != nil
-        let what = tipNeed ?? CardTip.Content(text: false, play: false)
+        let what = tipContent(c) ?? CardTip.Content(text: false, play: false)     // (the card under it may not be hovered: a gap)
+        tipNeed = what
         let dark = isDarkMode
         let ink = dark ? NSColor(white: 1, alpha: 0.92) : NSColor(white: 0.1, alpha: 1)
         let secondary = dark ? NSColor(white: 1, alpha: 0.6) : NSColor(white: 0, alpha: 0.55)
@@ -1936,12 +2039,29 @@ final class HangingCards: NSObject {
         let keysImg = keys ? KeyHint.image(KeyHint.cards, dark: dark) : nil
         let keysW = keys ? KeyHint.size(KeyHint.cards).width : 0
         let pad: CGFloat = 12
-        let w: CGFloat = min(320, max(text.isEmpty ? 0 : 260, width(meta, mf), hint.map { width($0, hf) } ?? 0, keysW, 46) + pad * 2)
+        let w0: CGFloat = min(320, max(text.isEmpty ? 0 : 260, width(meta, mf), hint.map { width($0, hf) } ?? 0, keysW, 46) + pad * 2)
         let attr = NSAttributedString(string: text, attributes: [.font: tf, .foregroundColor: ink])
         // at most 6 whole lines: a height between lines left a blank band above the play button once the text was cut
         let lineH = ceil(NSLayoutManager().defaultLineHeight(for: tf))
-        let measured = ceil(attr.boundingRect(with: NSSize(width: w - pad * 2, height: 400), options: [.usesLineFragmentOrigin]).height)
-        let th = text.isEmpty ? 0 : min(measured, 6 * lineH) + 2
+        func textH(_ w: CGFloat) -> CGFloat {
+            let measured = ceil(attr.boundingRect(with: NSSize(width: w - pad * 2, height: 400), options: [.usesLineFragmentOrigin]).height)
+            return text.isEmpty ? 0 : min(measured, 6 * lineH) + 2
+        }
+        // the picture under the words (CardPeekLayout): its own size, at most half the visible screen's width and
+        // height, and what the screen has left under the words; none for a voice card
+        let noteH0 = 10 + textH(w0) + (text.isEmpty ? 0 : 4) + (what.play ? 28 : 0) + (text.isEmpty ? 17 : 15)
+            + (hint != nil ? 17 : keys ? 7 + KeyHint.capH : 0) + 10
+        var pic: CGSize?
+        if c.shot.kind == .shot, let p = panel, let scr = screen {
+            let s = c.shot
+            let px = s.pixelSize.width > 0 ? s.pixelSize : (s.markedThumb ?? s.thumb).map { CGSize(width: $0.width, height: $0.height) } ?? .zero
+            let top = (rowBottom ?? c.grip.value + c.size.height) + 12
+            let room = min(p.frame.height, p.frame.maxY - scr.visibleFrame.minY) - top - noteH0 - 12 - 12
+            pic = CardPeekLayout.size(picture: CGSize(width: px.width / max(s.scale, 1), height: px.height / max(s.scale, 1)),
+                                      screen: scr.visibleFrame.size, room: room)
+        }
+        let w = max(w0, pic.map { $0.width + pad * 2 } ?? 0)
+        let th = textH(w)
         var y: CGFloat = 10
         tipText.frame = CGRect(x: pad, y: y, width: w - pad * 2, height: th)
         setText(tipText, text, font: tf, color: ink)
@@ -1973,9 +2093,22 @@ final class HangingCards: NSObject {
             tipKeys.frame = CGRect(x: pad, y: y + 7, width: keysW, height: KeyHint.capH)
             y += 7 + KeyHint.capH
         }
-        tip.bounds = CGRect(x: 0, y: 0, width: w, height: y + 10)
+        y += 10
+        tipNoteH = y
+        // then the picture, on the same surface: the words' column, centred when it is narrower than the words
+        tipPic.isHidden = pic == nil
+        if let pic {
+            let scale = screen?.backingScaleFactor ?? 2
+            tipPic.contents = peekImage(c, pixels: ceil(max(pic.width, pic.height) * scale))
+            tipPic.borderColor = HangingCards.hairline(dark: dark).cgColor
+            tipPic.backgroundColor = HangingCards.surface(dark: dark).cgColor
+            tipPic.frame = CGRect(x: ((w - pic.width) / 2).rounded(), y: y, width: pic.width, height: pic.height)
+            y += pic.height + pad
+        }
+        tip.bounds = CGRect(x: 0, y: 0, width: w, height: y)
         HangingCards.shadowAlongEdge(tip)
-        emit(["event": "card_tip", "n": c.shot.n, "text": what.text, "play": what.play, "width": Double(w), "hint": hint ?? NSNull(), "keys": keys])
+        emit(["event": "card_tip", "n": c.shot.n, "text": what.text, "play": what.play, "width": Double(w), "hint": hint ?? NSNull(), "keys": keys,
+              "picture": pic.map { [Double($0.width), Double($0.height)] } ?? NSNull()])
     }
 
     // MARK: the ⌘-click selection's line
@@ -2225,6 +2358,15 @@ final class HangingCards: NSObject {
         m.addItem(ClosureMenuItem(Loc.t("capture.card.edit_note", table: "Capture")) { NoteBubble.shared.begin(s, mode: .edit) })
         m.addItem(ClosureMenuItem(Loc.t("capture.card.reveal", table: "Capture")) { if let u = s.bestURL { NSWorkspace.shared.activateFileViewerSelecting([u]) } })
         m.addItem(.separator())
+        // a snap taken while recording goes with the recording (its organizing run makes its item): no Move To / Organize
+        if s.batch?.inRecording == true {
+            let i = NSMenuItem(title: Loc.t("capture.card.in_take", table: "Capture"), action: nil, keyEquivalent: "")
+            i.isEnabled = false
+            m.addItem(i)
+            m.addItem(.separator())
+            m.addItem(ClosureMenuItem(Loc.t("capture.card.delete", table: "Capture")) { snapper.delete(s) })
+            return m
+        }
         let these = withSelection(s)
         let move = NSMenuItem(title: these.count > 1 ? Loc.plural("capture.card.move_n", table: "Capture", count: these.count)
                                                      : Loc.t("capture.card.move_to", table: "Capture"), action: nil, keyEquivalent: "")
@@ -2233,9 +2375,7 @@ final class HangingCards: NSObject {
             // a folder that is gone: shown so; choosing it keeps the cards and offers Locate… (Snapper.assign)
             let gone = !proj.exists
             let i = ClosureMenuItem(proj.name) { snapper.assign(these, to: proj.id) }
-            i.image = gone ? NSImage(systemSymbolName: "questionmark.folder", accessibilityDescription: nil)
-                           : NSImage(systemSymbolName: "folder.fill", accessibilityDescription: nil)?
-                                 .withSymbolConfiguration(.init(paletteColors: [ProjectLook.color(proj)]))
+            i.image = IslandGlyph.place(proj, size: 16)
             if gone {
                 i.toolTip = Loc.t("capture.drawer.missing_sub", table: "Capture")
                 i.setAccessibilityLabel(proj.name + ", " + T("main.sidebar.missing"))
@@ -2243,7 +2383,9 @@ final class HangingCards: NSObject {
             sub.addItem(i)
         }
         if !ProjectStore.shared.projects.isEmpty { sub.addItem(.separator()) }
-        sub.addItem(ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(these, to: "inbox") })
+        let un = ClosureMenuItem(Loc.t("project.inbox")) { snapper.assign(these, to: "inbox") }
+        un.image = IslandGlyph.place(nil, size: 16)
+        sub.addItem(un)
         move.submenu = sub
         m.addItem(move)
         m.addItem(ClosureMenuItem(these.count > 1 ? Loc.plural("capture.card.organize_n", table: "Capture", count: these.count)
@@ -2322,7 +2464,8 @@ final class HangingCards: NSObject {
         }
         emit(["event": "cards_row", "shown": shownCards.map(\.shot.n), "more": row.more, "esc_held": escHeld, "sticky": sticky, "down": shown, "focus": focus ?? -1,
               "keyboard": keyboard, "tip": tip.isHidden ? NSNull() : ["for": tipFor?.shot.n ?? -1, "text": !tipText.frame.isEmpty,
-                                                                      "play": !tipPlay.isHidden, "frame": [tip.frame.minX, tip.frame.minY, tip.frame.width, tip.frame.height]],
+                                                                      "play": !tipPlay.isHidden, "frame": [tip.frame.minX, tip.frame.minY, tip.frame.width, tip.frame.height],
+                                                                      "picture": tipPic.isHidden ? NSNull() : [tipPic.frame.width, tipPic.frame.height]],
               "span": [row.span.lowerBound, row.span.upperBound], "tile_x": row.tileX ?? NSNull(),
               "threads": shownCards.map { Double(origin($0.x.target).x.rounded()) }, "lip": rodded,
               "geometry": rowGeometry()])

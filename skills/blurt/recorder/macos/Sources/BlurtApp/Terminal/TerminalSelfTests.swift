@@ -133,13 +133,15 @@ enum TerminalSelfTests {
             TerminalHost.shared.newSession(project: nil, items: [])
             out(["window": DispatchPanel.windowNumber ?? -1])
         case "review":
-            FinishPanel.show(job: arg, over: SessionsWindowController.shared.window)
+            // over the main window, as Review Changes… opens it there (a sheet on the Sessions window sat elsewhere)
+            FinishPanel.show(job: arg, over: (AppEnvironment.mainWindow as? NSWindowController)?.window
+                                              ?? SessionsWindowController.shared.window)
             out(["job": arg])
-        case "finish":                  // finish merge|pr|discard|keep|end-merge — what the finish panel's buttons do
+        case "finish":                  // finish merge|pr|discard|keep|end-review — what the finish panel's buttons do
             guard let m = FinishPanel.current else { out(["error": "no panel"]); return }
             Task { @MainActor in
-                if arg.hasPrefix("end-") { await m.endSessionThen(String(arg.dropFirst(4))) } else { await m.run(arg) }
-                out(["action": arg, "phase": "\(m.phase)", "pr": m.prURL ?? NSNull()])
+                if arg == "end-review" { await m.endSessionAndReview() } else { await m.run(arg) }
+                out(["action": arg, "phase": "\(m.phase)", "pr": m.prURL ?? NSNull(), "alive": m.alive])
             }
         case "dispatch-app":            // dispatch-app REF: as on a Mac without tmux (sessions.py --runner app → AppRunner)
             Task { @MainActor in

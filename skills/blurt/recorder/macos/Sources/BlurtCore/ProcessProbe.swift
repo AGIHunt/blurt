@@ -33,6 +33,29 @@ public enum ProcessProbe {
         return ticks * Double(tb.numer) / Double(max(1, tb.denom)) / 1_000_000_000
     }
 
+    /// Its parent's pid; nil when it can't be read.
+    public static func parent(_ pid: pid_t) -> pid_t? {
+        guard pid > 0 else { return nil }
+        var info = proc_bsdinfo()
+        let size = Int32(MemoryLayout<proc_bsdinfo>.size)
+        guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size else { return nil }
+        return pid_t(info.pbi_ppid)
+    }
+
+    /// The process and its ancestors, nearest first, each as its argv (one that can't be read is left out), up to
+    /// `max` of them, launchd never.
+    public static func ancestry(_ pid: pid_t, max: Int = 16) -> [[String]] {
+        var out: [[String]] = []
+        var p = pid
+        var seen = Set<pid_t>()
+        while p > 1, out.count < max, seen.insert(p).inserted {
+            if let a = arguments(p), !a.isEmpty { out.append(a) }
+            guard let up = parent(p) else { break }
+            p = up
+        }
+        return out
+    }
+
     /// Its argv (KERN_PROCARGS2); nil when it can't be read.
     public static func arguments(_ pid: pid_t) -> [String]? {
         guard pid > 0 else { return nil }

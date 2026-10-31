@@ -24,6 +24,9 @@ public enum SessionOutcome: Equatable {
         guard let a = j.agent else { return .ended }
         if let f = a.finishAction { return .finished(f) }
         if j.isActive, a.status != .exited, a.status != .error { return .live(a.status) }
+        // it quit at its own folder-trust question (sessions.py agent.stopped_at): it never started — start it again
+        // or take the items back, never "ended without reporting back"
+        if j.stoppedAtTrust, !a.hasChanges { return .failed(atStart: true) }
         if a.hasChanges { return .review }
         if a.status == .error || j.state == .failed {
             // it never got going: no hook or screen said it was up, or it died within its first moments (an agent
@@ -108,5 +111,16 @@ public enum JobFailures {
                     && (j.session.map { o.session?.path == $0.path } ?? (!j.items.isEmpty && Set(o.items) == Set(j.items)))
             }
         }
+    }
+}
+
+extension Job {
+    /// The agent quit at its folder-trust question, before any of its hooks spoke (sessions.py agent.stopped_at).
+    public var stoppedAtTrust: Bool { (raw["agent"] as? [String: Any])?["stopped_at"] as? String == "trust" }
+    /// The startup question its terminal shows now, while its hooks haven't spoken: "trust" (the folder) or "hooks"
+    /// (Codex's hook review) — sessions.py agent.waiting_hint. nil for any other question.
+    public var waitingHint: String? {
+        guard isActive, agent?.status == .waitingInput else { return nil }
+        return (raw["agent"] as? [String: Any])?["waiting_hint"] as? String
     }
 }

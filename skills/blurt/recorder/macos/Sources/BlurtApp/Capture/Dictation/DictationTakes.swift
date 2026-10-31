@@ -27,9 +27,13 @@ import Combine
 /// A take that stopped listening, on its way to the cursor.
 final class DictationTake {
     let id: String
-    /// the app in front at the key-down, and what "the same app" is compared by at paste time
+    /// the app in front at the key-down, and what "the same app" is compared by at paste time (the text goes into the
+    /// app in front then all the same, a double tap's Return after it; `appChanged` is logged and keeps a switch from
+    /// being remembered). `historyKey`: a retry
+    /// from the history, which has no app
     let front: NSRunningApplication?
     let frontKey: String
+    static let historyKey = "history"
     let started: Date
     let duration: Double
     let wav: URL
@@ -59,6 +63,8 @@ final class DictationTake {
     var failure: String?
     /// the mic's levels while it listened: "nothing heard" names a silent mic by them (NothingHeard)
     var levels: [Float] = []
+    /// what ⇧ / ⌘ switched while it listened: remembered for its app once the text is in (DictationRemembering)
+    var switches: DictationSwitches?
 
     init(id: String, front: NSRunningApplication?, frontKey: String, started: Date, duration: Double, wav: URL,
          context: DictationContext?, polishTried: Bool, keyUp: CFTimeInterval, style: DictationStyleRouter.Decision?,
@@ -121,7 +127,7 @@ extension Dictation {
             guard let self = self, let take = take, self.takes[take.id] === take, !take.cancelled, take.result == nil,
                   take.failure == nil else { return }
             emit(["event": "dictation_slow", "id": take.id, "stage": take.stage.rawValue])
-            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr",
+            self.toast(take.stage == .polishing ? "dictation.toast.slow.polish" : "dictation.toast.slow.asr", Dictation.cancelKey.label,
                        key: Dictation.slowToastKey, seconds: 60)
         }
     }
@@ -276,10 +282,13 @@ extension Dictation {
     /// "Recognition failed · recording kept" (or "too slow"), with Retry.
     private func toastFailed(_ id: String, _ f: DictationASRFailure) {
         MenuGlyph.shared.error()          // Peep shakes its head in the menu bar: a real failure (the audio is kept)
-        island.toast(Loc.t(f == .timedOut ? "dictation.toast.asr_slow" : "dictation.toast.asr_failed", table: "Dictation"),
-                     key: Dictation.failedToastKey(id), seconds: 8,
-                     actionTitle: Loc.t("dictation.toast.retry", table: "Dictation"), action: { [weak self] in
-            self?.retry(id, via: "island")
+        // the plain reason (DictationASRFailure.line): a cloud key that didn't work opens Settings — Retry would only
+        // fail the same way (the take stays in the history for a Retry once the key is fixed)
+        let line = f.line
+        island.toast(Loc.t(line.key, table: "Dictation"), key: Dictation.failedToastKey(id), seconds: 8,
+                     actionTitle: Loc.t(line.retryHelps ? "dictation.toast.retry" : "dictation.toast.asr_cloud_key.action", table: "Dictation"),
+                     action: { [weak self] in
+            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.cloud") }
         })
     }
 
@@ -298,18 +307,36 @@ extension Dictation {
                     SpeechPane.showDictationModels()
                 }
             }
-            if dl.queue.contains(j.id) {
-                let p = dl.progress(j.id) ?? (0, j.sizeMB)
+            let first = DictationModels.shared.firstModelJob
+            for q in [j, first].compactMap({ $0 }) where dl.queue.contains(q.id) {
+                let p = dl.progress(q.id) ?? (0, q.sizeMB)
                 return island.toast(Loc.t("dictation.toast.model_downloading", table: "Dictation", modelSize(p.done),
-                                          modelSize(max(p.total, j.sizeMB))), key: Dictation.modelToastKey, seconds: 6,
+                                          modelSize(max(p.total, q.sizeMB))), key: Dictation.modelToastKey, seconds: 6,
                                     actionTitle: Loc.t("dictation.toast.model_downloading.action", table: "Dictation")) {
                     ModelDownloads.showProgress()
                 }
             }
+            // no model at all (macOS 13–15): the small one first, or a cloud service's key; the recommended one stays
+            // in Settings
+            if !kept, let f = first {
+                emit(["event": "dictation_no_model_offer", "model": f.id, "size_mb": f.sizeMB])
+                var t = Island.Toast(text: Loc.t("dictation.toast.no_model", table: "Dictation"),
+                                     actionTitle: Loc.t("dictation.toast.no_model.action_size", table: "Dictation", modelSize(f.sizeMB)),
+                                     action: { Dictation.getSpeechModel(from: "island", job: f) })
+                t.secondTitle = Loc.t("dictation.toast.no_model.cloud", table: "Dictation")
+                t.second = {
+                    emit(["event": "dictation_no_model_cloud"])
+                    AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+                }
+                t.key = Dictation.modelToastKey
+                t.icon = .warning
+                t.seconds = 10
+                return island.toast(t)
+            }
             let vad = self.speechModels?.onlyVADMissing ?? (j.sizeMB == DictationModels.vadMB)
             let text = kept ? Loc.t(vad ? "dictation.toast.no_vad.kept" : "dictation.toast.no_model.kept", table: "Dictation")
                 : vad ? Loc.t("dictation.toast.no_vad", table: "Dictation")
-                : Loc.t("dictation.toast.no_model", table: "Dictation", modelSize(j.sizeMB))
+                : Loc.t("dictation.toast.no_model", table: "Dictation")
             // needs you: the attention mark, as a failed take's; the button says what it brings and how big
             island.toast(text, key: Dictation.modelToastKey, icon: .warning, seconds: 8,
                          actionTitle: Loc.t("dictation.toast.no_model.action_size", table: "Dictation", modelSize(j.sizeMB))) {
@@ -346,7 +373,7 @@ extension Dictation {
     }
 
     /// Retry a take whose recognition failed (the island's button, the history's): the whole recording again, then
-    /// pasted like any take — into the app it started in, else copied (from the history: always copied).
+    /// pasted like any take — into the app in front then (from the history: always copied).
     func retry(_ id: String, via: String) {
         let take = failedTakes.removeValue(forKey: id) ?? cancelledTakes.removeValue(forKey: id) ?? historyTake(id)
         island.dropToasts(key: Dictation.failedToastKey(id))      // its Retry is being done
@@ -377,7 +404,7 @@ extension Dictation {
         opt.vocab = DictationVocabulary.shared.payload()
         opt.polish = Dictation.polishOn && polishModel != nil
         let s = DictationStream(id: id, dir: DictationHistory.shared.audioDir, wholeWav: wav, options: opt)
-        return DictationTake(id: id, front: nil, frontKey: "history", started: e.time, duration: e.duration, wav: wav,
+        return DictationTake(id: id, front: nil, frontKey: DictationTake.historyKey, started: e.time, duration: e.duration, wav: wav,
                              context: nil, polishTried: opt.polish, keyUp: CACurrentMediaTime(), style: nil, explicit: nil,
                              toggles: 0, bundle: e.bundle, liveSession: -1, stream: s, structure: false)
     }
@@ -385,7 +412,7 @@ extension Dictation {
     // MARK: the paste
 
     private func deliver(_ take: DictationTake, _ r: DictationStream.Result) {
-        let id = take.id, app = take.front
+        let id = take.id
         // the words this dictation wrote: by polish, or (when the speech model was told the words) by the model itself
         var terms = r.terms
         if r.biased { for t in DictationVocabulary.shared.active().map(\.term) where r.text.contains(t) && !terms.contains(t) { terms.append(t) } }
@@ -394,13 +421,20 @@ extension Dictation {
         let styled = styleText(r, take: take)
         var text = styled.text
         let styleRecord = styled.record
-        // the user moved to another app while the text was on its way: it is copied, never pasted there
-        let appChanged = take.frontKey != currentFrontKey
+        // the user is in another app than the one the take started in: the text goes there all the same, the way it
+        // goes into any app in front (2026-10-31, the founder: people speak in A meaning to type into B), and a double
+        // tap's Return follows it there (by then the user is in that app and sees what was recognised). A switch only
+        // keeps per-app switches from being remembered; `app_changed` is logged. A retry from the history has no app:
+        // copied.
+        let fromHistory = take.frontKey == DictationTake.historyKey
+        let appChanged = !fromHistory && take.frontKey != currentFrontKey
+        // the app the text goes into: the one in front now when it changed (tests keep the take's: `dictation style app`)
+        let app = appChanged && !DictationInsert.testMode ? NSWorkspace.shared.frontmostApplication : take.front
         // where the text goes in, read just before pasting: the field the watch then follows for the user's fixes, and
         // the text on either side of the cursor the dictation is fitted into (DictationFit: the words that repeat the
         // field go, punctuation and spacing follow the sentence). A field whose text can't be read (WeChat) gets the
         // text as it is; nothing in the field is ever changed, only what is inserted.
-        let field = !appChanged && (Dictation.learnOn || Dictation.contextOn) ? DictationField.focused() : nil
+        let field = !fromHistory && (Dictation.learnOn || Dictation.contextOn) ? DictationField.focused() : nil
         let now = field?.read()
         let at = now?.selection.location
         var fitted: [String] = []
@@ -425,16 +459,18 @@ extension Dictation {
             }
         }
         let pasteAt = CACurrentMediaTime()
-        let bundle = take.bundle ?? app?.bundleIdentifier      // the app the take went into (tests: `dictation style app`)
+        // the app the take went into, for the history, reformat-last and the per-app suggestions: the take's (tests:
+        // `dictation style app`), or the one in front now when the user switched — where the text really went
+        let bundle = appChanged && !DictationInsert.testMode ? app?.bundleIdentifier : take.bundle ?? app?.bundleIdentifier
         var timing = r.timing
         timing["total_ms"] = Int((pasteAt - take.keyUp) * 1000)
         // the words under the island become what is typed — polished, structured — for a moment: what a double tap
         // now sends
-        if !appChanged { LiveTranscript.shared.showTyped(text, session: take.liveSession, seconds: 1.5) } else {
+        if !fromHistory { LiveTranscript.shared.showTyped(text, session: take.liveSession, seconds: 1.5) } else {
             LiveTranscript.shared.end(session: take.liveSession)
         }
         inserting = true
-        DictationInsert.insert(text, appChanged: appChanged, field: field, before: now) { [weak self] result in
+        DictationInsert.insert(text, copyOnly: fromHistory ? "from_history" : nil, field: field, before: now) { [weak self] result in
             guard let self = self else { return }
             self.queue.delivered(id)
             self.takes[id] = nil
@@ -443,14 +479,16 @@ extension Dictation {
             let sendAsked = take.sendAfterPaste
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
-                if result == .pasted && !DictationInsert.lastNoField { self.pressReturn(after: "paste"); sent = true } else {
-                    // left on the clipboard (another app in front now, a password field, Blurt in front …): Return
-                    // would send without it — the one line below says so. No field in focus: Return would act on
-                    // whatever is (rename the file selected on the desktop, follow a link)
-                    let why = appChanged ? "app_changed" : result == .pasted ? "no_field" : "not_pasted"
-                    emit(["event": "dictation_send", "result": "skipped", "why": why, "after": "paste"])
+                // not pasted (a password field, Blurt in front …): Return would send without it; no field in focus: it
+                // would act on whatever is (rename the file selected on the desktop, follow a link). The one line
+                // below says so. Another app than the one the take started in gets Return as any app in front
+                switch DictationSendPolicy.queued(pasted: result == .pasted, noField: DictationInsert.lastNoField) {
+                case .press: self.pressReturn(after: "paste"); sent = true
+                case .skip(let why): emit(["event": "dictation_send", "result": "skipped", "why": why, "after": "paste"])
                 }
             }
+            // a ⇧ / ⌘ switch stays on in the app it was made in — not when the text went into another one
+            if let sw = take.switches { self.remember(sw, appChanged: appChanged) }
             // the Dictation Lab's "keep the audio of the next N dictations" (record.dictation.lab_keep_next): only the
             // audio, never the text around the cursor
             let labKeep = Dictation.labKeepNext > 0
@@ -467,6 +505,7 @@ extension Dictation {
                                        timing: timing.filter { DictationEntry.timingKeys.contains($0.key) },
                                        repaired: r.repaired.isEmpty ? nil : r.repaired, fitted: fitted.isEmpty ? nil : fitted)
             entry.style = styleRecord
+            entry.fellBackParts = r.fellBackParts
             entry.translate = r.translation
             entry.asrTags = r.tags.compactMap(DictationLanguageTag.init(json:))
             if keep {
@@ -476,19 +515,25 @@ extension Dictation {
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
-            // reformat-last's material: the versions, and where the text went (only while it stays untouched)
+            // reformat-last's material: the versions, and where the text went (only while it stays untouched) — the
+            // app in front at paste time, also after a switch: ⌥L acts on the text where it is
             self.rememberPaste(id: id, app: app, bundle: bundle, r: r, record: styleRecord, typed: text, result: result,
                                field: result == .pasted ? field : nil, location: at)
             DictationHistoryWindow.shared.reloadIfOpen()
             // one line about how it went (DictationDeliveredLine: never two that replace each other in one frame)
+            // a double tap soon after a take that was only copied holds its Return (DictationCopiedGuard)
+            self.copiedAt = result == .copied ? CACurrentMediaTime() : nil
+            self.keyAfterCopy = false
             let line = DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
-                                                   confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged,
+                                                   confirmed: DictationInsert.lastPasteConfirmed,
                                                    noField: DictationInsert.lastNoField)
             switch line {
             case .copied, .copiedNotSent:
                 // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
                 // carries the ok check as every done line
-                if let k = line.copyKey { self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : nil) }
+                if let k = line.copyKey {
+                    self.toast(k, key: Dictation.toastKey, seconds: line.copySeconds, icon: line.checked ? .check : nil)
+                }
             case .notSent:
                 self.sendSkipped(nil)               // nothing went in: "Not sent"
             case .held:
@@ -574,15 +619,20 @@ extension Dictation {
         }
     }
 
-    /// A press this mode doesn't use: once a day, how it starts (not when the tap was a double tap's first one).
+    /// A press this mode doesn't use: how it starts. Tap mode's held press is said every time and at once, while the
+    /// key is still down (the trigger reports it past `tapMax`), so the user lets go before talking into nothing; hold
+    /// mode's tap once a day, after the double-tap window (it may be a double tap's first tap).
     func missedPress(_ m: DictationTrigger.Miss) {
+        if m == .heldInTapMode {
+            emit(["event": "dictation_miss", "miss": "\(m)", "down": trigger.armedDown])
+            return toast("dictation.toast.tap_mode", Dictation.keyShort, key: "dictation.miss", seconds: 4)
+        }
         let at = CACurrentMediaTime()
         DispatchQueue.main.asyncAfter(deadline: .now() + trigger.doubleTapWindow + 0.15) { [weak self] in
             guard let self = self, self.lastSendAt < at, !self.listening else { return }
-            let key = m == .tappedInHoldMode ? "dictation.toast.hold_mode" : "dictation.toast.tap_mode"
-            guard Dictation.onceADay("miss_\(m == .tappedInHoldMode ? "hold" : "tap")") else { return }
+            guard Dictation.onceADay("miss_hold") else { return }
             emit(["event": "dictation_miss", "miss": "\(m)"])
-            self.toast(key, Dictation.keyShort, key: "dictation.miss", seconds: 4)
+            self.toast("dictation.toast.hold_mode", Dictation.keyShort, key: "dictation.miss", seconds: 4)
         }
     }
 
@@ -624,7 +674,11 @@ extension Dictation {
         }
         let chat = category == DictationAppCategory.chat.rawValue
         guard let tip = DictationTip.next(chat: chat, sendOn: Dictation.doubleTapSend, sent: sent || take.sendAfterPaste, shown: tips),
-              tip != .reformat || !hk(.reformat).isEmpty else { return }
+              tip != .reformat || !hk(.reformat).isEmpty else {
+            // no notice, no tip on this take: the one cloud-polish reminder may come (DictationCloudReminder)
+            let inBlurt = take.front?.processIdentifier == ProcessInfo.processInfo.processIdentifier || Onboarding.needed
+            return remindCloudPolish(takes: tips["takes"] ?? 0, inBlurt: inBlurt)
+        }
         // after the double-tap window (a send then makes the tip moot), never over a result toast
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self = self, island.currentToast == nil, self.lastSendAt < take.keyUp, !self.listening else { return }
@@ -668,12 +722,13 @@ extension Dictation {
     /// missing, else the recommended one; only the VAD → the selected model's setup, which brings just that (0.6 MB),
     /// without changing the choice. The island then says it started, with Show; once it is in, the key works and a
     /// take that failed for it is offered again (modelArrived). Nothing known to get: the models' page.
-    static func getSpeechModel(from source: String) {
+    /// `job`: a model the island offered (the first, small one); nil: what `dictationJob` says.
+    static func getSpeechModel(from source: String, job: ModelDownloadQueue.Job? = nil) {
         MainActor.assumeIsolated {
             let m = DictationModels.shared
             Task { @MainActor in
                 if m.asr == nil { await m.load() }
-                guard let j = m.dictationJob else {
+                guard let j = job ?? m.dictationJob else {
                     emit(["event": "dictation_get_model", "kind": "asr", "from": source, "model": NSNull()])
                     return SpeechPane.showDictationModels()
                 }

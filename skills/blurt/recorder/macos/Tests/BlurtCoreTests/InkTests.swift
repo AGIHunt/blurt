@@ -1,8 +1,8 @@
-// BlurtCore/Ink.swift (+ NoteHold.spoke / inked): the in-place markup's rules — the same modifiers for a snap and the
+// BlurtCore/Ink.swift: the in-place markup's rules — the same modifiers for a snap and the
 // recording pen, the rough stroke that snaps to a clean line / box / ellipse, shapes stored as point lists every renderer
 // draws with sharp corners, the line width, the first-times hint, where the note bubble docks beside the selection,
-// the project chip's list, and when a note with ink may end by itself; the recording pen's key-first arming (PenArm),
-// the stroke being drawn (InkStroke) when a modifier comes and goes mid-drag, and the chip list's own hold.
+// the project chip's list; the recording pen's arming (PenArm) and its shape for every press order,
+// the stroke being drawn (InkStroke) when a modifier comes and goes mid-drag.
 import CoreGraphics
 import Foundation
 import XCTest
@@ -216,57 +216,108 @@ final class InkTests: XCTestCase {
         XCTAssertNil(ProjectPick.Choice.unassigned.project)
     }
 
-    // MARK: when a note with ink ends
+    // MARK: the recording pen: the keys held, never the order they went down in (BA-59)
 
-    func testInkAloneWaitsForTheUserASpokenNoteEndsAfterThePause() {
-        var h = NoteHold()
-        h.voiceDone = true               // nothing was said (the no-speech end)
-        h.inked = true
-        h.lastInk = 0
-        XCTAssertNil(h.closeIn(now: 60), "only ink: ⏎, Done or a click outside ends it")
-        h.spoke = true                   // said something, then drew
-        XCTAssertEqual(h.closeIn(now: 0.5)!, NoteHold.inkGrace - 0.5, accuracy: 1e-9)
-        XCTAssertEqual(h.closeIn(now: NoteHold.inkGrace), 0)
-        XCTAssertEqual(NoteHold.inkGrace, 1.5, "never within 1.5 s of a stroke")
-        h.drawing = true
-        XCTAssertNil(h.closeIn(now: 10), "never while drawing")
-        // nothing at all under the notch (Edit Note's bubble, an old-style note): as before, kept without a note
-        var bare = NoteHold()
-        bare.voiceDone = true
-        XCTAssertEqual(bare.closeIn(now: 0), 0)
-        // …but a picture frozen in place for the pen waits for the user (the frozen screen never vanishes on its own)
-        bare.inPlace = true
-        XCTAssertNil(bare.closeIn(now: 60))
-        bare.spoke = true
-        XCTAssertEqual(bare.closeIn(now: 0), 0, "said something, paused: it ends")
+    /// Replays key presses through the 30 Hz poll (PenArm fed by recordingTool, as Recorder.syncInk does) and returns
+    /// what a drag starting `dragAfter` s after the last press draws: nil when the pen is off (the drag is the app's).
+    /// `steps`: groups of keys going down; the keys of one group go down in the same poll ("together"), groups 50 ms apart.
+    private func dragStart(pen: InkModifiers.PenKey, _ steps: [InkModifiers.Held], dragAfter: Double = 0.3) -> InkTool? {
+        var arm = PenArm()
+        var held: InkModifiers.Held = []
+        var now = 0.0
+        var on: InkTool?
+        for step in steps {
+            held.formUnion(step)
+            for _ in 0..<2 { on = arm.update(InkModifiers.recordingTool(pen: pen, held: held), now: now); now += 0.025 }
+        }
+        let end = now + dragAfter
+        while now < end { on = arm.update(InkModifiers.recordingTool(pen: pen, held: held), now: now); now += 1.0 / 30 }
+        guard on != nil else { return nil }
+        return InkModifiers.dragTool(pen: pen, held: held)        // InkView.mouseDown with the same keys
     }
 
-    // MARK: the recording pen arms only when its key goes down first
+    /// Every order a set of keys can go down in: one at a time in each permutation, all together, and each pair together.
+    private func pressOrders(_ keys: [InkModifiers.Held]) -> [[InkModifiers.Held]] {
+        func perms(_ a: [InkModifiers.Held]) -> [[InkModifiers.Held]] {
+            a.count <= 1 ? [a] : a.indices.flatMap { i -> [[InkModifiers.Held]] in
+                var rest = a
+                let x = rest.remove(at: i)
+                return perms(rest).map { [x] + $0 }
+            }
+        }
+        var out = perms(keys)
+        out.append([keys.reduce(InkModifiers.Held()) { $0.union($1) }])
+        if keys.count == 3 {
+            for i in 0..<3 {
+                let other = keys[i]
+                let pair = keys.enumerated().filter { $0.offset != i }.reduce(InkModifiers.Held()) { $0.union($1.element) }
+                out.append([pair, other])
+                out.append([other, pair])
+            }
+        }
+        return out
+    }
 
-    func testThePenKeyFirstThenTheShapeKey() {
+    func testEveryPressOrderGivesTheSameShape() {
+        let c: InkModifiers.Held = .control, o: InkModifiers.Held = .option, sh: InkModifiers.Held = .shift
+        let f: InkModifiers.Held = .fn, cmd: InkModifiers.Held = .command
+        let cases: [(InkModifiers.PenKey, [InkModifiers.Held], InkTool?)] = [
+            (.control, [c], .free),
+            (.control, [c, sh], .box),                 // ⌃ then ⇧, ⇧ then ⌃, ⌃⇧ together: a box (the founder's case)
+            (.control, [c, o], .ellipse),              // ⌥ first or together too
+            (.control, [c, sh, o], .box),              // ⇧ wins when both shape keys are down, as on a snap
+            (.control, [c, cmd], nil),                 // ⌃⌘ is a shortcut in any order
+            (.control, [c, sh, cmd], nil),
+            (.control, [sh, o], nil),                  // no pen key: never the pen
+            (.option, [o, sh], .box),                  // ⌥ as the pen key: ⌃ is the ellipse
+            (.option, [o, c], .ellipse),
+            (.option, [o, c, sh], .box),
+            (.fn, [f, sh], .box),
+            (.fn, [f, o], .ellipse),
+            (.fn, [f, c], nil),                        // ⌃ means nothing with fn as the pen key
+        ]
+        for (pen, keys, want) in cases {
+            for order in pressOrders(keys) {
+                XCTAssertEqual(dragStart(pen: pen, order), want, "pen \(pen), pressed \(order.map(\.rawValue))")
+            }
+        }
+    }
+
+    func testTheShapeFollowsTheKeysWhileDragging() {
+        // the drag started as ⌃ (freehand); keys joining or going during it change the tool, in any order
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: [.control]), .free)
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: [.control, .shift]), .box)
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: [.control, .option]), .ellipse)
+        // ⌃ let go before ⇧ / ⌥ mid-drag: the shape key alone still says what it said (the pen's window has the drag)
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: [.shift]), .box)
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: [.option]), .ellipse)
+        XCTAssertEqual(InkModifiers.dragTool(pen: .control, held: []), .free)
+        // a latched pen (⌥D, no key held): ⇧ / ⌥ alone
+        XCTAssertEqual(InkModifiers.dragTool(pen: nil, held: [.shift]), .box)
+        // the old Bool form is the same function
+        XCTAssertEqual(InkModifiers.recordingTool(pen: .control, control: true, option: false, shift: true, command: false, fn: false),
+                       InkModifiers.recordingTool(pen: .control, held: [.control, .shift]))
+    }
+
+    func testThePenWaitsAMomentAndThenFollowsTheKeys() {
         var a = PenArm()
-        XCTAssertNil(a.update(.free, now: 0), "⌃ just went down: not yet")
-        XCTAssertNil(a.update(.free, now: 0.1))
-        XCTAssertEqual(a.update(.free, now: PenArm.settle), .free, "⌃ held alone a moment: on")
-        XCTAssertEqual(a.update(.ellipse, now: 0.3), .ellipse, "⌥ joins: an ellipse")
-        XCTAssertEqual(a.update(.box, now: 0.4), .box, "⇧ joins: a box")
+        XCTAssertNil(a.update(.box, now: 0), "⌃⇧ just went down together: not yet")
+        XCTAssertNil(a.update(.box, now: 0.1))
+        XCTAssertEqual(a.update(.box, now: PenArm.settle), .box, "held a moment: on, a box")
+        XCTAssertEqual(a.update(.ellipse, now: 0.3), .ellipse, "⇧ up, ⌥ down: an ellipse")
+        XCTAssertEqual(a.update(.free, now: 0.4), .free)
         XCTAssertNil(a.update(nil, now: 0.5), "all up: off")
         XCTAssertFalse(a.armed)
-    }
-
-    func testAChordPressedTogetherStaysTheWindowManagers() {
-        var a = PenArm()
-        // ⌃⌥ together (one poll may see ⌃ alone for a moment first)
-        XCTAssertNil(a.update(.free, now: 0))
-        XCTAssertNil(a.update(.ellipse, now: 0.03))
-        for t in stride(from: 0.06, to: 2, by: 0.033) { XCTAssertNil(a.update(.ellipse, now: t), "⌃⌥-drag moves the window") }
-        XCTAssertNil(a.update(.box, now: 2.1), "⌃⇧ the same")
-        // ⌥ let go, ⌃ still held: now it is the pen key alone, so it arms after the settle
-        XCTAssertNil(a.update(.free, now: 3))
-        XCTAssertEqual(a.update(.free, now: 3 + PenArm.settle + 0.01), .free)
-        // a shortcut (⌘ joins: recordingTool says nil) turns it off and disarms
-        XCTAssertNil(a.update(nil, now: 4))
-        XCTAssertNil(a.update(.ellipse, now: 4.1))
+        // a quick ⌃-shortcut (⌃A, let go within the settle) never turns it on
+        XCTAssertNil(a.update(.free, now: 1))
+        XCTAssertNil(a.update(.free, now: 1.1))
+        XCTAssertNil(a.update(nil, now: 1.13))
+        // ⌘ joining (a shortcut) turns it off and the wait starts again
+        XCTAssertNil(a.update(.free, now: 2))
+        XCTAssertEqual(a.update(.free, now: 2 + PenArm.settle + 0.01), .free)
+        XCTAssertNil(a.update(nil, now: 2.5))
+        XCTAssertNil(a.update(.ellipse, now: 2.6))
+        XCTAssertEqual(a.update(.ellipse, now: 2.6 + PenArm.settle + 0.01), .ellipse)
     }
 
     // MARK: the stroke being drawn
@@ -298,22 +349,5 @@ final class InkTests: XCTestCase {
         XCTAssertEqual(s.kind, "line")
         s.move(to: CGPoint(x: 101, y: 1), tool: .ellipse, now: 5.1)
         XCTAssertEqual(s.kind, "ellipse")
-    }
-
-    // MARK: the chip list holds the bubble without touching `pinned`
-
-    func testClosingTheChipListKeepsTheWordsPinned() {
-        var h = NoteHold()
-        h.voiceDone = true
-        h.spoke = true
-        h.pinned = true                  // the user clicked into the words to fix one
-        h.picking = true                 // …then opened the chip
-        XCTAssertNil(h.closeIn(now: 0))
-        h.picking = false                // picked a project
-        XCTAssertNil(h.closeIn(now: 0), "still fixing the words: only ⏎ or Esc closes it")
-        h.pinned = false
-        XCTAssertEqual(h.closeIn(now: 0), 0)
-        h.picking = true
-        XCTAssertNil(h.closeIn(now: 0), "never closes under the list")
     }
 }

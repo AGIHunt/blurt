@@ -673,14 +673,70 @@ class AppleSpeechSelect(unittest.TestCase):
                 self.assertEqual(d["selected"], "apple-speech")
                 self.assertTrue(d["ready"])                 # no VAD needed: it finds its own pauses
                 self.assertEqual(d["missing"], [])
-                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")    # the download still offered (the upgrade)
+                # the download still offered (the upgrade): this Mac's (dictation_tier — 128 GB, not a base M1 / M2)
+                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(d["plan"]["recognizer"], "qwen3-asr-1.7b-mlx")
                 self.assertTrue({m["id"]: m for m in d["models"]}["apple-speech"]["builtin"])
-                # an 8 GB Mac: the voice-note rules' pick is offered, never macOS's own
-                self.assertNotEqual(T.dictation_models(hw(ram=8.0))["recommended"], "apple-speech")
+                # an 8 GB Mac: Fun-ASR-Nano for a Chinese + English speaker (no local polish beside it), never macOS's own
+                self.assertEqual(T.dictation_models(hw(ram=8.0))["recommended"], "fun-asr-nano-mlx")
+                # 16 GB: the 1.7B, unless the chip is a base M1 / M2 or the 1.7B measured too slow here
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models({**hw(ram=16.0), "chip": "Apple M1"})["recommended"],
+                                 "fun-asr-nano-mlx")
+            with config({"asr": {"languages": ["de", "en"]}}):
+                # a language Fun-ASR-Nano doesn't speak: the 0.6B, and no Fun-ASR-Nano row
+                d = T.dictation_models(hw(ram=8.0))
+                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")
+                self.assertNotIn("fun-asr-nano-mlx", [m["id"] for m in d["models"]])
+                self.assertEqual(T.dictation_models({**hw(ram=16.0), "chip": "Apple M1"})["recommended"],
+                                 "qwen3-asr-0.6b-mlx")
+        finally:
+            T.installed = real
+
+    def vad(self, present: bool):
+        """silero_vad.onnx in (or out of) the test models dir for this test, as it was afterwards"""
+        f = T.MODELS_DIR / "silero_vad.onnx"
+        was = f.read_bytes() if f.exists() else None
+        if present:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(was or b"vad")
+        else:
+            f.unlink(missing_ok=True)
+            # and none shipped with the skill (v1.0.6's models/silero_vad.onnx, which bundled_vad() would copy in)
+            bundled = T.BUNDLED_VAD
+            T.BUNDLED_VAD = f.parent / "no-bundled-vad.onnx"
+            self.addCleanup(setattr, T, "BUNDLED_VAD", bundled)
+        self.addCleanup(lambda: f.write_bytes(was) if was is not None else f.unlink(missing_ok=True))
+
+    def test_model_files_without_the_vad_dont_beat_macos_speech(self):
+        # a Whisper in a shared Hugging Face cache, no silero_vad.onnx yet: the first Fn must listen, not ask for 1 MB
+        self.vad(False)
+        real = fake_installed("apple-speech", "whisper-large-v3-turbo-mlx")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.select("note")["id"], "apple-speech")
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "apple-speech")
+                self.assertTrue(d["ready"])
+                self.assertEqual(d["missing"], [])
+                self.vad(True)
+                self.assertEqual(T.select("note")["id"], "whisper-large-v3-turbo-mlx")   # the VAD is in: it takes over
+        finally:
+            T.installed = real
+
+    def test_a_chosen_model_still_asks_for_the_vad(self):
+        self.vad(False)
+        real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}, "record": {"dictation": {"asr_model": "qwen3-asr-1.7b-mlx"}}}):
+                d = T.dictation_models(hw())
+                self.assertEqual(d["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(d["missing"], ["silero-vad"])
         finally:
             T.installed = real
 
     def test_a_local_model_takes_over(self):
+        self.vad(True)
         real = fake_installed("apple-speech", "qwen3-asr-1.7b-mlx")
         try:
             with config({"asr": {"languages": ["zh", "en"]}}):
@@ -702,8 +758,14 @@ class AppleSpeechSelect(unittest.TestCase):
             self.assertEqual(T.apple_locale(None), "zh-CN")
             self.assertEqual(T.apple_locale("en"), "en-US")
             self.assertIsNone(T.apple_locale("th"))
+        # English first, Chinese too: the Chinese recogniser, which hears the English words as well (as the app's
+        # AppleSpeech.automatic) — an English Mac whose user speaks Chinese
         with config({"asr": {"languages": ["en", "zh"]}}):
-            self.assertEqual(T.apple_locale("auto"), "en-US")
+            self.assertEqual(T.apple_locale("auto"), "zh-CN")
+        with config({"asr": {"languages": ["en", "fr"]}}):
+            self.assertEqual(T.apple_locale(None), "en-US")
+        with config({"asr": {"languages": ["en", "zh"], "language": "en"}}):
+            self.assertEqual(T.apple_locale(None), "en-US")
 
     def test_whole_audio_through_the_app_without_vad(self):
         # the Blurt executable's `--speech` answer, faked: one line of JSON with each phrase's time
@@ -755,19 +817,53 @@ class AppleSpeechSelect(unittest.TestCase):
             T._APPLE_OK = old[1]
 
 
+class DictationTier(unittest.TestCase):
+    """Defaults by Mac (docs/design/dictation.md §Defaults by Mac): the shared fixture BlurtCore's DictationTier is
+    checked against too."""
+
+    def test_the_shared_fixture(self):
+        rows = [json.loads(l) for l in (ROOT / "tests" / "fixtures" / "dictation_tier.jsonl").read_text().splitlines() if l.strip()]
+        self.assertGreaterEqual(len(rows), 10)
+        for r in rows:
+            got = T.dictation_tier(r["ram_gb"], r["rtf"], r["slow"], r["cloud"], r.get("languages"))
+            for k, v in r["want"].items():
+                self.assertEqual(got[k], v, f"{r['case']}: {k}")
+            self.assertEqual(got["second_transcript"], got["cloud_polish"])
+            self.assertEqual(got["first"], "apple-speech")
+
+    def test_slow_chips(self):
+        self.assertTrue(T.slow_chip("Apple M2"))
+        self.assertFalse(T.slow_chip("Apple M2 Max"))
+        self.assertFalse(T.slow_chip(None))
+
+    def test_a_measured_rtf_decides(self):
+        real = T._bench_results
+        try:
+            T._bench_results = lambda: {"qwen3-asr-1.7b-mlx": {"rtf": 0.09}}
+            with config({"asr": {"languages": ["fr", "en"]}}):
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "fun-asr-nano-mlx")
+        finally:
+            T._bench_results = real
+
+
 class CloudSpeed(unittest.TestCase):
-    """asr.cloud.speed: every cloud service hears the audio sped up (default 1.5x); times come back on the original
+    """asr.cloud.speed: every cloud service can hear the audio sped up (default 1x since dictation sends the whole take:
+    2.02 % at 1x against 3.32 % at 1.5x on the founder's takes); times come back on the original
     timeline; dictation offers a cloud service once its key is set (first-minute-speech.md §2.4)."""
 
     def test_setting(self):
         with config({}):
+            self.assertEqual(T.cloud_speed(), 1.0)
+        with config({"asr": {"cloud": {"speed": 1.5}}}):
             self.assertEqual(T.cloud_speed(), 1.5)
         with config({"asr": {"cloud": {"speed": 2}}}):
             self.assertEqual(T.cloud_speed(), 2.0)
         with config({"asr": {"cloud": {"speed": 1.2, "openai-compatible": {"service": "groq"}}}}):
             self.assertEqual(T.cloud_speed(), 1.0)      # the nearest offered one
         with config({"asr": {"cloud": {"speed": "fast"}}}):
-            self.assertEqual(T.cloud_speed(), 1.5)
+            self.assertEqual(T.cloud_speed(), 1.0)
 
     @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
     def test_speed_up_keeps_length_ratio(self):
@@ -780,7 +876,7 @@ class CloudSpeed(unittest.TestCase):
     def test_openai_compatible_times_back_on_the_original_timeline(self):
         sent = {}
 
-        def fake_post(url, body, headers, retries=4):
+        def fake_post(url, body, headers, retries=4, timeout=120):
             sent["bytes"] = len(body)
             return {"language": "english", "segments": [{"start": 0.0, "end": 0.8, "text": "a"}, {"start": 0.8, "end": 1.5, "text": "b"}]}
         old = (T._post, os.environ.get("BLURT_ASR_API_KEY"))

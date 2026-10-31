@@ -514,11 +514,28 @@ def read_shots(session: Path) -> dict[int, dict]:
     return by_n
 
 
+# The type the user gave a snap in its note bubble (shots.jsonl "kind": 问题 / 想法 / 笔记 / 待办; absent or null =
+# undecided, the agent or the keyword guess decides as before).
+SNAP_KINDS = ("issue", "idea", "note", "task")
+
+
+def chosen_kind(line: dict | None) -> str | None:
+    """A snap's chosen type (shots.jsonl "kind"), or None when the user left it undecided."""
+    k = (line or {}).get("kind") if isinstance(line, dict) else None
+    return k if k in SNAP_KINDS else None
+
+
 def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: str, session: Path | None,
-               meta: dict, local: str | None, language: str | None, shot: int | None) -> dict:
+               meta: dict, local: str | None, language: str | None, shot: int | None,
+               shots: dict[int, dict] | None = None) -> dict:
     """A new item for store s from v2-shaped fields (an items.json entry, add --json, a page's add op). The caller
-    holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/."""
-    item = {"id": s.next_id(), "uid": uid, "kind": str(fields.get("kind") or "note")}
+    holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/. An item made from a snap the
+    user gave a type keeps that type, whatever the fields say, and records it as the user's (`_user`), so a later
+    organizing or AI fill-in pass doesn't change it."""
+    chosen = None
+    if shot is not None and session is not None:
+        chosen = chosen_kind((shots if shots is not None else read_shots(session)).get(shot))
+    item = {"id": s.next_id(), "uid": uid, "kind": chosen or str(fields.get("kind") or "note")}
     title = fields.get("title")
     if not isinstance(title, str) or not title.strip():
         title = (str(fields.get("quote") or "").strip().split("\n")[0][:80] or item["kind"])
@@ -550,6 +567,9 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
     for k, v in fields.items():
         if k not in skip:
             item[k] = v
+    if chosen:
+        item["_user"] = {**(item.get("_user") if isinstance(item.get("_user"), dict) else {}),
+                         "kind": round(to_epoch(now_iso()) or 0, 1)}
     if fields.get("frames") is not None:
         item["frames"] = import_media(item, "frames", fields["frames"], session, s.root)
     if fields.get("clip"):
@@ -681,7 +701,7 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
                 fields["source"] = {**(it["source"] if isinstance(it.get("source"), dict) else {}), "type": "voice"}
             with target.lock():
                 item = build_item(fields, uid, target, project_by=by, created=created, session=session, meta=meta,
-                                  local=lid, language=data.get("language"), shot=shot)
+                                  local=lid, language=data.get("language"), shot=shot, shots=shots)
                 if suggestion and target.is_inbox:
                     item["suggested_project"] = suggestion
                 p = write_new(target, item)
@@ -1128,6 +1148,7 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
     doc["items"] = items
     doc["_removed"] = removed
     doc["agents"] = _agent_names()
+    doc["me"] = _user_name()  # who "by …" in an item's provenance is on this Mac: the page says "by you"
     if include is not None:  # the one item a detail pane asked for, when its file can't be read: the page says so
         doc["_unreadable"] = [u for u in unreadable if include in (u["uid"], u["id"], *u["aliases"])]
     doc["projects"] = plist

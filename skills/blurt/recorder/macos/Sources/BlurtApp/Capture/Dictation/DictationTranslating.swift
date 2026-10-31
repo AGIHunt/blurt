@@ -7,7 +7,8 @@
 //    line says what is needed, with Settings, and it stays off;
 //  • at key-up, after Structured's pass: one `translate` request to the polish server (the prompt ⌥T uses) over the
 //    text in its style, into the other language of the one the speech model heard (or Settings' fixed target), with
-//    the user's words; the cloud model when it is set up and Settings lets it, the local one as its fall-back.
+//    the user's words; the Translate job's model (Settings → Models: a cloud service's, or this Mac's), the local
+//    one as the cloud's fall-back.
 //    polish.py's guard refuses what is plainly no translation; a refusal or a failure types the take as said, and the
 //    island says so;
 //  • the history keeps what was said (`translate.said`) beside what was typed.
@@ -25,19 +26,19 @@ extension Dictation {
     }
 
     static var translateConfig: DictationTranslateConfig { DictationTranslateConfig(json: settings["translate"] as? [String: Any]) }
-    static func setTranslateConfig(_ c: DictationTranslateConfig) { set("translate", c.json) }
-
-    /// The cloud model for translation: the one set up for cloud polish, with its key — whether cloud polish itself is
-    /// on or not (as ⌥T's), when Settings lets the cloud translate. nil: the local model.
-    static var translateCloud: [String: Any]? {
-        guard translateConfig.cloud else { return nil }
-        return ScreenTextRefine.cloudPayload
+    static func setTranslateConfig(_ c: DictationTranslateConfig) {
+        set("translate", c.json)
+        NotificationCenter.default.post(name: translateConfigChanged, object: nil)
     }
+    /// Posted when the translate setting changes (Settings → Dictation's list of apps follows the island's changes)
+    static let translateConfigChanged = Notification.Name("dev.blurt.dictation.translateConfigChanged")
+
+    /// The cloud model for translation: the Translate job's (Settings → Models), with its key. nil: the local model.
+    static var translateCloud: [String: Any]? { CloudStore.payload(.translate) }
 
     /// What would translate a take now.
     var translateEngine: DictationTranslateRoute.Engine {
-        DictationTranslateRoute.engine(cloudReady: ScreenTextRefine.cloudPayload != nil, useCloud: Dictation.translateConfig.cloud,
-                                       localModel: polishModel != nil)
+        DictationTranslateRoute.engine(cloudReady: Dictation.translateCloud != nil, useCloud: true, localModel: polishModel != nil)
     }
 
     /// While listening: the take will be translated (the island's ear shows it).
@@ -59,10 +60,11 @@ extension Dictation {
             emit(["event": "dictation_translate", "action": "unavailable", "via": via, "id": entryID])
             var t = Island.Toast(text: Loc.t("dictation.translate.toast.unavailable", table: "Dictation"),
                                  actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
-                AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish")
+                AppEnvironment.settings?.show(pane: "speech/speech.services")
             })
             t.key = Dictation.styleToastKey
             t.seconds = 6
+            t.icon = .warning
             island.toast(t)
             return
         }
@@ -76,20 +78,30 @@ extension Dictation {
         // the ear's glyph says it is on; the line explains it the first couple of times only (as Structured's)
         let shown = Dictation.settings["translate_hint_shown"] as? Int ?? 0
         guard DictationTranslateHint.says(shown: shown) else { return }
-        if translating.on { Dictation.set("translate_hint_shown", shown + 1) }
         let target = Dictation.translateConfig.target
-        if !translating.on { toast("dictation.translate.toast.off", key: Dictation.styleToastKey, seconds: 3) }
-        else if target == .auto { toast("dictation.translate.toast.on.auto", key: Dictation.styleToastKey, seconds: 3) }
-        else { toast("dictation.translate.toast.on.into", Dictation.languageName(target), key: Dictation.styleToastKey, seconds: 3) }
+        let text: String
+        if !translating.on { text = Loc.t("dictation.translate.toast.off", table: "Dictation") }
+        else if target == .auto {
+            // Auto's pair as Settings names it (global-first: "简体中文 ↔ English", "English ↔ Deutsch")
+            let p = TranslateTargets.pair
+            text = p.other.map { Loc.t("dictation.translate.toast.on.auto", table: "Dictation", p.home.endonym, $0.endonym) }
+                ?? Loc.t("dictation.translate.toast.on.into", table: "Dictation", p.home.endonym)
+        } else {
+            text = String(format: Loc.string("dictation.translate.toast.on.into", table: "Dictation"), locale: Loc.locale,
+                          Dictation.languageName(target))
+        }
+        var t = Island.Toast(text: text, actionTitle: nil, action: nil)
+        t.key = Dictation.styleToastKey
+        t.seconds = 3
+        // counted when it is seen, not when it is posted (one that waited and went stale was never read)
+        if translating.on { t.onShown = Dictation.countOnce("translate_hint_shown") }
+        island.toast(t)
     }
 
     /// A target language in the app's own language ("日语", "Japanese").
     static func languageName(_ t: DictationTranslateTarget) -> String {
         Loc.locale.localizedString(forIdentifier: t.rawValue) ?? t.endonym
     }
-
-    /// The user's own language: what a take already in the target language is translated into (the system's first).
-    static var homeLanguage: String { DictationTranslateRoute.home(Locale.preferredLanguages) }
 
     /// The polish server up for the key-up's translation: with the local model loaded when that is what translates;
     /// without a local model it serves the cloud alone (polish.py never downloads one).
@@ -105,7 +117,7 @@ extension Dictation {
         guard translating.on else { return nil }
         let engine = translateEngine
         guard engine != .none else { return nil }
-        return DictationStream.TranslateJob(setting: Dictation.translateConfig.target, style: style,
+        return DictationStream.TranslateJob(setting: Dictation.translateConfig.target, auto: TranslateTargets.pair, style: style,
                                             cloud: engine == .cloud ? Dictation.translateCloud : nil, engine: engine,
                                             source: translating.source, toggles: translating.toggles)
     }
@@ -148,12 +160,14 @@ extension Dictation {
         }
         let said = Dictation.settings["translate_cloud_hint"] as? Bool ?? false
         let engine = DictationTranslateRoute.Engine(rawValue: rec.engine) ?? .none
-        guard DictationTranslateRoute.suggestsCloud(engine: engine, cloudReady: ScreenTextRefine.cloudPayload != nil,
-                                                    useCloud: Dictation.translateConfig.cloud, alreadySaid: said) else { return }
+        // a Translate job set to this Mac on purpose is never second-guessed
+        guard CloudStore.setup.choice(.translate) == .auto,
+              DictationTranslateRoute.suggestsCloud(engine: engine, cloudReady: Dictation.translateCloud != nil,
+                                                    useCloud: true, alreadySaid: said) else { return }
         Dictation.set("translate_cloud_hint", true)
         var t = Island.Toast(text: Loc.t("dictation.translate.toast.cloud_hint", table: "Dictation"),
                              actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
-            AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish")
+            AppEnvironment.settings?.show(pane: "speech/speech.services")
         })
         t.key = Dictation.noticeToastKey
         t.passive = true
@@ -168,7 +182,7 @@ extension Dictation {
         guard DictationTranslateLearn.suggest(entries: DictationHistory.shared.load(), bundle: b, config: cfg) else { return }
         cfg.asked.insert(b)
         Dictation.setTranslateConfig(cfg)
-        let name = AppNames.name(for: b, running: nil) ?? b
+        let name = Dictation.appInline(bundle: b, fallback: nil)
         emit(["event": "dictation_translate", "action": "suggest", "bundle": b])
         var t = Island.Toast(text: Loc.t("dictation.translate.toast.suggest", table: "Dictation", name),
                              actionTitle: Loc.t("dictation.translate.toast.suggest.yes", table: "Dictation"), action: {
@@ -176,9 +190,26 @@ extension Dictation {
             c.apps.insert(b)
             Dictation.setTranslateConfig(c)
             emit(["event": "dictation_translate", "action": "suggest_accepted", "bundle": b])
+            Dictation.shared.announceLearned(bundle: b)
         })
         t.key = Dictation.noticeToastKey
         t.seconds = 10
+        island.toast(t)
+    }
+
+    /// An app joined the list (a suggestion accepted — only reachable with "Remember Structured and Translate for each
+    /// app" off, where ⌘ off doesn't remove it): said, with Undo, so it can be taken back where it was learned.
+    func announceLearned(bundle b: String) {
+        var t = Island.Toast(text: Loc.t("dictation.translate.toast.learned", table: "Dictation", Dictation.appInline(bundle: b, fallback: nil)),
+                             actionTitle: Loc.t("dictation.translate.toast.undo", table: "Dictation"), action: {
+            var c = Dictation.translateConfig
+            c.apps.remove(b)
+            Dictation.setTranslateConfig(c)
+            emit(["event": "dictation_translate", "action": "learned_undone", "bundle": b])
+        })
+        t.key = Dictation.noticeToastKey
+        t.icon = .check
+        t.seconds = 6
         island.toast(t)
     }
 }

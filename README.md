@@ -61,12 +61,15 @@ curl -fsSL https://blurt.work/install.sh | sh
 It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.
 
 **Use it from your agent.** In Blurt, *Settings → Agents → Connect…* adds the Blurt skill and MCP server to Claude
-Code, Codex and the other agents it finds. Then tell your agent **"start blurt"**, or ask it about your items.
+Code, Codex and the other agents it finds (Gemini CLI, Kimi Code, OpenCode, Grok, CodeBuddy Code, WorkBuddy,
+Cursor). Start a new session of the agent, then tell it **"start blurt"** (`/blurt` in Claude Code, `$blurt` in
+Codex), or ask it about your items. Your agent can also do the connecting: [llms.txt](https://blurt.work/llms.txt) has
+the steps.
 
-<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt</code> (or <code>/plugin marketplace add
-AGIHunt/blurt</code> in Claude Code), then "start blurt". The first run builds Blurt into <code>~/Applications</code>; it
-needs the Xcode Command Line Tools and <a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install
-what's missing.</sub>
+<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt -g</code>, or in Claude Code <code>/plugin
+marketplace add AGIHunt/blurt</code> and then <code>/plugin install blurt@blurt</code>. Then "start blurt". The first run
+builds Blurt into <code>~/Applications</code>; it needs the Xcode Command Line Tools and
+<a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
 key than `Fn`). Then press `Fn` in any text field: dictation already works with macOS's own recognizer. Two optional

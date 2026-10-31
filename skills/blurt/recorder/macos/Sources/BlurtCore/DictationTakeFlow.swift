@@ -227,6 +227,17 @@ public struct DictationSpeechModels: Equatable {
         return (recommended, true)
     }
 
+    /// A first speech model to offer on the island when there is none at all (macOS 13–15: no recogniser of the
+    /// system's to fall back on): the smallest local model that fits here — minutes of download instead of the
+    /// recommended one's gigabytes, which stays a choice in Settings. nil: something is there already (only the VAD
+    /// is missing), or the user configured a model (that one is what "Download" gets), or no row qualifies.
+    /// `rows`: (id, size in MB, fits beside polish); built-in and cloud rows count as size 0 and are never offered.
+    public func firstOffer(_ rows: [(id: String, sizeMB: Double, fits: Bool)]) -> (id: String, sizeMB: Double)? {
+        guard !ready, !selectedInstalled, configured == nil || configuredInstalled else { return nil }
+        let r = rows.filter { $0.sizeMB > 0 && $0.fits }.min { $0.sizeMB < $1.sizeMB }
+        return r.map { ($0.id, $0.sizeMB) }
+    }
+
     /// The once-a-day "a weaker model ran" notice after a take recognised by `used`: only when the user didn't pick
     /// that model themselves (a configured model on this Mac is their choice, not a fallback).
     public func weakerModelRan(_ used: String?) -> Bool {
@@ -268,8 +279,8 @@ public struct DictationReformatAfterPaste<ID: Hashable> {
 /// What the island says once a take is in (or on the clipboard): one line, never two that replace each other in the
 /// same frame (v0.9 dogfood: a send asked for, the app changed meanwhile — "Copied, ⌘V" showed, "not sent" never did).
 public enum DictationDeliveredLine: Equatable {
-    /// copied — `appChanged`: the user moved to another app meanwhile
-    case copied(appChanged: Bool)
+    /// copied (no Accessibility, no app in front, Blurt in front with no field of its own …)
+    case copied
     /// a double tap asked to send, the text is only on the clipboard: Return was not pressed
     case copiedNotSent
     /// a double tap asked to send and nothing went in (why: not_pasted)
@@ -285,14 +296,17 @@ public enum DictationDeliveredLine: Equatable {
     case held
     case none
 
-    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take; `noField`: the
-    /// focus was read and isn't a text field.
-    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool,
+    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take and it wasn't
+    /// pressed; `noField`: the focus was read and isn't a text field. A switch of apps says nothing: the text and a
+    /// double tap's Return go into the app in front as any take's (2026-10-31).
+    public static func line(result: String, sendAsked: Bool, confirmed: Bool,
                             noField: Bool = false) -> DictationDeliveredLine {
         switch result {
         case "held": return .held
-        case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
-        case "pasted": return confirmed ? .none : noField ? .noField : .pastedUnsure
+        case "copied": return sendAsked ? .copiedNotSent : .copied
+        case "pasted":
+            if !confirmed, noField { return .noField }
+            return confirmed ? .none : .pastedUnsure
         default: return sendAsked ? .notSent : .none
         }
     }
@@ -302,20 +316,42 @@ public enum DictationDeliveredLine: Equatable {
     public var copyKey: String? {
         switch self {
         case .copiedNotSent: return "dictation.toast.copied.not_sent"
-        case .copied(let changed): return changed ? "dictation.toast.copied_app" : "dictation.toast.copied"
+        case .copied: return "dictation.toast.copied"
         default: return nil
         }
     }
 
     /// A plain copy is done (the ok check, as every done line); "not sent" isn't.
-    public var checked: Bool { if case .copied = self { return true }; return false }
+    public var checked: Bool { self == .copied }
 
-    /// How long a copied line stays: longer when there is more to read (the app changed, or it wasn't sent).
-    public var copySeconds: Double {
-        switch self {
-        case .copied(false): return 2.4
-        default: return 4
-        }
+    /// How long a copied line stays: longer when there is more to read (it wasn't sent).
+    public var copySeconds: Double { self == .copied ? 2.4 : 4 }
+}
+
+/// A double tap after a take that was only copied (no Accessibility, Blurt in front with no field …): Return would go
+/// into an app where nothing was pasted — a half-written message sent, or whatever is focused acted on. It is held
+/// back while the copy is recent and no key was pressed since (a ⌘V, or typing, says the user is in a field again).
+public enum DictationCopiedGuard {
+    public static let window: Double = 15
+
+    /// `copiedAt`: when the last take was left on the clipboard (nil: it was typed); `keyAfter`: a key was pressed
+    /// since then.
+    public static func holdsReturn(copiedAt: Double?, keyAfter: Bool, now: Double) -> Bool {
+        guard let c = copiedAt, !keyAfter else { return false }
+        return now - c < window
+    }
+}
+
+/// The cloud-polish reminder: once ever, after `afterTakes` dictations that went in, and only into a quiet island —
+/// never in Blurt's own windows (the setup assistant's Try it), never on a take that already has a line of its own
+/// (a notice, a tip, the list chip), never while anything else shows. A timed line (`seconds`), not a question that
+/// waits; after it, the way there is Settings → Dictation only.
+public enum DictationCloudReminder {
+    public static let afterTakes = 10
+    public static let seconds: Double = 8
+
+    public static func due(takes: Int, shown: Bool, cloudReady: Bool, inBlurt: Bool, otherLine: Bool, islandIdle: Bool) -> Bool {
+        !shown && !cloudReady && takes >= afterTakes && !inBlurt && !otherLine && islandIdle
     }
 }
 

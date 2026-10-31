@@ -8,6 +8,7 @@
 // An agent session's detail is its title and status line, then its terminal pane (whose header carries Stop, Open in
 // Terminal, Show Log…): no steps above it. Nothing here opens anything by itself: rows are clicked.
 import AppKit
+import SwiftUI
 import BlurtCore
 
 enum JobLook {
@@ -58,7 +59,9 @@ enum JobLook {
     /// A failed job's reason in words, naming its agent when it has one: the detail and the failure notification say
     /// the same thing.
     static func errorText(_ j: Job) -> String? {
-        j.error.map { errorText($0, agent: (j.agent?.agent ?? j.usage?.agent).map(AgentNames.name)) }
+        // it quit at its own folder-trust question: no error, and nothing was started
+        if j.stoppedAtTrust, let a = j.agent { return T("main.job.error.stopped_trust", AgentNames.name(a.agent)) }
+        return j.error.map { errorText($0, agent: (j.agent?.agent ?? j.usage?.agent).map(AgentNames.name)) }
     }
 
     /// A failed job's reason in words: its hint, else the sentence composed when it failed (which agent, why, the fix
@@ -82,8 +85,26 @@ enum JobLook {
 
     static func statusColor(_ j: Job) -> NSColor {
         if j.state == .failed || j.agent?.status == .error { return BrandColor.err }
-        if j.agent?.status == .waitingInput { return BrandColor.attnInk }
+        // a session: the same ink as its mark and its header (attention whenever it is the user's move)
+        if let m = sessionMark(j) {
+            return m == .waiting ? BrandColor.attnInk : m == .failed ? BrandColor.err : .secondaryLabelColor
+        }
         return .secondaryLabelColor
+    }
+
+    /// A session's mark when the sessions model hasn't listed it yet (the same rule as AgentSessionRow.mark).
+    static func sessionMark(_ j: Job) -> SessionMark? {
+        guard let a = j.agent else { return nil }
+        if j.isActive {
+            if a.stalled { return .waiting }
+            switch a.status {
+            case .running: return .working
+            case .waitingInput, .turnDone: return .waiting
+            case .error: return .failed
+            case .exited: return .idle
+            }
+        }
+        return j.state == .failed ? .failed : .idle
     }
 
     static func symbol(_ j: Job) -> String {
@@ -119,7 +140,7 @@ extension JobLook {
         return min((done + part) / Double(s.count), 1)
     }
 
-    /// What it is doing now, as a status ("Preparing…", "正在写入条目…"): the step's name reads as a heading, this as
+    /// What it is doing now, as a status ("Preparing…", "正在写入事项…"): the step's name reads as a heading, this as
     /// what is happening.
     static func doing(_ j: Job) -> String {
         guard j.agent == nil, j.isActive, let s = j.currentStep else { return status(j) }
@@ -143,6 +164,10 @@ extension JobLook {
         if j.type == .process, let s = j.session {
             if let t = batchTitle(s) { return T("main.job.title.organizing", t) }
             return T("main.job.title.organizing_at", sessionLabel(s))
+        }
+        // a session: the item it works on (the pane's header under it names the agent and its state)
+        if j.type == .agent, let row = MainActor.assumeIsolated({ SessionsModel.shared.row(j.id) }), let first = row.items.first {
+            return row.items.count > 1 ? TL("session.items.more", first.title, row.items.count - 1) : first.title
         }
         return title(j)
     }
@@ -295,6 +320,22 @@ final class JobsSection: NSView {
     deinit { resizeObserver.map(NotificationCenter.default.removeObserver) }
 
     @objc func toggle() { setExpanded(!expanded) }
+    /// The section's heading as the state groups draw theirs: the name in the section font and ink, the count plain
+    /// beside it (no "·"), failures after it.
+    static func headerAttributed(_ jobs: [Job]) -> NSMutableAttributedString {
+        let failed = jobs.filter { !$0.isActive }.count, active = jobs.count - failed
+        let out = NSMutableAttributedString(string: T(active == 0 ? "main.jobs.title.failed" : "main.jobs.title"),
+                                            attributes: [.font: Look.sectionFont, .foregroundColor: NSColor.labelColor])
+        let n = active == 0 ? failed : active
+        out.append(NSAttributedString(string: "  " + Loc.number(n), attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular), .foregroundColor: NSColor.secondaryLabelColor]))
+        if active > 0, failed > 0 {
+            out.append(NSAttributedString(string: "  ·  " + TP("main.jobs.failed", failed), attributes: [
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor]))
+        }
+        return out
+    }
+
     func setExpanded(_ on: Bool) {
         guard on != expanded else { return }
         expanded = on
@@ -332,7 +373,7 @@ final class JobsSection: NSView {
         stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
         guard !jobs.isEmpty else { return }
         let folds = jobs.count > 1
-        let text = NSMutableAttributedString(string: Self.headerText(jobs), attributes: [.font: header.label.font!, .foregroundColor: NSColor.secondaryLabelColor])
+        let text = Self.headerAttributed(jobs)
         if folds, let ch = Look.symbol(expanded ? "chevron.down" : "chevron.right", "", size: 9, weight: .semibold) {
             let a = NSTextAttachment()
             a.image = ch
@@ -470,6 +511,8 @@ final class JobRow: NSView {
     let icon = NSImageView()
     let mark = NSImageView()
     let spinner = TrackedSpinner(size: 14)
+    /// An agent session's mark in the icon column: the one set the session list and header use (SessionStatusMark).
+    private var sessionMark: NSHostingView<SessionStatusMark>?
     let title = NSTextField(labelWithString: "")
     let status = NSTextField(labelWithString: "")
     private var hover = false { didSet { needsDisplay = true } }
@@ -498,13 +541,25 @@ final class JobRow: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func set(_ j: Job, project: String?) {
-        let name = JobLook.title(j)
-        let t = NSMutableAttributedString(string: name, attributes: [.font: Look.titleFont, .foregroundColor: NSColor.labelColor])
-        if let p = project {
-            t.append(NSAttributedString(string: "  ·  \(p)", attributes: [.font: Look.titleFont, .foregroundColor: NSColor.secondaryLabelColor]))
+        var name = JobLook.title(j)
+        let t = NSMutableAttributedString()
+        if j.type == .agent, let row = SessionsModel.shared.row(j.id), let first = row.items.first {
+            // a session on the item rows' grid: the item's key and title (the agent is said in the status column)
+            name = row.items.count > 1 ? TL("session.items.more", first.title, row.items.count - 1) : first.title
+            t.append(NSAttributedString(string: first.id + "  ", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: Look.titleFont.pointSize - 1, weight: .regular),
+                .foregroundColor: NSColor.secondaryLabelColor]))
+            t.append(NSAttributedString(string: name, attributes: [.font: Look.titleFont, .foregroundColor: NSColor.labelColor]))
+            title.toolTip = first.id + "  " + name
+        } else {
+            t.append(NSAttributedString(string: name, attributes: [.font: Look.titleFont, .foregroundColor: NSColor.labelColor]))
+            if let p = project {
+                t.append(NSAttributedString(string: "  ·  \(p)", attributes: [.font: Look.titleFont, .foregroundColor: NSColor.secondaryLabelColor]))
+            }
+            title.toolTip = name
         }
         title.attributedStringValue = t
-        status.stringValue = JobLook.rowStatus(j)
+        status.stringValue = j.agent.map { AgentNames.name($0.agent) + " · " + JobLook.rowStatus(j) } ?? JobLook.rowStatus(j)
         status.textColor = JobLook.statusColor(j)
         status.font = j.agent == nil && JobLook.fraction(j) != nil ? Look.monoSub : Look.subFont
         let waiting = j.agent?.status == .waitingInput
@@ -512,8 +567,18 @@ final class JobRow: NSView {
         aiWorking = busy && (j.type == .process || j.type == .route)
         if aiWorking, working.superview == nil { addSubview(working) }
         updateWorking()
-        icon.image = Look.symbol(waiting ? "exclamationmark.bubble" : JobLook.symbol(j), name, size: 13)
-        icon.contentTintColor = waiting ? BrandColor.attn : .secondaryLabelColor
+        _ = waiting
+        if j.type == .agent, let m = SessionsModel.shared.row(j.id)?.mark ?? JobLook.sessionMark(j) {
+            let v = sessionMark ?? NSHostingView(rootView: SessionStatusMark(mark: m, size: 12))
+            v.rootView = SessionStatusMark(mark: m, size: 12)
+            if sessionMark == nil { sessionMark = v; addSubview(v) }
+            icon.image = nil
+        } else {
+            sessionMark?.removeFromSuperview()
+            sessionMark = nil
+            icon.image = Look.symbol(JobLook.symbol(j), name, size: 13)
+            icon.contentTintColor = .secondaryLabelColor
+        }
         busy ? spinner.startAnimation() : spinner.stopAnimation()
         spinner.setAccessibilityLabel(JobLook.doing(j))
         // a failure says so in the state column too, in the error colour (the words are on the right)
@@ -530,6 +595,7 @@ final class JobRow: NSView {
         grid = ListGrid.of(self)
         let h = bounds.height
         icon.frame = NSRect(x: grid.icon, y: (h - 18) / 2, width: 18, height: 18)
+        sessionMark?.frame = NSRect(x: grid.icon + 3, y: (h - 12) / 2, width: 12, height: 12)
         if let ring = grid.ring {
             spinner.frame = NSRect(x: ring - 7, y: (h - 14) / 2, width: 14, height: 14)
             mark.frame = NSRect(x: ring - 9, y: (h - 18) / 2, width: 18, height: 18)
@@ -648,6 +714,13 @@ final class JobDetailView: NSView {
     /// The running step's time label and when it started, for the ticker.
     private var runningStep: (label: NSTextField, start: Date)?
     static let maxItems = 8
+    /// What ties the content to this view. Off while it is hidden: a hidden job page (the detail shows an item) must not
+    /// hold the detail column — and with it the window — at its own content's width (dogfood: the window couldn't go
+    /// below 1127 pt).
+    private var pins: [NSLayoutConstraint] = []
+    override var isHidden: Bool {
+        didSet { if isHidden != oldValue { isHidden ? NSLayoutConstraint.deactivate(pins) : NSLayoutConstraint.activate(pins) } }
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -712,12 +785,13 @@ final class JobDetailView: NSView {
         terminalBox.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
         addSubview(terminalBox)
-        NSLayoutConstraint.activate([
+        pins = [
             stack.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor), stack.leadingAnchor.constraint(equalTo: leadingAnchor),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor),
             terminalBox.topAnchor.constraint(equalTo: stack.bottomAnchor), terminalBox.leadingAnchor.constraint(equalTo: leadingAnchor),
             terminalBox.trailingAnchor.constraint(equalTo: trailingAnchor), terminalBox.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
+        ]
+        NSLayoutConstraint.activate(pins)
         for v in full { v.widthAnchor.constraint(equalTo: stack.widthAnchor, constant: -48).isActive = true }
     }
     required init?(coder: NSCoder) { fatalError() }

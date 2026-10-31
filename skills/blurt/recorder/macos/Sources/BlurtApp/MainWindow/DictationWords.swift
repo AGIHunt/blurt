@@ -545,9 +545,10 @@ struct WordChip: View {
 }
 
 /// The projects' words, one chip per project, as one keyboard stop like the other chips (← → move, ⌫ removes the
-/// project's words). Each chip: the project's name, then its key set the way the sidebar sets it (small, monospaced);
-/// a part that isn't a word dictation is told about (a long name) is in secondary, so "IOS" reads as the key of
-/// "口喷鸡 iOS 客户端", not as a misspelt iOS. The context menu edits or removes one word of it.
+/// project's words). Each chip has one grammar: the project's name first (truncated at its end), then its key always,
+/// small, monospaced and secondary, as stored (keys are capitals: "IOS" is the key of "口喷鸡 iOS 客户端", made from
+/// its name). A part dictation isn't told about (a long name, a word removed) is struck through, with the tooltip
+/// saying so — the emphasis never swaps. The context menu edits or removes one word of it.
 struct ProjectChips: View {
     @ObservedObject var w: DictationWordsModel
     let groups: [DictationWordsModel.ProjectWords]
@@ -593,15 +594,24 @@ private struct ProjectWordsChip: View {
     let g: DictationWordsModel.ProjectWords
     @State private var hover = false
 
+    /// The words dictation is told, and (struck through on the chip) the parts it isn't.
+    var tip: String {
+        let sep = T("dictation.vocab.list_sep")
+        var lines = [T("dictation.words.project.tip", g.name, g.terms.map(\.term).joined(separator: sep))]
+        let off = [g.nameIsWord ? nil : g.name, g.key.isEmpty || g.keyWord != nil ? nil : g.key].compactMap { $0 }
+        if !off.isEmpty { lines.append(T("dictation.words.project.not_sent", off.joined(separator: sep))) }
+        return lines.joined(separator: "\n")
+    }
+
     var body: some View {
         let selected = g.terms.contains { $0.term == w.selected }
         HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(g.name).font(.system(size: 12.5)).lineLimit(1).truncationMode(.middle)
-                .foregroundStyle(g.nameIsWord ? Color.primary : Color.secondary)
+            Text(g.name).font(.system(size: 12.5)).lineLimit(1).truncationMode(.tail)
+                .strikethrough(!g.nameIsWord, color: .secondary)
                 .frame(maxWidth: 170, alignment: .leading).fixedSize(horizontal: g.name.count < 18, vertical: false)
-            if let k = g.keyWord {
-                Text(k.term).font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                    .foregroundStyle(g.nameIsWord ? Color.secondary : Color.primary)
+            if !g.key.isEmpty {
+                Text(g.key).font(.system(size: 10.5, weight: .medium, design: .monospaced)).foregroundStyle(.secondary)
+                    .strikethrough(g.keyWord == nil, color: .secondary)
             }
         }
         .padding(.horizontal, 9).padding(.vertical, 3)
@@ -631,7 +641,7 @@ private struct ProjectWordsChip: View {
             Divider()
             ForEach(g.terms) { t in Button(T("dictation.words.remove", t.term)) { w.remove(t) } }
         }
-        .help(T("dictation.words.project.tip", g.name, g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep"))))
+        .help(tip)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(g.terms.map(\.term).joined(separator: T("dictation.vocab.list_sep")))
         .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)

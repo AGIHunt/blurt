@@ -10,6 +10,9 @@ final class SidebarNode: NSObject {
     let title: String
     let scope: Scope?            // nil = a group header
     let symbol: String?
+    /// a drawn mark instead of the symbol: a project's coloured folder, Unassigned's dashed ring, a missing folder's
+    /// question mark — the island's one mark per concept (IslandGlyph.place)
+    var image: NSImage?
     var count: Int?
     var children: [SidebarNode] = []
     var accessibility: String?
@@ -25,7 +28,7 @@ final class SidebarNode: NSObject {
     init(_ title: String, scope: Scope?, symbol: String? = nil, count: Int? = nil, children: [SidebarNode] = []) {
         self.title = title; self.scope = scope; self.symbol = symbol; self.count = count; self.children = children
     }
-    /// a row that does something instead of going somewhere (Recently Dragged Out opens its panel): never selected
+    /// a row that does something instead of going somewhere (none today; such a row opens something): never selected
     var action: (() -> Void)?
     var isGroup: Bool { scope == nil && action == nil }
 }
@@ -62,8 +65,6 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
     private(set) var renaming: InlineRename?
     private var rebuildAfterRename = false
     var roots: [SidebarNode] = []
-    /// Tests (wp6 `mainbanner taken N`): the Recently Dragged Out row with N cards, none needed
-    var testTaken: Int?
     weak var actions: SidebarActions?
     private var reloading = false
 
@@ -93,14 +94,13 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         outline.setAccessibilityLabel(T("main.sidebar.label"))
         outline.menu = NSMenu()
         outline.menu?.delegate = self
-        outline.registerForDraggedTypes([.fileURL, .blurtItems, .blurtProject])
+        outline.registerForDraggedTypes([.fileURL, .blurtItems, .blurtProject, capturePasteboardType])
         outline.setDraggingSourceOperationMask(.every, forLocal: false)
         outline.setDraggingSourceOperationMask(.move, forLocal: true)
         outline.target = self
         outline.action = #selector(clicked)
         outline.doubleAction = #selector(doubleClicked)
         outline.onReturn = { [weak self] in self?.renameSelected() ?? false }
-        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.rebuild() }
         scroll.documentView = outline
 
         // Notes' "New Folder": a plus and the words, in the rows' own size and ink (secondary), not a faint caption
@@ -162,33 +162,26 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
         // not items: what was dictated into other apps — a page of its own (DictationPage.swift); text typed at a cursor, as
         // Settings → Dictation, the menu bar and ⌘K mark it (the mic is a voice note's)
         let dictation = place(T("dictation.history.sidebar"), .dictation, "character.cursor.ibeam", nil, ax: T("main.sidebar.dictation.ax"))
-        // Recently Dragged Out: a place of its own while it holds cards (Photos' Recently Deleted), not a banner over
-        // the list — a click opens its panel (copy, drag out again, put back); the menu bar and the island reach it too
-        let takenCount = testTaken ?? (AppEnvironment.island == nil ? 0 : snapper.recentlyTaken.count)
-        let taken: [SidebarNode] = takenCount > 0 ? [{
-            // short enough for the sidebar; the panel's own name (Recently Dragged Out) is its tooltip and VoiceOver label
-            let n = SidebarNode(T("main.sidebar.taken"), scope: nil, symbol: "arrow.up.right.square", count: takenCount)
-            n.action = { [weak self] in
-                let w = self?.view.window
-                TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
-            }
-            n.tip = [Loc.t("capture.taken.title", table: "Capture"), T("main.captures.taken.tip")].joined(separator: "\n")
-            n.accessibility = Loc.t("capture.taken.title", table: "Capture")
-            return n
-        }()] : []
+        // (cards used in other apps are not a place here: they are the Cards panel's History, ⌥H — v1.0.7)
         let top = [
             place(T("main.place.inbox"), .inbox, "tray", c.inbox, alert: true, ax: T("main.sidebar.inbox.ax")),
             place(T("main.place.progress"), .inProgress, "circle.righthalf.filled", c.active, ax: T("main.sidebar.progress.ax")),
-            place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax")),
+            { () -> SidebarNode in
+                let n = place(T("project.inbox"), .unassigned, "tray.2", c.unassigned, ax: T("main.sidebar.unassigned.ax"))
+                n.image = IslandGlyph.place(nil, size: 16)
+                return n
+            }(),
             place(T("main.place.all"), .all, "list.bullet.rectangle", c.all),
             dictation,
-        ] + taken
+        ]
         let projectNodes = model.projects.map { p -> SidebarNode in
             // a project's count is plain secondary digits: the one mint pill is the Inbox's (what's new for you, §3.3),
             // so the brand marks on screen stay few. The key ("AW", its ids' prefix) is the row's tooltip, not text.
             let n = SidebarNode(p.name, scope: .project(p.id), symbol: p.exists ? "folder" : "questionmark.folder",
                                 count: p.inbox > 0 ? p.inbox : nil)
             n.alert = false
+            n.image = !p.exists ? IslandGlyph.missing.template(size: 16)
+                : ProjectStore.shared.project(id: p.id).flatMap { IslandGlyph.project(ProjectLook.color($0)).image(size: 16, color: .black) }
             n.tip = p.key.isEmpty ? p.name : T("main.sidebar.project_tip", p.name, p.key)
             n.dimmed = !p.registered || !p.exists
             n.current = ProjectStore.shared.currentID == p.id
@@ -209,7 +202,7 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
 
     var selectedScope: Scope? { (outline.item(atRow: outline.selectedRow) as? SidebarNode)?.scope }
 
-    /// A click on an action row (Recently Dragged Out): do it; the selection stays where it was.
+    /// A click on an action row: do it; the selection stays where it was.
     @objc func clicked() {
         guard outline.clickedRow >= 0, let n = outline.item(atRow: outline.clickedRow) as? SidebarNode, let a = n.action else { return }
         a()
@@ -307,7 +300,8 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             if at != index { o.setDropItem(g, dropChildIndex: at) }
             return .move
         }
-        if pb.types?.contains(.blurtItems) == true {
+        // items from the list, or a hanging card (BA-50: filed here as on the island's project rows)
+        if pb.types?.contains(.blurtItems) == true || pb.types?.contains(capturePasteboardType) == true {
             guard let n = item as? SidebarNode, index == NSOutlineViewDropOnItemIndex, let s = n.scope else { return [] }
             switch s {
             case .project(let p) where model.project(id: p)?.registered == true: return .move
@@ -336,6 +330,15 @@ final class SidebarController: NSViewController, NSOutlineViewDataSource, NSOutl
             switch s {
             case .project(let p): actions?.move(uids: items, to: p)
             case .unassigned: actions?.move(uids: items, to: "inbox")
+            default: return false
+            }
+            return true
+        }
+        if let raw = pb.pasteboardItems?.first?.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
+            guard let s = (item as? SidebarNode)?.scope else { return false }
+            switch s {
+            case .project(let p): snapper.assign(hanging.withSelection(shot), to: p)
+            case .unassigned: snapper.assign(hanging.withSelection(shot), to: "inbox")
             default: return false
             }
             return true
@@ -458,7 +461,7 @@ final class SourceCell: NSTableCellView, InlineEditable {
         title.textColor = n.dimmed ? .secondaryLabelColor : .labelColor
         key.stringValue = n.detail ?? ""
         key.isHidden = n.detail == nil
-        icon.image = n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
+        icon.image = n.image ?? n.symbol.flatMap { Look.symbol($0, n.title, size: 13) }
         icon.alphaValue = 1
         toolTip = n.current ? [n.tip, T("main.project.current_mark")].compactMap { $0 }.joined(separator: "\n") : n.tip
         mark.isHidden = !n.current

@@ -181,7 +181,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>已丢弃，%ld 条回到了要做。</string>
+			<string>已丢弃，%ld 条已回到「要做」。</string>
 		</dict>
 	</dict>
 </dict>

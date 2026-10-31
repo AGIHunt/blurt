@@ -600,7 +600,9 @@ function Provenance({ i }: { i: Item }) {
         {s.i18n.formatDate(i.created)}
       </span>,
     );
-  if (src.by) line.push(<span key="b">{s.t("source.by_who", { who: String(src.by) })}</span>);
+  // the Mac's own account name ("by john") is you: never the raw login
+  if (src.by)
+    line.push(<span key="b">{src.by === s.data.me ? s.t("work.by_you") : s.t("source.by_who", { who: String(src.by) })}</span>);
   const rows: [string, React.ReactNode][] = [];
   if (src.app) rows.push([s.t("source.app"), appLabel(String(src.app))]);
   if (src.url)

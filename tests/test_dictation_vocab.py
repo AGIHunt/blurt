@@ -343,32 +343,43 @@ class BiasedNote(unittest.TestCase):
         T = A.T
         real = A.fake_installed("sensevoice-small")
         try:
-            with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["de", "en"]}}):
                 d = T.dictation_models(A.hw())
-                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")       # Apple silicon, pro too (v1.0.6)
+                # by Mac (dictation_tier, 2026-10-31): the 1.7B on 16 GB+ Macs fast enough for it
+                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")
                 self.assertEqual(d["selected"], "sensevoice-small")             # … until it is installed
                 self.assertEqual(d["models"][0]["id"], "qwen3-asr-0.6b-mlx")
                 self.assertEqual({m["id"]: m["vocab"] for m in d["models"]}["sensevoice-small"], "none")
-                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")   # standard
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["recommended"], "qwen3-asr-1.7b-mlx")   # standard
+                # a base M1 / M2, not measured: the 0.6B
+                self.assertEqual(T.dictation_models({**A.hw(ram=16.0), "chip": "Apple M1"})["recommended"],
+                                 "qwen3-asr-0.6b-mlx")
             T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
+                # the 0.6B here, the 1.7B not yet: the 0.6B runs until it is
                 self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-0.6b-mlx")
             T.installed = lambda m: m["id"] in ("sensevoice-small", "qwen3-asr-0.6b-mlx", "qwen3-asr-1.7b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
-                # both here: the recommended 0.6B
-                self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-0.6b-mlx")
-                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-0.6b-mlx")
+                # both here: the recommended one for the Mac
+                self.assertEqual(T.dictation_models(A.hw())["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models(A.hw(ram=16.0))["selected"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models({**A.hw(ram=16.0), "chip": "Apple M2"})["selected"],
+                                 "qwen3-asr-0.6b-mlx")
             with A.config({"asr": {"auto": False, "backend": "sensevoice"},
                            "record": {"dictation": {"asr_model": "sensevoice-small"}}}):
                 d = T.dictation_models(A.hw())
                 self.assertEqual((d["configured"], d["selected"]), ("sensevoice-small", "sensevoice-small"))
-            with A.config({"asr": {"auto": False, "backend": "sensevoice"}}):
-                self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "sensevoice-small")
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["de", "en"]}}):
+                # 8 GB: the 0.6B, with no local polish beside it (dictation-eval-2026-10-31 §6.2)
+                self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "qwen3-asr-0.6b-mlx")
+            with A.config({"asr": {"auto": False, "backend": "sensevoice", "languages": ["zh", "en"]}}):
+                # … Fun-ASR-Nano for someone who speaks only its languages (docs/design/dictation.md §Defaults by Mac)
+                self.assertEqual(T.dictation_models(A.hw(ram=8.0))["recommended"], "fun-asr-nano-mlx")
         finally:
             T.installed = real
 
     def test_an_installed_qwen_is_used_when_it_fits_next_to_polish(self):
-        # a 16 GB Mac (standard: 0.6B recommended) that has only the 1.7B (moved from a bigger Mac): the memory check
+        # a 16 GB Mac that has only the 1.7B (moved from a bigger Mac, or the recommended one since 2026-10-31): the memory check
         # counts the pair a dictation holds — recogniser + polish model — not the recogniser alone
         import test_asr_select as A
         T = A.T

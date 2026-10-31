@@ -111,13 +111,20 @@ struct DictationFeedbackSheet: View {
                 .padding(.top, 6)
             listHeader.padding(.top, 14)
             list
-            Toggle(isOn: $f.includeContext) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(T("dictation.feedback.context"))
-                    Text(T("dictation.feedback.context.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            // the rows' own box, one size of checkbox in the sheet
+            Button { f.includeContext.toggle() } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    DictationFeedbackSheet.box(f.includeContext ? .on : .off)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(T("dictation.feedback.context"))
+                        Text(T("dictation.feedback.context.detail")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                    }
                 }
+                .contentShape(Rectangle())
             }
-            .toggleStyle(.checkbox)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(f.includeContext ? .isSelected : [])
+            .padding(.horizontal, 10)
             .padding(.top, 12)
             what.padding(.top, 12)
             footer.padding(.top, 16)
@@ -145,9 +152,10 @@ struct DictationFeedbackSheet: View {
     }
 
     var list: some View {
-        ScrollView {
+        let tw = timeWidth
+        return ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(f.entries) { e in row(e) }
+                ForEach(f.entries) { e in row(e, timeWidth: tw) }
             }
             .padding(.vertical, 4)
         }
@@ -156,12 +164,20 @@ struct DictationFeedbackSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(Color.primary.opacity(0.08)))
     }
 
-    func row(_ e: DictationEntry) -> some View {
+    /// The time column as wide as its longest time ("14:14", or "Oct 28 14:14" when older ones are listed): the text
+    /// starts right after it, no blank band.
+    var timeWidth: CGFloat {
+        let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        let w = f.entries.map { (DictationFeedbackSheet.time($0.time) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        return ceil(w) + 4
+    }
+
+    func row(_ e: DictationEntry, timeWidth: CGFloat) -> some View {
         Button { f.toggle(e.id) } label: {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 DictationFeedbackSheet.box(f.checked.contains(e.id) ? .on : .off)
                 Text(DictationFeedbackSheet.time(e.time)).font(.system(size: 12).monospacedDigit()).foregroundStyle(.secondary)
-                    .lineLimit(1).frame(width: 112, alignment: .leading)
+                    .lineLimit(1).frame(width: timeWidth, alignment: .leading)
                 Text(DictationEntry.preview(e.finalText)).lineLimit(1).truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(f.hasAudio(e) ? Island.clock(e.duration) : T("dictation.feedback.text_only"))

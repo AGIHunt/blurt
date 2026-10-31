@@ -41,7 +41,11 @@ struct DictationASRModel: Decodable, Identifiable, Hashable {
     var recommended: Bool
     /// none | prompt | context | hotwords: how the model takes the custom words
     var vocab: String
-    enum CodingKeys: String, CodingKey { case id, name, installed, files, recommended, vocab, sizeMB = "size_mb" }
+    /// it runs here beside the polish model (nil from an older script)
+    var fits: Bool?
+    /// macOS's own recogniser: nothing to download
+    var builtin: Bool?
+    enum CodingKeys: String, CodingKey { case id, name, installed, files, recommended, vocab, fits, builtin, sizeMB = "size_mb" }
 }
 
 struct DictationASRState: Decodable {
@@ -79,7 +83,8 @@ struct DictationASRState: Decodable {
 struct PolishState: Decodable {
     var supported: Bool
     var tier: String
-    var recommended: String
+    /// nil: no local polish model by default on this Mac (8 GB: polish_models.json defaults)
+    var recommended: String?
     var selected: String?
     var configured: String?
     var models: [PolishModel]
@@ -140,6 +145,15 @@ final class DictationModels: ObservableObject {
         guard let r = row else { return nil }
         return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
     }
+    /// The island's first offer when this Mac has no speech model at all (DictationSpeechModels.firstOffer): the
+    /// smallest model that fits; the recommended one stays in Settings. nil: `dictationJob` is what to get.
+    var firstModelJob: ModelDownloadQueue.Job? {
+        guard let a = asr, let sm = Dictation.shared.speechModels ?? speechModels else { return nil }
+        let rows = a.models.map { (id: $0.id, sizeMB: $0.builtin == true ? 0 : $0.sizeMB, fits: $0.fits ?? true) }
+        guard let o = sm.firstOffer(rows), let r = a.models.first(where: { $0.id == o.id }) else { return nil }
+        return ModelDownloadQueue.Job(id: r.id, kind: .dictation, name: r.name ?? r.id, sizeMB: r.sizeMB)
+    }
+
     /// silero_vad.onnx
     static let vadMB = 0.6
 
@@ -184,6 +198,26 @@ final class DictationModels: ObservableObject {
     var selectedPolish: PolishModel? { polish.flatMap { p in p.models.first { $0.id == p.selected } } }
 
     // MARK: the recommended pair
+
+    /// This Mac's defaults — recogniser, its window and field context, local polish, cloud polish with macOS's
+    /// transcript as the second opinion — by the rule `transcribe.py dictation-models` applies to Automatic
+    /// (BlurtCore DictationTier.recommended; docs/design/dictation.md §Defaults by Mac): the memory, the 1.7B's
+    /// measured rtf (Settings → Speech's Measure, `transcribe.py bench`) or else the chip, and whether polish has a
+    /// cloud service.
+    var tier: DictationTier.Choice {
+        DictationTier.recommended(ramGB: (Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 * 10).rounded() / 10,
+                                  rtf: SpeechModel.shared.model(DictationTier.large)?.bench?.rtf,
+                                  hasCloudKey: DictationCloud.ready, slowChip: DictationTier.slowChip(Self.chip),
+                                  languages: SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages)
+    }
+    /// "Apple M5 Max" (machdep.cpu.brand_string), as transcribe.py's probe reads it
+    static let chip: String? = {
+        var n = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &n, nil, 0) == 0, n > 0 else { return nil }
+        var b = [CChar](repeating: 0, count: n)
+        guard sysctlbyname("machdep.cpu.brand_string", &b, &n, nil, 0) == 0 else { return nil }
+        return String(cString: b)
+    }()
 
     var recommendedASR: DictationASRModel? { asr.flatMap { a in a.models.first { $0.id == a.recommended } } }
     var recommendedPolish: PolishModel? {
@@ -274,6 +308,12 @@ final class DictationModels: ObservableObject {
             if let a = asr, a.configured == nil, a.selectedInstalled == true { save("asr_model", a.selected) }
             if let p = polish, p.configured == nil, let s = p.selected { save("polish_model", s) }
         }
+        Task { await load() }
+    }
+
+    /// Polish back to automatic alone (Settings → Models' Polish row: Auto), the speech model untouched.
+    func unpinPolish() {
+        if polish?.configured != nil { save("polish_model", nil); Dictation.shared.refreshPolishModel() }
         Task { await load() }
     }
 

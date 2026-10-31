@@ -1,6 +1,6 @@
 // What the island's ears show (Island.swift): a few small, live layers — a breathing record dot and the time (pause
 // bars when paused), counts with one of our line glyphs (every count one way: the glyph at 60 %, white digits — the
-// cards' stack, the stills' snap frame, the markers' flag), "+3" with the inbox's tray for a few seconds when new captures
+// cards' stack, the stills' snap frame), "+3" with the inbox's tray for a few seconds when new captures
 // land (news, never a standing backlog: the menu bar and the open island keep the count). A standing thing alone is
 // told across the notch, as a live activity is: its glyph on the left, its value on the right (`mark` | `text`). The
 // launch hello (Peep turns to you and blinks in the right ear, then goes), the mic level, a voice waveform, Peep
@@ -77,8 +77,9 @@ final class EarSlot {
         /// the organising ended: a peep and a hop, then "+n" (ok), or a head shake and a droop (it failed)
         case sorted(since: CFTimeInterval, ok: Bool, n: Int)
         case alert
-        /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand)
-        case glyph(BlurtIcon, pulse: Bool)
+        /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand); `lit`: in
+        /// mint, still (a recording's pen while it is on: "on", not a passive count)
+        case glyph(BlurtIcon, pulse: Bool, lit: Bool = false)
         /// three dots taking turns: working on it
         case dots
         /// one of our icons before a short text: dictation's style chip with the clock (list = Structured)
@@ -102,7 +103,7 @@ final class EarSlot {
             case (.mark(let a), .mark(let b)): return a == b
             case (.peep(let a), .peep(let b)): return a == b
             case (.peepLevel(let a, _), .peepLevel(let b, _)): return a == b
-            case (.glyph(let a, _), .glyph(let b, _)): return a == b
+            case (.glyph(let a, _, let la), .glyph(let b, _, let lb)): return a == b && la == lb
             case (.iconText(let a, _, _), .iconText(let b, _, _)): return a == b
             case (.iconsText(let a, let a2, _, _), .iconsText(let b, let b2, _, _)): return a == b && a2 == b2
             default: return false
@@ -137,7 +138,7 @@ final class EarSlot {
     /// 12 medium, tabular digits: semibold at 60–92 % white went muddy on the black (a weight that says "important"
     /// in a colour that says "quiet").
     static let font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium)
-    /// A count's glyph (cards, tray, snap, flag): 13 pt, the family's floor (docs/design/system.md §2.6).
+    /// A count's glyph (cards, tray, snap): 13 pt, the family's floor (docs/design/system.md §2.6).
     static let countGlyph: CGFloat = 13
     /// Every count's glyph is this quiet, its digits white: two counts of the same kind never differ in colour.
     static let countGlyphColor = NSColor(white: 1, alpha: 0.6)
@@ -185,7 +186,7 @@ final class EarSlot {
         case .sorted(let s, _, _): return CACurrentMediaTime() - s < EarSlot.sortedSeconds + 0.3
         case .alert: return CACurrentMediaTime() - pulseAt < 1
         case .peepLevel, .dots: return true
-        case .glyph(_, let p): return p && !reduceMotion
+        case .glyph(_, let p, _): return p && !reduceMotion
         default: return false
         }
     }
@@ -314,8 +315,8 @@ final class EarSlot {
             dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
             dot.isHidden = false
             x = 8
-        case .glyph(let ic, let pulse):
-            glyph(ic, 15, color: pulse ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
+        case .glyph(let ic, let pulse, let lit):
+            glyph(ic, 15, color: pulse || lit ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
             x -= 3
         case .dots:
             drawDots(t: 0)
@@ -378,7 +379,7 @@ final class EarSlot {
     /// The recording time's x after the dot (and after the finished take's disc: the number never moves).
     static let timeX: CGFloat = 15
     /// The level's width as drawn (four 2.2 pt bars 5 pt apart): the ear's trailing edge is the last bar's, so the
-    /// meter ends where the pencil, the snap count and the flag end.
+    /// meter ends where the pencil, and the snap count end.
     static let levelW: CGFloat = 17
 
     /// Recording: the mic level (4 steps). Gradient too — blurt hears you — but no glow: red owns that moment. In
@@ -474,7 +475,7 @@ final class EarSlot {
             let p = now - pulseAt
             let s: CGFloat = p < 1 && !reduce ? 1 + 0.5 * CGFloat(sin(.pi * p)) : 1
             dot.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
-        case .glyph(_, let pulse):
+        case .glyph(_, let pulse, _):
             icon.opacity = pulse && !reduce ? Float(0.5 + 0.5 * (0.5 + 0.5 * cos(t * 2 * .pi * 0.9))) : 1
         case .hello:
             // in for the hello, then away: it fades and slips 6 pt out (Reduce Motion: the still Peep, then a fade)

@@ -11,12 +11,16 @@
 //    action, a fresh clock); one with the same key waiting is replaced. The same text again just restarts the clock.
 //    `drop(key:)` forgets a kind of toast (dictation's, when a new take starts).
 //  • stale ones go: a reply that waited longer than `staleReply` describes something that is over, so it is dropped
-//    unshown; a passive line after `stalePassive`. Questions never go stale.
+//    unshown; a passive line after `stalePassive`. Only a toast that waits for an answer (`sticky`: its seconds are
+//    `.infinity`) never goes stale.
 //  • long enough to read and act on: every toast stays at least `minSeconds` (an Undo window is never shorter), and
 //    its clock stops while the pointer is on it (`tick(…, paused: true)`) — nor does it give way then.
-//  • a toast pushed out by a newer one comes back after it when it still matters: a question (it waits for an answer)
-//    or one with an action (an Undo) with more than `minShown` left — for exactly the time it had left (the 5 s floor
-//    was its first showing's); a plain line is simply superseded.
+//  • a toast pushed out by a newer one comes back after it when it still matters: one that waits for an answer, or
+//    one with an action (an Undo, a question's answers) with more than `minShown` left — for exactly the time it had
+//    left (the 5 s floor was its first showing's); a plain line is simply superseded.
+//  • two answers are not "waits forever": a question with seconds (the cloud-polish reminder's 10, the style
+//    question's 12) goes by itself like an Undo does, and going is its "no" (`onGone`). The dogfood found every
+//    question held the island for minutes, through later takes, ahead of every tip.
 //  • every toast that goes without being acted on — expired, replaced, superseded, stale, dropped — is handed to
 //    `onGone` once (the island answers the main window's page "gone", so its Undo never outlives the island's).
 //    `dismissCurrent()` is the one exit that isn't: the toast was acted on, answered or closed by its owner.
@@ -34,12 +38,16 @@ public final class ToastQueue<Payload> {
         public var key: String?
         public var text: String
         public var kind: Kind
-        /// How long it shows (at least `minSeconds`; `.infinity` for a question).
+        /// How long it shows (at least `minSeconds`; `.infinity` for one that waits for an answer).
         public var seconds: Double
         /// It has something to act on (an Undo, Show…): it comes back if a newer toast pushed it out early.
         public var actionable: Bool
-        /// A question: it waits for an answer, never goes stale, and comes back if pushed out.
+        /// A question (two answers; the island shows it over the open island). It times out like any other unless
+        /// it is `sticky`.
         public var question: Bool
+        /// It waits for an answer (its seconds are `.infinity`): it never expires or goes stale, and comes back if
+        /// pushed out.
+        public var sticky: Bool { seconds == .infinity }
         /// When it was posted (or put back in the queue): it goes stale from then.
         public var posted: Double = 0
         /// The order it was posted in (newest = highest; kept when it is put back).
@@ -60,9 +68,9 @@ public final class ToastQueue<Payload> {
             self.question = question
         }
 
-        var duration: Double { question ? .infinity : resumed ? seconds : max(seconds, ToastQueue.minSeconds) }
+        var duration: Double { sticky ? .infinity : resumed ? seconds : max(seconds, ToastQueue.minSeconds) }
         /// Gone once something newer is up: a plain reply (no question, nothing to act on).
-        var supersedable: Bool { kind == .reply && !question && !actionable }
+        var supersedable: Bool { kind == .reply && !sticky && !question && !actionable }
     }
 
     public enum Outcome: Equatable { case shown, replaced, refreshed, queued }
@@ -149,9 +157,9 @@ public final class ToastQueue<Payload> {
                 // newest first: a newer reply takes the slot; this one comes back after it if it still matters (a
                 // question, an Undo, a passive line that was never meant to be skipped)
                 current = nil
-                if c.question || ((c.actionable || c.kind == .passive) && floor - c.shown > ToastQueue.minShown) {
+                if c.sticky || ((c.actionable || c.question || c.kind == .passive) && floor - c.shown > ToastQueue.minShown) {
                     var back = c
-                    if !c.question { back.seconds = floor - c.shown; back.resumed = true }
+                    if !c.sticky { back.seconds = floor - c.shown; back.resumed = true }
                     back.shown = 0
                     back.posted = now
                     waiting.append(back)
@@ -183,7 +191,7 @@ public final class ToastQueue<Payload> {
 
     private func dropStale(now: Double) {
         remove { e in
-            guard !e.question else { return false }
+            guard !e.sticky else { return false }
             return now - e.posted > (e.kind == .reply ? ToastQueue.staleReply : ToastQueue.stalePassive)
         }
     }

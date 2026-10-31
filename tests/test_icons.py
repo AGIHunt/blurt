@@ -271,19 +271,19 @@ def test_brand_effects_stay_restrained():
     assert t["brand"]["working"]["width"] == 1
 
 
-def test_capture_lists_draw_designed_tiles():
-    """docs/design/system.md §3.2 (v0.9): Recently Dragged Out and the island menu show captures as CaptureThumb tiles
-    — a voice note is a brand-tint tile with the waveform in brand ink, never the mic glyph scaled up to the tile — and
-    a row's actions are the cards' one cluster ([···][Copy], CardChrome.CardActions — v0.9.2: no gradient button on a
-    row, the same cluster as an overview tile); done toasts carry the ok check."""
+def test_cards_have_one_look():
+    """docs/design/system.md §3.2 (v1.0.7, BA-62): every set of cards is the Cards panel — Current and History are one
+    grid of the same tiles (OverviewTile, the picture 148 × 100) with the cards' one action cluster ([eye][···][Copy],
+    CardChrome.CardActions — no gradient button on a tile) and one preview (CardPreview). The old Recently Dragged Out
+    rows (56 × 40 CaptureThumb tiles, TakenRow) are gone; done toasts carry the ok check."""
     app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
+    overview = (app / "Capture/Island/CardsOverview.swift").read_text()
     taken = (app / "Capture/TakenPanel.swift").read_text()
-    thumb = (app / "Capture/CaptureThumb.swift").read_text()
-    assert "CaptureThumb.draw(" in taken and "CaptureThumb.image(" in taken
-    assert "CardActions(" in taken and "BrandButton(" not in taken and "bezelStyle = .rounded" not in taken
-    assert "CardActions(" in (app / "Capture/Island/CardsOverview.swift").read_text()
-    assert not re.search(r"BlurtIcon\.mic\.image\(size: *height", taken)
-    assert "BrandColor.tint" in thumb and "BlurtIcon.waveform" in thumb and "BrandColor.ink" in thumb
+    assert "CardActions(" in overview and "preview:" in overview and "BrandButton(" not in overview
+    assert "OverviewTile($0, overview: self, used: used)" in overview
+    assert "class TakenRow" not in taken and "class TakenThumb" not in taken and "CaptureThumb" not in taken
+    assert not (app / "Capture/CaptureThumb.swift").exists()
+    assert (app / "Capture/Island/CardPreview.swift").exists()
     assert "BrandColor.Island.ok" in (app / "Capture/Island/IslandContent.swift").read_text()
     assert "t.icon = icon" in (app / "App/AppDelegate.swift").read_text()
 

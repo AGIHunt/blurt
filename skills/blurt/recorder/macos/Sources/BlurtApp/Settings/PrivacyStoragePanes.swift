@@ -441,7 +441,7 @@ final class StorageModel: ObservableObject {
         var out: [Row] = []
         func model(_ u: URL) -> Row {
             let f = u.lastPathComponent
-            return Row(name: displayName(f), path: u, bytes: diskSize(u), icon: "cpu", family: family(f), vad: f == "silero_vad.onnx")
+            return Row(name: displayName(f), path: u, bytes: diskSize(u), icon: icon(f), family: family(f), vad: f == "silero_vad.onnx")
         }
         for e in ((try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []).sorted(by: { $0.path < $1.path })
             where !e.lastPathComponent.hasPrefix(".") {
@@ -456,6 +456,15 @@ final class StorageModel: ObservableObject {
         }
         return out
     }
+
+    /// A model's glyph by what it does, as the Models pane draws it: speech recognition the waveform, polish the wand
+    /// (an unknown folder: the generic chip).
+    nonisolated static func icon(_ folder: String) -> String {
+        if folder == "silero_vad.onnx" { return "waveform" }
+        guard let e = ModelCatalog.entry(folder: folder) else { return "cpu" }
+        return e.polish ? "wand.and.stars" : "waveform"
+    }
+    nonisolated static func icon(_ k: ModelUsage.Kind) -> String { k == .polish ? "wand.and.stars" : "waveform" }
 
     /// What a model folder is for, from the catalogues (nil: not known — annotateModels says it).
     nonisolated static func family(_ folder: String) -> String? {
@@ -489,9 +498,15 @@ final class StorageModel: ObservableObject {
         }
         let own = BlurtPaths.home.appendingPathComponent("models").standardizedFileURL.path
         var rows = models.filter { $0.path.standardizedFileURL.path.hasPrefix(own) }
+        // the scripts and the folder listing may name one model by two paths (a models folder that is a link, a model
+        // linked in): matched on where the links lead too, so a model in use is never taken for one nothing uses
+        func resolved(_ p: String) -> String { URL(fileURLWithPath: p).resolvingSymlinksInPath().standardizedFileURL.path }
+        let knownResolved = Dictionary(known.map { (resolved($0.key), $0.value) }, uniquingKeysWith: { a, _ in a })
+        let usersResolved = Dictionary(users.map { (resolved($0.key), $0.value) }, uniquingKeysWith: { a, _ in a })
         for i in rows.indices {
             let p = rows[i].path.standardizedFileURL.path
-            guard let k = known[p] else {
+            let r = resolved(p)
+            guard let k = known[p] ?? knownResolved[r] else {
                 // a folder no script knows (a model an older version used): nothing uses it, it may go
                 let folder = rows[i].path.lastPathComponent
                 if folder != "silero_vad.onnx", ModelCatalog.entry(folder: folder) == nil {
@@ -504,15 +519,16 @@ final class StorageModel: ObservableObject {
             rows[i].name = k.name
             rows[i].family = family(k.kind)
             rows[i].vad = k.kind == .vad
+            rows[i].icon = StorageModel.icon(k.kind)
             rows[i].inUse = k.inUse
-            rows[i].usedBy = users[p] ?? []
+            rows[i].usedBy = users[p] ?? usersResolved[r] ?? []
             rows[i].removable = k.removable
         }
         // the shared Hugging Face cache: its repo folders (the snapshots are links into them)
         for (p, k) in known.sorted(by: { $0.key < $1.key }) where !p.hasPrefix(own) {
             let u = URL(fileURLWithPath: p)
             let bytes = await Task.detached { diskSize(u) }.value
-            rows.append(Row(name: k.name, path: u, bytes: bytes, icon: "cpu", family: family(k.kind), vad: k.kind == .vad,
+            rows.append(Row(name: k.name, path: u, bytes: bytes, icon: StorageModel.icon(k.kind), family: family(k.kind), vad: k.kind == .vad,
                             inUse: k.inUse, usedBy: users[p] ?? [], removable: false))
         }
         models = rows.sorted { $0.bytes > $1.bytes }          // biggest first, as macOS lists what takes space
@@ -760,7 +776,9 @@ struct StoragePane: View {
                     if m.models.isEmpty {
                         StorageRow(icon: "cpu", title: T("settings.storage.model.none"), size: storageSize(0))
                     }
-                    ForEach(m.models) { r in modelRow(r) }
+                    // the voice detector is part of local speech recognition, not a model to choose: said on the
+                    // recognition rows, never a row of its own
+                    ForEach(m.models.filter { !$0.vad }) { r in modelRow(r) }
                 }
             }, accessory: {
                 HStack(spacing: 8) {
@@ -878,6 +896,10 @@ struct StoragePane: View {
             let jobs = StoragePane.jobs(for: r)
             if !jobs.isEmpty { line = T("settings.storage.model.used_for", Loc.list(jobs.map { $0.lowercased(with: Loc.locale) })) }
             else if m.annotated && !r.inUse { line = T("settings.storage.model.not_used") }
+            // a local recogniser in use runs with the voice detector (its own file, shared by them all)
+            if r.icon == "waveform", r.inUse || !jobs.isEmpty, m.models.contains(where: \.vad) {
+                line += (line.isEmpty ? "" : " · ") + T("settings.storage.model.with_vad")
+            }
         }
         var actions = [reveal([r])]
         if r.removable { actions.append(trashAction(r.items, name: r.name)) }

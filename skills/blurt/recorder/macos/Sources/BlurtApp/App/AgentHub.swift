@@ -460,6 +460,15 @@ extension App {
             }
             return job.id
         }
+        // tests: BLURT_TEST_AGENTS=none — no agent is usable, whichever way Organize came (the cards, a failed take's
+        // toast, the main window, the menu): it ends as "no agent" and starts nothing (the take toast's Organize used
+        // to skip the cards' gate and start real Codex runs in a test session)
+        let env = ProcessInfo.processInfo.environment
+        if env["BLURT_TEST_COMMANDS"] == "1", env["BLURT_TEST_AGENTS"] == "none" {
+            emit(["event": "process_no_agent_test", "session": dir.path])
+            noAgent(dir, [], job: job)
+            return job.id
+        }
         let hub = AgentHub.shared
         hub.reload()
         let order = only.flatMap { hub.def($0) }.map { [$0] } ?? hub.order()
@@ -685,7 +694,8 @@ extension App {
             let items = "uv run \(BlurtPaths.scripts.path)/items.py"
             let prompt = "Use the blurt skill. These items were filed straight from the user's own notes, without an agent "
                 + "(they carry `enrich: pending`): " + uids.joined(separator: ", ") + ".\nFor each one: `\(items) get <uid>`, "
-                + "read it and look at its frames; then set the right kind (issue / idea / note / task), a clear title, and "
+                + "read it and look at its frames; then set the right kind (issue / idea / note / task) unless the user chose one "
+                + "(it is in the item's `_user`: keep it), a clear title, and "
                 + "what that kind's lens asks for (for an issue: steps, expected / actual, code_refs found in the project's code) with "
                 + "`\(items) patch <uid> --set key=VALUE … --unset enrich`. Keep the user's words in quote; don't change status, "
                 + "project or work. This is an unattended background run started by the Blurt app: don't ask questions and "

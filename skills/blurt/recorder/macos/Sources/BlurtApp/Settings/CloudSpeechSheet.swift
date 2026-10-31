@@ -1,6 +1,7 @@
-// Settings → Models → Advanced → the cloud recognition services (v1.0.4): each row's Set Up… opens this sheet, as
-// cloud polish's does — the service (OpenAI, Groq or another OpenAI-compatible API: base URL and model; or DashScope),
-// the API key (kept in the login Keychain, service "Blurt Cloud Speech", account = the model's id; the field never
+// Settings → Models → Advanced → the cloud recognition services (v1.0.4): each row's Set Up… opens this sheet (the
+// speech model, the speed, a Groq or other OpenAI-compatible address). A Model Studio or OpenAI key connected under
+// Cloud services (CloudStore) recognises speech too, with nothing to set here; a key set here wins. The sheet: the
+// service (OpenAI, Groq or another OpenAI-compatible API: base URL and model; or DashScope), the API key (kept in the login Keychain, service "Blurt Cloud Speech", account = the model's id; the field never
 // shows it back). Before, these keys only came from the user's shell profile (`export GROQ_API_KEY=…`), which a person
 // who doesn't live in a terminal could not set; those variables still work when nothing is set here.
 //
@@ -85,10 +86,12 @@ enum CloudSpeech {
     }
 
     /// How fast every cloud service hears the audio (asr.cloud.speed; transcribe.py `cloud_speed`): billing is per
-    /// second sent. 1.5x is the default — measured 34 % cheaper for 1.2 points more error; 2x halves the cost but
-    /// errs a lot more (docs/design/first-minute-speech.md §2.4).
+    /// second sent. 1x is the default since dictation sends the whole take (2026-10-31: Qwen3-ASR Flash on the
+    /// founder's 95 takes, whole, 2.0 % errors at 1x against 3.3 % at 1.5x — docs/design/dictation.md §Cloud
+    /// recognition; $0.11 an hour of speech); 1.5x is a third cheaper, 2x halves the cost but errs a lot more
+    /// (docs/design/first-minute-speech.md §2.4).
     static let speeds: [Double] = [1.0, 1.5, 2.0]
-    static let defaultSpeed = 1.5
+    static let defaultSpeed = 1.0
     static var speed: Double {
         let v = (Config.shared["asr.cloud"] as? [String: Any])?["speed"] as? Double ?? defaultSpeed
         return speeds.min { abs($0 - v) < abs($1 - v) } ?? defaultSpeed
@@ -111,22 +114,112 @@ enum CloudSpeech {
         lock.lock(); defer { lock.unlock() }
         if let c = cached { return c }
         var env: [String: String] = [:]
-        if let k = Key.read(openAIModel) {
+        let services = CloudStore.setup.services
+        // a key no request can carry (stray "ç" from ⌥C, a space) is never sent: the other key, if any, is
+        func usable(_ k: String?) -> String? { k.flatMap { CloudKeyCheck.problem($0) == nil ? $0 : nil } }
+        if let k = usable(Key.read(openAIModel)) {
             let s = setup
             env["BLURT_ASR_API_KEY"] = k
             if !s.effectiveBaseURL.isEmpty { env["BLURT_ASR_BASE_URL"] = s.effectiveBaseURL }
             if !s.effectiveModel.isEmpty { env["BLURT_ASR_MODEL"] = s.effectiveModel }
+        } else if let o = services.first(where: { $0.preset == "openai" }), let k = usable(CloudStore.key(o)) {
+            // OpenAI connected under Settings → Models → Cloud services: its key recognises speech too (its own
+            // address; the model picked here for OpenAI, else whisper-1 for its timestamps)
+            let s = setup
+            env["BLURT_ASR_API_KEY"] = k
+            env["BLURT_ASR_BASE_URL"] = o.effectiveBaseURL
+            env["BLURT_ASR_MODEL"] = s.service == .openai && !s.model.trimmingCharacters(in: .whitespaces).isEmpty
+                ? s.effectiveModel : Service.openai.defaultModel
         }
-        // DashScope: its own key, else the cloud polish key when that is Model Studio's (one key: first-minute-speech.md)
-        if let k = Key.read(dashScopeModel) ?? DictationCloud.Key.read(.dashscope).flatMap({ $0.isEmpty ? nil : $0 }) {
+        // Volcengine Speech: its App ID and Access Token, one Keychain item (VolcengineSpeech) — only a pair that can be
+        // sent; a value that isn't one is left out (the model then isn't offered: transcribe.py needs both)
+        if let v = services.first(where: { $0.preset == VolcengineSpeech.preset }),
+           let pair = VolcengineSpeech.split(CloudStore.Key.read(v.id)),
+           VolcengineSpeech.problem(appID: pair.appID, token: pair.token) == nil {
+            env[VolcengineSpeech.appIDVariable] = pair.appID
+            env[VolcengineSpeech.tokenVariable] = pair.token
+        }
+        // DashScope: Model Studio's key under Cloud services (one key: first-minute-speech.md §4.3), else the key set
+        // for speech alone, at that service's address (Singapore for an international account). Cloud services first:
+        // the key the user last pasted and tested there must be the one dictation sends (2026-10-31: an older
+        // speech-only key with stray characters won, so Test passed and every take failed)
+        let ms = services.first { $0.preset == "dashscope" }
+        if let k = usable(ms.flatMap({ CloudStore.Key.read($0.id) })) ?? usable(Key.read(dashScopeModel)) {
             env["DASHSCOPE_API_KEY"] = k
             if !dashScopeChoice.isEmpty { env["DASHSCOPE_ASR_MODEL"] = dashScopeChoice }
+            if let m = ms, m.effectiveBaseURL != CloudPreset.preset("dashscope")?.endpoint(.china)?.baseURL {
+                env["DASHSCOPE_BASE_URL"] = m.effectiveBaseURL
+            }
         }
         cached = env
         return env
     }
 
-    static func invalidate() { lock.lock(); cached = nil; lock.unlock() }
+    /// The keys changed (saved, removed, a service connected): read again next time. A speech server Blurt started
+    /// already holds the old ones in its environment — when what it would get now differs, it is ended and warmed
+    /// again, so the next take sends the key the user just saved (2026-10-31: Test passed on the new key while the
+    /// server kept sending the old one).
+    static func invalidate() {
+        lock.lock(); let before = cached; cached = nil; lock.unlock()
+        guard let before else { return }
+        DispatchQueue.global(qos: .utility).async {
+            guard environment() != before else { return }
+            DispatchQueue.main.async { VoiceInput.restartForNewKeys() }
+        }
+    }
+
+    // MARK: Test (CloudSpeechCheck)
+
+    /// Settings' Test: `transcribe.py check-cloud` — a short spoken clip to the service as dictation would send it,
+    /// with these choices; a key typed and not saved yet goes on stdin (never on the command line or in a log), else
+    /// the saved one (from the environment, as every script gets it). `done` on the main queue. UI-free: the cloud
+    /// settings can move without it.
+    static func check(modelID: String, typedKey: String, setup: Setup, dsModel: String,
+                      done: @escaping (CloudSpeechCheck.Result) -> Void) {
+        guard let typed = CloudSpeechCheck.clean(typedKey) else { return done(.failed("speech.cloud.check.bad_key")) }
+        guard typed.isEmpty else { return run(modelID, ["key": typed], setup, dsModel, done) }
+        // the saved key: read off the main thread (a Keychain read can wait for macOS to ask)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let saved = Key.read(modelID) ?? (modelID == dashScopeModel ? DictationCloud.Key.read(.dashscope) : nil) ?? ""
+            DispatchQueue.main.async {
+                if saved.isEmpty { return done(.failed("speech.cloud.check.no_key")) }
+                if CloudSpeechCheck.clean(saved) == nil { return done(.failed("speech.cloud.check.bad_key")) }
+                run(modelID, [:], setup, dsModel, done)
+            }
+        }
+    }
+
+    private static func run(_ modelID: String, _ key: [String: String], _ setup: Setup, _ dsModel: String,
+                            _ done: @escaping (CloudSpeechCheck.Result) -> Void) {
+        var given = key
+        if modelID == openAIModel {
+            given["base_url"] = setup.effectiveBaseURL
+            given["model"] = setup.effectiveModel
+        } else if !dsModel.trimmingCharacters(in: .whitespaces).isEmpty {
+            given["model"] = dsModel.trimmingCharacters(in: .whitespaces)
+        }
+        let body = try? JSONSerialization.data(withJSONObject: given)
+        Scripts.call("transcribe.py", ["check-cloud", "--model-id", modelID], stdin: body, timeout: 45) { r in
+            switch r {
+            case .success(let o): done(CloudSpeechCheck.result(o))
+            case .failure(let f): done(.failed(CloudSpeechCheck.sentence(f.code)))
+            }
+        }
+    }
+
+    /// Settings' Test for Volcengine Speech: the same short clip through `transcribe.py check-cloud`, with an App ID and
+    /// Access Token typed and not saved yet on stdin (never on the command line or in a log), else the saved pair (from
+    /// the environment, as every script gets it). `done` on the main queue.
+    static func checkVolcengine(appID: String, token: String, done: @escaping (CloudSpeechCheck.Result) -> Void) {
+        let given: [String: String] = token.isEmpty ? [:] : ["app_id": appID, "token": token]
+        let body = try? JSONSerialization.data(withJSONObject: given)
+        Scripts.call("transcribe.py", ["check-cloud", "--model-id", VolcengineSpeech.modelID], stdin: body, timeout: 45) { r in
+            switch r {
+            case .success(let o): done(CloudSpeechCheck.result(o))
+            case .failure(let f): done(.failed(CloudSpeechCheck.sentence(f.code)))
+            }
+        }
+    }
 
     /// At launch: every script the app starts gets the keys (ScriptRunner.extraEnvironment).
     static func install() { ScriptRunner.extraEnvironment = { CloudSpeech.environment() } }
@@ -159,8 +252,14 @@ enum CloudSpeech {
             defer { CloudSpeech.invalidate() }
             let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
             if testing { testKeys[account] = k.isEmpty ? nil : k; return true }
-            SecItemDelete(query(account) as CFDictionary)
-            guard !k.isEmpty else { return true }
+            // deleted only when asked to (an empty key); a new key replaces the old one in place, so a failed write
+            // (a locked Keychain, an item another signature made) never loses the key that was there
+            guard !k.isEmpty else {
+                let r = SecItemDelete(query(account) as CFDictionary)
+                return r == errSecSuccess || r == errSecItemNotFound
+            }
+            let update = SecItemUpdate(query(account) as CFDictionary, [kSecValueData as String: Data(k.utf8)] as CFDictionary)
+            guard update == errSecItemNotFound else { return update == errSecSuccess }
             var q = query(account)
             q[kSecValueData as String] = Data(k.utf8)
             q[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -191,6 +290,9 @@ struct CloudSpeechSheet: View {
     @State private var dsModel = CloudSpeech.dashScopeChoice
     @State private var key = ""
     @State private var stored: Bool
+    /// Test's answer (nil: not run); `testing` while it runs
+    @State private var checked: CloudSpeechCheck.Result?
+    @State private var testing = false
 
     init(modelID: String, title: String, close: @escaping (_ saved: Bool) -> Void) {
         self.modelID = modelID
@@ -214,9 +316,25 @@ struct CloudSpeechSheet: View {
                 .padding(.top, 6)
             form.padding(.top, 16)
             HStack(spacing: 10) {
+                Button(T("dictation.cloud.test")) { test() }
+                    .disabled(testing || (!stored && key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) || (openAI && !setup.complete))
+                if testing { BrandSpinnerView(size: 12) }
+                if let c = checked, !testing {
+                    Group {
+                        switch c {
+                        case .ok(let ms, let heard):
+                            Text(heard ? T("dictation.cloud.check.ok", String(format: "%.1f", Double(ms) / 1000))
+                                       : S("speech.cloud.check.ok_silent", String(format: "%.1f", Double(ms) / 1000)))
+                                .foregroundStyle(Color.brandOk)
+                        case .failed(let k):
+                            Text(S(k)).foregroundStyle(Color.brandErr)
+                        }
+                    }
+                    .font(.system(size: SettingsMetrics.detailSize)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                }
                 Spacer()
                 Button(T("dictation.cloud.cancel")) { close(false) }.keyboardShortcut(.cancelAction)
-                Button(T("dictation.cloud.done")) { save() }.keyboardShortcut(.defaultAction).disabled(!canSave)
+                Button(T("dictation.cloud.done")) { save() }.keyboardShortcut(.defaultAction).disabled(!canSave || testing)
             }
             .padding(.top, 18)
         }
@@ -259,7 +377,7 @@ struct CloudSpeechSheet: View {
                     ChoicePopup(label: S("speech.cloud.speed"),
                                 choices: CloudSpeech.speeds.map { ($0, S("speech.cloud.speed.\(CloudSpeech.speedKey($0))")) },
                                 selection: $speed, width: 220)
-                    Text(S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint") + " " + S("speech.cloud.speed.all"))
+                    Text(S("speech.cloud.speed.line", S("speech.cloud.speed.\(CloudSpeech.speedKey(speed)).hint"), S("speech.cloud.speed.all")))
                         .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.leading, SettingsMetrics.fieldTextInset)
@@ -290,11 +408,38 @@ struct CloudSpeechSheet: View {
 
     func label(_ k: String) -> some View { Text(T(k)).foregroundStyle(.secondary).fixedSize().gridColumnAlignment(.trailing) }
 
+    func test() {
+        testing = true
+        emit(["event": "speech_cloud", "action": "test", "model": modelID])
+        CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
+            testing = false
+            checked = r
+            emit(["event": "speech_cloud", "action": "tested", "model": modelID, "ok": { if case .ok = r { return true }; return false }()])
+        }
+    }
+
     func save() {
+        // a key with characters no key has (what ⌥C types, "ç", after the founder's key): not kept, said here
+        guard let k = CloudSpeechCheck.clean(key) else { checked = .failed("speech.cloud.check.bad_key"); return }
+        // a service Blurt didn't test (OpenAI, Groq, another address): saved only once its clip comes back
+        // (Settings → Models' Custom Model rule, docs/design/first-minute-speech.md §10.5)
+        if openAI && (!k.isEmpty || stored) {
+            testing = true
+            CloudSpeech.check(modelID: modelID, typedKey: key, setup: setup, dsModel: dsModel) { r in
+                testing = false
+                checked = r
+                emit(["event": "speech_cloud", "action": "save_tested", "model": modelID, "ok": { if case .ok = r { return true }; return false }()])
+                if case .ok = r { commit(k) }
+            }
+            return
+        }
+        commit(k)
+    }
+
+    private func commit(_ k: String) {
         if openAI { CloudSpeech.save(setup) }
         if speed != CloudSpeech.speed { CloudSpeech.setSpeed(speed) }
         if !openAI, dsModel != CloudSpeech.dashScopeChoice { CloudSpeech.saveDashScope(model: dsModel) }
-        let k = key.trimmingCharacters(in: .whitespacesAndNewlines)
         if !k.isEmpty { CloudSpeech.Key.write(modelID, k) }
         emit(["event": "speech_cloud", "action": "save", "model": modelID, "service": openAI ? setup.service.rawValue : "dashscope",
               "key": !k.isEmpty, "speed": speed])

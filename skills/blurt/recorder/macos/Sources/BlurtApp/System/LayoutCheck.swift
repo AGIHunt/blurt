@@ -8,7 +8,13 @@
 //   truncated            a text that doesn't fit its frame: an NSTextField (its cell's own size), or a SwiftUI text
 //                        whose font the accessibility tree tells (measured with that font); texts in lists and tables
 //                        are left out (a long title cut with … is by design there), and so are texts with a tooltip
-//                        (a long path cut in the middle, the whole of it on hover)
+//                        (a long path cut in the middle, the whole of it on hover); or a button, pop-up or menu
+//                        button whose title doesn't fit: an NSButton by its cell, an NSPopUpButtonCell (SwiftUI's
+//                        Picker and Menu too) by its title against the cell's titleRect, a SwiftUI button by its label
+//                        at the tree's font plus the least bezel its height implies — then the window's rendering is
+//                        read back (Vision) for titles that show as their beginning plus "…" (a split button's chevron
+//                        is invisible to the geometry). Icon-only buttons (about square, or named after their SF
+//                        Symbol) are left out
 // The rules are BlurtCore's LayoutLint (unit-tested); this file only collects the elements.
 //   layoutcheck            the windows as they are
 //   layoutcheck min        first every resizable window with a minimum size is made that small (top-left kept)
@@ -18,6 +24,7 @@
 // (frames in window points, top-left origin).
 import AppKit
 import BlurtCore
+import Vision
 
 @MainActor
 enum LayoutCheck {
@@ -83,6 +90,7 @@ enum LayoutCheck {
             // a text with a tooltip (.help) shows its whole self on hover: a path cut in the middle is by design there
             let help = o.accessibilityHelp?() ?? ""
             if role == "AXStaticText" || role == "AXTextField", !listy, help.isEmpty { n.truncated = truncated(o, frame: frame) }
+            if LayoutLint.titled.contains(role), !listy { n.truncated = titleClipped(o, frame: frame, label: label) }
             nodes.append(n)
             let me = nodes.count - 1
             // web content is its own world (and another process); a terminal's lines are its own scrolling
@@ -93,6 +101,10 @@ enum LayoutCheck {
             for c in o.accessibilityChildren?() ?? [] { walk(c, parent: me, clip: inner, inList: listy, depth: depth + 1) }
         }
         for c in w.accessibilityChildren() ?? [] { walk(c, parent: nil, clip: nil, inList: false, depth: 0) }
+        // what geometry can't see (more in a label than its words): read the rendering back, once per window
+        if nodes.contains(where: { LayoutLint.titled.contains($0.role) && !$0.truncated && !$0.label.isEmpty }) {
+            for i in LayoutLint.cutTitles(nodes, texts: renderedTexts(w)) { nodes[i].truncated = true }
+        }
 
         // the traffic lights, as one strip (the gaps between them too)
         let lights = [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton]
@@ -138,6 +150,61 @@ enum LayoutCheck {
         }
         let need = text.boundingRect(with: CGSize(width: frame.width, height: 100_000), options: NSString.DrawingOptions.usesLineFragmentOrigin).height
         return need > frame.height + line * 0.6
+    }
+
+    /// A button / pop-up / menu button whose title doesn't fit (see the header). Icon-only ones never count.
+    static func titleClipped(_ o: AnyObject, frame: CGRect, label: String) -> Bool {
+        // a pop-up or pull-down: AppKit's, or SwiftUI's Picker / Menu (its element is the NSPopUpButtonCell itself)
+        if let cell = (o as? NSPopUpButtonCell) ?? ((o as? NSPopUpButton)?.cell as? NSPopUpButtonCell) {
+            guard let view = cell.controlView, !cell.title.isEmpty else { return false }
+            let title = cell.attributedTitle.length > 0 ? cell.attributedTitle
+                : NSAttributedString(string: cell.title, attributes: [.font: cell.font ?? NSFont.systemFont(ofSize: 13)])
+            return LayoutLint.popupTitleClipped(titleWidth: title.size().width,
+                                                titleRectWidth: cell.titleRect(forBounds: view.bounds).width)
+        }
+        if let b = o as? NSButton {
+            guard let cell = b.cell as? NSButtonCell, !b.title.isEmpty, b.imagePosition != .imageOnly, !cell.wraps else { return false }
+            return cell.cellSize(forBounds: NSRect(x: 0, y: 0, width: 100_000, height: b.bounds.height)).width > b.bounds.width + 1.5
+        }
+        guard !(o is NSView), !(o is NSCell), !label.isEmpty, frame.width > 1, frame.height > 1 else { return false }
+        let id = o.accessibilityIdentifier?() ?? ""
+        let symbol = !id.isEmpty && NSImage(systemSymbolName: id, accessibilityDescription: nil) != nil
+        guard !LayoutLint.iconOnly(frame: frame.size, symbolIdentifier: symbol) else { return false }
+        // SwiftUI tells a button's label font in its attributed description; else the control size its height implies
+        let size = labelFontSize(o) ?? (frame.height >= 22 ? 13 : frame.height >= 17 ? 11 : 9)
+        let width = NSAttributedString(string: label, attributes: [.font: NSFont.systemFont(ofSize: size)]).size().width
+        return LayoutLint.controlTitleClipped(titleWidth: width, fontSize: size, frame: frame.size)
+    }
+
+    private static func labelFontSize(_ o: AnyObject) -> CGFloat? {
+        guard let n = o as? NSObject,
+              let a = n.accessibilityAttributeValue(NSAccessibility.Attribute(rawValue: "AXAttributedDescription")) as? NSAttributedString,
+              a.length > 0,
+              let d = a.attribute(NSAttributedString.Key(rawValue: "AXFont"), at: 0, effectiveRange: nil) as? [String: Any]
+        else { return nil }
+        return d["AXFontSize"] as? CGFloat
+    }
+
+    /// The window's own rendering, read with Vision: each line of text and where it is (window points, top-left origin).
+    /// Web content isn't drawn this way (it is its own process): nothing is read there.
+    static func renderedTexts(_ w: NSWindow) -> [(String, CGRect)] {
+        guard let view = w.contentView?.superview ?? w.contentView, view.bounds.width > 1, view.bounds.height > 1,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return [] }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        guard let image = rep.cgImage else { return [] }
+        let req = VNRecognizeTextRequest()
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = false
+        req.recognitionLanguages = ["en-US", "zh-Hans"]
+        do { try VNImageRequestHandler(cgImage: image, options: [:]).perform([req]) } catch { return [] }
+        let r = view.convert(view.bounds, to: nil)          // window base coordinates, bottom-left origin
+        let wh = w.frame.height
+        return (req.results ?? []).compactMap { obs in
+            guard let text = obs.topCandidates(1).first?.string else { return nil }
+            let b = obs.boundingBox                          // normalised, bottom-left origin
+            return (text, CGRect(x: r.minX + b.minX * r.width, y: wh - r.maxY + (1 - b.maxY) * r.height,
+                                 width: b.width * r.width, height: b.height * r.height))
+        }
     }
 
     /// accessibilityValue() is declared with two types (NSAccessibility's Any? and some views' own): ask by selector.

@@ -7,9 +7,9 @@ description: >-
   a hand-off bundle (.zip), or any tracker or chat through the tools you already have) or start fixing. Use when the user
   wants to record feedback / QA / ideas by talking while using their screen, hands over such a video, wants to
   process recordings from the Blurt app, or wants their Blurt items packed up and sent somewhere.
-  Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
+  Triggers: "blurt", "/blurt", "start blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
   "turn this recording into issues", "处理我录的视频", "process my recordings", "把这些问题打包发给…",
-  "bundle these items for…".
+  "bundle these items for…", "set up Blurt's models", "帮我设置口喷鸡的模型", "配置听写模型 / API Key".
 ---
 
 # blurt — show it, say it, get structured work back
@@ -43,6 +43,21 @@ language; write items in the language the user spoke.
 
 ## 1. Record (or pick up a recording)
 
+**Just "/blurt" or "blurt", nothing else:** don't start a recording. Say where things stand in one or two lines —
+the current project (`projects.py current`), new items (`items.py list --state new`), recordings not organized yet
+(`record.py inbox`) — and offer three choices: record now, organize the new recordings, work on the items (fix or
+export). Start a recording right away only when the user asked for one ("开始录", "录屏提 bug", "record feedback",
+"start blurt").
+
+**With the Blurt app installed** (`/Applications/Blurt.app` or `~/Applications/Blurt.app`, macOS): start the
+recording in the app, so it records with the app's own Screen Recording permission — `record.py start` runs the
+recorder under the app hosting you (Terminal, iTerm, Codex…), which then needs that permission too and a restart.
+`pgrep -xq blurt-recorder || { open -a Blurt; sleep 3; }` then `open blurt://record`: the notch asks once (one click),
+the user picks the area and talks, ⌥R or *Finish* stops, and the app organizes the recording into items in its
+project (Settings → Agents picks the agent). Tell the user that in two lines; afterwards `index.py search` / the MCP
+tools find the items. Use `record.py start` (below) when there is no app, on Windows/Linux, or when the user wants
+the recording processed here in this chat.
+
 **From the chat:** if the thing to look at is a local dev server/app in this repo, check it is running. Start
 `record.py start` **in the background** (`--last-region` to reuse the last area) and tell the user in a few lines
 what happens:
@@ -53,10 +68,13 @@ what happens:
   them in the app's Settings → Shortcuts / config `record.hotkeys`, and the countdown shows the real ones). The bar is
   never in the recording;
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; ⌃⇧ box,
-  ⌃⌥ ellipse — ⌃ first, then the other key — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
+  ⌃⌥ ellipse, the keys in any order — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
   to send another chat message.
-- **⌥A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥M too): a full-resolution still of
-  the area right now, no pause → `shots/`. Best evidence there is — mention it in one line.
+- **⌥A snaps** (Windows/Linux Alt+Shift+A — the marker key Alt+Shift+M too — or the camera button on the bar): a full-resolution still of
+  the area right now, no pause → `shots/`. Best evidence there is — mention it in one line. In the macOS app ⌥A runs
+  the normal snap flow while recording (any area, its own note typed or said, a card) and the recording goes on: the
+  shot lands in this session's `shots/` with its note. Blurt's own windows, cards and notch are in the video like any
+  app's (users record Blurt to report Blurt's problems).
 The task ends with `DONE video=…` → continue with §2 right away (`CANCELLED`, exit 2 → acknowledge and stop). From
 the chat you can also `record.py stop | pause | resume | restart | snap`.
 
@@ -103,7 +121,8 @@ the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lin
 repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
 Also run `frames.py scan <video>` (visual-activity index for candidates/sheets) and `frames.py marks <video>`: what
-the user drew with the pen — when, where (box), what was being said — plus ⌥M markers.
+the user drew with the pen — when, where (box), what was being said — plus markers (Windows/Linux Alt+Shift+M; macOS
+recordings made before 1.0.7, with ⌥M).
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as
 French into fake English), means the language needs another backend: set it up (`reference/asr.md`) and re-run.
 
@@ -127,6 +146,8 @@ Principles — judgement, not rules:
 - A pen mark or a snap (screenshot in `shots.jsonl`) is the user saying "this, exactly": it anchors an item's time
   and subject. What they marked outranks your reading of a vague sentence — but a mark is not an item by itself,
   and items without marks are normal. A snap's image is its item's first frame: put it in `frames` right away.
+  A snap with a `kind` in `shots.jsonl` (issue / idea / note / task) is one the user typed in its note: its item is
+  that kind (ingest keeps it so); without one, decide as usual.
 - One item = one thing. People jump around, revisit, correct themselves ("不对，是…"), or say two things in one
   sentence: merge revisits, drop retracted remarks, split compounds. Pure narration is not an item.
 - Fix ASR errors from context (repo vocabulary, what's on screen). Keep `quote` close to what was said.
@@ -177,7 +198,9 @@ top-down — the user reviews from the top — and write each item as soon as it
   3. **Look at every annotated frame before using it.** Box not on the point → fix and re-grab.
 - **Shots** (`shots.jsonl`; later lines per `n` win; skip `"deleted": true`): the shot *is* the frame — use
   `shots/NNN.marked.png` when it exists (the user's ink is already on it, add no box), else `NNN.png`; no picking.
-  Its note is `text` / `said` (voice) — plus, for a snap while recording, what was said around its `t`. `frames.py
+  Its note is `text` / `said` (voice) — plus, for a snap while recording, what was said around its `t` (a snap
+  taken with a note while recording: that note is what the item is about; its `project`, when set, is where the
+  user wants it). `frames.py
   grab|grid shots/NNN.png` work on stills (`--crop stroke` = around their ink; `--ring cursor` for snaps while
   recording); `frames.py marks <video or session>` lists every snap.
 - Animations / flows / timing: `frames.py clip --from --to -o <session>/clips/<id>.mp4` (< 20 MB) → `patch --set clip=…`.
@@ -276,3 +299,14 @@ shows what changes). Prefer the tools when they are there; they write through it
 
 Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off notes and the jobs the app shows:
 `reference/sessions.md`.
+
+## 9. Set up models
+
+When the user asks you to set up Blurt's speech and AI models (or Blurt started you with a "Set Up Models" prompt),
+follow `reference/setup-models.md`: `setup.py status` → ask at most three questions (may the voice leave the Mac, may
+the text go to a cloud model, main languages) → `setup.py recommend …` and say the plan → for each key, ask the user
+whether they have one and where, or want to create one (the provider's key page); the user signs in, verifies and
+pays — you never do those → the key goes to `setup.py connect <preset>` on stdin only (never in the chat, on a
+command line or in a log; a file with secrets is read only with the user's OK) → `download`, `use`, `verify` → a
+short summary. Blurt must be running; it tests and stores each key itself and asks the user before the first change
+unless it started you. The same operations are MCP tools (`setup_*`).

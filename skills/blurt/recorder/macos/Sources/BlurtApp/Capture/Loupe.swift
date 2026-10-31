@@ -60,16 +60,11 @@ enum Loupe {
         return NSRect(x: o.x, y: o.y, width: size, height: size + labelH)
     }
 
-    /// The label for the point under the pointer: top-left points, as selections are measured.
-    static func pointLabel(_ pointer: NSPoint) -> String {
-        let g = toCG(NSRect(origin: pointer, size: .zero))
-        return "\(Int(g.minX.rounded())), \(Int(g.minY.rounded()))"
-    }
-
     static func sizeLabel(_ s: NSRect) -> String { "\(Int(s.width.rounded()))\u{2009}×\u{2009}\(Int(s.height.rounded()))" }
 
-    /// Draws it (inside the view's draw); nothing without a still under the pointer.
-    static func draw(pointer: NSPoint, in view: NSView, stills: LoupeStills, label: String) {
+    /// Draws it (inside the view's draw); nothing without a still under the pointer. `label`: the selection's size
+    /// while one is drawn — nothing before it (the pointer's raw coordinates under the loupe helped no one).
+    static func draw(pointer: NSPoint, in view: NSView, stills: LoupeStills, label: String?) {
         guard let w = view.window, w.frame.contains(pointer), let st = stills.still(at: pointer),
               let ctx = NSGraphicsContext.current?.cgContext else { return }
         let f = frame(for: pointer, in: view)
@@ -110,6 +105,7 @@ enum Loupe {
         let rim = NSBezierPath(roundedRect: box.insetBy(dx: 0.5, dy: 0.5), xRadius: 10, yRadius: 10)
         rim.lineWidth = 1
         rim.stroke()
+        guard let label = label else { return }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         let a = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: NSColor(white: 1, alpha: 0.92)])
         let tw = ceil(a.size().width) + 16

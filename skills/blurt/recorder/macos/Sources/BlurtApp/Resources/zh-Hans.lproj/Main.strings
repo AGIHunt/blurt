@@ -3,68 +3,77 @@
 
 "app.agent.fallback_notice" = "%1$@，改用 %2$@ 整理";
 "app.agent.list_sep" = "、";
-"app.agent.can_be_used" = " 用不了";
+"app.agent.can_be_used" = " 无法使用";
 "app.agent.checking" = "检查中…";
-"app.agent.configured_can_verify_advance" = "已设置（第一次用时才能确认）";
+"app.agent.configured_can_verify_advance" = "已设置（首次使用时确认）";
 "app.agent.failed" = "失败";
 "app.agent.isn_installed" = " 未安装";
 "app.agent.isn_logged" = " 未登录";
 "app.agent.logged" = "已登录";
 "app.agent.login_unknown_will_just" = "未确认登录，会直接尝试";
-"app.agent.none_short" = "没有能用的 Agent";
+"app.agent.none_short" = "没有可用的 Agent";
 "app.agent.not_installed" = "未安装";
 "app.agent.not_logged" = "未登录";
-"app.agent.unfinished" = "%@ 没整理完就停下了";
-"app.agent.couldnt_start" = "%@ 没能启动。看看它在终端里能不能正常运行，再重试。";
+"app.agent.unfinished" = "%@ 未完成整理就停止了";
+"app.agent.couldnt_start" = "%@ 无法启动。请确认它能在终端中正常运行，然后重试。";
 
 "app.menu.after.keep" = "只保存视频";
-"app.menu.after.organize" = "整理成条目";
+"app.menu.after.organize" = "整理成事项";
 "app.menu.countdown" = "倒计时";
 "app.menu.countdown.none" = "不倒计时";
 "app.menu.countdown.seconds" = "%ld 秒";
-"app.menu.discard" = "丢弃这次录屏";
+"app.menu.discard" = "丢弃录屏";
 "app.menu.finish" = "完成录屏";
+"app.menu.video_only" = "只保存视频";
 "app.menu.open" = "打开口喷鸡";
 "app.menu.pause" = "暂停";
 "app.menu.project" = "当前项目：%@";
-"app.menu.project.none_tip" = "没有当前项目：录屏放进未归类，截图和语音备注作为卡片留在刘海下方";
+"app.menu.project.none_tip" = "未设置当前项目：录屏存入未归类，截图和语音备注以卡片形式留在刘海下方";
 "app.menu.quit" = "退出口喷鸡";
 "app.menu.record" = "开始录屏";
-"app.menu.record_last" = "录上次的区域";
+"app.menu.record_last" = "录制上次的区域";
 "app.menu.restart" = "重新录屏";
 "app.menu.resume" = "继续";
 "app.menu.selecting" = "正在选择区域…";
 "app.menu.shortcuts" = "快捷键…";
 "app.menu.updates" = "检查更新…";
+"app.menu.update_to" = "更新到口喷鸡 %@…";
+"app.update.found" = "口喷鸡 %@ 现已推出";
+"app.update.found.action" = "更新…";
+"app.update.ready" = "口喷鸡 %@ 已下载 · 退出时安装";
+"app.update.ready.action" = "立即重启";
 
-"app.migrate.ask" = "截图和语音备注以后还是默认放进 %@（沿用之前的设置），还是先放进未归类、之后再选项目？";
+"app.migrate.ask" = "截图和语音备注继续默认存入 %@（沿用之前的设置），还是先放进未归类，之后再选项目？";
 "app.migrate.keep" = "继续放进 %@";
 "app.name" = "口喷鸡";
 
 
-"app.record.failed" = "录屏没有保存下来";
-"app.record.failed.disk_full" = "磁盘满了，这次录的内容没有留下。腾出一些空间后再录。";
-"app.record.failed.permission" = "macOS 不让口喷鸡录屏。到「系统设置」里为口喷鸡打开「屏幕录制」。";
-"app.record.failed.stopped" = "录到一半 macOS 停止了录屏，这次录的内容没有留下。";
-"app.record.failed.no_frames" = "没有收到屏幕画面，什么都没录下来。";
-"app.record.failed.unknown" = "视频没能写完，这次录的内容没有留下。";
-"app.record.reason.disk_full" = "磁盘满了";
-"app.record.reason.permission" = "屏幕录制被拒绝";
-"app.record.reason.stopped" = "macOS 中途停掉了录制";
-"app.record.reason.no_frames" = "没收到屏幕画面";
-"app.record.reason.unknown" = "出了点问题";
-"app.record.failed.display_gone" = "录到一半，被录的显示器断开了，这次录的内容没有留下。接好显示器后再录。";
-"app.record.failed.interrupted" = "录到一半，Mac 进入了睡眠、锁屏或屏幕保护程序，这次录的内容没有留下。录制时让 Mac 保持唤醒。";
-"app.record.failed.writer" = "视频文件写到一半出错了，这次录的内容没有留下。再录一次一般就好了；具体错误记在日志里。";
-"app.record.reason.display_gone" = "被录的显示器断开了";
-"app.record.reason.interrupted" = "睡眠或锁屏打断了录制";
-"app.record.reason.writer" = "视频文件没能写入";
-"app.record.recovered" = "录屏已保存 · 中途视频写入出错，已接着录下去";
-"app.record.recovered_lost" = "录屏已保存 · 中途视频写入出错，约 %@ 秒没录上";
-"app.record.recovered_parts" = "录屏已分段保存 · 中途视频写入出错";
+"app.record.failed" = "录屏未保存";
+"app.record.failed.disk_full" = "磁盘已满，录屏未保存。请释放空间后重新录制。";
+"app.record.failed.permission" = "口喷鸡没有屏幕录制权限。请在「系统设置」中为口喷鸡打开「屏幕录制」。";
+"app.record.failed.stopped" = "macOS 在录制中途停止了录屏，录屏未保存。";
+"app.record.failed.no_frames" = "未收到屏幕画面，没有录到内容。";
+"app.record.failed.unknown" = "无法完成视频写入，录屏未保存。";
+"app.record.reason.disk_full" = "磁盘已满";
+"app.record.reason.permission" = "没有屏幕录制权限";
+"app.record.reason.stopped" = "macOS 中途停止了录制";
+"app.record.reason.no_frames" = "未收到屏幕画面";
+"app.record.reason.unknown" = "发生错误";
+"app.record.failed.display_gone" = "录制的显示器中途断开，录屏未保存。请重新连接显示器后再录制。";
+"app.record.failed.interrupted" = "录制中途 Mac 进入了睡眠、锁屏或屏幕保护程序，录屏未保存。录制时请保持 Mac 唤醒。";
+"app.record.failed.writer" = "写入视频文件时出错，录屏未保存。请重新录制，详细错误见日志。";
+"app.record.reason.display_gone" = "录制的显示器已断开";
+"app.record.reason.interrupted" = "录制因睡眠或锁屏中断";
+"app.record.reason.writer" = "无法写入视频文件";
+"app.record.recovered" = "录屏已保存 · 中途写入出错，已继续录制";
+"app.record.recovered_lost" = "录屏已保存 · 中途写入出错，缺少约 %@ 秒";
+"app.record.recovered_parts" = "录屏已分段保存 · 中途写入出错";
 "app.record.partial" = "%1$@，前 %2$@ 已保留";
-"app.record.low_space" = "这块磁盘只剩 %@，长时间录屏可能放不下";
+"app.record.low_space" = "磁盘可用空间仅剩 %@，可能不够长时间录屏";
 "app.record.organize" = "整理";
+"app.record.video_only_saved" = "视频已保存 · %@";
+"app.record.video_only_detail" = "未整理 · 已在访达中显示";
+"app.record.show_in_finder" = "在访达中显示";
 
 "app.status.ax_count" = "口喷鸡 · %@";
 
@@ -72,24 +81,21 @@
 "app.toast.welcome" = "口喷鸡在菜单栏里 · 按%1$@ 听写 · %2$@ 截图";
 
 "main.project.removed_name" = "已移除的项目";
-"app.url.no_item" = "找不到这个条目了，可能已经被删除或移走。";
-"app.url.no_session" = "这条录屏或截图已经不在了，可能已经被删除或移走。";
+"app.url.no_item" = "找不到该事项，它可能已被删除或移动。";
+"app.url.no_session" = "找不到该录屏或截图，它可能已被删除或移动。";
 
 "main.action.record" = "录制";
 "main.action.snap" = "截图";
 
 "main.banner.agent" = "Agent";
-"main.banner.ended" = "会话已结束，Agent 没有回报结果";
-"main.banner.external" = "已复制给你的 Agent。做完后在这里标为完成。";
+"main.banner.ended" = "会话已结束，Agent 未报告结果";
+"main.banner.external" = "已复制给你的 Agent。完成后请在这里标为完成。";
 "main.banner.open_session" = "打开会话";
-"main.banner.organizing" = "还在整理 · %@";
+"main.banner.organizing" = "正在整理 · %@";
 "main.banner.show_progress" = "查看进度";
 "main.banner.with_agent" = "已交给 %@ · %@";
 
-"main.captures.tip" = "它们挂在屏幕顶部的刘海下方。点一下会在那里全部展开，给每一条选个项目。";
-"main.captures.taken" = "最近拖走的 · 7 天内 %ld 张";
-"main.captures.taken.show" = "查看";
-"main.captures.taken.tip" = "最近 7 天拖进别的 App 的卡片：可以再复制、再拖出去，或者放回刘海下方";
+"main.captures.tip" = "卡片位于屏幕顶部的刘海下方。点按后会全部展开，可为每张卡片选择项目。";
 "main.cmd.copy_full" = "复制全文";
 "main.cmd.copy_instruction" = "复制指令";
 
@@ -100,83 +106,83 @@
 "main.col.title" = "标题";
 "main.col.updated" = "更新";
 
-"main.detail.gone" = "这一条的文件不见了";
-"main.detail.label" = "条目详情";
-"main.detail.legacy" = "还没转换";
-"main.detail.legacy.detail" = "这一条来自旧版本的录屏，口喷鸡正在后台转换，完成后就能在这里打开。";
-"main.detail.none" = "没有选中条目";
-"main.detail.none.detail" = "在左边选一个条目。";
-"main.detail.parse_error" = "这一条的文件读不出来";
-"main.detail.parse_error.detail" = "它被改成了口喷鸡读不懂的样子，口喷鸡不会覆盖它。在编辑器里改好并保存，这里就会显示出来。";
-"main.unreadable.fix_first" = "这一条的文件读不出来，先在编辑器里改好它。";
+"main.detail.gone" = "找不到该事项的文件";
+"main.detail.label" = "事项详情";
+"main.detail.legacy" = "尚未转换";
+"main.detail.legacy.detail" = "该事项来自旧版本的录屏，正在后台转换，完成后可在此打开。";
+"main.detail.none" = "没有选中事项";
+"main.detail.none.detail" = "在左侧选择一个事项。";
+"main.detail.parse_error" = "无法读取该事项的文件";
+"main.detail.parse_error.detail" = "文件格式无法识别，口喷鸡不会覆盖它。请在编辑器中修正并保存，之后会在这里显示。";
+"main.unreadable.fix_first" = "无法读取该事项的文件，请先在编辑器中修正。";
 "main.unreadable.open" = "在编辑器中打开";
 "main.unreadable.show" = "显示";
-"main.unreadable.found" = "%@ 的文件读不出来，先在编辑器里改好它。";
-"main.unreadable.found.many" = "有 %d 条的文件读不出来，先在编辑器里改好它们。";
-"main.skipped.found" = "%@ 没能加进列表，详情见日志。";
-"main.skipped.found.many" = "有 %d 个文件没能加进列表，详情见日志。";
-"main.scan.failed" = "没能刷新列表。";
+"main.unreadable.found" = "无法读取 %@ 的文件，请在编辑器中修正。";
+"main.unreadable.found.many" = "%d 个事项的文件无法读取，请在编辑器中修正。";
+"main.skipped.found" = "无法将 %@ 加入列表，详情见日志。";
+"main.skipped.found.many" = "%d 个文件无法加入列表，详情见日志。";
+"main.scan.failed" = "无法刷新列表。";
 
-"main.dispatch.needs_project" = "先把这些条目移到一个项目里";
-"main.dispatch.one_project" = "请选同一个项目里的条目";
-"main.dispatch.discarded" = "已丢弃的条目不能交给 Agent。";
-"main.dispatch.reopen_first" = "这一条已经是「%@」，先重新打开，才能再交给 Agent。";
-"main.dispatch.with_session" = "%@ 已经在一个会话里了。";
+"main.dispatch.needs_project" = "先把这些事项移到一个项目里";
+"main.dispatch.one_project" = "请选择同一项目中的事项";
+"main.dispatch.discarded" = "已丢弃的事项不能交给 Agent。";
+"main.dispatch.reopen_first" = "该事项已是「%@」，请先重新打开再交给 Agent。";
+"main.dispatch.with_session" = "%@ 已在一个会话中。";
 "main.dispatch.open_session" = "打开会话";
 
-"main.empty.all_filed" = "都已归类";
-"main.empty.all_filed.detail" = "没归类的条目会先放在这里。";
+"main.empty.all_filed" = "全部已归类";
+"main.empty.all_filed.detail" = "未归类的事项会显示在这里。";
 "main.empty.clear_all" = "清除搜索和筛选";
 "main.empty.clear_filters" = "清除筛选";
-"main.empty.discarded" = "没有丢弃的条目";
-"main.empty.discarded.detail" = "用 ⌫ 丢弃的条目会留在这里，随时可以恢复。";
-"main.empty.filters_on" = "筛选还开着：%@。";
+"main.empty.discarded" = "没有丢弃的事项";
+"main.empty.discarded.detail" = "用 ⌫ 丢弃的事项会保留在这里，可随时恢复。";
+"main.empty.filters_on" = "已开启筛选：%@。";
 "main.empty.first" = "边用边说";
-"main.empty.first.detail" = "打开项目文件夹，边说边录屏或截图，口喷鸡会整理成 Agent 能接手的条目。";
-"main.empty.inbox_zero" = "现在没有需要你看的";
-"main.empty.inbox_zero.detail" = "新记下的和 Agent 做完的会出现在这里。";
-"main.empty.no_index" = "条目还没列出来";
-"main.empty.no_index.detail" = "口喷鸡读取这台 Mac 上的项目文件夹，不会上传任何东西。";
-"main.empty.no_match" = "没有符合筛选的条目";
+"main.empty.first.detail" = "打开项目文件夹，边说边录屏或截图，口喷鸡会将其整理成 Agent 可处理的事项。";
+"main.empty.inbox_zero" = "没有待处理的事项";
+"main.empty.inbox_zero.detail" = "新事项和 Agent 完成的事项会显示在这里。";
+"main.empty.no_index" = "尚未列出事项";
+"main.empty.no_index.detail" = "口喷鸡读取本机的项目文件夹，不会上传任何内容。";
+"main.empty.no_match" = "没有符合筛选的事项";
 "main.empty.no_results" = "没有找到「%@」";
 "main.empty.no_scripts" = "找不到 blurt skill 的脚本";
-"main.empty.no_scripts.detail" = "口喷鸡的脚本不见了。从 blurt.work 重新安装口喷鸡，再重开这个窗口。";
-"main.empty.nothing_in_progress" = "没有进行中的条目";
-"main.empty.nothing_in_progress.detail" = "交给 Agent 的条目会在这里等你验证。";
-"main.empty.outdated" = "正在更新你的条目…";
-"main.empty.outdated.detail" = "口喷鸡刚更新过，只要一会儿，不会丢任何东西。";
-"main.empty.project" = "这个项目里还没有条目";
+"main.empty.no_scripts.detail" = "口喷鸡的脚本缺失。请从 blurt.work 重新安装，然后重新打开此窗口。";
+"main.empty.nothing_in_progress" = "没有进行中的事项";
+"main.empty.nothing_in_progress.detail" = "交给 Agent 的事项会显示在这里，直到你验证。";
+"main.empty.outdated" = "正在更新你的事项…";
+"main.empty.outdated.detail" = "更新后需要片刻，事项不会丢失。";
+"main.empty.project" = "这个项目里还没有事项";
 "main.empty.project.detail" = "边说边录屏，或截几张图。";
-"main.empty.rebuild" = "更新条目";
-"main.empty.scan" = "列出条目";
-"main.empty.scan_failed" = "无法读取条目";
-"main.empty.scan_failed.detail" = "口喷鸡没能读完这个文件夹里的条目，请稍后再试。";
-"main.empty.scanning" = "正在读取你的条目…";
+"main.empty.rebuild" = "更新事项";
+"main.empty.scan" = "列出事项";
+"main.empty.scan_failed" = "无法读取事项";
+"main.empty.scan_failed.detail" = "无法读取此文件夹中的事项，请稍后重试。";
+"main.empty.scanning" = "正在读取你的事项…";
 "main.empty.try_shorter" = "试试更短的词，或换个说法。";
 "main.empty.show_item" = "显示 %@";
 "main.empty.id_in" = "%1$@ 在「%2$@」里。";
-"main.empty.id_filtered" = "%@ 就在这里，只是被筛选隐藏了。";
+"main.empty.id_filtered" = "%@ 在这里，但被筛选隐藏了。";
 
-"main.error.bad_transition" = "当前状态下不能这样改。";
-"main.error.deleted" = "它在已丢弃里，先恢复它。";
-"main.error.cant_edit" = "现在不能修改";
-"main.error.generic" = "出了点问题，详情见日志。";
-"main.error.io" = "没法在这里写入文件，换一个文件夹试试。";
+"main.error.bad_transition" = "当前状态下无法进行此更改。";
+"main.error.deleted" = "该事项已丢弃，请先恢复。";
+"main.error.cant_edit" = "目前无法编辑";
+"main.error.generic" = "发生错误，详情见日志。";
+"main.error.io" = "无法在此处写入文件，请选择其他文件夹。";
 "main.error.bad_key" = "2–5 个字母或数字，以字母开头（IN 已被占用）。";
-"main.error.key_in_use" = "项目里已经有条目了，前缀不能再改。";
-"main.error.key_taken" = "这个前缀已经被别的项目用了。";
-"main.error.needs_project" = "先把条目移到一个项目里。";
-"main.error.no_scripts" = "需要口喷鸡的脚本和 uv。从 blurt.work 重新安装口喷鸡后再试。";
-"main.error.no_uv" = "没装 uv，口喷鸡的设置助手可以帮你装。";
-"main.error.not_found" = "找不到了。";
-"main.error.no_project" = "这个项目已经不在口喷鸡里了。";
-"main.error.exists" = "这个文件夹已经在口喷鸡里了。";
-"main.error.folder_missing" = "找不到这个项目的文件夹，先把它找回来。";
+"main.error.key_in_use" = "项目中已有事项，前缀无法更改。";
+"main.error.key_taken" = "此前缀已被其他项目使用。";
+"main.error.needs_project" = "先把事项移到一个项目里。";
+"main.error.no_scripts" = "缺少口喷鸡的脚本或 uv。请从 blurt.work 重新安装后重试。";
+"main.error.no_uv" = "未安装 uv，可通过口喷鸡的设置助手安装。";
+"main.error.not_found" = "找不到该项。";
+"main.error.no_project" = "该项目已从口喷鸡中移除。";
+"main.error.exists" = "该文件夹已添加到口喷鸡。";
+"main.error.folder_missing" = "找不到该项目的文件夹，请先定位它。";
 "main.error.not_a_folder" = "这不是文件夹。";
 "main.error.reserved" = "这是口喷鸡自己的文件夹。";
-"main.error.save_title" = "没能保存";
-"main.error.timeout" = "等太久了，稍后再试。";
-"main.error.unparseable" = "条目文件被改成了口喷鸡读不懂的样子，所以不会覆盖它。";
+"main.error.save_title" = "无法保存";
+"main.error.timeout" = "操作超时，请稍后重试。";
+"main.error.unparseable" = "事项文件的格式无法识别，因此不会覆盖它。";
 "main.list.move" = "移过去";
 "main.list.move.tip" = "移到 %@（⌘Z 可以移回来）";
 "main.list.suggested" = "可能属于 %@";
@@ -184,14 +190,14 @@
 "main.move.list" = "项目";
 "main.move.placeholder" = "移到…";
 "main.move.placeholder.one" = "把 %@ 移到…";
-"main.move.current" = "现在在这里";
+"main.move.current" = "当前位置";
 "main.palette.move_pick" = "移到项目…";
 "main.palette.switch_project" = "切换项目…";
-"main.palette.use_none" = "不指定当前项目（新的截图和录屏进未归类）";
+"main.palette.use_none" = "不设当前项目（新的截图和录屏存入未归类）";
 "main.palette.use_project" = "把 %@ 设为当前项目";
 "main.project.use_none" = "不再作为当前项目";
 "main.state.toast" = "%1$@ · %2$@";
-"main.state.not_here" = "「%@」状态下不能这样改，按 S 看看能做什么。";
+"main.state.not_here" = "「%@」状态下无法执行此操作，按 S 查看可用操作。";
 "main.state.restore_first" = "它在已丢弃里，先按 R 恢复。";
 "main.state.these" = "这些状态";
 
@@ -203,37 +209,37 @@
 "main.filter.state" = "按状态筛选";
 "main.handoff.copied" = "指令已复制，粘贴到 Claude Code、Codex 或其他 Agent 里";
 "main.handoff.copied_full" = "全文已复制，截图用路径引用";
-"main.handoff.failed" = "没能准备交接内容";
+"main.handoff.failed" = "无法准备交接内容";
 
-"main.inbox.new" = "%ld 条新的";
-"main.inbox.verify" = "%ld 条待验证";
+"main.inbox.new" = "%ld 个新的";
+"main.inbox.verify" = "%ld 个待验证";
 "main.item.untitled" = "无标题";
 
-"main.job.error.auth" = "Agent 没有登录。";
-"main.job.error.auth.named" = "%@ 没有登录。";
-"main.job.error.conflict" = "改动和你的冲突了。";
-"main.job.error.git" = "git 操作没完成。";
+"main.job.error.auth" = "Agent 未登录。";
+"main.job.error.auth.named" = "%@ 未登录。";
+"main.job.error.conflict" = "改动与你的改动冲突。";
+"main.job.error.git" = "git 操作未完成。";
 "main.job.error.model" = "模型不可用。";
-"main.job.error.network" = "网络断了。";
-"main.job.error.quota" = "Agent 的额度用完了。";
-"main.job.error.quota.named" = "%@ 的额度用完了。";
-"main.job.error.tmux" = "没装 tmux，可以用 Homebrew 安装（brew install tmux）。";
-"main.job.hint.no_agent" = "还没有能用的 Agent。在设置的「Agent」里安装或登录一个。";
+"main.job.error.network" = "网络连接已断开。";
+"main.job.error.quota" = "Agent 的额度已用完。";
+"main.job.error.quota.named" = "%@ 的额度已用完。";
+"main.job.error.tmux" = "未安装 tmux，可用 Homebrew 安装（brew install tmux）。";
+"main.job.hint.no_agent" = "没有可用的 Agent。请在设置的「Agent」中安装或登录。";
 "main.job.capture" = "一次采集";
-"main.job.no_agent" = "还没有能用的 Agent：%@。";
+"main.job.no_agent" = "没有可用的 Agent：%@。";
 "main.job.no_agent.sep" = "；";
 "main.job.organized_by" = "由 %1$@ 整理（%2$@）";
-"main.job.error.agent_exit" = "Agent 没做完就停下了。";
-"main.job.error.agent_exit.named" = "%@ 没做完就停下了。";
-"main.job.error.io" = "口喷鸡没能读写需要的文件。点重试再来一次；如果一直这样，详情见日志。";
-"main.job.error.model.named" = "%@ 用的模型现在不可用。";
-"main.job.error.network.named" = "连不上 %@ 的服务，检查网络或代理后再试。";
-"main.job.error.skill" = "口喷鸡 skill 没准备好，更新 skill 后再试。";
-"main.job.error.unknown" = "没整理完就停下了。点重试再来一次；如果一直这样，详情见日志。";
-"main.job.error.unknown.named" = "%@ 没整理完就停下了。点重试再来一次；如果一直这样，详情见日志。";
-"main.job.hint.interrupted" = "口喷鸡在它完成前退出了。点重试再来一次。";
+"main.job.error.agent_exit" = "Agent 未完成就停止了。";
+"main.job.error.agent_exit.named" = "%@ 未完成就停止了。";
+"main.job.error.io" = "无法读写所需的文件。请重试；如果问题持续，详情见日志。";
+"main.job.error.model.named" = "%@ 使用的模型当前不可用。";
+"main.job.error.network.named" = "无法连接 %@ 的服务，请检查网络或代理后重试。";
+"main.job.error.skill" = "口喷鸡 skill 不可用，请更新 skill 后重试。";
+"main.job.error.unknown" = "整理未完成就停止了。请重试；如果问题持续，详情见日志。";
+"main.job.error.unknown.named" = "%@ 未完成整理就停止了。请重试；如果问题持续，详情见日志。";
+"main.job.hint.interrupted" = "口喷鸡在整理完成前退出了。请重试。";
 "main.job.no_terminal" = "终端不可用";
-"main.job.no_terminal.detail" = "可以在你自己的终端里打开这个会话。";
+"main.job.no_terminal.detail" = "可在你的终端 App 中打开此会话。";
 "main.job.show_log" = "查看日志";
 "main.job.skipped" = "跳过";
 "main.job.step_state.done" = "完成";
@@ -244,7 +250,7 @@
 
 "main.keys.section.navigate" = "浏览";
 "main.keys.section.triage" = "处理";
-"main.keys.section.item" = "条目";
+"main.keys.section.item" = "事项";
 "main.keys.section.general" = "通用";
 "main.keys.palette" = "命令面板";
 "main.keys.search" = "搜索";
@@ -252,9 +258,9 @@
 "main.keys.previous" = "上一条";
 "main.keys.open" = "在详情里打开";
 "main.keys.back_to_list" = "回到列表";
-"main.keys.places" = "待处理、进行中、未归类、全部条目";
+"main.keys.places" = "待处理、进行中、未归类、全部事项";
 "main.keys.projects" = "侧栏里的前五个项目";
-"main.keys.keep.note" = "把新条目移到「要做」";
+"main.keys.keep.note" = "把新事项移到「要做」";
 "main.keys.back" = "退回或重新打开";
 "main.keys.back.note" = "已交给 Agent 的会收回，丢弃的会恢复";
 "main.keys.kind" = "种类：问题、想法、笔记、待办";
@@ -275,26 +281,26 @@
 "main.keys.no_match" = "没有匹配的快捷键";
 "main.keys.footer" = "按 ? 或 Esc 关闭";
 
-"main.list.label" = "条目";
+"main.list.label" = "事项";
 
 "main.menu.change_state" = "更改状态…";
-"main.menu.copy_link" = "复制条目链接";
+"main.menu.copy_link" = "复制事项链接";
 "main.menu.enrich" = "用 AI 补全详情";
 "main.menu.export_bundle" = "导出交接包…";
 "main.bundle.save" = "导出";
-"main.bundle.message" = "一个 .zip：概要、每一条的详情和截图，在别的电脑上也能打开。";
+"main.bundle.message" = "一个 .zip 文件，包含概要、每个事项的详情和截图，可在其他电脑上打开。";
 "main.bundle.saved" = "交接包已保存：%@";
-"main.bundle.failed" = "没能导出交接包";
-"main.bundle.error.io" = "没能写到这个位置，换一个文件夹再试。";
-"main.bundle.error.unreadable" = "有一张截图或片段读不出来，没能打包。";
-"main.bundle.error.no_items" = "没有可以打包的条目。";
+"main.bundle.failed" = "无法导出交接包";
+"main.bundle.error.io" = "无法写入此位置，请选择其他文件夹。";
+"main.bundle.error.unreadable" = "无法读取某张截图或片段，未能打包。";
+"main.bundle.error.no_items" = "没有可打包的事项。";
 "main.bundle.packing" = "正在打包交接包（%@）…";
 "main.menu.kind" = "种类";
 "main.suggest.label" = "建议的项目";
 "main.suggest.looks_like" = "可能属于 %@";
 "main.suggest.more" = "下面还有 %ld 个项目的建议";
 "main.suggest.move_all" = "全部移过去（%ld）";
-"main.suggest.move_all.tip" = "把这 %1$ld 条移到 %2$@，一次 ⌘Z 全部移回来";
+"main.suggest.move_all.tip" = "将这 %1$ld 个事项移到 %2$@，⌘Z 可全部撤销";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";
 "main.menu.open_in" = "在 %@ 中打开";
@@ -312,20 +318,20 @@
 "main.misc.note" = "笔记";
 "main.misc.task" = "待办";
 
-"main.move.failed" = "没能移动条目";
+"main.move.failed" = "无法移动事项";
 "main.move.undo_name" = "移到「%@」";
 
-"main.open.failed" = "没能打开「%@」";
-"main.open.message" = "选一个文件夹：代码仓库，或者任何放笔记的文件夹。口喷鸡把条目放在它的 .blurt 里，不会进 git。";
+"main.open.failed" = "无法打开「%@」";
+"main.open.message" = "选择一个文件夹：代码仓库或任何笔记文件夹。事项保存在其中的 .blurt 文件夹，不会加入 git。";
 "main.open.prompt" = "打开";
 
 "main.palette.field" = "命令";
 "main.palette.move_to" = "移到「%@」";
 "main.palette.only_kind" = "只看%@";
-"main.palette.placeholder" = "输入命令、项目或条目…";
+"main.palette.placeholder" = "输入命令、项目或事项…";
 "main.palette.project" = "项目 · %@";
 
-"main.place.all" = "全部条目";
+"main.place.all" = "全部事项";
 "main.place.inbox" = "待处理";
 "main.place.progress" = "进行中";
 "main.place.project" = "项目";
@@ -335,28 +341,28 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "默认";
 "main.project.description" = "描述";
-"main.project.description.note" = "整理未归类的截图和录屏时，口喷鸡会参考描述归到这里。";
+"main.project.description.note" = "整理未归类的截图和录屏时，会参考此描述归入该项目。";
 "main.project.description.placeholder" = "例如：官网和注册流程";
 "main.project.key" = "前缀";
 "main.project.key.invalid" = "用 2–5 个字母或数字，字母开头。";
-"main.project.key.note" = "用在条目编号里：%1$@-1、%1$@-2…";
-"main.project.key.locked" = "已有条目用了这个前缀，所以不能再改。";
+"main.project.key.note" = "用在事项编号里：%1$@-1、%1$@-2…";
+"main.project.key.locked" = "已有事项使用此前缀，无法更改。";
 "main.project.name" = "名称";
 "main.project.open_as" = "作为项目打开";
 "main.project.remove" = "从口喷鸡移除";
 "main.project.remove.undo_name" = "从口喷鸡移除";
-"main.project.removed" = "已从口喷鸡移除「%@」，文件夹和里面的条目都还在";
+"main.project.removed" = "已从口喷鸡移除「%@」，文件夹及其中的事项保持不变";
 "main.project.rename" = "重命名";
 "main.project.rename.undo_name" = "重命名项目";
 "main.project.reorder.undo_name" = "调整项目顺序";
-"main.project.save_failed" = "没能保存项目";
-"main.project.use_failed" = "没能切换项目";
+"main.project.save_failed" = "无法保存项目";
+"main.project.use_failed" = "无法切换项目";
 "main.project.settings" = "项目设置…";
 "main.project.use" = "设为当前项目";
-"main.project.use.tip" = "新的录屏、截图和语音备注都归当前项目";
+"main.project.use.tip" = "新的录屏、截图和语音备注存入当前项目";
 "main.project.worktree" = "每次交给 Agent 都用单独的分支";
 "main.project.worktree.no_git" = "不是 git 仓库，Agent 会直接改文件夹里的文件。";
-"main.project.worktree.note" = "改动放在旁边的 git worktree 里，由你合并、开 PR 或丢弃。";
+"main.project.worktree.note" = "改动保存在单独的 git worktree 中，由你合并、创建 PR 或丢弃。";
 "main.project.agent.default_named" = "默认（%@）";
 "main.project.description.keys" = "↩ 换行，⌘↩ 保存。";
 "main.project.key.taken" = "IN 已用于未归类。";
@@ -368,39 +374,39 @@
 "main.rename.empty" = "标题不能为空";
 
 "main.search.label" = "搜索";
-"main.search.placeholder" = "搜索条目";
+"main.search.placeholder" = "搜索事项";
 
 "main.session.recording" = "录屏 %@";
 "main.session.snaps" = "截图 %@";
 "main.session.voice" = "语音备注 %@";
 
-"main.sidebar.inbox.ax" = "待处理：新的和待验证的条目";
+"main.sidebar.inbox.ax" = "待处理：新的和待验证的事项";
 "main.sidebar.label" = "侧栏";
-"main.sidebar.missing" = "文件夹不见了";
+"main.sidebar.missing" = "找不到文件夹";
 "main.missing.title" = "找不到这个文件夹";
-"main.missing.detail" = "可能被移走或改了名。下面是它之前的条目。";
-"main.missing.detail_empty" = "可能被移走或改了名。找到它，条目就会回来。";
-"main.missing.locate" = "找到它…";
+"main.missing.detail" = "它可能已被移动或重命名。以下是之前的事项。";
+"main.missing.detail_empty" = "它可能已被移动或重命名。定位文件夹后，事项会重新显示。";
+"main.missing.locate" = "定位…";
 "main.missing.locate.message" = "选择「%@」现在所在的文件夹。";
 "main.missing.other" = "那是「%1$@」的文件夹，不是「%2$@」";
-"main.sidebar.not_opened" = "还没作为项目打开";
+"main.sidebar.not_opened" = "未作为项目打开";
 "main.sidebar.open_folder.tip" = "把一个文件夹作为项目打开（⌘O），也可以把文件夹拖到这里";
-"main.sidebar.progress.ax" = "进行中：交给 Agent 的条目和正在运行的整理";
+"main.sidebar.progress.ax" = "进行中：交给 Agent 的事项和正在运行的整理";
 "main.sidebar.projects" = "项目";
-"main.sidebar.unassigned.ax" = "未归类：还没归到项目的条目";
+"main.sidebar.unassigned.ax" = "未归类：还没归到项目的事项";
 
 "main.state.ax" = "状态：%@。点按可更改。";
-"main.toast.download_failed" = "没能存到「下载」文件夹。";
+"main.toast.download_failed" = "无法存储到「下载」文件夹。";
 "main.toast.downloaded" = "已存到「下载」：%@";
 "main.toast.session_gone" = "这个会话已结束，记录已清理。";
-"main.speech.recommended" = "推荐这台 Mac 使用的语音识别模型 · %@";
+"main.speech.recommended" = "推荐的语音识别模型 · %@";
 "main.speech.recommended.action" = "查看";
 
 "main.toolbar.handoff" = "交给 Agent";
 "main.toolbar.handoff.own" = "给你自己的 Agent";
 "main.toolbar.handoff.tip" = "在口喷鸡里交给 Agent，或复制指令给你自己的 Agent";
 "main.toolbar.move" = "移动";
-"main.toolbar.move.tip" = "把选中的条目移到某个项目";
+"main.toolbar.move.tip" = "把选中的事项移到某个项目";
 "main.toolbar.record.tip" = "录屏，同时录下你的讲解 %@";
 "main.toolbar.snap.tip" = "截一块区域，加一句备注 %@";
 
@@ -426,7 +432,7 @@
 "menu.about" = "关于口喷鸡";
 "menu.about.credits" = "免费开源 · blurt.work";
 
-"menu.item" = "条目";
+"menu.item" = "事项";
 "menu.project" = "项目";
 
 "menu.minimize" = "最小化";
@@ -453,6 +459,11 @@
 "menu.view" = "显示";
 "menu.toggle_detail" = "显示或隐藏详情";
 "menu.sort_by" = "排序方式";
+/* the list heading's sort button and View ▸ Sort By: the date key, the two directions, and the button's spoken label */
+"main.sort.updated" = "更新时间";
+"main.sort.ascending" = "升序";
+"main.sort.descending" = "降序";
+"main.sort.label" = "排序方式：%1$@，%2$@";
 
 "menu.undo" = "撤销";
 
@@ -463,11 +474,12 @@
 "menu.zoom" = "缩放";
 
 
-"notify.done.generic" = "整理好了";
-"notify.done.recording" = "录屏整理好了";
-"notify.done.snaps" = "截图整理好了";
+"notify.done.generic" = "整理完成";
+"notify.done.recording" = "录屏已整理";
+"notify.done.snaps" = "截图已整理";
+"notify.done.recording_in" = "已整理到 %@";
 
-"notify.failed" = "%@ 没有完成";
+"notify.failed" = "%@ 未完成";
 
 "notify.open" = "打开";
 
@@ -478,7 +490,7 @@
 "main.dictation.today" = "今天";
 "main.dictation.today.none" = "今天还没有听写";
 "main.dictation.stat.saved" = "约省 %ld 分钟";
-"main.dictation.stat.saved.tip" = "按每分钟打 40 个英文单词或 50 个汉字估算，减去说话的时间";
+"main.dictation.stat.saved.tip" = "按每分钟输入 40 个英文单词或 50 个汉字估算，已减去说话时间";
 "main.dictation.settings" = "听写设置…";
 "main.dictation.off" = "听写已关闭";
 "main.dictation.off.detail" = "可在设置的「听写」里打开。";
@@ -487,15 +499,15 @@
 "main.dictation.mark.terms" = "用到的词：%@";
 "main.dictation.mode.label" = "显示";
 "main.dictation.mode.polished" = "润色后";
-"main.dictation.mode.raw" = "原话";
+"main.dictation.mode.raw" = "识别原文";
 "main.dictation.mode.compare" = "改动";
 "main.dictation.typed" = "输入的文字";
 "main.dictation.heard" = "识别原文";
-"main.dictation.same" = "润色没有改动";
+"main.dictation.same" = "润色未做改动";
 "main.dictation.copied" = "已复制";
 "main.dictation.corrected" = "改正后";
 "main.dictation.correct" = "改正";
-"main.dictation.correct.tip" = "改正听错的地方；改过的名字可以加入词库";
+"main.dictation.correct.tip" = "改正识别错误；改正的名称可加入词库";
 "main.dictation.correct.hint" = "⌘↩ 保存 · Esc 取消";
 "main.dictation.correct.save" = "保存";
 "main.dictation.correct.cancel" = "取消";
@@ -507,14 +519,14 @@
 "main.dictation.correct.known" = "已保存改正 · %@ 已在词库里";
 "main.dictation.correct.undo_name" = "改正";
 "main.dictation.before_reformat" = "重排前";
-"main.dictation.show_item" = "查看条目 %@";
+"main.dictation.show_item" = "查看事项 %@";
 "main.dictation.delete.tip" = "删除这条听写（⌫，⌘Z 可撤销）";
 "main.dictation.info.app" = "App";
 "main.dictation.info.when" = "时间";
 "main.dictation.info.length" = "时长";
 "main.dictation.info.result" = "结果";
 "main.dictation.info.pasted" = "已输入到 App";
-"main.dictation.info.copied" = "已复制到剪贴板（当时没有可输入的地方）";
+"main.dictation.info.copied" = "已复制到剪贴板（当时没有可输入的文本框）";
 "main.dictation.info.not_typed" = "未输入";
 "main.dictation.info.polish" = "润色";
 "main.dictation.info.polish.off" = "关闭";
@@ -525,35 +537,36 @@
 "main.dictation.info.context.yes" = "润色时参考了光标附近的文字";
 "main.dictation.info.model.other" = "其他模型";
 "main.dictation.none" = "没有选中听写";
-"main.dictation.none.detail" = "在左边选一条，就会显示在这里。";
+"main.dictation.none.detail" = "在左侧选择一条听写。";
 "main.dictation.copy_all" = "全部复制";
 
 /* 听写页详情：润色做了什么 */
-"main.dictation.info.polish.short" = "太短，不用整理";
-"main.dictation.info.polish.no_model" = "没有润色模型";
+"main.dictation.info.polish.short" = "内容太短，未润色";
+"main.dictation.info.polish.no_model" = "未设置润色模型";
 "main.dictation.info.polish.get" = "下载…";
 "app.toast.welcome_no_dictation" = "口喷鸡在菜单栏里 · %1$@ 截图 · %2$@ 录屏";
 "app.toast.change_shortcut" = "更换…";
-"app.config.unreadable" = "读不了 config.json · 先用默认设置，改动不会保存";
-"app.config.not_saved" = "这项改动没保存 · config.json 读不了";
+"app.config.unreadable" = "无法读取 config.json · 正在使用默认设置，改动不会保存";
+"app.config.unreadable_kept" = "无法读取 config.json · 正在使用上次的设置，改动不会保存";
+"app.config.not_saved" = "改动未保存 · 无法读取 config.json";
 "app.contract.skill_older" = "口喷鸡 skill 比 App 旧";
 "app.contract.app_older" = "口喷鸡 skill 比 App 新";
-"app.contract.how" = "怎么更新";
-"app.models.background" = "模型在后台继续下载 · 还剩 %@";
+"app.contract.how" = "如何更新";
+"app.models.background" = "模型正在后台下载 · 剩余 %@";
 "app.models.menu" = "正在下载语音模型 · %1$@ / %2$@";
-"app.models.ready_try" = "语音模型好了 · 按%@ 试试";
-"app.models.resuming" = "继续下载语音模型 · 还剩 %@";
+"app.models.ready_try" = "语音模型已就绪 · 按%@ 开始听写";
+"app.models.resuming" = "继续下载语音模型 · 剩余 %@";
 "app.models.show" = "查看";
 "app.models.menu_unpacking" = "正在解压语音模型…";
 "app.models.stop" = "停止";
 "app.toast.welcome_dictation_only" = "口喷鸡在菜单栏里 · 按%@ 听写";
-"app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 还没有语音模型";
+"app.toast.welcome_no_model" = "口喷鸡在菜单栏里 · 未下载语音模型";
 "app.toast.welcome_no_model.action" = "下载";
 "app.toast.welcome_plain" = "口喷鸡在菜单栏里";
-"app.toast.welcome_setup" = "口喷鸡在菜单栏里 · 听写还没开启";
+"app.toast.welcome_setup" = "口喷鸡在菜单栏里 · 听写未开启";
 "app.toast.welcome_setup.action" = "开启…";
-"app.toast.welcome_taken" = "口喷鸡在菜单栏里 · 快捷键 %@ 用不了";
-"app.toast.welcome_taken_many" = "口喷鸡在菜单栏里 · %@ 个快捷键用不了";
+"app.toast.welcome_taken" = "口喷鸡在菜单栏里 · 快捷键 %@ 无法使用";
+"app.toast.welcome_taken_many" = "口喷鸡在菜单栏里 · %@ 个快捷键无法使用";
 "app.toast.welcome_snap_only" = "口喷鸡在菜单栏里 · %@ 截图";
 "app.url.ask_record" = "一个链接想开始录屏";
 "app.url.ask_snap" = "一个链接想截图";
@@ -564,7 +577,7 @@
 "main.job.dismiss" = "忽略";
 "main.job.hint.stopped_at_quit" = "退出口喷鸡时停止了整理。点「重试」重新整理。";
 "main.banner.failed_start" = "%1$@ 启动失败：%2$@";
-"main.banner.failed" = "%1$@ 出错停下了：%2$@";
+"main.banner.failed" = "%1$@ 出错停止：%2$@";
 "main.banner.review" = "查看改动…";
 "main.banner.restart" = "重新开始会话";
 "main.banner.ended_review" = "会话已结束，可以查看改动";
@@ -575,20 +588,21 @@
 "app.quit.organizing.quit" = "仍然退出";
 
 // dogfood v0.9 review
-"main.banner.no_response" = "一分钟没有反应";
+"main.banner.no_response" = "1 分钟无响应";
 "main.banner.more" = "更多";
 // Agent 的桌面端（Claude）
 "main.banner.desktop" = "在 %@ 桌面端进行 · 进度由 Agent 回报";
-"main.banner.desktop.no_mcp" = "在 %@ 桌面端进行 · 这里收不到进度，做完后回来标为完成";
+"main.banner.desktop.no_mcp" = "在 %@ 桌面端进行 · 此处不显示进度，完成后请标为完成";
 "main.banner.go_desktop" = "前往 %@";
-"app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写还没设置好";
+"app.toast.welcome_not_set_up" = "口喷鸡在菜单栏里 · 听写未设置";
 "app.toast.welcome_not_set_up.action" = "设置…";
 "app.config.show" = "显示文件";
-"app.models.offline" = "联网后会接着下载语音模型";
-"main.speech.recommended_recordings" = "录屏用的更好模型 · %@";
+"app.models.offline" = "联网后将继续下载语音模型";
+"main.speech.recommended_recordings" = "推荐用于录屏的模型 · %@";
 "app.menu.cards" = "显示卡片";
 "app.menu.project_header" = "项目";
-"app.menu.key_off" = "%@ 用不了";
+"app.menu.key_off" = "%@ 无法使用";
+"app.menu.key_taken" = "%@ 被另一个口喷鸡占用";
 "app.alert.not_now" = "以后再说";
 "app.record.again" = "重新录";
 
@@ -598,31 +612,32 @@
 "main.dictation.count_of" = "%ld / %@";
 "main.dictation.none.keys" = "↑↓ 切换    ⌘C 复制    ⌫ 删除";
 "main.dictation.banner.no_model" = "听写需要一个语音模型";
-"main.dictation.banner.no_model.detail" = "下载之前，听写打不出文字 · %@";
-"main.dictation.banner.no_model.detail_plain" = "设置好之前，听写打不出文字。";
-"main.dictation.banner.permission" = "听写还听不到它的快捷键";
+"main.dictation.banner.no_model.detail" = "下载后即可听写 · %@";
+"main.dictation.banner.no_model.detail_plain" = "设置完成后即可听写。";
+"main.dictation.banner.permission" = "听写快捷键需要权限";
 "main.dictation.banner.downloading" = "语音模型正在下载";
-"main.dictation.banner.downloading.detail" = "%1$@ / %2$@ · 下载完就能听写";
+"main.dictation.banner.downloading.detail" = "%1$@ / %2$@ · 下载完成后即可听写";
 "main.dictation.chip.copied" = "仅复制";
 "main.dictation.details" = "详细信息";
 "main.dictation.details.open" = "已展开";
 "main.dictation.details.closed" = "已收起";
 "main.dictation.reveal_audio" = "在访达中显示录音";
-"main.dictation.info.model.gone" = "%@ · 这台 Mac 上已经没有了";
-"main.dictation.info.polish.gone" = "这台 Mac 上已经没有的模型";
+"main.dictation.info.model.gone" = "%@ · 已从本机删除";
+"main.dictation.info.polish.gone" = "已从本机删除的模型";
 "main.dictation.info.model.choose" = "选择…";
 "main.dictation.correct.title" = "改正文字";
 "main.dictation.correct.save.tip" = "保存改正（⌘↩）";
 "main.dictation.correct.cancel.tip" = "放弃修改（Esc）";
-"main.dictation.correct.caption" = "保存后，可以把改过的名字加入词库。";
-"main.dictation.correct.caption.none" = "没找到听错的词";
+"main.dictation.correct.caption" = "保存后，可将改正的名称加入词库。";
+"main.dictation.correct.caption.none" = "未发现识别错误的词";
 "main.dictation.correct.caption.found" = "发现的词：";
 
 /* The Dictation page (v0.9 redesign, round 2) */
-"main.dictation.chip.copied_raw" = "仅复制 · 原话";
-"main.dictation.status.copied" = "只复制到了剪贴板，没有打出：当时没有可输入的地方。";
-"main.dictation.status.copied_raw" = "原话只复制到了剪贴板，没有打出：当时没有可输入的地方，而且%@。";
-"main.dictation.status.raw" = "打出的是原话：%@。";
+"main.dictation.chip.copied_raw" = "仅复制 · 未润色";
+"main.dictation.status.copied" = "仅复制到剪贴板，未输入：当时没有可输入的文本框。";
+"main.dictation.status.copied_raw" = "仅复制到剪贴板，未输入也未润色：当时没有可输入的文本框，且%@。";
+"main.dictation.status.raw" = "未润色：%@。";
+"main.dictation.status.parts" = "%2$ld 段中 %1$ld 段未润色：%3$@。";
 "main.dictation.changes.key" = "删除线是去掉的词，下划线是加上或改写的词。";
 "main.dictation.banner.download" = "下载模型";
 
@@ -641,21 +656,21 @@
 "main.toolbar.filter.tip" = "只看某些种类或状态";
 "main.toolbar.title" = "标题";
 "main.sidebar.project_tip" = "%@ · 编号以 %@ 开头";
-"main.palette.section.selected" = "选中的条目";
-"main.palette.section.selected_n" = "选中的条目";
+"main.palette.section.selected" = "选中的事项";
+"main.palette.section.selected_n" = "选中的事项";
 "main.palette.section.capture" = "录制与截图";
 "main.palette.section.go" = "前往";
-"main.palette.section.items" = "条目";
+"main.palette.section.items" = "事项";
 "main.palette.section.commands" = "命令";
-"main.palette.chip.n" = "%@ 个条目";
+"main.palette.chip.n" = "%@ 个事项";
 "main.palette.chip.clear" = "移除";
-"main.palette.chip.help" = "「选中的条目」下的命令作用于这里。在空的输入框里按删除键可以移除。";
+"main.palette.chip.help" = "「选中的事项」下的命令作用于这里。在空的输入框里按删除键可以移除。";
 "main.palette.footer.open" = "打开";
 "main.palette.footer.run" = "执行";
 "main.palette.footer.close" = "关闭";
-"main.palette.no_results" = "没有匹配“%@”的命令或条目";
+"main.palette.no_results" = "没有匹配“%@”的命令或事项";
 "main.palette.hint.copy_instruction" = "复制一段指令，粘贴给你自己的 Agent";
-"main.palette.hint.copy_full" = "把整个条目复制为文本";
+"main.palette.hint.copy_full" = "把整个事项复制为文本";
 
 /* several items selected (SelectionView) */
 "main.selection.hand_off" = "交给 Agent…";
@@ -663,11 +678,11 @@
 "main.selection.move" = "移到项目…";
 "main.selection.more" = "更多操作";
 "main.selection.remove" = "不选这一条";
-"main.selection.list" = "选中的条目";
-"main.cmd.copy_instruction.tip" = "复制一段列出这些条目的指令，粘贴给你自己的 Agent";
-"main.selection.blocked.mixed" = "交给 Agent 只处理同一个项目的条目，先把它们移到一个项目";
-"main.selection.blocked.needs_project" = "交给 Agent 前要有项目，先把它们移到一个项目";
-"main.selection.blocked.finished" = "只有新的和要做的条目能交给 Agent";
+"main.selection.list" = "选中的事项";
+"main.cmd.copy_instruction.tip" = "复制一段列出这些事项的指令，粘贴给你自己的 Agent";
+"main.selection.blocked.mixed" = "只能把同一项目的事项交给 Agent，请先移到同一项目";
+"main.selection.blocked.needs_project" = "交给 Agent 前，请先把事项移到项目中";
+"main.selection.blocked.finished" = "只有新的和要做的事项能交给 Agent";
 "main.job.stop" = "停止";
 "main.job.stop.tip" = "停止整理（⌘.）";
 "main.job.more" = "更多";
@@ -677,54 +692,73 @@
 "main.job.took" = "用时 %@";
 "main.job.elapsed" = "已用 %@";
 "main.job.steps" = "步骤";
-"main.job.items" = "条目";
-"main.job.items.waiting" = "写好的条目会出现在这里。";
-"main.job.items.none" = "这次没有写出条目。";
+"main.job.items" = "事项";
+"main.job.items.waiting" = "生成的事项会显示在这里。";
+"main.job.items.none" = "本次未生成事项。";
 "main.job.items.more" = "显示全部 %ld 个";
 "main.job.doing.prepare" = "正在准备…";
 "main.job.doing.transcribe" = "正在转写…";
-"main.job.doing.write" = "正在写入条目…";
+"main.job.doing.write" = "正在写入事项…";
 "main.job.doing.frames" = "正在挑选截图…";
-"main.job.stopped" = "你停止了这次整理。点「重试」重新整理。";
+"main.job.stopped" = "已停止整理。点「重试」重新整理。";
 "main.job.step_stopped" = "已停止";
 "main.empty.go_inbox" = "前往待处理";
-"main.empty.project.detail_other" = "新的录屏和截图会放进当前项目。把这个项目设为当前项目，它们就会放到这里。";
+"main.empty.project.detail_other" = "新的录屏和截图存入当前项目。将此项目设为当前项目，即可存到这里。";
 "main.empty.no_results_in" = "「%2$@」里没有找到「%1$@」";
-"main.empty.search_all" = "在全部条目里搜索";
+"main.empty.search_all" = "在全部事项里搜索";
 "main.empty.clear_search" = "清除搜索";
-"main.empty.no_match.detail" = "只显示：%@。这里的其他条目都被筛掉了。";
-"main.empty.scanning.detail" = "正在查看你的项目文件夹，通常几秒钟就好。";
+"main.empty.no_match.detail" = "只显示：%@。这里的其他事项都被筛掉了。";
+"main.empty.scanning.detail" = "正在读取项目文件夹，通常需要几秒钟。";
 "main.missing.title_named" = "找不到「%@」的文件夹";
-"main.missing.detail_named" = "可能被移走、改了名，或在没有连接的磁盘上。找到它，就能再看到它的条目。";
-"main.missing.detail_current" = "可能被移走或改了名。找到之前，新的录屏会放进未归类。";
+"main.missing.detail_named" = "它可能已被移动、重命名，或位于未连接的磁盘上。定位文件夹后可再次查看其中的事项。";
+"main.missing.detail_current" = "它可能已被移动或重命名。定位之前，新的录屏会存入未归类。";
 "main.missing.locate_folder" = "定位文件夹…";
 "main.missing.remove" = "从口喷鸡移除";
 "main.search.title" = "「%@」的搜索结果";
-"main.items.of" = "%2$@ 条中的 %1$@ 条";
+"main.items.of" = "%2$@ 个中的第 %1$@ 个";
 "main.items.of_in" = "%2$@ · %1$@";
 "main.project.current_count" = "当前项目 · %@";
-"main.project.current_mark" = "当前项目：新的录屏和截图会放进这里";
+"main.project.current_mark" = "当前项目：新的录屏和截图存入此处";
 "main.updating" = "正在更新…";
-"main.search.placeholder_wait" = "列出条目后就能搜索";
+"main.search.placeholder_wait" = "列出事项后即可搜索";
 "main.project.pin" = "置顶";
 "main.project.unpin" = "取消置顶";
 "main.project.pin.undo_name" = "置顶";
 "main.search.tip" = "搜索标题、原话和所有字段。⌘F 或 /";
-"main.sidebar.taken" = "最近拖走的";
-"app.record.not_saved_title" = "录屏没能保存";
-"app.record.partial_title" = "录屏中途停了";
+"app.record.not_saved_title" = "录屏未保存";
+"app.record.partial_title" = "录屏中途停止";
 "app.record.partial_kept" = "前 %@ 已保留";
 "app.ear.saved" = "已保存 %@";
 
 /* New Item (NewItemSheet) */
 "main.new_item.button" = "新建";
-"main.new_item.tip" = "手动新建一个条目（⌘N）";
-"main.new_item.menu" = "新建条目…";
-"main.new_item.title" = "新建条目";
+"main.new_item.tip" = "手动新建一个事项（⌘N）";
+"main.new_item.menu" = "新建事项…";
+"main.new_item.title" = "新建事项";
 "main.new_item.into" = "存到「%@」";
 "main.new_item.title_placeholder" = "标题";
 "main.new_item.details_placeholder" = "详情（可选）";
 "main.new_item.create" = "新建";
+"main.new_item.add_image" = "添加图片…";
+"main.new_item.remove_image" = "移除这张图片";
+"main.new_item.image_hint" = "也可以 ⌘V 粘贴或拖进来";
+"main.new_item.image_title" = "图片 · %@";
 
 /* v1.0.5：默认快捷键去掉了 ⇧（AppDelegate，只提示一次） */
 "app.toast.hotkeys_v2" = "快捷键已简化：%1$@ 截图 · %2$@ 截图取字 · %3$@ 语音备注";
+
+"main.dictation.multi.more" = "还有 %ld 条";
+
+"main.job.error.stopped_trust" = "%@ 在「信任这个文件夹？」这一步退出了，尚未开始处理。";
+
+/* 正在运行的分组标题 */
+"main.jobs.title" = "正在运行";
+"main.jobs.title.failed" = "失败";
+
+/* 会话没回报就结束了的事项 */
+"main.row.session_ended" = "会话已结束";
+"main.row.session_ended.help" = "Agent 会话已结束，但未报告完成。打开此事项可重新开始或收回。";
+
+/* 打开文件夹成了新项目 */
+"main.open.added" = "已添加 %1$@ · 事项编号从 %2$@-1 开始";
+"main.open.rename" = "重命名";

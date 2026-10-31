@@ -1,13 +1,17 @@
 // Stills and the captures model (docs/design/next-round.md K7).
 //
-//  • while recording, ⌥A: a full-resolution still of the recorded area at that instant → <session>/shots/NNN.png +
-//    shots.jsonl (t = video time) + a "snap" event in events.jsonl. No pause, no prompt; the border flashes and the
-//    thumbnail flies into the island. The island's snap button also pauses and opens the note. ⌥M = marker + snap.
+//  • while recording, ⌥A (since 2026-10-31): the normal snap flow — picker, in-place note, a card (Captures.swift) —
+//    into the take: <session>/shots/NNN.png + shots.jsonl (t = video time, its note, its project) + a "snap" event in
+//    events.jsonl; the recording goes on. `record.py snap` takes a still of the recorded area at that instant (no
+//    prompt: the border flashes, the thumbnail flies into the island). The island's snap button is ⌥A. (⌥M, a
+//    marker plus such a still, counted apart on the island, went in 1.0.7: ⌥A no longer pauses the take, and what
+//    the user says already marks the moment.)
 //  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
-// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project"} — later lines for the
-// same n win key by key; {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
+// {"n","type","file","marked","t","wall","region","voice","text","said","strokes","project","kind"} — later lines for
+// the same n win key by key ("kind": the type chosen in the note bubble, issue | idea | note | task, null = undecided:
+// BlurtCore NoteKind; its item takes it); {"n","project","assigned_by"} assigns a card ("intended_project": a card whose words failed
 // remembers the project it was taken with, v0.9), {"n","deleted":true} deletes one, a Structured voice note has
 // "structure": true and, once its words are in, "said" = the structured text and "said_raw" = the transcript,
 // {"n","taken":<wall>} marks a card dragged out and taken by another app (kept 7 days, BlurtCore TakenCaptures; put
@@ -91,8 +95,10 @@ func backingScale(forDisplay id: CGDirectDisplayID) -> CGFloat {
 
 // MARK: - Stills via ScreenCaptureKit
 
-/// A full-resolution still of `rect` (global top-left points), without any of our own windows except `keep`
-/// (the pen's ink is part of what the user means, so a snap while recording keeps it).
+/// A full-resolution still of `rect` (global top-left points), Blurt included as it looks — the main window, Settings,
+/// the island, the hanging cards, the pen's ink (the founder reports Blurt's own problems with Blurt). Only the snap
+/// flow's own chrome is left out: the area picker's overlay (dim, loupe, crosshair) and the flash / flight windows
+/// (BlurtCore CaptureExclusion; `keep` stays in even if it is one of those). Main thread.
 func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], completion: @escaping (CGImage?, CGFloat) -> Void) {
     // tests: BLURT_TEST_STILL=<png> stands in for the screen (no Screen Recording grant, nothing private captured);
     // BLURT_TEST_STILL=none: the capture fails, as it does without the grant
@@ -105,16 +111,15 @@ func captureStill(rect: CGRect, showsCursor: Bool, keep: Set<CGWindowID> = [], c
         DispatchQueue.main.async { completion(img, 2) }
         return
     }
+    let leaveOut = OwnWindows.snapLeavesOut(keep: Set(keep.map { UInt32($0) }))
+    emit(["event": "still_filter", "left_out": leaveOut.count])
     SCShareableContent.getExcludingDesktopWindows(false, onScreenWindowsOnly: true) { content, _ in
         guard let content = content else { DispatchQueue.main.async { completion(nil, 2) }; return }
         let c = CGPoint(x: rect.midX, y: rect.midY)
         guard let display = content.displays.first(where: { $0.frame.contains(c) }) ?? content.displays.first else {
             DispatchQueue.main.async { completion(nil, 2) }; return
         }
-        // leave out our floating chrome (island, cards, bubbles, picker, HUD: above the normal window layer); our
-        // ordinary windows (main window, Settings) are part of the screen like any other app's
-        let mine = content.windows.filter { $0.owningApplication?.processID == getpid() && $0.windowLayer != 0 && !keep.contains($0.windowID) }
-        let filter = SCContentFilter(display: display, excludingWindows: mine)
+        let filter = OwnWindows.filter(content, display: display, leaveOut: leaveOut)
         let clipped = rect.intersection(display.frame)
         let scale = backingScale(forDisplay: display.displayID)
         let cfg = SCStreamConfiguration()
@@ -191,6 +196,8 @@ final class Shot {
     var structure = false        // Structured (⇧ while the voice note listened): its words get the structuring pass
     var duration: Double?        // voice notes
     var strokes: [[[Double]]] = []
+    /// the type chosen in the note bubble (⌘1–⌘4, the type chip): its item's kind; nil = undecided (BlurtCore NoteKind)
+    var itemKind: NoteKind?
     var deleted = false
     /// dragged out and taken by another app (seconds since 1970): off its thread, in "Recently Taken" for 7 days
     var taken: Double?
@@ -234,6 +241,9 @@ final class Shot {
     var bestURL: URL? { markedURL.flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil } ?? url ?? voiceURL }
     var voiceURL: URL? { voice.flatMap { batch?.dir.appendingPathComponent($0) } }
     var hasNote: Bool { !(text ?? "").isEmpty || voice != nil }
+    /// ⌥A while recording (the snap flow, into the take): it hangs as a card while the take runs — not one Move To or
+    /// Organize takes (it goes with the recording). In memory only.
+    var hangs = false
     /// Waiting on a thread: not assigned to a project, not handed to the AI, not deleted, not part of a recording.
     var isCard: Bool { !deleted && taken == nil && project == nil && assignedBy == nil && batch?.inRecording == false }
     /// transcribe.py note on `voice`: running, failed (Retry in the card's menu), or nothing to do (in memory only:
@@ -254,7 +264,8 @@ final class Shot {
         var o: [String: Any] = ["n": n, "type": kind.rawValue, "file": file ?? NSNull(), "marked": marked ?? NSNull(),
                                 "t": t.map { ($0 * 1000).rounded() / 1000 } ?? NSNull(),
                                 "wall": (wall * 1000).rounded() / 1000, "region": region, "voice": voice ?? NSNull(),
-                                "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull()]
+                                "text": text ?? NSNull(), "strokes": strokes, "project": project ?? NSNull(),
+                                "kind": itemKind?.rawValue ?? NSNull()]
         if kind == .voice { o["duration"] = duration.map { ($0 * 100).rounded() / 100 } ?? NSNull() }
         if kind == .voice || said != nil { o["said"] = said ?? NSNull() }     // v0.7: a still's spoken note, transcribed
         if structure { o["structure"] = true }
@@ -402,7 +413,8 @@ final class ShotBatch {
     /// `{"n", "deleted": true}`; the files go to the Trash (recoverable). `done` gets where each one went (for Undo).
     /// `recycleAfter`: the files stay where they are that long first (an app a card was dragged into may still be
     /// reading its file); undone meanwhile, they never move.
-    func delete(_ s: Shot, recycleAfter delay: TimeInterval = 0, done: (([URL: URL]) -> Void)? = nil) {
+    /// `into`: tests — the files go to that scratch folder instead of the user's Trash.
+    func delete(_ s: Shot, recycleAfter delay: TimeInterval = 0, into trash: URL? = nil, done: (([URL: URL]) -> Void)? = nil) {
         s.deleted = true
         s.deletions += 1
         let gen = s.deletions
@@ -413,6 +425,15 @@ final class ShotBatch {
         guard !files.isEmpty else { done?([:]); return }
         let recycle = {
             guard s.deleted, s.deletions == gen else { return }
+            if let t = trash {
+                try? FileManager.default.createDirectory(at: t, withIntermediateDirectories: true)
+                var moved: [URL: URL] = [:]
+                for f in files {
+                    let to = t.appendingPathComponent("\(s.n)-\(UUID().uuidString.prefix(6))-" + f.lastPathComponent)
+                    if (try? FileManager.default.moveItem(at: f, to: to)) != nil { moved[f] = to }
+                }
+                return done?(moved) ?? ()
+            }
             NSWorkspace.shared.recycle(files) { moved, _ in DispatchQueue.main.async { done?(moved) } }
         }
         if delay > 0 { DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: recycle) } else { recycle() }
@@ -479,6 +500,7 @@ final class ShotBatch {
             s.structure = o["structure"] as? Bool ?? false
             s.duration = o["duration"] as? Double
             s.strokes = o["strokes"] as? [[[Double]]] ?? []
+            s.itemKind = NoteKind.parse(o["kind"])
             s.deleted = o["deleted"] as? Bool ?? false
             s.project = o["project"] as? String
             s.assignedBy = o["assigned_by"] as? String
@@ -534,11 +556,13 @@ func renderMarked(_ img: CGImage, strokes: [[[Double]]], lineWidthPx: CGFloat) -
 
 // MARK: - Chrome: shutter flash, border flash, flying thumbnails
 
-/// A short-lived click-through window that is never captured.
+/// A short-lived click-through window (a flash, a flight): never in a snap's picture; a recording shows it (it is the
+/// snap flow the video is about).
 func chromeWindow(_ frame: NSRect) -> NSWindow {
     let w = overlayWindow(frame, view: NSView())
     w.contentView?.wantsLayer = true
     w.level = .statusBar
+    OwnWindows.mark(w, .snapChrome)
     return w
 }
 
@@ -688,19 +712,19 @@ final class RecordingSnaps {
         batch = ShotBatch(dir: session, inRecording: true)
     }
 
+    /// The island's count: every still of the take (⌥A, the island's button, `record.py snap`).
     var count: Int { batch.live.count }
-    /// The stills that came from ⌥M (a marker: a still of that moment, logged as a marker too).
-    private var markerShots = Set<Int>()
-    /// The island's counts: markers apart from the stills the user took (⌥A, the island's button).
-    var markers: Int { batch.live.filter { markerShots.contains($0.n) }.count }
-    var stills: Int { count - markers }
 
-    /// `via`: "hotkey" | "island" | "marker" | "command"; `then` gets the saved shot (the island's button opens its note)
+    /// A snap taken with the snap flow during the take (⌥A: Snapper.capture): in events.jsonl as any still of the take.
+    func tookWithNote(_ s: Shot, at t: Double) {
+        rec?.log("snap", ["n": s.n, "file": s.file ?? "", "via": "picker", "t": (t * 1000).rounded() / 1000])
+    }
+
+    /// `via`: "hotkey" | "island" | "command"; `then` gets the saved shot (the island's button opens its note)
     func snap(via: String, then: ((Shot) -> Void)? = nil) {
         guard let rec = rec, rec.sessionStart.isValid, !rec.stopping else { return }
         let t = rec.elapsed()
         let n = batch.reserve()
-        if via == "marker" { markerShots.insert(n) }
         let file = "shots/\(ShotBatch.name(n)).png"
         rec.log("snap", ["n": n, "file": file, "via": via])
         emit(["event": "snap", "n": n, "t": (t * 1000).rounded() / 1000, "file": file])

@@ -31,6 +31,9 @@
 //                                written straight to PATH (no panel); cancel closes the sheet
 //   mainsuggest [moveall P | move ROW]   Unassigned's suggestion groups and rows ("Looks like X · Move"), pressing one
 //   mainmovepop [open | QUERY | return | esc]   M on the list: the Move popover, typing into it, choosing
+//   agentsetup allowed [NAME] | step KIND STATE SUBJECT [NAME] | stop | done   Set Up with Agent's live list
+//                                (AgentSetupProgress) in a given state: Allow for NAME, a row (KIND connect|use|download|
+//                                verify, STATE running|done|failed, SUBJECT "-" for none), Stop, Done → {"steps", "active"}
 //   layoutcheck [min|restore|dump]   the layout lint: every visible window's controls and texts inside the window, not
 //                                on top of each other, not truncated → {"event": "layoutcheck", "windows": [{"title",
 //                                "size", "problems": [{"kind", "role", "label", "frame", "bounds"}]}]} (LayoutCheck.swift)
@@ -136,6 +139,22 @@ enum SelfTests {
             let m = MainWindowController.shared.dictation.model
             if arg == "off" || arg.isEmpty { m.working = [] } else { m.working.insert(arg == "first" ? m.entries.first?.id ?? "" : arg) }
             out(["working": Array(m.working)])
+        case "agentsetup":
+            let p = AgentSetupProgress.shared
+            let a = arg.split(separator: " ", maxSplits: 4).map(String.init)
+            switch a.first ?? "" {
+            case "allowed":
+                let name = arg.dropFirst("allowed".count).trimmingCharacters(in: .whitespaces)
+                p.allowed(agent: name.isEmpty ? nil : name)
+            case "step":
+                if a.count >= 4, let k = AgentSetupStep.Kind(rawValue: a[1]), let st = AgentSetupStep.State(rawValue: a[2]) {
+                    p.record(AgentSetupStep(k, a[3] == "-" ? "" : a[3], st, name: a.count > 4 ? a[4] : ""))
+                }
+            case "stop": p.stop()
+            case "done": p.dismiss()
+            default: break
+            }
+            out(["steps": p.steps.steps.count, "active": p.active])
         case "toastdone":       // a take saved (no arg: "✓ Saved 0:42" in the ears, as after a take) or a done line
             if arg.isEmpty { island.doneMoment(T("app.ear.saved", Island.clock(42)), lead: .record, toast: T("app.toast.saved", Island.clock(42))) }
             else { appDelegate?.toast(arg, icon: .check) }
@@ -210,8 +229,19 @@ enum SelfTests {
                 let m = StorageModel()
                 SelfTests.storage = m
                 let u = BlurtPaths.home.appendingPathComponent(arg)
-                m.trash([u], name: arg, window: NSApp.keyWindow)
-                out(["trashing": u.path])
+                // a model goes through its Storage row, as the page does: only one the row offers to trash, by its name
+                Task { @MainActor in
+                    await m.load()
+                    let p = u.standardizedFileURL.path
+                    if let r = m.models.first(where: { $0.path.standardizedFileURL.path == p }) {
+                        guard r.removable else { out(["error": "in use", "name": r.name]); return }
+                        m.trash(r.items, name: r.name, window: NSApp.keyWindow)
+                        out(["trashing": u.path, "name": r.name])
+                        return
+                    }
+                    m.trash([u], name: arg, window: NSApp.keyWindow)
+                    out(["trashing": u.path])
+                }
             }
         case "storagehover":            // storagehover NAME: Settings → Storage shows that row's ⋯ as on hover (empty: none)
             MainActor.assumeIsolated { StorageHover.shared.forced = arg.isEmpty ? nil : arg }
@@ -490,7 +520,7 @@ enum SelfTests {
             }
         case "mainsearch":
             let c = MainWindowController.shared
-            c.searchItem?.searchField.stringValue = arg
+            c.list.heading.search.stringValue = arg
             c.model.text = arg
             c.model.reload()
             c.list.updateEmpty()
@@ -555,7 +585,7 @@ enum SelfTests {
                 NSApp.sendEvent(e)
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                out(["search": c.searchItem?.searchField.stringValue ?? "", "responder": "\(type(of: c.window?.firstResponder as Any))"])
+                out(["search": c.searchField?.stringValue ?? "", "responder": "\(type(of: c.window?.firstResponder as Any))"])
             }
         case "mainkey":                 // mainkey CHAR: a key on the list (a d r w x s …), as typed
             let c = MainWindowController.shared
@@ -610,12 +640,12 @@ enum SelfTests {
                 out(["scope": c.model.scope.key, "projects": c.model.projects.filter(\.registered).map(\.name),
                      "undo": c.window?.undoManager?.undoMenuItemTitle ?? ""])
             }
-        case "mainbanner":              // mainbanner captures|taken N: show that banner with N (no cards needed), for the ↑ walk
+        case "mainbanner":              // mainbanner captures N: show that banner with N (no cards needed), for the ↑ walk
             let c = MainWindowController.shared
             let w = arg.split(separator: " ").map(String.init)
             let n = w.count > 1 ? Int(w[1]) ?? 0 : 0
-            if w.first == "captures" { c.list.captures.set(count: n) } else { c.sidebar.testTaken = n > 0 ? n : nil; c.sidebar.rebuild() }
-            out(["captures": !c.list.captures.isHidden, "taken": !c.list.taken.isHidden])
+            if w.first == "captures" { c.list.captures.set(count: n) }
+            out(["captures": !c.list.captures.isHidden])
         case "mainresponder":           // the main window's first responder (the list, the detail page, the sidebar…)
             let c = MainWindowController.shared
             out(["responder": c.window?.firstResponder.map { "\(type(of: $0))" } ?? "nil", "selected": c.list.selectedIDs,
@@ -630,10 +660,11 @@ enum SelfTests {
             c.model.state = arg == "all" || arg.isEmpty ? nil : arg
             c.model.reload()
             out(["state": c.model.state ?? NSNull(), "rows": c.model.rowCount])
-        case "mainpopup":               // mainpopup filter|context: open the toolbar's Filter menu / the selection's context menu
+        case "mainpopup":               // mainpopup filter|sort|context: the list heading's Filter / sort menu, the selection's context menu
             let c = MainWindowController.shared
             DispatchQueue.main.async {
                 if arg == "filter" { c.showFilterMenu(); return }
+                if arg == "sort" { c.showSortMenu(); return }
                 guard let r = c.list.table.selectedRowIndexes.first, let m = c.contextMenu(for: c.list.table.selectedRowIndexes) else { return }
                 let rect = c.list.table.rect(ofRow: r)
                 m.popUp(positioning: nil, at: NSPoint(x: rect.minX + 160, y: rect.midY), in: c.list.table)

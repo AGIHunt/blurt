@@ -37,6 +37,9 @@ public struct DictationEntry: Identifiable, Hashable {
     public var model: String?
     public var fellBack: Bool
     public var reason: String?
+    /// a streamed take some of whose polish windows fell back (not all: then `fellBack`): how many, of how many
+    /// (`reason` is the first one's); nil: none did, or an older entry
+    public var fellBackParts: DictationParts?
     /// "pasted" | "copied" | "none"
     public var insert: String
     public var audio: String?
@@ -49,7 +52,8 @@ public struct DictationEntry: Identifiable, Hashable {
     public var termsApplied: [String]?
     /// whether the text around the cursor went to polish; nil in older entries
     public var contextUsed: Bool?
-    /// that text itself — kept only when record.dictation.keep_audio is on (the default)
+    /// that text itself — kept only when record.dictation.keep_audio is on (the default), as long as the entry
+    /// (record.dictation.retention_days, 30)
     public var context: String?
     /// per-stage times (ms): asr_ms, polish_ms, load_ms (model loads waited for), total_ms (key-up → paste), segments
     /// (pieces transcribed while talking); nil in older entries
@@ -115,6 +119,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let r = repaired, !r.isEmpty { o["repaired"] = r }
         if let f = fitted, !f.isEmpty { o["fitted"] = f }
         if let c = corrected { o["corrected"] = c }
+        if let p = fellBackParts { o["fell_back_parts"] = [p.n, p.of] }
         if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
         if let p = pieces, !p.isEmpty { o["pieces"] = p.map(\.json) }
         if let w = windows, !w.isEmpty { o["windows"] = w.map(\.json) }
@@ -136,6 +141,7 @@ public struct DictationEntry: Identifiable, Hashable {
         model = o["model"] as? String
         fellBack = o["fell_back"] as? Bool ?? false
         reason = o["reason"] as? String
+        if let p = o["fell_back_parts"] as? [Int], p.count == 2 { fellBackParts = DictationParts(n: p[0], of: p[1]) }
         insert = o["insert"] as? String ?? "none"
         audio = o["audio"] as? String
         asrModel = o["asr_model"] as? String
@@ -304,6 +310,25 @@ public struct DictationLanguageTag: Hashable {
     }
 }
 
+/// A streamed take's polish windows that fell back (DictationStream.assemble): the take counts as not polished only
+/// when every window fell back; some of them is said as "n of m parts", never as the whole take typed as heard (the
+/// dogfood's 213 s take was labelled so while most of it was polished).
+public enum DictationWindowFallback {
+    public static func of(_ fellBack: [Bool]) -> (all: Bool, parts: DictationParts?) {
+        let n = fellBack.filter { $0 }.count
+        if n == 0 { return (false, nil) }
+        if n == fellBack.count { return (true, nil) }
+        return (false, DictationParts(n: n, of: fellBack.count))
+    }
+}
+
+/// n of m (a take's polish windows that fell back).
+public struct DictationParts: Hashable {
+    public var n: Int
+    public var of: Int
+    public init(n: Int, of: Int) { self.n = n; self.of = of }
+}
+
 public final class DictationHistory {
     public static var dir: URL { BlurtPaths.home.appendingPathComponent("dictation") }
     public static let shared = DictationHistory()
@@ -400,25 +425,38 @@ public final class DictationHistory {
     /// its way (`liveIDs`: its wav and pieces), which would otherwise end as "nothing heard".
     public func clear() {
         let live = DictationHistory.liveIDs()
-        lock.lock()
-        let fm = FileManager.default
-        for n in (try? fm.contentsOfDirectory(atPath: audioDir.path)) ?? [] where !live.contains(where: { n.hasPrefix($0) }) {
-            try? fm.removeItem(at: audioDir.appendingPathComponent(n))
+        exclusive {
+            let fm = FileManager.default
+            for n in (try? fm.contentsOfDirectory(atPath: audioDir.path)) ?? [] where !live.contains(where: { n.hasPrefix($0) }) {
+                try? fm.removeItem(at: audioDir.appendingPathComponent(n))
+            }
+            try? Data().write(to: url, options: .atomic)
         }
-        try? Data().write(to: url, options: .atomic)
-        lock.unlock()
         NotificationCenter.default.post(name: DictationHistory.changed, object: self)
     }
 
     private func appendLine(_ o: [String: Any]) {
-        lock.lock(); defer { lock.unlock() }
         guard var d = try? JSONSerialization.data(withJSONObject: o, options: [.sortedKeys]) else { return }
         d.append(0x0A)
-        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
-        guard fd >= 0 else { return }
-        _ = d.withUnsafeBytes { write(fd, $0.baseAddress, d.count) }
-        close(fd)
+        exclusive {
+            let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+            guard fd >= 0 else { return }
+            _ = d.withUnsafeBytes { write(fd, $0.baseAddress, d.count) }
+            close(fd)
+        }
+    }
+
+    /// The file's one writer at a time: this process's threads (`lock`) and other processes — dictation.py appends
+    /// item links — through an advisory flock on `.history.lock` beside it (not on the file itself: `prune` replaces
+    /// it). An append can't land between `prune`'s read and its rewrite and be lost.
+    private func exclusive<T>(_ body: () -> T) -> T {
+        lock.lock(); defer { lock.unlock() }
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fd = open(dir.appendingPathComponent(".history.lock").path, O_RDWR | O_CREAT, 0o644)
+        if fd >= 0 { flock(fd, LOCK_EX) }
+        defer { if fd >= 0 { flock(fd, LOCK_UN); close(fd) } }
+        return body()
     }
 
     public func resolve(_ rel: String) -> URL {
@@ -471,27 +509,82 @@ public final class DictationHistory {
     @discardableResult
     public func prune(days: Int, now: Date = Date()) -> Int {
         purgeDeleted()                  // a delete's Undo doesn't outlive the app
-        let all = load()
-        pruneOrphanAudio(keeping: all, now: now)
-        let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
-        let keep = all.filter { $0.time >= cutoff }
-        let drop = all.filter { $0.time < cutoff }
-        guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
-        // nothing to forget and no edit lines to fold: leave the file alone
-        let lines = (try? Data(contentsOf: url))?.split(separator: 0x0A).count ?? 0
-        if drop.isEmpty && lines == all.count { return 0 }
-        for e in drop { if let a = e.audio { try? FileManager.default.removeItem(at: resolve(a)) } }
-        var out = Data()
-        for e in keep.reversed() {
-            if let d = try? JSONSerialization.data(withJSONObject: e.json, options: [.sortedKeys]) { out.append(d); out.append(0x0A) }
-            if let i = e.item, let u = e.itemUID,
-               let d = try? JSONSerialization.data(withJSONObject: ["op": "item", "id": e.id, "item": i, "uid": u], options: [.sortedKeys]) {
-                out.append(d); out.append(0x0A)
+        recoverInterrupted(days: days, now: now)
+        return exclusive {
+            let all = load()
+            pruneOrphanAudio(keeping: all, now: now)
+            let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
+            let keep = all.filter { $0.time >= cutoff }
+            let drop = all.filter { $0.time < cutoff }
+            guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
+            // nothing to forget and no edit lines to fold: leave the file alone
+            let lines = (try? Data(contentsOf: url))?.split(separator: 0x0A).count ?? 0
+            if drop.isEmpty && lines == all.count { return 0 }
+            for e in drop { if let a = e.audio { try? FileManager.default.removeItem(at: resolve(a)) } }
+            var out = Data()
+            for e in keep.reversed() {
+                if let d = try? JSONSerialization.data(withJSONObject: e.json, options: [.sortedKeys]) { out.append(d); out.append(0x0A) }
+                if let i = e.item, let u = e.itemUID,
+                   let d = try? JSONSerialization.data(withJSONObject: ["op": "item", "id": e.id, "item": i, "uid": u], options: [.sortedKeys]) {
+                    out.append(d); out.append(0x0A)
+                }
             }
+            try? out.write(to: url, options: .atomic)
+            return drop.count
         }
-        lock.lock(); defer { lock.unlock() }
-        try? out.write(to: url, options: .atomic)
-        return drop.count
+    }
+
+    /// The reason of a take that Blurt quit (or crashed) on before it was typed: a failed take, with Retry.
+    public static let interruptedReason = "asr_failed:interrupted"
+
+    /// A take's own recording (dictation/audio/<id>.wav — not its pieces) with no entry: Blurt quit, crashed or was
+    /// relaunched between the key-down and the paste. Within the retention it becomes an entry that says so, with its
+    /// recording and Retry, instead of being deleted as an orphan a launch later. Never a take still running
+    /// (`liveIDs`), nor a recording under a second long. Returns the ids recovered.
+    @discardableResult
+    public func recoverInterrupted(days: Int, now: Date = Date()) -> [String] {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: audioDir.path) else { return [] }
+        let entries = load()
+        let have = Set(entries.map(\.id))
+        let kept = Set(entries.compactMap { $0.audio.map { resolve($0).standardizedFileURL.lastPathComponent } })
+        let live = DictationHistory.liveIDs()
+        let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
+        var out: [String] = []
+        for n in names.sorted() {
+            guard let id = DictationHistory.takeID(wav: n), !have.contains(id), !kept.contains(n), !live.contains(id) else { continue }
+            let f = audioDir.appendingPathComponent(n)
+            guard let a = try? fm.attributesOfItem(atPath: f.path), let size = (a[.size] as? NSNumber)?.doubleValue,
+                  size >= 44 + DictationHistory.wavBytesPerSecond else { continue }
+            let time = DictationHistory.time(of: id) ?? (a[.modificationDate] as? Date) ?? now
+            guard time >= cutoff else { continue }
+            append(DictationEntry(id: id, time: time, app: nil, bundle: nil, duration: (size - 44) / DictationHistory.wavBytesPerSecond,
+                                  raw: "", polished: nil, text: "", model: nil, fellBack: false,
+                                  reason: DictationHistory.interruptedReason, insert: "none", audio: "audio/\(n)"))
+            out.append(id)
+        }
+        return out
+    }
+
+    /// 16 kHz mono 16-bit: a take's recording.
+    static let wavBytesPerSecond = 32_000.0
+
+    /// "d-20261023-020301-4f2a.wav" → its id; nil for a piece (-p1, -w2, -live) or anything else.
+    static func takeID(wav n: String) -> String? {
+        guard n.hasSuffix(".wav") else { return nil }
+        let id = String(n.dropLast(4))
+        let parts = id.split(separator: "-")
+        guard parts.count == 4, parts[0] == "d", parts[1].count == 8, parts[2].count == 6, parts[3].count == 4,
+              parts[1].allSatisfy(\.isNumber), parts[2].allSatisfy(\.isNumber), parts[3].allSatisfy(\.isHexDigit) else { return nil }
+        return id
+    }
+
+    /// When the take with this id started (the id says it, in local time: `newID`).
+    static func time(of id: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyyMMdd-HHmmss"
+        return f.date(from: String(id.dropFirst(2).prefix(15)))
     }
 
     /// A take's audio (dictation/audio/<id>.wav, and its streamed pieces <id>-pN.wav) is kept only when its entry

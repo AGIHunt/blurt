@@ -83,7 +83,8 @@ final class DictationSettings: ObservableObject {
         let s = DictationStyleChoice.current(polishOff: !Dictation.polishOn, config: st)
         if s != style { style = s }
         let all = DictationVocabulary.shared.load()
-        let wc = (mine: all.filter { $0.state == .active && $0.source != .builtIn }.count,
+        // the Words tab's own count (its "Yours" group), so the two places never say different numbers
+        let wc = (mine: DictationVocabulary.groups(all).own.count,
                   suggested: all.filter { $0.state == .suggested }.count)
         if wc != wordCounts { wordCounts = wc }
     }
@@ -104,6 +105,8 @@ final class DictationSettings: ObservableObject {
     }
     func setStartSound(_ v: Bool) { startSound = v; save("sounds", v ? nil : false) }
     func setStopSound(_ v: Bool) { stopSound = v; save("stop_sound", v ? nil : false) }
+    @Published var cancelKey = Dictation.cancelKey
+    func setCancelKey(_ k: Dictation.CancelKey) { cancelKey = k; save("cancel_key", k == .esc ? nil : k.rawValue) }
 
     private func save(_ key: String, _ value: Any?) {
         Dictation.set(key, value)
@@ -253,8 +256,11 @@ struct DictationPane: View {
             notice
             SettingsGroup("dictation.main") { mainRows }
             SettingsGroup("dictation.text") { textRows }
+            SettingsGroup("dictation.translation") { translateRows }
             SettingsGroup("dictation.data") {
                 historyRow
+                SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }),
+                              detail: T("dictation.history.keep_audio.detail.days", T("dictation.history.days", m.retention)))
                 modelsRow
             }
 
@@ -300,9 +306,14 @@ struct DictationPane: View {
                             checks: m.key == .fn ? [SettingMenuToggle("dictation.fn_capture", isOn: Binding(get: { m.fnCapture }, set: { m.setFnCapture($0) }))] : [])
             }
             SettingRow("dictation.mode", detail: T("dictation.mode.\(m.mode.rawValue).detail", Dictation.keyInline(m.key)),
-                       help: T("dictation.mode.help", hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice))) {
+                       help: T("dictation.mode.help", m.cancelKey.label, hk(.voice).isEmpty ? T("dictation.settings.voice_note_off") : hk(.voice))) {
                 ChoicePopup(label: T("dictation.settings.mode"), choices: DictationTrigger.Mode.allCases.map { ($0, T("dictation.mode.\($0.rawValue)")) },
                             selection: Binding(get: { m.mode }, set: { m.setMode($0) }))
+            }
+            SettingRow("dictation.cancel_key", detail: T("dictation.settings.cancel_key.detail")) {
+                ChoicePopup(label: T("dictation.settings.cancel_key"),
+                            choices: Dictation.CancelKey.allCases.map { ($0, $0 == .esc ? T("dictation.settings.cancel_key.default", $0.label) : $0.label) },
+                            selection: Binding(get: { m.cancelKey }, set: { m.setCancelKey($0) }))
             }
             SettingToggle("dictation.double_tap", isOn: Binding(get: { m.doubleTap }, set: { m.setDoubleTap($0) }),
                           detail: T("dictation.settings.double_tap.key", Dictation.keyShort(m.key)), help: T("dictation.settings.double_tap.help"))
@@ -411,31 +422,33 @@ struct DictationPane: View {
                     .disabled(!m.enabled)
             }
         }
-        translateRows
         wordsRow
     }
 
-    /// Translate: into what (⌘ while talking turns it on), the cloud or this Mac, the apps where it is always on.
+    /// Translate (⌘), its own box (2026-10-30): into what — dictation's own target, not ⌥T's (writing your words in
+    /// another language usually goes the other way from reading) —, the model that translates (Settings → Models'
+    /// Translate row, said here with Change…), and the apps where it starts on (read and remove; ⌘ in an app adds
+    /// it, ⌘ again removes it).
     @ViewBuilder var translateRows: some View {
-        SettingRow("dictation.translate", detail: T("dictation.translate.settings.detail")) {
-            // auto first, then every language by its own name (日本語, Español); ⌥T uses the same setting
-            ChoicePopup(label: T("dictation.translate.settings.title"),
-                        choices: DictationTranslateTarget.allCases.map { ($0, $0 == .auto ? T("dictation.translate.target.auto") : $0.endonym) },
-                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }), dividers: [1])
+        SettingRow("dictation.translate", detail: TranslateTargets.autoNote(m.translate.target) ?? T("dictation.translate.settings.detail")) {
+            // Auto first, named by its pair (TranslateTargets: global-first), then every language by its own name
+            ChoicePopup(label: T("dictation.translate.settings.title"), choices: TranslateTargets.choices(),
+                        selection: Binding(get: { m.translate.target }, set: { v in m.setTranslate { $0.target = v } }),
+                        width: TranslateTargets.popupWidth, dividers: [1])
         }
         .disabled(!m.enabled)
-        let cloud = ScreenTextRefine.cloudPayload != nil, local = Dictation.shared.polishModel != nil
-        SettingToggle("dictation.translate_cloud", isOn: Binding(get: { m.translate.cloud }, set: { v in m.setTranslate { $0.cloud = v } }),
-                      detail: cloud ? T("dictation.translate.cloud.detail", DictationCloud.setup.effectiveModel)
-                          : local ? T("dictation.translate.cloud.none") : T("dictation.translate.cloud.nothing"))
-            .disabled(!m.enabled || !cloud)
-        if !cloud {
-            SettingsLine(padding: 8) {
-                TextLinkButton(T("dictation.translate.cloud.setup")) { AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish") }
-            }
+        // which model translates is Settings → Models' Translate row: here, what it is now and the way there
+        CloudObserving {
+            SettingRow("dictation.translate_model", detail: CloudText.uses(.translate)) { JobChangeButton(job: .translate) }
         }
         if !m.translate.apps.isEmpty {
-            SettingsLine(padding: 8) { Hint(T("dictation.translate.apps")) }
+            SettingsLine(padding: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Hint(T("dictation.translate.apps"))
+                    Text(T("dictation.translate.apps.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             ForEach(m.translate.apps.sorted(), id: \.self) { b in
                 SettingsLine(padding: 8) {
                     HStack(spacing: 8) {
@@ -513,16 +526,15 @@ struct DictationPane: View {
         }
     }
 
-    /// "9 saved · deleted after 30 days", Open History… — how long, the audio and the destructive Clear History… are
-    /// in its menu, never a button at rest.
+    /// "9 saved · deleted after 30 days", Open History… — how long and the destructive Clear History… are in its
+    /// menu, never a button at rest; keeping the audio is the row under it.
     var historyRow: some View {
         SettingRow("dictation.history_saved", detail: T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention)),
-                   hosts: ["dictation.history_keep", "dictation.keep_audio"]) {
+                   hosts: ["dictation.history_keep"]) {
             Menu {
                 SettingMenuPicker("dictation.history_keep", selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
                     ForEach([7, 30, 90, 365], id: \.self) { d in Text(T("dictation.history.days", d)).tag(d) }
                 }
-                SettingMenuToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }))
                 Divider()
                 Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }
                     .disabled(m.historyCount == 0)
@@ -587,9 +599,8 @@ struct DictationPane: View {
     var modelNames: String? {
         var names: [String] = []
         if let a = models.selectedASR { names.append(a.name ?? models.asrName(a.id)) }
-        if m.style != .verbatim, DictationCloud.ready {
-            let c = DictationCloud.setup
-            names.append(T("dictation.models.cloud", c.effectiveModel))
+        if m.style != .verbatim, let c = CloudStore.cloudModel(.polish) {
+            names.append(T("dictation.models.cloud", c.model))
         } else if m.style != .verbatim, let p = models.selectedPolish, p.installed { names.append(p.name) }
         return names.isEmpty ? nil : names.joined(separator: " · ")
     }

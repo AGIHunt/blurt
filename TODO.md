@@ -169,7 +169,8 @@
       only while pointed at or 4 s after a reveal, and a reveal never pointed at lapses after 10 s; the first-card hint
 
 - [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
-- [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
+- [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl (macOS: removed in 1.0.7 — ⌥A snaps
+      without pausing and the narration marks the moment; Windows/Linux keep Alt+Shift+M)
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,
       clicked element selector/text — timestamp-aligned with the video → exact component lookup
 - [ ] Native recorder binaries (ScreenCaptureKit / Windows.Graphics.Capture) for lower CPU and better cursor capture

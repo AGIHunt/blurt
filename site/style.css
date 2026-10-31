@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.6-1") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.6-1") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.6-1") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.6-2") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.6-2") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.6-2") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -1152,7 +1152,7 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
 /* a beat (done, hello): Peep grows out of the notch for the moment, so the hop reads at a glance */
 .isl .el > .pp.beat{ transform: translateY(5px) scale(1.55); clip-path: inset(-30px -30px 1px -30px); }
 /* the still until peep.js has the idle sheet (it paints over it inline), so the notch never shows an empty ear */
-.isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.1-2"); background-size: 500% 100%; background-position: 0 0; }
+.isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.6-2"); background-size: 500% 100%; background-position: 0 0; }
 .snotch .ps{ position: absolute; left: 8px; top: -3px; }
 .ps[data-still="done"]{ background-position: 25% 0; }
 .ps[data-still="talking"]{ background-position: 50% 0; }

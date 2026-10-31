@@ -1,8 +1,9 @@
 // The middle column: the place's heading, the running jobs (K4) and the notices above one view-based NSTableView with
 // fixed row heights. One dense row grammar in every place (kind, id, title, the state only where the list doesn't say
 // it, a short date), grouped where it helps (ListSections: the Inbox by project in the one project order, Unassigned
-// last; In Progress, All Items and a project by state). The kind / state filter and the sort live in the toolbar's
-// Filter menu (and the View menu); a quiet line above the list says which filter is on, with Clear, only while one is.
+// last; In Progress, All Items and a project by state). The list's own controls sit at its top (ListHeading): the
+// order, named ("Updated ↓"), the Filter button and New Item on the heading's line, the search field under it (the View
+// menu has Sort By and the filter too); a quiet line above the rows says which filter is on, with Clear, only while one is.
 // Keyboard-first: J/K, ↩, ⌘↩ (hand off), E, M (move to a project: a type-to-filter popover), 1–4 (kind), Space (Quick
 // Look), ⌘C (path), and K3's state keys — A keep, D done, R the one way back (send back / take back / reopen /
 // restore), W won't do, X / ⌫ discard, S the state menu. Rows drag out as their primary frame (a file) and onto a
@@ -10,6 +11,7 @@
 // Move", and the groups of them sit above the list with Move All (ProjectPicking.swift). The empty states
 // (EmptyStateView) own the window when a place has nothing: first run, inbox zero, nothing listed yet, a missing folder.
 import AppKit
+import UniformTypeIdentifiers
 import BlurtCore
 import Quartz
 import Carbon.HIToolbox
@@ -33,6 +35,8 @@ protocol ItemListActions: AnyObject {
     /// Items to a project, the user's move (⌘Z puts them back): a row's "Looks like X · Move", a group's Move All
     func move(uids: [String], to project: String)
     func pickProject()                         // M: the Move popover at the selection
+    /// New Item holding what came: ⌘V in the list, pictures dropped on it (BA-52)
+    func newItemHolding(_ prefill: NewItemSheet.Prefill)
 }
 
 /// Pasteboard type for item uids dragged inside the window (onto a project in the sidebar).
@@ -87,6 +91,15 @@ final class ItemTableView: NSTableView {
     }
 
     @objc func copy(_ sender: Any?) { actions?.copyPaths() }
+    /// ⌘V: a new item from the clipboard's picture or text (the sheet opens with it; nothing is written yet). Not
+    /// from rows copied here (⌘C puts their files on the clipboard: pasting them back would only duplicate).
+    @objc func paste(_ sender: Any?) {
+        let pb = NSPasteboard.general
+        let images = NewItemImages.files(from: pb).filter { !$0.path.contains("/.blurt/") && !$0.path.contains("/Blurt/inbox/") }
+        let text = images.isEmpty ? (pb.string(forType: .string) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
+        guard !images.isEmpty || !text.isEmpty else { NSSound.beep(); return }
+        actions?.newItemHolding(NewItemSheet.Prefill(text: text, images: images))
+    }
 
     override func menu(for event: NSEvent) -> NSMenu? {
         let p = convert(event.locationInWindow, from: nil)
@@ -94,6 +107,15 @@ final class ItemTableView: NSTableView {
         guard r >= 0 else { return nil }
         if !selectedRowIndexes.contains(r) { selectRowIndexes([r], byExtendingSelection: false) }
         return actions?.contextMenu(for: selectedRowIndexes)
+    }
+
+    // A row dragged out: its pasteboard follows the app under the pointer (CardDrag, BA-22). NSTableView's delegate
+    // isn't told of moves: they are passed on here (super only where AppKit implements it — today it doesn't).
+    override func draggingSession(_ session: NSDraggingSession, movedTo screenPoint: NSPoint) {
+        if NSTableView.instancesRespond(to: #selector(NSDraggingSource.draggingSession(_:movedTo:))) {
+            super.draggingSession(session, movedTo: screenPoint)
+        }
+        (delegate as? ItemListController)?.rowDragMoved(to: screenPoint)
     }
 
     // Quick Look panel (Space): the controller supplies the items
@@ -520,20 +542,6 @@ final class CapturesBanner: NoticeCard {
     }
 }
 
-/// "Recently dragged out: 2" on top of the Inbox and Unassigned (v0.8.1): cards dragged out into other apps in the last 7
-/// days — a click opens Recently Dragged Out (TakenPanel: copy, drag out again, put back). Information only: the quiet
-/// tone. Hidden when there are none.
-final class TakenBanner: NoticeCard {
-    init() { super.init(tone: .quiet, glyph: Look.symbol("arrow.up.right.square", "", size: 14)) }
-    required init?(coder: NSCoder) { fatalError() }
-
-    func set(count: Int) {
-        isHidden = count == 0
-        guard count > 0 else { return }
-        say(T("main.captures.taken", count), count: count, action: T("main.captures.taken.show"), tip: T("main.captures.taken.tip"))
-    }
-}
-
 /// The dense list's time: right-aligned on the column's trailing edge, so every row's time (and the notices' buttons
 /// above the list) end on one line.
 final class TimeCell: NSTableCellView {
@@ -566,7 +574,7 @@ final class MissingFolderBanner: NSView {
 
     override init(frame: NSRect) {
         super.init(frame: frame)
-        icon.image = Look.symbol("questionmark.folder", "", size: 15)
+        icon.image = IslandGlyph.missing.template(size: 18)     // a missing folder's one mark (IslandGlyph.place)
         icon.contentTintColor = .secondaryLabelColor
         icon.setAccessibilityElement(false)
         title.font = .systemFont(ofSize: 12, weight: .semibold)
@@ -609,14 +617,34 @@ final class MissingFolderBanner: NSView {
 }
 
 /// The top of the list: the place's name in 17 pt semibold (system.md §7) with its counts beside it in secondary
-/// ("Inbox  9 new · 6 to verify") — Linear's and Reminders' page heading. In the content, not the toolbar: a bar
-/// item is drawn washed out whenever the window isn't key, and the list's anchor should outweigh its rows.
+/// ("Inbox  9 new · 6 to verify") — Linear's and Reminders' page heading — and on the same line the controls that act
+/// on the list: its order, named ("Updated ↓", Mail's "Sort by Date"), the Filter button (filled, in brand ink, with how
+/// many filters are on) and New Item; under it the list's own search field, the column's width (System Settings'
+/// sidebar, Mail's list). In the content, not the toolbar: a bar item is drawn washed out whenever the window isn't
+/// key, sits over the detail rather than the list, and the list's anchor should outweigh its rows.
+/// Narrow (the window at its minimum), New Item drops its word before the name or its counts are cut.
 final class ListHeading: NSView {
     let title = NSTextField(labelWithString: "")
     let counts = NSTextField(labelWithString: "")
+    /// the order, named: a click opens the sort keys and the direction (MainWindowController.sortMenu)
+    let sort = NSButton()
+    /// the kind / state filter (MainWindowController.filterMenu)
+    let filter = NSButton()
     /// New Item (BA-21): the list's own way to add one by hand (⌘N too); hidden where items can't be added
     let add = NSButton()
+    /// the list's search (⌘F or /; ↓ or ↩ into the results, Esc clears it and goes back to the list)
+    let search = NSSearchField()
     var onAdd: (() -> Void)?
+    var onSort: ((NSView) -> Void)?
+    var onFilter: ((NSView) -> Void)?
+
+    static let titleRow: CGFloat = 38
+    /// the field's edges: the selected row's wash (the inset table's 10 pt), so field and rows read as one column
+    static let searchInset: CGFloat = 10
+    private let controls = NSStackView()
+    private var withSearch: NSLayoutConstraint!
+    private var withoutSearch: NSLayoutConstraint!
+    private var addTitled = true
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -624,50 +652,164 @@ final class ListHeading: NSView {
         title.textColor = .labelColor
         counts.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
         counts.textColor = .secondaryLabelColor
+        counts.setAccessibilityElement(false)       // the title says both
         for t in [title, counts] {
             t.lineBreakMode = .byTruncatingTail
             t.translatesAutoresizingMaskIntoConstraints = false
             addSubview(t)
         }
-        title.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
-        counts.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        title.setContentCompressionResistancePriority(.init(740), for: .horizontal)
+        counts.setContentCompressionResistancePriority(.init(730), for: .horizontal)
+
+        sort.bezelStyle = .accessoryBarAction
+        sort.showsBorderOnlyWhileMouseInside = true
+        sort.font = .systemFont(ofSize: 12)
+        sort.target = self
+        sort.action = #selector(sortTapped)
+        filter.bezelStyle = .accessoryBarAction
+        filter.showsBorderOnlyWhileMouseInside = true
+        filter.imagePosition = .imageLeading
+        filter.font = .monospacedDigitSystemFont(ofSize: 11, weight: .semibold)
+        filter.target = self
+        filter.action = #selector(filterTapped)
+        filter.setAccessibilityLabel(T("main.toolbar.filter"))
         add.bezelStyle = .accessoryBarAction
         add.image = Look.symbol("plus", T("main.new_item.button"), size: 12)
         add.title = T("main.new_item.button")
         add.imagePosition = .imageLeading
         add.font = .systemFont(ofSize: 12)
         add.toolTip = T("main.new_item.tip")
+        add.setAccessibilityLabel(T("main.new_item.button"))
         add.target = self
         add.action = #selector(addTapped)
-        add.translatesAutoresizingMaskIntoConstraints = false
-        add.setContentCompressionResistancePriority(.required, for: .horizontal)
-        addSubview(add)
+        for b in [sort, filter, add] {
+            b.setContentCompressionResistancePriority(.required, for: .horizontal)
+            b.setContentHuggingPriority(.required, for: .horizontal)
+        }
+        controls.orientation = .horizontal
+        controls.spacing = 0
+        controls.setViews([sort, filter, add], in: .trailing)
+        controls.setCustomSpacing(6, after: filter)
+        controls.translatesAutoresizingMaskIntoConstraints = false
+        controls.setContentCompressionResistancePriority(.required, for: .horizontal)
+        addSubview(controls)
+
+        search.placeholderString = T("main.search.placeholder")
+        search.sendsSearchStringImmediately = true
+        search.sendsWholeSearchString = false
+        search.controlSize = .regular
+        search.font = .systemFont(ofSize: 13)
+        search.setAccessibilityLabel(T("main.search.label"))
+        search.toolTip = T("main.search.tip")
+        search.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(search)
+
+        withSearch = bottomAnchor.constraint(equalTo: search.bottomAnchor, constant: 8)
+        withoutSearch = heightAnchor.constraint(equalToConstant: Self.titleRow)
         NSLayoutConstraint.activate([
             title.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 18),
             title.topAnchor.constraint(equalTo: topAnchor, constant: 6),
             counts.leadingAnchor.constraint(equalTo: title.trailingAnchor, constant: 8),
             counts.firstBaselineAnchor.constraint(equalTo: title.firstBaselineAnchor),
-            counts.trailingAnchor.constraint(lessThanOrEqualTo: add.leadingAnchor, constant: -10),
-            add.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-            add.centerYAnchor.constraint(equalTo: title.centerYAnchor),
-            heightAnchor.constraint(equalToConstant: 38),
+            counts.trailingAnchor.constraint(lessThanOrEqualTo: controls.leadingAnchor, constant: -8),
+            controls.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            controls.centerYAnchor.constraint(equalTo: title.centerYAnchor),
+            search.topAnchor.constraint(equalTo: topAnchor, constant: Self.titleRow),
+            search.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.searchInset),
+            search.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.searchInset),
+            withSearch,
         ])
-        setAccessibilityElement(true)
-        setAccessibilityRole(.staticText)
+        setAccessibilityElement(false)
     }
     required init?(coder: NSCoder) { fatalError() }
 
     @objc func addTapped() { onAdd?() }
+    @objc func sortTapped() { onSort?(sort) }
+    @objc func filterTapped() { onFilter?(filter) }
 
     func set(title t: String, counts c: String) {
         title.stringValue = t
         counts.stringValue = c
-        setAccessibilityLabel([t, c].filter { !$0.isEmpty }.joined(separator: ", "))
+        title.setAccessibilityLabel([t, c].filter { !$0.isEmpty }.joined(separator: ", "))
+        needsLayout = true
     }
+
+    /// The order the list is in, said on its button: "Updated ↓" (newest first), "Title ↑" (A to Z).
+    func set(sortTitle: String, ascending: Bool, label: String) {
+        let s = "\(sortTitle) \(ascending ? "↑" : "↓")"
+        sort.attributedTitle = NSAttributedString(string: s, attributes: [
+            .font: NSFont.systemFont(ofSize: 12), .foregroundColor: NSColor.secondaryLabelColor])
+        sort.toolTip = label
+        sort.setAccessibilityLabel(label)
+        needsLayout = true
+    }
+
+    /// The Filter button: the outline glyph while nothing is filtered; filled in brand ink with how many filters are on
+    /// (kinds picked, a state) — Mail's filter button, with the count.
+    func set(filters n: Int, tip: String) {
+        let on = n > 0
+        // the bar-button bezel draws a template image in its own grey: the "on" glyph carries the brand ink itself
+        filter.image = on
+            ? Look.symbol("line.3.horizontal.decrease.circle.fill", T("main.toolbar.filter"), size: 14)?
+                .withSymbolConfiguration(.init(paletteColors: [.white, BrandColor.ink]))      // the lines, the disc
+            : Look.symbol("line.3.horizontal.decrease.circle", T("main.toolbar.filter"), size: 14)
+        filter.contentTintColor = on ? nil : .secondaryLabelColor
+        filter.attributedTitle = on ? NSAttributedString(string: Loc.number(n), attributes: [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold), .foregroundColor: BrandColor.ink]) : NSAttributedString()
+        filter.imagePosition = on ? .imageLeading : .imageOnly
+        filter.toolTip = tip
+        filter.setAccessibilityValue(on ? tip : nil)
+        needsLayout = true
+    }
+
+    /// The search row comes with something to search: an empty place (first run, inbox zero) has its empty state alone.
+    func showSearch(_ on: Bool) {
+        guard search.isHidden == on else { return }
+        search.isHidden = !on
+        withSearch.isActive = on
+        withoutSearch.isActive = !on
+    }
+
+    /// New Item gives up its word before the place's name or its counts are cut; a cut name says itself on hover.
+    override func layout() {
+        super.layout()
+        let room = bounds.width - 18 - 8 - 14
+        let text = ceil(title.intrinsicContentSize.width) + (counts.stringValue.isEmpty ? 0 : 8 + ceil(counts.intrinsicContentSize.width))
+        func controlsWidth(titled: Bool) -> CGFloat {
+            var w: CGFloat = 0
+            for v in controls.views where !v.isHidden {
+                w += v === add ? (titled ? addWidth.titled : addWidth.bare) : ceil(v.intrinsicContentSize.width)
+            }
+            return w + 6 + 4
+        }
+        let titled = add.isHidden || text + controlsWidth(titled: true) <= room
+        if titled != addTitled {
+            addTitled = titled
+            add.imagePosition = titled ? .imageLeading : .imageOnly
+            add.title = titled ? T("main.new_item.button") : ""
+            needsLayout = true
+        }
+        title.toolTip = title.intrinsicContentSize.width > title.frame.width + 0.5 ? title.stringValue : nil
+        counts.toolTip = counts.intrinsicContentSize.width > counts.frame.width + 0.5 ? counts.stringValue : nil
+    }
+
+    /// New Item's width with its word and without (measured once: its font and word don't change).
+    private lazy var addWidth: (titled: CGFloat, bare: CGFloat) = {
+        let b = NSButton()
+        b.bezelStyle = add.bezelStyle
+        b.image = add.image
+        b.font = add.font
+        b.title = T("main.new_item.button")
+        b.imagePosition = .imageLeading
+        let titled = ceil(b.intrinsicContentSize.width)
+        b.title = ""
+        b.imagePosition = .imageOnly
+        return (titled, ceil(b.intrinsicContentSize.width))
+    }()
 }
 
 /// The filter in effect, said above the list only while one is on ("Showing Issues, Ideas · To Verify  Clear") — the
-/// filter itself is the toolbar's Filter menu (Linear's display menu, Mail's filter button): no band of unlabelled
+/// filter itself is the heading's Filter menu (Linear's display menu, Mail's filter button): no band of unlabelled
 /// segments for a control that's rarely changed. A click on the line opens that menu right there.
 final class FilterBar: NSView {
     let summary = NSButton()
@@ -745,7 +887,6 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     let table = ItemTableView()
     let jobs = JobsSection()
     let captures = CapturesBanner()
-    let taken = TakenBanner()
     let missing = MissingFolderBanner()
     let suggestions = SuggestionsBanner()
     let bar = FilterBar()
@@ -822,6 +963,9 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         table.quickLook = { [weak self] in self?.toggleQuickLook() }
         table.setDraggingSourceOperationMask([.copy, .move], forLocal: true)
         table.setDraggingSourceOperationMask(.copy, forLocal: false)
+        // rows onto another project's section (BA-51), a hanging card the same way (BA-50)
+        // …and pictures from other apps (a new item holding them, BA-52)
+        table.registerForDraggedTypes([.blurtItems, capturePasteboardType, .fileURL, .png, .tiff] + NSFilePromiseReceiver.readableDraggedTypes.map { .init($0) })
         header = table.headerView
         table.tableColumns.forEach { $0.resizingMask = $0.identifier.rawValue == "title" ? [.autoresizingMask, .userResizingMask] : .userResizingMask }
         scroll.documentView = table
@@ -835,22 +979,17 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         empty.isHidden = true
         empty.onButton = { [weak self] t in self?.actions?.emptyAction(t) }
         captures.onClick = { AppEnvironment.island?.revealCards() }
-        for n in [captures, taken] as [NoticeCard] { n.onShow = { [weak self] in self?.noticesChanged() } }
+        captures.onShow = { [weak self] in self?.noticesChanged() }
         missing.onLocate = { [weak self] in self?.actions?.emptyAction(7) }
         NotificationCenter.default.addObserver(forName: .blurtCardsChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
-        taken.onClick = { [weak self] in
-            let w = self?.view.window
-            TakenPanel.shared.show(near: w.map { NSRect(x: $0.frame.midX - 1, y: $0.frame.maxY - 80, width: 2, height: 2) })
-        }
-        NotificationCenter.default.addObserver(forName: .blurtTakenChanged, object: nil, queue: .main) { [weak self] _ in self?.reloadCaptures() }
         suggestions.onMoveAll = { [weak self] p, uids in self?.actions?.move(uids: uids, to: p) }
-        let stack = NSStackView(views: [heading, captures, taken, missing, jobs, suggestions, bar])
+        let stack = NSStackView(views: [heading, captures, missing, jobs, suggestions, bar])
         stack.orientation = .vertical
         stack.spacing = 0
         for v in [stack, scroll, empty] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; root.addSubview(v) }
         NSLayoutConstraint.activate([
             heading.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            captures.widthAnchor.constraint(equalTo: stack.widthAnchor), taken.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            captures.widthAnchor.constraint(equalTo: stack.widthAnchor),
             missing.widthAnchor.constraint(equalTo: stack.widthAnchor), suggestions.widthAnchor.constraint(equalTo: stack.widthAnchor),
             jobs.widthAnchor.constraint(equalTo: stack.widthAnchor), bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             stack.topAnchor.constraint(equalTo: root.safeAreaLayoutGuide.topAnchor),
@@ -909,7 +1048,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     /// Measured from the table's own columns, so they follow a resized column, the inset style's margins and the
     /// scroller.
     func alignNotices() {
-        let cards: [NoticeCard] = [captures, taken].filter { !$0.isHidden }
+        let cards: [NoticeCard] = [captures].filter { !$0.isHidden }
         guard !cards.isEmpty, view.bounds.width > 0, table.bounds.width > 0 else { return }
         func rect(_ id: String) -> NSRect? {
             let i = table.column(withIdentifier: .init(id))
@@ -1084,11 +1223,10 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
     }
 
     func reloadJobs() { jobs.set(model.jobs, store: ProjectStore.shared, showProject: model.scope.projectID == nil) }
-    /// "N captures are waiting for a project" on top of the inbox while cards hang under the island.
-    /// "Recently dragged out: N" on top of the Inbox and Unassigned while cards dragged out in the last 7 days are there.
+    /// "N captures are waiting for a project" on top of the inbox while cards hang under the island. (Cards used in
+    /// other apps have no notice or place here: they are the Cards panel's History, ⌥H.)
     func reloadCaptures() {
         captures.set(count: model.scope == .inbox ? AppEnvironment.island?.hangingCount ?? 0 : 0)
-        taken.set(count: 0)         // Recently Dragged Out is a sidebar row now (SidebarController), not a notice over the list
     }
 
     /// A notice came or went: put it on the grid once the stack has laid it out.
@@ -1238,6 +1376,14 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return v
     }
 
+    /// Still with an agent session that is over and never said it was done (In Progress' stuck work), not one the
+    /// user already finished (merged, taken back…).
+    static func sessionEnded(_ it: ItemRow) -> Bool {
+        guard ["handed_off", "in_progress"].contains(it.state), it.workTo == "session" || it.workJob != nil,
+              let j = it.workJob.flatMap({ JobStore.shared.job($0) }), let a = j.agent else { return false }
+        return !j.isActive && a.finishAction == nil && !a.isDesktop
+    }
+
     var inOwnProject: Bool { if case .project = model.scope { return true }; return model.scope == .unassigned }
 
     func itemCell(_ col: String, _ it: ItemRow) -> NSView? {
@@ -1262,7 +1408,8 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             c.ring.isEnabled = !it.legacy
             // a row shows its state only where the list doesn't already say it: never "new" (the default of a fresh
             // item), nothing in a list grouped by state (its header says it) — pointed at or selected, it shows
-            c.quietAtRest = model.grouping == .state || it.state == "new"
+            // — except an item whose session ended without reporting back: its ring stays, as in the project list
+            c.quietAtRest = (model.grouping == .state || it.state == "new") && !Self.sessionEnded(it)
             return c
         case "title":
             let c = make("title") { TitleCell() }
@@ -1301,8 +1448,16 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             return c
         case "time":
             let c = make("time") { TimeCell() }
-            c.label.stringValue = MainModel.listDate(it.updated)
-            c.toolTip = MainModel.shortDate(it.updated)
+            if Self.sessionEnded(it) {
+                // stuck work says so where people look for it: "Session ended", in the attention ink
+                c.label.stringValue = T("main.row.session_ended")
+                c.label.textColor = BrandColor.attnInk
+                c.toolTip = T("main.row.session_ended.help") + "\n" + MainModel.shortDate(it.updated)
+            } else {
+                c.label.stringValue = MainModel.listDate(it.updated)
+                c.label.textColor = .secondaryLabelColor
+                c.toolTip = MainModel.shortDate(it.updated)
+            }
             return c
         default: return nil
         }
@@ -1378,10 +1533,20 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         actions?.openSelection()
     }
 
-    // drag rows: the uids (onto a project), the primary frame (else the item's .md) as a file (Finder makes a copy,
-    // Terminal pastes the path)
+    // drag rows. One row goes out like a hanging card (BA-22: into WeChat it brought only its picture) — CardDrag: what
+    // it carries follows the app under the pointer (the first frame; its text pasted in after it in a chat app, in the
+    // same rich item in Notes, WeChat, QQ; its text as rich text when it has no picture; the frame's and the .md's paths
+    // in a terminal) — with its uid on the first item (.blurtItems: onto a project in the sidebar, the list's own
+    // drops). Several rows: their uids and each one's primary frame (else its .md) as a file (Finder makes copies,
+    // Terminal pastes the paths).
     func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
         guard let it = model.item(at: row) else { return nil }
+        let sel = tableView.selectedRowIndexes
+        if !(sel.contains(row) && sel.count > 1), let d = CardDrag(item: it, text: ItemListController.dragText(it)),
+           let first = d.pasteboardItems().first {
+            rowDrag = d
+            return first
+        }
         let pb = NSPasteboardItem()
         pb.setString(it.uid, forType: .blurtItems)
         // no frame (a voice note, a typed one): the item's own .md — like Reveal in Finder and Copy Path
@@ -1392,29 +1557,35 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         return pb
     }
 
-    /// The rows a drag carries (set as it starts): their text follows a picture into a chat app (below).
-    private var draggedUIDs: [String] = []
+    /// One row being dragged out (set by its writer; several rows: none).
+    private var rowDrag: CardDrag?
 
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint,
                    forRowIndexes rowIndexes: IndexSet) {
-        draggedUIDs = rowIndexes.compactMap { model.item(at: $0)?.uid }
+        guard rowIndexes.count == 1 else { rowDrag = nil; return }
+        rowDrag?.began(session)
     }
 
-    /// An item dropped into a chat app (WeChat, QQ, a browser's chat…): the app took its picture and nothing else, so
-    /// its text is pasted into the composer after it — the hanging cards' follow-up (DragNoteFollowUp; BA-22: only the
-    /// picture arrived). One item with a picture; the Finder and terminals keep the file alone.
+    /// The pointer moved during a row's drag (ItemTableView): into another kind of app, its pasteboard is written again.
+    func rowDragMoved(to p: NSPoint) { rowDrag?.moved(to: p) }
+
+    /// A row taken by another app: the same end as a card's (DragOutEnd) — in a chat app its text is pasted after the
+    /// picture, else it goes on the clipboard; the island says so only when there is something to do (⌘V, or
+    /// Accessibility missing: Allow…). Dropped on our own windows (a project, the list): nothing here.
     func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, endedAt screenPoint: NSPoint,
                    operation: NSDragOperation) {
-        defer { draggedUIDs = [] }
-        guard operation != [], draggedUIDs.count == 1, let it = model.itemRow(uid: draggedUIDs[0]),
-              it.primaryFrame.map({ FileManager.default.fileExists(atPath: $0) }) == true,
-              SmartPaste.enabled, SmartPaste.accessibility, !IsSecureEventInputEnabled(),
-              let t = DropProbe.target(at: screenPoint), t.cls == .chat else { return }
-        let text = ItemListController.dragText(it)
-        guard !text.isEmpty else { return }
-        emit(["event": "item_drag_note", "bundle": t.bundleID ?? NSNull()])
-        DragNoteFollowUp.run(note: text, target: t, at: screenPoint) { pasted in
-            emit(["event": "item_drag_note_done", "pasted": pasted])
+        let drag = rowDrag
+        rowDrag = nil
+        guard let d = drag, operation != [], let landed = DropProbe.target(at: screenPoint) else { return }
+        let got = d.delivered(at: screenPoint)
+        DragOutEnd.finish(card: d.card, delivered: got, noteFile: got.map(d.noteFile) ?? false, landed: landed, at: screenPoint,
+                          who: d.who) { done in
+            let key = DragReceipt.itemToastKey(done.outcome, noteCopied: done.noteCopied, noAccessibility: done.asksAccessibility)
+            emit(d.who.merging(["event": "item_drag_out", "delivered": got?.rawValue ?? NSNull(), "outcome": done.outcome.rawValue,
+                                "note_pasted": done.notePasted, "note_copied": done.noteCopied, "toast": key ?? NSNull()]) { $1 })
+            guard let key else { return }
+            let text = Loc.t(key, table: "Capture")
+            if island.started { island.toast(DragOutEnd.toast(done, text: text, undo: nil)) } else { appDelegate?.toast(text) }
         }
     }
 
@@ -1442,12 +1613,37 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
 
     // MARK: Quick Look
 
+    /// Every picture of the selected items (BA-55: Space showed only each one's first; ←/→ step through them in the
+    /// panel).
     var previewURLs: [URL] {
-        selectedItems.compactMap { $0.primaryFrame.map { URL(fileURLWithPath: $0) } }.filter { FileManager.default.fileExists(atPath: $0.path) }
+        let items = selectedItems
+        let key = items.map { "\($0.uid)@\($0.updated)" }
+        if let c = previewCache, c.key == key { return c.urls }     // the panel asks again for every picture
+        let urls = items.flatMap(Self.frameURLs)
+        previewCache = (key, urls)
+        return urls
+    }
+    private var previewCache: (key: [String], urls: [URL])?
+
+    /// An item's pictures in order, from its file's `frames` (paths relative to its store, or to its session for a
+    /// session's item); the index's first picture when the file doesn't list them.
+    static func frameURLs(_ it: ItemRow) -> [URL] {
+        let fm = FileManager.default
+        let first = it.primaryFrame.map { [URL(fileURLWithPath: $0)] } ?? []
+        guard let frames = FixWatcher.frontMatter(it.fileURL)?["frames"] as? [[String: Any]] else {
+            return first.filter { fm.fileExists(atPath: $0.path) }
+        }
+        let bases = [it.fileURL.deletingLastPathComponent().deletingLastPathComponent()] + (it.sessionDir.map { [URL(fileURLWithPath: $0)] } ?? [])
+        let urls: [URL] = frames.compactMap { f in
+            guard let p = f["path"] as? String, !p.isEmpty else { return nil }
+            if p.hasPrefix("/") { return URL(fileURLWithPath: p) }
+            return bases.map { $0.appendingPathComponent(p) }.first { fm.fileExists(atPath: $0.path) }
+        }.filter { fm.fileExists(atPath: $0.path) }
+        return urls.isEmpty ? first.filter { fm.fileExists(atPath: $0.path) } : urls
     }
     var quickLookOverride: [URL]?
 
-    func toggleQuickLook(_ urls: [URL]? = nil) {
+    func toggleQuickLook(_ urls: [URL]? = nil, start: Int = 0) {
         quickLookOverride = urls
         let p = QLPreviewPanel.shared()!
         if p.isVisible && urls == nil {
@@ -1457,6 +1653,7 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
             view.window?.makeFirstResponder(table)
             p.makeKeyAndOrderFront(nil)
             p.reloadData()
+            p.currentPreviewItemIndex = start
         }
     }
 
@@ -1476,5 +1673,81 @@ final class ItemListController: NSViewController, NSTableViewDataSource, NSTable
         guard quickLookOverride == nil, let r = table.selectedRowIndexes.first, let w = view.window else { return .zero }
         let cell = table.frameOfCell(atColumn: 0, row: r)
         return w.convertToScreen(table.convert(cell, to: nil))
+    }
+}
+
+// MARK: drops on the list
+
+extension ItemListController {
+    /// The project a drop at this point files into: the Inbox's group under the pointer (grouped by project), a
+    /// registered project or Unassigned ("inbox"); nil anywhere else.
+    func dropProject(_ info: NSDraggingInfo) -> (project: String, start: Int)? {
+        guard model.grouping == .project, table.numberOfRows > 0 else { return nil }
+        let at = table.row(at: table.convert(info.draggingLocation, from: nil))
+        let row = at >= 0 ? at : table.numberOfRows - 1
+        guard let key = model.groupKey(at: row) else { return nil }
+        let p = key.isEmpty ? "inbox" : key
+        guard p == "inbox" || model.project(id: p)?.registered == true else { return nil }
+        return (p, model.groupStart(at: row))
+    }
+
+    /// Pictures from another app on the pasteboard (files, data, or a promise of files: a chat's drag).
+    func dropsPictures(_ pb: NSPasteboard) -> Bool {
+        guard pb.types?.contains(.blurtItems) != true, pb.types?.contains(capturePasteboardType) != true else { return false }
+        if pb.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil) { return true }
+        return !NewItemImages.files(from: pb).isEmpty
+    }
+
+    func tableView(_ t: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation op: NSTableView.DropOperation) -> NSDragOperation {
+        let pb = info.draggingPasteboard
+        if dropsPictures(pb) {
+            t.setDropRow(-1, dropOperation: .on)       // the whole list
+            return .copy
+        }
+        guard let d = dropProject(info) else { return [] }
+        if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
+            // somewhere else than where they all are already
+            guard model.items(uids: uids).contains(where: { $0.projectID != d.project && !$0.readOnly }) else { return [] }
+        } else if pb.string(forType: capturePasteboardType) == nil {
+            return []
+        }
+        t.setDropRow(d.start, dropOperation: .on)       // the group's first row, where its header is
+        return .move
+    }
+
+    func tableView(_ t: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+        let pb = info.draggingPasteboard
+        if dropsPictures(pb) {
+            let now = NewItemImages.files(from: pb)
+            if !now.isEmpty { actions?.newItemHolding(NewItemSheet.Prefill(images: now)); return true }
+            // promised files: written into a temporary folder first, then the sheet
+            let promises = (pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver]) ?? []
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("blurt-new-item/\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let group = DispatchGroup()
+            var got: [URL] = []
+            for r in promises {
+                group.enter()
+                r.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: .main) { u, e in
+                    if e == nil, UTType(filenameExtension: u.pathExtension)?.conforms(to: .image) == true { got.append(u) }
+                    group.leave()
+                }
+            }
+            group.notify(queue: .main) { [weak self] in
+                if got.isEmpty { NSSound.beep() } else { self?.actions?.newItemHolding(NewItemSheet.Prefill(images: got)) }
+            }
+            return !promises.isEmpty
+        }
+        guard let d = dropProject(info) else { return false }
+        if let uids = pb.pasteboardItems?.compactMap({ $0.string(forType: .blurtItems) }), !uids.isEmpty {
+            actions?.move(uids: uids, to: d.project)
+            return true
+        }
+        if let raw = pb.string(forType: capturePasteboardType), let shot = Island.shot(fromPasteboard: raw) {
+            snapper.assign(hanging.withSelection(shot), to: d.project)
+            return true
+        }
+        return false
     }
 }

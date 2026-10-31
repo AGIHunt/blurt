@@ -206,6 +206,26 @@ def mid_sentence(text: str) -> bool:
 REHEAR_WINDOW = 10.0     # s (the Lab on the user's 22 takes: 10 s kept the gain of 15 s at a third of the wait at key-up)
 
 
+def rehear_window(model_id: str | None, configured=None) -> float:
+    """The window a model hears again in (ModelCatalog.rehearWindow): record.dictation.rehear_window_s when it is set,
+    else the model's `rehear_window_s` in asr_models.json (Qwen3-ASR 1.7B 30 s, 0.6B 20 s: measured on 43 of the
+    founder's takes, docs/design/dictation.md §Hearing again), else REHEAR_WINDOW. Never under 4 s, as the app."""
+    try:
+        if configured is not None and float(configured) > 0:
+            return max(4.0, float(configured))
+    except (TypeError, ValueError):
+        pass
+    import json  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+    try:
+        models = json.loads((Path(__file__).resolve().parent / "asr_models.json").read_text(encoding="utf-8"))["models"]
+    except (OSError, ValueError, KeyError):
+        return REHEAR_WINDOW
+    m = next((m for m in models if m.get("id") == model_id), None) or {}
+    w = m.get("rehear_window_s")
+    return max(4.0, float(w)) if isinstance(w, (int, float)) and w > 0 else REHEAR_WINDOW
+
+
 def rehear_groups(pieces: list[dict], window: float = REHEAR_WINDOW) -> list[list[int]]:
     """The windows a take is heard again in (docs/design/dictation.md §Hearing again): piece indices, a window closing
     after a piece once it spans `window` seconds and the next piece didn't begin at a hard cut. pieces: [{"start",

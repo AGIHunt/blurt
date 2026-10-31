@@ -56,6 +56,7 @@ describe("<StatePill>", () => {
     act(() => btn.click());
     key("ArrowDown");
     key("ArrowDown");
+    key("ArrowDown"); // keep, done (BA-56), wontfix, discard
     expect(document.activeElement?.getAttribute("data-action")).toBe("discard");
     key("ArrowDown"); // wraps
     expect(document.activeElement?.getAttribute("data-action")).toBe("keep");

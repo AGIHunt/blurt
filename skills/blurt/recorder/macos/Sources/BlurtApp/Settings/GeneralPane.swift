@@ -1,7 +1,7 @@
 // Settings → General: the app's everyday choices on one short page, four boxes and a closing line.
 //   App          open at login (LoginItem: the assistant's switch too, so a test build never registers itself),
 //                language (the running app keeps the one it opened with: Relaunch Now next to it).
-//   Recording    what happens after one, the countdown, system audio.
+//   Recording    what happens after one, the countdown, system audio, "Don't record the notch".
 //   Voice notes  how one ends — one choice, press the key again or a 1.5 s pause (record.voice.end_on_pause, off:
 //                Capture/VoiceInput.swift) —, the words while you talk (record.live_text, on: Capture/LiveTranscript.swift).
 //   Cards        macOS's own screenshots as cards (record.collect_system_shots); what a card dragged into an app
@@ -48,14 +48,13 @@ final class GeneralModel: ObservableObject {
     @Published var processMode = "auto"
     @Published var countdown = 3
     @Published var systemAudio = false
+    @Published var hideNotch = false
     @Published var collect = false
     @Published var cardDrag = CardDragMode.paste
+    @Published var snapSound = false
     @Published var dragNoteFile = false
     @Published var voiceEndOnPause = false
     @Published var liveText = true
-    @Published var screenText = ScreenTextRefine.Mode.off
-    @Published var screenTextInstalled: Bool? = ScreenTextRefine.installed
-    @Published var cloudReady = false
 
     init() { reload() }
 
@@ -66,14 +65,13 @@ final class GeneralModel: ObservableObject {
         processMode = (recordConfig()["process"] as? String ?? "auto") == "off" ? "off" : "auto"
         countdown = recordConfig()["countdown"] as? Int ?? 3
         systemAudio = recordConfig()["system_audio"] as? Bool ?? false
+        hideNotch = OwnWindows.hideNotch
         collect = snapper.collecting
         cardDrag = CardDragMode.current
+        snapSound = recordConfig()["snap_sound"] as? Bool ?? false
         dragNoteFile = CardExport.attachNoteFile
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
-        screenText = ScreenTextRefine.mode
-        cloudReady = ScreenTextRefine.cloudPayload != nil
-        ScreenTextRefine.refreshInstalled { [weak self] in self?.screenTextInstalled = ScreenTextRefine.installed }
     }
 
     /// The same switch as the assistant's (LoginItem): a test build never registers itself in the user's Login Items.
@@ -88,27 +86,22 @@ final class GeneralModel: ObservableObject {
     func setProcess(_ v: String) { setRecordConfig("process", v); processMode = v }
     func setCountdown(_ v: Int) { setRecordConfig("countdown", v); countdown = v }
     func setSystemAudio(_ v: Bool) { setRecordConfig("system_audio", v); systemAudio = v }
+    /// "Don't record the notch" (record.hide_notch): a take running now follows at once.
+    func setHideNotch(_ v: Bool) {
+        setRecordConfig(CaptureExclusion.hideNotchKey, v ? true : nil)
+        hideNotch = v
+        (NSApp.delegate as? App)?.rec?.updateFilter()
+    }
     func setCollect(_ v: Bool) {
         setRecordConfig("collect_system_shots", v)
         snapper.syncCollector()
         collect = snapper.collecting
     }
     func setCardDrag(_ v: CardDragMode) { v.apply(); cardDrag = CardDragMode.current }
+    func setSnapSound(_ v: Bool) { setRecordConfig("snap_sound", v ? true : nil); snapSound = v }
     func setDragNoteFile(_ v: Bool) { setRecordConfig("drag_note_file", v ? true : nil); dragNoteFile = v }
     func setVoiceEndOnPause(_ v: Bool) { VoiceInput.setEndOnPause(v); voiceEndOnPause = v }
     func setLiveText(_ v: Bool) { LiveTranscript.setEnabled(v); liveText = v }
-    func setScreenText(_ v: ScreenTextRefine.Mode) {
-        ScreenTextRefine.setMode(v)
-        screenText = v
-        // choosing this Mac's model is asking for it: the download starts (one 720 MB file, the one download manager)
-        if v == .local, screenTextInstalled == false { downloadScreenTextModel() }
-    }
-    func downloadScreenTextModel() {
-        MainActor.assumeIsolated {
-            ModelDownloads.shared.download([.init(id: ScreenTextRefine.modelID, kind: .screenText, name: "PaddleOCR-VL",
-                                                  sizeMB: ScreenTextRefine.modelSizeMB)], via: "settings")
-        }
-    }
 }
 
 struct GeneralPane: View {
@@ -152,6 +145,7 @@ struct GeneralPane: View {
                                 selection: Binding(get: { m.countdown }, set: { m.setCountdown($0) }))
                 }
                 SettingToggle("general.system_audio", isOn: Binding(get: { m.systemAudio }, set: { m.setSystemAudio($0) }))
+                SettingToggle("general.hide_notch", isOn: Binding(get: { m.hideNotch }, set: { m.setHideNotch($0) }))
             }
 
             SettingsGroup("general.voice") {
@@ -165,6 +159,7 @@ struct GeneralPane: View {
 
             SettingsGroup("general.cards") {
                 SettingToggle("general.collect", isOn: Binding(get: { m.collect }, set: { m.setCollect($0) }))
+                SettingToggle("general.snap_sound", isOn: Binding(get: { m.snapSound }, set: { m.setSnapSound($0) }))
                 // pasting the note in needs Accessibility: said only while that choice is made and it is missing
                 let needsAccess = m.cardDrag == .paste && perms.accessibility != .granted
                 SettingRow("general.card_drag", detail: needsAccess ? T("settings.general.card_drag.needs_ax") : nil,
@@ -182,8 +177,6 @@ struct GeneralPane: View {
                 }
                 SettingToggle("general.drag_note_file", isOn: Binding(get: { m.dragNoteFile }, set: { m.setDragNoteFile($0) }))
             }
-
-            SettingsGroup("general.screen_text") { screenTextRow }
 
             SettingsGroup("general.about", boxed: false) { aboutLine }
         }
@@ -237,50 +230,5 @@ struct QuietLink: View {
                 hover = inside
                 if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
             }
-    }
-}
-
-
-extension GeneralPane {
-    /// ⌥C's second reading (ScreenTextRefine): off, this Mac's OCR model, or the cloud model set up for cloud polish —
-    /// the line under it says what each one costs (a download and memory, or a cent a hundred captures) and what is missing.
-    var screenTextRow: some View {
-        let dl = ModelDownloads.shared
-        let id = ScreenTextRefine.modelID
-        let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
-        var detail = T("settings.general.screen_text.detail.off")
-        var action: (String, () -> Void)?
-        switch m.screenText {
-        case .off: break
-        case .local:
-            if dl.isRunning(id) || dl.isQueued(id) {
-                let p = dl.progress(id)
-                detail = T("settings.general.screen_text.detail.downloading",
-                           p.map { "\(modelSize($0.done)) / \(modelSize($0.total))" } ?? modelSize(ScreenTextRefine.modelSizeMB))
-            } else if m.screenTextInstalled == false {
-                detail = T("settings.general.screen_text.detail.download", modelSize(ScreenTextRefine.modelSizeMB))
-                action = (T("settings.general.screen_text.download"), { m.downloadScreenTextModel() })
-            } else {
-                detail = T("settings.general.screen_text.detail.local")
-                if gb < 16 { detail += " " + T("settings.general.screen_text.detail.local_small", gb) }
-            }
-        case .cloud:
-            if m.cloudReady {
-                detail = T("settings.general.screen_text.detail.cloud", DictationCloud.setup.effectiveModel)
-            } else {
-                detail = T("settings.general.screen_text.detail.cloud_missing")
-                action = (T("settings.general.screen_text.setup"), { AppEnvironment.settings?.show(pane: "dictation") })
-            }
-        }
-        return SettingRow("general.screen_text_refine", detail: detail) {
-            HStack(spacing: 8) {
-                if let a = action {
-                    Button(a.0, action: a.1).buttonStyle(SettingsOutlinedButtonStyle()).fixedSize()
-                }
-                ChoicePopup(label: T("settings.general.screen_text"),
-                            choices: ScreenTextRefine.Mode.allCases.map { ($0, T("settings.general.screen_text.\($0.rawValue)")) },
-                            selection: Binding(get: { m.screenText }, set: { m.setScreenText($0) }))
-            }
-        }
     }
 }

@@ -5,8 +5,8 @@
 Website: https://blurt.work/en/ (English), https://blurt.work/ (Chinese)
 Source: https://github.com/AGIHunt/blurt
 User guide: https://github.com/AGIHunt/blurt/blob/main/docs/guide.md
-Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the v1.0.0 release)
-Or have your agent install it: `curl -fsSL https://blurt.work/install.sh | sh` (downloads the latest release, checks it is signed and notarized, puts Blurt.app in Applications and opens it; the user turns on the microphone and Accessibility in the setup window).
+Download (macOS): https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg (the latest release)
+Or have your agent install it: `curl -fsSL https://blurt.work/install.sh | sh` (downloads the latest release, checks it is signed and notarized, puts Blurt.app in Applications and opens it; the user turns on the microphone and Accessibility in the setup window). Agents: the full steps, including connecting Blurt to yourself, are under "Install" at the end of this file.
 Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.work/assets/promo.mp4
 
 ## Facts
@@ -42,7 +42,7 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.wo
 - ⌥T does the same, into the same language; the translation shows under the notch and is on the clipboard.
 
 ## Snap (⌥A) and Voice Note (⌥V)
-- ⌥A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; a pause of about 2 s saves it.
+- ⌥A: drag an area; the picture freezes. Draw on it: drag for freehand, ⇧ for a box, ⌥ for an ellipse; rest half a second at the end of a stroke to straighten it; ⌘Z takes a stroke back. Say or type a note; ⏎ (or Done) saves it, Tab takes the words heard into the note to edit, typing replaces them.
 - ⌥V: a voice note, up to 10 minutes; pausing to think doesn't end it.
 - Snaps and voice notes wait under the notch as cards; several can hang there at once. Drag it into Claude, ChatGPT, Slack, Notion, Feishu/Lark or WeChat: the picture goes in as an attachment, then the note in the same message box. Into a terminal running Claude Code or Codex: the paths of the picture and a Markdown note; nothing runs in the shell. Into Cursor or VS Code: the picture, with the note on the clipboard. Click a card to copy it. Cards you dragged out stay findable for 7 days.
 
@@ -60,7 +60,13 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.wo
 - Leaves the Mac only for: model downloads and update checks; a cloud speech key you add yourself (Settings → Models); cloud polish if the user turns it on (the dictated text, never the recording, goes to DeepSeek or their own OpenAI- or Anthropic-compatible API); cloud translation if on (the text); the cloud second reading of Copy Text from Screen if chosen (the picture of the dragged area); when your agent organises a recording, the transcript and a few frames go to that agent's provider; and Send Feedback, which sends only the dictations the user checks to Blurt's private storage (developers only, deleted within 14 days).
 
 ## Install
-- Download for Mac: https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
-- Agent install: `curl -fsSL https://blurt.work/install.sh | sh`. The app brings everything it runs; nothing else to install.
-- To use Blurt from an agent ("start blurt", questions about your items): Blurt's Settings → Agents → Connect… adds the Blurt skill and MCP server to Claude Code, Codex and other agents.
-- Without the app, from source: `npx skills add AGIHunt/blurt`, then "start blurt" (builds the app; needs the Xcode Command Line Tools and uv).
+- People: download https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg, open it and drag Blurt into Applications. Updates arrive inside the app.
+- Agents (Claude Code, Codex, any agent with a shell), when the user asks to install Blurt (口喷鸡):
+  1. Check it is a Mac with macOS 13 or later (`sw_vers -productVersion`); dictation and the recommended speech models need Apple silicon.
+  2. Run `curl -fsSL https://blurt.work/install.sh | sh`. It downloads the latest release, checks that it is signed and notarized, replaces an older copy (/Applications, else ~/Applications), and opens Blurt. Nothing else to install: Blurt sets up its own tools.
+  3. Tell the user to finish Blurt's setup window: Microphone and Accessibility are switched on by the user in System Settings; an agent can't do it. Screen Recording is asked the first time they snap or record.
+  4. To use Blurt from the agent (start a recording by asking, find and update items), the Blurt skill and MCP server go into the agent. The user can click Settings → Agents → Connect… in Blurt (it shows what changes first). Or, with the user's OK, after the setup window is done: `uv run ~/.blurt/skill/scripts/agents.py install <id> --dry-run` lists the changes; the same without `--dry-run` makes them. <id>: claude (Claude Code), codex, gemini, kimi, opencode, grok, codebuddy (CodeBuddy Code), workbuddy (WorkBuddy), cursor. It links the skill folder (~/.claude/skills/blurt, ~/.agents/skills/blurt, …) and registers the MCP server `blurt` (`claude mcp add`, `codex mcp add`, or the agent's MCP JSON file).
+  5. Tell the user to start a new session of the agent: agents load skills and MCP servers when a session starts.
+- Then say "start blurt" or "开始口喷" (or "录屏提 bug"). Claude Code also takes `/blurt`; Codex takes `$blurt` (Codex has no slash command for skills). With the app installed, the agent starts the recording in Blurt (`open blurt://record`, one click in the notch), so no other app needs Screen Recording permission.
+- What needs a restart: Microphone and Accessibility take effect right away. Screen Recording takes effect after Blurt restarts (Settings offers Restart Blurt). A connected agent sees Blurt in its next session. Blurt itself never needs a restart for agents.
+- Without the app, from source (developers): `npx skills add AGIHunt/blurt -g` (without `-g` it installs into the current project only; add `-a claude-code -a codex` to pick agents), or in Claude Code `/plugin marketplace add AGIHunt/blurt` then `/plugin install blurt@blurt` (the skill is then `/blurt:blurt`). Then "start blurt": the first run builds Blurt into ~/Applications (needs the Xcode Command Line Tools and uv). These install the skill only; `uv run <skill>/scripts/agents.py install <id> --mcp` adds the MCP server (the Claude Code plugin adds it itself). A recording started this way runs under the app hosting the agent (Terminal, iTerm…), which needs Screen Recording and a restart after it is switched on.

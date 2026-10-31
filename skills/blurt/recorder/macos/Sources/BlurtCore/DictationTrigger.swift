@@ -204,11 +204,16 @@ public struct DictationTrigger {
         }
     }
 
-    /// When hold / auto mode wants a `.tick` (the key has been down alone this long), nil otherwise.
+    /// When hold / auto mode wants a `.tick` (the key has been down alone this long), nil otherwise. Tap mode wants
+    /// one at `tapMax` too: a press held past it is said while the key is still down (`heldInTapMode`), so the user
+    /// lets go before talking into a take that won't start.
     public var deadline: Double? {
         if let h = holdThreshold, case let .down(at, clean, _) = state, clean, !active { return at + h }
+        if mode == .tap, !heldMissSaid, case let .down(at, clean, _) = state, clean, !active, !pressQuiet { return at + tapMax }
         return nil
     }
+    /// this press's `heldInTapMode` was already reported while it was down (not again when it comes up)
+    private var heldMissSaid = false
 
     /// The key is down alone and nothing has started yet: what `.arm` said may still become a `.start`. The app opens
     /// the microphone on `.arm` (so the first words aren't lost while the trigger waits for the key to come up) and
@@ -306,6 +311,7 @@ public struct DictationTrigger {
         let withShift = key == .fn && !active && flags & DictationTrigger.shiftMask != 0
         let alone = flags & (Key.otherMods(code) & (withShift ? ~DictationTrigger.shiftMask : ~UInt64(0))) == 0
         state = .down(at: t, clean: alone, code: code)
+        heldMissSaid = false
         holdingCode = code
         second = nil
         shiftDownAt = nil                   // the key joined a ⇧ that was down: no toggle when ⇧ comes up
@@ -366,7 +372,7 @@ public struct DictationTrigger {
         switch (mode, was) {
         case let (.tap, .down(at, clean, _)):
             guard clean, t - at <= tapMax else {
-                if clean, !active { miss = .heldInTapMode }
+                if clean, !active, !heldMissSaid { miss = .heldInTapMode }
                 return []
             }
             active.toggle()
@@ -436,6 +442,11 @@ public struct DictationTrigger {
     }
 
     private mutating func tick(_ t: Double) -> [Output] {
+        if mode == .tap, !heldMissSaid, !pressQuiet, case let .down(at, clean, _) = state, clean, !active, t - at > tapMax {
+            heldMissSaid = true
+            miss = .heldInTapMode
+            return []
+        }
         guard holdThreshold != nil, case let .down(at, clean, _) = state, clean, !active else { return [] }
         return holdIfDue(at: at, t) ?? []
     }

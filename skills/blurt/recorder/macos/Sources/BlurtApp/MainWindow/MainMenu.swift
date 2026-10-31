@@ -96,11 +96,14 @@ enum MainMenu {
             go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
         }
         _ = menu(T("menu.go"), go)
-        // View: the columns, the sort (the same as the table's header) and the filters
+        // View: the columns, the sort (the same menu as the list heading's sort button) and the filters
         let sort = NSMenu()
         for (key, title) in MainWindowController.sortKeys {
             sort.addItem(item(title, #selector(MainWindowController.mSort(_:)), obj: key))
         }
+        sort.addItem(.separator())
+        sort.addItem(item(T("main.sort.ascending"), #selector(MainWindowController.mSortDirection(_:)), obj: true))
+        sort.addItem(item(T("main.sort.descending"), #selector(MainWindowController.mSortDirection(_:)), obj: false))
         let sortItem = NSMenuItem(title: T("menu.sort_by"), action: nil, keyEquivalent: "")
         sortItem.submenu = sort
         _ = menu(T("menu.view"), [item(T("menu.toggle_sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil),
@@ -198,17 +201,30 @@ extension MainWindowController {
     /// handler read the same list, so a key never goes somewhere its menu doesn't show.
     var shortcutProjects: [ProjectEntry] { Array(model.projects.filter(\.registered).prefix(5)) }
 
-    /// The View menu's Sort By: the table header's sort keys, in its order.
+    /// The sort keys (the list heading's sort button, View ▸ Sort By), in this order; the first is the default.
     static var sortKeys: [(String, String)] {
-        [("updated", T("main.col.updated")), ("title", T("main.col.title")), ("id", T("main.col.id")), ("kind", T("main.col.kind")),
+        [("updated", T("main.sort.updated")), ("title", T("main.col.title")), ("id", T("main.col.id")), ("kind", T("main.col.kind")),
          ("state", T("main.col.state")), ("project", T("main.col.project"))]
     }
 
+    /// A key's natural direction: newest first for the date, A to Z (and the lifecycle's order) for the rest.
+    static func ascendsByDefault(_ key: String) -> Bool { key != "updated" }
+
+    /// A sort key: its natural direction when it is a new key; the current key keeps its direction (the menu has
+    /// Ascending and Descending for that).
     @objc func mSort(_ i: NSMenuItem) {
         guard let key = i.representedObject as? String else { return }
-        // the header's own default direction for the key; picking the current key again flips it, like a header click
-        let asc = key == model.sort ? !model.ascending : ["title", "kind", "state", "project", "id"].contains(key)
-        list.table.sortDescriptors = [NSSortDescriptor(key: key, ascending: asc)]   // sortDescriptorsDidChange reloads
+        sortList(key, ascending: key == model.sort ? model.ascending : Self.ascendsByDefault(key))
+    }
+
+    @objc func mSortDirection(_ i: NSMenuItem) {
+        guard let asc = i.representedObject as? Bool else { return }
+        sortList(model.sort, ascending: asc)
+    }
+
+    func sortList(_ key: String, ascending: Bool) {
+        list.table.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]   // sortDescriptorsDidChange reloads
+        updateTitle()                                                                    // the heading's button says it
     }
 
     @objc func mToggleDetail() {

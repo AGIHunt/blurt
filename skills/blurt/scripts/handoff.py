@@ -91,8 +91,10 @@ def project(pid: str | None) -> dict | None:
 
 # ------------------------------------------------------------------ language
 def ui_lang(lang: str | None = None) -> str:
-    """"en" | "zh": --lang, else config "lang" (auto = the system's first preferred language)."""
-    v = (lang or "").strip().lower()
+    """"en" | "zh": --lang, else $BLURT_LANG (the app sets it on every script it runs: its own UI language, which may
+    be a per-app language the global AppleLanguages doesn't show), else config "lang" (auto = the system's first
+    preferred language)."""
+    v = (lang or os.environ.get("BLURT_LANG") or "").strip().lower()
     if not v:
         try:
             from _common import parse_config_text  # noqa: PLC0415 — read as every script reads it
@@ -143,7 +145,7 @@ T = {
                       "mark_fixed for each if the blurt MCP is available.",
     },
     "zh": {
-        "title_one": "{project} · {id}", "title_many": "{project} 的 {n} 个条目", "title_bare": "{n} 个条目",
+        "title_one": "{project} · {id}", "title_many": "{project} 的 {n} 个事项", "title_bare": "{n} 个事项",
         "folder": "项目文件夹：{path}",
         "mcp": "每做完一条，用它的 uid 调用 blurt MCP 工具 `mark_fixed`（state 填 \"fixed\" 或 \"wontfix\"，附一句说明）。",
         "nomcp": "没有 MCP 时：`{items_cmd} state <uid> --state to_verify --claim fixed --note \"…\"`。",
@@ -158,7 +160,7 @@ T = {
         "kind": {"issue": "问题", "idea": "想法", "note": "笔记", "task": "待办"},
         "severity": {"critical": "严重", "high": "高", "medium": "中", "low": "低"},
         "instr_one": "请处理 {id}，详情和截图见 {path}。做完后如果有 blurt MCP，调用 mark_fixed。",
-        "instr_many": "请处理这 {n} 个条目，详情和截图见 {path}。做完后如果有 blurt MCP，逐条调用 mark_fixed。",
+        "instr_many": "请处理这 {n} 个事项，详情和截图见 {path}。做完后如果有 blurt MCP，逐条调用 mark_fixed。",
     },
 }
 

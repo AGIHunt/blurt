@@ -1,6 +1,7 @@
 // BlurtCore/Hotkeys.swift: the combos no global hotkey may take (⌘C is Copy in every app), the swap that replaces a
 // silent duplicate, and which of two running Blurts listens to the dictation key. Pure parts only: nothing here
-// registers a Carbon hotkey or writes a config.
+// registers a Carbon hotkey or writes the user's config (BA-49's reload writes one in a temporary BLURT_HOME, its
+// center suspended).
 import Carbon.HIToolbox
 import XCTest
 @testable import BlurtCore
@@ -118,6 +119,38 @@ final class HotkeysTests: XCTestCase {
         let d = HotkeyCenter.Action.snap.defaultCombo!
         let back = HotkeyCenter.swapped(["snap": "ctrl+A"], d, to: .snap, from: nil)
         XCTAssertNil(back["snap"])
+    }
+
+    /// BA-49: record.hotkeys edited outside Settings (by hand, by an agent) is picked up without a relaunch; the
+    /// center's own writes never count as an edit (no reload loop); every apply says so (HotkeyCenter.didChange).
+    func testAConfigEditedOutsideSettingsIsReloaded() {
+        let home = FileManager.default.temporaryDirectory.appendingPathComponent("hk-\(UUID().uuidString)")
+        setenv("BLURT_HOME", home.path, 1)
+        defer { unsetenv("BLURT_HOME"); try? FileManager.default.removeItem(at: home) }
+        let c = HotkeyCenter()
+        c.suspended = true                      // nothing registered with macOS
+        XCTAssertEqual(c.binding(.snap), HotkeyCenter.Action.snap.defaultCombo)
+        XCTAssertFalse(c.reloadIfChanged(), "nothing changed yet")
+        var posted = 0
+        let o = NotificationCenter.default.addObserver(forName: HotkeyCenter.didChange, object: c, queue: nil) { _ in posted += 1 }
+        defer { NotificationCenter.default.removeObserver(o) }
+        // edited outside: snap off, voice on ⌃⌥V
+        Config.shared.set("record.hotkeys", ["snap": "off", "voice": "ctrl+opt+V"])
+        XCTAssertTrue(c.reloadIfChanged())
+        XCTAssertNil(c.binding(.snap))
+        XCTAssertEqual(c.binding(.voice), combo("ctrl+opt+V"))
+        XCTAssertEqual(posted, 1)
+        XCTAssertFalse(c.reloadIfChanged(), "read once: no second reload")
+        // the center's own write (Settings): loaded as it is written, so the next look finds nothing new
+        c.set(combo("ctrl+opt+A"), for: .snap)
+        XCTAssertEqual(posted, 2)
+        XCTAssertFalse(c.reloadIfChanged())
+        XCTAssertEqual(c.binding(.snap), combo("ctrl+opt+A"))
+        // the section removed by hand: back to the defaults
+        Config.shared.set("record.hotkeys", nil)
+        XCTAssertTrue(c.reloadIfChanged())
+        XCTAssertEqual(c.binding(.voice), HotkeyCenter.Action.voice.defaultCombo)
+        XCTAssertFalse(c.reloadIfChanged())
     }
 
     func testRegistrationReadsWhatAnInstancePublished() {

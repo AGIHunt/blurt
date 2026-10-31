@@ -31,6 +31,13 @@
 //    (`keepAsCards`); captures.py refuses too (folder_missing) and never makes the old folder again. The island
 //    offers Locate… (MissingFolder), and the same project found again takes the cards kept back from it.
 // Agent runs go through AppEnvironment.process(session, captures, project) — AgentHub's process jobs (K4).
+//
+// ⌥A while recording (BA-60…66, 2026-10-31) is the same snap as everywhere else — the picker, the in-place note
+// (typed, or said: the note's mic and the recording's both hear the voice), a card on the thread — and the recording
+// goes on (the snap flow is in the video). The capture belongs to the take: it is written into the recording's
+// session (shots/NNN.png, shots.jsonl with `t` = video time, a "snap" line in events.jsonl), so the organizing run
+// makes an item of it with its note; it is not filed on its own. Its card hangs while the take runs (no Move To /
+// Organize: it goes with the recording) and leaves the thread when the take ends.
 
 import AppKit
 import BlurtCore
@@ -67,18 +74,59 @@ final class Snapper {
     /// Every card, oldest first (a snap still being marked up in place is not a card yet: it hangs once it is done).
     var cards: [Shot] {
         let staged = InkStage.shared.shot
-        return cardBatches.flatMap { $0.live.filter { $0.isCard && $0 !== staged } }.sorted { ($0.wall, $0.n) < ($1.wall, $1.n) }
+        let taken = (takeBatch?.live ?? []).filter { $0.hangs && $0.taken == nil && $0 !== staged }
+        return (cardBatches.flatMap { $0.live.filter { $0.isCard && $0 !== staged } } + taken).sorted { ($0.wall, $0.n) < ($1.wall, $1.n) }
     }
+
+    /// The recording's captures while a take runs: ⌥A snaps go there (and hang as cards until the take ends).
+    private(set) var takeBatch: ShotBatch?
+    private weak var take: Recorder?
 
     // MARK: entry points
 
-    /// ⌥A when not recording. While a note is open: save it, then take the next shot.
+    /// ⌥A. While a note is open: save it, then take the next shot. While recording: the same snap, into the take
+    /// (the recording goes on).
     func hotkey() {
-        guard let app = app, app.resident, app.rec == nil else { return }
+        guard let app = app, app.resident else { return }
         if app.picker != nil { return }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
+        if let r = app.rec {
+            guard r.sessionStart.isValid, !r.stopping, r.snaps != nil else { return }
+            return pick(take: r)
+        }
         guard !app.busy else { return }
         pick()
+    }
+
+    // MARK: a take's snaps
+
+    /// The take is stopping: a note still open on one of its snaps is saved now (it goes with the recording), a picker
+    /// opened for it closes.
+    func takeStopping() {
+        guard takeBatch != nil else { return }
+        if let s = NoteBubble.shared.shot, s.batch === takeBatch { NoteBubble.shared.commit() }
+        if let p = app?.picker, p.snapMode { p.finish(false) }
+    }
+
+    /// The take's files are closed: its snaps' words that are still coming are waited for (at most `cap` seconds), so
+    /// the organizing run reads them, then `then`; the take's cards leave the thread.
+    func takeEnded(cap: Double = 8, _ then: @escaping () -> Void) {
+        guard let b = takeBatch else { return then() }
+        var done = false
+        let finish = { [weak self] in
+            guard !done else { return }
+            done = true
+            b.sync {
+                self?.takeBatch = nil
+                self?.take = nil
+                hanging.refresh()
+                then()
+            }
+        }
+        let need = b.live.filter { $0.hangs && $0.needsWords }
+        emit(["event": "take_snaps_end", "snaps": b.live.filter(\.hangs).count, "waiting_words": need.count])
+        words(for: need, then: finish)
+        DispatchQueue.main.asyncAfter(deadline: .now() + cap) { finish() }
     }
 
     func rememberFrontApp() {
@@ -89,7 +137,8 @@ final class Snapper {
         if let p = prevApp, !p.isTerminated { p.activate() }
     }
 
-    func pick(preselect: CGRect? = nil) {
+    /// `take`: a recording runs — the snap goes into it, and the app stays busy with the recording, not the picker.
+    func pick(preselect: CGRect? = nil, take: Recorder? = nil) {
         guard let app = app else { return }
         // no Screen Recording: say so before an area is dragged for nothing
         guard Snapper.screenAllowed else {
@@ -97,15 +146,16 @@ final class Snapper {
             return ScreenHelp.show(.snap, grant: .missing)
         }
         rememberFrontApp()
-        app.busy = true
+        if take == nil { app.busy = true }
         let p = PickerController()
         p.snapMode = true
-        p.onDone = { [weak self, weak app] r in
+        emit(["event": "snap_pick", "in_take": take != nil])
+        p.onDone = { [weak self, weak app, weak take] r in
             unregisterHotkey(.pickEnter); unregisterHotkey(.pickEsc); unregisterHotkey(.pickFull); unregisterHotkey(.pickLast)
             app?.picker = nil
-            app?.busy = false
+            if app?.rec == nil { app?.busy = false }
             guard let r = r else { self?.restoreFocus(); return }
-            self?.capture(r, picker: p, remember: true)
+            self?.capture(r, picker: p, remember: true, take: take)
         }
         app.picker = p
         registerHotkey(.pickEnter, key: kVK_Return, mods: 0)
@@ -176,8 +226,10 @@ final class Snapper {
     /// `region`: global top-left points. Also used directly by tests (`snapregion x,y,w,h`). With a note (v0.9-next):
     /// the picture freezes in place and the pen is on it (InkStage), the note bubble beside it; it flies up to become
     /// the card when the note is done (NoteBubble.close). `picker`: its dim stays until the stage is up.
-    func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil, remember: Bool = false) {
+    /// `take`: the recording it goes into (⌥A while recording) — its session, its video time.
+    func capture(_ region: CGRect, withNote: Bool = true, picker: PickerController? = nil, remember: Bool = false, take: Recorder? = nil) {
         let ns = toNS(region)
+        let t = take.map { $0.elapsed() }          // the moment of the snap on the video's clock
         captureStill(rect: region, showsCursor: false) { [weak self] img, scale in
             guard let self = self else { picker?.closeWindows(); return }
             guard let img = img else {
@@ -189,6 +241,21 @@ final class Snapper {
             // "L last area" next time: only an area that gave a picture (BlurtCore LastArea)
             if remember { setRecordConfig("last_snap_region", [Int(region.minX), Int(region.minY), Int(region.width), Int(region.height)]) }
             self.playShutter()
+            if let r = take, let rs = r.snaps, !r.stopping, let t = t {
+                // into the take: its session, where the take goes (the note's chip says it; Change files its item elsewhere)
+                let b = rs.batch
+                let n = b.reserve()
+                let shot = b.add(n: n, image: img, scale: scale, region: region, t: t, project: self.app?.takeProject?.id)
+                shot.hangs = true
+                self.takeBatch = b
+                self.take = r
+                b.onChange = { hanging.refresh() }
+                rs.tookWithNote(shot, at: t)
+                emit(["event": "snap", "n": n, "file": shot.file ?? "", "session": b.dir.path, "project": shot.project ?? NSNull(),
+                      "in_place": withNote, "in_take": true, "t": (t * 1000).rounded() / 1000])
+                island.refresh()
+                return self.present(shot, img: img, ns: ns, withNote: withNote, picker: picker)
+            }
             let p = self.target
             let b = self.openBatch(for: p)
             let n = b.reserve()
@@ -201,19 +268,24 @@ final class Snapper {
                 if withNote, let m = ProjectStore.shared.missingCurrent { self.warnWhenSettled(shot, missing: m) }
                 else { MissingFolder.warnIfCurrentMissing() }
             }
-            if withNote {
-                // (before anything else runs: the stage holds the shot back from the cards until it is done)
-                InkStage.shared.open(shot, image: img, selection: ns)
-                picker?.closeWindows()
-                shutterFlash(ns, above: true)
-                NoteBubble.shared.begin(shot, mode: .listen, inPlace: ns)
-            } else {
-                picker?.closeWindows()
-                shutterFlash(ns)
-                hanging.catchCapture(shot, from: ns)
-                self.settled(shot)
-                self.restoreFocus()
-            }
+            self.present(shot, img: img, ns: ns, withNote: withNote, picker: picker)
+        }
+    }
+
+    /// A fresh snap on screen: frozen in place with the pen and its note (`withNote`), or straight onto its thread.
+    private func present(_ shot: Shot, img: CGImage, ns: NSRect, withNote: Bool, picker: PickerController?) {
+        if withNote {
+            // (before anything else runs: the stage holds the shot back from the cards until it is done)
+            InkStage.shared.open(shot, image: img, selection: ns)
+            picker?.closeWindows()
+            shutterFlash(ns, above: true)
+            NoteBubble.shared.begin(shot, mode: .listen, inPlace: ns)
+        } else {
+            picker?.closeWindows()
+            shutterFlash(ns)
+            hanging.catchCapture(shot, from: ns)
+            settled(shot)
+            restoreFocus()
         }
     }
 
@@ -229,21 +301,36 @@ final class Snapper {
     /// No picture came back. Without Screen Recording access that is why: "Open Settings" starts the permission guide.
     /// With access, ScreenCaptureKit is asked once more: refused = a stale grant (an older build's: "re-allow Screen
     /// Recording", the guide's re-add form) — else a passing failure, "try again" (BlurtCore ScreenGrant).
-    func snapFailed() {
+    /// `use`: what the picture was for (⌥C / ⌥T say "copying text", not "snap").
+    func snapFailed(use: ScreenHelp.Use = .snap) {
         let allowed = SystemAccess.granted(.screen)
         guard allowed else {
-            emit(["event": "snap_failed", "screen_recording": false])
-            return ScreenHelp.show(.snap, grant: .missing)
+            emit(["event": "snap_failed", "screen_recording": false, "use": use.rawValue])
+            return ScreenHelp.show(use, grant: .missing)
         }
         ScreenHelp.probe { ok in
             let grant = ScreenGrant.diagnose(preflight: true, probe: ok)
-            emit(["event": "snap_failed", "screen_recording": true, "probe": ok, "grant": grant.rawValue])
-            ScreenHelp.show(.snap, grant: grant)
+            emit(["event": "snap_failed", "screen_recording": true, "probe": ok, "grant": grant.rawValue, "use": use.rawValue])
+            ScreenHelp.show(use, grant: grant)
+        }
+    }
+
+    /// A picker's stills are in: none came back although macOS says Screen Recording is allowed. ScreenCaptureKit is
+    /// asked: refused = a stale grant, said before an area is dragged for nothing — `close` shuts the picker at once
+    /// (the dogfood's ⌥A / ⌥C / ⌥T opened as normal and only said "allow Screen Recording again" after the drag).
+    static func checkStills(_ count: Int, use: ScreenHelp.Use, close: @escaping () -> Void) {
+        guard count == 0, !NSScreen.screens.isEmpty, SystemAccess.granted(.screen) else { return }
+        ScreenHelp.probe { ok in
+            guard !ok else { return }
+            close()
+            emit(["event": "snap_failed", "screen_recording": true, "probe": ok, "grant": ScreenGrant.stale.rawValue,
+                  "use": use.rawValue, "stage": "picker"])
+            ScreenHelp.show(use, grant: .stale)
         }
     }
 
     func playShutter() {
-        guard recordConfig()["snap_sound"] as? Bool ?? true else { return }
+        guard recordConfig()["snap_sound"] as? Bool ?? false else { return }     // off unless Settings → General turns it on
         let p = "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/system/Screen Capture.aif"
         if FileManager.default.fileExists(atPath: p) { NSSound(contentsOfFile: p, byReference: true)?.play() }
     }
@@ -499,6 +586,11 @@ final class Snapper {
         // (only while it is still a card: a project picked meanwhile filed it, and "kept as a card" would be wrong)
         if let p = missingWarn.removeValue(forKey: ObjectIdentifier(s)), !s.deleted, s.project == nil { MissingFolder.warn(p) }
         guard !s.deleted, let b = s.batch else { return }
+        // a snap of a take goes with the recording (its organizing run makes the item): only its words are fetched
+        if b.inRecording {
+            if s.needsWords { transcribe(s) { _ in } }
+            return
+        }
         let filing = s.assignedBy == "capture" ? s.project : nil
         // no words: the transcription failed, or a voice note held none (a shot's empty voice was dropped already)
         let noWords = s.transcription == .failed || (s.kind == .voice && s.voice != nil && s.said?.isEmpty == true)
@@ -685,6 +777,7 @@ final class Snapper {
                                      actionTitle: Loc.t("capture.sort.set_up", table: "Capture")) {
                     AppEnvironment.settings?.show(pane: SettingsPane.agents.rawValue)
                 }
+                t.icon = .warning           // a failure leads with the attention triangle (system.md §3.2)
                 t.seconds = 8
                 return island.toast(t)
             }
@@ -764,7 +857,9 @@ final class Snapper {
         for s in back { s.batch?.undelete(s, from: trashedFiles.removeValue(forKey: ObjectIdentifier(s)) ?? [:]) }
         emit(["event": "undo_delete", "captures": back.map(\.n)])
         hanging.refresh()
-        hanging.show(peek: 2.5)
+        // a card used in another app comes back to the Cards panel's History, not to a thread
+        if back.contains(where: { $0.taken != nil }) { takenChanged() }
+        if back.contains(where: { $0.taken == nil }) { hanging.show(peek: 2.5) }
     }
 
     /// Esc in the note bubble: this capture goes to the Trash; "Discarded · Undo" for 5 s (as long as a discarded voice
@@ -785,8 +880,8 @@ final class Snapper {
     // MARK: taken — dragged out and dropped in another app (v0.8.1)
 
     /// A card dragged out and dropped in another app: it has done its job, so it leaves its thread — but it is "taken",
-    /// not discarded: its files stay where they are (the app may read them late) and it is in Recently Taken (the
-    /// island's right-click menu, the main window) for 7 days, where it can be copied, dragged out again or put back;
+    /// not discarded: its files stay where they are (the app may read them late) and it is in the Cards panel's
+    /// History (⌥H) for 7 days, where it can be copied, dragged out again or put back;
     /// then housekeeping trashes it (expireTaken).
     /// `delivered`: the kind of app whose payload the drop got (nil: not sure); `noteFile`: the .md went with it;
     /// `landed` / `at`: the app it was dropped into and where (a screen point). A chat app (a browser, an Electron
@@ -805,21 +900,11 @@ final class Snapper {
         if !fromPanel { hanging.takeAway(s) }
         b.take(s, at: Snapper.now)
         takenChanged()
-        let plan = DragFollowUp.plan(delivered: delivered,
-                                     card: CardPasteboard.Card(image: s.kind == .shot ? s.bestURL : nil, note: s.copyText),
-                                     enabled: SmartPaste.enabled, accessibility: SmartPaste.accessibility,
-                                     secureInput: !DictationInsert.testMode && IsSecureEventInputEnabled(), kind: landed?.kind)
-        if s.kind == .shot, s.copyText != nil {
-            emit(["event": "drag_note_plan", "n": s.n, "bundle": landed?.bundleID ?? NSNull(), "kind": landed?.kind.rawValue ?? NSNull(),
-                  "plan": "\(plan)"])
+        // the follow-up paste, the safety net and what the toast says: the same for a main window row (DragOutEnd)
+        DragOutEnd.finish(card: CardPasteboard.Card(image: s.kind == .shot ? s.bestURL : nil, note: s.copyText), delivered: delivered,
+                          noteFile: noteFile, landed: landed, at: p, who: ["n": s.n]) { [weak self] d in
+            self?.tookOut(s, b, fromPanel: fromPanel, delivered: delivered, noteFile: noteFile, d)
         }
-        if case .pasteNote(let note) = plan, let t = landed {
-            DragNoteFollowUp.run(note: note, target: t, at: p ?? NSEvent.mouseLocation) { [weak self] pasted in
-                self?.tookOut(s, b, fromPanel: fromPanel, delivered: delivered, noteFile: noteFile, notePasted: pasted)
-            }
-            return
-        }
-        tookOut(s, b, fromPanel: fromPanel, delivered: delivered, noteFile: noteFile, notePasted: false)
     }
 
     /// A voice card let go of over a chat app's window (VoiceCardDrop): the app took the drop (its message box), or
@@ -840,10 +925,12 @@ final class Snapper {
                                       swallows: VoiceCardDrop.swallowsTextDrop(bundleID: t.bundleID), wordsWithheld: wordsWithheld)
         emit(["event": "voice_drop_plan", "n": s.n, "bundle": t.bundleID ?? NSNull(), "kind": t.kind.rawValue, "app": app,
               "accepted": accepted, "words_withheld": wordsWithheld, "plan": "\(plan)"])
+        // `pasted`: the words went in (or their keys did: VoiceCardDrop.outcome); `copy`: the words on the clipboard —
+        // the safety net, said only when nothing was pasted
         let done = { [weak self] (pasted: Bool, copy: String?) in
             guard let self = self else { return }
             let saved = copy.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
-            let key = saved != nil ? "capture.voice_drop.copied" : pasted ? "capture.voice_drop.pasted" : "capture.taken_out"
+            let key = pasted ? "capture.voice_drop.pasted" : saved != nil ? "capture.voice_drop.copied" : "capture.taken_out"
             emit(["event": "take_out", "n": s.n, "session": b.dir.path, "voice": true, "pasted": pasted, "note_copied": saved != nil,
                   "accepted": accepted, "from_panel": fromPanel, "app": app, "toast": key])
             var toast = Island.Toast(text: Loc.t(key, table: "Capture", app),
@@ -859,28 +946,27 @@ final class Snapper {
         case .none: done(accepted, nil)
         case .copy(let w): done(false, w)
         case .paste(let w):
-            DragNoteFollowUp.run(note: w, target: t, at: p) { pasted in done(pasted, pasted ? nil : w) }
+            DragNoteFollowUp.run(note: w, target: t, at: p) { r in
+                let o = VoiceCardDrop.outcome(r)
+                done(r != .notSent, o.copyWords ? w : nil)
+            }
         }
     }
 
-    /// The rest of a take-out: the safety-net copy of the note, and the toast saying what went in.
-    private func tookOut(_ s: Shot, _ b: ShotBatch, fromPanel: Bool, delivered: DropClass?, noteFile: Bool, notePasted: Bool) {
+    /// The rest of a take-out (DragOutEnd did the paste and the safety net): the toast saying what went in — with
+    /// Undo, or once a session Allow… when the note wasn't pasted for lack of Accessibility (BA-54).
+    private func tookOut(_ s: Shot, _ b: ShotBatch, fromPanel: Bool, delivered: DropClass?, noteFile: Bool, _ d: DragOutEnd.Done) {
         let hasNote = s.kind == .shot && s.copyText != nil
-        let outcome = DragReceipt.outcome(delivered: delivered, notePasted: notePasted, noteFile: noteFile)
-        let note = hasNote && CardExport.copyNoteAfterDrag && DragReceipt.copiesNote(outcome) ? s.copyText : nil
-        let saved = note.flatMap { DragClipboard.putNote($0, on: capturePasteboard) }
-        let key = DragReceipt.toastKey(outcome, hasNote: hasNote, noteCopied: saved != nil, noteFile: noteFile)
-        emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": saved != nil, "from_panel": fromPanel,
-              "delivered": delivered?.rawValue ?? NSNull(), "note_pasted": notePasted, "note_file": noteFile,
-              "outcome": outcome.rawValue, "toast": key])
-        var t = Island.Toast(text: Loc.t(key, table: "Capture"),
-                             actionTitle: fromPanel ? nil : Loc.t("capture.undo", table: "Capture")) { [weak self] in
+        let key = DragReceipt.toastKey(d.outcome, hasNote: hasNote, noteCopied: d.noteCopied, noteFile: noteFile,
+                                       noAccessibility: d.asksAccessibility)
+        emit(["event": "take_out", "n": s.n, "session": b.dir.path, "note_copied": d.noteCopied, "from_panel": fromPanel,
+              "delivered": delivered?.rawValue ?? NSNull(), "note_pasted": d.notePasted, "note_file": noteFile,
+              "outcome": d.outcome.rawValue, "toast": key, "asks_accessibility": d.asksAccessibility])
+        let saved = d.saved
+        island.toast(DragOutEnd.toast(d, text: Loc.t(key, table: "Capture"), undo: fromPanel ? nil : { [weak self] in
             saved?.restore(capturePasteboard)
             self?.putBack(s)
-        }
-        if fromPanel { t.action = nil }
-        t.seconds = saved != nil ? 5 : 4
-        island.toast(t)
+        }))
     }
 
     /// Back on its thread (Undo after a drag-out, "Put Back" in Recently Taken): a card again. `from`: where it flies
@@ -902,14 +988,21 @@ final class Snapper {
             .sorted { ($0.taken ?? 0, $0.n) > ($1.taken ?? 0, $1.n) }
     }
 
+    /// Something used has gone after its 7 days (or was deleted from History): it is in the Trash — the empty
+    /// History segment of the Cards panel says so.
+    var takenExpiredAny: Bool { cardBatches.contains { $0.shots.contains { $0.deleted && $0.taken != nil } } }
+
     /// Housekeeping: a capture taken 7+ days ago goes to the Trash (files, its out/ folder; `{"n","deleted":true}`).
+    /// Test runs (a scratch BLURT_HOME) never fill the user's own Trash: the files go to $BLURT_HOME/trash.
     @discardableResult
     func expireTaken() -> Int {
         let now = Snapper.now
         var n = 0
+        let env = ProcessInfo.processInfo.environment
+        let scratchTrash: URL? = env["BLURT_TEST_COMMANDS"] == "1" ? BlurtPaths.home.appendingPathComponent("trash") : nil
         for b in cardBatches {
             for s in b.live where s.taken.map({ TakenCaptures.isExpired(taken: $0, now: now) }) ?? false {
-                b.delete(s)
+                b.delete(s, into: scratchTrash)
                 emit(["event": "taken_expired", "n": s.n, "session": b.dir.path])
                 n += 1
             }

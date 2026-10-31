@@ -95,4 +95,26 @@ final class VoiceCardDropTests: XCTestCase {
         XCTAssertNil(VoiceCardDrop.hint(cls: .terminal, kind: .native, app: "Terminal", enabled: true, accessibility: true))
         XCTAssertNil(VoiceCardDrop.hint(cls: nil, kind: nil, app: nil, enabled: true, accessibility: true))
     }
+
+    /// The dogfood: Blurt sent End + ⌘V to Claude, couldn't read it back, and said "Copied — ⌘V to paste": the user
+    /// pasted a second copy. Keys sent but unconfirmed is pasted (the words stay on the clipboard, unsaid).
+    func testAnUnconfirmedPasteIsReportedAsPasted() {
+        XCTAssertEqual(VoiceCardDrop.outcome(.confirmed).toast, "capture.voice_drop.pasted")
+        XCTAssertFalse(VoiceCardDrop.outcome(.confirmed).copyWords)
+        XCTAssertEqual(VoiceCardDrop.outcome(.unconfirmed).toast, "capture.voice_drop.pasted")
+        XCTAssertTrue(VoiceCardDrop.outcome(.unconfirmed).copyWords, "the safety net, quietly")
+        XCTAssertEqual(VoiceCardDrop.outcome(.notSent).toast, "capture.voice_drop.copied")
+        XCTAssertTrue(VoiceCardDrop.outcome(.notSent).copyWords)
+    }
+
+    /// A shot card's note by the same rule: keys sent, read unconfirmed = pasted ("picture and note"), the note on the
+    /// clipboard quietly; never "⌘V to paste" after Blurt already pasted it.
+    func testAShotCardsUnconfirmedNoteIsPastedToo() {
+        XCTAssertTrue(DragReceipt.followUp(.unconfirmed).notePasted)
+        XCTAssertTrue(DragReceipt.followUp(.unconfirmed).quietCopy)
+        XCTAssertEqual(DragReceipt.outcome(delivered: .chat, notePasted: DragReceipt.followUp(.unconfirmed).notePasted, noteFile: false), .both)
+        XCTAssertEqual(DragReceipt.toastKey(.both, hasNote: true, noteCopied: false), "capture.taken_out_text")
+        XCTAssertFalse(DragReceipt.followUp(.notSent).notePasted)
+        XCTAssertFalse(DragReceipt.followUp(.confirmed).quietCopy)
+    }
 }

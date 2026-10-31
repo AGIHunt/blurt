@@ -1,4 +1,4 @@
-// One card dragged out of the app — a hanging card, or a picture in Recently Taken (v0.8.2). What is on the drag
+// One card dragged out of the app — a hanging card, or one in the Cards panel (Current or History). What is on the drag
 // pasteboard follows the app under the pointer: BlurtCore DropTargets says which kind of app it is, CardPasteboard
 // .drag(for:) what that kind gets (the table is in CardDropTarget.swift; the user's view of it in HangingCards' header).
 // v0.8.5: a rich app (Notes, TextEdit, Mail…) gets the rich item (picture file + PNG + HTML + RTFD + RTF + the note as
@@ -29,11 +29,17 @@
 // v0.9 — the layout follows the app's composer too (BlurtCore DragLanding): WeChat / QQ get the rich item they put
 // the picture in their composer from (the picture alone was a bare file URL to them: a file to send), and a voice
 // card over Feishu / Lark carries no words when Blurt can paste them (Feishu took a text drop and put nothing in).
+// BA-22 — a row of the main window's list goes out the same way (CardDrag(item:), CardPasteboard.itemDrag; it was a
+// fixed file URL and a title, so WeChat got the picture alone), its uid riding on the first item for in-app drops; its
+// drop ends like a card's (DragOutEnd, SmartPaste.swift). BA-54 — entering a web app's window wakes its Accessibility
+// tree for the note's paste (WebAXWake), and a shot card with a note over a chat app says "Let go, then ⌘V in Claude"
+// while Accessibility is missing (DragFollowUp.noteHint).
 // Tests (BLURT_TEST_COMMANDS=1): `droptarget map PID=BUNDLE,…` gives our stand-in processes the bundle ids of the apps
 // they stand in for (the decision still goes through the window owner's pid); BLURT_TEST_DROP_TARGET=BUNDLE (or
 // `droptarget fixed BUNDLE`) does it for every window that isn't ours.
 
 import AppKit
+import ImageIO
 import BlurtCore
 
 /// The app a drag is over: who owns the window under the pointer, its class, and its kind of composer (the caret).
@@ -125,13 +131,51 @@ enum DropProbe {
     }
 }
 
-/// A card's drag: its files, the pasteboard it fills, and the class that pasteboard was last written for.
+/// Electron's web content shown to Accessibility for the note's paste after a drop (BA-54: a card dragged into the
+/// Claude desktop app left the picture alone when the pointer wasn't over its composer — Electron builds its
+/// Accessibility tree only once a client sets AXManualAccessibility, so the follow-up found no composer to focus).
+/// The same wake dictation does (DictationField.wakeWebAccessibility: Electron apps only, once per process, never
+/// Chrome's or Safari's AXEnhancedUserInterface): asked when a drag enters a web app's window (CardDrag.moved), and
+/// again by the follow-up (DragNoteFollowUp.focus), which waits what is left of `settle` after the first ask.
+enum WebAXWake {
+    /// how long Chromium takes to build the tree after the first ask (s)
+    static let settle: CFTimeInterval = 0.15
+    private static var asked: [pid_t: CFTimeInterval] = [:]
+
+    /// Ask app `pid` to show its web content (once; Electron only, with Accessibility). Returns the seconds still to
+    /// wait before its tree can be probed (0: asked long enough ago, or nothing to wake).
+    @discardableResult
+    static func wake(_ pid: pid_t) -> CFTimeInterval {
+        let now = CACurrentMediaTime()
+        if let t = asked[pid] { return max(0, settle - (now - t)) }
+        guard !DictationInsert.testMode, AXIsProcessTrusted(), let app = NSRunningApplication(processIdentifier: pid),
+              DictationField.isElectron(app) else { return 0 }
+        DictationField.wakeWebAccessibility(app)
+        asked[pid] = now
+        emit(["event": "drag_web_ax", "pid": Int(pid), "bundle": app.bundleIdentifier ?? NSNull()])
+        return settle
+    }
+}
+
+/// A drag out of the app: its files, the pasteboard it fills, and the class that pasteboard was last written for.
+/// A hanging card or a Recently Taken thumb (init(_ shot:)), or — BA-22 — one row of the main window's list
+/// (ItemListController: the item's first frame, its text, its .md; CardPasteboard.itemDrag): the same per-app layout,
+/// written lazily and again as the pointer crosses into another kind of app.
 final class CardDrag: NSObject, NSPasteboardItemDataProvider {
-    let shot: Shot
     let card: CardPasteboard.Card
     /// the rich flavours (HTML, RTFD, RTF), built the first time an app asks for one
     let rich: CardRich
+    /// the capture's own type (a drop on a project in the island); nil for a list row
     let tag: String?
+    /// types the first item carries as they are, through every rewrite — a list row's uid (.blurtItems: the sidebar's
+    /// move, the list's own drops keep working)
+    let extra: [NSPasteboard.PasteboardType: String]
+    /// a voice card (its words; VoiceCardDrop)
+    let isVoice: Bool
+    /// a list row: CardPasteboard.itemDrag's layout (its text as rich text where there is no picture)
+    let isItem: Bool
+    /// who it is, for the log: the card's number, or the item's uid
+    let who: [String: Any]
     /// record.drag_note_file when the drag started: the .md rides along into chat apps and the Finder too
     let attachNote = CardExport.attachNoteFile
     /// the app the drag pasteboard was written for now (its class, its composer; BlurtCore DragLanding)
@@ -143,12 +187,39 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     private var live: [NSPasteboardItem] = []
     private var lastProbe: (at: NSPoint, time: CFTimeInterval) = (.zero, 0)
 
-    init(_ s: Shot) {
-        shot = s
+    /// A hanging card or a Recently Taken thumb (its files written again: the note may have changed).
+    convenience init(_ s: Shot) {
         let (c, part) = CardExport.card(s)
-        card = c
-        rich = CardRich([part])
-        tag = CardExport.tag(s)
+        self.init(card: c, rich: CardRich([part]), tag: CardExport.tag(s), voice: s.kind == .voice, who: ["n": s.n])
+    }
+
+    /// One row of the main window's list (BA-22): its first frame as the picture, `text` (its title and words:
+    /// ItemListController.dragText) as the note, its .md as the note file (not a legacy row's items.json), its uid on
+    /// the first item (.blurtItems). nil: nothing to carry.
+    convenience init?(item it: ItemRow, text: String) {
+        let fm = FileManager.default
+        let image = it.primaryFrame.flatMap { fm.fileExists(atPath: $0) ? URL(fileURLWithPath: $0) : nil }
+        let md = !it.legacy && fm.fileExists(atPath: it.fileURL.path) ? it.fileURL : nil
+        let note = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+        guard image != nil || note != nil || md != nil else { return nil }
+        // the picture's size in points for the HTML / RTFD: its DPI (a Retina frame says 144), else 1:1
+        let dpi = image.flatMap { CGImageSourceCreateWithURL($0 as CFURL, nil) }
+            .flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any] }?[kCGImagePropertyDPIWidth] as? Double
+        let scale = CGFloat(max(1, (dpi ?? 72) / 72))
+        self.init(card: CardPasteboard.Card(image: image, note: note, noteFile: md),
+                  rich: CardRich([CardRich.Part(image: image, note: note, scale: scale)]), tag: nil, extra: [.blurtItems: it.uid],
+                  item: true, who: ["uid": it.uid])
+    }
+
+    init(card: CardPasteboard.Card, rich: CardRich, tag: String?, extra: [NSPasteboard.PasteboardType: String] = [:],
+         voice: Bool = false, item: Bool = false, who: [String: Any]) {
+        self.card = card
+        self.rich = rich
+        self.tag = tag
+        self.extra = extra
+        isVoice = voice
+        isItem = item
+        self.who = who
         target = DropProbe.target()
         written = DragLanding(cls: .chat)
         super.init()
@@ -165,33 +236,50 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
                                                                                   canPaste: SmartPaste.enabled && SmartPaste.accessibility))
     }
 
-    func layout(_ l: DragLanding) -> [CardPasteboard.Item] { CardPasteboard.drag(into: l, card: card, attachNote: attachNote) }
+    func layout(_ l: DragLanding) -> [CardPasteboard.Item] {
+        isItem ? CardPasteboard.itemDrag(into: l, card: card, attachNote: attachNote)
+               : CardPasteboard.drag(into: l, card: card, attachNote: attachNote)
+    }
 
-    /// The items for `written`, every type lazily provided; at least one (the capture's tag) so a drag can start.
+    /// The items for `written`, every type lazily provided, `extra` on the first as it is; at least one (the capture's
+    /// tag, or `extra`) so a drag can start. Without a tag an inert item would carry nothing: it is left out.
     func pasteboardItems() -> [NSPasteboardItem] {
         index = [:]
-        let items = layout(written).enumerated().map { i, it -> NSPasteboardItem in
+        var items: [NSPasteboardItem] = []
+        for (i, it) in layout(written).enumerated() {
+            let types = CardDrag.types(it, tag: tag != nil)
+            guard !types.isEmpty else { continue }
             let p = NSPasteboardItem()
-            p.setDataProvider(self, forTypes: CardDrag.types(it, tag: tag != nil))
+            p.setDataProvider(self, forTypes: types)
             index[ObjectIdentifier(p)] = i
-            return p
+            items.append(p)
         }
-        if items.isEmpty, let t = tag {
+        if items.isEmpty, tag != nil || !extra.isEmpty {
             let p = NSPasteboardItem()
-            p.setString(t, forType: capturePasteboardType)
-            return [p]
+            if let t = tag { p.setString(t, forType: capturePasteboardType) }
+            items = [p]
         }
+        for (type, s) in extra { items.first?.setString(s, forType: type) }
         live = items
         return items
+    }
+
+    /// The drag began with one writer of ours (a table row: NSTableView takes one per row): the session's pasteboard
+    /// gets every item of the layout written for (a terminal's .md path, a chat app's .md with record.drag_note_file).
+    func began(_ s: NSDraggingSession) {
+        session = s
+        guard live.count > 1 else { return }
+        let pb = s.draggingPasteboard
+        pb.clearContents()
+        report("card_drag_target", ["rewritten": pb.writeObjects(pasteboardItems())])
     }
 
     static func types(_ it: CardPasteboard.Item, tag: Bool = true) -> [NSPasteboard.PasteboardType] {
         CardExport.flavours(it, copy: false, tag: tag).map(CardExport.type)
     }
 
-    // MARK: a voice card's own drop hint (VoiceCardDrop)
+    // MARK: the drop hint — a voice card's (VoiceCardDrop), a shot card's without Accessibility (DragFollowUp.noteHint)
 
-    var isVoice: Bool { shot.kind == .voice }
     /// what the drag image says now ("松手粘贴到 Claude"; nil: the card alone)
     private(set) var hint: VoiceCardDrop.Hint?
     /// the drag image as it started, its frame (in `source`'s coordinates) and that view
@@ -200,17 +288,24 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     /// The card's own image and frame, for the hint to be drawn under it.
     func setBase(image: NSImage, frame: NSRect, in view: NSView) { base = (image, frame, view) }
 
-    /// Over a window whose app gets the words pasted wherever it is let go of: the drag image says so (the app shows
-    /// nothing for text), and a refused drop doesn't fly back to the card. Over Blurt, nothing or another app: the card.
+    /// A voice card over a window whose app gets the words pasted wherever it is let go of: the drag image says so (the
+    /// app shows nothing for text), and a refused drop doesn't fly back to the card. A shot card with a note over a
+    /// chat app while Accessibility is missing (BA-54): "Let go, then ⌘V in Claude" — the picture goes in, the note
+    /// will be on the clipboard; a refused drop still flies back (nothing was used). Over Blurt, nothing or another
+    /// app: the card.
     private func updateHint(_ t: DropTarget?) {
-        guard isVoice else { return }
-        let h = t.flatMap {
-            VoiceCardDrop.hint(cls: $0.cls, kind: $0.kind, app: DropProbe.appName($0), enabled: SmartPaste.enabled,
-                               accessibility: SmartPaste.accessibility)
+        let h: VoiceCardDrop.Hint? = t.flatMap { t in
+            if isVoice {
+                return VoiceCardDrop.hint(cls: t.cls, kind: t.kind, app: DropProbe.appName(t), enabled: SmartPaste.enabled,
+                                          accessibility: SmartPaste.accessibility)
+            }
+            guard t.cls == .chat, card.image != nil, card.note != nil else { return nil }      // (no app name looked up)
+            return DragFollowUp.noteHint(cls: t.cls, kind: t.kind, app: DropProbe.appName(t), card: card, enabled: SmartPaste.enabled,
+                                         accessibility: SmartPaste.accessibility, copiesNote: CardExport.copyNoteAfterDrag)
         }
         guard h != hint else { return }
         hint = h
-        session?.animatesToStartingPositionsOnCancelOrFail = h == nil
+        if isVoice { session?.animatesToStartingPositionsOnCancelOrFail = h == nil }
         if let b = base, let s = session {
             let (img, frame) = CardDrag.hinted(b.image, frame: b.frame, hint: h, flipped: b.view.isFlipped)
             s.enumerateDraggingItems(options: [], for: b.view, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, i, _ in
@@ -218,7 +313,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
             }
         }
         let text: String? = h.map { CardDrag.hintText($0) }
-        emit(["event": "voice_drag_hint", "n": shot.n, "hint": text ?? NSNull(), "pid": Int(t?.pid ?? 0), "bundle": t?.bundleID ?? NSNull()])
+        emit(who.merging(["event": isVoice ? "voice_drag_hint" : "card_drag_hint", "hint": text ?? NSNull(), "pid": Int(t?.pid ?? 0),
+                          "bundle": t?.bundleID ?? NSNull()]) { $1 })
     }
 
     static func hintText(_ h: VoiceCardDrop.Hint) -> String {
@@ -269,6 +365,8 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         updateHint(under)
         guard let t = under else { return }     // over our own windows: as it was
         let changedApp = t.pid != target?.pid
+        // an Electron app's composer becomes findable for the note's paste after the drop (WebAXWake, BA-54)
+        if changedApp, t.kind == .web { WebAXWake.wake(t.pid) }
         target = t
         let l = landing(t)
         // the same layout for another app (chat ↔ finder): no rewrite
@@ -288,10 +386,10 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
     func delivered(at p: NSPoint) -> DropClass? {
         let t = DropProbe.target(at: p)
         let got: DropClass? = t.flatMap { layout(landing($0)) == layout(written) ? $0.cls : nil }
-        emit(["event": "card_drag_end", "n": shot.n, "bundle": t?.bundleID ?? NSNull(), "class": t?.cls.rawValue ?? NSNull(),
-              "kind": t?.kind.rawValue ?? NSNull(), "written": written.cls.rawValue, "written_kind": written.kind?.rawValue ?? NSNull(),
-              "words_withheld": written.wordsWithheld, "delivered": got?.rawValue ?? NSNull(),
-              "note_file": got.map(noteFile(_:)) ?? false])
+        emit(who.merging(["event": "card_drag_end", "bundle": t?.bundleID ?? NSNull(), "class": t?.cls.rawValue ?? NSNull(),
+                          "kind": t?.kind.rawValue ?? NSNull(), "written": written.cls.rawValue,
+                          "written_kind": written.kind?.rawValue ?? NSNull(), "words_withheld": written.wordsWithheld,
+                          "delivered": got?.rawValue ?? NSNull(), "note_file": got.map(noteFile(_:)) ?? false]) { $1 })
         return got
     }
 
@@ -313,12 +411,13 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
         return card.noteFile.map { f in layout(l).contains { $0.file == f } } ?? false
     }
 
-    private func report(_ event: String, _ extra: [String: Any] = [:]) {
-        var o: [String: Any] = ["event": event, "n": shot.n, "pid": Int(target?.pid ?? 0), "bundle": target?.bundleID ?? NSNull(),
-                                "class": target?.cls.rawValue ?? NSNull(), "written": written.cls.rawValue,
-                                "kind": target?.kind.rawValue ?? NSNull(), "words_withheld": written.wordsWithheld,
-                                "items": layout(written).map { CardDrag.types($0, tag: tag != nil).map(\.rawValue) }]
-        for (k, v) in extra { o[k] = v }
+    private func report(_ event: String, _ more: [String: Any] = [:]) {
+        var o: [String: Any] = who
+        o.merge(["event": event, "pid": Int(target?.pid ?? 0), "bundle": target?.bundleID ?? NSNull(),
+                 "class": target?.cls.rawValue ?? NSNull(), "written": written.cls.rawValue,
+                 "kind": target?.kind.rawValue ?? NSNull(), "words_withheld": written.wordsWithheld,
+                 "items": layout(written).map { CardDrag.types($0, tag: tag != nil).map(\.rawValue) }]) { $1 }
+        for (k, v) in more { o[k] = v }
         emit(o)
     }
 
@@ -340,7 +439,7 @@ final class CardDrag: NSObject, NSPasteboardItemDataProvider {
             item.setData(d, forType: type)
             given = true
         }
-        emit(["event": "card_drag_provide", "n": shot.n, "item": i + 1, "type": type.rawValue, "class": now.cls.rawValue,
-              "written": written.cls.rawValue, "given": given])
+        emit(who.merging(["event": "card_drag_provide", "item": i + 1, "type": type.rawValue, "class": now.cls.rawValue,
+                          "written": written.cls.rawValue, "given": given]) { $1 })
     }
 }

@@ -94,6 +94,58 @@ def test_errors_have_codes_and_never_the_key(api):
     assert r["code"] in ("network", "timeout") and "sk-test" not in json.dumps(r)
 
 
+def test_a_custom_models_test_runs_its_own_job(api):
+    # Settings → Models → Custom Model…: Save runs the job itself and saves only when its answer is there
+    api.reply = "We meet at 3 pm tomorrow."
+    assert C.check(cloud(api), job="translate")["ok"]
+    assert C.check(cloud(api), job="polish")["ok"]
+    sent = api.seen[-1]["body"]["messages"]
+    assert sent[0]["role"] == "system" and C.CHECK_SPEECH in sent[-1]["content"]
+    api.reply = ""                                              # thought, wrote nothing: never put on a job
+    assert C.check(cloud(api), job="polish")["code"] == "empty"
+    assert C.check(cloud(api))["ok"]                            # the service's own Test still takes it
+
+
+def test_a_custom_models_vision_test_must_read_the_picture(api):
+    api.reply = "Blurt 4721"
+    assert C.check(cloud(api), job="vision")["ok"]
+    part = api.seen[-1]["body"]["messages"][0]["content"][1]
+    assert part["image_url"]["url"].startswith("data:image/png;base64,iVBOR")
+    api.reply = "I can't see any image."
+    assert C.check(cloud(api), job="vision") == {"ok": False, "code": "vision", "error": "the answer doesn't say what the picture says"}
+    api.reply = "Blurt 4721"
+    assert C.check(cloud(api, protocol="anthropic", provider="anthropic"), job="vision")["ok"]
+    assert api.seen[-1]["body"]["messages"][0]["content"][0]["source"]["media_type"] == "image/png"
+    api.status = 400                                            # a model that takes no pictures
+    assert C.check(cloud(api), job="vision")["code"] == "vision"
+
+
+def test_a_model_the_service_doesnt_know_says_so(api):
+    api.status = 404
+    assert C.check(cloud(api), job="polish")["code"] == "model"
+    api.status = 400
+    assert C.check(cloud(api), job="translate")["code"] == "model"
+    api.status = 401
+    assert C.check(cloud(api), job="translate")["code"] == "auth"
+
+
+def test_the_curated_list_is_one_file_in_the_skill_and_on_the_site():
+    # BlurtCore CloudCurated reads it (schema 1); the app fetches the site's copy at most once a day
+    skill = ROOT / "skills" / "blurt" / "scripts" / "curated_models.json"
+    site = ROOT / "site" / "models" / "curated.json"
+    assert skill.read_bytes() == site.read_bytes()
+    d = json.loads(skill.read_text(encoding="utf-8"))
+    assert d["schema"] == 1 and set(d["jobs"]) == {"polish", "translate", "vision", "speech"}
+    for job, opts in d["jobs"].items():
+        assert 1 <= len(opts) <= 3, job
+        for o in opts:
+            # a speech-only service (Volcengine Speech: transcribe.py's backend) has no text preset here
+            known = o["service"] in C.PRESETS or (job == "speech" and o["service"] == "volcengine-speech")
+            assert known and "base_url" not in o and o["measured"] <= d["updated"], o
+    # the measured best first (dictation-eval-2026-10-31.md §2.3): DeepSeek V4.1 Flash on Model Studio, then DeepSeek's own
+    assert [o["model"] for o in d["jobs"]["polish"]] == ["deepseek-v4.1-flash", "deepseek-flash"]
+
+
 def test_the_message_names_words_app_recent_and_continues_the_text_so_far():
     ctx = {"app": "飞书", "recent": ["这篇文章讲豆包的电脑软件。"], "dictated": "我们先把发票的部分写完，"}
     m = C.messages("然后是外卖的那个 case", ["Claude Code"], ctx, "chat")
@@ -101,6 +153,26 @@ def test_the_message_names_words_app_recent_and_continues_the_text_so_far():
     assert "Words: Claude Code" in last and "App: 飞书 (a chat message" in last
     assert "Recent dictations:\n- 这篇文章讲豆包的电脑软件。" in last and last.endswith("Dictation: 然后是外卖的那个 case")
     assert m[-3]["content"] == "Dictation: 我们先把发票的部分写完，" and m[-2]["content"] == "我们先把发票的部分写完，"
+
+
+def test_a_second_transcript_goes_as_also_heard_with_its_note():
+    # docs/design/dictation.md §Second transcript: macOS's transcript of the same audio, right before the dictation
+    m = C.messages("我们用不乐来做听写", ["Blurt"], {"app": "Slack", "second": "我们用  blurt 来做听写"}, None)
+    last = m[-1]["content"]
+    assert last.endswith("Also heard: 我们用 blurt 来做听写\nDictation: 我们用不乐来做听写")
+    assert m[0]["content"] == C.LIGHT + C.SECOND_NOTE
+    # without one: the prompt as before, no line
+    m = C.messages("我们用不乐来做听写", ["Blurt"], {"app": "Slack", "second": "  "}, None)
+    assert m[0]["content"] == C.LIGHT and "Also heard" not in m[-1]["content"]
+
+
+def test_cloud_polish_sends_the_second_transcript(api):
+    api.reply = "我们用 Blurt 来做听写。"
+    r = polish.cloud_polish("我们用不乐来做听写", [], {"second": "我们用 blurt 来做听写"}, None, cloud(api))
+    assert not r["fell_back"] and r["text"] == "我们用 Blurt 来做听写。"
+    body = api.seen[-1]["body"]
+    assert "Also heard: 我们用 blurt 来做听写" in body["messages"][-1]["content"]
+    assert C.SECOND_NOTE in body["messages"][0]["content"]
 
 
 def test_cloud_polish_fixes_a_name_from_the_recent_dictations(api):
@@ -167,6 +239,52 @@ def test_the_translate_guard_catches_what_is_plainly_not_a_translation(src, out,
     assert polish.translate_guard(src, out, target, terms) == why
 
 
+@pytest.mark.parametrize("src,out,target,why", [
+    # "X|keep" (the app's fixed language, 2026-10-30): into X, or the text back as it was when it is X already
+    ("The replica is billed by the hour.", "The replica is billed by the hour.", "en|keep", None),
+    ("The replica is billed\nby the hour.", "The replica is billed by the hour.", "en|keep", None),   # spacing aside
+    ("副本按小时计费。", "The replica is billed by the hour.", "en|keep", None),
+    ("副本按小时计费，所以用完就关掉，别让它整晚开着。", "副本按小时计费，所以用完就关掉。", "en|keep", "untranslated"),
+    ("The replica is billed by the hour.", "", "zh|keep", "empty"),
+    ("The replica is billed by the hour, so shut it down when you are done with it.", "副本按小时计费，用完就关掉。", "zh|keep", None),
+])
+def test_a_fixed_language_keeps_text_already_in_it(src, out, target, why):
+    assert polish.translate_guard(src, out, target, []) == why
+
+
+def test_a_fixed_language_asks_for_the_text_as_it_is_never_another_language():
+    keep = polish.translate_system("en|keep")
+    assert "Translate it into English; if it is already in English, reply with it exactly as it is." in keep
+    assert "Chinese" not in keep                     # v1.0.6's "X|home" sent English text into the user's Chinese
+    # v1.0.6's form is still understood
+    assert "translate it into Simplified Chinese" in polish.translate_system("en|zh")
+    assert polish.translate_system("ja|keep").startswith("You translate") and "into Japanese" in polish.translate_system("ja|keep")
+
+
+def test_auto_names_the_users_pair_global_first():
+    # "auto:H|O" (2026-10-30): text in the user's own language into the other one, anything else into theirs
+    ja = polish.translate_system("auto:ja|en")
+    assert "If the text is mostly Japanese, translate it into English; otherwise translate it into Japanese." in ja
+    assert "Chinese" not in ja
+    en = polish.translate_system("auto:en|de")
+    assert "If the text is mostly English, translate it into German; otherwise translate it into English." in en
+    # the old "auto" (an app before 2026-10-30) is still Chinese ↔ English
+    assert "mostly Simplified Chinese, translate it into English" in polish.translate_system("auto")
+    assert polish.auto_pair("auto:ja|en") == ("ja", "en") and polish.auto_pair("auto") == ("zh", "en")
+    assert polish.auto_pair("en|keep") is None and polish.auto_pair("auto:ja|") is None
+    # the guard checks only the plain failures, as for "auto"
+    assert polish.translate_guard("お疲れさまです。明日の会議は十時からです。", "Good work today. Tomorrow's meeting starts at ten.",
+                                  "auto:ja|en") is None
+    assert polish.translate_guard("お疲れさまです。", "", "auto:ja|en") == "empty"
+
+
+def test_screen_translate_sends_the_fixed_language_as_asked(api):
+    api.reply = "The replica is billed by the hour."
+    r = polish.Engine().translate("The replica is billed by the hour.", "en|keep", cloud=cloud(api))
+    assert r["text"] == "The replica is billed by the hour."
+    assert "reply with it exactly as it is" in api.seen[-1]["body"]["messages"][0]["content"]
+
+
 def test_dictation_sends_its_words_and_says_it_was_spoken(api):
     api.reply = "Blurt's menu bar icon needs to change"
     r = polish.Engine().translate("口喷鸡的菜单栏图标要改一下", "en", cloud=cloud(api), terms=[{"term": "口喷鸡"}, {"term": "tmux"}],
@@ -200,3 +318,64 @@ def test_no_cloud_and_no_local_model_types_the_text_as_said(api, monkeypatch):
     assert r["fell_back"] and r["reason"] == "model_missing"
     with pytest.raises(polish.Fail):                                       # ⌥⇧T still says what failed
         eng.translate("在本地安装一下这个版本", "en")
+
+
+# Settings → Models → Cloud services (2026-10-31): every preset speaks one of the two protocols; the fields that differ
+# by service, and the one retry without them when a model refuses one.
+
+@pytest.mark.parametrize("base, field, value", [
+    ("https://api.deepseek.com", "thinking", {"type": "disabled"}),
+    ("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "enable_thinking", False),
+    ("https://ark.cn-beijing.volces.com/api/v3", "thinking", {"type": "disabled"}),
+    ("https://open.bigmodel.cn/api/paas/v4", "thinking", {"type": "disabled"}),
+    ("https://api.z.ai/api/paas/v4", "thinking", {"type": "disabled"}),
+    ("https://api.xiaomimimo.com/v1", "thinking", {"type": "disabled"}),
+    ("https://openrouter.ai/api/v1", "reasoning", {"enabled": False}),
+])
+def test_thinking_is_turned_off_where_the_service_allows_it(base, field, value):
+    url, body, _ = C.request({"base_url": base, "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+    assert url == base + "/chat/completions" and body[field] == value and body["max_tokens"] == 50
+
+
+def test_openai_and_fixed_temperature_services_get_no_temperature():
+    _, body, _ = C.request({"base_url": "https://api.openai.com/v1", "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+    assert "temperature" not in body and body["max_completion_tokens"] == 50 and "max_tokens" not in body
+    for base in ("https://api.moonshot.ai/v1", "https://api.minimax.io/v1"):
+        _, body, _ = C.request({"base_url": base, "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+        assert "temperature" not in body
+    _, body, h = C.request({"base_url": "https://api.anthropic.com", "model": "m", "protocol": "anthropic", "key": "k"}, [], 50)
+    assert "temperature" not in body and h["x-api-key"] == "k"
+
+
+def test_a_refused_field_is_dropped_once_and_remembered(api):
+    calls = []
+    orig = C._send
+
+    def send(url, body, headers, timeout):
+        calls.append(dict(body))
+        if "temperature" in body:
+            raise C.urllib.error.HTTPError(url, 400, "bad", {}, None)
+        return orig(url, body, headers, timeout)
+    C._send = send
+    try:
+        cfg = C.settings(cloud(api))
+        assert C.complete(cfg, [{"role": "user", "content": "u"}], 5, 50)["text"] == "OK"
+        assert "temperature" in calls[0] and "temperature" not in calls[1]
+        C.complete(cfg, [{"role": "user", "content": "u"}], 5, 50)
+        assert len(calls) == 3 and "temperature" not in calls[2]          # remembered: one request
+    finally:
+        C._send = orig
+        C._bare.clear()
+
+
+def test_check_counts_an_answer_that_only_thought(api):
+    api.reply = ""
+    assert C.check(cloud(api))["ok"] is True
+    with pytest.raises(C.CloudError):
+        C.complete(C.settings(cloud(api)), [{"role": "user", "content": "u"}], 5, 50)
+
+
+def test_a_key_no_header_can_carry_is_an_auth_failure_that_never_shows_the_key(api):
+    # the founder's key ended in two "ç" as ⌥C types them: c + U+0327, which no header can carry
+    r = C.check({**cloud(api), "key": "sk-test" + "c\u0327" * 2})
+    assert r["ok"] is False and r["code"] == "auth" and "sk-test" not in json.dumps(r)

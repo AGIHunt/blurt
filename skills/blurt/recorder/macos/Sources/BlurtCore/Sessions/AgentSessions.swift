@@ -90,6 +90,8 @@ public struct SessionsError: Error, CustomStringConvertible {
     /// What sessions.py adds for people: auth's fix ("run `claude` and log in"), the item id it is about (BA-12), the
     /// agent. The message itself is for the log only.
     public var fix: String? = nil, itemID: String? = nil, agent: String? = nil
+    /// outdated: the installed version and the one hand-offs need ("0.157.0", "0.164.0").
+    public var version: String? = nil, need: String? = nil
     public var description: String { "\(code): \(message)" }
 
     public init(code: String, message: String, job: String? = nil, fix: String? = nil, itemID: String? = nil, agent: String? = nil) {
@@ -101,6 +103,8 @@ public struct SessionsError: Error, CustomStringConvertible {
         self.init(code: o["code"] as? String ?? fallback, message: o["error"] as? String ?? "", job: o["job"] as? String,
                   fix: (o["fix"] as? String).flatMap { $0.isEmpty ? nil : $0 }, itemID: (o["id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                   agent: o["agent"] as? String)
+        version = o["version"] as? String
+        need = o["need"] as? String
     }
 }
 
@@ -146,10 +150,10 @@ public final class AgentSessions {
     var lang: String { Loc.language.hasPrefix("zh") ? "zh" : "en" }
 
     /// One sessions.py call → its JSON line. A non-zero exit with {"ok": false} throws SessionsError.
-    func call(_ args: [String], timeout: TimeInterval = 60) async throws -> [String: Any] {
+    func call(_ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> [String: Any] {
         let out: Data
         do {
-            out = try await ScriptRunner.shared.run("sessions.py", args, timeout: timeout)
+            out = try await ScriptRunner.shared.run("sessions.py", args, stdin: stdin, timeout: timeout)
         } catch ScriptError.failed(let status, let stdout, let stderr) {
             let o = Self.lastJSON(stdout)
             var e = SessionsError(json: o, fallback: status == 4 ? "missing_dependency" : "failed")
@@ -206,6 +210,22 @@ public final class AgentSessions {
         return r
     }
 
+    /// Settings → Models' "Set Up with Agent…" (docs/design/agent-setup.md §4): `sessions.py setup-session` starts the
+    /// agent in a terminal on the model-setup prompt (no items, no worktree). `token`: the control socket's grant for
+    /// this session (AgentSetupGrant), on stdin — never on a command line. → the job and, without tmux, what the app
+    /// runs in its own terminal.
+    public func setupSession(agent: String, token: String) async throws -> (job: String, launch: [AppLaunch]) {
+        let body = try JSONSerialization.data(withJSONObject: ["token": token])
+        let o = try await call(["setup-session", "--agent", agent, "--lang", lang], stdin: body, timeout: 60)
+        guard let job = o["job"] as? String else { throw SessionsError(code: "failed", message: "no job") }
+        let launch = (o["launch"] as? [[String: Any]] ?? []).compactMap { l -> AppLaunch? in
+            guard let j = l["job"] as? String, let argv = l["argv"] as? [String], !argv.isEmpty else { return nil }
+            return AppLaunch(job: j, argv: argv, env: l["env"] as? [String: String] ?? [:],
+                             cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory()))
+        }
+        return (job, launch)
+    }
+
     static func links(_ rows: [[String: Any]]) -> [(job: String, url: URL)] {
         rows.compactMap { r in
             guard let j = r["id"] as? String, let u = DesktopLink.url(r["url"] as? String) else { return nil }
@@ -244,9 +264,12 @@ public final class AgentSessions {
         _ = try await call(["stop", job] + (kill ? ["--kill"] : []), timeout: 30)
     }
 
-    /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted).
-    public func finish(job: String, action: String) async throws -> [String: Any] {
-        try await call(["finish", job, "--action", action], timeout: action == "pr" ? 180 : 90)
+    /// diff | merge | pr | discard | keep → the CLI's JSON (diff: base, branch, stat, patch, uncommitted, alive,
+    /// reviewed). `expect` (merge / pr): diff's `reviewed` token — what the user saw; anything else fails with code
+    /// changed, so nothing lands unreviewed.
+    public func finish(job: String, action: String, expect: String? = nil) async throws -> [String: Any] {
+        try await call(["finish", job, "--action", action] + (expect.map { ["--expect", $0] } ?? []),
+                       timeout: action == "pr" ? 180 : 90)
     }
 
     /// 收回 (`sessions.py take-back`): its items back to To Do; an ended session with no change also goes (window,

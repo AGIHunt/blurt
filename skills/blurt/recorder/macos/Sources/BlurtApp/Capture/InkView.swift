@@ -3,8 +3,9 @@
 //  • a plain drag draws freehand, ⇧-drag a box, ⌥-drag an ellipse (the modifiers are read on every move, so ⇧ pressed
 //    mid-drag turns the stroke into a box); holding still ~0.5 s at the end of a freehand stroke snaps a rough line,
 //    box or ellipse to a clean one (InkFit — plain geometry). While recording the same modifiers go with the pen key:
-//    ⌃-drag, ⌃⇧, ⌃⌥ (record.draw_key; with ⌥ as the pen key the ellipse is ⌃⌥), the pen key first (PenArm: a ⌃⌥
-//    chord pressed together is the window manager's). Letting go of ⇧ / ⌥ mid-drag carries on freehand from the pointer.
+//    ⌃-drag, ⌃⇧, ⌃⌥ (record.draw_key; with ⌥ as the pen key the ellipse is ⌃⌥), in any order or together (BA-59:
+//    BlurtCore InkModifiers.dragTool reads the keys held, PenArm only waits a moment so a ⌃-shortcut never shows the
+//    pen). Letting go of ⇧ / ⌥ mid-drag carries on freehand from the pointer.
 //  • one colour, BrandColor.markup, with a soft dark shadow so it reads on any background; the line is wider on a
 //    bigger display (InkStyle.width).
 //  • InkStroke (BlurtCore) builds the stroke being drawn (shared by both views); inkPath draws a point list the way every renderer
@@ -12,7 +13,10 @@
 //  • InkCanvas: the pen on a picture — the snap's frozen selection (InkStage) and Edit Note's picture (NoteBubble).
 //    Strokes are 0–1 point lists of the picture (shots.jsonl "strokes"); ⌘Z takes back the last one (undo()).
 //  • InkView: the pen while recording. It covers the recorded area, click-through until the pen is on (its key held, or
-//    latched with ⌥D); ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after it
+//    latched with ⌥D); then it takes the drag itself, over any app and over Blurt's own windows alike, so nothing
+//    underneath moves or selects (BA-65: its window sat at .floating — NSPanel.isFloatingPanel resets the level set
+//    before it — so Blurt's own floating panels, Recently Taken first, and other apps' floating windows covered it and
+//    took the drag; the window is lifted to .statusBar here and to the front of it when the pen turns on); ink fades a few seconds after the last stroke, so a circle and the arrow drawn right after it
 //    share a frame. Unlike the rest of the chrome this window *is* captured, and each stroke is logged to events.jsonl
 //    in the same 0–1 coordinates as clicks ("shape": free | box | ellipse | line | rect, the fitted ones).
 import AppKit
@@ -243,9 +247,27 @@ final class InkView: NSView {
 
     override var isFlipped: Bool { true }    // top-left origin, like events.jsonl
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    // a transparent view says yes by default: the pen's drag must never move its own (borderless) window
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    /// BA-65: the recorder's panel is made `isFloatingPanel` after its level is set, and that puts it back at .floating
+    /// (3) — under any floating panel ordered after it (Recently Taken, the cards overview, the permission helper, the
+    /// command palette, other apps' floating windows), which then took the pen's drag. The level is set again here, once
+    /// the view is in its window (the panel is configured by then): .statusBar, under the island (+1) and the note bubble.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard let w = window else { return }
+        w.level = InkView.level
+        w.isMovable = false
+    }
+    static let level = NSWindow.Level.statusBar
 
     func setOn(_ on: Bool) {
         guard live == nil else { return }     // finish the stroke in progress first
+        if on, let w = window {
+            if w.level != InkView.level { w.level = InkView.level }
+            w.orderFrontRegardless()          // above anything at its level shown since (the island is a level higher)
+        }
         window?.ignoresMouseEvents = !on
         // a fully transparent window lets clicks fall through; a whisper of fill makes it take them
         layer?.backgroundColor = on ? NSColor(white: 0, alpha: 0.02).cgColor : nil
@@ -260,13 +282,20 @@ final class InkView: NSView {
         CATransaction.commit()
     }
 
-    /// What a drag draws now: the pen key's modifiers (⌃⇧ box, ⌃⌥ ellipse); a latched pen (⌥D) takes ⇧ / ⌥ alone.
+    /// What a drag draws now: the keys held, in whatever order they went down (⌃⇧ box, ⌃⌥ ellipse); a latched pen (⌥D)
+    /// takes ⇧ / ⌥ alone (BlurtCore InkModifiers.dragTool).
     func tool(_ flags: NSEvent.ModifierFlags) -> InkTool {
-        if let pen = rec?.penKind,
-           let t = InkModifiers.recordingTool(pen: pen, control: flags.contains(.control), option: flags.contains(.option),
-                                              shift: flags.contains(.shift), command: flags.contains(.command),
-                                              fn: flags.contains(.function)) { return t }
-        return InkModifiers.snapTool(shift: flags.contains(.shift), option: flags.contains(.option))
+        InkModifiers.dragTool(pen: rec?.penKind, held: InkView.held(flags))
+    }
+
+    static func held(_ f: NSEvent.ModifierFlags) -> InkModifiers.Held {
+        var h: InkModifiers.Held = []
+        if f.contains(.control) { h.insert(.control) }
+        if f.contains(.option) { h.insert(.option) }
+        if f.contains(.shift) { h.insert(.shift) }
+        if f.contains(.command) { h.insert(.command) }
+        if f.contains(.function) { h.insert(.fn) }
+        return h
     }
 
     private func showLive() {

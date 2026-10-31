@@ -52,7 +52,7 @@ class Glossary(unittest.TestCase):
 
     def test_the_glossary_holds_in_every_table(self):
         # docs/positioning/facts.md and the README use the same words: the notch (never "the island"), cards (never
-        # "hanging"), 条目, 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
+        # "hanging"), 事项 (never 条目, BA-57), 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
         def every(lang):
             out = {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
             for p in (RES / f"{lang}.lproj").glob("*.stringsdict"):
@@ -61,7 +61,7 @@ class Glossary(unittest.TestCase):
             return out
         for name, t in every("zh-Hans").items():
             for k, v in t.items():
-                for word in ("挂成", "挂着", "挂回", "岛", "其它", "归过去", "像是", "智能体", "事项", "交接单", "一键", "随手", "递给"):
+                for word in ("挂成", "挂着", "挂回", "岛", "其它", "归过去", "像是", "智能体", "条目", "交接单", "一键", "随手", "递给"):
                     self.assertNotIn(word, v, f"{name} {k}: {word}")
         for name, t in every("en").items():
             for k, v in t.items():
@@ -103,15 +103,73 @@ class Glossary(unittest.TestCase):
             island = plural_forms(RES / f"{lang}.lproj" / "Capture.stringsdict", "capture.island.to_review")
             self.assertTrue(all("review" not in f for f in island), island)
 
-    def test_recently_dragged_out_has_one_name(self):
-        # the main window's row said "Recently taken: 6" and opened a panel called "Recently Dragged Out"
+    def test_used_cards_are_the_cards_panels_history_only(self):
+        # v1.0.7: "Recently Dragged Out" (its own panel, menu-bar row, island menu row, main-window row and notice) is
+        # gone; cards used in other apps are the Cards panel's History segment, reached by ⌥H — and the two segments
+        # are "Current" / "History", never the stiff "Hanging / Used" ("挂着的 / 用过的")
         for lang in ("en", "zh-Hans"):
             main = strings(RES / f"{lang}.lproj" / "Main.strings")
             cap = strings(RES / f"{lang}.lproj" / "Capture.strings")
-            name = cap["capture.taken.title"].lower()
-            self.assertTrue(main["main.captures.taken"].lower().startswith(name), (lang, main["main.captures.taken"]))
-            self.assertTrue(cap["capture.taken.menu"].lower().startswith(name), (lang, cap["capture.taken.menu"]))
+            for k in ("main.captures.taken", "main.captures.taken.show", "main.captures.taken.tip", "main.sidebar.taken"):
+                self.assertNotIn(k, main, (lang, k))
+            for k in ("capture.taken.title", "capture.taken.menu", "capture.taken.show_all", "capture.taken.hint",
+                      "capture.taken.empty_title", "capture.taken.kept", "capture.taken.drag_again"):
+                self.assertNotIn(k, cap, (lang, k))
+            for t in (main, cap):
+                for k, v in t.items():
+                    for gone in ("Recently Dragged Out", "Recently dragged out", "最近拖走", "挂着的", "用过的", "Hanging %@", "“Used”"):
+                        self.assertNotIn(gone, v, (lang, k))
+        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_current"], "Current %@")
+        self.assertEqual(strings(RES / "en.lproj" / "Capture.strings")["capture.cards.seg_history"], "History %@")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_current"], "当前 %@")
+        self.assertEqual(strings(RES / "zh-Hans.lproj" / "Capture.strings")["capture.cards.seg_history"], "历史 %@")
+        src = "\n".join(p.read_text() for p in (RES.parent).rglob("*.swift"))
+        for gone in ("TakenBanner", "mShowTaken", "main.sidebar.taken", "capture.taken.menu"):
+            self.assertNotIn(gone, src, gone)
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ShellCopy(unittest.TestCase):
+    """The setup assistant's and Settings' words (dogfood, shell): one term per thing, templates that read as sentences."""
+
+    def every(self, lang):
+        return {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
+
+    def test_the_dictation_key_fills_its_slot_without_doubling(self):
+        # zh's inline key is " Fn 键" (its own leading space, its own 键): a template wraps it as 按%@就能, never "%@ 键"
+        zh = self.every("zh-Hans")
+        self.assertTrue(zh["Dictation.strings"]["dictation.key.fn.inline"].endswith("键"))
+        self.assertEqual(zh["Settings.strings"]["settings.perm.done.no_model"], "下一步下载语音模型，之后按%@就能随处听写。")
+        self.assertEqual(zh["Dictation.strings"]["dictation.status.other_instance_key"], "另一个口喷鸡正在听%@")
+
+    def test_one_word_for_the_words_list_and_one_name_for_the_provider(self):
+        zh, en = self.every("zh-Hans"), self.every("en")
+        for name, t in zh.items():
+            for k, v in t.items():
+                if k.startswith("settings.kw."):
+                    continue            # search keywords keep the other words people may type
+                for word in ("词表", "词汇", "自定义词"):
+                    self.assertNotIn(word, v, f"{name} {k}: 词库, not {word}")
+        for lang, tables in (("zh", zh), ("en", en)):
+            for name, t in tables.items():
+                for k, v in t.items():
+                    if k.startswith("settings.kw."):
+                        continue
+                    self.assertNotIn("DashScope", v, f"{lang} {name} {k}")
+                    self.assertNotIn("(MLX)", v, f"{lang} {name} {k}")
+        catalog = json.loads((ROOT / "skills/blurt/scripts/asr_models.json").read_text(encoding="utf-8"))
+        names = [m["name"] for m in catalog["models"]]
+        self.assertFalse([n for n in names if "(MLX)" in n or "DashScope" in n], names)
+        self.assertEqual(len(names), len(set(names)), "two models never share a name")
+
+    def test_the_setup_assistant_has_one_forward_action(self):
+        src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Onboarding/Onboarding.swift").read_text(encoding="utf-8")
+        footer = src[src.index("var footer: some View"):src.index("/// The headline and its line")]
+        # beside the step's own action, going on without it is the quiet Not Now — never a second bordered Next
+        self.assertIn('T("onboarding.not_now")', footer)
+        self.assertNotIn("Button(nextTitle) { advance() }\n                Button(a.title)", footer)
+        self.assertNotIn(".pickerStyle(.menu)", src, "the dictation key is a ChoicePopup, as the language row")
+        self.assertNotIn("GlyphTile.symbol(", src, "one glyph family on every step: the line glyphs")

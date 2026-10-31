@@ -177,7 +177,9 @@ struct SessionHeader: View {
         } else {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    if !pane.listShown {
+                    // embedded in the main window, its own list is the In Progress place: no second sidebar toggle
+                    // or compose button next to the item's key
+                    if !pane.listShown && !pane.embedded {
                         SessionsChromeButtons(listShown: false, toggle: { actions?.toggleSidebar() },
                                               newSession: { TerminalHost.shared.newSession(project: nil, items: []) })
                             .padding(.trailing, 4)
@@ -198,8 +200,11 @@ struct SessionHeader: View {
                                 Text(r.agentName)
                                 if r.agent.finishAction == nil, let b = r.agent.branch {
                                     Text("·").foregroundStyle(.tertiary)
-                                    Label(b, systemImage: "arrow.triangle.branch").labelStyle(.titleAndIcon)
-                                        .font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                                    // the words of the branch (blurt/ and the item's key are said elsewhere), cut at
+                                    // the end; the whole name in the tooltip
+                                    Label(Self.branchWords(b, items: r.items.map(\.id)), systemImage: "arrow.triangle.branch")
+                                        .labelStyle(.titleAndIcon)
+                                        .font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.tail)
                                         .help(TL("header.branch.help", b, r.agent.baseBranch ?? "HEAD"))
                                 }
                                 if r.isAppRunner {
@@ -227,6 +232,18 @@ struct SessionHeader: View {
         }
     }
 
+    /// "blurt/aw-12-create-hello" → "create-hello": without the blurt/ prefix and the item key it repeats; the name as
+    /// it is when nothing would be left.
+    static func branchWords(_ b: String, items: [String]) -> String {
+        var s = Substring(b)
+        if s.hasPrefix("blurt/") { s = s.dropFirst(6) }
+        for id in items where !id.isEmpty {
+            let k = id.lowercased()
+            if s.lowercased().hasPrefix(k + "-") { s = s.dropFirst(k.count + 1); break }
+        }
+        return s.isEmpty ? b : String(s)
+    }
+
     @ViewBuilder
     func trailing(_ r: AgentSessionRow) -> some View {
         let live = r.alive && !r.isAppRunner && !r.agent.isDesktop
@@ -238,19 +255,21 @@ struct SessionHeader: View {
                     .buttonStyle(.bordered).controlSize(.small).fixedSize()
                     .help(TL("header.review.help"))
             }
-            // one control, split: the click opens it in the preferred terminal app, the arrow lists the others
-            Menu {
-                ForEach(ExternalTerminals.installed, id: \.id) { t in
-                    Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
+            // one control, split: the click opens it in the preferred terminal app, the arrow lists the others. Only
+            // while there is a live window to open: an ended session has nothing there (not a greyed-out button)
+            if live {
+                Menu {
+                    ForEach(ExternalTerminals.installed, id: \.id) { t in
+                        Button(t.name) { actions?.openExternal(r.id, terminal: t.id) }
+                    }
+                } label: {
+                    Text(TL("header.open_in", preferred))
+                } primaryAction: {
+                    actions?.openExternal(r.id, terminal: ExternalTerminals.preferred)
                 }
-            } label: {
-                Text(TL("header.open_in", preferred))
-            } primaryAction: {
-                actions?.openExternal(r.id, terminal: ExternalTerminals.preferred)
+                .menuStyle(.button).controlSize(.small).fixedSize()
+                .help(TL("header.open_external.help"))
             }
-            .menuStyle(.button).controlSize(.small).fixedSize()
-            .disabled(!live)
-            .help(TL("header.open_external.help"))
             Menu {
                 if r.alive {
                     // the desktop card has Go to Claude as its primary; the menu has it too
@@ -307,6 +326,33 @@ enum ExternalTerminals {
         if let s = Config.shared["terminal.external"] as? String, !s.isEmpty { return s }
         return installed.first { $0.id != "terminal" }?.id ?? "terminal"
     }
+}
+
+/// One plain line under the header while the agent waits at a startup question its terminal shows (sessions.py
+/// agent.waiting_hint): what the question is and what to answer. Nothing otherwise (no height).
+struct SessionHintBar: View {
+    @ObservedObject var model: SessionsModel
+    @ObservedObject var pane: PaneState
+
+    var body: some View {
+        if let r = pane.job.flatMap({ model.row($0) }), let h = r.job.waitingHint, Self.known.contains(h) {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle").foregroundStyle(.secondary).accessibilityHidden(true)
+                    Text(TL("hint.\(h)", r.agentName)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
+                        .help(TL("hint.\(h)", r.agentName))
+                    Spacer(minLength: 0)
+                }
+                .font(.system(size: 11.5))
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                Divider()
+            }
+            .background(.bar)
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    static let known: Set<String> = ["trust", "hooks"]
 }
 
 // MARK: - Overlay
@@ -395,6 +441,10 @@ struct SessionOverlay: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         if case .failed = outcome, !r.agent.lastOutput.isEmpty { lastOutput(r.agent.lastOutput) }
+        // too old to start here: the update command, copyable (Restart checks the version before anything starts)
+        if case .failed = outcome, let fix = (r.job.raw["error"] as? [String: Any])?["fix"] as? String, !fix.isEmpty {
+            CommandText(text: fix)
+        }
         if let hint = Self.endedHint(r) {
             Text(hint).font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 400)
                 .fixedSize(horizontal: false, vertical: true)
@@ -427,6 +477,18 @@ struct SessionOverlay: View {
                     }
                 }
                 if inFlight { BrandSpinnerView() }
+            case .finished(let f) where ["merge", "pr"].contains(f) && !Self.toVerify(r).isEmpty:
+                // merged: the next step is checking the work — show it, or mark the one item done from here
+                let waiting = Self.toVerify(r)
+                if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
+                if waiting.count == 1 {
+                    Button(StateMenu.title("done")) { Self.markDone(waiting) }
+                    Button(TL("finish.show_item", Self.itemID(waiting[0], r))) { AppEnvironment.mainWindow?.reveal(uid: waiting[0]) }
+                        .panelDefault().keyboardShortcut(.defaultAction)
+                } else {
+                    Button(TL("finish.show_items")) { AppEnvironment.mainWindow?.reveal(uid: waiting[0]) }
+                        .panelDefault().keyboardShortcut(.defaultAction)
+                }
             case .finished, .live:
                 if output { Button(TL("overlay.show_output")) { actions?.showOutput(r.id) } }
             }
@@ -488,11 +550,30 @@ struct SessionOverlay: View {
     static func endedTitle(_ r: AgentSessionRow) -> String {
         if r.folderGone { return TL("overlay.gone.title") }
         switch r.outcome {
+        case .failed where r.job.stoppedAtTrust: return TL("overlay.stopped_trust.title", r.agentName)
         case .failed(let atStart): return TL(atStart ? "overlay.failed_start.title" : "overlay.failed.title", r.agentName)
         case .review: return TL("overlay.review.title")
         case .noChanges: return TL("overlay.no_changes.title")
         case .ended, .live: return TL("overlay.ended.title")
         case .finished: return r.stateText
+        }
+    }
+
+    /// Its items waiting to be verified (after a merge or a pull request).
+    static func toVerify(_ r: AgentSessionRow) -> [String] {
+        r.job.items.filter { IndexLookup.item(uid: $0)?.state == "to_verify" }
+    }
+
+    static func itemID(_ uid: String, _ r: AgentSessionRow) -> String {
+        IndexLookup.item(uid: uid)?.itemID ?? r.items.first?.id ?? ""
+    }
+
+    /// Mark as Done from the merged card: the user checked the work (items.py state --action done --by user).
+    static func markDone(_ uids: [String]) {
+        Scripts.state(uids, action: "done") { r in
+            if case .failure(let f) = r { NSLog("blurt mark done: %@", "\(f)") }
+            Scripts.indexUpdate(uids.compactMap { IndexLookup.item(uid: $0).map { URL(fileURLWithPath: $0.path) } })
+            JobStore.shared.rescan()
         }
     }
 
@@ -507,7 +588,16 @@ struct SessionOverlay: View {
         if r.folderGone { return TL("overlay.gone.body") }
         if r.outcome == .review { return TL("overlay.ended.review_hint") }
         if case .failed = r.outcome { return nil }
-        // restarted, merged, discarded…: its items went on elsewhere (a new session, To Do) — nothing to say here
+        // merged / pull request: what waits now, where the user is ("Merged into main · AW-12 is waiting for you to
+        // verify")
+        if case .finished(let f) = r.outcome, ["merge", "pr"].contains(f) {
+            let waiting = toVerify(r)
+            guard !waiting.isEmpty else { return nil }
+            let who = waiting.count == 1 ? itemID(waiting[0], r) : TL("finish.items_n", waiting.count)
+            return f == "merge" ? TL("overlay.merged.verify_hint", r.agent.baseBranch ?? "main", who)
+                                : TL("overlay.pr.verify_hint", who)
+        }
+        // restarted, discarded…: its items went on elsewhere (a new session, To Do) — nothing to say here
         if case .finished(let f) = r.outcome, f != "keep" { return nil }
         let states = r.job.items.compactMap { IndexLookup.item(uid: $0)?.state }
         if states.contains(where: { $0 == "handed_off" || $0 == "in_progress" }) { return TL("overlay.ended.unreported_hint") }

@@ -1,14 +1,24 @@
 // ⌥C Copy Text from Screen, ⌥T Translate Text from Screen (docs/design/screen-text.md): a crosshair, one drag,
 // let go — no dim over the screen, no window to click, no toolbar (as Bob's OCR and ⌘⇧4's drag). The text in the area
 // (BlurtCore ScreenText: what the edges cut is left out, wrapped lines are one again, lists, tables and code keep
-// their shape) — or its translation — is on the clipboard, and when the cursor was in a text field it is typed there
-// too (⌘V; the clipboard keeps it, as Bob's does). Nothing is saved: no card, no file, no sound.
+// their shape) — or its translation — is on the clipboard, and ⌘V'd into the app in front when it is ready by dictation's
+// rules (BlurtCore ScreenTextPaste over DictationPastePolicy: also WeChat's input box and other fields Accessibility
+// can't read, and an app the user switched to meanwhile, as a dictation's; never a password field, Blurt itself, or a
+// focus Accessibility reads as no text field). The clipboard keeps it either way, as Bob's does. Nothing is saved: no
+// card, no file, no sound.
+//
+// What the island says is true (2026-10-30): "Pasted" only once the field, read back, shows the text
+// (DictationInsert.confirmLanding — dictation's landing check); a paste that can't be confirmed (an unreadable field,
+// a field that didn't show it within 1.5 s) says "Copied · ⌘V to paste"; no paste says "Copied".
 //
 // The optional second pass (ScreenTextRefine) reads the same picture again: when it can answer within a moment (this
-// Mac's model, warm) the copy waits for it before typing into a field; otherwise the draft goes at once and the merge
-// replaces it on the clipboard only while the clipboard still holds the draft — never something the user copied since.
-// Translate: the text, then polish.py's `translate` (the cloud polish model when set up, else the local polish model),
-// "Translating…" in the island meanwhile and the translation in it after.
+// Mac's model, warm) the copy waits for it before pasting; otherwise the draft goes at once and the merge replaces it
+// on the clipboard only while the clipboard still holds the draft — never something the user copied since.
+// Translate: the text, then polish.py's `translate` into Settings → Copy Text from Screen → "⌥T translates into" (⌥T's
+// own: ScreenTranslateConfig; Auto = your own language ↔ the other one, TranslateAutoPair; a fixed language always
+// gives that language — a text already in it is copied as it is, and the island says so), by the cloud model when it
+// is set up and ⌥T's own cloud switch is on, else this Mac's polish model. "Translating…" in the island meanwhile; then one status line in the island and the translation
+// in a card under it (ScreenTextCard: Copy, Esc, gone after 10 s unless pointed at).
 import AppKit
 import BlurtCore
 import Carbon.HIToolbox
@@ -19,22 +29,31 @@ final class ScreenTextCopy {
     static let toastKey = "screen_text"
     private var drag: TextDragPicker?
 
-    /// The general pasteboard; tests: BLURT_TEST_PASTEBOARD names a private one (the user's clipboard stays theirs).
-    static var pasteboard: NSPasteboard {
-        let env = ProcessInfo.processInfo.environment
-        if env["BLURT_TEST_COMMANDS"] == "1", let n = env["BLURT_TEST_PASTEBOARD"], !n.isEmpty { return NSPasteboard(name: .init(n)) }
-        return .general
-    }
+    /// The clipboard the result goes on: the general one; a test build's own (DictationInsert.pasteboard:
+    /// BLURT_TEST_PASTEBOARD, else one of the process's) — a test never touches the user's clipboard.
+    static var pasteboard: NSPasteboard { DictationInsert.pasteboard }
 
-    /// Where the result is typed: the app in front and its focused element, read before the drag — only a text field
-    /// Accessibility can see (never a password field, never with secure input on); nil = copy only.
-    struct Field { let pid: pid_t; let role: String? }
-    static func fieldInFront() -> Field? {
-        guard AXIsProcessTrusted(), !IsSecureEventInputEnabled(), let front = NSWorkspace.shared.frontmostApplication,
-              front.processIdentifier != getpid() else { return nil }
-        let f = DictationInsert.focusedElement()
-        guard f.editable, !f.secure, f.pid == nil || f.pid == front.processIdentifier else { return nil }
-        return Field(pid: front.processIdentifier, role: f.role)
+    /// The app the key was pressed in (the drag's windows never take the focus from it). The result is pasted into the
+    /// app in front when it is ready, also one the user switched to while it was read or translated (as a dictation's,
+    /// 2026-10-31); whether it changed is only logged (`app_changed`). nil: the clipboard only (a failed translation's
+    /// original, a text already in ⌥T's language).
+    struct Target { let pid: pid_t? }
+
+    static func target() -> Target { Target(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier) }
+
+    /// What ScreenTextPaste decides now, from what DictationInsert.situation() reads now (as a dictation's paste does
+    /// at its paste: an Electron app's field woken at the key-down is readable by then). Test builds: the test pad when
+    /// it is open (a text view of our own, never another app), else the clipboard only. → the decision, the focused
+    /// element's role and whether the app in front isn't `t`'s any more (both for the log).
+    static func decide(_ t: Target?) -> (decision: ScreenTextPaste.Decision, role: String?, appChanged: Bool) {
+        guard let t = t else { return (.copy(reason: "no_target"), nil, false) }
+        if DictationInsert.testMode {
+            guard DictationTestPad.textView != nil else { return (.copy(reason: "test_mode"), nil, false) }
+            return (ScreenTextPaste.decide(.init(hasFrontApp: true, frontIsBlurt: false, secureInput: false, accessibility: true,
+                                                 focusIsText: true)), "test_pad", false)
+        }
+        let now = DictationInsert.situation()
+        return (ScreenTextPaste.decide(now.situation), now.focus.role, now.front != nil && now.front?.processIdentifier != t.pid)
     }
 
     func cancel() { drag?.close(); drag = nil }
@@ -43,20 +62,24 @@ final class ScreenTextCopy {
         guard let app = app, app.resident, app.picker == nil, drag == nil else { return }
         guard Snapper.screenAllowed else {
             emit(["event": "screen_text_failed", "screen_recording": false, "stage": "picker"])
-            return ScreenHelp.show(.snap, grant: .missing)
+            return ScreenHelp.show(.text, grant: .missing)
         }
         if NoteBubble.shared.isOpen { NoteBubble.shared.commit() }
+        ScreenTextCard.shared.close(why: "new_capture")
         // the second pass on this Mac (or the translation's model): asked to warm up while the user drags
         if ScreenTextRefine.mode == .local {
             if ScreenTextRefine.installed == true { ScreenTextRefine.shared.warm() } else { ScreenTextRefine.refreshInstalled { if ScreenTextRefine.installed == true { ScreenTextRefine.shared.warm() } } }
         }
         if translate { Self.warmTranslator() }
-        let field = Self.fieldInFront()
+        // an Electron app's text field is only readable once its tree is asked for (as dictation's key-down does):
+        // then the paste can be confirmed
+        DictationField.wakeWebAccessibility(NSWorkspace.shared.frontmostApplication)
+        let target = Self.target()
         let p = TextDragPicker { [weak self] r, crop in
             unregisterHotkey(.pickEsc)
             self?.drag = nil
             guard let r = r else { return }
-            self?.read(r, via: via, translate: translate, field: field, still: crop)
+            self?.read(r, via: via, translate: translate, target: target, still: crop)
         }
         drag = p
         registerHotkey(.pickEsc, key: kVK_Escape, mods: 0)
@@ -64,7 +87,7 @@ final class ScreenTextCopy {
     }
 
     /// `region`: global top-left points. Tests call it directly (`screentext x,y,w,h [PNG]`, `screentranslate …`).
-    func read(_ region: CGRect, via: String, translate: Bool = false, field: Field? = nil, still: CGImage? = nil) {
+    func read(_ region: CGRect, via: String, translate: Bool = false, target: Target? = nil, still: CGImage? = nil) {
         let t0 = CACurrentMediaTime()
         // the drag's own still when it has one (what the user saw), else a capture of the region
         let take: (@escaping (CGImage?, CGFloat) -> Void) -> Void = { f in
@@ -72,7 +95,7 @@ final class ScreenTextCopy {
         }
         take { [weak self] img, _ in
             guard let self = self else { return }
-            guard let img = img else { return snapper.snapFailed() }
+            guard let img = img else { return snapper.snapFailed(use: .text) }
             let words = Array(DictationVocabulary.shared.active().prefix(100).map(\.term))
             let shot = CACurrentMediaTime()
             DispatchQueue.global(qos: .userInitiated).async {
@@ -81,14 +104,15 @@ final class ScreenTextCopy {
                     let text = r?.text ?? ""
                     var ev: [String: Any] = ["event": "screen_text", "via": via, "chars": text.count, "lines": text.split(separator: "\n").count,
                                              "capture_ms": Int((shot - t0) * 1000), "vision_ms": r?.ms ?? 0,
-                                             "ms": Int((CACurrentMediaTime() - t0) * 1000), "translate": translate, "field": field != nil]
+                                             "ms": Int((CACurrentMediaTime() - t0) * 1000), "translate": translate,
+                                             "target": target != nil]
                     if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { ev["text"] = text }   // never in a real run's log
                     emit(ev)
                     guard !text.isEmpty else {
                         island.toast(Loc.t("capture.text.none", table: "Capture"), key: Self.toastKey, seconds: 3)
                         return
                     }
-                    if translate { self.translate(text, image: img, field: field) } else { self.copy(text, image: img, field: field) }
+                    if translate { self.translate(text, image: img, target: target) } else { self.copy(text, image: img, target: target) }
                 }
             }
         }
@@ -96,21 +120,25 @@ final class ScreenTextCopy {
 
     // MARK: copy
 
-    private func copy(_ draft: String, image: CGImage, field: Field?) {
+    private func copy(_ draft: String, image: CGImage, target: Target?) {
         let refine = ScreenTextRefine.shared
-        // typing into a field: wait for a second pass that can answer at once, so the field gets the better text
-        if field != nil, ScreenTextRefine.quick {
+        let said = { (o: ScreenTextPaste.Outcome) in
+            island.toast(Loc.t(ScreenTextPaste.lineKey(o, translate: false), table: "Capture"), key: Self.toastKey, icon: .check,
+                         seconds: o == .unconfirmed ? 5 : 2)
+        }
+        // pasting: wait for a second pass that can answer at once, so the field gets the better text
+        if ScreenTextRefine.quick, Self.decide(target).decision == .paste {
             var sent = false
             let send: (String) -> Void = { [weak self] t in
                 guard !sent else { return }
                 sent = true
-                self?.deliver(t, field: field)
+                self?.deliver(t, target: target, done: said)
             }
             refine.read(image: image, draft: draft) { r in send((r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? draft) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { send(draft) }
             return
         }
-        let changeCount = deliver(draft, field: field)
+        let changeCount = deliver(draft, target: target, done: said)
         refine.read(image: image, draft: draft) { r in
             guard let t = r?["text"] as? String, !t.isEmpty, t != draft else { return }
             let pb = Self.pasteboard
@@ -124,46 +152,96 @@ final class ScreenTextCopy {
         }
     }
 
-    /// `text` on the clipboard, and typed into `field` when it is still the app in front → the clipboard's changeCount.
+    /// `text` on the clipboard, and ⌘V'd into the app in front when ScreenTextPaste says so → the clipboard's
+    /// changeCount. `done` (main queue) gets what became of it — for a paste once the field, read back, shows the
+    /// text, or once that can't be told (DictationInsert.confirmLanding; at most 1.5 s).
     @discardableResult
-    private func deliver(_ text: String, field: Field?, toast: String? = nil) -> Int {
+    private func deliver(_ text: String, target: Target?, done: @escaping (ScreenTextPaste.Outcome) -> Void) -> Int {
         let pb = Self.pasteboard
-        var typed = false
-        if let f = field, NSWorkspace.shared.frontmostApplication?.processIdentifier == f.pid {
-            typed = DictationInsert.pasteKeeping(text, on: pb)
+        let (decision, role, appChanged) = Self.decide(target)
+        var pasted = false
+        // the field as it is before the paste (dictation's way): read back after it, it says whether the text went in
+        var field: DictationField?, before: (text: String, selection: NSRange)?
+        if decision == .paste {
+            field = DictationField.focused()
+            before = field?.read()
+            pasted = DictationInsert.pasteKeeping(text, on: pb)
         } else {
             pb.clearContents()
             pb.setString(text, forType: .string)
         }
-        emit(["event": "screen_text_delivered", "typed": typed, "field": field != nil, "chars": text.count])
-        island.toast(toast ?? Loc.t(typed ? "capture.text.typed" : "capture.text.copied", table: "Capture"),
-                     key: Self.toastKey, icon: toast == nil ? .check : nil, seconds: toast == nil ? 2 : 8)
-        return pb.changeCount
+        let count = pb.changeCount
+        let t0 = CACurrentMediaTime()
+        let finish = { (seen: Double?) in
+            let o = ScreenTextPaste.outcome(pasted: pasted, seen: seen != nil)
+            var ev: [String: Any] = ["event": "screen_text_delivered", "outcome": o.rawValue, "typed": o == .pasted,
+                                     "pasted": pasted, "role": role ?? NSNull(), "readable": before != nil,
+                                     "chars": text.count, "confirm_ms": Int((CACurrentMediaTime() - t0) * 1000),
+                                     "app_changed": appChanged]
+            if case .copy(let why) = decision { ev["why"] = why }
+            emit(ev)
+            done(o)
+        }
+        if pasted, let f = field, let b = before {
+            DictationInsert.confirmLanding(text, field: f, before: b) { finish($0) }
+        } else {
+            finish(nil)
+        }
+        return count
     }
 
     // MARK: translate
 
+    /// When this run asked polish-serve to start (⌥T's key-down): the translation waits for it from then, rather than
+    /// loading a second copy of the model through the CLI.
+    private static var warmSpawned: CFTimeInterval?
+    /// How long a translation waits for a server it started (its run file appears ~0.7 s after the spawn with a warm uv
+    /// cache; the model loads after — the request's own allowance covers that).
+    static let serverWait: CFTimeInterval = 4
+
+    /// ⌥T's settings (record.screen_text.translate): its target and its cloud switch.
+    static var translateConfig: ScreenTranslateConfig {
+        ScreenTranslateConfig(json: (recordConfig()["screen_text"] as? [String: Any])?["translate"] as? [String: Any])
+    }
+    static func setTranslateConfig(_ c: ScreenTranslateConfig) {
+        var o = recordConfig()["screen_text"] as? [String: Any] ?? [:]
+        o["translate"] = c.json
+        setRecordConfig("screen_text", o)
+    }
+    /// The first launch with ⌥T's own settings (2026-10-30): Auto, the cloud switch as dictation's was.
+    static func migrateTranslateConfig() {
+        guard (recordConfig()["screen_text"] as? [String: Any])?["translate"] == nil else { return }
+        setTranslateConfig(ScreenTranslateConfig.migrated(from: Dictation.translateConfig))
+        emit(["event": "screen_translate_migrated", "cloud": Dictation.translateConfig.cloud])
+    }
+    /// The cloud model ⌥T translates with: the Translate job's (Settings → Models), nil when it runs on this Mac.
+    static var translateCloud: [String: Any]? { CloudStore.payload(.translate) }
+
     static func warmTranslator() {
-        guard ScreenTextRefine.cloudPayload == nil, !WarmServer.running("polish-serve") else { return }
-        _ = WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve")
+        guard translateCloud == nil, !WarmServer.running("polish-serve") else { return }
+        if WarmSpawn.start("polish.py", ["serve", "--preload"], server: "polish-serve") != nil { warmSpawned = CACurrentMediaTime() }
     }
 
-    private func translate(_ text: String, image: CGImage, field: Field?) {
+    private func translate(_ text: String, image: CGImage, target: Target?) {
         island.toast(Loc.t("capture.text.translating", table: "Capture"), key: Self.toastKey, seconds: 30)
-        let cloud = ScreenTextRefine.cloudPayload
-        // Settings → Dictation → Translate into, shared with dictation: auto (Chinese ↔ English), or a language — and
-        // the user's own when the text is in it already (v1.0.6)
-        let target = Dictation.translateConfig.target.request(home: Dictation.homeLanguage)
+        let cloud = Self.translateCloud
+        // "⌥T translates into": Auto (your own language ↔ the other one, "auto:H|O"), or a language — always that
+        // language: a text already in it comes back as it is (`X|keep`, 2026-10-30)
+        let into = Self.translateConfig.target.request(auto: TranslateTargets.pair)
         let t0 = CACurrentMediaTime()
+        // the server this press started: wait for it (from the key-down), not the CLI — the dogfood's first ⌥T after
+        // every launch checked once, found nothing yet, and fell to the CLI
+        let until = Self.warmSpawned.map { $0 + Self.serverWait } ?? 0
         DispatchQueue.global(qos: .userInitiated).async {
             var r: [String: Any]?
+            while !WarmServer.running("polish-serve") && CACurrentMediaTime() < until { usleep(50_000) }
             if WarmServer.running("polish-serve") {
-                var req: [String: Any] = ["cmd": "translate", "text": text, "target": target]
+                var req: [String: Any] = ["cmd": "translate", "text": text, "target": into]
                 if let c = cloud { req["cloud"] = c }
                 r = WarmServer.call("polish-serve", req, timeout: 40)
             }
             if r == nil {       // no server (yet): the CLI, the key on stdin
-                var o: [String: Any] = ["text": text, "target": target]
+                var o: [String: Any] = ["text": text, "target": into]
                 if let c = cloud { o["cloud"] = c }
                 let body = try? JSONSerialization.data(withJSONObject: o)
                 let sem = DispatchSemaphore(value: 0)
@@ -175,19 +253,45 @@ final class ScreenTextCopy {
             }
             DispatchQueue.main.async {
                 let out = (r?["ok"] as? Bool == true ? r?["text"] as? String : nil) ?? ""
+                let kept = out.isEmpty ? nil : DictationTranslateRoute.keptAsIs(request: into, source: text, output: out)
                 var ev: [String: Any] = ["event": "screen_translate", "ok": !out.isEmpty, "ms": Int((CACurrentMediaTime() - t0) * 1000),
-                                         "cloud": r?["cloud"] ?? NSNull(), "model": r?["model"] ?? NSNull()]
+                                         "cloud": r?["cloud"] ?? NSNull(), "model": r?["model"] ?? NSNull(), "target": into,
+                                         "already": kept?.rawValue ?? NSNull()]
                 if let e = r?["cloud_error"] { ev["cloud_error"] = e }
                 if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { ev["text"] = out }
                 emit(ev)
-                guard !out.isEmpty else {
-                    // the text itself still helps: copied, and said so
-                    self.deliver(text, field: nil, toast: Loc.t("capture.text.translate_failed", table: "Capture"))
-                    return
+                guard !out.isEmpty else { return self.failed(text, image: image, target: target) }
+                if let x = kept { return self.alreadyIn(x, text) }
+                // the card under the island shows the whole translation, with Copy; the translation is on the
+                // clipboard (and pasted by dictation's rules), and the island's one line says what became of it
+                ScreenTextCard.shared.show(out)
+                self.deliver(out, target: target) { o in
+                    island.toast(Loc.t(ScreenTextPaste.lineKey(o, translate: true), table: "Capture"), key: Self.toastKey,
+                                 icon: .check, seconds: 5)
                 }
-                // the translation shows in the island (to read it here), and is on the clipboard / in the field
-                self.deliver(out, field: field, toast: String(out.prefix(280)))
             }
+        }
+    }
+
+    /// The translation failed: the text itself still helps — copied, and said so, with Try Again on the same text (a
+    /// server still loading answers the next try). Never pasted: it isn't what was asked for.
+    private func failed(_ text: String, image: CGImage, target: Target?) {
+        deliver(text, target: nil) { _ in
+            island.toast(Loc.t("capture.text.translate_failed", table: "Capture"), key: Self.toastKey, icon: .warning, seconds: 8,
+                         actionTitle: Loc.t("capture.text.try_again", table: "Capture"), action: { [weak self] in
+                emit(["event": "screen_translate_retry"])
+                Self.warmTranslator()
+                self?.translate(text, image: image, target: target)
+            })
+        }
+    }
+
+    /// A fixed language the text is in already: the original, copied as it is (not pasted: it isn't a translation),
+    /// and the island says so — "Already in English · original copied". No card: the text is on the screen.
+    private func alreadyIn(_ setting: DictationTranslateTarget, _ text: String) {
+        deliver(text, target: nil) { _ in
+            island.toast(Loc.t(ScreenTextPaste.lineKey(.alreadyInTarget, translate: true), table: "Capture", Dictation.languageName(setting)),
+                         key: Self.toastKey, icon: .check, seconds: 5)
         }
     }
 }
@@ -237,6 +341,12 @@ final class TextDragPicker {
             guard let self = self, !self.finished else { return }
             self.windows.forEach { $0.alphaValue = 1 }
             self.redraw()
+            // no still at all with Screen Recording allowed: a stale grant, said before the drag
+            Snapper.checkStills(self.stills.stills.count, use: .text) { [weak self] in
+                guard let self = self, !self.finished else { return }
+                self.start = nil
+                self.finish()
+            }
         }
         // the key window under the pointer takes Esc without activating Blurt; the crosshair from the first move
         windows.first { $0.frame.contains(NSEvent.mouseLocation) }?.makeKey()
@@ -307,7 +417,6 @@ final class TextDragView: NSView {
                 edge.stroke()
             }
         }
-        Loupe.draw(pointer: p.pointer, in: self, stills: p.stills,
-                   label: p.selection.map(Loupe.sizeLabel) ?? Loupe.pointLabel(p.pointer))
+        Loupe.draw(pointer: p.pointer, in: self, stills: p.stills, label: p.selection.map(Loupe.sizeLabel))
     }
 }
