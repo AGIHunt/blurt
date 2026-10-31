@@ -204,7 +204,8 @@
 
 /* Dictation’s choices compared (Settings → Models: the lead line and Compare…; DictationCompare.swift). Numbers come
    from BlurtCore DictationChoices (docs/design/dictation-eval-2026-10-31.md §7), never from these strings. */
-"speech.compare.lead" = "Recommended: %1$@";
+"speech.compare.lead" = "Recommended for dictation: %1$@";
+"speech.compare.lead.in_use" = "Recommended for dictation: %1$@ · In use";
 "speech.compare.open" = "Compare…";
 "speech.compare.menu" = "Compare Choices…";
 "speech.compare.title" = "Dictation choices";

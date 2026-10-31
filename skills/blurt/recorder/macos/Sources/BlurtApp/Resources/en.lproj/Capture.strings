@@ -320,6 +320,7 @@
 "capture.voice.time_left" = "%@ left";
 "capture.voice.maxed" = "Reached the %@ limit. Voice note saved.";
 "capture.voice.words_failed" = "Couldn’t transcribe";
+"capture.voice.needs_model" = "Voice notes need a speech model · recording kept";
 "capture.voice.structured" = "Structured";
 "capture.voice.structured_tip" = "Turns into a list when you finish, keeping only your corrections (or press ⇧ alone)";
 "capture.voice.structured_off_tip" = "Back to your own words (or press ⇧ alone)";
@@ -328,6 +329,7 @@
 "capture.voice.structured_on" = "Structured: a list when you finish, keeping only your corrections · ⇧ to go back";
 "capture.voice.structured_off" = "Back to your own words";
 "capture.voice.structure_failed" = "Couldn’t structure it. Kept as you said it.";
+"capture.voice.structure_needs_model" = "Structuring needs a cloud model or a local polish model · kept as said";
 "capture.live.ax" = "What you’ve said so far";
 "capture.live.more" = "… %ld more lines";
 "capture.voice_drop.hint_paste" = "Let go to paste into %@";
@@ -383,6 +385,10 @@
 "capture.text.typed" = "Pasted";
 "capture.text.translating" = "Translating…";
 "capture.text.translate_failed" = "Couldn’t translate · original copied";
+"capture.text.translate_needs_model" = "Translating needs a cloud model or a local polish model";
+"capture.text.translate_key" = "The translation key isn’t valid · original copied";
+"capture.text.translate_quota" = "Translation service out of quota or busy · original copied";
+"capture.text.translate_offline" = "Can’t reach the translation service · original copied";
 "capture.text.try_again" = "Try Again";
 "capture.text.no_permission" = "Copying text from the screen needs Screen Recording";
 "capture.text.stale" = "Can’t read the screen — allow Screen Recording again";

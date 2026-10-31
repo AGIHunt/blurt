@@ -181,16 +181,21 @@ class Recommend(unittest.TestCase):
 
     def test_apple_pro(self):
         h = hw(ram=128)
-        # Chinese / English / Cantonese: one Qwen3-ASR for every job (v1.0.2) — the 0.6B, a pro Mac too (v1.0.6)
+        # Chinese / English: one Qwen3-ASR for every job (v1.0.2) — the one dictation runs on, the 1.7B (v1.0.7)
         for purpose in ("batch", "live", "note"):
-            self.assertEqual(self.pick(h, ["zh", "en"], purpose), "qwen3-asr-0.6b-mlx")
+            self.assertEqual(self.pick(h, ["zh", "en"], purpose), "qwen3-asr-1.7b-mlx")
+        # on battery too: a recording doesn't swap dictation's model for a smaller one
+        self.assertEqual(self.pick(hw(ram=128, battery=True), ["zh", "en"]), "qwen3-asr-1.7b-mlx")
+        # a base M1 / M2 (too slow for the 1.7B): the 0.6B, as before
+        slow = {**h, "chip": "Apple M2"}
+        self.assertEqual(self.pick(slow, ["zh", "en"]), "qwen3-asr-0.6b-mlx")
         self.assertEqual(self.pick(h, ["ja", "en"]), "whisper-large-v3-turbo-mlx")       # Japanese: Whisper
         self.assertEqual(self.pick(h, ["de", "en"], "note"), "whisper-large-v3-turbo-mlx")
 
     def test_apple_one_model_for_chinese_and_english(self):
         for purpose in ("batch", "live", "note"):
-            self.assertEqual(self.pick(hw(ram=16), ["zh", "en"], purpose), "qwen3-asr-0.6b-mlx")
-            self.assertEqual(self.pick(hw(ram=24), ["en"], purpose), "qwen3-asr-0.6b-mlx")
+            self.assertEqual(self.pick(hw(ram=16), ["zh", "en"], purpose), "qwen3-asr-1.7b-mlx")
+            self.assertEqual(self.pick(hw(ram=24), ["en"], purpose), "qwen3-asr-1.7b-mlx")
         self.assertEqual(self.pick(hw(ram=8, perf=4, eff=4), ["zh", "en"], "note"), "sensevoice-small")   # light
 
     def test_apple_standard(self):
@@ -597,6 +602,24 @@ class CLI(unittest.TestCase):
         self.assertEqual(set(out["models"]), set(T.PURPOSES))
         for n in out["needs_download"]:
             self.assertTrue(n["size_mb"] > 0 and n["purposes"])
+
+    def test_auto_apply_pins_only_the_recommended(self):
+        # a stand-in (a Whisper from a shared cache while the 1.7B isn't in) is never pinned: once the 1.7B is in,
+        # it runs — before the next `auto --apply`
+        probe = T.probe
+        T.probe = lambda *a, **k: {**hw(ram=128), "fingerprint": "test"}
+        real = fake_installed("apple-speech", "whisper-large-v3-turbo-mlx", "silero-vad")
+        try:
+            with config({"asr": {"languages": ["zh", "en"]}}):
+                out = T.auto_plan(True)
+                self.assertEqual(out["models"]["batch"], "whisper-large-v3-turbo-mlx")
+                self.assertEqual(T.global_config()["asr"]["models"], {})
+                T.installed = lambda m: m["id"] in ("apple-speech", "whisper-large-v3-turbo-mlx", "qwen3-asr-1.7b-mlx",
+                                                    "silero-vad")
+                T.auto_plan(True)
+                self.assertEqual(T.global_config()["asr"]["models"]["note"], "qwen3-asr-1.7b-mlx")
+        finally:
+            T.probe, T.installed = probe, real
 
 
 # ------------------------------------------------------------------ installs, metric, language codes

@@ -246,7 +246,11 @@ final class ScreenTextCopy {
                 let body = try? JSONSerialization.data(withJSONObject: o)
                 let sem = DispatchSemaphore(value: 0)
                 Task {
-                    r = try? await ScriptRunner.shared.json("polish.py", ["translate", "--stdin"], stdin: body, timeout: 60)
+                    do {
+                        r = try await ScriptRunner.shared.json("polish.py", ["translate", "--stdin"], stdin: body, timeout: 60)
+                    } catch ScriptError.failed(_, let stdout, _) {
+                        r = Scripts.json(stdout)        // {"ok": false, "code": …}: why, for the line below
+                    } catch {}
                     sem.signal()
                 }
                 sem.wait()
@@ -260,7 +264,16 @@ final class ScreenTextCopy {
                 if let e = r?["cloud_error"] { ev["cloud_error"] = e }
                 if ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1" { ev["text"] = out }
                 emit(ev)
-                guard !out.isEmpty else { return self.failed(text, image: image, target: target) }
+                guard !out.isEmpty else {
+                    let why = TranslateFailure(r?["code"] as? String)
+                    // nothing here can translate (no cloud model, no local one downloaded yet): say what it takes, with
+                    // the way there — "failed" with Try Again would only fail again
+                    if why == .noModel { return self.needsModel() }
+                    guard cloud == nil, why == .other else { return self.failed(text, image: image, target: target, why: why) }
+                    return Dictation.shared.refreshPolishModel {
+                        if Dictation.shared.polishModel == nil { self.needsModel() } else { self.failed(text, image: image, target: target) }
+                    }
+                }
                 if let x = kept { return self.alreadyIn(x, text) }
                 // the card under the island shows the whole translation, with Copy; the translation is on the
                 // clipboard (and pasted by dictation's rules), and the island's one line says what became of it
@@ -275,15 +288,33 @@ final class ScreenTextCopy {
 
     /// The translation failed: the text itself still helps — copied, and said so, with Try Again on the same text (a
     /// server still loading answers the next try). Never pasted: it isn't what was asked for.
-    private func failed(_ text: String, image: CGImage, target: Target?) {
+    /// `why`: the cloud's key refused (Settings, not Try Again), out of quota, unreachable — said in the line.
+    private func failed(_ text: String, image: CGImage, target: Target?, why: TranslateFailure = .other) {
+        let key = [TranslateFailure.key: "capture.text.translate_key", .quota: "capture.text.translate_quota",
+                   .offline: "capture.text.translate_offline"][why] ?? "capture.text.translate_failed"
         deliver(text, target: nil) { _ in
-            island.toast(Loc.t("capture.text.translate_failed", table: "Capture"), key: Self.toastKey, icon: .warning, seconds: 8,
+            if why.needsSettings {
+                return island.toast(Loc.t(key, table: "Capture"), key: Self.toastKey, icon: .warning, seconds: 8,
+                                    actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
+                    AppEnvironment.settings?.show(pane: "speech/speech.services")
+                })
+            }
+            island.toast(Loc.t(key, table: "Capture"), key: Self.toastKey, icon: .warning, seconds: 8,
                          actionTitle: Loc.t("capture.text.try_again", table: "Capture"), action: { [weak self] in
                 emit(["event": "screen_translate_retry"])
                 Self.warmTranslator()
                 self?.translate(text, image: image, target: target)
             })
         }
+    }
+
+    /// No model to translate with: where to get one (Settings → Models, its cloud services and the download).
+    private func needsModel() {
+        emit(["event": "screen_translate_unavailable"])
+        island.toast(Loc.t("capture.text.translate_needs_model", table: "Capture"), key: Self.toastKey, icon: .warning, seconds: 8,
+                     actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
+            AppEnvironment.settings?.show(pane: "speech/speech.services")
+        })
     }
 
     /// A fixed language the text is in already: the original, copied as it is (not pasted: it isn't a translation),

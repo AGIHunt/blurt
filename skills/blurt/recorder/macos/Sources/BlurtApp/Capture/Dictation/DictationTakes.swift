@@ -528,6 +528,13 @@ extension Dictation {
                                                    confirmed: DictationInsert.lastPasteConfirmed,
                                                    noField: DictationInsert.lastNoField)
             switch line {
+            case .copied where DictationInsert.lastCopyReason == "no_accessibility" && !AXIsProcessTrusted():
+                // only copied because Accessibility is off (only Input Monitoring granted, or a grant gone stale after
+                // an update): say why, with the way to fix it — else every take is "Copied" and nothing says why
+                island.toast(Loc.t("dictation.toast.copied.ax", table: "Dictation"), key: Dictation.toastKey, seconds: 6,
+                             actionTitle: Loc.t("dictation.toast.set_up", table: "Dictation"), action: {
+                    Dictation.shared.openSetup(from: "island")
+                })
             case .copied, .copiedNotSent:
                 // copied (and, after a double tap, not sent: said in the same line); a plain copy is done, so it
                 // carries the ok check as every done line
@@ -665,6 +672,13 @@ extension Dictation {
         if Dictation.polishOn, polishModel == nil, take.style?.base.polishes ?? true, Dictation.onceADay("polish_missing") {
             emit(["event": "dictation_notice", "notice": "polish_missing"])
             return notice("dictation.toast.no_polish", button: "dictation.toast.no_model.get", action: { Dictation.getPolishModel(from: "island") })
+        }
+        // cloud polish's key was refused (expired, revoked, out of credit): the local model polished instead, or
+        // nothing did — every take quietly worse until the key is fixed
+        if let e = r.polishCloudError, e == "auth", Dictation.onceADay("polish_cloud_key") {
+            emit(["event": "dictation_notice", "notice": "polish_cloud_key"])
+            return notice("dictation.toast.polish_cloud_key", button: "dictation.translate.toast.setup",
+                          action: { AppEnvironment.settings?.show(pane: "speech/speech.services") })
         }
         // the recommended speech model isn't there: a weaker one ran (it may not know the user's words)
         // (not when the model that ran is the one the user chose)

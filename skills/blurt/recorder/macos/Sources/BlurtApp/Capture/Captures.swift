@@ -403,13 +403,15 @@ final class Snapper {
             if let d = Snapper.testWordsDelay { Thread.sleep(forTimeInterval: d) }
             let r = fail ? nil : Snapper.testWords.map { ["ok": true, "text": $0] } ?? VoiceInput.transcribePiece(wav, prior: "")
             let text = (r?["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            DispatchQueue.main.async { self.wordsArrived(s, text, key: key, take: take, via: "whole") }
+            let why = r == nil && !fail ? VoiceInput.lastPieceFailure : nil
+            DispatchQueue.main.async { self.wordsArrived(s, text, key: key, take: take, via: "whole", why: why) }
         }
     }
 
     /// The words of `s` are in (nil: transcription failed; "": no speech in it). `take`: which recording they are of
     /// (the words of a take since replaced by a re-record are dropped: voiceReplaced).
-    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String, structured: Bool = false) {
+    private func wordsArrived(_ s: Shot, _ text: String?, key: ObjectIdentifier, take: Int, via: String, structured: Bool = false,
+                              why: String? = nil) {
         guard take == wordsTake[key] ?? 0 else {
             return emit(["event": "voice_text_stale", "n": s.n, "via": via])
         }
@@ -435,7 +437,7 @@ final class Snapper {
             } else {
                 s.transcription = .failed
                 // the cards may be tucked away: the island says it, with Retry (the card's menu has it too)
-                if !quiet { wordsToast(s, "capture.voice.words_failed") }
+                if !quiet { failedToast(s, why) }
             }
             hanging.update(s)
         } else if s.transcription == .pending {
@@ -451,6 +453,8 @@ final class Snapper {
     private func structureWords(_ s: Shot, _ raw: String, key: ObjectIdentifier, take: Int, via: String) {
         let vocab = DictationVocabulary.shared.payload()
         let t0 = CACurrentMediaTime()
+        // nothing here could structure it: no cloud model, no local polish model downloaded
+        let noModel = DictationCloud.payload() == nil && Dictation.shared.polishModel == nil
         s.transcription = .pending
         hanging.update(s)
         DispatchQueue.global(qos: .userInitiated).async {
@@ -465,15 +469,23 @@ final class Snapper {
                       "list": r?["list"] as? Bool ?? false, "fell_back": fellBack, "reason": r?["reason"] ?? NSNull(),
                       "changed": k.raw != nil])
                 s.saidRaw = k.raw
-                if r == nil { island.toast(Loc.t("capture.voice.structure_failed", table: "Capture"), key: "voice-style", seconds: 5) }
+                if r?["reason"] as? String == "model_missing" || (r == nil && noModel) {
+                    // say what it takes, with the way there (a bare "couldn't" would fail the same way every note)
+                    island.toast(Loc.t("capture.voice.structure_needs_model", table: "Capture"), key: "voice-style", seconds: 8,
+                                 actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation"), action: {
+                        AppEnvironment.settings?.show(pane: "speech/speech.polish")
+                    })
+                } else if r == nil {
+                    island.toast(Loc.t("capture.voice.structure_failed", table: "Capture"), key: "voice-style", seconds: 5)
+                }
                 self.wordsArrived(s, k.said, key: key, take: take, via: via, structured: true)
             }
         }
     }
 
     /// "Couldn't turn the note into words · Retry" / "No words recognized · Retry".
-    private func wordsToast(_ s: Shot, _ key: String) {
-        var t = Island.Toast(text: Loc.t(key, table: "Capture"), actionTitle: Loc.t("capture.retry", table: "Capture")) { [weak self] in
+    private func wordsToast(_ s: Shot, _ key: String, table: String = "Capture") {
+        var t = Island.Toast(text: Loc.t(key, table: table), actionTitle: Loc.t("capture.retry", table: "Capture")) { [weak self] in
             self?.retryWords(s)
         }
         t.seconds = 8
@@ -481,6 +493,33 @@ final class Snapper {
         // same text would take each other's place
         t.key = Snapper.wordsToastKey(s)
         island.toast(t)
+    }
+    /// Words that didn't come, and why when the speech tools said (DictationASRFailure: dictation's lines): no model →
+    /// where to get one; a cloud key refused → Settings (Retry would fail the same way); offline / out of quota → that,
+    /// with Retry; else "Couldn't transcribe · Retry".
+    private func failedToast(_ s: Shot, _ why: String?) {
+        if why == "model_missing" {
+            var t = Island.Toast(text: Loc.t("capture.voice.needs_model", table: "Capture"),
+                                 actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
+                AppEnvironment.settings?.show(pane: "speech/speech.download")
+            }
+            t.seconds = 8
+            t.key = Snapper.wordsToastKey(s)
+            return island.toast(t)
+        }
+        let line = DictationASRFailure.failed(why ?? "").line
+        switch line {
+        case .cloudKey:
+            var t = Island.Toast(text: Loc.t(line.key, table: "Dictation"),
+                                 actionTitle: Loc.t("dictation.toast.asr_cloud_key.action", table: "Dictation")) {
+                AppEnvironment.settings?.show(pane: "speech/speech.cloud")
+            }
+            t.seconds = 8
+            t.key = Snapper.wordsToastKey(s)
+            island.toast(t)
+        case .cloudOffline, .cloudQuota: wordsToast(s, line.key, table: "Dictation")
+        default: wordsToast(s, "capture.voice.words_failed")
+        }
     }
     static func wordsToastKey(_ s: Shot) -> String { "capture.words.\(ObjectIdentifier(s).hashValue)" }
     /// transcriptions started at launch (restore): no toast each — the cards show it

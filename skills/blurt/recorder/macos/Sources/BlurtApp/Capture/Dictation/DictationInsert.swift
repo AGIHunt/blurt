@@ -109,6 +109,9 @@ enum DictationInsert {
             }
             return paste(text, into: tv, window: tv.window, before: before ?? (tv.string, tv.selectedRange()), done: done)
         }
+        // one of our fields has the keyboard — the note bubble's (BA-69: a non-activating panel, so another app is in
+        // front, yet the typing goes to the bubble), a sheet's, the command palette's: the take goes there too
+        if let (w, tv) = ownField() { return paste(text, into: tv, window: w, done: done) }
         let now = situation()
         let front = now.front, focus = now.focus, isText = now.situation.focusIsText
         let decision = DictationPastePolicy.decide(now.situation)
@@ -247,13 +250,21 @@ enum DictationInsert {
             }
             return
         }
-        // panels are the island, the note bubble, cards: never typed into
-        guard let w = NSApp.keyWindow, !(w is NSPanel), let tv = w.firstResponder as? NSTextView, tv.isEditable else {
+        // a field of ours with the keyboard got it in insert(); anything else here (the island, a card, a list) gets nothing
+        guard let (w, tv) = ownField() else {
             copy(text)
             emit(["event": "dictation_insert", "result": "copied", "why": "own_window"])
             return done(.copied)
         }
         paste(text, into: tv, window: w, done: done)
+    }
+
+    /// The field of ours the keyboard goes to: an editable text view first responder of our key window — a panel too
+    /// (the note bubble, a sheet, the command palette; the island and cards take no typing). Never a password field.
+    private static func ownField() -> (NSWindow, NSTextView)? {
+        guard let w = NSApp.keyWindow, w.isKeyWindow, w.isVisible, let tv = w.firstResponder as? NSTextView, tv.isEditable,
+              !((tv.delegate as? NSView) is NSSecureTextField) else { return nil }
+        return (w, tv)
     }
 
     /// The web view a responder is (or is inside).

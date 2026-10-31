@@ -320,6 +320,7 @@
 "capture.voice.time_left" = "还剩 %@";
 "capture.voice.maxed" = "已达到 %@ 上限，语音备注已保存";
 "capture.voice.words_failed" = "转写失败";
+"capture.voice.needs_model" = "语音备注需要语音模型，录音已保留";
 "capture.voice.structured" = "结构化";
 "capture.voice.structured_tip" = "结束后整理成清单，仅保留更正后的说法（也可单独按 ⇧）";
 "capture.voice.structured_off_tip" = "恢复原话（也可单独按 ⇧）";
@@ -328,6 +329,7 @@
 "capture.voice.structured_on" = "结构化：结束后整理成清单，仅保留更正后的说法 · 再按 ⇧ 切回";
 "capture.voice.structured_off" = "已切回原话";
 "capture.voice.structure_failed" = "无法整理为结构化内容，已保留原话";
+"capture.voice.structure_needs_model" = "整理需要云端模型或本机润色模型，已保留原话";
 "capture.live.ax" = "已识别的文字";
 "capture.live.more" = "…还有 %ld 行";
 "capture.voice_drop.hint_paste" = "松手粘贴到 %@";
@@ -383,6 +385,10 @@
 "capture.text.typed" = "已粘贴";
 "capture.text.translating" = "正在翻译…";
 "capture.text.translate_failed" = "翻译失败，已复制原文";
+"capture.text.translate_needs_model" = "翻译需要云端模型或本机润色模型";
+"capture.text.translate_key" = "翻译服务的 Key 无效，已复制原文";
+"capture.text.translate_quota" = "翻译服务额度已用完或请求过于频繁，已复制原文";
+"capture.text.translate_offline" = "无法连接翻译服务，已复制原文";
 "capture.text.try_again" = "再试一次";
 "capture.text.no_permission" = "从屏幕复制文字需要「屏幕录制」权限";
 "capture.text.stale" = "无法读取屏幕，请重新授权「屏幕录制」";

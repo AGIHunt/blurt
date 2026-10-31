@@ -27,6 +27,7 @@
 "dictation.toast.nothing.change" = "Change Mic…";
 "dictation.toast.nothing" = "No speech detected";
 "dictation.toast.copied" = "Copied — paste with ⌘V";
+"dictation.toast.copied.ax" = "Copied · allow Accessibility to paste automatically";
 "dictation.toast.pasted_unsure" = "Pasted";
 /* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
 "dictation.toast.no_list" = "Couldn’t make a list; the text is unchanged";
@@ -516,6 +517,7 @@
 "dictation.toast.hold_mode" = "Hold %@ to talk (you can switch to tap in Settings)";
 "dictation.toast.tap_mode" = "Let go, then tap %@ to start talking (you can switch to hold in Settings)";
 "dictation.toast.no_polish" = "No polish model downloaded — typed without polish";
+"dictation.toast.polish_cloud_key" = "The cloud polish key isn’t valid · not used this time";
 "dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may be less accurate";
 "dictation.tip.send" = "Double-tap %@ to send";
 "dictation.tip.list" = "Press ⇧ while you talk for a list";
@@ -698,6 +700,9 @@
 "dictation.translate.toast.unavailable" = "Translating needs a cloud model or a local polish model";
 "dictation.translate.toast.setup" = "Set Up…";
 "dictation.translate.toast.failed" = "Couldn’t translate · typed the original";
+"dictation.translate.toast.key" = "The translation key isn’t valid · typed as said";
+"dictation.translate.toast.quota" = "Translation service out of quota or busy · typed as said";
+"dictation.translate.toast.offline" = "Can’t reach the translation service · typed as said";
 "dictation.translate.toast.cloud_hint" = "Translated locally; a cloud model translates better";
 "dictation.translate.toast.suggest" = "Translate everything you dictate in %@?";
 "dictation.translate.toast.suggest.yes" = "Translate";

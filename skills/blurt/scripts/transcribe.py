@@ -2478,8 +2478,17 @@ def recommend(languages: list[str] | None = None, purpose: str = "batch", hw: di
     sv = entry(SV)
     sv_ok = all(speaks(sv, x) for x in langs)
     sv_good = sv_ok and all((sv.get("error_ref") or {}).get(x, 0) <= 0.05 for x in langs)
-    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good, all(x in QWEN_FIRST_LANGS for x in langs))
+    qwen_ok = all(x in QWEN_FIRST_LANGS for x in langs)
+    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good, qwen_ok)
     bench = _bench_results()
+    # v1.0.7: where dictation runs on the 1.7B (dictation_tier: 16 GB+ and fast enough), every job does — one model,
+    # one warm copy (v1.0.2), and Settings never recommends the 0.6B next to a 1.7B that is already in use. By the
+    # Mac's own tier: a recording on battery doesn't trade the model dictation already holds for a smaller one.
+    if hw_kind(hw) == "apple" and qwen_ok and hw["tier"] in ("pro", "standard"):
+        plan = dictation_tier(hw["ram_gb"], (bench.get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")),
+                              languages=langs)
+        if plan["recognizer"] == QWEN_MLX_17:
+            order = [QWEN_MLX_17] + order
     pick = None
     for mid in dict.fromkeys(order):
         m = entry(mid)
@@ -3418,13 +3427,13 @@ def auto_plan(apply: bool) -> dict:
     are installed — the rest are listed under needs_download for the host to ask about) and the hardware fingerprint."""
     cfg = asr_config()
     hw = probe()
-    picks, needs = {}, []
+    picks, needs, keep = {}, [], {}
     for p in PURPOSES:
         r = recommend(purpose=p, hw=hw, cfg=cfg)
         mid = r["pick"]["model"]
         m = entry(mid)
         if installed(m):
-            picks[p] = mid
+            picks[p] = keep[p] = mid
         else:
             fallback = select(p)  # what runs today
             picks[p] = fallback["id"]
@@ -3438,7 +3447,10 @@ def auto_plan(apply: bool) -> dict:
            "hardware_changed": cfg.get("hardware") != hw["fingerprint"]}
     if apply and is_auto(cfg):
         # a config.json that doesn't parse: nothing saved, said (not a traceback) — the picks still run as defaults
-        out["applied"] = save_config_if_readable({"asr": {"models": picks, "hardware": hw["fingerprint"]}})
+        # only the recommended picks are kept: a stand-in (what runs until the recommended one is in) stays unpinned,
+        # so select() takes the best one installed each time — a Whisper found in a shared cache on the first launch
+        # no longer outlasts the 1.7B downloaded after it (v1.0.8)
+        out["applied"] = save_config_if_readable({"asr": {"models": keep, "hardware": hw["fingerprint"]}})
         if not out["applied"]:
             out["saved"] = False
     return out

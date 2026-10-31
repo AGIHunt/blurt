@@ -161,9 +161,11 @@ enum ChoiceText {
         }
     }
 
-    /// The page's lead: "Recommended for this Mac: Qwen3-ASR 1.7B".
+    /// The page's lead: "Recommended for dictation: Qwen3-ASR 1.7B", "· In use" once it is the one dictation runs on —
+    /// so a recommendation already taken doesn't read as one still to download.
     @MainActor static func lead(_ now: DictationNow) -> String {
-        S("speech.compare.lead", name(now.recommended, base: now.base, short: false))
+        let n = name(now.recommended, base: now.base, short: false)
+        return now.inUse == now.recommended ? S("speech.compare.lead.in_use", n) : S("speech.compare.lead", n)
     }
 
     static func fit(_ f: DictationChoices.Fit) -> String? {

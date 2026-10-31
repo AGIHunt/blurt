@@ -104,7 +104,7 @@ final class DictationSettings: ObservableObject {
         MicEngine.shared.prepare(builtIn: Dictation.useBuiltInMic)
     }
     func setStartSound(_ v: Bool) { startSound = v; save("sounds", v ? nil : false) }
-    func setStopSound(_ v: Bool) { stopSound = v; save("stop_sound", v ? nil : false) }
+    func setStopSound(_ v: Bool) { stopSound = v; save("stop_sound", v ? true : nil) }
     @Published var cancelKey = Dictation.cancelKey
     func setCancelKey(_ k: Dictation.CancelKey) { cancelKey = k; save("cancel_key", k == .esc ? nil : k.rawValue) }
 

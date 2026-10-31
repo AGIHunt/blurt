@@ -154,9 +154,23 @@ extension Dictation {
     /// it better. The take went in as said (a refusal, a failure): said, every time.
     func afterTranslate(_ rec: DictationTranslateRecord) {
         if rec.fellBack {
-            toast("dictation.translate.toast.failed", key: Dictation.toastKey, seconds: 4)
             emit(["event": "dictation_translate", "action": "fell_back", "reason": rec.reason ?? ""])
-            return
+            // why, when the user can do something about it: the cloud's key (Settings), its quota, the network, no model
+            let why = TranslateFailure(rec.cloudError ?? rec.reason)
+            guard why != .other else { return toast("dictation.translate.toast.failed", key: Dictation.toastKey, seconds: 4) }
+            let key = [TranslateFailure.key: "dictation.translate.toast.key", .quota: "dictation.translate.toast.quota",
+                       .offline: "dictation.translate.toast.offline"][why] ?? "dictation.translate.toast.unavailable"
+            if why.needsSettings {
+                var t = Island.Toast(text: Loc.t(key, table: "Dictation"),
+                                     actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
+                    AppEnvironment.settings?.show(pane: "speech/speech.services")
+                })
+                t.key = Dictation.toastKey
+                t.seconds = 6
+                t.icon = .warning
+                return island.toast(t)
+            }
+            return toast(key, key: Dictation.toastKey, seconds: 4)
         }
         let said = Dictation.settings["translate_cloud_hint"] as? Bool ?? false
         let engine = DictationTranslateRoute.Engine(rawValue: rec.engine) ?? .none

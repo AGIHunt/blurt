@@ -545,7 +545,7 @@ struct SpeechPane: View {
             add(j, dictation)              // only the VAD (or the configured model) is missing: what the key needs
         }
         if let p = d.recommendedPolish, !p.installed {
-            add(.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB), dictation)
+            add(.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB), S("speech.purpose.polish"))
         }
         return out
     }
@@ -1001,7 +1001,7 @@ private struct ModelLibrary: View {
             .padding(.top, 14)
         }
         .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 760)
+        .frame(width: 820)
         .fixedSize(horizontal: false, vertical: true)
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
@@ -1248,9 +1248,11 @@ private struct ModelLibrary: View {
                 Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     .opacity(installed ? 1 : 0).frame(width: SettingsMetrics.iconSlot)
                     .accessibilityHidden(true)
-                Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1).truncationMode(.tail)
+                // a long name ("Whisper large-v3-turbo (4-bit)") wraps rather than losing its end; the tooltip names it too
+                Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(help)
+                    .help(help.isEmpty ? name : name + "\n" + help)
                 Group {
                     if used.jobs.isEmpty {
                         Text(used.text).font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()

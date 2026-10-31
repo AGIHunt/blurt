@@ -204,7 +204,8 @@
 
 /* 听写方案对比（设置 → 模型：页首一行和「对比…」；DictationCompare.swift）。数字来自 BlurtCore DictationChoices
    （docs/design/dictation-eval-2026-10-31.md §7），不写在这些文案里。 */
-"speech.compare.lead" = "推荐：%1$@";
+"speech.compare.lead" = "听写推荐：%1$@";
+"speech.compare.lead.in_use" = "听写推荐：%1$@ · 使用中";
 "speech.compare.open" = "对比…";
 "speech.compare.menu" = "对比各方案…";
 "speech.compare.title" = "听写方案";
