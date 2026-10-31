@@ -225,6 +225,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ProjectStore.shared.watch()
         JobStore.shared.start()
         JobNotifier.shared.start()
+        AgentSetupServer.start()        // setup.py's control socket (docs/design/agent-setup.md)
         Housekeeping.atLaunch()
         MemoryPressure.shared.start()
         AppEnvironment.process = { [weak self] session, captures, project in self?.process(session, captures: captures, project: project) ?? nil }

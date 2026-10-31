@@ -197,7 +197,8 @@ final class SessionsModel: ObservableObject {
                 || now.timeIntervalSince(j.ended ?? j.updated ?? j.created) < Self.keepEnded
             guard keep else { continue }
             let pid = j.project ?? "inbox"
-            let name = store.project(id: pid)?.name ?? (pid == "inbox" ? store.inbox.name : a.cwd.lastPathComponent)
+            let name = store.project(id: pid)?.name ?? (pid == "inbox" ? store.inbox.name
+                : pid == AgentSetup.project ? M("models.agent.session") : a.cwd.lastPathComponent)
             guard !PaneMemory.removed().contains(j.id) else { continue }       // Remove Session (its folder was gone)
             var row = AgentSessionRow(job: j, agent: a, projectID: pid, projectName: name, items: HandoffLabels.labels(a.handoff))
             if row.outcome == .review, let wt = a.worktree { row.folderGone = !FileManager.default.fileExists(atPath: wt.path) }

@@ -9,7 +9,7 @@ description: >-
   process recordings from the Blurt app, or wants their Blurt items packed up and sent somewhere.
   Triggers: "blurt", "/blurt", "开始口喷", "口喷鸡", "开始录", "录屏提 bug", "录一下我的想法", "record feedback",
   "turn this recording into issues", "处理我录的视频", "process my recordings", "把这些问题打包发给…",
-  "bundle these items for…".
+  "bundle these items for…", "set up Blurt's models", "帮我设置口喷鸡的模型", "配置听写模型 / API Key".
 ---
 
 # blurt — show it, say it, get structured work back
@@ -284,3 +284,13 @@ shows what changes). Prefer the tools when they are there; they write through it
 
 Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off notes and the jobs the app shows:
 `reference/sessions.md`.
+
+## 9. Set up models
+
+When the user asks you to set up Blurt's speech and AI models (or Blurt started you with a "Set Up Models" prompt),
+follow `reference/setup-models.md`: `setup.py status` → ask at most three questions (may the voice leave the Mac, may
+the text go to a cloud model, main languages) → `setup.py recommend …` and say the plan → open each provider's key
+page; the user signs in, verifies, pays and creates the key — you never do those → `pbpaste | setup.py connect
+<preset>` (the key never goes through the chat, never on a command line) → `download`, `use`, `verify` → a short
+summary. Blurt must be running; it tests and stores each key itself and asks the user before the first change unless
+it started you. The same operations are MCP tools (`setup_*`).

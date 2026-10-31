@@ -15,6 +15,11 @@ Register it: `agents.py install <agent> --mcp` (claude / codex / kimi / opencode
 Reads go through index.py's index.db (built on first use) and the item files; every write goes through items.py
 (locked, keeps the user's own edits), never straight to a file. The 7 tools keep their v0.6 names and parameters;
 bundle_items (export_local.py bundle) packs items into a hand-off .zip for the agent to send with its own tools.
+
+Model setup (docs/design/agent-setup.md §5): setup_status, setup_recommend, setup_connect, setup_test, setup_use,
+setup_download, setup_verify — setup.py's operations (the same code, imported), answered by the running Blurt app over
+its control socket. setup_connect takes the key as a parameter (MCP has no stdin); it goes to the app once and is never
+logged or returned.
 """
 from __future__ import annotations
 
@@ -30,6 +35,7 @@ SCRIPTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPTS))
 import index  # noqa: E402
 import items as items_mod  # noqa: E402
+import setup as setup_cli  # noqa: E402
 from _common import OPEN_STATES, STATES, load_json  # noqa: E402
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 from mcp.types import ImageContent, TextContent  # noqa: E402
@@ -316,6 +322,74 @@ def bundle_items(uids: list[str] | None = None, project: str | None = None, stat
         raise ValueError(str(e)) from None
     keep = ("path", "name", "title", "items", "kinds", "states", "uids", "bytes", "summary", "missing")
     return {k: out[k] for k in keep}
+
+
+# ------------------------------------------------------------------ model setup (agent-setup.md §5)
+SETUP_RULE = ("Blurt (the app) must be running; a change needs the user's consent, which Blurt asks for itself "
+              "(code \"denied\": they said no). Answers are {\"ok\": true, …} or {\"ok\": false, \"code\", \"error\"}. "
+              "The flow to follow: the blurt skill's reference/setup-models.md.")
+
+
+@mcp.tool(description=(
+    "Blurt's model setup as it is now: the Mac (chip, memory, macOS, languages, region), dictation's recogniser, the "
+    "recommended one for this Mac, every dictation choice with its measured level (3–5 stars), delay, cost and what "
+    "it uploads, the local models (installed or not), the connected cloud services (never their keys), each job's "
+    "model (polish, translate, vision = Copy Text from Screen), the curated options per job, and where each "
+    "service's API key is made. Works without the app from config (\"source\": \"config\"). " + SETUP_RULE))
+def setup_status() -> dict:
+    return setup_cli.status()
+
+
+@mcp.tool(description=(
+    "The setup to propose for this Mac and the user's answers — ask them first: may the voice leave the Mac (audio: "
+    "local | cloud), may the text go to a cloud model (text: local | cloud), budget (free | paid), main languages. "
+    "→ what to connect (with the key page), which model per job, what to download, options worth mentioning, and "
+    "the commands in order. Default: this Mac's recogniser + DeepSeek V4.1 Flash for polish. " + SETUP_RULE))
+def setup_recommend(audio: str = "local", text: str = "cloud", budget: str = "paid",
+                    languages: list[str] | None = None) -> dict:
+    if audio not in ("local", "cloud") or text not in ("local", "cloud") or budget not in ("free", "paid"):
+        raise ValueError("audio and text are local | cloud, budget is free | paid")
+    return setup_cli.recommend(audio, text, budget, languages)
+
+
+@mcp.tool(description=(
+    "Connect a curated service with the key the user created: preset deepseek | dashscope (Alibaba Cloud Model "
+    "Studio; region china | global — a key works only in its own region) | volcengine-speech (app_id + "
+    "access_token instead of key; mainland China). Blurt tests it and stores it in the login Keychain; the key is "
+    "never logged or returned — never repeat it to the user either. " + SETUP_RULE))
+def setup_connect(preset: str, key: str | None = None, region: str | None = None, app_id: str | None = None,
+                  access_token: str | None = None) -> dict:
+    return setup_cli.connect(preset, {"key": key, "app_id": app_id, "access_token": access_token}, region)
+
+
+@mcp.tool(description="One small request to a connected service with the key Blurt holds (service id or preset). "
+                      + SETUP_RULE)
+def setup_test(service: str) -> dict:
+    return setup_cli.test(service)
+
+
+@mcp.tool(description=(
+    "Choose a job's model. job: polish | translate | vision | dictation. option: auto | local | a connected service "
+    "(its measured model) | service:model; for dictation auto or a choice id from setup_status (dictation.choices"
+    "[].option, e.g. cloud-polish, qwen3-asr-1.7b-mlx, volcengine-seedasr). custom=true: a model Blurt didn't measure, "
+    "saved only after the job's own test passes. " + SETUP_RULE))
+def setup_use(job: str, option: str, custom: bool = False) -> dict:
+    return setup_cli.use(job, option, custom)
+
+
+@mcp.tool(description=(
+    "Download a dictation or polish model (an id from setup_status, or \"recommended\"). Returns at once; follow it in "
+    "setup_status → downloads. " + SETUP_RULE))
+def setup_download(model: str = "recommended") -> dict:
+    return setup_cli.download(model)
+
+
+@mcp.tool(description=(
+    "Test dictation end to end: a short clip spoken by macOS (in language zh or en; default the user's first) through "
+    "the recogniser and polish dictation uses — no microphone, nothing pasted. → what was said, what it heard, the "
+    "polished text, a match score, the timings. " + SETUP_RULE))
+def setup_verify(language: str | None = None) -> dict:
+    return setup_cli.verify(language)
 
 
 def main() -> None:

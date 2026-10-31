@@ -107,3 +107,34 @@
 "models.uses.local" = "%@ · on your Mac";
 "models.uses.none" = "Not set";
 "models.uses.change" = "Change…";
+
+/* Set Up with Agent (docs/design/agent-setup.md): the user's own coding agent sets up the models through scripts/setup.py
+   and the app's control socket. AgentSetupViews.swift, App/AgentSetupServer.swift. */
+"models.agent.button" = "Set Up with Agent…";
+"models.agent.note" = "The API key passes through the agent. You can also add services by hand.";
+"models.agent.sheet.title" = "Set Up Models with an Agent";
+"models.agent.sheet.detail" = "The agent opens in a terminal, asks a few questions and opens each service’s API key page. You sign in and create the key yourself.";
+"models.agent.sheet.agent" = "Agent";
+"models.agent.sheet.start" = "Start";
+"models.agent.ask.title" = "Allow %@ to set up models?";
+"models.agent.ask.unknown" = "Allow an app on your Mac to set up models?";
+"models.agent.ask.detail" = "For 30 minutes, it can connect services, choose models and run tests. API keys are stored in Keychain.";
+"models.agent.ask.allow" = "Allow";
+"models.agent.ask.deny" = "Don’t Allow";
+"models.agent.active" = "Setting up with %@";
+"models.agent.active.unknown" = "Setting up with an agent";
+"models.agent.ended" = "Agent setup ended";
+"models.agent.show" = "Show Terminal";
+"models.agent.stop" = "Stop";
+"models.agent.session" = "Model Setup";
+"models.agent.step.connecting" = "Connecting %@…";
+"models.agent.step.connected" = "%@ connected";
+"models.agent.step.connect_failed" = "%@ not connected";
+"models.agent.step.use" = "%1$@: %2$@";
+"models.agent.step.use_failed" = "%@: test failed";
+"models.agent.step.downloading" = "Downloading %@…";
+"models.agent.step.downloaded" = "%@ downloaded";
+"models.agent.step.download_failed" = "%@ download failed";
+"models.agent.step.verifying" = "Testing dictation…";
+"models.agent.step.verified" = "Dictation test passed";
+"models.agent.step.verify_failed" = "Dictation test failed";

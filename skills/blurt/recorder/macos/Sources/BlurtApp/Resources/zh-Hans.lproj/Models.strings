@@ -107,3 +107,34 @@
 "models.uses.local" = "%@ · 本机";
 "models.uses.none" = "未设置";
 "models.uses.change" = "更改…";
+
+/* 通过 Agent 设置（docs/design/agent-setup.md）：用户自己的编程 Agent 通过 scripts/setup.py 和 App 的本地控制接口设置模型。
+   AgentSetupViews.swift、App/AgentSetupServer.swift。 */
+"models.agent.button" = "通过 Agent 设置…";
+"models.agent.note" = "API Key 会经过 Agent。也可以手动添加云服务。";
+"models.agent.sheet.title" = "通过 Agent 设置模型";
+"models.agent.sheet.detail" = "Agent 会在终端中打开，询问几个问题，并打开各服务的 API Key 页面。登录和创建 Key 由你完成。";
+"models.agent.sheet.agent" = "Agent";
+"models.agent.sheet.start" = "开始";
+"models.agent.ask.title" = "允许 %@ 设置模型？";
+"models.agent.ask.unknown" = "允许本机上的应用设置模型？";
+"models.agent.ask.detail" = "30 分钟内可连接服务、选择模型和运行测试。API Key 保存在钥匙串中。";
+"models.agent.ask.allow" = "允许";
+"models.agent.ask.deny" = "不允许";
+"models.agent.active" = "正在通过 %@ 设置";
+"models.agent.active.unknown" = "正在通过 Agent 设置";
+"models.agent.ended" = "Agent 设置已结束";
+"models.agent.show" = "显示终端";
+"models.agent.stop" = "停止";
+"models.agent.session" = "模型设置";
+"models.agent.step.connecting" = "正在连接 %@…";
+"models.agent.step.connected" = "%@ 已连接";
+"models.agent.step.connect_failed" = "%@ 未连接";
+"models.agent.step.use" = "%1$@：%2$@";
+"models.agent.step.use_failed" = "%@：测试未通过";
+"models.agent.step.downloading" = "正在下载 %@…";
+"models.agent.step.downloaded" = "%@ 已下载";
+"models.agent.step.download_failed" = "%@ 下载失败";
+"models.agent.step.verifying" = "正在测试听写…";
+"models.agent.step.verified" = "听写测试通过";
+"models.agent.step.verify_failed" = "听写测试未通过";

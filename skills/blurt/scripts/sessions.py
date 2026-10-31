@@ -29,6 +29,12 @@ or in the agent's desktop app (Claude: --runner desktop).
                                              with a subscription — probes only)
   sessions.py name-thread --job J --thread T the hooks start this once a session's thread id is known: the thread
                                              gets agent.title through the agent's app server (Codex), best effort
+  sessions.py setup-session --agent ID [--runner tmux|app|auto] [--lang en|zh] [--dry-run]
+                                             Settings → Models → Set Up with Agent… (docs/design/agent-setup.md §4):
+                                             the agent in a terminal on the model-setup prompt (reference/
+                                             setup-models.md) — no items, no worktree, cwd $BLURT_HOME/setup, project
+                                             "blurt-setup". stdin {"token"}: the app's grant for its control socket,
+                                             given to the agent as BLURT_SETUP_TOKEN (never on a command line here)
   sessions.py list [--project ID] [--all]
   sessions.py attach-cmd JOB                 → {"ok","argv","env"}: a grouped view on the job's window
   sessions.py open-external JOB [--terminal auto|terminal|iterm|ghostty|wezterm|kitty|gnome-terminal|konsole|wt]
@@ -1213,6 +1219,98 @@ def _dispatch(pl: dict, mode: str, lang: str | None, model: str | None) -> dict:
     return res
 
 
+# ------------------------------------------------------------------ setup-session (agent-setup.md §4)
+SETUP_PROJECT = "blurt-setup"
+SETUP_TITLE = {"en": "Set Up Models (Blurt)", "zh": "设置模型（口喷鸡）"}
+SETUP_PROMPT = {
+    "en": "{title}\n\nSet up Blurt's speech and AI models for me. Follow {guide} step by step; run its commands as "
+          "`uv run {setup} …`. Ask me its questions before you change anything, open each service's key page for me, "
+          "and never write an API key back into this chat.",
+    "zh": "{title}\n\n帮我设置口喷鸡的语音和 AI 模型。按 {guide} 一步步来，命令用 `uv run {setup} …` 运行。改动之前先问我里面列出的问题，"
+          "帮我打开各服务获取 Key 的页面，不要把任何 API Key 写回对话里。",
+}
+
+
+def setup_prompt(lang: str | None) -> tuple[str, str]:
+    """(title, prompt) of a setup session: the skill's own guide and CLI by absolute path."""
+    lg = "zh" if (lang or "").startswith("zh") else "en"
+    title = SETUP_TITLE[lg]
+    guide = SCRIPTS.parent / "reference" / "setup-models.md"
+    return title, SETUP_PROMPT[lg].format(title=title, guide=guide, setup=SCRIPTS / "setup.py")
+
+
+def setup_session(agent: str, runner: str = "auto", lang: str | None = None, token: str | None = None,
+                  dry_run: bool = False) -> dict:
+    """An interactive session of `agent` on the setup prompt, in tmux (Blurt's own socket) or the app's terminal."""
+    import agents
+    defs = agents.definitions(agents.config(None))
+    d = defs.get(agent)
+    if not d or not agents.session_spec(d):
+        raise SessionError("bad_agent", f"{agent} can't run as a session")
+    if not agents.find_bin(d, agents.clean_env()):
+        raise SessionError("not_installed", f"{agent} is not installed")
+    have_tmux = tmux_info() is not None
+    if runner == "tmux" and not have_tmux:
+        raise SessionError("no_tmux", "tmux 3.2 or newer is not installed", EXIT_DEP)
+    use_runner = runner if runner != "auto" else ("tmux" if have_tmux and os.name != "nt" else "app")
+    title, prompt = setup_prompt(lang)
+    cwd = jobs.home() / "setup"
+    if dry_run:
+        return {"ok": True, "dry_run": True, "agent": agent, "runner": use_runner, "cwd": str(cwd), "title": title,
+                "prompt": prompt}
+    cwd.mkdir(parents=True, exist_ok=True)
+    os.chmod(cwd, 0o700)
+    jid = jobs.new_id()
+    agent_obj = {"id": agent, "model": None, "mode": "together", "runner": use_runner, "tmux": None, "cwd": str(cwd),
+                 "worktree": None, "status": "running", "status_at": jobs.now_iso(), "status_source": "app",
+                 "exit": None, "handoff": None, "agent_session_id": None, "finish": None, "title": title,
+                 "purpose": "setup"}
+    jobs.create("agent", project=SETUP_PROJECT, owner="sessions.py", items=[], title=title, agent=agent_obj, job_id=jid)
+    try:
+        if os.environ.get("BLURT_TEST_PROMPT_PREFIX"):
+            prompt = os.environ["BLURT_TEST_PROMPT_PREFIX"] + " " + prompt
+        jobs.path(jid, ".prompt.md").write_text(prompt + "\n", encoding="utf-8")
+        cmd = agents.session_command(agent, prompt, cwd, job=jid, mcp=False,
+                                     settings=jobs.path(jid, ".claude-settings.json"))
+        env = _session_env(jid, agent, SETUP_PROJECT)
+        if token:
+            env["BLURT_SETUP_TOKEN"] = token
+        launch = []
+        if use_runner == "tmux":
+            session = "blurt-setup"
+            wid = _new_window(session, title, str(cwd), env, cmd["argv"])
+            tmux("set-option", "-w", "-t", wid, "@blurt_job", jid)
+            tmux("set-option", "-w", "-t", wid, "@blurt_agent", agent)
+            agent_obj["tmux"] = {"socket": socket_name(), "session": session, "window": wid, "name": title}
+            if cmd["paste"]:
+                _spawn_paste(jid, cmd["paste"])
+        else:
+            launch.append({"job": jid, "argv": cmd["argv"], "env": env, "cwd": str(cwd), "paste": cmd["paste"],
+                           "patterns": cmd["patterns"]})
+    except (SessionError, ValueError, OSError) as err:
+        code = getattr(err, "code", None) or "io"
+
+        def failed(j, err=err, code=code):
+            agent_obj.update(status="error", status_at=jobs.now_iso(), status_source="app")
+            j["agent"] = agent_obj
+            jobs.finish(j, "failed", {"code": code if code in jobs.ERROR_CODES else "unknown",
+                                      "message": str(err)[:500], "hint_key": None})
+            _step(j, "launch", "failed")
+        jobs.update(jid, failed)
+        raise SessionError(code, str(err), getattr(err, "exit_code", 1), job=jid) from None
+
+    def launched(j):
+        j["agent"] = agent_obj
+        _step(j, "launch", "running" if use_runner == "app" else "done")
+        if use_runner == "tmux":
+            _step(j, "work", "running")
+    jobs.update(jid, launched)
+    out = {"ok": True, "job": jid, "runner": use_runner, "title": title}
+    if launch:
+        out["launch"] = launch
+    return out
+
+
 def _spawn_paste(job: str, text: str) -> None:
     kw: dict = {"stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL,
                 "close_fds": True, "start_new_session": True}
@@ -1857,6 +1955,11 @@ def main(argv: list[str] | None = None) -> None:
     s.add_argument("job")
     s.add_argument("--without-mcp", action="store_true", help="go on without the blurt MCP (items marked by hand)")
     sub.add_parser("doctor")
+    s = sub.add_parser("setup-session")
+    s.add_argument("--agent", required=True)
+    s.add_argument("--runner", choices=["tmux", "app", "auto"], default="auto")
+    s.add_argument("--lang", choices=["en", "zh", "zh-Hans"])
+    s.add_argument("--dry-run", action="store_true")
     a = p.parse_args(argv)
     try:
         if a.cmd == "dispatch":
@@ -1892,6 +1995,15 @@ def main(argv: list[str] | None = None) -> None:
             emit(continue_desktop(a.job, a.without_mcp))
         elif a.cmd == "doctor":
             emit(doctor())
+        elif a.cmd == "setup-session":
+            token = None
+            if not sys.stdin.isatty():  # {"token"} from the app: never on the command line
+                try:
+                    o = json.loads(sys.stdin.read() or "{}")
+                    token = o.get("token") if isinstance(o, dict) and isinstance(o.get("token"), str) else None
+                except ValueError:
+                    token = None
+            emit(setup_session(a.agent, a.runner, a.lang, token, a.dry_run))
     except SessionError as e:
         fail(e.code, str(e), e.exit_code, **e.extra)
     except jobs.JobError as e:

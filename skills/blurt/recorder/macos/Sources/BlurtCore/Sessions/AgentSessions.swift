@@ -150,10 +150,10 @@ public final class AgentSessions {
     var lang: String { Loc.language.hasPrefix("zh") ? "zh" : "en" }
 
     /// One sessions.py call → its JSON line. A non-zero exit with {"ok": false} throws SessionsError.
-    func call(_ args: [String], timeout: TimeInterval = 60) async throws -> [String: Any] {
+    func call(_ args: [String], stdin: Data? = nil, timeout: TimeInterval = 60) async throws -> [String: Any] {
         let out: Data
         do {
-            out = try await ScriptRunner.shared.run("sessions.py", args, timeout: timeout)
+            out = try await ScriptRunner.shared.run("sessions.py", args, stdin: stdin, timeout: timeout)
         } catch ScriptError.failed(let status, let stdout, let stderr) {
             let o = Self.lastJSON(stdout)
             var e = SessionsError(json: o, fallback: status == 4 ? "missing_dependency" : "failed")
@@ -208,6 +208,22 @@ public final class AgentSessions {
         r.links = Self.links(rows)
         r.mcp = o["mcp"] as? Bool
         return r
+    }
+
+    /// Settings → Models' "Set Up with Agent…" (docs/design/agent-setup.md §4): `sessions.py setup-session` starts the
+    /// agent in a terminal on the model-setup prompt (no items, no worktree). `token`: the control socket's grant for
+    /// this session (AgentSetupGrant), on stdin — never on a command line. → the job and, without tmux, what the app
+    /// runs in its own terminal.
+    public func setupSession(agent: String, token: String) async throws -> (job: String, launch: [AppLaunch]) {
+        let body = try JSONSerialization.data(withJSONObject: ["token": token])
+        let o = try await call(["setup-session", "--agent", agent, "--lang", lang], stdin: body, timeout: 60)
+        guard let job = o["job"] as? String else { throw SessionsError(code: "failed", message: "no job") }
+        let launch = (o["launch"] as? [[String: Any]] ?? []).compactMap { l -> AppLaunch? in
+            guard let j = l["job"] as? String, let argv = l["argv"] as? [String], !argv.isEmpty else { return nil }
+            return AppLaunch(job: j, argv: argv, env: l["env"] as? [String: String] ?? [:],
+                             cwd: URL(fileURLWithPath: l["cwd"] as? String ?? NSHomeDirectory()))
+        }
+        return (job, launch)
     }
 
     static func links(_ rows: [[String: Any]]) -> [(job: String, url: URL)] {

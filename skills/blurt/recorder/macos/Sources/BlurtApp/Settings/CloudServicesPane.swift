@@ -126,6 +126,7 @@ struct CloudServicesSection: View {
     /// open Add Service (the dictation reminder; the job rows' Add Service…)
     static let addRequest = Notification.Name("BlurtCloudServiceAdd")
     @ObservedObject var ui = CloudModelsUI.shared
+    @ObservedObject private var agents = AgentSetupAgents.shared
     @State private var adding = ProcessInfo.processInfo.environment["BLURT_TEST_CLOUD_SHEET"] == "add"
     @State private var editing: CloudService?
 
@@ -138,6 +139,8 @@ struct CloudServicesSection: View {
             if CloudServiceSheetModel.curated.contains(where: { !taken.contains($0) }) || setup.services.isEmpty {
                 addLine(empty: setup.services.isEmpty)
             }
+            // what an agent set up (Set Up with Agent…, or one the user allowed), as it happens
+            AgentSetupProgressView(look: .settings)
         }
         .sheet(isPresented: $adding) {
             CloudServiceSheet(editing: nil) { adding = false }.buttonStyle(.automatic)
@@ -205,10 +208,16 @@ struct CloudServicesSection: View {
                                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
+                        if !agents.list.isEmpty {
+                            Text(M("models.agent.note")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Group {
+                HStack(spacing: 8) {
+                    // the user's own agent does it (agent-setup.md §4); hidden while none can run a session
+                    AgentSetupButton(look: .settings)
                     if empty {
                         Button(M("models.services.add")) { adding = true }.buttonStyle(SettingsPrimaryButtonStyle())
                     } else {

@@ -657,8 +657,19 @@ struct OnboardingView: View {
     /// The AI service key: the cloud glyph, as in Settings. Connected: which service ("On · DeepSeek").
     var keyRow: some View {
         let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? keyCompare
-        return OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.key.title"), detail: detail) {
-            Button(T(connected != nil ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
+        return VStack(alignment: .leading, spacing: 0) {
+            OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.key.title"), detail: detail) {
+                HStack(spacing: 8) {
+                    // the user's own agent sets it up (agent-setup.md §4); hidden while none can run a session
+                    AgentSetupButton(look: .onboarding)
+                    Button(T(connected != nil ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
+                }
+            }
+            AgentSetupProgressView(look: .onboarding)
+                .onReceive(NotificationCenter.default.publisher(for: CloudStore.changed)) { _ in
+                    // an agent connected a key: the rows say so as it happens
+                    if AgentSetupProgress.shared.active { keyConnected() }
+                }
         }
     }
 
