@@ -739,13 +739,15 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    for something users do on purpose. Now the steps above apply to the app in front as to any take: a password field
    there is still held, Blurt in front is still `own`, no Accessibility is still a copy. The focused field of the new
    app is read as usual (fitting, the after-typing watch and learning follow the field the text really goes into), and
-   the island shows the typed text. A switch says nothing, with one exception: **a double tap's queued Return isn't
-   pressed** (`DictationSendPolicy.queued`, `DictationPastePolicyTests.testAQueuedReturnIsHeldAfterASwitch`) — the
-   text is pasted, but a message sent into another chat than the one the user was in can't be taken back; the island
-   says 「没有发送：你换了 App」 / "Not sent: you switched apps" (`DictationDeliveredLine.pastedNotSent`; it wins over
-   "Copy again", not over the no-field line that keeps the text).
+   the island shows the typed text. A switch says nothing, and **a double tap's queued Return goes after the paste in
+   the new app** exactly as without a switch (`DictationSendPolicy.queued`,
+   `DictationPastePolicyTests.testAQueuedReturnFollowsThePaste`; `DictationSendPolicy.decide`'s checks — secure input,
+   Blurt in front, Accessibility — and the no-field check still apply). From the commit before (12188180) until the
+   founder's call the same day, it was held with 「没有发送：你换了 App」 / "Not sent: you switched apps" (the worry: a
+   message sent into another chat can't be taken back); dropped because by the double tap the user is already in the
+   new app and can see what was recognised.
    - "Changed" is still measured (the pid at the key-down against the one at paste time) and logged: `app_changed` in
-     `dictation_text`, `dictation_send skipped app_changed`.
+     `dictation_text`.
    - The history entry's app is the one the text went into (the app in front at paste time), not the one at the
      key-down; so are reformat-last (⌥L acts on the text where it is: `DictationLastPaste.bundle`) and the per-app
      suggestions that read the history (translate, Structured).
@@ -757,7 +759,8 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
      (`dictation_remember skipped app_changed` when not); the next take in B starts with B's own settings.
    - A retry from the history (after a relaunch: no app to go to, and Blurt's history window — its search field — is
      in front) is still only copied (`from_history`).
-   - ⌥C / ⌥T keep the refusal (`ScreenTextPaste`: `appChanged` → copy; docs/design/screen-text.md §1c).
+   - ⌥C / ⌥T follow the same rule: pasted into the app in front when the text is ready (docs/design/screen-text.md
+     §1c).
    Test builds compare a simulated front app (`dictation front NAME`) and use a private pasteboard
    (`BLURT_TEST_PASTEBOARD`, else one of their own): a test never touches the user's clipboard.
 
@@ -891,6 +894,24 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   fresh server started (`VoiceInput.replaceIfStuck`; the polish server the same way in `Dictation.warm`). A request
   that hung does the same. `dictation_asr_server given_up` says `ended` only when a process really went. A `uv` ended
   on purpose is not started again online (`WarmSpawn.retire`).
+- **A model switch never restarts the server mid-request; a take never waits forever** (2026-10-31, the founder:
+  dictation switched to Whisper large-v3-turbo "一直卡着"). A server started for Qwen3-ASR (`uv run --with
+  mlx-qwen3-asr`) re-ran itself under `uv run --with … mlx-whisper` inside the first Whisper request: that request got
+  no answer, and until the new process was up its run file named a live pid with a closed port (measured: the `load`
+  answered nothing in 0.07 s, every request after it "connection refused"; on the founder's Mac one such `uv` took
+  10:27:13 → 10:29:10 to start its Python). Each piece then went to a cold CLI run (`uv run` + a ~30 s Whisper load,
+  up to 120 s), one after another. Now `serve` adds the package of every installed local model before it writes its
+  run file (`serve_packages`: switching Qwen3-ASR → Whisper answered in 3.2 s, same process); one it still lacks is a
+  clean restart between requests (`NeedsRestart`: answers `restarting`, removes its run file, re-runs itself;
+  `Dictation.transcribe` waits for the new server once instead of the CLI — measured back in 2 s). An answer the CLI
+  would only repeat (`model_missing`, `auth`, `privacy`: `DictationASRFailure.definite`) is final. After key-up a take
+  waits for its words at most `DictationTakeDeadline` (45 s + ½ × the audio, ≤ 180 s; the whole-recording pass
+  included), then "语音模型没有回应，录音还在 · 重试" (`dictation_take_deadline`). Whisper loads from its folder, not its
+  repo id: mlx-whisper asked huggingface.co on every load (`Fetching 4 files`, +2 s here).
+- **A cloud failure says what failed** (`DictationASRFailure.line`): a key refused or unsendable → "云端识别的 Key 不对或
+  已失效，录音还在 · 设置…" (Retry would fail the same way; the history keeps the take for later), unreachable →
+  "连不上云端识别服务" · Retry, 429 → "额度用完或请求太频繁" · Retry. transcribe.py gives every cloud error a code
+  (`auth`, `quota`, `network`, `bad_response`); an exception of any other kind used to come back as a bare `error`.
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
   分钟上限，听写已结束" and the text goes in (into the app in front then, §Insert); the next tap within 4 s — as long as
@@ -899,7 +920,7 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   attention colour with one quiet "还剩 30 秒". A new take drops what the island said about the last one: its tip, the
   5-minute line, "还在识别…"; the stop drops ⇧'s Structured line (⇧ works only while listening).
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
-  "文字已复制，没有发送", and "没有发送：你换了 App" for a take pasted into another app than the one it started in:
+  "文字已复制，没有发送"; a take whose user switched apps is pasted, and sent after a double tap, in the app in front:
   §Insert 5 — until 2026-10-31 such a take was only copied, with a ⚠ toast), and a double tap within 15 s of a take
   left on the clipboard, with no key pressed since, holds its Return ("已复制，没有发送 · ⌘V 粘贴"; `DictationCopiedGuard`) —
   the dogfood's Return went into the app now in front, where nothing was pasted; a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
@@ -951,10 +972,10 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
 
 ### Cloud polish (v1.0.4)
 
-Opt-in (Settings → Models → Cloud polish, `speech.cloud_polish`; `DictationCloud`, `Settings/DictationCloudSheet.swift`): Light's windows
-and Structured's pass at key-up go to a model the user set up — DeepSeek (the preset: `https://api.deepseek.com`,
-`deepseek-flash`, thinking off), or their own OpenAI- or Anthropic-compatible API (base URL, model) — through the same
-warm polish server (`polish.py` `cloud_polish`, `scripts/polish_cloud.py`). Every failure — no network, a refused key,
+Settings → Models, the Polish row (`speech.polish`; v1.0.8: `CloudStore`, `Settings/CloudServicesPane.swift`, the rules in
+BlurtCore `CloudServices.swift`): Light's windows and Structured's pass at key-up go to the Polish job's model — Auto is
+the best connected cloud service (DeepSeek first: `deepseek-flash`, thinking off), else this Mac's model; or a model the
+user picked from a connected service's live list — through the same warm polish server (`polish.py` `cloud_polish`, `scripts/polish_cloud.py`). Every failure — no network, a refused key,
 past its time (4 s + 6 ms a character), an answer the guard refuses — is answered by the local model instead
 (`cloud_error` in the answer); without a local polish model the cloud one is the only one.
 
@@ -980,12 +1001,19 @@ past its time (4 s + 6 ms a character), an answer the guard refuses — is answe
   answer or a preface added, a list in Light. No word counts, no kept-word check, no number check, no repair. Every
   answer of the six evaluated models on the 30 takes passes; an answer to the text, or a summary, is still refused
   (`tests/test_polish_cloud.py`). The stitch guard over the joined windows uses the same allowance.
-- **The key** is in the login Keychain (service "Blurt Cloud Polish", account = provider); the app sends it with each
-  request to the local server, never to a file or a log. Test (in the sheet) runs `polish_cloud.py check` with the key
-  on stdin. Never sent: the recording.
+- **The key** is in the login Keychain (service "Blurt Cloud Polish", account = the service's id: deepseek, dashscope,
+  openai, anthropic as before, `custom-N` for the user's own); the app sends it with each request to the local server,
+  never to a file or a log. Test (in the service's sheet) reads the model list, then runs `polish_cloud.py check` with
+  the key on stdin. Never sent: the recording.
+- **v1.0.8: Cloud services.** The one provider became a list of connected services (`record.cloud`), each job its own
+  row on Settings → Models; see system.md §3.4 for the page and first-minute-speech.md §10 for the presets, how each was
+  checked, and the migration. `polish_cloud.request` turns thinking off where a service lets it, sends no temperature
+  where a model refuses one, and on an HTTP 400 sends the request once more without those fields (remembered per
+  service and model).
 - **The reminder** (the founder, 2026-10-30): while it isn't on, once ever — after 10 dictations that went in, on a
   take with no notice or tip of its own, into a quiet island, never in Blurt's own windows (the setup assistant's Try
-  it) — one timed line (8 s), "Turn on cloud polish…" · Set Up…, not a question (`DictationCloudReminder`;
+  it) — one timed line (8 s), "Add a cloud model…" · Set Up… (Settings → Models, Add Service open), not a question; never
+  once a service is connected (`DictationCloudReminder`;
   `cloud_hint_shown` once it was seen; an older `cloud_hint` = false counts as seen). After that, Settings only.
 - Everywhere polish runs: dictation's windows and the safety path, Structured, reformat-last, a snap's / voice note's
   structuring pass. The Lab: `cloud=on` (the key from `BLURT_POLISH_API_KEY`).
@@ -2000,7 +2028,7 @@ never touched.
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
 | `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` (10) |
-| `cloud_polish` | unset = off. `{"on", "provider": "deepseek"\|"openai"\|"anthropic", "base_url", "model"}` (§Cloud polish; the key is in the Keychain) |
+| `cloud_polish` | ≤ v1.0.7 (kept as it was, read once by the migration to `record.cloud`). `{"on", "provider": "deepseek"\|"dashscope"\|"openai"\|"anthropic", "base_url", "model", "translate_model", "vision_model"}` |
 | `cloud_hint_shown` | `true` once the one cloud-polish reminder was seen (§Cloud polish); an older `cloud_hint` = false counts the same |
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
 | `precapture` | `true`: open the mic on the key-down, before the trigger has decided |

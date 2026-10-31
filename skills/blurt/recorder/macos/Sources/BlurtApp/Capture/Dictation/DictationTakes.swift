@@ -28,7 +28,8 @@ import Combine
 final class DictationTake {
     let id: String
     /// the app in front at the key-down, and what "the same app" is compared by at paste time (the text goes into the
-    /// app in front then all the same; `appChanged` only holds a queued Return and is logged). `historyKey`: a retry
+    /// app in front then all the same, a double tap's Return after it; `appChanged` is logged and keeps a switch from
+    /// being remembered). `historyKey`: a retry
     /// from the history, which has no app
     let front: NSRunningApplication?
     let frontKey: String
@@ -281,10 +282,13 @@ extension Dictation {
     /// "Recognition failed · recording kept" (or "too slow"), with Retry.
     private func toastFailed(_ id: String, _ f: DictationASRFailure) {
         MenuGlyph.shared.error()          // Peep shakes its head in the menu bar: a real failure (the audio is kept)
-        island.toast(Loc.t(f == .timedOut ? "dictation.toast.asr_slow" : "dictation.toast.asr_failed", table: "Dictation"),
-                     key: Dictation.failedToastKey(id), seconds: 8,
-                     actionTitle: Loc.t("dictation.toast.retry", table: "Dictation"), action: { [weak self] in
-            self?.retry(id, via: "island")
+        // the plain reason (DictationASRFailure.line): a cloud key that didn't work opens Settings — Retry would only
+        // fail the same way (the take stays in the history for a Retry once the key is fixed)
+        let line = f.line
+        island.toast(Loc.t(line.key, table: "Dictation"), key: Dictation.failedToastKey(id), seconds: 8,
+                     actionTitle: Loc.t(line.retryHelps ? "dictation.toast.retry" : "dictation.toast.asr_cloud_key.action", table: "Dictation"),
+                     action: { [weak self] in
+            if line.retryHelps { self?.retry(id, via: "island") } else { AppEnvironment.settings?.show(pane: "speech/speech.cloud") }
         })
     }
 
@@ -418,9 +422,10 @@ extension Dictation {
         var text = styled.text
         let styleRecord = styled.record
         // the user is in another app than the one the take started in: the text goes there all the same, the way it
-        // goes into any app in front (2026-10-31, the founder: people speak in A meaning to type into B). It only
-        // holds a double tap's Return (DictationSendPolicy.queued) and keeps per-app switches from being remembered;
-        // `app_changed` is logged. A retry from the history has no app: copied.
+        // goes into any app in front (2026-10-31, the founder: people speak in A meaning to type into B), and a double
+        // tap's Return follows it there (by then the user is in that app and sees what was recognised). A switch only
+        // keeps per-app switches from being remembered; `app_changed` is logged. A retry from the history has no app:
+        // copied.
         let fromHistory = take.frontKey == DictationTake.historyKey
         let appChanged = !fromHistory && take.frontKey != currentFrontKey
         // the app the text goes into: the one in front now when it changed (tests keep the take's: `dictation style app`)
@@ -475,11 +480,9 @@ extension Dictation {
             if take.sendAfterPaste {
                 take.sendAfterPaste = false
                 // not pasted (a password field, Blurt in front …): Return would send without it; no field in focus: it
-                // would act on whatever is (rename the file selected on the desktop, follow a link); another app than
-                // the one the take started in: the text is in, but a message sent into another chat can't be taken
-                // back. The one line below says so
-                switch DictationSendPolicy.queued(pasted: result == .pasted, noField: DictationInsert.lastNoField,
-                                                  appChanged: appChanged) {
+                // would act on whatever is (rename the file selected on the desktop, follow a link). The one line
+                // below says so. Another app than the one the take started in gets Return as any app in front
+                switch DictationSendPolicy.queued(pasted: result == .pasted, noField: DictationInsert.lastNoField) {
                 case .press: self.pressReturn(after: "paste"); sent = true
                 case .skip(let why): emit(["event": "dictation_send", "result": "skipped", "why": why, "after": "paste"])
                 }
@@ -522,7 +525,7 @@ extension Dictation {
             self.copiedAt = result == .copied ? CACurrentMediaTime() : nil
             self.keyAfterCopy = false
             let line = DictationDeliveredLine.line(result: result.rawValue, sendAsked: sendAsked && !sent,
-                                                   confirmed: DictationInsert.lastPasteConfirmed, appChanged: appChanged,
+                                                   confirmed: DictationInsert.lastPasteConfirmed,
                                                    noField: DictationInsert.lastNoField)
             switch line {
             case .copied, .copiedNotSent:
@@ -533,8 +536,6 @@ extension Dictation {
                 }
             case .notSent:
                 self.sendSkipped(nil)               // nothing went in: "Not sent"
-            case .pastedNotSent:
-                self.sendSkipped("app_changed")     // typed into the app now in front, Return held: "Not sent: you switched apps"
             case .held:
                 island.toast(Loc.t("dictation.toast.secure_held", table: "Dictation"), key: Dictation.toastKey, seconds: 6,
                              actionTitle: Loc.t("dictation.toast.copy", table: "Dictation"), action: {
@@ -614,7 +615,6 @@ extension Dictation {
             })
         case "secure_input"?: toast("dictation.toast.not_sent.secure", key: Dictation.toastKey, seconds: 3)
         case "not_pasted"?: toast("dictation.toast.not_sent.copied", key: Dictation.toastKey, seconds: 3)
-        case "app_changed"?: toast("dictation.toast.not_sent.app", key: Dictation.toastKey, seconds: 4)
         default: toast("dictation.toast.not_sent", key: Dictation.toastKey, seconds: 2.4)
         }
     }

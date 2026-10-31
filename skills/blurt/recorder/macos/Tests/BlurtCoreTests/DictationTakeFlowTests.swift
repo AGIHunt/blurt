@@ -6,35 +6,33 @@ import XCTest
 final class DictationTakeFlowTests: XCTestCase {
     /// v0.9 dogfood: a double tap after the app changed — "Copied" replaced "not sent" in the same frame. One line now.
     func testOneLineSaysHowATakeWent() {
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: true), .copiedNotSent)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true), .copied)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false), .copied)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: true, appChanged: false), .none)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false), .pastedUnsure)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: true, confirmed: true, appChanged: false), .notSent)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: false, confirmed: true, appChanged: false), .none)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true), .copiedNotSent)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true), .copied)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true), .copied)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: true), .none)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false), .pastedUnsure)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: true, confirmed: true), .notSent)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: false, confirmed: true), .none)
         // a password field: not typed, not copied — the line offers Copy (also when a send was asked)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "held", sendAsked: true, confirmed: true, appChanged: false), .held)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "held", sendAsked: true, confirmed: true), .held)
         // the focus was read and isn't a text field (the desktop, a page with nothing focused): the island keeps the text
-        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false,
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false,
                                                    noField: true), .noField)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: false,
+        XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: false,
                                                    noField: true), .noField)
     }
 
-    /// 2026-10-31: a take whose user switched apps is pasted into the app in front and says nothing about it — no
-    /// ⚠ "you switched apps". The one line it can get: a double tap's Return wasn't pressed (another chat).
-    func testASwitchSaysNothingUnlessASendWasHeld() {
+    /// 2026-10-31: a take whose user switched apps is pasted into the app in front, and a double tap's Return follows
+    /// it there — no ⚠ "you switched apps", no "Not sent: you switched apps". The line is any pasted take's.
+    func testASwitchSaysNothing() {
         let L = DictationDeliveredLine.self
-        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: true, appChanged: true), .none)
-        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: true), .pastedUnsure)
-        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: true, appChanged: true), .pastedNotSent)
-        // "not sent" over "Copy again": that the message didn't go matters more
-        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: true), .pastedNotSent)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: true), .none)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: false), .pastedUnsure)
+        // a pasted take whose Return wasn't pressed (pressReturn said why: secure input, Blurt in front …) is pasted
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: true), .none)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false), .pastedUnsure)
         // no field read in the new app: the island keeps the text, as for any take
-        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: true, noField: true), .noField)
-        XCTAssertNil(DictationDeliveredLine.pastedNotSent.copyKey)
-        XCTAssertFalse(DictationDeliveredLine.pastedNotSent.checked)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false, noField: true), .noField)
     }
 
     /// Dogfood: a double tap soon after a take that was only copied pressed Return in the app in front, where nothing

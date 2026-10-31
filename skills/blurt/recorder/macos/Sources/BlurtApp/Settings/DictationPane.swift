@@ -426,8 +426,9 @@ struct DictationPane: View {
     }
 
     /// Translate (⌘), its own box (2026-10-30): into what — dictation's own target, not ⌥T's (writing your words in
-    /// another language usually goes the other way from reading) —, the cloud or this Mac (its own switch), and the apps
-    /// where it starts on (read and remove; ⌘ in an app adds it, ⌘ again removes it).
+    /// another language usually goes the other way from reading) —, the model that translates (Settings → Models'
+    /// Translate row, said here with Change…), and the apps where it starts on (read and remove; ⌘ in an app adds
+    /// it, ⌘ again removes it).
     @ViewBuilder var translateRows: some View {
         SettingRow("dictation.translate", detail: TranslateTargets.autoNote(m.translate.target) ?? T("dictation.translate.settings.detail")) {
             // Auto first, named by its pair (TranslateTargets: global-first), then every language by its own name
@@ -436,21 +437,9 @@ struct DictationPane: View {
                         width: TranslateTargets.popupWidth, dividers: [1])
         }
         .disabled(!m.enabled)
-        let cloud = ScreenTextRefine.cloudPayload != nil, local = Dictation.shared.polishModel != nil
-        // nothing to switch on yet: the switch shows off, and the fix the user must make sits before it, in the same
-        // row (system.md: a small plain button)
-        SettingRow("dictation.translate_cloud", detail: cloud ? T("dictation.translate.cloud.detail", DictationCloud.setup.destination)
-                       : local ? T("dictation.translate.cloud.none") : T("dictation.translate.cloud.nothing")) {
-            HStack(spacing: 8) {
-                if !cloud {
-                    Button(T("dictation.translate.cloud.setup")) { AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish") }
-                        .controlSize(.small)
-                }
-                Toggle(SettingsCatalog.entry("dictation.translate_cloud").map(SettingsCatalog.title) ?? "",
-                       isOn: Binding(get: { cloud && m.translate.cloud }, set: { v in m.setTranslate { $0.cloud = v } }))
-                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
-                    .disabled(!m.enabled || !cloud)
-            }
+        // which model translates is Settings → Models' Translate row: here, what it is now and the way there
+        CloudObserving {
+            SettingRow("dictation.translate_model", detail: CloudText.uses(.translate)) { JobChangeButton(job: .translate) }
         }
         if !m.translate.apps.isEmpty {
             SettingsLine(padding: 8) {
@@ -610,9 +599,8 @@ struct DictationPane: View {
     var modelNames: String? {
         var names: [String] = []
         if let a = models.selectedASR { names.append(a.name ?? models.asrName(a.id)) }
-        if m.style != .verbatim, DictationCloud.ready {
-            let c = DictationCloud.setup
-            names.append(T("dictation.models.cloud", c.effectiveModel))
+        if m.style != .verbatim, let c = CloudStore.cloudModel(.polish) {
+            names.append(T("dictation.models.cloud", c.model))
         } else if m.style != .verbatim, let p = models.selectedPolish, p.installed { names.append(p.name) }
         return names.isEmpty ? nil : names.joined(separator: " · ")
     }

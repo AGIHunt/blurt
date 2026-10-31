@@ -1,16 +1,19 @@
 // Settings → Speech (K9; SettingsKit rows, titles and descriptions from SettingsCatalog), built around one question:
 // which model does each job, and is the recommended set on this Mac? (docs/design/system.md §3.4)
 //
-//   This Mac   at most one recommendation, only while something recommended is missing (`transcribe.py models` for
+//   On this Mac  at most one recommendation, only while something recommended is missing (`transcribe.py models` for
 //              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
 //              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
 //              one primary Download and a "…" menu for one model at a time; while anything downloads it becomes that
 //              download's bar and Stop. Then Choose automatically (asr.auto, and dictation's two models unpinned:
 //              DictationModels.setAuto), its line naming this Mac — "Auto" is said there once, never on every job.
-//   Models in use  one row per job — Recordings, Live captions, Voice notes, Dictation, Dictation polish —, each with
-//              its glyph and its model on the right: the name while automatic, a pop-up of the models on this Mac (and
-//              Get More Models…) when picked by hand. A job whose model isn't on this Mac says "· downloading" or "None
-//              yet", never names it as if in use. Last, All models: Manage Models… opens the library.
+//              Last, All models: Manage Models… opens the library.
+//   Cloud services  the services the user connected with their own key (CloudServicesPane.swift, CloudStore).
+//   Each job   one row per job — Recordings, Live captions, Voice notes, Dictation, then Polish, Translate, Copy Text
+//              from Screen —, each with its glyph and its model on the right: the name while automatic, a pop-up of
+//              the models on this Mac (and Get More Models…) when picked by hand; the text jobs also list each
+//              connected service's models, and say where their content goes. A job whose model isn't on this Mac says
+//              "· downloading" or "None yet", never names it as if in use.
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
 //   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
 //              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
@@ -416,6 +419,7 @@ struct SpeechPane: View {
     var body: some View {
         SettingsPage(.speech) {
             useSection
+            CloudServicesSection()
             jobsSection
             languagesSection
             advancedSection
@@ -449,10 +453,9 @@ struct SpeechPane: View {
 
     // MARK: Models: the recommendation, automatic, one row per job, the library
 
-    /// This Mac: the recommendation, only while something recommended is missing (or downloading). Automatic choice
-    /// is each pop-up's first item (the jobs' footer says what it goes by).
+    /// On this Mac: the recommendation, only while something recommended is missing (or downloading), then the
+    /// library (All models). Automatic choice is each pop-up's first item (the jobs' footer says what it goes by).
     @ViewBuilder var useSection: some View {
-        if m.error != nil || dl.active || !picks.isEmpty {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
@@ -461,13 +464,15 @@ struct SpeechPane: View {
                 }
             }
             recommendation
+            libraryRow
         }, accessory: {
             if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
         })
-        }
     }
 
-    /// Models in use: one row per job, with its glyph and its model, then the library.
+    /// Which model does each job: one row per job, with its glyph and its model — the speech jobs (this Mac's models,
+    /// and the cloud ones whose key is set), then the text jobs (CloudServicesPane: Auto, this Mac, a connected
+    /// service's models), each with a line on where its content goes.
     @ViewBuilder var jobsSection: some View {
         SettingsGroup("speech.jobs", title: S("speech.section.jobs"), footer: machineShort.map { S("speech.auto.footer", $0) }) {
             if let one = m.everywhere {
@@ -476,9 +481,18 @@ struct SpeechPane: View {
                 ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
                 dictationRow
             }
-            polishRow
-            CloudPolishRow()
-            libraryRow
+            CloudObserving {
+                SettingRow("speech.polish", detail: d.polish?.supported == false && CloudStore.connected.isEmpty
+                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish), icon: "wand.and.stars") {
+                    JobModelControl(job: .polish) { library = true }
+                }
+                SettingRow("speech.translate", detail: CloudText.line(.translate), icon: CloudJob.translate.symbol) {
+                    JobModelControl(job: .translate) { library = true }
+                }
+                SettingRow("speech.vision", detail: CloudText.line(.vision), icon: CloudJob.vision.symbol) {
+                    JobModelControl(job: .vision) { library = true }
+                }
+            }
         }
     }
 
@@ -676,31 +690,6 @@ struct SpeechPane: View {
     func dictationValue(_ a: DictationASRState) -> String {
         if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return d.asrName(a.selected) }
         if let j = d.dictationJob, dl.queue.contains(j.id) { return S("speech.purpose.downloading", j.name) }
-        return S("speech.purpose.none_yet")
-    }
-
-    @ViewBuilder var polishRow: some View {
-        SettingRow("speech.polish", detail: d.polish.flatMap { p in p.supported ? autoDetail("speech.polish", auto: m.auto && d.polishAuto, polishValue(p)) : nil },
-                   icon: "wand.and.stars") {
-            if let p = d.polish {
-                if !p.supported {
-                    ModelName(text: S("speech.purpose.polish.unsupported"))
-                } else {
-                    let here = p.models.filter { $0.installed }
-                    ModelPopUp(label: S("speech.purpose.polish"), current: m.auto && d.polishAuto ? ModelPopUp.auto : p.selected,
-                               auto: polishValue(p), choices: here.map { ($0.id, $0.name) }, more: { library = true }) { id in
-                        if id == ModelPopUp.auto { m.useAuto() } else if let x = p.models.first(where: { $0.id == id }) { d.choose(x) }
-                    }
-                }
-            } else {
-                BrandSpinnerView(size: 12)
-            }
-        }
-    }
-
-    func polishValue(_ p: PolishState) -> String {
-        if let s = p.selected { return d.polishName(s) }
-        if let r = d.recommendedPolish, dl.queue.contains(r.id) { return S("speech.purpose.downloading", r.name) }
         return S("speech.purpose.none_yet")
     }
 

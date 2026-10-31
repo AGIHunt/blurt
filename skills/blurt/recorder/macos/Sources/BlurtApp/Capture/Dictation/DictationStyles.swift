@@ -220,16 +220,18 @@ extension Dictation {
             guard let self = self else { return }
             let idle = island.currentToast == nil && island.waitingToasts.isEmpty && !self.listening && self.queue.isEmpty
             let shown = Dictation.settings["cloud_hint_shown"] as? Bool == true || Dictation.settings["cloud_hint"] as? Bool == false
-            guard DictationCloudReminder.due(takes: takes, shown: shown, cloudReady: DictationCloud.ready, inBlurt: inBlurt,
+            // a connected service counts, whatever Polish runs on (set to this Mac on purpose: no reminder)
+            let cloud = DictationCloud.ready || !CloudStore.connected.isEmpty
+            guard DictationCloudReminder.due(takes: takes, shown: shown, cloudReady: cloud, inBlurt: inBlurt,
                                              otherLine: false, islandIdle: idle) else { return }
             emit(["event": "dictation_cloud", "action": "hint", "takes": takes])
             var t = Island.Toast(text: Loc.t("dictation.cloud.hint", table: "Dictation"),
                                  actionTitle: Loc.t("dictation.cloud.hint.setup", table: "Dictation"), action: {
                 emit(["event": "dictation_cloud", "action": "hint_setup"])
-                // straight to the setting: Models with the row in view, and its sheet open
-                SettingsController.shared.show(pane: "speech/cloud_polish")
+                // straight to the setting: Models with Cloud services in view, and Add Service open
+                SettingsController.shared.show(pane: "speech/speech.services")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    NotificationCenter.default.post(name: CloudPolishRow.openRequest, object: nil)
+                    NotificationCenter.default.post(name: CloudServicesSection.addRequest, object: nil)
                 }
             })
             t.seconds = DictationCloudReminder.seconds

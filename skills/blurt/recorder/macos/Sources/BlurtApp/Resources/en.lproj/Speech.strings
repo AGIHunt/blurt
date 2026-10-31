@@ -151,8 +151,8 @@
 "speech.cloud.service.groq" = "Groq";
 "speech.cloud.service.custom" = "Other OpenAI-compatible service";
 "speech.cloud.key.get" = "Get an API key";
-"speech.section.mac" = "This Mac";
-"speech.section.jobs" = "Models in use";
+"speech.section.mac" = "On this Mac";
+"speech.section.jobs" = "Which model does each job";
 "speech.machine.short" = "%1$@, %2$@";
 "speech.rec.title_size" = "Recommended download · %@";
 "speech.rec.line" = "After it, %1$@ uses %2$@";
@@ -164,7 +164,7 @@
 "speech.auto.choice" = "Automatic (%@)";
 "speech.lib.use" = "Use";
 "speech.lib.use.help" = "Dictation, voice notes, live captions and recordings all switch to this model.";
-"speech.auto.footer" = "Automatic picks for this Mac (%@) and the languages you speak.";
+"speech.auto.footer" = "Automatic picks for this Mac (%@), the languages you speak and the services you connected.";
 
 /* Model library: what each model is for (v1.0.6) */
 "speech.lib.note2" = "Recommended models are picked for this Mac’s memory. Speed and memory are measured; ✓ means measured on this Mac.";
@@ -190,3 +190,11 @@
 "speech.cloud.speed.line" = "%1$@. %2$@.";
 "speech.auto.plain" = "Automatic";
 "speech.auto.using" = "%1$@ Now: %2$@";
+"speech.cloud.check.ok_silent" = "Connected · %@ s, but the test clip came back empty";
+"speech.cloud.check.auth" = "The key is wrong or no longer valid";
+"speech.cloud.check.bad_key" = "This key has characters a key can’t have. Paste it again.";
+"speech.cloud.check.no_key" = "Enter an API key first";
+"speech.cloud.check.network" = "Can’t reach the service. Check the network or the base URL.";
+"speech.cloud.check.quota" = "Too many requests or no quota left. Try again later.";
+"speech.cloud.check.privacy" = "Cloud recognition is turned off in Privacy";
+"speech.cloud.check.other" = "The service returned an error. Check the base URL and the model name.";

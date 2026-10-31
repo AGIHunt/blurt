@@ -196,6 +196,8 @@ final class DictationStream {
     /// Esc while polishing (skipPolish): no more polish windows; the result is handed over once (`delivered`), through
     /// `finished` (finish's `done`) — lock
     private var skipped = false, delivered = false
+    /// the whole recording is being heard again (a piece failed: `whole`) — lock; the take's deadline counts it
+    private var hearingWhole = false
     private var finished: ((Result) -> Void)?
     private var keyUp: CFTimeInterval = 0
     /// Auto's structuring pass (only a list changes what is typed): finish(onlyForLists:)
@@ -614,6 +616,19 @@ final class DictationStream {
         }
         if opt.rehear { closeWindow(end: lock.locked { pieces.last?.end } ?? audio.count, last: true) }
         onStage?("asr")
+        // never open-ended (DictationTakeDeadline): words not in by then → "the speech model didn't answer", the
+        // recording kept for Retry; what still comes later is dropped (`delivered`), the pieces not yet started skip
+        let deadline = DictationTakeDeadline.seconds(audioSeconds: Double(audio.count) / NoteVoice.rate)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + deadline) { [weak self] in
+            guard let self, !self.cancelled, !self.lock.locked({ self.delivered }) else { return }
+            let (n, waiting) = self.lock.locked {
+                (self.pieces.count, self.hearingWhole || (self.pieces + self.windows).contains { !$0.asrDone })
+            }
+            guard waiting else { return }       // the words are in: polish has its own time limits
+            emit(["event": "dictation_take_deadline", "id": self.id, "after_s": deadline, "segments": n])
+            self.cancelled = true
+            self.deliver(self.failure(.timedOut, segments: n))
+        }
         // both queues are serial: this runs after every piece's transcription, and what it queues after every polish
         // (strong captures: the controller has let go of the stream by now; the queues hold it until it is done)
         asrQ.async {
@@ -783,6 +798,8 @@ final class DictationStream {
     /// The old path on the whole recording: one transcription, one polish.
     private func whole(_ n: Int) -> Result {
         let t0 = CACurrentMediaTime()
+        lock.locked { hearingWhole = true }
+        defer { lock.locked { hearingWhole = false } }
         let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
                                           audioSeconds: DictationStream.seconds(of: wholeWav))

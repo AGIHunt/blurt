@@ -246,3 +246,64 @@ def test_no_cloud_and_no_local_model_types_the_text_as_said(api, monkeypatch):
     assert r["fell_back"] and r["reason"] == "model_missing"
     with pytest.raises(polish.Fail):                                       # ⌥⇧T still says what failed
         eng.translate("在本地安装一下这个版本", "en")
+
+
+# Settings → Models → Cloud services (2026-10-31): every preset speaks one of the two protocols; the fields that differ
+# by service, and the one retry without them when a model refuses one.
+
+@pytest.mark.parametrize("base, field, value", [
+    ("https://api.deepseek.com", "thinking", {"type": "disabled"}),
+    ("https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "enable_thinking", False),
+    ("https://ark.cn-beijing.volces.com/api/v3", "thinking", {"type": "disabled"}),
+    ("https://open.bigmodel.cn/api/paas/v4", "thinking", {"type": "disabled"}),
+    ("https://api.z.ai/api/paas/v4", "thinking", {"type": "disabled"}),
+    ("https://api.xiaomimimo.com/v1", "thinking", {"type": "disabled"}),
+    ("https://openrouter.ai/api/v1", "reasoning", {"enabled": False}),
+])
+def test_thinking_is_turned_off_where_the_service_allows_it(base, field, value):
+    url, body, _ = C.request({"base_url": base, "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+    assert url == base + "/chat/completions" and body[field] == value and body["max_tokens"] == 50
+
+
+def test_openai_and_fixed_temperature_services_get_no_temperature():
+    _, body, _ = C.request({"base_url": "https://api.openai.com/v1", "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+    assert "temperature" not in body and body["max_completion_tokens"] == 50 and "max_tokens" not in body
+    for base in ("https://api.moonshot.ai/v1", "https://api.minimax.io/v1"):
+        _, body, _ = C.request({"base_url": base, "model": "m", "protocol": "openai", "key": "k"}, [], 50)
+        assert "temperature" not in body
+    _, body, h = C.request({"base_url": "https://api.anthropic.com", "model": "m", "protocol": "anthropic", "key": "k"}, [], 50)
+    assert "temperature" not in body and h["x-api-key"] == "k"
+
+
+def test_a_refused_field_is_dropped_once_and_remembered(api):
+    calls = []
+    orig = C._send
+
+    def send(url, body, headers, timeout):
+        calls.append(dict(body))
+        if "temperature" in body:
+            raise C.urllib.error.HTTPError(url, 400, "bad", {}, None)
+        return orig(url, body, headers, timeout)
+    C._send = send
+    try:
+        cfg = C.settings(cloud(api))
+        assert C.complete(cfg, [{"role": "user", "content": "u"}], 5, 50)["text"] == "OK"
+        assert "temperature" in calls[0] and "temperature" not in calls[1]
+        C.complete(cfg, [{"role": "user", "content": "u"}], 5, 50)
+        assert len(calls) == 3 and "temperature" not in calls[2]          # remembered: one request
+    finally:
+        C._send = orig
+        C._bare.clear()
+
+
+def test_check_counts_an_answer_that_only_thought(api):
+    api.reply = ""
+    assert C.check(cloud(api))["ok"] is True
+    with pytest.raises(C.CloudError):
+        C.complete(C.settings(cloud(api)), [{"role": "user", "content": "u"}], 5, 50)
+
+
+def test_a_key_no_header_can_carry_is_an_auth_failure_that_never_shows_the_key(api):
+    # the founder's key ended in two "ç" as ⌥C types them: c + U+0327, which no header can carry
+    r = C.check({**cloud(api), "key": "sk-test" + "c\u0327" * 2})
+    assert r["ok"] is False and r["code"] == "auth" and "sk-test" not in json.dumps(r)

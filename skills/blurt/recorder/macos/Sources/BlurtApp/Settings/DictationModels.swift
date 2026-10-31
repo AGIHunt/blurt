@@ -290,6 +290,12 @@ final class DictationModels: ObservableObject {
         Task { await load() }
     }
 
+    /// Polish back to automatic alone (Settings → Models' Polish row: Auto), the speech model untouched.
+    func unpinPolish() {
+        if polish?.configured != nil { save("polish_model", nil); Dictation.shared.refreshPolishModel() }
+        Task { await load() }
+    }
+
     /// A model's Stop: the running one ends, a queued one leaves the queue.
     func cancel(_ id: String) { dl.stop(id) }
 

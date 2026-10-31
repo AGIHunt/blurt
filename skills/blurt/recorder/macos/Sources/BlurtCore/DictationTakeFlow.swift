@@ -285,10 +285,6 @@ public enum DictationDeliveredLine: Equatable {
     case copiedNotSent
     /// a double tap asked to send and nothing went in (why: not_pasted)
     case notSent
-    /// a double tap asked to send, the text was pasted, but into another app than the one the take started in: Return
-    /// was not pressed (DictationSendPolicy.queued) — "Not sent: you switched apps". The only line a switch gets: the
-    /// text itself goes into the app in front, as any take's (2026-10-31)
-    case pastedNotSent
     /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.: no focused element could be read):
     /// "Copy again"
     case pastedUnsure
@@ -301,17 +297,15 @@ public enum DictationDeliveredLine: Equatable {
     case none
 
     /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take and it wasn't
-    /// pressed; `appChanged`: the app in front at paste time isn't the one the take started in; `noField`: the focus
-    /// was read and isn't a text field. A switch says nothing by itself — only that a queued Return wasn't pressed
-    /// (over "Copy again": that the message didn't go matters more than whether it landed).
-    public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool,
+    /// pressed; `noField`: the focus was read and isn't a text field. A switch of apps says nothing: the text and a
+    /// double tap's Return go into the app in front as any take's (2026-10-31).
+    public static func line(result: String, sendAsked: Bool, confirmed: Bool,
                             noField: Bool = false) -> DictationDeliveredLine {
         switch result {
         case "held": return .held
         case "copied": return sendAsked ? .copiedNotSent : .copied
         case "pasted":
             if !confirmed, noField { return .noField }
-            if sendAsked, appChanged { return .pastedNotSent }
             return confirmed ? .none : .pastedUnsure
         default: return sendAsked ? .notSent : .none
         }

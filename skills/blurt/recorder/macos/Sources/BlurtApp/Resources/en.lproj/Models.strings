@@ -1,0 +1,89 @@
+/* Settings → Models: the cloud services the user connects with their own API key, and the text jobs' rows
+   (CloudServicesPane.swift, App/CloudStore.swift). One short line per row; DeepSeek's is the only price shown. */
+
+"models.section.services" = "Cloud services";
+"models.services.detail" = "Your own API keys for cloud models.";
+"models.services.add.title" = "Add a service";
+"models.services.add" = "Add Service…";
+"models.services.empty" = "Paste an API key to polish, translate and read screenshots with a cloud model.";
+"models.price.deepseek" = "DeepSeek: about ¥0.001 ($0.0002) a dictation.";
+"models.recommended" = "Recommended";
+"models.service.edit" = "Edit…";
+"models.service.no_key" = "No API key";
+"models.service.connected" = "Connected";
+"models.service.speech" = "Also does speech recognition";
+"models.region.china" = "Mainland China";
+"models.region.global" = "International";
+
+"models.preset.deepseek" = "DeepSeek";
+"models.preset.dashscope" = "Alibaba Cloud Model Studio";
+"models.preset.volcengine" = "Volcengine Ark (Doubao)";
+"models.preset.moonshot" = "Moonshot (Kimi)";
+"models.preset.zhipu" = "Zhipu (GLM)";
+"models.preset.minimax" = "MiniMax";
+"models.preset.xiaomi" = "Xiaomi MiMo";
+"models.preset.openai" = "OpenAI";
+"models.preset.anthropic" = "Anthropic";
+"models.preset.gemini" = "Google Gemini";
+"models.preset.openrouter" = "OpenRouter";
+"models.preset.custom_openai" = "Other (OpenAI-compatible)";
+"models.preset.custom_anthropic" = "Other (Anthropic-compatible)";
+"models.preset.recommended" = "%@ (Recommended)";
+
+"models.sheet.add_title" = "Add a Cloud Service";
+"models.sheet.paste_title" = "Add an API Key";
+"models.sheet.note" = "The key stays in this Mac’s Keychain and goes only to this service.";
+"models.sheet.service" = "Service";
+"models.sheet.region" = "Region";
+"models.sheet.name" = "Name";
+"models.sheet.name.placeholder" = "My service";
+"models.sheet.base_url" = "Base URL";
+"models.sheet.key" = "API key";
+"models.sheet.key.placeholder" = "Paste an API key";
+"models.sheet.key.stored" = "Saved. Paste a new one to replace it.";
+"models.sheet.key.get" = "Get a key";
+"models.sheet.test" = "Test";
+"models.sheet.connect" = "Connect";
+"models.sheet.done" = "Done";
+"models.cancel" = "Cancel";
+"models.remove.button" = "Remove";
+"models.remove.title" = "Remove %@?";
+"models.remove.message" = "Its key is deleted from this Mac. Jobs that used it go back to this Mac’s models.";
+"models.remove.confirm" = "Remove";
+
+"models.check.ok" = "OK · %@ ms";
+"models.check.auth" = "The key was refused. Check the key and the region.";
+"models.check.network" = "Can’t reach the service. Check the network and the base URL.";
+"models.check.rate" = "Too many requests. Try again in a moment.";
+"models.check.no_key" = "Paste an API key first.";
+"models.check.no_model" = "Connected, but no model to use was found.";
+"models.check.other" = "The service returned an error. Check the base URL.";
+"models.check.speech_ok" = "Speech recognition: OK · %@ ms";
+"models.check.speech_failed" = "Speech recognition: %@";
+"models.key.spaces" = "An API key has no spaces in it.";
+"models.key.characters" = "The key has extra characters. Paste it again.";
+
+"models.job.translate" = "Translate";
+"models.job.translate.detail" = "Dictation’s ⌘ and ⌥T.";
+"models.job.vision" = "Copy Text from Screen";
+"models.job.vision.detail" = "Reads ⌥C’s text a second time.";
+"models.job.auto_item" = "Automatic";
+"models.job.auto" = "Now: %@.";
+"models.job.auto_local" = "Now: %@, on this Mac.";
+"models.job.goes.text" = "Text goes to %@.";
+"models.job.goes.images" = "Screenshots go to %@.";
+"models.job.local" = "Stays on this Mac.";
+"models.job.none" = "Nothing yet. Add a service or download a model.";
+"models.job.this_mac" = "This Mac";
+"models.job.other" = "Other Model…";
+"models.job.add" = "Add Service…";
+"models.job.more" = "Get More Models…";
+"models.other.title" = "Other Model";
+"models.other.placeholder" = "Model ID";
+"models.other.use" = "Use";
+
+"models.uses.translate" = "Translation model";
+"models.uses.cloud" = "%@ · cloud";
+"models.uses.local" = "%@ · this Mac";
+"models.uses.none" = "No model yet";
+"models.uses.change" = "Change…";

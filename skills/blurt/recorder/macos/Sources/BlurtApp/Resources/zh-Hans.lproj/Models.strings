@@ -1,0 +1,89 @@
+/* 设置 → 模型：用户用自己的 API Key 连接的云服务，以及文字类任务各用哪个模型（CloudServicesPane.swift、
+   App/CloudStore.swift）。每行最多一句；只写 DeepSeek 的价格。 */
+
+"models.section.services" = "云服务";
+"models.services.detail" = "用你自己的 API Key 调用云端模型。";
+"models.services.add.title" = "添加云服务";
+"models.services.add" = "添加云服务…";
+"models.services.empty" = "粘贴一个 API Key，就能用云端模型润色、翻译和截图取字。";
+"models.price.deepseek" = "DeepSeek：一条听写约 ¥0.001。";
+"models.recommended" = "推荐";
+"models.service.edit" = "编辑…";
+"models.service.no_key" = "没有 API Key";
+"models.service.connected" = "已连接";
+"models.service.speech" = "也能做语音识别";
+"models.region.china" = "中国大陆";
+"models.region.global" = "国际";
+
+"models.preset.deepseek" = "DeepSeek";
+"models.preset.dashscope" = "阿里云百炼";
+"models.preset.volcengine" = "火山方舟（豆包）";
+"models.preset.moonshot" = "月之暗面（Kimi）";
+"models.preset.zhipu" = "智谱（GLM）";
+"models.preset.minimax" = "MiniMax";
+"models.preset.xiaomi" = "小米 MiMo";
+"models.preset.openai" = "OpenAI";
+"models.preset.anthropic" = "Anthropic";
+"models.preset.gemini" = "Google Gemini";
+"models.preset.openrouter" = "OpenRouter";
+"models.preset.custom_openai" = "其他（兼容 OpenAI）";
+"models.preset.custom_anthropic" = "其他（兼容 Anthropic）";
+"models.preset.recommended" = "%@（推荐）";
+
+"models.sheet.add_title" = "添加云服务";
+"models.sheet.paste_title" = "添加 API Key";
+"models.sheet.note" = "Key 存在这台 Mac 的钥匙串里，只发给这家服务。";
+"models.sheet.service" = "服务";
+"models.sheet.region" = "地区";
+"models.sheet.name" = "名称";
+"models.sheet.name.placeholder" = "我的服务";
+"models.sheet.base_url" = "接口地址";
+"models.sheet.key" = "API Key";
+"models.sheet.key.placeholder" = "粘贴 API Key";
+"models.sheet.key.stored" = "已保存。粘贴新的即可替换。";
+"models.sheet.key.get" = "获取 Key";
+"models.sheet.test" = "测试";
+"models.sheet.connect" = "连接";
+"models.sheet.done" = "完成";
+"models.cancel" = "取消";
+"models.remove.button" = "移除";
+"models.remove.title" = "移除 %@？";
+"models.remove.message" = "它的 Key 会从这台 Mac 上删除，用它的任务改回本机模型。";
+"models.remove.confirm" = "移除";
+
+"models.check.ok" = "正常 · %@ 毫秒";
+"models.check.auth" = "Key 被拒绝了。检查 Key 和地区。";
+"models.check.network" = "连不上这家服务。检查网络和接口地址。";
+"models.check.rate" = "请求太多，稍后再试。";
+"models.check.no_key" = "先粘贴 API Key。";
+"models.check.no_model" = "连上了，但没找到能用的模型。";
+"models.check.other" = "服务返回了错误。检查接口地址。";
+"models.check.speech_ok" = "语音识别：正常 · %@ 毫秒";
+"models.check.speech_failed" = "语音识别：%@";
+"models.key.spaces" = "API Key 里不会有空格。";
+"models.key.characters" = "Key 里有多余的字符，请重新粘贴。";
+
+"models.job.translate" = "翻译";
+"models.job.translate.detail" = "听写里的 ⌘ 和 ⌥T。";
+"models.job.vision" = "截图取字";
+"models.job.vision.detail" = "把 ⌥C 取到的字再读一遍。";
+"models.job.auto_item" = "自动";
+"models.job.auto" = "现在：%@。";
+"models.job.auto_local" = "现在：%@，在本机。";
+"models.job.goes.text" = "文字会发给 %@。";
+"models.job.goes.images" = "截图会发给 %@。";
+"models.job.local" = "只在本机。";
+"models.job.none" = "还没有。添加云服务，或下载本机模型。";
+"models.job.this_mac" = "这台 Mac";
+"models.job.other" = "其他模型…";
+"models.job.add" = "添加云服务…";
+"models.job.more" = "获取更多模型…";
+"models.other.title" = "其他模型";
+"models.other.placeholder" = "模型 ID";
+"models.other.use" = "使用";
+
+"models.uses.translate" = "翻译模型";
+"models.uses.cloud" = "%@ · 云端";
+"models.uses.local" = "%@ · 本机";
+"models.uses.none" = "还没有模型";
+"models.uses.change" = "更改…";

@@ -315,14 +315,12 @@ struct OnboardingView: View {
     @ObservedObject var guide = PermissionGuide.shared
     @ObservedObject var models = ModelSetup.shared
     @FocusState private var tryFocused: Bool
-    /// the cloud key's sheet (start now), and whether a key is set up
+    /// the API key's sheet (Settings → Models' Add Service, the key first), and the service it connected
     @State private var keySheet = false
-    @State private var cloudReady = DictationCloud.ready
-    /// a polish key is in the Keychain, whether or not cloud polish is on
-    @State private var keySaved = DictationCloud.Key.has(DictationCloud.setup.provider)
-    /// the cloud speech key (Aliyun) for a Mac without macOS's recogniser
+    @State private var connected = CloudRouting.ranked(CloudStore.connected).first
+    /// the cloud speech key (Model Studio) for a Mac without macOS's recogniser
     @State private var speechSheet = false
-    @State private var speechKey = CloudSpeech.Key.has(CloudSpeech.dashScopeModel) || DictationCloud.Key.has(.dashscope)
+    @State private var speechKey = CloudStore.connected.contains { $0.preset == "dashscope" } || CloudSpeech.Key.has(CloudSpeech.dashScopeModel)
 
     var body: some View {
         HStack(spacing: 0) {
@@ -613,14 +611,10 @@ struct OnboardingView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .sheet(isPresented: $keySheet) {
-            DictationCloudSheet {
+            // one question: the key; its service is found from it (or picked), and every job stays on Auto
+            CloudServiceSheet(editing: connected, keyFirst: true) {
                 keySheet = false
-                cloudReady = DictationCloud.ready
-                keySaved = DictationCloud.Key.has(DictationCloud.setup.provider)
-                emit(["event": "onboarding_key", "ready": cloudReady, "provider": DictationCloud.setup.provider.rawValue])
-                // a Model Studio key recognises speech too: dictation's model is read again (macOS 13–15 dictate now)
-                Task { await ModelSetup.shared.load() }
-                Dictation.shared.refreshSpeechModels()
+                keyConnected()
             }
             .buttonStyle(.automatic)
         }
@@ -659,14 +653,22 @@ struct OnboardingView: View {
         upgradeStatus.padding(.top, 10)
     }
 
-    /// The AI service key (cloud polish): the cloud glyph, as in Settings. A key that is saved but switched off says
-    /// so — never Add… over a key the sheet then says is in the Keychain.
+    /// The AI service key: the cloud glyph, as in Settings. Connected: which service ("On · DeepSeek").
     var keyRow: some View {
-        let provider = T("dictation.cloud.provider.\(DictationCloud.setup.provider.rawValue)")
-        let detail = cloudReady ? T("onboarding.key.on", provider) : keySaved ? T("onboarding.key.saved_off", provider) : T("onboarding.key.detail")
+        let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? T("onboarding.key.detail")
         return OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.key.title"), detail: detail) {
-            Button(T(cloudReady || keySaved ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
+            Button(T(connected != nil ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
         }
+    }
+
+    /// A key was connected (or changed): the rows say so; a Model Studio key recognises speech too, so dictation's model
+    /// is read again (macOS 13–15 dictate now).
+    func keyConnected() {
+        connected = CloudRouting.ranked(CloudStore.connected).first
+        speechKey = CloudStore.connected.contains { $0.preset == "dashscope" } || CloudSpeech.Key.has(CloudSpeech.dashScopeModel)
+        emit(["event": "onboarding_key", "ready": connected != nil, "service": connected?.preset ?? ""])
+        Task { await ModelSetup.shared.load() }
+        Dictation.shared.refreshSpeechModels()
     }
 
     var upgradeDetail: String {
@@ -731,22 +733,17 @@ struct OnboardingView: View {
             // for polish), then the polish key —, then what downloads to this Mac
             OnbHeading(text: T("onboarding.section.cloud"))
             OnbRow(image: GlyphTile.brand(.waveform), title: T("onboarding.key.cloud.title"),
-                   detail: speechKey ? T("onboarding.key.on", T("dictation.cloud.provider.dashscope")) : T("onboarding.key.cloud.detail"),
+                   detail: speechKey ? T("onboarding.key.on", CloudStore.presetName("dashscope")) : T("onboarding.key.cloud.detail"),
                    first: true) {
                 Button(T(speechKey ? "onboarding.key.change" : "onboarding.key.add")) { speechSheet = true }.controlSize(.small)
             }
             keyRow
             OnbHeading(text: T("onboarding.section.local")).padding(.top, OnbMetrics.sectionGap - 8)
             .sheet(isPresented: $speechSheet) {
-                CloudSpeechSheet(modelID: CloudSpeech.dashScopeModel, title: T("dictation.cloud.provider.dashscope")) { saved in
+                // Model Studio, connected as any service (its key recognises speech): the key first
+                CloudServiceSheet(editing: CloudStore.setup.services.first { $0.preset == "dashscope" }, preset: "dashscope", keyFirst: true) {
                     speechSheet = false
-                    guard saved else { return }
-                    speechKey = CloudSpeech.Key.has(CloudSpeech.dashScopeModel) || DictationCloud.Key.has(.dashscope)
-                    CloudSpeech.invalidate()
-                    emit(["event": "onboarding_speech_key", "ready": speechKey])
-                    // the cloud recognises speech now: dictation's model is read again (macOS 13–15 dictate)
-                    Task { await ModelSetup.shared.load() }
-                    Dictation.shared.refreshSpeechModels()
+                    keyConnected()
                 }
                 .buttonStyle(.automatic)
             }

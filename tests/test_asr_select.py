@@ -829,7 +829,7 @@ class CloudSpeed(unittest.TestCase):
     def test_openai_compatible_times_back_on_the_original_timeline(self):
         sent = {}
 
-        def fake_post(url, body, headers, retries=4):
+        def fake_post(url, body, headers, retries=4, timeout=120):
             sent["bytes"] = len(body)
             return {"language": "english", "segments": [{"start": 0.0, "end": 0.8, "text": "a"}, {"start": 0.8, "end": 1.5, "text": "b"}]}
         old = (T._post, os.environ.get("BLURT_ASR_API_KEY"))

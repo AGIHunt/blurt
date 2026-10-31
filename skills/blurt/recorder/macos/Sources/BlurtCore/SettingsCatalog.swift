@@ -111,7 +111,9 @@ public enum SettingsCatalog {
         "general.projects": "projects.list", "general.capture_into": "projects.capture_into",
         "general.dictation_lab": "dictation.lab", "general.developer": "dictation.advanced",
         "general.smart_paste": "general.card_drag", "general.drag_caption": "general.card_drag", "general.drag_copy_note": "general.card_drag",
-        "dictation.cloud_polish": "speech.cloud_polish",
+        // v1.0.8: one cloud service became a list of them, and each job its row (Settings → Models)
+        "dictation.cloud_polish": "speech.polish", "speech.cloud_polish": "speech.polish",
+        "dictation.translate_cloud": "dictation.translate_model", "screentext.translate_cloud": "screentext.translate_model",
         "general.version": "general.about", "general.help": "general.about", "general.assistant": "general.about",
         // 2026-10-30: Copy Text from Screen got its own page
         "general.screen_text_refine": "screentext.refine", "general.screen_text_translate": "screentext.translate",
@@ -156,6 +158,7 @@ public enum SettingsCatalog {
         sec("screentext.translation", "settings.screen_text.section.translate"),
 
         sec("speech.use", "speech.section.mac", "Speech"),
+        sec("speech.services", "models.section.services", "Models"),
         sec("speech.jobs", "speech.section.jobs", "Speech"),
         sec("speech.languages", "speech.section.languages", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
@@ -245,10 +248,10 @@ public enum SettingsCatalog {
             row("dictation.learn_styles", "dictation.text", D("dictation.style.learn_toggle"), detail: D("dictation.style.learn_toggle.detail"),
                 fold: "dictation.by_app"),
             row("dictation.polish_timeout", "dictation.text", D("dictation.polish.timeout"), fold: "dictation.by_app"),
-            // translate mode (docs/design/dictation-translate.md): into what, and whether the cloud model does it — its
-            // own, not ⌥T's (2026-10-30)
+            // translate mode (docs/design/dictation-translate.md): into what — its own, not ⌥T's (2026-10-30) — and the
+            // model that translates (Settings → Models' Translate row, said here)
             row("dictation.translate", "dictation.translation", D("dictation.translate.settings.title"), detail: D("dictation.translate.settings.detail")),
-            row("dictation.translate_cloud", "dictation.translation", D("dictation.translate.cloud.title")),
+            row("dictation.translate_model", "dictation.translation", SettingsText("models.uses.translate", "Models")),
             // the words' menu: reading the context, learning
             row("dictation.word_list", "dictation.text", D("dictation.vocab.summary.title"), detail: D("dictation.vocab.summary.detail")),
             row("dictation.context", "dictation.text", D("dictation.vocab.context"), detail: D("dictation.vocab.context.detail"),
@@ -263,11 +266,11 @@ public enum SettingsCatalog {
             row("dictation.models", "dictation.data", D("dictation.models.section"), detail: D("dictation.models.detail")),
             row("dictation.lab", "dictation.advanced", "settings.general.dictation_lab", detail: S("settings.general.dictation_lab.hint")),
 
-            // Copy Text from Screen: ⌥C's second reading; ⌥T's target and cloud switch (its own, not dictation's)
+            // Copy Text from Screen: ⌥C's second reading; ⌥T's target (its own, not dictation's) and the model that translates
             row("screentext.refine", "screentext.copy", "settings.general.screen_text", more: S("settings.general.screen_text.hint")),
             row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
                 more: S("settings.screen_text.translate.hint")),
-            row("screentext.translate_cloud", "screentext.translation", D("dictation.translate.cloud.title")),
+            row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
 
             // Speech
         ]
@@ -279,7 +282,10 @@ public enum SettingsCatalog {
             row("speech.recognition", "speech.jobs", P("speech.purpose.recognition"), detail: P("speech.purpose.recognition.detail")),
             row("speech.dictation", "speech.jobs", P("speech.purpose.dictation"), detail: P("speech.purpose.dictation.detail")),
             row("speech.polish", "speech.jobs", P("speech.purpose.polish"), detail: P("speech.purpose.polish.detail")),
-            row("speech.cloud_polish", "speech.jobs", D("dictation.cloud.title"), detail: D("dictation.cloud.detail")),
+            row("speech.translate", "speech.jobs", SettingsText("models.job.translate", "Models"), detail: SettingsText("models.job.translate.detail", "Models")),
+            row("speech.vision", "speech.jobs", SettingsText("models.job.vision", "Models"), detail: SettingsText("models.job.vision.detail", "Models")),
+            // the cloud services (the services themselves come from the user's setup; the section is what search finds)
+            whole("speech.services", detail: SettingsText("models.services.detail", "Models")),
             whole("speech.languages", detail: P("speech.languages.footer")),
             row("speech.language", "speech.languages", P("speech.advanced.language"), detail: P("speech.advanced.language.detail")),
             row("speech.threads", "speech.advanced", P("speech.limits.threads"), detail: P("speech.limits.threads.detail"),

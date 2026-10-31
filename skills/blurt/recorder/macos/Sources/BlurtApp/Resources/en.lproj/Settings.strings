@@ -280,7 +280,6 @@
 "settings.kw.dictation.by_app" = "per app, app category, chat, code, mail, notes";
 "settings.kw.dictation.polish_timeout" = "timeout, wait, seconds, polish";
 "settings.kw.dictation.word_list" = "vocabulary, dictionary, custom words, names, terms, hotwords";
-"settings.kw.speech.cloud_polish" = "cloud, polish, LLM, DeepSeek, OpenAI, Anthropic, API key, base URL";
 "settings.kw.dictation.context" = "context, cursor, surrounding text";
 "settings.kw.dictation.learn" = "learn, corrections, fixes";
 "settings.kw.dictation.history_keep" = "history, retention, days, keep";
@@ -293,6 +292,11 @@
 "settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "dictation model, speech model, download, Qwen";
 "settings.kw.speech.polish" = "polish model, tidy, punctuation, Gemma";
+"settings.kw.speech.services" = "cloud, API key, LLM, DeepSeek, Qwen, Model Studio, Doubao, Moonshot, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, base URL";
+"settings.kw.speech.translate" = "translate, translation model, cloud, DeepSeek";
+"settings.kw.speech.vision" = "OCR, screenshot, image, vision model, Copy Text from Screen";
+"settings.kw.dictation.translate_model" = "translation model, cloud, DeepSeek, API key";
+"settings.kw.screentext.translate_model" = "translation model, cloud, DeepSeek, API key";
 "settings.kw.speech.languages" = "language, languages, multilingual";
 "settings.kw.speech.models" = "manage models, benchmark, measure, accuracy, speed, memory, download, remove, Whisper, SenseVoice";
 "settings.kw.speech.more" = "resources, performance, cloud";
@@ -452,18 +456,12 @@
 /* Copy text from screen (⌥C): the second reading (ScreenTextRefine) */
 "settings.general.screen_text" = "Extra accuracy";
 "settings.general.screen_text.hint" = "⌥C copies macOS’s reading at once, then a model checks it and fixes misread symbols (l and /, 0 and @). If you haven’t copied anything else by then, the clipboard gets the fixed text.";
-"settings.general.screen_text.off" = "Off";
 "settings.general.screen_text.local" = "On this Mac";
-"settings.general.screen_text.cloud" = "Cloud model";
 "settings.general.screen_text.detail.off" = "macOS’s text recognition only: instant, nothing to download";
-"settings.general.screen_text.detail.local" = "PaddleOCR-VL, about 0.3 s; about 1 GB of memory while in use, freed after 10 idle minutes";
 "settings.general.screen_text.detail.local_small" = "This Mac has %d GB of memory and may slow down; the cloud model is lighter";
 "settings.general.screen_text.detail.download" = "Needs a %@ download";
 "settings.general.screen_text.detail.downloading" = "Downloading… %@";
 "settings.general.screen_text.download" = "Download";
-"settings.general.screen_text.detail.cloud" = "Uses %@, about ¥0.001 a capture; the picture is sent to the cloud";
-"settings.general.screen_text.detail.cloud_missing" = "Add a key under Models → Cloud Polish first";
-"settings.general.screen_text.setup" = "Set Up…";
 "settings.kit.screen_text" = "Copy Text from Screen";
 "settings.kw.pane.screentext" = "OCR, screenshot text, copy text, translate, screen, option C, option T";
 "settings.screen_text.section.copy" = "Copy (⌥C)";
@@ -472,7 +470,6 @@
 "settings.screen_text.translate.hint" = "For reading: text on the screen into your language. Auto turns text in your own language into the other one, and anything else into yours. A language you pick is always what you get: text already in it is copied as it is. Dictation’s ⌘ has its own setting.";
 "settings.kw.screentext.refine" = "OCR, accuracy, recognition, PaddleOCR, misread, symbols";
 "settings.kw.screentext.translate" = "translate, translation, language, target, auto, screen, option T";
-"settings.kw.screentext.translate_cloud" = "cloud, DeepSeek, API key, translate, online";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "It works now. Add these for better accuracy or offline use.";
@@ -499,7 +496,6 @@
 "onboarding.models.detail_cloud" = "Dictate in the cloud with a key now, or download models to keep everything on this Mac.";
 "onboarding.section.cloud" = "Cloud";
 "onboarding.section.local" = "On this Mac";
-"onboarding.key.saved_off" = "Key saved (%@), not turned on";
 "settings.storage.model.with_vad" = "includes voice detection";
 "onboarding.models.connecting" = "Connecting…";
 "settings.perm.screen.readd_title" = "Add Blurt to the list again";

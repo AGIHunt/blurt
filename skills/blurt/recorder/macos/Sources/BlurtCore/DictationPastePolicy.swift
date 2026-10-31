@@ -11,9 +11,9 @@
 //   • Accessibility isn't granted (a posted ⌘V wouldn't arrive).
 // The app in front at paste time is the one that counts, also when it isn't the one the take started in (2026-10-31,
 // the founder: people speak while in A meaning to type into B — "I'm in A now, I'll put it in B"; Typeless does the
-// same). Until then a switched app got a copy and a ⚠ "Not typed: you switched apps". Only a double tap's queued
-// Return stays back after a switch (DictationSendPolicy.queued): sending into another chat can't be undone.
-// ⌥C / ⌥T keep the refusal (ScreenTextPaste: `appChanged` → copy).
+// same). Until then a switched app got a copy and a ⚠ "Not typed: you switched apps". A double tap's queued Return
+// goes after the paste there too (DictationSendPolicy.queued; 2026-10-31, the founder: by the double tap the user is in
+// the new app and sees what was recognised), and ⌥C / ⌥T paste into the app in front by the same rule (ScreenTextPaste).
 // The user's clipboard is put back after the paste either way.
 import Foundation
 
@@ -79,15 +79,11 @@ public enum DictationPastePolicy {
         public var focusSecure: Bool
         /// the focused element is a text field as far as Accessibility can tell (nil: no element could be read)
         public var focusIsText: Bool?
-        /// the app in front now isn't the one the key was pressed in: ⌥C / ⌥T copy then (ScreenTextPaste); a
-        /// dictation pastes into the app in front all the same (DictationPastePolicy.decide doesn't look at it)
-        public var appChanged: Bool
 
         public init(hasFrontApp: Bool, frontIsBlurt: Bool, secureInput: Bool, accessibility: Bool, focusSecure: Bool = false,
-                    focusIsText: Bool? = nil, appChanged: Bool = false) {
+                    focusIsText: Bool? = nil) {
             self.hasFrontApp = hasFrontApp; self.frontIsBlurt = frontIsBlurt; self.secureInput = secureInput
             self.accessibility = accessibility; self.focusSecure = focusSecure; self.focusIsText = focusIsText
-            self.appChanged = appChanged
         }
     }
 
@@ -102,12 +98,12 @@ public enum DictationPastePolicy {
 
 /// ⌥C / ⌥T (docs/design/screen-text.md §Paste): whether the text read from the screen (or its translation) is also
 /// ⌘V'd into the app in front. DictationPastePolicy decides, as for a dictation (WeChat's input box, Electron and web
-/// editors that aren't an Accessibility text role get the paste), with two more refusals: a focus Accessibility reads
+/// editors that aren't an Accessibility text role get the paste), with one more refusal: a focus Accessibility reads
 /// as something other than a text field (the desktop, a page with nothing focused) — dictation pastes there and keeps
-/// the text on the island; the screen's text is on the clipboard already, so ⌘V into nothing would only beep — and
-/// an app in front that isn't the one the key was pressed in (`appChanged`: the user moved on while it was read or
-/// translated; dictation pastes there since 2026-10-31). The result stays on the clipboard whatever is decided (⌥C's
-/// design: a copy the user made).
+/// the text on the island; the screen's text is on the clipboard already, so ⌘V into nothing would only beep. The app
+/// in front when the text is ready is the one that counts, also when the user switched apps while it was read or
+/// translated (2026-10-31, as a dictation's). The result stays on the clipboard whatever is decided (⌥C's design: a
+/// copy the user made).
 public enum ScreenTextPaste {
     public enum Decision: Equatable {
         /// ⌘V into the app in front
@@ -117,7 +113,6 @@ public enum ScreenTextPaste {
     }
 
     public static func decide(_ s: DictationPastePolicy.Situation) -> Decision {
-        if s.hasFrontApp, s.appChanged { return .copy(reason: "app_changed") }
         switch DictationPastePolicy.decide(s) {
         case .paste: return s.focusIsText == false ? .copy(reason: "no_field") : .paste
         case .own: return .copy(reason: "blurt_in_front")
@@ -172,13 +167,12 @@ public enum DictationSendPolicy {
 
     /// A double tap that came while its take was on its way: Return once the text is in — not when nothing was pasted
     /// (Return would send without it), not into a focus read as no text field (it would rename the selected file or
-    /// follow a link), and not when the app in front isn't the one the take started in (`appChanged`): the text is
-    /// pasted there, but a message sent into another chat than the one the user was in can't be taken back (2026-10-31).
-    /// The checks of `decide` (secure input, Blurt in front …) still come when Return is pressed.
-    public static func queued(pasted: Bool, noField: Bool, appChanged: Bool) -> Decision {
+    /// follow a link). Also after a switch: the text went into the app in front and Return follows it there — by the
+    /// double tap the user is in that app and sees what was recognised (2026-10-31, the founder). The checks of `decide`
+    /// (secure input, Blurt in front …) still come when Return is pressed.
+    public static func queued(pasted: Bool, noField: Bool) -> Decision {
         guard pasted else { return .skip(reason: "not_pasted") }
         if noField { return .skip(reason: "no_field") }
-        if appChanged { return .skip(reason: "app_changed") }
         return .press
     }
 }

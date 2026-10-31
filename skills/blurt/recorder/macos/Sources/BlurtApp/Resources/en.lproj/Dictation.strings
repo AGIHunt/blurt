@@ -497,6 +497,10 @@
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
 "dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
 "dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
+"dictation.toast.asr_cloud_key" = "The cloud speech key didn’t work — the recording is kept";
+"dictation.toast.asr_cloud_key.action" = "Settings…";
+"dictation.toast.asr_cloud_offline" = "Couldn’t reach the cloud speech service — the recording is kept";
+"dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota — the recording is kept";
 "dictation.toast.slow.asr" = "Still recognizing… %@ to cancel";
 "dictation.toast.fn_clash" = "%@ also listens to Fn — text may go in twice";
 "dictation.toast.fn_clash.switch" = "Use Right Option";
@@ -508,7 +512,6 @@
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
 "dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
 "dictation.toast.not_sent.copied" = "Copied, not sent";
-"dictation.toast.not_sent.app" = "Not sent: you switched apps";
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
 "dictation.toast.tap_mode" = "Let go, then tap %@ to start talking (you can switch to hold in Settings)";
@@ -650,26 +653,10 @@
 "dictation.feedback.error.other" = "It didn’t go through. Try again later.";
 
 /* Cloud polish (DictationCloud, Settings → Dictation) */
-"dictation.cloud.title" = "Cloud Polish";
-"dictation.cloud.detail" = "Polish dictation with a model you choose: it fixes misheard words, drops filler words and cleans up punctuation.";
-"dictation.cloud.row.off" = "Off · polished on this Mac";
-"dictation.cloud.row.off_none" = "Off (no polish: typed as recognized)";
-"dictation.cloud.row.on" = "%1$@ · %2$@";
-"dictation.cloud.row.no_key" = "On, but no API key yet: polished on this Mac for now";
-"dictation.cloud.row.setup" = "Set Up…";
-"dictation.cloud.row.change" = "Change…";
-"dictation.cloud.note" = "Your dictated text goes to the model you choose for polishing. It fixes misheard words and long sentences better than the model on this Mac. Recordings are never uploaded. If the service can’t be reached in time, the model on this Mac polishes instead.";
-"dictation.cloud.on" = "Use cloud polish";
 "dictation.cloud.service" = "Service";
-"dictation.cloud.provider.deepseek" = "DeepSeek (recommended)";
-"dictation.cloud.provider.dashscope" = "Alibaba Cloud Model Studio";
-"dictation.cloud.provider.openai" = "OpenAI-compatible API";
-"dictation.cloud.provider.anthropic" = "Anthropic-compatible API";
 "dictation.cloud.base_url" = "Base URL";
 "dictation.cloud.model" = "Model";
 "dictation.cloud.model.placeholder" = "Model name";
-"dictation.cloud.model.translate" = "Translate model";
-"dictation.cloud.model.vision" = "Copy Text model";
 "dictation.cloud.model.custom" = "Custom…";
 "dictation.cloud.model.custom.placeholder" = "Model ID";
 "dictation.cloud.model.default" = "%@ (default)";
@@ -695,26 +682,14 @@
 "dictation.cloud.key" = "API key";
 "dictation.cloud.key.placeholder" = "Paste an API key";
 "dictation.cloud.key.stored" = "Saved in your Keychain. Type a new one to replace it.";
-"dictation.cloud.key.get" = "Get a DeepSeek API key";
-"dictation.cloud.key.get.dashscope" = "Get an Alibaba Cloud Model Studio API key";
-"dictation.cloud.dashscope.what" = "One Alibaba Cloud Model Studio key covers polish, translation, Copy Text from Screen and speech recognition.";
 "dictation.cloud.key.forget" = "Delete Saved Key";
-"dictation.cloud.what" = "Sent to this service: the dictated text, your word list and the name of the app it goes into. With “Use the text around the cursor” on, also that text and your last 3 dictations in the same app. The API key stays in this Mac’s Keychain.";
-"dictation.cloud.cost" = "DeepSeek Flash costs about ¥0.001 a dictation: around ¥3 a month at 100 a day.";
 "dictation.cloud.test" = "Test Connection";
 "dictation.cloud.check.ok" = "Connected · %@ s";
-"dictation.cloud.check.no_key" = "Enter an API key first";
-"dictation.cloud.check.auth" = "The key is wrong or no longer valid";
-"dictation.cloud.check.network" = "Can’t reach the service. Check the network or the base URL.";
-"dictation.cloud.check.rate" = "Too many requests. Try again in a moment.";
-"dictation.cloud.check.config" = "Fill in both the base URL and the model";
-"dictation.cloud.check.other" = "The service returned an error. Check the base URL and the model name.";
 "dictation.cloud.cancel" = "Cancel";
 "dictation.cloud.done" = "Done";
-"dictation.cloud.hint" = "Turn on cloud polish to fix misheard words and long sentences better";
+"dictation.cloud.hint" = "Add a cloud model to fix misheard words and long sentences better";
 "dictation.cloud.hint.setup" = "Set Up…";
-"dictation.cloud.hint.never" = "Don’t Remind Me";
-"dictation.models.cloud" = "%@ (cloud polish)";
+"dictation.models.cloud" = "%@ (cloud)";
 
 /* Translate mode (docs/design/dictation-translate.md) */
 "dictation.translate.toast.on.auto" = "Translate on: %1$@ ↔ %2$@ · ⌘ to turn off";
@@ -733,11 +708,6 @@
 "dictation.translate.target.auto_one.note" = "Text in %@ stays as it is; pick a language to translate it into";
 "dictation.translate.toast.learned" = "Dictation in %@ will be translated from now on";
 "dictation.translate.toast.undo" = "Undo";
-"dictation.translate.cloud.title" = "Use the cloud model to translate";
-"dictation.translate.cloud.detail" = "Text is sent to %@; falls back to this Mac’s model";
-"dictation.translate.cloud.none" = "No cloud model set up; this Mac’s polish model translates";
-"dictation.translate.cloud.nothing" = "Set up a cloud model or download this Mac’s polish model first";
-"dictation.translate.cloud.setup" = "Set Up…";
 "dictation.translate.apps" = "Dictation is translated in these apps";
 "dictation.translate.apps.note" = "In an app, ⌘ turns translation on and it stays on there; ⌘ again turns it off and removes the app.";
 "dictation.translate.apps.remove" = "Remove";

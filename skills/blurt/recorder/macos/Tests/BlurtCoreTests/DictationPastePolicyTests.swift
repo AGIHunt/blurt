@@ -59,36 +59,26 @@ final class DictationPastePolicyTests: XCTestCase {
     }
 
     /// 2026-10-31, the founder: people speak in A meaning to type into B. A take whose user switched apps goes into
-    /// the app in front by the same rules as any take (until then: copied, with a ⚠ "you switched apps").
+    /// the app in front by the same rules as any take (until then: copied, with a ⚠ "you switched apps"): the
+    /// situation is read at paste time and has no "which app the take started in" for a rule to look at.
     func testASwitchedAppGetsTheTextByTheUsualRules() {
-        for front in [true, false] { for blurt in [true, false] { for secure in [true, false] { for ax in [true, false] {
-            for text in [true, false, nil] as [Bool?] {
-                var x = s(front: front, blurt: blurt, secure: secure, ax: ax, text: text)
-                let same = P.decide(x)
-                x.appChanged = true
-                XCTAssertEqual(P.decide(x), same)
-            }
-        } } } }
-        var x = s()
-        x.appChanged = true
-        XCTAssertEqual(P.decide(x), .paste(confirmed: true))
-        var pw = s(secureField: true)
-        pw.appChanged = true
-        XCTAssertEqual(P.decide(pw), .hold(reason: "secure_input"))         // a password field in the new app: held
-        var b = s(blurt: true)
-        b.appChanged = true
-        XCTAssertEqual(P.decide(b), .own)                                    // into Blurt: its own text view, or nothing
+        XCTAssertEqual(P.decide(s()), .paste(confirmed: true))
+        XCTAssertEqual(P.decide(s(secureField: true)), .hold(reason: "secure_input")) // a password field in the new app
+        XCTAssertEqual(P.decide(s(blurt: true)), .own)                       // into Blurt: its own text view, or nothing
     }
 
-    /// A queued Return (a double tap while the take was on its way) goes only where the text went in, and never after a
-    /// switch: the text is pasted, but sending into another chat can't be undone.
-    func testAQueuedReturnIsHeldAfterASwitch() {
+    /// A queued Return (a double tap while the take was on its way) goes only where the text went in — also after a
+    /// switch (2026-10-31, the founder: by the double tap the user is in the new app and sees what was recognised).
+    /// DictationSendPolicy.decide's checks (secure input, Blurt in front …) still come when Return is pressed.
+    func testAQueuedReturnFollowsThePaste() {
         typealias S = DictationSendPolicy
-        XCTAssertEqual(S.queued(pasted: true, noField: false, appChanged: false), .press)
-        XCTAssertEqual(S.queued(pasted: true, noField: false, appChanged: true), .skip(reason: "app_changed"))
-        XCTAssertEqual(S.queued(pasted: true, noField: true, appChanged: false), .skip(reason: "no_field"))
-        XCTAssertEqual(S.queued(pasted: false, noField: false, appChanged: true), .skip(reason: "not_pasted"))
-        XCTAssertEqual(S.queued(pasted: false, noField: false, appChanged: false), .skip(reason: "not_pasted"))
+        XCTAssertEqual(S.queued(pasted: true, noField: false), .press)
+        XCTAssertEqual(S.queued(pasted: true, noField: true), .skip(reason: "no_field"))
+        XCTAssertEqual(S.queued(pasted: false, noField: false), .skip(reason: "not_pasted"))
+        XCTAssertEqual(S.decide(hasFrontApp: true, frontIsBlurt: false, secureInput: true, accessibility: true),
+                       .skip(reason: "secure_input"))
+        XCTAssertEqual(S.decide(hasFrontApp: true, frontIsBlurt: true, secureInput: false, accessibility: true),
+                       .skip(reason: "blurt_in_front"))
     }
 
     /// ⌥C / ⌥T paste by the same rules (2026-10-30: WeChat only got a copy — the old check wanted an AX text role):
@@ -104,9 +94,8 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertEqual(T.decide(s(secure: true)), .copy(reason: "secure_input"))
         XCTAssertEqual(T.decide(s(secureField: true)), .copy(reason: "secure_input"))
         XCTAssertEqual(T.decide(s(ax: false)), .copy(reason: "no_accessibility"))
-        var moved = s()
-        moved.appChanged = true                                              // the user switched apps during the drag
-        XCTAssertEqual(T.decide(moved), .copy(reason: "app_changed"))
+        // the user switched apps during the drag or the translation: the app in front now gets it by the same rules
+        // (2026-10-31, as a dictation's) — ScreenTextPaste has no switch to refuse on
         // every situation dictation pastes into, ⌥C pastes into too — unless the focus is read as no field
         for front in [true, false] { for blurt in [true, false] { for secure in [true, false] { for ax in [true, false] {
             for text in [true, false, nil] as [Bool?] {

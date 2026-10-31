@@ -525,8 +525,14 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   Japanese as its next language): what you say in your language goes into the other one, anything else into yours —
   or English, 简体中文, 繁體中文, 日本語, 한국어, Français, Deutsch, Español, Português, Italiano, Русский; what you
   said in that language already goes in as you said it. ⌥T (translate from screen) has its own setting, since reading
-  usually goes the other way. The cloud model translates when you have one set up and *Use the cloud model to
-  translate* is on (better, about 1 s); otherwise the local polish model.
+  usually goes the other way. Which model translates is the *Translate* row of *Settings → Models*: *Automatic* uses
+  the best cloud service you connected (better, about 1 s), else the local polish model.
+- **Cloud services.** *Settings → Models → Cloud services*: add an API key for DeepSeek (recommended; about ¥0.001 a
+  dictation), Alibaba Cloud Model Studio, Volcengine Ark, Moonshot (Kimi), Zhipu (GLM), MiniMax, Xiaomi MiMo, OpenAI,
+  Anthropic, Google Gemini, OpenRouter, or any OpenAI- or Anthropic-compatible API. The key stays in your Keychain;
+  *Test* says "OK · 320 ms" or why not. Under *Which model does each job*, Polish, Translate and Copy Text from Screen
+  each pick *Automatic*, this Mac, or one of a service's models (its own current list), and say where the text goes.
+  A Model Studio or OpenAI key also recognizes speech.
 - **Each app remembers.** Turn on Structured (⇧) or Translate (⌘) in an app and it stays on there until you switch it
   back; after an hour away the notch reminds you as the next take starts. *Settings → Dictation → Remember Structured
   and Translate for each app* turns this off; the apps are listed there with Reset. The apps where dictation is translated are
@@ -987,7 +993,8 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
   按两下只用来发送刚听写的内容：一分钟内没往这个 App 里听写过、也没有还在处理的，就什么都不按。
   按两下稍微慢一点（第二下在 0.8 秒内，还没说话）也算发送。文字还在处理时按键，不会丢掉这段话：这时按两下，会等文字填进去再发送——输入框里出现文字就马上回车，之后才还原你的剪贴板。刘海右侧会显示一个对勾和「已发送」；没能按回车时（没有辅助功能权限、在密码框里、文字只是复制了），刘海上会说明原因。在聊天 App 里的前几次听写后，会有一行小字提醒「按两下 Fn 发送」。换成其他按键也一样；不会往口喷鸡自己或密码框里按回车；不需要的话在「设置 → 听写」里关掉「按两下 Fn 发送（回车）」。
 - **提示音。** 麦克风真正开始收音时小鸡叫一声（可以说了），结束时啄两下；按 Esc 取消是轻轻啄一下。按了没声音，就是没开始。语音备注也一样；录屏时不出声。「设置 → 听写」里开始和结束各有一个开关。
-- **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 按 ⌘ 翻译成」：「自动」（默认）是你的语言 ↔ 另一种，列表里会写出这一对（比如「自动：简体中文 ↔ English」；系统是英文、第二语言是日语时是「自动：English ↔ 日本語」）：说你自己的语言就译成另一种，说别的语言就译成你的语言；也可以选 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский，说的已经是这种语言时按原话输入。⌥T 截图翻译有它自己的设置（读和写的方向通常相反）。设置了云端模型并打开「用云端模型翻译」就用云端（更好，约 1 秒），否则用本机润色模型。
+- **边说边翻译。** 听写时按一下 ⌘（左右都行），或点刘海里的小鸡，这段话就翻译后再输入。「设置 → 听写 → 按 ⌘ 翻译成」：「自动」（默认）是你的语言 ↔ 另一种，列表里会写出这一对（比如「自动：简体中文 ↔ English」；系统是英文、第二语言是日语时是「自动：English ↔ 日本語」）：说你自己的语言就译成另一种，说别的语言就译成你的语言；也可以选 English、简体中文、繁體中文、日本語、한국어、Français、Deutsch、Español、Português、Italiano、Русский，说的已经是这种语言时按原话输入。⌥T 截图翻译有它自己的设置（读和写的方向通常相反）。用哪个模型翻译看「设置 → 模型」的「翻译」一行：「自动」用你连接的最好的云服务（更好，约 1 秒），没有就用本机润色模型。
+- **云服务。** 「设置 → 模型 → 云服务」：添加 DeepSeek（推荐，一条听写约 ¥0.001）、阿里云百炼、火山方舟、月之暗面（Kimi）、智谱（GLM）、MiniMax、小米 MiMo、OpenAI、Anthropic、Google Gemini、OpenRouter，或任何兼容 OpenAI / Anthropic 的接口的 API Key。Key 存在钥匙串里；「测试」会显示「正常 · 320 毫秒」或原因。在「各项任务用哪个模型」里，润色、翻译、截图取字各自选「自动」、这台 Mac，或某个服务的模型（来自它当前的模型列表），下面写明文字发给谁。百炼或 OpenAI 的 Key 也能做语音识别。
 - **每个 App 记住你的选择。** 在某个 App 里打开结构化（⇧）或翻译（⌘）后，在这个 App 里一直保持，直到你再切回；隔一小时再用，开始时刘海会提示一句。在「设置 → 听写 → 在每个 App 里记住结构化和翻译」里可以关掉，用过的 App 也列在那里，可以重置。自动翻译的 App 列在「这些 App 里听写自动翻译」下面：在某个 App 里按 ⌘ 开启翻译，以后在那里一直翻译；再按 ⌘ 关掉，就从列表里移除；也可以在那里移除。关掉「记住」时，刘海可能会建议在你常翻译的 App 里一直翻译，接受后会说一句并带「撤销」。
 - **没听到？** 刘海上会写出这次用的是哪个麦克风——「没听到内容（AirPods）」，或者这个麦克风全程没有声音时（静音了、选错了输入、耳机还在连接）写「AirPods 没有声音」——点「换麦克风…」打开「设置 → 听写」的麦克风。
 - 在「设置 → 听写」（或设置助手）里可以把按键换成**右 Option** 或**任一 Option 键**（左右都行，同样只认单独按一下），方式换成只用「按一下开始，再按一下结束」或只用「按住说话」。以前没改过按键的，现在默认是 Fn；自己选过的按键保持不变。

@@ -1439,7 +1439,8 @@ final class Dictation {
         if !app.isEmpty { req["app"] = app }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
-        if WarmServer.running("asr-serve"), !serverGivenUp {
+        var restarted = false
+        while WarmServer.running("asr-serve"), !serverGivenUp {
             let t0 = Date()
             let limit = DictationASRFailure.serverTimeout(audioSeconds: audioSeconds)
             // a hang is told by the server's behaviour: no answer and no CPU (DictationASRFailure.hung), not the limit
@@ -1449,11 +1450,24 @@ final class Dictation {
             }
             if let r = answer {
                 if r["ok"] as? Bool == true { return r }
-                // no model: the CLI would only say the same
-                if r["code"] as? String == "model_missing" { return r }
+                // no model, a cloud key refused, local-only on: the CLI would only say the same
+                if DictationASRFailure.definite(r["code"] as? String) { return r }
+                // it restarts to add the package this model needs (transcribe.py NeedsRestart): the new one, not a
+                // cold CLI run per piece, once
+                if r["code"] as? String == "restarting", !restarted {
+                    restarted = true
+                    // the new server's own run file (another port), not the old one's still being taken away
+                    let old = WarmServer.record("asr-serve")?.port
+                    let back = Date().addingTimeInterval(limit)
+                    func up() -> Bool { WarmServer.running("asr-serve") && WarmServer.record("asr-serve")?.port != old }
+                    while !up() && Date() < back { usleep(100_000) }
+                    emit(["event": "dictation_asr_server", "state": "restarted", "back": up()])
+                    continue
+                }
             } else if hung || Date().timeIntervalSince(t0) >= limit - 0.5 {
                 giveUpOnServer(hung: hung, waited: Date().timeIntervalSince(t0))
             }
+            break
         }
         let sem = DispatchSemaphore(value: 0)
         var out: [String: Any] = ["ok": false, "code": "error"]

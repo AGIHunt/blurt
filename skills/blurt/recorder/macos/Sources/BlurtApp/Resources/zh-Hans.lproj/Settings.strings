@@ -279,7 +279,6 @@
 "settings.kw.dictation.by_app" = "按应用, 应用类型, 聊天, 代码, 邮件, 笔记";
 "settings.kw.dictation.polish_timeout" = "超时, 等待, 秒, 润色";
 "settings.kw.dictation.word_list" = "词库, 词典, 自定义词, 名字, 术语, 热词";
-"settings.kw.speech.cloud_polish" = "云端, 润色, 大模型, DeepSeek, OpenAI, Anthropic, API Key, 接口地址";
 "settings.kw.dictation.context" = "上下文, 光标, 周围的文字";
 "settings.kw.dictation.learn" = "学习, 纠正, 改错";
 "settings.kw.dictation.history_keep" = "历史, 保留, 天数";
@@ -292,6 +291,11 @@
 "settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "听写模型, 识别模型, 下载, Qwen";
 "settings.kw.speech.polish" = "润色模型, 整理, 标点, Gemma";
+"settings.kw.speech.services" = "云服务, 云端, API Key, 大模型, DeepSeek, 千问, 百炼, 豆包, 火山方舟, 月之暗面, 智谱, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, 接口地址";
+"settings.kw.speech.translate" = "翻译, 翻译模型, 云端, DeepSeek";
+"settings.kw.speech.vision" = "OCR, 截图, 图片, 看图模型, 截图取字";
+"settings.kw.dictation.translate_model" = "翻译模型, 云端, DeepSeek, API Key";
+"settings.kw.screentext.translate_model" = "翻译模型, 云端, DeepSeek, API Key";
 "settings.kw.speech.languages" = "语言, 多语言, 方言";
 "settings.kw.speech.models" = "管理模型, 测速, 准确率, 速度, 内存, 下载, 移除, Whisper, SenseVoice";
 "settings.kw.speech.more" = "资源, 性能, 云端";
@@ -451,18 +455,12 @@
 /* 截图取字（⌥C）的二次识别（ScreenTextRefine） */
 "settings.general.screen_text" = "精确识别";
 "settings.general.screen_text.hint" = "⌥C 先用 macOS 自带识别立即复制，再用模型复查一遍，修正认错的符号（如 l 和 /、0 和 @）。复查完时你还没复制别的内容，剪贴板就会换成修正后的文字。";
-"settings.general.screen_text.off" = "关闭";
 "settings.general.screen_text.local" = "本机模型";
-"settings.general.screen_text.cloud" = "云端模型";
 "settings.general.screen_text.detail.off" = "只用 macOS 自带识别，即时，无需下载";
-"settings.general.screen_text.detail.local" = "PaddleOCR-VL，约 0.3 秒；使用时占约 1 GB 内存，闲置 10 分钟后释放";
 "settings.general.screen_text.detail.local_small" = "本机只有 %d GB 内存，可能变卡，建议用云端模型";
 "settings.general.screen_text.detail.download" = "需下载 %@";
 "settings.general.screen_text.detail.downloading" = "正在下载… %@";
 "settings.general.screen_text.download" = "下载";
-"settings.general.screen_text.detail.cloud" = "使用 %@，每次约 ¥0.001，截图会发送到云端";
-"settings.general.screen_text.detail.cloud_missing" = "请先在「模型 → 云端润色」中填写 Key";
-"settings.general.screen_text.setup" = "设置…";
 "settings.kit.screen_text" = "截图取字";
 "settings.kw.pane.screentext" = "OCR, 截图文字, 取字, 复制文字, 截图翻译, 翻译, 屏幕";
 "settings.screen_text.section.copy" = "取字（⌥C）";
@@ -471,7 +469,6 @@
 "settings.screen_text.translate.hint" = "用来读：把屏幕上的文字译成你的语言。「自动」把你自己语言的文字译成另一种，其他语言译成你的语言。选了某种语言就总是得到这种语言：已经是这种语言的文字原样复制。听写的 ⌘ 翻译有它自己的设置。";
 "settings.kw.screentext.refine" = "OCR, 精确识别, 识别, 认错, 符号, PaddleOCR";
 "settings.kw.screentext.translate" = "翻译, 译文, 语言, 目标语言, 自动, 截图翻译";
-"settings.kw.screentext.translate_cloud" = "云端, DeepSeek, Key, 翻译, 在线";
 
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "现在就能用。想更准确或离线使用，可再加下面两项。";
@@ -498,7 +495,6 @@
 "onboarding.models.detail_cloud" = "现在可以用 Key 云端听写，也可以下载模型，全部留在这台 Mac 上。";
 "onboarding.section.cloud" = "云端";
 "onboarding.section.local" = "在这台 Mac 上";
-"onboarding.key.saved_off" = "已保存 Key（%@），还没开启";
 "settings.storage.model.with_vad" = "含人声检测";
 "onboarding.models.connecting" = "正在连接…";
 "settings.perm.screen.readd_title" = "把口喷鸡重新加进列表";

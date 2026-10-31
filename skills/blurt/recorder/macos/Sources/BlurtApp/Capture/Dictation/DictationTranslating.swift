@@ -7,7 +7,8 @@
 //    line says what is needed, with Settings, and it stays off;
 //  • at key-up, after Structured's pass: one `translate` request to the polish server (the prompt ⌥T uses) over the
 //    text in its style, into the other language of the one the speech model heard (or Settings' fixed target), with
-//    the user's words; the cloud model when it is set up and Settings lets it, the local one as its fall-back.
+//    the user's words; the Translate job's model (Settings → Models: a cloud service's, or this Mac's), the local
+//    one as the cloud's fall-back.
 //    polish.py's guard refuses what is plainly no translation; a refusal or a failure types the take as said, and the
 //    island says so;
 //  • the history keeps what was said (`translate.said`) beside what was typed.
@@ -32,17 +33,12 @@ extension Dictation {
     /// Posted when the translate setting changes (Settings → Dictation's list of apps follows the island's changes)
     static let translateConfigChanged = Notification.Name("dev.blurt.dictation.translateConfigChanged")
 
-    /// The cloud model for translation: the one set up for cloud polish, with its key — whether cloud polish itself is
-    /// on or not (as ⌥T's), when Settings lets the cloud translate. nil: the local model.
-    static var translateCloud: [String: Any]? {
-        guard translateConfig.cloud else { return nil }
-        return ScreenTextRefine.cloudPayload
-    }
+    /// The cloud model for translation: the Translate job's (Settings → Models), with its key. nil: the local model.
+    static var translateCloud: [String: Any]? { CloudStore.payload(.translate) }
 
     /// What would translate a take now.
     var translateEngine: DictationTranslateRoute.Engine {
-        DictationTranslateRoute.engine(cloudReady: ScreenTextRefine.cloudPayload != nil, useCloud: Dictation.translateConfig.cloud,
-                                       localModel: polishModel != nil)
+        DictationTranslateRoute.engine(cloudReady: Dictation.translateCloud != nil, useCloud: true, localModel: polishModel != nil)
     }
 
     /// While listening: the take will be translated (the island's ear shows it).
@@ -64,7 +60,7 @@ extension Dictation {
             emit(["event": "dictation_translate", "action": "unavailable", "via": via, "id": entryID])
             var t = Island.Toast(text: Loc.t("dictation.translate.toast.unavailable", table: "Dictation"),
                                  actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
-                AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish")
+                AppEnvironment.settings?.show(pane: "speech/speech.services")
             })
             t.key = Dictation.styleToastKey
             t.seconds = 6
@@ -164,12 +160,14 @@ extension Dictation {
         }
         let said = Dictation.settings["translate_cloud_hint"] as? Bool ?? false
         let engine = DictationTranslateRoute.Engine(rawValue: rec.engine) ?? .none
-        guard DictationTranslateRoute.suggestsCloud(engine: engine, cloudReady: ScreenTextRefine.cloudPayload != nil,
-                                                    useCloud: Dictation.translateConfig.cloud, alreadySaid: said) else { return }
+        // a Translate job set to this Mac on purpose is never second-guessed
+        guard CloudStore.setup.choice(.translate) == .auto,
+              DictationTranslateRoute.suggestsCloud(engine: engine, cloudReady: Dictation.translateCloud != nil,
+                                                    useCloud: true, alreadySaid: said) else { return }
         Dictation.set("translate_cloud_hint", true)
         var t = Island.Toast(text: Loc.t("dictation.translate.toast.cloud_hint", table: "Dictation"),
                              actionTitle: Loc.t("dictation.translate.toast.setup", table: "Dictation"), action: {
-            AppEnvironment.settings?.show(pane: "speech/speech.cloud_polish")
+            AppEnvironment.settings?.show(pane: "speech/speech.services")
         })
         t.key = Dictation.noticeToastKey
         t.passive = true

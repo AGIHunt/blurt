@@ -1,10 +1,11 @@
 // ⌥C Copy Text from Screen, ⌥T Translate Text from Screen (docs/design/screen-text.md): a crosshair, one drag,
 // let go — no dim over the screen, no window to click, no toolbar (as Bob's OCR and ⌘⇧4's drag). The text in the area
 // (BlurtCore ScreenText: what the edges cut is left out, wrapped lines are one again, lists, tables and code keep
-// their shape) — or its translation — is on the clipboard, and ⌘V'd into the app the key was pressed in by dictation's rules
-// (BlurtCore ScreenTextPaste over DictationPastePolicy: also WeChat's input box and other fields Accessibility can't
-// read; never a password field, Blurt itself, an app the user switched to meanwhile, or a focus Accessibility reads as
-// no text field). The clipboard keeps it either way, as Bob's does. Nothing is saved: no card, no file, no sound.
+// their shape) — or its translation — is on the clipboard, and ⌘V'd into the app in front when it is ready by dictation's
+// rules (BlurtCore ScreenTextPaste over DictationPastePolicy: also WeChat's input box and other fields Accessibility
+// can't read, and an app the user switched to meanwhile, as a dictation's; never a password field, Blurt itself, or a
+// focus Accessibility reads as no text field). The clipboard keeps it either way, as Bob's does. Nothing is saved: no
+// card, no file, no sound.
 //
 // What the island says is true (2026-10-30): "Pasted" only once the field, read back, shows the text
 // (DictationInsert.confirmLanding — dictation's landing check); a paste that can't be confirmed (an unreadable field,
@@ -32,26 +33,27 @@ final class ScreenTextCopy {
     /// BLURT_TEST_PASTEBOARD, else one of the process's) — a test never touches the user's clipboard.
     static var pasteboard: NSPasteboard { DictationInsert.pasteboard }
 
-    /// The app the key was pressed in (the drag's windows never take the focus from it): the result is pasted only
-    /// there — never into an app the user switched to while it was read or translated (as a slow dictation's).
+    /// The app the key was pressed in (the drag's windows never take the focus from it). The result is pasted into the
+    /// app in front when it is ready, also one the user switched to while it was read or translated (as a dictation's,
+    /// 2026-10-31); whether it changed is only logged (`app_changed`). nil: the clipboard only (a failed translation's
+    /// original, a text already in ⌥T's language).
     struct Target { let pid: pid_t? }
 
     static func target() -> Target { Target(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier) }
 
     /// What ScreenTextPaste decides now, from what DictationInsert.situation() reads now (as a dictation's paste does
-    /// at its paste: an Electron app's field woken at the key-down is readable by then), plus whether the app in front
-    /// is still `t`'s. Test builds: the test pad when it is open (a text view of our own, never another app), else
-    /// the clipboard only. → the decision and the focused element's role (for the log).
-    static func decide(_ t: Target?) -> (decision: ScreenTextPaste.Decision, role: String?) {
-        guard let t = t else { return (.copy(reason: "no_target"), nil) }
+    /// at its paste: an Electron app's field woken at the key-down is readable by then). Test builds: the test pad when
+    /// it is open (a text view of our own, never another app), else the clipboard only. → the decision, the focused
+    /// element's role and whether the app in front isn't `t`'s any more (both for the log).
+    static func decide(_ t: Target?) -> (decision: ScreenTextPaste.Decision, role: String?, appChanged: Bool) {
+        guard let t = t else { return (.copy(reason: "no_target"), nil, false) }
         if DictationInsert.testMode {
-            guard DictationTestPad.textView != nil else { return (.copy(reason: "test_mode"), nil) }
+            guard DictationTestPad.textView != nil else { return (.copy(reason: "test_mode"), nil, false) }
             return (ScreenTextPaste.decide(.init(hasFrontApp: true, frontIsBlurt: false, secureInput: false, accessibility: true,
-                                                 focusIsText: true)), "test_pad")
+                                                 focusIsText: true)), "test_pad", false)
         }
-        var now = DictationInsert.situation()
-        now.situation.appChanged = now.front?.processIdentifier != t.pid
-        return (ScreenTextPaste.decide(now.situation), now.focus.role)
+        let now = DictationInsert.situation()
+        return (ScreenTextPaste.decide(now.situation), now.focus.role, now.front != nil && now.front?.processIdentifier != t.pid)
     }
 
     func cancel() { drag?.close(); drag = nil }
@@ -156,7 +158,7 @@ final class ScreenTextCopy {
     @discardableResult
     private func deliver(_ text: String, target: Target?, done: @escaping (ScreenTextPaste.Outcome) -> Void) -> Int {
         let pb = Self.pasteboard
-        let (decision, role) = Self.decide(target)
+        let (decision, role, appChanged) = Self.decide(target)
         var pasted = false
         // the field as it is before the paste (dictation's way): read back after it, it says whether the text went in
         var field: DictationField?, before: (text: String, selection: NSRange)?
@@ -174,7 +176,8 @@ final class ScreenTextCopy {
             let o = ScreenTextPaste.outcome(pasted: pasted, seen: seen != nil)
             var ev: [String: Any] = ["event": "screen_text_delivered", "outcome": o.rawValue, "typed": o == .pasted,
                                      "pasted": pasted, "role": role ?? NSNull(), "readable": before != nil,
-                                     "chars": text.count, "confirm_ms": Int((CACurrentMediaTime() - t0) * 1000)]
+                                     "chars": text.count, "confirm_ms": Int((CACurrentMediaTime() - t0) * 1000),
+                                     "app_changed": appChanged]
             if case .copy(let why) = decision { ev["why"] = why }
             emit(ev)
             done(o)
@@ -211,8 +214,8 @@ final class ScreenTextCopy {
         setTranslateConfig(ScreenTranslateConfig.migrated(from: Dictation.translateConfig))
         emit(["event": "screen_translate_migrated", "cloud": Dictation.translateConfig.cloud])
     }
-    /// The cloud model ⌥T translates with: the one set up for cloud polish (once, for everything), when ⌥T's switch lets it.
-    static var translateCloud: [String: Any]? { translateConfig.cloud ? ScreenTextRefine.cloudPayload : nil }
+    /// The cloud model ⌥T translates with: the Translate job's (Settings → Models), nil when it runs on this Mac.
+    static var translateCloud: [String: Any]? { CloudStore.payload(.translate) }
 
     static func warmTranslator() {
         guard translateCloud == nil, !WarmServer.running("polish-serve") else { return }

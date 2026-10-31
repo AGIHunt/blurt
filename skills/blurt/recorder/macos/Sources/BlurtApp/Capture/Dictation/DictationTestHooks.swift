@@ -124,8 +124,8 @@ extension App {
             case "toggle": d.toggleTranslate(via: a.count > 1 && a[1] == "island" ? "island" : "command")
             case "target" where a.count > 1:
                 var c = Dictation.translateConfig; c.target = DictationTranslateTarget(rawValue: a[1]) ?? .auto; Dictation.setTranslateConfig(c)
-            case "cloud" where a.count > 1:
-                var c = Dictation.translateConfig; c.cloud = a[1] == "on"; Dictation.setTranslateConfig(c)
+            case "cloud" where a.count > 1:     // the Translate job (Settings → Models): Auto, or this Mac
+                CloudStore.setChoice(a[1] == "on" ? .auto : .local, for: .translate)
             case "app" where a.count > 1:
                 var c = Dictation.translateConfig; c.apps.insert(a[1]); Dictation.setTranslateConfig(c)
             case "learned" where a.count > 1: d.announceLearned(bundle: a[1])     // the suggestion accepted: said, with Undo

@@ -3,12 +3,12 @@
 // and layout; the model's characters fix what Vision misread inside a line — l / I / /, 0 / @, a missing →).
 // ScreenTextCopy decides where the merge goes (the clipboard, still holding the draft; or the field it types into).
 //
-// record.screen_text.refine = off (unset) | local | cloud — Settings → Copy Text from Screen:
+// record.screen_text.refine = off (unset) | on — Settings → Copy Text from Screen's switch ("local" / "cloud" from
+// before v1.0.8 read as on). Which model reads is the Copy Text from Screen job of Settings → Models (CloudStore):
 //   local   PaddleOCR-VL 1.6 (720 MB, through the one download manager), kept warm by `screen_text.py serve` (~1.1 GB
 //           while warm, ended after 10 idle minutes and with Blurt, like the speech and polish servers); ~0.2 s a
 //           capture on an M5 Max. Offered from 16 GB; an 8 GB Mac gets the choice with its cost said.
-//   cloud   the provider and key the user set up for cloud polish (DictationCloud: DeepSeek, or any OpenAI- or
-//           Anthropic-compatible API with images): `screen_text.py read --stdin`, the key on stdin, never in a file,
+//   cloud   a connected service's model that reads images (DeepSeek, Model Studio's qwen3.6-flash, …): `screen_text.py read --stdin`, the key on stdin, never in a file,
 //           an argument or the environment. 1–6 s; ≈ ¥0.001 a capture. Nothing to download.
 // A capture over 4 MP or 3000 characters (a whole screen) keeps the draft: seconds, not a moment.
 import AppKit
@@ -22,15 +22,28 @@ final class ScreenTextRefine {
 
     enum Mode: String, CaseIterable { case off, local, cloud }
 
-    static var mode: Mode {
-        let o = recordConfig()["screen_text"] as? [String: Any] ?? [:]
-        return Mode(rawValue: o["refine"] as? String ?? "off") ?? .off
+    /// ⌥C reads again (Settings → Copy Text from Screen's switch).
+    static var on: Bool {
+        let v = (recordConfig()["screen_text"] as? [String: Any])?["refine"] as? String ?? "off"
+        return v != "off"
     }
 
-    static func setMode(_ m: Mode) {
+    /// Off, or where the second reading runs: the Copy Text from Screen job's route.
+    static var mode: Mode {
+        guard on else { return .off }
+        return cloudPayload != nil ? .cloud : .local
+    }
+
+    static func setOn(_ v: Bool) {
         var o = recordConfig()["screen_text"] as? [String: Any] ?? [:]
-        o["refine"] = m == .off ? nil : m.rawValue
+        o["refine"] = v ? "on" : nil
         setRecordConfig("screen_text", o.isEmpty ? nil : o)
+        modeChanged()
+    }
+
+    /// The job moved (Settings → Models) or the switch flipped: the local server warms or ends.
+    static func modeChanged() {
+        let m = mode
         if m == .local, installed == true { shared.warm() }
         if m != .local, WarmServer.running(server) { DispatchQueue.global(qos: .utility).async { _ = WarmServer.call(server, ["cmd": "exit"], timeout: 2) } }
     }
@@ -47,13 +60,8 @@ final class ScreenTextRefine {
         }
     }
 
-    /// The cloud model's settings with the key, when the user set a provider up with a key (cloud polish itself may be
-    /// off: this is its own choice); nil otherwise.
-    static var cloudPayload: [String: Any]? {
-        let s = DictationCloud.setup
-        guard !s.effectiveModel.isEmpty, let key = DictationCloud.Key.read(s.provider), !key.isEmpty else { return nil }
-        return DictationCloud.payload(s, key: key)
-    }
+    /// The Copy Text from Screen job's cloud model with its key; nil when it reads on this Mac.
+    static var cloudPayload: [String: Any]? { CloudStore.payload(.vision) }
 
     /// The local model's server, started ahead (Settings turned it on, or the first capture): the next capture finds it warm.
     func warm() {

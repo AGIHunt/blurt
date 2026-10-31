@@ -29,6 +29,10 @@ enum SettingsModule {
             await MainActor.run { Spotlight.shared.refresh() }
         }
 
+        // the cloud services (record.cloud; the one-time move from cloud polish happens on this first read) and their
+        // model lists, read again when a day old
+        CloudStore.refreshStale()
+
         SelfTests.install()
         if Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { Onboarding.shared.show(step: Onboarding.resumeStep) }

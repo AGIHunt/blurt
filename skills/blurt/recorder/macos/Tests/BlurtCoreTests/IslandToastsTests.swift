@@ -36,13 +36,13 @@ final class IslandToastsTests: XCTestCase {
 
     /// A double tap whose take was only copied: "Not sent" was replaced in the same frame by "Copied — paste with ⌘V".
     func testCopiedAndNotSentIsOneLine() {
-        let notSent = DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: false)
+        let notSent = DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true)
         XCTAssertEqual(notSent.copyKey, "dictation.toast.copied.not_sent")
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true).copyKey,
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true).copyKey,
                        "dictation.toast.copied")
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false).copyKey,
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true).copyKey,
                        "dictation.toast.copied")
-        XCTAssertNil(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: true, appChanged: false).copyKey)
+        XCTAssertNil(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: true).copyKey)
         XCTAssertTrue(DictationDeliveredLine.copied.checked, "a done line carries the ok check")
         XCTAssertFalse(notSent.checked)
     }

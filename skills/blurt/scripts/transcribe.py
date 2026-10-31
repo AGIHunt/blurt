@@ -37,6 +37,10 @@ video, so any backend (even ones without timestamps) works.
                                                      built-in `say` samples) the error rate per language
                                                      → $BLURT_HOME/asr-bench.json
   transcribe.py backends                             backends and whether they are ready (legacy)
+  transcribe.py check-cloud [--model-id qwen3-asr-flash|openai-compatible]   Settings' Test: one small spoken clip
+                                                     (macOS `say`) to the cloud service → {"ok","ms","text"} or
+                                                     {"ok": false, "code"}; a key / base_url / model not saved yet
+                                                     comes as JSON on stdin ({"key": …}), never as an argument
 
 Which model: --model ID / --backend B win; else config asr (auto: per purpose from `recommend`, only what is
 installed; asr.auto false: asr.models / the legacy asr.backend + asr.model). Resource caps (asr.limits): threads,
@@ -76,6 +80,7 @@ import sys
 import threading
 import time
 import unicodedata
+import http.client
 import urllib.error
 import urllib.request
 import uuid
@@ -1042,25 +1047,66 @@ def _install_archive(m: dict) -> None:
 
 
 # ------------------------------------------------------------------ optional packages
-def ensure_package(m: dict | str) -> None:
-    """Backends that need a Python package (mlx-whisper, parakeet-mlx, …): re-run this very command under
-    `uv run --with <package>` when it is missing, so callers never need to know."""
-    pkg = m if isinstance(m, str) else m.get("package")
-    if not pkg:
-        return
+class NeedsRestart(Exception):
+    """A running `serve` was asked for a model whose package isn't in its environment: it answers "restarting",
+    takes its run file away and starts again with the package (`_reexec_with`) — never mid-request."""
+
+    def __init__(self, pkg: str):
+        super().__init__(f"the speech server restarts to load {pkg}")
+        self.pkg = pkg
+
+
+# set by `serve` once its run file is written: from then on a missing package is a clean restart (NeedsRestart),
+# not an exec in the middle of a request
+SERVING = False
+
+
+def _has_package(pkg: str) -> bool:
     import importlib.util
-    mod = pkg.replace("-", "_")
-    if importlib.util.find_spec(mod) is not None:
-        return
+    return importlib.util.find_spec(pkg.replace("-", "_")) is not None
+
+
+def _reexec_with(pkgs: list[str]) -> None:
+    """Run this very command again under `uv run --with` these packages (and the ones already added)."""
     uv = shutil.which("uv") or str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))
     tried = [p for p in os.environ.get("BLURT_ASR_REEXEC", "").split(",") if p]
-    if pkg in tried or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
+    new = [p for p in dict.fromkeys(pkgs) if p not in tried]
+    if not new or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
+        pkg = (new or pkgs or ["?"])[0]
         raise Fail(f"{pkg} is not installed (run with: uv run --with {pkg} {Path(sys.argv[0]).name} …)", "deps", 4)
-    os.environ["BLURT_ASR_REEXEC"] = ",".join(tried + [pkg])
+    os.environ["BLURT_ASR_REEXEC"] = ",".join(tried + new)
     sys.stdout.flush()
     sys.stderr.flush()
-    withs = [x for p in tried + [pkg] for x in ("--with", PACKAGE_PINS.get(p, p))]
+    withs = [x for p in tried + new for x in ("--with", PACKAGE_PINS.get(p, p))]
     os.execvp(uv, [uv, "run", "-q", *withs, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+
+
+def ensure_package(m: dict | str) -> None:
+    """Backends that need a Python package (mlx-whisper, parakeet-mlx, …): re-run this very command under
+    `uv run --with <package>` when it is missing, so callers never need to know. Inside a running server:
+    NeedsRestart (the server restarts itself between requests)."""
+    pkg = m if isinstance(m, str) else m.get("package")
+    if not pkg or _has_package(pkg):
+        return
+    tried = [p for p in os.environ.get("BLURT_ASR_REEXEC", "").split(",") if p]
+    if SERVING and pkg not in tried:
+        raise NeedsRestart(pkg)
+    _reexec_with([pkg])
+
+
+def serve_packages() -> list[str]:
+    """The packages of every local model on this Mac that a server may be asked for (any of them can become
+    dictation's in Settings): a server starts with all of them, so a model switch never restarts it. Before, it
+    re-ran itself under `uv run --with` in the middle of the request that needed one (2026-10-31: dictation switched
+    to Whisper) — the request got no answer, and until the new process was up its run file named a live pid with a
+    closed port, so every piece of the take went to a cold CLI run instead (a 30 s Whisper load each)."""
+    plat = platform_key()
+    out = []
+    for m in entries(local_only=True):
+        pkg = EXTRA_PACKAGES.get(m.get("backend"))
+        if pkg and runs_here(m, plat) and installed(m):
+            out.append(pkg)
+    return sorted(set(out))
 
 
 # ------------------------------------------------------------------ audio + VAD
@@ -1655,12 +1701,28 @@ def speed_up(x: np.ndarray, speed: float) -> np.ndarray:
     return np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768
 
 
+def api_key(*names: str) -> str | None:
+    """The first of these variables that is set, trimmed. A key with a character no API key has (2026-10-31: two
+    "ç" — what ⌥C types — saved after a Model Studio key; the HTTP header can't carry them, and every take failed as
+    a bare "error") is an "auth" failure that names the characters, never the key."""
+    for n in names:
+        k = (os.environ.get(n) or "").strip()
+        if not k:
+            continue
+        bad = [c for c in dict.fromkeys(k) if not (c.isascii() and c.isprintable()) or c.isspace()]
+        if bad:
+            raise Fail(f"the API key in {n} has characters a key can't have "
+                       f"({', '.join(f'U+{ord(c):04X}' for c in bad)}): paste the key again", "auth")
+        return k
+    return None
+
+
 class OpenAICompat:
     """POST {base}/audio/transcriptions. verbose_json gives segment timestamps where supported."""
+    retries, timeout = 4, 120.0
 
     def __init__(self, args):
-        self.key = (os.environ.get("BLURT_ASR_API_KEY") or os.environ.get("OPENAI_API_KEY")
-                    or os.environ.get("GROQ_API_KEY"))
+        self.key = api_key("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY")
         if not self.key:
             raise Fail("no API key: set BLURT_ASR_API_KEY (or OPENAI_API_KEY / GROQ_API_KEY)", "auth")
         default_base = "https://api.groq.com/openai/v1" if (os.environ.get("GROQ_API_KEY") and not os.environ.get(
@@ -1696,7 +1758,8 @@ class OpenAICompat:
         body.write(wav_bytes(speed_up(x, self.speed)))
         body.write(f"\r\n--{boundary}--\r\n".encode())
         data = _post(f"{self.base}/audio/transcriptions", body.getvalue(),
-                     {"Authorization": f"Bearer {self.key}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
+                     {"Authorization": f"Bearer {self.key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+                     retries=self.retries, timeout=self.timeout)
         lang = lang_code(data.get("language"))
         if data.get("segments"):
             k = self.speed
@@ -1706,9 +1769,10 @@ class OpenAICompat:
 
 class DashScope:
     max_chunk = 20
+    retries, timeout = 4, 120.0
 
     def __init__(self, args):
-        self.key = os.environ.get("DASHSCOPE_API_KEY")
+        self.key = api_key("DASHSCOPE_API_KEY")
         if not self.key:
             raise Fail("no API key: set DASHSCOPE_API_KEY", "auth")
         # its own variable: BLURT_ASR_BASE_URL is the OpenAI-compatible service's (both can be set in the app)
@@ -1731,26 +1795,39 @@ class DashScope:
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
-                     {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
-        text = data["choices"][0]["message"]["content"]
+                     {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
+                     retries=self.retries, timeout=self.timeout)
+        try:
+            text = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            raise Fail(f"ASR API answered without a transcript: {json.dumps(data)[:300]}", "bad_response")
         if isinstance(text, list):
             text = "".join(p.get("text", "") for p in text)
         return [(0.0, len(x) / SR, text.strip())]
 
 
-def _post(url: str, body: bytes, headers: dict, retries: int = 4) -> dict:
+def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float = 120) -> dict:
+    """One cloud request → its JSON. Every way it can fail is a Fail with a code the app words plainly (auth, quota,
+    network, bad_response): an exception of any other kind came back from the speech server as a bare "error"."""
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.loads(r.read())
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            try:
+                return json.loads(raw)
+            except ValueError:
+                raise Fail(f"ASR API answered something that isn't JSON: {raw[:200]!r}", "bad_response")
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:500]
             if e.code in (429, 500, 502, 503) and attempt < retries - 1:
                 time.sleep(2 ** attempt * 2)
                 continue
             raise Fail(f"ASR API error {e.code}: {msg}", "auth" if e.code in (401, 403) else "quota" if e.code == 429 else "network")
-        except urllib.error.URLError as e:
+        except UnicodeEncodeError:
+            # a header (the key) with a character HTTP can't carry: api_key catches it first; this is the safety net
+            raise Fail("the API key has characters a key can't have: paste the key again", "auth")
+        except (OSError, http.client.HTTPException) as e:     # URLError, timeouts, TLS, a dropped connection
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
                 continue
@@ -1953,8 +2030,11 @@ def resolve_backend(a, purpose: str = "batch") -> str:
     cfg = asr_config()
     m = select(purpose, a)
     a.model = None if m["backend"] == "sensevoice" else m.get("model")
-    if m["backend"] == "qwen3-asr-mlx":
-        p = model_path(m)           # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline
+    if m["backend"] in ("qwen3-asr-mlx", "mlx-whisper"):
+        # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline. Whisper got its repo id, and
+        # mlx-whisper asked huggingface.co about it on every load (`Fetching 4 files`: +2 s here, longer where the
+        # site is slow or blocked) before reading the files it already had
+        p = model_path(m)
         if p:
             a.model = str(p)
     a.model_id = m["id"]
@@ -2511,8 +2591,18 @@ def cmd_serve(a):
     halfway answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
     the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
     started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
+    global SERVING
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid")})
+    # every installed model's package now, before there is a run file (serve_packages); one that can't be added
+    # (offline with nothing cached) leaves it to a restart when that model is asked for
+    missing = [p for p in serve_packages() if not _has_package(p)
+               and p not in os.environ.get("BLURT_ASR_REEXEC", "").split(",")]
+    if missing:
+        try:
+            _reexec_with(missing)
+        except Fail as e:
+            serve_said(f"serve: packages not added ({e})")
     throttle("note")
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
@@ -2525,6 +2615,8 @@ def cmd_serve(a):
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
     why = None
+    restart: str | None = None      # a package this server must restart with (NeedsRestart)
+    SERVING = True
     # from here on the run file is ours to remove, whatever happens — a preload that fails included (a run file left
     # pointing at a dead or stuck process made the app wait for a server that never answered)
     try:
@@ -2540,6 +2632,8 @@ def cmd_serve(a):
                 if e.code != "model_missing":
                     raise
                 serve_said(f"serve: preload skipped ({e})")
+            except NeedsRestart as e:
+                restart, why = e.pkg, "restart"
         emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
         last = time.time()
         uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
@@ -2597,6 +2691,11 @@ def cmd_serve(a):
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
                     resp = {"ok": False, "error": str(e), "code": e.code}
+                except NeedsRestart as e:
+                    # answered, then gone: the app waits for the new server (it comes back with the model loaded when
+                    # it was started with --preload) instead of sending the take to a cold CLI run
+                    resp = {"ok": False, "error": str(e), "code": "restarting"}
+                    restart, why = e.pkg, "restart"
                 except Interrupted:
                     resp = {"ok": False, "error": "interrupted", "code": "interrupted", "interim": True}
                 except Exception as e:  # noqa: BLE001 — keep serving
@@ -2606,11 +2705,14 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
+        SERVING = False
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
         srv.close()
         serve_said(f"serve: exiting ({why or 'error'})")
+    if restart:
+        _reexec_with([restart])
 
 
 # --- probe / recommend / auto / models / setup
@@ -2842,6 +2944,72 @@ def cmd_setup(a):
     # the download is done either way: a config.json that doesn't parse only leaves the choice unsaved ("saved": false)
     saved = save_config_if_readable({"asr": patch}) if patch else True
     emit({"ok": True, "model": m["id"], "path": str(path), "asr": asr_config(), **({} if saved else {"saved": False})})
+
+
+# --- check-cloud: Settings' Test for a cloud speech service (CloudSpeech.check in the app)
+CHECK_PHRASE = "Testing, one, two, three."
+# the variables each cloud backend reads, for a key / address / model typed in Settings but not saved yet
+CLOUD_ENV = {"dashscope": {"key": "DASHSCOPE_API_KEY", "base_url": "DASHSCOPE_BASE_URL", "model": "DASHSCOPE_ASR_MODEL"},
+             "openai": {"key": "BLURT_ASR_API_KEY", "base_url": "BLURT_ASR_BASE_URL", "model": "BLURT_ASR_MODEL"}}
+
+
+def check_clip() -> tuple[np.ndarray, str]:
+    """A short spoken clip (macOS `say`, offline, ~1.5 s) and what it says. Where there is no `say`: 0.6 s of
+    silence and "" — still the whole request (key, address, model), only nothing to hear."""
+    if shutil.which("say"):
+        with tempfile.TemporaryDirectory(prefix="blurt-check-") as d:
+            out = Path(d) / "check.wav"
+            try:
+                r = subprocess.run(["say", "-o", str(out), f"--data-format=LEI16@{SR}", CHECK_PHRASE],
+                                   capture_output=True, timeout=20)
+                if r.returncode == 0 and out.exists():
+                    x = read_wav(out)
+                    if len(x) > SR // 4:
+                        return x, CHECK_PHRASE
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    return np.zeros(int(0.6 * SR), np.float32), ""
+
+
+def cloud_check(model_id: str, given: dict | None = None, timeout: float = 20) -> dict:
+    """One small request to a cloud speech service, as dictation sends it → {"ok", "ms", "text", "heard", "model"}
+    or {"ok": False, "code", "error"} (codes: auth, quota, network, bad_response, privacy, usage). `given`: a key /
+    base_url / model typed but not saved (the app passes them on stdin, never on the command line)."""
+    m = entry(model_id)
+    if not m or m.get("local", True) or m.get("backend") not in CLOUD_ENV:
+        return {"ok": False, "code": "usage", "error": f"{model_id} is not a cloud speech service"}
+    try:
+        if local_only():
+            raise Fail("local-only recognition is on (privacy.local_asr): cloud ASR is not allowed", "privacy")
+        names = CLOUD_ENV[m["backend"]]
+        for k, v in (given or {}).items():
+            if k in names and isinstance(v, str) and v.strip():
+                os.environ[names[k]] = v.strip()
+        a = argparse.Namespace(model=None, model_id=model_id, language=None, prompt=None)
+        backend = BACKENDS[m["backend"]](a)
+        backend.retries, backend.timeout = 1, timeout      # Settings waits for one try, not four
+        x, said = check_clip()
+        t0 = time.perf_counter()
+        r = backend.transcribe(x)
+        ms = int((time.perf_counter() - t0) * 1000)
+        text = " ".join(seg[2] for seg in r if seg[2]).strip()
+        return {"ok": True, "ms": ms, "text": text, "heard": bool(text) or not said, "spoken": said,
+                "model": getattr(backend, "model", None)}
+    except Fail as e:
+        return {"ok": False, "code": e.code, "error": str(e)}
+
+
+def cmd_check_cloud(a):
+    given = {}
+    if not sys.stdin.isatty():
+        try:
+            given = json.loads(sys.stdin.read() or "{}")
+        except ValueError:
+            given = {}
+    r = cloud_check(a.model_id, given if isinstance(given, dict) else {})
+    emit(r)
+    if not r.get("ok"):
+        sys.exit(1)
 
 
 def cmd_backends(_a):
@@ -3094,6 +3262,8 @@ def main():
     s.add_argument("--use", help="also select it: all, or a comma list of batch,live,note")
     s.add_argument("--parent", type=int, help="end when this process (the app that started the download) is gone")
     sub.add_parser("backends")
+    cc = sub.add_parser("check-cloud", help="Settings' Test: one small request to a cloud speech service")
+    cc.add_argument("--model-id", dest="model_id", metavar="ID", default="qwen3-asr-flash")
     sub.add_parser("models")
     sub.add_parser("dictation-models")
     b = sub.add_parser("bench")
@@ -3113,14 +3283,20 @@ def main():
     try:
         {"run": cmd_run, "note": cmd_note, "serve": cmd_serve, "probe": cmd_probe, "recommend": cmd_recommend,
          "auto": cmd_auto, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench,
-         "dictation-models": cmd_dictation_models}[a.cmd](a)
+         "dictation-models": cmd_dictation_models, "check-cloud": cmd_check_cloud}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
         if a.cmd == "serve":
             server_exit(e.exit_code)
         sys.exit(e.exit_code)
-    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+    except Exception as e:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd in ("note", "check-cloud"):
+            # the app reads the last JSON line: a crash still says what it was (it read a bare "error" before)
+            import traceback
+            traceback.print_exc()
+            emit({"ok": False, "error": f"{type(e).__name__}: {e}"[:300], "code": "error"})
+            sys.exit(1)
         if a.cmd != "serve":
             raise
         import traceback
