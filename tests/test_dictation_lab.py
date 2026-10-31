@@ -275,6 +275,38 @@ def test_windows_replay_the_apps_polish_windows(home):
     assert L.parse_spec("mode=windows,rehear=off")["key"].endswith("mode=windows")
 
 
+def test_cloud_polish_hears_a_second_transcript_and_polishes_the_take_once(home, monkeypatch):
+    """cloud=on (the app's DictationStream.polishAtKeyUp, docs/design/dictation.md §Second transcript): macOS's
+    recogniser hears each window too, and polish runs once over the whole take at key-up with its text joined as
+    "Also heard" (context "second"); second=off: window by window, as before."""
+    monkeypatch.setenv("BLURT_POLISH_API_KEY", "k")
+    segs = [{"start": 0, "end": 8.0, "pause_after": 0.6}, {"start": 8.0, "end": 16.0, "pause_after": 0.7},
+            {"start": 16.0, "end": 20.0, "pause_after": None}]
+    c = make_case(home, "s1", 20.0, "豆包也被忽悠了，尝试了第二次才找对。", segs)
+
+    class WithSecond(FakePipeline):
+        cloud = None
+
+        def second(self, wav, language):
+            with wave.open(str(wav)) as w:
+                secs = round(w.getnframes() / 16000, 1)
+            self.calls.append({"second": secs})
+            return {16.0: "豆包也被忽悠了强势了第二次", 4.0: "才找对"}.get(secs, "")
+    fake = WithSecond({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    r = L.run_case(c, L.parse_spec("mode=windows,cloud=on"), fake)
+    assert [x["second"] for x in fake.calls if "second" in x] == [16.0, 4.0]       # each window's audio
+    pol = [x for x in fake.calls if "polish" in x]
+    assert len(pol) == 1 and pol[0]["polish"] == r["outputs"]["raw"]               # once, the whole take
+    assert pol[0]["context"]["second"] == "豆包也被忽悠了强势了第二次才找对"
+    assert r["outputs"]["second"] == "豆包也被忽悠了强势了第二次才找对"
+    assert L.parse_spec("mode=windows,cloud=on")["key"].endswith("cloud=on,second=apple,rehear=on")
+    fake = WithSecond({8.0: "豆宝也被忽悠了。", 4.0: "才找对。", 16.0: "豆包也被忽悠了，尝试了第二次"})
+    L.run_case(c, L.parse_spec("mode=windows,cloud=on,second=off"), fake)
+    assert not [x for x in fake.calls if "second" in x]
+    assert len([x for x in fake.calls if "polish" in x]) == 2 and \
+        not any("second" in (x["context"] or {}) for x in fake.calls if "polish" in x)
+
+
 def test_rehear_hears_the_pieces_again_in_windows(home):
     """rehear (the app's default since v1.0.4): the pieces once more in ~10 s windows, closed only at a pause cut, the
     windows' text so far as context; polish then works window by window. A window the model gives nothing for keeps

@@ -1682,12 +1682,14 @@ class AppleSpeech:
         return [(s["start"], s["end"], s["text"], lang) for s in data.get("segments") or []]
 
 
-# Cloud recognition hears the audio sped up (asr.cloud.speed, every provider; docs/design/first-minute-speech.md §2.4):
-# billing is per second of audio sent. Measured with DashScope qwen3-asr-flash on 270 kept takes: 1x 6.8 % (full cost),
-# 1.5x 8.0 % for 64 % of the cost (the default), 2x 11.6 % for 47 % — and twice it answered with the word list instead
-# of the speech. Pitch is kept (ffmpeg atempo); the times that come back are put back on the original timeline.
+# Cloud recognition can hear the audio sped up (asr.cloud.speed, every provider; docs/design/first-minute-speech.md
+# §2.4): billing is per second of audio sent. Measured with DashScope qwen3-asr-flash on 270 kept takes: 1x 6.8 % (full
+# cost), 1.5x 8.0 % for 64 % of the cost, 2x 11.6 % for 47 % — and twice it answered with the word list instead of the
+# speech. Since dictation sends the whole take (2026-10-31, docs/design/dictation.md §Cloud recognition) the default is
+# 1x: on the founder's 95 takes, whole with the words and the field's text, 2.02 % at 1x against 3.32 % at 1.5x.
+# Pitch is kept (ffmpeg atempo); the times that come back are put back on the original timeline.
 CLOUD_SPEEDS = (1.0, 1.5, 2.0)
-CLOUD_SPEED_DEFAULT = 1.5
+CLOUD_SPEED_DEFAULT = 1.0
 
 
 def cloud_speed(cfg: dict | None = None) -> float:
@@ -1779,7 +1781,10 @@ class OpenAICompat:
 
 
 class DashScope:
-    max_chunk = 20
+    # A dictation goes here whole at key-up (docs/design/dictation.md §Cloud recognition): one request up to 50 s (the
+    # eval's whole-take requests, dictation-eval-2026-10-31.md §2.1), a longer take cut at its pauses into ≤ 50 s parts
+    # sent side by side (transcribe_track, CLOUD_WORKERS).
+    max_chunk = 50
     retries, timeout = 4, 120.0
 
     def __init__(self, args):
@@ -1793,6 +1798,8 @@ class DashScope:
         self.args = args
         self.speed = cloud_speed()
         self.terms: list[str] = []
+        self.field = ""
+        self.last: dict = {}
 
     def set_vocab(self, terms: list[dict]) -> bool:
         """The dictation's words as Qwen3-ASR's context (measured: 27 of 35 terms with them, §2.4)."""
@@ -1805,14 +1812,38 @@ class DashScope:
         context)."""
         self.field = (text or "").strip()
 
-    def context_text(self) -> str:
-        words = self.args.prompt or ", ".join(self.terms)
-        return "\n".join(t for t in (words, getattr(self, "field", "")) if t)
+    def context_text(self, words: bool = True, field: bool = True) -> str:
+        w = (self.args.prompt or ", ".join(self.terms)) if words else ""
+        return "\n".join(t for t in (w, getattr(self, "field", "") if field else "") if t)
 
     def transcribe(self, x):
+        """The same nets as the MLX backend's decode (Qwen3Mlx.decode), for the same model family: the field's text
+        before the cursor written out as the speech (13 of 95 of the founder's takes when the app sent short pieces
+        with it: dictation-eval-2026-10-31.md §4.1) and the word list answered instead of the speech (3 of 95). An
+        answer that repeats the field (`echoes_prior`) is asked once more with the words only, and the shorter answer is
+        kept when it is clearly shorter; one that is the word list, once more with the field only. Costs a second
+        request only when a net fires (`last`: echo / context_dump, the answer's `tag`; NoteEngine empties it per note,
+        not per part: a long take's parts run side by side)."""
+        field = getattr(self, "field", "")
+        text = self._request(x, self.context_text())
+        if self.terms and not self.args.prompt and dictation_vocab.context_dump(text, self.terms):
+            text = self._request(x, self.context_text(words=False))
+            self.last["context_dump"] = True
+        if field and echoes_prior(text, field, len(x) / SR):
+            redo = self._request(x, self.context_text(field=False))
+            # nothing heard without the field, and the answer was the field itself (≥ 80 % of it one run of the field):
+            # there was no speech to write — a short piece of breath came back as the whole field (6 of the founder's
+            # takes in the old piece path, re-measured 2026-10-31)
+            nothing = not redo.strip() and longest_shared_run(text, field) >= 0.8 * len(_bare(text))
+            if (redo.strip() or nothing) and len(redo) < 0.8 * len(text):
+                text = redo
+                self.last["echo"] = True
+        return [(0.0, len(x) / SR, text)]
+
+    def _request(self, x, context: str) -> str:
         audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
         payload = {"model": self.model, "stream": False,
-                   "messages": [{"role": "system", "content": [{"type": "text", "text": self.context_text()}]},
+                   "messages": [{"role": "system", "content": [{"type": "text", "text": context}]},
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
@@ -1824,7 +1855,7 @@ class DashScope:
             raise Fail(f"ASR API answered without a transcript: {json.dumps(data)[:300]}", "bad_response")
         if isinstance(text, list):
             text = "".join(p.get("text", "") for p in text)
-        return [(0.0, len(x) / SR, text.strip())]
+        return (text or "").strip()
 
 
 def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float = 120) -> dict:
@@ -1865,6 +1896,7 @@ EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whispe
 # release, like the script header's). faster-whisper (NVIDIA, Windows / Linux) is pinned when it is next verified.
 PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4"}
 API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
+CLOUD_WORKERS = 4       # a cloud service's parts of one take in flight at once (NoteEngine.note)
 
 
 # ------------------------------------------------------------------ recommendation
@@ -2537,8 +2569,13 @@ class NoteEngine:
         retried = False
         if stop is not None:
             self.backend.stop_check = stop
+        # a cloud service hears a long take's parts side by side (a take at key-up: dictation-eval §5, Flash grows
+        # from 0.5 to 1.5 s with the take when sent as one request); a local model has one decoder
+        workers = CLOUD_WORKERS if self.name in API_KEYS else 1
+        if self.name in API_KEYS:
+            self.backend.last = {}
         try:
-            results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+            results, _speech, _blank = transcribe_track(x, self.backend, self.name, workers, quiet=True)
             # Qwen3-ASR now and then answers nothing for a short piece that follows a whole sentence of context (a
             # dictation's last words after a long pause: measured 2–5 of 6 takes of one synthetic clip, never when the
             # same request was replayed). The VAD heard speech, so once more without the context: ~0.13 s, only then.
@@ -2547,7 +2584,7 @@ class NoteEngine:
                 self.backend.set_prior("")
                 if field:
                     self.backend.set_field("")
-                results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+                results, _speech, _blank = transcribe_track(x, self.backend, self.name, workers, quiet=True)
                 retried = True
         finally:
             if stop is not None:
@@ -2840,6 +2877,40 @@ def fits_with_polish(m: dict, hw: dict, polish_mb: float) -> bool:
     return _fits({**m, "ram_mb": (m.get("ram_mb") or 0) + polish_mb}, hw)
 
 
+# Defaults by Mac (docs/design/dictation-eval-2026-10-31.md §6, docs/design/dictation.md §Defaults by Mac): on the
+# founder's 95 takes the 1.7B (30 s windows, the field's text as context) makes 2.50 % errors, the 0.6B (20 s windows)
+# 3.34 %; Gemma 4 E2B as local polish is within ±0.2 points (fillers and punctuation, not words). The 1.7B needs ~3.1 GB
+# and its last 30 s window decoded at key-up: on a slow chip (a base M1 / M2, 7–10 GPU cores against the M5 Max's 40)
+# that is over a second, so it goes where its measured rtf (`transcribe.py bench`, asr-bench.json) is at most
+# TIER_RTF_LIMIT — or, not measured, where the chip isn't a base M1 / M2. BlurtCore DictationTier.recommended is the
+# same rule for the app (Settings shows it); tests/fixtures/dictation_tier.jsonl checks both.
+TIER_RTF_LIMIT = 0.05
+SLOW_CHIPS = ("Apple M1", "Apple M2")
+TIER_POLISH = "gemma4-e2b"
+
+
+def slow_chip(chip: str | None) -> bool:
+    """A base M1 / M2 (not Pro, Max or Ultra): the chips the 1.7B is too slow on when nothing was measured."""
+    return " ".join(str(chip or "").split()) in SLOW_CHIPS
+
+
+def dictation_tier(ram_gb: float, rtf: float | None = None, slow: bool = False, cloud_key: bool = False) -> dict:
+    """What dictation runs on for a Mac with `ram_gb` of memory (Apple Silicon): the recogniser (its window and field
+    context come with it from asr_models.json), the local polish model (None: off), and — with a cloud key —
+    cloud polish with macOS's transcript as the second opinion (§6.3 A: the recogniser stays local). `rtf`: the 1.7B's
+    measured real-time factor here (None: not measured — then `slow`, a base M1 / M2, decides). Pure."""
+    tier = "minimal" if ram_gb < 7.5 else "light" if ram_gb < 15 else "standard" if ram_gb < 30 else "pro"
+    fast = (rtf <= TIER_RTF_LIMIT) if rtf is not None else not slow
+    big = tier in ("standard", "pro") and fast
+    rec = QWEN_MLX_17 if big else QWEN_MLX if tier != "minimal" else None
+    m = entry(rec) or {}
+    return {"tier": tier, "recognizer": rec, "window_s": m.get("rehear_window_s") or (30 if big else 20 if rec else None),
+            "field_context": bool(m.get("field_context_chars")) if m else False,
+            "local_polish": TIER_POLISH if tier in ("standard", "pro") else None,
+            "cloud_polish": bool(cloud_key), "second_transcript": bool(cloud_key), "first": APPLE,
+            "why": "ram" if tier in ("minimal", "light") else "fast" if big else "rtf" if rtf is not None else "chip"}
+
+
 def dictation_models(hw: dict | None = None) -> dict:
     """configured (record.dictation.asr_model or None = automatic), recommended (by the dictation eval: Qwen3-ASR MLX
     on Apple Silicon pro / standard, else the voice-note pick), selected (what runs: the configured one when it is
@@ -2856,11 +2927,13 @@ def dictation_models(hw: dict | None = None) -> dict:
     def fits(mid: str) -> bool:
         m = entry(mid)
         return bool(m) and fits_with_polish(m, hw, pmb)
-    # the 0.6B on pro and standard Macs (v1.0.6; before, the v0.8 speed eval's 1.7B on pro ones: preference() says why)
-    # (the voice-note pick is macOS's own recogniser while nothing is downloaded: the download to offer is then the one
-    # the voice-note rules would choose)
+    # by Mac (dictation_tier: the 2026-10-31 eval): the 1.7B on 16 GB+ Macs fast enough for it, else the 0.6B — each
+    # only where it fits beside the polish model; else the voice-note pick (the voice-note pick is macOS's own
+    # recogniser while nothing is downloaded: the download to offer is then the one the voice-note rules would choose)
     note_rec = note_pick["id"] if note_pick["id"] != APPLE else recommend(purpose="note", hw=hw)["pick"]["model"]
-    rec = QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_rec
+    plan = dictation_tier(hw["ram_gb"], (_bench_results().get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")))
+    rec = next((mid for mid in ((plan["recognizer"], QWEN_MLX) if plan["recognizer"] else ()) if apple and fits(mid)),
+               note_rec)
     # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
     # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
     # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
@@ -2905,7 +2978,7 @@ def dictation_models(hw: dict | None = None) -> dict:
             # the dictation goes to a cloud service: the app shows live text from macOS's recogniser and doesn't hear it
             # again (each pass is billed)
             "selected_cloud": bool(sel and not sel.get("local", True)),
-            "ready": not missing, "missing": missing, "vad": vad, "models": rows}
+            "ready": not missing, "missing": missing, "vad": vad, "models": rows, "plan": plan}
 
 
 def cmd_dictation_models(_a):

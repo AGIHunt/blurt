@@ -43,7 +43,9 @@ configurations and run them all again after a change (a regression run). Everyth
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
 vocab=on|off, context=on|off, cloud=on|off (polish by the cloud model of record.dictation.cloud_polish, the key from
-BLURT_POLISH_API_KEY — docs/design/dictation.md §Cloud polish; off by default), mode=pieces|windows|whole, rehear=on|off (pieces / windows: the pieces heard again in
+BLURT_POLISH_API_KEY — docs/design/dictation.md §Cloud polish; off by default; with it macOS's recogniser hears each
+window too, its text goes along as "Also heard" and polish runs once over the whole take, as in the app — second=off
+leaves it out and polishes window by window), mode=pieces|windows|whole, rehear=on|off (pieces / windows: the pieces heard again in
 windows of the model's length — asr_models.json rehear_window_s, 10 s by default — as the app does since v1.0.4;
 docs/design/dictation.md §Hearing again; default record.dictation.rehear, on), language=auto|zh|en…, style=verbatim|light|structured|auto (the
 dictation styles, docs/design/dictation-styles.md: Structured and Auto run polish.py's structuring pass on Light's
@@ -501,7 +503,10 @@ def parse_spec(spec: str | dict | None) -> dict:
            "context": s.get("context", True) is not False, "mode": "pieces", "language": None, "style": None,
            "category": None, "rehear": s.get("rehear", True) is not False,
            # "current" polishes as the app does: in the cloud when it is on and the key came along (--key-stdin)
-           "cloud": bool((s.get("cloud_polish") or {}).get("on")) and bool(os.environ.get("BLURT_POLISH_API_KEY"))}
+           "cloud": bool((s.get("cloud_polish") or {}).get("on")) and bool(os.environ.get("BLURT_POLISH_API_KEY")),
+           # cloud polish gets macOS's transcript of the same audio as "Also heard" (the app: wherever macOS's
+           # recogniser runs, docs/design/dictation.md §Second transcript); second=off replays it without
+           "second": True}
     onoff = lambda v: v if isinstance(v, bool) else str(v).lower() in ("on", "1", "true", "yes")  # noqa: E731
     for k, v in raw.items():
         if k in ("asr", "asr_model"):
@@ -515,6 +520,8 @@ def parse_spec(spec: str | dict | None) -> dict:
             cfg["polish_model"] = v or None
         elif k in ("vocab", "context", "rehear", "cloud"):
             cfg[k] = onoff(v)
+        elif k == "second":
+            cfg["second"] = str(v).lower() in ("apple", "on", "1", "true", "yes") if not isinstance(v, bool) else v
         elif k == "mode":
             if v not in ("pieces", "windows", "whole"):
                 raise Fail(f"mode must be pieces, windows or whole, not {v}", "usage")
@@ -545,7 +552,8 @@ def config_key(cfg: dict) -> str:
     if cfg.get("language"):
         parts.append(f"language={cfg['language']}")
     if cfg.get("cloud") and cfg.get("polish"):
-        parts.append("cloud=on")
+        # with macOS's transcript as a second opinion (runs from before it keep "cloud=on": they had none)
+        parts.append("cloud=on" + (",second=apple" if cfg.get("second", True) else ""))
     # only when on: the runs from before hearing again keep their keys
     if cfg.get("rehear") and (cfg.get("mode") or "pieces") != "whole":
         parts.append("rehear=on")
@@ -671,6 +679,31 @@ class Servers:
         return r
 
     cloud: dict | None = None      # run_case sets it for cloud=on (cloud_settings)
+
+    @staticmethod
+    def second(wav: Path, language: str | None) -> str:
+        """macOS's recogniser on the same audio (the Blurt executable's `--speech`, as transcribe.py's apple backend
+        runs it), with the custom words: what the app sends cloud polish as "Also heard" (DictationStream: the
+        second transcript). "" where it can't run (before macOS 26, no Blurt app, a language it doesn't speak)."""
+        try:
+            import transcribe as T  # noqa: PLC0415 — numpy: only for this
+            import dictation_vocab  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            return ""
+        loc = T.apple_locale(language)
+        if not T.apple_speech_ok() or not loc:
+            return ""
+        words = [t["term"] for t in dictation_vocab.load() if t.get("term")][:100]
+        cmd = [str(T.apple_speech_helper()), "--speech", str(wav), "--locale", loc]
+        if words:
+            cmd += ["--words", "\n".join(words)]
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+            line = next((ln for ln in reversed(r.stdout.splitlines()) if ln.startswith("{")), "{}")
+            d = json.loads(line)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            return ""
+        return (d.get("text") or "").strip() if d.get("ok") else ""
 
     def structure(self, text: str, model: str | None, vocab: bool, timeout: float | None = None) -> dict:
         """polish.py serve's structuring pass (Structured, Auto), as the app calls it at key-up."""
@@ -878,13 +911,34 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
                     w["asr_ms"] = int((time.perf_counter() - t1) * 1000)
                     asr_ms += w["asr_ms"]
                 windows.append(w)
+        # cloud polish's second opinion (the app: DictationStream's second transcript): macOS's recogniser on each
+        # window's audio (each piece's without hearing again); on a take sent whole (a cloud recogniser at key-up), on
+        # the take's own pieces, joined — they were the live text while talking
+        seconds: list[str] = []
+        want_second = bool(cfg.get("cloud") and cfg.get("polish") and cfg.get("second", True)
+                           and hasattr(backend, "second"))
+        if want_second:
+            spans = [(ms_[0]["a"], ms_[-1]["b"]) for ms_ in ([pieces[i] for i in w["pieces"]] for w in windows)] if windows \
+                else [(q["a"], q["b"]) for q in pieces]
+            if cfg.get("mode") == "whole" and len(segs) > 1:
+                spans = [(int(float(g_.get("start", 0)) * SR), int(float(g_.get("end", 0)) * SR)) for g_ in segs]
+            for k, (a, b) in enumerate(spans):
+                p = Path(td) / f"s{k}.wav"
+                write_samples(p, x[max(0, a):min(len(x), b)])
+                seconds.append(backend.second(p, cfg.get("language")))
+            if cfg.get("mode") == "whole" and len(spans) > 1:
+                seconds = [join_pieces(seconds, [g_.get("pause_after") for g_ in segs])]
     for q in pieces:
         q.pop("a", None); q.pop("b", None)
     units = windows or pieces
+    if want_second and len(seconds) == len(units):
+        for q, sec in zip(units, seconds):
+            q["second"] = sec
     raw = join_pieces([q["raw"] for q in units], [q["pause_after"] for q in units])
     heard = join_pieces([q["asr_text"] for q in units], [q["pause_after"] for q in units])
     tags = [q["tag"] for q in units if q.get("tag")]
     out = {"segments": pieces, "raw": raw, "asr_text": heard, "polished": None, "text": raw, "fell_back": False,
+           "second": join_pieces([q.get("second") or "" for q in units], [q["pause_after"] for q in units]) or None,
            "reason": None, "repaired": [], "terms_applied": terms, "asr_model": model, "polish_model": None,
            "language": language, "tags": tags, **tag_summary(tags)}
     if windows:
@@ -915,7 +969,11 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
         r = backend.structure(text, cfg.get("polish_model"), bool(cfg.get("vocab")))
         structure_ms = int((time.perf_counter() - t1) * 1000)
         return r
-    if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and \
+    # cloud polish with the second transcript runs once over the whole take at key-up, as in the app
+    # (DictationStream.polishAtKeyUp): window by window it made the founder's takes worse (docs/design/dictation.md
+    # §Second transcript)
+    at_keyup = want_second and any(seconds)
+    if cfg.get("polish") and raw.strip() and style != "verbatim" and cfg.get("mode") == "windows" and not at_keyup and \
             (len(units) > 1 or (style == "structured" and can_structure)):
         t1 = time.perf_counter()
         guard = getattr(backend, "guard", None)
@@ -938,7 +996,8 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
         out["terms_applied"] += [t for a in answers for t in a.get("terms") or [] if t not in out["terms_applied"]]
     elif cfg.get("polish") and raw.strip() and style != "verbatim":
         t1 = time.perf_counter()
-        r = one(raw, ctx)
+        sec = join_pieces([q.get("second") or "" for q in units], [q["pause_after"] for q in units])
+        r = one(raw, {**(ctx or {}), "second": sec} if sec else ctx)
         polish_ms = int((time.perf_counter() - t1) * 1000)
         load_ms += int(r.get("load_ms") or 0)
         out.update(polished=r.get("polished"), text=(r.get("text") or raw), fell_back=bool(r.get("fell_back")),

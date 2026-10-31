@@ -103,6 +103,26 @@ def test_the_message_names_words_app_recent_and_continues_the_text_so_far():
     assert m[-3]["content"] == "Dictation: 我们先把发票的部分写完，" and m[-2]["content"] == "我们先把发票的部分写完，"
 
 
+def test_a_second_transcript_goes_as_also_heard_with_its_note():
+    # docs/design/dictation.md §Second transcript: macOS's transcript of the same audio, right before the dictation
+    m = C.messages("我们用不乐来做听写", ["Blurt"], {"app": "Slack", "second": "我们用  blurt 来做听写"}, None)
+    last = m[-1]["content"]
+    assert last.endswith("Also heard: 我们用 blurt 来做听写\nDictation: 我们用不乐来做听写")
+    assert m[0]["content"] == C.LIGHT + C.SECOND_NOTE
+    # without one: the prompt as before, no line
+    m = C.messages("我们用不乐来做听写", ["Blurt"], {"app": "Slack", "second": "  "}, None)
+    assert m[0]["content"] == C.LIGHT and "Also heard" not in m[-1]["content"]
+
+
+def test_cloud_polish_sends_the_second_transcript(api):
+    api.reply = "我们用 Blurt 来做听写。"
+    r = polish.cloud_polish("我们用不乐来做听写", [], {"second": "我们用 blurt 来做听写"}, None, cloud(api))
+    assert not r["fell_back"] and r["text"] == "我们用 Blurt 来做听写。"
+    body = api.seen[-1]["body"]
+    assert "Also heard: 我们用 blurt 来做听写" in body["messages"][-1]["content"]
+    assert C.SECOND_NOTE in body["messages"][0]["content"]
+
+
 def test_cloud_polish_fixes_a_name_from_the_recent_dictations(api):
     api.reply = "豆包也被忽悠了，尝试了第二次才找对。"
     r = polish.cloud_polish("豆宝也被忽悠了。强势了第二次才找对。", [], {"recent": ["如何用豆包的电脑软件替代豆包手机"]},

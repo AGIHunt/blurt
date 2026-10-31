@@ -624,7 +624,8 @@ struct OnboardingView: View {
     @ViewBuilder var startNowRows: some View {
         if models.system == .installed {
             OnbRow(image: GlyphTile.brand(.textCursor), title: T("onboarding.start.ready.title"),
-                   detail: T("onboarding.start.ready.detail"), first: true) {
+                   detail: T("onboarding.start.ready.detail"),
+                   first: true) {
                 StateLabel(tone: .good, text: T("onboarding.start.ready.state"))
             }
         } else if models.system == nil {
@@ -655,7 +656,7 @@ struct OnboardingView: View {
 
     /// The AI service key: the cloud glyph, as in Settings. Connected: which service ("On · DeepSeek").
     var keyRow: some View {
-        let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? T("onboarding.key.detail")
+        let detail = connected.map { T("onboarding.key.on", CloudStore.name($0)) } ?? keyCompare
         return OnbRow(image: GlyphTile.brand(.cloud), title: T("onboarding.key.title"), detail: detail) {
             Button(T(connected != nil ? "onboarding.key.change" : "onboarding.key.add")) { keySheet = true }.controlSize(.small)
         }
@@ -676,8 +677,28 @@ struct OnboardingView: View {
         case .needsUV: return T("onboarding.upgrade.needs_uv")
         case .checking: return T("onboarding.models.checking")
         case .blocked: return T(m.blockedCause == .offline ? "onboarding.setup.blocked.title_offline" : "onboarding.setup.blocked.title")
-        default: return T("onboarding.upgrade.detail")
+        default: return betterModel ?? T("onboarding.upgrade.detail")
         }
+    }
+
+    // what each choice gets right (BlurtCore DictationChoices, the 2026-10-31 eval; Settings → Models' Compare… has the
+    // whole table): the line under macOS's recogniser, the local model's, the key's
+
+    /// the user's own language when its numbers aren't the mixed Chinese + English ones (nil: Chinese, or unmeasured)
+    var compareLanguage: String? { DictationChoices.ownLanguage(SpeechModel.shared.languages.isEmpty ? Locale.preferredLanguages : SpeechModel.shared.languages) }
+
+    /// "Qwen3-ASR 0.6B (1.0 GB) recognizes better and works offline." — or "Downloading …" while it comes down;
+    /// nil when dictation's model isn't one the eval measured.
+    var betterModel: String? {
+        guard let p = models.parts.first(where: { $0.kind == .dictation }), let c = DictationChoice(rawValue: p.id), c.local else { return nil }
+        let downloading = models.downloading && !(p.installed || models.finished.contains(p.id))
+        return T(downloading ? "onboarding.upgrade.better_downloading" : "onboarding.upgrade.better", p.name, size(p.sizeMB))
+    }
+
+    /// The key row's line before a key is in: what cloud polish adds and costs.
+    var keyCompare: String {
+        guard case .perDictation(let cny, let usd) = DictationChoices.facts(.cloudPolish).cost else { return T("onboarding.key.detail") }
+        return T("onboarding.key.compare", ChoiceText.money(cny: cny, usd: usd))
     }
 
     /// The local models' one trailing element: Install uv, Try Again, Download (size), a spinner, or installed.

@@ -1,6 +1,8 @@
 // Settings → Speech (K9; SettingsKit rows, titles and descriptions from SettingsCatalog), built around one question:
 // which model does each job, and is the recommended set on this Mac? (docs/design/system.md §3.4)
 //
+//   lead       "Recommended for this Mac: Qwen3-ASR 1.7B" with Compare… at its end: dictation's
+//              choices side by side in a sheet (DictationCompare.swift; also the dictation pop-up's Compare Choices…).
 //   On this Mac  at most one recommendation, only while something recommended is missing (`transcribe.py models` for
 //              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
 //              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
@@ -399,8 +401,9 @@ func endonym(_ code: String) -> String {
 private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "vi", "th",
                                 "id", "ms", "tr", "nl", "pl", "sv", "da", "fi", "cs", "el", "hu", "ro", "uk", "fa", "fil"]
 
-/// The pop-ups' last item: opens the library instead of choosing.
+/// The pop-ups' last items: open the library, or the comparison (dictation's), instead of choosing.
 private let moreModels = "__more"
+private let compareChoices = "__compare"
 
 // MARK: - Pane
 
@@ -408,7 +411,10 @@ struct SpeechPane: View {
     @ObservedObject var m = SpeechModel.shared
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
+    @ObservedObject private var cloud = CloudModelsUI.shared
     @State private var library = false
+    /// dictation's choices side by side (DictationCompare.swift)
+    @State private var compare = false
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
@@ -417,7 +423,7 @@ struct SpeechPane: View {
     }
 
     var body: some View {
-        SettingsPage(.speech) {
+        SettingsPage(.speech, lead: lead) {
             useSection
             CloudServicesSection()
             jobsSection
@@ -427,10 +433,27 @@ struct SpeechPane: View {
         .task { await m.load() }
         .task { await d.load() }
         .sheet(isPresented: $library) { ModelLibrary { library = false }.buttonStyle(.automatic).closesOnOutsideClick { library = false } }
-        // a search or a link landing on the library: open it first
+        .background {
+            Color.clear.sheet(isPresented: $compare) {
+                DictationCompareSheet { compare = false }.buttonStyle(.automatic).closesOnOutsideClick { compare = false }
+            }
+        }
+        // a search or a link landing on the library or the comparison: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
             if r?.id == "speech.models" { library = true }
+            if r?.id == "speech.compare" { compare = true }
         }
+    }
+
+    /// The page's lead: what is recommended for this Mac and how often it gets a word wrong, with Compare… at its end —
+    /// the one place the choices are weighed; the rows under it stay as they were.
+    var lead: SettingsLead {
+        _ = cloud.tick
+        let text = m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
+        return SettingsLead(text: Text(text), accessory: AnyView(
+            Button(S("speech.compare.open")) { compare = true }
+                .buttonStyle(.plain).foregroundStyle(Color.brandInk)
+                .help(S("speech.compare.title"))))
     }
 
     // MARK: the Mac
@@ -649,7 +672,8 @@ struct SpeechPane: View {
         return SettingRow("speech.recognition", detail: autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)),
                           icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
-                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true }) { id in
+                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
+                       compare: { compare = true }) { id in
                 if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
@@ -678,7 +702,7 @@ struct SpeechPane: View {
                 let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
                 ModelPopUp(label: S("speech.purpose.dictation"), current: m.auto && d.asrAuto ? ModelPopUp.auto : a.selected,
                            auto: dictationValue(a), choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) },
-                           more: { library = true }) { id in
+                           more: { library = true }, compare: { compare = true }) { id in
                     if id == ModelPopUp.auto { m.useAuto() } else if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
                 }
             } else {
@@ -831,6 +855,8 @@ private struct ModelPopUp: View {
     var auto: String
     var choices: [(id: String, name: String)]
     var more: () -> Void
+    /// dictation's pop-ups: Compare Choices… after Get More Models…
+    var compare: (() -> Void)? = nil
     var pick: (String) -> Void
     var body: some View {
         // "Automatic" alone: the model it picked is the row's line (a long name cut off in the pop-up told nobody)
@@ -841,9 +867,12 @@ private struct ModelPopUp: View {
         items += choices.map { ($0.id, $0.name) }
         let split = items.count
         items.append((moreModels, S("speech.purpose.more")))
+        if compare != nil { items.append((compareChoices, S("speech.compare.menu"))) }
         return ChoicePopup(label: label, choices: items,
                            selection: Binding(get: { current ?? "" }, set: { id in
-                               if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
+                               if id == moreModels { DispatchQueue.main.async(execute: more) }
+                               else if id == compareChoices, let c = compare { DispatchQueue.main.async(execute: c) }
+                               else if id != current && !id.isEmpty { pick(id) }
                            }), dividers: [top, split])
     }
 }

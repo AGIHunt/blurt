@@ -433,6 +433,52 @@ scratch servers, the 43 references): 1.7B 3.21 %, 0.6B 3.82 % — the prototype'
 `rehear_window_s` = 10 the same code gives the old 3.65 / 4.76 %. (The latencies above are the study's; the re-runs ran
 four at a time and their timings aren't comparable.)
 
+### Cloud recognition: the whole take at key-up (2026-10-31)
+
+The 2026-10-31 eval (dictation-eval-2026-10-31.md §4.1) replayed the app's cloud path — Qwen3-ASR Flash on Model Studio
+hearing each streamed piece at 1.5×, the words and the field's text before the cursor as context — and got **26.6 %**
+errors on the founder's 95 takes, against 2.0 % for the same service on the whole take: on 13 takes it typed part of the
+field's text, on 3 the word list. A short piece is little speech and a lot of context to repeat, and the DashScope
+backend had no echo net. Now:
+
+- **A cloud recogniser hears the whole take at key-up** (`DictationStream.Options.wholeAtKeyUp`, set by `Dictation` when
+  `selected_cloud`): one request with the words and the field's last 300 characters (`DashScope.max_chunk` 50 s: a
+  longer take is cut at its pauses into ≤ 50 s parts, sent side by side — `CLOUD_WORKERS` 4). While talking, the pieces
+  are heard by macOS's recogniser only: the live text, as before (its interim text too), and the second transcript cloud
+  polish gets (§Second transcript) — never billed, never a reason for the safety path. Polish then runs once over the
+  whole take. Where macOS's recogniser can't run (macOS 13–15, a language it doesn't speak, its files not here yet), the
+  take isn't cut at all (`streaming` off for it): the same one request at key-up, no live text.
+- **The echo net on the DashScope backend** (`DashScope.transcribe`, the MLX backend's `echoes_prior` rule): an answer
+  that repeats the field's text (≥ 12 characters of it in a row, or more syllables than the audio can hold) is asked
+  once more with the words only, and the second answer is kept when it is clearly shorter (< 80 %) — or when it is empty
+  and the first was the field itself (≥ 80 % of it one run of the field: breath that came back as the field). An answer
+  that is the word list is asked once more with the field only (`context_dump`). `tag.echo` / `tag.context_dump` in the
+  answer; a second request only when a net fires.
+- **1× by default** (`asr.cloud.speed`, `CloudSpeech.defaultSpeed`, "Normal (recommended)" in the sheet): on whole takes
+  1.5× costs 64 % more errors (below); 1× is $0.11 (≈ ¥0.8) an hour of speech. A speed the user picked stays.
+- The bounded wait and the failure lines stay: the take's deadline counts the cloud request (`hearingWhole`), and a
+  failure is `dictation_asr_failed` with its code (auth, quota, network…), the recording kept for Retry.
+
+Re-measured with the shipped code (the eval's harness with `EVAL_SCRIPTS` = the working copy: each take through
+`dictation_lab.run_case` with `asr=qwen3-asr-flash,mode=whole,context=on`, the eval's references and scorer; Model Studio
+key from the eval's loader):
+
+| Qwen3-ASR Flash on the founder's 95 takes | Error | Terms |
+|---|---:|---:|
+| as the app sent it before (pieces, 1.5×, words + field; the eval) | 26.6 % | 77 % |
+| … the same pieces with the echo net (without / with the empty-answer rule; it fired on 6 / 8 takes) | 22.5 % / 15.5 % | 76 % |
+| **whole take at key-up, words + field, 1× (shipped)** | **2.02 %** (eval: 2.00 %) | 83 % |
+| whole take at key-up, 1.5× | 3.32 % | 77 % |
+| … + cloud polish with macOS's transcript (§Second transcript; three runs, the Lab's context) | 2.62 / 2.68 / 2.72 % | 89 % |
+
+On whole takes the echo net never fired (0 of 95); on the old pieces it halves the damage but can't undo an answer that
+mixes the field with the piece's own words — the whole take is the fix, the net the guard behind it (voice notes still
+send pieces). Cloud polish on top of Flash's text gets names right (terms 83 →
+89 %) but is not better on words: the eval's 2.17 % was one run; its own script run again gave 2.44 / 2.44 %, the
+shipped prompt 2.42 % (whole-take replays of the eval's Flash output with the eval's macOS windows), the app's path in
+the Lab 2.62–2.72 % (macOS's pieces as the second transcript, the Lab's app context). Latency after key-up (eval §5,
+M5 Max, Beijing): Flash 0.52 s on ~5 s takes, 1.47 s on ~60 s ones, plus ~0.8–1.1 s of cloud polish.
+
 ### Punctuation at the seams
 
 What the user saw: the meaning was kept, but there was **a full stop at every pause**, in the middle of sentences
@@ -1046,6 +1092,49 @@ past its time (4 s + 6 ms a character), an answer the guard refuses — is answe
 - Everywhere polish runs: dictation's windows and the safety path, Structured, reformat-last, a snap's / voice note's
   structuring pass. The Lab: `cloud=on` (the key from `BLURT_POLISH_API_KEY`).
 
+### Second transcript: cloud polish hears macOS's reading too (2026-10-31)
+
+The eval (dictation-eval-2026-10-31.md §2.3, §4.2) found cloud polish given the recogniser's text alone made the
+founder's takes *worse* (Qwen3-ASR 1.7B 2.50 → 3.16 %: it deletes what the speaker said and guesses names from the
+context), and better with a second recogniser's transcript of the same audio as evidence about the sounds (→ 2.20 %,
+names 79 → 89 %). macOS's own recogniser runs on every Mac with macOS 26, in-process, at no cost. So they ship together:
+
+- **When**: cloud polish is on (`DictationCloud.payload`), Light or Structured, macOS's recogniser is ready in the
+  dictation's language (`AppleSpeech.ready`), and it isn't the recogniser itself (`Options.second`). Not yet ready →
+  asked for in the background (`AppleSpeech.prepare(via: "second")`), and this take polishes as before. Local polish
+  never gets it (the eval: neutral at best).
+- **What it hears**: each window's audio (the 1.7B's 30 s, the 0.6B's 20 s windows: `closeWindow`), or each piece's
+  when the take isn't heard again, on its own queue (`secondQ`) beside the speech model — the same words as contextual
+  strings. With a cloud recogniser (§Cloud recognition) the pieces it already heard for the live text are it.
+- **Polish runs once, over the whole take at key-up** (`Options.polishAtKeyUp`, `DictationStream.polishTake`), with
+  the units' second transcripts joined as context `second`: `polish_cloud.messages` puts `Also heard: …` right before
+  `Dictation: …` and one paragraph after the prompt (`SECOND_NOTE`, the eval's `run_polish.py` prompt word for word).
+  Window by window — the streaming design for the local model — the same polish made the takes worse (below); at
+  key-up it is one cloud request either way (~0.8 s, ~1.1 s for a minute-long take: eval §5), so the wait after
+  key-up grows by about 0.3 s on long takes. It waits for the last second transcript at most `secondWait` (2 s);
+  a unit without one is left out. Esc while it polishes types the transcript, as before.
+- **The request** (≈ 100 tokens more): the words, the app, the recent dictations, the text near the cursor, `Also
+  heard`, the dictation; thinking off where the host allows it (`polish_cloud.THINKING_OFF`; checked live 2026-10-31:
+  DeepSeek V4.1 Flash on Model Studio with `enable_thinking: false` and `deepseek-flash` on deepseek.com with
+  `thinking: disabled` answer with no reasoning tokens, 0.72 / 0.84 s). The history keeps each window's `second`
+  (`windows[].second`), and `dictation_second` / `dictation_polish_take` are logged.
+- **The Lab** replays it: `cloud=on` hears each window with macOS's recogniser (`Servers.second`: the Blurt executable's
+  `--speech`) and polishes the take once (`second=off`: window by window without it, as before); its config key adds
+  `second=apple`.
+
+Re-measured with the shipped code on the founder's 95 takes (the eval's harness, references and scorer; DeepSeek V4.1
+Flash on Model Studio; each cloud row run two or three times — one run moves by up to ±0.2 points, a single take that
+the model rewrites or deletes from is 0.1–0.3 points):
+
+| Qwen3-ASR 1.7B (30 s windows, field context) | Error | Terms |
+|---|---:|---:|
+| recogniser alone (the Lab, shipped code) | 2.50 % (eval 2.50 %) | 79 % |
+| macOS's transcript of the same windows (the second) | 6.15 % | 52 % |
+| cloud polish, whole take, with macOS's — the eval's script, three runs | 2.20 / 2.29 / 2.29 % | 87–89 % |
+| … the shipped `polish_cloud` prompt, same inputs, three runs | 2.51 / 2.28 / 2.28 % | 87 % |
+| **the app's path in the Lab** (macOS on each window, polish once at key-up), three runs | **2.20 / 2.28 / 2.55 %** | 89 % |
+| … window by window with macOS's per window (built first, not shipped), three runs | 2.92 / 2.57 / 2.72 % | 87–89 % |
+
 ### Why a polish was "unavailable" (A), and model loads
 
 The history entry said `reason: unavailable`, `model: null` after a 19 s dictation: the app waited `polish_timeout_ms`
@@ -1650,7 +1739,8 @@ in it go first). Given the text itself as context, a model that takes free text 
 
 - **Which models**: `asr_models.json` `field_context_chars` — 300 for Qwen3-ASR 1.7B and for the cloud Qwen3-ASR Flash
   (Model Studio's "context enhancement": background text and words in the same system message; not measured here, the
-  cloud service failed on the day of the study), none for the 0.6B (mixed: better on whole takes, worse in the 20 s
+  cloud service failed on the day of the study — measured later that day on whole takes: 2.00 % with it, 2.24 %
+  without, and sent only with the whole take since: §Cloud recognition), none for the 0.6B (mixed: better on whole takes, worse in the 20 s
   windows the app uses), macOS Speech (contextual strings only), SenseVoice (no context), Whisper (its prompt with the
   words made it worse: 6.86 → 7.43 %), the OpenAI-compatible service.
 - **The request**: the app sends `before` (`DictationContext.asrBefore`: the last 300 characters before the cursor)
@@ -1800,6 +1890,44 @@ The 41-case polish eval with the new prompt (no words, no context, so the same p
 fall-backs, similarity 0.946 (model) / 0.970 (final), every untouched sentence kept, fillers removed 91 % (97 %
 before: one 那个 more is kept). Putting the two custom-word examples after the old four made it translate en-04 into
 Chinese and leave a correction unapplied; before them, nothing else changed.
+
+### Defaults by Mac (2026-10-31)
+
+dictation-eval-2026-10-31.md §6 measured what each Mac should run, on the founder's 95 takes. One rule, in two places:
+`transcribe.py dictation_tier` decides what Automatic runs (`dictation-models`' `recommended`, and its `plan`), and
+BlurtCore `DictationTier.recommended(ramGB:rtf:hasCloudKey:slowChip:)` is the same rule for the app (Settings shows
+it: `DictationModels.tier`); `tests/fixtures/dictation_tier.jsonl` checks both.
+
+| Mac | Recogniser (window, field context) | Local polish | Founder's takes | Download / memory |
+|---|---|---|---:|---:|
+| first minutes, any (macOS 26) | macOS Speech, while the recogniser downloads | — | 6.72 % | 0 |
+| 8 GB (light) | Qwen3-ASR 0.6B (20 s, no) | none | 3.34 % | 1.0 / 2.1 GB |
+| 16–24 GB (standard), fast enough | **Qwen3-ASR 1.7B (30 s, yes)** | Gemma 4 E2B | 2.50 % (2.68 % with Gemma) | 2.5 + 3.4 / 3.1 + 2.3 GB |
+| 32 GB+ (pro) | Qwen3-ASR 1.7B (30 s, yes) | Gemma 4 E2B | 2.68 % | as above |
+| a base M1 / M2, or the 1.7B measured too slow | Qwen3-ASR 0.6B (20 s, no) | by memory, as above | 3.34 % | 1.0 / 2.1 GB |
+| any, with a cloud key | the same local recogniser | the same (the cloud's fall-back) + cloud polish with macOS's transcript | 2.2–2.5 % (1.7B) | text only leaves |
+
+- **Fast enough**: the 1.7B's real-time factor here, when measured (`transcribe.py bench`, Settings → Speech's Measure:
+  `asr-bench.json`), at most `TIER_RTF_LIMIT` 0.05 (the M5 Max: 0.033); not measured, any chip but a base M1 / M2
+  (`slow_chip`: 7–10 GPU cores against 40, where the last 30 s window at key-up would take over a second). A measured
+  rtf wins over the chip's name.
+- **Local polish**: Gemma 4 E2B from 16 GB (`polish_models.json` defaults: standard and pro); none on 8 GB and under
+  (light / minimal: `null`, `polish.recommended` → None — beside the 0.6B it doesn't fit, and on the founder's takes local
+  polish was within ±0.2 points on words on every recogniser). On 16 GB the eval left it open (off or Gemma); it stays
+  Gemma — what such Macs ran before, for the fillers and punctuation the error measure doesn't credit — and the pair
+  fits (`fits_with_polish`: 3.1 + 2.3 GB within 40 % of 16 GB).
+- **Only Automatic changes**: a recogniser or polish model picked by hand (`asr_model`, `polish_model`) stays, and so
+  does a cloud polish model picked by hand (§Cloud polish: `record.cloud.jobs.polish`). An installed 0.6B keeps running
+  on a Mac whose recommendation is now the 1.7B until the 1.7B is downloaded (Settings offers it); nothing downloads
+  by itself for an existing install.
+- **At install** (`ModelSetup.startAtInstall`): with macOS's recogniser dictating from the first minute (the setup
+  assistant's "start now" step), this Mac's recogniser starts downloading in the background as soon as the model list is
+  read — the recogniser alone (the polish and voice-note models stay the step's optional Download), once ever
+  (`first_download`), only while dictation is automatic and the Mac is online; a Stop is final. Before, nothing
+  downloaded until the user pressed Download on that optional row, and Apple Speech (Blurt 0 of 9, 45 % of terms) stayed.
+- **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
+  `deepseek-v4.1-flash` on Model Studio, `deepseek-flash` on deepseek.com — for Auto; a model picked by hand stays (the
+  founder's `qwen3.8-27b` measured 3.30 %, worse than no polish).
 
 ### Qwen3-ASR 1.7B (the v0.8 speed eval)
 
@@ -1969,8 +2097,8 @@ of speech, like D), polished whole and piece by piece (with the polished text so
 |---|---|---:|---|
 | pro | Apple silicon ≥ 32 GB | 8 GB | Gemma 4 E2B (Gemma 4 E4B and Qwen3.5 4B offered) |
 | standard | 16–24 GB | 4 GB | Gemma 4 E2B (2.2 GB peak since v1.0.2, §Memory; 3.5 GB before) |
-| light | 8 GB | 2 GB | Gemma 3 1B since v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
-| minimal | < 8 GB | — | Gemma 3 1B (rarely harmful, rarely useful) |
+| light | 8 GB | 2 GB | none since 2026-10-31 (§Defaults by Mac); Gemma 3 1B from v1.0.2 (1.3 GB, 17 % fall-back in the v1.0.2 sweep); Qwen3 1.7B before (2.1 GB, 24 %) |
+| minimal | < 8 GB | — | none since 2026-10-31; Gemma 3 1B before (rarely harmful, rarely useful) |
 
 **Memory together (arch098, v0.9).** What a 16 GB Mac holds while it dictates is the sum: dictation's speech model,
 polish, and the voice-note model (one `asr-serve` holds one speech model at a time). Pro Macs (≥ 32 GB) keep
@@ -2086,7 +2214,7 @@ never touched.
 | `mode` | `auto` (unset) \| `tap` \| `hold` |
 | `fn_capture` | `true`: with Fn and Accessibility, keep the Fn press from macOS (the filter) |
 | `polish` | `light` \| `off` |
-| `polish_model` | by tier |
+| `polish_model` | by tier (§Defaults by Mac: Gemma 4 E2B from 16 GB, none on 8 GB) |
 | `polish_timeout_ms` | `3000` (the generation only, once the model is loaded) |
 | `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
@@ -2102,7 +2230,8 @@ never touched.
 | `retention_days` | `30` |
 | `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
-| `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
+| `asr_model` | automatic (§Defaults by Mac: Qwen3-ASR 1.7B MLX on 16 GB+ Macs fast enough for it, else the 0.6B, when installed — an installed 0.6B runs until the 1.7B is in —, else the voice-note model) |
+| `first_download` | unset: the recogniser the setup assistant started downloading at install (§Defaults by Mac), once ever |
 | `context` | `true`: read the text around the cursor for polish and the speech model (§Context, §Field context) |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |

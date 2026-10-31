@@ -295,6 +295,7 @@
 "settings.kw.speech.services" = "cloud, API key, LLM, DeepSeek, Qwen, Model Studio, Doubao, Moonshot, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, base URL";
 "settings.kw.speech.translate" = "translate, translation model, cloud, DeepSeek";
 "settings.kw.speech.vision" = "OCR, screenshot, image, vision model, Copy Text from Screen";
+"settings.kw.speech.compare" = "compare, accuracy, mistakes, delay, latency, cost, price, privacy, cloud, recommended, which model";
 "settings.kw.dictation.translate_model" = "translation model, cloud, DeepSeek, API key";
 "settings.kw.screentext.translate_model" = "translation model, cloud, DeepSeek, API key";
 "settings.kw.speech.languages" = "language, languages, multilingual";
@@ -474,7 +475,6 @@
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "It works now. Add these for better accuracy or offline use.";
 "onboarding.start.ready.title" = "Dictation works now";
-"onboarding.start.ready.detail" = "It uses the speech recognition built into macOS. Nothing to download.";
 "onboarding.start.ready.state" = "Ready";
 "onboarding.start.assets.title" = "macOS is downloading speech files";
 "onboarding.start.assets.detail" = "About 400 MB, once. Dictation works when it’s done.";
@@ -505,5 +505,9 @@
 "settings.perm.screen.minus_button" = "Minus button";
 "onboarding.models.resume" = "Resume Download";
 "onboarding.upgrade.resume" = "Resume (%@ left)";
+"onboarding.start.ready.detail" = "It uses the speech recognition built into macOS. Nothing to download.";
+"onboarding.upgrade.better" = "%1$@ (%2$@) recognizes better and works offline.";
+"onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It’s used once it’s in.";
+"onboarding.key.compare" = "Cloud polish gets names and terms right more often, about %@ a dictation. Only text is sent.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";
 "onboarding.models.left_label" = "Left";

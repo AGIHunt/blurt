@@ -168,6 +168,68 @@ class DashScopeField(unittest.TestCase):
         d.set_field("")
         self.assertEqual(d.context_text(), "Blurt, Typeless")
 
+    # dictation-eval-2026-10-31 §4.1: the app's short pieces with the field's text came back as that text (13 of 95
+    # takes) or as the word list (3 of 95); the MLX backend's nets, now on the cloud backend too
+    def backend(self, answers: list[str]):
+        d = object.__new__(T.DashScope)
+        d.args = type("A", (), {"prompt": None, "language": None})()
+        d.terms, d.field, d.last = [], "", {}
+        d.sent = []
+
+        def request(x, context):
+            d.sent.append(context)
+            return answers[len(d.sent) - 1]
+        d._request = request
+        return d
+
+    def test_an_answer_that_repeats_the_field_is_asked_again_without_it(self):
+        field = "这个是我们之前讨论过的那个问题，就是云端的识别会把输入框里面的文字也打出来"
+        d = self.backend([field + "然后再看一下", "然后再看一下"])
+        d.set_vocab([{"term": "Blurt"}])
+        d.set_field(field)
+        out = d.transcribe(T.np.zeros(2 * T.SR, dtype=T.np.float32))
+        self.assertEqual(out[0][2], "然后再看一下")
+        self.assertEqual(d.sent, ["Blurt\n" + field, "Blurt"])      # the words stay, the field goes
+        self.assertTrue(d.last["echo"])
+
+    def test_breath_that_came_back_as_the_field_is_nothing(self):
+        # a piece with no speech in it: the field written out, and nothing at all without it
+        field = "还有把条目改成 task 或者任务还是什么吗？但我没有想好怎么改。你有个方案了吗？"
+        d = self.backend([field, ""])
+        d.set_field(field)
+        self.assertEqual(d.transcribe(T.np.zeros(5 * T.SR, dtype=T.np.float32))[0][2], "")
+        self.assertTrue(d.last["echo"])
+        # …but an answer with words of its own beside the field keeps them when the second answer is empty
+        d = self.backend(["我刚才说的是" + field + "这个问题我们明天再讨论一下吧", ""])
+        d.set_field(field)
+        self.assertTrue(d.transcribe(T.np.zeros(9 * T.SR, dtype=T.np.float32))[0][2].startswith("我刚才说的是"))
+
+    def test_a_speaker_who_says_the_field_again_keeps_it(self):
+        field = "我们明天下午三点在会议室开会讨论发布计划"
+        d = self.backend([field, field])                 # said again: the second answer is no shorter
+        d.set_field(field)
+        self.assertEqual(d.transcribe(T.np.zeros(5 * T.SR, dtype=T.np.float32))[0][2], field)
+        self.assertNotIn("echo", d.last)
+
+    def test_the_word_list_as_the_answer_is_asked_again_without_it(self):
+        names = ["Claude", "DeepSeek", "Anthropic", "blurt", "bug-agent"]
+        d = self.backend(["Claude、DeepSeek、Anthropic、blurt、bug-agent", "我先跑一下测试"])
+        d.set_vocab([{"term": n} for n in names])
+        d.set_field("上一句话")
+        self.assertEqual(d.transcribe(T.np.zeros(2 * T.SR, dtype=T.np.float32))[0][2], "我先跑一下测试")
+        self.assertEqual(d.sent[1], "上一句话")
+        self.assertTrue(d.last["context_dump"])
+
+    def test_an_ordinary_answer_is_one_request(self):
+        d = self.backend(["我先跑一下测试"])
+        d.set_vocab([{"term": "Blurt"}])
+        d.set_field("上一句话说的是别的事情")
+        self.assertEqual(d.transcribe(T.np.zeros(2 * T.SR, dtype=T.np.float32))[0][2], "我先跑一下测试")
+        self.assertEqual(len(d.sent), 1)
+
+    def test_a_whole_take_goes_in_one_request_up_to_50_s(self):
+        self.assertEqual(T.DashScope.max_chunk, 50)
+
 
 if __name__ == "__main__":
     unittest.main()

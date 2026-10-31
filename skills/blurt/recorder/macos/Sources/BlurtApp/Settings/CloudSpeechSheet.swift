@@ -86,10 +86,12 @@ enum CloudSpeech {
     }
 
     /// How fast every cloud service hears the audio (asr.cloud.speed; transcribe.py `cloud_speed`): billing is per
-    /// second sent. 1.5x is the default — measured 34 % cheaper for 1.2 points more error; 2x halves the cost but
-    /// errs a lot more (docs/design/first-minute-speech.md §2.4).
+    /// second sent. 1x is the default since dictation sends the whole take (2026-10-31: Qwen3-ASR Flash on the
+    /// founder's 95 takes, whole, 2.0 % errors at 1x against 3.3 % at 1.5x — docs/design/dictation.md §Cloud
+    /// recognition; $0.11 an hour of speech); 1.5x is a third cheaper, 2x halves the cost but errs a lot more
+    /// (docs/design/first-minute-speech.md §2.4).
     static let speeds: [Double] = [1.0, 1.5, 2.0]
-    static let defaultSpeed = 1.5
+    static let defaultSpeed = 1.0
     static var speed: Double {
         let v = (Config.shared["asr.cloud"] as? [String: Any])?["speed"] as? Double ?? defaultSpeed
         return speeds.min { abs($0 - v) < abs($1 - v) } ?? defaultSpeed

@@ -673,10 +673,16 @@ class AppleSpeechSelect(unittest.TestCase):
                 self.assertEqual(d["selected"], "apple-speech")
                 self.assertTrue(d["ready"])                 # no VAD needed: it finds its own pauses
                 self.assertEqual(d["missing"], [])
-                self.assertEqual(d["recommended"], "qwen3-asr-0.6b-mlx")    # the download still offered (the upgrade)
+                # the download still offered (the upgrade): this Mac's (dictation_tier — 128 GB, not a base M1 / M2)
+                self.assertEqual(d["recommended"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(d["plan"]["recognizer"], "qwen3-asr-1.7b-mlx")
                 self.assertTrue({m["id"]: m for m in d["models"]}["apple-speech"]["builtin"])
-                # an 8 GB Mac: the voice-note rules' pick is offered, never macOS's own
-                self.assertNotEqual(T.dictation_models(hw(ram=8.0))["recommended"], "apple-speech")
+                # an 8 GB Mac: the 0.6B (no local polish beside it), never macOS's own
+                self.assertEqual(T.dictation_models(hw(ram=8.0))["recommended"], "qwen3-asr-0.6b-mlx")
+                # 16 GB: the 1.7B, unless the chip is a base M1 / M2 or the 1.7B measured too slow here
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-1.7b-mlx")
+                self.assertEqual(T.dictation_models({**hw(ram=16.0), "chip": "Apple M1"})["recommended"],
+                                 "qwen3-asr-0.6b-mlx")
         finally:
             T.installed = real
 
@@ -804,19 +810,51 @@ class AppleSpeechSelect(unittest.TestCase):
             T._APPLE_OK = old[1]
 
 
+class DictationTier(unittest.TestCase):
+    """Defaults by Mac (docs/design/dictation.md §Defaults by Mac): the shared fixture BlurtCore's DictationTier is
+    checked against too."""
+
+    def test_the_shared_fixture(self):
+        rows = [json.loads(l) for l in (ROOT / "tests" / "fixtures" / "dictation_tier.jsonl").read_text().splitlines() if l.strip()]
+        self.assertGreaterEqual(len(rows), 10)
+        for r in rows:
+            got = T.dictation_tier(r["ram_gb"], r["rtf"], r["slow"], r["cloud"])
+            for k, v in r["want"].items():
+                self.assertEqual(got[k], v, f"{r['case']}: {k}")
+            self.assertEqual(got["second_transcript"], got["cloud_polish"])
+            self.assertEqual(got["first"], "apple-speech")
+
+    def test_slow_chips(self):
+        self.assertTrue(T.slow_chip("Apple M2"))
+        self.assertFalse(T.slow_chip("Apple M2 Max"))
+        self.assertFalse(T.slow_chip(None))
+
+    def test_a_measured_rtf_decides(self):
+        real = T._bench_results
+        try:
+            T._bench_results = lambda: {"qwen3-asr-1.7b-mlx": {"rtf": 0.09}}
+            with config({}):
+                self.assertEqual(T.dictation_models(hw(ram=16.0))["recommended"], "qwen3-asr-0.6b-mlx")
+        finally:
+            T._bench_results = real
+
+
 class CloudSpeed(unittest.TestCase):
-    """asr.cloud.speed: every cloud service hears the audio sped up (default 1.5x); times come back on the original
+    """asr.cloud.speed: every cloud service can hear the audio sped up (default 1x since dictation sends the whole take:
+    2.02 % at 1x against 3.32 % at 1.5x on the founder's takes); times come back on the original
     timeline; dictation offers a cloud service once its key is set (first-minute-speech.md §2.4)."""
 
     def test_setting(self):
         with config({}):
+            self.assertEqual(T.cloud_speed(), 1.0)
+        with config({"asr": {"cloud": {"speed": 1.5}}}):
             self.assertEqual(T.cloud_speed(), 1.5)
         with config({"asr": {"cloud": {"speed": 2}}}):
             self.assertEqual(T.cloud_speed(), 2.0)
         with config({"asr": {"cloud": {"speed": 1.2, "openai-compatible": {"service": "groq"}}}}):
             self.assertEqual(T.cloud_speed(), 1.0)      # the nearest offered one
         with config({"asr": {"cloud": {"speed": "fast"}}}):
-            self.assertEqual(T.cloud_speed(), 1.5)
+            self.assertEqual(T.cloud_speed(), 1.0)
 
     @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
     def test_speed_up_keeps_length_ratio(self):

@@ -15,6 +15,11 @@
 //              so dictation works with nothing downloaded — the step says so, offers the one cloud key, and the set
 //              becomes the optional local upgrade (Download is no longer the footer's primary). `system` is where
 //              macOS's language files stand (asked for here, in the background: AppleSpeech.prepare).
+//   at install `startAtInstall` (docs/design/dictation.md §Defaults by Mac; dictation-eval-2026-10-31 §6.1): with
+//              macOS's recogniser dictating the first minutes, this Mac's recogniser (BlurtCore DictationTier: the 1.7B
+//              on 16 GB+ Macs fast enough for it, else the 0.6B) starts downloading in the background as soon as the
+//              list is read — once (record.dictation.first_download), only while dictation is automatic; never again
+//              after a Stop or once it is in. The rest of the set stays the step's optional Download.
 import AppKit
 import BlurtCore
 import Combine
@@ -119,7 +124,9 @@ final class ModelSetup: ObservableObject {
         }
         let note = speech.recommended(.note).map { part($0, .note) }
         // a list that couldn't be read: no set ("Couldn't read the models" + Try Again), never a set without that model
-        let plan = ModelBundle.plan(dictation: dictation, polish: pm, polishRuns: polish?.supported, note: note)
+        // no local polish model for this Mac (8 GB: polish_models.json defaults) is a set without one, not an unread list
+        let plan = ModelBundle.plan(dictation: dictation, polish: pm,
+                                    polishRuns: polish.map { $0.supported && $0.recommended != nil }, note: note)
         // while the set downloads, keep the rows it started with (a read mid-download changes nothing that matters)
         if !(downloading && plan == nil) { parts = plan ?? [] }
         listRead = plan != nil || downloading
@@ -128,6 +135,7 @@ final class ModelSetup: ObservableObject {
         kept = await Task.detached(priority: .utility) {
             Dictionary(ids.map { ($0, Double(ModelCatalog.keptBytes($0, models: models, hfCache: hub)) / 1_048_576) }) { a, _ in a }
         }.value
+        startAtInstall(automatic: asr.map { $0.configured == nil } ?? false)
         emit(["event": "onboarding_models", "read": ["dictation": asr != nil, "polish": polish != nil, "note": note != nil],
               "parts": parts.map { ["id": $0.id, "kind": $0.kind.rawValue, "size_mb": $0.sizeMB,
                                                                    "installed": $0.installed] },
@@ -177,6 +185,18 @@ final class ModelSetup: ObservableObject {
     }
 
     // MARK: download
+
+    /// The first minutes on macOS's recogniser, this Mac's own coming down meanwhile: the recommended recogniser alone,
+    /// once ever, while dictation is automatic (`automatic`: no model picked by hand) and the Mac is online.
+    private func startAtInstall(automatic: Bool) {
+        guard automatic, startNow, listRead, !downloading, Dictation.settings["first_download"] == nil,
+              NetworkWatch.shared.isOnline != false,
+              let d = parts.first(where: { $0.kind == .dictation }), !d.installed, d.id != AppleSpeech.modelID,
+              !dl.queue.contains(d.id) else { return }
+        Dictation.set("first_download", d.id)
+        emit(["event": "onboarding_models", "op": "start_at_install", "model": d.id, "size_mb": d.sizeMB])
+        dl.download([ModelDownloadQueue.Job(id: d.id, kind: d.kind, name: d.name, sizeMB: d.sizeMB)], via: "install")
+    }
 
     /// The recommended set (or `only` these), through the download manager.
     func start(only: [ModelBundle.Part]? = nil) {

@@ -83,7 +83,8 @@ struct DictationASRState: Decodable {
 struct PolishState: Decodable {
     var supported: Bool
     var tier: String
-    var recommended: String
+    /// nil: no local polish model by default on this Mac (8 GB: polish_models.json defaults)
+    var recommended: String?
     var selected: String?
     var configured: String?
     var models: [PolishModel]
@@ -197,6 +198,25 @@ final class DictationModels: ObservableObject {
     var selectedPolish: PolishModel? { polish.flatMap { p in p.models.first { $0.id == p.selected } } }
 
     // MARK: the recommended pair
+
+    /// This Mac's defaults — recogniser, its window and field context, local polish, cloud polish with macOS's
+    /// transcript as the second opinion — by the rule `transcribe.py dictation-models` applies to Automatic
+    /// (BlurtCore DictationTier.recommended; docs/design/dictation.md §Defaults by Mac): the memory, the 1.7B's
+    /// measured rtf (Settings → Speech's Measure, `transcribe.py bench`) or else the chip, and whether polish has a
+    /// cloud service.
+    var tier: DictationTier.Choice {
+        DictationTier.recommended(ramGB: (Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 * 10).rounded() / 10,
+                                  rtf: SpeechModel.shared.model(DictationTier.large)?.bench?.rtf,
+                                  hasCloudKey: DictationCloud.ready, slowChip: DictationTier.slowChip(Self.chip))
+    }
+    /// "Apple M5 Max" (machdep.cpu.brand_string), as transcribe.py's probe reads it
+    static let chip: String? = {
+        var n = 0
+        guard sysctlbyname("machdep.cpu.brand_string", nil, &n, nil, 0) == 0, n > 0 else { return nil }
+        var b = [CChar](repeating: 0, count: n)
+        guard sysctlbyname("machdep.cpu.brand_string", &b, &n, nil, 0) == 0 else { return nil }
+        return String(cString: b)
+    }()
 
     var recommendedASR: DictationASRModel? { asr.flatMap { a in a.models.first { $0.id == a.recommended } } }
     var recommendedPolish: PolishModel? {

@@ -1047,6 +1047,18 @@ final class Dictation {
         if opt.cloud != nil, Dictation.contextOn {
             opt.recent = DictationCloud.recent(bundle: DictationInsert.testMode ? testStyleBundle ?? front?.bundleIdentifier : front?.bundleIdentifier)
         }
+        // macOS's recogniser beside the chosen one (docs/design/dictation.md §Second transcript, §Cloud recognition):
+        // cloud polish gets its transcript of the same audio as "Also heard"; a cloud recogniser gets the whole take at
+        // key-up while macOS's gives the live text — or, where macOS's can't run, the take isn't cut at all
+        let appleBeside = !AppleSpeech.forDictation && AppleSpeech.ready()
+        if AppleSpeech.cloudSelected {
+            opt.wholeAtKeyUp = opt.streaming && appleBeside
+            if !opt.wholeAtKeyUp { opt.streaming = false }
+        }
+        opt.second = opt.polish && opt.cloud != nil && appleBeside
+        if opt.polish, opt.cloud != nil, !AppleSpeech.forDictation, !appleBeside, AppleSpeech.available {
+            AppleSpeech.prepare(via: "second")      // its language's files: the next take has the second transcript
+        }
         opt.variant = styleDecision?.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: styleBundle) ? "terminal" : nil
         opt.interim = Dictation.livePartial && LiveTranscript.enabled
         let s = DictationStream(id: entryID, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)

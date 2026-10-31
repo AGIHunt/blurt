@@ -67,6 +67,26 @@ RECENT_CHARS = 300      # of each recent dictation
 RECENT_N = 3
 NEAR_CHARS = 300
 
+# A second recognizer's transcript of the same audio (macOS's own, which the app runs beside the chosen one): the
+# context's "second", shown as "Also heard:" right before "Dictation:", with this paragraph after the prompt
+# (docs/design/dictation-eval-2026-10-31.md §4.2, the eval's run_polish.py prompt). Measured on the founder's 95 takes:
+# cloud polish of Qwen3-ASR 1.7B's text 2.50 → 3.16 % without it (worse than none), 2.50 → 2.20 % with it, names 79 →
+# 89 %. Without it the model deletes what the references keep and guesses names from the context; with it, it picks
+# between two readings of the same sounds.
+SECOND_NOTE = ("\n\nThe message may also have \"Also heard:\" — what a second, different speech recognizer typed for the "
+               "same audio. It makes different mistakes. Where the two differ, use it as evidence about the sounds: pick "
+               "the reading that fits the sentence, the word list and the context; a name both got wrong may show "
+               "through in one of them. Base the text on \"Dictation:\"; take nothing from \"Also heard:\" that wasn't "
+               "said there too.")
+SECOND_MAX = 4000       # characters of it (a whole take's; a window's is far shorter)
+
+
+def second_of(context: dict | None) -> str:
+    """The context's second transcript, on one line ("" when there is none)."""
+    if not isinstance(context, dict):
+        return ""
+    return " ".join(str(context.get("second") or "").split())[:SECOND_MAX]
+
 
 class CloudError(Exception):
     """code: auth | rate_limited | timeout | network | server | config | empty"""
@@ -117,14 +137,18 @@ def user_message(text: str, terms: list[str], context: dict | None, variant: str
         near = ((before if not ctx.get("dictated") else "") + " ▮ " + after).strip()
     if near and near != "▮":
         lines.append("Near the cursor: " + near)
+    second = second_of(ctx)
+    if second:
+        lines.append("Also heard: " + second)
     lines.append("Dictation: " + text)
     return "\n".join(lines)
 
 
 def messages(text: str, terms: list[str], context: dict | None, variant: str | None) -> list[dict]:
     """Light: the cloud prompt + examples, the dictation's text so far as the turn before. (Structured sends
-    polish.py's own structuring prompt over Light's text: the two passes the app already makes at key-up.)"""
-    m = [{"role": "system", "content": LIGHT}]
+    polish.py's own structuring prompt over Light's text: the two passes the app already makes at key-up.) With a
+    second transcript (context "second") the prompt says how to read it (SECOND_NOTE)."""
+    m = [{"role": "system", "content": LIGHT + (SECOND_NOTE if second_of(context) else "")}]
     for q, a in EXAMPLES:
         m += [{"role": "user", "content": q}, {"role": "assistant", "content": a}]
     so = " ".join(str((context or {}).get("dictated") or "").split())[-200:] if isinstance(context, dict) else ""

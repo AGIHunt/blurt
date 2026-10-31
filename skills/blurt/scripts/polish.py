@@ -928,8 +928,13 @@ def limits() -> dict:
         return {"threads": 3, "max_memory_fraction": 0.25}
 
 
-def recommended(tier: str | None = None) -> str:
-    return registry()["defaults"].get(tier or hardware()["tier"]) or registry()["defaults"]["standard"]
+def recommended(tier: str | None = None) -> str | None:
+    """The tier's local polish model (polish_models.json "defaults"); None where none runs by default — 8 GB Macs
+    (docs/design/dictation-eval-2026-10-31.md §6.2: Gemma 4 E2B doesn't fit beside the speech model there, and a local
+    polish model is neutral on words). A tier the file doesn't name gets the standard one."""
+    d = registry()["defaults"]
+    t = tier or hardware()["tier"]
+    return d[t] if t in d else d.get("standard")
 
 
 def mirror_on() -> bool:

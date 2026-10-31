@@ -390,19 +390,25 @@ class Registry(unittest.TestCase):
             self.assertNotIn("llama", m["repo"].lower())
             self.assertTrue(m["repo"].startswith("mlx-community/"), m)
             self.assertLess(m["size_mb"], 5200, m)
-        for tier in ("pro", "standard", "light", "minimal"):
+        for tier in ("pro", "standard"):
             self.assertIn(reg["defaults"][tier], ids)
+        # 8 GB and under: no local polish by default (dictation-eval-2026-10-31 §6.2)
+        self.assertEqual((reg["defaults"]["light"], reg["defaults"]["minimal"]), (None, None))
+        self.assertIsNone(polish.recommended("light"))
+        self.assertEqual(polish.recommended("standard"), "gemma4-e2b")
         for m in reg["models"]:                                              # measured on the reference Mac
             self.assertTrue(m["ram_mb"] > 0 and m["warm_ms"] > 0 and 0 <= m["fallback"] <= 1, m["id"])
         # the default for each tier fits that tier's polish memory cap (25 % of 8 / 16 / 32 GB; minimal ≈ 8 GB too)
         cap = {"pro": 8192, "standard": 4096, "light": 2200, "minimal": 2048}
         for tier, mid in reg["defaults"].items():
-            self.assertLessEqual(polish.entry(mid)["ram_mb"], cap[tier], tier)
+            if mid:
+                self.assertLessEqual(polish.entry(mid)["ram_mb"], cap[tier], tier)
 
     def test_lighter_tiers_get_smaller_models(self):
         reg = polish.registry()
         size = {m["id"]: m["size_mb"] for m in reg["models"]}
         d = reg["defaults"]
+        size[None] = 0                                  # none at all
         self.assertLessEqual(size[d["light"]], size[d["standard"]])
         self.assertLessEqual(size[d["minimal"]], size[d["light"]])
 

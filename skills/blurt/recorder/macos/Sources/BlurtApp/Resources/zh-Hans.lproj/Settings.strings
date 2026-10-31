@@ -294,6 +294,7 @@
 "settings.kw.speech.services" = "云服务, 云端, API Key, 大模型, DeepSeek, 千问, 百炼, 豆包, 火山方舟, 月之暗面, 智谱, GLM, MiniMax, MiMo, OpenAI, Anthropic, Gemini, OpenRouter, 接口地址";
 "settings.kw.speech.translate" = "翻译, 翻译模型, 云端, DeepSeek";
 "settings.kw.speech.vision" = "OCR, 截图, 图片, 看图模型, 截图取字";
+"settings.kw.speech.compare" = "对比, 比较, 准确, 准确率, 错字, 延迟, 速度, 费用, 价格, 隐私, 云端, 推荐, 哪个模型";
 "settings.kw.dictation.translate_model" = "翻译模型, 云端, DeepSeek, API Key";
 "settings.kw.screentext.translate_model" = "翻译模型, 云端, DeepSeek, API Key";
 "settings.kw.speech.languages" = "语言, 多语言, 方言";
@@ -473,7 +474,6 @@
 /* Start now: macOS's own speech recognition, the one cloud key, local models as an upgrade (docs/design/first-minute-speech.md) */
 "onboarding.start.detail" = "现在就能用。想更准确或离线使用，可再加下面两项。";
 "onboarding.start.ready.title" = "听写现在就能用";
-"onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
 "onboarding.start.ready.state" = "可以用";
 "onboarding.start.assets.title" = "macOS 正在下载语音文件";
 "onboarding.start.assets.detail" = "约 400 MB，只需下载一次，完成后即可听写";
@@ -504,5 +504,9 @@
 "settings.perm.screen.minus_button" = "减号按钮";
 "onboarding.models.resume" = "继续下载";
 "onboarding.upgrade.resume" = "继续下载（还剩 %@）";
+"onboarding.start.ready.detail" = "用 macOS 自带的语音识别，不用下载模型。";
+"onboarding.upgrade.better" = "%1$@（%2$@）识别更准，离线可用。";
+"onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），好了自动换上。";
+"onboarding.key.compare" = "云端润色让人名和术语更准，每次约 %@，只发送文字。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";

@@ -163,6 +163,8 @@ public enum SettingsCatalog {
         sec("speech.languages", "speech.section.languages", "Speech"),
         sec("speech.advanced", "speech.section.advanced", "Speech"),
         sec("speech.models", "speech.section.models", "Speech"),
+        // dictation's choices side by side, a sheet (Compare… on the page's lead) that a search or a link opens
+        sec("speech.compare", "speech.compare.title", "Speech"),
 
         sec("shortcuts.capture", "capture.keys.section.capture", "Capture"),
         sec("shortcuts.recording", "capture.keys.while_recording", "Capture"),
@@ -296,6 +298,7 @@ public enum SettingsCatalog {
             row("speech.mirror", "speech.advanced", P("speech.advanced.mirror"), detail: P("speech.advanced.mirror.detail")),
             row("speech.cloud", "speech.advanced", P("speech.cloud.title"), detail: P("speech.note.cloud")),
             whole("speech.models", detail: P("speech.models.footer")),
+            whole("speech.compare", detail: P("speech.compare.note")),
         ]
 
         // Shortcuts: one row per action (HotkeyCenter.Action), section by section in the page's order, the dictation
