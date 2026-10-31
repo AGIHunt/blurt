@@ -1,10 +1,10 @@
 /* Settings → Models: the cloud services the user connects with their own API key, and the text jobs' rows
    (CloudServicesPane.swift, App/CloudStore.swift). One short line per row; DeepSeek's is the only price shown. */
 
-"models.section.services" = "Cloud services";
+"models.section.services" = "Cloud models";
 "models.services.detail" = "Connect cloud models with your API key.";
-"models.services.add.title" = "Add a service";
-"models.services.add" = "Add Service…";
+"models.services.add.title" = "Add a cloud model";
+"models.services.add" = "Add Cloud Model…";
 "models.services.empty" = "Add an API key to polish, translate and read text in screenshots with cloud models.";
 "models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) per dictation.";
 "models.recommended" = "Recommended";
@@ -32,7 +32,7 @@
 "models.preset.custom_anthropic" = "Other (Anthropic-compatible)";
 "models.preset.recommended" = "%@ (Recommended)";
 
-"models.sheet.add_title" = "Add a Cloud Service";
+"models.sheet.add_title" = "Add a Cloud Model";
 "models.sheet.paste_title" = "Add an API Key";
 "models.sheet.note" = "Your API key is stored in Keychain.";
 "models.sheet.service" = "Service";
@@ -90,7 +90,7 @@
 "models.job.goes.text" = "Text is processed by %@.";
 "models.job.goes.images" = "Screenshots are processed by %@.";
 "models.job.local" = "Processed on your Mac.";
-"models.job.none" = "Not set. Add a cloud service or download a model.";
+"models.job.none" = "Not set. Add a cloud model or download a model.";
 "models.job.recommend" = "Recommended: %@.";
 "models.job.switch" = "Switch";
 "models.job.this_mac" = "On Your Mac";
@@ -111,7 +111,7 @@
 /* Set Up with Agent (docs/design/agent-setup.md): the user's own coding agent sets up the models through scripts/setup.py
    and the app's control socket. AgentSetupViews.swift, App/AgentSetupServer.swift. */
 "models.agent.button" = "Set Up with Agent…";
-"models.agent.note" = "The API key passes through the agent. You can also add services by hand.";
+"models.agent.note" = "The API key passes through the agent. You can also add cloud models by hand.";
 "models.agent.sheet.title" = "Set Up Models with an Agent";
 "models.agent.sheet.detail" = "The agent opens in a terminal, asks a few questions and opens each service’s API key page. You sign in and create the key yourself.";
 "models.agent.sheet.agent" = "Agent";

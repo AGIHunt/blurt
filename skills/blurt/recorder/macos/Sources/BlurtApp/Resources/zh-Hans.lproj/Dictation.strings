@@ -399,6 +399,7 @@
 "dictation.style.chip.action" = "排成清单";
 "dictation.style.reformat.nothing" = "没有可重排的听写";
 "dictation.style.reformat.same" = "各风格结果相同";
+"dictation.style.needs_polish" = "切换风格需要润色模型";
 "dictation.style.reformatted" = "已重排为%@";
 "dictation.style.copied" = "已按%@复制，输入框中的文字未更改";
 "dictation.style.copied.edited" = "已按%@复制修改后的文字，输入框中的文字未更改";

@@ -19,7 +19,9 @@
 //              macOS's recogniser dictating the first minutes, this Mac's recogniser (BlurtCore DictationTier: the 1.7B
 //              on 16 GB+ Macs fast enough for it, else the 0.6B) starts downloading in the background as soon as the
 //              list is read — once (record.dictation.first_download), only while dictation is automatic; never again
-//              after a Stop or once it is in. The rest of the set stays the step's optional Download.
+//              after a Stop or once it is in. The polish model this Mac's default includes (Gemma 4 E2B from 16 GB)
+//              follows it (v1.0.8: without it every style read the same and the Mac never had its default); the
+//              voice-note model stays the step's optional Download.
 import AppKit
 import BlurtCore
 import Combine
@@ -194,8 +196,11 @@ final class ModelSetup: ObservableObject {
               let d = parts.first(where: { $0.kind == .dictation }), !d.installed, d.id != AppleSpeech.modelID,
               !dl.queue.contains(d.id) else { return }
         Dictation.set("first_download", d.id)
-        emit(["event": "onboarding_models", "op": "start_at_install", "model": d.id, "size_mb": d.sizeMB])
-        dl.download([ModelDownloadQueue.Job(id: d.id, kind: d.kind, name: d.name, sizeMB: d.sizeMB)], via: "install")
+        // the recogniser first (dictation's words), then the polish model of this Mac's default, one after the other
+        let todo = [d] + parts.filter { $0.kind == .polish && !$0.installed && !dl.queue.contains($0.id) }
+        emit(["event": "onboarding_models", "op": "start_at_install", "models": todo.map(\.id),
+              "size_mb": todo.reduce(0) { $0 + $1.sizeMB }])
+        dl.download(todo.map { ModelDownloadQueue.Job(id: $0.id, kind: $0.kind, name: $0.name, sizeMB: $0.sizeMB) }, via: "install")
     }
 
     /// The recommended set (or `only` these), through the download manager.

@@ -101,9 +101,27 @@ extension Dictation {
         island.refresh()
     }
 
+    /// Polish is on but nothing can run it — no local polish model downloaded, no cloud model: every style would read
+    /// the same (the words as said), so a style change says what it takes instead of pretending.
+    var stylesNeedModel: Bool { Dictation.polishOn && polishModel == nil && DictationCloud.payload() == nil }
+
+    /// "Changing styles needs a polish model" with Download…, each time a style is asked for (⇧, ⌥L) while there is none.
+    func sayStylesNeedModel(via: String) {
+        emit(["event": "dictation_style", "action": "needs_model", "via": via])
+        var t = Island.Toast(text: Loc.t("dictation.style.needs_polish", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.toast.no_model.get", table: "Dictation"), action: {
+            Dictation.getPolishModel(from: "island")
+        })
+        t.key = Dictation.styleToastKey
+        t.seconds = 6
+        t.icon = .warning
+        island.toast(t)
+    }
+
     /// ⇧ alone / a click on the island while listening: Structured for this take, or back.
     func toggleStyle(via: DictationStyleSource) {
         guard phase == .listening, let d = styleDecision else { return }
+        if stylesNeedModel { return sayStylesNeedModel(via: via.rawValue) }
         let to = DictationStyleRouter.toggled(d.style, base: d.base)
         explicitStyle = (to, via)
         styleToggles += 1
@@ -259,6 +277,8 @@ extension Dictation {
             emit(["event": "dictation_reformat", "result": "nothing", "via": via])
             return
         }
+        // no model to restyle with: "Results are the same in every style" would be true, and no help
+        if stylesNeedModel { return sayStylesNeedModel(via: via) }
         let order = [lp.current.next, lp.current.next.next]
         withLight(lp) { [weak self] in
             self?.withStructured(lp) { [weak self] in
@@ -307,7 +327,7 @@ extension Dictation {
     /// The structuring pass for the last take, once (reformat-last, the chip): the same model pass Structured runs at
     /// key-up, on Light's text (the transcript when there is none). Off the dictation's path.
     func withStructured(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
-        guard lp.structured == nil, !lp.structuredTried, Dictation.polishOn, polishModel != nil else { return then() }
+        guard lp.structured == nil, !lp.structuredTried, Dictation.polishOn, polishModel != nil || DictationCloud.payload() != nil else { return then() }
         lp.structuredTried = true
         let src = lp.light ?? lp.raw
         guard !src.isEmpty else { return then() }
@@ -439,7 +459,7 @@ extension Dictation {
 
     /// ≥ 3 consistent signals in this app → the island asks once.
     func checkStyleSuggestion(bundle: String?) {
-        guard Dictation.learnStyles, let b = bundle, !b.isEmpty else { return }
+        guard Dictation.learnStyles, !stylesNeedModel, let b = bundle, !b.isEmpty else { return }
         let cfg = Dictation.styleConfig
         let current = DictationStyleRouter.decide(config: cfg, bundle: b).base
         let asked = Set(Dictation.settings["style_asked"] as? [String] ?? [])

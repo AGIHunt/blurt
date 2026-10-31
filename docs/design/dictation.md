@@ -1975,7 +1975,8 @@ one of them Chinese, English or Japanese.
   by itself for an existing install.
 - **At install** (`ModelSetup.startAtInstall`): with macOS's recogniser dictating from the first minute (the setup
   assistant's "start now" step), this Mac's recogniser starts downloading in the background as soon as the model list is
-  read — the recogniser alone (the polish and voice-note models stay the step's optional Download), once ever
+  read — the recogniser, then the polish model of this Mac's default (v1.0.8: Gemma 4 E2B from 16 GB; the voice-note
+  model stays the step's optional Download — and without polish every style read the same), once ever
   (`first_download`), only while dictation is automatic and the Mac is online; a Stop is final. Before, nothing
   downloaded until the user pressed Download on that optional row, and Apple Speech (Blurt 0 of 9, 45 % of terms) stayed.
 - **Cloud polish's model** (`CloudModelList.measuredDefault`, unchanged and matching the eval): DeepSeek V4.1 Flash —
