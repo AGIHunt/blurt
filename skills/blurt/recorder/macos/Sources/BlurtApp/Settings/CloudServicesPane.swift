@@ -223,7 +223,7 @@ struct CloudServicesSection: View {
                         Text(M("models.services.add.title")).font(.system(size: SettingsMetrics.titleSize))
                             .gridProbe(.iconText, "add service")
                         if empty {
-                            Text(sentencesOf([M("models.services.empty"), M("models.price.deepseek")]))
+                            Text(sentencesOf([M("models.services.empty"), (ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } ?? "")]))
                                 .font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -556,7 +556,7 @@ struct CloudServiceSheet: View {
                                     selection: Binding(get: { m.preset }, set: { m.pick($0) }), width: 260,
                                     dividers: Set(m.presets.firstIndex(where: \.custom).map { [$0] } ?? []))
                         if m.info.recommended {
-                            detail(M("models.price.deepseek"))
+                            detail((ChoiceText.cloudPolishPrice.map { M("models.price.deepseek", $0.per, $0.amount) } ?? ""))
                         }
                     }
                 }

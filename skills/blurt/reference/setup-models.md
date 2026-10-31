@@ -36,8 +36,8 @@ pages). `"source": "config"` means Blurt isn't running: fine for a first look, n
 
 1. **May your voice leave this Mac?** No (default): recognition stays on the Mac. Yes: cloud recognition becomes an
    option (Qwen3-ASR Flash on Alibaba Cloud; for Chinese speakers also Volcengine Seed-ASR 2.0 in mainland China).
-2. **May the text of each dictation go to a cloud model for polish and translation?** It's about ¥0.002 (≈ $0.0003)
-   per dictation with DeepSeek. No = everything stays on the Mac, nothing to pay (budget free).
+2. **May the text of each dictation go to a cloud model for polish and translation?** With DeepSeek it's about ¥1 per 1,000
+   uses (≈ $1 per 10,000) — say it that way, a round batch, not a fraction of a cent per use. No = everything stays on the Mac, nothing to pay (budget free).
 3. **Which languages do you mostly speak?** Suggest the answer from `mac.languages`; they confirm or correct.
 
 Give the facts, not a sales pitch. Never quote error rates: say levels (★) or "more accurate".

@@ -127,6 +127,22 @@ enum ChoiceText {
         return "≈ " + (china ? "¥" : "$") + (f.string(from: v as NSNumber) ?? "\(v)")
     }
 
+    /// A per-use price as a whole number of a round batch, the figure a reader can hold without arithmetic: "≈ ¥1" per
+    /// 1,000 uses in China, "≈ $1" per 10,000 elsewhere (¥0.001 a use read as nothing and invited no comparison). Uses,
+    /// not dictations: the same cloud model translates and reads screen text too. `per`: "1,000 uses" / 「每千次」.
+    static func batch(cny: Double, usd: Double) -> (amount: String, per: String) {
+        CloudRegion.forSystem(Locale.current.region?.identifier) == .china
+            ? (money(cny: cny * 1000, usd: usd * 1000), S("speech.compare.per_1000"))
+            : (money(cny: cny * 10000, usd: usd * 10000), S("speech.compare.per_10000"))
+    }
+
+    /// DeepSeek's cloud polish as `batch`, its figure without the "≈" (the lines that show it say "about" themselves).
+    static var cloudPolishPrice: (amount: String, per: String)? {
+        guard case .perDictation(let cny, let usd) = DictationChoices.facts(.cloudPolish).cost else { return nil }
+        let b = batch(cny: cny, usd: usd)
+        return (b.amount.replacingOccurrences(of: "≈ ", with: ""), b.per)
+    }
+
     /// The cost cell: what it costs, and per what (or the download).
     static func cost(_ f: DictationFacts, sizeMB: Double?, installed: Bool = false) -> (String, String) {
         switch f.cost {
@@ -134,7 +150,7 @@ enum ChoiceText {
             if installed { return (S("speech.compare.free"), S("speech.compare.installed")) }
             let mb = sizeMB ?? f.downloadMB
             return (S("speech.compare.free"), mb > 0 ? S("speech.compare.download", modelSize(mb)) : S("speech.compare.builtin"))
-        case .perDictation(let cny, let usd): return (money(cny: cny, usd: usd), S("speech.compare.per_dictation"))
+        case .perDictation(let cny, let usd): let b = batch(cny: cny, usd: usd); return (b.amount, b.per)
         case .perHour(let cny, let usd): return (money(cny: cny, usd: usd), S("speech.compare.per_hour"))
         }
     }

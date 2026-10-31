@@ -101,8 +101,12 @@ Inputs: `status`, and the user's answers — `--audio local|cloud` (may the voic
 ## 4. In the app
 
 - **Set Up with Agent…** beside *Add Cloud Model…* (Settings → Models → Cloud models) and beside *Add…* on onboarding's
-  cloud row; shown only when an agent with an interactive session is installed (agents.py detect + sessions.py doctor,
-  as the hand-off panel reads them). Disabled while a session it started runs. When every curated service is in (the
+  cloud row, on every Mac (v1.0.10). The sheet's main way is an instruction to copy into any agent on the Mac
+  (`AgentSetupInstruction`: the guide and setup.py by absolute path, sessions.py SETUP_PROMPT's words) — Cursor,
+  WorkBuddy, a session already open, with nothing to detect or launch; that agent has no token, so its first change
+  makes Blurt ask Allow, and the page lists its steps as for a session. Its second way, *Open in Terminal*, is the
+  session below, offered only when an agent with an interactive session is installed (agents.py detect + sessions.py
+  doctor, as the hand-off panel reads them). Disabled while a session it started runs. When every curated service is in (the
   Add row is gone), it keeps a row of its own ("Set Up Models with an Agent"). The line about the key is in the sheet
   only (the Add row keeps one detail line).
 - **The sheet** (460 pt): title, one line on what happens and what the user does, the Agent pop-up (installed agents;

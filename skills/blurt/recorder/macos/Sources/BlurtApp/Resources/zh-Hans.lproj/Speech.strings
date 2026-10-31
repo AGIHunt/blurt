@@ -223,7 +223,8 @@
 "speech.compare.free" = "免费";
 "speech.compare.builtin" = "macOS 自带";
 "speech.compare.download" = "需下载 %@";
-"speech.compare.per_dictation" = "每次听写";
+"speech.compare.per_1000" = "每千次";
+"speech.compare.per_10000" = "每万次";
 "speech.compare.per_hour" = "每小时语音";
 "speech.compare.leaves.nothing" = "不上传";
 "speech.compare.leaves.text" = "文字";

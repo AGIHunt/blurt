@@ -706,11 +706,9 @@ struct OnboardingView: View {
         return T(downloading ? "onboarding.upgrade.better_downloading" : "onboarding.upgrade.better", p.name, size(p.sizeMB))
     }
 
-    /// The key row's line before a key is in: what cloud polish adds and costs.
+    /// The cloud model row's line before a key is in: what a cloud model is used for, what it adds and costs.
     var keyCompare: String {
-        guard case .perDictation(let cny, let usd) = DictationChoices.facts(.cloudPolish).cost else { return T("onboarding.key.detail") }
-        // the line says "about" itself: the figure without its "≈"
-        return T("onboarding.key.compare", ChoiceText.money(cny: cny, usd: usd).replacingOccurrences(of: "≈ ", with: ""))
+        ChoiceText.cloudPolishPrice.map { T("onboarding.key.compare", $0.per, $0.amount) } ?? T("onboarding.key.detail")
     }
 
     /// The local models' one trailing element: Install uv, Try Again, Download (size), a spinner, or installed.

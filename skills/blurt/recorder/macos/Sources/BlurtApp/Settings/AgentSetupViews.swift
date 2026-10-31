@@ -1,8 +1,9 @@
 // "Set Up with Agent…" (docs/design/agent-setup.md §4): beside Add Service… in Settings → Models → Cloud services and
-// beside Add… on onboarding's cloud row, only when an agent that runs as a session is installed (agents.py detect +
-// sessions.py doctor, as the hand-off panel reads them). The sheet picks the agent; Start runs `sessions.py
-// setup-session` — the agent in Blurt's terminal (tmux, or the app's own pty) on the setup prompt, with a token for
-// the control socket in its environment — and shows that terminal. While it works, the page lists what it did as it
+// beside Add… on onboarding's cloud row, on every Mac. The sheet's main way is an instruction to copy into any agent
+// the user has (v1.0.10: Cursor, WorkBuddy, a session already open — no agent to detect or launch); its first change
+// makes Blurt ask Allow. The second way, where an agent runs as a session here (agents.py detect + sessions.py
+// doctor): Open in Terminal runs `sessions.py setup-session` — the agent in Blurt's terminal (tmux, or the app's own
+// pty) on the same prompt, with a token for the control socket in its environment — and shows that terminal. While it works, the page lists what it did as it
 // happens (AgentSetupProgress, fed by App/AgentSetupServer.swift): a service connected, a job's model, a download, the
 // test dictation; Stop ends the session and closes the grant. An agent the user started on their own gets the same
 // list once the user clicks Allow.
@@ -181,76 +182,90 @@ struct AgentSetupButton: View {
     @State private var sheet = false
 
     var body: some View {
+        // on every Mac: the instruction goes to any agent the user has (the sheet); a session Blurt starts is the
+        // sheet's second way, only where one can run
+        let running = progress.active && progress.job != nil
         Group {
-            if agents.list.isEmpty {
-                // nothing to show, but something to appear: the list is read from here
-                Color.clear.frame(width: 0, height: 0)
-            } else {
-                // one session at a time: a second Start while one runs would leave the first agent working unseen
-                // (an Allow window doesn't count: the user may still start a session)
-                let running = progress.active && progress.job != nil
-                switch look {
-                case .settings:
-                    Button(M("models.agent.button")) { sheet = true }.buttonStyle(SettingsOutlinedButtonStyle())
-                        .disabled(running)
-                case .onboarding:
-                    Button(M("models.agent.button")) { sheet = true }.controlSize(.small).disabled(running)
-                }
+            switch look {
+            case .settings:
+                Button(M("models.agent.button")) { sheet = true }.buttonStyle(SettingsOutlinedButtonStyle())
+            case .onboarding:
+                Button(M("models.agent.button")) { sheet = true }.controlSize(.small)
             }
         }
+        // one session at a time: a second one while one runs would leave the first agent working unseen
+        .disabled(running)
         .onAppear { agents.loadIfNeeded() }
         .sheet(isPresented: $sheet) { AgentSetupSheet { sheet = false }.buttonStyle(.automatic) }
+    }
+}
+
+/// The instruction to paste into the user's own agent (Claude Code, Codex, Cursor, WorkBuddy…): the setup guide and
+/// setup.py by absolute path (sessions.py SETUP_PROMPT, the same words). That agent has no session token, so its first
+/// change makes Blurt ask Allow (AgentSetupServer), and the page lists what it does as for a session.
+enum AgentSetupInstruction {
+    static var text: String {
+        let skill = BlurtPaths.skillDir
+        return M("models.agent.prompt", skill.appendingPathComponent("reference/setup-models.md").path,
+                 skill.appendingPathComponent("scripts/setup.py").path)
     }
 }
 
 struct AgentSetupSheet: View {
     var close: () -> Void
     @ObservedObject private var agents = AgentSetupAgents.shared
-    @State private var agent = ""
+    @State private var copied = false
     @State private var starting = false
     @State private var error: String?
+    private let instruction = AgentSetupInstruction.text
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(M("models.agent.sheet.title")).font(.system(size: 15, weight: .semibold))
             Text(M("models.agent.sheet.detail")).font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 10) {
-                Text(M("models.agent.sheet.agent")).foregroundStyle(.secondary)
-                Picker("", selection: $agent) {
-                    ForEach(agents.list) { a in Text(a.name).tag(a.id) }
-                }
-                .labelsHidden()
-                .frame(width: 200)
+            ScrollView {
+                Text(instruction).font(.system(size: 12)).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
             }
-            .padding(.top, 4)
+            .frame(height: 118)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
             Text(M("models.agent.note")).font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let e = error {
                 Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
             }
-            HStack {
+            HStack(spacing: 8) {
+                // the second way: Blurt starts the agent in its terminal (only agents that run as a session here)
+                if !agents.list.isEmpty {
+                    Menu(M("models.agent.sheet.open")) {
+                        ForEach(agents.list) { a in Button(a.name) { start(a.id) } }
+                    }
+                    .menuStyle(.borderlessButton).fixedSize().disabled(starting)
+                }
                 Spacer()
-                Button(M("models.cancel")) { close() }.keyboardShortcut(.cancelAction)
-                Button(M("models.agent.sheet.start")) { start() }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(agent.isEmpty || starting)
+                Button(M(copied ? "models.sheet.done" : "models.cancel")) { close() }.keyboardShortcut(.cancelAction)
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(instruction, forType: .string)
+                    copied = true
+                    emit(["event": "agent_setup_copied"])
+                } label: {
+                    Label(M(copied ? "models.agent.sheet.copied" : "models.agent.sheet.copy"), systemImage: copied ? "checkmark" : "doc.on.doc")
+                }
+                .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 6)
         }
         .padding(20)
-        .frame(width: 460)
-        .onAppear {
-            let saved = Config.shared["sessions.agent"] as? String
-            agent = agents.list.first { $0.id == saved }?.id ?? agents.list.first?.id ?? ""
-            Task { await agents.load() }
-        }
+        .frame(width: 480)
+        .onAppear { Task { await agents.load() } }
     }
 
-    private func start() {
+    private func start(_ id: String) {
         starting = true
         error = nil
-        let id = agent
+        Config.shared.set("sessions.agent", id)
         let token = AgentSetupServer.issueToken()
         Task { @MainActor in
             do {
