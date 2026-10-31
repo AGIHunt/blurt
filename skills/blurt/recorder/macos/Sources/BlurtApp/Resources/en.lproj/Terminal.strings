@@ -9,13 +9,13 @@
 "agents.effort.medium" = "Medium";
 "agents.effort.xhigh" = "Extra high";
 "agents.processing.cards" = "Organizing cards";
-"agents.processing.cards.help" = "Snaps, voice notes and AI fill-in. By default, the cheapest model at low effort: enough for a picture and a note, with far fewer tokens.";
+"agents.processing.cards.help" = "Snaps, voice notes and AI fill-in. Defaults to the cheapest model at low effort, which is enough for a picture and a note and uses far fewer tokens.";
 "agents.processing.cheapest" = "Cheapest model";
 "agents.processing.cheapest_named" = "Cheapest model (%@)";
 "agents.processing.default" = "Agent’s default model";
 "agents.processing.default_named" = "Agent’s default model (%@)";
 "agents.processing.recording" = "Organizing recordings";
-"agents.processing.recording.help" = "By default, the agent’s default model at low effort: a long recording needs it.";
+"agents.processing.recording.help" = "Defaults to the agent’s default model at low effort, which long recordings need.";
 "common.cancel" = "Cancel";
 "common.close" = "Close";
 "common.done" = "Done";
@@ -62,7 +62,7 @@
 "overlay.detached.body" = "The session is still running. Reconnect to pick up where it is.";
 "overlay.reconnect" = "Reconnect";
 "overlay.retry" = "Try Again";
-"overlay.elsewhere.title" = "Open in another window";
+"overlay.elsewhere.title" = "Shown in another window";
 "overlay.elsewhere.body" = "This session runs inside Blurt and is showing in another window.";
 "overlay.pick" = "Select a session to see its terminal.";
 "overlay.empty.title" = "Your agents work here";
@@ -136,7 +136,7 @@
 "notify.title.error" = "Session failed · %@";
 "notify.title.running" = "Working · %@";
 "notify.more" = "and %ld more";
-"notify.exit" = "It stopped with an error";
+"notify.exit" = "Stopped with an error";
 
 /* An item reached "to verify" (Peep says so in the island) */
 "verify.by" = "%@ says it’s fixed";
@@ -152,7 +152,7 @@
 "error.missing_dependency" = "tmux or git is missing on this Mac.";
 "error.no_sessions_cli" = "This version of the Blurt skill can’t run sessions yet. Update the skill, then try again.";
 "error.uv_missing" = "uv isn’t installed. Blurt needs it to run its tools; the setup assistant can install it.";
-"error.no_window" = "The session’s terminal window is gone.";
+"error.no_window" = "The session’s terminal window has closed.";
 "error.no_job" = "This session no longer exists.";
 "error.app_runner_lost" = "This session ran inside Blurt and ended when Blurt quit.";
 "error.needs_project" = "These items aren’t in a project with a folder yet. Move them to a project first.";
@@ -198,8 +198,8 @@
 "agents.state.manual" = "Installed · import blurt in its settings";
 "agents.state.installed" = "Installed";
 "agents.state.unchecked" = "Can’t check sign-in";
-"agents.state.unchecked.help" = "Blurt can’t ask it whether it’s signed in without spending tokens. You’ll find out the first time it organizes something: if it isn’t, Blurt moves on to the next agent and says so here.";
-"agents.state.manual.help" = "It’s an app of its own, so Blurt doesn’t hand work to it by itself. Import blurt in its Settings → Skills / MCP, or click Connect… to see what that takes.";
+"agents.state.unchecked.help" = "Sign-in can’t be checked without spending tokens. It’s checked the first time it organizes something; if it isn’t signed in, Blurt uses the next agent and says so here.";
+"agents.state.manual.help" = "It’s a separate app, so Blurt doesn’t hand items to it automatically. Import blurt in its Settings → Skills / MCP, or click Connect… to see the steps.";
 "agents.manual.header" = "Other agent apps";
 "agents.manual.footer" = "Blurt can’t run these. Copy Instruction hands items to them.";
 "agents.sessions.header" = "Sessions";
@@ -307,12 +307,12 @@
 "continue_desktop.body" = "The agent stops in Blurt’s terminal and the same conversation opens in %@. Blurt no longer shows its live status: progress comes from the agent.";
 "continue_desktop.confirm" = "Continue";
 "continue_desktop.body_nomcp" = "The agent stops in Blurt’s terminal and the same conversation opens in %@. The blurt MCP isn’t installed there, so the agent can’t report progress: mark the items yourself when they’re done, or install it first.";
-"overlay.desktop.body_nomcp" = "Blurt doesn’t see this conversation live, and the blurt MCP isn’t installed for %@, so the agent can’t report progress. Mark the items yourself when they’re done.";
+"overlay.desktop.body_nomcp" = "This conversation’s live status isn’t shown here, and the blurt MCP isn’t installed for %@, so the agent can’t report progress. Mark the items yourself when they’re done.";
 "mark.elsewhere" = "In the desktop app";
-"error.desktop_no_mcp" = "The blurt MCP isn’t installed for the desktop app, so nothing would report progress from there.";
+"error.desktop_no_mcp" = "The blurt MCP isn’t installed for the desktop app, so progress can’t be reported from there.";
 "overlay.desktop.title" = "Working in %@";
-"overlay.desktop.body" = "Blurt doesn’t see this conversation live. Progress comes from the agent: the items move when it reports them.";
-"overlay.desktop.body_continued" = "This session moved here from Blurt’s terminal. Blurt doesn’t see it live any more: progress comes from the agent.";
+"overlay.desktop.body" = "This conversation’s live status isn’t shown here. Items update when the agent reports progress.";
+"overlay.desktop.body_continued" = "This session moved here from Blurt’s terminal. Its live status isn’t shown any more; progress comes from the agent.";
 "row.desktop" = "In %@ desktop";
 "row.desktop.no_mcp" = "In %@ desktop · waiting for you to mark it";
 "agents.handoff_target" = "Hand-offs to %@";
@@ -324,7 +324,7 @@
 "error.desktop_unsupported" = "This agent can’t continue in a desktop app.";
 "error.desktop_not_installed" = "Claude Code isn’t installed.";
 "error.desktop_failed" = "The desktop app didn’t take over the conversation, and the agent here has stopped. Restart Session starts a new session on these items in Blurt’s terminal.";
-"error.no_session_id" = "The agent hasn’t said which conversation this is yet. Try again in a moment.";
+"error.no_session_id" = "The agent hasn’t reported its conversation yet. Try again in a moment.";
 "error.bad_runner" = "Only a session running in Blurt’s terminal can do that.";
 "dispatch.start.desktop" = "Open in %@";
 
@@ -341,8 +341,8 @@
 "warning.taken_back" = "Their last session has ended: the items are taken back from it and handed to the new one.";
 "warning.taken_back.one" = "Its last session has ended: the item is taken back from it and handed to the new one.";
 "dispatch.untitled" = "Untitled";
-"install.error" = "A settings file isn’t in a shape Blurt knows, so it was left alone.";
-"install.error.path" = "%@ isn’t in a shape Blurt knows, so it was left alone.";
+"install.error" = "A settings file’s format isn’t recognized, so it wasn’t changed.";
+"install.error.path" = "The format of %@ isn’t recognized, so it wasn’t changed.";
 "agents.test.failed" = "%@ didn’t pass the test. Run it in a terminal and check that it answers.";
 
 /* Settings → Agents (v0.9 redesign) */

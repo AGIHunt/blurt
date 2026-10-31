@@ -17,7 +17,7 @@
 "app.agent.unfinished" = "%@ stopped before it finished";
 "app.agent.couldnt_start" = "%@ couldn’t start. Check that it runs in a terminal, then retry.";
 
-"app.menu.after.keep" = "Just keep the video";
+"app.menu.after.keep" = "Keep the video only";
 "app.menu.after.organize" = "Organize into items";
 "app.menu.countdown" = "Countdown";
 "app.menu.countdown.none" = "None";
@@ -40,7 +40,7 @@
 "app.menu.update_to" = "Update to Blurt %@…";
 "app.update.found" = "Blurt %@ is available";
 "app.update.found.action" = "Update…";
-"app.update.ready" = "Blurt %@ is downloaded · it installs when you quit";
+"app.update.ready" = "Blurt %@ downloaded · installs when you quit";
 "app.update.ready.action" = "Restart Now";
 
 "app.migrate.ask" = "Should snaps and voice notes keep going to %@ by default (your earlier setting), or wait in Unassigned until you pick a project?";
@@ -49,25 +49,25 @@
 
 
 "app.record.failed" = "Recording not saved";
-"app.record.failed.disk_full" = "The disk is full, so nothing from this take was kept. Free some space, then record again.";
-"app.record.failed.permission" = "macOS didn’t let Blurt record the screen. Turn on Screen Recording for Blurt in System Settings.";
-"app.record.failed.stopped" = "macOS stopped the screen recording partway, so nothing from this take was kept.";
-"app.record.failed.no_frames" = "No picture came in from the screen, so nothing was recorded.";
-"app.record.failed.unknown" = "Blurt couldn’t finish writing the video, so nothing from this take was kept.";
+"app.record.failed.disk_full" = "The disk is full, so the recording wasn’t saved. Free up some space, then record again.";
+"app.record.failed.permission" = "Blurt doesn’t have permission to record the screen. Turn on Screen Recording for Blurt in System Settings.";
+"app.record.failed.stopped" = "macOS stopped the screen recording partway, so it wasn’t saved.";
+"app.record.failed.no_frames" = "No screen image was received, so nothing was recorded.";
+"app.record.failed.unknown" = "The video couldn’t be finished, so the recording wasn’t saved.";
 "app.record.reason.disk_full" = "The disk is full";
-"app.record.reason.permission" = "Screen Recording was refused";
+"app.record.reason.permission" = "No Screen Recording permission";
 "app.record.reason.stopped" = "macOS stopped the recording";
-"app.record.reason.no_frames" = "No picture came in";
+"app.record.reason.no_frames" = "No screen image received";
 "app.record.reason.unknown" = "Something went wrong";
-"app.record.failed.display_gone" = "The display being recorded was disconnected partway, so nothing from this take was kept. Connect it again, then record again.";
-"app.record.failed.interrupted" = "The Mac went to sleep, locked or started the screen saver partway, so nothing from this take was kept. Keep the Mac awake while you record.";
-"app.record.failed.writer" = "Writing the video file failed partway, so nothing from this take was kept. Recording again usually works; the exact error is in the log.";
+"app.record.failed.display_gone" = "The display being recorded was disconnected, so the recording wasn’t saved. Reconnect it, then record again.";
+"app.record.failed.interrupted" = "Your Mac slept, locked or started the screen saver during the recording, so it wasn’t saved. Keep your Mac awake while recording.";
+"app.record.failed.writer" = "Writing the video file failed, so the recording wasn’t saved. Record again; the details are in the log.";
 "app.record.reason.display_gone" = "The recorded display was disconnected";
-"app.record.reason.interrupted" = "Sleep or the lock screen stopped the recording";
+"app.record.reason.interrupted" = "Interrupted by sleep or the lock screen";
 "app.record.reason.writer" = "Couldn’t write the video file";
-"app.record.recovered" = "Recording saved · the video file failed partway and was picked up again";
-"app.record.recovered_lost" = "Recording saved · the video file failed partway, about %@ s is missing";
-"app.record.recovered_parts" = "Recording saved in parts · the video file failed partway";
+"app.record.recovered" = "Recording saved · resumed after a write error";
+"app.record.recovered_lost" = "Recording saved · about %@ s missing after a write error";
+"app.record.recovered_parts" = "Recording saved in parts after a write error";
 "app.record.partial" = "%1$@ — the first %2$@ is kept";
 "app.record.low_space" = "Only %@ free on this disk — a long recording may not fit";
 "app.record.organize" = "Organize";
@@ -82,20 +82,20 @@
 
 "main.project.removed_name" = "a removed project";
 "app.url.no_item" = "Can’t find that item. It may have been deleted or moved.";
-"app.url.no_session" = "That recording or snap is gone. It may have been deleted or moved.";
+"app.url.no_session" = "Can’t find that recording or snap. It may have been deleted or moved.";
 
 "main.action.record" = "Record";
 "main.action.snap" = "Snap";
 
 "main.banner.agent" = "an agent";
 "main.banner.ended" = "Session ended without the agent reporting back";
-"main.banner.external" = "Copied to your agent. Mark it done when it is.";
+"main.banner.external" = "Copied for your agent. Mark it done here when it’s finished.";
 "main.banner.open_session" = "Open Session";
-"main.banner.organizing" = "Still being organized · %@";
+"main.banner.organizing" = "Organizing · %@";
 "main.banner.show_progress" = "Show Progress";
 "main.banner.with_agent" = "Handed off to %@ · %@";
 
-"main.captures.tip" = "They’re waiting at the top of your screen, under the notch. This brings them all down there, so you can choose a project for each.";
+"main.captures.tip" = "They’re under the notch at the top of the screen. Click to show them all and choose a project for each.";
 "main.cmd.copy_full" = "Copy Full Text";
 "main.cmd.copy_instruction" = "Copy Instruction";
 
@@ -106,14 +106,14 @@
 "main.col.title" = "Title";
 "main.col.updated" = "Updated";
 
-"main.detail.gone" = "The item’s file is gone";
+"main.detail.gone" = "Can’t find the item’s file";
 "main.detail.label" = "Item detail";
 "main.detail.legacy" = "Not converted yet";
-"main.detail.legacy.detail" = "This item comes from an older recording. Blurt converts it in the background; it will open here when that’s done.";
+"main.detail.legacy.detail" = "This item is from an older recording. It’s being converted in the background and opens here when done.";
 "main.detail.none" = "Nothing selected";
-"main.detail.none.detail" = "Pick an item on the left.";
+"main.detail.none.detail" = "Select an item on the left.";
 "main.detail.parse_error" = "This item’s file can’t be read";
-"main.detail.parse_error.detail" = "It was edited into something Blurt can’t read, so Blurt won’t overwrite it. Fix it in an editor and save; it shows up here again.";
+"main.detail.parse_error.detail" = "The file’s format can’t be read, so Blurt won’t overwrite it. Fix and save it in an editor, and it appears here again.";
 "main.unreadable.fix_first" = "This item’s file can’t be read. Fix it in an editor first.";
 "main.unreadable.open" = "Open in Editor";
 "main.unreadable.show" = "Show";
@@ -127,7 +127,7 @@
 "main.dispatch.one_project" = "Choose items from one project";
 "main.dispatch.discarded" = "Discarded items can’t be handed off.";
 "main.dispatch.reopen_first" = "This item is %@. Reopen it to hand it off again.";
-"main.dispatch.with_session" = "%@ is already with a session.";
+"main.dispatch.with_session" = "%@ is already in a session.";
 "main.dispatch.open_session" = "Open Session";
 
 "main.empty.all_filed" = "Everything is filed";
@@ -139,8 +139,8 @@
 "main.empty.filters_on" = "Filters are on: %@.";
 "main.empty.first" = "Talk through your work";
 "main.empty.first.detail" = "Open a project folder, then record or snap while you talk. Blurt turns it into items your agents can work on.";
-"main.empty.inbox_zero" = "Nothing needs you right now";
-"main.empty.inbox_zero.detail" = "New captures and finished agent work land here.";
+"main.empty.inbox_zero" = "Nothing needs your attention";
+"main.empty.inbox_zero.detail" = "New items and finished agent work appear here.";
 "main.empty.no_index" = "Your items aren’t listed yet";
 "main.empty.no_index.detail" = "Blurt reads your project folders on this Mac. Nothing is uploaded.";
 "main.empty.no_match" = "No items match these filters";
@@ -156,7 +156,7 @@
 "main.empty.rebuild" = "Update Items";
 "main.empty.scan" = "List Items";
 "main.empty.scan_failed" = "Couldn’t read your items";
-"main.empty.scan_failed.detail" = "Blurt couldn’t finish reading the items in this folder. Try again in a moment.";
+"main.empty.scan_failed.detail" = "Couldn’t read the items in this folder. Try again in a moment.";
 "main.empty.scanning" = "Reading your items…";
 "main.empty.try_shorter" = "Try a shorter word or another phrasing.";
 "main.empty.show_item" = "Show %@";
@@ -174,15 +174,15 @@
 "main.error.needs_project" = "Move the items to a project first.";
 "main.error.no_scripts" = "This needs Blurt’s scripts and uv. Reinstall Blurt from blurt.work, then try again.";
 "main.error.no_uv" = "uv isn’t installed. Blurt’s setup assistant can install it.";
-"main.error.not_found" = "Blurt can’t find that any more.";
+"main.error.not_found" = "That can’t be found any more.";
 "main.error.no_project" = "That project isn’t in Blurt any more.";
 "main.error.exists" = "That folder is in Blurt already.";
 "main.error.folder_missing" = "That project’s folder can’t be found. Locate it first.";
 "main.error.not_a_folder" = "That isn’t a folder.";
 "main.error.reserved" = "That’s Blurt’s own folder.";
 "main.error.save_title" = "Couldn’t save";
-"main.error.timeout" = "It took too long. Try again in a moment.";
-"main.error.unparseable" = "The item’s file has been edited in a way Blurt can’t read, so it won’t overwrite it.";
+"main.error.timeout" = "Timed out. Try again in a moment.";
+"main.error.unparseable" = "The item’s file format can’t be read, so it won’t be overwritten.";
 "main.list.move" = "Move";
 "main.list.move.tip" = "Move it to %@ (⌘Z moves it back)";
 "main.list.suggested" = "Looks like %@";
@@ -197,7 +197,7 @@
 "main.palette.use_project" = "Make %@ the Current Project";
 "main.project.use_none" = "Stop Using as Current Project";
 "main.state.toast" = "%1$@ · %2$@";
-"main.state.not_here" = "Can’t do that from %@. Press S to see what you can do.";
+"main.state.not_here" = "Can’t do that from %@. Press S to see the options.";
 "main.state.restore_first" = "It’s in Discarded. Press R to restore it first.";
 "main.state.these" = "these states";
 
@@ -220,7 +220,7 @@
 "main.job.error.conflict" = "The changes conflict with yours.";
 "main.job.error.git" = "Git couldn’t finish.";
 "main.job.error.model" = "The model isn’t available.";
-"main.job.error.network" = "The network dropped.";
+"main.job.error.network" = "The network connection was lost.";
 "main.job.error.quota" = "The agent ran out of quota.";
 "main.job.error.quota.named" = "%@ ran out of quota.";
 "main.job.error.tmux" = "tmux isn’t installed — install it with Homebrew (brew install tmux).";
@@ -291,7 +291,7 @@
 "main.bundle.message" = "One .zip with a summary, every item and its screenshots. It opens on any computer.";
 "main.bundle.saved" = "Hand-off bundle saved: %@";
 "main.bundle.failed" = "Couldn’t export the hand-off bundle";
-"main.bundle.error.io" = "Blurt couldn’t write there. Choose another folder.";
+"main.bundle.error.io" = "Couldn’t write there. Choose another folder.";
 "main.bundle.error.unreadable" = "A screenshot or clip couldn’t be read, so nothing was packed.";
 "main.bundle.error.no_items" = "There are no items to pack.";
 "main.bundle.packing" = "Packing the hand-off bundle (%@)…";
@@ -322,7 +322,7 @@
 "main.move.undo_name" = "Move to %@";
 
 "main.open.failed" = "Couldn’t open “%@”";
-"main.open.message" = "Choose a folder — a code repo or any folder for notes. Blurt keeps its items in the folder’s .blurt, which never goes into git.";
+"main.open.message" = "Choose a folder: a code repository or any folder of notes. Items are kept in its .blurt folder, which stays out of git.";
 "main.open.prompt" = "Open";
 
 "main.palette.field" = "Command";
@@ -340,7 +340,7 @@
 "main.project.agent" = "Agent";
 "main.project.agent.default" = "Default";
 "main.project.description" = "Description";
-"main.project.description.note" = "Blurt reads the description to file unassigned snaps and recordings here.";
+"main.project.description.note" = "Used to file unassigned snaps and recordings into this project.";
 "main.project.description.placeholder" = "e.g. The marketing site and its signup flow";
 "main.project.key" = "Key";
 "main.project.key.invalid" = "Use 2–5 letters or digits, letter first.";
@@ -384,7 +384,7 @@
 "main.sidebar.missing" = "folder not found";
 "main.missing.title" = "This folder can’t be found";
 "main.missing.detail" = "It may have been moved or renamed. These are its items from before.";
-"main.missing.detail_empty" = "It may have been moved or renamed. Locate it and its items come back.";
+"main.missing.detail_empty" = "It may have been moved or renamed. Locate it to see its items again.";
 "main.missing.locate" = "Locate…";
 "main.missing.locate.message" = "Choose where “%@” is now.";
 "main.missing.other" = "That folder is “%1$@”, not “%2$@”";
@@ -398,7 +398,7 @@
 "main.toast.download_failed" = "Couldn’t save it to Downloads.";
 "main.toast.downloaded" = "Saved to Downloads: %@";
 "main.toast.session_gone" = "This session has ended and its record was cleared.";
-"main.speech.recommended" = "Recommended speech model for this Mac · %@";
+"main.speech.recommended" = "Recommended speech model · %@";
 "main.speech.recommended.action" = "Review";
 
 "main.toolbar.handoff" = "Hand Off";
@@ -502,11 +502,11 @@
 "main.dictation.mode.compare" = "Changes";
 "main.dictation.typed" = "Typed";
 "main.dictation.heard" = "Heard";
-"main.dictation.same" = "polish changed nothing";
+"main.dictation.same" = "unchanged by polish";
 "main.dictation.copied" = "Copied";
 "main.dictation.corrected" = "Corrected";
 "main.dictation.correct" = "Correct";
-"main.dictation.correct.tip" = "Fix what was misheard; the names you fix can go into Words";
+"main.dictation.correct.tip" = "Fix recognition errors; names you fix can be added to Words";
 "main.dictation.correct.hint" = "⌘↩ to save · Esc to cancel";
 "main.dictation.correct.save" = "Save";
 "main.dictation.correct.cancel" = "Cancel";
@@ -540,21 +540,21 @@
 "main.dictation.copy_all" = "Copy All";
 
 /* The Dictation page's detail: what polish did */
-"main.dictation.info.polish.short" = "Too short to tidy";
+"main.dictation.info.polish.short" = "Too short to polish";
 "main.dictation.info.polish.no_model" = "No polish model";
 "main.dictation.info.polish.get" = "Download…";
 "app.toast.welcome_no_dictation" = "Blurt is in the menu bar · %1$@ to snap · %2$@ to record";
 "app.toast.change_shortcut" = "Change…";
-"app.config.unreadable" = "Can’t read config.json · using defaults, can’t save";
-"app.config.unreadable_kept" = "Can’t read config.json · keeping the last settings that worked, can’t save";
+"app.config.unreadable" = "Can’t read config.json · using defaults";
+"app.config.unreadable_kept" = "Can’t read config.json · using the last working settings, changes won’t be saved";
 "app.config.not_saved" = "That change wasn’t saved · config.json can’t be read";
 "app.contract.skill_older" = "The Blurt skill is older than this app";
 "app.contract.app_older" = "The Blurt skill is newer than this app";
 "app.contract.how" = "How to Update";
-"app.models.background" = "The models carry on downloading · %@ to go";
+"app.models.background" = "Models downloading in the background · %@ left";
 "app.models.menu" = "Downloading speech models · %1$@ of %2$@";
-"app.models.ready_try" = "Speech models are ready · tap %@ to try";
-"app.models.resuming" = "Finishing the speech models · %@ to go";
+"app.models.ready_try" = "Speech models are ready · tap %@ to dictate";
+"app.models.resuming" = "Resuming the speech model download · %@ left";
 "app.models.show" = "Show";
 "app.models.menu_unpacking" = "Unpacking speech models…";
 "app.models.stop" = "Stop";
@@ -562,10 +562,10 @@
 "app.toast.welcome_no_model" = "Blurt is in the menu bar · no speech model yet";
 "app.toast.welcome_no_model.action" = "Download";
 "app.toast.welcome_plain" = "Blurt is in the menu bar";
-"app.toast.welcome_setup" = "Blurt is in the menu bar · dictation isn’t on yet";
+"app.toast.welcome_setup" = "Blurt is in the menu bar · dictation is off";
 "app.toast.welcome_setup.action" = "Turn On…";
-"app.toast.welcome_taken" = "Blurt is in the menu bar · shortcut %@ won’t work";
-"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts won’t work";
+"app.toast.welcome_taken" = "Blurt is in the menu bar · %@ is unavailable";
+"app.toast.welcome_taken_many" = "Blurt is in the menu bar · %@ shortcuts are unavailable";
 "app.toast.welcome_snap_only" = "Blurt is in the menu bar · %@ to snap";
 "app.url.ask_record" = "A link wants to start a screen recording";
 "app.url.ask_snap" = "A link wants to take a snap";
@@ -591,13 +591,13 @@
 "main.banner.more" = "More";
 // the agent's desktop app (Claude)
 "main.banner.desktop" = "In the %@ desktop app · the agent reports progress";
-"main.banner.desktop.no_mcp" = "In the %@ desktop app · no progress comes back here: mark it done when it is";
+"main.banner.desktop.no_mcp" = "In the %@ desktop app · progress isn’t shown here; mark it done when finished";
 "main.banner.go_desktop" = "Go to %@";
 "app.toast.welcome_not_set_up" = "Blurt is in the menu bar · dictation isn’t set up yet";
 "app.toast.welcome_not_set_up.action" = "Set Up…";
 "app.config.show" = "Show File";
-"app.models.offline" = "The speech models finish once you’re online";
-"main.speech.recommended_recordings" = "A better model for recordings · %@";
+"app.models.offline" = "Speech models download when you’re online";
+"main.speech.recommended_recordings" = "Recommended model for recordings · %@";
 "app.menu.cards" = "Show Cards";
 "app.menu.project_header" = "Project";
 "app.menu.key_off" = "%@ isn’t working";
@@ -611,11 +611,11 @@
 "main.dictation.count_of" = "%ld of %@";
 "main.dictation.none.keys" = "↑↓ Move    ⌘C Copy    ⌫ Delete";
 "main.dictation.banner.no_model" = "Dictation needs a speech model";
-"main.dictation.banner.no_model.detail" = "Nothing can be typed until one is downloaded · %@";
-"main.dictation.banner.no_model.detail_plain" = "Nothing can be typed until one is set up.";
-"main.dictation.banner.permission" = "Dictation can’t hear its key yet";
+"main.dictation.banner.no_model.detail" = "Dictation works once it’s downloaded · %@";
+"main.dictation.banner.no_model.detail_plain" = "Dictation works once one is set up.";
+"main.dictation.banner.permission" = "The dictation key needs permission";
 "main.dictation.banner.downloading" = "The speech model is downloading";
-"main.dictation.banner.downloading.detail" = "%1$@ of %2$@ · dictation works once it’s in";
+"main.dictation.banner.downloading.detail" = "%1$@ of %2$@ · dictation works once it’s downloaded";
 "main.dictation.chip.copied" = "Copied";
 "main.dictation.details" = "Details";
 "main.dictation.details.open" = "Expanded";
@@ -628,7 +628,7 @@
 "main.dictation.correct.save.tip" = "Save the correction (⌘↩)";
 "main.dictation.correct.cancel.tip" = "Discard the changes (Esc)";
 "main.dictation.correct.caption" = "After you save, you can add the names you fixed to Words.";
-"main.dictation.correct.caption.none" = "No misheard words found";
+"main.dictation.correct.caption.none" = "No recognition errors found";
 "main.dictation.correct.caption.found" = "Words found:";
 
 /* The Dictation page (v0.9 redesign, round 2) */
@@ -693,7 +693,7 @@
 "main.job.steps" = "Steps";
 "main.job.items" = "Items";
 "main.job.items.waiting" = "Items appear here as they’re written.";
-"main.job.items.none" = "This run didn’t write any items.";
+"main.job.items.none" = "No items were created in this run.";
 "main.job.items.more" = "Show all %ld";
 "main.job.doing.prepare" = "Preparing…";
 "main.job.doing.transcribe" = "Transcribing…";
@@ -707,7 +707,7 @@
 "main.empty.search_all" = "Search All Items";
 "main.empty.clear_search" = "Clear Search";
 "main.empty.no_match.detail" = "Showing only %@. Everything else here is hidden.";
-"main.empty.scanning.detail" = "Blurt is going through your project folders. This takes a few seconds.";
+"main.empty.scanning.detail" = "Reading your project folders. This usually takes a few seconds.";
 "main.missing.title_named" = "Can’t find the “%@” folder";
 "main.missing.detail_named" = "It may have been moved, renamed, or be on a disk that isn’t connected. Locate it to see its items again.";
 "main.missing.detail_current" = "It may have been moved or renamed. Until it’s found, new recordings go to Unassigned.";
@@ -756,7 +756,7 @@
 
 /* An item whose session ended without reporting back */
 "main.row.session_ended" = "Session ended";
-"main.row.session_ended.help" = "Its agent session ended without saying the work is done. Open the item to restart it or take it back.";
+"main.row.session_ended.help" = "Its agent session ended without reporting the work as done. Open the item to restart it or take it back.";
 
 /* A folder opened as a new project */
 "main.open.added" = "Added %1$@ · items get %2$@-1…";

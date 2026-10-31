@@ -9,7 +9,7 @@
 "models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) per dictation.";
 "models.recommended" = "Recommended";
 "models.service.edit" = "Edit…";
-"models.service.no_key" = "No API key";
+"models.service.no_key" = "API key not set";
 "models.service.connected" = "Connected";
 "models.service.speech" = "Supports speech recognition";
 "models.untested" = "Not tested";
@@ -91,6 +91,6 @@
 
 "models.uses.translate" = "Translation model";
 "models.uses.cloud" = "%@ · cloud";
-"models.uses.local" = "%@ · this Mac";
+"models.uses.local" = "%@ · on your Mac";
 "models.uses.none" = "Not set";
 "models.uses.change" = "Change…";

@@ -9,7 +9,7 @@
 "models.price.deepseek" = "DeepSeek：每次听写约 ¥0.002。";
 "models.recommended" = "推荐";
 "models.service.edit" = "编辑…";
-"models.service.no_key" = "没有 API Key";
+"models.service.no_key" = "未设置 API Key";
 "models.service.connected" = "已连接";
 "models.service.speech" = "支持语音识别";
 "models.untested" = "未经测试";
@@ -61,7 +61,7 @@
 "models.check.other" = "服务返回错误，请检查接口地址。";
 "models.check.model" = "找不到这个模型 ID。";
 "models.check.vision" = "这个模型不支持图片。";
-"models.check.empty" = "模型没有返回内容。";
+"models.check.empty" = "模型未返回内容。";
 "models.check.address" = "接口地址需以 https:// 开头。";
 "models.check.model_id" = "请输入模型 ID。";
 "models.check.speech_ok" = "语音识别：连接成功 · %@ 毫秒";

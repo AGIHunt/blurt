@@ -16,26 +16,26 @@
 "dictation.mode.hold" = "Hold to talk";
 
 /* island toasts */
-"dictation.toast.needs_permission" = "To dictate with %@, Blurt needs a permission";
+"dictation.toast.needs_permission" = "Dictating with %@ needs a permission";
 "dictation.toast.set_up" = "Set Up";
 "dictation.toast.on.tap" = "Dictation is on: tap %@ to talk";
 "dictation.toast.on.hold" = "Dictation is on: hold %@ and talk";
 "dictation.toast.recording_busy" = "Dictation is off while recording";
 "dictation.toast.voice_busy" = "A voice note is recording — finish it first";
-"dictation.toast.nothing.named" = "Didn’t catch anything (%@)";
+"dictation.toast.nothing.named" = "No speech detected (%@)";
 "dictation.toast.nothing.silent" = "No sound from %@";
 "dictation.toast.nothing.change" = "Change Mic…";
-"dictation.toast.nothing" = "Didn’t catch anything";
+"dictation.toast.nothing" = "No speech detected";
 "dictation.toast.copied" = "Copied — paste with ⌘V";
 "dictation.toast.pasted_unsure" = "Pasted";
 /* ⇧ asked for a list and the structuring pass fell back (its guard, a timeout): the text went in unlisted */
-"dictation.toast.no_list" = "Couldn’t make a list; the text is as it was";
+"dictation.toast.no_list" = "Couldn’t make a list; the text is unchanged";
 "dictation.toast.copy_again" = "Copy Again";
 "dictation.toast.copy" = "Copy";
-"dictation.toast.no_field" = "No text field here. Your text:";
+"dictation.toast.no_field" = "No text field found. Your text:";
 "dictation.toast.close" = "Close";
-"dictation.toast.secure_held" = "A password field has the cursor — nothing typed";
-"dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start listening, so your first words are lost. Automatic uses this Mac’s microphone whenever the default input is Bluetooth.";
+"dictation.toast.secure_held" = "Not typed: the cursor is in a password field";
+"dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start, so your first words can be lost. Automatic uses the Mac’s built-in microphone when the default input is Bluetooth.";
 "dictation.sounds" = "Sound when listening starts";
 "dictation.stop_sound" = "Sound when listening stops";
 
@@ -43,7 +43,7 @@
 "dictation.menu.history" = "Dictation History…";
 "dictation.menu.history.tip" = "Tap %@ in any app to dictate";
 "dictation.menu.turn_on" = "Turn On Dictation…";
-"dictation.menu.turn_on.tip" = "Blurt can’t hear %@ yet: dictation needs Accessibility or Input Monitoring.";
+"dictation.menu.turn_on.tip" = "Dictating with %@ needs Accessibility or Input Monitoring.";
 "dictation.menu.turn_on.subtitle" = "Set up permissions to use %@";
 
 /* Settings → Dictation */
@@ -53,26 +53,26 @@
 "dictation.settings.key" = "Shortcut";
 "dictation.settings.mode" = "Start and stop";
 "dictation.settings.voice_note_off" = "its shortcut is off";
-"dictation.settings.either_hint" = "Counts only when pressed on its own, so ⌥ shortcuts still work.";
+"dictation.settings.either_hint" = "Works only when pressed on its own; ⌥ shortcuts are unaffected.";
 
 /* whether the key is heard right now (the event tap) */
-"dictation.status.off" = "Blurt can’t hear %@ yet";
-"dictation.status.off.detail" = "Switch one setting on in System Settings. It works right away, no restart.";
+"dictation.status.off" = "Permission needed for %@";
+"dictation.status.off.detail" = "Turn it on in System Settings. It takes effect right away, no restart needed.";
 "dictation.status.fix" = "Turn On…";
-"dictation.listener.tap" = "Listening in every app (Input Monitoring).";
-"dictation.listener.monitor" = "Listening in every app through Accessibility (Input Monitoring is off).";
-"dictation.listener.tap_local" = "Only hears the key while Blurt is in front.";
-"dictation.listener.none" = "Not listening.";
-"dictation.heard.other" = "Last heard in another app: %@.";
-"dictation.heard.never" = "Not heard in another app yet: press %@ in another app to check.";
+"dictation.listener.tap" = "Works in all apps (Input Monitoring).";
+"dictation.listener.monitor" = "Works in all apps through Accessibility (Input Monitoring is off).";
+"dictation.listener.tap_local" = "Works only while this app is in front.";
+"dictation.listener.none" = "Not running.";
+"dictation.heard.other" = "Last detected in another app: %@.";
+"dictation.heard.never" = "Not detected in another app yet. Press %@ in another app to test.";
 
 "dictation.perm.input_monitoring" = "Input Monitoring";
-"dictation.perm.input_monitoring.why" = "To notice %@ in every app. Blurt only listens for that key — it never records what you type.";
+"dictation.perm.input_monitoring.why" = "To detect %@ in every app. Only that key is detected; nothing you type is recorded.";
 "dictation.perm.accessibility" = "Accessibility";
-"dictation.perm.accessibility.why" = "To paste the text into the app you’re in and read the words around the cursor so names come out right (never password fields, never kept). With Fn, it also hears the key. Without it the text is copied and you paste it yourself.";
-"dictation.perm.restart_hint" = "Allowed. Blurt picks it up within a few seconds, no restart needed.";
+"dictation.perm.accessibility.why" = "To paste text into the current app and read the text around the cursor so names are spelled right (never password fields, never stored). With Fn, it also detects the key. Without it, the text is copied and you paste it yourself.";
+"dictation.perm.restart_hint" = "Allowed. Takes effect within a few seconds, no restart needed.";
 
-"dictation.polish.timeout" = "Wait for polish at most";
+"dictation.polish.timeout" = "Polish time limit";
 "dictation.polish.seconds" = "%@ s";
 "dictation.cancel" = "Cancel";
 
@@ -80,8 +80,8 @@
 "dictation.history.keep" = "Keep dictations for";
 "dictation.history.days" = "%ld days";
 "dictation.history.keep_audio" = "Keep the audio";
-"dictation.history.keep_audio.detail" = "The recording and the text around the cursor are kept with the history and deleted with it. Off: the recording is deleted as soon as the text is in.";
-"dictation.history.keep_audio.detail.days" = "Each dictation’s recording and the text around the cursor stay with its history entry and are deleted with it, after %@. Off: the recording is deleted once the text is in, and the text around the cursor isn’t kept.";
+"dictation.history.keep_audio.detail" = "Recordings and the text around the cursor are kept with the history and deleted with it. When off, each recording is deleted once its text is typed.";
+"dictation.history.keep_audio.detail.days" = "Recordings and the text around the cursor are kept with the history and deleted after %@. When off, each recording is deleted once its text is typed, and the text around the cursor isn’t kept.";
 "dictation.history.open" = "Open History…";
 "dictation.history.clear" = "Clear History…";
 "dictation.history.clear.title" = "Clear dictation history?";
@@ -92,11 +92,11 @@
 "dictation.history.title" = "Dictation History";
 "dictation.history.menu" = "Dictation History";
 "dictation.history.sidebar" = "Dictation";
-"dictation.history.sidebar.tip" = "What you dictated into other apps";
+"dictation.history.sidebar.tip" = "Text dictated into other apps";
 "dictation.history.search" = "Search dictations";
 "dictation.history.clear_search" = "Clear Search";
 "dictation.history.empty.title" = "No dictations yet";
-"dictation.history.empty.body" = "Press %@ in any app, talk, press it again: the text goes in at the cursor and is kept here.";
+"dictation.history.empty.body" = "Press %@ in any app to start and again to stop. The text is typed at the cursor and saved here.";
 "dictation.history.no_match" = "No dictations match “%@”";
 "dictation.history.today" = "Today";
 "dictation.history.yesterday" = "Yesterday";
@@ -117,9 +117,9 @@
 "dictation.history.deleted.one" = "Dictation deleted";
 "dictation.history.deleted.many" = "%ld dictations deleted";
 "dictation.history.more" = "More";
-"dictation.history.reason.timeout" = "polish took too long";
+"dictation.history.reason.timeout" = "polish timed out";
 "dictation.history.reason.unavailable" = "the polish model wasn’t ready";
-"dictation.history.reason.shrunk" = "polish dropped words";
+"dictation.history.reason.shrunk" = "polish removed words";
 "dictation.history.reason.grew" = "polish added words";
 "dictation.history.reason.novel" = "polish changed words";
 "dictation.history.reason.translated" = "polish changed the language";
@@ -139,9 +139,9 @@
 "dictation.vocab.ignore" = "Ignore";
 "dictation.vocab.remove" = "Remove";
 "dictation.vocab.context" = "Use the text around the cursor";
-"dictation.vocab.context.detail" = "Names follow how the document spells them. Read when you start talking; never kept, never from password fields.";
+"dictation.vocab.context.detail" = "Names are spelled as in the document. Read only when dictation starts; never stored, never from password fields.";
 "dictation.vocab.learn" = "Learn from my corrections";
-"dictation.vocab.learn.detail" = "When you fix a name Blurt got wrong, it learns the word.";
+"dictation.vocab.learn.detail" = "When you correct a misspelled name, the word is added to Words.";
 
 /* Fn as the key: auto mode, keeping Fn from macOS, macOS’s 🌐 setting */
 "dictation.mode.auto" = "Tap or hold";
@@ -149,18 +149,18 @@
 "dictation.mode.tap.detail" = "Tap %@ to start, and tap it again to stop.";
 "dictation.mode.hold.detail" = "Hold %@ while you talk; let go to stop.";
 "dictation.toast.on.auto" = "Dictation is on: tap %@ to talk, or hold it";
-"dictation.listener.filter" = "Listening in every app, and keeping Fn from macOS (Accessibility).";
-"dictation.perm.input_monitoring.why_fn" = "Not needed for Fn: Blurt hears it through Accessibility. Other keys use it.";
-"dictation.perm.microphone.why" = "To hear what you say.";
+"dictation.listener.filter" = "Works in all apps, and macOS ignores Fn (Accessibility).";
+"dictation.perm.input_monitoring.why_fn" = "Not needed for Fn, which works through Accessibility. Needed for other keys.";
+"dictation.perm.microphone.why" = "To record your voice.";
 "dictation.fn.capture" = "Use Fn only for dictation";
-"dictation.fn.capture.detail" = "macOS’s own Fn action (emoji, input source) doesn’t run as well. Needs Accessibility.";
+"dictation.fn.capture.detail" = "Pressing Fn no longer opens emoji or changes the input source. Needs Accessibility.";
 "dictation.fn.usage" = "macOS “Press Globe key to”: %@";
 "dictation.fn_usage.0" = "Do Nothing";
 "dictation.fn_usage.1" = "Change Input Source";
 "dictation.fn_usage.2" = "Show Emoji & Symbols";
 "dictation.fn_usage.3" = "Start Dictation";
 "dictation.fn_usage.default" = "macOS default";
-"dictation.fn.usage.clash" = "Pressing Fn may do this as well. Set it to Do Nothing — Blurt never changes it for you.";
+"dictation.fn.usage.clash" = "Pressing Fn may trigger this too. Set it to Do Nothing in System Settings.";
 "dictation.fn.usage.fix" = "Fix…";
 "dictation.settings.fn_clash" = "%@ also uses Fn, so both will react.";
 
@@ -180,12 +180,12 @@
 "dictation.lab.new_take" = "New Take";
 "dictation.lab.new_take.detail" = "Record, or press %@";
 "dictation.lab.run_all" = "Run All Cases";
-"dictation.lab.run_all.detail" = "Check every saved case again";
+"dictation.lab.run_all.detail" = "Run every saved case again";
 "dictation.lab.run_all.last" = "Last score %@";
-"dictation.lab.run_all.explain" = "Every case with audio goes through the pipeline again, in the background. Each one is compared with its last run in the same configuration.";
+"dictation.lab.run_all.explain" = "Runs every case with audio again in the background and compares each with its last run in the same configuration.";
 "dictation.lab.run_all.config" = "Configuration";
 "dictation.lab.run_all.run" = "Run";
-"dictation.lab.run_all.running" = "Running… you can keep working.";
+"dictation.lab.run_all.running" = "Running in the background. You can keep working.";
 "dictation.lab.run_all.score" = "score";
 "dictation.lab.run_all.case" = "Case";
 "dictation.lab.run_all.before" = "Before";
@@ -199,14 +199,14 @@
 "dictation.lab.change.na" = "No reference";
 "dictation.lab.change.error" = "Failed";
 "dictation.lab.import" = "Import Audio…";
-"dictation.lab.import.message" = "The file is played in as the microphone, in real time.";
+"dictation.lab.import.message" = "The file is played as microphone input, in real time.";
 "dictation.lab.export" = "Export…";
 "dictation.lab.exported" = "Exported %ld cases.";
 "dictation.lab.keep_next" = "Keep the audio of my next dictations";
 "dictation.lab.keep_next.count" = "Left: %ld";
 "dictation.lab.keep_next.tip" = "Only the audio is kept (not the text around the cursor), so you can add real dictations to the lab from History.";
-"dictation.lab.privacy" = "Everything here stays on this Mac. Nothing is uploaded.";
-"dictation.lab.privacy.short" = "Stays on this Mac. Nothing is typed anywhere.";
+"dictation.lab.privacy" = "Everything here stays on your Mac and is never uploaded.";
+"dictation.lab.privacy.short" = "Stays on your Mac. Nothing is typed into other apps.";
 "dictation.lab.untitled" = "Untitled";
 "dictation.lab.errors.count" = "%ld marked";
 "dictation.lab.case" = "Case · %@";
@@ -218,15 +218,15 @@
 "dictation.lab.record.hint" = "Click to record, or press %@";
 "dictation.lab.status.ready" = "Ready";
 "dictation.lab.status.starting" = "Opening the microphone…";
-"dictation.lab.status.recording" = "Listening";
-"dictation.lab.status.processing" = "Working on it…";
+"dictation.lab.status.recording" = "Recording";
+"dictation.lab.status.processing" = "Processing…";
 "dictation.lab.status.done" = "Recorded";
 "dictation.lab.mic.default" = "Default microphone";
 "dictation.lab.mic.tip" = "The microphone for lab takes";
 "dictation.lab.error.mic" = "The microphone isn’t available.";
 "dictation.lab.error.test_mic" = "Test build: no microphone. Import an audio file instead.";
-"dictation.lab.error.nothing" = "Nothing was heard.";
-"dictation.lab.error.save" = "The case couldn’t be saved.";
+"dictation.lab.error.nothing" = "No speech detected.";
+"dictation.lab.error.save" = "Couldn’t save the case.";
 "dictation.lab.reference" = "What you meant to say";
 "dictation.lab.reference.placeholder" = "The words you meant to say (optional)";
 "dictation.lab.reference.short" = "the reference";
@@ -235,7 +235,7 @@
 "dictation.lab.cursor.after" = "Text after the cursor";
 "dictation.lab.cursor.mark" = "cursor";
 "dictation.lab.cursor.include" = "Keep this text in the case";
-"dictation.lab.cursor.tip" = "The take is tested as if typed between these two texts: polish reads them, and the result is fitted in.";
+"dictation.lab.cursor.tip" = "Tested as if the cursor were between these two texts: polish reads them and fits the result in.";
 "dictation.lab.scenario" = "Scenario";
 "dictation.lab.scenario.none" = "Not set";
 "dictation.lab.scenario.app" = "App";
@@ -260,7 +260,7 @@
 "dictation.lab.scenario.speed.slow" = "Slow";
 "dictation.lab.scenario.speed.normal" = "Normal";
 "dictation.lab.scenario.speed.fast" = "Fast";
-"dictation.lab.stages" = "Each stage";
+"dictation.lab.stages" = "Stages";
 "dictation.lab.stage.raw" = "Heard";
 "dictation.lab.stage.polished" = "Polished";
 "dictation.lab.stage.final" = "Typed";
@@ -325,7 +325,7 @@
 "dictation.lab.learn.undone" = "Learning undone.";
 "dictation.lab.compare" = "Compare";
 "dictation.lab.compare.run" = "Run Again";
-"dictation.lab.compare.tip" = "The same audio through each chosen configuration";
+"dictation.lab.compare.tip" = "Runs the same audio through each chosen configuration";
 "dictation.lab.compare.save_first" = "Save your changes first";
 "dictation.lab.compare.current" = "Current settings";
 "dictation.lab.compare.polish_with" = "Polish with %@";
@@ -338,8 +338,8 @@
 "dictation.lab.saved" = "Saved.";
 "dictation.lab.discard" = "Discard";
 "dictation.lab.add" = "Add to Lab";
-"dictation.lab.add.tip" = "A lab case with this dictation’s audio";
-"dictation.lab.add.tip_text" = "No audio was kept: a case with the text only";
+"dictation.lab.add.tip" = "Creates a lab case from this dictation’s audio";
+"dictation.lab.add.tip_text" = "No audio was kept: creates a text-only case";
 "dictation.lab.added" = "Added to the lab.";
 "dictation.lab.added_text_only" = "Added to the lab (text only: no audio was kept).";
 
@@ -357,14 +357,14 @@
 "dictation.lab.script.prev" = "Previous";
 "dictation.lab.script.next" = "Next";
 "dictation.lab.script.retry" = "Read Again";
-"dictation.lab.script.none" = "No scripts here. Import one, or generate some.";
+"dictation.lab.script.none" = "No scripts yet. Import or generate one.";
 "dictation.lab.script.takes" = "Takes: %ld";
 "dictation.lab.script.keep_only" = "Keep only this";
 "dictation.lab.script.import.message" = "A reading script (JSON) for the lab";
 "dictation.lab.script.imported" = "Imported %ld prompts.";
 "dictation.lab.script.bad_pack" = "That file isn’t a reading script.";
 "dictation.lab.script.generated" = "Added %ld prompts.";
-"dictation.lab.script.generate_failed" = "Couldn’t write more prompts: no agent or polish model answered.";
+"dictation.lab.script.generate_failed" = "Couldn’t generate prompts: no agent or polish model responded.";
 "dictation.lab.run_all.by_tag" = "By dimension";
 "dictation.lab.tag.length.short" = "Short";
 "dictation.lab.tag.length.medium" = "Medium";
@@ -396,12 +396,12 @@
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
 "dictation.style.chip.action" = "Make a List";
-"dictation.style.reformat.nothing" = "No dictation to reformat yet";
-"dictation.style.reformat.same" = "This one reads the same in every style";
+"dictation.style.reformat.nothing" = "No dictation to reformat";
+"dictation.style.reformat.same" = "Same result in every style";
 "dictation.style.reformatted" = "Reformatted as %@";
-"dictation.style.copied" = "Copied as %@ — the text in the field was left alone";
-"dictation.style.copied.edited" = "Copied your edited text as %@ — the field was left alone";
-"dictation.style.copied.original" = "You edited it — copied the original dictation as %@";
+"dictation.style.copied" = "Copied as %@ — the text in the field is unchanged";
+"dictation.style.copied.edited" = "Copied your edited text as %@ — the field is unchanged";
+"dictation.style.copied.original" = "The text was edited — copied the original dictation as %@";
 "dictation.style.undone" = "Back to %@";
 "dictation.style.learn.auto" = "Format spoken lists in %@ from now on?";
 "dictation.style.learn.structured" = "Format spoken lists in %@ from now on?";
@@ -409,7 +409,7 @@
 "dictation.style.learn.verbatim" = "Type exactly what you say in %@, without tidying?";
 "dictation.style.learn.yes" = "Yes";
 "dictation.style.learn.no" = "No";
-"dictation.style.learn.done" = "Done. You can change it in Settings, under Dictation.";
+"dictation.style.learn.done" = "Saved. You can change this in Settings > Dictation.";
 "dictation.style.section" = "Style";
 "dictation.style.keys" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧. %@ reformats the last dictation.";
 "dictation.style.keys.no_hotkey" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧.";
@@ -446,7 +446,7 @@
 "dictation.models.section" = "Models";
 "dictation.models.change" = "Change in Models…";
 "dictation.vocab.summary.title" = "Words";
-"dictation.vocab.summary.mine" = "%ld of yours";
+"dictation.vocab.summary.mine" = "%ld added";
 "dictation.vocab.summary.suggested" = "%ld to review";
 "dictation.vocab.manage" = "Manage…";
 "dictation.mic.section" = "Microphone";
@@ -455,8 +455,8 @@
 "dictation.words.filter" = "Filter";
 "dictation.words.mine" = "Yours";
 "dictation.words.projects" = "From your projects";
-"dictation.words.projects.detail" = "Your projects’ names and keys are added for you. Remove any you don’t say.";
-"dictation.words.mine.empty" = "None yet. Add the names and terms you say often — or correct a dictation in the history and Blurt learns the word.";
+"dictation.words.projects.detail" = "Project names and keys are added automatically. Remove any you don’t need.";
+"dictation.words.mine.empty" = "None yet. Add names and terms you say often. Words you correct in the history are added too.";
 "dictation.words.suggested" = "To review";
 "dictation.words.builtin" = "Built-in";
 "dictation.words.show" = "Show";
@@ -466,7 +466,7 @@
 "dictation.words.no_match" = "No words match “%@”. Return adds it.";
 "dictation.words.remove" = "Remove %@";
 "dictation.words.about.title" = "Words";
-"dictation.words.about" = "Names and terms the speech and polish models are told about, so they come out right. Hints only: nothing you say is replaced.";
+"dictation.words.about" = "Names and terms given to the speech and polish models as hints, so they’re spelled right. Nothing you say is replaced.";
 "dictation.words.info.source" = "From";
 "dictation.words.source.manual" = "Added by you";
 "dictation.words.source.learned" = "Learned from your corrections";
@@ -475,9 +475,9 @@
 "dictation.words.source.suggested" = "From a correction";
 "dictation.words.info.used" = "Used in dictations";
 "dictation.words.info.used.value" = "%ld";
-"dictation.words.info.heard" = "Heard as";
+"dictation.words.info.heard" = "Often recognized as";
 "dictation.words.info.added" = "Added";
-"dictation.settings.enable.detail" = "Talk, and the text is typed where your cursor is.";
+"dictation.settings.enable.detail" = "Speak, and the text is typed at the cursor.";
 "dictation.style.default" = "Style";
 "dictation.style.by_app.detail" = "Chat, code, mail and notes can each have their own.";
 "dictation.history.saved" = "History";
@@ -492,37 +492,37 @@
 "dictation.toast.no_model" = "Dictation needs a speech model";
 "dictation.toast.no_model.get" = "Download…";
 "dictation.toast.no_model.kept" = "Speech model not installed · recording kept";
-"dictation.toast.no_vad" = "One small file is missing (speech detection)";
-"dictation.toast.no_vad.kept" = "One small file is missing (speech detection) · recording kept";
+"dictation.toast.no_vad" = "Speech detection file missing";
+"dictation.toast.no_vad.kept" = "Speech detection file missing · recording kept";
 "dictation.toast.model_ready" = "The speech model is ready — your last recording is kept";
 "dictation.toast.asr_failed" = "Couldn’t recognize that — the recording is kept";
-"dictation.toast.asr_slow" = "The speech model didn’t answer — the recording is kept";
-"dictation.toast.asr_cloud_key" = "The cloud speech key didn’t work — the recording is kept";
+"dictation.toast.asr_slow" = "The speech model didn’t respond — the recording is kept";
+"dictation.toast.asr_cloud_key" = "The cloud speech key isn’t valid — the recording is kept";
 "dictation.toast.asr_cloud_key.action" = "Settings…";
-"dictation.toast.asr_cloud_offline" = "Couldn’t reach the cloud speech service — the recording is kept";
+"dictation.toast.asr_cloud_offline" = "Couldn’t connect to the cloud speech service — the recording is kept";
 "dictation.toast.asr_cloud_quota" = "The cloud speech service is busy or out of quota — the recording is kept";
 "dictation.toast.slow.asr" = "Still recognizing… %@ to cancel";
-"dictation.toast.fn_clash" = "%@ also listens to Fn — text may go in twice";
+"dictation.toast.fn_clash" = "%@ also uses Fn — text may be typed twice";
 "dictation.toast.fn_clash.switch" = "Use Right Option";
 "dictation.toast.fn_clash.settings" = "Settings…";
 "dictation.toast.slow.polish" = "Still polishing… %@ types it unpolished";
 "dictation.toast.retry" = "Retry";
-"dictation.toast.retry_gone" = "That recording is gone";
+"dictation.toast.retry_gone" = "The recording no longer exists";
 "dictation.toast.not_sent" = "Not sent";
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
-"dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
+"dictation.toast.not_sent.secure" = "Not sent: the cursor is in a password field";
 "dictation.toast.not_sent.copied" = "Copied, not sent";
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
-"dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
+"dictation.toast.hold_mode" = "Hold %@ to talk (you can switch to tap in Settings)";
 "dictation.toast.tap_mode" = "Let go, then tap %@ to start talking (you can switch to hold in Settings)";
-"dictation.toast.no_polish" = "No polish model yet — typed as you said it";
-"dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may come out wrong";
+"dictation.toast.no_polish" = "No polish model downloaded — typed without polish";
+"dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may be less accurate";
 "dictation.tip.send" = "Double-tap %@ to send";
 "dictation.tip.list" = "Press ⇧ while you talk for a list";
-"dictation.tip.reformat" = "%@ tries another style";
+"dictation.tip.reformat" = "%@ switches style";
 "dictation.history.failed" = "Not recognized";
 "dictation.history.failed.no_model" = "Not recognized: no speech model";
-"dictation.history.failed.interrupted" = "Not typed: Blurt quit before it finished";
+"dictation.history.failed.interrupted" = "Not typed: the app quit before finishing";
 "dictation.history.retry" = "Retry";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
@@ -536,37 +536,37 @@
 "dictation.mode.send_suffix" = "double-tap to send";
 "dictation.models.downloading" = "Downloading · %1$@ of %2$@";
 "dictation.status.other_instance" = "Another copy of Blurt is listening to the key";
-"dictation.status.other_instance.detail" = "This one takes over when that one quits.";
+"dictation.status.other_instance.detail" = "Takes over when the other copy quits.";
 "dictation.toast.model_downloading" = "The speech model is still downloading (%1$@ of %2$@)";
 "dictation.toast.model_downloading.action" = "Show";
-"dictation.toast.model_started" = "Downloading the speech model (%1$@) · %2$@ dictates once it’s in";
-"dictation.toast.no_model_plain" = "No speech model yet";
+"dictation.toast.model_started" = "Downloading the speech model (%1$@) · %2$@ dictates when it’s done";
+"dictation.toast.no_model_plain" = "No speech model";
 "dictation.toast.no_model.settings" = "Choose Model…";
 "dictation.toast.no_model.action" = "Download";
-"dictation.toast.not_set_up" = "Dictation isn’t set up yet";
+"dictation.toast.not_set_up" = "Dictation isn’t set up";
 "dictation.toast.not_set_up.action" = "Set Up…";
 "dictation.menu.set_up" = "Set Up Dictation…";
-"dictation.menu.set_up.subtitle" = "Its speech tools haven’t downloaded yet";
+"dictation.menu.set_up.subtitle" = "Speech components not downloaded";
 "dictation.menu.get_model" = "Download Speech Model…";
-"dictation.menu.get_model.subtitle" = "Dictation needs it · %@";
-"dictation.menu.get_model.subtitle_plain" = "Dictation needs it";
+"dictation.menu.get_model.subtitle" = "Required for dictation · %@";
+"dictation.menu.get_model.subtitle_plain" = "Required for dictation";
 "dictation.models.queued" = "Waiting to download · %@";
 "dictation.models.show" = "Show";
-"dictation.mode.help" = "%1$@ cancels a take. To keep what you say in Blurt instead of typing it, use a voice note (%2$@).";
+"dictation.mode.help" = "%1$@ cancels a take. To save what you say instead of typing it, use a voice note (%2$@).";
 "dictation.settings.double_tap.key" = "Double-tap %@ to press Return after the text.";
-"dictation.settings.double_tap.help" = "Tap to stop, check the text, then double-tap to send. Or double-tap instead of the stop tap.";
-"dictation.settings.fn_clash.help" = "Quit it, or give one of them another key.";
+"dictation.settings.double_tap.help" = "Tap to stop, check the text, then double-tap to send. Or double-tap to stop and send at once.";
+"dictation.settings.fn_clash.help" = "Quit that app, or set a different key for one of them.";
 "dictation.mic.auto" = "Automatic";
-"dictation.mic.mac" = "This Mac’s microphone";
+"dictation.mic.mac" = "Built-in microphone";
 "dictation.mic.default" = "Default input";
 "dictation.mic.detail" = "Automatic avoids the lag of Bluetooth headsets.";
 "dictation.style.by_app.pair" = "%1$@: %2$@";
-"dictation.style.by_app.apps" = "%ld apps on their own";
+"dictation.style.by_app.apps" = "%ld apps set individually";
 "dictation.text.section" = "Style and words";
 "dictation.vocab.summary.detail" = "Spelled the way you write them.";
 "dictation.history.summary" = "%1$ld saved · deleted after %2$@";
 "dictation.models.detail" = "The speech and polish models dictation runs on.";
-"dictation.models.missing" = "Not on this Mac yet · %@";
+"dictation.models.missing" = "Not downloaded · %@";
 "dictation.models.download" = "Download";
 "dictation.notice.needs" = "Dictation needs %@";
 "dictation.data.section" = "History and models";
@@ -575,23 +575,23 @@
 "dictation.models.get_in_speech" = "Download in Models…";
 "dictation.status.other_instance_key" = "Another copy of Blurt is listening to %@";
 "dictation.models.small_missing" = "needs a small download";
-"dictation.models.n_missing" = "%ld still to download";
+"dictation.models.n_missing" = "%ld to download";
 
 /* The Dictation page (v0.9 redesign, round 1) */
-"dictation.history.no_match.hint" = "Search looks in each dictation’s text and the app it went into.";
-"dictation.history.making_item" = "Writing Item…";
+"dictation.history.no_match.hint" = "Searches each dictation’s text and the app it went into.";
+"dictation.history.making_item" = "Creating Item…";
 "dictation.history.making_item.note" = "You can keep working";
-"dictation.history.making_item.tip" = "The AI is writing a title and description from this dictation";
-"dictation.history.make_item.tip" = "Write this dictation up as an item in the current project (⌘↩)";
-"dictation.history.reason.skipped" = "you pressed Esc while it was polishing";
+"dictation.history.making_item.tip" = "Generating a title and description from this dictation";
+"dictation.history.make_item.tip" = "Turn this dictation into an item in the current project (⌘↩)";
+"dictation.history.reason.skipped" = "Esc pressed during polish";
 "dictation.words.add.hint" = "Return adds “%@”";
 "dictation.words.add.hint.many" = "Return adds %@";
 "dictation.words.accept" = "Add to Words";
 "dictation.words.accept.ax" = "Add %@";
 "dictation.words.ignore.ax" = "Ignore %@";
-"dictation.words.review.detail" = "You corrected this word in a dictation. Add it from the list, and dictation spells it this way from now on.";
+"dictation.words.review.detail" = "You corrected this word in a dictation. Once it’s in Words, dictation spells it this way.";
 "dictation.words.none" = "No word selected";
-"dictation.words.none.detail" = "Select a word to see where it came from and how often dictation used it.";
+"dictation.words.none.detail" = "Select a word to see where it came from and how often it’s used.";
 "dictation.lab.save.tip" = "Keeps the take, what you meant and your marks as a case (⌘S)";
 "dictation.lab.save.needs_take" = "Record a take first";
 "dictation.lab.scenario.pill" = "%1$@: %2$@";
@@ -617,7 +617,7 @@
 "dictation.words.info.seen.value" = "%ld times";
 "dictation.words.rename.one" = "Edit Spelling of “%@”";
 "dictation.words.project.tip" = "%1$@ · words: %2$@";
-"dictation.words.project.not_sent" = "Not sent to dictation: %@";
+"dictation.words.project.not_sent" = "Not used in dictation: %@";
 "dictation.lab.record.again" = "Click to record again, or press %@";
 "dictation.lab.detail.pieces" = "Pieces";
 "dictation.lab.result" = "Result";
@@ -629,7 +629,7 @@
 "dictation.feedback.button" = "Send Feedback";
 "dictation.feedback.button.tip" = "Send dictations to the Blurt developers so they can reproduce and fix them";
 "dictation.feedback.title" = "Send Feedback";
-"dictation.feedback.note" = "Pick the dictations that came out wrong and send them to us; we use them to improve dictation.";
+"dictation.feedback.note" = "Select the dictations that came out wrong and send them to us to help improve dictation.";
 "dictation.feedback.all" = "Select All";
 "dictation.feedback.count" = "%ld selected · %@";
 "dictation.feedback.text_only" = "Text only";
@@ -637,7 +637,7 @@
 "dictation.feedback.context.detail" = "The text before and after the cursor when you dictated. Many problems can’t be reproduced without it.";
 "dictation.feedback.what" = "Sent: each dictation’s original recording, what every step of recognition and polish made of it, the final text and your correction, plus your Mac’s model and memory, the Blurt version, your dictation settings, the models and your custom words.";
 "dictation.feedback.where" = "Uploaded to Blurt’s private storage on Cloudflare. Only the Blurt developers can read it. No account or IP address is kept, and it is deleted from that storage within 14 days.";
-"dictation.feedback.too_large" = "Over 100 MB. Pick fewer dictations.";
+"dictation.feedback.too_large" = "Over 100 MB. Select fewer dictations.";
 "dictation.feedback.sending" = "Sending…";
 "dictation.feedback.cancel" = "Cancel";
 "dictation.feedback.send" = "Send";
@@ -649,8 +649,8 @@
 "dictation.feedback.done" = "Done";
 "dictation.feedback.error.network" = "Couldn’t reach the server. Check your connection and try again.";
 "dictation.feedback.error.rate" = "Too many reports at once. Try again in a minute.";
-"dictation.feedback.error.full" = "We’ve had all the reports we can take today. Try again tomorrow.";
-"dictation.feedback.error.other" = "It didn’t go through. Try again later.";
+"dictation.feedback.error.full" = "Today’s report limit has been reached. Try again tomorrow.";
+"dictation.feedback.error.other" = "Couldn’t send. Try again later.";
 
 /* Cloud polish (DictationCloud, Settings → Dictation) */
 "dictation.cloud.service" = "Service";
@@ -665,7 +665,7 @@
 "dictation.cloud.model.note.polish.deepseek_flash" = "Accurate, about 1 s";
 "dictation.cloud.model.note.polish.ds41" = "Accurate, about 0.8 s";
 "dictation.cloud.model.note.polish.qwen38" = "Fairly accurate, about 1 s";
-"dictation.cloud.model.note.polish.qwen36" = "Fast, but often misses names";
+"dictation.cloud.model.note.polish.qwen36" = "Fast, but less accurate on names";
 "dictation.cloud.model.note.polish.qwen_flash" = "Rewrites what you said; not recommended";
 "dictation.cloud.model.note.polish.qwen_plus" = "Rewrites what you said; not recommended";
 "dictation.cloud.model.note.translate.deepseek_flash" = "Good translations";
@@ -676,7 +676,7 @@
 "dictation.cloud.model.note.vision.qwen36" = "Accurate, about 0.8 s";
 "dictation.cloud.model.note.vision.qwen35" = "Accurate, about 0.9 s";
 "dictation.cloud.model.note.vision.qwen3_vl_plus" = "Accurate but slower (about 2.4 s)";
-"dictation.cloud.model.note.vision.qwen35_ocr" = "More misreads; not recommended";
+"dictation.cloud.model.note.vision.qwen35_ocr" = "Less accurate; not recommended";
 "dictation.cloud.model.note.vision.qwen_vl_ocr" = "Often returns nothing; not recommended";
 "dictation.cloud.model.note.speech.qwen3_asr" = "Accurate, about 0.7 s";
 "dictation.cloud.key" = "API key";
@@ -687,17 +687,17 @@
 "dictation.cloud.check.ok" = "Connected · %@ s";
 "dictation.cloud.cancel" = "Cancel";
 "dictation.cloud.done" = "Done";
-"dictation.cloud.hint" = "Add a cloud model to fix misheard words and long sentences better";
+"dictation.cloud.hint" = "Add a cloud model for better corrections and long sentences";
 "dictation.cloud.hint.setup" = "Set Up…";
 "dictation.models.cloud" = "%@ (cloud)";
 
 /* Translate mode (docs/design/dictation-translate.md) */
 "dictation.translate.toast.on.auto" = "Translate on: %1$@ ↔ %2$@ · ⌘ to turn off";
 "dictation.translate.toast.off" = "Translate off";
-"dictation.translate.toast.unavailable" = "Translating needs a cloud model or this Mac’s polish model";
+"dictation.translate.toast.unavailable" = "Translating needs a cloud model or a local polish model";
 "dictation.translate.toast.setup" = "Set Up…";
 "dictation.translate.toast.failed" = "Couldn’t translate · typed the original";
-"dictation.translate.toast.cloud_hint" = "Translated on this Mac; a cloud model does better";
+"dictation.translate.toast.cloud_hint" = "Translated locally; a cloud model translates better";
 "dictation.translate.toast.suggest" = "Translate everything you dictate in %@?";
 "dictation.translate.toast.suggest.yes" = "Translate";
 "dictation.translate.section" = "Translate (⌘)";
@@ -708,7 +708,7 @@
 "dictation.translate.target.auto_one.note" = "Text in %@ stays as it is; pick a language to translate it into";
 "dictation.translate.toast.learned" = "Dictation in %@ will be translated from now on";
 "dictation.translate.toast.undo" = "Undo";
-"dictation.translate.apps" = "Dictation is translated in these apps";
+"dictation.translate.apps" = "Apps with Translate on";
 "dictation.translate.apps.note" = "In an app, ⌘ turns translation on and it stays on there; ⌘ again turns it off and removes the app.";
 "dictation.translate.apps.remove" = "Remove";
 
@@ -720,4 +720,4 @@
 "dictation.translate.toast.on.into" = "Translating into %@ · ⌘ to turn off";
 "dictation.settings.cancel_key" = "Cancel dictation";
 "dictation.settings.cancel_key.default" = "%@ (default)";
-"dictation.settings.cancel_key.detail" = "In terminals like Claude Code, Esc stops the running task. With ⌃Esc or ⇧Esc, Esc alone is never taken as cancelling dictation.";
+"dictation.settings.cancel_key.detail" = "In terminals like Claude Code, Esc stops the running task. With ⌃Esc or ⇧Esc, Esc alone never cancels dictation.";

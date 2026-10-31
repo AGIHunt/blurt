@@ -55,7 +55,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>选中了 %ld 个</string>
+			<string>已选中 %ld 个事项</string>
 		</dict>
 	</dict>
 	<key>main.items.count</key>
@@ -325,7 +325,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个新记下的事项还没选项目</string>
+			<string>%ld 个新事项未选择项目</string>
 		</dict>
 	</dict>
 	<key>main.move.placeholder.many</key>
@@ -465,7 +465,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>别的地方有 %ld 个匹配。</string>
+			<string>其他位置有 %ld 个匹配项。</string>
 		</dict>
 	</dict>
 </dict>
