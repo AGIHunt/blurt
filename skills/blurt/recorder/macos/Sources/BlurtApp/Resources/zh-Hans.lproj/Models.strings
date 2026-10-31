@@ -5,8 +5,8 @@
 "models.services.detail" = "使用你的 API Key 连接云端模型。";
 "models.services.add.title" = "添加云端模型";
 "models.services.add" = "添加云端模型…";
-"models.services.empty" = "添加 API Key 后，可用云端模型润色、翻译和识别截图文字。";
-"models.price.deepseek" = "DeepSeek：每次听写约 ¥0.002。";
+"models.services.empty" = "添加 API Key 后即可使用云端模型。";
+"models.price.deepseek" = "DeepSeek %1$@约 %2$@。";
 "models.recommended" = "推荐";
 "models.service.edit" = "编辑…";
 "models.service.no_key" = "未设置 API Key";
@@ -111,11 +111,13 @@
 /* 通过 Agent 设置（docs/design/agent-setup.md）：用户自己的编程 Agent 通过 scripts/setup.py 和 App 的本地控制接口设置模型。
    AgentSetupViews.swift、App/AgentSetupServer.swift。 */
 "models.agent.button" = "通过 Agent 设置…";
-"models.agent.note" = "API Key 会经过 Agent。也可以手动添加云端模型。";
+"models.agent.note" = "Agent 第一次更改设置时，口喷鸡会请你允许。API Key 会经过 Agent，保存在钥匙串中。";
 "models.agent.sheet.title" = "通过 Agent 设置模型";
-"models.agent.sheet.detail" = "Agent 会在终端中打开，询问几个问题，并打开各服务的 API Key 页面。登录和创建 Key 由你完成。";
-"models.agent.sheet.agent" = "Agent";
-"models.agent.sheet.start" = "开始";
+"models.agent.prompt" = "设置模型（口喷鸡）\n\n帮我设置口喷鸡的语音和 AI 模型，参照 %1$@，命令用 `uv run %2$@ …` 运行。改动之前先问我里面列出的问题，帮我找到或创建各服务的 API Key，不要把任何 Key 写回对话里。口喷鸡第一次收到改动时会请我允许。";
+"models.agent.sheet.open" = "在终端中打开";
+"models.agent.sheet.copied" = "已复制";
+"models.agent.sheet.copy" = "复制指令";
+"models.agent.sheet.detail" = "复制下面的指令，粘贴给本机上的 Claude Code、Codex 等 Agent。它会问你几个问题，帮你找到各服务的 API Key，然后完成设置。";
 "models.agent.ask.title" = "允许 %@ 设置模型？";
 "models.agent.ask.unknown" = "允许本机上的应用设置模型？";
 "models.agent.ask.detail" = "30 分钟内可连接服务、选择模型和运行测试。API Key 保存在钥匙串中。";

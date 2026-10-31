@@ -5,8 +5,8 @@
 "models.services.detail" = "Connect cloud models with your API key.";
 "models.services.add.title" = "Add a cloud model";
 "models.services.add" = "Add Cloud Model…";
-"models.services.empty" = "Add an API key to polish, translate and read text in screenshots with cloud models.";
-"models.price.deepseek" = "DeepSeek: about ¥0.002 ($0.0003) per dictation.";
+"models.services.empty" = "Add an API key to use cloud models.";
+"models.price.deepseek" = "DeepSeek: about %2$@ per %1$@.";
 "models.recommended" = "Recommended";
 "models.service.edit" = "Edit…";
 "models.service.no_key" = "API key not set";
@@ -111,11 +111,13 @@
 /* Set Up with Agent (docs/design/agent-setup.md): the user's own coding agent sets up the models through scripts/setup.py
    and the app's control socket. AgentSetupViews.swift, App/AgentSetupServer.swift. */
 "models.agent.button" = "Set Up with Agent…";
-"models.agent.note" = "The API key passes through the agent. You can also add cloud models by hand.";
+"models.agent.note" = "Blurt asks for your OK the first time the agent changes a setting. The API key passes through the agent and is stored in Keychain.";
 "models.agent.sheet.title" = "Set Up Models with an Agent";
-"models.agent.sheet.detail" = "The agent opens in a terminal, asks a few questions and opens each service’s API key page. You sign in and create the key yourself.";
-"models.agent.sheet.agent" = "Agent";
-"models.agent.sheet.start" = "Start";
+"models.agent.prompt" = "Set Up Models (Blurt)\n\nSet up Blurt’s speech and AI models for me, following %1$@; run its commands as `uv run %2$@ …`. Ask me its questions before you change anything, help me find or create each service’s API key, and never write a key back into this chat. Blurt asks me to allow the first change.";
+"models.agent.sheet.open" = "Open in Terminal";
+"models.agent.sheet.copied" = "Copied";
+"models.agent.sheet.copy" = "Copy Instruction";
+"models.agent.sheet.detail" = "Copy this instruction and paste it into an agent on your Mac, such as Claude Code or Codex. It asks a few questions, helps you find each service’s API key, and sets things up.";
 "models.agent.ask.title" = "Allow %@ to set up models?";
 "models.agent.ask.unknown" = "Allow an app on your Mac to set up models?";
 "models.agent.ask.detail" = "For 30 minutes, it can connect services, choose models and run tests. API keys are stored in Keychain.";

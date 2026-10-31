@@ -480,9 +480,9 @@
 "onboarding.start.language.title" = "你说的语言";
 "onboarding.start.language.mixed" = "选择你主要使用的语言，句中的英文单词也能识别。";
 "onboarding.start.language.one" = "选择你主要使用的语言。";
-"onboarding.key.title" = "云端润色（可选）";
-"onboarding.key.detail" = "修正识别错误的词和标点，也用于语音备注和截图取字。";
-"onboarding.key.on" = "已开启 · %@";
+"onboarding.key.title" = "云端模型（可选）";
+"onboarding.key.detail" = "添加 API Key 后即可使用云端模型。";
+"onboarding.key.on" = "已连接 · %@";
 "onboarding.key.add" = "添加…";
 "onboarding.key.change" = "更改…";
 "onboarding.key.cloud.title" = "云端听写";
@@ -507,6 +507,6 @@
 "onboarding.start.ready.detail" = "系统自带，无需下载。";
 "onboarding.upgrade.better" = "%1$@（%2$@）：识别更准确，可离线使用。";
 "onboarding.upgrade.better_downloading" = "正在下载 %1$@（%2$@），完成后自动启用。";
-"onboarding.key.compare" = "提高人名和术语的准确度，每次约 %@。录音不会上传。";
+"onboarding.key.compare" = "%1$@约 %2$@，录音不会上传。";
 "onboarding.models.kept" = "已下载 %1$@ / %2$@";
 "onboarding.models.left_label" = "还剩";

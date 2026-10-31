@@ -481,9 +481,9 @@
 "onboarding.start.language.title" = "The language you speak";
 "onboarding.start.language.mixed" = "Choose the language you speak most. English words in your speech are recognized too.";
 "onboarding.start.language.one" = "Choose the language you speak most.";
-"onboarding.key.title" = "Cloud Polish (Optional)";
-"onboarding.key.detail" = "Fixes misrecognized words and punctuation. Also used for voice notes and Copy Text from Screen.";
-"onboarding.key.on" = "On · %@";
+"onboarding.key.title" = "Cloud Model (Optional)";
+"onboarding.key.detail" = "Add an API key to use cloud models.";
+"onboarding.key.on" = "Connected · %@";
 "onboarding.key.add" = "Add…";
 "onboarding.key.change" = "Change…";
 "onboarding.key.cloud.title" = "Cloud dictation";
@@ -508,6 +508,6 @@
 "onboarding.start.ready.detail" = "Built in. No download needed.";
 "onboarding.upgrade.better" = "%1$@ (%2$@): more accurate, works offline.";
 "onboarding.upgrade.better_downloading" = "Downloading %1$@ (%2$@). It turns on when done.";
-"onboarding.key.compare" = "Improves names and terms, about %@ per dictation. Audio isn’t uploaded.";
+"onboarding.key.compare" = "About %2$@ per %1$@; audio isn’t uploaded.";
 "onboarding.models.kept" = "%1$@ of %2$@ downloaded";
 "onboarding.models.left_label" = "Left";

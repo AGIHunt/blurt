@@ -223,7 +223,8 @@
 "speech.compare.free" = "Free";
 "speech.compare.builtin" = "Built into macOS";
 "speech.compare.download" = "%@ download";
-"speech.compare.per_dictation" = "a dictation";
+"speech.compare.per_1000" = "1,000 uses";
+"speech.compare.per_10000" = "10,000 uses";
 "speech.compare.per_hour" = "an hour of speech";
 "speech.compare.leaves.nothing" = "Nothing";
 "speech.compare.leaves.text" = "Your text";

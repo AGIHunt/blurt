@@ -91,9 +91,11 @@ public enum DictationChoices {
         DictationFacts(choice: .qwenLarge, mixed: 0.0250, languages: ["en": 0.0116, "zh": 0.0164, "de": 0.0758],
                        termsRight: 0.79, delay: 0.2...0.3, downloadMB: 2468, memoryGB: 3.1, minRAMGB: 16, cost: .free, leaves: .nothing),
         // on the 1.7B; on the 0.6B see `cloudPolishOnSmall`. Delay: the 1.7B's plus DeepSeek V4.1 Flash's 0.8–1.1 s.
-        // ¥0.002 ≈ $0.0003 a dictation (§6.3 A). Not measured on the public sets.
+        // ≈ ¥0.001 ($0.0001) a use, averaged over every job a cloud model does: a dictation (~1,500 tokens, ≈ ¥0.002 in
+        // §6.3 A) and the shorter, cheaper translations and screen text — shown as ¥1 per 1,000 / $1 per 10,000 (the founder,
+        // 2026-10-31: a round figure a reader can hold). Not measured on the public sets.
         DictationFacts(choice: .cloudPolish, mixed: 0.0220, languages: [:], termsRight: 0.89, delay: 1.0...1.4,
-                       downloadMB: 2468, memoryGB: 3.1, minRAMGB: 16, cost: .perDictation(cny: 0.002, usd: 0.0003), leaves: .text),
+                       downloadMB: 2468, memoryGB: 3.1, minRAMGB: 16, cost: .perDictation(cny: 0.001, usd: 0.0001), leaves: .text),
         // Qwen3-ASR Flash, the whole take at key-up with the field text (§1 point 4); $0.11 an hour ≈ ¥0.8 (§6.3 B, §7)
         DictationFacts(choice: .cloudRecognizer, mixed: 0.0200, languages: ["en": 0.0147, "zh": 0.0152, "de": 0.0368],
                        termsRight: nil, delay: 0.5...1.5, downloadMB: 0, memoryGB: 0, minRAMGB: 0,
@@ -110,13 +112,13 @@ public enum DictationChoices {
     /// Cloud polish over the 0.6B (§6.3 A: 2.84 %), for Macs that run the small model.
     public static let cloudPolishOnSmall = DictationFacts(
         choice: .cloudPolish, mixed: 0.0284, languages: [:], termsRight: nil, delay: 0.9...1.3, downloadMB: 1010, memoryGB: 2.1,
-        minRAMGB: 8, cost: .perDictation(cny: 0.002, usd: 0.0003), leaves: .text)
+        minRAMGB: 8, cost: .perDictation(cny: 0.001, usd: 0.0001), leaves: .text)
 
     /// Cloud polish over Fun-ASR-Nano (2.73 %, names 89 %: one run through the app's path, DeepSeek V4.1 Flash with macOS's
     /// transcript as "Also heard" — docs/design/dictation.md §Defaults by Mac).
     public static let cloudPolishOnFun = DictationFacts(
         choice: .cloudPolish, mixed: 0.0273, languages: [:], termsRight: 0.89, delay: 0.9...1.3, downloadMB: 1598, memoryGB: 2.6,
-        minRAMGB: 8, cost: .perDictation(cny: 0.002, usd: 0.0003), leaves: .text)
+        minRAMGB: 8, cost: .perDictation(cny: 0.001, usd: 0.0001), leaves: .text)
 
     public static func facts(_ c: DictationChoice, on base: DictationChoice = .qwenLarge) -> DictationFacts {
         if c == .cloudPolish && base == .qwenSmall { return cloudPolishOnSmall }
