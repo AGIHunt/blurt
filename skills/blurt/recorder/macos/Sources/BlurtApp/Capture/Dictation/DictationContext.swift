@@ -165,7 +165,7 @@ final class DictationField {
     }
 }
 
-/// The text around the cursor when the dictation started: polish's spelling hints.
+/// The text around the cursor when the dictation started: polish's spelling hints, and the speech model's context.
 struct DictationContext {
     static let chars = 500
     var before = "", after = "", selection = "", title = "", app = ""
@@ -177,6 +177,12 @@ struct DictationContext {
     var hint: String {
         [title, String(before.suffix(300)), selection, String(after.prefix(300))].filter { !$0.isEmpty }.joined(separator: "\n")
     }
+    /// For the speech model's context (docs/design/dictation.md §Field context): the last 300 characters before the
+    /// cursor. The server gives them to a model that takes them (asr_models.json field_context_chars: Qwen3-ASR 1.7B,
+    /// Qwen3-ASR Flash), ahead of the text so far; never logged, never in its answer. Never from a password field
+    /// (DictationField.focused skips them, so `before` is empty).
+    static let asrChars = 300
+    var asrBefore: String { String(before.suffix(DictationContext.asrChars)).trimmingCharacters(in: .whitespacesAndNewlines) }
     /// for the history, only with keep_audio (the Lab, feedback reports)
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 

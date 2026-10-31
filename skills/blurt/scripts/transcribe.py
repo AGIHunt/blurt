@@ -1438,6 +1438,7 @@ class Qwen3Mlx(MlxBackend):
         self.context = args.prompt or ""
         self.base_context = self.context
         self.names: list[str] = []
+        self.prior = self.field = ""
         # The language the user mixes English into (docs/design/dictation.md §Code-switching): Qwen3-ASR writes its
         # whole answer in the language of the tag it decodes first, so a Chinese sentence full of English names that
         # it tags English comes back translated (和 → "and", Musk 的 → "Musk's"). None = leave the tag to the model.
@@ -1455,20 +1456,30 @@ class Qwen3Mlx(MlxBackend):
         §Streaming), so a name is spelled the same way in every piece."""
         self.prior = (text or "").strip()
 
+    def set_field(self, text: str) -> None:
+        """The text before the cursor in the field the dictation goes into (docs/design/dictation.md §Field context):
+        after the names and before the text so far, in the same system prompt — what the speech is likely about
+        (截了 when the field said 我刚截了; blurt, Typeless spelled as the conversation spells them). Never in the
+        language tag's prompt (that stays the text so far: tag_context)."""
+        self.field = (text or "").strip()
+
     def decode(self, x):
         prior = getattr(self, "prior", "")
-        ctx = (self.context + "\n" + prior).strip() if prior else self.context
+        # the field's text, then the text so far: both after the names
+        said = "\n".join(t for t in (getattr(self, "field", ""), prior) if t)
+        ctx = (self.context + "\n" + said).strip() if said else self.context
         text, lang = self._decode(x, ctx, prior)
         # The model now and then answers with the word list itself (seen on a noisy piece it couldn't make out:
-        # "Claude Code、Codex、blurt、…"): once more with only the text so far as context.
+        # "Claude Code、Codex、blurt、…"): once more with only the text so far (and the field's) as context.
         dump = False
-        if self.names and ctx != prior and dictation_vocab.context_dump(text, self.names):
-            text, lang = self._decode(x, prior, prior)
+        if self.names and ctx != said and dictation_vocab.context_dump(text, self.names):
+            text, lang = self._decode(x, said, prior)
             dump = True
-        # The text so far written out again as this piece's words (dict023): once more without it, and the shorter
-        # answer is the piece when it is clearly shorter — a speaker who really repeats themself gets the same text.
+        # The text so far (or the field's) written out again as this piece's words (dict023): once more without it,
+        # and the shorter answer is the piece when it is clearly shorter — a speaker who really repeats themself gets
+        # the same text.
         echo = False
-        if prior and echoes_prior(text, prior, len(x) / SR):
+        if said and echoes_prior(text, said, len(x) / SR):
             redo, lang2 = self._decode(x, self.context, prior)
             if redo.strip() and len(redo) < 0.8 * len(text):
                 text, lang, echo = redo, lang2, True
@@ -1788,10 +1799,20 @@ class DashScope:
         self.terms = [t["term"] for t in terms if t.get("term")]
         return bool(self.terms)
 
+    def set_field(self, text: str) -> None:
+        """The field's text before the cursor, after the words in the same context (Qwen3-ASR Flash reads background
+        text there as well as a word list: Model Studio's "context enhancement"; docs/design/dictation.md §Field
+        context)."""
+        self.field = (text or "").strip()
+
+    def context_text(self) -> str:
+        words = self.args.prompt or ", ".join(self.terms)
+        return "\n".join(t for t in (words, getattr(self, "field", "")) if t)
+
     def transcribe(self, x):
         audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
         payload = {"model": self.model, "stream": False,
-                   "messages": [{"role": "system", "content": [{"type": "text", "text": self.args.prompt or ", ".join(self.terms)}]},
+                   "messages": [{"role": "system", "content": [{"type": "text", "text": self.context_text()}]},
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
@@ -2372,6 +2393,17 @@ def cmd_run(a):
 # words of the list; `echoes_prior` is the meaning-free net behind that.
 PRIOR_CHARS = 80
 PRIOR_TERMS = 32
+# The field's text before the cursor goes to a model that takes it (asr_models.json field_context_chars: Qwen3-ASR
+# 1.7B, the cloud Qwen3-ASR Flash) as context, ahead of the text so far: on 43 of the founder's takes the 1.7B went from
+# 3.04 to 2.63 % on whole takes (docs/design/dictation.md §Field context). The app sends at most this many.
+FIELD_CHARS = 300
+
+
+def field_context_chars(model_id: str | None) -> int:
+    """How much of the field's text before the cursor this model hears as context (0: none — the 0.6B was mixed)."""
+    m = entry(model_id) or {}
+    n = m.get("field_context_chars")
+    return min(FIELD_CHARS, int(n)) if isinstance(n, (int, float)) and n > 0 else 0
 # More than this many syllables a second is no one's speech (normal speech is 4–7 in every language measured).
 MAX_SYLLABLES_PER_SECOND = 10
 # A run this long (characters, spaces and punctuation aside) shared with the text so far is worth one more look.
@@ -2449,7 +2481,7 @@ class NoteEngine:
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
              purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None,
-             app: str | None = None) -> dict:
+             app: str | None = None, before: str | None = None) -> dict:
         """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
         them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
         `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
@@ -2459,6 +2491,9 @@ class NoteEngine:
         app: the name of the app the text goes into ("飞书"), named to the model before the words — what the speech is
         likely about where two words sound the same (飞书会话 vs 绘画: 4 → 8 of 12 synthetic takes right). Only for a
         backend that takes words (Qwen3-ASR's context); nothing else is said about the app.
+        before: the field's text before the cursor (the app sends it only with "Use the text around the cursor" on, never
+        from a password field). Heard as context only by a model whose registry entry has field_context_chars (its
+        last that many characters, ahead of the text so far); never logged or answered back.
         stop: an interim request (the live words of dictation and of notes) — a callable that says another request is
         waiting; the decode then raises Interrupted. An interruptible backend looks at it between steps; a quick one
         (`quick_decode`: SenseVoice, one ~0.1 s pass) is asked once before and then decodes whole — a waiting final
@@ -2468,10 +2503,10 @@ class NoteEngine:
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
             model_id = dictation_models()["selected"]
-        before = self.backend
+        was = self.backend
         t_load = time.perf_counter()
         self.load(language, model_id)
-        load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not before else 0
+        load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not was else 0
         if stop is not None and not getattr(self.backend, "interruptible", False):
             if not getattr(self.backend, "quick_decode", False):
                 raise Fail(f"{self.name} can't stop a decode halfway: no interim requests", "interim_unsupported")
@@ -2495,6 +2530,10 @@ class NoteEngine:
             biased = self.backend.set_vocab(use)
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
+        field = ""
+        if before and hasattr(self.backend, "set_field") and (n := field_context_chars(self.model_id)):
+            field = prior_tail(before, n)
+            self.backend.set_field(field)
         retried = False
         if stop is not None:
             self.backend.stop_check = stop
@@ -2503,8 +2542,11 @@ class NoteEngine:
             # Qwen3-ASR now and then answers nothing for a short piece that follows a whole sentence of context (a
             # dictation's last words after a long pause: measured 2–5 of 6 takes of one synthetic clip, never when the
             # same request was replayed). The VAD heard speech, so once more without the context: ~0.13 s, only then.
-            if prior and _speech >= 0.4 and not note_text(results)[0].strip() and hasattr(self.backend, "set_prior"):
+            if (prior or field) and _speech >= 0.4 and not note_text(results)[0].strip() \
+                    and hasattr(self.backend, "set_prior"):
                 self.backend.set_prior("")
+                if field:
+                    self.backend.set_field("")
                 results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
                 retried = True
         finally:
@@ -2514,11 +2556,15 @@ class NoteEngine:
                 self.backend.set_vocab([])  # a voice note after this gets no dictation words
             if prior and hasattr(self.backend, "set_prior"):
                 self.backend.set_prior("")
+            if field:
+                self.backend.set_field("")
         text, lang = note_text(results)
         out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
         if retried:
             out["retried"] = True
+        if field:
+            out["field_context"] = len(field)      # how much of it was heard (never the text)
         tag = getattr(self.backend, "last", None)
         if tag:
             out["tag"] = tag      # the language tag chosen and the model's English / preferred probabilities
@@ -2674,7 +2720,7 @@ def cmd_serve(a):
                         with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
                             resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
                                             req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop,
-                                            app=req.get("app"))
+                                            app=req.get("app"), before=req.get("before"))
                         if interim:
                             resp["interim"] = True
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)

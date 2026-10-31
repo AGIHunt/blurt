@@ -381,10 +381,11 @@ the words, the text so far as prior) on 16 of the user's own takes with misheard
 | windows, ≥ 15 s | 7 | 11 | 0.25 / 0.76 s |
 | windows, ≥ 20 s | 6 | 11 | 0.33 / 0.76 s |
 
-So `DictationStream` hears the pieces **again in windows** while the user still talks (`DictationStitch.rehearGroups`,
-`rehearWindow` = 10 s; `record.dictation.rehear`, `rehear_window_s`):
+So `DictationStream` hears the pieces **again in windows** while the user still talks (`DictationStitch.rehearGroups`;
+the window's length is the speech model's — §Windows by model —, `DictationStitch.rehearWindow` = 10 s for every model
+without one; `record.dictation.rehear`, and `rehear_window_s` overrides the model's):
 
-- **A window closes after a piece** once it spans 10 s and the cut after the piece was a pause — never at a hard cut,
+- **A window closes after a piece** once it spans the window (10 s by default) and the cut after the piece was a pause — never at a hard cut,
   so windows never share audio: no overlap to drop, nothing deduplicated. Its audio (the take's own samples, from
   its first piece's start to its last piece's end) goes to the warm speech server once, with the windows' text so far
   as prior (the same request a piece makes).
@@ -403,7 +404,34 @@ So `DictationStream` hears the pieces **again in windows** while the user still 
 
 End to end in the Lab (22 of the user's takes, Qwen3-ASR 1.7B + Gemma 4 E2B, `mode=windows`): misheard words left 17 →
 11 of 22 with 10 s windows (10 with 15 s), the work after key-up 266 → 376 ms (median; 601 ms with 15 s windows), so
-10 s it is. Voice notes hear their pieces again the same way (`VoiceNoteStream`, `record.voice.rehear`): the card gets the windows' text, the panel the pieces' (`voice_rehear`).
+10 s it is. Voice notes hear their pieces again the same way (`VoiceNoteStream`, `record.voice.rehear`, 10 s windows
+whatever the model): the card gets the windows' text, the panel the pieces' (`voice_rehear`).
+
+#### Windows by model (2026-10-31)
+
+On 43 of the founder's real takes (18 min, 2,961 units, hand-written references; dictation-quality-2026-10-31.md) the
+10 s windows still dropped words at the seams (a short piece that heard nothing: 备忘录, 这样的风格。然后) and spelled names
+worse than the whole take (Option M → OpenM). Longer windows recover most of it, and how much depends on the model:
+
+| Speech model (recognizer output, pooled error) | 10 s | 20 s | 30 s | whole take | at key-up, median: 10 → shipped |
+|---|---:|---:|---:|---:|---:|
+| Qwen3-ASR 1.7B | 3.65 % | 3.55 % | **3.21 %** | 3.04 % | 272 → 376 ms (+104; +294 on takes ≥ 20 s) |
+| Qwen3-ASR 0.6B | 4.76 % | **3.82 %** | 3.78 % | 3.71 % | 215 → 254 ms (+39; +84 on takes ≥ 20 s) |
+
+So the window is a property of the model in the registry, `asr_models.json` `rehear_window_s`: **30 s for the 1.7B, 20 s
+for the 0.6B** (30 s buys the 0.6B 0.04 points for twice the extra wait). Every other model keeps 10 s, the length it
+was measured with: macOS Speech (streamed 8.44 % vs 7.60 % whole, not measured with longer windows), SenseVoice,
+Whisper (its own 30 s window; its dictation path is being fixed separately), Qwen3-ASR on the CPU (rtf 0.25: a 30 s
+window would be ~7 s at key-up); a cloud service isn't heard again at all (each pass is billed). The app reads it for
+the selected model (`ModelCatalog.rehearWindow`, `Dictation.rehearWindow`); the Lab for the model it replays
+(`dictation_stitch.rehear_window`, the same file). `record.dictation.rehear_window_s`, when set, wins over the model's
+(never under 4 s). In the Lab's own numbers on the 34 saved cases (per-case WER, polish on): 1.7B 9.47 → 8.72 %, 0.6B
+11.66 → 10.80 %.
+
+Re-measured with the shipped code (2026-10-31, the study's harness: each take's own cuts through `dictation_lab.run_case`,
+scratch servers, the 43 references): 1.7B 3.21 %, 0.6B 3.82 % — the prototype's numbers exactly; with
+`rehear_window_s` = 10 the same code gives the old 3.65 / 4.76 %. (The latencies above are the study's; the re-runs ran
+four at a time and their timings aren't comparable.)
 
 ### Punctuation at the seams
 
@@ -1604,6 +1632,42 @@ stores only `context_used`; the text itself only with `keep_audio` (on unless tu
   0.3 s. Without it the text around the cursor was empty, so a take after "。" started with "。" again and text already
   in the box was typed a second time.
 - A streamed dictation's pieces get the polished text so far appended to "before the cursor".
+- The speech model gets the last 300 characters before the cursor too (§Field context), and is read for it with
+  polish off as well (before 2026-10-31 the field was read only when polish was on).
+
+### Field context (2026-10-31)
+
+The speech model used to see the field's text only as a ranking for the word list (`hint`: which custom words appear
+in it go first). Given the text itself as context, a model that takes free text hears what the speech is about:
+
+| On 43 of the founder's takes (recognizer output) | without | with the last 300 characters | |
+|---|---:|---:|---|
+| Qwen3-ASR 1.7B, whole take | 3.04 % | **2.63 %** (shipped code: 2.67 %) | 截了 (the field said 我刚截了), blurt, Typeless, macOS Speech |
+| Qwen3-ASR 1.7B, 30 s windows | 3.21 % | **2.90 %** (shipped: 2.90 %) | terms 82 → 83 % |
+| … after local polish (Gemma 4 E2B, window by window) | — | 3.07 % (shipped: 2.97 %) | against 5.17 % for the 0.6B, 10 s windows and polish as shipped before |
+| Qwen3-ASR 0.6B, whole take | 3.71 % | 3.58 % (shipped: 3.55 %) | |
+| Qwen3-ASR 0.6B, 20 s windows | 3.82 % | 4.09 % (shipped: 4.09 %) | worse: not for the 0.6B |
+
+- **Which models**: `asr_models.json` `field_context_chars` — 300 for Qwen3-ASR 1.7B and for the cloud Qwen3-ASR Flash
+  (Model Studio's "context enhancement": background text and words in the same system message; not measured here, the
+  cloud service failed on the day of the study), none for the 0.6B (mixed: better on whole takes, worse in the 20 s
+  windows the app uses), macOS Speech (contextual strings only), SenseVoice (no context), Whisper (its prompt with the
+  words made it worse: 6.86 → 7.43 %), the OpenAI-compatible service.
+- **The request**: the app sends `before` (`DictationContext.asrBefore`: the last 300 characters before the cursor)
+  with every dictation request — pieces, windows, interim requests, the whole-recording safety path — whenever
+  `record.dictation.context` is on, the field could be read, and it isn't a password field (`DictationField` skips
+  `AXSecureTextField` and secure input: `before` is then empty). `transcribe.py` (`NoteEngine.note`) gives its last
+  `field_context_chars` (`prior_tail`: not starting inside a Latin word) to a backend with `set_field`; for any other
+  model it is dropped.
+- **Where it goes** (Qwen3-ASR on MLX): the system prompt is the words, then the field's text, then the text so far
+  (80 characters, as before). The language tag is still read from the text so far alone (`tag_context`), so a Chinese
+  field can't push an English sentence's tag. The nets stay: an answer that echoes the field's text or the text so far
+  (`echoes_prior`) is decoded once more with the words only; an empty answer for heard speech once more without
+  either; a word-list dump once more without the words.
+- **Privacy**: the server never logs it and never answers it back (only `field_context`: how many characters were
+  heard); the history keeps the field's text only with `keep_audio`, as before. Cost: a few dozen prefill tokens, no
+  measurable latency.
+- **The Lab** replays it: `context=on` (the default) sends a case's kept `before` (`dictation_lab.asr_before`).
 
 ## Auto-learn
 
@@ -2027,7 +2091,7 @@ never touched.
 | `structure_timeout_ms` | `10000`: Structured's one pass over the whole take (the generation only) |
 | `load_budget_ms` | `12000`: how long a model coming up (server start + load) may take |
 | `streaming` | `true`: transcribe and polish pieces while talking |
-| `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` (10) |
+| `rehear` | `true`: hear the pieces again in windows while talking (§Hearing again); `rehear_window_s` unset = the speech model's (`asr_models.json`: 1.7B 30, 0.6B 20, others 10) |
 | `cloud_polish` | ≤ v1.0.7 (kept as it was, read once by the migration to `record.cloud`). `{"on", "provider": "deepseek"\|"dashscope"\|"openai"\|"anthropic", "base_url", "model", "translate_model", "vision_model"}` |
 | `cloud_hint_shown` | `true` once the one cloud-polish reminder was seen (§Cloud polish); an older `cloud_hint` = false counts the same |
 | `live_partial` | automatic (unset: on from 16 GB, off on the light / minimal tiers) \| `true` \| `false`: the live text also shows the piece still being said (§Live text; needs `record.live_text`) |
@@ -2039,7 +2103,7 @@ never touched.
 | `no_interim` | unset: the speech models that answered a live-text request with `interim_unsupported` (Whisper); their live text comes from macOS's recogniser (`AppleSpeech.forLiveText`), the final text still from them |
 | `keep_audio` | `true` since v1.0.3 (`false` turns it off; also keeps the context in the history, for the Lab and feedback reports: feedback.md) |
 | `asr_model` | automatic (Qwen3-ASR 1.7B MLX on pro Macs, 0.6B on standard ones, when installed — a pro Mac falls back to an installed 0.6B —, else the voice-note model) |
-| `context` | `true`: read the text around the cursor for polish |
+| `context` | `true`: read the text around the cursor for polish and the speech model (§Context, §Field context) |
 | `learn` | `true`: watch the field after typing and learn the user's fixes |
 | `double_tap_send` | `true`: a double tap of the key presses Return (after a dictation: once it is pasted) |
 | `lab_keep_next` | unset: the Dictation Lab's "keep the audio of my next dictations" — keep the audio of this many more (§Lab) |

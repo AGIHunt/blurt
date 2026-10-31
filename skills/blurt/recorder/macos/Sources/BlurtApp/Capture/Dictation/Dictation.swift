@@ -234,9 +234,13 @@ final class Dictation {
     static var loadBudget: Double { max(1, (settings["load_budget_ms"] as? Double ?? 12000) / 1000) }
     /// transcribe and polish while talking (DictationStream); off = everything after key-up, the old way
     static var streaming: Bool { settings["streaming"] as? Bool ?? true }
-    /// hear the pieces again in ~10 s windows while talking (docs/design/dictation.md §Hearing again)
+    /// hear the pieces again in windows while talking (docs/design/dictation.md §Hearing again)
     static var rehear: Bool { settings["rehear"] as? Bool ?? true }
-    static var rehearWindow: Double { max(4, settings["rehear_window_s"] as? Double ?? DictationStitch.rehearWindow) }
+    /// the window's length: record.dictation.rehear_window_s when set, else the selected speech model's
+    /// (asr_models.json rehear_window_s: Qwen3-ASR 1.7B 30 s, 0.6B 20 s), else 10 s
+    static var rehearWindow: Double {
+        max(4, settings["rehear_window_s"] as? Double ?? ModelCatalog.rehearWindow(shared.speechModels?.selected))
+    }
     /// the live text also shows the piece still being said (interim decodes about once a second): unset = by the
     /// machine (not on the light / minimal tiers, < 16 GB), true / false
     static var livePartial: Bool {
@@ -1191,10 +1195,11 @@ final class Dictation {
     }
 
     /// The text around the cursor, read while the user talks (Accessibility calls can take a moment). Test builds read
-    /// the test pad on the main thread; nothing else of this app is read.
+    /// the test pad on the main thread; nothing else of this app is read. With polish off too: the speech model hears
+    /// the text before the cursor (§Field context).
     private func captureContext() {
         context = nil
-        guard Dictation.contextOn, Dictation.polishOn else { return }
+        guard Dictation.contextOn else { return }
         let g = generation
         let done = { (c: DictationContext?) in
             guard g == self.generation else { return }
@@ -1406,7 +1411,7 @@ final class Dictation {
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish
         let take = DictationTake(id: entryID, front: front, frontKey: frontKey, started: startedAt, duration: duration,
-                                 wav: url, context: polish ? context : nil, polishTried: polish, keyUp: keyUp,
+                                 wav: url, context: context, polishTried: polish, keyUp: keyUp,      // the speech model's too
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
@@ -1423,20 +1428,24 @@ final class Dictation {
     /// what the model wrote (`asr_text`, when present, the same). Blocking: off the main thread.
     /// `hint`: the target window's title and the text around the cursor (DictationContext.hint) — words seen there go
     /// to the model first (docs/design/dictation.md §Code-switching). `app`: the front app's name, named to the model
-    /// before the words (what two words that sound the same are likely about: 飞书 → 会话, not 绘画).
+    /// before the words (what two words that sound the same are likely about: 飞书 → 会话, not 绘画). `before`: the
+    /// field's last 300 characters before the cursor (DictationContext.asrBefore; only with the context setting on,
+    /// never from a password field) — a model whose catalogue entry has field_context_chars hears it as context
+    /// (docs/design/dictation.md §Field context); the server neither logs it nor answers it back.
     /// Always an answer: `ok` true with the text, or false with `code` (model_missing, timeout, …) and `error` — a
     /// failure is never mistaken for silence. Nothing is ever downloaded for a dictation (`no_download`,
     /// `--no-download`). The server gets `DictationASRFailure.serverTimeout` for this much audio, not a flat minute;
     /// a server that doesn't answer in that time is given up on (ended when it is ours) and the CLI is used — which
     /// no longer asks that same server first (`--no-server`).
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
-                           hint: String = "", app: String = "", audioSeconds: Double) -> [String: Any] {
+                           hint: String = "", app: String = "", before: String = "", audioSeconds: Double) -> [String: Any] {
         if AppleSpeech.forDictation { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation") }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
                                   "no_download": true]
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
         if !app.isEmpty { req["app"] = app }
+        if !before.isEmpty { req["before"] = before }
         let until = Date().addingTimeInterval(budget)
         while !WarmServer.running("asr-serve") && Date() < until && VoiceInput.serverStarting { usleep(50_000) }
         var restarted = false
@@ -1526,7 +1535,7 @@ final class Dictation {
     /// "no_server", tried again later), `interim` so the server stops it as soon as a final piece (or anything) waits.
     /// Blocking: off the main thread.
     static func transcribeInterim(_ wav: URL, vocab: [[String: Any]], language: String, prior: String,
-                                  hint: String, app: String = "") -> [String: Any]? {
+                                  hint: String, app: String = "", before: String = "") -> [String: Any]? {
         if AppleSpeech.forLiveText { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation_interim") }
         guard WarmServer.running("asr-serve") else { return ["ok": false, "code": "no_server"] }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation",
@@ -1534,6 +1543,7 @@ final class Dictation {
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
         if !app.isEmpty { req["app"] = app }
+        if !before.isEmpty { req["before"] = before }
         return WarmServer.call("asr-serve", req, timeout: 15)
     }
 

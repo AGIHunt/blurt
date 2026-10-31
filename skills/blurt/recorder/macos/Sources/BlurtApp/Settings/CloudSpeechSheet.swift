@@ -113,12 +113,14 @@ enum CloudSpeech {
         if let c = cached { return c }
         var env: [String: String] = [:]
         let services = CloudStore.setup.services
-        if let k = Key.read(openAIModel) {
+        // a key no request can carry (stray "ç" from ⌥C, a space) is never sent: the other key, if any, is
+        func usable(_ k: String?) -> String? { k.flatMap { CloudKeyCheck.problem($0) == nil ? $0 : nil } }
+        if let k = usable(Key.read(openAIModel)) {
             let s = setup
             env["BLURT_ASR_API_KEY"] = k
             if !s.effectiveBaseURL.isEmpty { env["BLURT_ASR_BASE_URL"] = s.effectiveBaseURL }
             if !s.effectiveModel.isEmpty { env["BLURT_ASR_MODEL"] = s.effectiveModel }
-        } else if let o = services.first(where: { $0.preset == "openai" }), let k = CloudStore.key(o) {
+        } else if let o = services.first(where: { $0.preset == "openai" }), let k = usable(CloudStore.key(o)) {
             // OpenAI connected under Settings → Models → Cloud services: its key recognises speech too (its own
             // address; the model picked here for OpenAI, else whisper-1 for its timestamps)
             let s = setup
@@ -127,10 +129,12 @@ enum CloudSpeech {
             env["BLURT_ASR_MODEL"] = s.service == .openai && !s.model.trimmingCharacters(in: .whitespaces).isEmpty
                 ? s.effectiveModel : Service.openai.defaultModel
         }
-        // DashScope: its own key, else Model Studio's under Cloud services (one key: first-minute-speech.md §4.3), at
-        // that service's address (Singapore for an international account)
+        // DashScope: Model Studio's key under Cloud services (one key: first-minute-speech.md §4.3), else the key set
+        // for speech alone, at that service's address (Singapore for an international account). Cloud services first:
+        // the key the user last pasted and tested there must be the one dictation sends (2026-10-31: an older
+        // speech-only key with stray characters won, so Test passed and every take failed)
         let ms = services.first { $0.preset == "dashscope" }
-        if let k = Key.read(dashScopeModel) ?? ms.flatMap({ CloudStore.Key.read($0.id) }) {
+        if let k = usable(ms.flatMap({ CloudStore.Key.read($0.id) })) ?? usable(Key.read(dashScopeModel)) {
             env["DASHSCOPE_API_KEY"] = k
             if !dashScopeChoice.isEmpty { env["DASHSCOPE_ASR_MODEL"] = dashScopeChoice }
             if let m = ms, m.effectiveBaseURL != CloudPreset.preset("dashscope")?.endpoint(.china)?.baseURL {
@@ -141,7 +145,18 @@ enum CloudSpeech {
         return env
     }
 
-    static func invalidate() { lock.lock(); cached = nil; lock.unlock() }
+    /// The keys changed (saved, removed, a service connected): read again next time. A speech server Blurt started
+    /// already holds the old ones in its environment — when what it would get now differs, it is ended and warmed
+    /// again, so the next take sends the key the user just saved (2026-10-31: Test passed on the new key while the
+    /// server kept sending the old one).
+    static func invalidate() {
+        lock.lock(); let before = cached; cached = nil; lock.unlock()
+        guard let before else { return }
+        DispatchQueue.global(qos: .utility).async {
+            guard environment() != before else { return }
+            DispatchQueue.main.async { VoiceInput.restartForNewKeys() }
+        }
+    }
 
     // MARK: Test (CloudSpeechCheck)
 

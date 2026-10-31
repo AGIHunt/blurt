@@ -49,6 +49,19 @@ final class ModelCatalogTests: XCTestCase {
     static let scripts = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         .appendingPathComponent("../../../../scripts").standardizedFileURL
 
+    /// Hearing again in windows of the model's length (docs/design/dictation.md §Hearing again): the shipped
+    /// catalogue's measured values, 10 s for every other model; tests/test_transcribe_field_context.py checks the
+    /// Lab's port (dictation_stitch.rehear_window) against the same file.
+    func testRehearWindowIsTheModelsOwn() {
+        let d = Self.scripts
+        XCTAssertEqual(ModelCatalog.rehearWindow("qwen3-asr-1.7b-mlx", dir: d), 30)
+        XCTAssertEqual(ModelCatalog.rehearWindow("qwen3-asr-0.6b-mlx", dir: d), 20)
+        for id in ["apple-speech", "sensevoice-small", "whisper-large-v3-turbo-mlx", "qwen3-asr-flash", "no-such-model"] {
+            XCTAssertEqual(ModelCatalog.rehearWindow(id, dir: d), DictationStitch.rehearWindow, id)
+        }
+        XCTAssertEqual(ModelCatalog.rehearWindow(nil, dir: d), DictationStitch.rehearWindow)
+    }
+
     func testNamesComeFromTheShippedCatalogues() {
         let d = Self.scripts
         XCTAssertEqual(ModelCatalog.name("qwen3-asr-1.7b-mlx", dir: d), "Qwen3-ASR 1.7B")      // no framework tag in a name people read

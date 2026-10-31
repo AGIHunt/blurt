@@ -380,6 +380,16 @@ final class VoiceInput {
         return true
     }
 
+    /// Cloud keys changed (CloudSpeech.invalidate): the server Blurt started has the old ones in its environment, so it
+    /// goes and a fresh one is warmed. Main thread.
+    static func restartForNewKeys() {
+        guard let s = server, s.isRunning else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard endUnresponsiveServer(why: "keys_changed") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { warmSpeechModel(dictation: true) }
+        }
+    }
+
     /// `body` on the main thread (`server` is the main thread's), from any thread.
     static func onMain<T>(_ body: () -> T) -> T { Thread.isMainThread ? body() : DispatchQueue.main.sync(execute: body) }
 

@@ -43,8 +43,9 @@ configurations and run them all again after a change (a regression run). Everyth
 
 SPEC: "current" (the app's settings) or comma-separated overrides on it: asr=MODEL_ID, polish=on|off|MODEL_ID,
 vocab=on|off, context=on|off, cloud=on|off (polish by the cloud model of record.dictation.cloud_polish, the key from
-BLURT_POLISH_API_KEY — docs/design/dictation.md §Cloud polish; off by default), mode=pieces|windows|whole, rehear=on|off (pieces / windows: the pieces heard again in ~10 s
-windows, as the app does since v1.0.4 — docs/design/dictation.md §Hearing again; default record.dictation.rehear, on), language=auto|zh|en…, style=verbatim|light|structured|auto (the
+BLURT_POLISH_API_KEY — docs/design/dictation.md §Cloud polish; off by default), mode=pieces|windows|whole, rehear=on|off (pieces / windows: the pieces heard again in
+windows of the model's length — asr_models.json rehear_window_s, 10 s by default — as the app does since v1.0.4;
+docs/design/dictation.md §Hearing again; default record.dictation.rehear, on), language=auto|zh|en…, style=verbatim|light|structured|auto (the
 dictation styles, docs/design/dictation-styles.md: Structured and Auto run polish.py's structuring pass on Light's
 stitched text, as the app does at key-up, then the app category's variant of light from dictation_styles.py), category=chat|code|mail|notes|other (default: the case's app)
 e.g. --config asr=qwen3-asr-0.6b-mlx,polish=off   rerun ID --config style=light --config style=structured
@@ -52,7 +53,7 @@ Every run checks that light (the default) never typed a list: a row whose output
 truth is `listed`, counted in overall.listed, and --fail-on-regression fails on it too.
 
 The pipeline is the app's own entry points: the warm servers of transcribe.py (`note`, purpose dictation, the custom
-words, `prior` = the text so far) and polish.py (`polish`: the guard and the repair), started here when they are not
+words, `prior` = the text so far, `before` = the field's text before the cursor with context=on) and polish.py (`polish`: the guard and the repair), started here when they are not
 running. "pieces" replays the cuts the take made (each piece transcribed with the text so far as context, joined, the
 seam's punctuation dropped after a short pause), then polishes the joined text once; "windows" replays the cuts and
 polishes them the way the app does while the user talks (DictationStream's sliding windows, ported in
@@ -639,9 +640,11 @@ class Servers:
                 time.sleep(0.3)
         return False
 
-    def asr(self, wav: Path, model: str | None, vocab: bool, prior: str, language: str | None, hint: str = "") -> dict:
+    def asr(self, wav: Path, model: str | None, vocab: bool, prior: str, language: str | None, hint: str = "",
+            before: str = "") -> dict:
         """The app's request: the file's words (the server ranks them as it ranks the app's payload — the same terms
-        in the same order), the text so far, and the window title / text around the cursor when the case kept them."""
+        in the same order), the text so far, and the window title / text around the cursor when the case kept them
+        (`before`: the field's text before the cursor, which a model that takes it hears as context)."""
         if not self.ensure("asr-serve", "transcribe.py", ["serve", "--purpose", "dictation", "--idle", "300", "--exit-after", "900"]):
             raise Fail("the speech model server did not start", "asr_unavailable")
         req = {"cmd": "note", "wav": str(wav), "language": language or "auto", "purpose": "dictation",
@@ -652,6 +655,8 @@ class Servers:
             req["prior"] = prior
         if hint:
             req["hint"] = hint
+        if before:
+            req["before"] = before
         r = self.call("asr-serve", req, 180)
         for _ in range(2):
             # a fresh server re-runs itself under `uv run --with <the backend's package>` on its first request: that
@@ -768,6 +773,15 @@ def asr_hint(ctx: dict | None) -> str:
     return "\n".join(p for p in parts if p)
 
 
+FIELD_CHARS = 300
+
+
+def asr_before(ctx: dict | None) -> str:
+    """The field's text before the cursor as the app sends it to the speech model (DictationContext.asrBefore: the last
+    FIELD_CHARS characters); the server uses it only for a model that takes it (asr_models.json field_context_chars)."""
+    return ((ctx or {}).get("before") or "")[-FIELD_CHARS:].strip()
+
+
 def tag_summary(tags: list[dict]) -> dict:
     """The pieces' language tags → the closest call: its margin to the threshold and whether it is fragile (a tag
     that close could flip with a slightly different take — the v0.9 translated sentence sat 0.0006 over the line: +0.1
@@ -816,6 +830,8 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
     model = language = None
     terms: list[str] = []
     hint = asr_hint(context_payload(c)) if cfg.get("context") else ""
+    before = asr_before(context_payload(c)) if cfg.get("context") else ""
+    extra = {**({"hint": hint} if hint else {}), **({"before": before} if before else {})}
     with tempfile.TemporaryDirectory(prefix="blurt-lab-") as td:
         for i, (a, b, pause, hard) in enumerate(cuts):
             p = Path(td) / f"p{i}.wav"
@@ -823,7 +839,7 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
             prior = join_pieces([q["raw"] for q in pieces], [q["pause_after"] for q in pieces])[-200:] if pieces else ""
             t1 = time.perf_counter()
             r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"),
-                            **({"hint": hint} if hint else {}))
+                            **extra)
             ms = int((time.perf_counter() - t1) * 1000)
             asr_ms += ms
             load_ms += int(r.get("load_ms") or 0)
@@ -834,11 +850,14 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
                            "hard": hard, "a": a, "b": b,
                            "raw": (r.get("text") or "").strip(), "asr_text": (r.get("asr_text") or r.get("text") or "").strip(),
                            "asr_ms": ms, "tag": r.get("tag")})
-        # hearing again (DictationStream: the pieces once more in ~10 s windows, the windows' text so far as context);
+        # hearing again (DictationStream: the pieces once more in windows of the model's length, the windows' text so far
+        # as context);
         # polish then works window by window, as in the app
         windows: list[dict] = []
         if cfg.get("rehear") and len(pieces) > 1:
-            for g in stitch.rehear_groups(pieces, float(settings().get("rehear_window_s") or stitch.REHEAR_WINDOW)):
+            # the window of the model that heard the pieces (asr_models.json rehear_window_s), as the app picks it
+            window = stitch.rehear_window(cfg.get("asr") or model, settings().get("rehear_window_s"))
+            for g in stitch.rehear_groups(pieces, window):
                 ms_ = [pieces[i] for i in g]
                 said = join_pieces([q["raw"] for q in ms_], [q["pause_after"] for q in ms_])
                 said_heard = join_pieces([q["asr_text"] for q in ms_], [q["pause_after"] for q in ms_])
@@ -851,7 +870,7 @@ def run_case(c: dict, cfg: dict, backend, wav: Path | None = None) -> dict:
                     t1 = time.perf_counter()
                     try:
                         r = backend.asr(p, cfg.get("asr"), bool(cfg.get("vocab")), prior, cfg.get("language"),
-                                        **({"hint": hint} if hint else {}))
+                                        **extra)
                         if (r.get("text") or "").strip():
                             w.update(raw=r["text"].strip(), asr_text=(r.get("asr_text") or r["text"]).strip(), tag=r.get("tag"))
                     except Fail:

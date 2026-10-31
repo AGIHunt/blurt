@@ -5,13 +5,15 @@
 // (BlurtCore's DictationSegmenter: ≥ 0.5 s of quiet, pieces of ≥ 3 s, at most 20 s), and each piece is
 //   1. transcribed as soon as it is complete (the warm speech server; the text so far goes along as context, so a name
 //      is spelled the same way all through — transcribe.py keeps only its last 80 characters and decodes a piece
-//      that echoes it once more without it), on one serial queue;
+//      that echoes it once more without it; with "Use the text around the cursor" on, the field's last 300 characters
+//      before the cursor go too, which a model that takes them hears ahead of it: §Field context), on one serial queue;
 //   2. polished right after, on another (the polished text so far goes along as the turn before, so polish sees what
 //      came before without being allowed to change it).
 // At key-up only the last piece is left: its transcription and polish are all the user waits for.
 //
 // Hearing again (docs/design/dictation.md §Hearing again): a piece is 3–8 s of a sentence, and the speech model hears
-// it without the rest (德宝 for 豆包, 巨幅 for GIF). So the pieces are heard once more in windows of ~10 s
+// it without the rest (德宝 for 豆包, 巨幅 for GIF). So the pieces are heard once more in windows of the speech model's
+// length (ModelCatalog.rehearWindow: Qwen3-ASR 1.7B 30 s, 0.6B 20 s, others 10 s)
 // (DictationStitch.rehearGroups: a window closes at a pause cut, never at a hard one — windows don't share audio), with
 // the windows' text so far as context, while the user still talks; polish then works window by window. The pieces'
 // own transcripts are the live text. At key-up the open window (the pieces since the last one, the last piece in it
@@ -358,6 +360,7 @@ final class DictationStream {
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          before: lock.locked { context }?.asrBefore ?? "",
                                           audioSeconds: Double(samples.count) / NoteVoice.rate)
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += answer["load_ms"] as? Int ?? 0
@@ -408,6 +411,7 @@ final class DictationStream {
         let t0 = CACurrentMediaTime()
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          before: lock.locked { context }?.asrBefore ?? "",
                                           audioSeconds: Double(samples.count) / NoteVoice.rate)
         w.asrSpan = (t0, CACurrentMediaTime())
         w.loadMS += answer["load_ms"] as? Int ?? 0
@@ -515,7 +519,9 @@ final class DictationStream {
         let samples = Array(audio[t.start..<t.end])
         let issued = CACurrentMediaTime()
         // the text so far as context, as a final piece gets it (names spelled the same way)
-        let (done, gaps, hint, app) = lock.locked { (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "") }
+        let (done, gaps, hint, app, field) = lock.locked {
+            (pieces.prefix { $0.asrDone }.map(\.raw), pauses, context?.hint ?? "", context?.app ?? "", context?.asrBefore ?? "")
+        }
         let prior = String(DictationStitch.joinPieces(done, pauses: gaps).suffix(200))
         let url = liveWav, vocab = opt.vocab, language = opt.language
         interimSent += 1
@@ -523,7 +529,8 @@ final class DictationStream {
             guard let self = self, !self.cancelled else { return }
             DictationStream.writeWav(samples, to: url)
             let t0 = CACurrentMediaTime()
-            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app)
+            let r = Dictation.transcribeInterim(url, vocab: vocab, language: language, prior: prior, hint: hint, app: app,
+                                                before: field)
             let secs = CACurrentMediaTime() - t0
             try? FileManager.default.removeItem(at: url)
             DispatchQueue.main.async { self.interimDone(t, r, seconds: secs, arrived: issued) }
@@ -802,6 +809,7 @@ final class DictationStream {
         defer { lock.locked { hearingWhole = false } }
         let answer = Dictation.transcribe(wholeWav, vocab: opt.vocab, language: opt.language, prior: "", budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
+                                          before: lock.locked { context }?.asrBefore ?? "",
                                           audioSeconds: DictationStream.seconds(of: wholeWav))
         guard answer["ok"] as? Bool == true else {
             emit(["event": "dictation_asr_failed", "id": id, "code": answer["code"] ?? "error"])

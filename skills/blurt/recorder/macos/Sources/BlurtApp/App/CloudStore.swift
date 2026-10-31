@@ -99,7 +99,11 @@ enum CloudStore {
     static func connect(_ svc: CloudService, key: String?) {
         var s = setup
         if let i = s.services.firstIndex(where: { $0.id == svc.id }) { s.services[i] = svc } else { s.services.append(svc) }
-        if let k = key?.trimmingCharacters(in: .whitespacesAndNewlines), !k.isEmpty { Key.write(svc.id, k) }
+        if let k = key?.trimmingCharacters(in: .whitespacesAndNewlines), !k.isEmpty {
+            Key.write(svc.id, k)
+            // Model Studio's key is cloud speech's too: an older key set for speech alone goes, so one key is in use
+            if svc.preset == "dashscope" { CloudSpeech.Key.write(CloudSpeech.dashScopeModel, "") }
+        }
         lock.lock(); keyed[svc.id] = nil; lock.unlock()
         save(s)
         CloudSpeech.invalidate()        // a Model Studio or OpenAI key recognises speech too

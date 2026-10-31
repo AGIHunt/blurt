@@ -66,7 +66,7 @@ final class LabTake {
         opt.polish = Dictation.polishOn && (Dictation.shared.polishModel != nil || opt.cloud != nil)
         options = opt
         let s = DictationStream(id: "lab-\(id)", dir: wav.deletingLastPathComponent(), wholeWav: wav, options: opt)
-        s.setContext(opt.polish ? context : nil)
+        s.setContext(context)      // polish's hints and the speech model's context (contextForPolish: only with the setting on)
         v.onSamples = { [weak s] x in s?.append(x) }
         voice = v
         stream = s

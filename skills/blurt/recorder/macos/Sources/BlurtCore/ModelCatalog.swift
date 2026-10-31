@@ -16,6 +16,9 @@ public enum ModelCatalog {
         public var polish: Bool
         /// the speech backend that runs it ("openai", "sensevoice"…)
         public var backend: String? = nil
+        /// how long a window dictation hears its pieces again in with this model (asr_models.json rehear_window_s;
+        /// nil: DictationStitch.rehearWindow) — docs/design/dictation.md §Hearing again
+        public var rehearWindow: Double? = nil
     }
 
     private static let lock = NSLock()
@@ -40,8 +43,9 @@ public enum ModelCatalog {
               let models = o["models"] as? [[String: Any]] else { return [] }
         return models.compactMap { m in
             guard let id = m["id"] as? String, let name = m["name"] as? String, !name.isEmpty else { return nil }
+            let w = (m["rehear_window_s"] as? Double).flatMap { $0 > 0 ? $0 : nil }
             return Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0,
-                         polish: polish, backend: m["backend"] as? String)
+                         polish: polish, backend: m["backend"] as? String, rehearWindow: w)
         }
     }
 
@@ -73,6 +77,14 @@ public enum ModelCatalog {
         let parts = id.split(separator: ":", maxSplits: 1).map(String.init)
         guard parts.count == 2, let e = all.first(where: { $0.backend == parts[0] && !$0.polish }) else { return nil }
         return parts[1].isEmpty || parts[1] == "default" ? e.name : "\(e.name) · \(parts[1])"
+    }
+
+    /// The window dictation hears the pieces again in with speech model `id` (seconds): the catalogue's
+    /// rehear_window_s for it (Qwen3-ASR 1.7B 30, 0.6B 20: measured on 43 of the founder's takes), else
+    /// DictationStitch.rehearWindow. The Dictation Lab's port is dictation_stitch.rehear_window.
+    public static func rehearWindow(_ id: String?, dir: URL = BlurtPaths.scripts) -> Double {
+        guard let id = id, let e = entries(dir: dir).first(where: { $0.id == id && !$0.polish }) else { return DictationStitch.rehearWindow }
+        return e.rehearWindow ?? DictationStitch.rehearWindow
     }
 
     /// The model whose files are in this folder (Storage's rows: a folder name → the model's name).
