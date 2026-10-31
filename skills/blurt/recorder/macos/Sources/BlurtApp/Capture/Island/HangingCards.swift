@@ -323,7 +323,10 @@ final class HangingCards: NSObject {
     // flat, as the site (BA-8, v1.0.4): the 0.5 pt edge carries the card; the shadow only lifts it off the page
     static let shadowLight: Float = 0.1, shadowDark: Float = 0.3, shadowLift: Float = 0.06
     static let voiceMicName = "voiceMic"
-    static let panelH: CGFloat = 640
+    /// The panel spans the top of the screen down to here: the cards, their hover note and its picture (up to half the
+    /// screen's height under the row: CardPeekLayout) — the whole screen, as the pointer only reaches the panel over
+    /// what it draws (`interactive`).
+    static func panelH(_ s: NSScreen) -> CGFloat { max(640, s.frame.height) }
 
     /// A dynamic brand colour resolved for the cards' appearance (they follow the app's light / dark — isDarkMode —
     /// not the drawing appearance of whatever happens to be current when a layer is styled). Increase Contrast still
@@ -409,7 +412,7 @@ final class HangingCards: NSObject {
     // MARK: window
 
     private func ensurePanel(on s: NSScreen) {
-        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - HangingCards.panelH, width: s.frame.width, height: HangingCards.panelH)
+        let f = NSRect(x: s.frame.minX, y: s.frame.maxY - HangingCards.panelH(s), width: s.frame.width, height: HangingCards.panelH(s))
         if panel == nil {
             let p = CardsPanel(contentRect: f, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
             p.isFloatingPanel = true          // (before the level: it resets the level to .floating)
@@ -2044,8 +2047,8 @@ final class HangingCards: NSObject {
             let measured = ceil(attr.boundingRect(with: NSSize(width: w - pad * 2, height: 400), options: [.usesLineFragmentOrigin]).height)
             return text.isEmpty ? 0 : min(measured, 6 * lineH) + 2
         }
-        // the picture under the words (CardPeekLayout): its own size, at most 360 pt wide and 40 % of the visible
-        // screen under the row, and what the panel has left under the words; none for a voice card
+        // the picture under the words (CardPeekLayout): its own size, at most half the visible screen's width and
+        // height, and what the screen has left under the words; none for a voice card
         let noteH0 = 10 + textH(w0) + (text.isEmpty ? 0 : 4) + (what.play ? 28 : 0) + (text.isEmpty ? 17 : 15)
             + (hint != nil ? 17 : keys ? 7 + KeyHint.capH : 0) + 10
         var pic: CGSize?
@@ -2053,10 +2056,9 @@ final class HangingCards: NSObject {
             let s = c.shot
             let px = s.pixelSize.width > 0 ? s.pixelSize : (s.markedThumb ?? s.thumb).map { CGSize(width: $0.width, height: $0.height) } ?? .zero
             let top = (rowBottom ?? c.grip.value + c.size.height) + 12
-            let below = (p.frame.maxY - scr.visibleFrame.minY) - (top - 12)
-            let room = HangingCards.panelH - top - noteH0 - 12 - 12
+            let room = min(p.frame.height, p.frame.maxY - scr.visibleFrame.minY) - top - noteH0 - 12 - 12
             pic = CardPeekLayout.size(picture: CGSize(width: px.width / max(s.scale, 1), height: px.height / max(s.scale, 1)),
-                                      below: below, room: room)
+                                      screen: scr.visibleFrame.size, room: room)
         }
         let w = max(w0, pic.map { $0.width + pad * 2 } ?? 0)
         let th = textH(w)

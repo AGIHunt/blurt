@@ -2,7 +2,6 @@
 
 "capture.action.cards" = "Show cards";
 "capture.action.main" = "Open the Blurt window";
-"capture.action.marker" = "Add a marker";
 "capture.action.menu" = "Open the menu-bar menu";
 "capture.action.pause" = "Pause / resume";
 "capture.action.pen" = "Turn the pen on or off";
@@ -164,13 +163,11 @@
 "capture.rec.discard" = "Discard";
 "capture.rec.discard_q" = "Discard this recording?";
 "capture.rec.discard_also" = "Also discards %@";
-"capture.rec.and" = "%1$@ and %2$@";
 "capture.rec.discard_tip" = "Discard or Start Over…";
 "capture.rec.done_ax" = "Recording finished, %@";
 "capture.rec.finish" = "Finish";
 "capture.rec.finish_tip" = "Stop and organize";
 "capture.rec.keep" = "Keep Recording";
-"capture.rec.menu_marker" = "Add a Marker";
 "capture.rec.menu_pen" = "Pen";
 "capture.rec.mic_level" = "Microphone level";
 "capture.rec.more_tip" = "More";
@@ -345,7 +342,6 @@
 "capture.sort.set_up" = "Set Up…";
 "capture.keys.wont_work_many" = "%@ shortcuts won’t work";
 "capture.keys.menu_not_working" = "%1$@ doesn’t work: %2$@. Change it in Settings, under Shortcuts.";
-"capture.action.marker.detail" = "Also takes a snap";
 "capture.action.cards.detail" = "Opens the Cards panel: Current and History";
 "capture.action.reformat.detail" = "Rewrites what you just dictated in the next style";
 "capture.keys.section.capture" = "Capture";

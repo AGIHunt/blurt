@@ -74,12 +74,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>截图 %d 张</string></dict>
   </dict>
-  <key>capture.rec.markers</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>other</key><string>%d 个标记</string></dict>
-  </dict>
   <key>capture.rec.n_snaps</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

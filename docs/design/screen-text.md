@@ -38,7 +38,8 @@
   `DictationPastePolicy.decide`，不另写一份）：前台是别的 App 就 ⌘V，除非没有前台 App、开着安全输入或焦点是密码框、
   没有辅助功能权限、拖选期间换了 App，或者辅助功能读到焦点不是输入框（桌面、没有焦点输入框的网页）——这一条是 ⌥C
   比听写多的：听写会粘贴并在刘海里留着文字，⌥C 的文字本来就在剪贴板里。按键时记下前台 App（拖选窗口不抢焦点），
-  交付时（和听写粘贴时一样）用 `DictationInsert.situation()` 读当时的情况，前台换了 App 就只复制。Electron App 在按键时
+  交付时（和听写粘贴时一样）用 `DictationInsert.situation()` 读当时的情况，前台换了 App 就只复制（`ScreenTextPaste` 自己
+  判断 `appChanged`；听写从 2026-10-31 起换了 App 照样粘贴到前台 App，见 dictation.md §Insert 5）。Electron App 在按键时
   和听写一样先唤醒辅助功能树（`wakeWebAccessibility`），交付时输入框才读得到、粘贴才确认得了。
 - 「已粘贴」必须是真的：以前 ⌘V 一发出去就说「已粘贴」。现在粘贴前读一次输入框（`DictationField.focused().read()`），
   粘贴后用听写的落地检查（`DictationInsert.confirmLanding`，即 `DictationPasteLanding.landed`，每 30 ms 读一次，最多 1.5 秒）

@@ -15,9 +15,9 @@
 //               same circle, Resume's play glyph in amber — nothing moves) · snap + note (pauses) … ··· · Finish (the one
 //               filled thing; paused, a neutral pill with its red stop square, so Resume leads); the ··· menu (dark,
 //               keys right-aligned) holds the rare things: Save Video Only (finish without organizing: BA-66), the pen
-//               (⌥⇧D), a marker (⌥⇧M), where the take goes
+//               (⌥⇧D), where the take goes
 //               (Change…), Discard or Start Over… (asks first: the question alone on its line, what goes with it — the
-//               snaps and the markers apart — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
+//               snaps — on a quiet second line, then Discard · Start Over · Keep Recording ↩, the
 //               last where Finish was, so nothing destructive lands under the hand that stops). Then, only when it has
 //               something to say, one quiet line: "Pen on" (a tint chip) + "[esc] Pen off", or (first three takes)
 //               "[⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse" (a keycap per chord); then what the take holds ("6 snaps ·
@@ -545,7 +545,7 @@ final class IslandContent: NSView {
     private(set) weak var structuredChip: IslandButton?
     private weak var spotted: NSTextField?
     private weak var pauseBtn: IslandButton?
-    /// the recording row's ··· (its menu: the pen, a marker, Discard or Start Over…)
+    /// the recording row's ··· (its menu: the pen, Discard or Start Over…)
     private(set) weak var moreBtn: IslandButton?
     /// The pen was latched when the recording row was built (it changes from the key, ⌥D): rebuilt when it differs.
     private var penShown = false
@@ -801,12 +801,12 @@ final class IslandContent: NSView {
     /// regions up), and everything below starts and ends `earInset` (14 pt) in:
     ///   ● 0:06                                                  ||||
     ///   (pause) (snap)                                  (···) [■ Finish]
-    ///   [⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse  · 2 markers
+    ///   [⌃] Hold for the pen  [⌃⇧] Box  [⌃⌥] Ellipse
     /// The secondaries are one control (white 10 % circles); Finish is the one filled thing. Paused, the pause circle
     /// becomes Resume in the same place and size — the play glyph in `attn` on its tint, the lead — and Finish quiets
     /// to the neutral fill with its red stop square, so one coloured thing leads; the ear's amber bars and time and
     /// the dashed frame say "paused" too. The second line only when it has something to say (the pen's state, the
-    /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen, a marker,
+    /// pen hint for the first three takes, what was spotted). The rare things are in the ··· menu: the pen,
     /// where the take goes (Change…), Discard or Start Over… (the question below).
     private func buildRecording(_ w: CGFloat, top: CGFloat) -> CGFloat {
         guard let i = island, let rec = i.rec else { return 0 }
@@ -885,9 +885,9 @@ final class IslandContent: NSView {
         return bottom + inset
     }
 
-    /// What the take holds so far ("6 snaps · 2 markers · 4 items spotted"; BlurtCore TakeLine).
+    /// What the take holds so far ("6 snaps · 4 items spotted"; BlurtCore TakeLine).
     private func spottedText(_ rec: Recorder) -> String {
-        TakeLine.text(snaps: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0, items: island?.spottedCount ?? 0)
+        TakeLine.text(snaps: rec.snaps?.count ?? 0, items: island?.spottedCount ?? 0)
     }
 
     /// Where the take's items will be: "Organized into Atlas Web when you finish" (nothing when takes are only saved).
@@ -914,9 +914,6 @@ final class IslandContent: NSView {
         pen.state = rec.penSticky ? .on : .off
         pen.showHotkey(.pen)
         menu.addItem(pen)
-        let mark = ClosureMenuItem(Loc.t("capture.rec.menu_marker", table: "Capture")) { rec.marker() }
-        mark.showHotkey(.marker)
-        menu.addItem(mark)
         if (NSApp.delegate as? App)?.resident == true {      // a recording started from the chat has its session already
             // where the take goes: the project, changeable (the switcher) — a rare change mid-take, so not on the row
             menu.addItem(.separator())
@@ -975,16 +972,12 @@ final class IslandContent: NSView {
         return y + 28 + inset
     }
 
-    /// What goes with a discarded take, as the island counts it — the snaps and the markers apart (BlurtCore
-    /// RecordingDiscard): "2 snaps and 1 marker"; nil when nothing does.
+    /// What goes with a discarded take, as the island counts it (BlurtCore RecordingDiscard): "2 snaps"; nil when
+    /// nothing does.
     static func discardLost(_ rec: Recorder) -> String? {
-        switch RecordingDiscard.lost(stills: rec.snaps?.stills ?? 0, markers: rec.snaps?.markers ?? 0) {
+        switch RecordingDiscard.lost(stills: rec.snaps?.count ?? 0) {
         case .nothing: return nil
         case let .snaps(n): return Loc.plural("capture.rec.snaps", table: "Capture", count: n)
-        case let .markers(m): return Loc.plural("capture.rec.markers", table: "Capture", count: m)
-        case let .both(n, m):
-            return Loc.t("capture.rec.and", table: "Capture", Loc.plural("capture.rec.snaps", table: "Capture", count: n),
-                         Loc.plural("capture.rec.markers", table: "Capture", count: m))
         }
     }
 

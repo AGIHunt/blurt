@@ -1401,7 +1401,7 @@ final class Dictation {
             updatePhase()
             return toastNothing()
         }
-        rememberSwitches()          // a ⇧ / ⌘ switch stays on in this app (DictationRemembering)
+        let switches = switchesAtStop()     // a ⇧ / ⌘ switch stays on in this app once typed (DictationRemembering)
         let polish = Dictation.polishOn && polishModel != nil
         // Structured / Auto (the style as the take ends: ⇧ and the island may have changed it): one structuring pass
         let structure = (styleDecision?.style == .structured || styleDecision?.style == .auto) && polish
@@ -1410,6 +1410,7 @@ final class Dictation {
                                  style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
                                  bundle: styleBundle, liveSession: liveSession, stream: s, structure: structure)
         take.levels = levels
+        take.switches = switches
         take.translate = translateJob(style: styleDecision?.style ?? .light)
         emit(["event": "dictation_stop", "id": take.id, "duration": (duration * 100).rounded() / 100, "segments": s.segments,
               "pending": queue.count])

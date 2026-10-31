@@ -7,8 +7,8 @@ final class DictationTakeFlowTests: XCTestCase {
     /// v0.9 dogfood: a double tap after the app changed — "Copied" replaced "not sent" in the same frame. One line now.
     func testOneLineSaysHowATakeWent() {
         XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: true), .copiedNotSent)
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true), .copied(appChanged: true))
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false), .copied(appChanged: false))
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true), .copied)
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false), .copied)
         XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: true, appChanged: false), .none)
         XCTAssertEqual(DictationDeliveredLine.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: false), .pastedUnsure)
         XCTAssertEqual(DictationDeliveredLine.line(result: "none", sendAsked: true, confirmed: true, appChanged: false), .notSent)
@@ -22,16 +22,27 @@ final class DictationTakeFlowTests: XCTestCase {
                                                    noField: true), .noField)
     }
 
-    /// Dogfood: a copy because the app changed showed as a 2 s "✓ Copied" in the ears; a double tap then pressed
-    /// Return in the app now in front, where nothing was pasted.
-    func testACopyBecauseTheAppChangedWarnsAndHoldsReturn() {
-        let changed = DictationDeliveredLine.copied(appChanged: true)
-        XCTAssertFalse(changed.checked)
-        XCTAssertTrue(changed.warns)
-        XCTAssertEqual(changed.copyKey, "dictation.toast.copied_app")
-        XCTAssertGreaterThanOrEqual(changed.copySeconds, 5)
-        XCTAssertTrue(DictationDeliveredLine.copied(appChanged: false).checked)
-        XCTAssertFalse(DictationDeliveredLine.copied(appChanged: false).warns)
+    /// 2026-10-31: a take whose user switched apps is pasted into the app in front and says nothing about it — no
+    /// ⚠ "you switched apps". The one line it can get: a double tap's Return wasn't pressed (another chat).
+    func testASwitchSaysNothingUnlessASendWasHeld() {
+        let L = DictationDeliveredLine.self
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: true, appChanged: true), .none)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: false, confirmed: false, appChanged: true), .pastedUnsure)
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: true, appChanged: true), .pastedNotSent)
+        // "not sent" over "Copy again": that the message didn't go matters more
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: true), .pastedNotSent)
+        // no field read in the new app: the island keeps the text, as for any take
+        XCTAssertEqual(L.line(result: "pasted", sendAsked: true, confirmed: false, appChanged: true, noField: true), .noField)
+        XCTAssertNil(DictationDeliveredLine.pastedNotSent.copyKey)
+        XCTAssertFalse(DictationDeliveredLine.pastedNotSent.checked)
+    }
+
+    /// Dogfood: a double tap soon after a take that was only copied pressed Return in the app in front, where nothing
+    /// was pasted.
+    func testAPlainCopyIsDoneAndHoldsReturn() {
+        XCTAssertTrue(DictationDeliveredLine.copied.checked)
+        XCTAssertEqual(DictationDeliveredLine.copied.copyKey, "dictation.toast.copied")
+        XCTAssertLessThan(DictationDeliveredLine.copied.copySeconds, DictationDeliveredLine.copiedNotSent.copySeconds)
         XCTAssertTrue(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: false, now: 104))
         XCTAssertFalse(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: true, now: 104))     // ⌘V, typing
         XCTAssertFalse(DictationCopiedGuard.holdsReturn(copiedAt: 100, keyAfter: false, now: 130))    // long ago

@@ -11,21 +11,20 @@ import Foundation
 
 public enum TakeLine {
     public enum Part: Equatable {
-        case snaps(Int), markers(Int), items(Int)
+        case snaps(Int), items(Int)
     }
 
-    /// The counts worth saying, in this order: the snaps taken (⌥A, the island's button), the markers (⌥M), the
-    /// items live.py spotted so far. Zero ones are left out.
-    public static func parts(snaps: Int, markers: Int, items: Int) -> [Part] {
-        [snaps > 0 ? .snaps(snaps) : nil, markers > 0 ? .markers(markers) : nil, items > 0 ? .items(items) : nil].compactMap { $0 }
+    /// The counts worth saying, in this order: the snaps taken (⌥A, the island's button), the items live.py spotted
+    /// so far. Zero ones are left out.
+    public static func parts(snaps: Int, items: Int) -> [Part] {
+        [snaps > 0 ? .snaps(snaps) : nil, items > 0 ? .items(items) : nil].compactMap { $0 }
     }
 
     /// The counts as a line ("6 snaps · 4 items spotted").
-    public static func text(snaps: Int, markers: Int, items: Int) -> String {
-        parts(snaps: snaps, markers: markers, items: items).map { p -> String in
+    public static func text(snaps: Int, items: Int) -> String {
+        parts(snaps: snaps, items: items).map { p -> String in
             switch p {
             case .snaps(let n): return Loc.plural("capture.rec.snaps", table: "Capture", count: n)
-            case .markers(let n): return Loc.plural("capture.rec.markers", table: "Capture", count: n)
             case .items(let n): return Loc.plural("capture.rec.spotted", table: "Capture", count: n)
             }
         }.joined(separator: " · ")

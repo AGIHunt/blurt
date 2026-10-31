@@ -55,7 +55,7 @@ what happens:
 - talk naturally, point with the mouse; **hold ⌃ and drag to circle / underline what you mean** (macOS; ⌃⇧ box,
   ⌃⌥ ellipse, the keys in any order — resting the pointer straightens a rough shape — a snap's markup uses the same strokes; the ink fades after 3 s; the pen button on the bar or ⌥D keeps the pen on, Esc / ⌥D turns it off); click **完成** — no need
   to send another chat message.
-- **⌥A snaps** (Windows/Linux Alt+Shift+A, or the camera button on the bar; ⌥M too): a full-resolution still of
+- **⌥A snaps** (Windows/Linux Alt+Shift+A — the marker key Alt+Shift+M too — or the camera button on the bar): a full-resolution still of
   the area right now, no pause → `shots/`. Best evidence there is — mention it in one line. In the macOS app ⌥A runs
   the normal snap flow while recording (any area, its own note typed or said, a card) and the recording goes on: the
   shot lands in this session's `shots/` with its note. Blurt's own windows, cards and notch are in the video like any
@@ -106,7 +106,8 @@ the other side's lines are marked `(system)` / `speaker: "system"`; unmarked lin
 repeat a system line on the mic.
 For Whisper/API backends pass `--prompt` with a short glossary (product, page/module names, people) from the repo.
 Also run `frames.py scan <video>` (visual-activity index for candidates/sheets) and `frames.py marks <video>`: what
-the user drew with the pen — when, where (box), what was being said — plus ⌥M markers.
+the user drew with the pen — when, where (box), what was being said — plus markers (Windows/Linux Alt+Shift+M; macOS
+recordings made before 1.0.7, with ⌥M).
 A `warning` in the output, or a transcript that reads as nonsense (SenseVoice turns unsupported languages such as
 French into fake English), means the language needs another backend: set it up (`reference/asr.md`) and re-run.
 

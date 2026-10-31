@@ -2,7 +2,6 @@
 
 "capture.action.cards" = "显示卡片";
 "capture.action.main" = "打开口喷鸡窗口";
-"capture.action.marker" = "加标记";
 "capture.action.menu" = "打开菜单栏菜单";
 "capture.action.pause" = "暂停 / 继续";
 "capture.action.pen" = "打开或关闭画笔";
@@ -164,13 +163,11 @@
 "capture.rec.discard" = "丢弃";
 "capture.rec.discard_q" = "丢弃这段录屏？";
 "capture.rec.discard_also" = "会一起丢弃：%@";
-"capture.rec.and" = "%1$@和 %2$@";
 "capture.rec.discard_tip" = "丢弃或重新录屏…";
 "capture.rec.done_ax" = "录制结束，%@";
 "capture.rec.finish" = "完成";
 "capture.rec.finish_tip" = "结束录制并整理";
 "capture.rec.keep" = "继续录屏";
-"capture.rec.menu_marker" = "加一个标记";
 "capture.rec.menu_pen" = "画笔";
 "capture.rec.mic_level" = "麦克风音量";
 "capture.rec.more_tip" = "更多";
@@ -345,7 +342,6 @@
 "capture.sort.set_up" = "去设置…";
 "capture.keys.wont_work_many" = "%@ 个快捷键用不了";
 "capture.keys.menu_not_working" = "%1$@ 用不了：%2$@。可以在「设置」的「快捷键」里更换。";
-"capture.action.marker.detail" = "同时截一张图";
 "capture.action.cards.detail" = "打开卡片面板：当前和历史";
 "capture.action.reformat.detail" = "把刚才的听写换成下一种风格";
 "capture.keys.section.capture" = "截图、录屏和备注";

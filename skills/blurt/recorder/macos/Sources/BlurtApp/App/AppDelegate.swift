@@ -85,7 +85,6 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func hotkey(_ k: HK) {
         switch k {
         case .pause: command("toggle")
-        case .marker: command("marker")
         case .stop: command("stop")
         case .pen: command("pen")
         case .penEsc: if rec?.penSticky == true { command("pen") }
@@ -112,8 +111,8 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case "pause": if rec?.isPaused == false { rec?.togglePause() }
         case "resume": if rec?.isPaused == true { rec?.togglePause() }
         case "toggle": rec?.togglePause()
-        case "marker": rec?.marker()
-        case "snap": if let r = rec { r.snap(via: "command") } else if resident { snapper.hotkey() }
+        // "marker": an older record.py (⌥M went in 1.0.7) — the still it took, without a marker of its own
+        case "snap", "marker": if let r = rec { r.snap(via: "command") } else if resident, c == "snap" { snapper.hotkey() }
         case "notes": island.openRecordingNotes()     // K7 (P5): the island replaced the HUD
         case "pen": rec?.togglePen()
         default: break

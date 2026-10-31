@@ -58,17 +58,37 @@ final class DictationPastePolicyTests: XCTestCase {
         XCTAssertEqual(P.decide(s(blurt: true, secure: true)), .own)
     }
 
-    func testASlowTakeNeverGoesIntoAnotherApp() {
-        // dogfood: a take that took long (a cold model, the 5-minute limit) and the user moved to another app (or
-        // into Blurt) — copied, never pasted there
+    /// 2026-10-31, the founder: people speak in A meaning to type into B. A take whose user switched apps goes into
+    /// the app in front by the same rules as any take (until then: copied, with a ⚠ "you switched apps").
+    func testASwitchedAppGetsTheTextByTheUsualRules() {
+        for front in [true, false] { for blurt in [true, false] { for secure in [true, false] { for ax in [true, false] {
+            for text in [true, false, nil] as [Bool?] {
+                var x = s(front: front, blurt: blurt, secure: secure, ax: ax, text: text)
+                let same = P.decide(x)
+                x.appChanged = true
+                XCTAssertEqual(P.decide(x), same)
+            }
+        } } } }
         var x = s()
         x.appChanged = true
-        XCTAssertEqual(P.decide(x), .copy(reason: "app_changed"))
+        XCTAssertEqual(P.decide(x), .paste(confirmed: true))
+        var pw = s(secureField: true)
+        pw.appChanged = true
+        XCTAssertEqual(P.decide(pw), .hold(reason: "secure_input"))         // a password field in the new app: held
         var b = s(blurt: true)
         b.appChanged = true
-        XCTAssertEqual(P.decide(b), .copy(reason: "app_changed"))
-        // still the app it started in: pasted as usual
-        XCTAssertEqual(P.decide(s()), .paste(confirmed: true))
+        XCTAssertEqual(P.decide(b), .own)                                    // into Blurt: its own text view, or nothing
+    }
+
+    /// A queued Return (a double tap while the take was on its way) goes only where the text went in, and never after a
+    /// switch: the text is pasted, but sending into another chat can't be undone.
+    func testAQueuedReturnIsHeldAfterASwitch() {
+        typealias S = DictationSendPolicy
+        XCTAssertEqual(S.queued(pasted: true, noField: false, appChanged: false), .press)
+        XCTAssertEqual(S.queued(pasted: true, noField: false, appChanged: true), .skip(reason: "app_changed"))
+        XCTAssertEqual(S.queued(pasted: true, noField: true, appChanged: false), .skip(reason: "no_field"))
+        XCTAssertEqual(S.queued(pasted: false, noField: false, appChanged: true), .skip(reason: "not_pasted"))
+        XCTAssertEqual(S.queued(pasted: false, noField: false, appChanged: false), .skip(reason: "not_pasted"))
     }
 
     /// ⌥C / ⌥T paste by the same rules (2026-10-30: WeChat only got a copy — the old check wanted an AX text role):

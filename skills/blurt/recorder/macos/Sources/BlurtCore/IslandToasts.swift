@@ -11,8 +11,8 @@
 //  • a double tap whose text could only be copied (DictationDeliveredLine, DictationTakeFlow.swift): one line that
 //    says both — copied, and not sent — instead of "Not sent" replaced in the same frame by "Copied — paste with ⌘V".
 //    A plain copy carries the ok check like every other done line.
-//  • discarding a recording (RecordingDiscard.swift): the question names what goes with it — its snaps and its
-//    markers apart (the island counts them apart; "3 snaps" for one still and two markers didn't match it).
+//  • discarding a recording (RecordingDiscard.swift): the question names what goes with it — its snaps, as the
+//    island counts them.
 //  • a card's name where its words can't stand in (CardName): its first line, else what it is and when ("Snap ·
 //    19:03", in the user's 12/24-hour clock; "Snap · Yesterday 19:03" once it isn't today's), never a session
 //    counter ("Screenshot 15" skipped numbers and told cards apart by nothing).

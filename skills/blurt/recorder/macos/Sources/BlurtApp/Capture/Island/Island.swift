@@ -21,7 +21,7 @@
 //                         brings them down to stay      waits on you (the alert dot), else "+n" for a few seconds as
 //                                                       new captures land in the inbox; nothing at all otherwise
 //   recording             red dot (1 Hz breath) + time  the pen while latched, else snaps (n, the snap frame), else
-//                         (paused: pause bars, amber)   markers (n, a flag), else the mic level
+//                         (paused: pause bars, amber)   the mic level
 //   voice input           Peep listening + the live     duration
 //                         wave (open: the mic glyph —
 //                         the row has Peep and the wave)
@@ -828,11 +828,11 @@ final class Island: NSObject, IslandHosting {
             right.set(.none)
         } else if let rec = rec, rec.sessionStart.isValid {
             left.set(.recording(paused: rec.isPaused, time: Island.clock(rec.elapsed())))
-            // the stills taken (⌥A, the island's button) — a marker (⌥M) is its own count, with a flag
+            // the stills taken (⌥A, the island's button)
             // while the pen is latched (⌥D) it takes the clicks and Esc — or its key is held — the ear shows the pen
-            let snaps = rec.snaps?.stills ?? 0, markers = rec.snaps?.markers ?? 0
+            let snaps = rec.snaps?.count ?? 0
             right.set(rec.penSticky || rec.inkOn ? .glyph(.pencil, pulse: false, lit: true) : snaps > 0 ? .count(icon: .snap, n: snaps, tint: nil)
-                : markers > 0 ? .count(icon: .flag, n: markers, tint: nil) : rec.isPaused ? .none : .level(rec.micLevel))
+                : rec.isPaused ? .none : .level(rec.micLevel))
         } else if VoiceInput.shared.active {
             // one live meter at a time: the open island has the big waveform, so the ear shows the mic there
             // Peep listens (eye wide, swelling) with the wave beside it; open, the row under the ears has both

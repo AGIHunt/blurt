@@ -2,9 +2,10 @@
 //
 //  • while recording, ⌥A (since 2026-10-31): the normal snap flow — picker, in-place note, a card (Captures.swift) —
 //    into the take: <session>/shots/NNN.png + shots.jsonl (t = video time, its note, its project) + a "snap" event in
-//    events.jsonl; the recording goes on. ⌥M = marker + a still of the recorded area at that instant (no prompt: the
-//    border flashes, the thumbnail flies into the island); so does `record.py snap`. The island's snap button takes
-//    such a still, pauses and opens its note.
+//    events.jsonl; the recording goes on. `record.py snap` takes a still of the recorded area at that instant (no
+//    prompt: the border flashes, the thumbnail flies into the island). The island's snap button is ⌥A. (⌥M, a
+//    marker plus such a still, counted apart on the island, went in 1.0.7: ⌥A no longer pauses the take, and what
+//    the user says already marks the moment.)
 //  • not recording: see Captures.swift (the area picker, then a hanging card or straight into the island).
 //
 // File contract: shots/<NNN>.png (+ .marked.png ink version, .wav voice note); shots.jsonl one line per change
@@ -711,24 +712,19 @@ final class RecordingSnaps {
         batch = ShotBatch(dir: session, inRecording: true)
     }
 
+    /// The island's count: every still of the take (⌥A, the island's button, `record.py snap`).
     var count: Int { batch.live.count }
-    /// The stills that came from ⌥M (a marker: a still of that moment, logged as a marker too).
-    private var markerShots = Set<Int>()
-    /// The island's counts: markers apart from the stills the user took (⌥A, the island's button).
-    var markers: Int { batch.live.filter { markerShots.contains($0.n) }.count }
-    var stills: Int { count - markers }
 
     /// A snap taken with the snap flow during the take (⌥A: Snapper.capture): in events.jsonl as any still of the take.
     func tookWithNote(_ s: Shot, at t: Double) {
         rec?.log("snap", ["n": s.n, "file": s.file ?? "", "via": "picker", "t": (t * 1000).rounded() / 1000])
     }
 
-    /// `via`: "hotkey" | "island" | "marker" | "command"; `then` gets the saved shot (the island's button opens its note)
+    /// `via`: "hotkey" | "island" | "command"; `then` gets the saved shot (the island's button opens its note)
     func snap(via: String, then: ((Shot) -> Void)? = nil) {
         guard let rec = rec, rec.sessionStart.isValid, !rec.stopping else { return }
         let t = rec.elapsed()
         let n = batch.reserve()
-        if via == "marker" { markerShots.insert(n) }
         let file = "shots/\(ShotBatch.name(n)).png"
         rec.log("snap", ["n": n, "file": file, "via": via])
         emit(["event": "snap", "n": n, "t": (t * 1000).rounded() / 1000, "file": file])

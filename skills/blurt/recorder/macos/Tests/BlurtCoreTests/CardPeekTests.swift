@@ -82,33 +82,35 @@ final class CardPeekTests: XCTestCase {
 
     // MARK: size
 
-    func testSizeIsCappedAtTheMaxWidthAspectKept() {
-        let s = CardPeekLayout.size(picture: CGSize(width: 1440, height: 900), below: 2000)!
-        XCTAssertEqual(s.width, 360)
-        XCTAssertEqual(s.height, 225)
+    func testFullScreenSnapIsHalfTheScreenAspectKept() {
+        // a full-screen snap on a 1512 × 949 pt visible screen: half its width and height, a quarter of its area
+        let s = CardPeekLayout.size(picture: CGSize(width: 1512, height: 982), screen: CGSize(width: 1512, height: 949))!
+        XCTAssertLessThanOrEqual(s.width, 756)
+        XCTAssertLessThanOrEqual(s.height, 474.5)
+        XCTAssertEqual(s.width / s.height, 1512 / 982, accuracy: 0.01, "never stretched")
+        XCTAssertEqual(s.height, 474, "the height is the limit here")
     }
 
-    func testTallPictureIsCappedByTheScreenUnderTheRow() {
-        // 40 % of 500 pt under the row: 200 pt tall at most
-        let s = CardPeekLayout.size(picture: CGSize(width: 400, height: 1000), below: 500)!
-        XCTAssertEqual(s.height, 200)
-        XCTAssertEqual(s.width, 80)
-        XCTAssertEqual(s.width / s.height, 0.4, accuracy: 0.01)
+    func testWidePictureIsCappedAtHalfTheWidth() {
+        let s = CardPeekLayout.size(picture: CGSize(width: 3000, height: 300), screen: CGSize(width: 1440, height: 900))!
+        XCTAssertEqual(s, CGSize(width: 720, height: 72))
     }
 
-    func testRoomInTheWindowCapsItToo() {
-        let s = CardPeekLayout.size(picture: CGSize(width: 800, height: 800), below: 2000, room: 150)!
+    func testRoomUnderTheRowCapsItToo() {
+        let s = CardPeekLayout.size(picture: CGSize(width: 800, height: 800), screen: CGSize(width: 1440, height: 900), room: 150)!
         XCTAssertEqual(s, CGSize(width: 150, height: 150))
     }
 
     func testSmallPictureIsNeverEnlarged() {
-        XCTAssertEqual(CardPeekLayout.size(picture: CGSize(width: 120, height: 80), below: 900), CGSize(width: 120, height: 80))
+        let small = CGSize(width: 120, height: 80), mid = CGSize(width: 600, height: 400)
+        XCTAssertEqual(CardPeekLayout.size(picture: small, screen: CGSize(width: 1440, height: 900)), small)
+        XCTAssertEqual(CardPeekLayout.size(picture: mid, screen: CGSize(width: 1440, height: 900)), mid, "under half the screen: its own size")
     }
 
     func testNoPictureOrNoRoom() {
-        XCTAssertNil(CardPeekLayout.size(picture: .zero, below: 900), "a voice card has no picture")
-        XCTAssertNil(CardPeekLayout.size(picture: CGSize(width: 800, height: 600), below: 100), "40 pt is too little")
-        XCTAssertNil(CardPeekLayout.size(picture: CGSize(width: 800, height: 600), below: 900, room: 20))
+        let scr = CGSize(width: 1440, height: 900)
+        XCTAssertNil(CardPeekLayout.size(picture: .zero, screen: scr), "a voice card has no picture")
+        XCTAssertNil(CardPeekLayout.size(picture: CGSize(width: 800, height: 600), screen: scr, room: 20), "20 pt is too little")
     }
 
     // MARK: place

@@ -2,7 +2,7 @@
 // page of rows as every other pane (SettingsKit; rows from SettingsCatalog, "shortcuts.<action>") — the action on the
 // left, its shortcut on the right as small keycaps that are the recorder: click (or Tab to it and press Space) and it
 // listens. Four short sections (SettingsCatalog.shortcutSections):
-// Capture (record, snap, voice note), While recording (pause, marker, the pen — its hold key, record.draw_key, is the
+// Capture (record, snap, voice note), While recording (pause, the pen — its hold key, record.draw_key, is the
 // pen row's second line, a menu), Dictation (its key, set in Settings → Dictation, where its row's link leads; reformat)
 // and Open and switch (project, cards, the menu-bar menu, the main window). Restore Defaults closes the page.
 //
@@ -709,7 +709,7 @@ struct ShortcutsPane: View {
                 ForEach([HotAction.toggleRecord, .snap, .text, .translateText, .voice], id: \.self) { row($0) }
             }
             SettingsGroup("shortcuts.recording") {
-                ForEach([HotAction.pause, .marker, .pen, .finish], id: \.self) { row($0) }
+                ForEach([HotAction.pause, .pen, .finish], id: \.self) { row($0) }
             }
             if AppEnvironment.settings != nil {
                 SettingsGroup("shortcuts.dictation") {

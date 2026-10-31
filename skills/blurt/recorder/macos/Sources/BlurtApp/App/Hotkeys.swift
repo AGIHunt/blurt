@@ -16,7 +16,6 @@ extension HotkeyCenter.Action {
         case .openMenu: return .menu
         case .snap: return .snap
         case .pause: return .pause
-        case .marker: return .marker
         case .pen: return .pen
         case .finish: return .stop
         case .openMain: return nil

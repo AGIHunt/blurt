@@ -880,7 +880,8 @@ def append_job_event(job: str | None, event: dict) -> None:
 # ---------------------------------------------------------------- hotkeys (config record.hotkeys)
 # Same grammar as the macOS app (Hotkeys.swift): "opt+shift+R", "ctrl+alt+F5", "⌥⇧A", "off". Stored canonically as
 # "<ctrl+><opt+><shift+><cmd+>KEY". On Windows/Linux opt = Alt and cmd = the Windows / Super key.
-# voice / project: K7 (voice input, project switcher) — same names in HotkeyCenter.Action (Swift) and the Tauri app
+# voice / project: K7 (voice input, project switcher) — same names in HotkeyCenter.Action (Swift) and the Tauri app;
+# "marker" is Windows / Linux only (the macOS app dropped ⌥M in 1.0.7 and ignores the entry)
 HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project")
 HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S",
                        "voice": "V", "project": "O"}

@@ -504,11 +504,11 @@
 "dictation.toast.slow.polish" = "Still polishing… %@ types it unpolished";
 "dictation.toast.retry" = "Retry";
 "dictation.toast.retry_gone" = "That recording is gone";
-"dictation.toast.copied_app" = "Not typed: you switched apps · Copied, paste with ⌘V";
 "dictation.toast.not_sent" = "Not sent";
 "dictation.toast.not_sent.ax" = "Not sent: needs Accessibility";
 "dictation.toast.not_sent.secure" = "Not sent: a password field is focused";
 "dictation.toast.not_sent.copied" = "Copied, not sent";
+"dictation.toast.not_sent.app" = "Not sent: you switched apps";
 "dictation.toast.copied.not_sent" = "Copied, not sent · paste with ⌘V";
 "dictation.toast.hold_mode" = "Hold %@ to talk (Settings can make it a tap)";
 "dictation.toast.tap_mode" = "Let go, then tap %@ to start talking (you can switch to hold in Settings)";

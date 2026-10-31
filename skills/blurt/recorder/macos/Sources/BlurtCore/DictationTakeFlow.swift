@@ -279,12 +279,16 @@ public struct DictationReformatAfterPaste<ID: Hashable> {
 /// What the island says once a take is in (or on the clipboard): one line, never two that replace each other in the
 /// same frame (v0.9 dogfood: a send asked for, the app changed meanwhile — "Copied, ⌘V" showed, "not sent" never did).
 public enum DictationDeliveredLine: Equatable {
-    /// copied — `appChanged`: the user moved to another app meanwhile
-    case copied(appChanged: Bool)
+    /// copied (no Accessibility, no app in front, Blurt in front with no field of its own …)
+    case copied
     /// a double tap asked to send, the text is only on the clipboard: Return was not pressed
     case copiedNotSent
     /// a double tap asked to send and nothing went in (why: not_pasted)
     case notSent
+    /// a double tap asked to send, the text was pasted, but into another app than the one the take started in: Return
+    /// was not pressed (DictationSendPolicy.queued) — "Not sent: you switched apps". The only line a switch gets: the
+    /// text itself goes into the app in front, as any take's (2026-10-31)
+    case pastedNotSent
     /// pasted into a focus Accessibility couldn't confirm as text (WeChat & co.: no focused element could be read):
     /// "Copy again"
     case pastedUnsure
@@ -296,14 +300,19 @@ public enum DictationDeliveredLine: Equatable {
     case held
     case none
 
-    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take; `noField`: the
-    /// focus was read and isn't a text field.
+    /// `result`: pasted | copied | held | none; `sendAsked`: a double tap queued Return for this take and it wasn't
+    /// pressed; `appChanged`: the app in front at paste time isn't the one the take started in; `noField`: the focus
+    /// was read and isn't a text field. A switch says nothing by itself — only that a queued Return wasn't pressed
+    /// (over "Copy again": that the message didn't go matters more than whether it landed).
     public static func line(result: String, sendAsked: Bool, confirmed: Bool, appChanged: Bool,
                             noField: Bool = false) -> DictationDeliveredLine {
         switch result {
         case "held": return .held
-        case "copied": return sendAsked ? .copiedNotSent : .copied(appChanged: appChanged)
-        case "pasted": return confirmed ? .none : noField ? .noField : .pastedUnsure
+        case "copied": return sendAsked ? .copiedNotSent : .copied
+        case "pasted":
+            if !confirmed, noField { return .noField }
+            if sendAsked, appChanged { return .pastedNotSent }
+            return confirmed ? .none : .pastedUnsure
         default: return sendAsked ? .notSent : .none
         }
     }
@@ -313,29 +322,19 @@ public enum DictationDeliveredLine: Equatable {
     public var copyKey: String? {
         switch self {
         case .copiedNotSent: return "dictation.toast.copied.not_sent"
-        case .copied(let changed): return changed ? "dictation.toast.copied_app" : "dictation.toast.copied"
+        case .copied: return "dictation.toast.copied"
         default: return nil
         }
     }
 
-    /// A plain copy is done (the ok check, as every done line); "not sent" isn't, nor is a copy because the app
-    /// changed: nothing was typed where the user started, which they have to hear about.
-    public var checked: Bool { self == .copied(appChanged: false) }
+    /// A plain copy is done (the ok check, as every done line); "not sent" isn't.
+    public var checked: Bool { self == .copied }
 
-    /// Copied because the user switched apps: the amber ⚠ and a real toast, never the ears' short done moment.
-    public var warns: Bool { self == .copied(appChanged: true) }
-
-    /// How long a copied line stays: longer when there is more to read (the app changed, or it wasn't sent).
-    public var copySeconds: Double {
-        switch self {
-        case .copied(false): return 2.4
-        case .copied(true): return 6
-        default: return 4
-        }
-    }
+    /// How long a copied line stays: longer when there is more to read (it wasn't sent).
+    public var copySeconds: Double { self == .copied ? 2.4 : 4 }
 }
 
-/// A double tap after a take that was only copied (the app changed, no field, a password field …): Return would go
+/// A double tap after a take that was only copied (no Accessibility, Blurt in front with no field …): Return would go
 /// into an app where nothing was pasted — a half-written message sent, or whatever is focused acted on. It is held
 /// back while the copy is recent and no key was pressed since (a ⌘V, or typing, says the user is in a field again).
 public enum DictationCopiedGuard {

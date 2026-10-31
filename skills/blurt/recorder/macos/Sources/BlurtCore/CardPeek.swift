@@ -5,9 +5,12 @@
 //  • CardPeek — when: after the pointer has rested on a card for `rest` (0.3 s), so sweeping across the row flashes
 //    nothing; once it shows, another card on the row switches it at once (warm, as tooltips do), and a gap between
 //    two cards keeps the last one rather than blinking. Off the row it is gone at once and the next one waits again.
-//  • CardPeekLayout — where and how big: the picture at its own size in points, at most `maxWidth` (360 pt) wide and
-//    never taller than `screenShare` (40 %) of the visible screen under the row (nor than the room the panel has); the
-//    surface centred on the hovered card's x where it fits, else kept `edge` from the screen's sides.
+//  • CardPeekLayout — where and how big: the picture at its own size in points, at most half the visible screen's width
+//    and half its height (a quarter of it: a full-screen snap shows its details, so several that look alike can be
+//    told apart), nor taller than the room under the row; never enlarged (a small snap stays sharp), aspect kept.
+//    Sizes differ from card to card — each picture is as large as it usefully gets (1.0.7: 360 pt / 40 % was too small
+//    for a full-screen snap). The surface is centred on the hovered card's x where it fits, else kept `edge` from the
+//    screen's sides.
 //  • CardPeekLayout.entrance — how it arrives: a 0.15 s fade with a slight grow (0.97 → 1); with Reduce Motion the fade
 //    alone. A warm switch has no entrance: the content changes in place.
 import CoreGraphics
@@ -50,10 +53,8 @@ public struct CardPeek<ID: Equatable>: Equatable {
 }
 
 public enum CardPeekLayout {
-    /// The widest the picture gets (points).
-    public static let maxWidth: CGFloat = 360
-    /// The tallest: this share of the visible screen under the row.
-    public static let screenShare: CGFloat = 0.4
+    /// The largest the picture gets: this share of the visible screen's width, and of its height.
+    public static let screenShare: CGFloat = 0.5
     /// Under this height there is no room worth a picture: none (the words still show).
     public static let minHeight: CGFloat = 48
     /// The surface keeps this far from the screen's sides.
@@ -63,14 +64,13 @@ public enum CardPeekLayout {
     public static let entranceScale: CGFloat = 0.97
 
     /// The picture's size in points: `picture` (its own size in points: pixels ÷ the display's scale) fitted inside
-    /// `maxWidth` and `screenShare` × `below` (the visible screen's height under the row) and `room` (what the window
-    /// it is drawn in has left), aspect kept, never enlarged. nil: no picture, or too little room for one.
-    public static func size(picture: CGSize, below: CGFloat, room: CGFloat = .greatestFiniteMagnitude,
-                            maxWidth: CGFloat = maxWidth) -> CGSize? {
+    /// `screenShare` of `screen` (the visible screen's size) and `room` (the height left under the row and the words),
+    /// aspect kept, never enlarged. nil: no picture, or too little room for one.
+    public static func size(picture: CGSize, screen: CGSize, room: CGFloat = .greatestFiniteMagnitude) -> CGSize? {
         guard picture.width > 0, picture.height > 0 else { return nil }
-        let maxH = min(below * screenShare, room)
-        guard maxH >= minHeight else { return nil }
-        let k = min(1, maxWidth / picture.width, maxH / picture.height)
+        let maxW = screen.width * screenShare, maxH = min(screen.height * screenShare, room)
+        guard maxH >= minHeight, maxW >= minHeight else { return nil }
+        let k = min(1, maxW / picture.width, maxH / picture.height)
         let s = CGSize(width: (picture.width * k).rounded(.down), height: (picture.height * k).rounded(.down))
         return s.width >= 1 && s.height >= 1 ? s : nil
     }

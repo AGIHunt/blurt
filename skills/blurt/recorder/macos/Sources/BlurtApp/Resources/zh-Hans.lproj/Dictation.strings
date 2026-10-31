@@ -504,11 +504,11 @@
 "dictation.toast.slow.polish" = "还在润色… 按 %@ 不润色直接输入";
 "dictation.toast.retry" = "重试";
 "dictation.toast.retry_gone" = "这段录音已经不在了";
-"dictation.toast.copied_app" = "你换了 App，没有输入 · 已复制，⌘V 粘贴";
 "dictation.toast.not_sent" = "没有发送";
 "dictation.toast.not_sent.ax" = "没有发送：需要辅助功能权限";
 "dictation.toast.not_sent.secure" = "没有发送：光标在密码框里";
 "dictation.toast.not_sent.copied" = "文字已复制，没有发送";
+"dictation.toast.not_sent.app" = "没有发送：你换了 App";
 "dictation.toast.copied.not_sent" = "已复制，没有发送 · ⌘V 粘贴";
 "dictation.toast.hold_mode" = "按住%@ 说话（设置里可以改成按一下）";
 "dictation.toast.tap_mode" = "松开，再按一下%@ 开始说话（设置里可以改成按住）";

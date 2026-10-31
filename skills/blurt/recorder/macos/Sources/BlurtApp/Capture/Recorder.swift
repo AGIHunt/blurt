@@ -513,13 +513,6 @@ final class Recorder: NSObject, SCStreamOutput, SCStreamDelegate, AVCaptureAudio
         island.orderFront()
     }
 
-    /// ⌥M: still logged as a marker, and now also a snap of this exact moment. Silent — the mic is recording.
-    func marker() {
-        log("marker")
-        emit(["event": "marker", "t": elapsed()])
-        snap(via: "marker")
-    }
-
     func snap(via: String, then: ((Shot) -> Void)? = nil) { snaps?.snap(via: via, then: then) }
 
     func latestFrame() -> CVImageBuffer? { q.sync { lastFrame } }

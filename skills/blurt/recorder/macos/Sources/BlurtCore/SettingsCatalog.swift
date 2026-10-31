@@ -189,14 +189,14 @@ public enum SettingsCatalog {
     /// (set in Settings → Dictation) leads its section, ahead of these.
     public static let shortcutSections: [(section: String, actions: [String])] = [
         ("shortcuts.capture", ["record", "snap", "text", "translate", "voice"]),
-        ("shortcuts.recording", ["pause", "marker", "pen", "stop"]),
+        ("shortcuts.recording", ["pause", "pen", "stop"]),
         ("shortcuts.dictation", ["reformat"]),
         ("shortcuts.open", ["project", "cards", "menu", "main"]),
     ]
     /// The section an action's row is in.
     public static func shortcutSection(_ action: String) -> String? { shortcutSections.first { $0.actions.contains(action) }?.section }
     /// The actions whose name needs a line to say what it does (capture.action.<name>.detail).
-    public static let describedShortcuts: Set<String> = ["marker", "cards", "reformat", "text", "translate"]
+    public static let describedShortcuts: Set<String> = ["cards", "reformat", "text", "translate"]
     /// The three jobs of speech recognition (BlurtApp ASRPurpose), in the pane's order.
     public static let speechPurposes = ["batch", "live", "note"]
 

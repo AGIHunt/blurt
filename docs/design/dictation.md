@@ -733,8 +733,31 @@ piece is all still to do), interim decodes on and off alternately, 4 takes each 
    quotes or emoji into its own — only delays the clipboard). While pastes overlap (a
    reformat right after a dictation) one snapshot is held: the last paste to finish puts it back, so the user's
    clipboard is never replaced by dictated text (v0.9 dogfood #27).
-5. Only into the app the take started in: when the app in front isn't the one at the key-down (compared by pid), the
-   policy says `copy(app_changed)` — "已复制，⌘V 粘贴" / "Copied — paste with ⌘V" — and a queued Return is dropped.
+5. **Into the app in front when the text is ready**, also when it isn't the one at the key-down (2026-10-31, the
+   founder: people speak while in A meaning to type into B — "I'm in A now, I'll put it in B"; Typeless does the
+   same). Until then a switch got `copy(app_changed)` and a ⚠ 「你换了 App，没有输入 · 已复制，⌘V 粘贴」 — a refusal
+   for something users do on purpose. Now the steps above apply to the app in front as to any take: a password field
+   there is still held, Blurt in front is still `own`, no Accessibility is still a copy. The focused field of the new
+   app is read as usual (fitting, the after-typing watch and learning follow the field the text really goes into), and
+   the island shows the typed text. A switch says nothing, with one exception: **a double tap's queued Return isn't
+   pressed** (`DictationSendPolicy.queued`, `DictationPastePolicyTests.testAQueuedReturnIsHeldAfterASwitch`) — the
+   text is pasted, but a message sent into another chat than the one the user was in can't be taken back; the island
+   says 「没有发送：你换了 App」 / "Not sent: you switched apps" (`DictationDeliveredLine.pastedNotSent`; it wins over
+   "Copy again", not over the no-field line that keeps the text).
+   - "Changed" is still measured (the pid at the key-down against the one at paste time) and logged: `app_changed` in
+     `dictation_text`, `dictation_send skipped app_changed`.
+   - The history entry's app is the one the text went into (the app in front at paste time), not the one at the
+     key-down; so are reformat-last (⌥L acts on the text where it is: `DictationLastPaste.bundle`) and the per-app
+     suggestions that read the history (translate, Structured).
+   - Per-app switches (⇧ to Structured, ⌘ to Translate, `DictationRemembering.swift`) are **not remembered** after a
+     switch, in either app: they were made while speaking in A for text meant for B — on A the next takes would start
+     translated where the user never wanted it (a translation left on going out unnoticed is the risk the reminder
+     exists for), and on B they would be measured against A's starting state (turning A's remembered translation off
+     would drop B's). They are taken as the take stops listening and remembered once its text is in
+     (`dictation_remember skipped app_changed` when not); the next take in B starts with B's own settings.
+   - A retry from the history (after a relaunch: no app to go to, and Blurt's history window — its search field — is
+     in front) is still only copied (`from_history`).
+   - ⌥C / ⌥T keep the refusal (`ScreenTextPaste`: `appChanged` → copy; docs/design/screen-text.md §1c).
    Test builds compare a simulated front app (`dictation front NAME`) and use a private pasteboard
    (`BLURT_TEST_PASTEBOARD`, else one of their own): a test never touches the user's clipboard.
 
@@ -802,7 +825,7 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   "已取消" / "Cancelled" — with **Undo** for 5 s (`Dictation.undoSeconds`): Esc isn't swallowed, so an Esc meant for
   the app in front (vim, an autocomplete, a popover) would otherwise cost the take. The stopped takes keep their audio
   for that time (`cancelledTakes`, also in `DictationHistory.liveIDs`); Undo runs them again like Retry (pasted into
-  the app they started in, else copied). Esc while listening says "已取消" too (it used to vanish silently; nothing is
+  the app in front then, as any take). Esc while listening says "已取消" too (it used to vanish silently; nothing is
   kept — the take was in front of the user). A paste already under way (⌘V until it has landed) can't be taken back.
   Another key or a click in push-to-talk's first second, before anything was cut, is a shortcut (Fn+← is Home): the
   take goes without "已取消" (`DictationTrigger.joinedEarly`).
@@ -870,15 +893,15 @@ BlurtCore's `DictationTakeFlow.swift`, `DictationTakeFlowTests`):
   on purpose is not started again online (`WarmSpawn.retire`).
 - **The forgotten hands-free take** (`DictationRunaway`): after 20 s without speech (`NoteEndpointer.quietSeconds`)
   "还在听 · 按 Fn 结束 · Esc 取消"; from 4:30 the ear counts down (`Dictation.earClock`, "−0:29"); at 5:00 "已到 5
-  分钟上限，听写已结束" and the text goes in (only into the app it started in); the next tap within 4 s — as long as
+  分钟上限，听写已结束" and the text goes in (into the app in front then, §Insert); the next tap within 4 s — as long as
   that line shows (`DictationTrigger.limitGrace`, `endedByItself`) — is taken as the stop that came late, not a new
   take (v0.9 dogfood: a tap 2–4 s later started one under the line). The last 30 s show the clock in the island's
   attention colour with one quiet "还剩 30 秒". A new take drops what the island said about the last one: its tip, the
   5-minute line, "还在识别…"; the stop drops ⇧'s Structured line (⇧ works only while listening).
 - **What used to end in silence**: a skipped Return says why ("没有发送：需要辅助功能权限", "…光标在密码框里",
-  "文字已复制，没有发送"); a take only copied because the user switched apps is a ⚠ toast that says so ("你换了 App，
-  没有输入 · 已复制，⌘V 粘贴", 6 s — not the ears' 2 s ✓), and a double tap within 15 s of a take left on the
-  clipboard, with no key pressed since, holds its Return ("已复制，没有发送 · ⌘V 粘贴"; `DictationCopiedGuard`) —
+  "文字已复制，没有发送", and "没有发送：你换了 App" for a take pasted into another app than the one it started in:
+  §Insert 5 — until 2026-10-31 such a take was only copied, with a ⚠ toast), and a double tap within 15 s of a take
+  left on the clipboard, with no key pressed since, holds its Return ("已复制，没有发送 · ⌘V 粘贴"; `DictationCopiedGuard`) —
   the dogfood's Return went into the app now in front, where nothing was pasted; a press the mode doesn't use (`DictationTrigger.miss`: a tap in hold mode, a long press in
   tap mode) says how this mode starts — a tap in hold mode once a day; a long press in tap mode every time, while the
   key is still down (a `.tick` at `tapMax`), so the user lets go before talking into a take that won't start (the

@@ -10,8 +10,9 @@
 //   • a paste into a focus Accessibility can't read (WeChat) → the island offers "Copy again" for a few seconds;
 //   • a paste into a focus Accessibility reads as something other than a text field (the desktop, a page with no
 //     field focused) → the island keeps the text with Copy until it is copied, closed or the next take starts;
-//   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke;
-//   • never into an app other than the one the take started in (`appChanged`): copied instead.
+//   • never into Blurt's own island / panels. Our own windows (the test pad) get a real paste: action, no keystroke.
+// The app in front when the text is ready is the one that gets it, also when the user switched apps after starting
+// the take (2026-10-31: they spoke in A meaning to type into B); only a retry from the history is copied (`copyOnly`).
 // While pastes overlap (a reformat right after a dictation), one snapshot of the user's clipboard is held: only the
 // last paste to finish puts it back, so it is never replaced by dictated text. Test builds use a private pasteboard
 // (BLURT_TEST_PASTEBOARD, else one of their own): a test never touches the user's clipboard.
@@ -84,18 +85,20 @@ enum DictationInsert {
         if pasteboard.changeCount == ours { h.saved.restore() }
     }
 
-    /// Puts `text` where the user is typing. `appChanged`: the app in front isn't the one the take started in — the
-    /// text is copied, never pasted there. `done` gets what happened (on the main queue) — for a paste, once it has
-    /// landed (DictationPasteLanding: `field`, read just before as `before`, shows the text), which is when a double
-    /// tap's Return may go; the user's clipboard comes back after that, never on a timer that could beat the paste.
-    static func insert(_ text: String, appChanged: Bool = false, field: DictationField? = nil,
+    /// Puts `text` where the user is typing: the app in front now, whichever it is. `copyOnly`: copied, never pasted,
+    /// with this reason (a failed take retried from the history: its app is long gone, and Blurt's own window — the
+    /// history's search field — is in front). `done` gets what happened (on the main queue) — for a paste, once it
+    /// has landed (DictationPasteLanding: `field`, read just before as `before`, shows the text), which is when a
+    /// double tap's Return may go; the user's clipboard comes back after that, never on a timer that could beat the
+    /// paste.
+    static func insert(_ text: String, copyOnly: String? = nil, field: DictationField? = nil,
                        before: (text: String, selection: NSRange)? = nil, done: @escaping (Result) -> Void) {
         guard !text.isEmpty else { return done(.none) }
         lastNoField = testMode && testNoField
-        if appChanged {
+        if let why = copyOnly {
             copy(text)
-            lastCopyReason = "app_changed"
-            emit(["event": "dictation_insert", "result": "copied", "why": "app_changed"])
+            lastCopyReason = why
+            emit(["event": "dictation_insert", "result": "copied", "why": why])
             return done(.copied)
         }
         if testMode {
@@ -207,7 +210,7 @@ enum DictationInsert {
         }
     }
 
-    /// Why the last insert copied instead of pasting (app_changed, secure_input, no_accessibility …).
+    /// Why the last insert copied instead of pasting (from_history, secure_input, no_accessibility …).
     static var lastCopyReason: String?
 
     /// The last ⌘V went to a focus Accessibility recognised as a text field (false: WeChat and the like — the island

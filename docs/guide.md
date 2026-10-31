@@ -46,8 +46,8 @@ organizing makes an item of it with your note (of the type you chose, if you cho
 the thread when you finish). Hold `⌃` and drag to draw on the
 screen — the same strokes as on a snap: `⌃⇧` for a box, `⌃⌥` for an ellipse, pressed in any order (the shape
 follows the keys you are holding), rest the pointer to straighten a rough
-shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. `⌥M` marks the moment (a still of the recorded area,
-counted apart). Dictation is off while recording (the notch says so). The notch shows the state: pause bars and the
+shape (the ink fades after 3 seconds) — `⌥D` keeps the pen on. (`⌥M`, which saved a still of the recorded area, was
+removed in 1.0.7: `⌥A` no longer pauses the recording, and what you say already marks the moment.) Dictation is off while recording (the notch says so). The notch shows the state: pause bars and the
 time in amber while paused, a pen while the pen stays on (it takes your clicks; `Esc` or a click on *Pen on* turns it
 off), and how many snaps you took. Open it for the words: *6 snaps · 4 items spotted* (the items Blurt has heard so
 far), then where they go — *Organized into Atlas Web when you finish*. Blurt is recorded like any other app — its
@@ -770,7 +770,7 @@ says which one to update, and the menu-bar menu and *Settings → General* keep 
 | **截图翻译** | `⌥T` | 同样拖选，识别后翻译成「设置 → 截图取字 → ⌥T 翻译成」里选的语言（⌥T 自己的设置；听写的 ⌘ 翻译另有设置，因为读和写的方向通常相反）。默认「自动」是你的语言 ↔ 另一种，列表里会写出这一对（「自动：简体中文 ↔ English」）：你的语言译成另一种，其他语言译成你的语言；选了某种语言就总是得到这种语言，已经是这种语言的文字原样复制，刘海上会说（「已是英语 · 原文已复制」）。换行、列表、代码、路径和名字都保留。刘海上先显示「正在翻译…」，再说结果（「已粘贴译文」「已复制 · ⌘V 粘贴」或「已复制译文」）；完整译文显示在刘海下面的小卡片里，带「复制」按钮。卡片 10 秒后自己收起（指针在上面时不收）；指针在卡片上时按 Esc 关闭，否则 Esc 照常留给你正在用的 App。译文在剪贴板里，按和 ⌥C 一样的规则粘贴。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型。 |
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
 
-录屏时：`⌥P` 暂停；`⌥A`（或刘海上的截图按钮）和平时的截图一样——框选区域，说或打备注（录屏在收音的同时，备注也能听到你说话），在图上画，然后挂成一张卡片——录屏不会暂停，截图的过程也录在视频里。这张截图属于这段录屏：图、备注、去处和类型都存进录屏里，整理时会按你的备注生成一个事项（选了类型就是这个类型）（卡片菜单里写着「随这段录屏一起整理」，点完成后卡片会收起）。按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆，按键不分先后（按住哪几个键就画哪种形状），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。`⌥M` 标记这一刻（截下录制区域的画面，单独计数）。录屏时不能听写，刘海上会说明。
+录屏时：`⌥P` 暂停；`⌥A`（或刘海上的截图按钮）和平时的截图一样——框选区域，说或打备注（录屏在收音的同时，备注也能听到你说话），在图上画，然后挂成一张卡片——录屏不会暂停，截图的过程也录在视频里。这张截图属于这段录屏：图、备注、去处和类型都存进录屏里，整理时会按你的备注生成一个事项（选了类型就是这个类型）（卡片菜单里写着「随这段录屏一起整理」，点完成后卡片会收起）。按住 `⌃` 拖动在屏幕上画——和截图上的画法一样：`⌃⇧` 方框，`⌃⌥` 椭圆，按键不分先后（按住哪几个键就画哪种形状），停住半秒把歪的形状变规整（笔迹 3 秒后消失）；`⌥D` 让画笔常开。（1.0.7 起去掉了 `⌥M` 标记：`⌥A` 截图已经不会暂停录屏，你说的话本身就标出了那一刻。）录屏时不能听写，刘海上会说明。
 刘海会显示当前状态：暂停时是琥珀色的暂停符号和时间；画笔常开时显示一支笔（这时点击会被画笔接走，按 `Esc` 或点「画笔已开」关掉）；截了几张图。展开刘海能看到文字说明：「截图 6 张 · 已识别 4 个事项」（到目前为止听出来的事项），下面一行是去处——「点完成后整理到 Atlas Web」。
 口喷鸡自己也会像别的 App 一样被录进去——它的窗口、卡片、备注框、画笔笔迹和刘海——所以可以用录屏来反馈口喷鸡自己的问题；只有倒计时和红色边框永远不会录进去。不想录到刘海，就打开「设置 → 通用 → 录屏时不录刘海」（截图总会带上刘海）。
 

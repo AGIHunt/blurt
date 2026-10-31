@@ -71,7 +71,7 @@ extension Island {
 
     /// The island's snap button: exactly ⌥A while recording (AppDelegate.hotkey(.snap)) — the snap flow (drag an area,
     /// its note, its card) into the take, and the recording keeps going. (It used to take a still of the whole
-    /// recorded area and paused the take while its note was open; ⌥M still takes such a still, as a marker.)
+    /// recorded area and paused the take while its note was open.)
     func snapWithNote() {
         guard rec != nil else { return }
         emit(["event": "rec_snap_button"])

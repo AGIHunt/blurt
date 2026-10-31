@@ -226,7 +226,9 @@ island's left half to Translate, in a take that was typed, stays on in that app 
   translate glyphs from the moment it listens, and a take that starts with something remembered says so when the
   app was quiet for an hour or more (「沿用 微信 上次的设置：翻译 · 按 ⌘ 关掉」) — the risk is a translation left on
   from a chat with a foreign contact going out to the next one.
-- A cancelled take, or one with nothing heard, leaves nothing. Settings → Dictation → "Remember Structured and
+- A cancelled take, or one with nothing heard, leaves nothing; nor does a take whose text went into another app than
+  the one it started in (2026-10-31: such a take is pasted into the app in front — dictation.md §Insert 5 says why
+  neither app keeps the switch). Settings → Dictation → "Remember Structured and
   Translate for each app" (`learn_styles`, on) turns it all off.
 
 ### 3.6 What to build first, and the latency it costs

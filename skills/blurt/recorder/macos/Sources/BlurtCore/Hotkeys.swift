@@ -309,7 +309,8 @@ public final class HotkeyCenter {
 
     /// Raw values are the config keys (record.hotkeys) — shared with _common.py / the Windows recorder.
     public enum Action: String, CaseIterable {
-        case toggleRecord = "record", openMenu = "menu", snap, pause, marker, pen, finish = "stop", openMain = "main", voice, project
+        case toggleRecord = "record", openMenu = "menu", snap, pause, pen, finish = "stop", openMain = "main", voice, project
+        // (no "marker": ⌥M went in 1.0.7 — ⌥A snaps without pausing while recording; a config entry for it is ignored)
         /// ⌥H: the Cards panel — Current, or History when nothing hangs; again: closes it (CardsPanel; macOS only)
         case cards
         /// ⌥L: reformat the last dictation — verbatim → light → structured, with undo (macOS only; dictation-styles.md)
@@ -326,7 +327,6 @@ public final class HotkeyCenter {
             case .openMenu: return "B"
             case .snap: return "A"
             case .pause: return "P"
-            case .marker: return "M"
             case .pen: return "D"
             case .finish: return "S"
             case .openMain: return nil
@@ -344,7 +344,6 @@ public final class HotkeyCenter {
             case .openMenu: return Loc.t("capture.action.menu", table: "Capture")
             case .snap: return Loc.t("capture.action.snap", table: "Capture")
             case .pause: return Loc.t("capture.action.pause", table: "Capture")
-            case .marker: return Loc.t("capture.action.marker", table: "Capture")
             case .pen: return Loc.t("capture.action.pen", table: "Capture")
             case .finish: return Loc.t("capture.action.stop", table: "Capture")
             case .openMain: return Loc.t("capture.action.main", table: "Capture")
