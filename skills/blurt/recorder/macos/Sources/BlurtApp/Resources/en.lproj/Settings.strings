@@ -275,6 +275,7 @@
 "settings.kw.dictation.key" = "Fn, globe, option, right option, trigger key";
 "settings.kw.dictation.mode" = "tap, hold, push to talk, toggle";
 "settings.kw.dictation.double_tap" = "enter, return, send, double tap";
+"settings.kw.dictation.modifier_tap" = "double tap, single tap, shift, command, structured, translate, misfire";
 "settings.kw.dictation.fn_capture" = "Fn, globe key, emoji, input source";
 "settings.kw.dictation.default_style" = "polish, verbatim, light, structured, auto, clean up";
 "settings.kw.dictation.by_app" = "per app, app category, chat, code, mail, notes";
@@ -288,6 +289,7 @@
 "settings.kw.dictation.sounds" = "sound, beep, chime, chirp";
 "settings.kw.dictation.stop_sound" = "sound, beep, chime, stop";
 "settings.kw.dictation.mic" = "microphone, mic, bluetooth, AirPods, headset, input";
+"settings.kw.dictation.only_my_voice" = "voiceprint, voice profile, speaker, only my voice, other people talking, background voices, record my voice";
 "settings.kw.dictation.models" = "speech model, polish model, recognition, ASR, LLM, Qwen, Gemma, download";
 "settings.kw.speech.recognition" = "speech recognition, speech model, switch model, automatic, recommended, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "dictation model, speech model, download, Qwen";

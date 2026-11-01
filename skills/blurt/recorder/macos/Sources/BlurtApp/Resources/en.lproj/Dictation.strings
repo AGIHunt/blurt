@@ -39,6 +39,28 @@
 "dictation.mic.builtin.detail" = "Bluetooth headsets take about a second to start, so your first words can be lost. Automatic uses the Mac’s built-in microphone when the default input is Bluetooth.";
 "dictation.sounds" = "Sound when listening starts";
 "dictation.stop_sound" = "Sound when listening stops";
+/* Only my voice (issue #26): the switch, and the passage read once to set it up */
+"dictation.only_my_voice" = "Only my voice";
+"dictation.only_my_voice.detail" = "Speech from other people nearby isn’t typed.";
+"dictation.only_my_voice.stale" = "Your voice profile needs updating. Record it again to turn this on.";
+"dictation.voiceprint.more" = "Voice Profile";
+"dictation.voiceprint.again" = "Record Again…";
+"dictation.voiceprint.delete" = "Delete Voice Profile";
+"dictation.voiceprint.title" = "Record Your Voice";
+"dictation.voiceprint.read" = "Read the text below aloud at your usual volume, with the microphone you dictate with.";
+"dictation.voiceprint.passage" = "I’m setting up dictation on my Mac. Tomorrow morning I’ll go through the project plan with the team, answer a few emails, and send the meeting notes before Friday. If anything changes, I’ll update the document and let everyone know.";
+"dictation.voiceprint.start" = "Start Recording";
+"dictation.voiceprint.done" = "Done";
+"dictation.voiceprint.cancel" = "Cancel";
+"dictation.voiceprint.starting" = "Starting the microphone…";
+"dictation.voiceprint.recording" = "Recording…";
+"dictation.voiceprint.saving" = "Saving…";
+"dictation.voiceprint.downloading" = "Downloading the voice model (%ld MB)…";
+"dictation.voiceprint.private" = "The recording isn’t uploaded or kept.";
+"dictation.voiceprint.too_short" = "Too little speech. Read the whole passage.";
+"dictation.voiceprint.mic_failed" = "Can’t start the microphone. Check microphone access in System Settings.";
+"dictation.voiceprint.network" = "Can’t download the voice model. Check your network.";
+"dictation.voiceprint.failed" = "Couldn’t save your voice (%@).";
 
 /* menus */
 "dictation.menu.history" = "Dictation History…";
@@ -169,6 +191,12 @@
 "dictation.toast.sent" = "Sent";
 "dictation.settings.double_tap" = "Double-tap to send";
 "dictation.settings.double_tap.detail" = "Double-tap the key to press Return after the text.";
+
+/* structured / translate: ⇧ or ⌘ alone */
+"dictation.settings.modifier_tap" = "Structured / Translate key";
+"dictation.settings.modifier_tap.detail" = "⇧ toggles Structured, ⌘ toggles Translate.";
+"dictation.mode.modifier.double" = "Double-tap";
+"dictation.mode.modifier.single" = "Single tap";
 
 /* Dictation Lab (the Dictation page's Lab tab; MainWindow/DictationLab*.swift) */
 "dictation.lab.tab.history" = "History";
@@ -392,7 +420,7 @@
 "dictation.style.light" = "Light";
 "dictation.style.structured" = "Structured";
 "dictation.style.auto" = "Auto";
-"dictation.style.toast.structured" = "%@: a list when you finish · ⇧ to go back";
+"dictation.style.toast.structured" = "%@: a list when you finish · double-tap ⇧ to go back";
 "dictation.style.toast.back" = "Back to %@";
 "dictation.style.chip" = "Sounds like a list";
 "dictation.style.chip.key" = "Sounds like a list · %@";
@@ -413,8 +441,8 @@
 "dictation.style.learn.no" = "No";
 "dictation.style.learn.done" = "Saved. You can change this in Settings > Dictation.";
 "dictation.style.section" = "Style";
-"dictation.style.keys" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧. %@ reformats the last dictation.";
-"dictation.style.keys.no_hotkey" = "While talking, press ⇧ on its own to switch this take to Structured, or start with Fn+⇧.";
+"dictation.style.keys" = "While talking, double-tap ⇧ for Structured. %@ reformats the last dictation.";
+"dictation.style.keys.no_hotkey" = "While talking, double-tap ⇧ for Structured.";
 "dictation.style.cat.chat" = "Chat";
 "dictation.style.cat.chat.detail" = "Keeps the casual words of chat (吧, 呢, 啊 in Chinese); no full stop after a one-sentence message";
 "dictation.style.cat.code" = "Code and terminals";
@@ -431,7 +459,7 @@
 "dictation.style.reset.help" = "Back to its category’s style";
 "dictation.style.suggest" = "Offer a list when a take sounds like one";
 "dictation.style.learn_toggle" = "Remember Structured and Translate for each app";
-"dictation.style.learn_toggle.detail" = "Turned on with ⇧ or ⌘, it stays on in that app until you press it again";
+"dictation.style.learn_toggle.detail" = "Turned on with a double-tap of ⇧ or ⌘, it stays on in that app until you turn it off";
 "dictation.style.verbatim.detail" = "Exactly what the speech model heard. No polish.";
 "dictation.history.style" = "Style: %@";
 "dictation.history.style.reformatted" = "reformatted %ld×";
@@ -486,7 +514,7 @@
 "dictation.history.saved.detail" = "Every dictation, before and after polish.";
 
 /* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
-"dictation.style.toast.structured.first" = "%@: a list when you finish, with only what you settled on · ⇧ to go back";
+"dictation.style.toast.structured.first" = "%@: a list when you finish, with only what you settled on · double-tap ⇧ to go back";
 "dictation.toast.cancelled" = "Cancelled";
 "dictation.toast.limit" = "Stopped at the 5-minute limit";
 "dictation.toast.ends_soon" = "Close to the 5-minute limit";
@@ -521,7 +549,7 @@
 "dictation.toast.polish_cloud_key" = "The cloud polish key isn’t valid · not used this time";
 "dictation.toast.weaker_asr" = "The recommended speech model isn’t downloaded — names may be less accurate";
 "dictation.tip.send" = "Double-tap %@ to send";
-"dictation.tip.list" = "Press ⇧ while you talk for a list";
+"dictation.tip.list" = "Double-tap ⇧ while you talk for a list";
 "dictation.tip.reformat" = "%@ switches style";
 "dictation.history.failed" = "Not recognized";
 "dictation.history.failed.no_model" = "Not recognized: no speech model";
@@ -696,7 +724,7 @@
 "dictation.models.cloud" = "%@ (cloud)";
 
 /* Translate mode (docs/design/dictation-translate.md) */
-"dictation.translate.toast.on.auto" = "Translate on: %1$@ ↔ %2$@ · ⌘ to turn off";
+"dictation.translate.toast.on.auto" = "Translate on: %1$@ ↔ %2$@ · double-tap ⌘ to turn off";
 "dictation.translate.toast.off" = "Translate off";
 "dictation.translate.toast.unavailable" = "Translating needs a cloud model or a local polish model";
 "dictation.translate.toast.setup" = "Set Up…";
@@ -707,16 +735,16 @@
 "dictation.translate.toast.cloud_hint" = "Translated locally; a cloud model translates better";
 "dictation.translate.toast.suggest" = "Translate everything you dictate in %@?";
 "dictation.translate.toast.suggest.yes" = "Translate";
-"dictation.translate.section" = "Translate (⌘)";
-"dictation.translate.settings.title" = "⌘ translates into";
-"dictation.translate.settings.detail" = "Press ⌘ while you talk, or click Peep, to type what you say in another language";
+"dictation.translate.section" = "Translate";
+"dictation.translate.settings.title" = "Double-tap ⌘ translates into";
+"dictation.translate.settings.detail" = "Double-tap ⌘ while you talk, or click Peep, to type what you say in another language";
 "dictation.translate.target.auto" = "Auto: %1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "Auto: into %@";
 "dictation.translate.target.auto_one.note" = "Text in %@ stays as it is; pick a language to translate it into";
 "dictation.translate.toast.learned" = "Dictation in %@ will be translated from now on";
 "dictation.translate.toast.undo" = "Undo";
 "dictation.translate.apps" = "Apps with Translate on";
-"dictation.translate.apps.note" = "In an app, ⌘ turns translation on and it stays on there; ⌘ again turns it off and removes the app.";
+"dictation.translate.apps.note" = "In an app, double-tapping ⌘ turns translation on and it stays on there; double-tap ⌘ again to turn it off and remove the app.";
 "dictation.translate.apps.remove" = "Remove";
 
 /* Per-app memory of Structured / Translate (DictationRemembering) */

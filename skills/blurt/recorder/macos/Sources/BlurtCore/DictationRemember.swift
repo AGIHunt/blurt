@@ -1,5 +1,5 @@
 // What a switch during a take leaves for the next one in the same app (v1.0.6, the founder): Structured (⇧, the
-// island, Fn+⇧) and Translate (⌘, the island's left half) stay on in that app until switched back, instead of the
+// island) and Translate (⌘, the island's left half) stay on in that app until switched back, instead of the
 // island asking after three switches (docs/design/dictation-styles.md §3.5). A remembered style goes into the app's
 // own style (`DictationStyleConfig.apps`, marked learned: Settings lists it with Reset); a remembered translation
 // into the list of apps that translate (`DictationTranslateConfig.apps`). Switching back removes it. Only a take that

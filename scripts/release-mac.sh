@@ -144,12 +144,8 @@ codesign --verify --deep --strict "$APP"
 
 # ---------------------------------------------------------------- DMG
 say "DMG"
-STAGE=$WORK/dmg
-mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/Blurt.app"
-ln -s /Applications "$STAGE/Applications"
 DMG=$OUT/Blurt-$VERSION.dmg
-hdiutil create -quiet -volname "Blurt $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -imagekey zlib-level=9 "$DMG"
+"$ROOT/scripts/dmg/make-dmg.sh" --app "$APP" --version "$VERSION" --out "$OUT" --volname "Blurt $VERSION"
 [ -n "$DEVELOPER_ID" ] && codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG"
 
 # ---------------------------------------------------------------- notarize + staple

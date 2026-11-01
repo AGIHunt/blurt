@@ -92,7 +92,7 @@ struct ScreenTextPane: View {
                 }
                 if m.on { JobChangeButton(job: .vision).buttonStyle(SettingsOutlinedButtonStyle()).fixedSize() }
                 Toggle(T("settings.general.screen_text"), isOn: Binding(get: { m.on }, set: { m.setOn($0) }))
-                    .toggleStyle(.switch).labelsHidden().controlSize(.small)
+                    .labelsHidden().toggleStyle(BrandSwitchStyle(label: T("settings.general.screen_text")))
             }
         }
     }

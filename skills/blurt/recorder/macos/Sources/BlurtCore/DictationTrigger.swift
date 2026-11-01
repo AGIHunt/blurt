@@ -38,16 +38,17 @@
 //                       past `tapMax` — is reported, so the app can say how to start in that mode.
 //   repeats             the key reported down again while it is down (two listeners, a repeat) is the same press; a
 //                       Globe keyDown (kVK 179, which some keyboards send with the Fn change) is part of the Fn press.
-//   style               (docs/design/dictation-styles.md §3.2) ⇧ pressed and released alone while dictating says
-//                       `.style`: the app toggles Structured for this take. In push-to-talk too: a lone ⇧ is the one
-//                       key that joins in without cancelling (⇧ with another key still cancels, as any shortcut does).
+//   style               (docs/design/dictation-styles.md §3.2) ⇧ double-tapped alone while dictating says
+//                       `.style`: the app toggles Structured for this take (one ⇧, or two too far apart, is nothing).
+//                       In push-to-talk too: a lone ⇧ is the one key that joins in without cancelling (⇧ with
+//                       another key still cancels, as any shortcut does).
 //                       A click on Blurt's own island (`.islandClick`: the app tells which clicks land there) is the
-//                       same toggle and never cancels. Fn+⇧ as the start press (⇧ held when Fn goes down, or pressed
-//                       while it is down) starts in Structured: `startShift`. Only with Fn: with an ⌥ key, ⇧ stays a
-//                       modifier (⌥V and Blurt's other ⌥⇧ shortcuts never start anything).
-//   translate           (docs/design/dictation-translate.md) ⌘ — either one — pressed and released alone while dictating
+//                       same toggle and never cancels. ⇧ with the start press (Fn+⇧) is a modifier like any other:
+//                       a shortcut, never a start (Fn+⇧+← selects to the line start).
+//   translate           (docs/design/dictation-translate.md) ⌘ — either one — double-tapped alone while dictating
 //                       says `.translate`: the app turns translation on or off for this take. Like ⇧, it joins
 //                       push-to-talk without cancelling it; ⌘ with a key (⌘V) is a shortcut and cancels as before.
+//                       `record.dictation.modifier_tap` puts both keys on a single tap instead (default: double).
 //                       Input methods never use a lone ⌘, so it passes on to the app untouched. A click on the island's
 //                       left half (`.islandTranslateClick`) is the same toggle.
 import Foundation
@@ -86,9 +87,10 @@ public struct DictationTrigger {
         case arm, start, stop, cancel
         /// a double tap: press Return in the app in front (after the paste, when a dictation just stopped)
         case send
-        /// ⇧ alone (or a click on the island) while dictating: toggle Structured for this take
+        /// ⇧ double-tapped alone (or a click on the island) while dictating: toggle Structured for this take
         case style
-        /// ⌘ alone (or a click on the island's left half) while dictating: translation on or off for this take
+        /// ⌘ double-tapped alone (or a click on the island's left half) while dictating: translation on or off (one tap
+        /// when the setting says single)
         case translate
     }
     public enum Event: Equatable {
@@ -113,6 +115,28 @@ public struct DictationTrigger {
     /// kVK_RightCommand, kVK_Command
     public static let commandCodes: Set<Int> = [54, 55]
     static let commandMask: UInt64 = 0x10_0000
+
+    /// How a modifier alone while dictating asks for its toggle (structured / translate): a double tap (the default)
+    /// or a single tap (record.dictation.modifier_tap; per-key override modifier_tap_shift / modifier_tap_command).
+    public enum ModifierTap: String, CaseIterable {
+        case single, double
+    }
+    /// the second tap must go down within this long of the first one's (350 ms: macOS's double-click interval × 0.7,
+    /// quick enough to feel instant, wide enough for a deliberate double tap)
+    public var modifierDoubleTapWindow = DictationTrigger.shippedDoubleTapWindow
+    /// after a toggle fires, this long before the same key can ask again (a held key's repeat, a nervous double tap)
+    public var modifierCooldown = DictationTrigger.shippedModifierCooldown
+    /// What Blurt ships with for both ⇧ (Structured) and ⌘ (Translate) — and for a voice note's ⇧ — a double tap 350 ms
+    /// wide with a 500 ms cooldown. One gesture for both keys: one key on a tap and the other on a double tap is what
+    /// confuses people. A lone tap was too easy to hit during a take. record.dictation.modifier_tap puts both back on
+    /// "single" (modifier_tap_shift / modifier_tap_command override one key).
+    public static let shippedModifierTap: ModifierTap = .double
+    public static let shippedDoubleTapWindow = 0.35
+    public static let shippedModifierCooldown = 0.5
+    /// the mode for each key (the app sets these; the struct itself defaults both to .single, the old behaviour, so a
+    /// bare trigger in a test means the pre-double-tap one)
+    public var modifierTapShift: ModifierTap = .single
+    public var modifierTapCommand: ModifierTap = .single
 
     public var key: Key
     public var mode: Mode
@@ -177,10 +201,9 @@ public struct DictationTrigger {
     private var shiftDownAt: Double?
     /// ⌘ went down while dictating, alone so far: its release toggles translation
     private var commandDownAt: Double?
-    /// the press now down has ⇧ with it (Fn+⇧)
-    private var chord = false
-    /// The dictation in progress was started with Fn+⇧: it starts in Structured.
-    public private(set) var startShift = false
+    /// modifier double-tap state: which key tapped first and when, and when the cooldown after a fire ends
+    private var modifierLastTap: (code: Int, t: Double)?
+    private var modifierCooldownUntil: Double = 0
     /// Dictating, as far as the trigger knows (the app calls `reset` when it ends one itself).
     public private(set) var active = false
     /// The dictation in progress was started by holding the key (hold mode, or auto held past `autoHold`): it ends
@@ -230,9 +253,10 @@ public struct DictationTrigger {
     public mutating func reset(active a: Bool, keepTap: Bool = false) {
         active = a
         pushToTalk = false
-        startShift = false
         shiftDownAt = nil
         commandDownAt = nil
+        modifierLastTap = nil
+        modifierCooldownUntil = 0
         quickStop = false
         startTapUp = nil
         if !keepTap { lastTap = nil }
@@ -307,23 +331,21 @@ public struct DictationTrigger {
     private mutating func keyDown(_ code: Int, _ flags: UInt64, _ t: Double) -> [Output] {
         if state == .holding || state == .waitRelease { return [] }        // a repeat of what we know
         if case let .down(_, _, held) = state, held == code { return [] }   // the same press reported again
-        // Fn+⇧ (⇧ held when Fn goes down) is still a clean press: it starts in Structured
-        let withShift = key == .fn && !active && flags & DictationTrigger.shiftMask != 0
-        let alone = flags & (Key.otherMods(code) & (withShift ? ~DictationTrigger.shiftMask : ~UInt64(0))) == 0
+        let alone = flags & Key.otherMods(code) == 0
         state = .down(at: t, clean: alone, code: code)
         heldMissSaid = false
         holdingCode = code
         second = nil
         shiftDownAt = nil                   // the key joined a ⇧ that was down: no toggle when ⇧ comes up
         commandDownAt = nil                 // … nor a ⌘
-        chord = withShift && alone
+        modifierLastTap = nil
         miss = nil
         let bounce = lastTap.map { $0.did == .sent && t - $0.up <= doubleTapWindow } ?? false
         let afterEnd = quietUntil.map { t < $0 } ?? false
         quietUntil = nil
         pressQuiet = alone && !active && (bounce || afterEnd)
         pressAfterEnd = pressQuiet && afterEnd
-        if doubleTap, alone, !chord, !pressQuiet, let l = lastTap, t - l.up <= doubleTapWindow { second = l.did }
+        if doubleTap, alone, !pressQuiet, let l = lastTap, t - l.up <= doubleTapWindow { second = l.did }
         lastTap = nil
         // a second tap can only send (or cancel the dictation the first one started): no mic for it; nor for a press
         // that only ends a bounce
@@ -377,7 +399,7 @@ public struct DictationTrigger {
             }
             active.toggle()
             lastTap = (active ? .started : .stopped, t)
-            if active { startShift = chord; startTapUp = t } else { stopped(at: at) }
+            if active { startTapUp = t } else { stopped(at: at) }
             return [active ? .start : .stop]
         case let (.auto, .down(at, clean, _)):
             guard clean else { return [] }
@@ -391,7 +413,6 @@ public struct DictationTrigger {
             guard t - at < autoHold else { return [] }      // held past the threshold with no tick: never started
             active = true
             pushToTalk = false
-            startShift = chord
             startTapUp = t
             lastTap = (.started, t)
             return [.start]
@@ -426,6 +447,7 @@ public struct DictationTrigger {
         startTapUp = nil
         shiftDownAt = nil                   // ⇧ with another key: a shortcut (or a capital), not the style toggle
         commandDownAt = nil                 // ⌘ with another key (⌘V): a shortcut, not the translate toggle
+        modifierLastTap = nil
         switch state {
         case let .down(at, _, code):
             if holdThreshold != nil, let out = holdIfDue(at: at, t) { return out + otherInput(t) }   // held long enough: started, and now joined
@@ -459,31 +481,15 @@ public struct DictationTrigger {
         pressQuiet = false
         active = true
         pushToTalk = true
-        startShift = chord
         second = nil
         return [.start]
     }
 
-    /// ⇧ went down or up. While dictating, alone and let go within `shiftTapMax`: the style toggle (push-to-talk is
-    /// not cancelled by it). While the Fn start press is down: Fn+⇧, a Structured start. Otherwise ⇧ is any other
-    /// modifier.
+    /// ⇧ went down or up. While dictating, alone (`modifierChanged`): the style toggle (push-to-talk is not cancelled
+    /// by it). Otherwise ⇧ is any other modifier.
     private mutating func shiftChanged(down: Bool, _ t: Double) -> [Output] {
-        if case let .down(_, clean, _) = state, !active, key == .fn {
-            // the start press with ⇧ joining in (Fn+⇧): still clean; a key after it makes it a shortcut, as before
-            if down && clean { chord = true }
-            return []
-        }
         if active, state == .holding || state == .idle {
-            if down {
-                lastTap = nil
-                startTapUp = nil
-                shiftDownAt = t
-                commandDownAt = nil         // ⌘⇧: a chord, neither toggle
-                return []
-            }
-            defer { shiftDownAt = nil }
-            if let d = shiftDownAt, t - d <= shiftTapMax { return [.style] }
-            return []
+            return modifierChanged(code: 56, down: down, t, output: .style, tapMode: modifierTapShift)
         }
         if state == .waitRelease { return [] }
         return otherInput(t)
@@ -492,16 +498,48 @@ public struct DictationTrigger {
     /// ⌘ went down or up while dictating (hands-free or push-to-talk): alone and let go within `shiftTapMax`, the
     /// translate toggle. A key while it is down makes it a shortcut (`otherInput`).
     private mutating func commandChanged(down: Bool, _ t: Double) -> [Output] {
+        if active, state == .holding || state == .idle {
+            return modifierChanged(code: 55, down: down, t, output: .translate, tapMode: modifierTapCommand)
+        }
+        if state == .waitRelease { return [] }
+        return otherInput(t)
+    }
+
+    /// The shared logic for ⇧ and ⌘ while dictating — and for a voice note's ⇧ (`LoneShift` mirrors it): a single tap
+    /// (its release fires) or a double tap within `modifierDoubleTapWindow` (the second press fires), with a
+    /// `modifierCooldown` after a fire. The press time is kept either way so a ⇧⌘ chord reads as neither (a chord
+    /// clears the tap in progress rather than being counted as its first tap).
+    private mutating func modifierChanged(code: Int, down: Bool, _ t: Double, output: Output, tapMode: ModifierTap) -> [Output] {
         if down {
             lastTap = nil
             startTapUp = nil
-            commandDownAt = shiftDownAt == nil ? t : nil     // ⇧⌘: a chord, neither toggle
-            shiftDownAt = nil
+            // chord with the other modifier already down: neither toggle
+            let otherDown = code == 56 ? commandDownAt != nil : shiftDownAt != nil
+            if code == 56 { commandDownAt = nil } else { shiftDownAt = nil }
+            if otherDown {
+                modifierLastTap = nil
+                return []
+            }
+            if code == 56 { shiftDownAt = t } else { commandDownAt = t }
+            switch tapMode {
+            case .single:
+                modifierLastTap = nil
+            case .double:
+                if t < modifierCooldownUntil { modifierLastTap = nil; return [] }
+                if let l = modifierLastTap, l.code == code, t - l.t <= modifierDoubleTapWindow {
+                    // the second tap's down: fire now (its release will come soon; no need to wait for it)
+                    modifierLastTap = nil
+                    modifierCooldownUntil = t + modifierCooldown
+                    return [output]
+                }
+                modifierLastTap = (code, t)
+            }
             return []
         }
-        defer { commandDownAt = nil }
-        if let d = commandDownAt, t - d <= shiftTapMax { return [.translate] }
-        return []
+        // up
+        defer { if code == 56 { shiftDownAt = nil } else { commandDownAt = nil } }
+        guard tapMode == .single, let d = (code == 56 ? shiftDownAt : commandDownAt), t - d <= shiftTapMax else { return [] }
+        return [output]
     }
 }
 

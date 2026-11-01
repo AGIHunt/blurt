@@ -160,7 +160,9 @@ enum SelfTests {
             else { appDelegate?.toast(arg, icon: .check) }
         case "appearance": NSApp.appearance = NSAppearance(named: arg == "dark" ? .darkAqua : .aqua)
         case "windowid":
+            // sheet: the sheet showing over a window (Settings' Only my voice, …)
             let n: Int? = arg == "onboarding" ? Onboarding.shared.windowNumber : arg == "fix" || arg == "dispatch" ? MainActor.assumeIsolated { DispatchPanel.windowNumber }
+                        : arg == "sheet" ? NSApp.windows.first { $0.isSheet && $0.isVisible }?.windowNumber
                         : SettingsController.shared.windowNumber
             out(["window": n ?? -1])
         case "route": out(["route": URL(string: arg).map { "\(URLRouter.route($0))" } ?? "bad url"])

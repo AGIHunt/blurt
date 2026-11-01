@@ -5,7 +5,9 @@
 //   Dictation   on / off (the master: everything under it dims when off; the listener and when the key was last heard
 //               in another app are its tooltip) · Shortcut: the key, with Fn's "Use Fn only for dictation" in its
 //               menu · Start and stop: tap or hold / tap / hold (Esc and the voice note in its tooltip) · Double-tap to
-//               send · Microphone: Automatic / this Mac's / the default input · the start sound
+//               send · Structured / Translate trigger: double-tap (default) or single tap, both keys from one choice,
+//               a footnote saying what the gesture is · Microphone: Automatic / this Mac's / the default input · the
+//               start sound
 //   Style and words  Style: Verbatim (no polish) / Light / Structured / Auto (DictationStyleChoice: the polish key
 //               and the styles' default) · By kind of app: per category, apps set on their own, list suggestions,
 //               learning and the polish time limit folded under it (unfolded when a search lands in it) · Names and
@@ -28,6 +30,7 @@ final class DictationSettings: ObservableObject {
     @Published var key = Dictation.key
     @Published var mode = Dictation.mode
     @Published var doubleTap = Dictation.doubleTapSend
+    @Published var modifierTap = Dictation.modifierTap
     @Published var timeout = Dictation.polishTimeout
     @Published var retention = Dictation.retentionDays
     @Published var keepAudio = Dictation.keepAudio
@@ -105,6 +108,8 @@ final class DictationSettings: ObservableObject {
     }
     func setStartSound(_ v: Bool) { startSound = v; save("sounds", v ? nil : false) }
     func setStopSound(_ v: Bool) { stopSound = v; save("stop_sound", v ? true : nil) }
+    @Published var onlyMyVoice = Dictation.onlyMyVoice
+    func setOnlyMyVoice(_ v: Bool) { onlyMyVoice = v; save("only_my_voice", v ? true : nil) }
     @Published var cancelKey = Dictation.cancelKey
     func setCancelKey(_ k: Dictation.CancelKey) { cancelKey = k; save("cancel_key", k == .esc ? nil : k.rawValue) }
 
@@ -119,6 +124,8 @@ final class DictationSettings: ObservableObject {
     func setKey(_ v: DictationTrigger.Key) { key = v; save("key", v.rawValue); refresh() }
     func setMode(_ v: DictationTrigger.Mode) { mode = v; save("mode", v.rawValue) }
     func setDoubleTap(_ v: Bool) { doubleTap = v; save("double_tap_send", v ? nil : false) }
+    /// ⇧ / ⌘ alone: double tap (the default) or single tap, both keys from one choice
+    func setModifierTap(_ v: DictationTrigger.ModifierTap) { modifierTap = v; save("modifier_tap", v == DictationTrigger.shippedModifierTap ? nil : v.rawValue) }
     func setFnCapture(_ v: Bool) { fnCapture = v; save("fn_capture", v ? nil : false); refresh() }
     func setTimeout(_ s: Double) { timeout = s; save("polish_timeout_ms", Int(s * 1000) == 3000 ? nil : Int(s * 1000)) }
     func setRetention(_ d: Int) {
@@ -238,10 +245,237 @@ final class DictationSettings: ObservableObject {
     }
 }
 
+/// Only my voice (issue #26, docs/design/voiceprint.md): the voice profile behind the switch. It is set up by reading a
+/// passage aloud (VoiceprintSheet), with the microphone dictation uses; the speech tools learn it (transcribe.py
+/// `voiceprint enroll`, the CLI — it may download the ~28 MB model, which the warm server never waits for) and it keeps
+/// learning from dictation. The switch only turns on with a profile in place. The profile stays on this Mac
+/// ($BLURT_HOME/voiceprint.json); the passage's recording is deleted once it is learned.
+@MainActor
+final class VoiceprintModel: ObservableObject {
+    enum Phase: Equatable { case idle, starting, recording, saving }
+    @Published var phase: Phase = .idle
+    @Published var enrolled = false
+    /// a profile an older voice model made: it can't be used until the passage is read again
+    @Published var stale = false
+    @Published var modelReady = false
+    /// the model is being downloaded (the sheet opened without it)
+    @Published var downloading = false
+    /// how much of the passage has been heard (0…1), for the sheet
+    @Published var progress: Double = 0
+    /// a failure to say in the sheet (already localized)
+    @Published var failed: String?
+    private var voice: NoteVoice?
+    private var ticker: Timer?
+    private var prepared: Task<Void, Never>?
+    /// the passage's recording (deleted once the speech tools have it)
+    static let wavURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("blurt-voiceprint.wav")
+    /// seconds of speech that make a good profile (the whole passage, read at an ordinary pace: ~15 s of audio); 6 is
+    /// about the least the speech tools accept; a minute ends the take whatever was said. Learning from dictation does
+    /// the rest, so a longer take isn't needed (nor harmful: its 5 s windows are averaged)
+    static let enough = 12.0, least = 6.0
+
+    var canFinish: Bool { phase == .recording && progress * Self.enough >= Self.least }
+
+    func refresh() {
+        request(["cmd": "vp_status"], cli: ["voiceprint", "status"], timeout: 30) { [weak self] r in
+            guard let self, let r, r["ok"] as? Bool == true else { return }
+            apply(r)
+        }
+    }
+
+    private func apply(_ r: [String: Any]) {
+        enrolled = r["enrolled"] as? Bool ?? false
+        stale = r["stale"] as? Bool ?? false
+        modelReady = r["model_ready"] as? Bool ?? false
+        // a profile deleted elsewhere (or never made): the switch can't stay on
+        if !enrolled, Dictation.onlyMyVoice { Config.shared.set("record.dictation.only_my_voice", nil) }
+    }
+
+    /// The sheet opened: the model comes down while the passage is read.
+    func prepare() {
+        failed = nil
+        guard !modelReady, prepared == nil else { return }
+        downloading = true
+        prepared = Task { [weak self] in
+            let r = try? await ScriptRunner.shared.json("transcribe.py", ["voiceprint", "prepare"], timeout: 600)
+            guard let self else { return }
+            downloading = false
+            prepared = nil
+            if let r, r["ok"] as? Bool == true { apply(r) } else if phase != .saving { failed = T("dictation.voiceprint.network") }
+        }
+    }
+
+    func start() {
+        failed = nil
+        progress = 0
+        let url = Self.wavURL
+        try? FileManager.default.removeItem(at: url)
+        let v = NoteVoice(url: url)
+        v.builtInMic = Dictation.useBuiltInMic          // the microphone dictation uses
+        v.silenceToEnd = .infinity                      // Done ends the take, not a pause between sentences
+        v.noSpeechTimeout = 8                           // …but a take nobody reads into ends itself
+        v.maxLength = 60
+        v.onEnd = { [weak self] e in Task { @MainActor in
+            guard let self, self.phase == .recording || self.phase == .starting else { return }
+            if e == .maxed { self.finish() } else { self.stopRecording(); self.failed = T("dictation.voiceprint.too_short") }
+        } }
+        phase = .starting
+        v.start { [weak self] ok in Task { @MainActor in
+            guard let self, self.phase == .starting else { return }
+            if ok { self.phase = .recording } else { self.stopRecording(); self.failed = T("dictation.voiceprint.mic_failed") }
+        } }
+        voice = v
+        ticker = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in
+            guard let self, let v = self.voice, self.phase == .recording else { return }
+            self.progress = min(1, v.speechSeconds / Self.enough)
+            // the passage is read (or the reader stopped after enough of it): no need to tap Done
+            if self.progress >= 1 || (self.canFinish && v.quietSeconds >= 2.5) { self.finish() }
+        } }
+    }
+
+    func cancel() {
+        stopRecording()
+        try? FileManager.default.removeItem(at: Self.wavURL)
+    }
+
+    private func stopRecording() {
+        ticker?.invalidate(); ticker = nil
+        voice?.stop(keep: false); voice = nil
+        phase = .idle
+    }
+
+    /// The passage is read: stop the microphone, learn the voice. `done` runs once it is learned.
+    var learned: (() -> Void)?
+    func finish() {
+        guard phase == .recording else { return }
+        ticker?.invalidate(); ticker = nil
+        let v = voice
+        voice = nil
+        v?.stop(keep: true)
+        phase = .saving
+        Task { [weak self] in
+            await self?.prepared?.value                 // one download at a time
+            let r = try? await ScriptRunner.shared.json("transcribe.py", ["voiceprint", "enroll", Self.wavURL.path], timeout: 600)
+            try? FileManager.default.removeItem(at: Self.wavURL)
+            guard let self else { return }
+            phase = .idle
+            guard let r, r["ok"] as? Bool == true else {
+                let code = (r?["code"] as? String) ?? "error"
+                failed = code == "too_short" ? T("dictation.voiceprint.too_short")
+                    : code == "network" || code == "model_missing" ? T("dictation.voiceprint.network")
+                    : T("dictation.voiceprint.failed", code)
+                return
+            }
+            apply(r)
+            emit(["event": "voiceprint_enrolled", "takes": r["takes"] ?? 0, "audio_s": r["audio_seconds"] ?? 0])
+            learned?()
+        }
+    }
+
+    func forget() {
+        request(["cmd": "vp_clear"], cli: ["voiceprint", "clear"], timeout: 15) { [weak self] r in
+            guard let self, let r, r["ok"] as? Bool == true else { return }
+            apply(r)
+        }
+    }
+
+    /// The warm speech server when one runs (no process start), else the CLI. The answer lands on the main actor;
+    /// nil = the tools couldn't run at all.
+    private func request(_ req: [String: Any], cli: [String], timeout: Double, done: @escaping @MainActor ([String: Any]?) -> Void) {
+        Task.detached {
+            var answer = WarmServer.running("asr-serve") ? WarmServer.call("asr-serve", req, timeout: timeout) : nil
+            if answer == nil { answer = try? await ScriptRunner.shared.json("transcribe.py", cli, timeout: timeout) }
+            await done(answer)
+        }
+    }
+}
+
+/// Reading the passage: the text, the microphone's level, how much has been heard; the model downloads meanwhile.
+struct VoiceprintSheet: View {
+    @ObservedObject var vp: VoiceprintModel
+    var close: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(T("dictation.voiceprint.title")).font(.system(size: 15, weight: .semibold))
+            Text(T("dictation.voiceprint.read")).font(.system(size: 12)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(T("dictation.voiceprint.passage"))
+                .font(.system(size: 14)).lineSpacing(4)
+                .foregroundStyle(vp.phase == .recording ? Color.primary : Color.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Image(systemName: vp.phase == .recording ? "mic.fill" : "mic")
+                    .foregroundStyle(vp.phase == .recording ? Color.brandAccent : Color.secondary)
+                    .frame(width: 14)
+                PassageBar(value: vp.progress).frame(height: 6)
+            }
+            Text(status).font(.system(size: 12))
+                .foregroundStyle(vp.failed != nil ? Color.brandAttnInk : Color.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Text(T("dictation.voiceprint.private")).font(.system(size: 11)).foregroundStyle(.tertiary)
+                Spacer()
+                Button(T("dictation.voiceprint.cancel")) { vp.cancel(); close() }.keyboardShortcut(.cancelAction)
+                    .disabled(vp.phase == .saving)
+                switch vp.phase {
+                case .idle:
+                    Button(T("dictation.voiceprint.start")) { vp.start() }.keyboardShortcut(.defaultAction)
+                case .starting, .recording:
+                    Button(T("dictation.voiceprint.done")) { vp.finish() }.keyboardShortcut(.defaultAction)
+                        .disabled(!vp.canFinish)
+                case .saving:
+                    ProgressView().controlSize(.small).frame(width: 60)
+                }
+            }
+            .padding(.top, 4)
+        }
+        .padding(20)
+        .frame(width: 460)
+        .onAppear { vp.prepare() }
+        .onDisappear { if vp.phase != .saving { vp.cancel() } }
+    }
+
+    private var status: String {
+        if let f = vp.failed { return f }
+        switch vp.phase {
+        case .starting: return T("dictation.voiceprint.starting")
+        case .recording: return T("dictation.voiceprint.recording")
+        case .saving: return T(vp.downloading ? "dictation.voiceprint.downloading" : "dictation.voiceprint.saving", VoiceprintModel.modelMB)
+        case .idle: return vp.downloading ? T("dictation.voiceprint.downloading", VoiceprintModel.modelMB) : " "
+        }
+    }
+}
+
+extension VoiceprintModel {
+    /// the voice model's download size (transcribe.py VP_MB)
+    static let modelMB = 30
+}
+
+/// How much of the passage has been heard, in the brand accent (a native progress bar turns grey while the window
+/// isn't key — Settings shows without taking focus).
+private struct PassageBar: View {
+    var value: Double
+    var body: some View {
+        GeometryReader { g in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Color(nsColor: .quaternaryLabelColor))
+                Capsule().fill(Color.brandAccent).frame(width: g.size.width * CGFloat(min(1, max(0, value))))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: value)
+    }
+}
+
 struct DictationPane: View {
-    /// tests: `dictation settings-scroll style|models|words|history|mic` (a screenshot of a row further down)
+    /// tests: `dictation settings-scroll style|models|words|history|mic|only_my_voice|voiceprint` (a screenshot of a row
+    /// further down; voiceprint: Only my voice's sheet)
     static let scrollRequest = Notification.Name("BlurtDictationPaneScroll")
     @StateObject var m = DictationSettings()
+    @StateObject var vp = VoiceprintModel()
+    @State var voiceSheet = false
     @StateObject var perms = Permissions()
     @ObservedObject var models = DictationModels.shared
     @ObservedObject var guide = PermissionGuide.shared
@@ -276,6 +510,13 @@ struct DictationPane: View {
         .onReceive(NotificationCenter.default.publisher(for: DictationPane.scrollRequest)) { n in
             guard let id = n.object as? String else { return }
             if id == "style" { showByApp = true }
+            if id == "voiceprint-start" { vp.start(); return }     // tests: the sheet's Start Recording / Done
+            if id == "voiceprint-done" { vp.finish(); return }
+            if id == "voiceprint" {     // tests: `dictation settings-scroll voiceprint` — Only my voice's sheet
+                nav.reveal("dictation.only_my_voice")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { voiceSheet = true }
+                return
+            }
             if id == "clear" {      // tests: `dictation clear ask` — the History section in view, then the question
                 nav.reveal("dictation.history_saved")
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { m.askClear() }
@@ -289,7 +530,7 @@ struct DictationPane: View {
             guard let id = r?.id else { return }
             if id == "dictation.by_app" || SettingsCatalog.entry(id)?.fold == "dictation.by_app" { showByApp = true }
         }
-        .onAppear { m.start(); perms.start() }
+        .onAppear { m.start(); perms.start(); vp.refresh() }
         .onDisappear { m.stop(); perms.stop() }
     }
 
@@ -317,15 +558,48 @@ struct DictationPane: View {
             }
             SettingToggle("dictation.double_tap", isOn: Binding(get: { m.doubleTap }, set: { m.setDoubleTap($0) }),
                           detail: T("dictation.settings.double_tap.key", Dictation.keyShort(m.key)), help: T("dictation.settings.double_tap.help"))
+            SettingRow("dictation.modifier_tap", detail: T("dictation.settings.modifier_tap.detail")) {
+                ChoicePopup(label: T("dictation.settings.modifier_tap"),
+                            choices: DictationTrigger.ModifierTap.allCases.map { ($0, T("dictation.mode.modifier.\($0.rawValue)")) },
+                            selection: Binding(get: { m.modifierTap }, set: { m.setModifierTap($0) }))
+            }
             SettingRow("dictation.mic") {
                 ChoicePopup(label: T("dictation.mic.section"),
                             choices: [(nil, T("dictation.mic.auto")), (true, T("dictation.mic.mac")), (false, T("dictation.mic.default"))],
                             selection: Binding(get: { m.micChoice }, set: { m.setMic($0) }))
             }
+            onlyMyVoiceRow
             SettingToggle("dictation.sounds", isOn: Binding(get: { m.startSound }, set: { m.setStartSound($0) }))
             SettingToggle("dictation.stop_sound", isOn: Binding(get: { m.stopSound }, set: { m.setStopSound($0) }))
         }
         .disabled(!m.enabled)
+    }
+
+    /// Only my voice: the switch, and beside it (once a voice is set up) Record Again / Delete. Turning it on without a
+    /// voice profile opens the passage to read; it turns on once the voice is learned.
+    @ViewBuilder var onlyMyVoiceRow: some View {
+        let label = T("dictation.only_my_voice")
+        SettingRow("dictation.only_my_voice",
+                   detail: T(vp.stale ? "dictation.only_my_voice.stale" : "dictation.only_my_voice.detail"),
+                   detailColor: vp.stale ? .brandAttnInk : nil) {
+            HStack(spacing: 6) {
+                RowMenu(label: T("dictation.voiceprint.more"), visible: vp.enrolled || vp.stale) {
+                    Button(T("dictation.voiceprint.again")) { voiceSheet = true }
+                    Button(T("dictation.voiceprint.delete"), role: .destructive) {
+                        m.setOnlyMyVoice(false)
+                        vp.forget()
+                    }
+                }
+                Toggle(label, isOn: Binding(get: { m.onlyMyVoice && vp.enrolled }, set: { on in
+                    if on && !vp.enrolled { voiceSheet = true } else { m.setOnlyMyVoice(on) }
+                }))
+                .labelsHidden().toggleStyle(BrandSwitchStyle(label: label))
+            }
+        }
+        .sheet(isPresented: $voiceSheet) {
+            VoiceprintSheet(vp: vp) { voiceSheet = false }
+                .onAppear { vp.learned = { m.setOnlyMyVoice(true); voiceSheet = false } }
+        }
     }
 
     /// The key's one line, only when there is something to say: another Fn dictation app running (attention), or

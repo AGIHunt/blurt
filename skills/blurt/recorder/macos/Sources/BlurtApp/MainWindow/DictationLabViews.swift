@@ -581,7 +581,8 @@ struct LabWorkbench: View {
                     HStack {
                         Text(T("dictation.lab.cursor.include")).font(.system(size: 12))
                         Spacer()
-                        Toggle(T("dictation.lab.cursor.include"), isOn: $lab.includeContext).toggleStyle(.switch).controlSize(.small).labelsHidden()
+                        Toggle(T("dictation.lab.cursor.include"), isOn: $lab.includeContext).labelsHidden()
+                            .toggleStyle(BrandSwitchStyle(label: T("dictation.lab.cursor.include")))
                     }
                     .padding(.top, 2)
                 }

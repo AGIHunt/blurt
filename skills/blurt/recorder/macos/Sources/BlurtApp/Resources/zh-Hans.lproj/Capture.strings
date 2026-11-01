@@ -322,11 +322,11 @@
 "capture.voice.words_failed" = "转写失败";
 "capture.voice.needs_model" = "语音备注需要语音模型，录音已保留";
 "capture.voice.structured" = "结构化";
-"capture.voice.structured_tip" = "结束后整理成清单，仅保留更正后的说法（也可单独按 ⇧）";
-"capture.voice.structured_off_tip" = "恢复原话（也可单独按 ⇧）";
+"capture.voice.structured_tip" = "结束后整理成清单，仅保留更正后的说法（也可双击 ⇧）";
+"capture.voice.structured_off_tip" = "恢复原话（也可双击 ⇧）";
 "capture.voice.structured_ax_on" = "开";
 "capture.voice.structured_ax_off" = "关";
-"capture.voice.structured_on" = "结构化：结束后整理成清单，仅保留更正后的说法 · 再按 ⇧ 切回";
+"capture.voice.structured_on" = "结构化：结束后整理成清单，仅保留更正后的说法 · 再双击 ⇧ 切回";
 "capture.voice.structured_off" = "已切回原话";
 "capture.voice.structure_failed" = "无法整理为结构化内容，已保留原话";
 "capture.voice.structure_needs_model" = "整理需要云端模型或本机润色模型，已保留原话";

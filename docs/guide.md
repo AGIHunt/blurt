@@ -34,7 +34,7 @@ Linux, a small capsule in the same place). Hover it to see your current project 
 | | Shortcut | What happens |
 |---|---|---|
 | **Snap** | `⌥A` | Drag an area and let go: the picture stays frozen where it is (the rest of the screen dims) and the note sits beside it. Say (or type) what's wrong — the words show in grey in the note as you talk, and the note waits for you, however long you pause: `⏎` (or *Done*) saves it with the words as they are; `Tab` takes the words into the note so you can fix or add to them with the keyboard (listening stops); typing straight away replaces them; `⇧⏎` starts a new line. Draw straight on the picture: drag for freehand, `⇧`-drag for a box, `⌥`-drag for an ellipse; rest the pointer for half a second at the end of a rough circle, box or line and it straightens out; `⌘Z` (or the undo arrow that shows with the pointer over the note) takes the last stroke back. Finish with `⏎`, *Done*, or a click outside the picture. The marked picture then flies up to the notch as the card (the unmarked one is kept: *Edit Note* opens the strokes again). The place under the note (a project, or *Unassigned* when there is no current project) changes where this snap goes: click it (or press Tab when there are no grey words), type to filter your recent projects, `⏎`; *Unassigned* at the bottom keeps it as a card until you pick a project. Next to it, *Type* says what the snap is: click it and pick *Issue*, *Idea*, *Note* or *Task*, or press `⌘1`–`⌘4` anywhere in the note (`⌘0` clears it; the list shows the keys). The item made from the snap is that kind, and organizing or *AI fill-in* won't change it; left unset, Blurt decides from the note as before. A card with a type shows the kind's icon. When the note is saved the rest of the screen brightens again at once. `Esc` clears what you typed; a second `Esc` discards the snap (*Undo* for 5 s). |
-| **Voice note** | `⌥V` | Press once and talk — pauses to think are fine; press `⌥V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Press `⇧` on its own while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
+| **Voice note** | `⌥V` | Press once and talk — pauses to think are fine; press `⌥V` again (or *Done* at the notch) to finish, up to 10 minutes. Or hold the keys and let go when you're done. `Esc` cancels in the first 10 seconds (with *Undo*); after that `Esc` belongs to your other apps again. The words show under the notch as you talk. Double-tap `⇧` while it listens (or click *Structured* at the notch) for a structured note, as in dictation. |
 | **Copy Text from Screen** | `⌥C` | Drag across any text on the screen (a crosshair, nothing dims) and let go: the text is on the clipboard about 0.2 s later, laid out as it was — lists, tables, code indentation — without the half lines cut off at the edges. With another app in front it is pasted there too, wherever dictation would paste (WeChat included; not into a password field, nor when nothing that takes text has the focus). The notch says *Pasted* only once the text shows in the field; where Blurt can't check that (WeChat), it says *Copied · ⌘V to paste*. The clipboard keeps the text either way. Nothing is saved as a card. Esc or a click without a drag cancels. It uses macOS's own text recognition, so nothing to download; with the AI service key (or a local model) a second read corrects it, and the clipboard is swapped for the corrected text only if you haven't copied something else meanwhile. |
 | **Translate Text from Screen** | `⌥T` | The same drag, then the text translated into the language set in *Settings → Copy Text from Screen → ⌥T translates into* (⌥T's own; dictation's ⌘ has its own, since reading usually goes the other way). *Auto* (the default) is your own language ↔ the other one, named in the list (*Auto: 简体中文 ↔ English*, *Auto: English ↔ 日本語*): text in your language goes into the other one, anything else into yours; a language you pick is always what you get — text already in it is copied as it is, and the notch says so (*Already in English · original copied*). Line breaks, lists, code, paths and names are kept. The notch says *Translating…*, then what became of it (*Translation pasted*, *Copied · ⌘V to paste* or *Translation copied*); the whole translation shows in a card under the notch, with *Copy*. The card goes after 10 s (not while the pointer is on it); with the pointer on it, Esc closes it — otherwise Esc stays with the app you're typing in. The translation is on the clipboard and pasted by the same rules as ⌥C. It uses the AI service key when you added one, else this Mac's polish model. |
 | **Record** | `⌥R` | Pick an area, a window or the full screen and click *Start recording*; after a 3-second countdown (*Start now* skips it), talk while you use your product. `⌥R` again (or *Finish* at the notch) stops. |
@@ -94,13 +94,14 @@ click *Done*, or let go of the keys if you held them (10 minutes at most; the no
 in the last minute). Prefer the old way? *Settings → General → End a voice note when I pause* ends it after 1.5 s of
 silence. A snap's spoken note doesn't end on a pause either: it waits for `⏎`, *Done* or `Tab`.
 
-**Structured voice notes.** While a voice note listens, press `⇧` on its own (or click *Structured* at the notch, or
+**Structured voice notes.** While a voice note listens, double-tap `⇧` (or click *Structured* at the notch, or
 the time in the notch's right ear) to make it a structured note — the same switch as in dictation, any time before you
-finish; press it again to go back. The notch shows the list mark next to the time. When the words are in, the polish
+finish; double-tap it again to go back. The notch shows the list mark next to the time. When the words are in, the polish
 model lays out what you listed and keeps only your corrected wording ("milk, eggs — no, duck eggs" becomes duck eggs),
 or leaves a paragraph a paragraph; the card's note is that text, and the transcript as heard is kept with the capture
 (`said_raw` in its `shots.jsonl`). Without a polish model (*Settings → Dictation*) the note keeps the transcript and
-the notch says so. `⌥V` itself and `⇧` with another key (a capital letter, `⇧`-click) never switch it.
+the notch says so. `⌥V` itself and `⇧` with another key (a capital letter, `⇧`-click) never switch it, and neither
+does a single `⇧` — unless *Settings → Dictation → Structured / Translate trigger* is set to Single tap.
 
 **The words while you talk.** While a voice note or a dictation listens, what has been recognized so far shows in a
 small dark panel under the notch — the last two or three lines, the newest at the bottom, fading in; a snap's spoken
@@ -580,19 +581,19 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
   apps (WeChat, Slack, Feishu, Telegram…) the model is asked to keep 吧 / 呢 / 啊 and a one-sentence message gets no
   full stop; in terminals and code editors the text stays on one line. When you *want* it tidier — a list, or just
   the version you settled on:
-  - **press ⇧ on its own while you talk** (any time, even halfway through, and also while holding Fn): *Structured*.
+  - **double-tap ⇧ while you talk** (any time, even halfway through, and also while holding Fn): *Structured*.
     The notch's right ear shows a list mark (the first couple of times a short line also says what it does). When you let go, the same local model goes over the whole dictation once
     more: what you took back or restated goes (in whatever words you did it), and points you counted off or listed
     become a numbered list with the sentence before them as its heading — only when you really enumerated; otherwise
     it stays a paragraph. It never rewrites or summarizes: if its result loses anything, you get the Light text. This
-    takes a little longer (about 0.1–0.3 s more on an M-series Mac). Press ⇧ again to go back. **Fn+⇧** starts a
-    dictation in Structured. A click on the notch while it listens does the same. Whatever you dictate right after a
+    takes a little longer (about 0.1–0.3 s more on an M-series Mac). Double-tap ⇧ again to go back. A click on the notch while it listens does the same. Whatever you dictate right after a
     list starts a paragraph of its own;
-  - **press ⌘ on its own while you talk** (or click Peep at the notch) to **translate**: what you say is typed in
+  - **double-tap ⌘ while you talk** (or click Peep at the notch) to **translate**: what you say is typed in
     the language set in *⌘ translates into* (above). The notch shows a small language tag while it is on (EN, 中, ⇄ for
     Auto…) and the words as you said them; the translation goes in when you stop. It uses the AI service key when you
-    added one, else this Mac's polish model; if it can't translate, the original goes in and the notch says so. Press
-    ⌘ again to turn it off;
+    added one, else this Mac's polish model; if it can't translate, the original goes in and the notch says so. Double-tap
+    ⌘ again to turn it off. A ⇧⌘ chord asks for neither, and a single ⇧ or ⌘ does nothing unless *Settings → Dictation →
+    Structured / Translate trigger* is set to Single tap;
   - **⌥L reformats the last dictation**: Light → Structured → Verbatim (exactly what the speech model heard) → Light,
     with **Undo** at the notch. It replaces the text in the field only while it is exactly as it was typed; if you
     have edited it, your edited text is reformatted and goes to the clipboard instead, and the field stays as you left
@@ -812,7 +813,7 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 | | 快捷键 | 做什么 |
 |---|---|---|
 | **截图** | `⌥A` | 框一块区域，松手：画面就停在原处（屏幕其余部分变暗），备注出现在它旁边。说出来（或者打字）哪里不对——说的时候，识别出的文字用灰色显示在备注里；停下来想多久都行，备注会等你：按 `⏎`（或点「完成」）保存，灰字原样采用；按 `Tab` 采用识别结果，文字变黑，可以接着用键盘改或补充（不再收音）；直接打字就替换掉灰字；`⇧⏎` 换行。直接在画面上画：拖动是自由画，`⇧` 拖动画方框，`⌥` 拖动画椭圆；画完一个歪歪的圈、框或线，停住半秒，它会变规整；`⌘Z` 撤销上一笔。按 `⏎`、点「完成」或点画面外面结束。画好的图随后飞到刘海，变成卡片（原图也保留：「编辑备注」能再改这些笔画）。备注保存后，屏幕其余部分马上恢复亮度。备注下面的项目（没有当前项目时是「未归类」）可以改这张截图去哪：点它（没有灰字时也可以按 Tab），打字筛选最近的项目，按 `⏎`；最下面的「未归类」会让它先作为卡片留在刘海下方，等你选项目。旁边的「类型」说明这张截图是什么：点它选「问题」「想法」「笔记」或「待办」，也可以在备注里任何地方按 `⌘1`–`⌘4`（`⌘0` 清除；列表里写着这些按键）。这张截图生成的事项就是这个类型，整理和「AI 补全」都不会改它；不选的话，和以前一样由 Blurt 根据备注判断。选了类型的卡片上会显示它的图标。按 `Esc` 先清掉打的字，再按一次丢弃这张截图（5 秒内可以撤销）。 |
-| **语音备注** | `⌥V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥V`（或点刘海上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的 App。说的时候，识别出的文字显示在刘海下方。 |
+| **语音备注** | `⌥V` | 按一下开始说，中途停下来想一想也没关系；再按一次 `⌥V`（或点刘海上的「完成」）结束，最长 10 分钟。也可以按住说、松开结束。开始后 10 秒内按 `Esc` 取消（可以撤销）；过了 10 秒，`Esc` 还给别的 App。说的时候，识别出的文字显示在刘海下方。双击 `⇧`（或点刘海上的「结构化」）可以把这条备注变成结构化，和听写一样。 |
 | **截图取字** | `⌥C` | 在屏幕上拖过任何文字（十字光标，屏幕不变暗），松手：大约 0.2 秒后文字就在剪贴板里，版面照原样——列表、表格、代码缩进都在，边缘被截掉的半行不会混进来。前台是别的 App 时同时粘贴进去，听写能粘贴的地方都行（包括微信；密码框、没有可输入的焦点时不粘贴）。确认输入框里出现了这段文字，刘海才说「已粘贴」；确认不了（比如微信）就说「已复制 · ⌘V 粘贴」。文字总会留在剪贴板里。不存成卡片。按 `Esc` 或只点不拖就取消。用的是 macOS 自带的文字识别，不用下载；有 AI 服务 Key（或本机模型）时会再读一遍做修正，只有在你这期间没复制别的东西时，剪贴板才换成修正后的版本。 |
 | **截图翻译** | `⌥T` | 同样拖选，识别后翻译成「设置 → 截图取字 → ⌥T 翻译成」里选的语言（⌥T 自己的设置；听写的 ⌘ 翻译另有设置，因为读和写的方向通常相反）。默认「自动」是你的语言 ↔ 另一种，列表里会写出这一对（「自动：简体中文 ↔ English」）：你的语言译成另一种，其他语言译成你的语言；选了某种语言就总是得到这种语言，已经是这种语言的文字原样复制，刘海上会说（「已是英语 · 原文已复制」）。换行、列表、代码、路径和名字都保留。刘海上先显示「正在翻译…」，再说结果（「已粘贴译文」「已复制 · ⌘V 粘贴」或「已复制译文」）；完整译文显示在刘海下面的小卡片里，带「复制」按钮。卡片 10 秒后自己收起（指针在上面时不收）；指针在卡片上时按 Esc 关闭，否则 Esc 照常留给你正在用的 App。译文在剪贴板里，按和 ⌥C 一样的规则粘贴。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型。 |
 | **录屏** | `⌥R` | 选区域、窗口或全屏，一边用产品一边说。再按 `⌥R`（或刘海上的「完成」）结束。 |
@@ -1044,8 +1045,8 @@ Claude 没装口喷鸡 MCP 时，确认框会说明桌面端没法回报进度�
 - **风格**（「设置 → 听写」）只有一个选项：**原话**（语音模型听到的原样，不润色）、**轻整理**（默认）、**结构化**或**自动**。它们用的润色模型和识别模型都在「设置 → 模型 → 听写」里选：推荐组合会写明一共多大，一个**下载**按钮就好；「设置 → 听写」显示正在用哪个，可以点「更换…」。
 - **润色**（轻整理）在本机跑一个小模型：去掉语气词（嗯、那个、um、uh）和口吃，加标点、分段。其余你说的话都保留——中途改口（「周三，不对，周四」「at two, I mean three」）时，前后两种说法都照你说的打出来；只想要改口后那一版，用下面的「结构化」。说到一半停下来换口气不算一句话结束：句号只加在句子真正说完的地方。它不改写、不总结、不翻译、不回答问题。一旦输出像在做这些，或者超过时限（3 秒），这次就不润色，直接输入识别原文。模型在设置助手的「下载推荐模型」里一起装好（也可以在「设置 → 模型」里下载），推荐哪个取决于这台 Mac 的内存。选「原话」就直接输入识别原文。
 - **风格。** 默认所有 App 都是「轻整理」：只做上面这些整理，不多做。它不会把你的话排成清单，不会删掉你的改口，也不改语气。按 App 稍有不同：在聊天 App（微信、Slack、飞书、Telegram 等）里会让模型保留「吧、呢、啊」这类语气词，只有一句话时不加句号；在终端和代码编辑器里不换行，打成一行。想要更整齐（排成清单，或者只留改口后的说法）时：
-  - **说话时按一下 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，刘海右侧会出现清单标记（头两次还会有一句短话说明它做什么）。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再按一下 ⇧ 切回。按 **Fn+⇧** 开始，这一条直接就是结构化。听写时点一下刘海也一样。紧跟在清单后面说的内容，会另起一段。
-  - **说话时单按一下 ⌘**（或点刘海里的小鸡）**翻译**：说的话翻译成上面「按 ⌘ 翻译成」里选的语言再输入。打开时刘海上有一个小的语言标签（EN、中，「自动」是 ⇄……），字幕显示的是你说的原话，停下后输入译文。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型；翻译不成时输入原文，刘海上会说明。再按一次 ⌘ 关掉。
+  - **说话时双击 ⇧**（随时都行，说到一半也行，按住 Fn 说话时也行）：这一条就是「结构化」，刘海右侧会出现清单标记（头两次还会有一句短话说明它做什么）。松开按键后，同一个本地模型会把整段话再过一遍：你收回或重说的部分（不管你怎么说的）会去掉，你一条条数出来或列出来的要点会排成编号清单，前面那句话留作标题——只有真的在列举时才排，否则还是一段话。它不改写、不总结：结果一旦丢了内容，就打轻整理的版本。这会多花一点时间（M 系列 Mac 上大约多 0.1–0.3 秒）。再双击 ⇧ 切回。单按一下 ⇧ 不触发（除非把「设置 → 听写 → 结构化 / 翻译快捷键」改成「单击」）。听写时点一下刘海也一样。紧跟在清单后面说的内容，会另起一段。
+  - **说话时双击 ⌘**（或点刘海里的小鸡）**翻译**：说的话翻译成上面「按 ⌘ 翻译成」里选的语言再输入。打开时刘海上有一个小的语言标签（EN、中，「自动」是 ⇄……），字幕显示的是你说的原话，停下后输入译文。加了 AI 服务 Key 就用它，否则用这台 Mac 的润色模型；翻译不成时输入原文，刘海上会说明。再双击 ⌘ 关掉。⇧⌘ 同时按不算，单按一下 ⇧ 或 ⌘ 也不触发（除非把触发方式改成「单击」）。
   - **⌥L 重排上一条**：轻整理 → 结构化 → 原话（语音模型听到的原样）→ 轻整理，刘海上可以**撤销**。只有那段文字还和输入时一模一样，才会在原处替换；你改过它的话，会按你改过的文字重排，放进剪贴板，输入框里的文字不动。文字还在输入时按下，会等它输入完：重排的就是你刚看到的那一条。较长的一条按普通段落打进去以后，模型会在后台看一下它是不是清单（输入从不等它）；是的话，刘海上会出现几秒「排成清单」。「排成清单」和「撤销」只属于它们那一条：开始下一段听写时就会消失，不会改到更新的文字。
   - 说出来的话不会切换风格：「帮我列个清单」「make a list」就照字面打出来，因为这往往是说给 AI Agent 的指令。
   - 「设置 → 听写」风格下的「按 App 类型」可以按 App 类别（聊天、代码和终端、邮件、笔记和文档、其他 App）选：跟随上面、轻整理、原话、结构化，或「自动」（只有模型排成了清单才用结构化的版本）。如果你在某个 App 里总是同样地切换（三次以上），刘海上会问一次要不要把它设成这个 App 的风格；它从不自己改，学到的设置在设置页里能看到，也能恢复默认。

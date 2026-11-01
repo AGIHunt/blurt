@@ -203,7 +203,7 @@ final class DictationTriggerTests: XCTestCase {
 
     func testHoldCancelsWhenAnotherKeyJoins() {
         XCTAssertEqual(run("ropt-down@0 tick@260 key:0@900 ropt-up@1000", mode: .hold), [.arm, .start, .cancel])
-        // ⇧ with a key is a shortcut: cancelled; ⇧ alone is the style toggle (testShiftAloneTogglesTheStyle)
+        // ⇧ with a key is a shortcut: cancelled; ⇧ alone twice is the style toggle (testDoubleTapShift)
         XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@900 key:0@920 shift-up@950 ropt-up@1000", mode: .hold), [.arm, .start, .cancel])
         XCTAssertEqual(run("ropt-down@0 tick@260 shift-down@900 shift-up@950 ropt-up@1000", mode: .hold), [.arm, .start, .style, .stop])
         // a key before the threshold: a shortcut, never a start
@@ -543,7 +543,7 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(run("ropt-down@0 key:179@10 ropt-up@90"), [.arm])
     }
 
-    // MARK: the style toggle (dictation-styles.md §3.2): ⇧ during a take, the island, Fn+⇧
+    // MARK: the style toggle (dictation-styles.md §3.2): ⇧ during a take, the island
 
     func testShiftAloneTogglesTheStyle() {
         // hands-free (auto tap): ⇧ tapped twice while talking → two toggles; the dictation goes on and stops normally
@@ -607,28 +607,17 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(auto("shift-down@0 shift-up@60"), [])
     }
 
-    func testFnShiftStartsInStructured() {
-        // ⇧ held when Fn goes down (a tap): starts, and says it was Fn+⇧
-        var t = DictationTrigger()
-        XCTAssertEqual(t.run("shift-down@0 fn-down@20 fn-up@110 shift-up@150"), [.arm, .start])
-        XCTAssertTrue(t.startShift)
-        XCTAssertEqual(t.run("fn-down@2000 fn-up@2080"), [.stop])
-        XCTAssertFalse(t.startShift == true && t.active)
-        // ⇧ pressed while Fn is down, then push-to-talk
-        var h = DictationTrigger()
-        XCTAssertEqual(h.run("fn-down@0 shift-down@50 shift-up@120 tick@300"), [.arm, .start])
-        XCTAssertTrue(h.startShift)
-        XCTAssertTrue(h.pushToTalk)
-        // a plain start isn't
-        var p = DictationTrigger()
-        XCTAssertEqual(p.run("fn-down@0 fn-up@90"), [.arm, .start])
-        XCTAssertFalse(p.startShift)
+    func testFnShiftIsAShortcutNotAStart() {
+        // ⇧ with the start press is a modifier like any other: no take starts (Fn+⇧ no longer starts in Structured)
+        XCTAssertFalse(auto("shift-down@0 fn-down@20 fn-up@110 shift-up@150").contains(.start))
+        XCTAssertFalse(auto("fn-down@0 shift-down@50 shift-up@120 tick@300 fn-up@900").contains(.start))
         // Fn+⇧+← (select to the line start) is a shortcut, not a start
-        XCTAssertEqual(auto("fn-down@0 shift-down@30 key:123@60 shift-up@90 fn-up@120"), [.arm])
-        XCTAssertEqual(auto("shift-down@0 fn-down@20 key:123@60 fn-up@120 shift-up@150"), [.arm])
+        XCTAssertFalse(auto("fn-down@0 shift-down@30 key:123@60 shift-up@90 fn-up@120").contains(.start))
         // with an ⌥ key ⇧ stays a modifier: ⌥⇧V and Blurt's ⌥⇧ shortcuts never start anything
         XCTAssertEqual(run("shift-down@0 ropt-down@20 ropt-up@90 shift-up@120"), [])
         XCTAssertEqual(auto("shift-down@0 lopt-down@20 lopt-up@90 shift-up@120", key: .eitherOption), [])
+        // a plain start still starts
+        XCTAssertEqual(auto("fn-down@0 fn-up@90"), [.arm, .start])
         // while dictating, ⇧ + Fn is neither a stop nor a toggle (a press that turned into a shortcut)
         XCTAssertEqual(auto("fn-down@0 fn-up@90 shift-down@1000 fn-down@1050 fn-up@1120 shift-up@1200"), [.arm, .start])
     }
@@ -646,5 +635,82 @@ final class DictationTriggerTests: XCTestCase {
         let e = DictationTrigger.parse("ropt-down@0 shift-down@10 ropt-up@20")
         XCTAssertEqual(e, [.flags(keyCode: 61, flags: 0x80040, time: 0), .flags(keyCode: 56, flags: 0xA0040, time: 0.01),
                            .flags(keyCode: 61, flags: 0x20000, time: 0.02)])
+    }
+
+    // MARK: modifier tap modes (structured / translate): single, double
+
+    /// a trigger with the default key/mode but modifier tap modes overridden
+    private func modTap(_ script: String, shift: DictationTrigger.ModifierTap = .single, command: DictationTrigger.ModifierTap = .single)
+        -> [DictationTrigger.Output] {
+        var t = DictationTrigger()
+        t.modifierTapShift = shift
+        t.modifierTapCommand = command
+        return t.run(script)
+    }
+
+    func testSingleModeFiresOnOneTapForBothKeys() {
+        // the setting back on "single": one ⇧ / ⌘ let go while dictating toggles at once
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 shift-up@1080"), [.arm, .start, .style])
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080"), [.arm, .start, .translate])
+        // a hold of either key is still not a toggle (a finger resting on it)
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 shift-up@2200"), [.arm, .start])
+    }
+
+    func testDoubleTapCommand() {
+        // a single ⌘ tap does nothing; two quick taps toggle
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080", command: .double), [.arm, .start])
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080 cmd-down@1200 cmd-up@1280", command: .double),
+                       [.arm, .start, .translate])
+        // too slow: two single taps, no toggle
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080 cmd-down@1500 cmd-up@1580", command: .double),
+                       [.arm, .start])
+        // three quick taps: one toggle, the third tap starts a new pair (no repeat)
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080 cmd-down@1200 cmd-up@1280 cmd-down@1400 cmd-up@1480", command: .double),
+                       [.arm, .start, .translate])
+        // after the toggle, a quick tap in the cooldown does nothing
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 cmd-up@1080 cmd-down@1200 cmd-up@1280 cmd-down@1350 cmd-up@1430", command: .double),
+                       [.arm, .start, .translate])
+        // ⇧⌘ chord: neither (either order — ⇧ first, or ⌘ first)
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 cmd-down@1020 cmd-up@1060 shift-up@1080", command: .double), [.arm, .start])
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 shift-down@1020 shift-up@1060 cmd-up@1080", command: .double), [.arm, .start])
+        // not dictating: ⌘ is any other modifier
+        XCTAssertEqual(modTap("cmd-down@0 cmd-up@60 cmd-down@100 cmd-up@160", command: .double), [])
+    }
+
+    func testDoubleTapShift() {
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 shift-up@1080 shift-down@1200 shift-up@1280", shift: .double),
+                       [.arm, .start, .style])
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 shift-up@1080", shift: .double), [.arm, .start])
+        // a capital (⇧A) is still no toggle
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 key:0@1050 shift-up@1100", shift: .double), [.arm, .start])
+        // ⇧⌘ in either order: neither toggle
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 cmd-down@1000 shift-down@1020 shift-up@1060 cmd-up@1080", shift: .double), [.arm, .start])
+        // after a fire, a third tap inside the cooldown does nothing
+        XCTAssertEqual(modTap("fn-down@0 fn-up@90 shift-down@1000 shift-up@1080 shift-down@1200 shift-up@1280 shift-down@1350 shift-up@1430",
+                              shift: .double), [.arm, .start, .style])
+    }
+
+    /// What the app ships with (Dictation reads this): ⇧ and ⌘ both ask on a double tap — same gesture, no confusion
+    func testShippedDefaultIsDoubleForBothKeys() {
+        XCTAssertEqual(DictationTrigger.shippedModifierTap, .double)
+        var t = DictationTrigger()
+        t.modifierTapShift = DictationTrigger.shippedModifierTap
+        t.modifierTapCommand = DictationTrigger.shippedModifierTap
+        XCTAssertEqual(t.run("fn-down@0 fn-up@90"), [.arm, .start])
+        XCTAssertEqual(t.run("shift-down@1000 shift-up@1080"), [])          // one ⇧ tap: nothing (the old style toggle is gone)
+        XCTAssertEqual(t.run("shift-down@1200 shift-up@1280"), [.style])     // the second one, inside the window
+        XCTAssertEqual(t.run("cmd-down@2500 cmd-up@2580"), [])
+        XCTAssertEqual(t.run("cmd-down@2620 cmd-up@2700"), [.translate])
+    }
+
+    func testModifierTapPerKeyOverride() {
+        // ⇧ double, ⌘ single: each key keeps its own mode (the way back for a user who liked one tap)
+        var t = DictationTrigger()
+        t.modifierTapShift = .double
+        t.modifierTapCommand = .single
+        XCTAssertEqual(t.run("fn-down@0 fn-up@90"), [.arm, .start])
+        XCTAssertEqual(t.run("cmd-down@1000 cmd-up@1080"), [.translate])
+        XCTAssertEqual(t.run("shift-down@2000 shift-up@2080"), [])
+        XCTAssertEqual(t.run("shift-down@2200 shift-up@2280"), [.style])
     }
 }

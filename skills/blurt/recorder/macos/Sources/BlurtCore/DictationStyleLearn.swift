@@ -20,7 +20,7 @@ public enum DictationStyleLearn {
 
     /// What one take says the user wants in its app (nil: nothing). Lists (structured / auto) count as one wish.
     ///  • a reformat that was kept → its style; undone → the style it had;
-    ///  • ⇧ / the island / Fn+⇧ → that style;
+    ///  • ⇧ / the island (or, in older records, Fn+⇧) → that style;
     ///  • a list the user took apart in the field → light;
     ///  • a take that sounded like a list, left as prose (the ≡ suggestion ignored) → light.
     public static func signal(_ r: DictationStyleRecord) -> DictationStyle? {

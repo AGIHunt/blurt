@@ -668,7 +668,47 @@ struct InfoButton: View {
     }
 }
 
-/// A setting that is a switch (native, in the app's accent).
+/// A switch drawn here, in the brand accent, instead of by AppKit. The native `.switch` paints its ON track with the
+/// window's accent only while the window is key: Blurt is a menu-bar app and SettingsWindow shows without taking focus
+/// (orderFrontRegardless), so macOS drew an ON switch as the same neutral grey as OFF — it read as off while it was on,
+/// and `.tint` does not change the inactive appearance. This style draws the track itself: the brand accent when on, a
+/// neutral grey when off, the same in a key or a background window. Footprint and knob match the native small switch.
+/// The white knob keeps ≥ 3:1 on the accent in both appearances (assets/color/tokens.json, `brand.accent`).
+struct BrandSwitchStyle: ToggleStyle {
+    /// the switch's title: its accessibility label (the style draws only the track, not the row's text)
+    var label: String
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        let on = configuration.isOn
+        let shape = Capsule(style: .continuous)
+        return Button {
+            configuration.isOn.toggle()
+        } label: {
+            shape
+                .fill(on ? Color.brandAccent : Color(nsColor: .quaternaryLabelColor))
+                .overlay {
+                    if !on { shape.strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.5) }
+                }
+                .overlay(alignment: on ? .trailing : .leading) {
+                    Circle().fill(Color.white)
+                        .frame(width: 18, height: 18)
+                        .shadow(color: .black.opacity(0.18), radius: 1, y: 0.5)
+                        .padding(2)
+                }
+                .frame(width: 38, height: 22)
+                .contentShape(shape)
+        }
+        .buttonStyle(.plain)
+        .opacity(enabled ? 1 : 0.5)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: on)
+        .accessibilityLabel(Text(label))
+        .accessibilityValue(on ? "1" : "0")
+    }
+}
+
+/// A setting that is a switch.
 struct SettingToggle: View {
     let id: String
     var isOn: Binding<Bool>
@@ -686,10 +726,12 @@ struct SettingToggle: View {
         self.icon = icon
     }
 
+    /// the switch's title from the row or the catalogue (the toggle draws no text, so it also carries the label)
+    private var label: String { title ?? SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id }
+
     var body: some View {
         SettingRow(id, title: title, detail: detail, help: help, icon: icon) {
-            Toggle(title ?? SettingsCatalog.entry(id).map(SettingsCatalog.title) ?? id, isOn: isOn)
-                .labelsHidden().toggleStyle(.switch).controlSize(.small)
+            Toggle(label, isOn: isOn).labelsHidden().toggleStyle(BrandSwitchStyle(label: label))
         }
     }
 }

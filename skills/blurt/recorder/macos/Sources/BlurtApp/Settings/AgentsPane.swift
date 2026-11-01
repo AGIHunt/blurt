@@ -593,7 +593,8 @@ struct AgentsPane: View {
     }
 
     func switchView(_ a: CoreAgent, isOn: Binding<Bool>) -> some View {
-        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden()
+            .toggleStyle(BrandSwitchStyle(label: TL("agents.use", a.name)))
     }
 
     /// The row has a fix button (fixButton's cases).
@@ -694,7 +695,7 @@ struct AgentsPane: View {
                             .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
                     }
                     Toggle(TL("agents.keep_sessions"), isOn: .constant(version != nil))
-                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        .labelsHidden().toggleStyle(BrandSwitchStyle(label: TL("agents.keep_sessions")))
                         .disabled(true)
                         .help(version != nil ? TL("agents.keep_sessions.fixed") : TL("agents.keep_sessions.missing"))
                 }

@@ -37,6 +37,8 @@ video, so any backend (even ones without timestamps) works.
                                                      built-in `say` samples) the error rate per language
                                                      → $BLURT_HOME/asr-bench.json
   transcribe.py backends                             backends and whether they are ready (legacy)
+  transcribe.py voiceprint prepare|enroll WAV|check WAV|status|clear   only my voice (docs/design/voiceprint.md):
+                                                     the speaker model, the user's voice profile, a piece's verdict
   transcribe.py check-cloud [--model-id qwen3-asr-flash|volcengine-seedasr|openai-compatible]   Settings' Test: one
                                                      small spoken clip (macOS `say`) to the cloud service →
                                                      {"ok","ms","text"} or {"ok": false, "code"}; a key / base_url /
@@ -72,6 +74,7 @@ import argparse
 import contextlib
 import base64
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -757,7 +760,7 @@ def download(rel: str, aux: str | None = None) -> Path:
         return dest
     if os.environ.get("BLURT_NO_DOWNLOAD"):  # live.py: never start a download in the middle of a recording
         raise Fail(f"{rel} is not downloaded", "model_missing")
-    urls = VAD_URLS if rel == "silero_vad.onnx" else next(
+    urls = VAD_URLS if rel == "silero_vad.onnx" else VP_URLS if rel == VP_FILE else VP_SEG_URLS if rel == VP_SEG_FILE else next(
         (u for m in entries() for f, u in ((m.get("install") or {}).get("files") or {}).items() if f == rel), None)
     if not urls:
         raise Fail(f"no download source for {rel}", "model_missing")
@@ -2164,6 +2167,7 @@ class VolcStream:
         self.pending = b""
         self.sent = 0                       # bytes of PCM sent
         self.text: str | None = None
+        self.utterances: list | None = None     # with show_utterances: [{"text", "start_time", "end_time"} (ms)]
         self.error: Fail | None = None
         self.final = threading.Event()
         self.t_final: float | None = None
@@ -2196,6 +2200,8 @@ class VolcStream:
                     r = r[0] if r else {}
                 if r.get("text") is not None:
                     self.text = r.get("text")
+                if isinstance(r.get("utterances"), list):
+                    self.utterances = r["utterances"]
                 if last:
                     break
         except (OSError, ConnectionError, ValueError, struct.error) as e:
@@ -2280,6 +2286,7 @@ class Volcengine:
         self.terms: list[str] = []
         self.field = ""
         self.last: dict = {}
+        self.utterances = False      # only my voice on a stream: each sentence's time, to drop another speaker's
 
     def set_vocab(self, terms: list[dict]) -> bool:
         self.terms = [str(t["term"]).strip() for t in terms if str(t.get("term") or "").strip()][:self.max_terms]
@@ -2290,7 +2297,7 @@ class Volcengine:
 
     def request(self) -> dict:
         req = {"model_name": "bigmodel", "enable_itn": True, "enable_punc": True, "enable_ddc": False,
-               "show_utterances": False, "result_type": "full"}
+               "show_utterances": self.utterances, "result_type": "full"}
         ctx: dict = {}
         if self.terms:
             ctx["hotwords"] = [{"word": w} for w in self.terms]
@@ -2981,6 +2988,336 @@ def note_text(results: list) -> tuple[str, str | None]:
     return sep.join(texts).strip(), (max(set(langs), key=langs.count) if langs else None)
 
 
+# --- voiceprint: only my voice (issue #26; docs/design/voiceprint.md) -----------------------------------------
+# A speaker-embedding gate in front of a dictation's recognition. With record.dictation.only_my_voice on (Settings →
+# Dictation) and a voice enrolled, each piece is cut where silero hears pauses (cuts ≤ 10 s, gaps ≤ 0.6 s), each cut is
+# embedded (3D-Speaker CAM++ zh-en, ~3.5 ms per second of audio on the CPU, in this process) and compared with the
+# user's voice (cosine with the mean of the enrolled and learned embeddings). A cut under VP_THRESHOLD is someone
+# else: silenced out of what recognition hears; a piece that is all someone else answers an empty text before the
+# model is even loaded. The verdict comes back as `speaker` (with `drop`, the silenced spans) so the app can mask the
+# same audio for whatever else hears it (a rehear window, macOS's second transcript). Interim requests (the live
+# words) are gated too, but only cuts long enough to judge (VP_INTERIM_MIN). Only dictation is gated: a voice note or
+# a recording is meant to keep everyone. Without an enrolled voice, or without the model, a piece goes through as it
+# is (fail-open). Measured on the founder's real takes against AISHELL / ASCEND / LibriSpeech / Common Voice speakers
+# (docs/design/voiceprint.md): the old ERes2Net + 0.5 dropped 17 % of the user's own speech; CAM++ at 0.28 with
+# learning drops none of it and lets ~0.6 % of other people's through.
+VP_FILE = "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+VP_URLS = [
+    f"https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/{VP_FILE}",
+    f"https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/{VP_FILE}",
+    f"https://hf-mirror.com/csukuangfj/speaker-embedding-models/resolve/main/{VP_FILE}",
+]
+VP_MB = 30                      # both models' download
+# speaker turns inside a piece (pyannote segmentation 3.0, MIT, as sherpa-onnx publishes it; int8, 1.5 MB): in a
+# conversation the next person starts within a fraction of a second, too soon for a pause to cut at — on the founder's
+# own tests every reply of a friend sat in one cut with his own words and was typed with them
+VP_SEG_FILE = "pyannote-segmentation-3-0.int8.onnx"
+VP_SEG_URLS = [
+    "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx",
+    "https://hf-mirror.com/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx",
+]
+# under this cosine a cut is someone else (record.dictation.voiceprint_threshold overrides). The founder's own cuts:
+# 0.16 % dropped at 0.275 / 0.57 % at 0.30 with a 20 s enrollment, none once learning has a few takes; other people's
+# speech: the highest of 1,150 cuts scored 0.38
+VP_THRESHOLD = 0.28
+# learning: a cut of ≥ 3 s that scores ≥ 0.5 (far above anyone else measured) joins the profile, the latest 40 —
+# the user's other microphones, rooms and moods, which one enrollment take can't hold
+VP_LEARN = 0.5
+VP_LEARN_MIN = 3.0
+VP_LEARNED_MAX = 40
+VP_LEARN_EVERY = 20.0           # s between two learned cuts (one take doesn't fill the profile)
+# with two voices in a piece, the one far below the user's is someone else even above VP_THRESHOLD (a voice close to
+# the user's — the founder's friend scored 0.24–0.27 against his 0.68–0.84): dropped when it is VP_MARGIN below the
+# best, unless it scores VP_SURE or more
+VP_MARGIN = 0.3
+VP_SURE = 0.45
+VP_MARGIN_MIN = 1.5             # …a shorter stretch scores too unevenly for that (the founder's own 0.8 s "丫头": 0.36)
+VP_CLUSTER = 0.5                # sherpa-onnx's clustering threshold: turns closer than this are one speaker
+# an interim request judges only cuts with this much speech: a shorter one is too little to tell (the final piece
+# decides it)
+VP_INTERIM_MIN = 1.5
+
+
+def voiceprint_settings(flag: bool | None) -> tuple[bool, float]:
+    """(on, threshold): the request's "voiceprint" wins; else record.dictation.only_my_voice / .voiceprint_threshold."""
+    d = (global_config().get("record") or {}).get("dictation") or {}
+    on = bool(d.get("only_my_voice", False)) if flag is None else bool(flag)
+    try:
+        threshold = float(d.get("voiceprint_threshold", VP_THRESHOLD))
+    except (TypeError, ValueError):
+        threshold = VP_THRESHOLD
+    return on, threshold
+
+
+class Voiceprint:
+    """The speaker-embedding extractor, loaded once per process; the user's voice in $BLURT_HOME/voiceprint.json:
+    {"model", "embeddings" (enrollment windows, the latest 4 takes'), "learned" (cuts from dictation), "updated"}."""
+
+    PROFILE = BLURT_HOME / "voiceprint.json"
+    TAKES = 4
+    _ext = None
+    _lock = threading.Lock()
+    _cache: dict = {}               # sha1 of a cut's samples → its embedding (interim requests repeat the same cuts)
+    _target: tuple | None = None    # (profile mtime, target, the enrollment's own)
+    _diar = None
+    _learned_at = 0.0
+
+    @classmethod
+    def extractor(cls):
+        with cls._lock:
+            if cls._ext is None:
+                import sherpa_onnx
+                cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(download(VP_FILE)), num_threads=2,
+                                                                  provider="cpu")
+                cls._ext = sherpa_onnx.SpeakerEmbeddingExtractor(cfg)
+            return cls._ext
+
+    @classmethod
+    def diarizer(cls):
+        """Speaker turns (pyannote segmentation + this same embedding model, clustered), loaded once."""
+        with cls._lock:
+            if cls._diar is None:
+                import sherpa_onnx
+                seg = sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+                    pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(download(VP_SEG_FILE))),
+                    num_threads=2)
+                emb = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(download(VP_FILE)), num_threads=2)
+                cls._diar = sherpa_onnx.OfflineSpeakerDiarization(sherpa_onnx.OfflineSpeakerDiarizationConfig(
+                    segmentation=seg, embedding=emb,
+                    clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=VP_CLUSTER),
+                    min_duration_on=0.2, min_duration_off=0.3))
+            return cls._diar
+
+    @classmethod
+    def speakers(cls, x: np.ndarray, t: np.ndarray) -> list[dict]:
+        """Who spoke when: the audio in ≤ 10 s spans cut at pauses (segmentation's window; a longer take is judged
+        span by span — each speaker is compared with the user, not with the others), each span's speaker turns, and
+        each speaker's similarity to the user (their turns' audio together, up to 10 s). [{"turns": [(s, e)], "sim",
+        "seconds"}]."""
+        out = []
+        for a, b in pause_spans(x, 10.0) or [(0.0, len(x) / SR)]:
+            part = x[int(a * SR):int(b * SR)]
+            spk: dict[int, list] = {}
+            for s in cls.diarizer().process(part).sort_by_start_time():
+                spk.setdefault(s.speaker, []).append((a + s.start, a + s.end))
+            for turns in spk.values():
+                audio = np.concatenate([x[int(s * SR):int(e * SR)] for s, e in turns])
+                secs = len(audio) / SR
+                sim = float(np.dot(cls.embed(audio[:10 * SR]), t)) if secs >= 0.5 else None
+                out.append({"turns": turns, "sim": sim, "seconds": secs, "audio": audio})
+        # speech the turns leave out (segmentation hears a quiet voice — a phone's video across the room — as
+        # nothing, silero as speech): each stretch of it judged on its own, as one more speaker
+        covered = [tr for s in out for tr in s["turns"]]
+        for s, e in vad_segments(x):
+            rest = [(s, e)]
+            for a, b in covered:
+                rest = [p for r in rest for p in ((r[0], min(r[1], a)), (max(r[0], b), r[1])) if p[1] - p[0] > 0.05]
+            for a, b in rest:
+                if b - a >= 0.5:
+                    audio = x[int(a * SR):int(b * SR)]
+                    out.append({"turns": [(a, b)], "sim": float(np.dot(cls.embed(audio[:10 * SR]), t)),
+                                "seconds": b - a, "audio": audio})
+        return out
+
+    @classmethod
+    def embed(cls, x: np.ndarray) -> np.ndarray:
+        key = hashlib.sha1(np.ascontiguousarray(x, dtype=np.float32).tobytes()).digest()
+        if (e := cls._cache.get(key)) is not None:
+            return e
+        ext = cls.extractor()
+        stream = ext.create_stream()
+        stream.accept_waveform(SR, x)
+        stream.input_finished()
+        e = np.asarray(ext.compute(stream), dtype=np.float32)
+        e = e / (np.linalg.norm(e) + 1e-9)
+        if len(cls._cache) > 256:
+            cls._cache.clear()
+        cls._cache[key] = e
+        return e
+
+    @staticmethod
+    def speech_seconds(x: np.ndarray) -> float:
+        """Loud-frame seconds (20 ms frames, above −45 dBFS: speech is far louder, a quiet room far quieter). An
+        enrollment of room tone is refused, never learned; an all-speech clip counts in full (no adaptive floor:
+        one made of speech alone would call nothing loud)."""
+        f = SR // 50
+        n = len(x) // f
+        if n == 0:
+            return 0.0
+        rms = np.sqrt((x[: n * f].reshape(n, f) ** 2).mean(axis=1))
+        loud = 20 * np.log10(rms + 1e-9) > -45
+        return float(loud.sum() * f / SR)
+
+    @classmethod
+    def embed_windows(cls, x: np.ndarray, win: float = 5.0) -> list[np.ndarray]:
+        """One embedding per 5 s window that is mostly speech: a long enrollment is several looks at the voice."""
+        w = int(win * SR)
+        return [cls.embed(part) for off in range(0, len(x), w)
+                if len(part := x[off:off + w]) >= SR and cls.speech_seconds(part) >= 0.4 * len(part) / SR]
+
+    @classmethod
+    def profile(cls) -> dict:
+        """The profile when it was made with this model ({} without one; `stale` when another model made it: its
+        embeddings can't be compared with this one's)."""
+        p = load_json(cls.PROFILE, None)
+        if not isinstance(p, dict) or not isinstance(p.get("embeddings"), list) or not p["embeddings"]:
+            return {}
+        if p.get("model") != VP_FILE:
+            return {"stale": True}
+        if p.get("version") != 2:     # v1 learned whole cuts, a friend's reply inside the user's cut included
+            p["learned"] = []
+        return p
+
+    @classmethod
+    def target(cls) -> np.ndarray | None:
+        """The user's voice: the mean of the enrolled and learned embeddings (re-read when the file changes — the CLI
+        enrolls beside a running server)."""
+        try:
+            mtime = cls.PROFILE.stat().st_mtime_ns
+        except OSError:
+            cls._target = None
+            return None
+        if cls._target and cls._target[0] == mtime:
+            return cls._target[1]
+        p = cls.profile()
+        if not p.get("embeddings"):
+            cls._target = (mtime, None, None)
+            return None
+
+        def unit(v):
+            e = np.asarray(v, dtype=np.float32).mean(axis=0)
+            return e / (np.linalg.norm(e) + 1e-9)
+        cls._target = (mtime, unit(p["embeddings"] + (p.get("learned") or [])), unit(p["embeddings"]))
+        return cls._target[1]
+
+    @classmethod
+    def enrolled(cls) -> np.ndarray | None:
+        """The enrollment take alone: what learning is measured against, so it can't drift toward whoever it once
+        let through."""
+        return cls._target[2] if cls.target() is not None and cls._target else None
+
+    @classmethod
+    def similarity(cls, x: np.ndarray) -> float | None:
+        """Cosine of this audio against the user's voice; None without one."""
+        t = cls.target()
+        return None if t is None else float(np.dot(cls.embed(x), t))
+
+    @classmethod
+    def gate(cls, x: np.ndarray, threshold: float, interim: bool = False) -> tuple[dict, np.ndarray]:
+        """The gate, per piece: who spoke when (`speakers`: speaker turns, not pauses — a reply right after the user
+        is found too), each speaker compared with the user's voice, and another speaker's turns silenced out of what
+        recognition hears (10 ms ramps: a hard zero is a click; where two talk at once, the user's turn wins). A
+        speaker is someone else under `threshold`, or VP_MARGIN below the best speaker of the piece unless they score
+        VP_SURE. ({"match", "similarity", "threshold", "dropped", "drop": [[s, e], …], "speakers"}, the audio to
+        recognise). match false: nobody in it is the user — the caller answers blank without recognising. Fail
+        "not_enrolled" / "model_missing": the caller lets the piece through. Interim requests judge only speakers
+        with VP_INTERIM_MIN s or more."""
+        t = cls.target()
+        if t is None:
+            raise Fail("no voice enrolled", "not_enrolled")
+        if not vad_segments(x):       # no speech heard: as ungated (recognition answers blank as ever)
+            return {"match": True, "similarity": None, "threshold": threshold, "dropped": 0, "drop": []}, x
+        spk = cls.speakers(x, t)
+        judged = [s["sim"] for s in spk if s["sim"] is not None and (not interim or s["seconds"] >= VP_INTERIM_MIN)]
+        best = max(judged, default=None)
+        # a short stretch scores unevenly (a sub-second clip of anyone can land above the threshold): it is kept only
+        # beside a long stretch that is surely the user — a piece of someone else alone can't slip through on it
+        long_mine = any(s["sim"] is not None and s["seconds"] >= VP_MARGIN_MIN and s["sim"] >= threshold for s in spk)
+        any_long = any(s["seconds"] >= VP_MARGIN_MIN for s in spk)
+        for s in spk:
+            v = s["sim"]
+            short = s["seconds"] < VP_MARGIN_MIN
+            s["keep"] = (interim and s["seconds"] < VP_INTERIM_MIN) or (v is None and (long_mine or not judged)) or (v is not None and 
+                v >= threshold and (v >= best - VP_MARGIN or v >= VP_SURE or short)
+                and (not short or long_mine or not any_long))
+        # a fragment too short to score (< 0.5 s) goes with the piece: kept beside the user, dropped beside others
+        kept = [s for s in spk if s["keep"]]
+        dropped = [s for s in spk if not s["keep"]]
+        # learning: a piece of one voice only, long and surely the user's against the enrollment itself
+        e0 = cls.enrolled()
+        if not interim and len(spk) == 1 and spk[0]["seconds"] >= VP_LEARN_MIN and e0 is not None:
+            e_ = cls.embed(spk[0]["audio"][:10 * SR])
+            if float(np.dot(e_, e0)) >= VP_LEARN:
+                cls.learn(e_)
+        sims = [s["sim"] for s in kept if s["sim"] is not None]
+        out = {"match": bool(kept) or not spk, "threshold": threshold, "dropped": len(dropped),
+               "similarity": round(min(sims), 3) if sims else round(best, 3) if best is not None else None,
+               "speakers": [round(s["sim"], 3) if s["sim"] is not None else None for s in spk],
+               "drop": [[round(a, 3), round(b, 3)] for s in dropped for a, b in s["turns"]]}
+        if not dropped or not kept:
+            return out, x
+        mask = np.ones(len(x), dtype=np.float32)
+        r = int(0.01 * SR)
+        for s in dropped:
+            for a_, b_ in s["turns"]:
+                a, b = int(a_ * SR), min(len(x), int(b_ * SR))
+                mask[a:b] = 0
+                n = min(r, a)
+                mask[a - n:a] = np.minimum(mask[a - n:a], np.linspace(1, 0, n, dtype=np.float32))
+                n = min(r, len(x) - b)
+                mask[b:b + n] = np.minimum(mask[b:b + n], np.linspace(0, 1, n, dtype=np.float32))
+        for s in kept:                # two at once: the user's turn wins
+            for a_, b_ in s["turns"]:
+                mask[int(a_ * SR):int(b_ * SR)] = 1
+        return out, x * mask
+
+    @classmethod
+    def learn(cls, e: np.ndarray) -> None:
+        """A cut that is surely the user's joins the profile (at most one per VP_LEARN_EVERY s, the latest
+        VP_LEARNED_MAX kept)."""
+        now = time.time()
+        if now - cls._learned_at < VP_LEARN_EVERY:
+            return
+        p = cls.profile()
+        if not p.get("embeddings"):
+            return
+        cls._learned_at = now
+        p["version"] = 2
+        p["learned"] = ((p.get("learned") or []) + [[round(float(v), 5) for v in e]])[-VP_LEARNED_MAX:]
+        p["updated"] = datetime.now().astimezone().isoformat(timespec="seconds")
+        save_json(cls.PROFILE, p)
+
+    @classmethod
+    def enroll(cls, wav: Path) -> dict:
+        """One enrollment take (Settings' "Only my voice": a passage read aloud): its windows join the profile (the
+        latest TAKES takes; what dictation taught it stays). Refused when there is too little speech in it — room tone
+        is never learned. A profile another model made is replaced."""
+        t0 = time.perf_counter()
+        if not wav.is_file():
+            return {"ok": False, "code": "not_found", "error": f"{wav} not found"}
+        x = read_wav(wav)
+        es = cls.embed_windows(x)
+        if len(es) < 2:               # under ~8 s of speech
+            return {"ok": False, "code": "too_short", "audio_seconds": round(len(x) / SR, 2),
+                    "error": "too little speech — read the passage aloud"}
+        p = cls.profile()
+        takes = [t for t in (p.get("takes") or []) if isinstance(t, list)][-(cls.TAKES - 1):] + [
+            [[round(float(v), 5) for v in e] for e in es]]
+        save_json(cls.PROFILE, {"model": VP_FILE, "version": 2, "takes": takes, "embeddings": [e for t in takes for e in t],
+                                "learned": p.get("learned") or [],
+                                "updated": datetime.now().astimezone().isoformat(timespec="seconds")})
+        return {**cls.status(), "audio_seconds": round(len(x) / SR, 2), "ms": int((time.perf_counter() - t0) * 1000)}
+
+    @classmethod
+    def prepare(cls) -> dict:
+        """The model on this Mac (downloaded when missing: GitHub, then Hugging Face and its mirror), then the status."""
+        download(VP_FILE)
+        download(VP_SEG_FILE)
+        return cls.status()
+
+    @classmethod
+    def status(cls) -> dict:
+        p = cls.profile()
+        return {"ok": True, "enrolled": bool(p.get("embeddings")), "stale": bool(p.get("stale")),
+                "takes": len(p.get("takes") or []), "learned": len(p.get("learned") or []), "model": VP_FILE,
+                "model_ready": (MODELS_DIR / VP_FILE).is_file() and (MODELS_DIR / VP_SEG_FILE).is_file(), "model_mb": VP_MB, "updated": p.get("updated")}
+
+    @classmethod
+    def clear(cls) -> dict:
+        cls.PROFILE.unlink(missing_ok=True)
+        cls._target = None
+        return cls.status()
+
 class NoteEngine:
     """The voice-note model, loaded once (in-process `note`, or kept warm by `serve`)."""
 
@@ -3002,7 +3339,7 @@ class NoteEngine:
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
              purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None,
-             app: str | None = None, before: str | None = None) -> dict:
+             app: str | None = None, before: str | None = None, voiceprint: bool | None = None) -> dict:
         """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
         them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
         `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
@@ -3024,6 +3361,22 @@ class NoteEngine:
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
             model_id = dictation_models()["selected"]
+        x = read_wav(wav)
+        speaker = None
+        vp_on, vp_threshold = voiceprint_settings(voiceprint)
+        if vp_on and purpose == "dictation":
+            # only my voice (issue #26): someone else's speech is silenced out of what recognition hears, a piece that
+            # is all someone else answers blank right here, before the model is even loaded. An interim request (stop
+            # set) judges only cuts long enough to tell. No profile, no model, the gate failing: as if it were off.
+            with no_download(True):      # a dictation never waits for the voiceprint model either
+                try:
+                    speaker, x = Voiceprint.gate(x, vp_threshold, interim=stop is not None)
+                except (Fail, ImportError, RuntimeError, ValueError):
+                    speaker = None
+            if speaker is not None and not speaker["match"]:
+                return {"ok": True, "text": "", "language": language, "ms": int((time.perf_counter() - t0) * 1000),
+                        "model": model_id or self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": 0,
+                        "speaker": speaker}
         was = self.backend
         t_load = time.perf_counter()
         self.load(language, model_id)
@@ -3035,7 +3388,6 @@ class NoteEngine:
                 raise Interrupted("another request is waiting")
             stop = None     # one short pass: nothing to look at halfway
 
-        x = read_wav(wav)
         biased = bias(self.backend, vocab, prior, hint, app)
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
@@ -3075,6 +3427,8 @@ class NoteEngine:
         text, lang = note_text(results)
         out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
+        if speaker:
+            out["speaker"] = speaker
         if retried:
             out["retried"] = True
         if field:
@@ -3121,6 +3475,27 @@ STREAM_FINAL_WAIT = 10.0         # s after key-up for the final text (measured p
 STREAM_BACKLOG_WAIT = 0.4
 
 
+def voiceprint_utterances(text: str, utterances: list | None, speaker: dict) -> str:
+    """A stream's text without another speaker's sentences: those whose time lies mostly in the gate's dropped spans.
+    All someone else → ""; nothing dropped, or no sentence times to go by → the text as it came."""
+    if not speaker.get("match"):
+        return ""
+    drop = speaker.get("drop") or []
+    if not drop or not utterances:
+        return text
+    kept = []
+    for u in utterances:
+        s, e = (u.get("start_time") or 0) / 1000, (u.get("end_time") or 0) / 1000
+        gone = sum(max(0.0, min(e, b) - max(s, a)) for a, b in drop)
+        if e <= s or gone < 0.5 * (e - s):
+            kept.append(str(u.get("text") or "").strip())
+    out = ""
+    for k in filter(None, kept):
+        cjk = re.match(f"[{_CJK}，。？！、]", out[-1:] or " ") or re.match(f"[{_CJK}]", k[0])
+        out += k if not out or cjk else " " + k
+    return out
+
+
 def final_wait(audio_s: float, streamed_s: float) -> float:
     """How long a take's final text is waited for after key-up: `audio_s` of audio arrived over `streamed_s` s."""
     return STREAM_FINAL_WAIT + STREAM_BACKLOG_WAIT * max(0.0, audio_s - streamed_s)
@@ -3145,6 +3520,9 @@ def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
     model_id = req.get("model_id")
     biased = False
     field = ""
+    gate = False
+    pcm = bytearray()
+    speaker = None
     try:
         conn.settimeout(120)        # a take sends a packet every ~0.1 s: two minutes of nothing is an app gone
         try:
@@ -3159,6 +3537,12 @@ def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
             a = argparse.Namespace(model=None, model_id=model_id, prompt=None,
                                    language=None if lang in (None, "", "auto") else lang)
             backend = cls(a)
+            # only my voice: the PCM is kept, judged at key-up while the service finishes, and another speaker's
+            # sentences are left out of the text by their times (the audio itself has gone out as it was said)
+            vp_on, vp_threshold = voiceprint_settings(req.get("voiceprint"))
+            gate = vp_on and req.get("purpose", "dictation") == "dictation" and Voiceprint.target() is not None \
+                and (MODELS_DIR / VP_FILE).is_file() and (MODELS_DIR / VP_SEG_FILE).is_file()
+            backend.utterances = gate
             biased = bias(backend, req.get("vocab"), None, req.get("hint"), req.get("app"))
             if req.get("before") and (n := field_context_chars(model_id)):
                 field = prior_tail(req["before"], n)
@@ -3176,14 +3560,31 @@ def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
                 odd = data[len(data) & ~1:]             # whole samples only
                 if sess is not None:
                     sess.feed(data[:len(data) & ~1])
+                if gate:
+                    pcm += data[:len(data) & ~1]
             data = conn.recv(65536)
             if not data:
                 break
         t_up = time.perf_counter()
         text = ""
         if fail is None and sess is not None:
+            judged: dict = {}
+            judge = None
+            if gate and pcm:
+                def run_gate():
+                    with contextlib.suppress(Fail, ImportError, RuntimeError, ValueError):
+                        x = np.frombuffer(bytes(pcm), dtype="<i2").astype(np.float32) / 32768
+                        judged["speaker"] = Voiceprint.gate(x, vp_threshold)[0]
+                judge = threading.Thread(target=run_gate, daemon=True)
+                judge.start()
             try:
-                text = to_user_script(sess.finish(wait=final_wait(got / 2 / SR, t_up - (t_first or t_up))), None)
+                text = sess.finish(wait=final_wait(got / 2 / SR, t_up - (t_first or t_up)))
+                if judge is not None:
+                    judge.join(timeout=5)
+                    speaker = judged.get("speaker")
+                    if speaker is not None:
+                        text = voiceprint_utterances(text, sess.utterances, speaker)
+                text = to_user_script(text, None)
             except Fail as e:
                 fail = e
         if fail is not None:
@@ -3195,6 +3596,8 @@ def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
                     "streamed": True, "stream_s": round(t_up - t0, 2)}
             if field:
                 resp["field_context"] = len(field)
+            if speaker is not None:
+                resp["speaker"] = speaker
         with contextlib.suppress(OSError):
             conn.sendall((json.dumps(resp, ensure_ascii=False) + "\n").encode())
     except (OSError, ValueError) as e:
@@ -3264,6 +3667,38 @@ def cmd_note(a):
     emit(NoteEngine().note(wav, a.language, a.model_id, vocab, purpose))
 
 
+def voiceprint_verdict(wav: Path) -> dict:
+    """The gate's verdict on a dictation piece without recognising it (serve "vp_gate", `voiceprint check`): {"ok",
+    "speaker"}; "speaker" is null when the gate can't judge (no voice enrolled, no model: as if it were off)."""
+    x = read_wav(wav)
+    _, threshold = voiceprint_settings(None)
+    with no_download(True):
+        try:
+            speaker, _ = Voiceprint.gate(x, threshold)
+        except (Fail, ImportError, RuntimeError, ValueError) as e:
+            return {"ok": True, "speaker": None, "why": getattr(e, "code", type(e).__name__)}
+    return {"ok": True, "speaker": speaker, "audio_seconds": round(len(x) / SR, 2)}
+
+
+def cmd_voiceprint(a):
+    """`voiceprint prepare` (the model on this Mac, downloaded when missing), `enroll <wav>` (learn the user's voice
+    from a passage read aloud), `check <wav>` (the gate's verdict on it), `status`, `clear`. The warm server answers
+    vp_gate / vp_status / vp_clear; enrolling is only here, so the server never waits for a download."""
+    if a.vp_cmd in ("enroll", "check") and not a.wav:
+        raise Fail(f"voiceprint {a.vp_cmd} needs a wav", "usage")
+    if a.vp_cmd == "prepare":
+        emit(Voiceprint.prepare())
+    elif a.vp_cmd == "enroll":
+        Voiceprint.prepare()
+        emit(Voiceprint.enroll(Path(a.wav).resolve()))
+    elif a.vp_cmd == "check":
+        emit(voiceprint_verdict(Path(a.wav).resolve()))
+    elif a.vp_cmd == "status":
+        emit(Voiceprint.status())
+    elif a.vp_cmd == "clear":
+        emit(Voiceprint.clear())
+
+
 def cmd_serve(a):
     """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"load"|"ping"|"exit",
     …}), one JSON line out. A "note" with "interim": true (dictation's live text: the piece still being said) is
@@ -3317,6 +3752,13 @@ def cmd_serve(a):
                 serve_said(f"serve: preload skipped ({e})")
             except NeedsRestart as e:
                 restart, why = e.pkg, "restart"
+        if voiceprint_settings(None)[0] and Voiceprint.target() is not None and (MODELS_DIR / VP_FILE).is_file():
+            # only my voice: its models too (~0.3 s), so the first piece doesn't wait for them
+            def warm_voiceprint():
+                with contextlib.suppress(Exception):
+                    Voiceprint.extractor()
+                    Voiceprint.diarizer()
+            threading.Thread(target=warm_voiceprint, daemon=True).start()
         emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
         last = time.time()
         uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
@@ -3368,9 +3810,19 @@ def cmd_serve(a):
                         with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
                             resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
                                             req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop,
-                                            app=req.get("app"), before=req.get("before"))
+                                            app=req.get("app"), before=req.get("before"),
+                                            voiceprint=req.get("voiceprint"))
                         if interim:
                             resp["interim"] = True
+                    elif req.get("cmd") == "vp_gate":
+                        # only my voice for a piece macOS's recogniser hears (dictation on Apple Speech, or a cloud
+                        # recogniser's live text): the verdict alone, the app silences the dropped spans itself
+                        last = time.time()
+                        resp = voiceprint_verdict(Path(req["wav"]))
+                    elif req.get("cmd") == "vp_status":      # enrolling (it may download) is the CLI's: never here
+                        resp = Voiceprint.status()
+                    elif req.get("cmd") == "vp_clear":
+                        resp = Voiceprint.clear()
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
@@ -4030,6 +4482,9 @@ def main():
     cc.add_argument("--model-id", dest="model_id", metavar="ID", default="qwen3-asr-flash")
     sub.add_parser("models")
     sub.add_parser("dictation-models")
+    vp = sub.add_parser("voiceprint", help="only my voice: prepare the model, enroll / check a voice, status, clear")
+    vp.add_argument("vp_cmd", choices=["prepare", "enroll", "check", "status", "clear"])
+    vp.add_argument("wav", nargs="?", help="enroll / check: the wav")
     b = sub.add_parser("bench")
     b.add_argument("input", nargs="?", help="audio / video file (default: spoken samples made with `say`)")
     model_opts(b)
@@ -4047,7 +4502,7 @@ def main():
     try:
         {"run": cmd_run, "note": cmd_note, "serve": cmd_serve, "probe": cmd_probe, "recommend": cmd_recommend,
          "auto": cmd_auto, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench,
-         "dictation-models": cmd_dictation_models, "check-cloud": cmd_check_cloud}[a.cmd](a)
+         "dictation-models": cmd_dictation_models, "check-cloud": cmd_check_cloud, "voiceprint": cmd_voiceprint}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
