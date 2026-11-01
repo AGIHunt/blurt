@@ -1,6 +1,6 @@
 // Per-app memory of Structured and Translate (v1.0.6, the founder; the rules are BlurtCore's DictationRemember):
 //
-//  • a typed take that was switched (⇧ / Fn+⇧ / the island to Structured, ⌘ / the island's left half to Translate)
+//  • a typed take that was switched (⇧ / the island to Structured, ⌘ / the island's left half to Translate)
 //    leaves that switch on in its app: the next take there starts Structured, or translated, until it is switched
 //    back. Settings → Dictation lists the apps (Reset / remove). Off: Settings → Dictation → "Remember Structured and
 //    Translate for each app" (record.dictation.learn_styles, on);

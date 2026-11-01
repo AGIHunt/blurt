@@ -3,8 +3,8 @@
 //
 //  • at the key-down the app in front gives the take its style (record.dictation.styles; light everywhere unless the
 //    user chose otherwise); verbatim skips polish for the whole take;
-//  • while talking: ⇧ alone, or a click on the island, toggles Structured for this take (the trigger's `.style`);
-//    Fn+⇧ as the start press starts in Structured. No spoken commands ("make a list" is content: people dictate
+//  • while talking: ⇧ double-tapped, or a click on the island, toggles Structured for this take (the trigger's `.style`);
+//    No spoken commands ("make a list" is content: people dictate
 //    instructions to AI agents). The island's right ear shows the list glyph while Structured; a toast names the switch;
 //  • at key-up, Structured (and Auto): one pass of the polish model over the stitched text (polish.py `structure`,
 //    DictationStream.finish): it resolves self-corrections and lays out what was enumerated, or leaves a paragraph.
@@ -118,7 +118,7 @@ extension Dictation {
         island.toast(t)
     }
 
-    /// ⇧ alone / a click on the island while listening: Structured for this take, or back.
+    /// ⇧ double-tapped / a click on the island while listening: Structured for this take, or back.
     func toggleStyle(via: DictationStyleSource) {
         guard phase == .listening, let d = styleDecision else { return }
         if stylesNeedModel { return sayStylesNeedModel(via: via.rawValue) }

@@ -322,11 +322,11 @@
 "capture.voice.words_failed" = "Couldn’t transcribe";
 "capture.voice.needs_model" = "Voice notes need a speech model · recording kept";
 "capture.voice.structured" = "Structured";
-"capture.voice.structured_tip" = "Turns into a list when you finish, keeping only your corrections (or press ⇧ alone)";
-"capture.voice.structured_off_tip" = "Back to your own words (or press ⇧ alone)";
+"capture.voice.structured_tip" = "Turns into a list when you finish, keeping only your corrections (or double-tap ⇧)";
+"capture.voice.structured_off_tip" = "Back to your own words (or double-tap ⇧)";
 "capture.voice.structured_ax_on" = "on";
 "capture.voice.structured_ax_off" = "off";
-"capture.voice.structured_on" = "Structured: a list when you finish, keeping only your corrections · ⇧ to go back";
+"capture.voice.structured_on" = "Structured: a list when you finish, keeping only your corrections · double-tap ⇧ to go back";
 "capture.voice.structured_off" = "Back to your own words";
 "capture.voice.structure_failed" = "Couldn’t structure it. Kept as you said it.";
 "capture.voice.structure_needs_model" = "Structuring needs a cloud model or a local polish model · kept as said";

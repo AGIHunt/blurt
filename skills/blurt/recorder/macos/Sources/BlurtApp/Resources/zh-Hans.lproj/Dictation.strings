@@ -39,6 +39,28 @@
 "dictation.mic.builtin.detail" = "蓝牙耳机开始收音约有 1 秒延迟，开头的话可能丢失。自动：默认输入为蓝牙时，改用 Mac 内置麦克风。";
 "dictation.sounds" = "开始时的提示音";
 "dictation.stop_sound" = "结束时的提示音";
+/* 只识别我的声音（issue #26）：开关，以及开启前朗读一次的文字 */
+"dictation.only_my_voice" = "只识别我的声音";
+"dictation.only_my_voice.detail" = "旁边其他人说的话不会被输入。";
+"dictation.only_my_voice.stale" = "声音档案需要更新，请重新录制后开启。";
+"dictation.voiceprint.more" = "声音档案";
+"dictation.voiceprint.again" = "重新录制…";
+"dictation.voiceprint.delete" = "删除声音档案";
+"dictation.voiceprint.title" = "录制你的声音";
+"dictation.voiceprint.read" = "请用平时听写的麦克风和音量，朗读下面这段文字。";
+"dictation.voiceprint.passage" = "我正在设置 Mac 上的语音输入。明天上午我会和团队过一遍项目计划，回复几封邮件，周五之前把会议纪要发出来。如果计划有变化，我会更新文档，再通知大家。";
+"dictation.voiceprint.start" = "开始录音";
+"dictation.voiceprint.done" = "完成";
+"dictation.voiceprint.cancel" = "取消";
+"dictation.voiceprint.starting" = "正在启动麦克风…";
+"dictation.voiceprint.recording" = "正在录音…";
+"dictation.voiceprint.saving" = "正在保存…";
+"dictation.voiceprint.downloading" = "正在下载声音模型（%ld MB）…";
+"dictation.voiceprint.private" = "录音不会上传，也不会保留。";
+"dictation.voiceprint.too_short" = "语音太少，请读完整段文字。";
+"dictation.voiceprint.mic_failed" = "无法启动麦克风，请在系统设置中检查麦克风权限。";
+"dictation.voiceprint.network" = "无法下载声音模型，请检查网络。";
+"dictation.voiceprint.failed" = "无法保存声音（%@）。";
 
 /* 菜单 */
 "dictation.menu.history" = "听写历史…";
@@ -169,6 +191,12 @@
 "dictation.toast.sent" = "已发送";
 "dictation.settings.double_tap" = "按两下发送";
 "dictation.settings.double_tap.detail" = "连按两下听写键，打完字后按回车。";
+
+/* 结构化 / 翻译：单独双击 ⇧ 或 ⌘ */
+"dictation.settings.modifier_tap" = "结构化 / 翻译快捷键";
+"dictation.settings.modifier_tap.detail" = "听写时按 ⇧ 切换结构化，按 ⌘ 切换翻译。";
+"dictation.mode.modifier.double" = "双击";
+"dictation.mode.modifier.single" = "单击";
 
 /* 听写测试台（听写页的“测试台”标签；MainWindow/DictationLab*.swift） */
 "dictation.lab.tab.history" = "历史";
@@ -392,7 +420,7 @@
 "dictation.style.light" = "轻整理";
 "dictation.style.structured" = "结构化";
 "dictation.style.auto" = "自动";
-"dictation.style.toast.structured" = "%@：结束后排成清单 · 再按 ⇧ 切回";
+"dictation.style.toast.structured" = "%@：结束后排成清单 · 再双击 ⇧ 切回";
 "dictation.style.toast.back" = "已切回%@";
 "dictation.style.chip" = "这条像清单";
 "dictation.style.chip.key" = "这条像清单 · %@";
@@ -413,8 +441,8 @@
 "dictation.style.learn.no" = "不用";
 "dictation.style.learn.done" = "已保存。可在「设置 > 听写」中更改。";
 "dictation.style.section" = "风格";
-"dictation.style.keys" = "说话时按 ⇧，将这条切换为结构化；也可按 Fn+⇧ 开始。%@ 重排上一条。";
-"dictation.style.keys.no_hotkey" = "说话时按 ⇧，将这条切换为结构化；也可按 Fn+⇧ 开始。";
+"dictation.style.keys" = "说话时双击 ⇧ 切换为结构化。%@ 重排上一条。";
+"dictation.style.keys.no_hotkey" = "说话时双击 ⇧ 切换为结构化。";
 "dictation.style.cat.chat" = "聊天";
 "dictation.style.cat.chat.detail" = "保留「吧、呢、啊」这类语气词；只有一句话时不加句号";
 "dictation.style.cat.code" = "代码和终端";
@@ -431,7 +459,7 @@
 "dictation.style.reset.help" = "恢复为所属类别的风格";
 "dictation.style.suggest" = "内容像清单时，提示排成清单";
 "dictation.style.learn_toggle" = "在每个 App 里记住结构化和翻译";
-"dictation.style.learn_toggle.detail" = "用 ⇧ 或 ⌘ 开启后，在该 App 中保持开启，再按一次关闭";
+"dictation.style.learn_toggle.detail" = "双击 ⇧ 或 ⌘ 开启后，在该 App 中保持开启，再双击关闭";
 "dictation.style.verbatim.detail" = "识别出的原话和标点，不润色。";
 "dictation.history.style" = "风格：%@";
 "dictation.history.style.reformatted" = "重排过 %ld 次";
@@ -486,7 +514,7 @@
 "dictation.history.saved.detail" = "保存每次听写润色前后的文字。";
 
 /* takes in flight (DictationTakes.swift): cancel, the limit, no model, failures, notices, tips */
-"dictation.style.toast.structured.first" = "%@：结束后排成清单，只保留改正后的说法 · 再按 ⇧ 切回";
+"dictation.style.toast.structured.first" = "%@：结束后排成清单，只保留改正后的说法 · 再双击 ⇧ 切回";
 "dictation.toast.cancelled" = "已取消";
 "dictation.toast.limit" = "已到 5 分钟上限，听写已结束";
 "dictation.toast.ends_soon" = "快到 5 分钟上限了";
@@ -521,7 +549,7 @@
 "dictation.toast.polish_cloud_key" = "云端润色的 Key 无效，本次未用云端润色";
 "dictation.toast.weaker_asr" = "未下载推荐的语音模型，名字可能不准确";
 "dictation.tip.send" = "按两下%@ 发送";
-"dictation.tip.list" = "说话时按一下 ⇧，排成清单";
+"dictation.tip.list" = "说话时双击 ⇧，排成清单";
 "dictation.tip.reformat" = "%@ 切换风格";
 "dictation.history.failed" = "没能识别";
 "dictation.history.failed.no_model" = "无法识别：没有语音模型";
@@ -696,7 +724,7 @@
 "dictation.models.cloud" = "%@（云端）";
 
 /* 听写翻译（docs/design/dictation-translate.md） */
-"dictation.translate.toast.on.auto" = "已开启翻译：%1$@ ↔ %2$@ · 再按 ⌘ 关闭";
+"dictation.translate.toast.on.auto" = "已开启翻译：%1$@ ↔ %2$@ · 再双击 ⌘ 关闭";
 "dictation.translate.toast.off" = "已关闭翻译";
 "dictation.translate.toast.unavailable" = "翻译需要云端模型或本机润色模型";
 "dictation.translate.toast.setup" = "设置…";
@@ -707,16 +735,16 @@
 "dictation.translate.toast.cloud_hint" = "本次用本机模型翻译，云端模型效果更好";
 "dictation.translate.toast.suggest" = "以后在%@里听写都翻译吗？";
 "dictation.translate.toast.suggest.yes" = "翻译";
-"dictation.translate.section" = "翻译（⌘）";
-"dictation.translate.settings.title" = "按 ⌘ 翻译成";
-"dictation.translate.settings.detail" = "说话时按 ⌘ 或点按小鸡，翻译后再输入";
+"dictation.translate.section" = "翻译";
+"dictation.translate.settings.title" = "双击 ⌘ 翻译成";
+"dictation.translate.settings.detail" = "说话时双击 ⌘ 或点按小鸡，翻译后再输入";
 "dictation.translate.target.auto" = "自动：%1$@ ↔ %2$@";
 "dictation.translate.target.auto_one" = "自动：译成%@";
 "dictation.translate.target.auto_one.note" = "%@ 的文字会原样保留；要翻译它，请选一种语言";
 "dictation.translate.toast.learned" = "此后在%@中的听写将自动翻译";
 "dictation.translate.toast.undo" = "撤销";
 "dictation.translate.apps" = "自动翻译的 App";
-"dictation.translate.apps.note" = "在 App 中按 ⌘ 开启翻译后，该 App 将保持翻译；再按 ⌘ 关闭，并从此列表中移除。";
+"dictation.translate.apps.note" = "在 App 中双击 ⌘ 开启翻译后，该 App 将保持翻译；再双击 ⌘ 关闭，并从此列表中移除。";
 "dictation.translate.apps.remove" = "移除";
 
 /* Per-app memory of Structured / Translate (DictationRemembering) */

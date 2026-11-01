@@ -1035,7 +1035,7 @@ final class IslandContent: NSView {
         wave = wv
         place(done, x: R - done.frame.width, y: y + (rowH - done.frame.height) / 2)
         y += rowH + 4
-        // row 2: Structured, as dictation's (⇧ alone, or this chip): a quiet chip with the list glyph; on, the tint chip
+        // row 2: Structured, as dictation's (⇧ double-tapped, or this chip): a quiet chip with the list glyph; on, the tint chip
         // in mint like "Pen on" (click = off) — the only place it shows (the ear keeps the plain clock). Then how it
         // ends, and where it goes, on the right edge in secondary white
         let on = v.structured

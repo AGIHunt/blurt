@@ -5,16 +5,25 @@
 // the card's note is that text and the raw transcript stays with it (shots.jsonl `said_raw`). No word lists, no rules
 // about what a list is: the model decides.
 //
-// LoneShift is the key half: ⇧ down with no other modifier held, up again within `tapMax`, nothing pressed between.
+// LoneShift is the key half, and it asks the same way a dictation does (DictationTrigger.modifierChanged): a double
+// ⇧ (the second press inside `doubleTapWindow`, a `cooldown` after a fire) or — when the user set the dictation's
+// modifier tap back to "single" — one ⇧ let go within `tapMax`. Same window and cooldown defaults, same ⇧⌘ rule.
 // ⌥V itself never counts (its ⇧ goes down with ⌥ held), nor a capital letter, nor a ⇧-click. Two listeners can hand
 // the same change over (the dictation key's tap and the voice note's own monitor): the same change within 30 ms
 // counts once. Pure: VoiceNoteStyleTests.
 import Foundation
 
 public struct LoneShift {
-    /// a ⇧ held longer than this is a finger resting on it, not a toggle (dictation's `shiftTapMax`)
+    /// single mode: a ⇧ held longer than this is a finger resting on it, not a toggle (dictation's `shiftTapMax`)
     public var tapMax = 1.0
+    /// what the user chose for the dictation's ⇧ (Dictation.modifierTapShift): double by default
+    public var mode: DictationTrigger.ModifierTap = DictationTrigger.shippedModifierTap
+    public var doubleTapWindow = DictationTrigger.shippedDoubleTapWindow
+    public var cooldown = DictationTrigger.shippedModifierCooldown
     private var downAt: Double?
+    /// double mode: when the first ⇧ went down, and when the cooldown after a fire ends
+    private var lastTapAt: Double?
+    private var cooldownUntil: Double = 0
     /// the last few changes seen (two listeners may hand them over interleaved: tap down, tap up, monitor down, …)
     private var recent: [(code: Int, flags: UInt64, at: Double)] = []
     /// ⌘ ⌃ ⌥ Fn
@@ -22,25 +31,40 @@ public struct LoneShift {
 
     public init() {}
 
-    /// true: this event let go of a lone ⇧ — toggle Structured.
+    /// true: this event asked for the toggle — the second ⇧ press of a double tap, or (single mode) the release of
+    /// one ⇧.
     public mutating func handle(_ e: DictationTrigger.Event) -> Bool {
         switch e {
         case let .flags(code, flags, t):
             if recent.contains(where: { $0.code == code && $0.flags == flags && abs(t - $0.at) < 0.03 }) { return false }
             recent.append((code, flags, t))
             if recent.count > 6 { recent.removeFirst(recent.count - 6) }
-            guard DictationTrigger.shiftCodes.contains(code) else { downAt = nil; return false }
+            guard DictationTrigger.shiftCodes.contains(code) else { downAt = nil; lastTapAt = nil; return false }
             let down = flags & DictationTrigger.shiftMask != 0
             let alone = flags & LoneShift.others == 0
             if down {
-                downAt = alone ? t : nil
+                // ⇧ with another modifier held is a chord (⌥⇧V itself, ⌘⇧S): neither a tap nor the first of two
+                guard alone else { downAt = nil; lastTapAt = nil; return false }
+                guard mode == .double else { downAt = t; return false }
+                if t < cooldownUntil { lastTapAt = nil; return false }
+                if let l = lastTapAt, t - l <= doubleTapWindow {
+                    lastTapAt = nil
+                    cooldownUntil = t + cooldown
+                    return true
+                }
+                lastTapAt = t
                 return false
             }
-            defer { downAt = nil }
-            guard alone, let d = downAt, t - d <= tapMax else { return false }
-            return true
+            guard alone else { downAt = nil; lastTapAt = nil; return false }
+            if mode == .single {
+                defer { downAt = nil }
+                guard let d = downAt, t - d <= tapMax else { return false }
+                return true
+            }
+            return false                    // double: the fire was on the second press
         case .keyDown, .mouseDown:
             downAt = nil
+            lastTapAt = nil
             return false
         case .islandClick, .islandTranslateClick, .tick:
             return false
@@ -48,7 +72,7 @@ public struct LoneShift {
     }
 
     /// Forget a ⇧ half pressed (the note ended).
-    public mutating func reset() { downAt = nil; recent = [] }
+    public mutating func reset() { downAt = nil; lastTapAt = nil; recent = [] }
 }
 
 /// What a voice note's card keeps when it was Structured: the structured text as its note (`said`), the transcript as

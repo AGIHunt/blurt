@@ -67,16 +67,22 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
   (§Start of speech). (v1.0.4) Esc also has a Carbon hotkey for as long as a take listens (`.dictationEsc`): where the
   event tap doesn't see it — secure event input on, another tool holding the key — the hotkey still cancels. A press
   both see counts once (`Dictation.escTwin`, 0.4 s); `dictation_secure_input` logs when secure input was on.
-- **⇧ is the style toggle** (§Styles): ⇧ pressed and released alone (within 1 s) while dictating says `.style`, in
-  push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still cancels, as
-  any shortcut does). A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over
-  the island's frame into it) is the same toggle and never cancels. **Fn+⇧** — ⇧ held when Fn goes down, or pressed
-  while it is down — is still a clean press and starts in Structured (`startShift`); Fn+⇧+a key is a shortcut as
-  before. Only with Fn: with an ⌥ key ⇧ stays a modifier, so ⌥⇧V and Blurt's other ⌥⇧ shortcuts never start
-  anything. While a take listens (or its key is down) the Fn filter also keeps a lone ⇧ from the app in front (an input
-  method would switch between Chinese and English on it): only a ⇧ press with no other modifier, and its release only
-  when its press was kept. The listen-only tap and the monitor can't do that, so with an ⌥ key the ⇧ still reaches
-  the app.
+- **⇧ twice is the style toggle** (§Styles): ⇧ double-tapped while dictating (the second press within 350 ms) says
+  `.style`, in push-to-talk too — the one key that joins a held press without cancelling it (⇧ with another key still
+  cancels, as any shortcut does); one ⇧ is nothing. A click on the island while listening (`.islandClick`: `Dictation.handle` turns a mouse-down over
+  the island's frame into it) is the same toggle and never cancels. ⇧ with the start press (Fn+⇧) is a modifier like
+  any other: a shortcut, never a start (2026-11-01: "start in Structured with Fn+⇧" removed — it had no ⌘ twin and
+  the double tap covers it); with an ⌥ key too, so ⌥⇧V and Blurt's other ⌥⇧ shortcuts never start anything. While a take listens (or its key is down) the Fn filter also keeps both ⇧ taps from the app in front (an
+  input method would switch between Chinese and English on each): only a ⇧ press with no other modifier, and its
+  release only when its press was kept. The listen-only tap and the monitor can't do that, so with an ⌥ key (or
+  `fn_capture` off, or no Accessibility) the ⇧ still reaches the app — there a double ⇧ is two Chinese/English
+  switches (net no change, but the IME flickers). A voice note (⌥V) asks the same way (BlurtCore `LoneShift`) and the
+  dictation's Fn filter keeps its ⇧ too while a note listens (`VoiceInput.shared.active`); without that filter the same
+  flicker applies.
+- **⇧ twice, ⌘ twice** — Structured and Translate ask on a double tap of the modifier alone
+  (`record.dictation.modifier_tap`, default `double`; per key `modifier_tap_shift` / `modifier_tap_command` can put
+  one back on `single`). Window 350 ms, cooldown 500 ms after a fire, a ⇧⌘ chord asks neither. A voice note's ⇧ uses
+  the same window and cooldown.
 - **Double tap = Return ("send")** — `record.dictation.double_tap_send`, on by default; Settings → Dictation 「按两下发送」
   / "Double-tap to send", the key named in its description ("Double-tap Fn to press Return after the text"). In chat apps the user presses
   Return after ~80 % of dictations; now two quick taps do it. Two clean taps, the second going down within
@@ -129,7 +135,7 @@ Fn down ──▶ DictationTrigger ── arm ──▶ the mic opens now (MicEn
     (`dictation.model`); the forgotten-take reminder, the once-a-day notices and the first takes' tips are passive
     lines (they wait behind replies). Every toast stays at least 5 s (`ToastQueue.minSeconds`). A toast's Undo and the ≡ chip's "Make a list" act on the take they
     were shown for (`reformat(lp, …)`): after a newer take they do nothing (`dictation_reformat` result `stale`), never
-    rewrite the newer text. ⇧'s line ("Structured: tidied into a list when you finish · ⇧ to go back") shows the first
+    rewrite the newer text. ⇧'s line ("Structured: tidied into a list when you finish · double-tap ⇧ to go back") shows the first
     two times ever (`DictationStyleToggleHint`, `record.dictation.style_hint_shown`); after that the ear's list mark
     alone says it. Test builds never post it: `dictation_test_send` logs
     "would press Return" (with the hooks' simulated Accessibility), and `dictation send-policy front=… secure=… ax=…`
@@ -2556,7 +2562,7 @@ what went.)
     — only marker words go, < 5 ms, instructions to an agent stay content, the router's precedence, the toggle, the
     categories, the variants), `DictationStyleLearnTests` (replacement only while untouched, a list taken apart, the
     signals, ≥ 3 at ≥ 70 % asked once, the window, the history's style and reformats through prune),
-    `DictationTriggerTests` (⇧ alone in hands-free, tap and push-to-talk; ⇧ with a key or a click; a long ⇧; Fn+⇧ tap
+    `DictationTriggerTests` (⇧ double in hands-free, tap and push-to-talk; ⇧ with a key or a click; a long ⇧; Fn+⇧ tap
     and hold; Fn+⇧+← is a shortcut; ⌥⇧ never starts; the island click); `pytest tests` (449): `test_dictation_styles.py`
     (the same fixture, light never lists either polish eval set in any category, the chat particles in the repair
     without touching the eval references or a self-correction, the lab's `style=` re-runs and `listed`).

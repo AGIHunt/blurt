@@ -189,9 +189,9 @@ final class Dictation {
     }
 
     // the style of this take (DictationStyles.swift; docs/design/dictation-styles.md)
-    /// the router's decision so far: the app's style at the key-down, then ⇧ / the island / Fn+⇧
+    /// the router's decision so far: the app's style at the key-down, then ⇧ / the island
     var styleDecision: DictationStyleRouter.Decision?
-    /// ⇧ / the island / Fn+⇧ this take (the last choice wins), and how often it was switched
+    /// ⇧ / the island this take (the last choice wins), and how often it was switched
     var explicitStyle: (style: DictationStyle, source: DictationStyleSource)?
     var styleToggles = 0
     /// this take translated (⌘ / the island's left half / the app's setting: DictationTranslating.swift)
@@ -276,6 +276,11 @@ final class Dictation {
     static var keepAudio: Bool { settings["keep_audio"] as? Bool ?? true }
     /// the Dictation Lab: keep the audio of this many more dictations (collecting cases from real use)
     static var labKeepNext: Int { (settings["lab_keep_next"] as? NSNumber)?.intValue ?? 0 }
+    /// only the user's voice is typed (issue #26, docs/design/voiceprint.md). Settings turns it on only once a voice is
+    /// enrolled (VoiceprintModel). The speech server (transcribe.py, per request from this same config) silences
+    /// another speaker's cuts before the recogniser hears them; DictationStream reuses each piece's verdict for
+    /// whatever else hears that audio. Voice notes and recordings are never gated: they are meant to keep everyone.
+    static var onlyMyVoice: Bool { settings["only_my_voice"] as? Bool ?? false }
     /// read the text around the cursor for polish (Accessibility, read-only)
     static var contextOn: Bool { settings["context"] as? Bool ?? true }
     /// watch the field after typing and learn the user's fixes
@@ -291,6 +296,27 @@ final class Dictation {
     static var suggestLists: Bool { settings["suggest_lists"] as? Bool ?? true }
     /// suggest an app's style from how the user switches there (never switches by itself)
     static var learnStyles: Bool { settings["learn_styles"] as? Bool ?? true }
+
+    // MARK: modifier tap (structured / translate)
+
+    /// How ⇧ alone while dictating asks for Structured, ⌘ alone for Translate: a double tap (the default) or a single
+    /// tap (record.dictation.modifier_tap; per-key modifier_tap_shift / modifier_tap_command override it).
+    /// A lone modifier was too easy to hit by accident. While dictating the Fn filter keeps a lone ⇧ from the app in
+    /// front, so the input method's Chinese/English switch never sees it (DictationKeys.swallowShift). Set either key
+    /// back to "single" to keep the old feel.
+    static var modifierTap: DictationTrigger.ModifierTap {
+        (settings["modifier_tap"] as? String).flatMap(DictationTrigger.ModifierTap.init) ?? DictationTrigger.shippedModifierTap
+    }
+    static var modifierTapShift: DictationTrigger.ModifierTap {
+        (settings["modifier_tap_shift"] as? String).flatMap(DictationTrigger.ModifierTap.init) ?? modifierTap
+    }
+    static var modifierTapCommand: DictationTrigger.ModifierTap {
+        (settings["modifier_tap_command"] as? String).flatMap(DictationTrigger.ModifierTap.init) ?? modifierTap
+    }
+    /// the double-tap window (record.dictation.modifier_double_tap_window_s, unset = 0.35 s)
+    static var modifierDoubleTapWindow: Double { (settings["modifier_double_tap_window_s"] as? NSNumber)?.doubleValue ?? 0.35 }
+    /// the cooldown after a fire (record.dictation.modifier_cooldown_s, unset = 0.5 s)
+    static var modifierCooldown: Double { (settings["modifier_cooldown_s"] as? NSNumber)?.doubleValue ?? 0.5 }
 
     // MARK: launch / settings changed
 
@@ -519,7 +545,8 @@ final class Dictation {
     private var applied: NSDictionary?
     private static var applySettings: NSDictionary {
         let s = settings
-        return ["enabled", "key", "mode", "double_tap_send", "fn_capture"].reduce(into: [String: Any]()) { $0[$1] = s[$1] } as NSDictionary
+        return ["enabled", "key", "mode", "double_tap_send", "fn_capture", "modifier_tap", "modifier_tap_shift", "modifier_tap_command",
+                "modifier_double_tap_window_s", "modifier_cooldown_s"].reduce(into: [String: Any]()) { $0[$1] = s[$1] } as NSDictionary
     }
 
     /// BA-49: record.dictation's key, mode or switch changed outside Settings (~/.blurt/config.json by hand or by an
@@ -541,6 +568,10 @@ final class Dictation {
         trigger.mode = Dictation.mode
         trigger.doubleTap = Dictation.doubleTapSend
         trigger.doubleTapWindow = DictationTrigger.window(doubleClickInterval: NSEvent.doubleClickInterval)
+        trigger.modifierTapShift = Dictation.modifierTapShift
+        trigger.modifierTapCommand = Dictation.modifierTapCommand
+        trigger.modifierDoubleTapWindow = Dictation.modifierDoubleTapWindow
+        trigger.modifierCooldown = Dictation.modifierCooldown
         keys.watchedKeyCodes = trigger.key.keyCodes
         keys.wantsFilter = Dictation.enabled && trigger.key == .fn && Dictation.fnCapture
         // another running Blurt (a release next to a dev build) already listens to this key: it keeps it — two
@@ -879,9 +910,10 @@ final class Dictation {
     }
 
     /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
-    /// in front too (an input method would switch between Chinese and English on it).
+    /// in front too (an input method would switch between Chinese and English on it). A voice note's ⇧ taps are the
+    /// same style toggle (a double tap, `LoneShift`).
     func updateShiftFilter() {
-        // a voice note too: its lone ⇧ is Structured, never the input method's Chinese / English switch
+        // a voice note too: its ⇧ is Structured, never the input method's Chinese / English switch
         keys.swallowShift = trigger.active || trigger.armedDown || listening || VoiceInput.shared.active
     }
 
@@ -1065,6 +1097,7 @@ final class Dictation {
             if !live { opt.streaming = false }
         }
         opt.second = opt.polish && opt.cloud != nil && appleBeside
+        opt.voiceGate = Dictation.onlyMyVoice
         if opt.polish, opt.cloud != nil, !AppleSpeech.forDictation, !appleBeside, AppleSpeech.available {
             AppleSpeech.prepare(via: "second")      // its language's files: the next take has the second transcript
         }
@@ -1182,7 +1215,6 @@ final class Dictation {
         precaptured = false
         if !adopted { beginCapture() }
         voice?.noSpeechTimeout = trigger.pushToTalk ? .infinity : 30     // push-to-talk ends when the key comes up
-        if trigger.startShift { explicitStyle = (.structured, .chord); routeStyle() }      // Fn+⇧: start in Structured
         listening = true
         if let h = heldLive { LiveTranscript.shared.update(h.committed, pending: h.pending, session: liveSession) }
         heldLive = nil
@@ -1458,11 +1490,15 @@ final class Dictation {
     /// `--no-download`). The server gets `DictationASRFailure.serverTimeout` for this much audio, not a flat minute;
     /// a server that doesn't answer in that time is given up on (ended when it is ours) and the CLI is used — which
     /// no longer asks that same server first (`--no-server`).
+    /// `voiceprint`: false = the audio was judged already (a window of judged pieces: only my voice doesn't judge it
+    /// again); nil = the setting decides.
     static func transcribe(_ wav: URL, vocab: [[String: Any]], language: String, prior: String, budget: Double,
-                           hint: String = "", app: String = "", before: String = "", audioSeconds: Double) -> [String: Any] {
+                           hint: String = "", app: String = "", before: String = "", audioSeconds: Double,
+                           voiceprint: Bool? = nil) -> [String: Any] {
         if AppleSpeech.forDictation { return AppleSpeech.transcribe(wav, language: language, vocab: vocab, purpose: "dictation") }
         var req: [String: Any] = ["cmd": "note", "wav": wav.path, "language": language, "purpose": "dictation", "vocab": vocab,
                                   "no_download": true]
+        if let v = voiceprint { req["voiceprint"] = v }
         if !prior.isEmpty { req["prior"] = prior }
         if !hint.isEmpty { req["hint"] = hint }
         if !app.isEmpty { req["app"] = app }
@@ -1566,6 +1602,15 @@ final class Dictation {
         if !app.isEmpty { req["app"] = app }
         if !before.isEmpty { req["before"] = before }
         return WarmServer.call("asr-serve", req, timeout: 15)
+    }
+
+    /// Only my voice for a piece macOS's recogniser will hear: the speech server's verdict (`speaker`: match, dropped,
+    /// drop [[s, e]]), nil when it can't judge (no server, no voice enrolled, no model) — the piece is heard as it is.
+    /// Blocking: off the main thread.
+    static func voiceVerdict(_ wav: URL) -> [String: Any]? {
+        guard WarmServer.running("asr-serve"),
+              let r = WarmServer.call("asr-serve", ["cmd": "vp_gate", "wav": wav.path], timeout: 5) else { return nil }
+        return r["speaker"] as? [String: Any]
     }
 
     /// The warm polish server. A model still coming up (the server starting, the weights loading) gets `loadBudget`

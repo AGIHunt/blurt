@@ -512,6 +512,7 @@ extension Dictation {
                 entry.pieces = r.pieces.compactMap(DictationPieceRecord.init(json:))
                 entry.windows = r.windows.compactMap(DictationWindowRecord.init(json:))
             }
+            if !r.voiceDropped.isEmpty { entry.voiceDropped = r.voiceDropped }
             DictationHistory.shared.append(entry)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
@@ -559,7 +560,7 @@ extension Dictation {
             case .noField:
                 self.keepText(text, id: id)
             case .none:
-                // ⇧ (or Fn+⇧, the island) asked for a list and the structuring pass fell back: say so, or it looks
+                // ⇧ (or the island) asked for a list and the structuring pass fell back: say so, or it looks
                 // as if ⇧ did nothing (issue #14: the reason was only in the history)
                 if take.explicit?.style == .structured, r.structureReason != nil {
                     self.toast("dictation.toast.no_list", key: Dictation.toastKey, seconds: 3)

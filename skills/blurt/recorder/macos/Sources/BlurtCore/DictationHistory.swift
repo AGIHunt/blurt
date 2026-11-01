@@ -80,6 +80,9 @@ public struct DictationEntry: Identifiable, Hashable {
     public var pieces: [DictationPieceRecord]?
     /// the windows the pieces were heard again in (docs/design/dictation.md §Hearing again), kept like `pieces`
     public var windows: [DictationWindowRecord]?
+    /// only my voice (docs/design/voiceprint.md): the spans of the take another speaker said, left out of the text —
+    /// in seconds of the kept audio, which is the take as recorded (nil: nothing left out, or the switch off)
+    public var voiceDropped: [[Double]]?
 
     public init(id: String, time: Date, app: String?, bundle: String?, duration: Double, raw: String, polished: String?,
                 text: String, model: String?, fellBack: Bool, reason: String?, insert: String, audio: String? = nil,
@@ -123,6 +126,7 @@ public struct DictationEntry: Identifiable, Hashable {
         if let t = asrTags, !t.isEmpty { o["asr_tags"] = t.map(\.json) }
         if let p = pieces, !p.isEmpty { o["pieces"] = p.map(\.json) }
         if let w = windows, !w.isEmpty { o["windows"] = w.map(\.json) }
+        if let v = voiceDropped, !v.isEmpty { o["voice_dropped"] = v }
         style?.write(into: &o)
         if let t = translate { o["translate"] = t.json }
         return o
@@ -158,6 +162,7 @@ public struct DictationEntry: Identifiable, Hashable {
         asrTags = (o["asr_tags"] as? [[String: Any]])?.compactMap(DictationLanguageTag.init(json:))
         pieces = (o["pieces"] as? [[String: Any]])?.compactMap(DictationPieceRecord.init(json:))
         windows = (o["windows"] as? [[String: Any]])?.compactMap(DictationWindowRecord.init(json:))
+        voiceDropped = o["voice_dropped"] as? [[Double]]
         style = DictationStyleRecord(json: o)
         translate = (o["translate"] as? [String: Any]).flatMap(DictationTranslateRecord.init(json:))
     }

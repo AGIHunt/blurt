@@ -274,6 +274,7 @@
 "settings.kw.dictation.key" = "Fn, 地球键, Option, 右 Option, 触发键";
 "settings.kw.dictation.mode" = "按一下, 按住, 按住说话, 切换";
 "settings.kw.dictation.double_tap" = "回车, 发送, 按两下, 双击, 连按两下";
+"settings.kw.dictation.modifier_tap" = "双击, 单击, 按两下, shift, command, 结构化, 翻译, 误触";
 "settings.kw.dictation.fn_capture" = "Fn, 地球键, 表情, 输入法";
 "settings.kw.dictation.default_style" = "润色, 原话, 轻整理, 结构化, 自动, 整理";
 "settings.kw.dictation.by_app" = "按应用, 应用类型, 聊天, 代码, 邮件, 笔记";
@@ -287,6 +288,7 @@
 "settings.kw.dictation.sounds" = "声音, 提示音, 音效";
 "settings.kw.dictation.stop_sound" = "声音, 提示音, 音效, 结束";
 "settings.kw.dictation.mic" = "麦克风, 蓝牙, AirPods, 耳机, 输入设备";
+"settings.kw.dictation.only_my_voice" = "声纹, 声音档案, 说话人, 只识别我的声音, 别人说话, 旁边有人, 录制声音";
 "settings.kw.dictation.models" = "识别模型, 语音模型, 润色模型, 大模型, ASR, Qwen, Gemma, 下载";
 "settings.kw.speech.recognition" = "语音识别, 识别模型, 切换模型, 自动, 推荐, Qwen, Whisper, SenseVoice";
 "settings.kw.speech.dictation" = "听写模型, 识别模型, 下载, Qwen";

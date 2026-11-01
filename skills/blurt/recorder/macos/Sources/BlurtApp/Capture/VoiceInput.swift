@@ -73,7 +73,7 @@ final class VoiceInput {
     private var heardSpeech = false
     /// this take's live transcript (LiveTranscript's session)
     private var liveSession = 0
-    /// Structured for this note (⇧ alone, or the island's list mark): its words go through the structuring pass
+    /// Structured for this note (⇧ double-tapped, or the island's list mark): its words go through the structuring pass
     private(set) var structured = false
     private var lone = LoneShift()
     private var keyMonitors: [Any] = []
@@ -140,7 +140,7 @@ final class VoiceInput {
 
     // MARK: Structured
 
-    /// ⇧ alone while it listens, or the island's list mark: Structured for this note, or back. The island's ear says
+    /// ⇧ double-tapped while it listens, or the island's list mark: Structured for this note, or back. The island's ear says
     /// which; a line explains it the first couple of times (record.voice.style_hint_shown).
     func toggleStructured(via: String) {
         guard active else { return }
@@ -162,6 +162,10 @@ final class VoiceInput {
     /// A key or mouse event while the note listens (dictation's listener, or this note's own monitors).
     func keyEvent(_ e: DictationTrigger.Event) {
         guard active else { return }
+        // the same gesture a dictation has: ⇧ twice (or once, when the user chose single in Settings)
+        lone.mode = Dictation.modifierTapShift
+        lone.doubleTapWindow = Dictation.modifierDoubleTapWindow
+        lone.cooldown = Dictation.modifierCooldown
         if lone.handle(e) { toggleStructured(via: "shift") }
     }
 
@@ -293,8 +297,13 @@ final class VoiceInput {
     /// dictation: its own model (record.dictation.asr_model / the recommended one) — a running server is asked to
     /// load it, a new one preloads it.
     static func warmSpeechModel(dictation: Bool = false) {
-        // macOS's recogniser runs in this process (AppleSpeech): no speech server to start, no memory held
-        if AppleSpeech.forNotes { return }
+        // macOS's recogniser runs in this process (AppleSpeech): no speech server to start, no memory held — except
+        // for dictation with only my voice on, which the server judges (vp_gate): started without a speech model
+        if AppleSpeech.forNotes {
+            guard dictation, Dictation.onlyMyVoice, !WarmServer.running("asr-serve"), server?.isRunning != true else { return }
+            server = WarmSpawn.start("transcribe.py", ["serve", "--no-download"], server: "asr-serve")
+            return
+        }
         if dictation && WarmServer.running("asr-serve") {
             // a run file can name a server that will never answer (stuck since an app long gone, or ours hung): the
             // key-down asks it, and one that is stuck is replaced — on a relaunch too (v0.9 dogfood: every take

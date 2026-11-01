@@ -104,6 +104,10 @@ final class DictationStream {
         var streamCloud = false
         /// the field's text is being read (Dictation.contextOn): the stream's request waits for it (setContext)
         var contextComing = false
+        /// only my voice (Dictation.onlyMyVoice, docs/design/voiceprint.md): each piece is judged once — by the speech
+        /// server as it recognises it, or by `vp_gate` when macOS's recogniser hears it — and what was dropped from a
+        /// piece is silenced in everything else that hears that audio (its window, the second transcript)
+        var voiceGate = false
         /// polish once over the whole take at key-up instead of window by window (cloud polish with the second
         /// transcript: `second`)
         var polishAtKeyUp: Bool { second }
@@ -148,6 +152,8 @@ final class DictationStream {
         var covered = false
         /// a window: what its pieces' transcripts said, joined (the history keeps both)
         var piecesText = ""
+        /// only my voice: everything in this piece was someone else (dropped before recognition) — lock
+        var allOther = false
         /// macOS's transcript of the same audio (§Second transcript; nil: not asked or nothing came) — lock
         var second: String?
         var secondAsked = false
@@ -192,6 +198,8 @@ final class DictationStream {
         /// the windows the pieces were heard again in (§Hearing again): pieces, start / end, what the pieces said and
         /// what the window said, asr_ms, ok
         var windows: [[String: Any]] = []
+        /// only my voice: the spans of the take (s) another speaker said, left out
+        var voiceDropped: [[Double]] = []
         /// Translated (docs/design/dictation-translate.md): the text in its style, in the other language — typed in
         /// place of it (nil: not asked, already in the target, or refused: then the text as said is typed)
         var translated: String?
@@ -270,6 +278,8 @@ final class DictationStream {
     private var onlyForLists = false
     /// the pause after each piece (DictationSegmenter.pauses, copied on the main thread as it learns them)
     private var pauses: [Double?] = []
+    /// only my voice: the take's samples another speaker said (each piece's verdict, in the take's samples) — lock
+    private var muted: [Range<Int>] = []
     /// polishQ only: the last window's unfinished clause (the typed text and polish's own output) and the
     /// punctuation it ended in — polished again with the next piece
     private var carry = "", carryPolished = "", carryEnd = ""
@@ -339,9 +349,18 @@ final class DictationStream {
 
     /// Hands the take's result over once: the polished one, or the one Esc asked for, whichever is first.
     private func deliver(_ r: Result) {
+        var r = r
         let done: ((Result) -> Void)? = lock.locked {
             if delivered { return nil }
             delivered = true
+            // the history keeps what was left out (merged, in seconds of the take as recorded)
+            var spans: [[Double]] = []
+            for m in muted.sorted(by: { $0.lowerBound < $1.lowerBound }) {
+                let s = Double(m.lowerBound) / NoteVoice.rate, e = Double(m.upperBound) / NoteVoice.rate
+                if let last = spans.last, s <= last[1] + 0.05 { spans[spans.count - 1][1] = max(last[1], e) }
+                else { spans.append([s, e]) }
+            }
+            r.voiceDropped = spans.map { $0.map { ($0 * 100).rounded() / 100 } }
             return finished
         }
         guard let d = done else { return }
@@ -396,7 +415,8 @@ final class DictationStream {
               "end": Double(end) / NoteVoice.rate, "hard": hard, "covered": covered])
         guard !covered else { return }
         let samples = Array(audio[max(0, start)..<min(end, audio.count)])
-        if opt.second, !opt.rehear, !opt.wholeAtKeyUp { hearSecond(p, samples) }
+        // only my voice: the second transcript waits for the piece's verdict (transcribe), so it never hears what is dropped
+        if opt.second, !opt.rehear, !opt.wholeAtKeyUp, !opt.voiceGate { hearSecond(p, samples) }
         asrQ.async { self.transcribe(p, samples) }      // the queues keep the stream alive until its work is done
     }
 
@@ -417,8 +437,9 @@ final class DictationStream {
         let again = members.count > 1 || members.contains(where: \.covered)
         let audioW = Array(audio[max(0, w.start)..<min(end, audio.count)])
         let samples = again ? audioW : []
-        if opt.second { hearSecond(w, audioW) }
-        asrQ.async { self.rehear(w, members, samples) }
+        if opt.second, !opt.voiceGate { hearSecond(w, audioW) }
+        // only my voice: the window's second transcript waits for its verdicts (rehear)
+        asrQ.async { self.rehear(w, members, samples, second: self.opt.second && self.opt.voiceGate ? audioW : nil) }
     }
 
     /// macOS's recogniser on a unit's audio, on its own queue (§Second transcript): its text is the unit's `second`.
@@ -466,19 +487,36 @@ final class DictationStream {
     private func transcribe(_ p: Piece, _ samples: [Float]) {
         guard !cancelled else { return }
         let url = wav(p.index)
+        var samples = samples
         DictationStream.writeWav(samples, to: url)
+        // only my voice, for a piece macOS's recogniser hears (it can't judge voices): the speech server judges it
+        // first and macOS's recogniser hears it without what was dropped; a piece that is all someone else isn't heard
+        var verdict: [String: Any]?
+        if opt.voiceGate, opt.wholeAtKeyUp || AppleSpeech.forDictation, let sp = Dictation.voiceVerdict(url) {
+            verdict = sp
+            judged(p, sp)
+            samples = masked(samples, from: p.start)
+            if sp["dropped"] as? Int ?? 0 > 0 { DictationStream.writeWav(samples, to: url) }
+        }
         // the text so far, as context: the speech model keeps names consistent across pieces
         let (before, gaps) = lock.locked { (Array(pieces.prefix(p.index).map(\.raw)), pauses) }
         let prior = String(DictationStitch.joinPieces(before, pauses: gaps).suffix(200))
         let t0 = CACurrentMediaTime()
         // a cloud recogniser hears the whole take at key-up: the pieces are macOS's live text only (never billed,
         // never a reason for the safety path)
-        let answer = opt.wholeAtKeyUp
+        let answer: [String: Any] = verdict?["match"] as? Bool == false
+            ? ["ok": true, "text": "", "speaker": verdict ?? [:]]
+            : opt.wholeAtKeyUp
             ? AppleSpeech.transcribe(url, language: opt.language, vocab: opt.vocab, purpose: "dictation_live")
             : Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                    hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
                                    before: lock.locked { context }?.asrBefore ?? "",
                                    audioSeconds: Double(samples.count) / NoteVoice.rate)
+        if opt.voiceGate, verdict == nil, let sp = answer["speaker"] as? [String: Any] {
+            judged(p, sp)
+            samples = masked(samples, from: p.start)
+        }
+        if opt.second, opt.voiceGate, !opt.rehear, !opt.wholeAtKeyUp { hearSecond(p, samples) }
         p.asrSpan = (t0, CACurrentMediaTime())
         p.loadMS += answer["load_ms"] as? Int ?? 0
         try? FileManager.default.removeItem(at: url)
@@ -506,7 +544,8 @@ final class DictationStream {
 
     /// A window heard again (speech queue, after its pieces): its audio in one request, with the windows' text so far
     /// as context — a piece's prior is the same, only shorter. Then polished as one unit.
-    private func rehear(_ w: Piece, _ members: [Piece], _ samples: [Float]) {
+    /// `second`: the window's audio for macOS's second transcript, asked once the verdicts are in (only my voice).
+    private func rehear(_ w: Piece, _ members: [Piece], _ samples: [Float], second: [Float]? = nil) {
         guard !cancelled else { return }
         let gaps = lock.locked { pauses }
         let mine = members.map { $0.index < gaps.count ? gaps[$0.index] : nil }
@@ -514,7 +553,27 @@ final class DictationStream {
         let saidHeard = DictationStitch.joinPieces(members.map(\.asrText), pauses: mine)
         w.piecesText = said
         let failed = members.contains(where: \.asrFailed)
-        if samples.isEmpty || failed {
+        // only my voice: the members' verdicts are in by now (this same queue judged them) — the window is heard
+        // without what they dropped and they aren't judged again; the last piece, heard only here (`covered`), is
+        // judged with the window. Pieces that were all someone else leave nothing to hear.
+        var judgedAll = !members.contains(where: \.covered)
+        if opt.voiceGate, !judgedAll, !samples.isEmpty {
+            // the last piece alone, not the whole window again (a 20 s window judged at key-up cost ~0.3 s; its
+            // other pieces were judged while they were said); no server to ask: the window is judged as it is heard
+            judgedAll = true
+            for m in members where m.covered {
+                let a = max(0, m.start - w.start), b = min(samples.count, m.end - w.start)
+                guard b > a else { continue }
+                let url = dir.appendingPathComponent("\(id)-p\(m.index)-voice.wav")
+                DictationStream.writeWav(Array(samples[a..<b]), to: url)
+                if let sp = Dictation.voiceVerdict(url) { judged(m, sp) } else { judgedAll = false }
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
+        let allOther = opt.voiceGate && members.allSatisfy { m in lock.locked { m.allOther } }
+        let samples = opt.voiceGate && !samples.isEmpty ? masked(samples, from: w.start) : samples
+        if samples.isEmpty || failed || allOther {
+            if let s = second { hearSecond(w, masked(s, from: w.start)) }
             // nothing to hear again (one piece), or a piece the model failed on: assemble's safety path decides
             lock.locked { w.raw = said; w.asrText = saidHeard; w.asr = members.first?.asr; w.asrDone = true }
             if failed { w.asrFailed = true; w.asrCode = members.first(where: \.asrFailed)?.asrCode }
@@ -529,12 +588,17 @@ final class DictationStream {
         let answer = Dictation.transcribe(url, vocab: opt.vocab, language: opt.language, prior: prior, budget: 30,
                                           hint: lock.locked { context }?.hint ?? "", app: lock.locked { context }?.app ?? "",
                                           before: lock.locked { context }?.asrBefore ?? "",
-                                          audioSeconds: Double(samples.count) / NoteVoice.rate)
+                                          audioSeconds: Double(samples.count) / NoteVoice.rate,
+                                          voiceprint: opt.voiceGate && judgedAll ? false : nil)
         w.asrSpan = (t0, CACurrentMediaTime())
+        if opt.voiceGate, !judgedAll, let sp = answer["speaker"] as? [String: Any] { judged(w, sp) }
+        if let s = second { hearSecond(w, masked(s, from: w.start)) }
         w.loadMS += answer["load_ms"] as? Int ?? 0
         try? FileManager.default.removeItem(at: url)
         let text = (answer["text"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let ok = answer["ok"] as? Bool == true && !text.isEmpty
+        // only my voice: a window that was all someone else answers blank, and that is its text — not a failure
+        let noneMine = (answer["speaker"] as? [String: Any])?["match"] as? Bool == false
+        let ok = answer["ok"] as? Bool == true && (!text.isEmpty || noneMine)
         lock.locked {
             if ok {
                 w.raw = text
@@ -552,6 +616,34 @@ final class DictationStream {
               "ms": Int((w.asrSpan.1 - w.asrSpan.0) * 1000), "ok": ok, "code": ok ? NSNull() : answer["code"] ?? "empty",
               "changed": ok && text != said])
         polishQ.async { self.polish(w) }
+    }
+
+    /// Only my voice: a piece's verdict (`speaker`: match, dropped, similarity, drop [[s, e]] in the piece's seconds)
+    /// becomes the take's muted samples.
+    private func judged(_ p: Piece, _ sp: [String: Any]) {
+        let drop = (sp["drop"] as? [[Double]] ?? []).compactMap { s -> Range<Int>? in
+            guard s.count == 2 else { return nil }
+            let a = p.start + Int(s[0] * NoteVoice.rate), b = p.start + Int(s[1] * NoteVoice.rate)
+            return b > a ? a..<b : nil
+        }
+        lock.locked {
+            muted += drop
+            p.allOther = sp["match"] as? Bool == false
+        }
+        emit(["event": "dictation_voice", "id": id, "index": p.index, "match": sp["match"] ?? NSNull(),
+              "dropped": sp["dropped"] ?? 0, "similarity": sp["similarity"] ?? NSNull()])
+    }
+
+    /// These samples (from `start` in the take) with another speaker's silenced.
+    private func masked(_ x: [Float], from start: Int) -> [Float] {
+        let ranges = lock.locked { muted }
+        guard !ranges.isEmpty else { return x }
+        var y = x
+        for r in ranges {
+            let a = max(0, r.lowerBound - start), b = min(y.count, r.upperBound - start)
+            if a < b { for i in a..<b { y[i] = 0 } }
+        }
+        return y
     }
 
     /// The pause after each window (its last piece's) — lock held.
