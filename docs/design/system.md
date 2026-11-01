@@ -6,7 +6,7 @@
 > - **品牌渐变**：清新绿 `#66D97A` → 薄荷 `#61DBBD` → 天蓝 `#4AABE2`，薄荷是中间发亮的分界。大面积版本（field）带弧形分界和细颗粒（grain）。
 > - **主按钮用更深的"按钮渐变"**（`#028932` → `#02866F` → `#087EB3`，同一条色相路径），上面是**白色粗体字**，每一点都 ≥ 4.5 : 1。薄荷小标签、徽章仍用深绿字。
 > - **渐变字只剩引导页标题**（24 pt）；空状态标题、Lab 分数、听写页统计都改回中性色。
-> - **系统控件用品牌色**：App 声明了 `AccentColor`（浅色 `#0B735E`，深色 `#1CA288`），开关、复选框、滑块、焦点环跟着走；网页端用 CSS `accent-color`。
+> - **系统控件用品牌色**：App 声明了 `AccentColor`（浅色 `#109478`，深色 `#1AA487`），开关、复选框、滑块、焦点环跟着走；网页端用 CSS `accent-color`。
 > - **多彩"光谱"渐变**（加黄和紫）**只出现在引导页主视觉**（小鸡背后一团静止、模糊的光）。**(收敛)** 去掉了"AI 正在处理"的旋转彩色光圈和完成时的庆祝光环。
 > - **"AI 正在处理"** = 原有的转圈 + 一条静止的 **1 pt 薄荷细线**（`brand.working`，半透明的品牌墨绿）围住正在处理的那一行；横幅只换成转圈，不加边框。不旋转、不多色、不发光。
 > - **空状态**统一用一个组件：Peep（3D 黏土小鸡，`idle`，80 pt 画布），下面中性标题、中性说明、最多一个主按钮。
@@ -75,15 +75,16 @@ capture chrome are always dark, so tokens have an `island` value. Hues are OKLab
 | `brand.working` **(v2.1)** | `#0B735E` @ 60 % | 2.64 / 2.56 / 2.46 (composited) | `#61DBBD` @ 50 % | 3.47 / 3.25 / 3.07 | `#61DBBD` @ 50 % (3.53 on black) | "AI is working on this": the one static **1 pt hairline** just inside the working row's rounded edge (`WorkingOutline`, `.aiWorking`, CSS `.ai-working`). An accent next to the spinner, which carries the state. Floor 2 : 1 composited (`minOver`); Increase Contrast `#035948` @ 80 % / `#7FE6CC` @ 70 %. |
 | `brand.on` | `#04261E` | 9.51 on fill, ≥ 6.31 on the gradient | `#04261E` | same | `#04261E` | Text and glyphs on mint and on the gradient. |
 | `brand.onInk` | `#FFFFFF` | 5.79 on `brand.ink` | `#04261E` | 9.51 | — | Rare: text on a `brand.ink` fill. |
-| `brand.accent` **(amended)** | `#0B735E` | 5.79 / 5.36 / 4.90; white on it 5.79 | `#1CA288` | 5.22 / 4.49 / 4.01; white on it 3.19 | — | Native controls: the `AccentColor` asset and CSS `accent-color`. Switch-on track, checkbox / radio fill, slider, focus ring, selection. |
+| `brand.accent` **(amended)** | `#109478` | 3.80 / 3.51 / 3.21; white on it 3.80 | `#1AA487` | 5.32 / 4.58 / 4.09; white on it 3.13 | — | Native controls: the `AccentColor` asset and CSS `accent-color`. Switch-on track, checkbox / radio fill, slider, focus ring, selection. A brighter jade than `brand.ink` (which stays deep: it is text). |
 
 `brand.ink` under Increase Contrast: `#035948` (light) / `#7FE6CC` (dark).
 
 **Why the dark accent is not mint.** macOS draws a white knob on the switch track and a white check in the checkbox.
-White on mint is 1.70 : 1, so the dark accent is a deeper mint, `#1CA288` (OKLab L 0.64, the same hue): white on it
-3.19 : 1 (Apple's own dark blue `#0A84FF` gives 3.65), and the track keeps ≥ 4 : 1 on every dark surface, so the on
-state reads as clearly as the system's. In light mode the accent is `brand.ink`: the track is 5.79 : 1 on white and
-the white knob / check 5.79 : 1 on it.
+White on mint is 1.70 : 1, so the dark accent is a deeper mint, `#1AA487` (OKLab L 0.64, the same hue): white on it
+3.13 : 1 (Apple's own dark blue `#0A84FF` gives 3.65), and the track keeps ≥ 4 : 1 on every dark surface, so the on
+state reads as clearly as the system's. In light mode the accent is the brighter jade `#109478`, not `brand.ink`:
+white on it 3.80 : 1 (the 3 : 1 non-text floor the white knob / check needs) and 3.21 : 1 on `#ECECEC`. It is a fill
+for controls, never a background for white text — `brand.ink` stays the deep `#0B735E` for text (≥ 4.5 : 1).
 
 On light surfaces mint is 1.7 : 1, so it is only a fill there, with dark-green text. Anything thin uses `brand.ink`,
 the same hue (174°) at a usable luminance. In dark mode one value does both.
@@ -771,7 +772,7 @@ variables in the web sources. `web/packages/ui/src/tokens.test.ts` reads the flo
 | `brand.working` | `#0B735E` 60 % | line (≥ 2.46 composited) | `#61DBBD` 50 % | line (≥ 3.07) | `#61DBBD` 50 % |
 | `brand.on` | `#04261E` | 9.51 on fill | `#04261E` | 9.51 on fill | `#04261E` |
 | `brand.onInk` | `#FFFFFF` | 5.79 on ink | `#04261E` | 9.51 on ink | — |
-| `brand.accent` | `#0B735E` | 5.79 / 5.36 / 4.90; white on it 5.79 | `#1CA288` | 5.22 / 4.49 / 4.01; white on it 3.19 | — |
+| `brand.accent` | `#109478` | 3.80 / 3.51 / 3.21; white on it 3.80 | `#1AA487` | 5.32 / 4.58 / 4.09; white on it 3.13 | — |
 | `rec` | `#FF3B30` | 3.55 / 3.28 / 3.00 | `#FF453A` | 4.89 / 4.21 / 3.76 | `#FF453A` |
 | `attn` | `#B86E00` | 3.99 / 3.69 / 3.37 | `#F5A524` | 8.17 / 7.03 / 6.28 | `#FFC23D` |
 | `attnInk` | `#946008` | 5.34 / 4.94 / 4.52 | `#F5A524` | 8.17 / 7.03 / 6.28 | — |

@@ -956,7 +956,8 @@ struct OnboardingView: View {
             }
             Spacer(minLength: 16)
             OnbRow(image: GlyphTile.brand(.power), title: T("settings.general.login"), detail: T("onboarding.login.detail")) {
-                Toggle(T("settings.general.login"), isOn: $m.openAtLogin).labelsHidden().toggleStyle(.switch).controlSize(.small)
+                Toggle(T("settings.general.login"), isOn: $m.openAtLogin).labelsHidden()
+                    .toggleStyle(BrandSwitchStyle(label: T("settings.general.login")))
             }
         }
         .onAppear {

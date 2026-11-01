@@ -20,7 +20,7 @@ enum BrandColor {
     /// text on an `ink` fill (rare)
     static let onInk = dynamic(0xFFFFFF, 1, 0x04261E, 1)
     /// native controls (the AccentColor asset has the same values): switch track, checkbox, slider, focus
-    static let accent = dynamic(0x0B735E, 1, 0x1CA288, 1)
+    static let accent = dynamic(0x109478, 1, 0x1AA487, 1)
     // semantic
     /// recording is rolling (dot, frame, countdown, Stop). Never text: use `err`.
     static let rec = dynamic(0xFF3B30, 1, 0xFF453A, 1)
