@@ -2,7 +2,7 @@
 <h1 align="center">口喷鸡 Blurt</h1>
 <p align="center"><b>Agent 时代的输入法</b><br>
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>
-<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a></p>
+<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a> · <a href="#交流群">飞书交流群</a></p>
 
 <p align="center"><a href="https://blurt.work/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
 <p align="center"><sub>两分钟介绍视频，请打开声音 · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">下载 Mac 版</a></sub></p>
@@ -203,5 +203,14 @@ Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待
 ```
 
 **完整的说明在哪？** [使用指南](docs/guide.md#中文)讲了所有功能，[SKILL.md](skills/blurt/SKILL.md) 是给 Agent 读的说明。
+
+## 交流群
+
+使用问题、反馈和新版本消息都在「口喷鸡 Blurt 用户群」（飞书外部群）。没有企业账号也能加入：用飞书 App 扫码，
+或[打开邀请链接](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55ame8f2-6482-400c-84b2-06de3ea29cb2&qr_code=true)。
+
+<p align="center"><img src="assets/community/feishu-group-qr.png" width="200" alt="扫码加入口喷鸡 Blurt 用户群"></p>
+
+Bug 和功能建议也可以提 [GitHub Issue](https://github.com/AGIHunt/blurt/issues)。
 
 <p align="center"><sub>MIT · <a href="https://github.com/AGIHunt">AGI Hunt</a> 出品</sub></p>
