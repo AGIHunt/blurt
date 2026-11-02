@@ -1492,7 +1492,8 @@ final class IslandContent: NSView {
         openHint?.hover = i.pointerInside
         if let rec = i.rec, rec.sessionStart.isValid {
             time?.stringValue = Island.clock(rec.elapsed())
-            level?.values = [Float](repeating: rec.isPaused ? 0 : rec.micLevel, count: 1).flatMap { v in (0..<5).map { k in Float(k + 1) / 6 <= v ? Float(0.35 + 0.13 * Double(k)) : 0 } }
+            let mic: Float = rec.isPaused ? 0 : rec.micLevel   // split up: one expression made Swift 6.3's type-checker time out
+            level?.values = (0..<5).map { k in Float(k + 1) / 6 <= mic ? Float(0.35 + 0.13 * Double(k)) : 0 }
             // the quiet line comes (or goes) with what it says: rebuilt when that starts or stops, else just updated
             let said = spottedText(rec)
             if pauseBtn != nil, (pauseBtn?.icon == .play) != rec.isPaused || penShown != (rec.penSticky || rec.inkOn) || (spotted == nil) != said.isEmpty {
