@@ -27,3 +27,11 @@ def test_every_cue_is_short_and_the_swift_names_match():
 
 def test_the_app_bundle_gets_them():
     assert '"Resources" / "Sounds"' in (ROOT / "skills/blurt/scripts/record.py").read_text()
+
+
+def test_the_windows_recording_cues_are_short():
+    # recording.md §3.4 / §6.1: the countdown's pop is over well before the next second; the saved bloop is brief
+    for name, most in (("rec-tick", 0.1), ("rec-done", 0.7)):
+        with wave.open(str(ROOT / "apps/desktop/src-tauri/sounds" / f"{name}.wav")) as w:
+            seconds = w.getnframes() / w.getframerate()
+        assert 0.03 < seconds <= most, (name, seconds)

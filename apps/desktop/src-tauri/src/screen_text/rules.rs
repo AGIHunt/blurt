@@ -1025,8 +1025,8 @@ mod tests {
                 let t: Vec<char> = trim_hspace(&l.chars().collect::<Vec<_>>())
                     .chars()
                     .collect();
-                if t.len() >= 2 && "-•◦○◎。·▪●*".contains(t[0]) && t[1] == ' ' {
-                    // glyph-ok: text data (OCR marks, emoji in a field), not an icon
+                // OCR's list marks, text data, not icons
+                if t.len() >= 2 && "-•◦○◎。·▪●*".contains(t[0]) && t[1] == ' ' { // glyph-ok
                     return format!("-{}", t[2..].iter().collect::<String>());
                 }
                 t.into_iter().collect()

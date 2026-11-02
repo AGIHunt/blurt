@@ -1,109 +1,628 @@
-body {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 14px 20px 26px;
-  box-sizing: border-box;
+/* The note bubble and the frozen snap (the Mac's NoteBubble / InkStage; system.md §3.1 "Frozen snap", "Note bubble
+   (r2)"). The bubble follows the system's light / dark (the Mac's panel does): dark #2C2C2C opaque with a white 14 %
+   hairline, light near-white with a black 12 % hairline, the window's shadow under both; one outline for the card and
+   its caret (an SVG path). The grid: 12 px in, a 16 px glyph column, 8 px more to the text. */
+[hidden] {
+  display: none !important;
 }
 .bubble {
-  position: relative;
-  width: 100%;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 10px;
-  border-radius: calc(var(--radius) + 4px);
-  background: var(--glass);
-  box-shadow: inset 0 0 0 1px var(--line), 0 6px 16px rgba(0, 0, 0, 0.35); /* fits in the window: no clipped edge */
-  animation: pop 260ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  --b-surface: #2c2c2c;
+  --b-line: rgb(255 255 255 / 0.14);
+  --b-fg: rgb(255 255 255 / 0.85);
+  --b-fg2: rgb(255 255 255 / 0.55);
+  --b-fg3: rgb(255 255 255 / 0.25);
+  --b-fill: rgb(255 255 255 / 0.06);
+  --b-press: rgb(255 255 255 / 0.1);
+  --b-sep: rgb(255 255 255 / 0.1);
+  --b-ink: var(--brand-ink);
+  --b-tint: var(--brand-tint);
+  --b-shadow: drop-shadow(0 10px 22px rgb(0 0 0 / 0.45)) drop-shadow(0 0 1px rgb(0 0 0 / 0.5));
+  --k-issue: var(--kind-issue);
+  --k-idea: var(--kind-idea);
+  --k-note: var(--kind-note);
+  --k-task: var(--kind-task);
+  color: var(--b-fg);
 }
-.bubble::before {
-  /* the tail, pointing up at the card it belongs to */
-  content: '';
+@media (prefers-color-scheme: light) {
+  .bubble {
+    --b-surface: #fefefe;
+    --b-line: rgb(0 0 0 / 0.12);
+    --b-fg: rgb(0 0 0 / 0.85);
+    --b-fg2: rgb(0 0 0 / 0.5);
+    --b-fg3: rgb(0 0 0 / 0.26);
+    --b-fill: rgb(0 0 0 / 0.06);
+    --b-press: rgb(0 0 0 / 0.1);
+    --b-sep: rgb(0 0 0 / 0.1);
+    --b-ink: var(--brand-ink-light);
+    --b-tint: color-mix(in srgb, var(--selection) 16%, transparent);
+    --b-shadow: drop-shadow(0 10px 22px rgb(0 0 0 / 0.2)) drop-shadow(0 0 1px rgb(0 0 0 / 0.25));
+    --k-issue: var(--kind-issue-light);
+    --k-idea: var(--kind-idea-light);
+    --k-note: var(--kind-note-light);
+    --k-task: var(--kind-task-light);
+  }
+  .bubble textarea {
+    color-scheme: light;
+  }
+}
+
+/* ------------------------------------------------------------------ the frozen snap */
+.stage {
+  position: fixed;
+  inset: 0;
+  cursor: default;
+  transition: opacity 200ms ease;
+}
+.stage.gone,
+.bubble.gone {
+  opacity: 0;
+  pointer-events: none;
+}
+/* the dim round the picture: its own layer with the picture cut out (note.ts sets the clip-path) — a 100vmax shadow
+   spread is clipped away on the WebView2 stage, so the rest of the screen showed undimmed */
+.dim {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.42);
+}
+@media (prefers-color-scheme: dark) {
+  .dim {
+    background: rgb(0 0 0 / 0.55);
+  }
+}
+.hole {
+  position: fixed;
+  outline: 2px solid var(--selection); /* the picker's line, unchanged: one colour, one line, before and after */
+  box-shadow:
+    0 0 0 2px rgb(0 0 0 / 0.22),
+    0 8px 24px rgb(0 0 0 / 0.55);
+  background: rgb(0 0 0 / 0.005);
+}
+/* the whole screen taken: the line just inside its edge, so it shows */
+.hole.full {
+  outline-offset: -2px;
+  box-shadow: none;
+}
+.hole img,
+.hole canvas {
   position: absolute;
-  top: -7px;
-  left: 50%;
-  width: 14px;
-  height: 14px;
-  background: var(--glass);
-  transform: translateX(-50%) rotate(45deg);
-  box-shadow: -1px -1px 0 0 var(--line);
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
-.bubble.no-shot .shot {
-  display: none;
+.hole img:not([src]),
+.hole img[src=''] {
+  visibility: hidden;
 }
-@keyframes pop {
+.hole canvas {
+  cursor: crosshair;
+  touch-action: none;
+}
+/* the pen's first-time hint: the capture glass (the picker's legend and size badge), readable on any page */
+.inkhint {
+  position: fixed;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: rgb(30 30 32 / 0.9);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.12),
+    0 4px 12px rgb(0 0 0 / 0.25);
+  color: rgb(255 255 255 / 0.9);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 28px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 250ms ease;
+}
+:lang(zh-Hans) .inkhint {
+  font-weight: 400;
+}
+.inkhint.gone {
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------------ the bubble */
+.bubble {
+  position: fixed;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transition: opacity 160ms ease;
+}
+.bubble.in {
+  animation: unfold 380ms cubic-bezier(0.3, 1.35, 0.5, 1);
+}
+@keyframes unfold {
   from {
-    transform: scale(0.92) translateY(-6px);
+    transform: scale(0.92);
     opacity: 0;
   }
+  40% {
+    opacity: 1;
+  }
+}
+.bubble .bg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  filter: var(--b-shadow);
+  pointer-events: none;
+}
+.bubble .bg path {
+  fill: var(--b-surface);
+  stroke: var(--b-line);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+.card {
+  position: relative;
+  box-sizing: border-box;
+  padding: 12px 12px 10px;
+}
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.glyph {
+  flex: none;
+  position: relative;
+  width: 16px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  color: var(--b-fg2); /* one weight for every state's glyph: bars, waveform, keyboard, mic struck through */
+}
+.glyph .icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.glyph .icon.ok {
+  color: var(--ok);
+}
+.glyph .slash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.5px;
+  height: 19px;
+  border-radius: 1px;
+  background: currentColor;
+  box-shadow: 0 0 0 1px var(--b-surface);
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+/* three short bars in brand ink: a live level (breathing low while quiet, rising with the voice) */
+.bars {
+  display: flex;
+  align-items: center;
+  gap: 2.5px;
+  height: 16px;
+  width: 16px;
+  justify-content: center;
+}
+.bars i {
+  width: 2.5px;
+  height: 5px;
+  border-radius: 1.25px;
+  background: var(--b-ink);
+}
+.fieldwrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.fieldwrap textarea,
+.fieldwrap .live {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0 0 0 3px; /* the caret stands just before the first glyph, never on it */
+  font: 15px/22px var(--font);
+}
+.fieldwrap textarea {
+  display: block;
+  border: 0;
+  background: transparent;
+  color: var(--b-fg);
+  resize: none;
+  outline: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  caret-color: var(--b-ink);
+  -webkit-user-select: text;
+  user-select: text;
+}
+.fieldwrap textarea::placeholder {
+  color: var(--b-fg3);
+}
+/* the words while they are said, in the field's place: secondary, the part still being said quieter */
+.fieldwrap .live {
+  position: absolute;
+  inset: 0 0 auto;
+  color: var(--b-fg2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+.fieldwrap .live .pending {
+  color: var(--b-fg3);
+  transition: color 160ms ease;
+}
+/* saved: the words are the note now — primary ink */
+.bubble.saved .fieldwrap .live,
+.bubble.saved .fieldwrap .live .pending {
+  color: var(--b-fg);
+  transition: color 120ms ease;
+}
+.bubble.saved .done {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.bubble.saved .status {
+  color: var(--b-fg2);
+  font-size: 13px;
+}
+
+/* the footer: place chip · type chip · hover tools · status (right, against the primary) · Done ↩ */
+.foot {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  margin: 10px 0 0 -6px;
+  white-space: nowrap;
+}
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  max-width: 206px;
+  padding: 0 7px 0 6px;
+  margin-right: 2px;
+  border-radius: 6px;
+  color: var(--b-fg2);
+  font-size: 13px;
+}
+.chip.kind {
+  margin-right: 4px;
+}
+.chip:hover,
+.chip.open {
+  color: var(--b-fg);
+  background: var(--b-fill);
+}
+.chip.open {
+  background: var(--b-press);
+}
+.chip .nm {
+  margin: 0 5px 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chip .chev {
+  flex: none;
+  color: var(--b-fg2);
+}
+.chip.missing .nm {
+  color: var(--b-fg2);
+}
+.pg,
+.kg {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  color: var(--b-fg);
+}
+.pg.none,
+.kg.none {
+  color: var(--b-fg2);
+}
+.pg.missing {
+  color: var(--b-fg3);
+}
+/* a project's folder: its colour, the body filled at 60 % so neighbouring hues (yellow, orange) separate on white */
+.pg.tint .ic {
+  color: inherit !important;
+}
+.pg.tint path {
+  fill: currentColor;
+  fill-opacity: 0.6;
+}
+.kg.k-issue {
+  color: var(--k-issue);
+}
+.kg.k-idea {
+  color: var(--k-idea);
+}
+.kg.k-note {
+  color: var(--k-note);
+}
+.kg.k-task {
+  color: var(--k-task);
+}
+.tools {
+  flex: none;
+  display: inline-flex;
+  gap: 2px;
+}
+.tool {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--b-fg2);
+  animation: fade 120ms ease;
+}
+.tool:hover {
+  background: var(--b-fill);
+}
+.tool.bin:hover {
+  color: #ff453a;
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.status {
+  flex: 1;
+  min-width: 0;
+  margin: 0 12px 0 6px;
+  overflow: hidden;
+  text-align: right;
+  color: var(--b-fg2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.status .ok {
+  color: var(--ok);
+}
+.status.over {
+  visibility: hidden; /* a line that doesn't fit beside the hover tools steps aside (never cut mid-word) */
+}
+.status.probe {
+  flex: none;
+  position: absolute;
+  visibility: hidden;
+}
+.status b,
+.keys b {
+  font-weight: 600;
+}
+/* the one primary, with its key on it */
+.done {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 7px;
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+  transition: opacity 120ms ease;
+}
+/* its key: a thin return arrow at the label's weight, white 80 % */
+.done .ret {
+  display: block;
+  opacity: 0.8;
+}
+.done:hover {
+  filter: brightness(1.04);
+}
+.done:active {
+  filter: brightness(0.92);
+}
+.done:disabled {
+  background: var(--b-press);
+  color: var(--b-fg3);
+  box-shadow: none;
+  filter: none;
+}
+
+/* the lists under the footer, on the same grid: a hairline, (the filter), 28 px rows */
+.list {
+  position: relative;
+  margin: 6px -12px -2px;
+  padding: 5px 0 8px; /* a lone row never meets the bubble's edge */
+}
+.list::before {
+  /* one hairline over the list (it hangs from the footer), on the 12 px grid */
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 0;
+  border-top: 1px solid var(--b-sep);
+}
+.filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  margin: -5px 12px 6px;
+  border-bottom: 1px solid var(--b-sep);
+  color: var(--b-fg2);
+}
+.filter input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--b-fg);
+  font: 13px var(--font);
+  outline: none;
+  caret-color: var(--b-ink);
+}
+.filter input::placeholder {
+  color: var(--b-fg3);
+}
+.fic {
+  display: grid;
+  width: 16px;
+  place-items: center;
+}
+.list .r {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+  cursor: default;
+}
+/* under the pointer: a quiet fill, apart from the keyboard's mint row */
+.list .r:not(.line):not(.sel):hover::before {
+  content: '';
+  position: absolute;
+  inset: 1px 6px;
+  border-radius: 6px;
+  background: var(--b-fill);
+  z-index: -1;
+}
+.list .r.line {
+  margin-top: 9px;
+}
+.list .r.line::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: -5px;
+  border-top: 1px solid var(--b-sep);
+}
+.list .r.sel::after {
+  content: '';
+  position: absolute;
+  inset: 1px 6px;
+  border-radius: 6px;
+  background: var(--b-tint);
+  z-index: -1;
+}
+.list .rows {
+  position: relative;
+  z-index: 0;
+}
+.list .r .nm {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.list .r .nm b {
+  font-weight: 600;
+}
+.list .r small {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--b-fg2);
+}
+:lang(zh-Hans) .list .r small {
+  font-size: 12.5px;
+}
+.list .r.missing .nm {
+  color: var(--b-fg2);
+}
+.list .r .ck {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  color: var(--b-ink);
+}
+.list .r .ck .ic {
+  stroke-width: 2.4;
+}
+.list .r .kk {
+  flex: none;
+  min-width: 40px;
+  margin-left: 6px;
+  text-align: right;
+  font: 500 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--b-fg2);
+}
+.list .nomatch {
+  height: 28px;
+  padding: 0 12px 0 36px;
+  line-height: 28px;
+  font-size: 12px;
+  color: var(--b-fg2);
+}
+.list .keys {
+  height: 24px;
+  padding: 0 12px 0 36px;
+  line-height: 22px;
+  font-size: 11px;
+  color: var(--b-fg2);
+}
+
+/* ------------------------------------------------------------------ Edit Note: the composer in its own window */
+.bubble.pop {
+  position: relative;
+  margin: 6px 20px 20px;
+}
+.bubble.pop .card {
+  width: auto;
 }
 .shot {
   display: block;
   width: 100%;
   max-height: 170px;
+  margin-bottom: 10px;
   object-fit: contain;
-  border-radius: 6px;
-  background: var(--s1);
-  box-shadow: inset 0 0 0 1px var(--line);
-}
-.shot[src=''],
-.shot:not([src]) {
-  display: none;
-}
-textarea {
-  box-sizing: border-box;
-  width: 100%;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border: 0;
   border-radius: 8px;
-  background: var(--s2);
-  color: var(--fg);
-  font: inherit;
-  resize: none;
+  background: var(--b-fill);
+}
+
+/* ------------------------------------------------------------------ Edit Note: the picture in the bubble, its pen */
+/* a picture in a well: rounded, a hairline over it, on a slightly tinted ground — it reads as a picture in both themes */
+body.edit .hole.pic {
+  position: relative;
+  margin: 0 auto 12px;
+  border-radius: 8px;
+  overflow: hidden;
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--line);
-  -webkit-user-select: text;
-  user-select: text;
+  box-shadow: none;
+  background: var(--b-fill);
 }
-textarea:focus {
-  box-shadow: inset 0 0 0 1.5px var(--brand); /* the focus accent: the island's brand (also its accent-color) */
+body.edit .hole.pic::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  box-shadow: inset 0 0 0 1px var(--b-line);
+  pointer-events: none;
 }
-textarea::placeholder {
-  color: var(--fg3);
+body.edit .hole.pic img {
+  object-fit: contain;
 }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
+body.edit .card {
+  padding: 12px;
 }
-.hint {
-  flex: 1;
-  color: var(--fg3);
-  font-size: 12px;
+.glyph .gbtn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  margin: -1px -4px;
+  border-radius: 6px;
+  color: var(--b-fg2);
 }
-.row button {
-  height: 28px;
-  padding: 0 12px;
-  border-radius: var(--radius);
-  color: var(--fg2);
-}
-.row button:hover {
-  background: var(--s3);
-  color: var(--fg);
-}
-.row button.primary {
-  background: var(--brand-button);
-  color: var(--on-brand-button);
-  font-weight: 600;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
-}
-.row button.primary:hover {
-  background: var(--brand-button);
-  color: var(--on-brand-button);
-  filter: brightness(1.04);
-}
-.row button.primary:active {
-  filter: brightness(0.92);
+.glyph .gbtn:hover {
+  background: var(--b-fill);
 }

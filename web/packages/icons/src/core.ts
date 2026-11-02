@@ -9,9 +9,15 @@ export type IconName = CanonicalIconName | keyof typeof ALIASES;
 
 export const ICON_NAMES = Object.keys(ICONS) as CanonicalIconName[];
 
+/** Glyphs SF Symbols draws per language: character.cursor.ibeam is 字 in Chinese (the page's <html lang>). */
+const LOCALIZED: Partial<Record<CanonicalIconName, { zh: CanonicalIconName }>> = {
+  "character-cursor": { zh: "character-cursor-zh" },
+};
+
 export function resolveIcon(name: IconName | string): CanonicalIconName | undefined {
-  if (name in ICONS) return name as CanonicalIconName;
-  return (ALIASES as Record<string, CanonicalIconName>)[name];
+  const n = name in ICONS ? (name as CanonicalIconName) : (ALIASES as Record<string, CanonicalIconName>)[name];
+  const zh = typeof document !== "undefined" && document.documentElement.lang.toLowerCase().startsWith("zh");
+  return n && zh ? LOCALIZED[n]?.zh ?? n : n;
 }
 
 /** The <svg> root attributes every icon shares. */

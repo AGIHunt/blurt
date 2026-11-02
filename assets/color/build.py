@@ -600,6 +600,12 @@ def css_vars(mode: str, island: bool = False) -> list[str]:
     if island:
         # overlay cards can have a light face (voice card): brand ink for light surfaces
         add("brand-ink-light", css_color(B["ink"]["light"]))
+        # the capture chrome: the one line round an area being picked or captured
+        add("selection", css_color(B["selection"]["island"]))
+        # the snap note's type chip and list (kind icons on the bubble, dark and light)
+        for k in ("issue", "idea", "note", "task"):
+            add(f"kind-{k}", css_color(K[k]["dark"]))
+            add(f"kind-{k}-light", css_color(K[k]["light"]))
     if not island:
         layers = G["deep" if mode == "dark" else "field"]["layers"]
         add("brand-field", "\n    " + css_field(layers))

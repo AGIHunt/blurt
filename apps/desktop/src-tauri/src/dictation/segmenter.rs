@@ -137,6 +137,12 @@ impl DictationSegmenter {
         &self.pauses
     }
 
+    /// How long it has been quiet since the last speech frame (seconds): talking now is under half a second (the
+    /// runaway take's watch).
+    pub fn quiet_seconds(&self) -> f64 {
+        Self::seconds(self.quiet_run as i64)
+    }
+
     /// Whether the current (unfinished) piece has speech in it — the last piece at key-up, or a piece to skip.
     pub fn piece_has_speech(&self) -> bool {
         self.piece_speech >= Self::SPEECH_FRAMES_MIN

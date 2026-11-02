@@ -55,6 +55,10 @@ a {
   outline: 2px solid var(--ink);
   outline-offset: 1px;
 }
+/* a Windows text field's focus is its accent underline (the app's styles draw it), not the black ring as well */
+[data-platform="win"] :is(input:not([type="checkbox"], [type="radio"], [type="range"]), textarea, select):focus-visible {
+  outline: none;
+}
 [data-platform="gnome"] :focus-visible {
   outline: 2px solid color-mix(in srgb, var(--focus) 50%, transparent);
   outline-offset: 1px;
@@ -77,6 +81,30 @@ kbd {
   border-color: transparent;
 }
 
+/* Windows: thin, quiet scrollbars everywhere (the classic ones with arrow buttons look out of place in Fluent) */
+/* Chromium on Windows draws `scrollbar-width: thin` with arrow caps and an always-on track, and it ignores the
+   ::-webkit-scrollbar rules whenever scrollbar-width/-color is set — so Windows keeps those at auto and draws the
+   Fluent-style bar itself: the thumb only, 6 px inside a 10 px gutter, no arrow buttons, no track */
+[data-platform="win"] *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+[data-platform="win"] *::-webkit-scrollbar-button {
+  display: none;
+}
+[data-platform="win"] *::-webkit-scrollbar-track,
+[data-platform="win"] *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+[data-platform="win"] *::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+[data-platform="win"] *::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mute);
+}
 .scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--line-2) transparent;

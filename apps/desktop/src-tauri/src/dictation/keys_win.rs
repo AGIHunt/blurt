@@ -8,7 +8,9 @@
 //!   swallowed and sent again behind the menu mask key (VK 0xE8, unassigned — AutoHotkey's `#MenuMaskKey`), so the app
 //!   sees "Alt + something" and keeps its menu shut.
 //! * Our own injected input (the mask, Ctrl+V, Return) is marked with `INJECT_TAG` and never read back.
-//! * Every other key is reported, never eaten: the trigger reads Esc, Shift and Ctrl inside a take.
+//! * Every other key is reported, never eaten: the trigger reads Esc, Shift and Ctrl inside a take. Esc alone is
+//!   reported and kept from the app in front while a dictation listens (`ESC_DICTATION`) or in a voice note's first
+//!   seconds (`ESC_TAKEN`).
 
 use std::sync::mpsc::Sender;
 use std::sync::OnceLock;
@@ -46,6 +48,29 @@ static HOOK: OnceLock<Hook> = OnceLock::new();
 /// the dictation key is down and nothing else was pressed with it (its release is then masked)
 static ALONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static RHELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Esc is Blurt's (a voice note's first seconds, voice.rs): it is reported but never reaches the app in front
+pub static ESC_TAKEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Esc is Blurt's while a dictation listens (the Mac's Esc hotkey, held from the start to the stop): it cancels the
+/// take and never reaches the app in front. Once the take stops it goes back to the app, as on the Mac — Esc then
+/// still cancels the take on its way, with Undo, because it was likely meant for the app.
+pub static ESC_DICTATION: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// The cancel key's modifier (record.dictation.cancel_key): 0 Esc alone, 1 Ctrl+Esc, 2 Shift+Esc — only that Esc is
+/// kept from the app while a dictation listens.
+pub static CANCEL_MODS: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The key is down now, as the system says (GetAsyncKeyState; VK_CONTROL 0x11 / VK_SHIFT 0x10 for either side).
+pub fn held(vk: i32) -> bool {
+    unsafe { (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk) as u16 & 0x8000) != 0 }
+}
+
+fn cancel_esc_now() -> bool {
+    match CANCEL_MODS.load(std::sync::atomic::Ordering::SeqCst) {
+        1 => held(0x11),
+        2 => held(0x10),
+        _ => true,
+    }
+}
+const VK_ESC: u32 = 0x1B;
 
 /// Install the hook on its own thread; events arrive on `tx` until the app ends. Err when Windows refused the hook.
 pub fn start(tx: Sender<KeyEvent>) -> Result<(), String> {
@@ -113,6 +138,9 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                         (VK_MASK, true, false),
                         (VK_RMENU.0, true, true),
                     ]);
+                    return LRESULT(1);
+                }
+                if k.vkCode == VK_ESC && (ESC_TAKEN.load(SeqCst) || (ESC_DICTATION.load(SeqCst) && cancel_esc_now())) {
                     return LRESULT(1);
                 }
             }

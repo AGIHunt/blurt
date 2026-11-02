@@ -396,6 +396,7 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["login"] = LOGIN.get(r["state"], "unknown")
         r["headless"] = is_headless(d)
         r["interactive"] = interactive_kind(d)
+        r["session"] = session_spec(d) is not None  # runs as an in-app / tmux session (what sessions.py doctor says)
         rows.append(r)
     # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
     by_id = {r["id"]: r for r in rows}
@@ -840,10 +841,15 @@ def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
 
 
 def claude_settings(job: str, python: str | None = None) -> dict:
-    """The --settings file of one Claude Code session: hooks only (--settings adds to the user's settings)."""
+    """The --settings file of one Claude Code session (--settings adds to the user's settings): the hooks, and the
+    hand-off notes' folder as an extra working directory, so reading the note the prompt names doesn't stop the
+    session on "Read outside the working directories?" (the note lives in $BLURT_HOME/handoff, the session in the
+    project or its worktree)."""
+    import handoff
     h = {"type": "command", "command": hook_command("claude", job, python), "timeout": 5}
     return {"hooks": {ev: [{"matcher": "*", "hooks": [h]}] if ev == "PostToolUse" else [{"hooks": [h]}]
-                      for ev in CLAUDE_HOOKS}}
+                      for ev in CLAUDE_HOOKS},
+            "permissions": {"additionalDirectories": [str(handoff.handoff_dir())]}}
 
 
 def _toml_str(s: str) -> str:

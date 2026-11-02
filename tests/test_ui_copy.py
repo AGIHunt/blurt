@@ -52,7 +52,7 @@ class Glossary(unittest.TestCase):
 
     def test_the_glossary_holds_in_every_table(self):
         # docs/positioning/facts.md and the README use the same words: the notch (never "the island"), cards (never
-        # "hanging"), 事项 (never 条目, BA-57), 复制, 未归类, App; agents are "signed in"; suggestions say 可能属于 / 移过去
+        # "hanging"), 事项 (never 条目, BA-57), 复制, 未归类, App; agents are "signed in"; suggestions say 看起来是 / 移动
         def every(lang):
             out = {p.name: strings(p) for p in (RES / f"{lang}.lproj").glob("*.strings")}
             for p in (RES / f"{lang}.lproj").glob("*.stringsdict"):

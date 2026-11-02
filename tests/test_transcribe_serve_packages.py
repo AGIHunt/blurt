@@ -149,10 +149,54 @@ class FunASRNano(unittest.TestCase):
                 return [(0.0, len(x) / T.SR, "好", "zh")]
         b = Whole()
         x = T.np.zeros(int(5.9 * T.SR), T.np.float32)
-        with mock.patch.object(T, "vad_segments", side_effect=AssertionError("no VAD for a piece")):
+        # the VAD only says whether there is speech: the piece is never trimmed to it
+        with mock.patch.object(T, "vad_segments", return_value=[(2.0, 2.6)]):
             r, speech, blank = T.transcribe_track(x, b, "fun-asr-mlx", 1, quiet=True)
         self.assertEqual(b.seen, [len(x)])          # every sample, the silence at its edges too
         self.assertEqual((r[0][2], speech, blank), ("好", 5.9, 0.0))
+
+    def test_a_piece_without_speech_isnt_decoded(self):
+        """Room noise handed whole to an LLM decoder came back as an invented sentence (Windows dogfood 2026-11-02).
+        Only the ONNX build is gated (vad_gate); the Mac's MLX model keeps its measured path."""
+        class Whole:
+            whole_spans, vad_gate, max_chunk = True, True, 30
+            seen: list = []
+
+            def transcribe(self, x):
+                self.seen.append(len(x))
+                return [(0.0, len(x) / T.SR, "我感觉我这个头发有点长。", "zh")]
+        b = Whole()
+        x = T.np.zeros(int(6 * T.SR), T.np.float32)
+        with mock.patch.object(T, "vad_segments", return_value=[]):
+            r, speech, _ = T.transcribe_track(x, b, "fun-asr-nano-onnx", 1, quiet=True)
+        self.assertEqual((b.seen, r, speech), ([], [], 0))
+
+    def test_the_app_is_named_unless_the_words_are_built_in(self):
+        class Words:
+            max_terms, got = 24, None
+
+            def set_vocab(self, ts):
+                self.got = [t["term"] for t in ts]
+                return True
+
+        class Built(Words):
+            app_hint = False      # FunAsrOnnx: a new word list is a new recognizer
+        w, b = Words(), Built()
+        terms = [{"term": "Kubernetes", "sounds_like": [], "source": "manual"}]
+        T.bias(w, terms, app="Windows PowerShell")
+        T.bias(b, terms, app="Windows PowerShell")
+        self.assertEqual(w.got[0], "Windows PowerShell")
+        self.assertEqual(b.got, ["Kubernetes"])
+        self.assertFalse(T.FunAsrOnnx.app_hint)
+
+    def test_a_repetition_loop_is_kept_once(self):
+        loop = "where it appeared that he should have been able to discover a practical case, "
+        text = "I went home. " + loop * 25 + "where it appea"
+        self.assertEqual(T.collapse_repeats(text), "I went home. " + loop.strip())
+        self.assertEqual(T.collapse_repeats("我们说过了" * 5), "我们说过了")
+        # not a loop: left as said
+        for said in ("very very very good", "今天下午三点的评审改到明天上午十点，记得通知大家。"):
+            self.assertEqual(T.collapse_repeats(said), said)
 
 
 if __name__ == "__main__":

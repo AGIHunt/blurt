@@ -31,8 +31,10 @@ it("aliases resolve to real icons", () => {
   expect(resolveIcon("nope")).toBeUndefined();
 });
 
-it("geometry is absolute M/L/C/Z only", () => {
-  for (const n of ICON_NAMES) for (const [, d] of ICONS[n]) expect(d).toMatch(/^M[-\d. MLCZ]+$/);
+// the web data is compact (iconlib.compact_d: an absolute first move, then relative m/l/c/z on hundredths) — it ships
+// inside review.html, which has a size budget
+it("geometry is lines and cubics only: M, then m/l/c/z", () => {
+  for (const n of ICON_NAMES) for (const [, d] of ICONS[n]) expect(d).toMatch(/^M[-\d. ]+[-\d. mlcz]*$/);
 });
 
 it("<Icon> renders the same markup contract as the canvas stand-in", () => {

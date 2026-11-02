@@ -340,6 +340,28 @@ function MoreMenu({ id, label, options, onPick }: { id: string; label: string; o
   );
 }
 
+/** The agent's summary on the verify card: three lines, then More / Less (the whole note is the history's too). */
+function VerifyNote({ note }: { note: string }) {
+  const s = useStore();
+  const [open, setOpen] = useState(false);
+  const [long, setLong] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !open) setLong(el.scrollHeight > el.clientHeight + 2);
+  }, [note, open]);
+  return (
+    <>
+      <p ref={ref} className={cx("work-note", open && "open")}>{note}</p>
+      {(long || open) && (
+        <button className="linkbtn work-more-note" onClick={() => setOpen(!open)}>
+          {s.t(open ? "work.note.less" : "work.note.more")}
+        </button>
+      )}
+    </>
+  );
+}
+
 /** What happened with the work (K3 `work`): who and when, commit, PR, the agent's note — and, when an agent says it's
     finished, a card that asks: one sentence ("Codex says it's fixed"), the evidence on one quiet line, the answer as
     the view's one primary, Send Back… with an optional note for the agent, the rest under ⋯ (the state pill's menu
@@ -384,11 +406,15 @@ function WorkPanel({ i }: { i: Item }) {
       ) : null}
     </>
   );
+  // a closed item says what was done, by whom, when ("Marked done by you · 7 min ago"), not a bare "by you · 7 min ago"
+  const closedBy = (st === "done" || st === "wontfix") && (rec.by === "user" || agent)
+    ? s.t(`work.line.${st}`, { who: rec.by === "user" ? s.t("work.you") : agent!, when })
+    : null;
   if (!verify)
     return (
       <div className={cx("work", "s-" + st)} id="workRow">
         <div className="work-h">
-          {(who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
+          {closedBy ? <span className="work-m">{closedBy}</span> : (who || when) && <span className="work-m">{[who, when].filter(Boolean).join(" · ")}</span>}
           {evidence}
         </div>
         {rec.note ? <p className="work-note">{rec.note}</p> : null}
@@ -424,7 +450,7 @@ function WorkPanel({ i }: { i: Item }) {
             {evidence}
           </div>
         )}
-        {rec.note ? <p className="work-note">{rec.note}</p> : null}
+        {rec.note ? <VerifyNote note={rec.note} /> : null}
       </div>
       {back === null ? (
         <div className="work-a">
@@ -481,15 +507,19 @@ function HandoffPanel({ i }: { i: Item }) {
   const s = useStore();
   const h = s.host;
   if (!h.dispatch && !s.canHandoff) return null;
-  if (!canDo("hand_off", s.stateOf(i))) return null;
+  const st = s.stateOf(i);
+  // a closed item keeps the header's place (the title doesn't jump between items): Copy, and the one way back —
+  // Reopen, or Restore for a discarded one — where Hand Off sits on an open item
+  const back = st === "discarded" ? "restore" : st === "done" || st === "wontfix" ? "reopen" : null;
+  if (!back && !canDo("hand_off", st)) return null;
   const key = isMacLike() ? "⌘⏎" : "Ctrl+⏎";
   const unfiled = s.mode === "item" && s.canMove && (i.project || "inbox") === "inbox";
   return (
     <div className="handoff" id="handoffRow" role="group" aria-label={s.t("handoff.title")}>
-      {s.canHandoff && (
+      {s.canHandoff && st !== "discarded" && (
         <div className="split">
-          <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} onClick={() => void s.handoff([i], "instruction")}>
-            <Icon name="copy" size={14} /> {s.label("media.copy")}
+          <button className="btn sm" id="copyInstruction" title={s.t("handoff.copy_instruction.hint")} aria-label={s.label("media.copy")} onClick={() => void s.handoff([i], "instruction")}>
+            <Icon name="copy" size={14} /> <span className="hl-word">{s.label("media.copy")}</span>
           </button>
           <label className="btn sm split-more" title={s.t("handoff.copy_more")}>
             <Icon name="chevron-down" size={12} />
@@ -514,13 +544,18 @@ function HandoffPanel({ i }: { i: Item }) {
       )}
       {/* an item in no project is there to be filed: an agent works in a project's folder, so the one primary is
           Move to Project… until it has one (hand-off stays in the menus and ⌘⏎, which say why it can't go yet) */}
-      {unfiled && <MovePicker items={[i]} id="fileBtn" primary />}
-      {h.dispatch && !unfiled && (
+      {back && (
+        <button className="btn sm" id="reopenBtn" title={`${s.t(`action.${back}.hint`)} (R)`} onClick={() => s.act([i], back)}>
+          <Icon name="undo" size={14} /> {s.label(`action.${back}`)}
+        </button>
+      )}
+      {unfiled && !back && <MovePicker items={[i]} id="fileBtn" primary />}
+      {h.dispatch && !unfiled && !back && (
         <button className="btn sm primary" id="dispatchBtn"
           title={s.mode === "item" ? `${s.t("handoff.dispatch.hint")} (${key})` : s.t("handoff.dispatch.hint")}
           aria-keyshortcuts={s.mode === "item" ? (isMacLike() ? "Meta+Enter" : "Control+Enter") : undefined}
           onClick={() => s.dispatch([i])}>
-          <Icon name="send" size={14} /> {s.t("handoff.dispatch")}
+          <Icon name="send" size={14} /> <span className="hl-long">{s.t("handoff.dispatch")}</span><span className="hl-short">{s.t("handoff.dispatch.short")}</span>
         </button>
       )}
     </div>
@@ -548,7 +583,8 @@ function WorkHistory({ i }: { i: Item }) {
         {[...rows].reverse().map((f, n) => (
           <li key={n} className={"s-" + (f.state ?? "todo")}>
             <span className="wls">{s.stateLabel(f.state ?? "todo")}</span>
-            {f.agent && f.agent !== "human" ? <span className="wla">{s.t("work.by", { who: agentName(s, f.agent) })}</span> : null}
+            {/* a hand-off was the user's, to the agent: "Handed off · to Claude Code", not "by" it */}
+            {f.agent && f.agent !== "human" ? <span className="wla">{s.t(f.state === "handed_off" ? "work.to" : "work.by", { who: agentName(s, f.agent) })}</span> : null}
             {f.commit ? <code>{shortSha(f.commit)}</code> : null}
             {f.pr ? (
               <a href={f.pr} target="_blank" rel="noreferrer">
@@ -556,7 +592,8 @@ function WorkHistory({ i }: { i: Item }) {
               </a>
             ) : null}
             <span className="wlt">{f.at ? s.i18n.formatDate(f.at) : ""}</span>
-            {f.note ? <div className="wln">{f.note}</div> : null}
+            {/* the newest note is on the verify card right above: not twice */}
+            {f.note && !(n === 0 && s.stateOf(i) === "to_verify" && i.work?.note === f.note) ? <div className="wln">{f.note}</div> : null}
           </li>
         ))}
       </ol>
@@ -584,13 +621,19 @@ function Provenance({ i }: { i: Item }) {
   const s = useStore();
   const src = i.source || {};
   const type = src.type;
+  // in the main window's detail the capture is one click on the line's first words (no second date in another format)
+  const sessionOnLine = s.mode === "item" && !!src.session && !!s.host.reveal && !!type;
   const p = s.project(i.project);
   const sug = i.suggested_project && s.project(i.suggested_project.id);
   const line: React.ReactNode[] = [];
   if (type)
     line.push(
       <span key="t">
-        {s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}
+        {sessionOnLine ? (
+          <button className="linkbtn" onClick={() => s.host.reveal!(String(src.session))} title={s.t("source.session.reveal")}>
+            {s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}
+          </button>
+        ) : s.i18n.has(`source.type.${type}`) ? s.t(`source.type.${type}`) : type}
         {type === "recording" && i.time?.start != null ? ` ${s.t("source.at", { time: s.clock(i.time.start) })}` : ""}
       </span>,
     );
@@ -602,12 +645,14 @@ function Provenance({ i }: { i: Item }) {
     );
   // the Mac's own account name ("by john") is you: never the raw login
   if (src.by)
-    line.push(<span key="b">{src.by === s.data.me ? s.t("work.by_you") : s.t("source.by_who", { who: String(src.by) })}</span>);
+    line.push(<span key="b">{String(src.by).toLowerCase() === String(s.data.me ?? "").toLowerCase() ? s.t("work.by_you") : s.t("source.by_who", { who: String(src.by) })}</span>);
   const rows: [string, React.ReactNode][] = [];
   if (src.app) rows.push([s.t("source.app"), appLabel(String(src.app))]);
-  if (src.url)
+  // the page once: not again when a field of the item already holds the same address (its Source link)
+  const inFields = (u: string) => JSON.stringify(i).split(u).length > 2;
+  if (src.url && !inFields(String(src.url)))
     rows.push([s.t("source.page"), <a href={String(src.url)} target="_blank" rel="noreferrer" className="trunc">{String(src.url).replace(/^https?:\/\//, "")}</a>]);
-  if (src.session) {
+  if (src.session && !sessionOnLine) {
     // when it was captured, not the folder's name (the folder is one click away)
     const when = sessionWhen(s, String(src.session)) ?? s.t("source.session.unnamed");
     rows.push([s.t("source.session"), s.host.reveal ? (
@@ -627,7 +672,8 @@ function Provenance({ i }: { i: Item }) {
   // how it got into this project — only when it wasn't simply captured there (the breadcrumb already says where it is)
   const by = i.project_by && i.project_by !== "capture" && p ? i.project_by : null;
   if (by) rows.push([s.t("source.project"), s.t(`project.by.${by}`, { pct: pct(s, i.project_confidence) })]);
-  const offer = sug && (i.project || "inbox") === "inbox" && s.canMove;
+  // the review page's own suggestion card; in the main window the list and the header's Move to Project… carry it
+  const offer = sug && (i.project || "inbox") === "inbox" && s.canMove && s.mode !== "item";
   if (!line.length && !rows.length && !offer) return null;
   return (
     <footer className="prov" id="provenance" aria-label={s.t("source.title")}>
@@ -785,7 +831,9 @@ export function Inspector({ media }: { media?: React.ReactNode } = {}) {
   const shown = rest.filter((f) => kept.includes(f.k) || format(i, f.k, f.type ?? "area").trim() !== "");
   // the kind's body field waits empty (with its prompt) only on an item that has nothing else yet; once it has what
   // was said, a recording or a picture, an empty Summary / Actual is no content: it waits in Add Field like the rest
-  const bare = !said && !(i.quote || "").trim() && s.mediaItems(i).length === 0;
+  // a closed or to-verify item never shows an empty prompt ("What's it about?" on a done note read as unfinished)
+  const settled = ["done", "wontfix", "discarded", "to_verify"].includes(s.stateOf(i));
+  const bare = !settled && !said && !(i.quote || "").trim() && s.mediaItems(i).length === 0;
   const mainShown = bare || kept.includes(main.k) || format(i, main.k, main.type ?? "area").trim() !== "";
   const body: React.ReactNode[] = mainShown ? [F(main, prompt)] : [];
   if (kind === "issue" && (i.code_refs || []).length)

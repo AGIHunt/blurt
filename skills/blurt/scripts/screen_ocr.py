@@ -51,6 +51,17 @@ _SPACE_A = re.compile(rf"([{_CJK}])([A-Za-z0-9])")
 _SPACE_B = re.compile(rf"([A-Za-z0-9])([{_CJK}])")
 
 
+# A small selection is read at twice its size: PP-OCR's recogniser loses the spaces between English words in ~11 pt
+# screen text ("the savebuttondoes nothing" off Notepad on the test VM; "the save button does nothing" at 2×). Up to
+# this many pixels before scaling (a 1100×110 selection: ~2× more work, still well under 0.5 s warm).
+UPSCALE_MAX_PX = 1_500_000
+
+
+def upscale_factor(w: int, h: int) -> int:
+    """2 for a selection small enough to read at twice its size, else 1."""
+    return 2 if 0 < w * h <= UPSCALE_MAX_PX else 1
+
+
 def spaced(text: str) -> str:
     """A space between CJK and Latin letters / digits (the recogniser drops it)."""
     return _SPACE_B.sub(r"\1 \2", _SPACE_A.sub(r"\1 \2", text))
@@ -75,11 +86,20 @@ class Engine:
             raise Fail(f"no image: {image}", "usage")
         self.load()
         t0 = time.perf_counter()
-        res, _ = self.ocr(image)
+        import cv2  # noqa: PLC0415 — RapidOCR's own dependencies
+        import numpy as np  # noqa: PLC0415
+        # (imdecode, not imread: imread can't open a path with non-ASCII characters on Windows — a Chinese user name)
+        img = cv2.imdecode(np.fromfile(image, dtype=np.uint8), cv2.IMREAD_COLOR)
+        if img is None:
+            raise Fail(f"unreadable image: {image}", "usage")
+        k = upscale_factor(img.shape[1], img.shape[0])
+        if k > 1:
+            img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_CUBIC)
+        res, _ = self.ocr(img)
         self.last = time.time()
         lines = []
         for box, text, conf in res or []:
-            xs, ys = [p[0] for p in box], [p[1] for p in box]
+            xs, ys = [p[0] / k for p in box], [p[1] / k for p in box]
             lines.append({"text": spaced(str(text)), "box": [round(min(xs), 1), round(min(ys), 1), round(max(xs) - min(xs), 1),
                                                               round(max(ys) - min(ys), 1)], "conf": round(float(conf), 3)})
         lines.sort(key=lambda r: (r["box"][1], r["box"][0]))

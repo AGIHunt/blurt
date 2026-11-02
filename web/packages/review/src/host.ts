@@ -9,7 +9,7 @@ export type Host = "browser" | "macos" | "tauri";
 /** What the canvas shows: one capture session's batch, or a project (or the inbox) with filters (K1 doc scope). */
 export type Scope =
   | { session: string }
-  | { project: string; state?: string[]; kind?: string[] };
+  | { project: string; state?: string[]; kind?: string[]; /** the item on show, listed whatever its state (items.py --item) */ item?: string };
 
 export interface Frame {
   path: string;
@@ -240,6 +240,10 @@ export interface MountOptions {
   lang?: string;
   /** inside the app's main window: no brand, theme or language controls, no document title, fills its container */
   embedded?: boolean;
+  /** the canvas shares its document with the host's own page (the Tauri app mounts it into its detail column; the
+      Mac app gives it a web view of its own): only keys typed inside the canvas are its, never the list's or the
+      sidebar's, and ⇧Tab's "first control" is the canvas's first */
+  sharedDocument?: boolean;
 }
 
 export interface ReviewHandle {

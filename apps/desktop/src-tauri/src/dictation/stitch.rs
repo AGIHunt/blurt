@@ -44,7 +44,7 @@ fn is_number(c: char) -> bool {
     c.is_numeric()
 }
 
-fn is_word_char(c: char) -> bool {
+pub fn is_word_char(c: char) -> bool {
     !is_cjk(c) && (is_letter(c) || is_number(c)) && !c.is_whitespace()
 }
 

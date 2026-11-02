@@ -183,14 +183,14 @@
 "main.error.save_title" = "无法保存";
 "main.error.timeout" = "操作超时，请稍后重试。";
 "main.error.unparseable" = "事项文件的格式无法识别，因此不会覆盖它。";
-"main.list.move" = "移过去";
+"main.list.move" = "移动";
 "main.list.move.tip" = "移到 %@（⌘Z 可以移回来）";
-"main.list.suggested" = "可能属于 %@";
+"main.list.suggested" = "看起来是 %@";
 "main.move.here" = "当前所在";
 "main.move.list" = "项目";
 "main.move.placeholder" = "移到…";
 "main.move.placeholder.one" = "把 %@ 移到…";
-"main.move.current" = "当前位置";
+"main.move.current" = "现在在这里";
 "main.palette.move_pick" = "移到项目…";
 "main.palette.switch_project" = "切换项目…";
 "main.palette.use_none" = "不设当前项目（新的截图和录屏存入未归类）";
@@ -211,8 +211,8 @@
 "main.handoff.copied_full" = "全文已复制，截图用路径引用";
 "main.handoff.failed" = "无法准备交接内容";
 
-"main.inbox.new" = "%ld 个新的";
-"main.inbox.verify" = "%ld 个待验证";
+"main.inbox.new" = "%ld 条新的";
+"main.inbox.verify" = "%ld 条待验证";
 "main.item.untitled" = "无标题";
 
 "main.job.error.auth" = "Agent 未登录。";
@@ -297,9 +297,9 @@
 "main.bundle.packing" = "正在打包交接包（%@）…";
 "main.menu.kind" = "种类";
 "main.suggest.label" = "建议的项目";
-"main.suggest.looks_like" = "可能属于 %@";
+"main.suggest.looks_like" = "看起来是 %@";
 "main.suggest.more" = "下面还有 %ld 个项目的建议";
-"main.suggest.move_all" = "全部移过去（%ld）";
+"main.suggest.move_all" = "全部移动（%ld）";
 "main.suggest.move_all.tip" = "将这 %1$ld 个事项移到 %2$@，⌘Z 可全部撤销";
 "main.undo.kind" = "改种类";
 "main.menu.move_to" = "移到项目";
@@ -384,8 +384,8 @@
 "main.sidebar.label" = "侧栏";
 "main.sidebar.missing" = "找不到文件夹";
 "main.missing.title" = "找不到这个文件夹";
-"main.missing.detail" = "它可能已被移动或重命名。以下是之前的事项。";
-"main.missing.detail_empty" = "它可能已被移动或重命名。定位文件夹后，事项会重新显示。";
+"main.missing.detail" = "可能被移走或改了名。下面是它之前的事项。";
+"main.missing.detail_empty" = "可能被移走或改了名。找到它，事项就会回来。";
 "main.missing.locate" = "定位…";
 "main.missing.locate.message" = "选择「%@」现在所在的文件夹。";
 "main.missing.other" = "那是「%1$@」的文件夹，不是「%2$@」";
@@ -710,12 +710,12 @@
 "main.empty.no_match.detail" = "只显示：%@。这里的其他事项都被筛掉了。";
 "main.empty.scanning.detail" = "正在读取项目文件夹，通常需要几秒钟。";
 "main.missing.title_named" = "找不到「%@」的文件夹";
-"main.missing.detail_named" = "它可能已被移动、重命名，或位于未连接的磁盘上。定位文件夹后可再次查看其中的事项。";
-"main.missing.detail_current" = "它可能已被移动或重命名。定位之前，新的录屏会存入未归类。";
+"main.missing.detail_named" = "可能被移走、改了名，或在没有连接的磁盘上。找到它，就能再看到里面的事项。";
+"main.missing.detail_current" = "可能被移走或改了名。找到它之前，新的录屏会放进未归类。";
 "main.missing.locate_folder" = "定位文件夹…";
 "main.missing.remove" = "从口喷鸡移除";
 "main.search.title" = "「%@」的搜索结果";
-"main.items.of" = "%2$@ 个中的第 %1$@ 个";
+"main.items.of" = "%2$@ 条中的 %1$@ 条";
 "main.items.of_in" = "%2$@ · %1$@";
 "main.project.current_count" = "当前项目 · %@";
 "main.project.current_mark" = "当前项目：新的录屏和截图存入此处";

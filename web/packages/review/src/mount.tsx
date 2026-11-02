@@ -28,12 +28,15 @@ export function mountReview(el: HTMLElement, host: BlurtHost, opts: MountOptions
   if (accent) setSystemAccent(accent, html);
   if (host.inApp) html.classList.add("in-app");
   html.dataset.host = host.host; // the Mac app draws the detail pane's surface itself (item mode): the page leaves it clear
-  if (opts.mode === "item") html.classList.add("mode-item");
+  html.classList.toggle("mode-item", opts.mode === "item"); // a shell that remounts in review mode drops it
   el.classList.add("rv-root");
   if (opts.embedded) el.classList.add("rv-embedded");
   installImeGuard(document);
 
   const store = new ReviewStore(host, opts);
+  store.root = el;
+  // a click on the canvas's blank parts focuses it (as clicking a web view does): its keys work there too
+  if (opts.sharedDocument && el.tabIndex < 0 && !el.hasAttribute("tabindex")) el.tabIndex = -1;
   const toggleTheme = () => {
     const next = theme.theme === "light" ? "dark" : "light";
     try {

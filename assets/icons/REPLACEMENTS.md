@@ -23,7 +23,7 @@ Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their f
 | Capture/NoteBubble.swift · status | `"● 0:04 在听…"`, `"✓ 已记下"` | `recLabel()` = `BlurtIcon.recordFill.label(…, iconColor: .systemRed)`; `BlurtIcon.check.label("已记下", color: .systemGreen, preferSymbol: true)` |
 | Settings/Icons.swift (WP6) | `.bug` = drawBug, `.chicken` = PeckArt | `UIIcon.brand` → `BlurtIcon.bug / .chicken / .peck` (new `.peck`); `brandImage` (SwiftUI) and `brandNSImage` (AppKit) |
 | System/Peck.swift · the completion hen | layered CoreGraphics hen (`ChickenArt` / `HenView`) | the colour mascot: `MascotView` playing `peck` (to verify) or `happy` (done), see “The mascot” below |
-| apps/desktop tray (WP7) | placeholder `tray.svg` (hatching egg) + `scripts/tray_icons.swift` | the `blurt` glyph; `build.py` writes `icons/tray.svg`, `tray-black.png` and `tray-white.png` (64 px) |
+| apps/desktop tray (WP7) | placeholder `tray.svg` (hatching egg) + `scripts/tray_icons.swift` | Peep's flat mark: `assets/brand/import_peep.py --only windows` writes `tray-black.png` and `tray-white.png` (64 px; the `blurt` glyph before) |
 | web/apps/desktop/src/icons.tsx (WP7) | local path set | wraps `@blurt/icons`, keeping the app's names (record → record-fill, items → list, sessions → film, issue → bug, idea → spark, chick → hatched, fixing → wand, fixed → peck, back → arrow-left) |
 | web/apps/overlays | `🐔 整理 N 张`, `×`, inline SVGs | `iconSvg('chicken')` + label, `iconSvg('x')`, HUD buttons `pause-fill / play-fill / snap / stop-fill / x` |
 | web/packages/review | local stand-in `Icon.tsx` and `icons.tsx` | `export { Icon, … } from "@blurt/icons"` |
@@ -37,7 +37,7 @@ routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For 
 - Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` / `KindStyle.image(kind, size:)` and the work state's
   `StatusRing.image(state, size:)` (K8). The kind icons (`bug`, `lightbulb`, `document`, `checkbox`, `tag`) are one family of
   our own, never SF Symbols (docs/design/system.md §2.6). Eggs are
-  brand and motion only (the island's hatching egg: the mascot's `wobble` / `hatching` clips).
+  brand and motion only (organising is Peep thinking now, on the Mac and the web alike).
 - Session states: to process = `.egg`, hatching = `.hatch`, reviewed = `.hatched`. Fixed = `.peck`, fixing = `.wand` (SF `wand.and.stars`).
 - Never put an emoji or a ✓ / ✗ / ● glyph into a title. Use `icon.label(text, font:, color:)` for NSTextField or
   NSMenuItem.attributedTitle, and `icon.makeLayer(…)` next to a CATextLayer, which can't draw attachments.
@@ -81,8 +81,9 @@ MascotImage(clip: .hello, then: .idle, size: 108, backdrop: .light)             
 ```
 Reduce Motion: the clip's still frame.
 
-Web (Windows / Linux overlays, Tauri) still plays the earlier 1A round chick from `assets/mascot/` (`<Mascot>`,
-`mascotHtml`); the release package's `web/sprites/` has Peep's sheets for the port (TODO.md).
+Web (Windows / Linux overlays, Tauri) plays Peep too (`<Mascot>`, `mascotHtml` in `@blurt/icons/mascot`: the
+release package's `web/sprites/` sheets, cut per tier by `assets/brand/import_peep.py --only windows`); the 1A round
+chick's strips are in `assets/brand/legacy/mascot/`.
 
 ## SF Symbols on macOS (generic icons)
 

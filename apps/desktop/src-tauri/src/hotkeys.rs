@@ -10,7 +10,9 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
@@ -19,10 +21,14 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 use crate::settings;
 
 /// `_common.HOTKEY_ACTIONS` (K7 adds `voice` — a voice note — and `project` — the project switcher; `text` / `translate`
-/// are Copy Text from Screen and its translation, the Mac's ⌥C / ⌥T).
-pub const ACTIONS: [&str; 11] = ["record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project", "text", "translate"];
+/// are Copy Text from Screen and its translation, the Mac's ⌥C / ⌥T). As on the Mac (1.0.7) there is no marker key — the
+/// snap key snaps without pausing while recording; `menu` opens the window (a tray menu can't
+/// be opened from a key), the Mac's "Open the Blurt window". docs/design/windows-parity/settings.md.
+/// `reformat`: reformat the last dictation (Verbatim → Light → Structured, with Undo; the Mac's ⌥L, Alt+Shift+L here).
+/// `pen` (recording.md §4.6): latches the recording pen on / off, the Mac's ⌥D — registered only while recording.
+pub const ACTIONS: [&str; 12] = ["record", "menu", "pause", "snap", "stop", "pen", "voice", "project", "cards", "text", "translate", "reformat"];
 /// Registered whenever the app runs; the others only while recording (they'd steal keys from other apps otherwise).
-pub const RESIDENT: [&str; 7] = ["record", "menu", "snap", "voice", "project", "text", "translate"];
+pub const RESIDENT: [&str; 9] = ["record", "menu", "snap", "voice", "project", "cards", "text", "translate", "reformat"];
 
 fn default_key(a: &str) -> &'static str {
     match a {
@@ -36,6 +42,8 @@ fn default_key(a: &str) -> &'static str {
         "project" => "O",
         "text" => "C",
         "translate" => "T",
+        "cards" => "H",
+        "reformat" => "L",
         _ => "S",
     }
 }
@@ -306,6 +314,21 @@ pub struct Hotkeys {
     /// "plugin" | "portal" | "portal-pending" | "manual" (Wayland without portal)
     pub mode: Mutex<String>,
     recording: Mutex<bool>,
+    /// a shortcut field in Settings is recording keys: ours stand down so the keys reach it (the Mac's
+    /// `Hotkeys.shared.suspended`, HotkeySettings.swift); the count tells a stale resume from the current one
+    suspended: AtomicBool,
+    suspend_gen: AtomicU64,
+}
+
+static MAIN: OnceLock<std::thread::ThreadId> = OnceLock::new();
+
+/// Called once from setup (which runs on the main thread).
+pub fn mark_main_thread() {
+    let _ = MAIN.set(std::thread::current().id());
+}
+
+fn on_main() -> bool {
+    MAIN.get().is_none_or(|id| *id == std::thread::current().id())
 }
 
 /// Which action a pressed shortcut belongs to.
@@ -316,7 +339,31 @@ pub fn action_for(app: &AppHandle, sc: &Shortcut) -> Option<String> {
 }
 
 /// (Re)register for the current config and recording state. Returns the status rows.
+///
+/// Deadlock-free by construction: it always runs on the main thread (a call from another thread is handed over and
+/// waited for), so two applies never interleave and the plugin's register / unregister — which run their work on the
+/// main thread — never wait on it; and no Hotkeys lock is held across a plugin call or the emit (listeners run inline
+/// and read the rows: the tray, the island).
 pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
+    if !on_main() {
+        let (tx, rx) = mpsc::channel();
+        let h = app.clone();
+        if app
+            .run_on_main_thread(move || {
+                let _ = tx.send(apply_here(&h, recording));
+            })
+            .is_ok()
+        {
+            if let Ok(rows) = rx.recv_timeout(Duration::from_secs(10)) {
+                return rows;
+            }
+        }
+        return rows(app);
+    }
+    apply_here(app, recording)
+}
+
+fn apply_here(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let h = app.state::<Hotkeys>();
     if let Some(r) = recording {
         *h.recording.lock().unwrap() = r;
@@ -326,12 +373,11 @@ pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let combos = from_config(&cfg);
     let gs = app.global_shortcut();
     // drop what we hold, then register again in action order (the first of two duplicates wins)
-    {
-        let mut reg = h.registered.lock().unwrap();
-        for (_, s) in reg.drain() {
-            let _ = gs.unregister(s);
-        }
+    let held: Vec<Shortcut> = h.registered.lock().unwrap().drain().map(|(_, s)| s).collect();
+    for s in held {
+        let _ = gs.unregister(s);
     }
+    let suspended = h.suspended.load(Ordering::SeqCst);
     let wayland = is_wayland();
     if wayland && h.mode.lock().unwrap().is_empty() {
         *h.mode.lock().unwrap() = "portal-pending".into();
@@ -344,7 +390,9 @@ pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
     let mode = h.mode.lock().unwrap().clone();
     let mut seen: HashMap<String, &str> = HashMap::new();
     let mut rows = Vec::new();
-    let mut status = h.status.lock().unwrap();
+    // the status lock is taken only to store the rows at the end: registering may wait on the main thread, and the
+    // tray reads the rows there (hotkeys://changed → tray::menu → rows) — holding it across either deadlocks
+    let mut fresh: Vec<(String, Value)> = Vec::new();
     for (a, c) in &combos {
         let active = RESIDENT.contains(a) || rec;
         let mut row = json!({"action": a, "active": active, "default": format!("opt+shift+{}", default_key(a))});
@@ -352,6 +400,7 @@ pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
             row["result"] = json!("off");
             row["spec"] = json!("off");
             row["label"] = json!("");
+            fresh.push((a.to_string(), row.clone()));
             rows.push(row);
             continue;
         };
@@ -366,12 +415,14 @@ pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
             row["name"] = json!(name);
         } else {
             seen.insert(c.spec(), a);
-            if *a == "pen" {
-                row["result"] = json!("unsupported"); // the pen overlay is macOS-only for now (WP8 brings overlays)
-            } else if wayland {
+            if wayland {
                 row["result"] = json!(if mode == "portal" { "portal" } else if mode == "manual" { "manual" } else { "pending" });
             } else if !active {
                 row["result"] = json!("idle");
+            } else if suspended {
+                // standing down while a shortcut field records: shown as it was, registered again on resume
+                let was = h.status.lock().unwrap().get(*a).and_then(|r| r["result"].as_str().map(str::to_owned));
+                row["result"] = json!(was.filter(|r| r != "off" && r != "idle").unwrap_or_else(|| "ok".into()));
             } else {
                 match c.to_shortcut() {
                     Some(sc) if gs.register(sc).is_ok() => {
@@ -383,11 +434,65 @@ pub fn apply(app: &AppHandle, recording: Option<bool>) -> Vec<Value> {
                 }
             }
         }
-        status.insert(a.to_string(), row.clone());
+        fresh.push((a.to_string(), row.clone()));
         rows.push(row);
     }
+    // every action gets its current row, "off" included (a cleared key must not keep showing its old one)
+    *h.status.lock().unwrap() = fresh.into_iter().collect();
     let _ = app.emit("hotkeys://changed", json!(rows));
     rows
+}
+
+/// A key held for a moment, outside the user's shortcuts (the recording pen's Esc while it is latched): registered
+/// under `action` (dispatched like any hotkey) until called again with None. A re-`apply` drops it.
+pub fn transient(app: &AppHandle, action: &str, key: Option<&str>) {
+    let h = app.state::<Hotkeys>();
+    let gs = app.global_shortcut();
+    // never hold `registered` across a plugin call: those wait on the main thread, whose hotkey handler reads it
+    let old = h.registered.lock().unwrap().remove(action);
+    if let Some(old) = old {
+        let _ = gs.unregister(old);
+    }
+    if let Some(sc) = key.and_then(|k| Code::from_str(k).ok()).map(|c| Shortcut::new(None, c)) {
+        if gs.register(sc).is_ok() {
+            h.registered.lock().unwrap().insert(action.to_string(), sc);
+        }
+    }
+}
+
+/// A shortcut field in Settings starts (`on`) or stops recording keys. While it records, Blurt's own global hotkeys
+/// stand down, so pressing the key another action holds reaches the field (and the "Swap with …?" question) instead
+/// of firing it — the Mac's HotkeySettings. A field that never says it stopped (a crash, a reload) is resumed when
+/// the main window loses the keyboard or after a minute.
+pub fn suspend(app: &AppHandle, on: bool) {
+    let h = app.state::<Hotkeys>();
+    if h.suspended.swap(on, Ordering::SeqCst) == on {
+        return;
+    }
+    let g = h.suspend_gen.fetch_add(1, Ordering::SeqCst) + 1;
+    apply(app, None);
+    if on {
+        let app = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_secs(60));
+            if app.state::<Hotkeys>().suspend_gen.load(Ordering::SeqCst) == g {
+                suspend(&app, false);
+            }
+        });
+    }
+}
+
+pub fn suspended(app: &AppHandle) -> bool {
+    app.state::<Hotkeys>().suspended.load(Ordering::SeqCst)
+}
+
+/// Every key back to its default in one write (Settings' Restore Defaults; the Mac's `restoreDefaults()`): set one
+/// at a time, a swapped pair refuses each other's default as a duplicate.
+pub fn reset(app: &AppHandle) -> Result<Vec<Value>, String> {
+    if settings::read_config().pointer("/record/hotkeys").is_some() {
+        settings::merge(json!({"record": {"hotkeys": null}}))?;
+    }
+    Ok(apply(app, None))
 }
 
 pub fn rows(app: &AppHandle) -> Vec<Value> {

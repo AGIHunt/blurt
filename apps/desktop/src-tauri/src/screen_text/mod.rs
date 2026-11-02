@@ -97,6 +97,27 @@ mod tests {
         // longest line is taken as the wrap width, and the next line's first word wouldn't have fitted after it)
         assert_eq!(out, "登录页面周五之前要上线，记得把按钮颜色改深一点。\nThe export to CsV fails when the file name has spaces. 用 ClaudeCode 跑一下测试，然后提交 PR。");
     }
+
+    #[test]
+    /// Chinese and English on one line, as RapidOCR reads Notepad at 2× (2026-11-02, the VM): the words keep their spaces.
+    fn mixed_line_keeps_its_spaces() {
+        let (w, h) = (1100usize, 110usize);
+        let read = [("保存按钮点了没有反应 the save button does nothing", [3.0, 3.0, 588.0, 30.0]), ("第二行：价格页的字体太小 font too small", [5.0, 68.0, 450.0, 25.0])];
+        let mut px = vec![255u8; w * h];
+        for (_, b) in &read {
+            for y in (b[1] as usize + 3)..(b[1] + b[3]) as usize - 3 {
+                for x in (b[0] as usize + 1)..(b[0] + b[2]) as usize - 1 {
+                    if x % 3 != 0 {
+                        px[y * w + x] = 0;
+                    }
+                }
+            }
+        }
+        let g = rules::Gray::new(w, h, px).unwrap();
+        let lines: Vec<rules::Line> = read.iter().map(|(t, b)| line_from_text(t, rules::Rect::new(b[0], b[1], b[2], b[3]))).collect();
+        let out = rules::compose(&lines, &g).text;
+        assert_eq!(out, "保存按钮点了没有反应 the save button does nothing\n\n第二行：价格页的字体太小 font too small");
+    }
 }
 
 #[cfg(windows)]
@@ -114,4 +135,5 @@ pub fn compose_lines(ls: Vec<rules::Line>, grab: &ocr_win::Grab) -> String {
             .collect::<Vec<_>>()
             .join("\n"),
     }
+
 }

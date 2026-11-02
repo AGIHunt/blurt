@@ -27,7 +27,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个新的</string>
+			<string>%ld 条新的</string>
 		</dict>
 	</dict>
 	<key>app.menu.to_verify</key>
@@ -41,7 +41,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个待验证</string>
+			<string>%ld 条待验证</string>
 		</dict>
 	</dict>
 	<key>main.detail.multi</key>
@@ -69,7 +69,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个</string>
+			<string>%ld 条</string>
 		</dict>
 	</dict>
 	<key>main.job.show_items</key>
@@ -325,7 +325,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 个新事项未选择项目</string>
+			<string>%ld 条新记下的内容还没选项目</string>
 		</dict>
 	</dict>
 	<key>main.move.placeholder.many</key>

@@ -1,0 +1,79 @@
+/* ⌥T's translation under the island (the Mac's ScreenTextCard; system.md §3.2 "Live-text panel"): the island's lower
+   half — its black, the live panel's corners — the translation in one size (14 px, 92 % white, 20 px lines; up to
+   eight, then it scrolls, the last line fading while there is more), Copy under it on the right. */
+/* the window has room for the shadow on every side (flow.rs SHADOW_ROOM; the Mac's panelMargin): never a hard edge */
+.card {
+  position: relative;
+  box-sizing: border-box;
+  width: fit-content;
+  min-width: 280px;
+  max-width: 400px;
+  margin: 0 auto 34px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: #000;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 10px 24px rgba(0, 0, 0, 0.38);
+  animation: in 220ms ease-out;
+}
+@keyframes in {
+  from {
+    opacity: 0;
+  }
+}
+.card.gone {
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+.text {
+  max-height: calc(8 * 22px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font: 15px/22px var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.text.more {
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+}
+/* Copy: its own row on the right; on the last line's row when that line leaves room (a one-liner is one row) */
+.row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.card.inline .row {
+  position: absolute;
+  right: 12px;
+  top: 11px;
+  margin: 0;
+}
+.card.inline .text {
+  padding-right: var(--cw);
+}
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 600;
+}
+/* under the pointer the card is held: Copy comes forward */
+.card.hover .copy {
+  background: rgba(255, 255, 255, 0.18);
+}
+.copy:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+.copy .ic {
+  color: var(--ok);
+}

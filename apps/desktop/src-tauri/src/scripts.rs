@@ -74,8 +74,17 @@ impl Runner {
 
     /// Run to completion; Ok(last JSON line) on exit 0, Err otherwise (message = the CLI's `error` field or stderr tail).
     pub fn run(&self, script: &str, args: &[String], stdin: Option<&[u8]>, timeout: Duration) -> Result<Value, ScriptError> {
+        self.run_env(script, args, stdin, timeout, &[])
+    }
+
+    /// `run` with a few variables for this one script (dictation's cloud speech keys for transcribe.py), never in the
+    /// environment of anything else.
+    pub fn run_env(&self, script: &str, args: &[String], stdin: Option<&[u8]>, timeout: Duration, env: &[(&str, String)]) -> Result<Value, ScriptError> {
         let argv = self.argv(script, args)?;
         let mut cmd = command(&argv);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
         cmd.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -115,7 +124,7 @@ fn tail(s: &str, n: usize) -> String {
 /// Wait with a deadline, reading both pipes on threads so a chatty child can't block on a full pipe. A daemon the
 /// child started (the tmux server) may inherit the pipes and keep them open: once the child has exited we wait for
 /// the rest of its output only briefly.
-fn wait(mut child: Child, timeout: Duration) -> Result<(Option<i32>, String, String), String> {
+pub fn wait(mut child: Child, timeout: Duration) -> Result<(Option<i32>, String, String), String> {
     fn pump(stream: Option<impl Read + Send + 'static>) -> std::sync::mpsc::Receiver<String> {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {

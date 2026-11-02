@@ -3,8 +3,9 @@
 # ///
 """Set up Blurt's models from an agent (docs/design/agent-setup.md; the flow: reference/setup-models.md). The running
 Blurt app does the work — it tests each key, keeps it in the login Keychain and changes Settings → Models as the user
-would — over its local control socket ($BLURT_HOME/run/control.sock, this user only). This CLI never writes a key to a
-file, never takes one as an argument and never prints one.
+would — over its local control endpoint (macOS: the Unix socket $BLURT_HOME/run/control.sock, this user only; Windows and
+Linux: 127.0.0.1 on the port and with the secret in $BLURT_HOME/run/control.json, a file only this user can read). This
+CLI never writes a key to a file, never takes one as an argument and never prints one.
 
   setup.py status                       the Mac (chip, memory, macOS, languages), dictation's models (installed,
                                         recommended) and choices with their measured levels, the connected services
@@ -60,12 +61,14 @@ KEY_PAGES = {
 PROVIDER_NAMES = {"deepseek": "DeepSeek", "dashscope": "Alibaba Cloud Model Studio (阿里云百炼)",
                   "volcengine-speech": "Volcengine Speech (火山引擎豆包语音)"}
 TEXT_JOBS = ("polish", "translate", "vision")
-LOCAL_RECOGNIZERS = ("qwen3-asr-0.6b-mlx", "fun-asr-nano-mlx", "qwen3-asr-1.7b-mlx")
+# the Mac's (MLX) and Windows / Linux's (the CPU builds the desktop app downloads)
+LOCAL_RECOGNIZERS = ("qwen3-asr-0.6b-mlx", "fun-asr-nano-mlx", "qwen3-asr-1.7b-mlx", "fun-asr-nano-onnx", "sensevoice-small")
 CLOUD_RECOGNIZERS = {"qwen3-asr-flash": "dashscope", "volcengine-seedasr": "volcengine-speech"}
 DICTATION_CHOICES = ("apple-speech", *LOCAL_RECOGNIZERS, "cloud-polish", *CLOUD_RECOGNIZERS)
 
+OPEN_APP = "open -a Blurt" if sys.platform == "darwin" else "start Blurt (Start menu)" if os.name == "nt" else "start Blurt"
 NOT_RUNNING = {"ok": False, "code": "app_not_running",
-               "error": "Blurt isn't running. Open it (open -a Blurt), then run this again.", "fix": "open -a Blurt"}
+               "error": f"Blurt isn't running. Open it ({OPEN_APP}), then run this again.", "fix": OPEN_APP}
 
 
 SANDBOXED = ("this command's sandbox blocks the connection to Blurt; run setup.py outside the sandbox (ask the user "
@@ -97,22 +100,58 @@ def socket_path(h: Path | None = None, uid: int | None = None) -> str:
     return f"/tmp/blurt-{uid}/{hashlib.sha256(str(h).encode()).hexdigest()[:12]}.sock"
 
 
-def call(req: dict, timeout: float = 30) -> dict:
-    """One request to the running app → its answer. Raises SetupError("app_not_running") when nothing listens."""
+def run_file(h: Path | None = None) -> Path:
+    """Windows / Linux: where the app says its endpoint is — {pid, port, token, protocol} (the warm servers' pattern)."""
+    return (h or home()) / "run" / "control.json"
+
+
+def _connect(timeout: float) -> tuple[socket.socket, str | None]:
+    """A connected socket to the running app, and the secret every request carries on Windows / Linux."""
     path = socket_path()
+    rf = run_file()
+    use_tcp = os.name == "nt" or (not os.path.exists(path) and rf.exists())
+    if use_tcp:
+        try:
+            o = json.loads(rf.read_text(encoding="utf-8"))
+            port, secret = int(o["port"]), str(o["token"])
+        except (OSError, ValueError, KeyError, TypeError):
+            raise SetupError("app_not_running", NOT_RUNNING["error"]) from None
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            s.connect(("127.0.0.1", port))
+        except (ConnectionRefusedError, socket.timeout, OSError) as e:
+            s.close()
+            if isinstance(e, PermissionError):
+                raise SetupError("sandboxed", SANDBOXED) from None
+            raise SetupError("app_not_running", NOT_RUNNING["error"]) from None
+        return s, secret
     if not os.path.exists(path):
         raise SetupError("app_not_running", NOT_RUNNING["error"])
     s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     s.settimeout(timeout)
     try:
-        try:
-            s.connect(path)
-        except (ConnectionRefusedError, FileNotFoundError):
-            raise SetupError("app_not_running", NOT_RUNNING["error"]) from None
-        except PermissionError:
-            # the socket is there but this process may not connect: an agent's sandbox (Codex's seatbelt) — not "Blurt
-            # isn't running", which sent agents to open an app that was open
-            raise SetupError("sandboxed", SANDBOXED) from None
+        s.connect(path)
+    except (ConnectionRefusedError, FileNotFoundError):
+        s.close()
+        raise SetupError("app_not_running", NOT_RUNNING["error"]) from None
+    except PermissionError:
+        # the socket is there but this process may not connect: an agent's sandbox (Codex's seatbelt) — not "Blurt
+        # isn't running", which sent agents to open an app that was open
+        s.close()
+        raise SetupError("sandboxed", SANDBOXED) from None
+    except OSError as e:
+        s.close()
+        raise SetupError("app_not_running", f"couldn't talk to Blurt: {e.strerror or e}") from None
+    return s, None
+
+
+def call(req: dict, timeout: float = 30) -> dict:
+    """One request to the running app → its answer. Raises SetupError("app_not_running") when nothing listens."""
+    s, secret = _connect(timeout)
+    if secret:
+        req = {**req, "auth": secret}
+    try:
         s.sendall(json.dumps(req, ensure_ascii=False).encode() + b"\n")
         buf = b""
         while b"\n" not in buf:
@@ -271,7 +310,7 @@ def offline_status() -> dict:
            "services": services, "jobs": jobs, "options": options,
            "providers": [{"preset": p, "name": PROVIDER_NAMES[p], "key_pages": KEY_PAGES[p]} for p in KEY_PAGES],
            "note": "Blurt isn't running: which services have a key, the measured levels and the live progress come "
-                   "from the app. Open it (open -a Blurt) for those and for every change."}
+                   f"from the app. Open it ({OPEN_APP}) for those and for every change."}
     if dm is None:
         out["note"] += " This Mac's models couldn't be read (transcribe.py needs uv)."
     return out

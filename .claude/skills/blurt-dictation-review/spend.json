@@ -1,0 +1,165 @@
+{
+ "total_usd": 0.017002,
+ "calls": [
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 3.64,
+   "cost": 2.72775e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 3.64,
+   "cost": 0.0003
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 26.68,
+   "cost": 0.000667075
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 26.68,
+   "cost": 0.002025
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 8.49,
+   "cost": 6.3645e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 8.49,
+   "cost": 0.000675
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 13.59,
+   "cost": 0.00010191
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 13.59,
+   "cost": 0.00105
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 19.1,
+   "cost": 0.0001432275
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 19.1,
+   "cost": 0.0015
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 4.59,
+   "cost": 3.44325e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 4.59,
+   "cost": 0.000375
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 4.59,
+   "cost": 3.44325e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 4.59,
+   "cost": 0.000375
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 11.99,
+   "cost": 8.99175e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 11.99,
+   "cost": 0.0009
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 26.39,
+   "cost": 0.0001979475
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 26.39,
+   "cost": 0.002025
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 15.0,
+   "cost": 0.0001124925
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 15.0,
+   "cost": 0.001125
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 34.1,
+   "cost": 0.0002557275
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 34.1,
+   "cost": 0.002625
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 6.99,
+   "cost": 5.24175e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 6.99,
+   "cost": 0.000525
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 2.69,
+   "cost": 2.0145e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 2.69,
+   "cost": 0.000225
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 3.69,
+   "cost": 2.7675e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 3.69,
+   "cost": 0.0003
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 2.58,
+   "cost": 1.938e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 2.58,
+   "cost": 0.000225
+  },
+  {
+   "model": "openai/whisper-large-v3",
+   "seconds": 10.8,
+   "cost": 8.0985e-05
+  },
+  {
+   "model": "openai/gpt-transcribe",
+   "seconds": 10.8,
+   "cost": 0.000825
+  }
+ ]
+}

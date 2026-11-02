@@ -1,6 +1,6 @@
 [package]
 name = "blurt-desktop"
-version = "0.7.0"
+version = "1.0.12"
 description = "Blurt for Windows and Linux: what you say, snap and record becomes work, filed into projects and handed to agents"
 authors = ["Blurt"]
 license = "MIT"
@@ -39,8 +39,12 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 base64 = "0.22"
 # K5: the embedded terminal — tmux attach-cmd (macOS / Linux) or the app runner in ConPTY (Windows)
 portable-pty = "0.9"
+# the app runner reads its agent's screen (pty.rs ScreenWatch): what tmux capture-pane gives sessions.py on the Mac
+vt100 = "0.16"
 # record.py ffmpeg engine + overlay windows (picker, island, cards, note)
 blurt-capture = { path = "../../../crates/blurt-capture" }
+# a snap's strokes burnt into shots/NNN.marked.png (capture/snap.rs)
+png = "0.17"
 
 [target.'cfg(windows)'.dependencies]
 # Dictation (src/dictation): the low-level keyboard hook, SendInput, the clipboard, PlaySound; the mic through WASAPI
@@ -49,9 +53,27 @@ windows = { version = "0.62", features = [
   "Win32_System_Memory", "Win32_System_Threading", "Win32_System_LibraryLoader", "Win32_Security", "Win32_Media_Audio",
   "Win32_System_Ole", "Win32_Graphics_Gdi", "Win32_System_SystemInformation", "Win32_System_ProcessStatus", "Win32_Security_Credentials", "Win32_System_Time",
   "Win32_UI_Accessibility", "Win32_System_Com", "Win32_System_Variant",
+  # dictation/insert_win.rs: an app's name as Windows shows it (the exe's FileDescription, in the user's language)
+  "Win32_Storage_FileSystem",
+  # onboarding.rs: "Open Blurt at login" (HKCU\…\Run) and the microphone's privacy switches
+  "Win32_System_Registry",
+  # capture/snap.rs: the windows a click in the picker takes (cloaked ones left out, their visible frame)
+  "Win32_Graphics_Dwm",
+  # capture/snap.rs: a discarded snap's files go to the Recycle Bin (SHFileOperationW, FOF_ALLOWUNDO)
+  "Win32_UI_Shell",
+  # island.rs card_drag_win.rs: a card dragged into another app (OLE: the shell's data object, the drag image)
+  "Win32_UI_Shell_Common", "Win32_System_SystemServices", "Win32_Graphics_Imaging", "Win32_System_Com_StructuredStorage",
   "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Foundation_Collections", "Globalization",
 ] }
 cpal = "0.16"
+# #[implement(IDropSource)] (card_drag_win.rs) expands to windows_core paths
+windows-core = "0.62"
+# lib.rs browser_ui_off: WebView2's own reload / find / print keys and (overlays) its Back / Refresh menu off;
+# folder_drop.rs: the paths of folders dropped from Explorer (ICoreWebView2File); already in the tree through wry
+webview2-com = "0.39"
+# agent-session notifications whose click opens that session (the plugin's toasts have no click callback on Windows);
+# already in the tree through tauri-plugin-notification → notify-rust
+tauri-winrt-notification = "0.8"
 # a card dragged out of the island: an OLE file drag other apps take (chat, editors, Explorer)
 drag = "2.1.1"
 

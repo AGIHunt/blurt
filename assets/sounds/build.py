@@ -14,6 +14,11 @@ into Blurt.app)
   stop.wav     the double peck: the take is done, the words are on their way
   cancel.wav   one softer, darker peck: the take was thrown away
 
+Outputs for the Windows app's recordings (apps/desktop/src-tauri/sounds; the Mac plays macOS's own Pop and Submarine
+there, which can't ship with the app — docs/design/windows-parity/recording.md §3.4, §6.1)
+  rec-tick.wav   a short pop, once a second of the countdown (the Mac's Pop)
+  rec-done.wav   a low round bloop: the take is saved (the Mac's Submarine)
+
 Standard library only, seeded: the same bytes on every run.
 """
 from __future__ import annotations
@@ -28,6 +33,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 OUT = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Sounds"
+WIN = ROOT / "apps/desktop/src-tauri/sounds"
 SR = 48000
 START_PEAK_DB = -19.0
 
@@ -97,6 +103,30 @@ def peck(rng: random.Random, hits=((0.0, 1.0), (0.045, 0.55)), bright=4200.0) ->
     return out
 
 
+def pop() -> list[float]:
+    """A bubble's pop: a sine swept down 1.6 → 0.6 kHz in 25 ms under a fast decay, 60 ms in all."""
+    n, out, ph = int(0.06 * SR), [], 0.0
+    for i in range(n):
+        t = i / SR
+        ph += 2 * math.pi * (600 + 1000 * math.exp(-t / 0.008)) / SR
+        out.append(math.sin(ph) * math.exp(-t / 0.012) * min(1.0, t / 0.001))
+    return out
+
+
+def bloop() -> list[float]:
+    """A low round bloop: 520 Hz settling to 470 Hz with a soft octave above that fades first, 0.6 s."""
+    n, out, ph = int(0.6 * SR), [], 0.0
+    for i in range(n):
+        t = i / SR
+        ph += 2 * math.pi * (470 + 50 * math.exp(-t / 0.05)) / SR
+        out.append((math.sin(ph) * math.exp(-t / 0.16) + 0.3 * math.sin(2 * ph) * math.exp(-t / 0.06)) * min(1.0, t / 0.004))
+    return out
+
+
+def build_win() -> dict[str, bytes]:
+    return {"rec-tick.wav": encode(norm(pop(), -12)), "rec-done.wav": encode(norm(fade(bloop(), 0.0, 0.05), -9))}
+
+
 def build() -> dict[str, bytes]:
     rng = random.Random(7)
     # levels by ear-loudness, not peak: the peep is a pure tone where the ear is most sensitive (2.5–4 kHz), a peck
@@ -111,14 +141,13 @@ def build() -> dict[str, bytes]:
 def main() -> int:
     check = "--check" in sys.argv
     stale = []
-    for name, data in build().items():
-        p = OUT / name
+    for name, data, p in [(n, d, OUT / n) for n, d in build().items()] + [(n, d, WIN / n) for n, d in build_win().items()]:
         if p.exists() and p.read_bytes() == data:
             continue
         if check:
             stale.append(name)
         else:
-            OUT.mkdir(parents=True, exist_ok=True)
+            p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(data)
             print(f"wrote {p.relative_to(ROOT)} ({len(data) // 1024} KB)")
     if stale:

@@ -13,6 +13,7 @@ use serde_json::{json, Value};
 use crate::settings;
 
 pub const JOBS: [&str; 3] = ["polish", "translate", "vision"];
+#[cfg(windows)]
 const TARGET: &str = "Blurt Cloud Polish";
 
 /// preset → (base URL, protocol): polish_cloud.PRESETS
@@ -47,12 +48,14 @@ pub fn setup() -> Value {
 }
 
 fn save(cloud: Value) -> Result<(), String> {
-    let mut cfg = settings::read_config();
-    if cfg.get("record").and_then(Value::as_object).is_none() {
-        cfg["record"] = json!({});
-    }
-    cfg["record"]["cloud"] = cloud;
-    settings::write_config(&cfg)
+    // read-modify-write under the config lock (settings::update: an unparseable config.json is never overwritten)
+    settings::update(|cfg| {
+        if cfg.get("record").and_then(Value::as_object).is_none() {
+            cfg["record"] = json!({});
+        }
+        cfg["record"]["cloud"] = cloud;
+    })
+    .map(|_| ())
 }
 
 /// The service and model a job runs on, or None (local / nothing connected).
@@ -95,6 +98,51 @@ pub fn payload(job: &str) -> Option<Value> {
         json!({"provider": p, "service": id, "base_url": base_url, "model": model, "protocol": proto,
                 "key": key(id)?, "translate_model": model, "vision_model": model}),
     )
+}
+
+/// The cloud speech keys for the speech server (transcribe.py reads them from its environment, as the Mac's app sets
+/// them from the Keychain): a connected Model Studio service is Qwen3-ASR Flash's key (`DASHSCOPE_API_KEY`, its own
+/// address when one was set), an OpenAI one the OpenAI-compatible recogniser's. Only for transcribe.py — never in the
+/// environment of anything else Blurt starts.
+pub fn speech_env() -> Vec<(&'static str, String)> {
+    let mut out = vec![];
+    for svc in setup()["services"].as_array().cloned().unwrap_or_default() {
+        let (Some(id), Some(p)) = (svc["id"].as_str(), svc["preset"].as_str()) else { continue };
+        let Some(k) = key(id) else { continue };
+        let base = svc["base_url"].as_str().filter(|b| !b.trim().is_empty()).map(|b| b.trim().to_string());
+        match p {
+            "dashscope" if !out.iter().any(|(n, _)| *n == "DASHSCOPE_API_KEY") => {
+                out.push(("DASHSCOPE_API_KEY", k));
+                if let Some(b) = base {
+                    out.push(("DASHSCOPE_BASE_URL", b));
+                }
+            }
+            // Volcengine Speech: one stored item "<App ID>:<Access Token>" (the Mac's VolcengineSpeech.credential);
+            // the Mac's preset is "volcengine-speech" ("volcengine" alone is its Ark text service)
+            "volcengine-speech" | "volcengine" if !out.iter().any(|(n, _)| *n == "VOLC_APP_ID") => {
+                if let Some((app_id, token)) = volc_split(&k) {
+                    out.push(("VOLC_APP_ID", app_id));
+                    out.push(("VOLC_ACCESS_TOKEN", token));
+                }
+            }
+            "openai" if !out.iter().any(|(n, _)| *n == "BLURT_ASR_API_KEY") => {
+                out.push(("BLURT_ASR_API_KEY", k));
+                if let Some(b) = base {
+                    out.push(("BLURT_ASR_BASE_URL", b));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The Volcengine pair from its stored item: "<App ID>:<Access Token>" — an App ID never has a ":", a token may, so it
+/// goes last (the Mac's VolcengineSpeech.split). None: not a pair.
+pub fn volc_split(credential: &str) -> Option<(String, String)> {
+    let (a, t) = credential.trim().split_once(':')?;
+    let (a, t) = (a.trim(), t.trim());
+    (!a.is_empty() && !t.is_empty()).then(|| (a.to_string(), t.to_string()))
 }
 
 /// Connect a service (or replace its key): the service goes into record.cloud, the key into the system store.
@@ -255,3 +303,13 @@ fn store_key(_id: &str, _k: &str) -> Result<(), String> {
 
 #[cfg(not(windows))]
 fn delete_key(_id: &str) {}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_volcengine_pair() {
+        assert_eq!(super::volc_split(" 123:abc:def "), Some(("123".into(), "abc:def".into())));
+        assert_eq!(super::volc_split("nopair"), None);
+        assert_eq!(super::volc_split(":x"), None);
+    }
+}

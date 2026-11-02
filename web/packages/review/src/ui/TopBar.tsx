@@ -74,11 +74,11 @@ export function TopBar({ onTheme }: { onTheme: () => void }) {
             <b>{s.i18n.formatNumber(c.p)}</b> {s.t("counts.pending")}
           </span>
           <span>
-            <span className="dot keep" />
+            <span className={cx("dot keep", !c.k && "nil")} />
             <b>{s.i18n.formatNumber(c.k)}</b> {s.t("counts.kept")}
           </span>
           <span>
-            <span className="dot drop" />
+            <span className={cx("dot drop", !c.d && "nil")} />
             <b>{s.i18n.formatNumber(c.d)}</b> {s.t("counts.dropped")}
           </span>
         </div>
@@ -116,8 +116,10 @@ export function TopBar({ onTheme }: { onTheme: () => void }) {
         <Icon name="keyboard" size={17} />
       </button>
       {s.isSession && (
-        <button className="btn primary" id="finishBtn" onClick={s.openFinish}>
-          {s.t("review.finish")} <kbd>{isMacLike() ? "⌘⏎" : "Ctrl ⏎"}</kbd>
+        // the shortcut sits in the tooltip on Windows (a key chip inside a filled button is noise there); the Mac
+        // keeps its ⌘⏎ glyph in the button
+        <button className="btn primary" id="finishBtn" onClick={s.openFinish} title={isMacLike() ? undefined : `${s.t("review.finish")} (Ctrl+Enter)`}>
+          {s.t("review.finish")} {isMacLike() && <kbd>⌘⏎</kbd>}
         </button>
       )}
     </header>

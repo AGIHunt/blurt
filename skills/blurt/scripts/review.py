@@ -43,7 +43,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 sys.path.insert(0, str(Path(__file__).parent))
-from _common import BLURT_HOME, IS_LINUX, IS_MAC, blurt_home, die, file_etag, global_config, load_json, real  # noqa: E402
+from _common import BLURT_HOME, IS_LINUX, IS_MAC, blurt_home, die, file_etag, global_config, load_json, parent_alive, real  # noqa: E402
 import items as items_mod  # noqa: E402
 import store as st  # noqa: E402
 
@@ -341,9 +341,8 @@ def open_mode(arg: str | None, cfg: dict | None = None) -> str:
 
 def _pid_alive(pid) -> bool:
     try:
-        os.kill(int(pid), 0)
-        return True
-    except (OSError, ValueError, TypeError):
+        return bool(pid) and parent_alive(int(pid))   # os.kill(pid, 0) sends Ctrl+C on Windows
+    except (ValueError, TypeError):
         return False
 
 

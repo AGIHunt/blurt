@@ -95,7 +95,7 @@ fn no_window(c: &mut Command) -> &mut Command {
 }
 
 /// Download uv's wheel from PyPI (the mirror first where it is on) and take uv(.exe) out of it.
-pub fn install_uv() -> Result<PathBuf, String> {
+pub fn install_uv(progress: impl Fn(f64, f64)) -> Result<PathBuf, String> {
     let bin = paths::blurt_home().join("bin");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
     let exe = if cfg!(windows) { "uv.exe" } else { "uv" };
@@ -120,8 +120,8 @@ pub fn install_uv() -> Result<PathBuf, String> {
     std::fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
     let mut last = String::new();
     for idx in indexes {
-        let page = match Command::new("curl")
-            .args(["-sfL", "--max-time", "30", &format!("{idx}uv/")])
+        // no_window: in the release build (a GUI exe) a bare console would pop over the welcome for the whole fetch
+        let page = match no_window(Command::new("curl").args(["-sfL", "--connect-timeout", "10", "--max-time", "30", &format!("{idx}uv/")]))
             .output()
         {
             Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
@@ -148,14 +148,38 @@ pub fn install_uv() -> Result<PathBuf, String> {
         };
         let url = url.split('#').next().unwrap_or(&url).to_string();
         let whl = tmp.join("uv.zip");
-        let ok = no_window(
+        // its size first (the last Content-Length after redirects), so the step can show a bar, not a bare spinner
+        let total = no_window(Command::new("curl").args(["-sIL", "--connect-timeout", "10", "--max-time", "15"]).arg(&url))
+            .output()
+            .ok()
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .filter_map(|l| l.split_once(':').filter(|(k, _)| k.eq_ignore_ascii_case("content-length")).and_then(|(_, v)| v.trim().parse::<f64>().ok()))
+                    .last()
+            })
+            .unwrap_or(0.0)
+            / 1e6;
+        let child = no_window(
             Command::new("curl")
-                .args(["-sfL", "--max-time", "600", "-o"])
+                // a mirror that stalls (under 20 KB/s for 20 s) gives way to the other index instead of holding the
+                // step for ten minutes
+                .args(["-sfL", "--connect-timeout", "10", "--speed-limit", "20000", "--speed-time", "20", "--max-time", "600", "-o"])
                 .arg(&whl)
                 .arg(&url),
         )
-        .status()
-        .is_ok_and(|s| s.success());
+        .spawn();
+        let ok = match child {
+            Ok(mut c) => loop {
+                if let Ok(Some(st)) = c.try_wait() {
+                    break st.success();
+                }
+                let done = std::fs::metadata(&whl).map(|m| m.len() as f64 / 1e6).unwrap_or(0.0);
+                progress(done, total);
+                std::thread::sleep(std::time::Duration::from_millis(500));
+            },
+            Err(_) => false,
+        };
         if !ok {
             last = format!("download failed: {url}");
             continue;
@@ -226,7 +250,7 @@ pub fn ensure_ffmpeg() -> Result<(), String> {
         let order: Vec<&String> = if mirror() { urls.iter().collect() } else { urls.iter().rev().collect() };
         let gz = bin.join(format!("{name}.exe.gz.part"));
         let got = order.iter().any(|u| {
-            no_window(Command::new("curl").args(["-sfL", "--max-time", "900", "-o"]).arg(&gz).arg(u.as_str())).status().is_ok_and(|s| s.success())
+            no_window(Command::new("curl").args(["-sfL", "--connect-timeout", "10", "--speed-limit", "20000", "--speed-time", "20", "--max-time", "900", "-o"]).arg(&gz).arg(u.as_str())).status().is_ok_and(|s| s.success())
         });
         if !got {
             let _ = std::fs::remove_file(&gz);
@@ -255,7 +279,17 @@ pub fn start(app: &AppHandle) {
         let st = app.state::<AppState>();
         if st.runner().uv.is_none() {
             let _ = app.emit("setup", json!({"step": "uv", "state": "running"}));
-            match install_uv() {
+            let a2 = app.clone();
+            let shown = std::sync::Mutex::new(-1.0_f64);
+            let progress = move |done: f64, total: f64| {
+                // a line per tenth of a MB that came in (the file grows in bursts)
+                let mut last = shown.lock().unwrap();
+                if (done - *last).abs() >= 0.1 {
+                    *last = done;
+                    let _ = a2.emit("setup", json!({"step": "uv", "state": "running", "done_mb": done, "total_mb": total}));
+                }
+            };
+            match install_uv(progress) {
                 Ok(p) => {
                     st.refresh_runner(&app);
                     let _ = app.emit("setup", json!({"step": "uv", "state": "done", "path": p}));

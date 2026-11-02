@@ -47,11 +47,23 @@ impl Resampler {
 impl Mic {
     /// Start capturing; frames go to `tx` until the Mic is dropped.
     pub fn open(tx: Sender<Vec<f32>>) -> Result<Mic, String> {
+        Self::open_named(tx, None)
+    }
+
+    /// `open` with the input device chosen by name (`record.dictation.mic`); one that isn't there any more (a headset
+    /// unplugged): the system's default input.
+    pub fn open_named(tx: Sender<Vec<f32>>, name: Option<&str>) -> Result<Mic, String> {
         if let Some(p) = std::env::var_os("BLURT_TEST_MIC_WAV").filter(|p| !p.is_empty()) {
             return Self::test_wav(std::path::PathBuf::from(p), tx);
         }
         let host = cpal::default_host();
-        let dev = host.default_input_device().ok_or("no input device")?;
+        let chosen = name.and_then(|n| {
+            host.input_devices().ok()?.find(|d| d.name().ok().as_deref() == Some(n))
+        });
+        let dev = match chosen {
+            Some(d) => d,
+            None => host.default_input_device().ok_or("no input device")?,
+        };
         let name = dev.name().unwrap_or_default();
         let cfg = dev.default_input_config().map_err(|e| e.to_string())?;
         let ch = cfg.channels() as usize;

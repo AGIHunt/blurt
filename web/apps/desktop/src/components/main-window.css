@@ -1,0 +1,2432 @@
+/* The main window's layout and parts, after the macOS app's metrics (docs/design/system.md; ItemCells.swift's Look:
+   rows 32 px, a section's header band 34 px (28 above the first), the heading's title 17 px semibold, ids in tabular
+   digits, the brand tint as the selection). Everything here is prefixed mw- so it can't meet the review canvas's own
+   classes or the older shell rules in styles.css. Colours and radii are @blurt/ui's tokens. */
+
+.app.mw {
+  display: grid;
+  grid-template-rows: 44px minmax(0, 1fr);
+  height: 100%;
+  background: var(--bg);
+  overflow: hidden;
+}
+body.mw-resizing,
+body.mw-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+/* ------------------------------------------------------------ toolbar */
+.mw-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+}
+.app .mw-tool {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  min-height: 30px;
+  padding: 0 8px;
+  color: var(--ink-2);
+  border-radius: var(--r-sm);
+}
+.app .mw-tool svg {
+  color: var(--mute);
+}
+.app .mw-tool.labeled {
+  gap: 6px;
+}
+.app .mw-tool.sq {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.app .mw-tool:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+/* ------------------------------------------------------------ sidebar */
+.mw-side-col {
+  grid-row: 2;
+  grid-column: 1;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+.mw-side-col.hidden {
+  border: 0;
+}
+.mw-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+/* folders dragged in from Explorer: a quiet target — a 1.5 px accent ring inset 6 px with the card radius over a 6 %
+   wash, the rows and the selection untouched — and a dashed row at the end of Projects saying what the drop does */
+.mw-sidebar {
+  position: relative;
+}
+.mw-sidebar.folder-drop::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  border-radius: 10px;
+  box-shadow: inset 0 0 0 1.5px var(--brand-ink);
+  background: color-mix(in srgb, var(--brand-ink) 6%, transparent);
+  pointer-events: none;
+}
+.mw-side-drop-row {
+  color: var(--brand-ink);
+  border: 1px dashed color-mix(in srgb, var(--brand-ink) 55%, transparent);
+  margin-top: 2px;
+}
+.mw-side-drop-row .mw-side-ic {
+  color: var(--brand-ink);
+}
+.mw-side-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.mw-side-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px 0 4px;
+  border-radius: 6px;
+  cursor: default;
+  color: var(--ink);
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: 13px;
+  outline: none;
+}
+.mw-side-row:hover {
+  background: var(--hover);
+}
+.mw-side-row.sel {
+  background: var(--brand-tint);
+}
+.mw-side-row:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--focus);
+}
+.mw-side-row.drop {
+  background: var(--brand-tint);
+  box-shadow: inset 0 0 0 1.5px var(--brand-ink);
+}
+.mw-side-row.dim {
+  color: var(--mute);
+}
+.mw-side-ic {
+  width: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--mute);
+}
+.mw-side-row.dim .mw-side-ic {
+  color: var(--faint);
+}
+.mw-side-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the middle gives way (MidName): the head ellipsises, the tail stays */
+.mw-side-name.mid {
+  display: flex;
+  white-space: nowrap;
+}
+.mw-side-name.mid .mid-head {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-side-name.mid .mid-tail {
+  flex: none;
+}
+.mw-side-cur {
+  color: var(--faint);
+  flex: none;
+}
+.mw-side-row:hover .mw-side-cur,
+.mw-side-row.sel .mw-side-cur {
+  color: var(--mute);
+}
+.mw-count {
+  font: 500 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+  margin-left: 6px;
+  flex: none;
+}
+.mw-count.mint {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--brand);
+  color: var(--on-brand);
+}
+.mw-side-head {
+  margin: 14px 4px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--faint);
+}
+.mw-side-foot {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px 10px 12px;
+}
+.app .mw-side-open {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  color: var(--mute);
+  font-size: 13px;
+  gap: 5px;
+}
+.app .mw-side-open:hover:not(:disabled),
+.app .mw-side-gear:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--hover);
+}
+.app .mw-side-gear {
+  background: none;
+  border: none;
+  box-shadow: none;
+  width: 28px;
+  min-height: 26px;
+  padding: 0;
+  justify-content: center;
+  color: var(--mute);
+}
+.app input:where(:not(.rv-root *)).mw-rename {
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  padding: 0 5px;
+  font: inherit;
+}
+.app input:where(:not(.rv-root *)).mw-rename.bad {
+  border-color: var(--err);
+}
+
+/* the column dividers */
+.mw-divider {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 3;
+}
+
+/* ------------------------------------------------------------ the wide pages (Settings, Sessions, Dictation) */
+.mw-wide {
+  grid-row: 2;
+  grid-column: 2 / -1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+.mw-wide > section.pad {
+  padding: 22px 28px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* ------------------------------------------------------------ the list column */
+.mw-list {
+  grid-row: 2;
+  grid-column: 2;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+  outline: none;
+  background: var(--bg);
+}
+.mw-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 6px 14px 0 18px;
+  flex: none;
+}
+.mw-h-text {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+.mw-h-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mw-h-counts {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+  white-space: nowrap;
+  /* a count is never cut: the name gives way first */
+  flex: none;
+}
+.mw-h-word.off {
+  display: none;
+}
+/* a title that opens with a CJK corner bracket hangs it, so its ink lines up with the search field under it */
+.mw-h-title.hang {
+  text-indent: -0.42em;
+}
+.mw-sort-arrow {
+  stroke-width: 2;
+}
+.mw-h-ctl {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: none;
+}
+.app .mw-bar-btn {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  min-height: 24px;
+  padding: 0 7px;
+  font-size: 12px;
+  color: var(--mute);
+  gap: 4px;
+}
+.app .mw-bar-btn:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--line);
+  color: var(--ink);
+}
+.app .mw-filter {
+  --mw-on-ink: var(--bg);
+}
+/* + New: the Mac's quiet filled pill, in both its forms (with its word, and "+" alone when the column is tight) */
+.app .mw-bar-btn.mw-new {
+  background: var(--chip);
+  color: var(--ink-2);
+  margin-left: 4px;
+  padding: 0 9px;
+  border-radius: 6px;
+}
+.app .mw-bar-btn.mw-new:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: transparent;
+}
+.app .mw-bar-btn.mw-new:has(.off) {
+  padding: 0 7px;
+}
+.app .mw-filter.on {
+  color: var(--brand-ink);
+  font: 600 11px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.mw-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 2px 10px 8px;
+  color: var(--faint);
+  flex: none;
+}
+.mw-search > svg {
+  position: absolute;
+  left: 9px;
+  pointer-events: none;
+}
+.app .mw-search input {
+  width: 100%;
+  padding-left: 28px;
+  min-height: 28px;
+  background: var(--panel);
+}
+/* the field's clear button: a quiet ⊗ in the faint ink that darkens when pointed at (the WebView's own was a bold
+   navy × in light and a white one in dark — the loudest mark in the column) */
+.mw-search input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-right: 2px;
+  background: var(--faint);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='black'/%3E%3Cpath d='M5.5 5.5l5 5M10.5 5.5l-5 5' stroke='white' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill-rule='evenodd' d='M8 1a7 7 0 100 14A7 7 0 008 1zm2.03 4.97a.75.75 0 010 1.06L9.06 8l.97.97a.75.75 0 11-1.06 1.06L8 9.06l-.97.97a.75.75 0 01-1.06-1.06L6.94 8l-.97-.97a.75.75 0 011.06-1.06l.97.97.97-.97a.75.75 0 011.06 0z'/%3E%3C/svg%3E") center / contain no-repeat;
+  cursor: default;
+}
+.mw-search input::-webkit-search-cancel-button:hover {
+  background: var(--mute);
+}
+
+/* the filter line, the notices, the jobs */
+.mw-filterbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  margin-bottom: 4px;
+  padding: 0 10px 0 14px;
+  flex: none;
+}
+/* the whole line in brand ink: the one place the accent says "a filter is hiding items" (the Mac's FilterBar) */
+.app .mw-filterbar-txt {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  min-height: 24px;
+  color: var(--brand-ink);
+  font-size: 12px;
+  font-weight: 500;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  justify-content: flex-start;
+}
+.mw-filterbar-txt svg {
+  color: var(--brand-ink);
+  --mw-on-ink: var(--bg);
+}
+.mw-filterbar-txt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app .mw-filterbar-txt:hover:not(:disabled) {
+  background: none;
+}
+.app .mw-filterbar-txt:hover span {
+  text-decoration: underline;
+}
+/* the small quiet button of the list's strips (Clear, Move, Move All): a filled chip, no rim, 24 px */
+.app .mw-chip-btn {
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+  flex: none;
+  background: var(--chip);
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 6px;
+}
+.app .mw-chip-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+/* Unassigned's suggestions (the Mac's w16): flat rows on the rows' grid, one hairline under the block */
+.mw-notices {
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px 4px 10px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.mw-notice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 0 0 6px;
+  font-size: 13px;
+}
+.mw-notice-ic {
+  width: 22px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.mw-notice-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+/* a project whose folder is gone, over its rows: a strip of its own on a quiet attention wash — the glyph on the title's
+   line, the body under it (two lines at most), Locate Folder… on the title's line */
+.mw-missing {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 10px;
+  margin: 0 10px 8px 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--attn) 10%, transparent);
+  color: var(--mute);
+}
+.mw-missing > svg {
+  margin-top: 1px;
+  color: var(--attn-ink);
+}
+.mw-missing .txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mw-missing .txt b {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+.mw-missing-body {
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-wrap: pretty;
+}
+.app .mw-missing button {
+  min-height: 26px;
+  font-size: 12px;
+  margin-top: -4px;
+}
+/* the Inbox's "N captures are waiting for a project" (the Mac's CapturesBanner): they wait on you, so a rounded strip on
+   the attention wash, the cards glyph in the attention ink, the sentence in regular weight, a quiet button at the right */
+.mw-captures {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  margin: 0 10px 6px 10px;
+  padding: 4px 6px 4px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--attn) 12%, transparent);
+  font-size: 13px;
+  color: var(--ink);
+}
+[data-theme='dark'] .mw-captures {
+  background: color-mix(in srgb, var(--attn) 18%, transparent);
+}
+.mw-captures > svg {
+  color: var(--attn-ink);
+  flex: none;
+}
+.mw-captures .txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app .mw-captures button {
+  min-height: 26px;
+  font-size: 12px;
+  flex: none;
+}
+.mw-jobs {
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px 4px 10px;
+}
+.mw-job {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  cursor: default;
+  color: var(--ink-2);
+}
+.mw-job:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.mw-job .mw-tt {
+  color: var(--ink);
+}
+.mw-job.sel {
+  background: var(--brand-tint);
+}
+.mw-job .mw-c-kind {
+  color: var(--mute);
+}
+.mw-job.failed .mw-c-ring {
+  color: var(--attn-ink);
+}
+/* a session's agent and state, where the times start (the Mac's JobRow: "Claude Code · 等待输入"); it keeps its
+   natural width and the title takes the ellipsis */
+.mw-job .mw-c-status {
+  width: auto;
+  min-width: 64px;
+  max-width: none;
+  flex: none;
+  white-space: nowrap;
+}
+.mw-job .mw-c-status.t-working,
+.mw-job .mw-c-status.t-idle,
+.mw-job .mw-c-status.t-neutral {
+  color: var(--mute);
+}
+
+/* ------------------------------------------------------------ rows */
+/* the gutter is always kept (stable), so the rows' right edge, the times and the search field line up in every place
+   whether the list scrolls or not; the bar itself is the thin thumb-only one (no arrow caps) */
+.mw-rows {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 0 10px 10px;
+  scrollbar-gutter: stable;
+  container-type: inline-size;
+}
+.mw-section {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  padding: 16px 8px 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mw-section.first {
+  height: 30px;
+  padding-top: 6px;
+}
+.mw-section-n {
+  font-weight: 400;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+.mw-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 8px 0 6px;
+  border-radius: 6px;
+  cursor: default;
+  user-select: none;
+  font-size: 13px;
+}
+.mw-row:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.mw-row.sel {
+  background: var(--brand-tint);
+}
+/* the selection is the fill alone, as on the Mac (a rim on it read as a focused text box); the keyboard's cursor gets
+   a quiet rim only where it stands on a row that isn't selected (after Ctrl-click) */
+.mw-list:focus-within .mw-row.cur:not(.sel) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.mw-c-kind {
+  width: 22px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.mw-row.gone .mw-c-kind {
+  opacity: 0.4;
+}
+.mw-c-id {
+  width: 58px;
+  flex: none;
+  font: 12px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-row.quiet .mw-c-id {
+  color: var(--faint);
+}
+.mw-c-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mw-tt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.mw-row.quiet .mw-tt {
+  color: var(--mute);
+}
+.mw-hit {
+  color: var(--mute);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+.mw-sug {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--mute);
+  white-space: nowrap;
+}
+.app .mw-linkbtn {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  min-height: 0;
+  font: 600 12px var(--font);
+  color: var(--brand-ink);
+}
+.app .mw-linkbtn:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+}
+.mw-c-ring {
+  width: 20px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+/* the ring at rest only where the list doesn't say the state; pointed at or selected, it shows */
+.mw-row:not(.ring-on):not(:hover):not(.sel) .mw-c-ring > * {
+  visibility: hidden;
+}
+.mw-c-time {
+  width: 64px;
+  flex: none;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-c-time.attn {
+  color: var(--attn-ink);
+}
+.mw-c-time.ended {
+  color: var(--ink-2);
+}
+
+/* ------------------------------------------------------------ detail */
+.mw-detail {
+  grid-row: 2;
+  grid-column: 3;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+.mw-detail > .review-pane {
+  flex: 1;
+  min-height: 0;
+}
+.mw-detail .hero-empty {
+  flex: 1;
+}
+
+/* the empty states' quiet symbols and paths (EmptyState.tsx) */
+.hero-empty-ic {
+  color: var(--faint);
+  margin-bottom: 14px;
+  display: block;
+}
+.hero-empty.tone-friendly .acts,
+.hero-empty .acts {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.hero-empty .hero-empty-path {
+  font: 11px var(--mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.mw-list .hero-empty {
+  /* the optical centre: the space above two thirds of the space below */
+  padding-bottom: 12vh;
+}
+
+/* the selection summary */
+.mw-selection {
+  padding: 22px 24px;
+  overflow-y: auto;
+}
+.mw-selection h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mw-sel-what {
+  margin: 4px 0 14px;
+  color: var(--mute);
+  font-size: 12px;
+}
+.mw-sel-what .kind-ic {
+  vertical-align: -2px;
+}
+.mw-sel-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.app .mw-icon-btn {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.mw-sel-blocked {
+  margin: 8px 0 0;
+  color: var(--mute);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mw-sel-list {
+  margin-top: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+  padding: 4px;
+}
+.mw-sel-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 13px;
+}
+.mw-sel-row .mw-tt {
+  flex: 1;
+}
+.mw-sel-key {
+  font: 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+}
+.app .mw-sel-x {
+  visibility: hidden;
+  background: none;
+  border: none;
+  box-shadow: none;
+  width: 18px;
+  min-height: 18px;
+  padding: 0;
+  justify-content: center;
+  color: var(--mute);
+}
+.mw-sel-row:hover .mw-sel-x {
+  visibility: visible;
+}
+.mw-sel-more {
+  padding: 4px 8px;
+}
+
+/* a job's detail */
+.mw-jobdetail {
+  padding: 22px 24px;
+  overflow-y: auto;
+}
+.mw-jobdetail h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mw-sheet-sec {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.mw-group {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 3.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+  overflow: hidden;
+}
+.mw-group-row,
+.app .mw-group-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  width: 100%;
+  padding: 0 10px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  text-align: start;
+  font-size: 13px;
+}
+.mw-group-row + .mw-group-row {
+  border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.mw-step-ic {
+  width: 16px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.st-done .mw-step-ic {
+  color: var(--ok);
+}
+.st-failed .mw-step-ic {
+  color: var(--attn-ink);
+}
+.mw-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--faint);
+}
+.mw-err {
+  color: var(--err);
+  font-size: 12px;
+}
+
+/* ------------------------------------------------------------ menus (Menu.tsx) */
+.mw-menu {
+  position: fixed;
+  /* above every sheet and its scrim (the hand-off panels sit at 60): a sheet's own ⋯ menu opened under it */
+  z-index: 80;
+  min-width: 160px;
+  max-width: 360px;
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-pop);
+  outline: none;
+  font-size: 13px;
+  animation: mw-pop 90ms ease-out;
+}
+@keyframes mw-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+.mw-menu-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 5px;
+  cursor: default;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.mw-menu-row.on {
+  background: var(--brand-tint);
+}
+/* Windows 11's menu density: 30 px rows, separators inset to the text */
+[data-platform='win'] .mw-menu-row {
+  min-height: 30px;
+}
+[data-platform='win'] .mw-menu-sep {
+  margin: 4px 10px;
+}
+.app .menu-open {
+  background: var(--chip);
+  color: var(--ink);
+}
+.mw-menu-row.off {
+  color: var(--faint);
+}
+.mw-menu-row.off .mw-menu-ic {
+  opacity: 0.45;
+}
+.mw-menu-check {
+  width: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--ink-2);
+  flex: none;
+}
+.mw-menu-ic {
+  width: 18px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: var(--mute);
+}
+.mw-menu-txt {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.mw-menu-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mw-menu-hint {
+  font-size: 11px;
+  color: var(--mute);
+}
+.mw-menu-keys {
+  margin-left: 24px;
+  font-size: 12px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+/* a count in a menu (the Filter menu's kinds): the Mac's small capsule, not a bare digit at the edge */
+.mw-menu-badge {
+  font-size: 11px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+  margin-left: 12px;
+  min-width: 18px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--chip);
+  display: inline-grid;
+  place-items: center;
+}
+.mw-menu-more {
+  color: var(--mute);
+  margin-left: 8px;
+}
+.mw-menu-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
+}
+.mw-menu-head {
+  padding: 6px 8px 2px 44px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--faint);
+}
+.mw-menu-head:not(:first-child) {
+  margin-top: 4px;
+}
+/* only the columns a menu uses (Menu.tsx): no check gutter where nothing is ever checked, no image column where no row
+   has an image — the labels start where the Mac's do */
+.mw-menu.no-check .mw-menu-check,
+.mw-menu.no-ic .mw-menu-ic {
+  display: none;
+}
+.mw-menu.no-check .mw-menu-row {
+  padding-left: 8px;
+}
+.mw-menu.no-check .mw-menu-head {
+  padding-left: 32px;
+}
+.mw-menu.no-ic .mw-menu-head {
+  padding-left: 24px;
+}
+.mw-menu.no-check.no-ic .mw-menu-head {
+  padding-left: 10px;
+}
+.mw-menu-row {
+  padding-right: 12px;
+}
+/* a state verb's image is the state it leads to, drawn as an outline in the secondary ink (system.md "State menu"):
+   no filled disc, no colour — the brand ring is Hand Off's alone */
+.mw-menu-row:has(.mw-menu-keys) .mw-menu-ic .sring:not(.s-handed_off) * {
+  stroke: var(--mute) !important;
+}
+.mw-menu-row:has(.mw-menu-keys) .mw-menu-ic .sring:not(.s-handed_off) [fill]:not([fill='none']) {
+  fill: none !important;
+}
+/* while a row's menu is open, the row it came from keeps a fill (which item is this for?) */
+.mw-row.menu-target,
+.mw-side-row.menu-target {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+}
+
+/* the Move popover */
+/* M: the Move popover (the Mac's ProjectPopover): a borderless search row with its magnifier and a hairline under it,
+   then the projects — each its own coloured folder (the missing ones the question-mark folder), the key in a quiet
+   tabular column, where the items are now dimmed with a check and "Current" — then Unassigned and Open Folder… */
+.mw-move {
+  position: fixed;
+  z-index: 70;
+  width: 320px;
+  padding: 0 0 6px;
+  background: var(--raise);
+  border: 1px solid var(--line-2, var(--line));
+  border-radius: 10px;
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+}
+.mw-move-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+  color: var(--faint);
+}
+.app .mw-move input,
+.mw-move input {
+  flex: 1;
+  min-width: 0;
+  border: none !important;
+  box-shadow: none !important;
+  background: none !important;
+  outline: none;
+  padding: 0;
+  min-height: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.mw-move-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 0 6px;
+}
+.mw-move-row.here {
+  color: var(--mute);
+}
+.mw-move-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: default;
+}
+.mw-move-row.on {
+  background: var(--brand-tint);
+}
+.mw-move-row.off {
+  color: var(--mute);
+}
+.mw-move-ic {
+  width: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.mw-move-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mw-move-key,
+.mw-move-here {
+  font: 11px var(--font);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+.mw-move-here {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+/* sheets: New Item, Project Settings, Keyboard Shortcuts. `.sheet.` : the shell's .sheet (styles.css: 560 px,
+   overflow hidden) loads after this file and would win at equal weight; a sheet taller than the window scrolls */
+.sheet.mw-sheet {
+  width: 460px;
+  padding: 20px 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mw-sheet h2,
+.mw-keys h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+.mw-sheet > p {
+  margin: -6px 0 4px;
+}
+.mw-seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: calc(var(--r-sm) + 2px);
+  background: var(--panel-2);
+}
+.app .mw-seg button {
+  flex: 1;
+  background: none;
+  border: none;
+  box-shadow: none;
+  min-height: 26px;
+  font-size: 12.5px;
+  color: var(--mute);
+  justify-content: center;
+}
+.app .mw-seg button.on {
+  background: var(--raise);
+  color: var(--ink);
+  box-shadow: var(--ctl-shadow), 0 0 0 0.5px var(--line);
+}
+.app .mw-field {
+  width: 100%;
+}
+.app textarea:where(:not(.rv-root *)).mw-details {
+  min-height: 96px;
+  padding: 6px 9px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.mw-pics {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.mw-pic {
+  position: relative;
+}
+.mw-pic img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 5px;
+  border: 1px solid var(--line);
+}
+.app .mw-pic-x {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+  border-radius: 50%;
+  justify-content: center;
+}
+.mw-sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.mw-sheet-foot .dim {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.mw-form-row {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.mw-form-row.mw-top {
+  align-items: start;
+}
+.mw-form-row > span:first-child {
+  color: var(--mute);
+  text-align: right;
+}
+.mw-form-row > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* the keyboard map: a flex column capped at the window, so the title, the field and the foot always show and only
+   the list scrolls. `overflow: clip` (not hidden): the autofocused field must never scroll the sheet sideways, which
+   is what pushed every line flush against the left edge (round-1 gate) */
+.sheet.mw-keys {
+  width: 440px;
+  padding: 18px 0 12px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 11vh - 24px);
+  overflow: clip;
+}
+.sheet.mw-keys > * {
+  flex: none;
+}
+.app .sheet.mw-keys h2 {
+  padding: 0 20px 12px;
+}
+/* the search field as the list's own search: rounded, a magnifier, a neutral border (no accent underline) */
+.mw-keys-search {
+  position: relative;
+  margin: 0 20px 12px;
+}
+.mw-keys-search > svg {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--mute);
+  pointer-events: none;
+}
+.app .sheet.mw-keys .mw-keys-search input {
+  width: 100%;
+  padding-left: 30px;
+  border-radius: 6px;
+}
+[data-platform='win'] .app .sheet.mw-keys .mw-keys-search input:focus {
+  border-color: var(--focus);
+  box-shadow: none;
+}
+.app .sheet.mw-keys .mw-keys-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+/* a hairline between sections, inset to the rows' text (the rows keep their own 20 px padding) */
+.mw-keys-list section + section {
+  position: relative;
+  margin-top: 10px;
+}
+.mw-keys-list section + section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 20px;
+  right: 20px;
+  border-top: 1px solid var(--line);
+}
+.app .sheet.mw-keys .mw-keys-list h3 {
+  margin: 14px 20px 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.app .sheet.mw-keys .mw-keys-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 32px;
+  padding: 4px 20px;
+  font-size: 13px;
+}
+.mw-keys-row .txt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mw-keycaps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.mw-keycaps > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* keycaps: one quiet filled chip per key (the Mac's sheet), no outline or heavy bottom edge; the palette uses the same */
+.app .mw-keycaps kbd,
+.app .mw-pal-foot kbd {
+  font: 500 12px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  background: var(--chip);
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  min-width: 22px;
+  text-align: center;
+}
+.mw-or {
+  margin: 0 2px;
+}
+.mw-keys-none {
+  padding: 30px 20px;
+  text-align: center;
+}
+.app .sheet.mw-keys .mw-keys-foot {
+  margin: 10px 20px 0;
+}
+
+/* the palette's extras (the shell's .palette carries the field and the list) */
+.sheet.mw-palette {
+  width: 620px;
+}
+.mw-pal-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 14px 0;
+  padding: 3px 8px;
+  width: fit-content;
+  max-width: calc(100% - 28px);
+  border-radius: 6px;
+  background: var(--chip);
+  font-size: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* the field leads with a magnifier (the Mac's palette), a neutral hairline under it — no accent underline */
+.mw-pal-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+}
+.mw-pal-field > svg {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  left: 16px;
+  color: var(--mute);
+  pointer-events: none;
+}
+.app .sheet.mw-palette .mw-pal-field input,
+[data-platform='win'] .app .sheet.mw-palette .mw-pal-field input:focus {
+  border: none;
+  box-shadow: none;
+  padding: 14px 16px 14px 44px;
+  font-size: 17px;
+}
+.app .mw-pal-chip-x {
+  flex: none;
+  width: 16px;
+  min-height: 16px;
+  padding: 0;
+  margin-left: 2px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  box-shadow: none;
+  color: var(--mute);
+  justify-content: center;
+}
+.app .mw-pal-chip-x:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+.mw-pal-id {
+  font-size: 12px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+  width: 52px;
+  flex: none;
+}
+.mw-pal-chip .mw-pal-id {
+  width: auto;
+}
+.mw-pal-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mw-pal-ic {
+  width: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--mute);
+}
+.palette li.mw-pal-head {
+  padding: 8px 10px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--mute);
+  cursor: default;
+}
+.mw-pal-none {
+  padding: 18px 10px;
+}
+.mw-pal-foot {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+}
+.mw-pal-hint {
+  flex: 1;
+  margin-right: 10px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* the toast with its Undo (the island toast's grammar, system.md "Toasts"): one line on the raised surface with a
+   hairline and the pop shadow, at least 260 px so a run of them doesn't jump; its one action a quiet pill in ink — the
+   brand stays with the window's primary */
+.mw-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 260px;
+  max-width: min(560px, 80vw);
+  min-height: 40px;
+  padding: 6px 8px 6px 16px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.mw-toast > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+[data-theme='dark'] .mw-toast {
+  background: #3a3a3a;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.app .mw-toast-btn {
+  flex: none;
+  min-height: 26px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+  background: var(--chip);
+  font-weight: 500;
+  color: var(--ink);
+}
+.app .mw-toast-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+/* the brand spinner: an arc on a faint track */
+.mw-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--ink) 10%, transparent);
+  border-top-color: var(--brand-ink);
+  animation: mw-spin 900ms linear infinite;
+  display: inline-block;
+  margin-top: 16px;
+}
+.mw-spinner.sm {
+  width: 12px;
+  height: 12px;
+  border-width: 1.5px;
+  margin: 0;
+}
+.mw-spinner.attn {
+  border-top-color: var(--attn);
+}
+@keyframes mw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* the list and the menus take the keyboard focus as a whole: their selection shows it, not a ring around them */
+.app .mw-list:focus,
+.app .mw-list:focus-visible,
+.mw-menu:focus,
+.mw-menu:focus-visible {
+  outline: none !important;
+}
+/* a row's "Looks like X · Move" (Unassigned only) is whole or not there: it never shrinks, the title takes the
+   ellipsis; where the column is too narrow for both (under ~460 px) the hint shows only on the row pointed at or
+   selected, so titles keep the width at rest */
+.mw-c-title.has-sug .mw-tt {
+  flex: 1 1 auto;
+}
+@container (max-width: 460px) {
+  .mw-row:not(:hover):not(.sel) .mw-sug {
+    display: none;
+  }
+  .mw-row .mw-sug-txt {
+    display: none;
+  }
+  .mw-row .mw-sug-name {
+    display: inline;
+  }
+}
+.mw-sug-name {
+  display: none;
+}
+
+/* New Item while a picture is dragged over it */
+.mw-sheet.dropping {
+  box-shadow: var(--shadow-pop), inset 0 0 0 2px var(--brand-ink);
+}
+.app input:where(:not(.rv-root *)).mw-key {
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+}
+.app input:where(:not(.rv-root *)).mw-key.bad {
+  border-color: var(--err);
+}
+/* the sheets' rows keep their height (the sheet scrolls when the window is short) */
+.sheet.mw-sheet {
+  max-height: calc(100vh - 13vh - 24px);
+  overflow-y: auto;
+}
+.mw-sheet > * {
+  flex: none;
+}
+.app .mw-form-row {
+  background: none;
+}
+
+/* the line above an item (ItemBanner.tsx, the Mac's ItemBanner): 44 px, a quiet wash of its tone — the brand ink or
+   the attention colour at 10 %, the ink at 5 % when neutral — no rim; the icon at 16, the sentence at 12 px (two
+   lines at most), small buttons at the right, the first the brand primary */
+.mw-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 4px 14px 4px 16px;
+  box-sizing: border-box;
+  font-size: 12px;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+}
+.mw-banner.tone-brand {
+  background: color-mix(in srgb, var(--brand-ink) 10%, transparent);
+}
+.mw-banner.tone-attn {
+  background: color-mix(in srgb, var(--attn) 10%, transparent);
+}
+.mw-banner-ic {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+.mw-banner-ic .icon {
+  color: var(--err, var(--drop));
+}
+.mw-banner-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mw-banner-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+}
+.app .mw-banner-acts button {
+  min-height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.app .mw-banner-acts button.primary {
+  font-size: 11.5px;
+  padding: 0 11px;
+}
+.app .mw-banner-acts .icon-btn {
+  width: 24px;
+  padding: 0;
+}
+
+/* the running jobs' header (the Mac's JobsView): drawn as the list's own group headers — "Running 2 ›", the word in
+   13 px semibold, the count muted, a chevron when they fold — not a box (`.app` here: the shell's push-button rule
+   `.app button:where(…)` outweighed a bare class and drew it as a second search field) */
+.app .mw-jobs-head {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  border-radius: 6px;
+  cursor: default;
+}
+.app .mw-jobs-head:hover {
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.app .mw-jobs-head:focus-visible {
+  outline: 2px solid var(--focus);
+}
+.app .mw-jobs-head svg {
+  color: var(--mute);
+}
+.mw-jobs-more {
+  padding: 2px 6px 4px 34px;
+  font-size: 11px;
+  color: var(--mute);
+}
+
+/* the main window's scrollbars: the thin thumb-only bar (base.css sets `scrollbar-width: thin` on Windows, which
+   Chromium draws with arrow caps and lets win over these rules — so it is unset here) */
+.mw-rows,
+.mw-detail,
+.mw-detail *,
+.mw-side-list,
+.mw-menu,
+.mw-move-list,
+.mw-keys-list,
+.mw-palette ul {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+.mw-rows::-webkit-scrollbar,
+.mw-detail ::-webkit-scrollbar,
+.mw-side-list::-webkit-scrollbar,
+.mw-menu::-webkit-scrollbar,
+.mw-move-list::-webkit-scrollbar,
+.mw-keys-list::-webkit-scrollbar,
+.mw-palette ul::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.mw-rows::-webkit-scrollbar-button,
+.mw-detail ::-webkit-scrollbar-button,
+.mw-side-list::-webkit-scrollbar-button,
+.mw-menu::-webkit-scrollbar-button,
+.mw-move-list::-webkit-scrollbar-button,
+.mw-keys-list::-webkit-scrollbar-button,
+.mw-palette ul::-webkit-scrollbar-button {
+  display: none;
+}
+.mw-rows::-webkit-scrollbar-track,
+.mw-detail ::-webkit-scrollbar-track,
+.mw-side-list::-webkit-scrollbar-track,
+.mw-menu::-webkit-scrollbar-track,
+.mw-move-list::-webkit-scrollbar-track,
+.mw-keys-list::-webkit-scrollbar-track,
+.mw-palette ul::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mw-rows::-webkit-scrollbar-thumb,
+.mw-detail ::-webkit-scrollbar-thumb,
+.mw-side-list::-webkit-scrollbar-thumb,
+.mw-menu::-webkit-scrollbar-thumb,
+.mw-move-list::-webkit-scrollbar-thumb,
+.mw-keys-list::-webkit-scrollbar-thumb,
+.mw-palette ul::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+/* the thumb shows while the pane is pointed at (the Mac's overlay bars) */
+.mw-rows:hover::-webkit-scrollbar-thumb,
+.mw-detail :hover::-webkit-scrollbar-thumb,
+.mw-side-list:hover::-webkit-scrollbar-thumb,
+.mw-menu::-webkit-scrollbar-thumb,
+.mw-move-list::-webkit-scrollbar-thumb,
+.mw-keys-list::-webkit-scrollbar-thumb,
+.mw-palette ul::-webkit-scrollbar-thumb {
+  background-color: var(--line-2);
+}
+
+/* the window's own tooltip (Tooltip.tsx) */
+.mw-tip {
+  position: fixed;
+  z-index: 90;
+  max-width: 360px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: var(--raise);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  animation: mw-pop 90ms ease-out;
+}
+
+/* E: the title's field sits exactly over the title — same x, size and line — one rim (the field's), the row keeps its
+   normal selected fill; the whole title column is the field's */
+.app input:where(:not(.rv-root *)).mw-rename {
+  min-height: 24px;
+  margin-left: -6px;
+  padding: 0 5px;
+  font-size: 13px;
+  border-radius: 5px;
+}
+.mw-c-title:has(.mw-rename) {
+  overflow: visible;
+}
+.mw-row:has(.mw-rename) .mw-c-ring > * {
+  visibility: hidden;
+}
+
+/* ------------------------------------------------------------ the empty states (EmptyState.tsx, the Mac's EmptyStateView)
+   The Mac's proportions on Windows: a 16 px title over a 13 px hint (Segoe UI and YaHei need the extra pixel), the hint
+   balanced over two even lines and kept to a measure — CJK by its own (no break inside a word: keep-all + strict) — and
+   the quiet symbol of a miss or a trouble at its real size (`.ico`'s 14 px used to win over the 34 asked for). */
+.app.mw .hero-empty h2 {
+  font-size: 16px;
+}
+.app.mw .hero-empty p {
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 34em;
+  text-wrap: balance;
+}
+.app.mw .hero-empty p:lang(zh),
+.app.mw[lang^='zh'] .hero-empty p {
+  max-width: 24em;
+  word-break: keep-all;
+  line-break: strict;
+}
+.app.mw .hero-empty .mark {
+  margin-bottom: 14px;
+}
+.hero-empty-ic .ico,
+.hero-empty-ic svg {
+  width: 40px;
+  height: 40px;
+  stroke-width: 1.5;
+}
+.hero-empty.tone-miss .hero-empty-ic,
+.hero-empty.tone-trouble .hero-empty-ic {
+  color: var(--faint);
+  margin-bottom: 12px;
+}
+/* a path: the UI font in the faint ink, one line, its whole in the tip */
+.hero-empty .hero-empty-path {
+  font: 12px var(--font);
+  color: var(--faint);
+}
+/* a trouble's actions stack: the way out as the button, the rest as a link under it */
+.hero-empty.tone-trouble .acts {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.app .hero-empty .acts button.link {
+  color: var(--brand-ink);
+  min-height: 24px;
+}
+.app .hero-empty .acts button.link:hover {
+  color: var(--brand-ink);
+  text-decoration: underline;
+}
+/* the secondary buttons on the plain page: the neutral fill, not white on the light grey (they read as labels) */
+.app.mw .hero-empty .acts button:not(.primary):not(.link) {
+  background: var(--chip);
+  border-color: transparent;
+  box-shadow: none;
+  min-width: 72px;
+  justify-content: center;
+}
+.app.mw .hero-empty .acts button:not(.primary):not(.link):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.app.mw .hero-empty .acts button.primary {
+  min-width: 72px;
+  justify-content: center;
+}
+/* the detail's empty states sit a little above the middle (the list's optical centre) */
+.mw-detail .hero-empty {
+  padding-bottom: 12vh;
+}
+
+/* a project's name in rename: the row drops its tint, only the field's rim shows the focus */
+.mw-side-row:has(.mw-rename) {
+  background: none;
+}
+.mw-side-row:has(.mw-rename) .mw-side-cur {
+  display: none;
+}
+
+/* New Item (the Mac's w05): the kind control sized to its words at the left, the chosen one in the brand fill; one
+   field look for Title and Details; no resize grip; the pictures as 56 px tiles on one row with Add Picture… and the
+   hint, the remove button a small disc inset on the tile, shown when it is pointed at or focused */
+.app .mw-sheet .mw-seg {
+  align-self: flex-start;
+}
+.app .mw-sheet .mw-seg button {
+  flex: none;
+  padding: 0 14px;
+}
+.app .mw-sheet .mw-seg button.on {
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+  font-weight: 600;
+}
+.app textarea:where(:not(.rv-root *)).mw-details {
+  resize: none;
+}
+.mw-pics {
+  min-height: 56px;
+  flex-wrap: nowrap;
+}
+.mw-pic {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.mw-pic img {
+  width: 56px;
+  height: 56px;
+  border: none;
+  border-radius: 0;
+  grid-area: 1 / 1;
+}
+.mw-pic-fallback {
+  grid-area: 1 / 1;
+  color: var(--faint);
+  display: none;
+}
+.mw-pic[data-broken] img {
+  display: none;
+}
+.mw-pic[data-broken] .mw-pic-fallback {
+  display: block;
+}
+.app .mw-pic-x {
+  top: 3px;
+  right: 3px;
+  width: 18px;
+  min-height: 18px;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-pop);
+  opacity: 0;
+}
+.mw-pic:hover .mw-pic-x,
+.mw-pic:focus-within .mw-pic-x {
+  opacity: 1;
+}
+.app .mw-pics > button.small {
+  min-height: 26px;
+  font-size: 12px;
+  flex: none;
+}
+.mw-pics-hint {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app .mw-sheet .mw-sheet-foot button.primary:disabled {
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+  opacity: 0.4;
+}
+
+/* Project Settings (the Mac's grouped form): each section a box of rows with hairlines between them, the label at the
+   left in a fixed column, the control at the right; the key a chip with its lock when items use it, an input of the
+   same footprint when not, its note on the same line; the branch setting a title, a note under it and a switch */
+.mw-form {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+  padding: 0 12px;
+}
+.app .mw-form .mw-form-row {
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 12px;
+  min-height: 44px;
+  padding: 8px 0;
+  align-items: center;
+}
+.app .mw-form .mw-form-row.mw-top {
+  align-items: start;
+}
+.app .mw-form .mw-form-row.mw-top > span:first-child {
+  padding-top: 6px;
+}
+.app .mw-form .mw-form-row + .mw-form-row {
+  border-top: 1px solid color-mix(in srgb, var(--ink) 7%, transparent);
+}
+.app .mw-form .mw-form-row > span:first-child {
+  text-align: left;
+  color: var(--ink-2);
+}
+.mw-key-cell {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+}
+.mw-key-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: var(--chip);
+  font: 600 12px var(--font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  color: var(--ink-2);
+  flex: none;
+}
+.mw-key-chip svg {
+  color: var(--mute);
+}
+.app input:where(:not(.rv-root *)).mw-key {
+  width: 72px;
+  flex: none;
+  font-weight: 600;
+}
+.mw-note {
+  text-wrap: pretty;
+}
+.mw-end {
+  align-items: flex-end;
+}
+.app .mw-select {
+  width: auto !important;
+  min-width: 180px;
+  max-width: 100%;
+}
+.app .mw-form .mw-switch-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.mw-switch-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--ink);
+}
+.mw-sheet-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+.mw-sheet-path > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app .mw-sheet .mw-sheet-sec {
+  margin: 8px 0 -2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* the selection summary (the Mac's SelectionView): one column of at most 520 px at the left, so the keys sit beside
+   their titles; the buttons one family (the same height and radius, the secondary a filled neutral, ⋯ a borderless
+   icon button that stays pressed while its menu is open); a disabled action keeps its shape at 45 %; the reason line
+   belongs to the buttons above it */
+.mw-selection > * {
+  max-width: 520px;
+}
+.mw-sel-what {
+  margin: 6px 0 16px;
+  font-size: 13px;
+}
+.app .mw-sel-acts button:not(.primary) {
+  background: var(--chip);
+  border-color: transparent;
+  box-shadow: none;
+}
+.app .mw-sel-acts button:not(.primary):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.app .mw-sel-acts button:disabled {
+  opacity: 0.45;
+}
+.app .mw-sel-acts button.primary:disabled {
+  background: var(--brand-button);
+  color: var(--on-brand-button);
+}
+.app .mw-sel-acts .mw-icon-btn {
+  background: none !important;
+}
+.app .mw-sel-acts .mw-icon-btn:hover,
+.app .mw-sel-acts .mw-icon-btn[aria-expanded='true'] {
+  background: var(--chip) !important;
+}
+.mw-sel-blocked {
+  margin: 6px 0 0;
+}
+.mw-sel-list {
+  margin-top: 18px;
+}
+.mw-sel-key {
+  font: 11px var(--mono);
+  width: 52px;
+  text-align: right;
+  flex: none;
+}
+/* in a multi-selection, the keyboard's anchor row is no different from the other selected rows */
+.mw-list:focus-within .mw-row.sel.cur {
+  box-shadow: none;
+}
+
+.mw-toast-mark {
+  flex: none !important;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  margin-left: -4px;
+}
+.mw-toast-mark.ok {
+  color: var(--ok);
+}
+.mw-toast-mark.warn {
+  color: var(--attn-ink);
+}
+
+/* the line above an item: buttons the shared 28 px size (the verify card's too), the secondary with a visible edge on
+   the wash, a right inset that mirrors the left, a hairline under it */
+.mw-banner {
+  padding: 6px 24px 6px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.app .mw-banner-acts button {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 12.5px;
+}
+.app .mw-banner-acts button.primary {
+  font-size: 12.5px;
+  padding: 0 12px;
+}
+.app .mw-banner-acts button:not(.primary):not(.icon-btn) {
+  background: var(--raise);
+  border-color: var(--line-2, var(--line));
+}
+.app .mw-banner-acts .icon-btn {
+  width: 28px;
+}
+
+/* a job's progress (the Mac's JobDetailView): a thin accent bar, the step and how far at the left, the time it has run
+   at the right; the running step in semibold, the pending ones muted */
+.mw-job-progress {
+  margin: 14px 0 4px;
+  max-width: 560px;
+}
+.mw-job-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  overflow: hidden;
+}
+.mw-job-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--brand-ink);
+  transition: width 0.4s ease;
+}
+.mw-job-bar > span.indet {
+  animation: mw-indet 1.4s ease-in-out infinite;
+}
+@keyframes mw-indet {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+.mw-job-cap {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--mute);
+  font-variant-numeric: tabular-nums;
+}
+.mw-jobdetail .mw-group,
+.mw-jobdetail h3 {
+  max-width: 560px;
+}
+.mw-jobdetail .mw-group-row {
+  min-height: 40px;
+}
+.mw-jobdetail .st-running {
+  font-weight: 600;
+}
+.mw-jobdetail .st-pending {
+  color: var(--mute);
+}
+.mw-jobdetail .mw-spinner.sm {
+  border-top-color: var(--brand-ink);
+  border-width: 2px;
+}
+
+/* a menu row's count: a small capsule beside the label column (the Mac's filter popup), not a bare digit at the edge */
+.mw-menu-badge {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--chip);
+  display: inline-grid;
+  place-items: center;
+  font: 500 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--mute);
+  margin-left: 16px;
+}
+/* the state section's rings stay quiet in a menu: secondary ink, the colour only on the chosen row */
+.mw-menu-row:not([aria-checked='true']) .mw-menu-ic .sring * {
+  stroke: var(--mute) !important;
+}
+
+/* the agent-setup question (AgentSetupAsk.tsx) on the Clear History sheet: the app's icon beside its title */
+.agent-ask-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 24px 0;
+}
+.agent-ask-icon {
+  flex: none;
+  border-radius: 9px;
+}
+.sheet.agent-ask .agent-ask-head h3 {
+  padding: 0;
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+/* ------------------------------------------------------------ round 2 (visual gate 11-03), work area */
+/* narrow window: the sidebar shown on demand lies over the list (Windows 11 NavigationView overlay pane) — the list
+   and the detail keep their geometry underneath; a light scrim, a click on it folds the sidebar back */
+.app.mw {
+  position: relative;
+}
+.mw-side-col.peek {
+  /* an absolutely placed grid item keeps its grid area (row 2) as its containing block: top 0 is under the toolbar */
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 45;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+  box-shadow: 8px 0 24px rgb(0 0 0 / 0.14);
+}
+.mw-peek-scrim {
+  position: absolute;
+  inset: 44px 0 0 0;
+  z-index: 44;
+  background: rgb(0 0 0 / 0.06);
+}
+.app .mw-tool.on {
+  background: var(--hover);
+}
+.mw-side-col.peek .mw-divider {
+  display: none;
+}
+/* the toolbar band is the page's own surface with no rule under it: one band under the system title bar, not a
+   second grey strip (the title bar stays native, §12.12; the panes start under the band's 44 px) */
+.mw-toolbar {
+  background: var(--bg);
+  border-bottom: 0;
+}
+/* the sidebar's "Projects" label reads as a label (Mac: secondary ink), not a watermark */
+.mw-side-head {
+  color: var(--mute);
+}
+/* a project just added: its row glows once (~1 s), so the toast's Rename visibly belongs to it */
+@keyframes mw-fresh {
+  0%, 40% { box-shadow: inset 0 0 0 1.5px var(--brand-ink); }
+  100% { box-shadow: inset 0 0 0 1.5px transparent; }
+}
+.mw-side-row.fresh {
+  animation: mw-fresh 1.4s ease-out;
+}
+/* the select-all on opening a rename reads in both themes: the system's highlight, not a mint on a mint */
+.app input.mw-rename::selection {
+  background: Highlight;
+  color: HighlightText;
+}
+/* the same thin, arrowless, hover-shown bar on the detail pane itself, the sessions list and the terminal (the
+   terminal's arrow cap and the detail's always-on track were base.css's `scrollbar-width: thin`) */
+.mw-detail,
+.ses-rows,
+.app.mw .xterm-viewport {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+  scrollbar-gutter: auto;
+}
+.mw-detail::-webkit-scrollbar,
+.ses-rows::-webkit-scrollbar,
+.app.mw .xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.mw-detail::-webkit-scrollbar-button,
+.ses-rows::-webkit-scrollbar-button,
+.app.mw .xterm-viewport::-webkit-scrollbar-button {
+  display: none;
+}
+.mw-detail::-webkit-scrollbar-track,
+.ses-rows::-webkit-scrollbar-track,
+.app.mw .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.mw-detail::-webkit-scrollbar-thumb,
+.ses-rows::-webkit-scrollbar-thumb,
+.app.mw .xterm-viewport::-webkit-scrollbar-thumb {
+  background: transparent;
+  border: 3px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+.mw-detail:hover::-webkit-scrollbar-thumb,
+.ses-rows:hover::-webkit-scrollbar-thumb,
+.app.mw .xterm-viewport:hover::-webkit-scrollbar-thumb {
+  background-color: var(--line-2);
+}
+/* a session's ended / failed card stands at the pane's optical centre (about 40 % down, as the Mac's FinishPanel),
+   not floating at the middle of a tall empty pane */
+.ses-overlay {
+  flex-direction: column;
+}
+.ses-overlay::before,
+.ses-overlay::after {
+  content: '';
+  flex: 2 1 0;
+}
+.ses-overlay::after {
+  flex-grow: 3;
+}
+.ses-overlay > .ses-card {
+  margin: 0 auto;
+  flex: none;
+}
+/* the sessions list: a title on its strip (no empty band with two icons), subtitles that never strand one word */
+.ses-strip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  padding-left: 4px;
+}
+.ses-row-sub {
+  text-wrap: pretty;
+}
+/* the sheets' and session cards' secondary buttons: the same neutral fill as the empty states and the selection
+   summary (Cancel, Take Back, Show Output…), so a footer is one family — the brand fill marks only the default */
+.app.mw .hk-foot button:not(.hk-default),
+.app.mw .ses-card-acts button:not(.hk-default),
+.app.mw .mw-finish-foot button:not(.hk-default) {
+  background: var(--chip);
+  border-color: transparent;
+  box-shadow: none;
+}
+.app.mw .hk-foot button:not(.hk-default):hover:not(:disabled),
+.app.mw .ses-card-acts button:not(.hk-default):hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+/* Review Changes stands at the middle of the pane it covers: dropped from 12 vh it left the ended card's ring
+   showing, cut, under its bottom edge */
+.hk-scrim:has(> [data-testid='finish-sheet']) {
+  align-items: center;
+  padding-top: 0;
+}
+/* Review Changes: the summary is the box's heading (13 semibold, the counts in their colours) over 13 px file rows;
+   the branch line is one quiet mono run, "→ main" included; the ⋯ glyph centred in its button */
+[data-testid='finish-sheet'] .hk-box-head {
+  font-size: 13px;
+  color: var(--ink);
+}
+.fs-branch,
+.fs-branch code {
+  font: 400 12px var(--mono);
+  color: var(--mute);
+}
+.app .hk-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* the sheets' grouped boxes (the Mac's PanelBox): a quiet fill and hairline in both themes, so the 12 px inset of
+   their rows reads as a container, not as a misalignment */
+.hk-box {
+  background: color-mix(in srgb, var(--ink) 3%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+/* New Session: "Select All" reads as the link it is (the Mac's accent text button) */
+.app .hk-box-head .hk-small-link {
+  color: var(--brand-ink);
+  font-weight: 500;
+}
+/* the sheets' default button is the window's one primary (the brand button token the empty states, the selection
+   summary and New Item use), not a second, darker green; disabled it keeps its fill at 40 % instead of turning into a
+   grey ghost that reads as a secondary */
+.app.mw button:where(:not(.rv-root *)).hk-default {
+  background: var(--brand-button);
+  border-color: transparent;
+  color: var(--on-brand-button);
+}
+.app.mw button:where(:not(.rv-root *)).hk-default:hover:not(:disabled) {
+  background: var(--brand-button);
+  filter: brightness(0.94);
+}
+.app.mw button:where(:not(.rv-root *)).hk-default:disabled {
+  background: var(--brand-button);
+  border-color: transparent;
+  color: var(--on-brand-button);
+  opacity: 0.4;
+}

@@ -184,6 +184,97 @@
     "text-cursor": [
       "character.cursor.ibeam",
       "character.textbox"
+    ],
+    "text-viewfinder": [
+      "text.viewfinder"
+    ],
+    "cpu": [
+      "cpu"
+    ],
+    "hand": [
+      "hand.raised"
+    ],
+    "drive": [
+      "internaldrive"
+    ],
+    "sliders": [
+      "slider.horizontal.3"
+    ],
+    "progress": [
+      "circle.righthalf.filled"
+    ],
+    "unassigned": [
+      "circle.dashed"
+    ],
+    "sidebar": [
+      "sidebar.left"
+    ],
+    "sidebar-right": [
+      "sidebar.right"
+    ],
+    "filter": [
+      "line.3.horizontal.decrease.circle"
+    ],
+    "filter-fill": [
+      "line.3.horizontal.decrease.circle.fill"
+    ],
+    "scope": [
+      "scope"
+    ],
+    "pin": [
+      "pin"
+    ],
+    "pin-off": [
+      "pin.slash"
+    ],
+    "folder-missing": [
+      "questionmark.folder"
+    ],
+    "list-box": [
+      "list.bullet.rectangle"
+    ],
+    "captions": [
+      "captions.bubble"
+    ],
+    "character-bubble": [
+      "character.bubble"
+    ],
+    "history": [
+      "clock.arrow.circlepath"
+    ],
+    "sync": [
+      "arrow.triangle.2.circlepath"
+    ],
+    "character-cursor": [
+      "character.cursor.ibeam",
+      "character.textbox"
+    ],
+    "move": [
+      "arrow.turn.up.right"
+    ],
+    "text-plus": [
+      "text.badge.plus"
+    ],
+    "archive": [
+      "archivebox"
+    ],
+    "tray-2": [
+      "tray.2"
+    ],
+    "minus-circle": [
+      "minus.circle"
+    ],
+    "refresh": [
+      "arrow.clockwise"
+    ],
+    "lines": [
+      "line.3.horizontal"
+    ],
+    "align-left": [
+      "text.alignleft"
+    ],
+    "window": [
+      "macwindow"
     ]
   },
   "nearest": {

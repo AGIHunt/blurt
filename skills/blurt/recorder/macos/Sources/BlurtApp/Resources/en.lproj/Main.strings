@@ -759,5 +759,5 @@
 "main.row.session_ended.help" = "Its agent session ended without reporting the work as done. Open the item to restart it or take it back.";
 
 /* A folder opened as a new project */
-"main.open.added" = "Added %1$@ · items get %2$@-1…";
+"main.open.added" = "Added %1$@ · items start at %2$@-1";
 "main.open.rename" = "Rename";
