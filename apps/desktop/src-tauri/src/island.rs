@@ -121,12 +121,23 @@ pub fn state(app: &AppHandle) -> Value {
             json!({"elapsed": cap["elapsed"], "paused": cap["paused"], "shots": cap["shots"], "at": now})
         } else { Value::Null },
         "voice": cap["voice"].as_object().map(|v| json!({"elapsed": v["elapsed"], "at": now})),
+        "dictation": dictation_state(),
         "hatching": active.iter().filter(|j| j["type"] == "process").count(),
         "jobs": jobs_view,
         "sessions": sessions_view,
         "hotkeys": hotkey_labels(app),
         "lang": l10n::lang(),
     }})
+}
+
+#[cfg(windows)]
+fn dictation_state() -> Value {
+    crate::dictation::engine::island_state()
+}
+
+#[cfg(not(windows))]
+fn dictation_state() -> Value {
+    Value::Null
 }
 
 pub fn refresh(app: &AppHandle) {
@@ -294,6 +305,25 @@ pub fn on_action(app: &AppHandle, v: &Value) {
                     None => app.clipboard().write_text(c.text.unwrap_or_default()),
                 };
             }
+        }
+        // a screenshot card dragged past the island's edge: Windows' own drag of its file takes over (the Mac's
+        // CardDrag); a voice note's words stay a click's copy
+        // off until checked with a real mouse: on the VM a synthesized drag left the island hidden (BLURT_CARD_DRAGOUT=1)
+        #[cfg(windows)]
+        "card.dragout" if std::env::var_os("BLURT_CARD_DRAGOUT").is_some() => {
+            let Some(session) = session_of(v) else { return };
+            let n = v["n"].as_u64().unwrap_or(0) as u32;
+            let Some(file) = capture::cards_of(&session).into_iter().find(|c| c.n == n).and_then(|c| c.file) else { return };
+            let path = crate::paths::normalize(&session.join(file));
+            if !path.is_file() {
+                return;
+            }
+            let app2 = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                if let Some(i) = island(&app2) {
+                    let _ = drag::start_drag(i.window(), drag::DragItem::Files(vec![path.clone()]), drag::Image::File(path), |_, _| {}, drag::Options::default());
+                }
+            });
         }
         "card.note" => {
             let Some(session) = session_of(v) else { return };

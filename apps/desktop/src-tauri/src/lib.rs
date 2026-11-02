@@ -8,6 +8,7 @@
 //! web/apps/overlays (the island, picker and note bubble).
 
 pub mod capture;
+pub mod dictation;
 pub mod hotkeys;
 pub mod index;
 pub mod island;
@@ -17,9 +18,11 @@ pub mod l10n;
 pub mod paths;
 pub mod projects;
 pub mod pty;
+pub mod screen_text;
 pub mod scripts;
 pub mod sessions;
 pub mod settings;
+pub mod setup;
 pub mod watcher;
 
 use std::sync::{Mutex, RwLock};
@@ -51,6 +54,10 @@ impl AppState {
     }
     pub fn index(&self) -> Index {
         Index::new(paths::index_db())
+    }
+    /// uv was just installed (setup.rs): look for it again
+    pub fn refresh_runner(&self, app: &AppHandle) {
+        *self.runner.write().unwrap() = Runner::new(app);
     }
 }
 
@@ -85,6 +92,11 @@ pub fn dispatch(app: &AppHandle, action: &str) {
         }
         "project" => {
             island::send(app, json!({"op": "switcher", "open": true}));
+            Ok(())
+        }
+        #[cfg(windows)]
+        "text" | "translate" => {
+            screen_text::start(app, action == "translate");
             Ok(())
         }
         "pause" if recording => {
@@ -634,6 +646,15 @@ pub fn run() {
             }
             sessions::start_monitor(&handle);
             island::init(&handle);
+            if std::env::var_os("BLURT_NO_SETUP").is_none() {
+                setup::start(&handle);
+            }
+            #[cfg(windows)]
+            if std::env::var_os("BLURT_NO_DICTATION").is_none() {
+                if let Err(e) = dictation::engine::start(&handle) {
+                    eprintln!("blurt: dictation key not available: {e}");
+                }
+            }
             test_channel(&handle);
             Ok(())
         })
@@ -647,6 +668,12 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            dictation::commands::dictation_models,
+            dictation::commands::model_download,
+            dictation::commands::dictation_use,
+            dictation::commands::cloud_summary,
+            dictation::commands::cloud_connect,
+            dictation::commands::cloud_disconnect,
             app_status,
             index_query,
             index_item,

@@ -202,6 +202,9 @@ pub fn agent_environment() -> &'static HashMap<String, String> {
             m.insert("PATH".into(), p.to_string_lossy().into_owned());
         }
         m.insert("PYTHONIOENCODING".into(), "utf-8".into());
+        for (k, v) in crate::setup::mirror_env() {
+            m.insert(k.into(), v.into());
+        }
         m
     })
 }

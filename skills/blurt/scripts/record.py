@@ -58,6 +58,12 @@ STATUS: dict = {"on": False, "final": False, "err": None}  # `start --status-jso
 _PRINT = threading.Lock()
 
 
+def _plain(p) -> str:
+    """A path without Windows' extended-length prefix (\\\\?\\), which ffmpeg mishandles."""
+    s = str(p)
+    return s[4:] if s.startswith("\\\\?\\") else s
+
+
 def out(obj: dict | str) -> None:
     """Human / chat output. With --status-jsonl it goes to stderr: stdout carries only the status lines."""
     with _PRINT:
@@ -1238,8 +1244,10 @@ class FfmpegRecorder:
             return {"event": "error", "code": "no_frames", "message": tail.strip() or "no video captured"}
         final, lst = self.session / "recording.mp4", self.session / "parts.txt"
         lst.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
-        r = run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                 "-c", "copy", "-movflags", "+faststart", str(final)], check=False)
+        # a session path with Windows' \\?\ prefix (the app canonicalizes it) sends ffmpeg's concat demuxer to
+        # "\\part00.mp4": it resolves the list's entries against a plain path only
+        r = run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", _plain(lst),
+                 "-c", "copy", "-movflags", "+faststart", _plain(final)], check=False)
         for p in (*parts, lst):
             Path(p).unlink(missing_ok=True)
         self.cleanup()

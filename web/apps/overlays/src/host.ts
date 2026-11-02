@@ -86,6 +86,8 @@ export interface IslandState {
   toReview: number;
   recording: { elapsed: number | null; paused: boolean; shots: number; at: number } | null;
   voice: { elapsed: number; at: number } | null;
+  /** dictation (apps/desktop/src-tauri/src/dictation): listening while the take listens, else the oldest take's stage */
+  dictation?: { phase: 'listening' | 'transcribing' | 'polishing'; elapsed: number; at: number; style?: 'light' | 'structured'; translate?: boolean } | null;
   /** process jobs under way: the hatching egg */
   hatching: number;
   jobs: JobRow[];
@@ -98,10 +100,15 @@ export interface IslandState {
 
 export type IslandOp =
   | { op: 'state'; state: IslandState }
+  /** dictation's live text under the island: the finished pieces, then the piece still being said (quieter);
+   *  `typed`: the text actually typed, shown ~1.5 s after the stop; empty text hides it */
+  | { op: 'live'; text: string; partial?: string; typed?: boolean }
   | { op: 'cards'; cards: Card[] }
   /** a new capture flies up and a thread catches it; pull = straight on into the island (a project is current) */
   | { op: 'card'; card: Card; pull: boolean }
   | { op: 'toast'; kind: 'sorted' | 'failed' | 'error'; n?: number; job?: string; code?: string; type?: string }
+  /** a dictation line: `msg` a catalog key, `vars` its values, `action` one button (sent back as `data-a`) */
+  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string }; ms?: number }
   | { op: 'switcher'; open: boolean }
   | { op: 'peek' }
   | { op: 'attention'; job: string; status: string }

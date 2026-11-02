@@ -225,6 +225,10 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
       return r(String(args.combo).toLowerCase().includes('cmd+shift+s') ? { result: 'system', name: 'Snipping Tool' } : { result: 'ok', spec: args.combo, label: args.combo });
     case 'asr_models':
       return r({ models: [{ id: 'sensevoice-small', name: 'SenseVoice Small', backend: 'sherpa-onnx', installed: true, size_mb: 228, languages: ['zh', 'en', 'ja', 'ko', 'yue'] }, { id: 'whisper-large-v3-turbo-ct2', name: 'Whisper large-v3 turbo', backend: 'faster-whisper', installed: false, size_mb: 1620, languages: 'multi' }] });
+    case 'dictation_models':
+      return r({ recommended: 'fun-asr-nano-onnx', selected: 'fun-asr-nano-onnx', ready: false, models: [{ id: 'fun-asr-nano-onnx', name: 'Fun-ASR-Nano (CPU)', size_mb: 950, installed: false, recommended: true }, { id: 'sensevoice-small', name: 'SenseVoice Small', size_mb: 228, installed: true, recommended: false }] });
+    case 'cloud_summary':
+      return r({ services: [], routes: { polish: null, translate: null, vision: null } });
     case 'update_check':
       return r({ configured: false });
     default:

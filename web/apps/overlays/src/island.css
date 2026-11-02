@@ -857,3 +857,44 @@ button.foot:hover {
 .sort[hidden] {
   display: none;
 }
+
+/* dictation's live text under the island (the Mac's LiveTranscript): the words so far, then — quieter — the piece
+   still being said; after the stop, the text actually typed for ~1.5 s. Read-only and click-through. */
+.live {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  width: min(560px, calc(100vw - 32px));
+  transform: translate(-50%, -6px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms var(--ease),
+    transform 160ms var(--ease);
+}
+.live.shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.live-in {
+  max-height: calc(var(--lines) * 1.5em + 16px);
+  overflow: hidden;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--glass);
+  box-shadow:
+    inset 0 0 0 1px var(--line),
+    0 8px 24px rgba(0, 0, 0, 0.3);
+  color: var(--fg);
+  font: 14px/1.5 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.live .partial {
+  color: var(--fg3);
+}
+.live.typed .live-in {
+  box-shadow:
+    inset 0 0 0 1px var(--brand-tint),
+    0 8px 24px rgba(0, 0, 0, 0.3);
+}

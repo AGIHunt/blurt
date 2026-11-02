@@ -18,10 +18,11 @@ use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut}
 
 use crate::settings;
 
-/// `_common.HOTKEY_ACTIONS` (K7 adds `voice` — a voice note — and `project` — the project switcher).
-pub const ACTIONS: [&str; 9] = ["record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project"];
+/// `_common.HOTKEY_ACTIONS` (K7 adds `voice` — a voice note — and `project` — the project switcher; `text` / `translate`
+/// are Copy Text from Screen and its translation, the Mac's ⌥C / ⌥T).
+pub const ACTIONS: [&str; 11] = ["record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project", "text", "translate"];
 /// Registered whenever the app runs; the others only while recording (they'd steal keys from other apps otherwise).
-pub const RESIDENT: [&str; 5] = ["record", "menu", "snap", "voice", "project"];
+pub const RESIDENT: [&str; 7] = ["record", "menu", "snap", "voice", "project", "text", "translate"];
 
 fn default_key(a: &str) -> &'static str {
     match a {
@@ -33,6 +34,8 @@ fn default_key(a: &str) -> &'static str {
         "pen" => "D",
         "voice" => "V",
         "project" => "O",
+        "text" => "C",
+        "translate" => "T",
         _ => "S",
     }
 }

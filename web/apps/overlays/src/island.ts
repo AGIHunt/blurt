@@ -37,6 +37,11 @@ const deck = document.querySelector<HTMLElement>('.cards')!;
 const island = document.querySelector<HTMLElement>('.island')!;
 const pill = island.querySelector<HTMLElement>('.pill')!;
 const body = island.querySelector<HTMLElement>('.body')!;
+// dictation's words under the island while the user talks (the Mac's LiveTranscript): not interactive, click-through
+const livePanel = document.createElement('div');
+livePanel.className = 'live';
+livePanel.setAttribute('aria-live', 'polite');
+island.after(livePanel);
 const glow = document.querySelector<HTMLElement>('.glow');
 
 // ------------------------------------------------------------------ geometry and timing (K7)
@@ -68,7 +73,8 @@ let level = 0;
 let open = false; // expanded
 let drawer: null | 'switch' | 'drop' = null;
 let confirmDiscard = false;
-let toast: null | { kind: string; n?: number; code?: string; job?: string; type?: string } = null;
+let toast: null | { kind: string; n?: number; code?: string; job?: string; type?: string; msg?: string; vars?: Record<string, string>; action?: { a: string; label: string } } = null;
+let liveText: null | { text: string; partial: string; typed: boolean } = null;
 let toastTimer = 0;
 let peekUntil = 0;
 let hovering = false;
@@ -83,6 +89,9 @@ function recElapsed(): number {
   if (!r) return 0;
   return (r.elapsed ?? 0) + (r.paused ? 0 : (performance.now() - stateAt) / 1000);
 }
+function dictElapsed(): number {
+  return S.dictation ? S.dictation.elapsed + (performance.now() - stateAt) / 1000 : 0;
+}
 function voiceElapsed(): number {
   return S.voice ? S.voice.elapsed + (performance.now() - stateAt) / 1000 : 0;
 }
@@ -94,6 +103,8 @@ function visible(): boolean {
   return !!(
     S.recording ||
     S.voice ||
+    S.dictation ||
+    liveText ||
     S.hatching ||
     toast ||
     open ||
@@ -117,6 +128,16 @@ function pillHtml(): string {
     return `<span class="ear l"><i class="rec-dot${r.paused ? ' paused' : ''}"></i><span class="time" data-clock="rec">${clock(recElapsed())}</span></span>
       <span class="ear r">${ic('camera', 14)}<span class="num">${num(r.shots)}</span>${attnDot()}</span>`;
   }
+  if (S.dictation) {
+    const d = S.dictation;
+    const mode = [d.style === 'structured' ? t('island.dictation.structured') : '', d.translate ? t('island.dictation.translate') : ''].filter(Boolean).join(' · ');
+    const right =
+      d.phase === 'listening'
+        ? `<span class="time" data-clock="dict">${clock(dictElapsed())}</span>`
+        : `<span class="sub">${esc(t(`island.dictation.${d.phase}`))}</span>`;
+    return `<span class="ear l">${mascotHtml(d.phase === 'listening' ? 'listening' : 'thinking', { size: 22 })}${d.phase === 'listening' ? `<span class="wave" data-wave>${'<i></i>'.repeat(5)}</span>` : ''}</span>
+      <span class="ear r">${mode ? `<span class="sub">${esc(mode)}</span>` : ''}${right}</span>`;
+  }
   if (S.voice) {
     return `<span class="ear l">${ic('chicken', 14, 'tilt')}<span class="wave" data-wave>${'<i></i>'.repeat(5)}</span></span>
       <span class="ear r"><span class="time" data-clock="voice">${clock(voiceElapsed())}</span></span>`;
@@ -132,6 +153,10 @@ function pillHtml(): string {
 
 function toastHtml(): string {
   const tt = toast!;
+  if (tt.kind === 'dictation') {
+    const act = tt.action ? `<button class="mini" data-a="${esc(tt.action.a)}">${esc(t(tt.action.label))}</button>` : '';
+    return `<span class="toast">${mascotHtml('idle', { size: 22 })}<span>${esc(t(tt.msg ?? '', tt.vars))}</span>${act}</span>`;
+  }
   if (tt.kind === 'sorted') {
     const msg = tt.n ? plural('island.toast.sorted', tt.n) : t('island.toast.sorted_none');
     // the egg cracks and the chick pops out (one-shot: the pill only re-renders when its markup changes)
@@ -271,6 +296,21 @@ function bodyHtml() {
   return idleBody();
 }
 
+// ------------------------------------------------------------------ dictation's live text
+const LIVE_LINES = 8;
+function renderLive() {
+  const lt = liveText;
+  livePanel.classList.toggle('shown', !!lt);
+  if (!lt) {
+    livePanel.innerHTML = '';
+    return;
+  }
+  livePanel.classList.toggle('typed', lt.typed);
+  livePanel.innerHTML = `<div class="live-in" style="--lines:${LIVE_LINES}"><span class="done">${esc(lt.text)}</span>${lt.partial ? `<span class="partial">${esc(lt.partial)}</span>` : ''}</div>`;
+  const inner = livePanel.firstElementChild as HTMLElement;
+  inner.scrollTop = inner.scrollHeight; // the newest words stay in view
+}
+
 // ------------------------------------------------------------------ render
 let lastBody = '';
 let lastPill = '';
@@ -279,9 +319,10 @@ function render() {
   const expanded = shown && (open || !!drawer);
   island.classList.toggle('shown', shown);
   island.classList.toggle('open', expanded);
-  island.dataset.mode = S.recording ? 'rec' : S.voice ? 'voice' : 'idle';
-  // the listening glow: only while blurt listens (a voice note), never while recording or idle
-  stage.dataset.glow = shown && S.voice && !S.recording ? '1' : '0';
+  island.dataset.mode = S.recording ? 'rec' : S.dictation ? 'dict' : S.voice ? 'voice' : 'idle';
+  // the listening glow: only while blurt listens (a voice note, a dictation), never while recording or idle
+  stage.dataset.glow = shown && (S.voice || S.dictation?.phase === 'listening') && !S.recording ? '1' : '0';
+  renderLive();
   const ph = pillHtml();
   if (ph !== lastPill) {
     // only when it changed: a one-shot mascot clip (the hatch) must not restart on every state op
@@ -329,7 +370,7 @@ const islandBottom = () => (visible() ? TOP + islandH : TOP + PILL_H);
 
 /** Live numbers (clocks, the voice waveform) without re-rendering. */
 function ticks() {
-  for (const el of island.querySelectorAll<HTMLElement>('[data-clock]')) el.textContent = clock(el.dataset.clock === 'rec' ? recElapsed() : voiceElapsed());
+  for (const el of island.querySelectorAll<HTMLElement>('[data-clock]')) el.textContent = clock(el.dataset.clock === 'rec' ? recElapsed() : el.dataset.clock === 'dict' ? dictElapsed() : voiceElapsed());
   for (const m of island.querySelectorAll<HTMLElement>('[data-meter]')) {
     const lit = S.recording?.paused ? 0 : meterBars(level, m.children.length);
     [...m.children].forEach((b, i) => b.classList.toggle('on', i < lit));
@@ -344,7 +385,7 @@ function ticks() {
   }
 }
 setInterval(() => {
-  if (S.recording || S.voice) ticks();
+  if (S.recording || S.voice || S.dictation) ticks();
 }, 250);
 
 // ------------------------------------------------------------------ expand / collapse
@@ -464,12 +505,15 @@ island.addEventListener('click', (e) => {
 
 function showToast(op: Extract<IslandOp, { op: 'toast' }>) {
   if (S.recording && op.kind !== 'error') return; // K4: nothing while recording
-  toast = { kind: op.kind, n: op.n, code: op.code, job: op.job, type: op.type };
+  toast =
+    op.kind === 'dictation'
+      ? { kind: op.kind, msg: op.msg, vars: op.vars, action: op.action }
+      : { kind: op.kind, n: op.n, code: op.code, job: op.job, type: op.type };
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toast = null;
     render();
-  }, op.kind === 'sorted' ? TOAST_MS : TOAST_MS * 2);
+  }, op.kind === 'dictation' ? (op.ms ?? TOAST_MS * 1.5) : op.kind === 'sorted' ? TOAST_MS : TOAST_MS * 2);
   render();
 }
 
@@ -679,6 +723,29 @@ function startDrag(l: Live, e: PointerEvent) {
     }
     d.px = ev.clientX;
     d.py = ev.clientY;
+    // well below the island and its drop targets (or at its window's edge): the system's own drag takes the
+    // screenshot on to another app
+    const below = Math.min(island.getBoundingClientRect().bottom + 160, innerHeight - 10);
+    if (l.card.file && ev.clientY >= below && !targetAt(ev.clientX, ev.clientY)) {
+      l.face.releasePointerCapture(ev.pointerId);
+      l.face.removeEventListener('pointermove', move);
+      l.face.removeEventListener('pointerup', up);
+      l.face.removeEventListener('pointercancel', up);
+      l.drag = undefined;
+      dragging = null;
+      drawer = null;
+      open = false;
+      lastBody = '';
+      l.phase = 'hang';
+      l.el.classList.remove('open', 'dragging');
+      const r = l.face.getBoundingClientRect();
+      l.y.value = r.top - (islandBottom() + HANG + l.slack);
+      l.x.value = r.left + r.width / 2;
+      l.reach.value = 0.4;
+      render();
+      void host.emit(EV.action, { action: 'card.dragout', n: l.card.n, session: l.card.session });
+      return;
+    }
     highlight(ev.clientX, ev.clientY);
     kick();
   };
@@ -882,6 +949,10 @@ function apply(op: IslandOp) {
     case 'status':
       if (op.line.ev === 'level') level = op.line.rms;
       return ticks();
+    case 'live':
+      liveText = op.text || op.partial ? { text: op.text, partial: op.partial ?? '', typed: !!op.typed } : null;
+      render();
+      break;
     case 'level':
       level = op.rms;
       return ticks();

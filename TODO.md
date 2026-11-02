@@ -62,7 +62,24 @@
 
 - [x] macOS: right ⌥ / Fn tap or hold → SenseVoice → local polish (MLX, Qwen) with a content-loss guard → paste into
       the front app (pasteboard saved and restored) → history (search, raw text, turn into item)
-- [ ] **Windows** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
+- [x] **Windows dictation, first round** (2026-11-02, branch feat/windows-port; apps/desktop/src-tauri/src/dictation,
+      models: docs/design/windows-models.md). Verified on a Hangzhou ECS VM (Windows Server 2025 = Win11 24H2 kernel,
+      Zen 4 8C/16T, no GPU) with a wav as the mic (BLURT_TEST_MIC_WAV) and the installed NSIS build (4.2 MB):
+      right-Alt hook (AltGr's fake Ctrl ignored, the lone Alt's menu masked with VK 0xE8), the Mac's DictationTrigger /
+      Segmenter / Stitch / PastePolicy ported with their 102 tests, WASAPI mic (cpal) with pre-roll, pieces cut at
+      pauses and heard by Fun-ASR-Nano int8 (sherpa-onnx) as they finish, island listening / live text / typed text,
+      clipboard save → Ctrl+V → restore, only into the app the take started in (else copy), elevated windows (UIPI) →
+      copy, password fields (UIA IsPassword) → held, history.jsonl + wav, sounds, cloud polish / Structured /
+      Translate through polish.py serve with the key in Credential Manager, Settings → Dictation (key, mode, sounds,
+      polish, model download with progress) and → Cloud (connect DeepSeek / Model Studio with Test). Warm: key-up →
+      text ≈ 1 s (polish 0.6–0.9 s).
+- [ ] **Windows dictation, still open**: hearing again in longer windows (Fun-ASR-Nano's 512-token cap: ≤ 20 s) and
+      interim live words (CPU decode too slow to repeat each second — needs a cheaper path), the field's context
+      (UIA TextPattern before the cursor) for polish and learning, the paste's landing read back (UIA) instead of the
+      0.6 s / 1.5 s timers, Esc while a take is on its way, the runaway take's reminders, Typeless / Wispr Flow
+      notices, stuck-server health (GetProcessTimes), the first-takes tips, the Dictation history page, the Words
+      tab, learning from corrections, a real microphone + Bluetooth headset check on a physical PC, high-DPI.
+- [ ] **Windows (original spec)** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
       `LCtrl` that AltGr layouts inject, ignore it as a modifier exactly like the macOS state machine — port
       `DictationTrigger` with its v0.9 rules: `pending` while a take is typed (a tap past the double-tap window starts
       the next take, Esc cancels the one on its way, a third tap after a send is a bounce, `endedByItself`, `miss`), the double-tap window from the system's
@@ -113,6 +130,10 @@
       server; the hang told by idle CPU alone (3 s); a stuck server's launcher ended only when it is the stuck
       process's parent; Return at 0.6 s at the latest (`returnAfter`); the spelling-dictionary
       check for learned words (Hunspell / the Windows spell checker in place of NSSpellChecker).
+- [x] **Windows first run, automatic part** (2026-11-02, src/setup.rs): uv from PyPI's wheel (Alibaba's mirror in
+      the mainland: no GitHub), Python from npmmirror, packages from mirrors.aliyun.com, the recommended speech model
+      downloaded once at the first launch (ModelScope for Fun-ASR-Nano). Verified on an empty BLURT_HOME with no uv or
+      Python: ready to dictate in ~2 min. The four-step welcome window is still to do (below).
 - [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
       welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
       "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.
@@ -121,6 +142,18 @@
       from edits made right after a paste (and from the history's raw → polished diffs), always opt-in.
 - [ ] Per-app style (code editor: no trailing full stop; chat: casual), voice commands ("new line", "删掉上一句")
 - [ ] Streaming: show the live transcript in the island while talking (live.py's streaming path)
+
+## Windows: Copy Text from Screen and Translate (2026-11-02, apps/desktop/src-tauri/src/screen_text)
+- [x] Alt+Shift+C / Alt+Shift+T (hotkeys `text` / `translate`): the picker in "Copy Text" / "Translate" mode, the
+      area grabbed through GDI, read by RapidOCR (PP-OCRv4, `screen_ocr.py serve`, 0.33 s warm; Windows' own OCR
+      misread ordinary 11 pt Chinese UI text and stays only as the fall-back while RapidOCR isn't installed), laid out
+      by the Mac's ScreenText rules ported to Rust (18 / 18 fixtures), copied; Translate through the cloud model.
+      Verified on the VM (Notepad, Chinese + English).
+- [ ] Cards dragged out of the island (OLE file drag through the `drag` crate, island.rs `card.dragout`): written, behind
+      BLURT_CARD_DRAGOUT=1 — on the VM a drag synthesized with mouse_event left the island hidden (DoDragDrop most likely
+      never saw the injected release); check with a real mouse before turning it on. Voice notes' words aren't dragged.
+- [ ] The Mac's second reading (a cloud vision model on the picture), the result card instead of a toast, RapidOCR
+      word boxes for Latin spacing ("ClaudeCode" loses its space), high-DPI / multi-monitor grabs.
 
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and

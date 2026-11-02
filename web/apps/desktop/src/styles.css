@@ -1235,3 +1235,23 @@ tr.conflict td:first-child {
     transition: none !important;
   }
 }
+
+/* Settings → Dictation: the model this PC still needs, one Download */
+.callout {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  margin: 6px 0 10px;
+  max-width: 980px;
+  border-radius: var(--radius, 10px);
+  background: var(--brand-tint);
+}
+.callout > span:first-child {
+  flex: 1;
+}
+.radio {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}

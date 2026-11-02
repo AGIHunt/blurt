@@ -55,6 +55,7 @@ Dependencies are pinned (here and in every `--with`, PACKAGE_PINS): a new releas
 Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   sensevoice      local CPU, sherpa-onnx + SenseVoice-Small int8 (~230 MB). zh/en/ja/ko/yue.
   qwen3-asr-onnx  local CPU (any OS), sherpa-onnx + Qwen3-ASR 0.6B int8, 30 languages. Hotwords per stream.
+  fun-asr-onnx    local CPU (any OS), sherpa-onnx + Fun-ASR-Nano int8, zh / en / ja. Hotwords; pieces ≤ 20 s.
   qwen3-asr-mlx   local, Apple Silicon (MLX), Qwen3-ASR 0.6B 8-bit, 30 languages, `context` biasing per request
                   (dictation's default: docs/design/dictation.md §Recognition model).  needs mlx-qwen3-asr
   fun-asr-mlx     local, Apple Silicon (MLX), Fun-ASR-Nano 0.8B, zh / en / ja, the Words as hotwords
@@ -727,8 +728,8 @@ def qos_cpu_seconds() -> dict | None:
 
 # ------------------------------------------------------------------ downloads
 def _download_url(urls: list[str], dest: Path, label: str, aux: str | None = None) -> Path:
-    if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirror first
-        urls = sorted(urls, key=lambda u: "hf-mirror" not in u)
+    if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirrors first (GitHub releases don't load from there)
+        urls = sorted(urls, key=lambda u: not ("hf-mirror" in u or "modelscope.cn" in u))
     dest.parent.mkdir(parents=True, exist_ok=True)
     last = None
     for url in urls:
@@ -1035,7 +1036,8 @@ def _install_archive(m: dict) -> None:
     inst = m["install"]
     dest = MODELS_DIR / inst["dir"]
     tmp = MODELS_DIR / f".{inst['dir']}.tar.bz2"
-    _download_url([inst["archive"]], tmp, m["id"])
+    urls = inst["archive"] if isinstance(inst["archive"], list) else [inst["archive"]]
+    _download_url(urls, tmp, m["id"])
     staging = MODELS_DIR / f".{inst['dir']}.extract"
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
@@ -1333,6 +1335,45 @@ class Qwen3Onnx:
                 st.set_option("hotwords", self.hotwords)
             except Exception:  # noqa: BLE001 — an older sherpa-onnx: no per-stream hotwords
                 pass
+        st.accept_waveform(SR, x)
+        self.rec.decode_stream(st)
+        return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
+
+
+class FunAsrOnnx:
+    """Fun-ASR-Nano int8 on the CPU through sherpa-onnx: Windows' and Linux's dictation model for zh / en / ja
+    (docs/design/windows-models.md: 3.69 % on the founder's takes, RTF 0.12 on 4 Zen 4 threads). The export caps prompt
+    + audio at 512 tokens — about 25 s without hotwords — so pieces stay ≤ 20 s and the hotwords short; a longer
+    piece comes back empty. Hotwords are fixed when the recognizer is built, so a new Words list rebuilds it."""
+    max_chunk = 20
+    whole_spans = True          # like FunAsrMlx: a piece is heard whole, never trimmed by the VAD
+    max_terms = 24              # each term costs prompt tokens out of the 512
+
+    def __init__(self, args):
+        d = _model_dir(args, "fun-asr-nano-int8")
+        if not (d / "llm.int8.onnx").exists():
+            raise Fail("Fun-ASR-Nano (CPU) is not downloaded: transcribe.py setup --model-id fun-asr-nano-onnx",
+                       "model_missing")
+        self.model = "fun-asr-nano-int8"
+        self.dir, self.threads, self.hotwords = d, _threads(args), ""
+        self.rec = self._build("")
+
+    def _build(self, hotwords: str):
+        import sherpa_onnx
+        d = self.dir
+        return sherpa_onnx.OfflineRecognizer.from_funasr_nano(
+            encoder_adaptor=str(d / "encoder_adaptor.int8.onnx"), llm=str(d / "llm.int8.onnx"),
+            embedding=str(d / "embedding.int8.onnx"), tokenizer=str(d / "Qwen3-0.6B"), num_threads=self.threads,
+            hotwords=hotwords)
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        hw = dictation_vocab.hotwords(terms[: self.max_terms])
+        if hw != self.hotwords:
+            self.rec, self.hotwords = self._build(hw), hw
+        return bool(hw)
+
+    def transcribe(self, x):
+        st = self.rec.create_stream()
         st.accept_waveform(SR, x)
         self.rec.decode_stream(st)
         return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
@@ -2362,10 +2403,10 @@ def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float
             raise Fail(f"ASR API unreachable: {e}", "network")
 
 
-BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
+BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "fun-asr-onnx": FunAsrOnnx, "mlx-whisper": MlxWhisper,
             "qwen3-asr-mlx": Qwen3Mlx, "fun-asr-mlx": FunAsrMlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech,
             "openai": OpenAICompat, "dashscope": DashScope, "volcengine": Volcengine}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "fun-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
                   "qwen3-asr-mlx": "mlx-qwen3-asr", "fun-asr-mlx": "mlx-audio"}  # backend → `uv run --with` package
 # The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
@@ -3916,7 +3957,8 @@ def cmd_auto(a):
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
 FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
-DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+FUN_CPU = "fun-asr-nano-onnx"     # the same model on the CPU (sherpa-onnx int8): Windows and Linux
+DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, FUN_CPU, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
 #                                                                                   first; macOS's own last (nothing to download)
 # offered once their key is set (first-minute-speech.md §2.4; Volcengine: dictation-eval-2026-10-31.md §6.3 B′)
 DICTATION_CLOUD = ("qwen3-asr-flash", "volcengine-seedasr", "openai-compatible")
@@ -3975,6 +4017,16 @@ def small_recognizer(langs: list[str] | None) -> str:
     return FUN_MLX if speaks_all(entry(FUN_MLX), langs) else QWEN_MLX
 
 
+def cpu_recognizer(hw: dict, langs: list[str] | None) -> str:
+    """Dictation's recogniser on a PC without Apple Silicon (docs/design/windows-models.md): Fun-ASR-Nano int8 for
+    Chinese / English / Japanese speakers (3.69 % on the founder's takes, ~1 s after key-up for a 10 s piece on 4 Zen 4
+    threads), else Qwen3-ASR 0.6B int8 (30 languages, 3.51 %); SenseVoice on a minimal PC (< 8 GB or ≤ 2 cores:
+    0.2 s, 5.2 %)."""
+    if hw.get("ram_gb", 16) < 7.5 or (hw.get("perf_cores") or 4) + (hw.get("eff_cores") or 0) <= 2:
+        return SV
+    return FUN_CPU if speaks_all(entry(FUN_CPU), langs) else QWEN_CPU
+
+
 def slow_chip(chip: str | None) -> bool:
     """A base M1 / M2 (not Pro, Max or Ultra): the chips the 1.7B is too slow on when nothing was measured."""
     return " ".join(str(chip or "").split()) in SLOW_CHIPS
@@ -4027,12 +4079,16 @@ def dictation_models(hw: dict | None = None) -> dict:
                           languages=langs)
     rec = next((mid for mid in ((plan["recognizer"], small, QWEN_MLX) if plan["recognizer"] else ())
                 if apple and fits(mid)), note_rec)
+    if not apple:
+        rec = cpu_recognizer(hw, langs)
     # what runs: the configured one (the user's choice, as it is), else the recommended one, else any of the 1.7B,
     # Fun-ASR-Nano (for its languages) or the 0.6B already here that runs next to polish, best first for this Mac (the
     # 1.7B last where it is too slow or too big) — they take the Words list; the voice-note model doesn't — a 1.7B
     # brought from a bigger Mac, or a 0.6B until Fun-ASR-Nano is in — all only when installed; else the voice-note model
     order = (QWEN_MLX_17, small, QWEN_MLX) if plan["recognizer"] == QWEN_MLX_17 else (small, QWEN_MLX, QWEN_MLX_17)
     usable = [mid for mid in dict.fromkeys(order) if mid != rec and apple and fits(mid)]
+    if not apple:       # any CPU model already here, best first: Fun-ASR-Nano (its languages), the 0.6B, SenseVoice
+        usable = [mid for mid in ((FUN_CPU,) if speaks_all(entry(FUN_CPU), langs) else ()) + (QWEN_CPU, SV) if mid != rec]
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
@@ -4050,7 +4106,7 @@ def dictation_models(hw: dict | None = None) -> dict:
             continue
         if not m.get("local", True) and (local_only() or not installed(m)):
             continue        # a cloud service: only with its key, never when recognition stays on this Mac
-        if mid == FUN_MLX and not speaks_all(m, langs) and mid not in (configured, selected):
+        if mid in (FUN_MLX, FUN_CPU) and not speaks_all(m, langs) and mid not in (configured, selected):
             continue        # three languages: not offered to someone who speaks another (unless already chosen)
         have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],

@@ -11,7 +11,8 @@ const hint = document.querySelector<HTMLElement>('.hint')!;
 const last = parseRect(params.get('last'));
 const btn = (a: string) => bar.querySelector<HTMLElement>(`[data-a=${a}]`)!;
 
-const purpose = params.get('purpose') === 'screenshot' ? 'screenshot' : 'record';
+const asked = params.get('purpose');
+const purpose = asked === 'screenshot' || asked === 'text' || asked === 'translate' ? asked : 'record';
 hint.textContent = t(`picker.hint.${purpose}`);
 btn('ok').innerHTML = `${purpose === 'record' ? '<i class="rdot" aria-hidden="true"></i>' : ''}<span></span><kbd>↩</kbd>`;
 const outline = sel.querySelectorAll<SVGRectElement>('.outline rect');

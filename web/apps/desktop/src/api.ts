@@ -290,6 +290,31 @@ export interface Settings {
   config_path: string;
 }
 
+export interface DictationModel {
+  id: string;
+  name: string;
+  size_mb: number;
+  installed: boolean;
+  recommended: boolean;
+}
+export interface DictationModels {
+  recommended: string;
+  selected: string;
+  ready: boolean;
+  models: DictationModel[];
+  downloading?: string | null;
+}
+export interface ModelDownload {
+  id: string;
+  state: 'running' | 'done' | 'failed';
+  done_mb: number;
+  total_mb: number;
+}
+export interface CloudSummary {
+  services: { id: string; preset: string; has_key: boolean }[];
+  routes: Record<string, { service: string; model: string } | null>;
+}
+
 export interface AsrModel {
   id?: string;
   name?: string;
@@ -332,6 +357,13 @@ export const api = {
   setSettings: (patch: Record<string, unknown>) => invoke<Record<string, any>>('settings_set', { patch }),
   setShortcut: (action: string, combo: string) => invoke<HotkeyResult>('shortcut_set', { action, combo }),
   asrModels: () => invoke<{ models: AsrModel[] }>('asr_models'),
+  dictationModels: () => invoke<DictationModels>('dictation_models'),
+  modelDownload: (id: string) => invoke<void>('model_download', { id }),
+  dictationUse: (id: string | null) => invoke<void>('dictation_use', { id }),
+  cloudSummary: () => invoke<CloudSummary>('cloud_summary'),
+  cloudConnect: (preset: string, key: string) =>
+    invoke<{ ok: boolean; ms?: number; code?: string; error?: string; summary?: CloudSummary }>('cloud_connect', { preset, key, baseUrl: null }),
+  cloudDisconnect: (id: string) => invoke<CloudSummary>('cloud_disconnect', { id }),
   reveal: (path: string) => invoke<void>('reveal', { path }),
   openUrl: (url: string) => invoke<void>('open_external', { url }),
   captureStart: () => invoke<string>('capture_start', { opts: { pick: true } }),

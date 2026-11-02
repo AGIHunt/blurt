@@ -3,8 +3,9 @@ import { Icon } from '@blurt/icons';
 import { api, type AppStatus, type AsrModel, type Detect, type HotkeyResult, type HotkeyRow, type Settings } from '../api';
 import { i18n, t } from '../i18n';
 import { comboFromEvent, comboLabel } from '../util';
+import { CloudSettings, DictationSettings } from './DictationSettings';
 
-const ORDER = ['record', 'snap', 'voice', 'project', 'menu', 'pause', 'marker', 'stop', 'pen'];
+const ORDER = ['record', 'snap', 'voice', 'text', 'translate', 'project', 'menu', 'pause', 'marker', 'stop', 'pen'];
 
 function conflictText(r: { result: string; of?: string; action?: string; name?: string; hint_url?: string }, platform: AppStatus['platform']): string {
   switch (r.result) {
@@ -64,7 +65,7 @@ function ShortcutRow({ row, platform, onSet }: { row: HotkeyRow; platform: AppSt
   );
 }
 
-type Tab = 'general' | 'shortcuts' | 'agents' | 'speech' | 'export';
+type Tab = 'general' | 'dictation' | 'cloud' | 'shortcuts' | 'agents' | 'speech';
 
 export function SettingsView({ status, onToast, onLang }: { status: AppStatus; onToast: (m: string) => void; onLang: (lang: string) => void }) {
   const [tab, setTab] = useState<Tab>('general');
@@ -100,7 +101,7 @@ export function SettingsView({ status, onToast, onLang }: { status: AppStatus; o
   return (
     <div className="settings" data-testid="settings">
       <nav className="tabs" role="tablist">
-        {(['general', 'shortcuts', 'agents', 'speech', 'export'] as const).map((id) => (
+        {(['general', 'dictation', 'cloud', 'shortcuts', 'agents', 'speech'] as const).map((id) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? 'sel' : ''} onClick={() => setTab(id)}>{t(`settings.tab.${id}`)}</button>
         ))}
       </nav>
@@ -224,22 +225,8 @@ export function SettingsView({ status, onToast, onLang }: { status: AppStatus; o
           )}
         </section>
       )}
-      {tab === 'export' && (
-        <section>
-          <table className="grid">
-            <tbody>
-              {s.export_targets.map((x) => (
-                <tr key={x.id}>
-                  <td>{x.name}</td>
-                  <td className={x.configured ? 'ok' : 'dim'}>{t(x.configured ? 'settings.export.ready' : 'settings.export.setup')}</td>
-                  <td className="dim small">{x.needs ?? ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="dim small">{t('settings.export.lead')}</p>
-        </section>
-      )}
+      {tab === 'dictation' && <DictationSettings cfg={cfg} save={async (patch) => { await api.setSettings(patch); await reload(); }} />}
+      {tab === 'cloud' && <CloudSettings onToast={onToast} />}
     </div>
   );
 }

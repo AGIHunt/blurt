@@ -264,6 +264,10 @@ fn listen_from<R: Runtime>(
 pub enum Purpose {
     Record,
     Screenshot,
+    /// Copy Text from Screen (Alt+C)
+    Text,
+    /// translate the text on screen (Alt+T)
+    Translate,
 }
 
 /// Lets the user choose the area on the monitor under the pointer (drag; click = whole screen; Esc cancels).
@@ -272,7 +276,13 @@ pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Op
     let Some(mon) = monitor_at_cursor(app) else { return Ok(None) };
     let (mr, scale) = (monitor_region(&mon), mon.scale_factor());
     let mut params = BTreeMap::new();
-    params.insert("purpose", if purpose == Purpose::Record { "record" } else { "screenshot" }.to_string());
+    let p = match purpose {
+        Purpose::Record => "record",
+        Purpose::Screenshot => "screenshot",
+        Purpose::Text => "text",
+        Purpose::Translate => "translate",
+    };
+    params.insert("purpose", p.to_string());
     if let Some(l) = last.and_then(|l| l.intersect(&mr)) {
         let css = |v: i32| format!("{:.0}", v as f64 / scale);
         params.insert("last", [css(l.x - mr.x), css(l.y - mr.y), css(l.w as i32), css(l.h as i32)].join(","));

@@ -67,7 +67,9 @@
     "resources": {
       "../../../skills/blurt/scripts/*.py": "scripts/",
       "../../../skills/blurt/scripts/*.json": "scripts/",
-      "../../../skills/blurt/scripts/review.html": "scripts/review.html"
+      "../../../skills/blurt/scripts/review.html": "scripts/review.html",
+      "../../../skills/blurt/models/*": "models/",
+      "sounds/*.wav": "sounds/"
     },
     "createUpdaterArtifacts": false,
     "windows": {
