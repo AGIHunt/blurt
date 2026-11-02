@@ -1,40 +1,53 @@
-// The embedded terminal (contract K5): xterm.js on a pty the app opens for an agent job — a tmux client from
-// `sessions.py attach-cmd` (macOS / Linux), or the app runner's own ConPTY session on Windows (its output so far is
-// replayed first). Keys go back with pty_write, the size with pty_resize; closing the view ends only the client.
+// The embedded terminal (contract K5; the Mac's TerminalSurface / BlurtTerminalView): xterm.js on a pty the app opens
+// for an agent job — a tmux client from `sessions.py attach-cmd` (Linux), or the app runner's own ConPTY session
+// (Windows; its output so far is replayed first). Keys go back with pty_write, the size with pty_resize; closing the
+// view ends only the client. An app-runner session that ended shows what it left on screen, read only (Show Output).
+// The look is the Mac's TerminalTheme: ink on white / the window's dark surface, ANSI tuned for both, 12.5 pt type
+// (config terminal.font_size), the text 8 / 14 / 8 / 8 in from the edges in the terminal's own colour, no bell; links
+// the agent prints (http, https, file) open in their apps.
 import { useEffect, useRef } from 'react';
 import { Terminal as XTerm, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { api, listen } from '../api';
 
-const DARK: ITheme = {
-  background: '#141416',
-  foreground: '#e6e6e9',
-  cursor: '#e6e6e9',
-  cursorAccent: '#141416',
-  black: '#1e1e22', red: '#ff6b6b', green: '#3dd68c', yellow: '#ffc53d', blue: '#8da4ef', magenta: '#d19dff', cyan: '#4ccce6', white: '#d4d4d8',
-  brightBlack: '#5c5c66', brightRed: '#ff8f8f', brightGreen: '#6be3a8', brightYellow: '#ffd76b', brightBlue: '#adbff5', brightMagenta: '#e0bbff', brightCyan: '#7fdcef', brightWhite: '#fafafa',
-};
-const LIGHT: ITheme = {
-  background: '#fbfbfa',
-  foreground: '#1f1f23',
-  cursor: '#1f1f23',
-  cursorAccent: '#fbfbfa',
-  black: '#1f1f23', red: '#d93d42', green: '#218358', yellow: '#a8710a', blue: '#3e63dd', magenta: '#8e4ec6', cyan: '#0d7c8c', white: '#6f6f78',
-  brightBlack: '#8b8b94', brightRed: '#e5484d', brightGreen: '#2b9a66', brightYellow: '#b86e00', brightBlue: '#3358d4', brightMagenta: '#9e5bd6', brightCyan: '#0e8a9b', brightWhite: '#3a3a40',
+const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
+const ansi = (list: number[]) => {
+  const k = ['black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white'] as const;
+  const o: Record<string, string> = {};
+  list.forEach((c, i) => (o[i < 8 ? k[i] : 'bright' + k[i - 8][0].toUpperCase() + k[i - 8].slice(1)] = hex(c)));
+  return o as ITheme;
 };
 
-/** The selection: the focus / selection accent (@blurt/ui --focus, the brand accent) at 36 % dark / 22 % light, as
-    SwiftTerm does on macOS. The cursor is neutral and the ANSI palette is a terminal theme, not brand. */
+/** TerminalTheme.light / .dark (macOS TerminalStyle.swift), colour for colour. */
+export const LIGHT: ITheme = {
+  background: '#ffffff',
+  foreground: '#1d1d1f',
+  cursor: '#1d1d1f',
+  cursorAccent: '#ffffff',
+  ...ansi([0x1d1d1f, 0xc4282d, 0x1e7a3c, 0x8a6100, 0x2154c9, 0x8e3cb4, 0x0e7490, 0x6e6e73, 0x515154, 0xd93d42, 0x218358, 0xa16e00, 0x3e63dd, 0xa24fc9, 0x0f8aa8, 0x1d1d1f]),
+};
+export const DARK: ITheme = {
+  background: '#1c1c1e',
+  foreground: '#e8e8ed',
+  cursor: '#f5f5f7',
+  cursorAccent: '#1c1c1e',
+  ...ansi([0x3a3a3c, 0xff6b6b, 0x3dd68c, 0xffc53d, 0x6e9bff, 0xd08cff, 0x5cd4e8, 0xc7c7cc, 0x636366, 0xff8a85, 0x6be6a6, 0xffd666, 0x8db2ff, 0xdda6ff, 0x84e1f0, 0xf5f5f7]),
+};
+
+const isDark = () => document.documentElement.dataset.theme === 'dark';
+
+/** The selection: the system's accent (--focus follows it on Windows, as the Mac's follows macOS's) at 22 % light /
+    36 % dark, the Mac's proportions. */
 function selection(dark: boolean): string {
   const v = getComputedStyle(document.documentElement).getPropertyValue('--focus').trim();
   const m = v.match(/^#([0-9a-f]{6})$/i);
-  const n = m ? parseInt(m[1], 16) : 0x0b735e;
+  const n = m ? parseInt(m[1], 16) : 0x0a84ff;
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${dark ? 0.36 : 0.22})`;
 }
 
-const theme = (): ITheme => {
-  const dark = document.documentElement.dataset.theme === 'dark';
+export const terminalTheme = (): ITheme => {
+  const dark = isDark();
   return { ...(dark ? DARK : LIGHT), selectionBackground: selection(dark) };
 };
 
@@ -45,24 +58,55 @@ function bytes(b64: string): Uint8Array {
   return out;
 }
 
-export function Terminal({ job, onExit, onError }: { job: string; onExit?: (code: number) => void; onError?: (e: unknown) => void }) {
+const LINK = /\b(?:https?|file):\/\/[^\s"'<>`]+[^\s"'<>`.,;:!?)\]]/g;
+
+export function Terminal({ job, fontSize, onAttached, onExit, onError, onEnded }: {
+  job: string;
+  fontSize?: number | null;
+  /** the pty is up (live, or the ended session's screen replayed) */
+  onAttached?: (o: { owned: boolean; ended: boolean }) => void;
+  onExit?: (code: number) => void;
+  onError?: (e: unknown) => void;
+  /** the app-runner session has ended: what it left is shown, read only */
+  onEnded?: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
   const el = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const host = el.current;
     if (!host) return;
+    // the platform's monospace (Cascadia Mono on Windows, as Windows Terminal; SF Mono on the Mac), CJK after it
+    const mono = getComputedStyle(document.documentElement).getPropertyValue('--mono').trim();
     const term = new XTerm({
-      fontFamily: '"Cascadia Mono", "JetBrains Mono", "SF Mono", "DejaVu Sans Mono", "Noto Sans Mono CJK SC", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontFamily: `${mono ? mono + ', ' : ''}"Cascadia Mono", "SF Mono", "DejaVu Sans Mono", "Noto Sans Mono CJK SC", Consolas, "Microsoft YaHei UI", "PingFang SC", monospace`,
+      fontSize: fontSize ?? 12.5,
       lineHeight: 1.15,
       cursorBlink: true,
       scrollback: 10000,
       allowProposedApi: true,
       macOptionIsMeta: true,
-      theme: theme(),
+      theme: terminalTheme(),
+      // an agent drawing its dark-theme colours on the light terminal (Claude Code's pale selected answer, its faint
+      // diff context) stays readable: xterm lifts any foreground under 4.5:1 against its cell's background
+      minimumContrastRatio: 4.5,
     });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host);
+    const paint = () => box.current?.style.setProperty('--term-bg', String(terminalTheme().background));
+    paint();
+    // links the agent prints open in their apps — http(s) and file only
+    const links = term.registerLinkProvider({
+      provideLinks(y, done) {
+        const line = term.buffer.active.getLine(y - 1)?.translateToString(true) ?? '';
+        const out = [...line.matchAll(LINK)].map((m) => ({
+          range: { start: { x: (m.index ?? 0) + 1, y }, end: { x: (m.index ?? 0) + m[0].length, y } },
+          text: m[0],
+          activate: () => void api.openUrl(m[0]).catch(() => {}),
+        }));
+        done(out.length ? out : undefined);
+      },
+    });
     try {
       fit.fit();
     } catch {
@@ -84,9 +128,19 @@ export function Terminal({ job, onExit, onError }: { job: string; onExit?: (code
     );
     api.ptyOpen(job, term.cols, term.rows).then(
       (r) => {
-        if (dead) return void api.ptyClose(r.ptyId);
-        pty = r.ptyId;
+        if (dead) return void (r.ptyId != null && api.ptyClose(r.ptyId));
         if (r.replay) term.write(bytes(r.replay));
+        if (r.ptyId == null || r.ended) {
+          term.options.disableStdin = true;
+          term.options.cursorBlink = false;
+          onAttached?.({ owned: r.owned, ended: true });
+          onEnded?.();
+          return;
+        }
+        pty = r.ptyId;
+        // tmux keeps the scrollback (the mouse scrolls it): no still track at the edge
+        if (!r.owned) box.current?.classList.add('no-scroller');
+        onAttached?.({ owned: r.owned, ended: false });
         term.focus();
       },
       (e) => onError?.(e),
@@ -101,12 +155,16 @@ export function Terminal({ job, onExit, onError }: { job: string; onExit?: (code
       }
     });
     ro.observe(host);
-    const themeObs = new MutationObserver(() => (term.options.theme = theme()));
+    const themeObs = new MutationObserver(() => {
+      term.options.theme = terminalTheme();
+      paint();
+    });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     return () => {
       dead = true;
       ro.disconnect();
       themeObs.disconnect();
+      links.dispose();
       data.dispose();
       size.dispose();
       offs.forEach((o) => o());
@@ -115,5 +173,9 @@ export function Terminal({ job, onExit, onError }: { job: string; onExit?: (code
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job]);
-  return <div className="terminal" ref={el} data-testid="terminal" />;
+  return (
+    <div className="term-box" ref={box}>
+      <div className="terminal" ref={el} data-testid="terminal" />
+    </div>
+  );
 }

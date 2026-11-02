@@ -72,7 +72,7 @@ def test_menu_bar_is_peeps_template_glyph():
     @2x, Resources/Peep/glyph-*.png), at rest and moving with what Blurt does — talking while you dictate (the beak with
     the voice level), listening to a voice note or the countdown, thinking while transcribing or organising, done,
     error, an idle blink — and still with Reduce Motion. No colour option (the v0.8 colour hen is gone). The Tauri tray
-    (Windows / Linux) still shows the `blurt` line glyph until it gets Peep."""
+    (Windows / Linux) shows Peep's flat mark (import_peep.py), no longer the `blurt` line glyph."""
     app = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp"
     mac = (app / "App/AppDelegate.swift").read_text()
     assert "MenuGlyph.shared.frame(.idle, 0)" in mac and "MenuIconTemplate" not in mac
@@ -92,7 +92,8 @@ def test_menu_bar_is_peeps_template_glyph():
         assert "menu_color" not in strings.read_text(), strings
     assert not list((ROOT / "skills/blurt/assets").glob("MenuIconTemplate*.png"))
     build = (ROOT / "assets/icons/tools/build.py").read_text()
-    assert 'TRAY_ICON = "blurt"' in build
+    assert "TRAY_ICON" not in build and "def tray(" not in build
+    assert "tray-white.png" in (ROOT / "assets/brand/import_peep.py").read_text()
 
 
 def test_blurt_line_glyph_is_a_bold_silhouette():
@@ -262,7 +263,8 @@ def test_brand_effects_stay_restrained():
                 or "node_modules" in p.parts:
             continue
         for i, line in enumerate(p.read_text().splitlines(), 1):
-            if web_banned.search(line):
+            # the onboarding title is the one place gradient text is allowed, as on the Mac (Onboarding.swift)
+            if web_banned.search(line) and not (p.name == "Welcome.tsx" and "wl-h1 g-text" in line):
                 hits.append(f"{p.relative_to(ROOT)}:{i}: {line.strip()}")
     assert hits == []
     import json
@@ -288,21 +290,64 @@ def test_cards_have_one_look():
     assert "t.icon = icon" in (app / "App/AppDelegate.swift").read_text()
 
 
-def test_web_mascot_outputs_are_copied_from_assets_mascot():
-    """The web still plays the 1A chick's frame strips (assets/mascot): they reach the web package unchanged and stay
-    small. The mac app no longer carries them."""
+def test_web_mascot_is_peep():
+    """Windows / Linux show Peep as the Mac does: @blurt/icons/mascot plays the release package's clay sheets (the notch
+    set without the contact shadow, cut per tier by import_peep.py — `s` for the island, `l` for the app window), each
+    app importing only its tier; the island's ear talks with the voice while you dictate, listens to a voice note and
+    thinks while captures are organised; the welcome says hello, the empty states idle. The Tauri app's icons and tray
+    are Peep's tiles and flat mark. The 1A chick's strips are retired to assets/brand/legacy/mascot."""
     import json
-    r = subprocess.run([sys.executable, str(ROOT / "assets/mascot/tools/build.py"), "--check"], capture_output=True, text=True)
-    assert r.returncode == 0, r.stdout + r.stderr
-    m = json.loads((ROOT / "assets/mascot/mascot.json").read_text())
-    sheets = {c["sheet"] for c in m["clips"].values()}
-    assert {"idle", "listening", "thinking", "wobble", "hatching", "happy", "peck"} <= set(m["clips"])
-    assert sum((ROOT / f"assets/mascot/{s}.webp").stat().st_size for s in sheets) < 2.5 * 1024 * 1024
-    for name, c in m["clips"].items():
-        assert 8 <= c["frames"] <= 16, name
-        assert all(0 <= f < c["frames"] and t > 0 for f, t in c["timeline"]), name
-    assert not (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Mascot").exists()
-    assert '"Mascot"' not in (ROOT / "skills/blurt/scripts/record.py").read_text()
+    web = ROOT / "web/packages/icons"
+    m = json.loads((web / "peep/peep.json").read_text())
+    assert "import_peep.py" in m["_"]
+    assert {"idle", "listening", "talking", "thinking", "done", "error"} <= set(m["tiers"]["s"]["clips"])
+    assert {"idle", "hello", "done"} <= set(m["tiers"]["l"]["clips"])
+    sheets = list((web / "peep").glob("*.webp"))
+    assert sheets and sum(p.stat().st_size for p in sheets) < 800 * 1024
+    assert not (web / "mascot").exists() and not (ROOT / "assets/mascot").exists()
+    assert (ROOT / "assets/brand/legacy/mascot/mascot.json").exists()
+    island = (ROOT / "web/apps/overlays/src/island.ts").read_text()
+    assert "import '@blurt/icons/peep-s'" in island and "setMascotLevel(" in island
+    assert "mascotHtml('talking', { size: 24, level: true })" in island and "mascotHtml('listening'" in island
+    for gone in ("'wobble'", "'hatching'", "'happy'", "ic('chicken'"):
+        assert gone not in island, gone
+    desk = ROOT / "web/apps/desktop/src"
+    assert "import '@blurt/icons/peep-l'" in (desk / "main.tsx").read_text()
+    assert "clip={last ? 'done' : 'hello'} then=\"idle\"" in (desk / "components/Welcome.tsx").read_text()
+    empty = (desk / "components/EmptyState.tsx").read_text()
+    assert "<Mascot clip={busy ? 'thinking' : 'idle'} size={80}" in empty  # idle at rest, thinking while a place loads
+    icons = ROOT / "apps/desktop/src-tauri/icons"
+    for n in ("icon.ico", "icon.png", "32x32.png", "64x64.png", "128x128.png", "128x128@2x.png", "icon.icns",
+              "tray-black.png", "tray-white.png"):
+        assert (icons / n).stat().st_size > 0, n
+    assert not (icons / "tray.svg").exists()
+    ico = (icons / "icon.ico").read_bytes()
+    assert ico[:4] == b"\0\0\1\0" and int.from_bytes(ico[4:6], "little") == 6, "16 24 32 48 64 256"
+
+
+def test_tray_marks_fit_each_size_and_share_one_shape():
+    """The Windows tray: Peep drawn for each notification-area size (16 / 20 / 24 / 32 px; tray.rs picks one by
+    SM_CXSMICON), black and white from one alpha so the eye is a hole on both taskbars (the package's white mark had it
+    filled in), the eye at least 3 px clear at 16; the take's dot and pause bars on whole pixels at every size."""
+    from PIL import Image
+    icons = ROOT / "apps/desktop/src-tauri/icons"
+    for n in (16, 20, 24, 32):
+        black = Image.open(icons / f"tray-black-{n}.png").convert("RGBA")
+        white = Image.open(icons / f"tray-white-{n}.png").convert("RGBA")
+        assert black.size == white.size == (n, n)
+        assert black.getchannel("A").tobytes() == white.getchannel("A").tobytes(), n
+        # the eye: a hole inside the body (mostly clear, alpha under half, surrounded by ink; its anti-aliased rim counts)
+        a = black.getchannel("A").load()
+        holes = [(x, y) for y in range(n) for x in range(n) if a[x, y] < 128 and 0 < x < n - 1
+                 and any(a[x - d, y] == 255 for d in range(1, x + 1)) and any(a[x + d, y] == 255 for d in range(1, n - x))
+                 and any(a[x, y - d] == 255 for d in range(1, y + 1)) and any(a[x, y + d] == 255 for d in range(1, n - y))]
+        assert len(holes) >= 9, (n, len(holes))
+        for take in ("rec-light", "rec-dark", "paused-light", "paused-dark"):
+            assert Image.open(icons / f"tray-{take}-{n}.png").size == (n, n)
+    big_b = Image.open(icons / "tray-black.png").getchannel("A").tobytes()
+    assert big_b == Image.open(icons / "tray-white.png").getchannel("A").tobytes()
+    tray = (ROOT / "apps/desktop/src-tauri/src/tray.rs").read_text()
+    assert "SM_CXSMICON" in tray and 'sized!("tray-white")' in tray
 
 
 def test_mac_mascot_is_peep_frames():
@@ -333,3 +378,47 @@ def test_mac_mascot_is_peep_frames():
     assert ".done : .hello, then: .idle" in (app / "Onboarding/Onboarding.swift").read_text()
     for gone in ("ChickenArt", "HenView", "HenMood", "drawEgg", "eggImage", "BLURT_MASCOT_DIR"):
         assert gone not in src, gone
+
+
+def _sf(icon: str) -> list[str]:
+    """The SF Symbols a family glyph stands for (sf-symbols.json, through its aliases)."""
+    import json
+
+    m = json.loads((ROOT / "assets/icons/sf-symbols.json").read_text())
+    name = m["aliases"].get(icon, icon)
+    return m["generic"].get(name, []) + m["nearest"].get(name, [])
+
+
+# the SF Symbols that are one metaphor with another name ("terminal" and "apple.terminal" are both a prompt in a window)
+SAME = {"terminal": "apple.terminal"}
+
+
+def test_windows_settings_panes_use_the_macs_metaphors():
+    """Each Settings pane on Windows / Linux shows the glyph drawn for the SF Symbol the Mac's sidebar shows
+    (SettingsCatalog.panes; SettingsWindow overrides Agents with a terminal) — docs/design/windows-parity/icons.md."""
+    cat = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtCore/SettingsCatalog.swift").read_text()
+    mac = dict(re.findall(r'pane\("(\w+)", "[^"]+", "\w+", "([\w.]+)"', cat))
+    win_src = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Settings/SettingsWindow.swift").read_text()
+    if 'self == .agents ? "terminal"' in win_src:
+        mac["agents"] = "terminal"
+    ts = (ROOT / "web/apps/desktop/src/settings/catalog.ts").read_text()
+    win = dict(re.findall(r"\{ id: '(\w+)', title: '[^']+', icon: '([\w-]+)'", ts))
+    assert set(win) == set(mac), (set(win) ^ set(mac))
+    for pane, sym in mac.items():
+        assert SAME.get(sym, sym) in _sf(win[pane]), (pane, sym, win[pane], _sf(win[pane]))
+
+
+def test_windows_main_sidebar_uses_the_macs_metaphors():
+    """The main window's places: tray, half circle, the dashed ring, the list in a box, the character at the cursor
+    (SidebarController) — never the Windows build's own stand-ins."""
+    side = (ROOT / "web/apps/desktop/src/components/Sidebar.tsx").read_text()
+    glyphs = (ROOT / "web/apps/desktop/src/components/glyphs.tsx").read_text()
+    mac = (ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/MainWindow/SidebarController.swift").read_text()
+    for place, sym in [("inbox", "tray"), ("all", "list.bullet.rectangle"), ("dictation", "character.cursor.ibeam")]:
+        assert f'"{sym}"' in mac, sym
+        icon = re.search(rf"row\('{place}', [^<]+<Icon name=\"([\w-]+)\"", side).group(1)
+        assert sym in _sf(icon), (place, icon)
+    assert "circle.righthalf.filled" in mac and "<ProgressGlyph" in side and "name=\"progress\"" in glyphs
+    assert "circle.righthalf.filled" in _sf("progress") and "circle.dashed" in _sf("unassigned")
+    # the window's marks are the family's glyphs, not a second hand-drawn set
+    assert "<path" not in glyphs.replace("<path d={FOLDER}", "")

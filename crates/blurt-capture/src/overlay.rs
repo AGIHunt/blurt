@@ -23,7 +23,8 @@
 //! | `blurt://action` | overlay → Rust | `{label, action, …}` (island: record / snap / voice / pause / … / `card.assign` …) |
 //! | `blurt://picked` | picker → Rust | `{label, rect: {x,y,w,h} \| null}` in the window's CSS px |
 //! | `blurt://hit-rects` | island → Rust | `{label, rects: [{x,y,w,h}]}` where it takes the mouse |
-//! | `blurt://note-done` | note → Rust | `{label, n, text \| null}` |
+//! | `blurt://note-done` | note → Rust | `{label, n, text \| null}`; a fresh snap's note: its whole outcome (note.ts `SnapDone`) |
+//! | `blurt://note` | Rust → a snap's note | a note op (`shot`, `voice`, `level`, `speech`, `live`, `ended`, `words`, `commit`, `failed`) |
 //! | `blurt://ready` | overlay → Rust | `{label, kind}` once it listens |
 //!
 //! Initial parameters (`lang`, `platform`, `n`, `src`, `text`, `last`) reach a page through an initialization script
@@ -50,6 +51,7 @@ pub mod ev {
     pub const HIT_RECTS: &str = "blurt://hit-rects";
     pub const NOTE_DONE: &str = "blurt://note-done";
     pub const READY: &str = "blurt://ready";
+    pub const NOTE: &str = "blurt://note";
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +59,8 @@ pub enum Kind {
     Picker,
     Island,
     Note,
+    /// ⌥T's translation under the island (the Mac's ScreenTextCard): never takes the keys
+    TextCard,
 }
 
 impl Kind {
@@ -65,6 +69,7 @@ impl Kind {
             Kind::Picker => "picker.html",
             Kind::Island => "island.html",
             Kind::Note => "note.html",
+            Kind::TextCard => "textcard.html",
         }
     }
 
@@ -74,6 +79,7 @@ impl Kind {
             Kind::Picker => "blurt-overlay-picker",
             Kind::Island => "blurt-overlay-island",
             Kind::Note => "blurt-overlay-note",
+            Kind::TextCard => "blurt-overlay-textcard",
         }
     }
 
@@ -233,16 +239,36 @@ pub fn open<R: Runtime>(
     w.set_size(PhysicalSize::new(at.w, at.h))?;
     w.show()?;
     if kind.takes_keys() {
-        let _ = w.set_focus();
+        take_keys(&w);
     }
     Ok(w)
+}
+
+/// Windows: a plain SetForegroundWindow (tao's set_focus) is refused under the foreground lock when another app is in
+/// front and the hotkey's grant has lapsed — the keys then go to the app behind. The host app registers how to force
+/// it (AttachThreadInput, checked and retried); it gets the window's HWND and runs on its own thread.
+static FOCUS_HOOK: std::sync::OnceLock<fn(isize)> = std::sync::OnceLock::new();
+
+pub fn set_focus_hook(f: fn(isize)) {
+    let _ = FOCUS_HOOK.set(f);
+}
+
+/// The window takes the keyboard: focus, then (Windows) the host's forcing until it really is in front.
+pub fn take_keys<R: Runtime>(w: &WebviewWindow<R>) {
+    let _ = w.set_focus();
+    #[cfg(windows)]
+    if let (Some(f), Ok(h)) = (FOCUS_HOOK.get().copied(), w.hwnd()) {
+        let h = h.0 as isize;
+        thread::spawn(move || f(h));
+    }
 }
 
 fn label_of(payload: &Value) -> &str {
     payload.get("label").and_then(Value::as_str).unwrap_or("")
 }
 
-fn listen_from<R: Runtime>(
+/// Listens to `event` from the overlay window `label` only.
+pub fn listen_from<R: Runtime>(
     app: &AppHandle<R>,
     event: &'static str,
     label: &'static str,
@@ -264,18 +290,80 @@ fn listen_from<R: Runtime>(
 pub enum Purpose {
     Record,
     Screenshot,
+    /// Copy Text from Screen (Alt+C)
+    Text,
+    /// translate the text on screen (Alt+T)
+    Translate,
 }
 
-/// Lets the user choose the area on the monitor under the pointer (drag; click = whole screen; Esc cancels).
-/// Returns physical px of the desktop, even-sized; `None` when cancelled. Blocks: not on the main thread.
+/// What the host app tells the picker (registered once, [`set_picker_hooks`]): the visible windows on the desktop, top
+/// first, in physical px (a click picks one — the Mac's window snapping; Windows lists them), and whether a teaching
+/// line still shows ("picker": the key legend, the first few pickers — the Mac's HintBudget).
+pub struct PickerHooks {
+    /// None: no window list here (Linux) — a click takes the whole screen
+    pub windows: fn() -> Option<Vec<Region>>,
+    pub hint: fn(&str) -> bool,
+    /// the monitor (physical px) as it is before the picker opens, as an image file — the loupe magnifies it (the Mac's
+    /// LoupeStills), somewhere the host's asset protocol serves; None: no loupe
+    pub still: fn(Region) -> Option<std::path::PathBuf>,
+}
+
+static HOOKS: std::sync::OnceLock<PickerHooks> = std::sync::OnceLock::new();
+
+pub fn set_picker_hooks(h: PickerHooks) {
+    let _ = HOOKS.set(h);
+}
+
+/// Lets the user choose the area on the monitor under the pointer (drag; click = the window under the pointer;
+/// Esc cancels). Returns physical px of the desktop, even-sized; `None` when cancelled. Blocks: not on the main thread.
 pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Option<Region>, purpose: Purpose) -> tauri::Result<Option<Region>> {
+    Ok(pick_region_with(app, cfg, last, purpose, false)?.map(|(r, _)| r))
+}
+
+/// The CSS rect (px of a window at `origin` with `scale`) of a desktop region.
+fn css_of(r: &Region, origin: (i32, i32), scale: f64) -> [f64; 4] {
+    let f = |v: f64| (v * 10.0).round() / 10.0;
+    [f((r.x - origin.0) as f64 / scale), f((r.y - origin.1) as f64 / scale), f(r.w as f64 / scale), f(r.h as f64 / scale)]
+}
+
+/// [`pick_region`]; `hold`: a snap — the picker's window stays up, frozen (only the dim), and is handed back, so the
+/// screen never flickers before the note's stage covers it ([`snap_note`]); the caller destroys it.
+pub fn pick_region_with<R: Runtime>(
+    app: &AppHandle<R>,
+    cfg: &OverlayConfig,
+    last: Option<Region>,
+    purpose: Purpose,
+    hold: bool,
+) -> tauri::Result<Option<(Region, Option<WebviewWindow<R>>)>> {
     let Some(mon) = monitor_at_cursor(app) else { return Ok(None) };
     let (mr, scale) = (monitor_region(&mon), mon.scale_factor());
     let mut params = BTreeMap::new();
-    params.insert("purpose", if purpose == Purpose::Record { "record" } else { "screenshot" }.to_string());
+    let p = match purpose {
+        Purpose::Record => "record",
+        Purpose::Screenshot => "screenshot",
+        Purpose::Text => "text",
+        Purpose::Translate => "translate",
+    };
+    params.insert("purpose", p.to_string());
     if let Some(l) = last.and_then(|l| l.intersect(&mr)) {
-        let css = |v: i32| format!("{:.0}", v as f64 / scale);
-        params.insert("last", [css(l.x - mr.x), css(l.y - mr.y), css(l.w as i32), css(l.h as i32)].join(","));
+        params.insert("last", css_of(&l, (mr.x, mr.y), scale).map(|v| format!("{v:.0}")).join(","));
+    }
+    let wa = mon.work_area();
+    let work = Region::new(wa.position.x, wa.position.y, wa.size.width, wa.size.height);
+    params.insert("work", css_of(&work, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
+    if let Some(h) = HOOKS.get() {
+        if !matches!(purpose, Purpose::Text | Purpose::Translate) {
+            if let Some(list) = (h.windows)() {
+                let wins: Vec<[f64; 4]> = list.iter().filter_map(|w| w.intersect(&mr)).map(|w| css_of(&w, (mr.x, mr.y), scale)).collect();
+                params.insert("wins", serde_json::to_string(&wins).unwrap_or_else(|_| "[]".into()));
+            }
+            params.insert("legend", if (h.hint)("picker") { "1" } else { "0" }.into());
+        }
+        // the loupe's still: taken before the picker shows, so the picker is never in it
+        // (a file the host's asset protocol already serves: this crate doesn't change its scope)
+        if let Some(p) = (h.still)(mr) {
+            params.insert("still", file_src(&p));
+        }
     }
     let (tx, rx) = mpsc::channel::<Option<CssRect>>();
     let tx2 = tx.clone();
@@ -298,18 +386,23 @@ pub fn pick_region<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig, last: Op
     app.unlisten(id);
     let origin = w.inner_position().map(|p| (p.x, p.y)).unwrap_or((mr.x, mr.y));
     let scale = w.scale_factor().unwrap_or(scale);
-    let _ = w.destroy();
-    Ok(rect
+    let picked = rect
         .map(|r| Region::from_css(r, origin, scale))
         .and_then(|r| r.intersect(&mr))
         .map(Region::even)
-        .filter(|r| !r.is_empty()))
+        .filter(|r| !r.is_empty());
+    let keep = hold && picked.is_some() && !cfg.capturable;
+    if !keep {
+        let _ = w.destroy();
+    }
+    Ok(picked.map(|r| (r, keep.then_some(w))))
 }
 
 // ------------------------------------------------------------------------------------------------ island
 
-/// The island window: the full width of the monitor's work area along its top, this tall (logical px) — room for
-/// the expanded island (≤ 420), the cards hanging under it and their swing. Click-through except over what is drawn.
+/// The island window: the monitor's whole work area (it was the top 600 px: the Cards panel and its big preview —
+/// centred on the screen — need the rest, as the Mac's panel spans the screen: HangingCards.panelH). Click-through
+/// except over what is drawn. At least this tall (logical px) on a very small screen.
 pub const ISLAND_H: f64 = 600.0;
 /// K7: on a screen without a notch the pill hides when idle; the pointer resting 250 ms in the top-middle 320×8 zone
 /// brings it out.
@@ -324,13 +417,15 @@ pub struct Island<R: Runtime> {
     listeners: Mutex<Vec<EventId>>,
     alive: Arc<AtomicBool>,
     at: Arc<Mutex<(Region, f64)>>,
+    /// kept at a place of its own (Linux, out of a recorded area): not re-placed with the screen
+    pinned: Arc<AtomicBool>,
 }
 
 fn island_rect(m: Option<&Monitor>) -> (Region, f64) {
     m.map(|m| {
         let a = m.work_area();
         let s = m.scale_factor();
-        (Region::new(a.position.x, a.position.y, a.size.width, (ISLAND_H * s).round() as u32), s)
+        (Region::new(a.position.x, a.position.y, a.size.width, a.size.height.max((ISLAND_H * s).round() as u32)), s)
     })
     .unwrap_or((Region::new(0, 0, 1920, ISLAND_H as u32), 1.0))
 }
@@ -342,10 +437,14 @@ pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Res
     let label = Kind::Island.label();
     let mut listeners = Vec::new();
     let r2 = rects.clone();
+    // nothing on the island (no open body, toast, take, voice note, dictation, menu or panel): it may move screens
+    let idle = Arc::new(AtomicBool::new(true));
+    let i2 = idle.clone();
     listeners.push(listen_from(app, ev::HIT_RECTS, label, move |v| {
         if let Ok(r) = serde_json::from_value::<Vec<CssRect>>(v["rects"].clone()) {
             *r2.lock().unwrap() = r;
         }
+        i2.store(v["idle"].as_bool().unwrap_or(false), Ordering::SeqCst);
     }));
     let (app2, s2) = (app.clone(), sticky.clone());
     listeners.push(listen_from(app, ev::READY, label, move |_| {
@@ -363,23 +462,54 @@ pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Res
         }
     });
     let at = Arc::new(Mutex::new((at, scale)));
-    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone());
-    Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at }))
+    let pinned = Arc::new(AtomicBool::new(false));
+    spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone(), Follow { idle, pinned: pinned.clone() });
+    Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at, pinned }))
+}
+
+struct Follow {
+    idle: Arc<AtomicBool>,
+    pinned: Arc<AtomicBool>,
+}
+
+/// Where the island window should be now: on its screen as that screen is now (a resolution, scaling or work-area
+/// change, an RDP reconnect at another size), or — while nothing shows on it — on the screen with the pointer (K7:
+/// the island shows where you are; Island.swift poll).
+fn island_target<R: Runtime>(app: &AppHandle<R>, cur: &(Region, f64), idle: bool) -> (Region, f64) {
+    if idle {
+        island_rect(monitor_at_cursor(app).as_ref())
+    } else {
+        island_rect(monitor_containing(app, &cur.0).as_ref())
+    }
 }
 
 /// ~30 Hz: take the mouse only over the drawn rects; a pointer resting in the top-middle zone reveals the island.
+/// Once a second: the window follows its screen (island_target).
 fn spawn_hit_tester<R: Runtime>(
     app: AppHandle<R>,
     w: WebviewWindow<R>,
     rects: Arc<Mutex<Vec<CssRect>>>,
     alive: Arc<AtomicBool>,
     at: Arc<Mutex<(Region, f64)>>,
+    follow: Follow,
 ) {
     thread::spawn(move || {
         let mut ignoring = true;
         let mut peek_since: Option<Instant> = None;
+        let mut tick: u32 = 0;
         while alive.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(33));
+            tick = tick.wrapping_add(1);
+            if tick % 30 == 0 && !follow.pinned.load(Ordering::SeqCst) {
+                let cur = *at.lock().unwrap();
+                let want = island_target(&app, &cur, follow.idle.load(Ordering::SeqCst));
+                if want != cur {
+                    *at.lock().unwrap() = want;
+                    // position first: arriving on a screen of another scale resizes the window, then the size lands
+                    let _ = w.set_position(PhysicalPosition::new(want.0.x, want.0.y));
+                    let _ = w.set_size(PhysicalSize::new(want.0.w, want.0.h));
+                }
+            }
             let Ok(p) = app.cursor_position() else { continue };
             let (region, scale) = *at.lock().unwrap();
             let origin = w.inner_position().map(|o| (o.x, o.y)).unwrap_or((region.x, region.y));
@@ -389,6 +519,9 @@ fn spawn_hit_tester<R: Runtime>(
             if over == ignoring {
                 ignoring = !over;
                 let _ = w.set_ignore_cursor_events(ignoring);
+                // the page's mouseenter / mouseleave don't come when the window turns click-through (or back) under a
+                // pointer that has stopped moving: say it from here too
+                let _ = app.emit_to(Kind::Island.label(), ev::ISLAND, json!({"op": "hover", "x": cx, "y": cy, "out": !over}));
             }
             let mid = region.w as f64 / s / 2.0;
             let in_peek = (cx - mid).abs() < PEEK.0 / 2.0 && (0.0..PEEK.1).contains(&cy);
@@ -433,7 +566,7 @@ impl<R: Runtime> Island<R> {
         let _ = self.window.set_focusable(on);
         if on {
             let _ = self.window.set_ignore_cursor_events(false);
-            let _ = self.window.set_focus();
+            take_keys(&self.window);
         }
     }
 
@@ -441,7 +574,7 @@ impl<R: Runtime> Island<R> {
     pub fn follow_cursor(&self) {
         let (at, scale) = island_rect(monitor_at_cursor(&self.app).as_ref());
         let mut cur = self.at.lock().unwrap();
-        if cur.0 != at {
+        if *cur != (at, scale) {
             *cur = (at, scale);
             let _ = self.window.set_position(PhysicalPosition::new(at.x, at.y));
             let _ = self.window.set_size(PhysicalSize::new(at.w, at.h));
@@ -455,8 +588,10 @@ impl<R: Runtime> Island<R> {
         if let Some(y) = y {
             at.y = y;
         }
+        self.pinned.store(y.is_some(), Ordering::SeqCst);
         *self.at.lock().unwrap() = (at, scale);
         let _ = self.window.set_position(PhysicalPosition::new(at.x, at.y));
+        let _ = self.window.set_size(PhysicalSize::new(at.w, at.h));
     }
 
     /// The island's area on the desktop (physical px).
@@ -476,6 +611,33 @@ impl<R: Runtime> Drop for Island<R> {
 }
 
 // ------------------------------------------------------------------------------------------------ note
+
+/// A fresh snap's note (the Mac's InkStage + NoteBubble in place): one window over the monitor holding `sel` (physical
+/// px), its page `note.html?mode=snap` — the picture frozen at `sel`, the pen on it, the bubble docked beside it. The
+/// window takes the keys. `params`: n, src, place, projects, voice, hint, first, g (see note.ts); `sel` and `work` are
+/// added here in the window's CSS px. Talk to it with [`ev::NOTE`] (`emit_to(Kind::Note.label(), …)`) and
+/// [`listen_from`] (`ev::NOTE_DONE`, `ev::ACTION`, `ev::READY`).
+pub fn snap_note<R: Runtime>(
+    app: &AppHandle<R>,
+    cfg: &OverlayConfig,
+    sel: Region,
+    mut params: BTreeMap<&'static str, String>,
+) -> tauri::Result<WebviewWindow<R>> {
+    let mon = monitor_containing(app, &sel);
+    let (mr, scale) = mon.as_ref().map(|m| (monitor_region(m), m.scale_factor())).unwrap_or((sel, 1.0));
+    let work = mon
+        .as_ref()
+        .map(|m| {
+            let a = m.work_area();
+            Region::new(a.position.x, a.position.y, a.size.width, a.size.height)
+        })
+        .unwrap_or(mr);
+    params.insert("mode", "snap".into());
+    params.insert("sel", css_of(&sel, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
+    params.insert("work", css_of(&work, (mr.x, mr.y), scale).map(|v| v.to_string()).join(","));
+    open(app, Kind::Note, cfg, mr, params)
+}
+
 
 const NOTE_SIZE: (f64, f64) = (440.0, 360.0);
 
@@ -540,7 +702,7 @@ mod tests {
 
     #[test]
     fn labels_are_blurt_overlay_star() {
-        for k in [Kind::Picker, Kind::Island, Kind::Note] {
+        for k in [Kind::Picker, Kind::Island, Kind::Note, Kind::TextCard] {
             assert!(k.label().starts_with("blurt-overlay-"));
         }
     }

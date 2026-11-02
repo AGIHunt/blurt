@@ -1,0 +1,175 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "site",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        ".claude/serve.py",
+        "4173",
+        "site"
+      ],
+      "port": 4173
+    },
+    {
+      "name": "brand-book",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4174",
+        "--directory",
+        "/Users/john/workspace/blurt-media/brand-book"
+      ],
+      "port": 4174
+    },
+    {
+      "name": "site-wt",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        ".claude/serve.py",
+        "4181",
+        "/Users/john/workspace/bug-agent/.claude/worktrees/site-polish-load/site"
+      ],
+      "port": 4181
+    },
+    {
+      "name": "site-slow",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/5dd47779-c49c-4f91-b3c9-a4660f952332/scratchpad/slowserve.py",
+        "/Users/john/workspace/bug-agent/.claude/worktrees/site-polish-load/site",
+        "4182",
+        "300",
+        "2500"
+      ],
+      "port": 4182
+    },
+    {
+      "name": "peek-dense",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4183",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/5dd47779-c49c-4f91-b3c9-a4660f952332/scratchpad/dense/site"
+      ],
+      "port": 4183
+    },
+    {
+      "name": "dictation-mock",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4191",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/dict-dist"
+      ],
+      "port": 4191
+    },
+    {
+      "name": "sessions-mock",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4196",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/sessions-dist"
+      ],
+      "port": 4196
+    },
+    {
+      "name": "snapnote-before",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4211",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/parity/snap-and-note/before-dist"
+      ],
+      "port": 4211
+    },
+    {
+      "name": "snapnote-after",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4212",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/parity/snap-and-note/after-dist"
+      ],
+      "port": 4212
+    },
+    {
+      "name": "mainwin-after",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4221",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/parity/main-window/after-dist"
+      ],
+      "port": 4221
+    },
+    {
+      "name": "rec-overlay",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "web/apps/overlays",
+        "exec",
+        "vite",
+        "--port",
+        "4231",
+        "--strictPort"
+      ],
+      "port": 4231
+    },
+    {
+      "name": "settings-mock",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4271",
+        "--directory",
+        "/private/tmp/claude-501/-Users-john-workspace-bug-agent/4f91d789-8387-4d85-8d1b-8414dcbffbf8/scratchpad/parity/settings/dist"
+      ],
+      "port": 4271
+    },
+    {
+      "name": "desktop-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "web/apps/desktop",
+        "exec",
+        "vite",
+        "--port",
+        "4281",
+        "--strictPort"
+      ],
+      "port": 4281
+    },
+    {
+      "name": "review-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "web/packages/review",
+        "exec",
+        "vite",
+        "--port",
+        "4282",
+        "--strictPort"
+      ],
+      "port": 4282
+    }
+  ]
+}

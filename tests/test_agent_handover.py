@@ -287,3 +287,30 @@ def test_restart_of_a_desktop_job_skips_the_cli_login(p2):
     p2.env["FAKE_AUTH_OUT"] = "1"
     out = p2.run("sessions.py", "restart", jid, "--lang", "en")
     assert out["jobs"][0]["url"].startswith("claude://code/new?")
+
+
+def test_continue_in_desktop_from_the_app_runner(p2):
+    """No tmux (Windows): the app runs the agent in its own pty, which only the app can end. `--stage prepare` checks
+    and marks the job moved first (its last hooks then can't end it), the app ends its pty, `--stage launch` resumes
+    the conversation in the desktop app. A one-step call is refused for it, and a tmux-only flag for it."""
+    p2.env.update(FAKE_DESKTOP_LOG=str(p2.tmp / "desktop.jsonl"), FAKE_CLAUDE_VERSION="2.1.290", FAKE_AUTH_SUB="max")
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    out = p2.run("sessions.py", "dispatch", "--items", it["uid"], "--agent", "claude", "--runner", "app")
+    jid = out["jobs"][0]["id"]
+    f = p2.home / "jobs" / f"{jid}.json"
+    j = json.loads(f.read_text())
+    j["agent"]["agent_session_id"] = "fake-claude-7"  # what its hooks would have said
+    f.write_text(json.dumps(j))
+    assert p2.run("sessions.py", "continue-desktop", jid, ok=False)["code"] == "bad_args"
+    assert p2.run("sessions.py", "continue-desktop", jid, "--stage", "launch", ok=False)["code"] == "bad_runner"
+    r = p2.run("sessions.py", "continue-desktop", jid, "--stage", "prepare")
+    a = r["job"]["agent"]
+    assert r["stage"] == "prepared" and a["runner"] == "desktop" and a["continued"]["from"] == "app"
+    assert not (p2.tmp / "desktop.jsonl").exists()  # nothing opened before the app ended its agent
+    a = p2.run("sessions.py", "continue-desktop", jid, "--stage", "launch")["job"]["agent"]
+    assert a["runner"] == "desktop" and a["status"] == "running" and a["tmux"] is None
+    calls = [json.loads(ln) for ln in (p2.tmp / "desktop.jsonl").read_text().splitlines()]
+    assert [c["argv"] for c in calls] == [["--desktop", "--resume", "fake-claude-7"]]
+    # launched once only
+    assert p2.run("sessions.py", "continue-desktop", jid, "--stage", "launch", ok=False)["code"] == "bad_runner"

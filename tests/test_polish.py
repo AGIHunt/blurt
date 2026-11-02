@@ -492,6 +492,19 @@ class FakeEngine(polish.Engine):
 
 
 class EngineLight(unittest.TestCase):
+    def test_no_local_fallback_keeps_the_clouds_reason(self):
+        """Windows has no local polish model: a cloud failure is the answer (offline), not "model_missing"."""
+        from unittest import mock
+        e = FakeEngine("不该用到")
+        failed = {"ok": True, "text": "今天开会", "fell_back": True, "reason": "cloud_network", "ms": 5}
+        with mock.patch.object(polish, "cloud_polish", return_value=failed):
+            r = e.polish("今天开会", None, 3, [], None, None, {"provider": "deepseek"}, local_fallback=False)
+        self.assertEqual((r["fell_back"], r["reason"], r["cloud_error"], e.asked), (True, "cloud_network", "cloud_network", []))
+        with mock.patch.object(polish, "cloud_polish", return_value=failed):
+            r = e.polish("今天开会", None, 3, [], None, None, {"provider": "deepseek"})
+        self.assertEqual(r["cloud_error"], "cloud_network")     # the Mac: the local model then, the cloud's code kept
+        self.assertEqual(len(e.asked), 1)
+
     def test_the_model_gets_the_words_as_said(self):
         """No pass in front of the model rewrites what was said: a self-correction reaches it as heard."""
         e = FakeEngine(lambda t: t + "。")

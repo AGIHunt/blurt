@@ -662,8 +662,9 @@ the shake and the contact shadow reach past it (the sheet's bleed), never clippe
   the droop); a one-shot's completion still runs.
 - **Restraint**: Peep is illustration, not UI; it never sits on the brand gradient (its body is the gradient), and
   only one Peep moves at a time on a screen.
-- **Web** (Windows / Linux overlays, Tauri) still plays the old 1A strips from `assets/mascot/` and the tray shows the
-  `blurt` line glyph; their move to Peep is in TODO.md.
+- **Web** (Windows / Linux overlays, Tauri): the same states from the same renders — `@blurt/icons/mascot` plays the
+  notch set's sheets (`assets/brand/import_peep.py --only windows`), the ear talking with the level, listening,
+  thinking with the count; the welcome hello, the empty states idle; the tray is Peep's flat mark.
 
 ## 7. Typography (as used today)
 

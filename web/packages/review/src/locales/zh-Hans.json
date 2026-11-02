@@ -257,5 +257,12 @@
   "work.review_changes": "查看改动…",
   "activity.title": "动态",
   "time.just_now": "刚刚",
-  "chip.type.clear": "不设类型"
+  "chip.type.clear": "不设类型",
+  "work.note.more": "展开",
+  "work.note.less": "收起",
+  "work.to": "交给 {who}",
+  "handoff.dispatch.short": "交给",
+  "work.you": "你",
+  "work.line.done": "{who}标为已完成 · {when}",
+  "work.line.wontfix": "{who}标为不做 · {when}"
 }

@@ -392,6 +392,10 @@ def fix_tcl_env() -> None:
 SERVE_IDLE = 600         # a loaded model's server ends after this many seconds without a request (10 min)
 IDLE_CAP = 600           # … at most this long even with frequent use (it used to be 30 min, holding ~5 GB)
 EXIT_CAP = 4 * 3600      # a server with no model loaded waits at most this long for a request
+# Windows / Linux: the speech model runs on the CPU (ONNX). Ending the process gives its memory back as on the Mac, but
+# loading it again costs ~17 s (Fun-ASR-Nano int8, 16 vCPU; the Mac's MLX load is ~2 s), and the first take after a
+# coffee break waited that long. With memory to spare (pro / standard) it stays an hour.
+CPU_SERVE_IDLE = 3600
 
 
 def adaptive_idle(base: float, uses: list[float], tier: str, cap: float = IDLE_CAP, now: float | None = None) -> float:
@@ -410,6 +414,18 @@ def parent_alive(pid: int | None) -> bool:
     """The app that started a warm server is still running (no pid given: nobody to outlive)."""
     if not pid:
         return True
+    if sys.platform == "win32":
+        # os.kill(pid, 0) is no probe on Windows: signal 0 is CTRL_C_EVENT (sent to a console group), and a pid that is
+        # gone raises a plain OSError — every server outlived Blurt. Ask for the process's exit code instead.
+        import ctypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        h = k.OpenProcess(0x1000, False, int(pid))  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return ctypes.get_last_error() == 5  # access denied: it exists
+        code = ctypes.c_ulong()
+        ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+        k.CloseHandle(h)
+        return not ok or code.value == 259  # STILL_ACTIVE
     try:
         os.kill(int(pid), 0)
     except ProcessLookupError:
@@ -882,9 +898,9 @@ def append_job_event(job: str | None, event: dict) -> None:
 # "<ctrl+><opt+><shift+><cmd+>KEY". On Windows/Linux opt = Alt and cmd = the Windows / Super key.
 # voice / project: K7 (voice input, project switcher) — same names in HotkeyCenter.Action (Swift) and the Tauri app;
 # "marker" is Windows / Linux only (the macOS app dropped ⌥M in 1.0.7 and ignores the entry)
-HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project")
+HOTKEY_ACTIONS = ("record", "menu", "pause", "snap", "marker", "pen", "stop", "voice", "project", "text", "translate")
 HOTKEY_DEFAULT_KEYS = {"record": "R", "menu": "B", "pause": "P", "snap": "A", "marker": "M", "pen": "D", "stop": "S",
-                       "voice": "V", "project": "O"}
+                       "voice": "V", "project": "O", "text": "C", "translate": "T"}
 _MOD_ALIASES = {"ctrl": "ctrl", "control": "ctrl", "⌃": "ctrl", "^": "ctrl",
                 "opt": "opt", "option": "opt", "alt": "opt", "⌥": "opt",
                 "shift": "shift", "⇧": "shift",

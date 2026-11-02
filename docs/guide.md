@@ -7,9 +7,11 @@
 ## English
 
 Blurt turns what you say, snap and record into items — issues, ideas, notes, tasks — in your projects, and hands
-them to a coding agent. On a Mac it also types what you say wherever your cursor is (**dictation**, `Fn`).
+them to a coding agent. On a Mac and on Windows it also types what you say wherever your cursor is (**dictation**:
+`Fn` on a Mac, `Right Alt` on Windows).
 This page covers everything you do in the app; *Help → Blurt User Guide* and *Settings → General → User Guide* open
-it. Shortcuts are the macOS defaults; on Windows and Linux read `⌥` as `Alt` and `⇧` as `Shift`. Every shortcut can be
+it. Shortcuts are the macOS defaults. On Windows and Linux Blurt's own keys are `Alt+Shift` and the same letter
+(`⌥A` → `Alt+Shift+A`), and `⌘` is `Ctrl` (`⌘F` → `Ctrl+F`). Every shortcut can be
 changed in *Settings → Shortcuts*. Settings (`⌘,`) lists its panes in a sidebar with a search field on top: type what you
 are looking for (`⌘F`), in English or Chinese — "login", "mirror", "快捷键" — and pick a result (or press `↩`) to jump
 to that setting.
@@ -794,8 +796,9 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 ## 中文
 
 口喷鸡把你说的、截的、录的整理成事项——问题、想法、笔记、待办——放在你的项目里，再交给写代码的 Agent 去做。
-在 Mac 上，它还能把你说的话直接打在光标处（**听写**，按 `Fn`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
-「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值；Windows 和 Linux 上 `⌥` 是 `Alt`，`⇧` 是 `Shift`。
+在 Mac 和 Windows 上，它还能把你说的话直接打在光标处（**听写**：Mac 按 `Fn`，Windows 按 `右 Alt`）。这页讲的是在 App 里怎么用；菜单「帮助 → 口喷鸡使用指南」和
+「设置 → 通用 → 使用指南」都会打开这一页。下面的快捷键是 macOS 的默认值。Windows 和 Linux 上，口喷鸡自己的按键是 `Alt+Shift` 加同一个字母
+（`⌥A` → `Alt+Shift+A`），`⌘` 是 `Ctrl`（`⌘F` → `Ctrl+F`）。
 所有快捷键都能在「设置 → 快捷键」里改。设置（`⌘,`）左边是面板列表，最上面有搜索框：按 `⌘F` 输入想找的设置，中文英文都行
 ——「开机」「镜像」「hotkey」——点一个结果（或按 `↩`）就跳到那一项。
 
@@ -853,8 +856,8 @@ runs in (Terminal, iTerm…), so that app needs Screen Recording and a restart a
 你自己已经挪走的事项留在你放的地方：「更改」和「撤销」只移动还在原处的那些。
 
 没选项目的内容整理时，Agent 会拿到你的项目列表（名字、描述、文件夹和最近几条的标题），可以给每一条**建议**一个项目。
-这只是建议：在「**未归类**」里，这一条后面会写「可能属于 Atlas Web · 移过去」，点一下就移过去；建议同一个项目的事项排在一起，
-上方有一行「可能属于 Atlas Web」和「**全部移过去（3）**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
+这只是建议：在「**未归类**」里，这一条后面会写「看起来是 Atlas Web · 移动」，点一下就移过去；建议同一个项目的事项排在一起，
+上方有一行「看起来是 Atlas Web」和「**全部移动（3）**」。`⌘Z`（或提示里的「撤销」）能移回去，编号回到原来的，建议也还在。
 
 在主窗口里选中事项（`⌘` 点、`⇧` 点、`⌘A`）后按 **`M`**：在选中的地方弹出一个小列表，打字筛选，`↩` 全部移过去，`Esc` 关闭。
 也可以拖到侧栏的项目上，或者用工具栏、右键菜单、`⌘K` 里的「移到项目」。每次移动都能 `⌘Z`。

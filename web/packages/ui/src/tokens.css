@@ -29,7 +29,7 @@
   --ctl-h: 28px;
 }
 [data-platform="win"] {
-  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
   --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
   --fs: 14px;
   --fs-title: 20px;

@@ -8,15 +8,36 @@
     <link rel="stylesheet" href="./src/note.css" />
   </head>
   <body>
-    <form class="bubble">
-      <img class="shot" alt="" />
-      <textarea rows="3" spellcheck="false"></textarea>
-      <div class="row">
-        <span class="hint"></span>
-        <button type="button" data-a="skip"></button>
-        <button type="submit" class="primary"></button>
+    <!-- a fresh snap (mode=snap): the picture frozen where it was taken, the pen on it, the rest dimmed -->
+    <div class="stage" hidden>
+      <div class="dim"></div>
+      <div class="hole"><img class="frozen" alt="" /><canvas class="ink"></canvas></div>
+      <div class="inkhint" hidden></div>
+    </div>
+    <!-- the note bubble: one composer (a fresh snap docked beside the picture; Edit Note in its own small window) -->
+    <div class="bubble" role="dialog">
+      <svg class="bg" aria-hidden="true"><path /></svg>
+      <div class="card">
+        <img class="shot" alt="" hidden />
+        <div class="row">
+          <span class="glyph"><span class="bars" hidden><i></i><i></i><i></i></span><span class="icon"></span></span>
+          <div class="fieldwrap"><div class="live" aria-hidden="true"></div><textarea rows="1" spellcheck="false"></textarea></div>
+        </div>
+        <div class="foot">
+          <button type="button" class="chip place" aria-haspopup="listbox"></button>
+          <button type="button" class="chip kind" aria-haspopup="listbox"></button>
+          <span class="tools"></span>
+          <span class="status"></span>
+          <button type="button" class="done"></button>
+        </div>
+        <div class="list places" hidden>
+          <label class="filter"><span class="fic"></span><input type="text" spellcheck="false" /></label>
+          <div class="rows" role="listbox"></div>
+          <div class="keys"></div>
+        </div>
+        <div class="list kinds" hidden><div class="rows" role="listbox"></div></div>
       </div>
-    </form>
+    </div>
     <script type="module" src="./src/note.ts"></script>
   </body>
 </html>

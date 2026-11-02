@@ -151,7 +151,7 @@ def usable(state: str) -> bool:
 
 def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
     env = dict(os.environ) if env is None else env
-    path = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    path = find_bin(defn, env)
     out = {"id": defn["id"], "name": defn.get("name", defn["id"]), "path": path}
     if not path:
         out.update(state="not_installed", why=("未安装" if lang == "zh" else "not installed"),
@@ -313,7 +313,27 @@ def _fill_obj(o, vals: dict):
 
 def find_bin(defn: dict, env: dict | None = None) -> str | None:
     env = os.environ if env is None else env
-    return next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    p = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    return unshim(p) if p else None
+
+
+_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"', re.I)
+
+
+def unshim(path: str) -> str:
+    """Windows: an npm `.cmd` shim that only starts a native program (Claude Code's: "%dp0%\\…\\claude.exe" %*) → that
+    program. A .cmd runs through cmd.exe, which can't carry a multi-line prompt as an argument and which Rust and
+    Python refuse to hand such arguments to ("batch file arguments are invalid"); the .exe takes them as they are."""
+    if os.name != "nt" or not path.lower().endswith((".cmd", ".bat")):
+        return path
+    try:
+        m = _SHIM_TARGET.search(Path(path).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return path
+    if not m:
+        return path
+    exe = Path(path).parent / m.group(1)
+    return str(exe) if exe.is_file() else path
 
 
 def app_path(defn: dict) -> str | None:
@@ -376,6 +396,7 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["login"] = LOGIN.get(r["state"], "unknown")
         r["headless"] = is_headless(d)
         r["interactive"] = interactive_kind(d)
+        r["session"] = session_spec(d) is not None  # runs as an in-app / tmux session (what sessions.py doctor says)
         rows.append(r)
     # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
     by_id = {r["id"]: r for r in rows}
@@ -820,10 +841,15 @@ def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
 
 
 def claude_settings(job: str, python: str | None = None) -> dict:
-    """The --settings file of one Claude Code session: hooks only (--settings adds to the user's settings)."""
+    """The --settings file of one Claude Code session (--settings adds to the user's settings): the hooks, and the
+    hand-off notes' folder as an extra working directory, so reading the note the prompt names doesn't stop the
+    session on "Read outside the working directories?" (the note lives in $BLURT_HOME/handoff, the session in the
+    project or its worktree)."""
+    import handoff
     h = {"type": "command", "command": hook_command("claude", job, python), "timeout": 5}
     return {"hooks": {ev: [{"matcher": "*", "hooks": [h]}] if ev == "PostToolUse" else [{"hooks": [h]}]
-                      for ev in CLAUDE_HOOKS}}
+                      for ev in CLAUDE_HOOKS},
+            "permissions": {"additionalDirectories": [str(handoff.handoff_dir())]}}
 
 
 def _toml_str(s: str) -> str:

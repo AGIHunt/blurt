@@ -3,17 +3,17 @@
    Reduced motion: fades only (theme.css zeroes transitions; island.ts snaps the springs).
    Colour (system.md §3.2, island values from theme.css): mint marks blurt listening (gradient level bars, the glow
    under the island) and acting (badge, ticks, progress, running dots, clasps); --rec is the tape, --attn needs you. */
+/* the island's surface is black, as the Mac's (system.md §2 surface `island` #000000; Island.swift fills its shape with
+   black on every screen): one opaque surface for the pill, the open body and what hangs from it (the live panel, the
+   menu, the Cards panel); the hairline and the top highlight keep its edge on a dark desktop */
 :root {
-  --isl: rgba(18, 18, 20, 0.94);
+  --isl: #000;
   --isl-line: rgba(255, 255, 255, 0.09);
   --isl-hi: rgba(255, 255, 255, 0.06);
   --isl-row: rgba(255, 255, 255, 0.06);
   --isl-row-hi: rgba(255, 255, 255, 0.1);
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.55, 0, 0.75, 0.2);
-}
-:root[data-platform='win'] {
-  --isl: rgba(26, 26, 28, 0.95);
 }
 
 .stage {
@@ -51,6 +51,17 @@
 .stage[data-glow='1'] .glow {
   opacity: var(--glow-opacity);
 }
+/* dictation's glow (every phase of a take): the brand stops, green left to blue right, about a quarter strong, blurred
+   no further than the island is tall — it fades within the island's own height instead of a grey band over the app
+   under it (the Mac Island glow, D13-02) */
+.stage[data-mode='dict'] .glow {
+  top: 10px;
+  filter: blur(12px);
+  border-radius: 15px;
+}
+.stage[data-glow='1'][data-mode='dict'] .glow {
+  opacity: calc(var(--glow-opacity) * 0.6);
+}
 
 /* ------------------------------------------------------------ the island box */
 .island {
@@ -63,12 +74,12 @@
   opacity: 0;
   border-radius: 15px;
   background: var(--isl);
+  color: var(--fg);
   box-shadow:
     inset 0 0 0 1px var(--isl-line),
     inset 0 1px 0 var(--isl-hi),
     0 10px 30px rgba(0, 0, 0, 0.38),
     0 2px 6px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(24px) saturate(1.4);
   overflow: hidden;
   z-index: 2;
   transition:
@@ -77,6 +88,22 @@
     border-radius 380ms var(--ease),
     transform 320ms var(--ease),
     opacity 200ms ease;
+}
+/* the strip above the pill (island.ts `hot`): transparent, part of the island's hover target */
+/* a dictation's island lies light on the app it types into: one short shadow, no dark band */
+.island[data-mode='dict'] {
+  box-shadow:
+    inset 0 0 0 1px var(--isl-line),
+    inset 0 1px 0 var(--isl-hi),
+    0 3px 8px rgba(0, 0, 0, 0.2);
+}
+.island-hot {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  height: 6px;
+  transform: translateX(-50%);
+  z-index: 2;
 }
 .island.shown {
   transform: translate(-50%, 0);
@@ -93,8 +120,18 @@
     transform: translate(-50%, 0) scale(1.04);
   }
 }
+/* the card count as a card lands on the row: the number takes it with a small bump */
+.earbtn .num.tick {
+  display: inline-block;
+  animation: tick 220ms var(--ease);
+}
+@keyframes tick {
+  45% {
+    transform: scale(1.22);
+  }
+}
 
-/* the collapsed pill: two "ears" */
+/* the collapsed pill: two "ears", each against the island's outer edge, 14 px in (IslandLayout.earOrigin) */
 .pill {
   position: absolute;
   inset: 0 0 auto 0;
@@ -103,56 +140,157 @@
   justify-content: center;
   transition: opacity 160ms ease;
 }
-.island.open .pill {
+.island.open .pill,
+.island.toasting .pill {
   opacity: 0;
   pointer-events: none;
 }
+/* a line while a dictation listens: the ears stay on top (Peep, the level, the clock), the line under them */
+.island.ears-toast {
+  border-radius: 15px 15px 20px 20px; /* the ears keep the capsule's corners: Peep and the clock clear the curve */
+}
+.island.ears-toast .pill {
+  opacity: 1;
+}
+.island.ears-toast .body {
+  top: 30px;
+}
+.island.open.ears-open .pill {
+  z-index: 1;
+  height: 36px;
+  opacity: 1;
+}
+.island.ears-open .pill-in {
+  height: 36px;
+}
+.island.ears-open[data-mode='voice'] .pill-in {
+  padding: 0 18px; /* the voice note's body edges */
+}
+/* a lone ear (the cards' count) sits in the middle of the capsule, as the Mac's does */
+.pill-in:has(> .ear:empty) {
+  justify-content: center;
+}
+.pill-in > .ear:empty {
+  display: none;
+}
 .pill-in {
   display: inline-flex;
+  flex: none; /* never shrunk to the box while it grows: its scrollWidth is the ears' width (the clock kept its 14 px inset) */
   align-items: center;
-  gap: 18px;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 100%;
   height: 30px;
-  padding: 0 12px;
+  padding: 0 14px;
+  box-sizing: border-box;
   white-space: nowrap;
 }
 .ear {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   color: var(--fg);
 }
 .ear .ic {
   color: var(--fg2);
 }
-.ear.r {
+/* the listening ear's right side on one rhythm: [marks 6 apart] 8 [target · clock] (the Mac's earClock: the
+   target is part of the clock's text, in its white, a step lighter) */
+.ear.r:has(> .dmarks) {
   gap: 8px;
 }
-.pname {
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 560;
-  letter-spacing: -0.005em;
+.dmarks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dmarks .ic {
+  stroke-width: 1.6;
+}
+.dclock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.dclock .tgt {
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+}
+/* a done moment in the right ear: [⌨] ✓ word */
+.moment {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.moment .ic.kb {
+  color: var(--fg) !important;
+  margin-right: 4px;
+}
+.moment .ic.ok {
+  stroke-width: 2.2;
+}
+/* the done word is semibold like the Mac's; a hint after " · " is secondary white at regular weight */
+.moment .word {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.moment .word .sub {
+  color: var(--fg2);
+  font-weight: 400;
+}
+.ear .ic.mint,
+.mint {
+  color: var(--brand) !important;
+}
+.ear .ic.ok,
+.ic.ok {
+  color: var(--ok) !important;
+}
+.earbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border-radius: 11px;
+  color: var(--fg);
+}
+.earbtn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.cards-ic {
+  stroke-width: 2;
 }
 .num,
 .time {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
-.time.big {
-  font-size: 17px;
-  letter-spacing: -0.01em;
+/* dictation's last half minute: the attention colour, the minus set tight to the digits ("−0:28", not "− 0:28") */
+.time.neg {
+  color: var(--attn);
 }
-.badge {
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  box-sizing: border-box;
-  border-radius: 9px;
-  background: var(--brand);
-  color: var(--on-brand);
-  font: 650 11px/18px var(--font);
-  text-align: center;
+.time.neg::before {
+  content: '\2212';
+  margin-right: -1.5px;
+}
+.done-disc {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #000;
+}
+.done-disc .ic {
+  color: #000 !important;
+  stroke-width: 3;
+}
+.attn-t {
+  color: var(--attn);
 }
 .rec-dot {
   width: 8px;
@@ -174,8 +312,8 @@
   }
 }
 .attn {
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--attn);
 }
@@ -190,32 +328,57 @@
     box-shadow: 0 0 0 10px color-mix(in srgb, var(--attn) 0%, transparent);
   }
 }
-.egg {
+/* working: three white dots, each lifting in turn, one ahead of the others (Ears.drawDots: 4.2 pt, white 90 %,
+   6.5 apart, a 3 pt lift) — never dimmer than 70 %, so no frame reads as a disabled "…" */
+.dots {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  color: #f4e7d0;
+  gap: 4px;
+  height: 14px;
+  padding: 0 2px;
 }
-.egg .mascot {
-  margin: -4px 0 -4px -6px;
+.dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--fg);
+  animation: dot 0.9s ease-in-out infinite;
 }
-.toast .mascot {
-  margin: -6px -2px -6px -8px;
+.dots i:nth-child(1) {
+  animation-delay: -0.3s; /* one dot ahead: a still frame shows a rise, not a row */
 }
-.lead .mascot {
-  margin: -4px;
+.dots i:nth-child(2) {
+  animation-delay: -0.1s;
 }
-.head.voice .mascot {
-  margin: -6px 0 -6px -6px;
+.dots i:nth-child(3) {
+  animation-delay: 0.1s;
 }
-.ear .ico.tilt {
-  margin-right: 4px;
-  color: #f4e7d0;
+@keyframes dot {
+  0%,
+  55%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.7;
+  }
+  25% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+/* Peep (@blurt/icons/mascot): its box is its body and beak at rest, a little air around them */
+.ear .mascot {
+  margin: 0 -1px 0 -3px;
+}
+.head .mascot.home {
+  position: absolute;
+  left: 14px; /* centred on the icon column (26) */
+  top: 7px;
 }
 /* level bars: one vertical gradient sized to the whole group, so each centred bar shows the slice at its height
    (short bars read mint, tall ones show green tips and azure feet); island.ts sets each bar's height */
 .wave {
   --wave-h: 16px;
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -228,46 +391,59 @@
   background: var(--brand-gradient-v) center / 100% var(--wave-h) no-repeat;
   transition: height 90ms linear;
 }
+/* dictation's level: five 2 px bars 4 apart, up to 15 tall, with air after Peep's beak (Ears.drawMirror) */
+.wave.mirror {
+  --wave-h: 15px;
+  gap: 2px;
+  margin-left: 4px;
+}
+.wave.mirror i {
+  width: 2px;
+  border-radius: 1px;
+}
 .wave.big {
-  --wave-h: 26px;
-  gap: 3px;
+  --wave-h: 28px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  gap: 2.5px;
 }
-.wave.big i {
-  width: 3.5px;
+/* silence on the voice note's strip: one empty mark, a faint centre line under the bars */
+.wave.track::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.16);
 }
-
-/* toasts in the pill */
-.toast {
+.meter.ear-meter {
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--fg);
+  align-items: end;
+  gap: 2px;
+  height: 12px;
 }
-.toast.ok .ic {
-  color: var(--ok);
+.meter.ear-meter i {
+  width: 3px;
+  height: 100%;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.18);
 }
-.toast.bad .ic {
-  color: var(--attn);
+.meter.ear-meter i.on {
+  background: var(--brand-gradient-v);
 }
-button.toast:hover span {
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.mini {
-  height: 20px;
-  padding: 0 8px;
-  border-radius: 10px;
-  background: var(--isl-row-hi);
-  color: var(--fg);
+.sub {
+  color: var(--fg2);
   font-size: 12px;
 }
 
-/* ------------------------------------------------------------ the open panel */
+/* ------------------------------------------------------------ the open island: one grid (IslandLayout)
+   every leading glyph centred on the icon column (26 px in), every line of text on the text column (42 px in);
+   rows 13 regular, chevrons and accessories at 45 % white, the wash under the pointer the island's mint tint (r 8) */
 .body {
   position: absolute;
   inset: 0;
-  padding: 8px;
-  box-sizing: border-box;
   overflow-y: auto;
   scrollbar-width: none;
   opacity: 0;
@@ -276,85 +452,71 @@ button.toast:hover span {
     opacity 220ms ease 60ms,
     transform 320ms var(--ease) 40ms;
 }
-.island.open .body {
+.island.open .body,
+.island.toasting .body {
   opacity: 1;
   transform: none;
 }
 .body-in {
-  width: 464px; /* the open width minus padding: measured at its final width while the box still grows */
+  width: 480px; /* the open width: measured at its final width while the box still grows */
+  padding-bottom: 8px;
+}
+.body-in.toast-in {
+  width: max-content;
+  max-width: 480px;
+  padding: 0;
 }
 .head {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
-  min-height: 40px;
-  padding: 0 2px 0 4px;
-}
-.head.rec,
-.head.voice {
-  gap: 10px;
-  padding: 0 4px 0 10px;
+  height: 38px; /* the capsule's first row: 8 taller than the ears row, clear of the 22 px corners */
+  padding: 0 12px 0 29px; /* the chip starts 13 before the text column */
 }
 .grow {
   flex: 1;
 }
-.txt {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  line-height: 1.3;
-}
-.head .txt .title {
-  font-weight: 560;
-}
 .proj {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 32px;
-  max-width: 260px;
-  padding: 0 10px 0 9px;
-  border-radius: 10px;
+  height: 26px;
+  max-width: 200px;
+  padding: 0 8px 0 13px;
+  border-radius: 13px;
   color: var(--fg);
+  font: 500 12.5px var(--font);
 }
-.proj:hover,
-.proj[aria-expanded='true'] {
-  background: var(--isl-row);
-}
-.proj .ic {
+.proj.none {
   color: var(--fg2);
 }
-.proj.small {
-  height: 28px;
-  font-size: 12px;
+.proj:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
-.key,
-kbd {
-  font: 600 10.5px/1 ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
-  letter-spacing: 0.04em;
-  padding: 3px 5px;
-  border-radius: 5px;
-  background: var(--isl-row);
-  color: var(--fg2);
+.pname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .chev {
-  color: var(--fg3) !important;
+  color: rgba(255, 255, 255, 0.45) !important;
 }
 .tool {
   position: relative;
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
   color: var(--fg);
 }
 .tool:hover {
-  background: var(--isl-row-hi);
+  background: rgba(255, 255, 255, 0.12);
 }
-.tool[data-a='record'] .ic,
-.tool[data-a='resume'] .ic {
-  color: var(--rec);
+.tool:active {
+  background: rgba(255, 255, 255, 0.2);
 }
 [data-tip]:hover::after {
   content: attr(data-tip);
@@ -362,309 +524,614 @@ kbd {
   top: calc(100% + 6px);
   right: 0;
   z-index: 3;
+  max-width: 300px;
   padding: 5px 8px;
   border-radius: 7px;
   background: #2c2c30;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   color: var(--fg);
-  font-size: 12px;
-  white-space: pre;
+  font: 400 12px/1.35 var(--font);
+  white-space: normal;
+  width: max-content;
   pointer-events: none;
 }
-.proj[data-tip]:hover::after {
-  left: 0;
+.proj[data-tip]:hover::after,
+.row[data-tip]:hover::after {
+  left: 42px;
   right: auto;
 }
 
-.sect {
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px solid var(--isl-line);
-}
-.label {
-  padding: 4px 10px 6px;
-  color: var(--fg3);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-:root:lang(zh-Hans) .label {
-  letter-spacing: 0.02em;
-}
 .row {
+  position: relative;
+  isolation: isolate;
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
-  min-height: 40px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 0 18px 0 0;
   box-sizing: border-box;
-  border-radius: 10px;
   text-align: start;
   color: var(--fg);
-  transition:
-    background 120ms ease,
-    transform 160ms var(--ease);
+  font-size: 13px;
 }
-button.row:hover,
-.row.sel {
-  background: var(--isl-row);
+.row::before {
+  content: '';
+  position: absolute;
+  inset: 1px 6px;
+  z-index: -1;
+  border-radius: 8px;
 }
-.row .ic {
+button.row:hover::before,
+.row[role='button']:hover::before,
+.row.sel::before,
+[data-drop].over::before {
+  background: var(--brand-tint);
+}
+.row .lead {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 42px;
+  padding-left: 10px; /* centre at 26 */
+  box-sizing: border-box;
+  color: var(--fg2);
+}
+.lead.dim {
   color: var(--fg2);
 }
 .row .txt {
   display: flex;
   flex-direction: column;
-  min-width: 0;
   flex: 1;
+  min-width: 0;
 }
 .row .title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 520;
+  line-height: 17px;
 }
-.row.prj .title {
-  flex: 1;
+.row .status {
+  color: var(--fg2);
 }
 .row .sub {
-  color: var(--fg3);
-  font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11.5px;
+  line-height: 15px;
 }
-.sub {
-  color: var(--fg3);
-  font-size: 12px;
+.row.sess,
+.row.target:last-child {
+  min-height: 44px;
 }
-.row .ids {
-  margin-left: 8px;
+.acc {
+  margin-left: 10px;
   color: var(--fg2);
-  font: 500 11.5px var(--font);
+  font: 400 11.5px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.row .chev {
+  margin-left: 6px;
+}
+.key {
+  margin-left: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  font: 500 11px ui-monospace, 'Cascadia Mono', 'JetBrains Mono', 'DejaVu Sans Mono', monospace;
+  visibility: hidden; /* a project's key only on the row being chosen */
+}
+.row.sel .key,
+.row:hover .key {
+  visibility: visible;
 }
 .tick {
-  color: var(--brand) !important;
+  color: var(--fg) !important;
 }
-.lead {
+/* a project's folder in its colour, its body washed at 28 % (IslandGlyph.project) */
+.pf {
   display: inline-flex;
-  color: #f4e7d0;
 }
-.bar {
-  flex: none;
-  width: 64px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--isl-row-hi);
-  overflow: hidden;
+.pf .ic {
+  color: inherit !important;
 }
-.bar i {
+.pf path {
+  fill: currentColor;
+  fill-opacity: 0.28;
+}
+/* the job at work: the spinner in the icon column, a 2 px progress line under the text column */
+.spinner {
+  width: 13px;
+  height: 13px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  border: 1.6px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  animation: spin 1.1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.prog {
+  display: block;
+  height: 2px;
+  margin-top: 4px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.prog i {
   display: block;
   height: 100%;
-  border-radius: 2px;
+  border-radius: 1px;
   background: var(--brand);
   transition: width 400ms var(--ease);
 }
-.bar.indet i {
-  width: 36%;
-  animation: indet 1.3s ease-in-out infinite;
-}
-@keyframes indet {
-  from {
-    transform: translateX(-110%);
-  }
-  to {
-    transform: translateX(290%);
-  }
-}
 .sdot {
-  flex: none;
   width: 8px;
   height: 8px;
-  margin: 0 3px;
   border-radius: 50%;
   background: var(--brand);
 }
 .sdot.s-waiting_input {
   background: var(--attn);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--attn) 18%, transparent);
 }
 .sdot.s-error {
   background: var(--err);
 }
-.sdot.s-finished,
 .sdot.s-turn_done {
   background: var(--ok);
 }
-.foot {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  height: 38px;
-  margin-top: 4px;
-  padding: 0 10px;
-  box-sizing: border-box;
-  border-top: 1px solid var(--isl-line);
-  border-radius: 0 0 14px 14px;
-  color: var(--fg);
-  font-weight: 520;
-}
-.foot span {
-  flex: 1;
-  text-align: start;
-}
-button.foot:hover {
-  background: var(--isl-row);
-}
-.foot.quiet {
+.keys {
+  padding: 6px 16px 4px 40px;
   color: var(--fg3);
-  font-weight: 400;
-}
-.foot .ic {
-  color: var(--fg2);
-}
-
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 2px 4px;
-}
-.meter {
-  display: inline-flex;
-  align-items: end;
-  gap: 2px;
-  height: 14px;
-  margin: 0 6px;
-}
-.meter i {
-  width: 3px;
-  height: 100%;
-  border-radius: 1px;
-  background: var(--isl-row-hi);
-}
-.meter i.on {
-  background: var(--brand-gradient-v); /* blurt hears you: the bars span the group, so each shows the whole gradient */
-}
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 30px;
-  padding: 0 12px;
-  border-radius: 9px;
-  background: var(--isl-row);
-  color: var(--fg);
-  font-weight: 560;
-}
-.btn:hover {
-  background: var(--isl-row-hi);
-}
-.btn.primary {
-  background: var(--fg);
-  color: #121214;
-}
-.btn.primary:hover {
-  background: #fff;
-}
-.btn.ghost {
-  background: transparent;
-  color: var(--fg2);
-}
-.btn.ghost:hover {
-  color: var(--fg);
-  background: var(--isl-row);
-}
-.btn.danger {
-  background: var(--rec);
-  color: #fff;
-}
-.tag {
-  padding: 2px 7px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--attn) 16%, transparent);
-  color: var(--attn);
   font-size: 11.5px;
-  font-weight: 600;
 }
-.confirm {
-  display: flex;
+/* the island's one filled thing: the brand gradient, white title; hover a white film, pressed a black one */
+.primary {
+  position: relative;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 4px 6px 10px;
+  height: 28px;
+  padding: 0 13px 0 12px;
+  border-radius: 14px;
+  background: var(--brand-gradient);
+  color: #fff;
+  font: 600 12.5px var(--font);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.primary:hover {
+  filter: brightness(1.04);
+}
+.primary:active {
+  filter: brightness(0.92);
+}
+.primary .k {
+  opacity: 0.6;
+  font-weight: 500;
+}
+.cards-row .primary {
+  margin-left: 10px;
+}
+/* a toast's action, a way back or on: a quiet pill */
+.quiet,
+.pillbtn {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--fg);
+  font: 500 12.5px var(--font);
+  white-space: nowrap;
+}
+.pillbtn {
+  height: 28px;
+  padding: 0 13px;
+  border-radius: 14px;
+}
+.quiet:hover,
+.pillbtn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+.pillbtn.err {
+  color: var(--err);
 }
 
-/* switcher / drop targets */
-.search {
+/* recording, open: one grid with the ears, 14 px in */
+.rec-body {
+  padding: 36px 14px 14px;
+}
+.rec-body .controls {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 38px;
-  margin: 2px 2px 6px;
-  padding: 0 10px;
-  border-radius: 11px;
-  background: var(--isl-row);
-  color: var(--fg2);
 }
-.search input {
+.circle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.circle:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+.circle.resume {
+  background: color-mix(in srgb, var(--attn) 22%, transparent);
+  color: var(--attn);
+}
+.finish {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 13px 0 12px;
+  border-radius: 14px;
+  background: #d92d20; /* the tape's red a step deeper: its white title clears 4.5 : 1 */
+  color: #fff;
+  font: 600 12.5px var(--font);
+}
+.finish:hover {
+  filter: brightness(1.06);
+}
+.finish.quiet-fin {
+  background: rgba(255, 255, 255, 0.14);
+}
+.finish.quiet-fin .ic {
+  color: var(--rec);
+}
+.rec-body .said,
+.rec-body .where {
+  margin-top: 10px;
+  color: var(--fg2);
+  font-size: 11.5px;
+  line-height: 18px;
+}
+.rec-body .where {
+  margin-top: 0;
+  color: var(--fg3);
+}
+/* the pen's key line (the Mac's KeyLine): quiet, keycaps like the countdown's */
+.rec-body .penline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+  color: var(--fg3);
+  font-size: 11.5px;
+  line-height: 18px;
+}
+.rec-body .penline kbd {
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg2);
+  font: 500 10.5px/16px var(--font);
+}
+.rec-body .penline .on {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 7px;
+  border-radius: 9px;
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-weight: 600;
+}
+.rec-body .q {
+  padding-top: 4px;
+  font: 600 13px/1.35 var(--font);
+}
+.rec-body .q2 {
+  margin-top: 2px;
+  color: var(--fg2);
+  font-size: 11.5px;
+}
+.rec-body .answers {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+[data-mode='rec'] .tool[data-tip]:hover::after,
+.circle[data-tip]:hover::after {
+  left: 0;
+  right: auto;
+}
+
+/* voice note, open: two rows on the body's edges (18 px in) */
+.voice-body {
+  padding: 34px 18px 12px;
+}
+.vrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+}
+.vrow .mascot {
+  margin-left: -3px;
+}
+.vrow .primary {
+  margin-left: 6px;
+}
+.vrow2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 24px;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+.vrow2 .sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vrow2 .dest {
+  max-width: 45%;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg2);
+  font: 500 12.5px var(--font);
+}
+.chip.on {
+  background: var(--brand-tint);
+  color: var(--brand);
+}
+
+/* the drawer: the switcher's filter field in the first row, the drop drawer's title */
+.dhead {
+  display: flex;
+  align-items: center;
+  height: 38px;
+  padding-right: 18px;
+}
+.filter {
+  display: flex;
+  align-items: center;
   flex: 1;
   min-width: 0;
+  color: var(--fg2);
+}
+.filter .ic {
+  margin: 0 8.5px 0 18.5px; /* the magnifier on the icon column, the text on the text column */
+}
+.filter input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--fg);
-  font: inherit;
-  font-size: 14px;
+  caret-color: var(--brand);
+  font: 500 13px var(--font);
 }
-.search input::placeholder {
+.filter input::placeholder {
   color: var(--fg3);
+  font-weight: 400;
+}
+.dtitle {
+  flex: none;
+  color: var(--fg3);
+  font: 500 12px var(--font);
+}
+.dtitle.left {
+  padding-left: 40px;
 }
 .list {
   display: flex;
   flex-direction: column;
-  gap: 1px;
 }
-.more {
-  padding: 6px 10px;
+.sep {
+  height: 1px;
+  margin: 4px 18px 4px 42px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* toasts: one component, one layout — the slot on the icon column, the text on the text column, a quiet pill 14 px
+   from the right, nothing centred (IslandContent.buildToast). The mark sits on the first line's centre; a line that
+   wraps grows the row (the Mac's toastHeight), never squeezes it. */
+.toastrow {
+  display: flex;
+  align-items: flex-start;
+  min-width: 100%;
+  min-height: 46px;
+  padding: 14px 14px 14px 0;
+  box-sizing: border-box;
+}
+.toastrow .slot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 18px;
+  padding-left: 10px;
+  box-sizing: border-box;
+  color: var(--fg2);
+}
+.toastrow.has-art {
+  align-items: center;
+  padding-block: 6px;
+}
+.toastrow.has-art .slot {
+  width: 50px;
+  height: auto;
+  padding-left: 12px;
+  justify-content: flex-start;
+}
+/* a dictation line with no mark of its own: Peep, small and grey (the Mac's quiet source glyph) */
+.slot.quiet-peep .mascot {
+  filter: grayscale(1) brightness(1.5);
+  opacity: 0.55;
+}
+.slot.mark-check {
+  color: var(--ok);
+}
+.slot.mark-warning {
+  color: var(--attn);
+}
+.ttext {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-right: 4px;
+}
+.ttext .hl {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font: 400 13px/18px var(--font);
+  color: var(--fg2);
+  text-wrap: balance; /* a line that wraps wraps evenly: never a lone word on the last line */
+  line-break: strict;
+}
+/* the headline semibold in the ears' white, the detail regular in secondary white: the hierarchy holds on Windows' fonts,
+   which have no 500 (Segoe UI and YaHei draw a 500 as regular) */
+/* measuring a line's own width (island.ts rowWidth): its text on one line, as a plain block */
+.measuring .ttext .hl {
+  display: block;
+  white-space: nowrap;
+}
+.ttext .lead-t {
+  color: var(--fg);
+  font-weight: 600;
+}
+.detail-inline {
+  color: var(--fg2);
+  font-weight: 400;
+}
+.ttext .detail {
+  margin-top: 1px;
+  color: var(--fg2);
+  font-size: 11.5px;
+  line-height: 15px;
+}
+.toastrow .quiet {
+  flex: none;
+  height: 26px;
+  border-radius: 13px;
+  font-weight: 600;
+  margin: -4px 0 -4px 16px;
+}
+/* two choices: the quieter one first, 8 px apart; the main one filled (the Mac's toast buttons) */
+.toastrow .quiet + .quiet {
+  margin-left: 8px;
+}
+.toastrow .quiet.fill {
+  background: var(--brand-button, linear-gradient(to bottom right, #028932 0%, #02866f 45%, #087eb3 100%));
+  color: #fff;
+  font-weight: 600;
+}
+/* a question (two answers): the text on its own line, the answers under it, right-aligned */
+.toastrow.question {
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+}
+.toastrow.question .answers {
+  display: flex;
+  flex-basis: 100%;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+.toastrow.question .answers .quiet:first-child {
+  margin-left: 0;
+}
+
+/* menus: dark as the island, keys right-aligned */
+.menu {
+  position: absolute;
+  z-index: 5;
+  min-width: 200px;
+  padding: 5px;
+  border-radius: 10px;
+  background: rgba(36, 36, 40, 0.98);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 10px 30px rgba(0, 0, 0, 0.45);
+  color: var(--fg);
+  font-size: 13px;
+}
+.menu[hidden] {
+  display: none;
+}
+.mi {
+  position: relative;
+  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-radius: 6px;
+  text-align: start;
+  white-space: nowrap;
+}
+.mi > span:first-of-type {
+  flex: 1;
+}
+.mi:hover {
+  background: var(--brand-tint);
+}
+.mi.danger {
+  color: var(--err);
+}
+.mi .mk {
+  margin-left: 16px;
   color: var(--fg3);
   font-size: 12px;
 }
-.row.add {
-  margin-top: 4px;
-  border-top: 1px solid var(--isl-line);
-  border-radius: 0 0 14px 14px;
+.mi .ic {
+  color: var(--fg2);
 }
-.row.add .title {
-  flex: 1;
+.mi .sub {
+  display: none;
+  top: -5px;
+  left: calc(100% + 2px);
 }
-.targets {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--isl-line);
+.menu.flip .mi .sub {
+  left: auto;
+  right: calc(100% + 2px);
 }
-.row.target {
-  background: var(--isl-row);
+.mi.has-sub:hover > .sub {
+  display: block;
 }
-.row.target.ai .ic {
-  color: var(--brand);
+.msep {
+  height: 1px;
+  margin: 4px 8px;
+  background: rgba(255, 255, 255, 0.08);
 }
-[data-drop].over {
-  transform: scale(1.02);
-  background: var(--brand-tint) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brand) 45%, transparent);
+.dim .ic,
+.lead.dim {
+  color: var(--fg2);
 }
 
 /* ------------------------------------------------------------ cards on their threads */
 .cards {
   position: absolute;
   inset: 0;
-  z-index: 1;
+  z-index: 1; /* under the island: going up, the threads reel the cards in behind it */
 }
 .hang {
   position: absolute;
@@ -672,6 +1139,13 @@ button.foot:hover {
   top: 0;
   transform-origin: 50% 0;
   will-change: transform;
+}
+.hang.up {
+  visibility: hidden;
+}
+.hang.fading {
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
 /* the thread: a hairline from under the island to the clasp; a soft halo keeps it legible on any wallpaper */
 .leg {
@@ -693,25 +1167,35 @@ button.foot:hover {
   background: rgba(0, 0, 0, 0.42);
   box-shadow: 0 0 1px rgba(255, 255, 255, 0.75);
 }
+/* the clasp: neutral; mint only on the live card (pointed at) */
 .leg .clasp {
   position: absolute;
   left: 50%;
-  bottom: -3.5px;
-  width: 7px;
-  height: 7px;
-  margin-left: -3.5px;
-  box-sizing: border-box;
+  bottom: -2.5px;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
   border-radius: 50%;
-  border: 1.5px solid #fff;
-  background: var(--brand);
-  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.25);
+  background: #8a8a90;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
   transition:
     transform 260ms cubic-bezier(0.34, 1.56, 0.64, 1),
-    opacity 160ms ease-out;
+    opacity 160ms ease-out,
+    background 120ms ease;
+}
+.hang:has(.card.lifted) .clasp {
+  background: var(--brand);
 }
 .hang.open .clasp {
   transform: scale(0.4);
   opacity: 0;
+}
+/* the card being dragged rides above everything, the open drawer too (the other cards hang below it) */
+.stage.dragging .cards {
+  z-index: 3;
+}
+.hang.dragging .x {
+  display: none;
 }
 .hang.dragging .leg {
   transition: transform 300ms var(--ease);
@@ -724,19 +1208,22 @@ button.foot:hover {
   border-radius: 10px;
   background: #fbfaf7;
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.6) inset,
-    0 10px 24px rgba(0, 0, 0, 0.28),
-    0 2px 5px rgba(0, 0, 0, 0.18);
-  cursor: grab;
+    0 0 0 0.5px rgba(0, 0, 0, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+  cursor: default;
+  transform-origin: 50% 0; /* hover grows it from its clasp */
   will-change: transform;
+  transition: box-shadow 160ms ease;
 }
-.card:active {
-  cursor: grabbing;
+.card.lifted {
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.18),
+    0 8px 22px rgba(0, 0, 0, 0.22);
 }
 .face.shot {
   position: relative;
   height: 84px;
-  padding: 4px;
+  padding: 3px;
   box-sizing: border-box;
 }
 .face.shot img {
@@ -746,52 +1233,66 @@ button.foot:hover {
   object-fit: cover;
   border-radius: 7px;
 }
-.face.shot .cap {
+/* a picture too wide or too tall for the card is shown whole on its surface */
+.face.shot.whole img {
+  object-fit: contain;
+  background: #ecebe7;
+}
+/* the note along the picture's bottom edge: one line of whole words on a slim dark band, the end fading */
+.face.shot .band {
   position: absolute;
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
-  padding: 14px 7px 5px;
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  height: 19px;
+  padding: 0 7px;
   border-radius: 0 0 7px 7px;
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.62));
+  background: rgba(0, 0, 0, 0.62);
   color: #fff;
-  font-size: 11px;
-  line-height: 1.25;
+  font: 500 11px/19px var(--font);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 18px), transparent);
+  transition: opacity 120ms ease;
+}
+.card.lifted .band {
+  opacity: 0; /* its note band steps away under the pointer (the hover title has all of it) */
 }
 .face.voice {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 12px;
+  align-items: flex-start;
+  gap: 7px;
+  height: 50px;
+  padding: 8px 11px;
+  box-sizing: border-box;
   color: #26221c;
 }
-.face.voice .ic {
+.face.voice .vmic {
+  flex: none;
+  margin-top: 1px;
   color: var(--brand-ink-light); /* the card face is light: brand ink for light surfaces */
 }
 .face.voice .cap {
-  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12.5px;
-  font-weight: 520;
+  font: 500 12px/16.5px var(--font);
 }
+/* × over the top-left corner, only under the pointer */
 .card .x {
   position: absolute;
   top: -7px;
-  right: -7px;
+  left: -7px;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: #2a2a2e;
   color: #fff;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   opacity: 0;
   transform: scale(0.8);
   transition:
@@ -802,58 +1303,930 @@ button.foot:hover {
   opacity: 1;
   transform: none;
 }
-.card .flash {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  background: rgba(18, 18, 20, 0.72);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  opacity: 0;
-  pointer-events: none;
-}
-.card.copied .flash {
-  animation: flash 900ms ease;
-}
-@keyframes flash {
-  15%,
-  70% {
-    opacity: 1;
-  }
-}
-.stack,
-.sort {
+/* the lip: a band of the island's own black flush under it, for a row wider than the island */
+.lip {
   position: absolute;
   left: 0;
   top: 0;
-  height: 28px;
-  padding: 0 11px;
-  border-radius: 14px;
+  height: 3px;
+  border-radius: 0 0 2px 2px;
   background: var(--isl);
+  pointer-events: none;
+  z-index: 1;
+}
+.lip[hidden] {
+  display: none;
+}
+/* the "+N" tile: as tall as a card, narrower; "+3" and "Show all" in secondary ink, a second sheet under it */
+.tile {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 72px;
+  height: 84px;
+  border-radius: 10px;
+  background: #fbfaf7;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.18),
+    3px 3px 0 -1px #e9e7e1,
+    3px 3px 0 -0.5px rgba(0, 0, 0, 0.14);
+  color: #6b665d;
+}
+.tile[hidden],
+.tile.up {
+  display: none;
+}
+.tile .tn {
+  font: 600 15px var(--font);
+}
+.tile .tc {
+  font: 500 11px var(--font);
+}
+.first-hint {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 240px;
+  text-align: center;
+  color: #fff;
+  font: 500 12px var(--font);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+.first-hint[hidden] {
+  display: none;
+}
+
+/* the words while you talk (the Mac's LiveTranscript): the island's lower half — its own black, 6 px under it, in its
+   width family; the last three lines while it listens, the typed text from its top (up to eight) once it went in */
+.live {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  transform: translate(-50%, -6px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms var(--ease),
+    transform 160ms var(--ease);
+}
+.live.shown {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.live-in {
+  max-height: calc(var(--lines) * 21px);
+  overflow: hidden;
+  padding: 9px 14px; /* the ears' inset: the text starts under Peep's edge */
+  text-wrap: balance; /* even lines: the last is never a 2–3 character tail ("pretty" moves one CJK character at most) */
+  line-break: strict;
+  border-radius: 15px;
+  background: var(--isl);
+  /* the island's own edge and its short shadow only: the lower half of one shape, not a second floating card */
   box-shadow:
     inset 0 0 0 1px var(--isl-line),
-    0 6px 16px rgba(0, 0, 0, 0.3);
+    0 3px 8px rgba(0, 0, 0, 0.2);
   color: var(--fg);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 28px;
-  transition: transform 380ms var(--ease);
+  font: 14px/21px var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
-.sort {
+.live.under-open .live-in {
+  border-radius: 22px;
+}
+/* text above the top line: it fades in from the top edge, so a line that begins mid-sentence reads as continued */
+.live-in.above {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 14px);
+  mask-image: linear-gradient(180deg, transparent 0, #000 14px);
+}
+/* more below the eighth typed line: the last one fades out */
+.live-in.more {
+  -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+  mask-image: linear-gradient(180deg, #000 calc(100% - 22px), transparent);
+}
+.live .partial {
+  color: var(--fg2);
+}
+/* where the next words land: the Mac's mint caret after the last partial word */
+.live .caret {
+  display: inline-block;
+  width: 2px;
+  height: 16px;
+  margin-left: 2px;
+  vertical-align: -3px;
+  border-radius: 1px;
+  background: var(--brand);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret {
+  50% {
+    opacity: 0.25;
+  }
+}
+.live .ic.in {
+  display: inline-block;
+  margin-left: 4px;
+  vertical-align: -2px;
+}
+.live .tail {
+  white-space: nowrap;
+}
+
+/* the live caption under the island while recording (Chrome.swift CaptionPanel): 28 tall, radius 14, the HUD's dark
+   glass, 12.5 medium at 92 % white, 160–560 wide, the newest words kept (the line is cut at its head) */
+.caption {
+  position: absolute;
+  left: 50%;
+  box-sizing: border-box;
+  min-width: 160px;
+  max-width: 560px;
+  height: 28px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  overflow: hidden;
+  border-radius: 14px;
+  background: rgba(28, 28, 30, 0.86);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.92);
+  font: 500 12.5px/16px var(--font);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.6s linear;
+}
+.caption.shown {
+  opacity: 1;
+  transition-duration: 0.2s;
+}
+.caption span {
+  flex: none;
+}
+
+
+/* ------------------------------------------------------------ the Ctrl-click selection (the Mac's ⌘-click) */
+.card.picked {
+  box-shadow:
+    0 0 0 2px rgba(255, 255, 255, 0.95),
+    0 0 0 3.5px rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+}
+.card.picked::after {
+  content: '';
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--brand) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23062b22' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 12.6L10 17L18.5 7.5'/%3E%3C/svg%3E") center / 11px no-repeat;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.selpill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: var(--isl);
+  box-shadow: inset 0 0 0 1px var(--isl-line);
+  color: var(--fg);
+  font: 500 12px var(--font);
+  white-space: nowrap;
 }
-.sort .ic {
-  color: var(--brand);
-}
-.sort:hover {
-  background: #26262a;
-}
-.stack[hidden],
-.sort[hidden] {
+.selpill[hidden] {
   display: none;
+}
+.row.gone .title {
+  color: var(--fg2);
+}
+
+/* ------------------------------------------------------------ the Cards panel (CardsOverview) and its preview */
+.panel,
+.preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  background: rgba(30, 30, 32, 0.97);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    0 18px 50px rgba(0, 0, 0, 0.45);
+  color: var(--fg);
+  font-size: 13px;
+  outline: none;
+}
+.panel[hidden],
+.preview[hidden] {
+  display: none;
+}
+.preview {
+  z-index: 5;
+  background: #1e1e20;
+  min-width: 480px;
+  max-width: calc(100vw - 32px);
+}
+.ph {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 46px;
+  padding: 0 10px 0 16px;
+  flex: none;
+}
+.ph .pt {
+  font: 600 14px var(--font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ph .pcount {
+  color: var(--fg2);
+  font-variant-numeric: tabular-nums;
+}
+.segs {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.segs button {
+  min-width: 86px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--fg2);
+  font: 500 12.5px var(--font);
+}
+.segs button.on {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--fg);
+}
+.pbtn {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 14px;
+  color: var(--fg2);
+}
+.pbtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--fg);
+}
+.pgrid {
+  display: grid;
+  gap: 14px;
+  padding: 2px 16px 14px;
+  max-height: calc(3 * 152px + 2 * 14px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.ptile {
+  position: relative;
+  width: 148px;
+  border-radius: 10px;
+  cursor: default;
+}
+.ptile .tpic {
+  height: 100px;
+  border-radius: 9px;
+  overflow: hidden;
+  background: #fbfaf7;
+  box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.3);
+}
+.ptile .tpic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top; /* cropped from its top-left: where a window's title and content start */
+}
+.ptile .tpic.voice {
+  display: flex;
+  gap: 7px;
+  padding: 10px 11px;
+  box-sizing: border-box;
+  color: #26221c;
+  font: 500 12.5px/17px var(--font);
+}
+.ptile .tpic.voice span {
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ptile .tnote {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 6px;
+  font: 500 13px/17px var(--font);
+}
+.ptile .tlast {
+  margin-top: 3px;
+  color: var(--attn);
+  font-size: 11.5px;
+}
+.ptile::before {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 13px;
+  z-index: -1;
+}
+.ptile.hover::before {
+  background: rgba(255, 255, 255, 0.07);
+}
+.ptile.focus::before {
+  background: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 0 0 2px var(--brand);
+}
+.ptile.lifting {
+  opacity: 0.4;
+}
+.ptile.ghost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  pointer-events: none;
+  opacity: 0.92;
+}
+/* the actions in the top-right corner while pointed at (or the keyboard's): [eye][···][Copy] */
+.tacts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: none;
+  gap: 4px;
+}
+.ptile.hover .tacts,
+.ptile.focus .tacts {
+  display: flex;
+}
+.tacts button {
+  display: grid;
+  place-items: center;
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  background: rgba(20, 20, 22, 0.82);
+  color: #fff;
+  font: 500 11.5px var(--font);
+}
+.tacts button:hover {
+  background: rgba(20, 20, 22, 0.95);
+}
+.pempty {
+  padding: 34px 24px 40px;
+  text-align: center;
+}
+.pempty .et {
+  font: 600 14px var(--font);
+}
+.pempty .eh {
+  margin-top: 6px;
+  color: var(--fg2);
+}
+.pfoot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-height: 50px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex: none;
+}
+.pfl {
+  flex: 1 1 220px;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.pfl .fnote {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pfl .fwhen,
+.pfl .fhint {
+  flex: none;
+  color: var(--fg2);
+  font-size: 12px;
+}
+.pfl .fhint {
+  flex: 1;
+  white-space: normal;
+}
+.pkeys {
+  display: flex;
+  gap: 10px;
+  flex: none;
+  margin-left: auto;
+  color: var(--fg2);
+  font-size: 11.5px;
+}
+.kh {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.kh span {
+  margin-left: 2px;
+}
+.pkeys kbd {
+  min-width: 14px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--fg);
+  font: 500 10.5px var(--font);
+  text-align: center;
+}
+.pvbody {
+  display: grid;
+  place-items: center;
+  padding: 0 16px 16px;
+}
+.pvbody img {
+  display: block;
+  border-radius: 8px;
+}
+.pvwords {
+  max-width: 640px;
+  padding: 24px 8px;
+  font: 500 20px/1.45 var(--font);
+  white-space: pre-wrap;
+}
+
+/* a card's hover note (CardTip): the island's raised surface, the whole note, then what and when, quiet */
+.cardtip {
+  position: absolute;
+  z-index: 30;
+  max-width: 320px;
+  padding: 8px 11px 7px;
+  border-radius: 10px;
+  background: #2a2a2a;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  color: var(--fg);
+  pointer-events: none;
+}
+.cardtip .tnote {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cardtip .twhen {
+  margin-top: 3px;
+  color: var(--fg3);
+  font-size: 11.5px;
+}
+
+/* ============================================================ capture area, round 1 (docs/design/windows-parity/
+   island.md "Capture area r1"): later rules on purpose, so the changes stay in one place */
+
+/* a picker or a snap's note is up: the island steps back (the Mac's picker covers it) */
+.island.stepback {
+  opacity: 0.35;
+}
+/* a project's name is one unbreakable run in a line */
+.nb {
+  white-space: nowrap;
+}
+/* the island's filled buttons: the deep button gradient (white text ≥ 4.5 : 1, system.md §2.2), never the light base */
+.primary,
+.toastrow .quiet.fill {
+  background: var(--brand-button);
+  color: #fff;
+}
+.primary .k {
+  opacity: 0.7;
+}
+/* the recording dot breathes shallow (system.md: 1.6 s, never below 80 %) and has no halo (the Mac's dot has none):
+   a screenshot caught at the bottom of the breath still reads red, not stopped */
+@keyframes breathe {
+  to {
+    opacity: 0.8;
+    transform: scale(0.92);
+  }
+}
+.rec-dot {
+  box-shadow: none;
+  animation-duration: 0.8s;
+}
+.island.open .rec-dot,
+.island:has(.menu:not([hidden])) .rec-dot {
+  animation: none;
+}
+/* paused: the pause bars in attention amber, where the dot was */
+.rec-pause {
+  display: inline-flex;
+  gap: 2.5px;
+  align-items: center;
+  height: 10px;
+}
+.rec-pause b {
+  width: 2.5px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--attn);
+}
+/* the ear's level: four bars resting at staggered heights (4 / 7 / 5 / 3) in silence, the gradient with a voice */
+.meter.ear-meter {
+  align-items: center;
+}
+.meter.ear-meter i {
+  border-radius: 1.5px;
+  background: rgba(255, 255, 255, 0.3);
+  transition: height 90ms ease;
+}
+.meter.ear-meter i:nth-child(1) {
+  height: 4px;
+}
+.meter.ear-meter i:nth-child(2) {
+  height: 7px;
+}
+.meter.ear-meter i:nth-child(3) {
+  height: 5px;
+}
+.meter.ear-meter i:nth-child(4) {
+  height: 3px;
+}
+.meter.ear-meter i.on {
+  height: 12px;
+  background: var(--brand-gradient-v);
+}
+/* the take's quiet lines in secondary white (60 %), never fainter */
+.rec-body .said,
+.rec-body .penline {
+  color: var(--fg2);
+}
+.rec-body .penline {
+  gap: 4px 6px;
+}
+.rec-body .penline kbd + span {
+  margin-right: 6px;
+}
+/* the voice note's track: gradient bars arriving at the right, by Done */
+.wave.big.track {
+  justify-content: flex-end;
+}
+.wave.big.track i {
+  background: var(--brand-gradient-v);
+}
+
+/* a line's mark: the project's folder (where it went), Peep thinking while it reads */
+.toastrow .slot .pf .ic,
+.toastrow .slot .dim .ic {
+  width: 16px;
+  height: 16px;
+}
+/* a lone ear above a line: the cards' count keeps its place while the line hangs under it */
+.island.ears-toast:not([data-mode='dict']) .pill-in {
+  justify-content: center;
+}
+
+/* menus follow the system's light / dark (Windows 11 context menus do; the Mac's NSMenu does): light in light mode */
+@media (prefers-color-scheme: light) {
+  .menu {
+    background: rgba(249, 249, 249, 0.98);
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+      0 10px 30px rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.88);
+  }
+  .mi:hover {
+    background: rgba(0, 0, 0, 0.06);
+  }
+  .mi .mk,
+  .mi .ic,
+  .mi .chev {
+    color: rgba(0, 0, 0, 0.5);
+  }
+  .mi.danger {
+    color: #c42b1c;
+  }
+  .msep {
+    background: rgba(0, 0, 0, 0.09);
+  }
+}
+.mi {
+  height: 30px;
+}
+.msep {
+  margin: 4px 8px;
+}
+/* the card a menu belongs to stays lifted, ringed */
+.card.menu-for {
+  box-shadow:
+    0 0 0 2px rgba(0, 0, 0, 0.55),
+    0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+/* a card's caption: one line, ending in an ellipsis inside its band (never a glyph cut in half); regular weight on a
+   lighter scrim */
+.face.shot .band {
+  -webkit-mask-image: none;
+  mask-image: none;
+  text-overflow: ellipsis;
+  background: rgba(0, 0, 0, 0.55);
+  font-weight: 400;
+}
+/* × on a card: a white disc with a dark glyph and a hairline — it reads on a dark desktop and a light one */
+.card .x {
+  background: #fff;
+  color: #1a1a1a;
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.25),
+    0 1px 4px rgba(0, 0, 0, 0.3);
+}
+/* the clasp stays grey under the pointer: mint is for a card just caught */
+.hang:has(.card.lifted) .clasp {
+  background: var(--fg2);
+}
+/* clicked: a short flash of its ring (the copy happened here) */
+.card.flash {
+  animation: copyflash 600ms ease-out;
+}
+@keyframes copyflash {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--brand),
+      0 2px 6px rgba(0, 0, 0, 0.1);
+  }
+}
+
+/* the Ctrl-click selection (the Mac's C47): a strong neutral ring, the check inside the card's bottom-right corner, the
+   card's top edge (its clasp, its ×) left alone */
+.card.picked {
+  box-shadow:
+    0 0 0 2.5px rgba(0, 0, 0, 0.72),
+    0 0 0 6px rgba(0, 0, 0, 0.12),
+    0 2px 6px rgba(0, 0, 0, 0.1);
+}
+.card.picked::after {
+  top: auto;
+  right: 6px;
+  bottom: 6px;
+  width: 18px;
+  height: 18px;
+  background-color: #1f8a3a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5.5 12.6L10 17L18.5 7.5'/%3E%3C/svg%3E");
+  box-shadow: 0 0 0 1.5px #fff;
+}
+.card.picked .x {
+  display: none;
+}
+/* the selection's line (and a click's "Copied"): the theme's surface — light in light mode */
+@media (prefers-color-scheme: light) {
+  .selpill {
+    background: rgba(252, 252, 252, 0.98);
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+      0 4px 14px rgba(0, 0, 0, 0.16);
+    color: rgba(0, 0, 0, 0.85);
+  }
+  .selpill .ic.ok {
+    color: #1f8a3a;
+  }
+}
+.selpill .ic.ok {
+  width: 13px;
+  height: 13px;
+}
+
+/* the hover popover (the Mac's CardHover): the theme's surface, the note as its title, what and when, the picture */
+.cardtip {
+  width: auto;
+  max-width: 420px;
+  padding: 10px 12px 12px;
+  border-radius: 12px;
+}
+.cardtip.pic {
+  width: 420px;
+}
+.cardtip .tpic {
+  margin-top: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.cardtip .tpic img {
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+}
+.cardtip .twhen {
+  color: var(--fg2);
+}
+@media (prefers-color-scheme: light) {
+  .cardtip {
+    background: #fbfbfb;
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.1),
+      0 10px 30px rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.88);
+  }
+  .cardtip .twhen {
+    color: rgba(0, 0, 0, 0.5);
+  }
+  .cardtip .tpic {
+    background: rgba(0, 0, 0, 0.05);
+  }
+}
+
+/* the Cards panel: an opaque surface (the page never shows through), whole pictures on a neutral plate */
+.panel {
+  background: #262628;
+}
+.panel.behind {
+  visibility: hidden;
+}
+.island :focus {
+  outline: none;
+}
+.ptile .tpic {
+  background: #3a3a3c;
+}
+.ptile .tpic img {
+  object-fit: contain;
+  object-position: center;
+}
+.ptile .tnote {
+  font-weight: 500;
+  text-wrap: balance;
+}
+.ptile .tnote.quiet {
+  color: var(--fg2);
+  font-weight: 400;
+}
+.ptile .tpic.voice {
+  background: #323234;
+  color: var(--fg);
+  box-shadow: inset 3px 0 0 #e8d9b0;
+}
+/* hover and the keyboard's tile: one look — a lighter plate behind the tile and its title, its actions; the
+   keyboard's ring drawn inside the plate (never clipped by the grid's edge) */
+.pgrid {
+  padding-top: 6px;
+}
+.ptile::before {
+  inset: -6px;
+  border-radius: 12px;
+}
+.ptile.hover::before,
+.ptile.focus::before {
+  background: rgba(255, 255, 255, 0.09);
+  box-shadow: none;
+}
+.ptile.focus::before {
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+}
+/* one footer row: the note and when on the left, the keys on the right */
+.pfoot {
+  flex-wrap: nowrap;
+}
+.pfl {
+  flex: 1 1 auto;
+}
+.pfl .fhint {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pkeys {
+  flex: none;
+}
+.pkeys kbd {
+  min-width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  line-height: 18px;
+}
+/* the preview: the panel's place, one fixed frame, the picture whole in it */
+.preview {
+  background: #262628;
+}
+.pvbody {
+  box-sizing: border-box;
+  padding: 0 24px 16px;
+}
+.pvbody img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+.pvbody {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------ round-1 gate (windows-parity/island.md 2.x) */
+/* at rest the capsule lies light on the window under it: one short shadow (the Mac's capsule), the hairline kept
+   so its edge holds on a dark title bar; the big shadow comes back once it opens or speaks */
+.island:not(.open):not(.toasting):not(.ears-toast) {
+  box-shadow:
+    inset 0 0 0 1px var(--isl-line),
+    inset 0 1px 0 var(--isl-hi),
+    0 2px 8px rgba(0, 0, 0, 0.25);
+}
+/* the cards' count: the stack and the numeral at one weight and one optical size (white at 72 % beside a semibold
+   numeral, 14 px on a 1.6 stroke), centred on the capsule's midline */
+.earbtn .cards-ic {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.6;
+  color: rgba(255, 255, 255, 0.72);
+}
+.earbtn .num {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+}
+/* the launch hello: Peep says hello, then "Ready" in the ear's white */
+.hello {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+/* a snap card's caption band runs edge to edge along the picture's bottom, clipped to the card's corners, a solid
+   scrim; only the words end in an ellipsis (the band itself never fades to white) */
+.face.shot .band {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 9px;
+  border-radius: 0 0 10px 10px;
+  background: rgba(0, 0, 0, 0.62);
+  -webkit-mask-image: none;
+  mask-image: none;
+  text-overflow: ellipsis;
+}
+/* the clasp: a ring (white, a dark rim), as the Mac's — a grey dot read as a stray pixel on a light wallpaper */
+.leg .clasp {
+  width: 7px;
+  height: 7px;
+  bottom: -3.5px;
+  margin-left: -3.5px;
+  background: #fff;
+  box-shadow: 0 0 0 1.5px #3a3a3a;
+}
+/* round-2 gate (island.hover): the hanging cards follow the system's theme as the Mac's do (HangingCards: a voice card
+   is white 0.17 with 92 % white words in dark mode, 0.995 with near-black ones in light); the island above stays black */
+@media (prefers-color-scheme: dark) {
+  .card {
+    background: #2b2b2b;
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.16),
+      0 2px 6px rgba(0, 0, 0, 0.35);
+  }
+  .card.lifted {
+    box-shadow:
+      0 0 0 0.5px rgba(255, 255, 255, 0.16),
+      0 8px 22px rgba(0, 0, 0, 0.45);
+  }
+  .face.voice {
+    color: rgba(255, 255, 255, 0.92);
+  }
+  .face.voice .vmic {
+    color: var(--brand-ink);
+  }
+  .face.shot.whole img {
+    background: #3a3a3a;
+  }
+}
+/* the project chip's chevron: secondary white, the size of the cap height, so it reads as a switcher */
+.proj .chev {
+  color: rgba(255, 255, 255, 0.55) !important;
 }

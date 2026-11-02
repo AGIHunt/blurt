@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Blurt",
   "mainBinaryName": "blurt",
-  "version": "0.7.0",
+  "version": "1.0.12",
   "identifier": "dev.blurt.desktop",
   "build": {
     "beforeDevCommand": {
@@ -67,7 +67,9 @@
     "resources": {
       "../../../skills/blurt/scripts/*.py": "scripts/",
       "../../../skills/blurt/scripts/*.json": "scripts/",
-      "../../../skills/blurt/scripts/review.html": "scripts/review.html"
+      "../../../skills/blurt/scripts/review.html": "scripts/review.html",
+      "../../../skills/blurt/models/*": "models/",
+      "sounds/*.wav": "sounds/"
     },
     "createUpdaterArtifacts": false,
     "windows": {
@@ -80,7 +82,11 @@
           "English",
           "SimpChinese"
         ],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "installerIcon": "icons/icon.ico",
+        "sidebarImage": "icons/installer-sidebar.bmp",
+        "headerImage": "icons/installer-header.bmp",
+        "installerHooks": "installer/hooks.nsh"
       }
     },
     "linux": {

@@ -1,8 +1,8 @@
 /* @blurt/icons — React components over the generated icon data. Non-React pages import "@blurt/icons/core".
    UI rule: icons come from <Icon name="…">, never emoji or text glyphs. */
-import type { CSSProperties } from "react";
+import { useEffect, useRef, type CSSProperties } from "react";
 import { ICONS, resolveIcon, type IconLayer, type IconName } from "./core";
-import type { MascotClip } from "./mascot";
+import { peepState, playMascot, type MascotClip } from "./mascot";
 
 export * from "./core";
 export * from "./mascot";
@@ -45,27 +45,43 @@ export function Icon({ name, size, className, title, style }: IconProps) {
 
 export interface MascotProps {
   clip: MascotClip;
-  /** px (crisp up to 80) */
+  /** after a one-shot (hello, done, error): go on with this clip (the Mac's `then:`) */
+  then?: MascotClip;
+  /** px: Peep's square at rest (the hop reaches a little past it) */
   size?: number;
   className?: string;
-  /** accessible name; without it the chick is decorative */
+  /** accessible name; without it Peep is decorative */
   title?: string;
   /** a one-shot clip reached its last frame */
   onEnd?: () => void;
 }
 
-/** The colour mascot playing `clip` (needs `@blurt/icons/mascot.css` once in the app). A new `clip` restarts it. */
-export function Mascot({ clip, size = 48, className, title, onEnd }: MascotProps) {
+/** Peep playing `clip` (needs `@blurt/icons/mascot.css` and a sheet tier, `@blurt/icons/peep-l` or `peep-s`, once in
+ *  the app). A new `clip` plays it from its start. */
+export function Mascot({ clip, then, size = 48, className, title, onEnd }: MascotProps) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const end = useRef(onEnd);
+  end.current = onEnd;
+  const state = peepState(clip);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    playMascot(el);
+    const f = () => end.current?.();
+    el.addEventListener("mascotend", f);
+    return () => el.removeEventListener("mascotend", f);
+  }, [state]);
   return (
     <span
-      key={clip}
+      key={state}
+      ref={ref}
       className={"mascot" + (className ? " " + className : "")}
-      data-clip={clip}
+      data-clip={state}
+      data-then={then ? peepState(then) : undefined}
       style={{ "--mascot-size": `${size}px` } as CSSProperties}
       role={title ? "img" : undefined}
       aria-label={title}
       aria-hidden={title ? undefined : true}
-      onAnimationEnd={onEnd}
     />
   );
 }

@@ -1,0 +1,180 @@
+/* The recording's chrome (rec.ts): the countdown panel (Chrome.swift CountdownView) and the area's frame (BorderView). */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: var(--font);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.root {
+  position: fixed;
+  inset: 0;
+}
+
+/* ------------------------------------------------------------------ frame */
+.frame {
+  display: block;
+}
+.frame path,
+.frame rect {
+  fill: none;
+  stroke-linecap: square;
+  stroke-linejoin: round;
+}
+.frame.paused path {
+  stroke-linecap: butt;
+}
+.frame .under {
+  stroke: rgba(0, 0, 0, 0.35);
+  stroke-width: 4;
+}
+.frame .line {
+  stroke-width: 2.5;
+}
+
+/* ------------------------------------------------------------------ countdown */
+html[data-mode='countdown'] .root {
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+.panel {
+  box-sizing: border-box;
+  min-width: 232px;
+  padding: 20px 24px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: #000;
+  border-radius: 24px;
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.35),
+    0 20px 40px rgba(0, 0, 0, 0.25);
+  color: rgba(255, 255, 255, 0.92);
+}
+.ring {
+  position: relative;
+  width: 92px;
+  height: 92px;
+}
+.ring svg {
+  display: block;
+  transform: rotate(-90deg); /* from 12 o'clock, clockwise */
+}
+.ring circle {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.ring .track {
+  stroke: rgba(255, 255, 255, 0.12);
+}
+.ring .left {
+  stroke: var(--rec);
+}
+.num {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 44px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+.num.swap {
+  animation: num-in 0.14s linear;
+}
+@keyframes num-in {
+  from {
+    opacity: 0;
+  }
+}
+.ready {
+  margin-top: 16px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.keys {
+  margin-top: 12px;
+  display: flex;
+  gap: 16px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+.pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+/* a chord as its keys, each its own small cap (the Mac's [⌥⇧P]) */
+.chord {
+  display: inline-flex;
+  gap: 2px;
+}
+.cap {
+  padding: 1px 5px;
+  min-width: 12px;
+  text-align: center;
+  border-radius: 4px;
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.78);
+  font: 500 10.5px var(--font);
+  line-height: 15px;
+}
+.start {
+  margin-top: 14px;
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 14px;
+  /* the island's quiet mint chip (Chrome.swift: IslandButton on the brand tint), not a primary button */
+  background: var(--brand-tint);
+  color: var(--brand);
+  font: 600 13px var(--font);
+  cursor: default;
+}
+.start:hover {
+  background: color-mix(in srgb, var(--brand) 28%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .num.swap {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ the pen (recink.ts) */
+html[data-mode='ink'] canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* a fully transparent window lets clicks through: a whisper of fill while the pen is on (InkView.setOn) */
+html.pen-on body {
+  background: rgba(0, 0, 0, 0.02);
+}
+/* the pen's ring at the pointer: the markup colour, 25 % inside */
+.halo {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--markup);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--markup) 25%, transparent);
+  pointer-events: none;
+}
+

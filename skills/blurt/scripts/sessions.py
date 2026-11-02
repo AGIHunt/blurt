@@ -16,7 +16,7 @@ or in the agent's desktop app (Claude: --runner desktop).
                        for the app to open — nothing is started here; the job's items move only when the agent
                        reports (blurt MCP), and it ends once none is still with it. Its dry run says "mcp": whether
                        the blurt MCP is installed for the agent (false = items need marking by hand)
-  sessions.py continue-desktop JOB [--without-mcp]
+  sessions.py continue-desktop JOB [--without-mcp] [--stage prepare|launch]
                                              a running terminal session moves to the desktop app: its agent ends in
                                              the window, then `claude --desktop --resume <session id>`; the job
                                              becomes a desktop one. Codes desktop_version / desktop_login /
@@ -473,6 +473,27 @@ def _at_startup_question(a: dict) -> str | None:
     return None
 
 
+def app_screen(job_id: str) -> dict | None:
+    """An app-runner session's screen (no tmux: Windows): the app draws its pty and writes the non-empty lines and the
+    time of its last output to run/screens/<job>.json (pty.rs ScreenWatch). Read like a tmux pane: {"pane": None,
+    "dead": False, "activity", "lines"}; None when the app hasn't written one (an older app, the agent gone)."""
+    try:
+        d = json.loads((jobs.home() / "run" / "screens" / f"{job_id}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(d, dict) or not isinstance(d.get("lines"), list):
+        return None
+    try:
+        activity = float(d.get("activity") or 0)
+    except (TypeError, ValueError):
+        activity = 0.0
+    return {"pane": None, "dead": False, "exit": None, "activity": activity, "lines": [str(x) for x in d["lines"]]}
+
+
+def _screen_tail(w: dict, n: int = TAIL_LINES) -> list[str]:
+    return w["lines"][-n:] if w.get("lines") is not None else pane_tail(w["pane"], n)
+
+
 def _tty_fallback(job: dict, w: dict, now: float) -> None:
     """Status from the terminal, for agents whose hooks aren't reporting (K5). Claude Code's hooks report everything
     once they are live, but none fires before its workspace-trust dialog is answered, nor when it refuses to start
@@ -490,7 +511,9 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
     errors = [] if a.get("hooks_live") else agents.error_patterns(defn)
     since = jobs.parse_iso(a.get("status_at")) or 0
     text = ""
-    if patterns or errors:
+    if (patterns or errors) and w.get("lines") is not None:  # the app runner's screen (app_screen)
+        text = "\n".join([ln for ln in w["lines"] if ln.strip()][-TTY_BOTTOM:])
+    elif patterns or errors:
         p = tmux("capture-pane", "-p", "-J", "-S", "-15", "-t", w["pane"], check=False)
         lines = [ln for ln in (p.stdout if p.returncode == 0 else "").splitlines() if ln.strip()]
         text = "\n".join(lines[-TTY_BOTTOM:])  # a prompt that has scrolled up was answered
@@ -518,11 +541,12 @@ def _tty_fallback(job: dict, w: dict, now: float) -> None:
             a.pop("waiting_hint", None)
     elif status == "waiting_input" and a.get("status_source") in ("tty", "watchdog") and w["activity"] > since:
         _set_status(job, "running", "tty")
+        a.pop("waiting_hint", None)  # answered: the line about it goes with it
     elif hooks and not a.get("hooks_live") and status == "running" and a.get("status_source") in (None, "app") \
             and now - started >= _stall() and now - w["activity"] >= _stall():
         # the watchdog: its hooks never spoke and its window has been still for a minute — a screen nothing here
         # recognises (an update notice, a login page, a question). Never "Running" for good: it needs a look
-        a["last_output"] = pane_tail(w["pane"])
+        a["last_output"] = _screen_tail(w)
         _set_status(job, "waiting_input", "watchdog")
     elif hooks is None:  # nothing reports a finished turn: 8 s without output
         if status == "running" and now - w["activity"] >= IDLE_TURN_DONE and now - since >= IDLE_TURN_DONE:
@@ -551,8 +575,10 @@ def sync(only: list[str] | None = None) -> list[dict]:
                 a = job.setdefault("agent", {})
                 if a.get("status") != "waiting_input" or a.get("status_source") != "tty":
                     a.pop("waiting_hint", None)  # the question it named was answered (or a hook says what it is)
-                w = wins.get(job["id"]) if a.get("runner") == "tmux" else None
                 active = job.get("state") in ("running", "queued")
+                # the app runner's screen (Windows): read as a tmux pane is, while it runs
+                w = wins.get(job["id"]) if a.get("runner") == "tmux" else \
+                    app_screen(job["id"]) if a.get("runner") == "app" and active else None
                 other = (a.get("tmux") or {}).get("socket") not in (None, socket_name())
                 if a.get("runner") == "tmux" and not other:  # a job on another tmux server isn't ours to judge
                     if w is None:
@@ -575,6 +601,8 @@ def sync(only: list[str] | None = None) -> list[dict]:
                                 job["error"] = exit_error(a["last_output"], w["exit"], a.get("id"), a.get("cwd"))
                     elif active:
                         _tty_fallback(job, w, now)
+                elif a.get("runner") == "app" and active and w is not None:
+                    _tty_fallback(job, w, now)
                 elif a.get("runner") == "desktop" and active and a.get("items_handed") and (only or _desktop_due(job["id"], now)):
                     # in the desktop app only the agent reports (mark_fixed): once none of its items is still with
                     # it — reported, taken back, marked done — the session is over and its worktree can be reviewed
@@ -789,7 +817,7 @@ def desktop_check(agent: str) -> dict:
     return {"ok": True, "agent": agent, **agents.desktop_continue_check(agent)}
 
 
-def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
+def continue_desktop(job_id: str, without_mcp: bool = False, stage: str | None = None) -> dict:
     """Move a running terminal session to the agent's desktop app (interactive.desktop.continue: claude --desktop
     --resume <session id>): end the agent in its window, then open the same conversation there. From then on the job
     is a desktop one (runner "desktop"): no live status, its items move only when the agent reports, and the window's
@@ -798,12 +826,22 @@ def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
     --mcp-config): without it nothing reports progress there, so it is refused (code desktop_no_mcp) unless
     without_mcp — the user was told the items then need marking by hand. agent.desktop.mcp records which it was.
     When the app doesn't take the conversation over, the window is already gone: the job fails as a terminal one
-    (runner back to "tmux", agent.continued.failed), so Restart starts a new session in Blurt's terminal."""
+    (runner back to "tmux", agent.continued.failed), so Restart starts a new session in Blurt's terminal.
+    An app-runner session (no tmux: Windows) lives in the app's own pty, which only the app can end: `--stage prepare`
+    checks and marks the job moved (as here, before the agent ends), the app ends its pty, then `--stage launch`
+    opens the conversation in the desktop app."""
     import agents
     job = _job(job_id)
     a = job.get("agent") or {}
-    if a.get("runner") != "tmux" or job.get("state") not in ("running", "queued"):
+    if stage == "launch":
+        c = a.get("continued") or {}
+        if a.get("runner") != "desktop" or c.get("from") != "app" or c.get("launched"):
+            raise SessionError("bad_runner", "only a session prepared with --stage prepare can be launched")
+        return _continue_launch(job_id, a, "app")
+    if a.get("runner") not in ("tmux", "app") or job.get("state") not in ("running", "queued"):
         raise SessionError("bad_runner", "only a running session in Blurt's terminal can continue in the desktop app")
+    if (a.get("runner") == "app") != (stage == "prepare"):
+        raise SessionError("bad_args", "an app-runner session moves in two stages (prepare, then launch); a tmux one in one")
     cfg = agents.config(a.get("cwd"))
     defn = agents.definitions(cfg).get(a.get("id")) or {}
     cont = (agents.desktop_spec(defn) or {}).get("continue") or {}
@@ -812,8 +850,8 @@ def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
     sid = a.get("agent_session_id")
     if not sid:
         raise SessionError("no_session_id", "the agent hasn't said which conversation this is yet")
-    w = panes().get(job_id)
-    if not w or w["dead"]:
+    w = panes().get(job_id) if a.get("runner") == "tmux" else None
+    if a.get("runner") == "tmux" and (not w or w["dead"]):
         raise SessionError("gone", "the agent in this window has exited")
     chk = agents.desktop_continue_check(a["id"], cfg)
     if not chk["available"]:
@@ -822,15 +860,17 @@ def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
     if chk.get("mcp") is False and not without_mcp:
         raise SessionError("desktop_no_mcp", "the blurt MCP isn't installed for the desktop app, so nothing would "
                            "report progress there (pass --without-mcp to go on, and mark the items by hand)")
-    bin_ = agents.find_bin(defn, agents.clean_env())
     now = jobs.now_iso()
+    came_from = a.get("runner")
 
     def moved(j):  # first: the hooks of the agent about to end must not end the job
         ag = j.setdefault("agent", {})
         ag.update(runner="desktop", status="running", status_at=now, status_source="desktop",
-                  continued={"from": "tmux", "at": now, "tmux": ag.get("tmux")}, items_handed=True,
+                  continued={"from": came_from, "at": now, "tmux": ag.get("tmux")}, items_handed=True,
                   desktop={**(ag.get("desktop") or {}), "mcp": chk.get("mcp")})
     jobs.update(job_id, moved)
+    if came_from == "app":  # the app ends its pty now, then asks for --stage launch
+        return {"ok": True, "stage": "prepared", "job": jobs.get(job_id)}
     tmux("send-keys", "-t", w["pane"], "C-c", check=False)
     time.sleep(0.4)
     tmux("send-keys", "-t", w["pane"], "C-c", check=False)
@@ -841,10 +881,27 @@ def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
             break
         time.sleep(0.2)
     tmux("kill-window", "-t", w["window"], check=False)
-    argv = [bin_, *agents._fill(cont["argv"], {"session": sid})]
+    return _continue_launch(job_id, a, "tmux")
+
+
+def _continue_launch(job_id: str, a: dict, came_from: str) -> dict:
+    """`claude --desktop --resume <session id>` once the terminal agent is gone; a failure makes the job a terminal
+    one again (runner `came_from`), ended, so Restart starts a new session in Blurt's terminal."""
+    import agents
+    cfg = agents.config(a.get("cwd"))
+    defn = agents.definitions(cfg).get(a.get("id")) or {}
+    cont = (agents.desktop_spec(defn) or {}).get("continue") or {}
+    sid = a.get("agent_session_id")
+    bin_ = agents.find_bin(defn, agents.clean_env())
+    if not bin_ or not cont.get("argv") or not sid:
+        err = "the agent's command or its conversation id is gone"
+    else:
+        err = None
+    argv = [bin_, *agents._fill(cont.get("argv") or [], {"session": sid})] if not err else []
     log = jobs.path(job_id, ".desktop.log")
-    err = None
     try:
+        if err:
+            raise OSError(err)
         with open(log, "ab") as f:
             p = subprocess.Popen(argv, cwd=a.get("cwd") or None, env=_clean_env(), stdin=subprocess.DEVNULL, stdout=f,
                                  stderr=subprocess.STDOUT, start_new_session=os.name != "nt")
@@ -861,8 +918,9 @@ def continue_desktop(job_id: str, without_mcp: bool = False) -> dict:
     def done(j):
         ag = j.setdefault("agent", {})
         ag["tmux"] = None  # the window is gone: nothing to attach to or show
+        ag["continued"] = {**(ag.get("continued") or {}), "launched": jobs.now_iso()}
         if err:  # a terminal session again, ended: Restart starts a new one here, not another desktop link
-            ag["runner"] = "tmux"
+            ag["runner"] = came_from
             ag["continued"] = {**(ag.get("continued") or {}), "failed": err}
             _set_status(j, "error", "desktop")
             j["error"] = {"code": "agent_exit", "message": err, "hint_key": None, "detail": None}
@@ -876,6 +934,23 @@ def app_event(job_id: str, event: str, exit_code: int | None) -> dict:
     if event != "pane-dead":
         raise SessionError("bad_args", "the only event is pane-dead")
     status = "exited" if (exit_code or 0) == 0 else "error"
+
+    def last_look(j: dict) -> None:
+        # as the tmux runner does when its pane dies: a session that quit at its folder-trust question never started
+        # (the app says so and offers Restart), and what it showed last stays on the job as the reason
+        a = j.setdefault("agent", {})
+        if j.get("state") not in ("running", "queued"):
+            return
+        if _at_startup_question(a) == "trust":
+            a["stopped_at"] = "trust"
+        if "last_output" not in a:
+            w = app_screen(job_id)
+            if w and w.get("lines"):
+                a["last_output"] = [ln for ln in w["lines"] if ln.strip()][-12:]
+    try:
+        jobs.update(job_id, last_look)
+    except jobs.JobError:
+        pass
     jobs.append(job_id, {"source": "app", "event": "pane-dead", "status": status, "state": STATUS_STATE[status],
                          "detail": {"exit": exit_code}})
     sync([job_id])
@@ -1968,6 +2043,7 @@ def main(argv: list[str] | None = None) -> None:
     s = sub.add_parser("continue-desktop")
     s.add_argument("job")
     s.add_argument("--without-mcp", action="store_true", help="go on without the blurt MCP (items marked by hand)")
+    s.add_argument("--stage", choices=["prepare", "launch"], help="an app-runner session: the app ends its pty between")
     sub.add_parser("doctor")
     s = sub.add_parser("setup-session")
     s.add_argument("--agent", required=True)
@@ -2006,7 +2082,7 @@ def main(argv: list[str] | None = None) -> None:
         elif a.cmd == "desktop-check":
             emit(desktop_check(a.agent))
         elif a.cmd == "continue-desktop":
-            emit(continue_desktop(a.job, a.without_mcp))
+            emit(continue_desktop(a.job, a.without_mcp, a.stage))
         elif a.cmd == "doctor":
             emit(doctor())
         elif a.cmd == "setup-session":

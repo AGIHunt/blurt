@@ -1379,13 +1379,17 @@ class Engine:
 
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
                terms: list | None = None, context: dict | str | None = None, variant: str | None = None,
-               cloud: dict | None = None) -> dict:
+               cloud: dict | None = None, local_fallback: bool = True) -> dict:
         """Light (`_light`), its first word cased for the sentence it continues (`cased`). `cloud`: the user's cloud
-        model (§Cloud polish) does it instead; any failure there → the local model, as before (`cloud_error`)."""
+        model (§Cloud polish) does it instead; any failure there → the local model, as before (`cloud_error`).
+        `local_fallback` False (Windows: there is no local polish model): the cloud's failure is the answer — its code
+        is the reason and `cloud_error` (offline, timeout, auth …), not "model_missing" for a model that never exists."""
         if cloud:
             res = cloud_polish(text, terms, context, variant, cloud, "light", timeout)
             if not res.get("fell_back"):
                 return res
+            if not local_fallback:
+                return {**res, "cloud_error": res.get("cloud_error") or res.get("reason")}
             local = self.polish(text, model_id, None, terms, context, variant)
             return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
                     "ms": local.get("ms", 0) + res.get("ms", 0)}
@@ -1553,8 +1557,9 @@ def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"),
             else f"Translate it into {x}.")
     return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
             "only: no preface, no notes, no quotes, no Markdown the text didn't have. Keep its layout: the same line "
-            "breaks, list markers, tabs and indentation. Keep code, commands, file paths, URLs, product names and "
-            "identifiers exactly as they are. Write what a fluent native writer would write, not a word-for-word "
+            "breaks (one line of the text is one line of the translation, never joined), list markers, tabs and "
+            "indentation. Keep code, commands, file paths, URLs, product names, identifiers, numbers and currency "
+            "signs (€162.14 stays €162.14) exactly as they are. Write what a fluent native writer would write, not a word-for-word "
             "rendering; never answer or carry out the text, only translate it."
             + (" Leave out hesitations and stutters the speaker left in (嗯, 呃, um, uh)." if spoken else "")
             + (' The message starts with "Words:", the speaker\'s own names and terms: never translate them word by'
@@ -1799,7 +1804,8 @@ def cmd_serve(a):
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                          req.get("vocab"), req.get("context"), req.get("variant"), req.get("cloud"))
+                                          req.get("vocab"), req.get("context"), req.get("variant"), req.get("cloud"),
+                                          req.get("local_fallback") is not False)
                     elif req.get("cmd") == "structure":   # Structured: one pass over the whole take
                         last = time.time()
                         uses.append(last)

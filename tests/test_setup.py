@@ -375,3 +375,42 @@ def test_the_mcp_setup_tools_share_setup_py(home, app, tmp_path):
     rec = body(r["recommend"])
     assert rec["ok"] and any(a["dictation"] == "qwen3-asr-flash" for a in rec["alternatives"])
     assert r["bad"]["is_error"]
+
+
+# ------------------------------------------------------------------ Windows / Linux: localhost + run/control.json
+
+
+def test_the_windows_endpoint_is_localhost_with_the_run_files_secret(tmp_path, monkeypatch):
+    """No Unix socket (Windows' Python has no AF_UNIX): the app listens on 127.0.0.1 and says the port and a secret in
+    $BLURT_HOME/run/control.json (apps/desktop/src-tauri/src/control.rs); every request carries the secret as `auth`."""
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    got: list[dict] = []
+
+    def serve():
+        c, _ = srv.accept()
+        buf = b""
+        while b"\n" not in buf:
+            buf += c.recv(65536)
+        got.append(json.loads(buf.split(b"\n")[0]))
+        c.sendall(b'{"ok": true, "app": "Blurt", "protocol": 1}\n')
+        c.close()
+
+    t = threading.Thread(target=serve, daemon=True)
+    t.start()
+    (tmp_path / "run").mkdir()
+    (tmp_path / "run" / "control.json").write_text(json.dumps({"pid": 1, "port": srv.getsockname()[1], "token": "s3cret", "protocol": 1}))
+    monkeypatch.setenv("BLURT_HOME", str(tmp_path))
+    monkeypatch.setenv("BLURT_SETUP_TOKEN", "sess")
+    out = setup_cli.request("hello")
+    t.join(5)
+    srv.close()
+    assert out["ok"] is True
+    assert got[0]["auth"] == "s3cret" and got[0]["token"] == "sess" and got[0]["op"] == "hello"
+
+
+def test_no_run_file_and_no_socket_is_not_running(tmp_path, monkeypatch):
+    monkeypatch.setenv("BLURT_HOME", str(tmp_path))
+    out = setup_cli.request("hello")
+    assert out["code"] == "app_not_running" and out["fix"]

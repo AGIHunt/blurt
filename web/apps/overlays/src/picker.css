@@ -1,138 +1,269 @@
-/* The region picker (system.md §3.1): the selection outline is the one thin gradient line in the system (an inline
-   SVG: a 2 px --on-brand 60 % solid under-stroke so it holds on white and black, then the gradient in 6 / 4 dashes
-   that march while dragging); the size label is a mint pill; Snap / Record is the button gradient. */
+/* The area picker (the Mac's Picker.swift; system.md §3.1): the dim says "not in your shot" — 22 % with nothing under
+   the pointer, 42 % (dark 55 %) around a hovered window or a selection, which a clip-path cuts out of it (WebView2
+   clips a 100vmax box-shadow, so that trick left the screen undimmed); the selection is the one solid 2 px line in
+   --selection just outside the area, with 8 handles; the chrome (hint, toolbar, size, window label) is one surface: black 88 %,
+   a white 14 % hairline, white text. */
 body {
   cursor: crosshair;
 }
 .mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.38);
+  background: rgb(0 0 0 / 0.22);
 }
-body.has-sel .mask {
-  display: none; /* the selection's shadow dims everything else */
+/* a hovered window or a selection: the rest of the screen 42 % (dark system 55 %), the same as the frozen stage */
+.mask.hole {
+  background: rgb(0 0 0 / 0.42);
 }
-.sel {
-  position: fixed;
-  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.38);
-  cursor: move;
-}
-.sel .outline {
-  /* drawn just outside the area, where the old 2 px outline was */
-  position: absolute;
-  left: -2px;
-  top: -2px;
-  width: calc(100% + 4px);
-  height: calc(100% + 4px);
-  overflow: visible;
-  pointer-events: none;
-}
-.sel .outline rect {
-  fill: none;
-  stroke-width: 2;
-  shape-rendering: crispEdges;
-}
-.sel .outline .under {
-  stroke: var(--on-brand);
-  stroke-opacity: 0.6;
-}
-.sel .outline .dash {
-  stroke-dasharray: 6 4;
-}
-body.dragging .sel .outline .dash {
-  animation: march 1s linear infinite; /* 10 px/s */
-}
-@keyframes march {
-  to {
-    stroke-dashoffset: -10;
+@media (prefers-color-scheme: dark) {
+  .mask.hole {
+    background: rgb(0 0 0 / 0.55);
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  body.dragging .sel .outline .dash {
-    animation: none;
-  }
-}
-.sel .size {
-  position: absolute;
-  left: 0;
-  top: -26px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--brand);
-  font-variant-numeric: tabular-nums;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--on-brand);
-}
-.hint {
-  position: fixed;
-  left: 50%;
-  top: 42%;
-  transform: translate(-50%, -50%);
-  padding: 10px 16px;
-  border-radius: var(--radius);
-  background: var(--glass);
-  box-shadow: inset 0 0 0 1px var(--line);
-  color: var(--fg2);
-  pointer-events: none;
-  white-space: nowrap;
-}
-body.has-sel .hint {
+.mask[hidden],
+.win[hidden],
+.sel[hidden],
+.hint[hidden],
+.bar[hidden],
+.pill[hidden],
+.h[hidden] {
   display: none;
 }
+.win,
+.sel {
+  position: fixed;
+}
+/* a hovered window, in its own shape: lifted out of the dim (the mask's hole), the Mac's 10 % mint film, a 2 px mint line
+   inside its edge with a dark under-stroke so the line holds on white and on black */
+.win {
+  background: color-mix(in srgb, var(--selection) 10%, rgb(0 0 0 / 0.005));
+  box-shadow:
+    inset 0 0 0 2px var(--selection),
+    inset 0 0 0 3px rgb(0 0 0 / 0.18);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.sel {
+  outline: 2px solid var(--selection); /* outside the area: none of it lands in the picture */
+  background: rgb(0 0 0 / 0.005); /* a hair opaque: the window keeps the pointer over the hole */
+  /* the Mac's soft shadow round the selection: it separates from content of its own colour (a dark page) */
+  box-shadow:
+    0 0 0 2px rgb(0 0 0 / 0.22),
+    0 8px 24px rgb(0 0 0 / 0.3);
+}
+@media (prefers-color-scheme: dark) {
+  .sel {
+    box-shadow:
+      0 0 0 2px rgb(0 0 0 / 0.4),
+      0 8px 24px rgb(0 0 0 / 0.45);
+  }
+}
+@media (prefers-color-scheme: dark) {
+  /* a hovered window on a dark system: only a 6 % tint inside, so the preview keeps the window's own colours (the
+     2 px line carries the highlight); the outside is the mask's 55 % */
+  .win {
+    background: color-mix(in srgb, var(--selection) 6%, rgb(0 0 0 / 0.005));
+  }
+}
+body.text .sel {
+  box-shadow: none;
+  background: color-mix(in srgb, var(--selection) 10%, transparent);
+}
+.sel .h {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  margin: -4.5px 0 0 -4.5px;
+  box-sizing: border-box;
+  border-radius: 2.5px;
+  background: var(--selection);
+  box-shadow:
+    0 0 0 1.5px #fff,
+    0 0.5px 1px 1.5px rgb(0 0 0 / 0.35);
+}
+.sel .h[data-h='0'],
+.sel .h[data-h='4'] {
+  cursor: nwse-resize;
+}
+.sel .h[data-h='2'],
+.sel .h[data-h='6'] {
+  cursor: nesw-resize;
+}
+.sel .h[data-h='1'],
+.sel .h[data-h='5'] {
+  cursor: ns-resize;
+}
+.sel .h[data-h='3'],
+.sel .h[data-h='7'] {
+  cursor: ew-resize;
+}
+
+/* the chrome's one surface (the Mac's capture glass): dark, opaque enough to read on any page, a white hairline inside,
+   a soft shadow under it */
+.glass,
+.pill {
+  background: rgb(30 30 32 / 0.9);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.12),
+    0 4px 12px rgb(0 0 0 / 0.25);
+  color: rgb(255 255 255 / 0.92);
+  white-space: nowrap;
+}
+.pill {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 11px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.wlabel {
+  position: static;
+  height: 30px;
+  padding: 0 13px;
+  border-radius: 15px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* the how-to: the mode's glyph, one sentence, then the keys as keycaps after a hairline */
+.hint {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.hint .ic {
+  margin-right: 9px;
+}
+/* one even gap each side of the hairline */
+.hint .rule {
+  width: 1px;
+  height: 16px;
+  margin: 0 12px;
+  background: rgb(255 255 255 / 0.26);
+}
+.hint .kv {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgb(255 255 255 / 0.7);
+}
+.hint .kv:last-child {
+  margin-right: 0;
+}
+/* every keycap one component: 18 px tall, 4 px corners, its label on the caps' baseline */
+kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 4px;
+  background: rgb(255 255 255 / 0.14);
+  color: rgb(255 255 255 / 0.9);
+  font: 600 11px/1 var(--font);
+}
+kbd.faint {
+  background: rgb(255 255 255 / 0.08);
+  color: rgb(255 255 255 / 0.5);
+}
+
+/* the toolbar: labelled actions, each with its key after it, a hairline, then the one primary */
 .bar {
   position: fixed;
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: calc(var(--radius) + 2px);
-  background: var(--glass);
-  box-shadow: inset 0 0 0 1px var(--line), 0 6px 24px rgba(0, 0, 0, 0.35);
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 22px;
   cursor: default;
 }
-.bar[hidden],
-.sel[hidden] {
-  display: none;
+.bar .rule {
+  width: 1px;
+  height: 18px;
+  margin: 0 4px;
+  background: rgb(255 255 255 / 0.16);
 }
 .bar button {
-  height: 30px;
-  padding: 0 12px;
-  border-radius: var(--radius);
-  color: var(--fg2);
-}
-.bar button:hover {
-  background: var(--s3);
-  color: var(--fg);
-}
-/* Snap / Record: white bold text on the button gradient */
-.bar button.primary {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--brand-button);
-  color: var(--on-brand-button);
+  height: 32px;
+  padding: 0 16px;
+  border-radius: 16px;
+  background: rgb(255 255 255 / 0.1);
+  color: #fff;
+  font-size: 13px;
   font-weight: 600;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 1px 2px rgb(4 38 30 / 0.25);
+}
+.bar button:hover {
+  background: rgb(255 255 255 / 0.16);
+}
+.bar button:active {
+  background: rgb(255 255 255 / 0.22);
+}
+.bar button .key {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(255 255 255 / 0.7);
+}
+/* CJK: semibold Latin, regular-weight Han (YaHei's bold reads a size heavier) */
+:lang(zh-Hans) .bar button,
+:lang(zh-Hans) .hint {
+  font-weight: 400;
+}
+.bar button.primary {
+  gap: 6px;
+  background: var(--brand-button);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18);
+}
+.bar button.primary .key {
+  margin-left: 2px;
 }
 .bar button.primary:hover {
-  background: var(--brand-button);
-  color: var(--on-brand-button);
   filter: brightness(1.04);
 }
 .bar button.primary:active {
   filter: brightness(0.92);
 }
-.bar button.primary .rdot {
-  width: 8px;
-  height: 8px;
-  margin-right: -2px;
-  border-radius: 50%;
-  background: var(--rec);
-  box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.9);
+
+/* the loupe (Loupe.swift): 120 px, 8×, nearest neighbour with its pixel grid; the pixel under the pointer framed, a
+   crosshair through it, the readout under it (the canvas draws its ring, shadow and pill) */
+.loupe {
+  position: fixed;
+  pointer-events: none;
 }
-.bar button kbd {
-  font: 600 11px/1 var(--font);
-  padding: 2px 5px;
-  border-radius: 4px;
-  background: rgb(255 255 255 / 0.16);
+.loupe[hidden] {
+  display: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* the glass on dark-dimmed pages: a step lighter, a brighter hairline, so its edge holds */
+  .glass,
+  .pill {
+    background: rgb(44 44 46 / 0.92);
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 0.2),
+      0 4px 12px rgb(0 0 0 / 0.35);
+  }
 }

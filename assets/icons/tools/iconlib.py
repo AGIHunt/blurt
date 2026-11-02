@@ -279,6 +279,53 @@ def segs_to_d(segs) -> str:
     return "".join(parts)
 
 
+def _num2(v: float) -> str:
+    """Hundredths, no leading zero (".5", "-.25"): the web data's numbers."""
+    s = f"{v:.2f}".rstrip("0").rstrip(".")
+    if s in ("-0", ""):
+        return "0"
+    return s.replace("0.", ".", 1) if s.startswith(("0.", "-0.")) else s
+
+
+def compact_d(segs) -> str:
+    """The same geometry as segs_to_d, written small for the web package (it ships inside review.html, which has a
+    size budget): positions rounded to hundredths of the 24 grid (an icon drawn at 48 px moves by at most 0.01 px),
+    every command after the first move relative to the rounded point before it — so rounding never drifts along a
+    path — and no separator where a minus sign or a second decimal point already separates two numbers."""
+    out = []
+    cx = cy = sx = sy = 0  # in hundredths
+    for c, a in segs:
+        if c == "Z":
+            out.append("z")
+            cx, cy = sx, sy
+            continue
+        pts = [(round(a[k] * 100), round(a[k + 1] * 100)) for k in range(0, len(a), 2)]
+        if c == "M" and not out:
+            nums = [pts[0][0] / 100, pts[0][1] / 100]
+            cmd = "M"
+        else:
+            nums = [v for (x, y) in pts for v in ((x - cx) / 100, (y - cy) / 100)]
+            cmd = c.lower()
+        text = ""
+        for n in nums:
+            t = _num2(n)
+            if text and not t.startswith("-") and not (t.startswith(".") and "." in _last_num(text)):
+                text += " "
+            text += t
+        out.append(cmd + text)
+        cx, cy = pts[-1]
+        if c == "M":
+            sx, sy = cx, cy
+    return "".join(out)
+
+
+def _last_num(text: str) -> str:
+    i = len(text)
+    while i > 0 and (text[i - 1].isdigit() or text[i - 1] == "."):
+        i -= 1
+    return text[i:]
+
+
 def _style(el, inherited):
     st = dict(inherited)
     for k in ("fill", "stroke", "stroke-width", "opacity"):

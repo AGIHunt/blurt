@@ -1141,7 +1141,7 @@ Rust: blurt_capture::{start(&CaptureOptions, on_event) -> CaptureHandle, handle.
   - 覆盖：A、X、J、K、Z、G、V；字段编辑后自动保存，`items.json` 里出现 `_user`；合并和撤销；
     agent 执行 `items.py set-frames` 后，页面 3 秒内显示新帧；模拟 keyCode 229 的回车不会触发提交；
   - 截图覆盖三平台 × 明暗两种主题；
-  - 单文件产物不超过 410 KB ⚠（原为 400 KB；1.0.5 加了 6 个线条图标和 by you / ⋯ 后到 400.3 KB，放宽到 410）；
+  - 单文件产物不超过 420 KB ⚠（原为 400 KB；1.0.5 加了 6 个线条图标和 by you / ⋯ 后到 400.3 KB，放宽到 410；1.0.12 加了 Windows 的详情样式、重新打开和验证卡片折叠后到 414 KB，放宽到 420）；
   - 功能对照表逐项通过，以旧版 `review.html` 的行为为准。
 
 ### WP4 · mac-shell

@@ -7,6 +7,9 @@ converts that package, and the app, the review page and the README use what it w
     python3 assets/brand/import_peep.py                  # from ~/workspace/blurt-media/logo/peep/release
     python3 assets/brand/import_peep.py --src DIR        # from another folder with the same layout
     python3 assets/brand/import_peep.py --list           # print the outputs and exit
+    python3 assets/brand/import_peep.py --only windows   # only the Windows / Linux outputs (Tauri icons, web Peep)
+    python3 assets/brand/import_peep.py --only mac       # only the macOS app's, the README's and the review page's
+    python3 assets/brand/import_peep.py --only tray,installer   # only the tray's recording states / the NSIS pictures
 
 Needs Pillow; the app icon's Assets.car needs Xcode's actool (assets/color/build.py --car compiles it).
 
@@ -39,6 +42,21 @@ What it writes
               web/packages/review/src/assets/peep-vector.svg (the top bar; numbers rounded:
                 the page is one file under a 400 KB budget), peep-thinking.png (the organising pill: every third
                 thinking glyph frame, a CSS mask strip)
+  Windows / Linux (--only windows)
+              web/packages/icons/peep/<tier>-<state>.webp, peep.json   @blurt/icons/mascot's sheets: the package's
+                web/sprites/notch-<state>.webp (the dark set without the contact shadow, as the Mac app's clips),
+                cut to Peep's square plus the bleed like the Mac's sheets and resized per tier — `xs` and `s` for the
+                island (Peep ≤ 32 px CSS, at 1× and 2×) with the states it plays, `l` for the app window (the welcome, the empty states:
+                ≤ 108 px CSS) with idle, hello and done
+              apps/desktop/src-tauri/icons/  icon.ico (16 flat, 24 and 32 the vector, 48 64 256 clay: the paper tiles),
+                icon.png (512), 32x32 64x64 128x128 128x128@2x .png, icon.icns (the paper .icns), tray-black.png and
+                tray-white.png (app/marks, centred on a 64 px square: the flat mark for the tray);
+                tray-rec-{light,dark}.png and tray-paused-{light,dark}.png (--only tray): the tray while a take rolls —
+                the Mac's menu-bar recording state, assets/icons record-fill / pause-fill in the rec / attn colour of
+                assets/color/tokens.json, for a light or a dark taskbar; installer-sidebar.bmp (164 × 314) and
+                installer-header.bmp (150 × 57) (--only installer): the NSIS pages, the DMG window's look (scripts/dmg:
+                #F2F2F2 easing into the page's white, the mint glow, the brand sparkle) with the clay Peep (stills/peep-side)
+              crates/blurt-capture/demo/icons/  icon.ico, icon.png (64), 32x32.png (the same tiles)
 """
 from __future__ import annotations
 
@@ -58,6 +76,16 @@ MAC_RES = REPO / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Peep"
 SKILL_ASSETS = REPO / "skills/blurt/assets"
 BRAND = REPO / "assets/brand"
 REVIEW_ASSETS = REPO / "web/packages/review/src/assets"
+WEB_PEEP = REPO / "web/packages/icons/peep"
+TAURI_ICONS = REPO / "apps/desktop/src-tauri/icons"
+DEMO_ICONS = REPO / "crates/blurt-capture/demo/icons"
+# the web's sheets per tier: (the side of Peep's square in px, the states). `s` is the island (the ears 24 px CSS, a
+# toast 28, the voice note's head 32: 64 device px at 2×) with every state it plays, and `xs` the same at 1× and 1.25×
+# (a 64 px square shrunk to 24 by the browser goes soft); `l` the app window (the welcome 108, the empty state 80 —
+# the package's 256 px cells hold a ~200 px square, so 192 is as sharp as they go) with the paper set's clips on the
+# Mac (idle, hello, done)
+ISLAND = ("idle", "hello", "listening", "talking", "thinking", "done", "error")   # hello: the launch hello in the ear (Island.hello)
+WEB_TIERS = {"xs": (32, ISLAND), "s": (64, ISLAND), "l": (192, ("idle", "hello", "done"))}
 
 STATES = ("idle", "hello", "listening", "talking", "thinking", "done", "error")
 # which clips each light set ships: paper is for light backgrounds (onboarding, empty states, About, notifications),
@@ -448,6 +476,311 @@ def write_review(src: Path, out: dict) -> None:
         w.append(SKILL_ASSETS / "favicon.png")
 
 
+def web_cells(name: str) -> list[Image.Image]:
+    """The frames of one of the package's web sheets (web/sprites/<name>.webp, sprites.json's grid)."""
+    sprites = PACKAGE / "web/sprites"
+    m = json.loads((sprites / "sprites.json").read_text())["sheets"][name]
+    sheet = Image.open(sprites / f"{name}.webp").convert("RGBA")
+    c, cols = m["cell"], m["cols"]
+    return [sheet.crop(((i % cols) * c, (i // cols) * c, (i % cols + 1) * c, (i // cols + 1) * c)) for i in range(m["frames"])]
+
+
+def write_web_peep(out: dict) -> None:
+    """@blurt/icons/mascot's sheets (web/packages/icons/peep): the notch set — the dark lighting without the contact
+    shadow, which the Mac app plays on black and, for every clip its paper set lacks, on light too — cut like the Mac's
+    sheets (Peep's square at rest plus the bleed every frame needs, 10 columns, idle at 15 fps) and resized per tier, so
+    the browser never shrinks a 256 px cell ten times (that is what blurs a small clay Peep). One set for light and dark:
+    the paper-lit web sheets (`light-*`) carry the contact shadow the Mac app dropped in v1.0.6."""
+    w = out["written"]
+    WEB_PEEP.mkdir(parents=True, exist_ok=True)
+    for old in WEB_PEEP.glob("*.webp"):
+        old.unlink()
+    states = sorted({s for _, ss in WEB_TIERS.values() for s in ss}, key=STATES.index)
+    clips = {s: web_cells(f"notch-{s}") for s in states}
+    rest = solid_box(clips["idle"][0])
+    sx, sy, side = square_of(rest)
+    need = 0.0
+    for fs in clips.values():
+        for f in fs:
+            b = ink_box(f)
+            need = max(need, (sx - b[0]) / side, (sy - b[1]) / side, (b[2] - sx - side) / side, (b[3] - sy - side) / side)
+    bleed = math.ceil(max(0.0, need) * 100 + 1) / 100
+    box = tuple(round(v) for v in (sx - side * bleed, sy - side * bleed, sx + side * (1 + bleed), sy + side * (1 + bleed)))
+    meta: dict = {"_": "GENERATED by assets/brand/import_peep.py from the Peep release package (web/sprites/notch-*.webp) — "
+                       "do not edit. Each tier's <tier>-<state>.webp holds a clip's frames, `cols` to a row, `cell` px "
+                       "each; Peep's square at rest is `square` px in the middle of a cell (`bleed` of it spare on every side).",
+                  "source": out["source"], "cols": COLS, "loop": [s for s in STATES if s in ("idle", "listening", "talking", "thinking")],
+                  "tiers": {}}
+    for tier, (sq, names) in WEB_TIERS.items():
+        cell = int(round(sq * (1 + 2 * bleed) / 2) * 2)
+        info = {"square": sq, "cell": cell, "bleed": round((cell - sq) / 2 / sq, 4), "clips": {}}
+        for s in names:
+            pick = clips[s][::STEP.get(s, 1)]
+            rows = math.ceil(len(pick) / COLS)
+            sheet = Image.new("RGBA", (COLS * cell, rows * cell), (0, 0, 0, 0))
+            for i, f in enumerate(pick):
+                sheet.paste(f.crop(box).resize((cell, cell), Image.LANCZOS), ((i % COLS) * cell, (i // COLS) * cell))
+            p = WEB_PEEP / f"{tier}-{s}.webp"
+            sheet.save(p, "WEBP", quality=72, alpha_quality=60, method=6)   # (at 2× no edge or banding shows; half the bytes of 88 / 100)
+            w.append(p)
+            clip = {"frames": len(pick), "fps": 30 // STEP.get(s, 1)}
+            if s == "talking":
+                clip["open"] = [beak_open(f, rest) for f in pick]
+            if s == "done":
+                clip["still"] = DONE_STILL // STEP.get(s, 1)     # the happy closed eye, landed
+            info["clips"][s] = clip
+        meta["tiers"][tier] = info
+    (WEB_PEEP / "peep.json").write_text(json.dumps(meta, indent=1) + "\n")
+    w.append(WEB_PEEP / "peep.json")
+    out["web_bytes"] = sum(p.stat().st_size for p in WEB_PEEP.glob("*.webp"))
+
+
+def write_ico(path: Path, images: list[Image.Image]) -> None:
+    """A .ico of PNG entries, one picture per size as given (Pillow's writer resizes one picture to every size)."""
+    import io
+    import struct
+    blobs = []
+    for im in images:
+        b = io.BytesIO()
+        im.save(b, "PNG", optimize=True)
+        blobs.append(b.getvalue())
+    head = struct.pack("<HHH", 0, 1, len(images))
+    off = 6 + 16 * len(images)
+    entries = b""
+    for im, b in zip(images, blobs):
+        entries += struct.pack("<BBBBHHII", im.width % 256, im.height % 256, 0, 0, 1, 32, len(b), off)
+        off += len(b)
+    path.write_bytes(head + entries + b"".join(blobs))
+
+
+def write_tauri(src: Path, out: dict) -> None:
+    """The Windows / Linux app's icons (apps/desktop/src-tauri/icons, tauri.conf bundle.icon; the window's title bar and
+    the taskbar take icon.ico on Windows, icon.png on Linux) and the tray, and the capture demo's copy. The paper tile,
+    as the Mac's icon; each size from the family the package drew for it (16 the flat mark, 32 the vector, 64 and up the
+    clay) — 24 is the 32 tile made smaller and 48 the 64 one, the two sizes the package has no tile for."""
+    w = out["written"]
+    paper = src / "icon/paper"
+    tile = {n: Image.open(paper / f"icon_{n}.png").convert("RGBA") for n in (16, 32, 64, 128, 256, 512)}
+    ico = [tile[16], tile[32].resize((24, 24), Image.LANCZOS), tile[32], tile[64].resize((48, 48), Image.LANCZOS), tile[64], tile[256]]
+    for d, png in ((TAURI_ICONS, 512), (DEMO_ICONS, 64)):
+        d.mkdir(parents=True, exist_ok=True)
+        write_ico(d / "icon.ico", ico)
+        tile[png].save(d / "icon.png", optimize=True)
+        tile[32].save(d / "32x32.png", optimize=True)
+        w += [d / "icon.ico", d / "icon.png", d / "32x32.png"]
+    for name, n in (("64x64.png", 64), ("128x128.png", 128), ("128x128@2x.png", 256)):
+        tile[n].save(TAURI_ICONS / name, optimize=True)
+        w.append(TAURI_ICONS / name)
+    shutil.copy(next(paper.glob("*.icns")), TAURI_ICONS / "icon.icns")
+    w.append(TAURI_ICONS / "icon.icns")
+    # the tray at large (Linux panels, a fallback): the flat mark, 64 × 52 in the package, centred on a 64 px square —
+    # the white one made from the black one's alpha (one shape, the eye a hole in both: the package's white mark had it
+    # filled in), since a tray icon is square and the system would stretch a wide one
+    mark = Image.open(src / "marks/tray-black.png").convert("RGBA")
+    side = max(mark.size)
+    for tone, rgb in (("black", (0, 0, 0)), ("white", (255, 255, 255))):
+        sq = Image.new("RGBA", (side, side), rgb + (0,))
+        tinted = Image.new("RGBA", mark.size, rgb + (255,))
+        tinted.putalpha(mark.getchannel("A"))
+        sq.paste(tinted, ((side - mark.width) // 2, (side - mark.height) // 2))
+        sq.save(TAURI_ICONS / f"tray-{tone}.png", optimize=True)
+        w.append(TAURI_ICONS / f"tray-{tone}.png")
+    (TAURI_ICONS / "tray.svg").unlink(missing_ok=True)      # the `blurt` line glyph's, which nothing read
+    write_tray_marks(out)
+    write_tray_states(out)
+    write_installer(src, out)
+
+
+def token(name: str, mode: str) -> str:
+    return json.loads((REPO / "assets/color/tokens.json").read_text())["semantic"][name][mode]
+
+
+TRAY_SIZES = (16, 20, 24, 32)   # the notification area at 100 / 125 / 150 / 200 % (SM_CXSMICON); tray.rs picks one
+
+
+def _ss_shape(n: int, draw) -> Image.Image:
+    """A mask drawn 8× and brought down to n px: `draw(d, k)` draws with k = 8 (pixel-snapped coordinates × k)."""
+    k = 8
+    big = Image.new("L", (n * k, n * k), 0)
+    draw(ImageDraw.Draw(big), k)
+    return big.resize((n, n), Image.BOX)
+
+
+# Peep per tray size, set by hand on the pixel grid (glyph units of peep-glyph.svg → px): the body's box (left, width,
+# top, height), the eye's centre and diameter, and the beak as rows of whole pixels — (row, last column + 1) — upper
+# prong, a one- or two-row mouth, lower prong, as the Mac's 1× menu-bar glyph keeps its mouth open even at 18 px.
+TRAY_MARKS = {
+    16: dict(body=(1, 11, 3, 10), eye=(8.5, 7.5, 3), beak=[(6, 14), (7, 15), (9, 14), (10, 13)]),
+    20: dict(body=(1, 14, 4, 13), eye=(11.0, 9.0, 4), beak=[(8, 18), (9, 19), (11, 18), (12, 17)]),
+    24: dict(body=(1, 17, 4, 16), eye=(13.0, 10.0, 4), beak=[(9, 21), (10, 23), (11, 23), (13, 22), (14, 21)]),
+    32: dict(body=(2, 22, 6, 21), eye=(17.5, 13.5, 5), beak=[(12, 28), (13, 30), (14, 31), (15, 31), (18, 30), (19, 29), (20, 27)]),
+}
+
+
+def write_tray_marks(out: dict) -> None:
+    """Peep for the notification area, drawn for each real size (16 / 20 / 24 / 32 px) rather than a 64 px picture the
+    system shrinks: the Mac's menu-bar template (glyph/peep-glyph.svg; its 1× glyph-idle) with every edge on the grid
+    (TRAY_MARKS). One family at every DPI: a round eye (at 16 px a clear 3 px square, from 20 px an
+    anti-aliased circle) with at least 2 px of body on its right, and the open beak — two prongs and a 1 px mouth (2 px
+    at 32) — whose pixels are only ever fully on or off, so no grey fringe; only the body's curve is anti-aliased. The
+    whole mark is centred in the square with its tip 1 px inside it. Black for a light taskbar, white for a dark one:
+    one alpha, so the two are always the same shape."""
+    w = out["written"]
+    for n in TRAY_SIZES:
+        m = TRAY_MARKS[n]
+        bl, bw, bt, bh = m["body"]
+        ex, ey, ed = m["eye"]
+
+        def draw(d, k, bl=bl, bw=bw, bt=bt, bh=bh):
+            d.ellipse((bl * k, bt * k, (bl + bw) * k - 1, (bt + bh) * k - 1), fill=255)
+
+        mask = _ss_shape(n, draw)
+        px = mask.load()
+        start = bl + bw - 4                       # the prongs grow out of the body
+        for y, end in m["beak"]:
+            for x in range(start, end):
+                px[x, y] = 255
+        # the eye, a hole
+        if ed == 3:
+            x0, y0 = round(ex - 1.5), round(ey - 1.5)
+            for dy in range(3):
+                for dx in range(3):
+                    px[x0 + dx, y0 + dy] = 0
+        else:
+            def hole(d, k, ex=ex, ey=ey, ed=ed):
+                d.ellipse(((ex - ed / 2) * k, (ey - ed / 2) * k, (ex + ed / 2) * k - 1, (ey + ed / 2) * k - 1), fill=255)
+            cut = _ss_shape(n, hole).load()
+            for y in range(n):
+                for x in range(n):
+                    if cut[x, y]:
+                        px[x, y] = min(px[x, y], 255 - cut[x, y])
+        for tone, rgb in (("black", (0, 0, 0)), ("white", (255, 255, 255))):
+            im = Image.new("RGBA", (n, n), rgb + (255,))
+            im.putalpha(mask)
+            dest = TAURI_ICONS / f"tray-{tone}-{n}.png"
+            im.save(dest, optimize=True)
+            w.append(dest)
+
+
+def write_tray_states(out: dict) -> None:
+    """The tray while a take rolls, as the Mac's menu-bar item (AppDelegate.refreshStatus: BlurtIcon.recordFill in
+    BrandColor.rec; paused, pauseFill in BrandColor.attn), in the token colour for each taskbar — `light` taskbar (the
+    colour's light value), `dark` taskbar (its dark value). Drawn per real size on whole pixels, about 60–65 % of the
+    slot so it weighs what the system glyphs beside it do: the dot 10 / 12 / 14 / 18 px across at 16 / 20 / 24 / 32,
+    the pause bars inside the dot's box (3 × 10 with a 2 px gap at 16, 4 × 12 / 3 at 20, 4 × 14 / 4 at 24, 5 × 18 / 5 at 32:
+    the gap about a bar wide, every edge on a pixel, the corners softened as pause.fill's) so pausing keeps the size. The 64 px ones stay for Linux panels."""
+    w = out["written"]
+    dot = {16: 10, 20: 12, 24: 14, 32: 18}
+    bars = {16: (3, 10, 2), 20: (4, 12, 3), 24: (4, 14, 4), 32: (5, 18, 5)}   # (bar, height, gap): the gap about a bar's width at every size
+    for mode in ("light", "dark"):
+        for name, tok in (("rec", "rec"), ("paused", "attn")):
+            hexc = token(tok, mode).lstrip("#")
+            rgb = tuple(int(hexc[i:i + 2], 16) for i in (0, 2, 4))
+            for n in TRAY_SIZES + (64,):
+                if n == 64:
+                    d0 = 36
+                    bw, bh, gap = 10, 36, 8
+                else:
+                    d0 = dot[n]
+                    bw, bh, gap = bars[n]
+                o = (n - d0) / 2
+
+                def draw(d, k, o=o, d0=d0, bw=bw, bh=bh, gap=gap, n=n):
+                    if name == "rec":
+                        d.ellipse((o * k, o * k, (o + d0) * k - 1, (o + d0) * k - 1), fill=255)
+                    else:
+                        x0 = (n - (2 * bw + gap)) // 2       # whole pixels (an odd total sits ½ px left)
+                        y0 = (n - bh) / 2
+                        r = k if n >= 24 else k // 2
+                        for x in (x0, x0 + bw + gap):
+                            d.rounded_rectangle((x * k, y0 * k, (x + bw) * k - 1, (y0 + bh) * k - 1), radius=r, fill=255)
+
+                mask = _ss_shape(n, draw)
+                im = Image.new("RGBA", (n, n), rgb + (255,))   # straight alpha: no dark fringe on a dark taskbar
+                im.putalpha(mask)
+                dest = TAURI_ICONS / (f"tray-{name}-{mode}.png" if n == 64 else f"tray-{name}-{mode}-{n}.png")
+                im.save(dest, optimize=True)
+                w.append(dest)
+
+
+def write_installer(src: Path, out: dict) -> None:
+    """The NSIS installer's pictures (tauri.conf bundle.windows.nsis sidebarImage / headerImage): the welcome and finish
+    pages' left panel (164 × 314) and the inner pages' header (150 × 57), 24-bit BMP as NSIS wants. The DMG window's
+    look (scripts/dmg/background.svg: #F2F2F2, the mint glow, the brand gradient sparkle; its dot grid left out — at
+    1× on a 164 px panel it read as grain) with the clay Peep the setup assistant shows (the package's side still)."""
+    w = out["written"]
+    still = Image.open(src_dir(src, "stills", "peep-side-2048.png")).convert("RGBA")
+    still = still.crop(still.getbbox())
+
+    def glow(size, cx, cy, r, alpha):
+        g = Image.new("L", size, 0)
+        px = g.load()
+        for y in range(size[1]):
+            for x in range(size[0]):
+                d = math.hypot(x - cx, y - cy) / r
+                if d < 1:
+                    px[x, y] = int(255 * alpha * (1 - d) ** 1.6)
+        layer = Image.new("RGBA", size, (0x61, 0xDB, 0xBD, 0))
+        layer.putalpha(g)
+        return layer
+
+    def sparkle(im, cx, cy, r):
+        # the four-point star of the DMG, in the brand gradient (#66D97A → #61DBBD → #4AABE2)
+        k = 4
+        big = Image.new("L", (int(r * 2 * k), int(r * 2 * k)), 0)
+        d = ImageDraw.Draw(big)
+        c, R, q = r * k, r * k, r * k * 0.28
+        pts = []
+        for i in range(8):
+            a = math.pi / 2 * (i // 2) + (math.pi / 4 if i % 2 else 0) - math.pi / 2
+            rr = R if i % 2 == 0 else q
+            pts.append((c + rr * math.cos(a), c + rr * math.sin(a)))
+        d.polygon(pts, fill=255)
+        mask = big.resize((int(r * 2), int(r * 2)), Image.LANCZOS)
+        grad = Image.new("RGBA", mask.size)
+        stops = [(0, (0x66, 0xD9, 0x7A)), (0.45, (0x61, 0xDB, 0xBD)), (1, (0x4A, 0xAB, 0xE2))]
+        gp = grad.load()
+        for y in range(mask.size[1]):
+            for x in range(mask.size[0]):
+                t = min(1, max(0, (x + y) / (2 * mask.size[0])))
+                for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+                    if t0 <= t <= t1:
+                        f = (t - t0) / (t1 - t0)
+                        gp[x, y] = tuple(int(a + (b - a) * f) for a, b in zip(c0, c1)) + (255,)
+        grad.putalpha(mask)
+        im.alpha_composite(grad, (int(cx - r), int(cy - r)))
+
+    def peep(im, side, cx, cy):
+        p = still.copy()
+        p.thumbnail((side, side), Image.LANCZOS)
+        im.alpha_composite(p, (int(cx - p.width / 2), int(cy - p.height / 2)))
+
+    # the welcome / finish pages' left panel: one surface with the page beside it — the DMG's #F2F2F2 easing into the
+    # page's white over the last 48 px (no hard seam), no dot grid (at 1× it read as grain), Peep and its light in the
+    # panel's optical middle
+    sb = Image.new("RGBA", (164, 314), (0xF2, 0xF2, 0xF2, 255))
+    fade = sb.load()
+    for x in range(164 - 48, 164):
+        f = (x - (164 - 48)) / 47
+        v = round(0xF2 + (0xFF - 0xF2) * f)
+        for y in range(314):
+            fade[x, y] = (v, v, v, 255)
+    sb.alpha_composite(glow(sb.size, 80, 148, 120, 0.30))
+    peep(sb, 112, 80, 148)
+    sparkle(sb, 130, 98, 7)
+    dest = TAURI_ICONS / "installer-sidebar.bmp"
+    sb.convert("RGB").save(dest)
+    w.append(dest)
+    # the inner pages' header (MUI_HEADERIMAGE_RIGHT: the picture at the header's right end, the title on the body's
+    # left margin): on the header's white, Peep flush with the right edge, whole inside the frame
+    hd = Image.new("RGBA", (150, 57), (0xFF, 0xFF, 0xFF, 255))
+    hd.alpha_composite(glow(hd.size, 118, 29, 40, 0.20))
+    peep(hd, 46, 120, 29)
+    dest = TAURI_ICONS / "installer-header.bmp"
+    hd.convert("RGB").save(dest)
+    w.append(dest)
+
+
 def main() -> int:
     args = sys.argv[1:]
     src = Path(args[args.index("--src") + 1]).expanduser() if "--src" in args else DEFAULT_SRC
@@ -465,6 +798,27 @@ def main() -> int:
         src = src / "app"
     out: dict = {"version": 1, "source": str(manifest.parent).replace(str(Path.home()), "~"),
                  "manifest": next((ln for ln in MANIFEST_TEXT.splitlines() if "Status" in ln), "")[:200], "sets": {}, "written": []}
+    only = set(args[args.index("--only") + 1].split(",")) if "--only" in args else {"mac", "windows"}
+    if not only <= {"mac", "windows", "tray", "installer"}:
+        sys.exit("--only takes mac, windows (both: mac,windows), or tray / installer (just those Windows files)")
+    if only <= {"tray", "installer"}:
+        if "tray" in only:
+            write_tray_marks(out)
+            write_tray_states(out)
+        if "installer" in only:
+            write_installer(src, out)
+        for p in out["written"]:
+            print("wrote", p.relative_to(REPO))
+        return 0
+    if "windows" in only:
+        write_web_peep(out)
+        write_tauri(src, out)
+        if "mac" not in only:
+            for p in out["written"]:
+                print("wrote", p.relative_to(REPO))
+            print(f"web Peep: {out['web_bytes'] / 1e3:.0f} KB of sheets in {WEB_PEEP.relative_to(REPO)}")
+            return 0
+        out.pop("web_bytes", None)
     write_sheets(src, out)
     write_glyphs(src, out)
     write_icons(src, out)

@@ -6,6 +6,11 @@
 //! * `jobs/` → the changed jobs are folded again (debounced 100 ms), `jobs://changed [Job]`, and K4's reminders.
 //!
 //! Startup: `items.py migrate --all` (v1 / v2 sessions → Markdown, silent), `index.py scan`, `jobs.py gc`.
+//!
+//! Windows: a project's store is polled (once a second), not watched. ReadDirectoryChangesW keeps a handle open on
+//! `<project>\.blurt`, and Windows refuses to rename or move a folder while anything under it is open — the user
+//! couldn't rename their own repo while Blurt ran (dogfood WW33). Blurt's own folders (the inbox store, `jobs/`,
+//! `projects.json`) keep the native watcher.
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -26,6 +31,8 @@ const JOBS_DEBOUNCE: Duration = Duration::from_millis(100);
 #[derive(Default)]
 pub struct WatchState {
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
+    /// Windows: the project stores (see the module doc)
+    poll: Mutex<Option<notify::PollWatcher>>,
     stores: Mutex<Vec<PathBuf>>,
     /// last folded state of every job seen (for K4's transitions)
     jobs: Mutex<HashMap<String, Value>>,
@@ -54,8 +61,20 @@ pub fn index_target(stores: &[PathBuf], p: &Path) -> Option<PathBuf> {
     }
 }
 
+/// A store the native watcher would lock: a project's `.blurt` on Windows (not Blurt's own inbox store).
+fn polled(store: &Path) -> bool {
+    cfg!(windows) && store != paths::inbox_store() && !store.starts_with(paths::blurt_home())
+}
+
 pub fn start(app: &AppHandle) {
     let (tx, rx) = channel::<notify::Result<notify::Event>>();
+    if cfg!(windows) {
+        let cfg = notify::Config::default().with_poll_interval(Duration::from_secs(1));
+        match notify::PollWatcher::new(tx.clone(), cfg) {
+            Ok(p) => *app.state::<WatchState>().poll.lock().unwrap() = Some(p),
+            Err(e) => eprintln!("blurt: polling the project stores unavailable: {e}"),
+        }
+    }
     let mut watcher = match notify::recommended_watcher(tx) {
         Ok(w) => w,
         Err(e) => {
@@ -84,7 +103,11 @@ pub fn start(app: &AppHandle) {
                 Ok(Ok(ev)) => {
                     let stores = app.state::<WatchState>().stores.lock().unwrap().clone();
                     for p in ev.paths {
-                        if p == projects_file {
+                        if stores.contains(&p) && !p.is_dir() {
+                            // a project's folder was renamed, moved or deleted: it shows as missing at once
+                            refresh(&app);
+                            let _ = app.emit("projects://changed", json!({}));
+                        } else if p == projects_file {
                             refresh(&app);
                             let _ = app.emit("projects://changed", json!({}));
                             island::refresh(&app);
@@ -142,16 +165,21 @@ pub fn refresh(app: &AppHandle) {
     let _ = std::fs::create_dir_all(paths::inbox_store());
     let ws = app.state::<WatchState>();
     let mut old = ws.stores.lock().unwrap();
-    if let Some(w) = ws.watcher.lock().unwrap().as_mut() {
-        for r in old.iter().filter(|r| !new.contains(r)) {
+    let mut native = ws.watcher.lock().unwrap();
+    let mut poll = ws.poll.lock().unwrap();
+    for r in old.iter().filter(|r| !new.contains(r)) {
+        let w: Option<&mut dyn Watcher> = if polled(r) && poll.is_some() { poll.as_mut().map(|w| w as _) } else { native.as_mut().map(|w| w as _) };
+        if let Some(w) = w {
             let _ = w.unwatch(r);
         }
-        for r in new.iter().filter(|r| !old.contains(r)) {
-            if let Err(e) = w.watch(r, RecursiveMode::Recursive) {
-                eprintln!("blurt: can't watch {}: {e}", r.display());
-            }
+    }
+    for r in new.iter().filter(|r| !old.contains(r)) {
+        let w: Option<&mut dyn Watcher> = if polled(r) && poll.is_some() { poll.as_mut().map(|w| w as _) } else { native.as_mut().map(|w| w as _) };
+        if let Some(Err(e)) = w.map(|w| w.watch(r, RecursiveMode::Recursive)) {
+            eprintln!("blurt: can't watch {}: {e}", r.display());
         }
     }
+    drop((native, poll));
     let scope = app.asset_protocol_scope();
     for r in &new {
         // frames, clips, shots and card thumbnails

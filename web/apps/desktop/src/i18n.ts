@@ -3,8 +3,14 @@
 import { createI18n, resolveLang, type I18n, type Params } from '@blurt/i18n';
 import EN from './locales/en.json';
 import ZH from './locales/zh-Hans.json';
+// Settings' words, from the Mac's own (Settings/Dictation/Capture/Speech/Models .strings) under "st.<the Mac's key>"
+import SET_EN from './locales/settings.en.json';
+import SET_ZH from './locales/settings.zh-Hans.json';
+// Agent sessions' words, from the Mac's Terminal.strings(dict) under "ses.<the Mac's key>"
+import SES_EN from './locales/sessions.en.json';
+import SES_ZH from './locales/sessions.zh-Hans.json';
 
-export const CATALOGS = { en: EN, 'zh-Hans': ZH };
+export const CATALOGS = { en: { ...EN, ...SET_EN, ...SES_EN }, 'zh-Hans': { ...ZH, ...SET_ZH, ...SES_ZH } };
 
 let current: I18n = createI18n(CATALOGS, resolveLang(null));
 

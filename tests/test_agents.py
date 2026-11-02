@@ -117,7 +117,11 @@ def test_detect_matches_fake_clis(env):
     assert out["pick"] == "codex"
     for r in out["agents"]:  # app-ux's check() keys stay, WP2 adds the rest
         assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless",
-                "interactive"} <= set(r)
+                "interactive", "session"} <= set(r)
+    # the hand-off panel offers the agents that run as a session (what sessions.py doctor says; the Windows app has
+    # no doctor call: it read a field detect never had and offered no agent at all)
+    assert rows["claude"]["session"] is True and rows["codex"]["session"] is True
+    assert rows["zcode"]["session"] is False
     fast = cli("detect", "--no-login", "--no-version", "--ids", "codex,claude")
     assert [r["id"] for r in fast["agents"]] == ["codex", "claude"] and fast["agents"][0]["version"] is None
 
@@ -360,6 +364,10 @@ def test_session_command(env, tmp_path):
     cmd = hooks["Stop"][0]["hooks"][0]
     assert cmd["type"] == "command" and cmd["timeout"] == 5
     assert cmd["command"].endswith(f"'{agents.SESSIONS_PY}' hook --job j-1 --agent claude")
+    # the hand-off note lives in $BLURT_HOME/handoff, outside the session's folder: reading it must not stop on
+    # "Read outside the working directories?" (Windows dogfood WW45)
+    import handoff
+    assert json.loads(st.read_text())["permissions"]["additionalDirectories"] == [str(handoff.handoff_dir())]
     # not installed (the fake's `mcp get blurt` fails) → --mcp-config with the whole server
     c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
     i = c["argv"].index("--mcp-config")

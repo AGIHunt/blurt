@@ -263,5 +263,12 @@
   "work.review_changes": "Review Changes…",
   "activity.title": "Activity",
   "time.just_now": "just now",
-  "chip.type.clear": "No Type"
+  "chip.type.clear": "No Type",
+  "work.note.more": "More",
+  "work.note.less": "Less",
+  "work.to": "to {who}",
+  "handoff.dispatch.short": "Hand Off",
+  "work.you": "you",
+  "work.line.done": "Marked done by {who} · {when}",
+  "work.line.wontfix": "Marked won’t do by {who} · {when}"
 }

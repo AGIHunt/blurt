@@ -56,8 +56,11 @@ pub struct ItemQuery {
     pub session: Option<String>,
     pub source_type: Vec<String>,
     pub has_code_refs: Option<bool>,
-    /// "updated" (default) | "created" | "t_start" | "title"
+    /// "updated" (default) | "created" | "t_start" | "title" | "id" | "kind" | "state" | "project" — the Mac list's
+    /// sort keys (MainWindowController.sortKeys)
     pub sort: Option<String>,
+    /// the direction of `sort`; none = the key's own (newest first for dates, A to Z for the rest)
+    pub ascending: Option<bool>,
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
@@ -131,10 +134,25 @@ fn is_path(s: &str) -> bool {
     s.contains('/') || s.contains('\\')
 }
 
+/// An item's id as printed on every row ("AW-11", "ba-3"): a project key, a dash, a number (index.py is_item_id).
+pub fn is_item_id(term: &str) -> bool {
+    let Some((key, n)) = term.split_once('-') else { return false };
+    key.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+        && key.chars().all(|c| c.is_ascii_alphanumeric())
+        && !n.is_empty()
+        && n.chars().all(|c| c.is_ascii_digit())
+}
+
+fn query_ids(q: &ItemQuery) -> Vec<String> {
+    q.query.as_deref().unwrap_or("").split_whitespace().filter(|t| is_item_id(t)).map(str::to_ascii_uppercase).collect()
+}
+
 /// The FROM / WHERE part shared by the page query and its count; returns (sql, args, uses_fts).
 pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
-    let terms: Vec<&str> = q.query.as_deref().unwrap_or("").split_whitespace().collect();
-    let fts: Vec<String> = terms.iter().filter(|t| t.chars().count() >= 3).map(|t| format!("\"{}\"", t.replace('"', "\"\""))).collect();
+    // an id finds that item (its id now, or an old one in its text) or the text that mentions it (index.py search)
+    let terms: Vec<&str> = q.query.as_deref().unwrap_or("").split_whitespace().filter(|t| !is_item_id(t)).collect();
+    let phrase = |t: &str| format!("\"{}\"", t.replace('"', "\"\""));
+    let fts: Vec<String> = terms.iter().filter(|t| t.chars().count() >= 3).map(|t| phrase(t)).collect();
     let short: Vec<&str> = terms.iter().copied().filter(|t| t.chars().count() < 3).collect();
     let mut args: Vec<SqlValue> = Vec::new();
     let mut from = String::from("items i JOIN projects p ON p.id = i.project_id LEFT JOIN sessions s ON s.id = i.session_id");
@@ -181,6 +199,11 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
     if let Some(b) = q.has_code_refs {
         wh.push(format!("i.has_code_refs = {}", i32::from(b)));
     }
+    for id in query_ids(q) {
+        wh.push("(upper(i.item_id) = ? OR i.rowid IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?))".into());
+        let m = phrase(&id);
+        args.extend([SqlValue::Text(id), SqlValue::Text(m)]);
+    }
     for t in short {
         wh.push("(i.title LIKE ? ESCAPE '\\' OR i.quote LIKE ? ESCAPE '\\' OR i.body LIKE ? ESCAPE '\\')".into());
         let p = like_escape(t);
@@ -189,6 +212,40 @@ pub fn build_where(q: &ItemQuery) -> (String, Vec<SqlValue>, bool) {
         }
     }
     (format!("FROM {from} WHERE {}", wh.join(" AND ")), args, !fts.is_empty())
+}
+
+/// ORDER BY for a query: the key, in its direction (`ascending`, else the key's own), the newest first on a tie.
+pub fn order_by(q: &ItemQuery) -> String {
+    // a typed id first (its characters are checked: [A-Z0-9-])
+    let first: String = query_ids(q).iter().map(|id| format!("CASE WHEN upper(i.item_id) = '{id}' THEN 0 ELSE 1 END, ")).collect();
+    format!("{first}{}", order_by_key(q))
+}
+
+fn order_by_key(q: &ItemQuery) -> String {
+    let key = q.sort.as_deref().unwrap_or("updated");
+    if key == "t_start" {
+        return "s.created DESC, i.t_start".into();
+    }
+    let date = matches!(key, "updated" | "created");
+    let asc = q.ascending.unwrap_or(!date);
+    let dir = if asc { "ASC" } else { "DESC" };
+    // the lifecycle's order, not the names' (K3)
+    let state = format!("CASE i.state {} ELSE 9 END", STATES.iter().enumerate().map(|(n, s)| format!("WHEN '{s}' THEN {n}")).collect::<Vec<_>>().join(" "));
+    let col = match key {
+        "created" => "i.created".to_string(),
+        "title" => "i.title COLLATE NOCASE".into(),
+        // SF-9 before SF-10: the key, then the number
+        "id" => format!("p.key COLLATE NOCASE {dir}, CAST(substr(i.item_id, instr(i.item_id, '-') + 1) AS INTEGER)"),
+        "kind" => "i.kind".into(),
+        "state" => state,
+        "project" => "p.name COLLATE NOCASE".into(),
+        _ => "i.updated".into(),
+    };
+    if key == "updated" || key == "created" {
+        format!("{col} {dir}")
+    } else {
+        format!("{col} {dir}, i.updated DESC")
+    }
 }
 
 /// ItemRow v3 (K1) plus what the list shows besides (quote, frames, the project's routing).
@@ -226,14 +283,9 @@ impl Index {
             return Ok(ItemPage { total: 0, items: vec![], missing: true });
         }
         let (wh, args, fts) = build_where(q);
-        let order = match q.sort.as_deref() {
-            Some("created") => "i.created DESC",
-            Some("t_start") => "s.created DESC, i.t_start",
-            Some("title") => "i.title COLLATE NOCASE",
-            _ => "i.updated DESC",
-        };
+        let order = order_by(q);
         let snippet = if fts { "snippet(items_fts, -1, '[', ']', '…', 12)" } else { "NULL" };
-        let limit = q.limit.unwrap_or(50).clamp(1, 5000);
+        let limit = q.limit.unwrap_or(50).clamp(1, 20_000);
         let offset = q.offset.unwrap_or(0).max(0);
         let items = self.rows(&format!("SELECT {ITEM_COLS}, {snippet} AS snippet {wh} ORDER BY {order} LIMIT {limit} OFFSET {offset}"), &args)?;
         let total: i64 = self
@@ -303,7 +355,7 @@ impl Index {
     /// Sidebar / island / tray badges. `inbox` = "needs you" (new + to verify, K3); `active` = with an agent.
     pub fn summary(&self) -> Result<Value, String> {
         if !self.ready() {
-            return Ok(json!({"missing": true, "items": 0, "inbox": 0, "new": 0, "to_verify": 0, "active": 0, "open": 0, "unassigned": 0, "batches": 0}));
+            return Ok(json!({"missing": true, "items": 0, "inbox": 0, "new": 0, "to_verify": 0, "active": 0, "progress": 0, "discarded": 0, "open": 0, "unassigned": 0, "batches": 0}));
         }
         let c = self.conn()?;
         let n = |sql: &str| -> Result<i64, String> { c.query_row(sql, [], |r| r.get(0)).map_err(|e| e.to_string()) };
@@ -315,6 +367,9 @@ impl Index {
             "new": n(&format!("SELECT COUNT(*) {live} AND state = 'new'"))?,
             "to_verify": n(&format!("SELECT COUNT(*) {live} AND state = 'to_verify'"))?,
             "active": n(&format!("SELECT COUNT(*) {live} AND state IN ('handed_off', 'in_progress')"))?,
+            // the In Progress place (the Mac's IndexCounts.active): with an agent, and what it says is finished
+            "progress": n(&format!("SELECT COUNT(*) {live} AND state IN ('handed_off', 'in_progress', 'to_verify')"))?,
+            "discarded": n("SELECT COUNT(*) FROM items WHERE state = 'discarded'")?,
             "open": n(&format!("SELECT COUNT(*) {live} AND state IN ({})", sql_set(&OPEN)))?,
             "unassigned": n(&format!("SELECT COUNT(*) {live} AND project_id = 'inbox'"))?,
             "batches": n("SELECT COUNT(*) FROM sessions WHERE legacy = 0 AND processed = 1 AND processing = 0 AND reviewed = 0 AND item_count > 0")?,
@@ -392,6 +447,24 @@ mod tests {
     }
 
     #[test]
+    fn sort_keys_and_direction() {
+        let (_d, ix) = fixture();
+        let by = |k: &str, asc: Option<bool>| ix.items(&ItemQuery { sort: Some(k.into()), ascending: asc, ..Default::default() }).unwrap();
+        let rank = |s: &Value| STATES.iter().position(|x| Some(*x) == s["state"].as_str()).unwrap();
+        let st: Vec<usize> = by("state", None).items.iter().map(rank).collect();
+        assert!(st.windows(2).all(|w| w[0] <= w[1]), "lifecycle order, A to Z by default: {st:?}");
+        let st: Vec<usize> = by("state", Some(false)).items.iter().map(rank).collect();
+        assert!(st.windows(2).all(|w| w[0] >= w[1]));
+        let up: Vec<String> = uids(&by("updated", Some(true)));
+        let mut down = uids(&by("updated", None));
+        down.reverse();
+        assert_eq!(up, down); // dates: newest first unless asked
+        for k in ["id", "kind", "project", "title", "created"] {
+            assert_eq!(by(k, None).total, 4, "{k}");
+        }
+    }
+
+    #[test]
     fn trigram_and_like_fallback() {
         let (_d, ix) = fixture();
         let q = |s: &str| ItemQuery { query: Some(s.into()), ..Default::default() };
@@ -403,6 +476,10 @@ mod tests {
         assert_eq!(uids(&ix.items(&q("登录 按钮")).unwrap()), ["u1"]);
         assert_eq!(uids(&ix.items(&q("%")).unwrap()), ["u4"]); // escaped
         assert_eq!(uids(&ix.items(&q("\"quoted")).unwrap()), Vec::<String>::new()); // no FTS syntax error
+        // an item's id finds it, in any case (index.py search; dogfood WW13: "STO-5" found nothing)
+        assert_eq!(uids(&ix.items(&q("ms-2")).unwrap()), ["u2"]);
+        assert_eq!(uids(&ix.items(&q("MS-1 登录")).unwrap()), ["u1"]);
+        assert!(is_item_id("STO-5") && is_item_id("a1-22") && !is_item_id("1A-2") && !is_item_id("MS-") && !is_item_id("登录-1"));
     }
 
     #[test]
