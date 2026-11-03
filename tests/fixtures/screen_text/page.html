@@ -1,0 +1,41 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#fff;color:#1f1f1f;font:15px/1.75 -apple-system,"PingFang SC",sans-serif;width:1100px}
+.chat{padding:24px 40px;width:620px}
+b{font-weight:600}
+code{font:13px "SF Mono",Menlo,monospace;background:#f2f2f0;border-radius:4px;padding:1px 4px}
+a{color:#2c5fb3;text-decoration:underline}
+ol{padding-left:28px;margin:6px 0} li{margin:4px 0}
+.checks{border:1px solid #e6e6e6;border-radius:10px;padding:10px 14px;margin:14px 0;font-size:13.5px;color:#444}
+.checks div{display:flex;align-items:center;gap:8px;margin:3px 0}
+.ck{width:13px;height:13px;border-radius:50%;background:#333;display:inline-flex;align-items:center;justify-content:center}
+.ck:after{content:"";width:5px;height:3px;border-left:1.5px solid #fff;border-bottom:1.5px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+pre{font:13px/1.6 "SF Mono",Menlo,monospace;background:#f7f7f5;border:1px solid #eee;border-radius:8px;padding:12px 14px;width:560px;margin:0}
+.term{font:13px/1.5 Menlo,monospace;background:#1e1e1e;color:#d4d4d4;padding:12px 14px;width:620px;border-radius:8px}
+.term .p{color:#6a9955}
+.en{width:520px;font-size:15px}
+table{border-collapse:collapse;font-size:13.5px} td,th{border:1px solid #ddd;padding:6px 12px;text-align:left} th{background:#f5f5f5}
+ul{padding-left:22px;margin:6px 0}
+.small{font-size:12px;color:#777}
+.sec{margin:30px 40px}
+</style></head><body>
+<div class="chat" id="chat">
+<p id="p0">我把结论整理成一份 Markdown 发给你了，路径是 <a>/private/tmp/claude-501/-Users-john-workspace-ordo-projects-ordo-platform/c57f5842-39f9-4ebd-a700-ecea06622bd3/scratchpad/只读库与行为数据采集-结论.md</a>。</p>
+<p id="p1">文件分四部分：</p>
+<ol id="ol">
+<li id="li1"><b>生产库现状</b>：主库是一主一备，备库不能读；10-14 已经有人建了一个按量付费的只读实例，列了几件还没收口的事。</li>
+<li id="li2"><b>ordo_ai 的做法</b>：集群版的从节点可读，前面挂一个代理只读地址；文档里写的 DTS 同步到 AnalyticDB 已经过时，现在没在用。</li>
+<li id="li3"><b>两类数据采集方案</b>：两路合并的思路可行，不需要 DTS；但前端埋点继续走现有的 <code>/telemetry</code>，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。</li>
+<li id="li4"><b>建议路线</b>：先读表，确实需要变更历史时再批量解析 binlog。</li>
+</ol>
+<p id="p2">这份文件放在临时目录，没进仓库，也还没发给埋点那个会话。你看完定下方向后告诉我，我再把结论同步过去。</p>
+<div class="checks" id="checks"><div><span class="ck"></span>整理结论成 Markdown 文件</div><div><span class="ck"></span>发送文件给用户</div></div>
+</div>
+<div class="sec"><pre id="code">def load_user_events(user_id: str, since_ts: int = 0) -&gt; list[dict]:
+    """Read from the read-only replica, never the primary."""
+    rows = db.query(READ_ONLY_DSN, "select * from user_events where user_id = %s", user_id)
+    return [r for r in rows if r["created_at"] &gt;= since_ts]  # __init__ ok</pre></div>
+<div class="sec term" id="term"><span class="p">john@m5 ~/ordo-platform (main)$</span> uv run pytest tests/test_read_only.py -q<br>....F.<br>FAILED tests/test_read_only.py::test_replica_lag - AssertionError: lag 12.5s &gt; 10s<br>1 failed, 5 passed in 3.21s</div>
+<div class="sec en" id="en">The read-only replica is billed by the hour and costs about ¥1.2/h. If we keep it, the nightly ETL job (etl_nightly_v2) can move off the primary; otherwise we need a co-located snapshot at https://docs.example.com/db/read-replica-setup before Nov 15.</div>
+<div class="sec" id="tbl"><table><tr><th>方案</th><th>成本</th><th>延迟</th></tr><tr><td>只读实例</td><td>¥1.2/小时</td><td>&lt; 1 s</td></tr><tr><td>DTS → AnalyticDB</td><td>¥860/月</td><td>~5 min</td></tr></table></div>
+<div class="sec" id="ul"><ul><li>Gemma 4 E2B：本地润色，常驻 2.2 GB</li><li>DeepSeek Flash：云端润色，约 1 秒一次<ul><li>需要用户自己的 API key</li></ul></li></ul><div class="small" id="small">上次更新：2026-10-28 23:42 · v1.0.4 (build 741)</div></div>
+</body></html>

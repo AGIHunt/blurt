@@ -1,0 +1,366 @@
+{
+ "settings.group.mac": [
+  "This PC",
+  "本机"
+ ],
+ "win.dictation.sounds": [
+  "Sounds when listening starts and stops",
+  "开始和结束时的提示音"
+ ],
+ "win.privacy.mic.detail": [
+  "Used for narration, voice notes and dictation.",
+  "用于录屏讲解、语音备注和听写。"
+ ],
+ "win.privacy.mic.off": [
+  "Off in Windows Settings: Blurt can’t hear you.",
+  "已在 Windows 设置中关闭：口喷鸡听不到声音。"
+ ],
+ "win.privacy.mic.none": [
+  "No microphone found.",
+  "没有找到麦克风。"
+ ],
+ "win.privacy.open": [
+  "Windows Settings…",
+  "Windows 设置…"
+ ],
+ "win.privacy.lead": [
+  "Everything is stored on your PC, and speech is recognized here. Text goes to a cloud model only when you connect one in Models.",
+  "所有内容都存在本机，语音也在本机识别。只有在「模型」里连接云端模型后，文字才会发给它。"
+ ],
+ "settings.screen_text.section.copy": [
+  "Copy ({1})",
+  "取字（{1}）"
+ ],
+ "settings.screen_text.section.translate": [
+  "Translate ({1})",
+  "翻译（{1}）"
+ ],
+ "settings.screen_text.translate": [
+  "{1} translates into",
+  "{1} 翻译成"
+ ],
+ "settings.screen_text.translate.hint": [
+  "Translates text on the screen. Auto turns your language into the other one, and other languages into yours. With a specific language, text already in it is copied as is. Dictation’s Ctrl translation has its own setting.",
+  "将屏幕上的文字译成所选语言。「自动」将你的语言译成另一种语言，将其他语言译成你的语言。选择具体语言时，已是该语言的文字原样复制。听写的 Ctrl 翻译单独设置。"
+ ],
+ "models.job.translate.detail": [
+  "Dictation translation (Ctrl) and screen translation.",
+  "听写翻译（Ctrl）和截图翻译。"
+ ],
+ "settings.general.live_text.hint": [
+  "During a voice note or dictation, recognized text appears in a panel at the top of the screen. The panel never takes focus and stays clear of where you type.",
+  "语音备注或听写进行时，已识别的文字显示在屏幕顶部的面板中。面板不会抢占焦点，会避开输入位置。"
+ ],
+ "settings.general.live_text.detail": [
+  "Recognized text appears at the top of the screen.",
+  "已识别的文字显示在屏幕顶部。"
+ ],
+ "win.general.notify.hint": [
+  "Only while Blurt isn’t in front, and never with sound.",
+  "仅在口喷鸡不在前台时通知，且不发出声音。"
+ ],
+ "win.about.updates.latest": [
+  "You’re up to date",
+  "已是最新版本"
+ ],
+ "win.about.updates.available": [
+  "Blurt {1} is available",
+  "口喷鸡 {1} 可以更新了"
+ ],
+ "win.about.updates.checking": [
+  "Checking…",
+  "正在检查…"
+ ],
+ "win.about.updates.failed": [
+  "Couldn’t check for updates.",
+  "无法检查更新。"
+ ],
+ "win.dictation.key.detail": [
+  "Hold, tap or double-tap it on its own; Alt shortcuts still work.",
+  "单独按下时才触发，Alt 组合键照常使用。"
+ ],
+ "win.dictation.restart": [
+  "Takes effect the next time Blurt opens.",
+  "下次打开口喷鸡时生效。"
+ ],
+ "win.history.days.forever": [
+  "Forever",
+  "永久"
+ ],
+ "win.history.cleared": [
+  "Dictation history cleared",
+  "已清空听写历史"
+ ],
+ "win.models.download": [
+  "Download",
+  "下载"
+ ],
+ "win.models.downloading": [
+  "Downloading · {1} of {2}",
+  "正在下载 · {1} / {2}"
+ ],
+ "win.models.starting": [
+  "Connecting…",
+  "正在连接…"
+ ],
+ "win.models.installed": [
+  "On this PC",
+  "已在本机"
+ ],
+ "win.models.failed": [
+  "The download didn’t finish. Check the connection and try again.",
+  "下载没有完成。请检查网络后重试。"
+ ],
+ "win.models.auto": [
+  "Automatic",
+  "自动"
+ ],
+ "win.models.loading": [
+  "Checking this PC…",
+  "正在检查本机…"
+ ],
+ "win.models.recognition": [
+  "Recordings and voice notes",
+  "录屏和语音备注"
+ ],
+ "win.models.recognition.detail": [
+  "Transcribes recordings and voice notes on this PC.",
+  "在本机转写录屏和语音备注。"
+ ],
+ "win.models.change": [
+  "Change in Models…",
+  "在「模型」里更换…"
+ ],
+ "win.cloud.region.note": [
+  "The key is kept in Windows Credential Manager and only sent to that service.",
+  "Key 保存在 Windows 凭据管理器中，只发送给该服务。"
+ ],
+ "win.cloud.test": [
+  "Test and Connect",
+  "测试并连接"
+ ],
+ "win.cloud.testing": [
+  "Testing…",
+  "正在测试…"
+ ],
+ "win.cloud.ok": [
+  "Connected · answered in {1} ms",
+  "已连接 · {1} 毫秒内响应"
+ ],
+ "win.cloud.remove": [
+  "Remove",
+  "移除"
+ ],
+ "win.cloud.get_key": [
+  "Get a Key…",
+  "获取 Key…"
+ ],
+ "win.cloud.key": [
+  "API key",
+  "API Key"
+ ],
+ "win.cloud.service": [
+  "Service",
+  "服务"
+ ],
+ "win.storage.show": [
+  "Show in File Explorer",
+  "在文件资源管理器中显示"
+ ],
+ "win.storage.home": [
+  "Blurt data",
+  "口喷鸡数据"
+ ],
+ "win.storage.inbox": [
+  "Unassigned items",
+  "未归类事项"
+ ],
+ "win.storage.scripts": [
+  "Skill scripts",
+  "Skill 脚本"
+ ],
+ "win.storage.uv": [
+  "uv",
+  "uv"
+ ],
+ "win.storage.missing": [
+  "Not found",
+  "未找到"
+ ],
+ "win.storage.config": [
+  "Settings file",
+  "设置文件"
+ ],
+ "win.storage.dmabuf": [
+  "Turn off WebKit DMA-BUF rendering (fixes a black window on NVIDIA)",
+  "关闭 WebKit DMA-BUF 渲染（修复 NVIDIA 显卡上的黑窗口）"
+ ],
+ "win.storage.restart": [
+  "Takes effect after Blurt restarts.",
+  "重新打开口喷鸡后生效。"
+ ],
+ "win.storage.tmux": [
+  "tmux",
+  "tmux"
+ ],
+ "win.storage.tmux.ok": [
+  "Sessions keep running after you close Blurt",
+  "关闭口喷鸡后会话继续运行"
+ ],
+ "win.storage.tmux.missing": [
+  "Not installed — sessions run inside Blurt instead",
+  "未安装：会话在口喷鸡里运行"
+ ],
+ "win.keys.system": [
+  "Clashes with a Windows shortcut: {1}",
+  "与 Windows 快捷键冲突：{1}"
+ ],
+ "win.keys.idle": [
+  "Works while recording",
+  "录屏时可用"
+ ],
+ "win.keys.portal": [
+  "Set by the desktop",
+  "由桌面环境设置"
+ ],
+ "win.keys.pending": [
+  "Waiting for the desktop…",
+  "正在等待桌面环境…"
+ ],
+ "win.keys.manual": [
+  "On Wayland, add a shortcut in the system’s keyboard settings that runs “blurt {1}”",
+  "在 Wayland 上，请在系统键盘设置中添加运行「blurt {1}」的快捷键"
+ ],
+ "win.keys.portal_note": [
+  "On Wayland, shortcuts go through the desktop’s shortcut service; change them in the system’s keyboard settings.",
+  "在 Wayland 上，快捷键由桌面的快捷键服务管理，请在系统键盘设置中更改。"
+ ],
+ "win.keys.invalid": [
+  "Needs Ctrl, Alt or {1} (F-keys can stand alone)",
+  "需包含 Ctrl、Alt 或 {1}（F 键可单独使用）"
+ ],
+ "win.keys.dictation": [
+  "Change in Dictation…",
+  "在听写设置中更改…"
+ ],
+ "win.projects.reveal": [
+  "Show in File Explorer",
+  "在文件资源管理器中显示"
+ ],
+ "win.projects.missing": [
+  "Folder not found",
+  "找不到文件夹"
+ ],
+ "win.projects.current": [
+  "Current",
+  "当前"
+ ],
+ "dictation.settings.either_hint": [
+  "Works only when pressed on its own; Alt shortcuts still work.",
+  "仅单独按下时触发，不影响 Alt 组合键。"
+ ],
+ "settings.general.login_failed": [
+  "Couldn’t change this. Change it in Windows Settings, under Apps > Startup.",
+  "无法更改，请在 Windows 设置的「应用 > 启动」中修改。"
+ ],
+ "capture.keys.field_help": [
+  "Click, then press the new keys. Esc cancels, Backspace removes the shortcut.",
+  "点按后按下新的组合键。Esc 取消，Backspace 删除这个快捷键。"
+ ],
+ "models.job.none": [
+  "Not set. Add a cloud model.",
+  "未设置。请添加云端模型。"
+ ],
+ "win.agents.keep_sessions.windows": [
+  "Sessions run inside Blurt on Windows (there is no tmux), so they end when you quit Blurt.",
+  "Windows 上会话在口喷鸡里运行（没有 tmux），退出口喷鸡时会话结束。"
+ ],
+ "dictation.settings.cancel_key.detail": [
+  "In terminals like Claude Code, Esc stops the running task. With Ctrl+Esc or Shift+Esc, Esc alone never cancels dictation.",
+  "在 Claude Code 等终端中，Esc 会中断正在运行的任务。改为 Ctrl+Esc 或 Shift+Esc 后，单独按 Esc 不会取消听写。"
+ ],
+ "settings.general.collect.hint": [
+  "Screenshots Windows saves to Pictures\\Screenshots (Win+Print Screen, the Snipping Tool) are also added as cards.",
+  "Windows 存到「图片\\屏幕截图」的截图（Win+Print Screen、截图工具）也会添加为卡片。"
+ ],
+ "settings.general.card_drag.hint": [
+  "Picture, then the note: the picture is dropped and the note is copied, so Ctrl+V pastes it after the picture. Picture with the note under it: the dragged picture is a copy with the note in a strip under it, for apps that take one picture and nothing else; the snap itself stays clean. With either, a note that couldn't go in is put on the clipboard for Ctrl+V. Picture only: just the picture.",
+  "先放图片，再贴备注：放下图片，同时复制备注，按 Ctrl+V 贴在图片后面。图片下方印上备注：拖出的是在下方加了备注条的副本，适用于只接收一张图片的 App，原截图不变。以上两种方式中，备注没贴上时会放入剪贴板，按 Ctrl+V 粘贴。只放图片：仅拖出图片。"
+ ],
+ "settings.general.section.cards": [
+  "Cards",
+  "卡片"
+ ],
+ "win.n.recordings_one": [
+  "{n} recording or snap",
+  "{n} 个录屏和截图"
+ ],
+ "win.n.recordings_other": [
+  "{n} recordings and snaps",
+  "{n} 个录屏和截图"
+ ],
+ "win.n.videos_one": [
+  "{n} video",
+  "{n} 个视频"
+ ],
+ "win.n.videos_other": [
+  "{n} videos",
+  "{n} 个视频"
+ ],
+ "win.n.folders_one": [
+  "{n} folder",
+  "{n} 个文件夹"
+ ],
+ "win.n.folders_other": [
+  "{n} folders",
+  "{n} 个文件夹"
+ ],
+ "win.storage.logs": [
+  "Logs",
+  "日志"
+ ],
+ "win.storage.logs.detail": [
+  "What Blurt wrote while it ran",
+  "口喷鸡运行时写下的记录"
+ ],
+ "win.storage.index": [
+  "Search index",
+  "搜索索引"
+ ],
+ "win.storage.free_note": [
+  "Moved to the Recycle Bin: restore it from there.",
+  "已移到回收站，可从回收站还原。"
+ ],
+ "win.update.install": [
+  "Update Now",
+  "立即更新"
+ ],
+ "win.update.downloading": [
+  "Downloading the update…",
+  "正在下载更新…"
+ ],
+ "win.models.auto_now": [
+  "Automatic · {1}",
+  "自动 · {1}"
+ ],
+ "win.models.add_key": [
+  "{1} · add a key",
+  "{1} · 需添加 Key"
+ ],
+ "capture.action.cards.detail": [
+  "Brings down the cards hanging under the island",
+  "放下挂在岛下的卡片"
+ ],
+ "win.capture.action.pen.help": [
+  "While it’s on, drag to draw on the recording; hold Shift for a box, Alt for an oval. Esc puts the pen down.",
+  "打开后拖动即可在录屏上画；按住 Shift 画方框，按住 Alt 画椭圆。按 Esc 放下画笔。"
+ ],
+ "dictation.voiceprint.passage": [
+  "I’m setting up dictation on my PC. Tomorrow morning I’ll go through the project plan with the team, answer a few emails, and send the meeting notes before Friday. If anything changes, I’ll update the document and let everyone know.",
+  "我正在设置电脑上的语音输入。明天上午我会和团队过一遍项目计划，回复几封邮件，周五之前把会议纪要发出来。如果计划有变化，我会更新文档，再通知大家。"
+ ],
+ "settings.general.assistant.detail": [
+  "Shortcuts, dictation, the speech model and a first try, in four steps.",
+  "快捷键、听写、语音模型和试用，共四步。"
+ ]
+}

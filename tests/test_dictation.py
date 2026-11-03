@@ -79,6 +79,20 @@ class History(TmpCase):
         ok("dictation.py", "prune", env=self.e.env())
         self.assertEqual(sorted(p.name for p in audio.iterdir()), ["d-kept.wav", "d-now.wav"])
 
+    def test_prune_keeps_an_interrupted_take_for_the_app(self):
+        # quit mid-take: the take's own recording (no entry) stays within the retention — the app turns it into an
+        # "interrupted" entry with Retry; its pieces go, and so does one older than the retention
+        audio = self.e.home / "dictation" / "audio"
+        audio.mkdir(parents=True)
+        two_h, forty_d = time.time() - 2 * 3600, time.time() - 40 * 86400
+        for n, t in (("d-20261030-141400-dccd.wav", two_h), ("d-20261030-141400-dccd-p1.wav", two_h),
+                     ("d-20260901-101010-abcd.wav", forty_d)):
+            (audio / n).write_bytes(b"RIFF")
+            os.utime(audio / n, (t, t))
+        self.write([entry("d-1", 1)])
+        ok("dictation.py", "prune", env=self.e.env())
+        self.assertEqual(sorted(p.name for p in audio.iterdir()), ["d-20261030-141400-dccd.wav"])
+
     def test_turn_into_item(self):
         repo = make_repo(self.tmp / "web-app")
         proj = ok("projects.py", "add", repo, env=self.e.env())["project"]
@@ -101,3 +115,35 @@ class History(TmpCase):
         self.assertEqual(it2["kind"], "task")                                               # 记得… = a to-do
         code, err = run_cli("dictation.py", "item", "d-404", env=self.e.env())
         self.assertEqual((code, err["code"]), (1, "not_found"))
+
+    def test_delete_restore_correct_clear(self):
+        # the Windows / Linux Dictation page: delete (the recording kept aside for Undo), Undo, a correction and its
+        # take-back, and Clear History
+        audio = self.e.home / "dictation" / "audio"
+        audio.mkdir(parents=True)
+        (audio / "d-1.wav").write_bytes(b"RIFF")
+        self.write([entry("d-1", 1, audio="audio/d-1.wav"), {"op": "item", "id": "d-1", "item": "BA-1", "uid": "01X"},
+                    entry("d-2", 0)])
+        gone = ok("dictation.py", "delete", "d-1", env=self.e.env())["deleted"]
+        self.assertEqual([e["id"] for e in gone], ["d-1"])
+        self.assertFalse((audio / "d-1.wav").exists())
+        self.assertTrue((audio / ".deleted" / "d-1.wav").exists())
+        self.assertEqual([e["id"] for e in ok("dictation.py", "list", env=self.e.env())["entries"]], ["d-2"])
+        ok("dictation.py", "restore", env=self.e.env(), stdin=json.dumps({"entries": gone}))
+        es = ok("dictation.py", "list", env=self.e.env())["entries"]
+        self.assertEqual([e["id"] for e in es], ["d-2", "d-1"])                         # back once, at its own time
+        self.assertEqual((es[1]["item"], es[1]["audio"]), ("BA-1", "audio/d-1.wav"))
+        self.assertTrue((audio / "d-1.wav").exists())
+        ok("dictation.py", "correct", "d-2", "--text", "记得问设计稿进度。", env=self.e.env())
+        self.assertEqual(ok("dictation.py", "list", env=self.e.env())["entries"][0]["corrected"], "记得问设计稿进度。")
+        ok("dictation.py", "correct", "d-2", env=self.e.env())
+        self.assertNotIn("corrected", ok("dictation.py", "list", env=self.e.env())["entries"][0])
+        # heard again: the same id written again replaces it
+        again = dict(es[0], text="Again.", raw="again")
+        ok("dictation.py", "restore", env=self.e.env(), stdin=json.dumps({"entries": [again]}))
+        es = ok("dictation.py", "list", env=self.e.env())["entries"]
+        self.assertEqual([(e["id"], e["text"]) for e in es][0], ("d-2", "Again."))
+        self.assertEqual(len(es), 2)
+        ok("dictation.py", "clear", env=self.e.env())
+        self.assertEqual(ok("dictation.py", "list", env=self.e.env())["entries"], [])
+        self.assertFalse((audio / "d-1.wav").exists())

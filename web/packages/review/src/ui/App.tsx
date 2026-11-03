@@ -74,7 +74,11 @@ function Shell({ onTheme }: { onTheme: () => void }) {
 
 export function App({ store, onTheme }: { store: ReviewStore; onTheme: () => void }) {
   useEffect(() => {
-    const key = (e: KeyboardEvent) => store.onKeyDown(e);
+    // sharing the document with the host's page (the Tauri app): a key typed in its list or sidebar is not ours
+    const key = (e: KeyboardEvent) => {
+      if (store.sharedDocument && !(e.target instanceof Node && store.root?.contains(e.target))) return;
+      store.onKeyDown(e);
+    };
     const vis = () => {
       if (!document.hidden) store.pollNow();
     };

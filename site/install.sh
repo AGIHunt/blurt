@@ -1,18 +1,20 @@
 #!/bin/sh
 # Install Blurt for Mac: download the latest release, put Blurt.app in Applications and open it.
 #
-#   curl -fsSL https://blurt.agihunt.info/install.sh | sh
+#   curl -fsSL https://blurt.work/install.sh | sh
 #
 # Made to be run by you or by your agent (Claude Code, Codex…). It replaces an older Blurt.app where it finds one
 # (/Applications, else ~/Applications) and checks that the download is signed and notarized before copying it. The
 # permissions (microphone, Accessibility) can only be turned on by you: the setup window that opens walks you through
 # them. Served from the website (site/install.sh in github.com/AGIHunt/blurt).
+#
+#   BLURT_INSTALL_DIR=/some/folder sh install.sh   installs there instead, and quits or opens nothing (tests)
 set -eu
 
 URL=https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg
 
 if [ "$(uname -s)" != Darwin ]; then
-  echo "Blurt is Mac only for now. Windows and Linux are coming: https://blurt.agihunt.info" >&2
+  echo "Blurt is Mac only for now. Windows and Linux are coming: https://blurt.work" >&2
   exit 1
 fi
 major=$(sw_vers -productVersion | cut -d. -f1)
@@ -64,5 +66,6 @@ fi
 open "$DEST/Blurt.app"
 
 echo "Blurt $version is in $DEST and open."
-echo "Finish in the setup window: turn on the microphone and Accessibility, then download the speech models."
-echo "To use Blurt from an agent (\"start blurt\"), connect it in Blurt's Settings > Agents."
+echo "Finish in the setup window: turn on the microphone and Accessibility. Nothing else to download."
+echo "To use Blurt from an agent (\"start blurt\"), connect it in Blurt's Settings > Agents, then start a new session"
+echo "of that agent. Agents can connect themselves: the steps are at https://blurt.work/llms.txt (Install)."

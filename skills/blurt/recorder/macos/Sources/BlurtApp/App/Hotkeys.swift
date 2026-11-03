@@ -16,7 +16,6 @@ extension HotkeyCenter.Action {
         case .openMenu: return .menu
         case .snap: return .snap
         case .pause: return .pause
-        case .marker: return .marker
         case .pen: return .pen
         case .finish: return .stop
         case .openMain: return nil
@@ -24,6 +23,8 @@ extension HotkeyCenter.Action {
         case .project: return .project
         case .cards: return .cards
         case .reformat: return .reformat
+        case .text: return .text
+        case .translateText: return .translateText
         }
     }
 }
@@ -32,14 +33,14 @@ extension HotkeyCenter {
     func shortcut(_ a: HotAction) -> Shortcut? { binding(a) }
 }
 
-/// The user's actual keys, for hints: "⌥⇧A", "" when that hotkey is off.
+/// The user's actual keys, for hints: "⌥A", "" when that hotkey is off.
 func hk(_ a: HotAction) -> String { Hotkeys.shared.label(a) }
-/// "（⌥⇧P）" / " (⌥⇧P)" for tooltips, "" when off.
+/// "（⌥P）" / " (⌥P)" for tooltips, "" when off.
 func hkTip(_ a: HotAction) -> String {
     let l = hk(a)
     return l.isEmpty ? "" : Loc.t("capture.hotkey.tip", table: "Capture", l)
 }
-/// "⌥⇧A next shot" — a hint (a Capture table key) that only exists while the hotkey does.
+/// "⌥A next shot" — a hint (a Capture table key) that only exists while the hotkey does.
 func hkHint(_ a: HotAction, _ key: String) -> String? {
     let l = hk(a)
     return l.isEmpty ? nil : Loc.t("capture.hotkey.hint", table: "Capture", l, Loc.t(key, table: "Capture"))
@@ -56,7 +57,10 @@ extension NSMenuItem {
         guard st.worksInMenu else {
             toolTip = Loc.t("capture.keys.menu_not_working", table: "Capture", s.label, st.text)
             // the key column never just goes blank: the row says, under its title, that its key isn't working
-            if #available(macOS 14.4, *) { subtitle = T("app.menu.key_off", s.label) }
+            // …and why, when it is another copy of Blurt (the one cause the user may not guess)
+            if #available(macOS 14.4, *) {
+                if case .taken = st { subtitle = T("app.menu.key_taken", s.label) } else { subtitle = T("app.menu.key_off", s.label) }
+            }
             return
         }
         let (k, f) = s.menuKeyEquivalent

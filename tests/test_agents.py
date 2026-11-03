@@ -117,7 +117,11 @@ def test_detect_matches_fake_clis(env):
     assert out["pick"] == "codex"
     for r in out["agents"]:  # app-ux's check() keys stay, WP2 adds the rest
         assert {"id", "name", "path", "state", "why", "fix", "installed", "version", "login", "headless",
-                "interactive"} <= set(r)
+                "interactive", "session"} <= set(r)
+    # the hand-off panel offers the agents that run as a session (what sessions.py doctor says; the Windows app has
+    # no doctor call: it read a field detect never had and offered no agent at all)
+    assert rows["claude"]["session"] is True and rows["codex"]["session"] is True
+    assert rows["zcode"]["session"] is False
     fast = cli("detect", "--no-login", "--no-version", "--ids", "codex,claude")
     assert [r["id"] for r in fast["agents"]] == ["codex", "claude"] and fast["agents"][0]["version"] is None
 
@@ -309,6 +313,34 @@ def test_install_kimi_json_merge(env):
     assert cli("install", "kimi", "--mcp")["changes"][0]["action"] == "exists"
 
 
+@pytest.mark.parametrize("agent, skill_dir, mcp_json, abs_uv", [
+    ("workbuddy", ".workbuddy/skills", ".workbuddy/mcp.json", True),    # a desktop app: uv by its full path
+    ("cursor", ".agents/skills", ".cursor/mcp.json", True),
+    ("codebuddy", ".codebuddy/skills", ".codebuddy/mcp.json", False),   # a CLI, started from the shell
+])
+def test_install_connect_only_agents(env, tmp_path, agent, skill_dir, mcp_json, abs_uv):
+    """CodeBuddy Code, WorkBuddy and Cursor: connect only (skill + MCP), never run unattended."""
+    uv = env["tmp"] / "bin" / "uv"
+    uv.write_text("#!/bin/sh\n")
+    uv.chmod(0o755)
+    d = agents.definitions({})[agent]
+    assert not agents.is_headless(d) and agents.interactive_kind(d)
+    path = env["home"] / mcp_json
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"mcpServers": {"other": {"url": "https://example.com/mcp", "disabled": True}}}))
+    dry = cli("install", agent, "--dry-run")
+    assert [c["action"] for c in dry["changes"]] == ["symlink", "json_merge"] and dry["applied"] is False
+    assert not (env["home"] / skill_dir / "blurt").exists()
+    out = cli("install", agent)
+    assert out["applied"]
+    assert (env["home"] / skill_dir / "blurt").resolve() == agents.SKILL_ROOT.resolve()
+    data = json.loads(path.read_text())
+    assert data["mcpServers"]["other"] == {"url": "https://example.com/mcp", "disabled": True}
+    assert data["mcpServers"]["blurt"] == {"command": str(uv) if abs_uv else "uv",
+                                           "args": ["run", "--script", str(agents.MCP_SERVER)]}
+    assert {c["action"] for c in cli("install", agent)["changes"]} == {"exists"}
+
+
 def test_install_never_overwrites_another_skill(env, tmp_path):
     other = tmp_path / "other-skill"
     other.mkdir()
@@ -332,6 +364,10 @@ def test_session_command(env, tmp_path):
     cmd = hooks["Stop"][0]["hooks"][0]
     assert cmd["type"] == "command" and cmd["timeout"] == 5
     assert cmd["command"].endswith(f"'{agents.SESSIONS_PY}' hook --job j-1 --agent claude")
+    # the hand-off note lives in $BLURT_HOME/handoff, outside the session's folder: reading it must not stop on
+    # "Read outside the working directories?" (Windows dogfood WW45)
+    import handoff
+    assert json.loads(st.read_text())["permissions"]["additionalDirectories"] == [str(handoff.handoff_dir())]
     # not installed (the fake's `mcp get blurt` fails) → --mcp-config with the whole server
     c = agents.session_command("claude", "p", tmp_path, job="j-1", settings=st)
     i = c["argv"].index("--mcp-config")

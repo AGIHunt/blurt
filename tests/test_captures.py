@@ -139,6 +139,74 @@ class FileCaptures(TmpCase):
         self.assertRegex(made[5]["title"], r"^Screenshot \d\d:\d\d$")
         self.assertEqual(made[6]["title"], "the coupon field is cut off")
 
+    def test_a_type_chosen_in_the_note_is_the_items_kind(self):
+        """2026-10-31: the note bubble's type (问题 / 想法 / 笔记 / 待办 → shots.jsonl "kind") is the item's kind, over
+        the keyword guess, and stays the user's: the AI fill-in's patch keeps it. Cleared (`"kind": null`, the later
+        line winning) or never set, the guess decides as before; a value that isn't one of the four is ignored."""
+        jl = self.s / "shots.jsonl"
+        for n in (5, 6, 7):
+            (self.s / f"shots/00{n}.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        lines = [{"n": 1, "kind": "idea"},                        # "…is broken" would guess issue
+                 {"n": 5, "type": "shot", "file": "shots/005.png", "wall": 1761100400, "text": "Q3 revenue was up",
+                  "kind": "task", "project": self.p["id"]},
+                 {"n": 6, "type": "shot", "file": "shots/006.png", "wall": 1761100500, "text": "this crashes",
+                  "kind": "issue", "project": self.p["id"]},
+                 {"n": 6, "kind": None},                          # cleared: undecided again
+                 {"n": 7, "type": "shot", "file": "shots/007.png", "wall": 1761100600, "text": "plain words",
+                  "kind": "bogus", "project": self.p["id"]}]
+        jl.write_text(jl.read_text() + "".join(json.dumps(o) + "\n" for o in lines))
+        out = ok("captures.py", "file", self.s, "--captures", "1", "3", "5", "6", "7", env=self.e.env())
+        made = {r["n"]: r for r in out["items"]}
+        self.assertEqual({n: r["kind"] for n, r in made.items()}, {1: "idea", 3: "note", 5: "task", 6: "issue", 7: "note"})
+        a = ok("items.py", "get", made[1]["uid"], env=self.e.env())["item"]
+        self.assertEqual(a["kind"], "idea")
+        self.assertIn("kind", a.get("_user") or {})
+        for n in (3, 6, 7):                                      # undecided: the guess, and nothing kept as the user's
+            self.assertNotIn("kind", ok("items.py", "get", made[n]["uid"], env=self.e.env())["item"].get("_user") or {})
+        # AI fill-in: its kind doesn't replace the user's, the rest goes in
+        p = ok("items.py", "patch", made[1]["uid"], "--set", "kind=issue", "--set", "title=Export does nothing", "--unset",
+               "enrich", env=self.e.env())
+        self.assertEqual(p.get("kept_user"), ["kind"])
+        a = ok("items.py", "get", made[1]["uid"], env=self.e.env())["item"]
+        self.assertEqual((a["kind"], a["title"], a.get("enrich")), ("idea", "Export does nothing", None))
+        # an undecided one takes the fill-in's kind
+        ok("items.py", "patch", made[3]["uid"], "--set", "kind=issue", env=self.e.env())
+        self.assertEqual(ok("items.py", "get", made[3]["uid"], env=self.e.env())["item"]["kind"], "issue")
+
+    def test_an_organized_snap_keeps_its_chosen_type(self):
+        """Organize (an agent writes items.json, items.py ingest): an item made from a snap the user gave a type is that
+        kind whatever the agent guessed — a shots batch and a recording's snaps (⌥A while recording) alike; an item
+        from a snap without one keeps the agent's kind. A re-ingest's kind doesn't replace it either."""
+        rec = Path(self.p["store"]) / "sessions" / "20261022-110000"
+        (rec / "shots").mkdir(parents=True)
+        (rec / "recording.mp4").write_bytes(b"mp4")
+        (rec / "shots/001.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        (rec / "shots/002.png").write_bytes(b"\x89PNG\r\n\x1a\nfake")
+        (rec / "shots.jsonl").write_text(
+            json.dumps({"n": 1, "type": "shot", "file": "shots/001.png", "t": 4.2, "wall": 1761100000, "text": "later"}) + "\n"
+            + json.dumps({"n": 1, "kind": "task"}) + "\n"
+            + json.dumps({"n": 2, "type": "shot", "file": "shots/002.png", "t": 9.0, "wall": 1761100005}) + "\n")
+        for session, shot_frames in ((self.s, ("shots/003.png", "shots/001.png")), (rec, ("shots/002.png", "shots/001.png"))):
+            if session == self.s:
+                jl = self.s / "shots.jsonl"
+                jl.write_text(jl.read_text() + json.dumps({"n": 1, "kind": "task"}) + "\n")
+            undecided, chosen = shot_frames
+            (session / "items.json").write_text(json.dumps({"items": [
+                {"id": "I-001", "kind": "issue", "title": "From an undecided snap", "frames": [{"path": undecided}]},
+                {"id": "I-002", "kind": "issue", "title": "From a typed snap", "source": {"shot": 1},
+                 "frames": [{"path": chosen}]}]}))
+            out = ok("items.py", "ingest", session, env=self.e.env())
+            uids = {r["local"]: r["uid"] for r in out["items"]}
+            a, b = (ok("items.py", "get", uids[k], env=self.e.env())["item"] for k in ("I-001", "I-002"))
+            self.assertEqual((a["kind"], b["kind"]), ("issue", "task"), session.name)
+            self.assertIn("kind", b.get("_user") or {})
+            self.assertNotIn("kind", a.get("_user") or {})
+            # the agent writes items.json again (a second pass): the user's type stays
+            (session / "items.json").write_text(json.dumps({"items": [
+                {"id": "I-002", "kind": "idea", "title": "From a typed snap", "source": {"shot": 1}}]}))
+            ok("items.py", "ingest", session, env=self.e.env())
+            self.assertEqual(ok("items.py", "get", uids["I-002"], env=self.e.env())["item"]["kind"], "task")
+
     def test_explicit_project_wins(self):
         other = ok("projects.py", "add", make_repo(self.tmp / "docs"), env=self.e.env())["project"]
         out = ok("captures.py", "file", self.s, "--captures", "3", "--project", other["id"], env=self.e.env())

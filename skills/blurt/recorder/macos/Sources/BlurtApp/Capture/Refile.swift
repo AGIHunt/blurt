@@ -2,7 +2,8 @@
 // it somewhere else — the user's call, cheap, right there. Change opens the island's project switcher in its pick form
 // (Island.Pick: the same rows, type to filter; the current project stays as it is). Nothing ever moves on Blurt's own.
 //
-//   a recording, as it ends   "Filed to Atlas Web · Change" (or "Filed to Unassigned · Change"). Its meta.json
+//   a recording, as it ends   "Organizing into Atlas Web · Change" and, under it, how long that usually takes here
+//                             and that the items appear there (BA-61; or "… Unassigned"). Its meta.json
 //                             "project" changes — the organizing run writes the items there — and the items it
 //                             already has move (items.py move --from: only the ones still where the recording put
 //                             them; one the user has moved by hand since stays where they put it). If it is still
@@ -33,11 +34,16 @@ enum Refile {
 
     // MARK: a recording
 
-    /// The line a recording leaves as it ends and goes off to be organized: where its items will be, and Change.
-    static func offerRecording(_ dir: URL, project: String?) {
+    /// The line a recording leaves as it ends and goes off to be organized (BA-61): that it is being organized, into
+    /// which project, how long that usually takes on this Mac (`usual`, seconds: OrganizeProgress — nil when there is
+    /// no measure yet) and that the items appear there; and Change.
+    static func offerRecording(_ dir: URL, project: String?, usual: Double? = nil) {
         let where_ = project ?? "inbox"
-        emit(["event": "recording_filed", "session": dir.path, "project": where_])
-        var t = Island.Toast(text: Loc.t("capture.recording.filed", table: "Capture", name(where_)),
+        emit(["event": "recording_filed", "session": dir.path, "project": where_,
+              "usual_minutes": usual.map { OrganizeEstimate.minutes($0) as Any } ?? NSNull()])
+        let detail = usual.map { Loc.t("capture.recording.organizing_usual", table: "Capture", Loc.number(OrganizeEstimate.minutes($0))) }
+            ?? Loc.t("capture.recording.organizing_where", table: "Capture")
+        var t = Island.Toast(text: Loc.t("capture.recording.organizing", table: "Capture", name(where_)) + "\n" + detail,
                              actionTitle: Loc.t("capture.change", table: "Capture")) {
             pick(title: Loc.t("capture.drawer.pick_title", table: "Capture"), current: where_) { to in
                 recording(dir, to: to, from: where_)

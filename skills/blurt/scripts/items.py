@@ -38,8 +38,11 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
              and, on items with a session in the agent's desktop app, `_work_runner: "desktop"`
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
-  migrate    [--all | SESSION … | --root DIR] [--dry-run]                      v1/v2 sessions → items; --all also
-             forgets the sessions unfinished items point at that no longer exist ("repaired": their files)
+  migrate    [--all [--no-projects] | SESSION … | --root DIR] [--dry-run]     v1/v2 sessions → items; --all also
+             forgets the sessions unfinished items point at that no longer exist ("repaired": their files).
+             --no-projects (the app, at every launch): only the v0.6 places — its recordings, the inbox, the repos it
+             had bound — never the projects' own folders: a project opened later that held an old session (a scripted
+             demo's items.json) got it turned into items at the next launch, unasked (v1.0.4)
   path       REF                                       → {"path","store","project","uid","id"}
   ensure-uids SESSION                                  a v2 session not ingested yet: write the missing uids
 
@@ -551,12 +554,28 @@ def read_shots(session: Path) -> dict[int, dict]:
     return by_n
 
 
+# The type the user gave a snap in its note bubble (shots.jsonl "kind": 问题 / 想法 / 笔记 / 待办; absent or null =
+# undecided, the agent or the keyword guess decides as before).
+SNAP_KINDS = ("issue", "idea", "note", "task")
+
+
+def chosen_kind(line: dict | None) -> str | None:
+    """A snap's chosen type (shots.jsonl "kind"), or None when the user left it undecided."""
+    k = (line or {}).get("kind") if isinstance(line, dict) else None
+    return k if k in SNAP_KINDS else None
+
+
 def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: str, session: Path | None,
                meta: dict, local: str | None, language: str | None, shot: int | None,
-               allow_external_media: bool = False) -> dict:
+               shots: dict[int, dict] | None = None, allow_external_media: bool = False) -> dict:
     """A new item for store s from v2-shaped fields (an items.json entry, add --json, a page's add op). The caller
-    holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/."""
-    item = {"id": s.next_id(), "uid": uid, "kind": str(fields.get("kind") or "note")}
+    holds s.lock(); this allocates the id and copies frames / clip into assets/<uid>/. An item made from a snap the
+    user gave a type keeps that type, whatever the fields say, and records it as the user's (`_user`), so a later
+    organizing or AI fill-in pass doesn't change it."""
+    chosen = None
+    if shot is not None and session is not None:
+        chosen = chosen_kind((shots if shots is not None else read_shots(session)).get(shot))
+    item = {"id": s.next_id(), "uid": uid, "kind": chosen or str(fields.get("kind") or "note")}
     title = fields.get("title")
     if not isinstance(title, str) or not title.strip():
         title = (str(fields.get("quote") or "").strip().split("\n")[0][:80] or item["kind"])
@@ -588,6 +607,9 @@ def build_item(fields: dict, uid: str, s: Store, *, project_by: str, created: st
     for k, v in fields.items():
         if k not in skip:
             item[k] = v
+    if chosen:
+        item["_user"] = {**(item.get("_user") if isinstance(item.get("_user"), dict) else {}),
+                         "kind": round(to_epoch(now_iso()) or 0, 1)}
     if fields.get("frames") is not None:
         item["frames"] = import_media(item, "frames", fields["frames"], session, s.root,
                                       allow_external=allow_external_media)
@@ -721,7 +743,7 @@ def ingest(session: Path, mode: str = "ingest") -> dict:
                 fields["source"] = {**(it["source"] if isinstance(it.get("source"), dict) else {}), "type": "voice"}
             with target.lock():
                 item = build_item(fields, uid, target, project_by=by, created=created, session=session, meta=meta,
-                                  local=lid, language=data.get("language"), shot=shot)
+                                  local=lid, language=data.get("language"), shot=shot, shots=shots)
                 if suggestion and target.is_inbox:
                     item["suggested_project"] = suggestion
                 p = write_new(target, item)
@@ -1175,6 +1197,7 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
     doc["items"] = items
     doc["_removed"] = removed
     doc["agents"] = _agent_names()
+    doc["me"] = _user_name()  # who "by …" in an item's provenance is on this Mac: the page says "by you"
     if include is not None:  # the one item a detail pane asked for, when its file can't be read: the page says so
         doc["_unreadable"] = [u for u in unreadable if include in (u["uid"], u["id"], *u["aliases"])]
     doc["projects"] = plist
@@ -1421,7 +1444,7 @@ def _add_op(op, b, home, session, now, find, uid_of) -> None:
 
 
 # ------------------------------------------------------------------ v1 / v2 sessions → stores
-def migrate_candidates(root: Path | None = None) -> list[Path]:
+def migrate_candidates(root: Path | None = None, projects_too: bool = True) -> list[Path]:
     import projects  # noqa: PLC0415
     containers = []
     if root is not None:
@@ -1431,7 +1454,8 @@ def migrate_candidates(root: Path | None = None) -> list[Path]:
         from _common import global_config  # noqa: PLC0415
         bound = (global_config().get("record") or {}).get("workspaces") or []  # v0.6, before projects.py migrate
         containers += [st.legacy_recordings(), st.inbox_root() / "sessions"]
-        containers += [Path(e["path"]) / ".blurt" / "sessions" for e in projects.entries()]
+        if projects_too:
+            containers += [Path(e["path"]) / ".blurt" / "sessions" for e in projects.entries()]
         containers += [Path(os.path.expanduser(w)) / ".blurt" / "sessions" for w in bound if isinstance(w, str)]
     out = []
     for c in containers:
@@ -1651,6 +1675,7 @@ def build_parser() -> Parser:
     s = sub.add_parser("migrate")
     s.add_argument("sessions", nargs="*")
     s.add_argument("--all", action="store_true")
+    s.add_argument("--no-projects", action="store_true")
     s.add_argument("--root")
     s.add_argument("--dry-run", action="store_true")
     s = sub.add_parser("path")
@@ -1759,7 +1784,7 @@ def run(a) -> dict:
             import projects  # noqa: PLC0415
             if not a.dry_run:
                 projects.cmd_migrate()
-            out = migrate(migrate_candidates(), a.dry_run)
+            out = migrate(migrate_candidates(projects_too=not a.no_projects), a.dry_run)
             return {**out, "repaired": repair_work(a.dry_run)}
         if a.root:
             sessions = migrate_candidates(Path(a.root))

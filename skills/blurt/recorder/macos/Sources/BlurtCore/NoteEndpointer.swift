@@ -1,4 +1,4 @@
-// When a voice note (the snap's note bubble, ⌥⇧V, dictation) has been said: speech start, and the pause that ends it.
+// When a voice note (the snap's note bubble, ⌥V, dictation) has been said: speech start, and the pause that ends it.
 //
 // v0.8 — the old detector took the quietest of the first three 100 ms buffers as the room's noise floor and froze it
 // once speech began. A Mac's mic opens quieter than the room (the user's own recording: −52 dBFS for 0.2 s, then the

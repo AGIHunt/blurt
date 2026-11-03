@@ -1,0 +1,1 @@
+The read-only replica is billed by the hour and costs about ¥1.2/h. If we keep it, the nightly ETL job (etl_nightly_v2) can move off the primary; otherwise we need a co-located snapshot at https://docs.example.com/db/read-replica-setup before Nov 15.

@@ -228,6 +228,29 @@ public enum CardPasteboard {
         return drag(for: landing.cls, card: card, attachNote: attachNote)
     }
 
+    /// One item of the main window's list dragged out (BA-22: a row dragged into WeChat brought the picture alone —
+    /// its writer was a fixed file URL plus the title). An item is a card whose note is its text (title, then its
+    /// words) and whose note file is its own .md:
+    ///  • with a picture (its first frame): the card's layout, drag(into:) — the picture, then the text pasted after
+    ///    the drop in a chat app; the rich item in a rich app, WeChat and QQ; both paths in a terminal — but the
+    ///    Finder always gets the .md next to the picture (a copy of the item, as its two files; nothing goes on the
+    ///    clipboard behind a drop into a folder).
+    ///  • without one (a voice or typed item): a rich app and a chat app get its text as the rich item — HTML, RTFD
+    ///    and RTF with its line breaks, the plain text as one line (a web composer drops loose text when a file is
+    ///    there, so no .md rides along); a terminal and the Finder its .md (Claude Code reads it; the Finder copies
+    ///    it), else the one line.
+    public static func itemDrag(into landing: DragLanding, card: Card, attachNote: Bool = false) -> [Item] {
+        if card.image != nil { return drag(into: landing, card: card, attachNote: attachNote || landing.cls == .finder) }
+        let text = CardTransfer.dragText(card.note)
+        switch landing.cls {
+        case .terminal, .finder:
+            if let md = card.noteFile { return [Item(file: md)] }
+            return text.map { [Item(text: $0)] } ?? []
+        case .rich, .chat:
+            return text.map { [Item(rich: true, text: $0)] } ?? card.noteFile.map { [Item(file: $0)] } ?? []
+        }
+    }
+
     /// A copy (a click on a card, a ⌘-click selection, Copy All): one rich item with every card, in order — the first
     /// picture's bytes, the rich text, the notes as text with their line breaks (pasting is the user's own act, at a
     /// place they chose). No file URL for a single picture (WebKit then pastes nothing: see above); with two or more,

@@ -75,6 +75,12 @@ pub struct CaptureOptions {
     pub fps: Option<u32>,
     pub max_width: Option<u32>,
     pub max_minutes: Option<f64>,
+    /// Seconds of 3-2-1 before the take: record.py prints `{"ev":"countdown","n":k,"total":n}` once a second (and
+    /// `n: 0` when it is over) and starts the grabber after it; `go` ([`CaptureHandle::send`]) skips the rest.
+    pub countdown: Option<u32>,
+    /// The host records what the PC plays into `<session>/system.pcm` + `system.json`; record.py puts it in the video
+    /// as a second audio track.
+    pub system_audio: bool,
     /// Extra environment for record.py (e.g. BLURT_HOME).
     pub env: Vec<(OsString, OsString)>,
 }
@@ -90,6 +96,8 @@ impl CaptureOptions {
             fps: None,
             max_width: None,
             max_minutes: None,
+            countdown: None,
+            system_audio: false,
             env: Vec::new(),
         }
     }
@@ -119,6 +127,12 @@ impl CaptureOptions {
         }
         if let Some(v) = self.max_minutes {
             a.extend([s("--max-minutes"), s(&v.to_string())]);
+        }
+        if let Some(v) = self.countdown.filter(|v| *v > 0) {
+            a.extend([s("--countdown"), s(&v.to_string())]);
+        }
+        if self.system_audio {
+            a.push(s("--system-audio"));
         }
         a.push(s("--status-jsonl"));
         a
@@ -369,6 +383,10 @@ mod tests {
             a.join(" "),
             "run -q /s/record.py start --engine ffmpeg --session /tmp/s --region=-10,20,320,240 --no-mic --fps 15 --status-jsonl"
         );
+        o.countdown = Some(3);
+        o.system_audio = true;
+        let a: Vec<String> = o.args().into_iter().map(|s| s.into_string().unwrap()).collect();
+        assert!(a.join(" ").ends_with("--fps 15 --countdown 3 --system-audio --status-jsonl"), "{a:?}");
         let p = Launcher::python("python3", "/s/record.py");
         assert_eq!(p.args, vec![OsString::from("/s/record.py")]);
     }

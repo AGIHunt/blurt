@@ -51,10 +51,10 @@ enum MainMenu {
         var app = [item(T("menu.about"), #selector(NSApplication.orderFrontStandardAboutPanel(_:)), target: AboutPanel.shared)]
             + updates() + [NSMenuItem.separator()]
         if AppEnvironment.settings != nil { app += [item(T("menu.settings"), #selector(MainWindowController.mSettings), ","), .separator()] }
-        // no ⌘Q on Quit: it's the resident app. ⌘Q in the main window closes it back to the menu bar instead
-        // (MainWindowController.handleKeyEquivalent → mCloseToMenuBar, which says so once)
+        // ⌘Q quits, as in every Mac app (v1.0.6, the founder; it used to close the window to the menu bar, which read as
+        // "⌘Q doesn't work"); ⌘W is the one that leaves Blurt in the menu bar
         app += [item(T("menu.hide"), #selector(NSApplication.hide(_:)), "h", target: nil), .separator(),
-                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "", target: nil)]
+                item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "q", target: nil)]
         _ = menu("Blurt", app)
 
         let recent = NSMenu()
@@ -71,7 +71,8 @@ enum MainMenu {
         rec.showHotkey(.toggleRecord)
         let sn = item(T("main.action.snap"), #selector(MainWindowController.snap))
         sn.showHotkey(.snap)
-        _ = menu(T("menu.file"), [item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(),
+        _ = menu(T("menu.file"), [item(T("main.new_item.menu"), #selector(MainWindowController.newItem), "n"),
+                                  item(T("project.open_folder"), #selector(MainWindowController.openFolder), "o"), recentItem, .separator(),
                                   rec, sn, .separator(),
                                   item(T("menu.rescan"), #selector(MainWindowController.mRescan)), .separator(),
                                   item(T("menu.close"), #selector(NSWindow.performClose(_:)), "w", target: nil)])
@@ -95,11 +96,14 @@ enum MainMenu {
             go.append(item(p.name, #selector(MainWindowController.mGoProject(_:)), "\(k + 5)", obj: p.id))
         }
         _ = menu(T("menu.go"), go)
-        // View: the columns, the sort (the same as the table's header) and the filters
+        // View: the columns, the sort (the same menu as the list heading's sort button) and the filters
         let sort = NSMenu()
         for (key, title) in MainWindowController.sortKeys {
             sort.addItem(item(title, #selector(MainWindowController.mSort(_:)), obj: key))
         }
+        sort.addItem(.separator())
+        sort.addItem(item(T("main.sort.ascending"), #selector(MainWindowController.mSortDirection(_:)), obj: true))
+        sort.addItem(item(T("main.sort.descending"), #selector(MainWindowController.mSortDirection(_:)), obj: false))
         let sortItem = NSMenuItem(title: T("menu.sort_by"), action: nil, keyEquivalent: "")
         sortItem.submenu = sort
         _ = menu(T("menu.view"), [item(T("menu.toggle_sidebar"), #selector(NSSplitViewController.toggleSidebar(_:)), "s", [.command, .control], target: nil),
@@ -147,8 +151,8 @@ enum MainMenu {
 
 extension MainMenu {
     /// While only a small window of ours is open (Settings) the app is a menu-bar app without a
-    /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W do nothing, in its search field too. This gives it the
-    /// Edit keys (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
+    /// main menu — and without one ⌘C / ⌘V / ⌘A / ⌘Z / ⌘W / ⌘Q do nothing, in its search field too. This gives it the
+    /// Edit keys and Quit (the menu bar itself stays hidden); the main window replaces it with the full menu when it opens.
     static func ensureEditKeys() {
         if let m = NSApp.mainMenu, m.items.contains(where: { $0.submenu?.items.contains { $0.action == #selector(NSText.paste(_:)) } == true }) { return }
         func item(_ t: String, _ sel: Selector, _ key: String, _ mods: NSEvent.ModifierFlags = .command) -> NSMenuItem {
@@ -164,6 +168,7 @@ extension MainMenu {
         let main = NSMenu()
         let app = NSMenuItem(title: "Blurt", action: nil, keyEquivalent: "")
         app.submenu = NSMenu(title: "Blurt")
+        app.submenu?.addItem(item(T("menu.quit"), #selector(NSApplication.terminate(_:)), "q"))
         main.addItem(app)
         let e = NSMenuItem(title: edit.title, action: nil, keyEquivalent: "")
         e.submenu = edit
@@ -196,17 +201,30 @@ extension MainWindowController {
     /// handler read the same list, so a key never goes somewhere its menu doesn't show.
     var shortcutProjects: [ProjectEntry] { Array(model.projects.filter(\.registered).prefix(5)) }
 
-    /// The View menu's Sort By: the table header's sort keys, in its order.
+    /// The sort keys (the list heading's sort button, View ▸ Sort By), in this order; the first is the default.
     static var sortKeys: [(String, String)] {
-        [("updated", T("main.col.updated")), ("title", T("main.col.title")), ("id", T("main.col.id")), ("kind", T("main.col.kind")),
+        [("updated", T("main.sort.updated")), ("title", T("main.col.title")), ("id", T("main.col.id")), ("kind", T("main.col.kind")),
          ("state", T("main.col.state")), ("project", T("main.col.project"))]
     }
 
+    /// A key's natural direction: newest first for the date, A to Z (and the lifecycle's order) for the rest.
+    static func ascendsByDefault(_ key: String) -> Bool { key != "updated" }
+
+    /// A sort key: its natural direction when it is a new key; the current key keeps its direction (the menu has
+    /// Ascending and Descending for that).
     @objc func mSort(_ i: NSMenuItem) {
         guard let key = i.representedObject as? String else { return }
-        // the header's own default direction for the key; picking the current key again flips it, like a header click
-        let asc = key == model.sort ? !model.ascending : ["title", "kind", "state", "project", "id"].contains(key)
-        list.table.sortDescriptors = [NSSortDescriptor(key: key, ascending: asc)]   // sortDescriptorsDidChange reloads
+        sortList(key, ascending: key == model.sort ? model.ascending : Self.ascendsByDefault(key))
+    }
+
+    @objc func mSortDirection(_ i: NSMenuItem) {
+        guard let asc = i.representedObject as? Bool else { return }
+        sortList(model.sort, ascending: asc)
+    }
+
+    func sortList(_ key: String, ascending: Bool) {
+        list.table.sortDescriptors = [NSSortDescriptor(key: key, ascending: ascending)]   // sortDescriptorsDidChange reloads
+        updateTitle()                                                                    // the heading's button says it
     }
 
     @objc func mToggleDetail() {
@@ -217,14 +235,6 @@ extension MainWindowController {
 
     @objc func mClearFilters() { clearFilters() }
 
-    /// ⌘Q in the main window: close it to the menu bar — Blurt stays for dictation and the capture keys. The first
-    /// time, a toast says so (and where Quit is).
-    @objc func mCloseToMenuBar() {
-        let first = !quitHintShown
-        quitHintShown = true                // before the close, which saves the window state
-        window?.performClose(nil)
-        if first { appDelegate?.toast(T("main.quit.kept"), seconds: 7) }
-    }
 }
 
 /// A section title in a menu (NSMenuItem.sectionHeader on macOS 14+, a disabled item before).
@@ -287,8 +297,8 @@ enum ShortcutsSheet {
                 Row(label: T("main.keys.detail"), keys: [["⌥⌘I"]]),
                 Row(label: T("menu.undo"), keys: [["⌘Z"]]),
                 Row(label: T("menu.redo"), keys: [["⇧⌘Z"]]),
-                // ⌘Q in the main window closes it too (mCloseToMenuBar): Blurt is the resident app
-                Row(label: T("main.keys.close_window"), note: T("main.keys.close_window.note"), keys: [["⌘W"], ["⌘Q"]]),
+                Row(label: T("main.keys.close_window"), note: T("main.keys.close_window.note"), keys: [["⌘W"]]),
+                Row(label: T("menu.quit"), keys: [["⌘Q"]]),
                 Row(label: T("main.keys.this"), keys: [["?"], ["⌘/"]]),
             ]),
         ]

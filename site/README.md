@@ -1,4 +1,4 @@
-# blurt.agihunt.info
+# blurt.work
 
 The project homepage: static files, no build step. `index.html` is Chinese, `en/index.html` English; both share
 `style.css` and `main.js`. The two pages have the same sections in the same order; change copy in both.
@@ -8,10 +8,32 @@ python3 -m http.server 4173 --directory site      # preview at http://localhost:
 npx wrangler pages deploy site --project-name blurt --branch main      # publish (Cloudflare Pages)
 ```
 
-**When `style.css`, `main.js`, a font or an asset changes, bump `?v=`** (both pages' `<link>`, `<script>`, font
-preloads, `<video>`/`poster`, og images, and the `url()`s at the top of `style.css`). The agihunt.info zone's Browser
-Cache TTL (4 h) overrides `_headers` on the custom domain, so without a new URL visitors get new HTML on top of old
-CSS. `_headers` (revalidate every visit) does apply on `*.pages.dev`. Current: `?v=1.0.3`.
+The production domain is `blurt.work`, bound to the existing Pages project `blurt`
+(`blurt-bvn.pages.dev`). Its Cloudflare nameservers are `athena.ns.cloudflare.com` and
+`kai.ns.cloudflare.com`; the domain registration remains at Alibaba Cloud.
+
+The `agihunt.info` zone has a Single Redirect named **Blurt official site to blurt.work**:
+match `(http.host eq "blurt.agihunt.info")`, redirect with
+`concat("https://blurt.work", http.request.uri.path)`, status **301**, and preserve the query string.
+Keep the old DNS record and Pages binding so old links and install commands keep working.
+
+If a stale global API key overrides Wrangler OAuth, run the deployment command with
+`env -u CF_API_KEY -u CLOUDFLARE_API_KEY` prefixed. Use the account
+`2f0c4283882da012b8a3283dcee20cc7`.
+
+**When `style.css`, a font or an asset changes, bump `?v=`** (`V` in the generator: both pages' `<link>`, font and
+image preloads, `<video>`/`poster`, og images; by hand: the `url()`s in `style.css`). `_headers` lets browsers keep
+`style.css`, `fonts/` and `assets/` for a year without asking (immutable), so a file changed under the same `?v=`
+never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-2`.
+
+**The first paint.** `peep.js` and `main.js` are inlined at the end of each page (the generator reads them from this
+folder), and the `<head>` script sets `motion` before anything renders. The scripts then run before the first paint
+(they wait for `style.css`, as the paint does), so the first frame is already the notch, the first scene's step and
+its window position. With deferred files the browser painted the no-script layout first (a second notch on the
+desktop, the window lower) and jumped a round trip later. After editing either script, rebuild the pages. The
+first scene's wallpaper is fetched at high priority, the others lazily; wallpapers are WebP (the JPEGs stay for the
+og cards). The serif is `font-display: block` (the title appears once, in its own face), and the nav's star count
+is baked in at build time (main.js refreshes it), so the header never changes width.
 
 The pages are generated (`blurt-media/site/src/build_pages9.py`, outside the repo; its `LOCKED_COPY` block holds the title, lede, button and every section headline); if you hand-edit one page, make the
 same change in the other.
@@ -27,7 +49,9 @@ full fonts it expects).
 
 Tokens on `:root` from `assets/color/tokens.json` (docs/design/system.md), dark values under
 `prefers-color-scheme: dark`. Mint is the "live" colour: the caret, the listening level, Blurt's bar in the speed
-chart, the download button (flat `--mint-ink`; no gradient on the page). Text set straight on the wallpaper uses
+chart. Buttons (download, copy, the film's play button) use the button gradient (`gradient.button` in tokens.json,
+white text), lifted off the wallpaper by a white halo, a thin dark rim and a deep tinted shadow, with a sheen
+on hover; no other gradient on the page. Text set straight on the wallpaper uses
 `--over` / `--over-2`. The hand-off scene and the privacy band are night (`#12171A`) in both modes.
 
 ## The page: your Mac, the notch, and the day passing
@@ -41,7 +65,7 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   the speed clock, the recording timer and transcript, the item count) and the parallax variables `--p`, `--d`, `--sy0`.
   The HTML ships with every step on, so no-JS, reduced motion and the font subsetter all see each scene's end state
   with every caption listed. Order: hero over the dictation desktop (the hero scrolls away while the desktop holds),
-  speed (a time axis with a moving now-line), the five-app matrix, lists (Shift / ⌥⇧L), snap → card under the notch →
+  speed (a time axis with a moving now-line), the five-app matrix, lists (Shift / ⌥L), snap → card under the notch →
   dragged into Claude, record → 52 items → OR-21, hand-off (night) → the team bundle, privacy, the film, install.
 - **Desk units**: inside `.lay`, 1em = 1% of the desk width (container query units), so a scene scales as one picture.
   On phones `.view` is a camera over the same coordinates (`--cx`, `--cy` per scene and step) and the copy sits on a
@@ -55,7 +79,7 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   rounded up to 0.1 s; `python3 build_pages9.py film` re-encodes the web copy and rewrites them.
 - **Speed**: talk for a minute, stop, until it's done: Blurt 0.39 s (own test, median of 3 takes) next to Wispr Flow about 1.5 s and Typeless about 3.0 s (VoiceDash, a competing
   vendor, linked); Blurt's CER 2.7% and WER 1.9% sit under the matrix, the other figures and the method in a disclosure.
-- **Install**: the download button, the agent path (`curl -fsSL https://blurt.agihunt.info/install.sh | sh`, copy
+- **Install**: the download button, the agent path (`curl -fsSL https://blurt.work/install.sh | sh`, copy
   button; `install.sh` is served from this folder), six keys as keycaps,
   and a link to the user guide for every other key; then the specs (system, models, languages, words, history,
   permissions, other dictation apps, source).
@@ -66,7 +90,7 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
 - `assets/promo.mp4`: the v1 film, one file for both pages (English voice-over, Chinese and English subtitles), H.264
   1080p with faststart, about 9 MB, loaded on click; `assets/film.json` records its length and poster. The v0.9
   poster `assets/poster-6.jpg` is no longer on the page.
-- `assets/wall/light.jpg`, `dark.jpg` (+ `-m` crops for phones): the desktop wallpaper, morning fog and dusk, made with
+- `assets/wall/light.webp`, `dark.webp` (+ `-m` crops for phones; WebP q80 of the `.jpg` masters, about 45 KB): the desktop wallpaper, morning fog and dusk, made with
   an image model for this page (`blurt-media/site/gen6/`).
 - `assets/rec-frame.jpg`: the frame on the OR-21 item, also used for the recording's film strip and the attachment
   thumbnail.
@@ -76,12 +100,17 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
   cut by `python3 build_pages9.py import` (it takes `logo/peep/release/web/` once its MANIFEST says COMPLETE):
   `n-<state>.webp` the notch sheets (dark set: idle, listening, talking, thinking, done, hello), `n-look.webp` the
   notch's 7 × 5 gaze grid, `f-<state>.webp` Peep out of the notch in the snap (done, peck), `peek.webp` the
-  footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only), `fd-<state>.webp` the same on dark pages
-  (dark set), `n-still.webp` one still per scene for reduced motion; the hero: `hero-v.mp4` / `hero-v.jpg` (light pages,
-  the release's video-model idle clip cropped round Peep, feathered into the wallpaper on its own paper tint) and
-  `hero.webm` / `hero.mov` (VP9 and HEVC with alpha) / `hero.webp` (dark pages, the clay three-quarter idle loop); `logo.svg` /
+  footer (three-quarter, 7 turns × 5 pitches × eyes open/shut, head top only; peep.js eases the gaze with a spring
+  and cross-fades the four poses around it, the body leans and sways a little; on phones it looks where you tap and
+  follows a finger dragged across the page, with passive listeners so the page still scrolls), `fd-<state>.webp` the same on dark pages
+  (dark set), `n-still.webp` one still per scene for reduced motion; the hero: Peep perched on the first window's
+  top-right corner, facing the window, no contact shadow: `perch.webm` / `perch.mov` / `perch.webp` (light pages,
+  `out/anim/paper-ns/idle`) and `perch-d.*` (dark pages, `out/anim/dark/idle` with the shadow taken out), side view
+  flipped to face left, VP9 and HEVC with alpha, the WebP is the first frame (poster, reduced motion). On desktop it
+  drifts a little with the scroll (`--sy0`); on phones it sits at the screen's right edge over the first window, smaller; `logo.svg` /
   `logo-dark.svg` the header mark (3D vector), favicons. `peep.json` is the sheet table, inlined into each page.
   `peep.js` plays them (sprite sheets at 30 fps, lazy-loaded per state); `main.js` tells it the scene and step.
+  Until a sheet arrives the notch shows `n-still.webp` (preloaded), so its ear is never empty.
   `assets/favicon.png` and `assets/apple-touch-icon.png` keep their names and now hold Peep; `/favicon.ico` too.
 - `assets/loops/`, `assets/team.jpg`: round-5 media, no longer on the page (kept for now; delete when you commit if you
   don't want them deployed).
@@ -89,7 +118,7 @@ chart, the download button (flat `--mint-ink`; no gradient on the page). Text se
 ## Install path
 
 The primary action is the DMG download (above). The second path, for agents, is `install.sh` (this folder): the agent
-(or the user, in a terminal) runs `curl -fsSL https://blurt.agihunt.info/install.sh | sh`, which installs the same DMG's
+(or the user, in a terminal) runs `curl -fsSL https://blurt.work/install.sh | sh`, which installs the same DMG's
 app and opens it. The app brings its own skill (`~/.blurt/skill`), so neither path needs `npx skills add`; that stays in
 the repo README for using the skill without the app.
 

@@ -2,9 +2,9 @@
 <h1 align="center">口喷鸡 Blurt</h1>
 <p align="center"><b>Agent 时代的输入法</b><br>
 用最高效的方式与你的 Agent 们互动，支持文字、语音、截图、录屏等。本地运行、免费开源。<br>
-<a href="https://blurt.agihunt.info">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a></p>
+<a href="https://blurt.work">官网</a> · <a href="README.md">English</a> · <a href="docs/guide.md#中文">使用指南</a> · <a href="#交流群">飞书交流群</a></p>
 
-<p align="center"><a href="https://blurt.agihunt.info/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
+<p align="center"><a href="https://blurt.work/#film"><img src="assets/film-poster.jpg" width="720" alt="看两分钟的介绍视频"></a></p>
 <p align="center"><sub>两分钟介绍视频，请打开声音 · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">下载 Mac 版</a></sub></p>
 
 ---
@@ -15,18 +15,24 @@
 ## 能做什么
 
 **听写（`Fn`）。** 在任意 App 里按一下 `Fn`，说话，再按一下，字就打在光标处。结束时改成连按两下，会顺便发送出去（回车）。
-语音识别用开源模型在你的 Mac 本地运行，模型下载好后无需联网；说话一分钟，停下后约 0.4 秒处理完。本机的模型会去掉语气词和口吃、
-加上标点，但不改写、不概括、不翻译。说话时，识别出的文字显示在刘海下方。说话时按一下 `⇧` 切换到「结构化」（你在列举时排成清单），
-再按一下切回来；`⌥⇧L` 重排上一条听写。也可以按住 `Fn` 说话。
+装好就能用：用 macOS 自带的语音识别（macOS 26），不用下载任何模型。开源的本机模型是可选升级：更准、认得你的词、不用联网；
+说话一分钟，停下后约 0.4 秒处理完。本机的模型会去掉语气词和口吃、加上标点，但不改写、不概括。说话时，识别出的文字显示在刘海下方。
+说话时按一下 `⇧` 切换到「结构化」（你在列举时排成清单），再按一下切回来；按一下 `⌘` 是翻译（说中文打出英文，反过来也行）；
+`⌥L` 重排上一条听写。也可以按住 `Fn` 说话。
 
-**截图（`⌥⇧A`）和语音备注（`⌥⇧V`）。** 框选屏幕的一块区域，备注框就出现在选区旁边，说一句哪里不对。说话时可以直接在图上画：
+**截图（`⌥A`）和语音备注（`⌥V`）。** 框选屏幕的一块区域，备注框就出现在选区旁边，说一句哪里不对。说话时可以直接在图上画：
 拖动是自由画线，`⇧` 画方框，`⌥` 画椭圆，`⌘Z` 撤销。截图随后变成刘海下方的一张卡片。
 把卡片拖进 Claude、ChatGPT、Slack、飞书，或运行着 Claude Code、Codex 的终端，图片和备注会一起进去；也可以点一下复制，
 再按 `⌘V`。语音备注也一样，只是没有图片。
 
-**录屏（`⌥⇧R`）。** 一边录屏一边讲：演示产品、浏览网页、讲一个想法都可以。你的 coding agent 会把录屏整理成条目
+**截图取字（`⌥C`）。** 框选屏幕上任何选不中的文字：截图、视频、锁住的网页、终端。松手约 0.2 秒就在剪贴板里，
+排得和自己复制的一样：被边缘截掉的半行会去掉，换行断开的列表项重新连成一行，表格保留 Tab，代码保留缩进。
+用的是 macOS 自带的文字识别，不用下载任何东西。也可以打开二次识别，用本机的小型 OCR 模型（720 MB）
+或你自己的云端模型再读一遍，修正代码和路径里认错的符号。
+
+**录屏（`⌥R`）。** 一边录屏一边讲：演示产品、浏览网页、讲一个想法都可以。你的 coding agent 会把录屏整理成事项
 （问题、想法、笔记、任务），每条都带截图、标出的位置、复现步骤和可能有关的代码。录屏时实时语音转写，录屏结束后约一分钟即可处理完成；
-一次 5 分钟的走查整理出了 52 条事项，每条都有原话和时间点。你用键盘逐条审核，再交给 Agent，或打成一个 `.zip` 发给同事。
+一次 5 分钟的走查整理出了 52 个事项，每个都有原话和时间点。你用键盘逐条审核，再交给 Agent，或打成一个 `.zip` 发给同事。
 
 截图、语音备注和录屏都会放进当前项目（在口喷鸡里打开的文件夹）。没有当前项目时，录屏放进「未归类」，截图作为卡片
 留在刘海下方，等你选项目。所有快捷键都可以在设置里改。
@@ -40,20 +46,23 @@
 也可以把这行命令发给你的 Agent（Claude Code、Codex 等），或者粘到终端里运行：
 
 ```bash
-curl -fsSL https://blurt.agihunt.info/install.sh | sh
+curl -fsSL https://blurt.work/install.sh | sh
 ```
 
 它会下载最新版，确认已签名并经过公证，放进「应用程序」并打开。
 
 **在 Agent 里用口喷鸡。** 在口喷鸡的「设置 → Agent」里点「连接…」，会把口喷鸡的 skill 和 MCP 加到 Claude Code、Codex
-等它找到的 Agent 里。之后对 Agent 说 **「开始口喷」**，或者让它查你的条目。
+等它找到的 Agent 里（Gemini CLI、Kimi Code、OpenCode、Grok、CodeBuddy Code、WorkBuddy、Cursor）。在 Agent 里新开一个会话，
+然后说 **「开始口喷」**（Claude Code 里也可以用 `/blurt`，Codex 里用 `$blurt`），或者让它查你的事项。也可以让 Agent
+自己连接，步骤见 [llms.txt](https://blurt.work/llms.txt)。
 
-<sub>不装 App、从源码用：<code>npx skills add AGIHunt/blurt</code>（Claude Code 里也可以用 <code>/plugin marketplace add
-AGIHunt/blurt</code>），然后说「开始口喷」。第一次运行会把口喷鸡编译安装到 <code>~/Applications</code>，需要 Xcode Command
-Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会提出帮你安装。</sub>
+<sub>不装 App、从源码用：<code>npx skills add AGIHunt/blurt -g</code>，或者在 Claude Code 里先运行 <code>/plugin marketplace add
+AGIHunt/blurt</code>，再运行 <code>/plugin install blurt@blurt</code>。然后说「开始口喷」。第一次运行会把口喷鸡编译安装到
+<code>~/Applications</code>，需要 Xcode Command Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会提出帮你安装。</sub>
 
-**第一分钟。** 设置助手会请你开启麦克风和「辅助功能」权限（听写键不用 `Fn` 时还需要「输入监控」），然后下载语音模型：
-32 GB 内存的 Mac 约 5.9 GB，16–24 GB 约 4.4 GB。点「下载」之前不会下载任何东西。之后在任意输入框里按 `Fn` 就能听写。
+**第一分钟。** 设置助手会请你开启麦克风和「辅助功能」权限（听写键不用 `Fn` 时还需要「输入监控」）。之后在任意输入框里按 `Fn`
+就能听写，用的是 macOS 自带的识别。两个可选升级：一个 AI 服务的 key（纠正听错的名字和标点，翻译和截图取字的云端二次识别也用它），
+以及本机模型（按内存 1–6 GB，点「下载」才下载）。
 「屏幕录制」权限在你第一次截图或录屏时才会请求。
 
 ## 怎么配合你的 Agent
@@ -63,19 +72,19 @@ Line Tools 和 <a href="https://docs.astral.sh/uv/">uv</a>，缺什么 Agent 会
 | | 做什么 |
 |---|---|
 | **听写和卡片** | 文字和图片进入任何聊天框或终端，所以适用于所有 Agent。 |
-| **Skill** | `blurt` skill 让你的 Agent 能录屏、转写、写条目、打开审核页和导出。 |
+| **Skill** | `blurt` skill 让你的 Agent 能录屏、转写、写事项、打开审核页和导出。 |
 | **MCP** | `blurt` MCP 提供 `search_items`、`get_item`（带截图）、`get_transcript`、`update_item`、`mark_fixed`、`bundle_items` 等工具。在「设置 → Agent」里点「连接…」，会先列出要改的地方，再把 skill 和 MCP 装进这个 Agent。 |
-| **交给 Agent**（`⌘↩`） | 在口喷鸡的终端里、在项目文件夹中运行 Claude Code 或 Codex，可以每个条目用一个单独的 git worktree。Claude Code 也可以在 Claude 桌面端运行。 |
+| **交给 Agent**（`⌘↩`） | 在口喷鸡的终端里、在项目文件夹中运行 Claude Code 或 Codex，可以每个事项用一个单独的 git worktree。Claude Code 也可以在 Claude 桌面端运行。 |
 | **复制指令** | 给其他任何 Agent 的一行指令，指向一份交接说明，里面有全部详情和截图。 |
-| **交接包** | 一个 `.zip`，包含概要、每个条目和它的截图，给人看，而不是给 Agent。 |
+| **交接包** | 一个 `.zip`，包含概要、每个事项和它的截图，给人看，而不是给 Agent。 |
 
-Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待验证」。Agent 说「修好了」，在你标为完成之前一律只算「待验证」。
+Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待验证」。Agent 说「修好了」，在你标为完成之前一律只算「待验证」。
 
 录屏由第一个已安装并登录的 Agent 整理：依次是 Claude Code、Codex、Kimi Code、OpenCode、Gemini CLI、Grok。顺序可以在
 「设置 → Agent」里调整。
 
 **刻意不做连接器。** 你的 Agent 已经有 Slack、Linear、GitHub、Notion、Jira、飞书等工具。口喷鸡只写文件（Markdown、CSV
-和交接包），投递交给 Agent。想把条目发到别处，直接跟 Agent 说，比如：「把结账页的问题打包，发到 Slack 的 #web 频道」。
+和交接包），投递交给 Agent。想把事项发到别处，直接跟 Agent 说，比如：「把结账页的问题打包，发到 Slack 的 #web 频道」。
 
 ## 和同类产品的对比
 
@@ -95,7 +104,7 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 | 平台 | macOS；Windows 和 Linux 即将推出 | macOS、Windows、Linux、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android | Mac、Windows、iOS、Android |
 | 离线 | 模型下载好后听写不需要联网（还没在断网状态下实测） | 不能 | 不能 | 能，用本地模型时 | 不能 |
 | 截图、语音备注卡片，交给 Agent | 有 | 没有 | 没有 | 没有 | 没有 |
-| 录屏整理成带截图和代码定位的条目 | 有 | 没有 | 没有 | 没有 | 没有 |
+| 录屏整理成带截图和代码定位的事项 | 有 | 没有 | 没有 | 没有 | 没有 |
 | 交给 coding agent，并通过 MCP 回报状态 | 有 | 没有 | 没有 | 没有 | 免费版列出了「MCP/CLI」，没有细看 |
 
 <sub>口喷鸡的出处：延迟见 `docs/design/dictation.md`（每项 3 次取中位数，模型已预热）；准确率见
@@ -134,9 +143,11 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 
 - 语音识别和润色都在你的 Mac 上运行。「听写历史」保存每条听写的文字、录音和光标附近的文字，留 30 天（时长可以改，也可以不留录音）。
 - 开始说话时，口喷鸡会读取光标前后约 500 个字，让名字写对。从不读密码框。这项可以关掉。
-- 截图、语音备注、录屏和条目都留在你的文件夹里：`~/Blurt`，或项目里的 `.blurt/`（口喷鸡会让它不进 git）。
+- 截图、语音备注、录屏和事项都留在你的文件夹里：`~/Blurt`，或项目里的 `.blurt/`（口喷鸡会让它不进 git）。
 - 你的 Agent 整理录屏时，转写文字和几张截图会发给这个 Agent 的服务商，和你交给它的其他内容一样。
-- 不用注册账号。联网只有这几种情况：下载模型、检查更新、你自己加的云端语音密钥（Groq、OpenAI 或 DashScope，用于录屏）、
+- 不用注册账号。联网只有这几种情况：下载模型、检查更新、你自己加的云端语音密钥（Groq、OpenAI 或 DashScope，在「设置 → 模型」里填）、
+  打开了云端润色时（听写的文字发给 DeepSeek 或你设的接口，不发录音）、打开了云端翻译时（发文字）、
+  截图取字选了云端二次识别时（发你框选区域的图片）、
   你的 Agent 发给它的服务商的内容，以及「发送反馈」：在听写页点它时，你勾选的听写（录音、每一步的文字、保留开关打开时的
   光标附近文字、Mac 的型号和设置）会发到口喷鸡在 Cloudflare 上的私有存储，只有口喷鸡的开发者能读，14 天内删除。打开「设置 → 隐私 → 不用云端语音识别」，即使设置了密钥，
   语音也只在 Mac 上识别。
@@ -145,10 +156,10 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 
 **会取代我的 Agent 吗？** 不会。它配合你在用的 Agent：Claude Code、Codex、Cursor、Claude、ChatGPT，或者任何聊天框。
 
-**要花钱吗？** 不用。录屏整理成条目用的是你自己 Agent 的 token。视频不会发给模型：语音在本地转写，Agent 读文字稿，
+**要花钱吗？** 不用。录屏整理成事项用的是你自己 Agent 的 token。视频不会发给模型：语音在本地转写，Agent 读文字稿，
 只看几张截图。三次真实使用（Claude Code、Opus 5.5、一个线上 Web 产品）：
 
-| 录屏 | 说话 | 条目 | 本地转写 | 新输入 / 输出 token | 按 API 价格 |
+| 录屏 | 说话 | 事项 | 本地转写 | 新输入 / 输出 token | 按 API 价格 |
 |---|---|---|---|---|---|
 | 7.0 分钟 | 2.8 分钟 | 9 条 | 4 秒 | 约 14 万 / 1.9 万 | 约 2 美元 |
 | 14.3 分钟 | 12.3 分钟 | 23 条 | 12 秒 | 约 14 万 / 2.7 万 | 约 2.6 美元 |
@@ -162,18 +173,18 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 
 | 用途 | 模型 | 下载大小 |
 |---|---|---|
-| 语音识别（听写、语音备注、录屏），32 GB 及以上内存 | Qwen3-ASR 1.7B，8-bit，MLX | 2.5 GB |
-| 语音识别，16–24 GB | Qwen3-ASR 0.6B，8-bit，MLX | 1.0 GB |
+| 语音识别（听写、语音备注、录屏），16 GB 及以上 | Qwen3-ASR 0.6B，8-bit，MLX | 1.0 GB |
+| 语音识别，可选：英文稍好，体积是 2.5 倍 | Qwen3-ASR 1.7B，8-bit，MLX | 2.5 GB |
 | 润色，16 GB 及以上 | Gemma 4 E2B，4-bit | 3.4 GB |
 | 润色，8 GB | Gemma 3 1B，4-bit | 0.7 GB |
 | 只有 CPU 的机器上的语音备注；日语、韩语、粤语 | SenseVoice Small | 228 MB |
 | 其他语言的录屏 | Whisper large-v3-turbo，MLX | 1.5 GB |
 
-说中文和英文时，所有用途共用一个语音识别模型。用的时候，模型在 16–24 GB 的 Mac 上占内存约 2.8 GB，用 1.7B 时约
-4.2 GB（在 M1 Max 上测）。闲置 10 分钟后退出内存，内存紧张时会更早退出。
+说中文和英文时，所有用途共用一个语音识别模型。用的时候，模型占内存约 2.8 GB（用 1.7B 时约 4.2 GB，在 M1 Max
+上测）。闲置 10 分钟后退出内存，内存紧张时会更早退出。
 
 **支持哪些语言？** 听写测过中文、英文和中英混说。录屏：SenseVoice 支持中、英、日、韩、粤语；Whisper 支持 99 种语言。
-条目用你说的语言写。App 界面有英文和简体中文。
+事项用你说的语言写。App 界面有英文和简体中文。
 
 **Windows 和 Linux 能用吗？** 还不能：口喷鸡目前是 Mac App，Windows 和 Linux 版即将推出。想提前试的话，Skill 里的录屏脚本
 （录屏、本地转写、审核页、导出）已经能在这两个系统上运行，Linux 需要 X11 桌面。准备工作：Windows 运行
@@ -182,7 +193,7 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 
 **需要哪些权限？** 麦克风；「辅助功能」，用来粘贴和识别 `Fn`；「输入监控」，用来识别其他按键；「屏幕录制」，用来截图和录屏。
 
-**没有代码的同事能用吗？** 能。他们用 App 录屏，把视频发给你，你的 Agent 结合代码处理。条目会保留录制人的名字。
+**没有代码的同事能用吗？** 能。他们用 App 录屏，把视频发给你，你的 Agent 结合代码处理。事项会保留录制人的名字。
 
 **快捷键能改吗？** 能，在「设置 → 快捷键」里改。快捷键被其他功能、其他 App 或 macOS 占用时会提示。同样的设置也可以写在
 `~/.blurt/config.json` 里，Windows 上也生效：
@@ -192,5 +203,14 @@ Agent 通过 MCP 回报进度：条目先变成「进行中」，再变成「待
 ```
 
 **完整的说明在哪？** [使用指南](docs/guide.md#中文)讲了所有功能，[SKILL.md](skills/blurt/SKILL.md) 是给 Agent 读的说明。
+
+## 交流群
+
+使用问题、反馈和新版本消息都在「口喷鸡 Blurt 用户群」（飞书外部群）。没有企业账号也能加入：用飞书 App 扫码，
+或[打开邀请链接](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55ame8f2-6482-400c-84b2-06de3ea29cb2&qr_code=true)。
+
+<p align="center"><img src="assets/community/feishu-group-qr.png" width="200" alt="扫码加入口喷鸡 Blurt 用户群"></p>
+
+Bug 和功能建议也可以提 [GitHub Issue](https://github.com/AGIHunt/blurt/issues)。
 
 <p align="center"><sub>MIT · <a href="https://github.com/AGIHunt">AGI Hunt</a> 出品</sub></p>

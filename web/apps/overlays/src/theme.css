@@ -1,3 +1,18 @@
+/* Han on Windows: YaHei UI has a Regular and a Bold and nothing between, and WebView2 set 500 ("medium") in its Bold —
+   a CJK line read a size heavier than the Latin beside it. One face per weight band, the Han range only (Latin keeps
+   Segoe UI): 300–500 Regular, 600–900 Bold. Elsewhere the local() names don't exist and this face is skipped. */
+@font-face {
+  font-family: 'Blurt CJK';
+  src: local('Microsoft YaHei UI'), local('MicrosoftYaHeiUI');
+  font-weight: 300 500;
+  unicode-range: U+2E80-2FFF, U+3000-303F, U+3040-30FF, U+3100-312F, U+3190-31FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF;
+}
+@font-face {
+  font-family: 'Blurt CJK';
+  src: local('Microsoft YaHei UI Bold'), local('MicrosoftYaHeiUI-Bold');
+  font-weight: 600 900;
+  unicode-range: U+2E80-2FFF, U+3000-303F, U+3040-30FF, U+3100-312F, U+3190-31FF, U+3400-4DBF, U+4E00-9FFF, U+F900-FAFF, U+FE30-FE4F, U+FF00-FFEF;
+}
 /* Overlay tokens (docs/design/system.md §3.1–3.2). Overlays sit on top of anything, so they are always dark: the
    generated block below holds the island values (--brand, --on-brand, --brand-tint, --rec, --attn, --ok, --err, the
    gradients); this block only the neutral glass. */
@@ -11,7 +26,7 @@
   --fg2: rgba(255, 255, 255, 0.64);
   --fg3: rgba(255, 255, 255, 0.4);
   --radius: 12px;
-  --font: system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', 'Cantarell', 'Noto Sans', 'Microsoft YaHei UI',
+  --font: 'Blurt CJK', system-ui, -apple-system, 'Segoe UI Variable Text', 'Segoe UI', 'Cantarell', 'Noto Sans', 'Microsoft YaHei UI',
     'PingFang SC', sans-serif;
 }
 /* @generated colour: assets/color/build.py from assets/color/tokens.json. Do not edit by hand. */
@@ -39,6 +54,15 @@
   --on-brand-button: #ffffff;
   --brand-text: linear-gradient(90deg, #66d97a 0%, #61dbbd 45%, #4aabe2 100%);
   --brand-ink-light: #0b735e;
+  --selection: #1ca288;
+  --kind-issue: #ee8771;
+  --kind-issue-light: #bb493a;
+  --kind-idea: #e1ae51;
+  --kind-idea-light: #a26d05;
+  --kind-note: #90a7f1;
+  --kind-note-light: #4467d2;
+  --kind-task: #aa98f2;
+  --kind-task-light: #7559cb;
   --glow-opacity: 0.45;
 }
 @media (prefers-reduced-transparency: reduce) {

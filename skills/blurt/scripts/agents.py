@@ -151,7 +151,7 @@ def usable(state: str) -> bool:
 
 def check(defn: dict, env: dict | None = None, lang: str = "en") -> dict:
     env = dict(os.environ) if env is None else env
-    path = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    path = find_bin(defn, env)
     out = {"id": defn["id"], "name": defn.get("name", defn["id"]), "path": path}
     if not path:
         out.update(state="not_installed", why=("未安装" if lang == "zh" else "not installed"),
@@ -313,7 +313,27 @@ def _fill_obj(o, vals: dict):
 
 def find_bin(defn: dict, env: dict | None = None) -> str | None:
     env = os.environ if env is None else env
-    return next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    p = next((p for p in (shutil.which(b, path=env.get("PATH")) for b in defn.get("bins", [defn["id"]])) if p), None)
+    return unshim(p) if p else None
+
+
+_SHIM_TARGET = re.compile(r'"%dp0%\\([^"]+\.exe)"', re.I)
+
+
+def unshim(path: str) -> str:
+    """Windows: an npm `.cmd` shim that only starts a native program (Claude Code's: "%dp0%\\…\\claude.exe" %*) → that
+    program. A .cmd runs through cmd.exe, which can't carry a multi-line prompt as an argument and which Rust and
+    Python refuse to hand such arguments to ("batch file arguments are invalid"); the .exe takes them as they are."""
+    if os.name != "nt" or not path.lower().endswith((".cmd", ".bat")):
+        return path
+    try:
+        m = _SHIM_TARGET.search(Path(path).read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return path
+    if not m:
+        return path
+    exe = Path(path).parent / m.group(1)
+    return str(exe) if exe.is_file() else path
 
 
 def app_path(defn: dict) -> str | None:
@@ -376,6 +396,7 @@ def detect(ids: list[str] | None = None, login: bool = True, version: bool = Tru
         r["login"] = LOGIN.get(r["state"], "unknown")
         r["headless"] = is_headless(d)
         r["interactive"] = interactive_kind(d)
+        r["session"] = session_spec(d) is not None  # runs as an in-app / tmux session (what sessions.py doctor says)
         rows.append(r)
     # in the configured order, not the rows' (`ids` may list them in another order, e.g. Settings asks in registry order)
     by_id = {r["id"]: r for r in rows}
@@ -653,7 +674,9 @@ def install(agent: str, skill: bool = True, mcp: bool = True, dry_run: bool = Fa
     if not d:
         raise ValueError(f"unknown agent {agent!r}")
     env = dict(os.environ if env is None else env)  # CODEX_HOME & co. decide which config gets written
-    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT)}
+    # {uv} = uv's absolute path: desktop apps (Cursor, WorkBuddy) start MCP servers without the login shell's PATH
+    vals = {"mcp_server": str(MCP_SERVER), "skill": str(SKILL_ROOT),
+            "uv": shutil.which("uv", path=env.get("PATH")) or "uv"}
     changes, ok = [], True
     if skill:
         if not d.get("skill_dir"):
@@ -747,8 +770,21 @@ def session_spec(defn: dict) -> dict | None:
     return sp if isinstance(sp, dict) else None
 
 
+def waiting_hints(defn: dict) -> list[tuple[str, str | None]]:
+    """interactive.waiting_patterns as (regex, hint): an entry is a regex, or {"pattern", "hint"} where hint names a
+    question the app explains in one line ("trust": the agent's folder-trust question; "hooks": Codex's hook review).
+    A session that quits at a "trust" question never started (sessions.py: agent.stopped_at)."""
+    out: list[tuple[str, str | None]] = []
+    for p in (defn.get("interactive") or {}).get("waiting_patterns") or []:
+        if isinstance(p, str):
+            out.append((p, None))
+        elif isinstance(p, dict) and isinstance(p.get("pattern"), str):
+            out.append((p["pattern"], p.get("hint") if isinstance(p.get("hint"), str) else None))
+    return out
+
+
 def waiting_patterns(defn: dict) -> list[str]:
-    return [p for p in (defn.get("interactive") or {}).get("waiting_patterns") or [] if isinstance(p, str)]
+    return [p for p, _ in waiting_hints(defn)]
 
 
 def error_patterns(defn: dict) -> list[str]:
@@ -805,10 +841,15 @@ def hook_command(agent: str, job: str | None, python: str | None = None) -> str:
 
 
 def claude_settings(job: str, python: str | None = None) -> dict:
-    """The --settings file of one Claude Code session: hooks only (--settings adds to the user's settings)."""
+    """The --settings file of one Claude Code session (--settings adds to the user's settings): the hooks, and the
+    hand-off notes' folder as an extra working directory, so reading the note the prompt names doesn't stop the
+    session on "Read outside the working directories?" (the note lives in $BLURT_HOME/handoff, the session in the
+    project or its worktree)."""
+    import handoff
     h = {"type": "command", "command": hook_command("claude", job, python), "timeout": 5}
     return {"hooks": {ev: [{"matcher": "*", "hooks": [h]}] if ev == "PostToolUse" else [{"hooks": [h]}]
-                      for ev in CLAUDE_HOOKS}}
+                      for ev in CLAUDE_HOOKS},
+            "permissions": {"additionalDirectories": [str(handoff.handoff_dir())]}}
 
 
 def _toml_str(s: str) -> str:
@@ -823,8 +864,9 @@ def codex_hook_args(job: str, python: str | None = None, hooks: bool = True) -> 
     out = ["-c", "notify=[" + ", ".join(_toml_str(x) for x in notify) + "]"]
     if hooks:
         cmd = _toml_str(hook_command("codex", None, py))
-        for ev in CODEX_HOOKS:
-            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout=5}}]}}]"]
+        for ev in CODEX_HOOKS:  # Codex clamps a SessionEnd hook's timeout to 3 s (and warns): ask for 3 there
+            t = 3 if ev == "SessionEnd" else 5
+            out += ["-c", f"hooks.{ev}=[{{hooks=[{{type=\"command\", command={cmd}, timeout={t}}}]}}]"]
     return out
 
 
@@ -884,7 +926,7 @@ def session_command(agent: str, prompt: str, cwd: str | Path, *, job: str, setti
 WORK_PROMPT = {
     "en": "{title}\n\nRead {note} and handle the items in it. {rule} When you finish an item, call the blurt MCP tool "
           "mark_fixed with its uid (or, without the MCP, run the items.py command the note gives).",
-    "zh": "{title}\n\n读 {note}，处理里面的条目。{rule}每做完一条，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
+    "zh": "{title}\n\n读 {note}，处理里面的事项。{rule}每做完一个，用它的 uid 调用 blurt MCP 工具 mark_fixed（没有 MCP 就运行交接单里给的 "
           "items.py 命令）。",
 }
 # The desktop app's prompt carries the note itself: the app starts in the worktree and would have to ask before it
@@ -896,14 +938,14 @@ DESKTOP_PROMPT = {
     "en": "{title}\n\nHandle the items below (the same note is saved at {note}). When you start an item, call the blurt "
           "MCP tool mark_fixed with its uid and state \"fixing\"; when you finish it, mark_fixed with state \"fixed\" "
           "(or \"wontfix\") and a short note. Blurt shows the user only what you report this way.\n\n{body}",
-    "zh": "{title}\n\n处理下面的条目（同一份交接单也存在 {note}）。开始做某一条时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
+    "zh": "{title}\n\n处理下面的事项（同一份交接单也存在 {note}）。开始做某一个时，用它的 uid 调用 blurt MCP 工具 mark_fixed，"
           "state 填 \"fixing\"；做完后再调用 mark_fixed，state 填 \"fixed\"（或 \"wontfix\"），附一句说明。口喷鸡只能通过这些报告"
           "告诉用户进度。\n\n{body}",
 }
 TITLE = {"en": {"one": "{id} · {title} (Blurt hand-off)", "id_only": "{id} (Blurt hand-off)",
                 "many": "{n} items · {project} (Blurt hand-off)", "bare": "{n} items (Blurt hand-off)"},
          "zh": {"one": "{id} · {title}（口喷鸡交接）", "id_only": "{id}（口喷鸡交接）",
-                "many": "{n} 个条目 · {project}（口喷鸡交接）", "bare": "{n} 个条目（口喷鸡交接）"}}
+                "many": "{n} 个事项 · {project}（口喷鸡交接）", "bare": "{n} 个事项（口喷鸡交接）"}}
 TITLE_MAX = 120
 
 

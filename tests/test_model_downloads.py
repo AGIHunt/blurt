@@ -177,12 +177,17 @@ class DictationNeedsTheVad(unittest.TestCase):
         had = vad.read_bytes() if vad.is_file() else None
         self.addCleanup(lambda: vad.write_bytes(had) if had is not None else vad.unlink(missing_ok=True))
         vad.unlink(missing_ok=True)
-        with mock.patch.object(T, "installed", return_value=True):
+        # without the copy the skill ships (v1.0.6): what an install that lost it would see
+        with mock.patch.object(T, "installed", return_value=True), \
+                mock.patch.object(T, "BUNDLED_VAD", T.MODELS_DIR / "no-such-vad.onnx"):
             d = T.dictation_models()
             self.assertFalse(d["vad"])
             local = [r for r in d["models"] if r["files"]]
             self.assertTrue(local)
-            self.assertFalse(any(r["installed"] for r in local if T.entry(r["id"]).get("local", True)))
+            vad_models = [r for r in local if T.entry(r["id"]).get("local", True) and not T.entry(r["id"]).get("builtin")]
+            self.assertFalse(any(r["installed"] for r in vad_models))
+            # macOS's own recogniser finds its own pauses: installed without the VAD (first-minute-speech.md)
+            self.assertTrue(all(r["installed"] for r in local if T.entry(r["id"]).get("builtin")))
             vad.parent.mkdir(parents=True, exist_ok=True)
             vad.write_bytes(b"onnx")
             self.assertTrue(all(r["installed"] for r in T.dictation_models()["models"]))

@@ -1,17 +1,32 @@
 import XCTest
 @testable import BlurtCore
 
-/// ⇧ alone toggles a voice note's Structured, as it does a dictation's (v0.9-userfix).
+/// ⇧ for a voice note's Structured asks the same way a dictation's does (v0.9-userfix): a double tap by default, a
+/// single tap when the dictation's setting says so.
 final class VoiceNoteStyleTests: XCTestCase {
-    func toggles(_ script: String, holding: Set<String> = []) -> Int {
+    func toggles(_ script: String, mode: DictationTrigger.ModifierTap = DictationTrigger.shippedModifierTap,
+                 holding: Set<String> = []) -> Int {
         var s = LoneShift()
+        s.mode = mode
         return DictationTrigger.parse(script, holding: holding).filter { s.handle($0) }.count
     }
 
-    func testALoneShiftTapToggles() {
-        XCTAssertEqual(toggles("shift-down@0 shift-up@120"), 1)
-        XCTAssertEqual(toggles("rshift-down@0 rshift-up@90"), 1)
-        XCTAssertEqual(toggles("shift-down@0 shift-up@100 shift-down@400 shift-up@480"), 2)
+    func testDoubleShiftToggles() {
+        // one ⇧ is nothing; two quick ones toggle
+        XCTAssertEqual(toggles("shift-down@0 shift-up@120"), 0)
+        XCTAssertEqual(toggles("shift-down@0 shift-up@120 shift-down@300 shift-up@420"), 1)
+        XCTAssertEqual(toggles("rshift-down@0 rshift-up@100 rshift-down@280 rshift-up@400"), 1)
+        // too slow: two singles, no toggle
+        XCTAssertEqual(toggles("shift-down@0 shift-up@120 shift-down@600 shift-up@720"), 0)
+        // after a fire, a third tap inside the cooldown does nothing
+        XCTAssertEqual(toggles("shift-down@0 shift-up@100 shift-down@250 shift-up@350 shift-down@500 shift-up@600"), 1)
+    }
+
+    func testSingleModeFiresOnOneShift() {
+        XCTAssertEqual(toggles("shift-down@0 shift-up@120", mode: .single), 1)
+        XCTAssertEqual(toggles("rshift-down@0 rshift-up@90", mode: .single), 1)
+        // a finger resting on it
+        XCTAssertEqual(toggles("shift-down@0 shift-up@1500", mode: .single), 0)
     }
 
     func testNotALoneShift() {
@@ -22,22 +37,25 @@ final class VoiceNoteStyleTests: XCTestCase {
         XCTAssertEqual(toggles("shift-down@0 key:0@50 shift-up@100"), 0)
         XCTAssertEqual(toggles("shift-down@0 click@50 shift-up@100"), 0)
         XCTAssertEqual(toggles("shift-down@0 shift-up@1500"), 0)
-        // ⌘⇧ (a shortcut)
+        // ⌘⇧ (a shortcut), one tap or two
         XCTAssertEqual(toggles("cmd-down@0 shift-down@20 shift-up@80 cmd-up@100"), 0)
+        XCTAssertEqual(toggles("cmd-down@0 shift-down@20 shift-up@80 shift-down@200 shift-up@260 cmd-up@300"), 0)
     }
 
     func testTheSameChangeTwiceCountsOnce() {
         var s = LoneShift()
         let down = DictationTrigger.Event.flags(keyCode: 56, flags: 0x2_0000, time: 1.0)
         let up = DictationTrigger.Event.flags(keyCode: 56, flags: 0, time: 1.1)
-        let upAgain = DictationTrigger.Event.flags(keyCode: 56, flags: 0, time: 1.11)
         XCTAssertFalse(s.handle(down))
-        XCTAssertFalse(s.handle(down))
-        XCTAssertTrue(s.handle(up))
-        XCTAssertFalse(s.handle(upAgain))
-        // the second listener's copies arriving after the first's whole tap: still one toggle
+        XCTAssertFalse(s.handle(down))      // a second listener's copy: not a first tap twice
+        XCTAssertFalse(s.handle(up))
+        // the second listener's copies arriving after the first's whole double tap: still one toggle
         var t = LoneShift()
-        XCTAssertEqual([down, up, down, upAgain].filter { t.handle($0) }.count, 1)
+        let d1 = DictationTrigger.Event.flags(keyCode: 56, flags: 0x2_0000, time: 1.0)
+        let u1 = DictationTrigger.Event.flags(keyCode: 56, flags: 0, time: 1.1)
+        let d2 = DictationTrigger.Event.flags(keyCode: 56, flags: 0x2_0000, time: 1.25)
+        let u2 = DictationTrigger.Event.flags(keyCode: 56, flags: 0, time: 1.35)
+        XCTAssertEqual([d1, u1, d2, u2].filter { t.handle($0) }.count, 1)
     }
 
     func testWhatTheCardKeeps() {

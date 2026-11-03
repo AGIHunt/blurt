@@ -17,6 +17,7 @@ enum OnbMetrics {
     static let glyph: CGFloat = 28            // the leading glyph slot (a neutral tile)
     static let rowGap: CGFloat = 14           // glyph → title, title → trailing
     static let rowHeight: CGFloat = 54
+    static let rowPad: CGFloat = 6             // above and below a row's text: never touching a hairline
     static let sectionGap: CGFloat = 22
 }
 
@@ -65,6 +66,8 @@ struct OnbRow<Trailing: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             trailing
         }
+        // a two-line row keeps air above and below its hairlines (a one-line row is the row height anyway)
+        .padding(.vertical, OnbMetrics.rowPad)
         .frame(minHeight: OnbMetrics.rowHeight)
         .overlay(alignment: .top) {
             if !first { Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1 / max(scale, 1)) }

@@ -1,4 +1,5 @@
-// The island while recording (it replaced the HUD): snaps fly into it, its snap button pauses for a note, it counts
+// The island while recording (it replaced the HUD): snaps fly into it, its snap button is ⌥A (area, note, card; the
+// take goes on), it counts
 // the items live.py spots (<session>/live/drafts.jsonl) and shows the live caption line under itself
 // (live/transcript.jsonl). Nothing pops up while recording (K4) — only the counts change.
 import AppKit
@@ -7,7 +8,7 @@ import BlurtCore
 /// Tests only: the fake recording whose frame BLURT_TEST_FRAME showed (it never calls stop()).
 private var testFrameRecorder: Recorder?
 
-/// The moment a take ends (Finish, ⌥⇧S): the left ear's red dot turns, in place, into the ok check on a filled disc
+/// The moment a take ends (Finish, ⌥S): the left ear's red dot turns, in place, into the ok check on a filled disc
 /// (centred where the dot was) beside the take's length at the time's own x ("✓ 0:42"), the ears keeping their width,
 /// for 1.6 s — dictation's "Sent" — and only then does a toast take the island ("Filed to Atlas Web · Change": where
 /// the take went; Island.canShowToast holds it back meanwhile); then the ears settle to what is next (Peep
@@ -61,16 +62,20 @@ extension Island {
         watch?.stop()
         watch = nil
         if NoteBubble.shared.isOpen, NoteBubble.shared.mode == .recording { NoteBubble.shared.commit() }
+        snapper.takeStopping()          // a note on an ⌥A snap of the take is saved now: it goes with the recording
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in self?.recordingChanged() }
         recordingChanged()
     }
 
     var spottedCount: Int { watch?.drafts.order.count ?? 0 }
 
-    /// The island's snap button: a still of this moment, then the recording pauses while its note is open.
+    /// The island's snap button: exactly ⌥A while recording (AppDelegate.hotkey(.snap)) — the snap flow (drag an area,
+    /// its note, its card) into the take, and the recording keeps going. (It used to take a still of the whole
+    /// recorded area and paused the take while its note was open.)
     func snapWithNote() {
-        guard let r = rec else { return }
-        r.snap(via: "island") { [weak self] shot in self?.openRecordingNotes(at: shot) }
+        guard rec != nil else { return }
+        emit(["event": "rec_snap_button"])
+        (NSApp.delegate as? App)?.hotkey(.snap)
     }
 
     /// The notes for this take's snaps (the "notes" command; the snap button lands here with its new shot).

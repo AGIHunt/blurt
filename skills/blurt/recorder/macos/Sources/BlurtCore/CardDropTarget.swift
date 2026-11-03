@@ -210,6 +210,13 @@ public enum DragReceipt {
         }
     }
 
+    /// The follow-up paste of a card's note, by one rule with voice cards and smart paste (VoiceCardDrop.outcome):
+    /// keys sent but the read unconfirmed counts as pasted ("picture and note", never "⌘V to paste": a second copy),
+    /// and the note goes on the clipboard quietly as the safety net (`quietCopy`).
+    public static func followUp(_ p: VoiceCardDrop.Pasted) -> (notePasted: Bool, quietCopy: Bool) {
+        (p != .notSent, p == .unconfirmed)
+    }
+
     /// The safety net: the note goes on the clipboard only where it didn't go in (picture only, or not sure). A rich
     /// app, a chat app that got the note pasted, a terminal (both paths; ⌘V would paste at a prompt) and the Finder
     /// with the .md leave the clipboard alone.
@@ -221,8 +228,15 @@ public enum DragReceipt {
     ///  • files: "… picture and note file" (the Finder with the .md)
     ///  • picture only: "… picture · note copied, ⌘V to paste" ("… picture and note file · …" when the .md went too)
     ///  • not sure: "Dragged out · note copied, ⌘V to paste"
-    public static func toastKey(_ o: Outcome, hasNote: Bool, noteCopied: Bool, noteFile: Bool = false) -> String {
+    /// `noAccessibility` (BA-54: a card dropped into Claude without Accessibility left the picture alone, and the toast
+    /// only said the note was copied): the note wasn't pasted because Accessibility is missing, and the toast says so
+    /// (once a session, with Allow…) — "… Note copied, ⌘V to paste" over "Blurt needs Accessibility to paste it".
+    public static func toastKey(_ o: Outcome, hasNote: Bool, noteCopied: Bool, noteFile: Bool = false,
+                                noAccessibility: Bool = false) -> String {
         guard hasNote else { return "capture.taken_out" }
+        if noAccessibility, o == .pictureOnly, !noteFile {
+            return noteCopied ? "capture.taken_out_no_ax" : "capture.taken_out_picture_no_ax"
+        }
         switch o {
         case .both: return "capture.taken_out_text"
         case .paths: return "capture.taken_out_paths"
@@ -232,6 +246,14 @@ public enum DragReceipt {
             return noteCopied ? "capture.taken_out_picture_note" : "capture.taken_out_picture"
         case .unsure: return noteCopied ? "capture.taken_out_note" : "capture.taken_out"
         }
+    }
+
+    /// A main window row dragged out (BA-22): the list says something only when there is something to do — its text
+    /// is on the clipboard ("Text copied, ⌘V to paste"), or Accessibility is missing (`noAccessibility`, as for a
+    /// card). Taken whole (a rich app, the pasted text, a terminal, the Finder): nil — the row stays, nothing to undo.
+    public static func itemToastKey(_ o: Outcome, noteCopied: Bool, noAccessibility: Bool = false) -> String? {
+        if noAccessibility, o == .pictureOnly { return noteCopied ? "capture.item_out_no_ax" : "capture.item_out_picture_no_ax" }
+        return noteCopied ? "capture.item_out_note" : nil
     }
 }
 

@@ -1,21 +1,26 @@
 // Settings → Speech (K9; SettingsKit rows, titles and descriptions from SettingsCatalog), built around one question:
 // which model does each job, and is the recommended set on this Mac? (docs/design/system.md §3.4)
 //
-//   This Mac   at most one recommendation, only while something recommended is missing (`transcribe.py models` for
+//   lead       "Recommended for this Mac: Qwen3-ASR 1.7B" with Compare… at its end: dictation's
+//              choices side by side in a sheet (DictationCompare.swift; also the dictation pop-up's Compare Choices…).
+//   On this Mac  at most one recommendation, only while something recommended is missing (`transcribe.py models` for
 //              recordings / live captions / voice notes, `dictation-models` + `polish.py models` for dictation): one
 //              line per job it changes ("Voice notes would use SenseVoice Small"), its size in the title, the page's
 //              one primary Download and a "…" menu for one model at a time; while anything downloads it becomes that
 //              download's bar and Stop. Then Choose automatically (asr.auto, and dictation's two models unpinned:
 //              DictationModels.setAuto), its line naming this Mac — "Auto" is said there once, never on every job.
-//   Models in use  one row per job — Recordings, Live captions, Voice notes, Dictation, Dictation polish —, each with
-//              its glyph and its model on the right: the name while automatic, a pop-up of the models on this Mac (and
-//              Get More Models…) when picked by hand. A job whose model isn't on this Mac says "· downloading" or "None
-//              yet", never names it as if in use. Last, All models: Manage Models… opens the library.
+//              Last, All models: Manage Models… opens the library.
+//   Cloud services  the services the user connected with their own key (CloudServicesPane.swift, CloudStore).
+//   Each job   one row per job — Recordings, Live captions, Voice notes, Dictation, then Polish, Translate, Copy Text
+//              from Screen —, each with its glyph and its model on the right: the name while automatic, a pop-up of
+//              the models on this Mac (and Get More Models…) when picked by hand; the text jobs also list each
+//              connected service's models, and say where their content goes. A job whose model isn't on this Mac says
+//              "· downloading" or "None yet", never names it as if in use.
 //   Languages  the languages you speak (chips) and the recognition language (detect, or always one).
 //   Advanced   a folded section (the one Advanced pattern of every pane; a search or a link unfolds it): processor
 //              threads, transcriptions at a time and GPU memory as pop-ups, lighter models on battery, the download
-//              mirror, one row per cloud service with whether its key is found (never stored or shown; the variables'
-//              names and the export line in an info popover).
+//              mirror, one row per cloud service: whether it has a key, and Set Up… (CloudSpeechSheet: the key in the
+//              Keychain, never shown back; a key exported in the shell profile still counts).
 //   library    a sheet (ModelLibrary): one 32 pt row per model that runs here, recognition or polish — what it is
 //              used for, accuracy for your languages, speed, memory, size as a table; numbers measured on this Mac
 //              (`transcribe.py bench`) carry the seal; Download on hover, Measure / Show in Finder / Move to Trash in
@@ -280,7 +285,12 @@ final class SpeechModel: ObservableObject {
         Task { await reapply() }
     }
 
-    func setLanguage(_ l: String) { language = l; Config.shared.set("asr.language", l == "auto" ? nil : l) }
+    /// macOS's recogniser listens for one language: its files are asked for at once, so the next take uses it.
+    func setLanguage(_ l: String) {
+        language = l
+        Config.shared.set("asr.language", l == "auto" ? nil : l)
+        AppleSpeech.prepare(via: "settings") { _ in Dictation.shared.refreshSpeechModels() }
+    }
     func setMirror(_ on: Bool) { mirror = on; Config.shared.set("asr.hf_mirror", on) }     // explicit either way: off stays off in China
     func setLimit(_ key: String, _ value: Any?) { Config.shared.set("asr.limits.\(key)", value); Task { await load() } }
     var onBattery: String { Config.shared["asr.on_battery"] as? String ?? "lighter" }
@@ -380,7 +390,7 @@ private func languageName(_ code: String) -> String {
 }
 
 /// A language's name in itself ("日本語"), for the list a person picks their own languages from.
-private func endonym(_ code: String) -> String {
+func endonym(_ code: String) -> String {
     let l = Locale(identifier: code)
     let n = l.localizedString(forLanguageCode: code) ?? code
     return n.prefix(1).uppercased(with: l) + n.dropFirst()
@@ -391,8 +401,9 @@ private func endonym(_ code: String) -> String {
 private let offeredLanguages = ["en", "zh", "yue", "ja", "ko", "es", "fr", "de", "it", "pt", "ru", "ar", "hi", "vi", "th",
                                 "id", "ms", "tr", "nl", "pl", "sv", "da", "fi", "cs", "el", "hu", "ro", "uk", "fa", "fil"]
 
-/// The pop-ups' last item: opens the library instead of choosing.
+/// The pop-ups' last items: open the library, or the comparison (dictation's), instead of choosing.
 private let moreModels = "__more"
+private let compareChoices = "__compare"
 
 // MARK: - Pane
 
@@ -400,7 +411,10 @@ struct SpeechPane: View {
     @ObservedObject var m = SpeechModel.shared
     @ObservedObject var d = DictationModels.shared
     @ObservedObject private var dl = ModelDownloads.shared
+    @ObservedObject private var cloud = CloudModelsUI.shared
     @State private var library = false
+    /// dictation's choices side by side (DictationCompare.swift)
+    @State private var compare = false
 
     /// Settings → Speech at dictation's row, just under the recommendation and its download bar (Settings →
     /// Dictation's "Change…" / "Download…", the dictation key's "no model yet").
@@ -409,19 +423,37 @@ struct SpeechPane: View {
     }
 
     var body: some View {
-        SettingsPage(.speech) {
+        SettingsPage(.speech, lead: lead) {
             useSection
+            CloudServicesSection()
             jobsSection
             languagesSection
             advancedSection
         }
         .task { await m.load() }
         .task { await d.load() }
-        .sheet(isPresented: $library) { ModelLibrary { library = false } }
-        // a search or a link landing on the library: open it first
+        .sheet(isPresented: $library) { ModelLibrary { library = false }.buttonStyle(.automatic).closesOnOutsideClick { library = false } }
+        .background {
+            Color.clear.sheet(isPresented: $compare) {
+                DictationCompareSheet { compare = false }.buttonStyle(.automatic).closesOnOutsideClick { compare = false }
+            }
+        }
+        // a search or a link landing on the library or the comparison: open it first
         .onReceive(SettingsFlash.shared.$request) { r in
             if r?.id == "speech.models" { library = true }
+            if r?.id == "speech.compare" { compare = true }
         }
+    }
+
+    /// The page's lead: what is recommended for this Mac and how often it gets a word wrong, with Compare… at its end —
+    /// the one place the choices are weighed; the rows under it stay as they were.
+    var lead: SettingsLead {
+        _ = cloud.tick
+        let text = m.state == nil || d.asr == nil ? S("speech.loading") : ChoiceText.lead(DictationNow.read())
+        return SettingsLead(text: Text(text), accessory: AnyView(
+            Button(S("speech.compare.open")) { compare = true }
+                .buttonStyle(.plain).foregroundStyle(Color.brandInk)
+                .help(S("speech.compare.title"))))
     }
 
     // MARK: the Mac
@@ -444,10 +476,9 @@ struct SpeechPane: View {
 
     // MARK: Models: the recommendation, automatic, one row per job, the library
 
-    /// This Mac: the recommendation, only while something recommended is missing (or downloading). Automatic choice
-    /// is each pop-up's first item (the jobs' footer says what it goes by).
+    /// On this Mac: the recommendation, only while something recommended is missing (or downloading), then the
+    /// library (All models). Automatic choice is each pop-up's first item (the jobs' footer says what it goes by).
     @ViewBuilder var useSection: some View {
-        if m.error != nil || dl.active || !picks.isEmpty {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
@@ -456,13 +487,15 @@ struct SpeechPane: View {
                 }
             }
             recommendation
+            libraryRow
         }, accessory: {
             if (m.loading && m.state != nil) { BrandSpinnerView(size: 10) }
         })
-        }
     }
 
-    /// Models in use: one row per job, with its glyph and its model, then the library.
+    /// Which model does each job: one row per job, with its glyph and its model — the speech jobs (this Mac's models,
+    /// and the cloud ones whose key is set), then the text jobs (CloudServicesPane: Auto, this Mac, a connected
+    /// service's models), each with a line on where its content goes.
     @ViewBuilder var jobsSection: some View {
         SettingsGroup("speech.jobs", title: S("speech.section.jobs"), footer: machineShort.map { S("speech.auto.footer", $0) }) {
             if let one = m.everywhere {
@@ -471,8 +504,18 @@ struct SpeechPane: View {
                 ForEach(ASRPurpose.allCases) { p in purposeRow(p) }
                 dictationRow
             }
-            polishRow
-            libraryRow
+            CloudObserving {
+                SettingRow("speech.polish", detail: d.polish?.supported == false && CloudStore.connected.isEmpty
+                           ? S("speech.purpose.polish.unsupported") : CloudText.line(.polish), icon: "wand.and.stars") {
+                    JobModelControl(job: .polish) { library = true }
+                }
+                SettingRow("speech.translate", detail: CloudText.line(.translate), icon: CloudJob.translate.symbol) {
+                    JobModelControl(job: .translate) { library = true }
+                }
+                SettingRow("speech.vision", detail: CloudText.line(.vision), icon: CloudJob.vision.symbol) {
+                    JobModelControl(job: .vision) { library = true }
+                }
+            }
         }
     }
 
@@ -502,13 +545,13 @@ struct SpeechPane: View {
             add(j, dictation)              // only the VAD (or the configured model) is missing: what the key needs
         }
         if let p = d.recommendedPolish, !p.installed {
-            add(.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB), dictation)
+            add(.init(id: p.id, kind: .polish, name: p.name, sizeMB: p.sizeMB), S("speech.purpose.polish"))
         }
         return out
     }
 
     /// One line per group of jobs the download changes, in the jobs' own words: "Voice notes would use SenseVoice
-    /// Small", "Dictation would use Qwen3-ASR 1.7B (MLX) and Gemma 4 E2B" — so the rows under it and this agree: they
+    /// Small", "Dictation would use Qwen3-ASR 1.7B and Gemma 4 E2B" — so the rows under it and this agree: they
     /// say what is used now, this says what Download changes.
     func pickLines(_ ps: [Pick]) -> [String] {
         var groups: [(uses: [String], names: [String])] = []
@@ -560,7 +603,9 @@ struct SpeechPane: View {
                                 .gridProbe(.text, "recommended")
                             // one line per job group: a structured list, never a sentence wrapped mid-name
                             ForEach(pickLines(ps), id: \.self) { l in
-                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary).lineLimit(1)
+                                // wraps at the narrowest window rather than cutting a model's name off
+                                Text(l).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
                             if failed {
                                 Text(S("speech.download.failed")).font(.system(size: SettingsMetrics.detailSize))
@@ -597,8 +642,17 @@ struct SpeechPane: View {
 
     // the jobs
 
+    /// An automatic row's line: what the row is for, then the model it runs on now ("…Now: Qwen3-ASR 0.6B") — the pop-up
+    /// itself says only "Automatic", so the model's name is never cut off in it.
+    func autoDetail(_ id: String, auto: Bool, _ value: String) -> String? {
+        guard auto else { return nil }
+        let base = SettingsCatalog.entry(id).flatMap(SettingsCatalog.detail) ?? ""
+        return S("speech.auto.using", base, value)
+    }
+
     func purposeRow(_ p: ASRPurpose) -> some View {
-        SettingRow("speech.\(p.rawValue)", icon: p.symbol) {
+        SettingRow("speech.\(p.rawValue)", detail: m.state == nil ? nil : autoDetail("speech.\(p.rawValue)", auto: m.auto, purposeValue(p)),
+                   icon: p.symbol) {
             if m.state == nil {
                 BrandSpinnerView(size: 12)
             } else {
@@ -615,9 +669,11 @@ struct SpeechPane: View {
     func recognitionRow(_ one: ASRModel) -> some View {
         let dictation = Set((d.asr?.models ?? []).filter { $0.installed || $0.files == true }.map(\.id))
         let here = choices(.note).filter { dictation.contains($0.id) || $0.id == one.id }
-        return SettingRow("speech.recognition", icon: "waveform") {
+        return SettingRow("speech.recognition", detail: autoDetail("speech.recognition", auto: m.auto && d.asrAuto, purposeValue(.note)),
+                          icon: "waveform") {
             ModelPopUp(label: S("speech.purpose.recognition"), current: m.auto && d.asrAuto ? ModelPopUp.auto : one.id,
-                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true }) { id in
+                       auto: purposeValue(.note), choices: here.map { ($0.id, $0.title) }, more: { library = true },
+                       compare: { compare = true }) { id in
                 if id == ModelPopUp.auto { m.useAuto() } else if let x = m.model(id) { m.useEverywhere(x) }
             }
         }
@@ -639,13 +695,14 @@ struct SpeechPane: View {
     }
 
     @ViewBuilder var dictationRow: some View {
-        SettingRow("speech.dictation", icon: "character.cursor.ibeam") {
+        SettingRow("speech.dictation", detail: d.asr.flatMap { autoDetail("speech.dictation", auto: m.auto && d.asrAuto, dictationValue($0)) },
+                   icon: "character.cursor.ibeam") {
             if let a = d.asr {
                 // a model whose own files are in can be chosen (its setup then fetches only the VAD)
                 let here = a.models.filter { $0.installed || $0.files == true || $0.id == a.selected }
                 ModelPopUp(label: S("speech.purpose.dictation"), current: m.auto && d.asrAuto ? ModelPopUp.auto : a.selected,
                            auto: dictationValue(a), choices: here.map { ($0.id, $0.name ?? d.asrName($0.id)) },
-                           more: { library = true }) { id in
+                           more: { library = true }, compare: { compare = true }) { id in
                     if id == ModelPopUp.auto { m.useAuto() } else if let x = a.models.first(where: { $0.id == id }) { d.chooseASR(x) }
                 }
             } else {
@@ -657,30 +714,6 @@ struct SpeechPane: View {
     func dictationValue(_ a: DictationASRState) -> String {
         if a.selectedInstalled ?? d.selectedASR?.installed ?? false { return d.asrName(a.selected) }
         if let j = d.dictationJob, dl.queue.contains(j.id) { return S("speech.purpose.downloading", j.name) }
-        return S("speech.purpose.none_yet")
-    }
-
-    @ViewBuilder var polishRow: some View {
-        SettingRow("speech.polish", icon: "wand.and.stars") {
-            if let p = d.polish {
-                if !p.supported {
-                    ModelName(text: S("speech.purpose.polish.unsupported"))
-                } else {
-                    let here = p.models.filter { $0.installed }
-                    ModelPopUp(label: S("speech.purpose.polish"), current: m.auto && d.polishAuto ? ModelPopUp.auto : p.selected,
-                               auto: polishValue(p), choices: here.map { ($0.id, $0.name) }, more: { library = true }) { id in
-                        if id == ModelPopUp.auto { m.useAuto() } else if let x = p.models.first(where: { $0.id == id }) { d.choose(x) }
-                    }
-                }
-            } else {
-                BrandSpinnerView(size: 12)
-            }
-        }
-    }
-
-    func polishValue(_ p: PolishState) -> String {
-        if let s = p.selected { return d.polishName(s) }
-        if let r = d.recommendedPolish, dl.queue.contains(r.id) { return S("speech.purpose.downloading", r.name) }
         return S("speech.purpose.none_yet")
     }
 
@@ -733,10 +766,15 @@ struct SpeechPane: View {
                     }
                 }
             }
-            SettingRow("speech.language") {
+            // macOS's recogniser hears one language, no detection: "Automatic" says which one it is
+            let apple = AppleSpeech.forDictation
+            let system = apple ? AppleSpeech.code(AppleSpeech.automatic) : nil
+            let now = apple ? AppleSpeech.code(AppleSpeech.locale()) : nil
+            SettingRow("speech.language", detail: now.map { S(AppleSpeech.mixed.contains($0) ? "speech.language.system" : "speech.language.system.one", endonym($0)) }) {
                 let langs = m.languages + (m.language != "auto" && !m.languages.contains(m.language) ? [m.language] : [])
                 ChoicePopup(label: S("speech.advanced.language"),
-                            choices: [("auto", S("speech.advanced.language.auto"))] + langs.map { ($0, endonym($0)) },
+                            choices: [("auto", system.map { S("speech.advanced.language.auto.system", endonym($0)) } ?? S("speech.advanced.language.auto"))]
+                                + langs.map { ($0, endonym($0)) },
                             selection: Binding(get: { m.language }, set: { m.setLanguage($0) }), dividers: [1])
             }
         }
@@ -750,7 +788,8 @@ struct SpeechPane: View {
         SettingsGroup("speech.advanced", footer: S("speech.limits.footer")) {
             resourceRows
             SettingToggle("speech.mirror", isOn: Binding(get: { m.mirror }, set: { m.setMirror($0) }))
-            let cloud = m.models.filter { !$0.local }
+            // Aliyun (Model Studio) first: the recommended speech key (the founder, 2026-10-29)
+            let cloud = m.models.filter { !$0.local }.sorted { ($0.backend == "dashscope" ? 0 : 1) < ($1.backend == "dashscope" ? 0 : 1) }
             ForEach(Array(cloud.enumerated()), id: \.element.id) { i, x in cloudRow(x, first: i == 0) }
         }
     }
@@ -783,11 +822,14 @@ struct SpeechPane: View {
 
     /// One cloud service: whether its key is found, and how to set one (the variables' names) in a popover.
     @ViewBuilder func cloudRow(_ x: ASRModel, first: Bool) -> some View {
-        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.title
+        let title = x.backend == "openai" ? S("speech.cloud.name.openai") : x.backend == "dashscope" ? S("speech.cloud.name.dashscope")
+            : x.backend == "volcengine" ? S("speech.cloud.name.volcengine") : x.title
         let detail = m.localOnly ? S("speech.cloud.off") : S("speech.note.cloud")
         // the first row is the catalogue's (search lands on it); the others are the same row for another service
         if first {
             SettingRow("speech.cloud", title: title, detail: detail) { CloudKey(model: x) }
+        } else if x.backend == "volcengine" {
+            SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { VolcengineKey(model: x) }
         } else {
             SettingRow("speech.cloud.\(x.id)", title: title, detail: detail) { CloudKey(model: x) }
         }
@@ -816,45 +858,87 @@ private struct ModelPopUp: View {
     var auto: String
     var choices: [(id: String, name: String)]
     var more: () -> Void
+    /// dictation's pop-ups: Compare Choices… after Get More Models…
+    var compare: (() -> Void)? = nil
     var pick: (String) -> Void
     var body: some View {
-        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.choice", auto))]
+        // "Automatic" alone: the model it picked is the row's line (a long name cut off in the pop-up told nobody)
+        var items: [(value: String, title: String)] = [(ModelPopUp.auto, S("speech.auto.plain"))]
         let top = items.count
         let missing = current != ModelPopUp.auto && (current == nil || !choices.contains(where: { $0.id == current }))
         if missing { items.append((current ?? "", S("speech.purpose.none_yet"))) }
         items += choices.map { ($0.id, $0.name) }
         let split = items.count
         items.append((moreModels, S("speech.purpose.more")))
+        if compare != nil { items.append((compareChoices, S("speech.compare.menu"))) }
         return ChoicePopup(label: label, choices: items,
                            selection: Binding(get: { current ?? "" }, set: { id in
-                               if id == moreModels { DispatchQueue.main.async(execute: more) } else if id != current && !id.isEmpty { pick(id) }
+                               if id == moreModels { DispatchQueue.main.async(execute: more) }
+                               else if id == compareChoices, let c = compare { DispatchQueue.main.async(execute: c) }
+                               else if id != current && !id.isEmpty { pick(id) }
                            }), dividers: [top, split])
     }
 }
 
-/// "✓ Key found" (ok + check) or "Not set", and an info button whose popover names the variables and the export line.
+/// "✓ Set" (ok + check) or "Not set", and Set Up… — the key, and for the OpenAI-compatible service its address and
+/// model, in a sheet (CloudSpeechSheet). A key from the shell profile counts as set too.
 private struct CloudKey: View {
     var model: ASRModel
-    @State private var info = false
+    @State private var sheet = false
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             if model.installed {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
-                Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
+                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
+                }
             } else {
                 Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
             }
-            Button { info.toggle() } label: { Image(systemName: "info.circle").foregroundStyle(.secondary) }
-                .buttonStyle(.borderless)
-                .help(S("speech.cloud.info")).accessibilityLabel(S("speech.cloud.info"))
-                .popover(isPresented: $info, arrowEdge: .bottom) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(S("speech.cloud.keys")).font(.system(size: SettingsMetrics.detailSize))
-                            .fixedSize(horizontal: false, vertical: true)
-                        ForEach(model.keys ?? [], id: \.self) { CommandText(text: "export \($0)=…") }
-                    }
-                    .padding(14).frame(width: 340, alignment: .leading)
+            Button(S("speech.cloud.setup")) { sheet = true }
+        }
+        // screenshots: open one service's sheet with the page
+        .onAppear { if ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_CLOUD_SHEET"] == model.id { sheet = true } }
+        .sheet(isPresented: $sheet) {
+            CloudSpeechSheet(modelID: model.id, title: model.backend == "openai" ? S("speech.cloud.name.openai") : model.title) { saved in
+                sheet = false
+                guard saved else { return }
+                let m = SpeechModel.shared
+                // a job already on this service: its server started with the old key — the next take starts a new one
+                let inUse = ASRPurpose.allCases.contains { (m.state?.selected[$0.rawValue] ?? nil) == model.id }
+                    || DictationModels.shared.asr?.selected == model.id
+                if inUse { VoiceInput.endUnresponsiveServer(why: "cloud_key") }
+                Task { await m.load() }
+            }
+            .buttonStyle(.automatic)
+        }
+    }
+}
+
+/// Volcengine Speech's row: whether its App ID and Access Token are set, and Set Up… — the Cloud services sheet (the
+/// pair is a connected service there, not a key of this page's own).
+private struct VolcengineKey: View {
+    var model: ASRModel
+    @State private var sheet = false
+    var body: some View {
+        HStack(spacing: 10) {
+            if model.installed {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.brandOk).accessibilityHidden(true)
+                    Text(S("speech.cloud.set")).foregroundStyle(.secondary)
                 }
+            } else {
+                Text(S("speech.cloud.not_set")).foregroundStyle(.secondary)
+            }
+            Button(S("speech.cloud.setup")) { sheet = true }
+        }
+        .sheet(isPresented: $sheet) {
+            CloudServiceSheet(editing: CloudStore.setup.services.first { $0.preset == VolcengineSpeech.preset },
+                              preset: VolcengineSpeech.preset) {
+                sheet = false
+                Task { await SpeechModel.shared.load() }
+            }
+            .buttonStyle(.automatic)
         }
     }
 }
@@ -869,11 +953,13 @@ private struct ModelLibrary: View {
     @State private var tab = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_TAB"] == "polish" ? Tab.polish : .asr
     @State private var hover: String? = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_HOVER"]
     @State private var confirmRemove: ASRModel?
+    /// the rest of the catalogue, folded under "More models" (v1.0.6: a dozen rows nobody could tell apart)
+    @State private var more = ProcessInfo.processInfo.environment["BLURT_TEST_SPEECH_MORE"] != nil
     enum Tab: Hashable { case asr, polish }
 
     /// fixed columns, so numbers line up from row to row (right-aligned, tabular digits)
     enum Col {
-        static let used: CGFloat = 120, accuracy: CGFloat = 62, speed: CGFloat = 46, memory: CGFloat = 62, size: CGFloat = 62
+        static let used: CGFloat = 220, speed: CGFloat = 46, memory: CGFloat = 62, size: CGFloat = 62
         static let action: CGFloat = 86, gap: CGFloat = 10
     }
 
@@ -894,7 +980,15 @@ private struct ModelLibrary: View {
             // a dozen rows at most: the sheet grows to fit them instead of scrolling
             SettingsGroup("speech.models", title: "") {
                 header
-                if tab == .asr { ForEach(asrModels) { asrRow($0) } } else { ForEach(polishModels) { polishRow($0) } }
+                if tab == .asr {
+                    ForEach(asrModels.filter(shown)) { asrRow($0) }
+                    let rest = asrModels.filter { !shown($0) }
+                    if !rest.isEmpty { moreToggle(rest.count); if more { ForEach(rest) { asrRow($0) } } }
+                } else {
+                    ForEach(polishModels.filter(shown)) { polishRow($0) }
+                    let rest = polishModels.filter { !shown($0) }
+                    if !rest.isEmpty { moreToggle(rest.count); if more { ForEach(rest) { polishRow($0) } } }
+                }
             }
             .padding(.top, -12)
             HStack(alignment: .center) {
@@ -907,7 +1001,7 @@ private struct ModelLibrary: View {
             .padding(.top, 14)
         }
         .padding(.horizontal, 22).padding(.top, 20).padding(.bottom, 18)
-        .frame(width: 760)
+        .frame(width: 820)
         .fixedSize(horizontal: false, vertical: true)
         .alert(S("speech.remove.title"), isPresented: Binding(get: { confirmRemove != nil }, set: { if !$0 { confirmRemove = nil } })) {
             Button(S("speech.remove.confirm"), role: .destructive) { if let r = confirmRemove { m.remove(r) }; confirmRemove = nil }
@@ -921,7 +1015,7 @@ private struct ModelLibrary: View {
     /// "Accuracy is for Chinese and English, from a reference test on Apple M5 Max." (+ the seal, once something is
     /// measured here); the polish tab says what polish does.
     var note: some View {
-        var t = Text(tab == .polish ? S("speech.purpose.polish.detail") : S("speech.lib.note", Loc.list(m.languages.map(languageName))))
+        var t = Text(tab == .polish ? S("speech.purpose.polish.detail") : S("speech.lib.note2"))
         if tab == .asr && m.models.contains(where: { $0.bench != nil }) {
             t = t + Text("  ") + Text(Image(systemName: "checkmark.seal.fill")).foregroundColor(Color.brandOk)
                 + Text(" " + S("speech.lib.note.measured"))
@@ -948,6 +1042,45 @@ private struct ModelLibrary: View {
     }
     func rank(installed: Bool, used: Bool) -> Int { used ? 0 : installed ? 1 : 2 }
 
+    // MARK: what each model is for, and which are folded
+
+    /// Recommended for this Mac: dictation's pick, or any job's.
+    func recommended(_ x: ASRModel) -> Bool {
+        x.id == d.asr?.recommended || ASRPurpose.allCases.contains { m.recommended($0)?.id == x.id }
+    }
+    /// Shown without "More models": in use, on this Mac, recommended, built in, or downloading.
+    func shown(_ x: ASRModel) -> Bool {
+        x.installed || !usedFor(x).isEmpty || recommended(x) || x.id == "apple-speech" || m.download(x.id) != nil
+    }
+    func shown(_ x: PolishModel) -> Bool {
+        x.installed || d.polish?.selected == x.id || d.polish?.recommended == x.id || m.download(x.id) != nil
+    }
+    /// The line in the For column: "Recommended · …", then what the model is good at (speech.tag.<id>), from the
+    /// measurements in docs/design/first-minute-speech.md and dictation.md.
+    func tag(id: String, recommended rec: Bool, tiers: [String]? = nil) -> String {
+        var parts: [String] = []
+        if rec { parts.append(S("speech.tag.recommended")) }
+        if Loc.has("speech.tag.\(id)", table: "Speech") { parts.append(S("speech.tag.\(id)")) }
+        else if let t = tiers, !t.contains("pro"), !t.contains("standard") { parts.append(S("speech.tag.small_mac")) }
+        return parts.joined(separator: " · ")
+    }
+
+    func moreToggle(_ n: Int) -> some View {
+        Button { withAnimation(.easeOut(duration: 0.15)) { more.toggle() } } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(more ? 90 : 0))
+                Text(S("speech.lib.more", n)).font(.system(size: SettingsMetrics.detailSize))
+                Spacer()
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.vertical, 8).padding(.leading, SettingsMetrics.iconSlot + Col.gap)
+        .accessibilityLabel(S("speech.lib.more", n))
+    }
+
     /// The jobs a model on this Mac does, as the page's rows show them (their icon and title): its purposes, and
     /// dictation when it is dictation's.
     func usedFor(_ x: ASRModel) -> [Job] {
@@ -963,6 +1096,8 @@ private struct ModelLibrary: View {
         var text = ""
         var err = false
         var jobs: [Job] = []
+        /// the model's own line (what it is good for), not news about it
+        var tag = false
     }
     struct Job: Hashable {
         var symbol: String
@@ -977,7 +1112,6 @@ private struct ModelLibrary: View {
             headerCell(S("speech.lib.col.model"), width: nil, trailing: false)
             headerCell(S("speech.lib.col.used"), width: Col.used, trailing: false)
             if tab == .asr {
-                headerCell(S("speech.metric.accuracy"), width: Col.accuracy, seal: true, help: S("speech.metric.accuracy.help"))
                 headerCell(S("speech.metric.speed"), width: Col.speed, seal: true, help: S("speech.metric.speed.help"))
             }
             headerCell(S("speech.metric.memory"), width: Col.memory, seal: tab == .asr, help: S("speech.metric.memory.help"))
@@ -1001,7 +1135,7 @@ private struct ModelLibrary: View {
     func asrRow(_ x: ASRModel) -> some View {
         let uses = usedFor(x)
         let picked = (x.purposes ?? []).compactMap(ASRPurpose.init(rawValue:))
-        let err = m.errorRate(x), speed = m.speed(x), memory = m.memory(x)
+        let speed = m.speed(x), memory = m.memory(x)
         let dash = x.installed ? S("speech.lib.dash.installed") : S("speech.lib.dash")
         var used = Used()
         if let p = m.download(x.id) { used.text = p.text }
@@ -1012,8 +1146,8 @@ private struct ModelLibrary: View {
         else if !x.installed, !picked.isEmpty {
             used.text = S("speech.model.picked_not_in", Loc.list(picked.map { $0.title.lowercased(with: Loc.locale) }))
         } else if !m.missing(x).isEmpty { used.text = S("speech.lib.missing", Loc.list(m.missing(x).map(languageName))) }
+        else { used.text = tag(id: x.id, recommended: recommended(x)); used.tag = true }
         return row(id: x.id, installed: x.installed, name: x.title, help: describe(x), used: used, inUse: !uses.isEmpty) {
-            MetricCell(text: err.map { percent(max(0, 1 - $0.value)) }, measured: err?.measured == true, width: Col.accuracy, dash: dash)
             MetricCell(text: speed.map { S("speech.metric.speed.value", decimal($0.value)) }, measured: speed?.measured == true,
                        width: Col.speed, dash: dash)
             MetricCell(text: memory.map { modelSize($0.value) }, measured: memory?.measured == true, width: Col.memory, dash: dash)
@@ -1066,6 +1200,7 @@ private struct ModelLibrary: View {
         if let p = m.download(x.id) { used.text = p.text }
         else if m.failed(x.id) != nil { used = Used(text: S("speech.download.failed.short"), err: true) }
         else if inUse { used.jobs = [Job.polish] }
+        else { used.text = tag(id: x.id, recommended: d.polish?.recommended == x.id); used.tag = true }
         return row(id: x.id, installed: x.installed, name: x.name, help: "", used: used, inUse: inUse) {
             MetricCell(text: x.ramMB.map(modelSize), measured: false, width: Col.memory, dash: S("speech.lib.dash"), seal: false)
             MetricCell(text: modelSize(x.sizeMB), measured: false, width: Col.size, dash: "", seal: false)
@@ -1113,9 +1248,11 @@ private struct ModelLibrary: View {
                 Image(systemName: "checkmark").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
                     .opacity(installed ? 1 : 0).frame(width: SettingsMetrics.iconSlot)
                     .accessibilityHidden(true)
-                Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(1).truncationMode(.tail)
+                // a long name ("Whisper large-v3-turbo (4-bit)") wraps rather than losing its end; the tooltip names it too
+                Text(name).font(.system(size: SettingsMetrics.titleSize)).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .help(help)
+                    .help(help.isEmpty ? name : name + "\n" + help)
                 Group {
                     if used.jobs.isEmpty {
                         Text(used.text).font(.system(size: SettingsMetrics.detailSize)).monospacedDigit()
@@ -1123,15 +1260,11 @@ private struct ModelLibrary: View {
                             .lineLimit(1).truncationMode(.tail)
                             .help(used.text)
                     } else {
-                        let names = Loc.list(used.jobs.map(\.title))
-                        HStack(spacing: 8) {
-                            ForEach(used.jobs, id: \.self) { j in
-                                Image(systemName: j.symbol).font(.system(size: 13)).foregroundStyle(.secondary).frame(width: 16)
-                            }
-                        }
-                        .help(names)
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(S("speech.lib.col.used") + " " + names)
+                        // in words, not icons (v1.0.6: nobody could read the icon row): "In use: dictation, voice notes"
+                        let names = Loc.list(used.jobs.enumerated().map { i, j in i == 0 ? j.title : j.title.lowercased(with: Loc.locale) })
+                        Text(S("speech.lib.in_use", names)).font(.system(size: SettingsMetrics.detailSize))
+                            .foregroundStyle(Color.brandInk).lineLimit(1).truncationMode(.tail)
+                            .help(S("speech.lib.in_use", names))
                     }
                 }
                 .frame(width: Col.used, alignment: .leading)

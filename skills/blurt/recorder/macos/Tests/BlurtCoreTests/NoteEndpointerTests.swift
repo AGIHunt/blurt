@@ -260,6 +260,19 @@ final class NoteEndpointerTests: XCTestCase {
         XCTAssertEqual(events.last, .ended(.silence))
     }
 
+    func testDefaultsUnchanged() {
+        let e = NoteEndpointer()
+        XCTAssertEqual(e.silenceToEnd, 1.8)
+        XCTAssertEqual(e.noSpeechTimeout, 8)
+        XCTAssertEqual(e.maxLength, 60)
+        // a short start ends on the 1.8 s pause (dictation, ⌥V with "End a voice note when I pause")
+        let lead = 0.6, burst = 0.6
+        let voice = [Float](repeating: 0, count: Int(lead * Self.sr)) + Self.talk(burst, db: -24)
+        let r = Self.run(Self.mix(Self.room(lead + burst + 4, db: -44), voice))
+        XCTAssertEqual(r.ended?.0, .silence)
+        XCTAssertLessThan(r.ended?.1 ?? 99, lead + burst + 2.4)
+    }
+
     // MARK: a real voice (macOS `say`), in the room
 
     /// `say` → 16 kHz mono samples at `db` dBFS (skips the test where there is no `say`).

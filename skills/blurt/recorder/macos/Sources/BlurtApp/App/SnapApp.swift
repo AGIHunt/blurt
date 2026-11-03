@@ -2,8 +2,8 @@
 // only) a distributed-notification command channel so scripted UI tests can drive the app without global hotkeys:
 //   dev.blurt.recorder.command[.$BLURT_TEST_CHANNEL]  userInfo {"cmd": …}
 //     record · snap · snapregion x,y,w,h · commit · cancel · edit N · notes · stop · shortcuts · menu · toast TEXT …
-//     menudump [FILE]         the ⌥⇧B menu as text rows (also written to FILE), without opening it
-//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥⇧H) / Esc / "+N" clicked / as if the
+//     menudump [FILE]         the ⌥B menu as text rows (also written to FILE), without opening it
+//     cards [show|reveal|dismiss|older|hover [N]]  the cards down (peek) / to stay (= ⌥H) / Esc / "+N" clicked / as if the
 //                             pointer rested on card N (no N: the pointer again); their state, every card's rect
 //                             as "card" events (global top-left points)
 //     cardcopy N [click|image|text] · cardmenu N · carddrag N PASTEBOARD [CLASS|BUNDLE]   a card's copies, menu, what
@@ -24,17 +24,17 @@
 //                             window=same|other, secure=1): test builds read no Accessibility (DragNoteFollowUp)
 //     droptarget map PID=BUNDLE,… | fixed BUNDLE | clear   stand-in windows (by owner pid) as the apps they stand in
 //                             for, when a drag decides what to hand over (CardDrag.swift)
-//     taken list|show|hide|rows|expire|menu   Recently Taken: the captures ("taken" events), its panel, the panel's rows
-//                             ("taken_row": n + the picture's rect, global top-left), housekeeping now, the island's
-//                             right-click menu as text ("island_menu_dump")
-//     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a taken capture's actions
-//     taken hover [N]         the panel's row of capture N as if pointed at (its wash, Copy and ···); no N: none
+//     taken list|show|hide|rows|expire|menu   used cards (Recently Taken): the captures ("taken" events), the Cards
+//                             panel on History, its tiles ("taken_row": n + the picture's rect, global top-left),
+//                             housekeeping now, the island's right-click menu as text ("island_menu_dump")
+//     taken putback N · taken copy N [click|image|text] · taken drag N PASTEBOARD   a used card's actions
+//     taken hover [N]         History's tile of capture N as if pointed at (its wash and actions); no N: none
 //     clock SECONDS           move Recently Taken's clock (Snapper.clockOffset) to see 7 days pass
 //     cardnote N · cardretry N   what card N says ("card_note": text, mic, status) · = Retry Transcription
 //                             (BLURT_TEST_WORDS_FAIL=N: the first N transcriptions fail)
 //     hotkey ACTION           as if its keys were pressed (e.g. hotkey cards)
-//     island open|close|switcher|frame   open / close the island, ⌥⇧O, or report its frame ("island" event)
-//     voice down|up|tap       ⌥⇧V pressed / released (a tap = down + up)
+//     island open|close|switcher|frame   open / close the island, ⌥O, or report its frame ("island" event)
+//     voice down|up|tap       ⌥V pressed / released (a tap = down + up)
 //     voice keys SCRIPT | structure | earclick   key events while it listens ("shift-down@0 shift-up@120": a lone ⇧
 //                             toggles Structured) · a click on the island's Structured chip · on its right ear
 //     assign N PROJECT|inbox  = dropping card N (with its ⌘-click selection) on that target · aisort · deleteall
@@ -45,11 +45,13 @@
 //     refilerun start|done|fail SESSION   as if SESSION were being organized: Change only notes it; done = the run's
 //                             end (Refile.organized), fail = a failed run (Refile.runEnded)
 //     organize (the cards → the current project, one agent run) · enrich UID,… (AI fill-in) · askproject
-//     notetype TEXT · notekey esc|return (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
+//     notetype TEXT · notekey esc|return|shift-return|tab · noteheard TEXT (the note bubble) · toastaction [1|2] (the island toast's / question's answer)
 //     · islandclick (a click on the toast's line, not its button: opens the island, never runs its action)
 //     noteclear · noteink down|move|up X,Y [shift|option] · noteundo · notestall · notestate (the note bubble: ⌘A⌫, the
 //                             pen — on the frozen picture in place, else the bubble's —, ⌘Z, a mic gone, what it shows)
 //     notechip open|close|type T|down|up|return|pick ID|inbox   the bubble's "Goes to X" chip and its list
+//     notekind open|close|click|row N|hover|unhover   the bubble's type chip and its list (notekey cmd-1…cmd-4, cmd-0,
+//                             up, down: its keys)
 //     stage [click]           the in-place markup stage's state; click = a click outside the frozen picture (done)
 //     fakerecording ink · recink down|move|up X,Y [shift|option]   the recording pen (its key held) on a fake take
 //     recask [off] · recmore  the recording's discard question · the open recording island's ··· menu
@@ -109,18 +111,31 @@ extension App {
         let arg = parts.count > 1 ? parts[1] : ""
         emit(["event": "test_command", "cmd": cmd])
         switch parts.first ?? "" {
-        case "snap": hotkey(.snap)                     // = ⌥⇧A: a still of the take while recording, else snap mode
+        case "snap": hotkey(.snap)                     // = ⌥A: the snap flow (into the take while recording)
         case "record": startRecording(useLast: true)   // = menu "录制上次的区域" (record.last_region), no picker
-        case "snapregion":                              // snapregion x,y,w,h [PNG] [quiet]: PNG stands in for the screen; quiet = no note
-            let a = arg.split(separator: " ").map(String.init)
-            if a.count > 1 { setenv("BLURT_TEST_STILL", a[1], 1) }
+        case "snapregion":                              // snapregion x,y,w,h [PNG|-] [quiet] [take]: PNG stands in for the screen
+            let a = arg.split(separator: " ").map(String.init)  // (- = the real screen); quiet = no note; take = ⌥A while recording
+            if a.count > 1, a[1] != "-", a[1] != "quiet", a[1] != "take" { setenv("BLURT_TEST_STILL", a[1], 1) }
             let p = (a.first ?? "").split(separator: ",").compactMap { Double($0) }
             guard p.count == 4 else { return }
             snapper.rememberFrontApp()
-            snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"))
+            snapper.capture(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), withNote: !a.contains("quiet"),
+                            take: a.contains("take") ? rec : nil)
+        case "screentext", "screentranslate":           // screentext x,y,w,h [PNG]: ⌥C (⌥T) without the drag; PNG stands in for the screen
+            let a = arg.split(separator: " ").map(String.init)
+            if a.count > 1 { setenv("BLURT_TEST_STILL", a[1], 1) }
+            let p = (a.first ?? "").split(separator: ",").compactMap { Double($0) }
+            let tr = parts.first == "screentranslate"
+            // where it would be pasted, as at a key-down: a test build's is the test pad when it is open (`dictation testpad`)
+            let target = ScreenTextCopy.target()
+            let read = { ScreenTextCopy.shared.read(CGRect(x: p[0], y: p[1], width: p[2], height: p[3]), via: "test", translate: tr, target: target) }
+            if p.count == 4 { ScreenTextRefine.installed == nil ? ScreenTextRefine.refreshInstalled(read) : read() }
+            else { ScreenTextCopy.shared.hotkey(via: "test", translate: tr) }
+        case "textcard":                                // textcard TEXT (\n = a line break) | close | state | copy | esc: ⌥T's card
+            ScreenTextCard.shared.testCommand(arg)
         case "cards":
             if arg == "show" { hanging.show(peek: 8) }
-            if arg == "reveal" { hanging.reveal(via: "test") }      // = ⌥⇧H / the ear's count / the menu
+            if arg == "reveal" { hanging.reveal(via: "test") }      // = the ear's count (⌥H opens the Cards panel)
             if arg == "dismiss" { hanging.dismiss() }               // = Esc
             if arg == "older" || arg == "all" { hanging.openOverview() }   // = a click on the "+N" tile
             if arg.hasPrefix("hover") { hanging.testHover(n: Int(arg.dropFirst(5).trimmingCharacters(in: .whitespaces))) }  // hover N | hover
@@ -246,7 +261,7 @@ extension App {
             switch a.first ?? "list" {
             case "show": TakenPanel.shared.show()
             case "hide": TakenPanel.shared.hide()
-            case "hover": TakenPanel.shared.testHover(a.count > 1 ? Int(a[1]) : nil)    // hover N: as if pointed at
+            case "hover": CardsOverview.shared.testCommand("hover " + (a.count > 1 ? a[1] : ""))    // hover N: as if pointed at
             case "expire": emit(["event": "taken_expire", "trashed": snapper.expireTaken()])
             case "putback": if let s = find(1) { snapper.putBack(s) }
             case "copy": if let s = find(1) { TakenPanel.copy(s, HangingCards.Copy(rawValue: a.count > 2 ? a[2] : "click") ?? .click) }
@@ -258,11 +273,12 @@ extension App {
                     pb.writeObjects(items)
                     emit(["event": "taken_drag_items", "n": s.n, "types": items.map { $0.types.map(\.rawValue) }])
                 }
-            case "rows":
-                for r in TakenPanel.shared.rows {
-                    guard let w = r.window else { continue }
-                    let f = toCG(w.convertToScreen(r.thumb.convert(r.thumb.bounds, to: nil)))
-                    emit(["event": "taken_row", "n": r.shot.n, "rect": [f.minX, f.minY, f.width, f.height]])
+            case "rows":                                // the Used segment's tiles (their pictures, screen rects)
+                if TakenPanel.shared.isOpen {
+                    for (n, r) in CardsOverview.shared.tileFrames {
+                        let f = toCG(r)
+                        emit(["event": "taken_row", "n": n, "rect": [f.minX, f.minY, f.width, f.height]])
+                    }
                 }
             case "menu": emit(["event": "island_menu_dump", "rows": menuDumpLines(TakenPanel.islandMenu())])
             default: break
@@ -290,7 +306,7 @@ extension App {
             if let i = move?.submenu?.items.first(where: { $0.title == target }) as? ClosureMenuItem { i.fire() }
         case "pick":                                    // pick PROJECT|inbox: choose a row of the island's switcher / pick form
             if let p = island.pick { island.closeSwitcher(); p.choose(arg) }
-            else { Task { try? await ProjectStore.shared.use(arg == "inbox" ? nil : arg); await MainActor.run { island.projectChanged() } } }
+            else { MissingFolder.use(arg == "inbox" ? nil : arg, via: "test") }
         case "pickrows":                                // pickrows [QUERY]: the switcher's rows as shown, after typing QUERY
             if island.drawer != .switcher { island.showSwitcher() }
             island.content.query = arg
@@ -317,7 +333,7 @@ extension App {
         case "mascot":                                  // mascot CLIP [SIZE] | mascot close: Peep alone in a window
             MascotStage.show(arg)
         case "fakerecording":                           // fakerecording [stop]: the island's recording state without a capture stream
-            if arg == "stop" { let r = rec; rec = nil; island.recordingStopping(r); return }
+            if arg == "stop" { let r = rec; rec = nil; island.recordingStopping(r); snapper.takeEnded {}; return }
             let r = Recorder(region: CGRect(x: 360, y: 260, width: 900, height: 560))
             rec = r
             r.sessionStart = hostNow()
@@ -355,12 +371,17 @@ extension App {
                 try? FileManager.default.copyItem(at: URL(fileURLWithPath: a[2]), to: dir.appendingPathComponent("recording.mp4"))
             }
             takeEnded(5, ev)
+        case "recnotch":                                // recnotch on|off: Settings' "Don't record the notch" (a take follows at once)
+            setRecordConfig(CaptureExclusion.hideNotchKey, arg == "on" ? true : nil)
+            rec?.updateFilter()
+            emit(["event": "recnotch", "hide_notch": OwnWindows.hideNotch])
         case "recask": island.confirmDiscard(arg != "off")       // the recording's Discard or Restart…: the question
         case "recmore": DispatchQueue.main.async { island.content.showRecordingMenu() }   // the open recording island's ··· menu
         case "aisort": snapper.handToAI()
         case "organize": snapper.handToAI(project: ProjectStore.shared.organizeTarget)     // the island's "Organize" button
         case "notetype": NoteBubble.shared.testType(arg)                            // typing into the note bubble
-        case "notekey": NoteBubble.shared.testKey(arg == "esc" ? 53 : 36)           // notekey esc|return: a real key event
+        case "notekey": NoteBubble.shared.testKey(arg)                              // notekey esc|return|shift-return|tab: a real key event
+        case "noteheard": NoteBubble.shared.testHeard(arg)                          // noteheard TEXT[|PENDING]: the live words while it listens
         case "noteclear": NoteBubble.shared.testClear()                             // ⌘A ⌫ in the note's field
         case "noteclick": NoteBubble.shared.testClickField()                        // a click into the note's field
         case "noteink":                                 // noteink down|move|up X,Y [shift|option]: the pen on the note's
@@ -373,8 +394,9 @@ extension App {
         case "noteundo": NoteBubble.shared.testUndo()                               // ⌘Z in the note bubble
         case "notehover": NoteBubble.shared.testHover(arg != "off")                 // notehover [off]: the pointer on the bubble
         case "notemic": NoteBubble.shared.testMic(arg)                              // notemic busy|gone|off: the mic's states
-        case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the words came in (Saved)
+        case "notewords": NoteBubble.shared.testWords(arg)                          // notewords TEXT: the mic stopped, the final words came in
         case "notechip": NoteBubble.shared.testChip(arg)                            // notechip open|close|type T|down|up|return|pick ID|inbox
+        case "notekind": NoteBubble.shared.testKind(arg)                            // notekind open|close|click|row N|hover|unhover: the type chip
         case "stage":                                   // stage [click]: the in-place markup stage; click = outside the picture
             if arg == "click" { InkStage.shared.testClickOutside() }
             emit(["event": "stage_state"].merging(InkStage.shared.testState) { $1 })
@@ -494,7 +516,7 @@ extension App {
         case "hotkeys":                                 // dump the state, for scripted checks
             emit(["event": "hotkeys", "keys": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.shortcut($0)?.spec ?? "off") }),
                   "states": Dictionary(uniqueKeysWithValues: HotAction.allCases.map { ($0.rawValue, Hotkeys.shared.states[$0].map { "\($0)" } ?? "") })])
-        case "menu":                                    // menu: the ⌥⇧B menu, popped up
+        case "menu":                                    // menu: the ⌥B menu, popped up
             let t = NSMenu()
             menuNeedsUpdate(t)
             emit(["event": "menu", "items": t.items.count])
@@ -504,7 +526,7 @@ extension App {
             let close = Timer(timeInterval: 8, repeats: false) { _ in t.cancelTracking() }
             RunLoop.main.add(close, forMode: .common)
             RunLoop.main.perform { t.popUp(positioning: nil, at: NSPoint(x: 900, y: 900), in: nil) }
-        case "menudump":                                // menudump [FILE]: the ⌥⇧B menu's rows as text, without opening it
+        case "menudump":                                // menudump [FILE]: the ⌥B menu's rows as text, without opening it
             let m = NSMenu()
             menuNeedsUpdate(m)
             let lines = menuDumpLines(m)
@@ -550,19 +572,24 @@ extension App {
         }
     }
 
-    /// ⌥⇧V (voice note), ⌥⇧O (the project switcher), Esc while listening — K7.
+    /// ⌥V (voice note), ⌥O (the project switcher), Esc while listening — K7.
     func captureHotkey(_ k: HK) {
         switch k {
         case .voice:
             VoiceInput.shared.pressed()
             Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
-        case .dictationEsc: Dictation.shared.cancel()
+        case .dictationEsc: Dictation.shared.escFromHotkey()
         case .project: if resident { island.toggleSwitcher() }
-        case .cards: if resident { hanging.reveal(via: "hotkey", keyboard: true) }     // the keyboard on the cards too
-        case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥⇧L (dictation-styles.md)
+        // ⌥H: the Cards panel with the keyboard — Hanging, or Used when nothing hangs; open already, it closes
+        case .cards: if resident { CardsOverview.shared.toggle(via: "hotkey") }
+        case .reformat: if resident { Dictation.shared.reformatLast(via: "hotkey") }      // ⌥L (dictation-styles.md)
+        case .text: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey") }           // ⌥C (ScreenTextCopy.swift)
+        case .translateText: if resident { ScreenTextCopy.shared.hotkey(via: "hotkey", translate: true) }    // ⌥T
+        case .translateEsc: ScreenTextCard.shared.close(why: "esc")                      // Esc while ⌥T's card shows
         // Esc while the cards are down on purpose (the voice note's own Esc wins while it still cancels)
         case .cardsEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() } else { hanging.dismiss() }
+        case .overviewEsc: CardsOverview.shared.escape()        // Esc while the pointer is on the Cards panel
         default: break
         }
     }
@@ -583,38 +610,28 @@ extension App {
             return
         }
         item("capture.menu.snap", #selector(mSnap)).showHotkey(.snap)
+        item("capture.menu.text", #selector(mText)).showHotkey(.text)
+        item("capture.menu.translate", #selector(mTranslate)).showHotkey(.translateText)
         item("capture.menu.voice", #selector(mVoice)).showHotkey(.voice)
     }
 
-    /// The menu's "what waits for you" rows after Open Blurt: the cards while some hang, the cards dragged out lately,
-    /// Dictation History. Counts are the rows' badges (macOS 14+), never part of their titles.
+    /// The menu's "what waits for you" rows after Open Blurt: Show Cards (⌥H's row: the Cards panel) while a card
+    /// hangs or one was used in the last 7 days, Dictation History. Counts are the rows' badges (macOS 14+), never part
+    /// of their titles.
     func addWaitingMenuItems(_ menu: NSMenu) {
-        // only while something hangs (⌥⇧H itself is listed in Settings → Shortcuts)
-        if hanging.count > 0 {
+        if hanging.count > 0 || !snapper.recentlyTaken.isEmpty {
             let cards: NSMenuItem
             if #available(macOS 14.0, *) {
                 cards = NSMenuItem(title: T("app.menu.cards"), action: #selector(mShowCards), keyEquivalent: "")
-                cards.badge = NSMenuItemBadge(count: hanging.count)
+                if hanging.count > 0 { cards.badge = NSMenuItemBadge(count: hanging.count) }
             } else {
-                cards = NSMenuItem(title: Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count),
+                cards = NSMenuItem(title: hanging.count > 0 ? Loc.plural("capture.menu.show_cards", table: "Capture", count: hanging.count)
+                                                            : T("app.menu.cards"),
                                    action: #selector(mShowCards), keyEquivalent: "")
             }
             cards.target = self
             cards.showHotkey(.cards)
             menu.addItem(cards)
-        }
-        // cards dragged out into other apps in the last 7 days (never lost: copy them, drag them again, put them back)
-        let taken = snapper.recentlyTaken.count
-        if taken > 0 {
-            let it: NSMenuItem
-            if #available(macOS 14.0, *) {
-                it = NSMenuItem(title: Loc.t("capture.taken.title", table: "Capture"), action: #selector(mShowTaken), keyEquivalent: "")
-                it.badge = NSMenuItemBadge(count: taken)
-            } else {
-                it = NSMenuItem(title: Loc.t("capture.taken.menu", table: "Capture", taken), action: #selector(mShowTaken), keyEquivalent: "")
-            }
-            it.target = self
-            menu.addItem(it)
         }
         let dict = NSMenuItem(title: Loc.t("dictation.menu.history", table: "Dictation"), action: #selector(mDictationHistory), keyEquivalent: "")
         dict.target = self
@@ -622,17 +639,19 @@ extension App {
         menu.addItem(dict)
     }
 
-    @objc func mShowTaken() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { TakenPanel.shared.show() } }
 
     @objc func mSnap() {
         if let r = rec { r.snap(via: "menu"); return }
         // the menu is still closing: let it go before the picker takes the screen
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { snapper.hotkey() }
     }
+    @objc func mTranslate() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenTextCopy.shared.hotkey(via: "menu", translate: true) } }
+    @objc func mText() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { ScreenTextCopy.shared.hotkey(via: "menu") } }
     @objc func mVoice() { VoiceInput.shared.toggle() }
     @objc func mDictationHistory() { MainActor.assumeIsolated { DictationHistoryWindow.shared.show() } }
     @objc func mSwitchProject() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { island.showSwitcher() } }
-    @objc func mShowCards() { hanging.reveal(via: "menu") }
+    /// "Show Cards" (⌥H's row): the Cards panel, as ⌥H opens it.
+    @objc func mShowCards() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { if !CardsOverview.shared.isOpen { CardsOverview.shared.toggle(via: "menu") } } }
     @objc func mLiveCaption() { setRecordConfig("live_caption", !liveCaptionOn) }
 }
 

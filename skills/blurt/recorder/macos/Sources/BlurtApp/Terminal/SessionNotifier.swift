@@ -41,7 +41,8 @@ final class SessionNotifier: NSObject, UNUserNotificationCenterDelegate {
 
     func post(_ j: Job, _ a: AgentInfo, _ status: AgentSessionStatus) {
         guard (Config.shared["notify.agent"] as? Bool) ?? true else { return }
-        let project = MainWindowController.projectName(j.project ?? "inbox")
+        // a setup session isn't in a project: its name, as the Sessions pane shows it (not "Removed project")
+        let project = j.project == AgentSetup.project ? M("models.agent.session") : MainWindowController.projectName(j.project ?? "inbox")
         let labels = HandoffLabels.labels(a.handoff)
         let head = labels.first.map { "\($0.id) · \($0.title)" } ?? (a.windowName ?? "")
         let more = labels.count > 1 ? " " + TL("notify.more", labels.count - 1) : ""

@@ -56,7 +56,7 @@ def test_who_may_move():
     for s in ("todo", "done", "wontfix", "discarded"):  # never an agent's call
         assert not any(_common.may_move(f, s, "agent") for f in LIFE["states"] if f != s and s != "todo"
                        or f in ("new", "done", "wontfix", "discarded")), s
-    assert not _common.may_move("new", "done", "user")  # not in the menu: keep it first
+    assert _common.may_move("new", "done", "user")  # BA-56: done straight from the inbox, no Accept first
 
 
 def test_migration_cases():
@@ -117,8 +117,8 @@ class Files(Base):
         self.assertEqual(inbox(), 2)
         rows = dict(con.execute("SELECT state, COUNT(*) FROM items GROUP BY state").fetchall())
         self.assertEqual(rows, {"new": 2, "wontfix": 2, "done": 1})
-        code, out = run_cli("items.py", "state", "WA-4", "--action", "done", "--by", "user", env=env)
-        self.assertEqual((code, out["code"]), (1, "bad_transition"))  # new → done isn't a step: keep it first
+        ok("items.py", "state", "WA-4", "--action", "done", "--by", "user", env=env)  # straight from new (BA-56)
+        self.assertEqual(inbox(), 1)
 
     def test_a_v06_session_migrates_to_states(self):
         sessions = self.proj / ".blurt" / "sessions"

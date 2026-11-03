@@ -41,6 +41,10 @@ def test_an_agent_that_dies_at_startup_says_why_and_can_start_again(p2):
     assert job["error"]["message"] == "Error: timed out discarding buffered terminal input"
     # people get a sentence with what to do (too old: update it), never the raw line (dogfood-2 W41)
     assert "Codex" in job["error"]["reason"] and "update" in job["error"]["reason"].lower()
+    # in both languages (the app shows its own, whatever the monitor guessed), with the update command
+    assert job["error"]["reason_i18n"]["en"] == job["error"]["reason"]
+    assert "版本太旧" in job["error"]["reason_i18n"]["zh"] and "npm i -g @openai/codex" in job["error"]["reason_i18n"]["zh"]
+    assert job["error"]["fix"] == "npm i -g @openai/codex" and job["error"]["need"] == "0.164.0"
     assert job["agent"]["last_output"][-1] == job["error"]["message"]
     assert not any("Pane is dead" in ln for ln in job["agent"]["last_output"])
     assert job["agent"]["changes"] == {"ahead": 0, "dirty": 0}  # nothing to review
@@ -75,9 +79,31 @@ def test_claude_at_its_trust_prompt_needs_you(p2):
     jid = dispatch(p2, it["uid"], agent="claude")["jobs"][0]["id"]
     p2.wait(lambda: p2.status(jid) == "waiting_input" and p2.job(jid)["agent"]["status_source"] == "tty",
             what="the trust dialog, from the terminal")
+    assert p2.job(jid)["agent"]["waiting_hint"] == "trust"  # the app explains this question in one line
+    assert p2.get(it["uid"])["state"] == "handed_off"  # a trust question is not work: not "in progress by" it
     p2.type(jid)  # trusted: the hooks take over
     p2.wait(lambda: p2.job(jid)["agent"].get("status_source") == "hook", what="hooks")
     p2.wait(lambda: p2.status(jid) == "waiting_input", what="the permission prompt")
+    assert "waiting_hint" not in p2.job(jid)["agent"] and p2.get(it["uid"])["state"] == "in_progress"
+
+
+def test_quitting_at_the_trust_question_is_not_a_session_that_worked(p2):
+    """Dogfood: declining Claude's folder-trust question said the agent 'didn't report back', and the item's history
+    said 'In progress by Claude Code' — from an agent that never started."""
+    p2.env["FAKE_TRUST"] = "1"
+    proj = p2.project(p2.repo())
+    it = p2.item(proj["id"])
+    jid = dispatch(p2, it["uid"], agent="claude")["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "waiting_input" and p2.job(jid)["agent"].get("waiting_hint") == "trust",
+            what="the trust question")
+    p2.type(jid, "2")  # No, exit
+    j = p2.wait(lambda: (lambda x: x if x["agent"].get("closed") else None)(p2.job(jid) if p2.status(jid) else None),
+                what="the exit")
+    assert j["agent"]["stopped_at"] == "trust" and not j["agent"].get("started")
+    item = p2.get(it["uid"])
+    assert item["state"] == "handed_off" and item["work"]["job"] == jid  # never "in progress by Claude Code"
+    new = p2.run("sessions.py", "restart", jid)["jobs"][0]["id"]  # and it can simply start again
+    assert p2.get(it["uid"])["work"]["job"] == new
 
 
 def test_claude_not_logged_in_is_an_error_not_running(p2):
@@ -264,3 +290,59 @@ def test_restart_removes_its_own_worktree_after_an_earlier_session_on_the_same_p
     (new,) = p2.run("sessions.py", "restart", second["id"])["jobs"]
     assert new["worktree"] == second["worktree"] and new["branch"] == second["branch"]  # the old one went first
     assert not Path(second["worktree"] + "-2").exists()
+
+
+def test_merge_lands_only_what_the_review_showed(p2):
+    """Dogfood (P1): End Session and Merge committed and merged whatever the worktree held by then — edits the agent
+    made after the review loaded, or a turn cut short by Ctrl-C — without showing them. The review now says whether
+    the agent is still in its window and carries a token of what it showed; merge refuses anything else."""
+    repo = p2.repo()
+    proj = p2.project(repo)
+    it = p2.item(proj["id"])
+    j = dispatch(p2, it["uid"], agent="claude")["jobs"][0]
+    w = Path(j["worktree"])
+    (w / "reviewed.txt").write_text("seen\n")
+    d = p2.run("sessions.py", "finish", j["id"], "--action", "diff")
+    assert d["alive"] is True and d["reviewed"]
+    p2.run("sessions.py", "stop", j["id"])
+    d = p2.run("sessions.py", "finish", j["id"], "--action", "diff")
+    assert d["alive"] is False and d["agent_status"] is None
+    assert p2.run("sessions.py", "finish", j["id"], "--action", "diff")["reviewed"] == d["reviewed"]  # stable
+    (w / "late.txt").write_text("never reviewed\n")
+    out = p2.run("sessions.py", "finish", j["id"], "--action", "merge", "--expect", d["reviewed"], ok=False)
+    assert out["code"] == "changed" and not (repo / "late.txt").exists() and not (repo / "reviewed.txt").exists()
+    assert p2.git(w, "status", "--porcelain")  # the real index was not touched: still uncommitted, nothing staged
+    assert not p2.git(w, "diff", "--cached", "--name-only")
+    d2 = p2.run("sessions.py", "finish", j["id"], "--action", "diff")
+    assert d2["reviewed"] != d["reviewed"]
+    p2.run("sessions.py", "finish", j["id"], "--action", "merge", "--expect", d2["reviewed"])
+    assert (repo / "late.txt").exists() and (repo / "reviewed.txt").exists()
+
+
+def test_an_outdated_codex_is_refused_before_anything_starts(p2):
+    """Dogfood: Codex 0.157 was started anyway, failed 4 s later with no version or command, and Restart repeated
+    the failure. Now the panel's dry run, Start and Restart all say it is too old, with the update command."""
+    p2.env["FAKE_CODEX_VERSION"] = "0.157.0"
+    proj = p2.project(p2.repo())
+    it = p2.item(proj["id"])
+    for extra in (("--dry-run",), ()):
+        out = p2.run("sessions.py", "dispatch", "--items", it["uid"], "--agent", "codex", *extra, ok=False)
+        assert out["code"] == "outdated" and out["version"] == "0.157.0" and out["need"] == "0.164.0"
+        assert out["fix"] == "npm i -g @openai/codex" and out["agent"] == "codex"
+    assert p2.get(it["uid"])["state"] == "new" and not p2.tmux("list-windows", "-a").strip()  # nothing was made
+    p2.env["FAKE_CODEX_VERSION"] = "0.164.0"
+    assert dispatch(p2, it["uid"], agent="codex", dry_run=True)["ok"]
+
+
+def test_failure_reasons_follow_the_apps_language(p2):
+    """Dogfood: an English Blurt on a Chinese Mac showed the one sentence that says what to do in Chinese: the
+    monitor guessed the language from the global AppleLanguages. The app now passes BLURT_LANG to every script."""
+    p2.env["BLURT_LANG"] = "zh"
+    p2.env["FAKE_LOGGED_OUT"] = "1"
+    proj = p2.project(p2.repo(), worktree=False)
+    it = p2.item(proj["id"])
+    jid = dispatch(p2, it["uid"], agent="claude", force=True)["jobs"][0]["id"]
+    p2.wait(lambda: p2.status(jid) == "error", what="error")
+    err = p2.job(jid)["error"]
+    assert err["reason"] == err["reason_i18n"]["zh"] and "登录" in err["reason"]
+    assert "login" in err["reason_i18n"]["en"]

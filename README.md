@@ -2,9 +2,9 @@
 <h1 align="center">Blurt</h1>
 <p align="center"><b>The keyboard for the agent era.</b><br>
 The fastest way to work with your agents, by text, voice, screenshot or screen recording. Runs locally. Free and open source.<br>
-<a href="https://blurt.agihunt.info/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a></p>
+<a href="https://blurt.work/en/">Website</a> · <a href="README.zh-CN.md">中文</a> · <a href="docs/guide.md">User guide</a> · <a href="#community">Feishu group</a></p>
 
-<p align="center"><a href="https://blurt.agihunt.info/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
+<p align="center"><a href="https://blurt.work/en/#film"><img src="assets/film-poster.jpg" width="720" alt="Watch the 2-minute film"></a></p>
 <p align="center"><sub>Watch the 2-minute film, sound on · <a href="https://github.com/AGIHunt/blurt/releases/latest/download/Blurt.dmg">Download for Mac</a></sub></p>
 
 ---
@@ -16,18 +16,26 @@ no agent of its own and doesn't replace yours.
 ## What it does
 
 **Dictation (`Fn`).** Tap `Fn` in any app, talk, and tap it again. The words are typed where your cursor is. Finish
-with a double tap instead and it's sent too (Return). Speech recognition runs on your Mac with open-source models, so
-no internet is needed once they're downloaded; after a minute of talking the text is in about 0.4 s. A local model
-removes fillers and stutters and adds punctuation; it doesn't rewrite, summarize or translate. The words show under
-the notch as you talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to
-switch back; `⌥⇧L` reformats the last dictation. Holding `Fn` while you talk works too.
+with a double tap instead and it's sent too (Return). It works the moment Blurt is installed, with macOS's own speech
+recognition (macOS 26) and nothing to download. Open-source local models are an optional upgrade: more accurate, they
+learn your words and need no internet; after a minute of talking the text is in about 0.4 s. A local model removes
+fillers and stutters and adds punctuation; it doesn't rewrite or summarize. The words show under the notch as you
+talk. Tap `⇧` while talking to switch to Structured (a list, when you listed things) and again to switch back; tap `⌘`
+to translate (speak Chinese, type English, or the other way round); `⌥L` reformats the last dictation. Holding `Fn`
+while you talk works too.
 
-**Snap (`⌥⇧A`) and Voice Note (`⌥⇧V`).** Drag over part of the screen and say what's wrong; the note opens right
+**Snap (`⌥A`) and Voice Note (`⌥V`).** Drag over part of the screen and say what's wrong; the note opens right
 beside the selection. Draw on it as you talk: drag for a freehand line, `⇧` for a box, `⌥` for an ellipse, `⌘Z` to
 undo. The snap becomes a card under the notch. Drag the card into Claude, ChatGPT, Slack or a terminal running Claude Code or Codex: the picture and
 your note go in together. Or click it to copy, then `⌘V`. A voice note is the same, with your words and no picture.
 
-**Record (`⌥⇧R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
+**Copy text from screen (`⌥C`).** Drag over any text you can't select: a screenshot, a video, a locked page, a
+terminal. Let go and it's on the clipboard in about 0.2 s, laid out as if you had copied it: the half line the edge
+cut is left out, wrapped list items are one line again, tables keep their tabs and code its indentation. It reads with
+macOS's own recognizer, so there's nothing to download. Optionally a second reading by a small local OCR model
+(720 MB) or your own cloud model fixes misread symbols in code and paths.
+
+**Record (`⌥R`).** Record your screen while you talk through a product, a page or an idea. Your coding agent turns
 the recording into items (issues, ideas, notes, tasks), each with a screenshot, the spot marked, steps and the code
 that is probably involved. It's transcribed while you record, so it's done about a minute after you stop; one
 5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
@@ -47,22 +55,27 @@ everything it runs, so there is nothing else to install.
 Or give this to your agent (Claude Code, Codex…), or paste it into a terminal:
 
 ```bash
-curl -fsSL https://blurt.agihunt.info/install.sh | sh
+curl -fsSL https://blurt.work/install.sh | sh
 ```
 
 It downloads the latest release, checks that it is signed and notarized, puts Blurt in Applications and opens it.
 
 **Use it from your agent.** In Blurt, *Settings → Agents → Connect…* adds the Blurt skill and MCP server to Claude
-Code, Codex and the other agents it finds. Then tell your agent **"start blurt"**, or ask it about your items.
+Code, Codex and the other agents it finds (Gemini CLI, Kimi Code, OpenCode, Grok, CodeBuddy Code, WorkBuddy,
+Cursor). Start a new session of the agent, then tell it **"start blurt"** (`/blurt` in Claude Code, `$blurt` in
+Codex), or ask it about your items. Your agent can also do the connecting: [llms.txt](https://blurt.work/llms.txt) has
+the steps.
 
-<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt</code> (or <code>/plugin marketplace add
-AGIHunt/blurt</code> in Claude Code), then "start blurt". The first run builds Blurt into <code>~/Applications</code>; it
-needs the Xcode Command Line Tools and <a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install
-what's missing.</sub>
+<sub>Without the app, from source: <code>npx skills add AGIHunt/blurt -g</code>, or in Claude Code <code>/plugin
+marketplace add AGIHunt/blurt</code> and then <code>/plugin install blurt@blurt</code>. Then "start blurt". The first run
+builds Blurt into <code>~/Applications</code>; it needs the Xcode Command Line Tools and
+<a href="https://docs.astral.sh/uv/">uv</a>, and the agent offers to install what's missing.</sub>
 
 **First minute.** The setup assistant asks for Microphone and Accessibility (and Input Monitoring if you use another
-key than `Fn`), then downloads the speech models: about 5.9 GB on a Mac with 32 GB of memory, 4.4 GB on 16–24 GB.
-Nothing is downloaded until you click Download. Then press `Fn` in any text field. Screen Recording is asked for the
+key than `Fn`). Then press `Fn` in any text field: dictation already works with macOS's own recognizer. Two optional
+upgrades: one AI-service key (fixes misheard names and punctuation, and powers translation and the cloud second
+reading of copied text), and the local models (1–6 GB depending on your Mac's memory, downloaded only when you click
+Download). Screen Recording is asked for the
 first time you snap or record.
 
 ## How it works with your agents
@@ -154,7 +167,9 @@ languages.
 - When your agent organizes a recording, the transcript text and a few screenshots go to that agent's provider, like
   anything else you give it.
 - No account. Network use is limited to model downloads, update checks, a cloud speech key if you add one (Groq, OpenAI
-  or DashScope, for recordings), what your agent sends to its provider, and Send Feedback: when you click it on the
+  or DashScope, set in Settings → Models), cloud polish if you turn it on (the dictated text, never the recording, goes
+  to DeepSeek or the API you set up), translation with the cloud model if you turn it on (the text), the cloud second
+  reading of Copy Text from Screen if you choose it (the picture of the area you dragged over), what your agent sends to its provider, and Send Feedback: when you click it on the
   Dictation page, the dictations you check (their audio, every step's text, the text around the cursor if you leave it
   on, your Mac's model and settings) go to Blurt's private storage on Cloudflare, readable only by the Blurt developers
   and deleted within 14 days.
@@ -184,15 +199,15 @@ review. A real 5-minute, 12-item session was ready in 51 s.
 
 | Use | Model | Download |
 |---|---|---|
-| Speech (dictation, voice notes, recordings), Macs with 32 GB or more | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
-| Speech, 16–24 GB | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Speech (dictation, voice notes, recordings), 16 GB and up | Qwen3-ASR 0.6B, 8-bit, MLX | 1.0 GB |
+| Speech, optional: a little better at English, 2.5× the size | Qwen3-ASR 1.7B, 8-bit, MLX | 2.5 GB |
 | Polish, 16 GB and up | Gemma 4 E2B, 4-bit | 3.4 GB |
 | Polish, 8 GB | Gemma 3 1B, 4-bit | 0.7 GB |
 | Voice notes on CPU-only machines; Japanese, Korean, Cantonese | SenseVoice Small | 228 MB |
 | Recordings in other languages | Whisper large-v3-turbo, MLX | 1.5 GB |
 
-One speech model serves every job for Chinese and English. In use, the models take about 2.8 GB of memory on a
-16–24 GB Mac and 4.2 GB with the 1.7B (measured on an M1 Max). Idle models unload after 10 minutes, and sooner when
+One speech model serves every job for Chinese and English. In use, the models take about 2.8 GB of memory (4.2 GB
+with the 1.7B; measured on an M1 Max). Idle models unload after 10 minutes, and sooner when
 macOS runs short of memory.
 
 **Which languages?** Dictation was tested in Chinese, English and mixed Chinese–English. Recordings: SenseVoice covers
@@ -220,5 +235,14 @@ action, another app or macOS. The same setting works in `~/.blurt/config.json`, 
 
 **Where is the full manual?** The [user guide](docs/guide.md) covers every feature, and
 [SKILL.md](skills/blurt/SKILL.md) is what your agent reads.
+
+## Community
+
+Questions, feedback and new releases go to the Blurt users' group on Feishu. Anyone can join, including with a free
+personal Feishu account: scan the code with the Feishu app, or [open the invite link](https://applink.feishu.cn/client/chat/chatter/add_by_link?link_token=55ame8f2-6482-400c-84b2-06de3ea29cb2&qr_code=true).
+
+<p align="center"><img src="assets/community/feishu-group-qr.png" width="200" alt="QR code to join the Blurt users' Feishu group"></p>
+
+Bugs and feature requests are also welcome as [GitHub issues](https://github.com/AGIHunt/blurt/issues).
 
 <p align="center"><sub>MIT · made by <a href="https://github.com/AGIHunt">AGI Hunt</a></sub></p>

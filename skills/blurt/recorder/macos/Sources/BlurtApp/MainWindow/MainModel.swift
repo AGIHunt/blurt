@@ -119,6 +119,10 @@ final class MainModel {
     /// list is one group only.
     private(set) var sections: [Int: ListSection] = [:]
     func section(at row: Int) -> ListSection? { sections[row] }
+    /// The group a row is in (a project id, "inbox", or a state) while the list is grouped; nil otherwise.
+    func groupKey(at row: Int) -> String? { rowKeys.indices.contains(row) ? rowKeys[row] : nil }
+    /// The first row of the group a row is in (where its header is drawn).
+    func groupStart(at row: Int) -> Int { sections.keys.filter { $0 <= row }.max() ?? 0 }
     /// Each row's group key (a project id or a state), in row order, while the list is grouped.
     private var rowKeys: [String] = []
     /// How the list on show is grouped: the place's way, none while searching (a search is one ranked list).

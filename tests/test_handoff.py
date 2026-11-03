@@ -75,7 +75,7 @@ def test_zh_and_mark(p2):
     assert p2.get(a["uid"])["state"] == "handed_off"
     assert w["to"] == "external" and w["handoff"] == out["id"] and w["by"] == "user"
     many = p2.run("handoff.py", "create", "--items", a["uid"], p2.item(proj["id"])["uid"], "--lang", "zh")
-    assert many["instruction"].startswith("请处理这 2 个条目，详情和截图见 ") and "逐条调用 mark_fixed" in many["instruction"]
+    assert many["instruction"].startswith("请处理这 2 个事项，详情和截图见 ") and "逐条调用 mark_fixed" in many["instruction"]
 
 
 def test_ids_never_repeat(p2):
@@ -142,5 +142,5 @@ def test_work_title_rules():
     assert "\n" not in long
     assert agents.work_title([{"uid": "abcdef0123", "title": ""}], None, "en") == "abcdef01 (Blurt hand-off)"
     assert agents.work_title([one, {**one, "id": "AW-13"}], "Atlas Web", "en") == "2 items · Atlas Web (Blurt hand-off)"
-    assert agents.work_title([one, one, one], "口喷鸡 iOS", "zh") == "3 个条目 · 口喷鸡 iOS（口喷鸡交接）"
+    assert agents.work_title([one, one, one], "口喷鸡 iOS", "zh") == "3 个事项 · 口喷鸡 iOS（口喷鸡交接）"
     assert agents.work_title([one, one], None, "en") == "2 items (Blurt hand-off)"

@@ -37,6 +37,13 @@ video, so any backend (even ones without timestamps) works.
                                                      built-in `say` samples) the error rate per language
                                                      → $BLURT_HOME/asr-bench.json
   transcribe.py backends                             backends and whether they are ready (legacy)
+  transcribe.py voiceprint prepare|enroll WAV|check WAV|status|clear   only my voice (docs/design/voiceprint.md):
+                                                     the speaker model, the user's voice profile, a piece's verdict
+  transcribe.py check-cloud [--model-id qwen3-asr-flash|volcengine-seedasr|openai-compatible]   Settings' Test: one
+                                                     small spoken clip (macOS `say`) to the cloud service →
+                                                     {"ok","ms","text"} or {"ok": false, "code"}; a key / base_url /
+                                                     model not saved yet comes as JSON on stdin ({"key": …};
+                                                     Volcengine: {"app_id": …, "token": …}), never as an argument
 
 Which model: --model ID / --backend B win; else config asr (auto: per purpose from `recommend`, only what is
 installed; asr.auto false: asr.models / the legacy asr.backend + asr.model). Resource caps (asr.limits): threads,
@@ -48,13 +55,18 @@ Dependencies are pinned (here and in every `--with`, PACKAGE_PINS): a new releas
 Backends (models: asr_models.json; measured: docs/design/asr-benchmark.md)
   sensevoice      local CPU, sherpa-onnx + SenseVoice-Small int8 (~230 MB). zh/en/ja/ko/yue.
   qwen3-asr-onnx  local CPU (any OS), sherpa-onnx + Qwen3-ASR 0.6B int8, 30 languages. Hotwords per stream.
+  fun-asr-onnx    local CPU (any OS), sherpa-onnx + Fun-ASR-Nano int8, zh / en / ja. Hotwords; pieces ≤ 20 s.
   qwen3-asr-mlx   local, Apple Silicon (MLX), Qwen3-ASR 0.6B 8-bit, 30 languages, `context` biasing per request
                   (dictation's default: docs/design/dictation.md §Recognition model).  needs mlx-qwen3-asr
+  fun-asr-mlx     local, Apple Silicon (MLX), Fun-ASR-Nano 0.8B, zh / en / ja, the Words as hotwords
+                  (dictation on 8 GB and slower Macs: docs/design/dictation.md §Defaults by Mac).  needs mlx-audio
   mlx-whisper     local, Apple Silicon (MLX), Whisper large-v3-turbo (fp16 / 4-bit).  needs mlx-whisper
   faster-whisper  local, NVIDIA CUDA (or CPU), Whisper large-v3-turbo (CTranslate2).  needs faster-whisper
   openai          any OpenAI-compatible /audio/transcriptions API (OpenAI, Groq, SiliconFlow, ...)
                   env: BLURT_ASR_API_KEY (or OPENAI_API_KEY / GROQ_API_KEY), BLURT_ASR_BASE_URL, BLURT_ASR_MODEL
   dashscope       Alibaba Qwen3-ASR (qwen3-asr-flash) via DashScope OpenAI-compatible chat API. env: DASHSCOPE_API_KEY
+  volcengine      Volcengine 豆包 Seed-ASR 2.0 (bigmodel_nostream), streamed over a websocket while a dictation is said
+                  (serve "stream"). env: VOLC_APP_ID, VOLC_ACCESS_TOKEN
 Backends that need a package re-run themselves with `uv run --with <package>` when it is missing.
 """
 from __future__ import annotations
@@ -62,6 +74,8 @@ from __future__ import annotations
 import argparse
 import contextlib
 import base64
+import gzip
+import hashlib
 import io
 import json
 import os
@@ -70,12 +84,16 @@ import re
 import select as _select  # `select` is this module's model pick
 import shutil
 import socket
+import struct
 import subprocess
+import tempfile
 import sys
 import threading
 import time
 import unicodedata
+import http.client
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import wave
@@ -87,7 +105,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 import dictation_vocab  # noqa: E402
-from _common import (BLURT_HOME, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
+from _common import (BLURT_HOME, CPU_SERVE_IDLE, IS_MAC, IS_WIN, MODELS_DIR, SERVE_IDLE, die, ffmpeg_bin, fmt_ts, global_config,  # noqa: E402
                      landed_in, load_json, probe_duration, progress_line, save_config_if_readable, save_json,
                      server_exit, serve_exit_reason, serve_said, use_system_certs)
 from _common import (begin_download, download_lock, download_path, end_download, fetch, folder_complete,  # noqa: E402
@@ -103,6 +121,23 @@ VAD_URLS = [
     "https://hf-mirror.com/csukuangfj/vad/resolve/main/silero_vad.onnx",
 ]
 PURPOSES = ("batch", "live", "note")
+# The VAD ships with the skill (models/silero_vad.onnx, 0.6 MB; Silero VAD, MIT, as k2-fsa/sherpa-onnx publishes it —
+# the same bytes as VAD_URLS[0]). v1.0.6: on a fresh Mac it was all a local model lacked, and the island and the setup
+# said "no speech model · 1 MB" for it. bundled_vad() puts it where the models live before anything looks for it.
+BUNDLED_VAD = HERE.parent / "models" / "silero_vad.onnx"
+
+
+def bundled_vad() -> None:
+    dest = MODELS_DIR / "silero_vad.onnx"
+    if dest.exists() or not BUNDLED_VAD.is_file():
+        return
+    try:
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_suffix(".part")
+        shutil.copyfile(BUNDLED_VAD, tmp)
+        tmp.replace(dest)
+    except OSError:
+        pass            # the download still works
 BENCH_FILE = BLURT_HOME / "asr-bench.json"
 RUN_DIR = BLURT_HOME / "run"
 
@@ -693,8 +728,8 @@ def qos_cpu_seconds() -> dict | None:
 
 # ------------------------------------------------------------------ downloads
 def _download_url(urls: list[str], dest: Path, label: str, aux: str | None = None) -> Path:
-    if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirror first
-        urls = sorted(urls, key=lambda u: "hf-mirror" not in u)
+    if os.environ.get("BLURT_HF_MIRROR"):  # the China-friendly mirrors first (GitHub releases don't load from there)
+        urls = sorted(urls, key=lambda u: not ("hf-mirror" in u or "modelscope.cn" in u))
     dest.parent.mkdir(parents=True, exist_ok=True)
     last = None
     for url in urls:
@@ -720,11 +755,13 @@ def download(rel: str, aux: str | None = None) -> Path:
     """A single model file under MODELS_DIR (the VAD, SenseVoice's files). `aux`: fetched on the way to another
     model (its progress lines are named so: progress_line)."""
     dest = MODELS_DIR / rel
+    if rel == "silero_vad.onnx":
+        bundled_vad()
     if dest.exists() and dest.stat().st_size > 0:
         return dest
     if os.environ.get("BLURT_NO_DOWNLOAD"):  # live.py: never start a download in the middle of a recording
         raise Fail(f"{rel} is not downloaded", "model_missing")
-    urls = VAD_URLS if rel == "silero_vad.onnx" else next(
+    urls = VAD_URLS if rel == "silero_vad.onnx" else VP_URLS if rel == VP_FILE else VP_SEG_URLS if rel == VP_SEG_FILE else next(
         (u for m in entries() for f, u in ((m.get("install") or {}).get("files") or {}).items() if f == rel), None)
     if not urls:
         raise Fail(f"no download source for {rel}", "model_missing")
@@ -807,8 +844,65 @@ def _own_legacy_complete(d: Path) -> bool:
 
 def installed(m: dict) -> bool:
     if not m.get("local", True):
-        return any(os.environ.get(k) for k in m.get("keys", []))
+        # every one of its variables when it needs a pair (Volcengine: App ID + Access Token), else any one
+        return (all if m.get("keys_all") else any)(os.environ.get(k) for k in m.get("keys", []))
+    if m.get("builtin"):
+        return apple_speech_ok()
     return model_path(m) is not None
+
+
+# macOS's own speech recognition (docs/design/first-minute-speech.md): SpeechTranscriber, macOS 26+, run by the Blurt
+# app's executable (`blurt-recorder --speech WAV`: Capture/AppleSpeech.swift). Nothing to download from Blurt; the
+# language's files are macOS's own (the app asks for them; a run without them fails "model_missing").
+APPLE = "apple-speech"
+APPLE_LOCALES = {"zh": "zh-CN", "zh-hant": "zh-TW", "yue": "yue-CN", "en": "en-US", "ja": "ja-JP", "ko": "ko-KR",
+                 "fr": "fr-FR", "de": "de-DE", "es": "es-ES", "it": "it-IT", "pt": "pt-BR"}
+
+
+def apple_speech_helper() -> Path | None:
+    """The Blurt executable that answers `--speech` (BLURT_APP_BIN from the app, else an installed Blurt.app)."""
+    cands = [os.environ.get("BLURT_APP_BIN") or "", str(BLURT_HOME / "Blurt.app/Contents/MacOS/blurt-recorder"),
+             "/Applications/Blurt.app/Contents/MacOS/blurt-recorder",
+             str(Path.home() / "Applications/Blurt.app/Contents/MacOS/blurt-recorder")]
+    return next((Path(c) for c in cands if c and os.access(c, os.X_OK)), None)
+
+
+_APPLE_OK: bool | None = None
+
+
+def apple_speech_ok() -> bool:
+    """macOS 26 or later, and a Blurt that can run it."""
+    global _APPLE_OK
+    if os.environ.get("BLURT_NO_APPLE_SPEECH"):     # tests: a Mac before macOS 26
+        return False
+    if _APPLE_OK is None:
+        try:
+            major = int((platform.mac_ver()[0] or "0").split(".")[0]) if IS_MAC else 0
+        except ValueError:
+            major = 0
+        _APPLE_OK = major >= 26 and apple_speech_helper() is not None
+    return _APPLE_OK
+
+
+def apple_locale(language: str | None) -> str | None:
+    """The locale for an explicit language (or asr.language), else the app's "Automatic" (AppleSpeech.automatic, the
+    same rule so recordings and dictation hear the same language): of the user's languages the first one people mix
+    English into (SWITCH_LANGUAGES: its recogniser hears the English words too), else the first one macOS's
+    recogniser speaks. An English Mac that lists Chinese too listens for Chinese, English included."""
+    picked = asr_config().get("language")
+    if language and language not in ("auto", ""):
+        langs = [language]
+    elif picked and picked != "auto":
+        langs = [picked]
+    else:
+        spoken = [x for x in user_languages() if x in APPLE_LOCALES]
+        langs = [x for x in spoken if x in SWITCH_LANGUAGES] + spoken
+    for lang in langs:
+        if lang == "zh" and chinese_script() == "hant":
+            lang = "zh-hant"
+        if lang in APPLE_LOCALES:
+            return APPLE_LOCALES[lang]
+    return None
 
 
 def _du_mb(p: Path) -> float:
@@ -945,7 +1039,8 @@ def _install_archive(m: dict) -> None:
     inst = m["install"]
     dest = MODELS_DIR / inst["dir"]
     tmp = MODELS_DIR / f".{inst['dir']}.tar.bz2"
-    _download_url([inst["archive"]], tmp, m["id"])
+    urls = inst["archive"] if isinstance(inst["archive"], list) else [inst["archive"]]
+    _download_url(urls, tmp, m["id"])
     staging = MODELS_DIR / f".{inst['dir']}.extract"
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True)
@@ -969,25 +1064,66 @@ def _install_archive(m: dict) -> None:
 
 
 # ------------------------------------------------------------------ optional packages
-def ensure_package(m: dict | str) -> None:
-    """Backends that need a Python package (mlx-whisper, parakeet-mlx, …): re-run this very command under
-    `uv run --with <package>` when it is missing, so callers never need to know."""
-    pkg = m if isinstance(m, str) else m.get("package")
-    if not pkg:
-        return
+class NeedsRestart(Exception):
+    """A running `serve` was asked for a model whose package isn't in its environment: it answers "restarting",
+    takes its run file away and starts again with the package (`_reexec_with`) — never mid-request."""
+
+    def __init__(self, pkg: str):
+        super().__init__(f"the speech server restarts to load {pkg}")
+        self.pkg = pkg
+
+
+# set by `serve` once its run file is written: from then on a missing package is a clean restart (NeedsRestart),
+# not an exec in the middle of a request
+SERVING = False
+
+
+def _has_package(pkg: str) -> bool:
     import importlib.util
-    mod = pkg.replace("-", "_")
-    if importlib.util.find_spec(mod) is not None:
-        return
+    return importlib.util.find_spec(pkg.replace("-", "_")) is not None
+
+
+def _reexec_with(pkgs: list[str]) -> None:
+    """Run this very command again under `uv run --with` these packages (and the ones already added)."""
     uv = shutil.which("uv") or str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))
     tried = [p for p in os.environ.get("BLURT_ASR_REEXEC", "").split(",") if p]
-    if pkg in tried or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
+    new = [p for p in dict.fromkeys(pkgs) if p not in tried]
+    if not new or not Path(uv).exists() or not sys.argv[0].endswith(".py"):
+        pkg = (new or pkgs or ["?"])[0]
         raise Fail(f"{pkg} is not installed (run with: uv run --with {pkg} {Path(sys.argv[0]).name} …)", "deps", 4)
-    os.environ["BLURT_ASR_REEXEC"] = ",".join(tried + [pkg])
+    os.environ["BLURT_ASR_REEXEC"] = ",".join(tried + new)
     sys.stdout.flush()
     sys.stderr.flush()
-    withs = [x for p in tried + [pkg] for x in ("--with", PACKAGE_PINS.get(p, p))]
+    withs = [x for p in tried + new for x in ("--with", PACKAGE_PINS.get(p, p))]
     os.execvp(uv, [uv, "run", "-q", *withs, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+
+
+def ensure_package(m: dict | str) -> None:
+    """Backends that need a Python package (mlx-whisper, parakeet-mlx, …): re-run this very command under
+    `uv run --with <package>` when it is missing, so callers never need to know. Inside a running server:
+    NeedsRestart (the server restarts itself between requests)."""
+    pkg = m if isinstance(m, str) else m.get("package")
+    if not pkg or _has_package(pkg):
+        return
+    tried = [p for p in os.environ.get("BLURT_ASR_REEXEC", "").split(",") if p]
+    if SERVING and pkg not in tried:
+        raise NeedsRestart(pkg)
+    _reexec_with([pkg])
+
+
+def serve_packages() -> list[str]:
+    """The packages of every local model on this Mac that a server may be asked for (any of them can become
+    dictation's in Settings): a server starts with all of them, so a model switch never restarts it. Before, it
+    re-ran itself under `uv run --with` in the middle of the request that needed one (2026-10-31: dictation switched
+    to Whisper) — the request got no answer, and until the new process was up its run file named a live pid with a
+    closed port, so every piece of the take went to a cold CLI run instead (a 30 s Whisper load each)."""
+    plat = platform_key()
+    out = []
+    for m in entries(local_only=True):
+        pkg = EXTRA_PACKAGES.get(m.get("backend"))
+        if pkg and runs_here(m, plat) and installed(m):
+            out.append(pkg)
+    return sorted(set(out))
 
 
 # ------------------------------------------------------------------ audio + VAD
@@ -1063,6 +1199,30 @@ def group_chunks(segs: list[tuple[float, float]], max_len: float, max_gap: float
         else:
             chunks.append([s, e])
     return [(s, e) for s, e in chunks]
+
+
+def pause_spans(samples: np.ndarray, max_len: float) -> list[tuple[float, float]]:
+    """The audio cut into contiguous spans of at most `max_len` s, each cut in the middle of a pause the VAD heard (a
+    hard cut only inside speech longer than that); spans with no speech in them are left out. Nothing at a span's edges
+    is trimmed: for a model that hears an utterance whole (Fun-ASR-Nano: its piece's first 0.18 s of silence cut off
+    turned 语音输入 into 语音水软, a 1.1 s VAD chunk of a 5.9 s piece came back as "Puritan")."""
+    dur = len(samples) / SR
+    segs = vad_segments(samples, max_speech=min(25, max_len))
+    if not segs:
+        return []
+    cuts = [(a[1] + b[0]) / 2 for a, b in zip(segs, segs[1:]) if b[0] > a[1]]
+    spans, start = [], 0.0
+    for i, c in enumerate(cuts + [dur]):
+        nxt = cuts[i + 1] if i + 1 < len(cuts) else dur
+        while c - start > max_len:            # one stretch of speech longer than a span
+            spans.append((start, start + max_len))
+            start += max_len
+        if nxt - start > max_len and c > start:
+            spans.append((start, c))
+            start = c
+    if dur > start:
+        spans.append((start, dur))
+    return [(a, b) for a, b in spans if any(s < b and e > a for s, e in segs)]
 
 
 def wav_bytes(samples: np.ndarray) -> bytes:
@@ -1181,6 +1341,111 @@ class Qwen3Onnx:
         st.accept_waveform(SR, x)
         self.rec.decode_stream(st)
         return [(0.0, len(x) / SR, st.result.text.strip(), lang_code(getattr(st.result, "lang", None)))]
+
+
+class FunAsrOnnx:
+    """Fun-ASR-Nano int8 on the CPU through sherpa-onnx: Windows' and Linux's dictation model for zh / en / ja
+    (docs/design/windows-models.md: 3.69 % on the founder's takes, RTF 0.12 on 4 Zen 4 threads). The export caps prompt
+    + audio at 512 tokens — about 25 s without hotwords — so pieces stay ≤ 20 s and the hotwords short; a longer
+    piece comes back empty. Hotwords are fixed when the recognizer is built, so a new Words list rebuilds it."""
+    max_chunk = 20
+    whole_spans = True          # like FunAsrMlx: a piece is heard whole, never trimmed by the VAD
+    vad_gate = True             # …but a piece with no speech in it isn't decoded (transcribe_track)
+    max_terms = 24              # each term costs prompt tokens out of the 512
+    app_hint = False            # its hotwords are fixed when the recognizer is built (bias)
+
+    def __init__(self, args):
+        d = _model_dir(args, "fun-asr-nano-int8")
+        if not (d / "llm.int8.onnx").exists():
+            raise Fail("Fun-ASR-Nano (CPU) is not downloaded: transcribe.py setup --model-id fun-asr-nano-onnx",
+                       "model_missing")
+        self.model = "fun-asr-nano-int8"
+        self.dir, self.threads, self.hotwords = d, _threads(args), ""
+        self.rec = self._build("")
+
+    # The decoder's own cap is 512 new tokens. Speech is under ~8 tokens a second (the Mac's FunAsrMlx says the same),
+    # so a piece of at most 20 s needs ~160: a repetition loop (it happens: the dogfood's 6 s of English, replayed on
+    # the VM, came back as 2,123 characters of one clause after 14.2 s of decoding) stops at this instead of running on
+    # to 512. The Mac caps each decode at 32 + 20 × its seconds; here the cap is fixed when the recognizer is built.
+    MAX_NEW_TOKENS = 32 + 8 * max_chunk
+    looped = False              # the last transcribe cut a loop (the server's answer says so: the app won't send it)
+    # A transcript longer than this many characters a second of audio (+ LOOP_SLACK) is a loop, not speech: the
+    # fastest real dictation is ~5 CJK characters or ~18 Latin characters a second.
+    LOOP_CPS, LOOP_SLACK = 30, 40
+
+    def _build(self, hotwords: str):
+        import inspect
+        import sherpa_onnx
+        d = self.dir
+        kw = {}
+        if "max_new_tokens" in inspect.signature(sherpa_onnx.OfflineRecognizer.from_funasr_nano).parameters:
+            kw["max_new_tokens"] = self.MAX_NEW_TOKENS
+        return sherpa_onnx.OfflineRecognizer.from_funasr_nano(
+            encoder_adaptor=str(d / "encoder_adaptor.int8.onnx"), llm=str(d / "llm.int8.onnx"),
+            embedding=str(d / "embedding.int8.onnx"), tokenizer=str(d / "Qwen3-0.6B"), num_threads=self.threads,
+            hotwords=hotwords, **kw)
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        hw = dictation_vocab.hotwords(terms[: self.max_terms])
+        if hw != self.hotwords:
+            self.rec, self.hotwords = self._build(hw), hw
+        return bool(hw)
+
+    def _decode(self, x) -> tuple[str, str | None]:
+        st = self.rec.create_stream()
+        st.accept_waveform(SR, x)
+        self.rec.decode_stream(st)
+        return st.result.text.strip(), lang_code(getattr(st.result, "lang", None))
+
+    def transcribe(self, x):
+        dur = len(x) / SR
+        text, lang = self._decode(x)
+        cap = self.LOOP_CPS * dur + self.LOOP_SLACK
+        if len(text) > cap:
+            # a loop: the run repeated over and over is kept once; still too long → the piece heard again in two halves
+            # cut at a pause (a loop rarely starts again on a shorter piece), each half kept once in the same way
+            text = collapse_repeats(text)
+            if len(text) > cap and dur >= 2:
+                halves = pause_spans(x, max(1.0, dur / 2 + 0.5))
+                if len(halves) > 1:
+                    parts = [collapse_repeats(self._decode(x[int(s * SR):int(e * SR)])[0]) for s, e in halves]
+                    joined = ("" if lang in ("zh", "ja", "yue") else " ").join(p for p in parts if p).strip()
+                    if len(joined) < len(text):
+                        text = joined
+            self.looped = True
+            print(f"funasr: a repetition loop in {dur:.1f} s cut to {len(text)} characters", file=sys.stderr, flush=True)
+        return [(0.0, dur, text, lang)]
+
+
+def collapse_repeats(text: str, min_unit: int = 4, times: int = 4, max_unit: int = 200) -> str:
+    """A decoder's repetition loop kept once: any run of the same span (≥ `min_unit` characters) said `times` or more
+    times in a row becomes one span; a cut-off copy at the very end goes too. Structural — it compares characters, it
+    reads no meaning — and only asked of a transcript already too long for its audio (FunAsrOnnx.transcribe)."""
+    n = len(text)
+    i = 0
+    out = []
+    while i < n:
+        best = None
+        for u in range(min_unit, min(max_unit, (n - i) // times) + 1):
+            unit = text[i:i + u]
+            k = 1
+            while text.startswith(unit, i + k * u):
+                k += 1
+            if k >= times:
+                best = (u, k)
+                break
+        if best:
+            u, k = best
+            out.append(text[i:i + u])
+            j = i + k * u
+            # the loop's last copy cut off by the token cap: a prefix of the span, at the end
+            if j < n and text[i:i + u].startswith(text[j:]):
+                j = n
+            i = j
+        else:
+            out.append(text[i])
+            i += 1
+    return "".join(out).strip()
 
 
 class MlxBackend:
@@ -1319,6 +1584,7 @@ class Qwen3Mlx(MlxBackend):
         self.context = args.prompt or ""
         self.base_context = self.context
         self.names: list[str] = []
+        self.prior = self.field = ""
         # The language the user mixes English into (docs/design/dictation.md §Code-switching): Qwen3-ASR writes its
         # whole answer in the language of the tag it decodes first, so a Chinese sentence full of English names that
         # it tags English comes back translated (和 → "and", Musk 的 → "Musk's"). None = leave the tag to the model.
@@ -1336,20 +1602,30 @@ class Qwen3Mlx(MlxBackend):
         §Streaming), so a name is spelled the same way in every piece."""
         self.prior = (text or "").strip()
 
+    def set_field(self, text: str) -> None:
+        """The text before the cursor in the field the dictation goes into (docs/design/dictation.md §Field context):
+        after the names and before the text so far, in the same system prompt — what the speech is likely about
+        (截了 when the field said 我刚截了; blurt, Typeless spelled as the conversation spells them). Never in the
+        language tag's prompt (that stays the text so far: tag_context)."""
+        self.field = (text or "").strip()
+
     def decode(self, x):
         prior = getattr(self, "prior", "")
-        ctx = (self.context + "\n" + prior).strip() if prior else self.context
+        # the field's text, then the text so far: both after the names
+        said = "\n".join(t for t in (getattr(self, "field", ""), prior) if t)
+        ctx = (self.context + "\n" + said).strip() if said else self.context
         text, lang = self._decode(x, ctx, prior)
         # The model now and then answers with the word list itself (seen on a noisy piece it couldn't make out:
-        # "Claude Code、Codex、blurt、…"): once more with only the text so far as context.
+        # "Claude Code、Codex、blurt、…"): once more with only the text so far (and the field's) as context.
         dump = False
-        if self.names and ctx != prior and dictation_vocab.context_dump(text, self.names):
-            text, lang = self._decode(x, prior, prior)
+        if self.names and ctx != said and dictation_vocab.context_dump(text, self.names):
+            text, lang = self._decode(x, said, prior)
             dump = True
-        # The text so far written out again as this piece's words (dict023): once more without it, and the shorter
-        # answer is the piece when it is clearly shorter — a speaker who really repeats themself gets the same text.
+        # The text so far (or the field's) written out again as this piece's words (dict023): once more without it,
+        # and the shorter answer is the piece when it is clearly shorter — a speaker who really repeats themself gets
+        # the same text.
         echo = False
-        if prior and echoes_prior(text, prior, len(x) / SR):
+        if said and echoes_prior(text, said, len(x) / SR):
             redo, lang2 = self._decode(x, self.context, prior)
             if redo.strip() and len(redo) < 0.8 * len(text):
                 text, lang, echo = redo, lang2, True
@@ -1489,6 +1765,84 @@ class Qwen3Mlx(MlxBackend):
         return ("" if lang in ("Chinese", "Japanese", "Cantonese") else " ").join(t for t in texts if t).strip(), lang_code(lang)
 
 
+class FunAsrMlx(MlxBackend):
+    """Fun-ASR-Nano (Alibaba, 0.8B: SenseVoice's encoder + Qwen3-0.6B) on MLX (mlx-audio). On the founder's 95 takes
+    2.84 % errors against the 0.6B's 3.34 % (2.92 % through the app's path), the best local model on Chinese with
+    English inside it (ASCEND 6.6 %), and ~0.1 s after key-up (docs/design/dictation-eval-2026-10-31.md §2.1, §3, §5;
+    docs/design/dictation.md §Defaults by Mac). Chinese, English and Japanese only
+    (asr_models.json `languages`). The Words go in as hotwords; it takes no other context (no text so far, no field
+    text: it wasn't measured with any). One whole utterance per call, ≤ 30 s (max_chunk). Interruptible: the decode is
+    our loop over mlx-audio's tokens, so an interim request stops between tokens."""
+    stop_check = None
+    interruptible = True
+    whole_spans = True      # never VAD-trimmed (transcribe_track: pause_spans)
+    max_terms = dictation_vocab.QWEN_MAX_TERMS     # its hotword list goes into the prompt like Qwen3-ASR's context
+    LANGS = {"zh": "zh", "yue": "zh", "en": "en", "ja": "ja"}     # what its prompt can name; anything else: automatic
+    EOS = (151643, 151645)
+
+    def _check(self):
+        if self.stop_check is not None and self.stop_check():
+            raise Interrupted("another request is waiting")
+
+    def load(self, args):
+        try:
+            import mlx.core as mx
+            from mlx_audio.stt import load as load_stt
+        except ImportError:
+            raise Fail("mlx-audio not installed (uv run --with mlx-audio …)", "deps", 4)
+        self.mx = mx
+        self.repo = self.model = args.model or "mlx-community/Fun-ASR-Nano-2512"
+        self.net = load_stt(self.repo)
+        self.language = self.LANGS.get((args.language or "").lower())
+        self.hotwords: list[str] = []
+        self.last: dict = {}
+
+    def release(self):
+        self.net = None
+        super().release()
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.hotwords = [t["term"] for t in terms[:self.max_terms] if str(t.get("term") or "").strip()]
+        return bool(self.hotwords)
+
+    def decode(self, x):
+        self.last = {}
+        text = self._decode(x, self.hotwords)
+        # the hotword list written out as the answer (a noisy piece it couldn't make out): once more without it
+        if self.hotwords and dictation_vocab.context_dump(text, self.hotwords):
+            text = self._decode(x, [])
+            self.last["context_dump"] = True
+        return [(0.0, len(x) / SR, text, self._lang(text))]
+
+    def _decode(self, x, hotwords: list[str]) -> str:
+        mx, net = self.mx, self.net
+        from mlx_audio.lm.generate import generate_step
+        self._check()
+        ids, embeds = net._build_inputs_embeds(mx.array(np.asarray(x, np.float32)), language=self.language,
+                                               hotwords=hotwords or None, itn=True)
+        # a loop, if it ever starts, stops well before the model's 512: speech is under ~8 tokens a second
+        budget = min(512, 32 + int(20 * len(x) / SR))
+        out: list[int] = []
+        for token, _ in generate_step(prompt=ids[0], input_embeddings=embeds[0], model=net, max_tokens=budget):
+            t = int(token)
+            if t in self.EOS:
+                break
+            out.append(t)
+            self._check()
+        text = net._tokenizer.decode(out, skip_special_tokens=True)
+        mx.clear_cache()
+        return cjk_punctuation(re.sub(r"\s+", " ", text.replace("/sil", " ")).strip())
+
+    @staticmethod
+    def _lang(text: str) -> str | None:
+        """It names no language: kana → ja, any Chinese character → zh, Latin letters only → en."""
+        if not text:
+            return None
+        if _KANA.search(text):
+            return "ja"
+        return "zh" if re.search(r"[㐀-鿿]", text) else "en" if re.search(r"[A-Za-z]", text) else None
+
+
 class FasterWhisper:
     max_chunk = 30
 
@@ -1512,14 +1866,103 @@ class FasterWhisper:
         return [(s.start, s.end, cjk_punctuation(s.text.strip()), info.language) for s in segs]
 
 
+class AppleSpeech:
+    """macOS's recogniser through the Blurt executable: the whole audio at once (it finds its own pauses and gives
+    each phrase its time), so no VAD — nothing for a first run to download."""
+    max_chunk = 3600
+    no_vad = True
+
+    def __init__(self, args):
+        self.helper = apple_speech_helper()
+        if not self.helper or not apple_speech_ok():
+            raise Fail("macOS speech recognition needs macOS 26 and the Blurt app", "model_missing")
+        self.args = args
+        self.terms: list[str] = []
+        self.model = "SpeechTranscriber"
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
+
+    def transcribe(self, x):
+        loc = apple_locale(self.args.language)
+        if not loc:
+            raise Fail("macOS speech recognition doesn't speak this language", "unsupported_language")
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+            f.write(wav_bytes(x))
+            path = f.name
+        try:
+            cmd = [str(self.helper), "--speech", path, "--locale", loc]
+            if self.terms:
+                cmd += ["--words", "\n".join(self.terms)]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=120 + len(x) / SR)
+        finally:
+            os.unlink(path)
+        line = next((ln for ln in reversed(r.stdout.splitlines()) if ln.startswith("{")), "{}")
+        data = json.loads(line)
+        if not data.get("ok"):
+            raise Fail(data.get("error") or "macOS speech recognition failed", data.get("code") or "error")
+        lang = loc.split("-")[0]
+        return [(s["start"], s["end"], s["text"], lang) for s in data.get("segments") or []]
+
+
+# Cloud recognition can hear the audio sped up (asr.cloud.speed, every provider; docs/design/first-minute-speech.md
+# §2.4): billing is per second of audio sent. Measured with DashScope qwen3-asr-flash on 270 kept takes: 1x 6.8 % (full
+# cost), 1.5x 8.0 % for 64 % of the cost, 2x 11.6 % for 47 % — and twice it answered with the word list instead of the
+# speech. Since dictation sends the whole take (2026-10-31, docs/design/dictation.md §Cloud recognition) the default is
+# 1x: on the founder's 95 takes, whole with the words and the field's text, 2.02 % at 1x against 3.32 % at 1.5x.
+# Pitch is kept (ffmpeg atempo); the times that come back are put back on the original timeline.
+CLOUD_SPEEDS = (1.0, 1.5, 2.0)
+CLOUD_SPEED_DEFAULT = 1.0
+
+
+def cloud_speed(cfg: dict | None = None) -> float:
+    v = os.environ.get("BLURT_ASR_SPEED") or ((cfg if cfg is not None else asr_config()).get("cloud") or {}).get("speed")
+    try:
+        v = float(v) if v is not None else CLOUD_SPEED_DEFAULT
+    except (TypeError, ValueError):
+        v = CLOUD_SPEED_DEFAULT
+    return min(CLOUD_SPEEDS, key=lambda s: abs(s - v))
+
+
+def speed_up(x: np.ndarray, speed: float) -> np.ndarray:
+    """x played `speed` times as fast, same pitch (ffmpeg atempo); x itself when 1x or ffmpeg isn't there."""
+    if speed == 1.0 or not len(x) or not shutil.which("ffmpeg"):
+        return x
+    pcm = (np.clip(x, -1, 1) * 32767).astype(np.int16).tobytes()
+    r = subprocess.run([shutil.which("ffmpeg"), "-nostdin", "-loglevel", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1",
+                        "-i", "-", "-filter:a", f"atempo={speed}", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"],
+                       input=pcm, capture_output=True)
+    if r.returncode or not r.stdout:
+        return x
+    return np.frombuffer(r.stdout, dtype=np.int16).astype(np.float32) / 32768
+
+
+def api_key(*names: str) -> str | None:
+    """The first of these variables that is set, trimmed. A key with a character no API key has (2026-10-31: two
+    "ç" — what ⌥C types — saved after a Model Studio key; the HTTP header can't carry them, and every take failed as
+    a bare "error") is an "auth" failure that names the characters, never the key."""
+    for n in names:
+        k = (os.environ.get(n) or "").strip()
+        if not k:
+            continue
+        bad = [c for c in dict.fromkeys(k) if not (c.isascii() and c.isprintable()) or c.isspace()]
+        if bad:
+            raise Fail(f"the API key in {n} has characters a key can't have "
+                       f"({', '.join(f'U+{ord(c):04X}' for c in bad)}): paste the key again", "auth")
+        return k
+    return None
+
+
 class OpenAICompat:
     """POST {base}/audio/transcriptions. verbose_json gives segment timestamps where supported."""
+    retries, timeout = 4, 120.0
 
     def __init__(self, args):
         for name, default_base in (("BLURT_ASR_API_KEY", "https://api.openai.com/v1"),
                                    ("OPENAI_API_KEY", "https://api.openai.com/v1"),
                                    ("GROQ_API_KEY", "https://api.groq.com/openai/v1")):
-            self.key = os.environ.get(name)
+            self.key = api_key(name)
             if self.key:
                 break
         else:
@@ -1531,82 +1974,523 @@ class OpenAICompat:
         # Longer chunks = fewer requests (Groq bills >=10s per request); shorter when no timestamps come back.
         self.max_chunk = 60 if self.verbose else 20
         self.args = args
+        self.speed = cloud_speed()
+        self.terms: list[str] = []
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """The dictation's words, in the prompt (Whisper-style services read it as preceding text)."""
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
 
     def transcribe(self, x):
         fields = {"model": self.model, "response_format": "verbose_json" if self.verbose else "json"}
         if self.args.language:
             fields["language"] = self.args.language
-        if self.args.prompt:
-            fields["prompt"] = self.args.prompt
+        prompt = self.args.prompt or (", ".join(self.terms) if self.terms else None)
+        if prompt:
+            fields["prompt"] = prompt
         boundary = uuid.uuid4().hex
         body = io.BytesIO()
         for k, v in fields.items():
             body.write(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
         body.write(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="a.wav"\r\n'
                    f'Content-Type: audio/wav\r\n\r\n'.encode())
-        body.write(wav_bytes(x))
+        body.write(wav_bytes(speed_up(x, self.speed)))
         body.write(f"\r\n--{boundary}--\r\n".encode())
         data = _post(f"{self.base}/audio/transcriptions", body.getvalue(),
-                     {"Authorization": f"Bearer {self.key}", "Content-Type": f"multipart/form-data; boundary={boundary}"})
+                     {"Authorization": f"Bearer {self.key}", "Content-Type": f"multipart/form-data; boundary={boundary}"},
+                     retries=self.retries, timeout=self.timeout)
         lang = lang_code(data.get("language"))
         if data.get("segments"):
-            return [(s["start"], s["end"], s["text"].strip(), lang) for s in data["segments"]]
+            k = self.speed
+            return [(s["start"] * k, min(s["end"] * k, len(x) / SR), s["text"].strip(), lang) for s in data["segments"]]
         return [(0.0, len(x) / SR, (data.get("text") or "").strip(), lang)]
 
 
 class DashScope:
-    max_chunk = 20
+    # A dictation goes here whole at key-up (docs/design/dictation.md §Cloud recognition): one request up to 50 s (the
+    # eval's whole-take requests, dictation-eval-2026-10-31.md §2.1), a longer take cut at its pauses into ≤ 50 s parts
+    # sent side by side (transcribe_track, CLOUD_WORKERS).
+    max_chunk = 50
+    retries, timeout = 4, 120.0
 
     def __init__(self, args):
-        self.key = os.environ.get("DASHSCOPE_API_KEY")
+        self.key = api_key("DASHSCOPE_API_KEY")
         if not self.key:
             raise Fail("no API key: set DASHSCOPE_API_KEY", "auth")
-        self.base = (os.environ.get("BLURT_ASR_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
-        self.model = args.model or "qwen3-asr-flash"
+        # its own variable: BLURT_ASR_BASE_URL is the OpenAI-compatible service's (both can be set in the app)
+        self.base = (os.environ.get("DASHSCOPE_BASE_URL") or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
+        # the model picked in Settings (CloudSpeech: DASHSCOPE_ASR_MODEL), else the registry's
+        self.model = os.environ.get("DASHSCOPE_ASR_MODEL") or args.model or "qwen3-asr-flash"
         self.args = args
+        self.speed = cloud_speed()
+        self.terms: list[str] = []
+        self.field = ""
+        self.last: dict = {}
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        """The dictation's words as Qwen3-ASR's context (measured: 27 of 35 terms with them, §2.4)."""
+        self.terms = [t["term"] for t in terms if t.get("term")]
+        return bool(self.terms)
+
+    def set_field(self, text: str) -> None:
+        """The field's text before the cursor, after the words in the same context (Qwen3-ASR Flash reads background
+        text there as well as a word list: Model Studio's "context enhancement"; docs/design/dictation.md §Field
+        context)."""
+        self.field = (text or "").strip()
+
+    def context_text(self, words: bool = True, field: bool = True) -> str:
+        w = (self.args.prompt or ", ".join(self.terms)) if words else ""
+        return "\n".join(t for t in (w, getattr(self, "field", "") if field else "") if t)
 
     def transcribe(self, x):
-        audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(x)).decode()
+        """The same nets as the MLX backend's decode (Qwen3Mlx.decode), for the same model family: the field's text
+        before the cursor written out as the speech (13 of 95 of the founder's takes when the app sent short pieces
+        with it: dictation-eval-2026-10-31.md §4.1) and the word list answered instead of the speech (3 of 95). An
+        answer that repeats the field (`echoes_prior`) is asked once more with the words only, and the shorter answer is
+        kept when it is clearly shorter; one that is the word list, once more with the field only. Costs a second
+        request only when a net fires (`last`: echo / context_dump, the answer's `tag`; NoteEngine empties it per note,
+        not per part: a long take's parts run side by side)."""
+        field = getattr(self, "field", "")
+        text = self._request(x, self.context_text())
+        if self.terms and not self.args.prompt and dictation_vocab.context_dump(text, self.terms):
+            text = self._request(x, self.context_text(words=False))
+            self.last["context_dump"] = True
+        if field and echoes_prior(text, field, len(x) / SR):
+            redo = self._request(x, self.context_text(field=False))
+            # nothing heard without the field, and the answer was the field itself (≥ 80 % of it one run of the field):
+            # there was no speech to write — a short piece of breath came back as the whole field (6 of the founder's
+            # takes in the old piece path, re-measured 2026-10-31)
+            nothing = not redo.strip() and longest_shared_run(text, field) >= 0.8 * len(_bare(text))
+            if (redo.strip() or nothing) and len(redo) < 0.8 * len(text):
+                text = redo
+                self.last["echo"] = True
+        return [(0.0, len(x) / SR, text)]
+
+    def _request(self, x, context: str) -> str:
+        audio = "data:audio/wav;base64," + base64.b64encode(wav_bytes(speed_up(x, self.speed))).decode()
         payload = {"model": self.model, "stream": False,
-                   "messages": [{"role": "system", "content": [{"text": self.args.prompt or ""}]},
+                   "messages": [{"role": "system", "content": [{"type": "text", "text": context}]},
                                 {"role": "user", "content": [{"type": "input_audio", "input_audio": {"data": audio}}]}],
                    "asr_options": {"enable_itn": True, **({"language": self.args.language} if self.args.language else {})}}
         data = _post(f"{self.base}/chat/completions", json.dumps(payload).encode(),
-                     {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"})
-        text = data["choices"][0]["message"]["content"]
+                     {"Authorization": f"Bearer {self.key}", "Content-Type": "application/json"},
+                     retries=self.retries, timeout=self.timeout)
+        try:
+            text = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            raise Fail(f"ASR API answered without a transcript: {json.dumps(data)[:300]}", "bad_response")
         if isinstance(text, list):
             text = "".join(p.get("text", "") for p in text)
-        return [(0.0, len(x) / SR, text.strip())]
+        return (text or "").strip()
 
 
-def _post(url: str, body: bytes, headers: dict, retries: int = 4) -> dict:
+# ------------------------------------------------------------------ Volcengine 豆包 Seed-ASR 2.0 (docs/design/dictation.md §Cloud recognition)
+# The streamed `bigmodel_nostream` endpoint (dictation-eval-2026-10-31.md §2.1, §5, §6.3 B′): on the founder's 95 takes
+# 2.18 % with the words as hotwords and the field's text as a dialogue turn, ~0.45–0.52 s after key-up however long the
+# take — it hears the audio while it is said and re-recognises it in ~15 s blocks, so at key-up only the last block is
+# left. The app streams a take's microphone packets through the warm server (`serve` cmd "stream", VolcStream); Retry,
+# the Lab, Settings' Test and a voice note send a whole recording through the same session as fast as it goes (the
+# result doesn't depend on the pace: §2.1 note ⁴). Credentials are an App ID and an Access Token (VOLC_APP_ID,
+# VOLC_ACCESS_TOKEN: the app's Keychain item for the "volcengine-speech" service), resource volc.seedasr.sauc.duration.
+# The protocol (the docs' binary frames): a 4-byte header (version 1, header size 1; message type, flags; JSON / raw
+# serialisation, gzip), a signed sequence where the flags say so, a 4-byte size, the payload. The first frame is the
+# request (gzip JSON), then raw 16 kHz s16 mono PCM packets; the last packet's sequence is negative. The final result
+# comes back flagged last; an error is message type 0b1111 with a code and a message.
+VOLC_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_nostream"
+VOLC_RESOURCE = "volc.seedasr.sauc.duration"
+VOLC_PACKET = 6400                  # 200 ms of 16 kHz s16 mono: the microphone's pace and the docs' recommended size
+# a language set by the user (asr.language) → the service's code; "zh" and anything else unlisted: the zh-en default
+VOLC_LANGS = {"en": "en-US", "ja": "ja-JP", "ko": "ko-KR", "de": "de-DE", "fr": "fr-FR", "es": "es-MX", "pt": "pt-BR",
+              "id": "id-ID", "ms": "ms-MY", "th": "th-TH", "ar": "ar-SA", "fil": "fil-PH"}
+
+
+def volc_frame(kind: int, flags: int, serial: int, payload: bytes, seq: int | None = None, gz: bool = True) -> bytes:
+    p = gzip.compress(payload) if gz else payload
+    return (bytes([0x11, (kind << 4) | flags, (serial << 4) | (1 if gz else 0), 0])
+            + (struct.pack(">i", seq) if seq is not None else b"") + struct.pack(">I", len(p)) + p)
+
+
+def volc_parse(b: bytes) -> tuple[dict, bool]:
+    """One frame from the service → (its JSON, or {"error": (code, message)}; whether it is the last)."""
+    hs = (b[0] & 0x0F) * 4
+    kind, fl, comp = b[1] >> 4, b[1] & 0x0F, b[2] & 0x0F
+    p = b[hs:]
+    seq = None
+    if fl & 1:
+        seq = struct.unpack(">i", p[:4])[0]
+        p = p[4:]
+    if kind == 0b1111:
+        code = struct.unpack(">I", p[:4])[0]
+        n = struct.unpack(">I", p[4:8])[0]
+        msg = p[8:8 + n]
+        try:
+            msg = gzip.decompress(msg) if comp == 1 else msg
+        except OSError:
+            pass
+        return {"error": (code, msg.decode(errors="replace")[:300])}, True
+    n = struct.unpack(">I", p[:4])[0]
+    body = p[4:4 + n]
+    if comp == 1 and body:
+        body = gzip.decompress(body)
+    return (json.loads(body) if body else {}), bool(fl & 2) or (seq is not None and seq < 0)
+
+
+def volc_fail(code: int, msg: str) -> Fail:
+    """The service's error frame → a Fail the app words plainly. 45000292 "quota exceeded for types: concurrency" (the
+    trial allows only a few sessions at once; the eval met it at 6) and 55000031 (busy) are "quota"; a token or app the
+    service doesn't accept, "auth"; its own time-outs and server errors, "network"."""
+    low = msg.lower()
+    if code == 45000292 or code == 55000031 or "quota" in low or "concurrency" in low:
+        return Fail(f"Volcengine refused ({code}): {msg}", "quota")
+    if any(w in low for w in ("auth", "token", "permission", "grant", "app key", "appkey", "access key")):
+        return Fail(f"Volcengine refused the App ID or Access Token ({code}): {msg}", "auth")
+    if code == 45000081 or code >= 55000000:
+        return Fail(f"Volcengine answered {code}: {msg}", "network")
+    return Fail(f"Volcengine answered {code}: {msg}", "bad_response")
+
+
+class _WebSocket:
+    """The least of a websocket client (RFC 6455) a recognition session needs — binary frames out (masked), frames in,
+    ping / pong, close — on the standard library (transcribe.py's own dependencies stay as they are). The handshake's
+    refusal is a Fail: 401 / 403 auth, 429 quota, anything else network or bad_response."""
+
+    def __init__(self, url: str, headers: dict, timeout: float = 10):
+        u = urllib.parse.urlsplit(url)
+        host, port = u.hostname or "", u.port or (443 if u.scheme == "wss" else 80)
+        try:
+            raw = socket.create_connection((host, port), timeout=timeout)
+            if u.scheme == "wss":
+                import ssl
+                raw = ssl.create_default_context().wrap_socket(raw, server_hostname=host)
+        except (OSError, ValueError) as e:
+            raise Fail(f"can't reach {host}: {e}", "network")
+        self.sock = raw
+        self.lock = threading.Lock()
+        self.closed = False
+        key = base64.b64encode(os.urandom(16)).decode()
+        lines = [f"GET {u.path or '/'}{'?' + u.query if u.query else ''} HTTP/1.1", f"Host: {host}", "Upgrade: websocket",
+                 "Connection: Upgrade", f"Sec-WebSocket-Key: {key}", "Sec-WebSocket-Version: 13"]
+        lines += [f"{k}: {v}" for k, v in headers.items()]
+        try:
+            self.sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("latin-1"))
+            head = b""
+            while b"\r\n\r\n" not in head and len(head) < 65536:
+                chunk = self.sock.recv(4096)
+                if not chunk:
+                    break
+                head += chunk
+        except UnicodeEncodeError:
+            self.close()
+            raise Fail("the Access Token has characters a token can't have: paste it again", "auth")
+        except OSError as e:
+            self.close()
+            raise Fail(f"{host} didn't answer: {e}", "network")
+        top, _, rest = head.partition(b"\r\n\r\n")
+        status_line, *hdr = top.decode("latin-1").split("\r\n")
+        try:
+            status = int(status_line.split()[1])
+        except (IndexError, ValueError):
+            self.close()
+            raise Fail(f"{host} answered something that isn't HTTP: {status_line[:80]!r}", "network")
+        h = {k.strip().lower(): v.strip() for k, _, v in (x.partition(":") for x in hdr)}
+        if status != 101:
+            msg = (h.get("x-api-message") or rest.decode(errors="replace"))[:300]
+            self.close()
+            code = "auth" if status in (401, 403) else "quota" if status == 429 else \
+                "network" if status >= 500 else "bad_response"
+            # a resource the app wasn't granted (the streaming model not enabled for this App ID) is the key's setup
+            if status == 400 and any(w in msg.lower() for w in ("resource", "grant", "app key", "appid", "app id", "token")):
+                code = "auth"
+            raise Fail(f"Volcengine refused the session (HTTP {status}): {msg}", code)
+        self.logid = h.get("x-tt-logid")
+        self.buf = rest
+        self.sock.settimeout(None)
+
+    def _read(self, n: int) -> bytes:
+        while len(self.buf) < n:
+            chunk = self.sock.recv(max(65536, n - len(self.buf)))
+            if not chunk:
+                raise ConnectionError("closed")
+            self.buf += chunk
+        out, self.buf = self.buf[:n], self.buf[n:]
+        return out
+
+    def _send(self, opcode: int, payload: bytes) -> None:
+        n = len(payload)
+        head = bytes([0x80 | opcode])
+        head += bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n) if n < 65536 \
+            else bytes([0x80 | 127]) + struct.pack(">Q", n)
+        mask = os.urandom(4)
+        if n:
+            m = int.from_bytes((mask * (n // 4 + 1))[:n], "big")
+            payload = (int.from_bytes(payload, "big") ^ m).to_bytes(n, "big")
+        with self.lock:
+            self.sock.sendall(head + mask + payload)
+
+    def send(self, payload: bytes) -> None:
+        self._send(0x2, payload)
+
+    def recv(self) -> bytes | None:
+        """The next whole data message; None when the connection closed."""
+        data = b""
+        while True:
+            b0, b1 = self._read(2)
+            op, n = b0 & 0x0F, b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._read(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._read(8))[0]
+            mask = self._read(4) if b1 & 0x80 else b""
+            p = self._read(n)
+            if mask:
+                p = bytes(c ^ mask[i % 4] for i, c in enumerate(p))
+            if op == 0x8:
+                return None
+            if op == 0x9:
+                self._send(0xA, p)
+                continue
+            if op == 0xA:
+                continue
+            data += p
+            if b0 & 0x80:
+                return data
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        with contextlib.suppress(OSError):
+            self._send(0x8, struct.pack(">H", 1000))
+        with contextlib.suppress(OSError):
+            self.sock.shutdown(socket.SHUT_RDWR)
+        with contextlib.suppress(OSError):
+            self.sock.close()
+
+
+class VolcStream:
+    """One recognition session (one take): open → feed PCM as it comes (sent in 200 ms packets) → finish (the last
+    packet, then the final text within `wait` s). Thread-safe between the feeder and the reader it starts."""
+
+    def __init__(self, app_id: str, token: str, request: dict, timeout: float = 10):
+        hdr = {"X-Api-App-Key": app_id, "X-Api-Access-Key": token, "X-Api-Resource-Id": VOLC_RESOURCE,
+               "X-Api-Request-Id": str(uuid.uuid4()), "X-Api-Connect-Id": str(uuid.uuid4())}
+        self.ws = _WebSocket(VOLC_URL, hdr, timeout)
+        self.seq = 1
+        self.pending = b""
+        self.sent = 0                       # bytes of PCM sent
+        self.text: str | None = None
+        self.utterances: list | None = None     # with show_utterances: [{"text", "start_time", "end_time"} (ms)]
+        self.error: Fail | None = None
+        self.final = threading.Event()
+        self.t_final: float | None = None
+        self.t_last: float | None = None
+        try:
+            self.ws.send(volc_frame(0b0001, 0b0001, 1, json.dumps(request, ensure_ascii=False).encode(), self.seq))
+        except OSError as e:
+            self.ws.close()
+            raise Fail(f"Volcengine dropped the session: {e}", "network")
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.reader.start()
+
+    def _read(self) -> None:
+        try:
+            while True:
+                m = self.ws.recv()
+                if m is None:
+                    break
+                d, last = volc_parse(m)
+                if "error" in d:
+                    code, msg = d["error"]
+                    # 45000002: no audio at all (an empty take) — nothing was said
+                    if code == 45000002:
+                        self.text = ""
+                    else:
+                        self.error = volc_fail(code, msg)
+                    break
+                r = d.get("result") or {}
+                if isinstance(r, list):
+                    r = r[0] if r else {}
+                if r.get("text") is not None:
+                    self.text = r.get("text")
+                if isinstance(r.get("utterances"), list):
+                    self.utterances = r["utterances"]
+                if last:
+                    break
+        except (OSError, ConnectionError, ValueError, struct.error) as e:
+            if not self.ws.closed and self.error is None:
+                self.error = Fail(f"Volcengine dropped the session: {e}", "network")
+        finally:
+            self.t_final = time.perf_counter()
+            self.final.set()
+
+    @property
+    def failed(self) -> bool:
+        return self.error is not None
+
+    def feed(self, pcm: bytes) -> None:
+        """PCM (16 kHz s16 mono) as it comes; whole 200 ms packets go out, the rest waits for more. A session the
+        service already ended takes nothing more (finish says why)."""
+        if self.final.is_set():
+            return
+        self.pending += pcm
+        while len(self.pending) >= 2 * VOLC_PACKET:      # one packet always held back: the last one is flagged
+            self._packet(self.pending[:VOLC_PACKET], last=False)
+            self.pending = self.pending[VOLC_PACKET:]
+
+    def _packet(self, p: bytes, last: bool) -> None:
+        self.seq += 1
+        try:
+            self.ws.send(volc_frame(0b0010, 0b0011 if last else 0b0001, 0, p, -self.seq if last else self.seq))
+            self.sent += len(p)
+        except OSError as e:
+            if self.error is None and not self.final.is_set():
+                self.error = Fail(f"Volcengine dropped the session: {e}", "network")
+            self.final.set()
+
+    def finish(self, wait: float = 10) -> str:
+        """The rest of the audio as the last packet(s), then the final text — waited for at most `wait` s (then
+        "network": the service didn't answer)."""
+        try:
+            if not self.final.is_set():
+                rest = self.pending
+                self.pending = b""
+                while len(rest) > VOLC_PACKET:
+                    self._packet(rest[:VOLC_PACKET], last=False)
+                    rest = rest[VOLC_PACKET:]
+                self._packet(rest, last=True)
+            self.t_last = time.perf_counter()
+            if not self.final.wait(wait):
+                raise Fail(f"Volcengine gave no final text within {wait:.0f} s", "network")
+            if self.error is not None:
+                raise self.error
+            if self.text is None:
+                raise Fail("Volcengine closed the session without a final text", "network")
+            return self.text.strip()
+        finally:
+            self.close()
+
+    def close(self) -> None:
+        self.ws.close()
+
+
+def volc_pcm(x: np.ndarray) -> bytes:
+    return (np.clip(x, -1, 1) * 32767).astype("<i2").tobytes()
+
+
+class Volcengine:
+    """Volcengine Seed-ASR 2.0 (`bigmodel_nostream`): the words as inline hotwords, the field's text before the cursor
+    as one dialogue turn; no language set for a Chinese speaker (its zh-en default: the founder's takes 2.18 % against
+    2.84 % with automatic language), automatic language for everyone else (best measured on English: §3), or the
+    language the user set. `transcribe` sends a whole recording through one session; `open` starts one a take streams
+    into (serve "stream")."""
+    max_chunk = 600         # one session per recording up to 10 min (a dictation stops at 5)
+    max_terms = 100
+    retries, timeout = 2, 60.0
+    streams = True
+
+    def __init__(self, args):
+        self.app_id = api_key("VOLC_APP_ID")
+        self.token = api_key("VOLC_ACCESS_TOKEN")
+        if not self.app_id or not self.token:
+            raise Fail("no Volcengine App ID and Access Token: set VOLC_APP_ID and VOLC_ACCESS_TOKEN", "auth")
+        self.model = "seed-asr-2.0 (bigmodel_nostream)"
+        self.args = args
+        self.terms: list[str] = []
+        self.field = ""
+        self.last: dict = {}
+        self.utterances = False      # only my voice on a stream: each sentence's time, to drop another speaker's
+
+    def set_vocab(self, terms: list[dict]) -> bool:
+        self.terms = [str(t["term"]).strip() for t in terms if str(t.get("term") or "").strip()][:self.max_terms]
+        return bool(self.terms)
+
+    def set_field(self, text: str) -> None:
+        self.field = (text or "").strip()
+
+    def request(self) -> dict:
+        req = {"model_name": "bigmodel", "enable_itn": True, "enable_punc": True, "enable_ddc": False,
+               "show_utterances": self.utterances, "result_type": "full"}
+        ctx: dict = {}
+        if self.terms:
+            ctx["hotwords"] = [{"word": w} for w in self.terms]
+        if self.field:
+            ctx["context_type"] = "dialog_ctx"
+            ctx["context_data"] = [{"text": self.field}]
+        if ctx:
+            req["corpus"] = {"context": json.dumps(ctx, ensure_ascii=False)}
+        audio = {"format": "pcm", "codec": "raw", "rate": SR, "bits": 16, "channel": 1}
+        lang = (self.args.language or "").lower().split("-")[0] or None
+        if lang in VOLC_LANGS:
+            audio["language"] = VOLC_LANGS[lang]
+        elif lang is None and not any(x.split("-")[0] in ("zh", "yue") for x in user_languages()):
+            req["enable_auto_lang"] = True
+        return {"user": {"uid": "blurt"}, "audio": audio, "request": req}
+
+    def open(self, timeout: float = 10) -> VolcStream:
+        return VolcStream(self.app_id, self.token, self.request(), timeout)
+
+    def transcribe(self, x):
+        pcm = volc_pcm(x)
+        for attempt in range(self.retries):
+            try:
+                s = self.open(timeout=min(10, self.timeout))
+                s.feed(pcm)
+                # the whole recording at once: the service works through it at ~4× real time
+                text = s.finish(wait=max(self.timeout, final_wait(len(x) / SR, 0)))
+                return [(0.0, len(x) / SR, text)]
+            except Fail as e:
+                # a dropped connection is tried once more; a refusal (key, quota) is final
+                if e.code != "network" or attempt == self.retries - 1:
+                    raise
+                time.sleep(1)
+        return [(0.0, len(x) / SR, "")]
+
+
+def _post(url: str, body: bytes, headers: dict, retries: int = 4, timeout: float = 120) -> dict:
+    """One cloud request → its JSON. Every way it can fail is a Fail with a code the app words plainly (auth, quota,
+    network, bad_response): an exception of any other kind came back from the speech server as a bare "error"."""
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, data=body, headers=headers, method="POST")
-            with urllib.request.urlopen(req, timeout=120) as r:
-                return json.loads(r.read())
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                raw = r.read()
+            try:
+                return json.loads(raw)
+            except ValueError:
+                raise Fail(f"ASR API answered something that isn't JSON: {raw[:200]!r}", "bad_response")
         except urllib.error.HTTPError as e:
             msg = e.read().decode(errors="replace")[:500]
             if e.code in (429, 500, 502, 503) and attempt < retries - 1:
                 time.sleep(2 ** attempt * 2)
                 continue
             raise Fail(f"ASR API error {e.code}: {msg}", "auth" if e.code in (401, 403) else "quota" if e.code == 429 else "network")
-        except urllib.error.URLError as e:
+        except UnicodeEncodeError:
+            # a header (the key) with a character HTTP can't carry: api_key catches it first; this is the safety net
+            raise Fail("the API key has characters a key can't have: paste the key again", "auth")
+        except (OSError, http.client.HTTPException) as e:     # URLError, timeouts, TLS, a dropped connection
             if attempt < retries - 1:
                 time.sleep(2 ** attempt)
                 continue
             raise Fail(f"ASR API unreachable: {e}", "network")
 
 
-BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "mlx-whisper": MlxWhisper,
-            "qwen3-asr-mlx": Qwen3Mlx, "faster-whisper": FasterWhisper, "openai": OpenAICompat, "dashscope": DashScope}
-LOCAL = {"sensevoice", "qwen3-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "faster-whisper"}
+BACKENDS = {"sensevoice": SenseVoice, "qwen3-asr-onnx": Qwen3Onnx, "fun-asr-onnx": FunAsrOnnx, "mlx-whisper": MlxWhisper,
+            "qwen3-asr-mlx": Qwen3Mlx, "fun-asr-mlx": FunAsrMlx, "faster-whisper": FasterWhisper, "apple": AppleSpeech,
+            "openai": OpenAICompat, "dashscope": DashScope, "volcengine": Volcengine}
+LOCAL = {"sensevoice", "qwen3-asr-onnx", "fun-asr-onnx", "mlx-whisper", "qwen3-asr-mlx", "fun-asr-mlx", "faster-whisper", "apple"}
 EXTRA_PACKAGES = {"mlx-whisper": "mlx-whisper", "faster-whisper": "faster-whisper",
-                  "qwen3-asr-mlx": "mlx-qwen3-asr"}  # backend → `uv run --with` package
+                  "qwen3-asr-mlx": "mlx-qwen3-asr", "fun-asr-mlx": "mlx-audio"}  # backend → `uv run --with` package
 # The exact version each `--with` installs (arch101: no release is picked up by itself; bumped on purpose, per Blurt
 # release, like the script header's). faster-whisper (NVIDIA, Windows / Linux) is pinned when it is next verified.
-PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4"}
-API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",)}
+# mlx-audio 0.6.3 pins mlx 0.32.4, the version the other two resolve to as well: one server holds all three
+# (serve_packages).
+PACKAGE_PINS = {"mlx-whisper": "mlx-whisper==0.4.3", "mlx-qwen3-asr": "mlx-qwen3-asr==0.4.4",
+                "mlx-audio": "mlx-audio==0.6.3"}
+API_KEYS = {"openai": ("BLURT_ASR_API_KEY", "OPENAI_API_KEY", "GROQ_API_KEY"), "dashscope": ("DASHSCOPE_API_KEY",),
+            "volcengine": ("VOLC_APP_ID", "VOLC_ACCESS_TOKEN")}
+KEYS_ALL = {"volcengine"}     # needs every variable of its API_KEYS (an App ID and an Access Token), not any one
+CLOUD_WORKERS = 4       # a cloud service's parts of one take in flight at once (NoteEngine.note)
 
 
 # ------------------------------------------------------------------ recommendation
@@ -1641,8 +2525,12 @@ def preference(kind: str, tier: str, purpose: str, sv_ok: bool, sv_good: bool, q
     # zh-en, FLEURS zh, LibriSpeech, contextual earnings calls: docs/design/asr-benchmark.md §Real speech) and the only
     # one that takes the user's words; one model also means one warm copy instead of three (the 24 GB Mac that
     # swapped held a Qwen, a SenseVoice and a Whisper).
+    # v1.0.6: the 0.6B on pro Macs too. On the founder's real takes the two are close — the 0.6B ahead on the Lab's
+    # corrected takes (4.6 vs 6.4 %), the 1.7B ahead on English (2.7 vs 3.2 %) and custom words (28 vs 25 of 35) —
+    # while the 1.7B is 2.5x the download and holds 1 GB more (docs/design/first-minute-speech.md §2.1). The 1.7B
+    # stays a choice, and a Mac that already has it keeps using it.
     if kind == "apple" and tier in ("pro", "standard") and qwen_ok:
-        return ([QWEN_MLX_17] if tier == "pro" else []) + [QWEN_MLX] + multi + ([SV] if sv_ok else [])
+        return [QWEN_MLX] + ([QWEN_MLX_17] if tier == "pro" else []) + multi + ([SV] if sv_ok else [])
     # on a CPU the multilingual model is 10x slower and no more accurate in SenseVoice's languages
     prefer_sv = sv_ok if kind == "cpu" else sv_good
     fallback = [SV] if sv_ok else []
@@ -1710,8 +2598,17 @@ def recommend(languages: list[str] | None = None, purpose: str = "batch", hw: di
     sv = entry(SV)
     sv_ok = all(speaks(sv, x) for x in langs)
     sv_good = sv_ok and all((sv.get("error_ref") or {}).get(x, 0) <= 0.05 for x in langs)
-    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good, all(x in QWEN_FIRST_LANGS for x in langs))
+    qwen_ok = all(x in QWEN_FIRST_LANGS for x in langs)
+    order = preference(hw_kind(hw), tier, purpose, sv_ok, sv_good, qwen_ok)
     bench = _bench_results()
+    # v1.0.7: where dictation runs on the 1.7B (dictation_tier: 16 GB+ and fast enough), every job does — one model,
+    # one warm copy (v1.0.2), and Settings never recommends the 0.6B next to a 1.7B that is already in use. By the
+    # Mac's own tier: a recording on battery doesn't trade the model dictation already holds for a smaller one.
+    if hw_kind(hw) == "apple" and qwen_ok and hw["tier"] in ("pro", "standard"):
+        plan = dictation_tier(hw["ram_gb"], (bench.get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")),
+                              languages=langs)
+        if plan["recognizer"] == QWEN_MLX_17:
+            order = [QWEN_MLX_17] + order
     pick = None
     for mid in dict.fromkeys(order):
         m = entry(mid)
@@ -1759,12 +2656,28 @@ def select(purpose: str, a=None) -> dict:
     rec = recommend(purpose=purpose, cfg=cfg)
     order = ([chosen] if chosen else []) + [rec["pick"]["model"]] + [c["id"] for c in rec["candidates"]
                                                                      if c["fits"] and len(c["speaks"]) == len(rec["languages"])]
+    apple = entry(APPLE)
+    apple_ok = bool(apple and runs_here(apple) and installed(apple) and all(speaks(apple, x) for x in rec["languages"]))
+    # a local model hears through the VAD (0.6 MB) too: one whose own files are already here from elsewhere (a Whisper
+    # in a shared Hugging Face cache) doesn't beat macOS's recogniser, which needs nothing, until the VAD is in
+    bundled_vad()
+    vad = (MODELS_DIR / "silero_vad.onnx").is_file()
     for mid in dict.fromkeys(order):
         m = entry(mid)
-        if m and m.get("local", True) and runs_here(m) and installed(m):
+        if m and m.get("local", True) and runs_here(m) and installed(m) and (vad or m.get("builtin") or not apple_ok):
             return m
         if m and not m.get("local", True) and not local_only() and installed(m) and mid == chosen:
             return m
+    # nothing downloaded: macOS's own recogniser when it speaks the user's languages (first-minute-speech.md)
+    if apple_ok:
+        return apple
+    # no macOS recogniser (macOS 13–15, ~23 % of Macs): a cloud service whose key the user set — the setup assistant's
+    # one key (Model Studio in China) says it recognises speech too — before a model that would have to download
+    if not local_only():
+        for mid in DICTATION_CLOUD:
+            m = entry(mid)
+            if m and installed(m):
+                return m
     return entry("sensevoice-small")  # downloads on first use (never during a recording: BLURT_NO_DOWNLOAD)
 
 
@@ -1773,8 +2686,11 @@ def resolve_backend(a, purpose: str = "batch") -> str:
     cfg = asr_config()
     m = select(purpose, a)
     a.model = None if m["backend"] == "sensevoice" else m.get("model")
-    if m["backend"] == "qwen3-asr-mlx":
-        p = model_path(m)           # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline
+    if m["backend"] in ("qwen3-asr-mlx", "mlx-whisper", "fun-asr-mlx"):
+        # the folder it is in (HF cache snapshot or a ModelScope copy): loaded offline. Whisper got its repo id, and
+        # mlx-whisper asked huggingface.co about it on every load (`Fetching 4 files`: +2 s here, longer where the
+        # site is slow or blocked) before reading the files it already had
+        p = model_path(m)
         if p:
             a.model = str(p)
     a.model_id = m["id"]
@@ -1791,10 +2707,14 @@ def backend_ready(name: str, model_id: str | None = None) -> str | None:
     a key, else why not."""
     if name not in BACKENDS:
         return f"unknown backend {name}"
+    if name == "apple":
+        return None if apple_speech_ok() else "macOS speech recognition needs macOS 26 and the Blurt app"
+    bundled_vad()
     if not (MODELS_DIR / "silero_vad.onnx").exists():
         return "VAD model not downloaded (transcribe.py setup)"
     if name in API_KEYS:
-        return None if any(os.environ.get(k) for k in API_KEYS[name]) else \
+        have = (all if name in KEYS_ALL else any)(os.environ.get(k) for k in API_KEYS[name])
+        return None if have else \
             f"no API key in the environment ({' / '.join(API_KEYS[name])})"
     m = entry(model_id) if model_id else entry_for(name)
     if m and m.get("install") and not installed(m):
@@ -1822,7 +2742,7 @@ def make_backend(name: str, a, purpose: str = "batch"):
                 raise Fail(f"{m['id']} is not downloaded", "model_missing")
             install_model(m)
     b = BACKENDS[name](a)
-    if name == "qwen3-asr-mlx" and purpose in ("batch", "live"):
+    if name in ("qwen3-asr-mlx", "fun-asr-mlx") and purpose in ("batch", "live"):
         b.max_chunk = 15      # a segment per chunk: a recording's timestamps (frames, items) stay this fine
     return b
 
@@ -1830,6 +2750,8 @@ def make_backend(name: str, a, purpose: str = "batch"):
 def model_label(name: str, backend, a) -> str | None:
     if name == "sensevoice":
         return "sense-voice-small-int8"
+    if name == "apple":
+        return "apple-speech-transcriber"
     m = getattr(backend, "model", None)
     return m if isinstance(m, str) else getattr(backend, "repo", None) or a.model
 
@@ -1898,9 +2820,30 @@ def print_summary(data: dict, files: list[str], **extra) -> None:
 
 def transcribe_track(samples: np.ndarray, backend, name: str, workers: int, label: str | None = None,
                      quiet: bool = False):
-    """VAD → chunks → backend. Returns ([(start, end, text, label[, language])], speech s, s that decoded to nothing)."""
-    segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
-    chunks = group_chunks(segs, backend.max_chunk)
+    """VAD → chunks → backend. Returns ([(start, end, text, label[, language])], speech s, s that decoded to nothing).
+    A backend that finds its own pauses (`no_vad`: macOS's recogniser) gets the whole audio."""
+    # …and so does a cloud service for audio it takes in one request (a dictation's or voice note's piece, which the
+    # app has already cut at a pause): no VAD file needed for it either
+    whole = getattr(backend, "no_vad", False) or (name in API_KEYS and len(samples) / SR <= backend.max_chunk)
+    if whole:
+        dur = len(samples) / SR
+        r = decode_slice(backend, samples, 0.0, dur) if dur > 0 else []
+        return [(s_, e_, t, label, *lg) for s_, e_, t, *lg in r], dur, dur if is_blank(r) else 0.0
+    if getattr(backend, "whole_spans", False):
+        # a model that hears utterances whole (Fun-ASR-Nano): a piece or window as it is, a longer one cut in pauses
+        dur = len(samples) / SR
+        # …but only with speech in it: a quiet room's hiss handed whole to an LLM-decoder model comes back as an invented
+        # sentence (Windows dogfood 2026-11-02: −55 dBFS noise typed 我感觉我这个头发有点长。). The VAD says no speech →
+        # nothing to decode, and the app says "No speech detected".
+        # Only the ONNX build (Windows / Linux) is gated: the Mac's MLX model keeps its measured path, with no VAD pass
+        if 0 < dur <= backend.max_chunk:
+            gate = getattr(backend, "vad_gate", False)
+            chunks = [(0.0, dur)] if not gate or vad_segments(samples, max_speech=min(25, backend.max_chunk)) else []
+        else:
+            chunks = pause_spans(samples, backend.max_chunk)
+    else:
+        segs = vad_segments(samples, max_speech=min(25, backend.max_chunk))
+        chunks = group_chunks(segs, backend.max_chunk)
     sp = sum(e - s for s, e in chunks)
     if not quiet:
         print(f"audio {fmt_ts(len(samples) / SR)}{f' ({label})' if label else ''}, speech {fmt_ts(sp)} "
@@ -2099,6 +3042,17 @@ def cmd_run(a):
 # words of the list; `echoes_prior` is the meaning-free net behind that.
 PRIOR_CHARS = 80
 PRIOR_TERMS = 32
+# The field's text before the cursor goes to a model that takes it (asr_models.json field_context_chars: Qwen3-ASR
+# 1.7B, the cloud Qwen3-ASR Flash) as context, ahead of the text so far: on 43 of the founder's takes the 1.7B went from
+# 3.04 to 2.63 % on whole takes (docs/design/dictation.md §Field context). The app sends at most this many.
+FIELD_CHARS = 300
+
+
+def field_context_chars(model_id: str | None) -> int:
+    """How much of the field's text before the cursor this model hears as context (0: none — the 0.6B was mixed)."""
+    m = entry(model_id) or {}
+    n = m.get("field_context_chars")
+    return min(FIELD_CHARS, int(n)) if isinstance(n, (int, float)) and n > 0 else 0
 # More than this many syllables a second is no one's speech (normal speech is 4–7 in every language measured).
 MAX_SYLLABLES_PER_SECOND = 10
 # A run this long (characters, spaces and punctuation aside) shared with the text so far is worth one more look.
@@ -2155,6 +3109,336 @@ def note_text(results: list) -> tuple[str, str | None]:
     return sep.join(texts).strip(), (max(set(langs), key=langs.count) if langs else None)
 
 
+# --- voiceprint: only my voice (issue #26; docs/design/voiceprint.md) -----------------------------------------
+# A speaker-embedding gate in front of a dictation's recognition. With record.dictation.only_my_voice on (Settings →
+# Dictation) and a voice enrolled, each piece is cut where silero hears pauses (cuts ≤ 10 s, gaps ≤ 0.6 s), each cut is
+# embedded (3D-Speaker CAM++ zh-en, ~3.5 ms per second of audio on the CPU, in this process) and compared with the
+# user's voice (cosine with the mean of the enrolled and learned embeddings). A cut under VP_THRESHOLD is someone
+# else: silenced out of what recognition hears; a piece that is all someone else answers an empty text before the
+# model is even loaded. The verdict comes back as `speaker` (with `drop`, the silenced spans) so the app can mask the
+# same audio for whatever else hears it (a rehear window, macOS's second transcript). Interim requests (the live
+# words) are gated too, but only cuts long enough to judge (VP_INTERIM_MIN). Only dictation is gated: a voice note or
+# a recording is meant to keep everyone. Without an enrolled voice, or without the model, a piece goes through as it
+# is (fail-open). Measured on the founder's real takes against AISHELL / ASCEND / LibriSpeech / Common Voice speakers
+# (docs/design/voiceprint.md): the old ERes2Net + 0.5 dropped 17 % of the user's own speech; CAM++ at 0.28 with
+# learning drops none of it and lets ~0.6 % of other people's through.
+VP_FILE = "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+VP_URLS = [
+    f"https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/{VP_FILE}",
+    f"https://huggingface.co/csukuangfj/speaker-embedding-models/resolve/main/{VP_FILE}",
+    f"https://hf-mirror.com/csukuangfj/speaker-embedding-models/resolve/main/{VP_FILE}",
+]
+VP_MB = 30                      # both models' download
+# speaker turns inside a piece (pyannote segmentation 3.0, MIT, as sherpa-onnx publishes it; int8, 1.5 MB): in a
+# conversation the next person starts within a fraction of a second, too soon for a pause to cut at — on the founder's
+# own tests every reply of a friend sat in one cut with his own words and was typed with them
+VP_SEG_FILE = "pyannote-segmentation-3-0.int8.onnx"
+VP_SEG_URLS = [
+    "https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx",
+    "https://hf-mirror.com/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.int8.onnx",
+]
+# under this cosine a cut is someone else (record.dictation.voiceprint_threshold overrides). The founder's own cuts:
+# 0.16 % dropped at 0.275 / 0.57 % at 0.30 with a 20 s enrollment, none once learning has a few takes; other people's
+# speech: the highest of 1,150 cuts scored 0.38
+VP_THRESHOLD = 0.28
+# learning: a cut of ≥ 3 s that scores ≥ 0.5 (far above anyone else measured) joins the profile, the latest 40 —
+# the user's other microphones, rooms and moods, which one enrollment take can't hold
+VP_LEARN = 0.5
+VP_LEARN_MIN = 3.0
+VP_LEARNED_MAX = 40
+VP_LEARN_EVERY = 20.0           # s between two learned cuts (one take doesn't fill the profile)
+# with two voices in a piece, the one far below the user's is someone else even above VP_THRESHOLD (a voice close to
+# the user's — the founder's friend scored 0.24–0.27 against his 0.68–0.84): dropped when it is VP_MARGIN below the
+# best, unless it scores VP_SURE or more
+VP_MARGIN = 0.3
+VP_SURE = 0.45
+VP_MARGIN_MIN = 1.5             # …a shorter stretch scores too unevenly for that (the founder's own 0.8 s "丫头": 0.36)
+VP_CLUSTER = 0.5                # sherpa-onnx's clustering threshold: turns closer than this are one speaker
+# an interim request judges only cuts with this much speech: a shorter one is too little to tell (the final piece
+# decides it)
+VP_INTERIM_MIN = 1.5
+
+
+def voiceprint_settings(flag: bool | None) -> tuple[bool, float]:
+    """(on, threshold): the request's "voiceprint" wins; else record.dictation.only_my_voice / .voiceprint_threshold."""
+    d = (global_config().get("record") or {}).get("dictation") or {}
+    on = bool(d.get("only_my_voice", False)) if flag is None else bool(flag)
+    try:
+        threshold = float(d.get("voiceprint_threshold", VP_THRESHOLD))
+    except (TypeError, ValueError):
+        threshold = VP_THRESHOLD
+    return on, threshold
+
+
+class Voiceprint:
+    """The speaker-embedding extractor, loaded once per process; the user's voice in $BLURT_HOME/voiceprint.json:
+    {"model", "embeddings" (enrollment windows, the latest 4 takes'), "learned" (cuts from dictation), "updated"}."""
+
+    PROFILE = BLURT_HOME / "voiceprint.json"
+    TAKES = 4
+    _ext = None
+    _lock = threading.Lock()
+    _cache: dict = {}               # sha1 of a cut's samples → its embedding (interim requests repeat the same cuts)
+    _target: tuple | None = None    # (profile mtime, target, the enrollment's own)
+    _diar = None
+    _learned_at = 0.0
+
+    @classmethod
+    def extractor(cls):
+        with cls._lock:
+            if cls._ext is None:
+                import sherpa_onnx
+                cfg = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(download(VP_FILE)), num_threads=2,
+                                                                  provider="cpu")
+                cls._ext = sherpa_onnx.SpeakerEmbeddingExtractor(cfg)
+            return cls._ext
+
+    @classmethod
+    def diarizer(cls):
+        """Speaker turns (pyannote segmentation + this same embedding model, clustered), loaded once."""
+        with cls._lock:
+            if cls._diar is None:
+                import sherpa_onnx
+                seg = sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
+                    pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(download(VP_SEG_FILE))),
+                    num_threads=2)
+                emb = sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(download(VP_FILE)), num_threads=2)
+                cls._diar = sherpa_onnx.OfflineSpeakerDiarization(sherpa_onnx.OfflineSpeakerDiarizationConfig(
+                    segmentation=seg, embedding=emb,
+                    clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=VP_CLUSTER),
+                    min_duration_on=0.2, min_duration_off=0.3))
+            return cls._diar
+
+    @classmethod
+    def speakers(cls, x: np.ndarray, t: np.ndarray) -> list[dict]:
+        """Who spoke when: the audio in ≤ 10 s spans cut at pauses (segmentation's window; a longer take is judged
+        span by span — each speaker is compared with the user, not with the others), each span's speaker turns, and
+        each speaker's similarity to the user (their turns' audio together, up to 10 s). [{"turns": [(s, e)], "sim",
+        "seconds"}]."""
+        out = []
+        for a, b in pause_spans(x, 10.0) or [(0.0, len(x) / SR)]:
+            part = x[int(a * SR):int(b * SR)]
+            spk: dict[int, list] = {}
+            for s in cls.diarizer().process(part).sort_by_start_time():
+                spk.setdefault(s.speaker, []).append((a + s.start, a + s.end))
+            for turns in spk.values():
+                audio = np.concatenate([x[int(s * SR):int(e * SR)] for s, e in turns])
+                secs = len(audio) / SR
+                sim = float(np.dot(cls.embed(audio[:10 * SR]), t)) if secs >= 0.5 else None
+                out.append({"turns": turns, "sim": sim, "seconds": secs, "audio": audio})
+        # speech the turns leave out (segmentation hears a quiet voice — a phone's video across the room — as
+        # nothing, silero as speech): each stretch of it judged on its own, as one more speaker
+        covered = [tr for s in out for tr in s["turns"]]
+        for s, e in vad_segments(x):
+            rest = [(s, e)]
+            for a, b in covered:
+                rest = [p for r in rest for p in ((r[0], min(r[1], a)), (max(r[0], b), r[1])) if p[1] - p[0] > 0.05]
+            for a, b in rest:
+                if b - a >= 0.5:
+                    audio = x[int(a * SR):int(b * SR)]
+                    out.append({"turns": [(a, b)], "sim": float(np.dot(cls.embed(audio[:10 * SR]), t)),
+                                "seconds": b - a, "audio": audio})
+        return out
+
+    @classmethod
+    def embed(cls, x: np.ndarray) -> np.ndarray:
+        key = hashlib.sha1(np.ascontiguousarray(x, dtype=np.float32).tobytes()).digest()
+        if (e := cls._cache.get(key)) is not None:
+            return e
+        ext = cls.extractor()
+        stream = ext.create_stream()
+        stream.accept_waveform(SR, x)
+        stream.input_finished()
+        e = np.asarray(ext.compute(stream), dtype=np.float32)
+        e = e / (np.linalg.norm(e) + 1e-9)
+        if len(cls._cache) > 256:
+            cls._cache.clear()
+        cls._cache[key] = e
+        return e
+
+    @staticmethod
+    def speech_seconds(x: np.ndarray) -> float:
+        """Loud-frame seconds (20 ms frames, above −45 dBFS: speech is far louder, a quiet room far quieter). An
+        enrollment of room tone is refused, never learned; an all-speech clip counts in full (no adaptive floor:
+        one made of speech alone would call nothing loud)."""
+        f = SR // 50
+        n = len(x) // f
+        if n == 0:
+            return 0.0
+        rms = np.sqrt((x[: n * f].reshape(n, f) ** 2).mean(axis=1))
+        loud = 20 * np.log10(rms + 1e-9) > -45
+        return float(loud.sum() * f / SR)
+
+    @classmethod
+    def embed_windows(cls, x: np.ndarray, win: float = 5.0) -> list[np.ndarray]:
+        """One embedding per 5 s window that is mostly speech: a long enrollment is several looks at the voice."""
+        w = int(win * SR)
+        return [cls.embed(part) for off in range(0, len(x), w)
+                if len(part := x[off:off + w]) >= SR and cls.speech_seconds(part) >= 0.4 * len(part) / SR]
+
+    @classmethod
+    def profile(cls) -> dict:
+        """The profile when it was made with this model ({} without one; `stale` when another model made it: its
+        embeddings can't be compared with this one's)."""
+        p = load_json(cls.PROFILE, None)
+        if not isinstance(p, dict) or not isinstance(p.get("embeddings"), list) or not p["embeddings"]:
+            return {}
+        if p.get("model") != VP_FILE:
+            return {"stale": True}
+        if p.get("version") != 2:     # v1 learned whole cuts, a friend's reply inside the user's cut included
+            p["learned"] = []
+        return p
+
+    @classmethod
+    def target(cls) -> np.ndarray | None:
+        """The user's voice: the mean of the enrolled and learned embeddings (re-read when the file changes — the CLI
+        enrolls beside a running server)."""
+        try:
+            mtime = cls.PROFILE.stat().st_mtime_ns
+        except OSError:
+            cls._target = None
+            return None
+        if cls._target and cls._target[0] == mtime:
+            return cls._target[1]
+        p = cls.profile()
+        if not p.get("embeddings"):
+            cls._target = (mtime, None, None)
+            return None
+
+        def unit(v):
+            e = np.asarray(v, dtype=np.float32).mean(axis=0)
+            return e / (np.linalg.norm(e) + 1e-9)
+        cls._target = (mtime, unit(p["embeddings"] + (p.get("learned") or [])), unit(p["embeddings"]))
+        return cls._target[1]
+
+    @classmethod
+    def enrolled(cls) -> np.ndarray | None:
+        """The enrollment take alone: what learning is measured against, so it can't drift toward whoever it once
+        let through."""
+        return cls._target[2] if cls.target() is not None and cls._target else None
+
+    @classmethod
+    def similarity(cls, x: np.ndarray) -> float | None:
+        """Cosine of this audio against the user's voice; None without one."""
+        t = cls.target()
+        return None if t is None else float(np.dot(cls.embed(x), t))
+
+    @classmethod
+    def gate(cls, x: np.ndarray, threshold: float, interim: bool = False) -> tuple[dict, np.ndarray]:
+        """The gate, per piece: who spoke when (`speakers`: speaker turns, not pauses — a reply right after the user
+        is found too), each speaker compared with the user's voice, and another speaker's turns silenced out of what
+        recognition hears (10 ms ramps: a hard zero is a click; where two talk at once, the user's turn wins). A
+        speaker is someone else under `threshold`, or VP_MARGIN below the best speaker of the piece unless they score
+        VP_SURE. ({"match", "similarity", "threshold", "dropped", "drop": [[s, e], …], "speakers"}, the audio to
+        recognise). match false: nobody in it is the user — the caller answers blank without recognising. Fail
+        "not_enrolled" / "model_missing": the caller lets the piece through. Interim requests judge only speakers
+        with VP_INTERIM_MIN s or more."""
+        t = cls.target()
+        if t is None:
+            raise Fail("no voice enrolled", "not_enrolled")
+        if not vad_segments(x):       # no speech heard: as ungated (recognition answers blank as ever)
+            return {"match": True, "similarity": None, "threshold": threshold, "dropped": 0, "drop": []}, x
+        spk = cls.speakers(x, t)
+        judged = [s["sim"] for s in spk if s["sim"] is not None and (not interim or s["seconds"] >= VP_INTERIM_MIN)]
+        best = max(judged, default=None)
+        # a short stretch scores unevenly (a sub-second clip of anyone can land above the threshold): it is kept only
+        # beside a long stretch that is surely the user — a piece of someone else alone can't slip through on it
+        long_mine = any(s["sim"] is not None and s["seconds"] >= VP_MARGIN_MIN and s["sim"] >= threshold for s in spk)
+        any_long = any(s["seconds"] >= VP_MARGIN_MIN for s in spk)
+        for s in spk:
+            v = s["sim"]
+            short = s["seconds"] < VP_MARGIN_MIN
+            s["keep"] = (interim and s["seconds"] < VP_INTERIM_MIN) or (v is None and (long_mine or not judged)) or (v is not None and 
+                v >= threshold and (v >= best - VP_MARGIN or v >= VP_SURE or short)
+                and (not short or long_mine or not any_long))
+        # a fragment too short to score (< 0.5 s) goes with the piece: kept beside the user, dropped beside others
+        kept = [s for s in spk if s["keep"]]
+        dropped = [s for s in spk if not s["keep"]]
+        # learning: a piece of one voice only, long and surely the user's against the enrollment itself
+        e0 = cls.enrolled()
+        if not interim and len(spk) == 1 and spk[0]["seconds"] >= VP_LEARN_MIN and e0 is not None:
+            e_ = cls.embed(spk[0]["audio"][:10 * SR])
+            if float(np.dot(e_, e0)) >= VP_LEARN:
+                cls.learn(e_)
+        sims = [s["sim"] for s in kept if s["sim"] is not None]
+        out = {"match": bool(kept) or not spk, "threshold": threshold, "dropped": len(dropped),
+               "similarity": round(min(sims), 3) if sims else round(best, 3) if best is not None else None,
+               "speakers": [round(s["sim"], 3) if s["sim"] is not None else None for s in spk],
+               "drop": [[round(a, 3), round(b, 3)] for s in dropped for a, b in s["turns"]]}
+        if not dropped or not kept:
+            return out, x
+        mask = np.ones(len(x), dtype=np.float32)
+        r = int(0.01 * SR)
+        for s in dropped:
+            for a_, b_ in s["turns"]:
+                a, b = int(a_ * SR), min(len(x), int(b_ * SR))
+                mask[a:b] = 0
+                n = min(r, a)
+                mask[a - n:a] = np.minimum(mask[a - n:a], np.linspace(1, 0, n, dtype=np.float32))
+                n = min(r, len(x) - b)
+                mask[b:b + n] = np.minimum(mask[b:b + n], np.linspace(0, 1, n, dtype=np.float32))
+        for s in kept:                # two at once: the user's turn wins
+            for a_, b_ in s["turns"]:
+                mask[int(a_ * SR):int(b_ * SR)] = 1
+        return out, x * mask
+
+    @classmethod
+    def learn(cls, e: np.ndarray) -> None:
+        """A cut that is surely the user's joins the profile (at most one per VP_LEARN_EVERY s, the latest
+        VP_LEARNED_MAX kept)."""
+        now = time.time()
+        if now - cls._learned_at < VP_LEARN_EVERY:
+            return
+        p = cls.profile()
+        if not p.get("embeddings"):
+            return
+        cls._learned_at = now
+        p["version"] = 2
+        p["learned"] = ((p.get("learned") or []) + [[round(float(v), 5) for v in e]])[-VP_LEARNED_MAX:]
+        p["updated"] = datetime.now().astimezone().isoformat(timespec="seconds")
+        save_json(cls.PROFILE, p)
+
+    @classmethod
+    def enroll(cls, wav: Path) -> dict:
+        """One enrollment take (Settings' "Only my voice": a passage read aloud): its windows join the profile (the
+        latest TAKES takes; what dictation taught it stays). Refused when there is too little speech in it — room tone
+        is never learned. A profile another model made is replaced."""
+        t0 = time.perf_counter()
+        if not wav.is_file():
+            return {"ok": False, "code": "not_found", "error": f"{wav} not found"}
+        x = read_wav(wav)
+        es = cls.embed_windows(x)
+        if len(es) < 2:               # under ~8 s of speech
+            return {"ok": False, "code": "too_short", "audio_seconds": round(len(x) / SR, 2),
+                    "error": "too little speech — read the passage aloud"}
+        p = cls.profile()
+        takes = [t for t in (p.get("takes") or []) if isinstance(t, list)][-(cls.TAKES - 1):] + [
+            [[round(float(v), 5) for v in e] for e in es]]
+        save_json(cls.PROFILE, {"model": VP_FILE, "version": 2, "takes": takes, "embeddings": [e for t in takes for e in t],
+                                "learned": p.get("learned") or [],
+                                "updated": datetime.now().astimezone().isoformat(timespec="seconds")})
+        return {**cls.status(), "audio_seconds": round(len(x) / SR, 2), "ms": int((time.perf_counter() - t0) * 1000)}
+
+    @classmethod
+    def prepare(cls) -> dict:
+        """The model on this Mac (downloaded when missing: GitHub, then Hugging Face and its mirror), then the status."""
+        download(VP_FILE)
+        download(VP_SEG_FILE)
+        return cls.status()
+
+    @classmethod
+    def status(cls) -> dict:
+        p = cls.profile()
+        return {"ok": True, "enrolled": bool(p.get("embeddings")), "stale": bool(p.get("stale")),
+                "takes": len(p.get("takes") or []), "learned": len(p.get("learned") or []), "model": VP_FILE,
+                "model_ready": (MODELS_DIR / VP_FILE).is_file() and (MODELS_DIR / VP_SEG_FILE).is_file(), "model_mb": VP_MB, "updated": p.get("updated")}
+
+    @classmethod
+    def clear(cls) -> dict:
+        cls.PROFILE.unlink(missing_ok=True)
+        cls._target = None
+        return cls.status()
+
 class NoteEngine:
     """The voice-note model, loaded once (in-process `note`, or kept warm by `serve`)."""
 
@@ -2176,7 +3460,7 @@ class NoteEngine:
 
     def note(self, wav: Path, language: str | None = None, model_id: str | None = None, vocab=None,
              purpose: str | None = None, prior: str | None = None, hint: str | None = None, stop=None,
-             app: str | None = None) -> dict:
+             app: str | None = None, before: str | None = None, voiceprint: bool | None = None) -> dict:
         """vocab: None = no words; True = the file's; a list = these (strings or term dicts). The model is biased toward
         them where it can be (Whisper's prompt, Qwen3-ASR's context / hotwords); they are hints, so `text` (and
         `asr_text`, the same) is what the model wrote. A misheard name is polish's to fix: it gets the words and sees
@@ -2186,6 +3470,9 @@ class NoteEngine:
         app: the name of the app the text goes into ("飞书"), named to the model before the words — what the speech is
         likely about where two words sound the same (飞书会话 vs 绘画: 4 → 8 of 12 synthetic takes right). Only for a
         backend that takes words (Qwen3-ASR's context); nothing else is said about the app.
+        before: the field's text before the cursor (the app sends it only with "Use the text around the cursor" on, never
+        from a password field). Heard as context only by a model whose registry entry has field_context_chars (its
+        last that many characters, ahead of the text so far); never logged or answered back.
         stop: an interim request (the live words of dictation and of notes) — a callable that says another request is
         waiting; the decode then raises Interrupted. An interruptible backend looks at it between steps; a quick one
         (`quick_decode`: SenseVoice, one ~0.1 s pass) is asked once before and then decodes whole — a waiting final
@@ -2195,10 +3482,26 @@ class NoteEngine:
         language = None if language in (None, "", "auto") else language
         if purpose == "dictation" and not model_id:
             model_id = dictation_models()["selected"]
-        before = self.backend
+        x = read_wav(wav)
+        speaker = None
+        vp_on, vp_threshold = voiceprint_settings(voiceprint)
+        if vp_on and purpose == "dictation":
+            # only my voice (issue #26): someone else's speech is silenced out of what recognition hears, a piece that
+            # is all someone else answers blank right here, before the model is even loaded. An interim request (stop
+            # set) judges only cuts long enough to tell. No profile, no model, the gate failing: as if it were off.
+            with no_download(True):      # a dictation never waits for the voiceprint model either
+                try:
+                    speaker, x = Voiceprint.gate(x, vp_threshold, interim=stop is not None)
+                except (Fail, ImportError, RuntimeError, ValueError):
+                    speaker = None
+            if speaker is not None and not speaker["match"]:
+                return {"ok": True, "text": "", "language": language, "ms": int((time.perf_counter() - t0) * 1000),
+                        "model": model_id or self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": 0,
+                        "speaker": speaker}
+        was = self.backend
         t_load = time.perf_counter()
         self.load(language, model_id)
-        load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not before else 0
+        load_ms = int((time.perf_counter() - t_load) * 1000) if self.backend is not was else 0
         if stop is not None and not getattr(self.backend, "interruptible", False):
             if not getattr(self.backend, "quick_decode", False):
                 raise Fail(f"{self.name} can't stop a decode halfway: no interim requests", "interim_unsupported")
@@ -2206,33 +3509,34 @@ class NoteEngine:
                 raise Interrupted("another request is waiting")
             stop = None     # one short pass: nothing to look at halfway
 
-        x = read_wav(wav)
-        terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
-        biased = False
-        if hasattr(self.backend, "set_vocab"):
-            # the most relevant `cap` of them: ranked() cuts by relevance, then names them in a fixed order — a
-            # backend that took fewer than it was given would cut alphabetically (Whisper's 40 of 64: a third of the
-            # right words gone, contextual-earnings22)
-            cap = getattr(self.backend, "max_terms", dictation_vocab.QWEN_MAX_TERMS)
-            limit = min(PRIOR_TERMS, cap) if prior else cap
-            use = dictation_vocab.ranked(terms, prior or "", hint or "", limit)
-            name = " ".join(str(app or "").split())[:40]
-            if name and not any(t["term"] == name for t in use):
-                use = [{"term": name, "sounds_like": [], "source": "app", "hits": 0}] + use[:max(0, limit - 1)]
-            biased = self.backend.set_vocab(use)
+        biased = bias(self.backend, vocab, prior, hint, app)
         if prior and hasattr(self.backend, "set_prior"):
             self.backend.set_prior(prior_tail(prior))
+        field = ""
+        if before and hasattr(self.backend, "set_field") and (n := field_context_chars(self.model_id)):
+            field = prior_tail(before, n)
+            self.backend.set_field(field)
         retried = False
         if stop is not None:
             self.backend.stop_check = stop
+        # a cloud service hears a long take's parts side by side (a take at key-up: dictation-eval §5, Flash grows
+        # from 0.5 to 1.5 s with the take when sent as one request); a local model has one decoder
+        workers = CLOUD_WORKERS if self.name in API_KEYS else 1
+        if self.name in API_KEYS:
+            self.backend.last = {}
+        if hasattr(self.backend, "looped"):
+            self.backend.looped = False
         try:
-            results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+            results, _speech, _blank = transcribe_track(x, self.backend, self.name, workers, quiet=True)
             # Qwen3-ASR now and then answers nothing for a short piece that follows a whole sentence of context (a
             # dictation's last words after a long pause: measured 2–5 of 6 takes of one synthetic clip, never when the
             # same request was replayed). The VAD heard speech, so once more without the context: ~0.13 s, only then.
-            if prior and _speech >= 0.4 and not note_text(results)[0].strip() and hasattr(self.backend, "set_prior"):
+            if (prior or field) and _speech >= 0.4 and not note_text(results)[0].strip() \
+                    and hasattr(self.backend, "set_prior"):
                 self.backend.set_prior("")
-                results, _speech, _blank = transcribe_track(x, self.backend, self.name, 1, quiet=True)
+                if field:
+                    self.backend.set_field("")
+                results, _speech, _blank = transcribe_track(x, self.backend, self.name, workers, quiet=True)
                 retried = True
         finally:
             if stop is not None:
@@ -2241,11 +3545,19 @@ class NoteEngine:
                 self.backend.set_vocab([])  # a voice note after this gets no dictation words
             if prior and hasattr(self.backend, "set_prior"):
                 self.backend.set_prior("")
+            if field:
+                self.backend.set_field("")
         text, lang = note_text(results)
         out = {"ok": True, "text": text, "language": lang or language, "ms": int((time.perf_counter() - t0) * 1000),
                "model": self.model_id, "audio_seconds": round(len(x) / SR, 2), "load_ms": load_ms}
+        if speaker:
+            out["speaker"] = speaker
         if retried:
             out["retried"] = True
+        if getattr(self.backend, "looped", False):
+            out["looped"] = True        # a repetition loop was cut out of it: words may be missing (never sent)
+        if field:
+            out["field_context"] = len(field)      # how much of it was heard (never the text)
         tag = getattr(self.backend, "last", None)
         if tag:
             out["tag"] = tag      # the language tag chosen and the model's English / preferred probabilities
@@ -2253,6 +3565,178 @@ class NoteEngine:
             out.update(asr_text=text, biased=biased)
         self.last = time.time()
         return out
+
+
+def bias(backend, vocab, prior: str | None = None, hint: str | None = None, app: str | None = None) -> bool:
+    """The request's words (None: none; True: the file's; a list: these) given to a backend that takes them: the most
+    relevant `max_terms` of them — ranked() cuts by relevance, then names them in a fixed order (a backend that took
+    fewer than it was given would cut alphabetically: Whisper's 40 of 64, a third of the right words gone,
+    contextual-earnings22) — with the app's name first. True when the backend was biased."""
+    if not hasattr(backend, "set_vocab"):
+        return False
+    terms = dictation_vocab.load() if vocab is True else dictation_vocab.normalize(vocab) if vocab else []
+    cap = getattr(backend, "max_terms", dictation_vocab.QWEN_MAX_TERMS)
+    limit = min(PRIOR_TERMS, cap) if prior else cap
+    use = dictation_vocab.ranked(terms, prior or "", hint or "", limit)
+    # the app's name goes first — not to a model whose words are built into it (FunAsrOnnx: a new word list is a new
+    # recognizer, ~3 s on a CPU; an app switch must not cost that)
+    name = " ".join(str(app or "").split())[:40] if getattr(backend, "app_hint", True) else ""
+    if name and not any(t["term"] == name for t in use):
+        use = [{"term": name, "sounds_like": [], "source": "app", "hits": 0}] + use[:max(0, limit - 1)]
+    return backend.set_vocab(use)
+
+
+# --- a take streamed while it is said (serve "stream"; docs/design/dictation.md §Cloud recognition)
+# A recogniser that hears audio as it comes (Volcengine's `streams`) gets a dictation's microphone packets during the
+# take, so at key-up only its last ~15 s block is left (dictation-eval-2026-10-31.md §5: ~0.5 s however long the take,
+# against 1.5 s for a minute-long take sent whole). The app opens one connection per take: one JSON line
+# ({"token", "cmd": "stream", "model_id", "language", "vocab", "app", "hint", "before"}), then raw 16 kHz s16 mono PCM
+# as the microphone gives it, then shuts its side for writing at key-up. The answer is one JSON line, a note's answer
+# (+ "streamed", "after_keyup_ms"), after the end of the audio — a refusal (no key, quota: "quota exceeded for types:
+# concurrency", a model that can't take a stream) too: the PCM is read to its end first, so the answer is never lost
+# to a reset. A connection the app resets (a cancelled take) ends the session unanswered. Each stream runs on its own
+# thread beside the server's loop; the server doesn't end while one is open.
+STREAM_FINAL_WAIT = 10.0         # s after key-up for the final text (measured p90: 0.58–0.70 s)
+# …plus this much per second of audio that came faster than it is spoken (a server that came up late gets the take so
+# far at once): the service works through a backlog at ~4× real time (the eval's unpaced takes: ~0.23 s per second)
+STREAM_BACKLOG_WAIT = 0.4
+
+
+def voiceprint_utterances(text: str, utterances: list | None, speaker: dict) -> str:
+    """A stream's text without another speaker's sentences: those whose time lies mostly in the gate's dropped spans.
+    All someone else → ""; nothing dropped, or no sentence times to go by → the text as it came."""
+    if not speaker.get("match"):
+        return ""
+    drop = speaker.get("drop") or []
+    if not drop or not utterances:
+        return text
+    kept = []
+    for u in utterances:
+        s, e = (u.get("start_time") or 0) / 1000, (u.get("end_time") or 0) / 1000
+        gone = sum(max(0.0, min(e, b) - max(s, a)) for a, b in drop)
+        if e <= s or gone < 0.5 * (e - s):
+            kept.append(str(u.get("text") or "").strip())
+    out = ""
+    for k in filter(None, kept):
+        cjk = re.match(f"[{_CJK}，。？！、]", out[-1:] or " ") or re.match(f"[{_CJK}]", k[0])
+        out += k if not out or cjk else " " + k
+    return out
+
+
+def final_wait(audio_s: float, streamed_s: float) -> float:
+    """How long a take's final text is waited for after key-up: `audio_s` of audio arrived over `streamed_s` s."""
+    return STREAM_FINAL_WAIT + STREAM_BACKLOG_WAIT * max(0.0, audio_s - streamed_s)
+_streams = 0
+_streams_lock = threading.Lock()
+
+
+def streams_open() -> int:
+    with _streams_lock:
+        return _streams
+
+
+def serve_stream(conn: socket.socket, req: dict, extra: bytes) -> None:
+    global _streams
+    with _streams_lock:
+        _streams += 1
+    sess = None
+    fail: Fail | None = None
+    got = 0
+    odd = b""
+    t0 = time.perf_counter()
+    model_id = req.get("model_id")
+    biased = False
+    field = ""
+    gate = False
+    pcm = bytearray()
+    speaker = None
+    try:
+        conn.settimeout(120)        # a take sends a packet every ~0.1 s: two minutes of nothing is an app gone
+        try:
+            if local_only():
+                raise Fail("local-only recognition is on (privacy.local_asr): cloud ASR is not allowed", "privacy")
+            model_id = model_id or dictation_models()["selected"]
+            m = entry(model_id)
+            cls = BACKENDS.get((m or {}).get("backend"))
+            if not m or not getattr(cls, "streams", False):
+                raise Fail(f"{model_id} doesn't take a stream", "usage")
+            lang = req.get("language")
+            a = argparse.Namespace(model=None, model_id=model_id, prompt=None,
+                                   language=None if lang in (None, "", "auto") else lang)
+            backend = cls(a)
+            # only my voice: the PCM is kept, judged at key-up while the service finishes, and another speaker's
+            # sentences are left out of the text by their times (the audio itself has gone out as it was said)
+            vp_on, vp_threshold = voiceprint_settings(req.get("voiceprint"))
+            gate = vp_on and req.get("purpose", "dictation") == "dictation" and Voiceprint.target() is not None \
+                and (MODELS_DIR / VP_FILE).is_file() and (MODELS_DIR / VP_SEG_FILE).is_file()
+            backend.utterances = gate
+            biased = bias(backend, req.get("vocab"), None, req.get("hint"), req.get("app"))
+            if req.get("before") and (n := field_context_chars(model_id)):
+                field = prior_tail(req["before"], n)
+                backend.set_field(field)
+            sess = backend.open()
+        except Fail as e:
+            fail = e
+        data = extra
+        t_first = None
+        while True:
+            if data:
+                t_first = t_first or time.perf_counter()
+                got += len(data)
+                data = odd + data
+                odd = data[len(data) & ~1:]             # whole samples only
+                if sess is not None:
+                    sess.feed(data[:len(data) & ~1])
+                if gate:
+                    pcm += data[:len(data) & ~1]
+            data = conn.recv(65536)
+            if not data:
+                break
+        t_up = time.perf_counter()
+        text = ""
+        if fail is None and sess is not None:
+            judged: dict = {}
+            judge = None
+            if gate and pcm:
+                def run_gate():
+                    with contextlib.suppress(Fail, ImportError, RuntimeError, ValueError):
+                        x = np.frombuffer(bytes(pcm), dtype="<i2").astype(np.float32) / 32768
+                        judged["speaker"] = Voiceprint.gate(x, vp_threshold)[0]
+                judge = threading.Thread(target=run_gate, daemon=True)
+                judge.start()
+            try:
+                text = sess.finish(wait=final_wait(got / 2 / SR, t_up - (t_first or t_up)))
+                if judge is not None:
+                    judge.join(timeout=5)
+                    speaker = judged.get("speaker")
+                    if speaker is not None:
+                        text = voiceprint_utterances(text, sess.utterances, speaker)
+                text = to_user_script(text, None)
+            except Fail as e:
+                fail = e
+        if fail is not None:
+            resp = {"ok": False, "error": str(fail), "code": fail.code, "streamed": True}
+        else:
+            resp = {"ok": True, "text": text, "asr_text": text, "language": a.language, "model": model_id,
+                    "audio_seconds": round(got / 2 / SR, 2), "ms": int((time.perf_counter() - t_up) * 1000),
+                    "after_keyup_ms": int((time.perf_counter() - t_up) * 1000), "load_ms": 0, "biased": biased,
+                    "streamed": True, "stream_s": round(t_up - t0, 2)}
+            if field:
+                resp["field_context"] = len(field)
+            if speaker is not None:
+                resp["speaker"] = speaker
+        with contextlib.suppress(OSError):
+            conn.sendall((json.dumps(resp, ensure_ascii=False) + "\n").encode())
+    except (OSError, ValueError) as e:
+        # the app reset the connection (a cancelled take) or went away: the session ends unanswered
+        serve_said(f"serve: stream ended ({type(e).__name__})")
+    finally:
+        if sess is not None:
+            sess.close()
+        with contextlib.suppress(OSError):
+            conn.close()
+        with _streams_lock:
+            _streams -= 1
 
 
 SERVE_FILE = RUN_DIR / "asr-serve.json"
@@ -2310,16 +3794,60 @@ def cmd_note(a):
     emit(NoteEngine().note(wav, a.language, a.model_id, vocab, purpose))
 
 
+def voiceprint_verdict(wav: Path) -> dict:
+    """The gate's verdict on a dictation piece without recognising it (serve "vp_gate", `voiceprint check`): {"ok",
+    "speaker"}; "speaker" is null when the gate can't judge (no voice enrolled, no model: as if it were off)."""
+    x = read_wav(wav)
+    _, threshold = voiceprint_settings(None)
+    with no_download(True):
+        try:
+            speaker, _ = Voiceprint.gate(x, threshold)
+        except (Fail, ImportError, RuntimeError, ValueError) as e:
+            return {"ok": True, "speaker": None, "why": getattr(e, "code", type(e).__name__)}
+    return {"ok": True, "speaker": speaker, "audio_seconds": round(len(x) / SR, 2)}
+
+
+def cmd_voiceprint(a):
+    """`voiceprint prepare` (the model on this Mac, downloaded when missing), `enroll <wav>` (learn the user's voice
+    from a passage read aloud), `check <wav>` (the gate's verdict on it), `status`, `clear`. The warm server answers
+    vp_gate / vp_status / vp_clear; enrolling is only here, so the server never waits for a download."""
+    if a.vp_cmd in ("enroll", "check") and not a.wav:
+        raise Fail(f"voiceprint {a.vp_cmd} needs a wav", "usage")
+    if a.vp_cmd == "prepare":
+        emit(Voiceprint.prepare())
+    elif a.vp_cmd == "enroll":
+        Voiceprint.prepare()
+        emit(Voiceprint.enroll(Path(a.wav).resolve()))
+    elif a.vp_cmd == "check":
+        emit(voiceprint_verdict(Path(a.wav).resolve()))
+    elif a.vp_cmd == "status":
+        emit(Voiceprint.status())
+    elif a.vp_cmd == "clear":
+        emit(Voiceprint.clear())
+
+
 def cmd_serve(a):
     """One warm voice-note model per machine. Protocol: one JSON line in ({"token","cmd":"note"|"load"|"ping"|"exit",
     …}), one JSON line out. A "note" with "interim": true (dictation's live text: the piece still being said) is
     stopped as soon as another connection waits — a final piece never waits for it — and answers
     {"ok": false, "code": "interrupted"}; a quick model (SenseVoice) decodes it whole; a slow model that can't stop
-    halfway answers "interim_unsupported". Ends (serve_exit_reason) when its model went unused for --idle s — an unload left most of
+    halfway answers "interim_unsupported". A "stream" (a dictation's audio while it is said, for a recogniser that hears it
+    as it comes: serve_stream) runs on its own thread; the server doesn't end while one is open. Ends
+    (serve_exit_reason) when its model went unused for --idle s — an unload left most of
     the memory resident, so the process goes and the app starts it again on the next key-down — when the app that
     started it (--parent) is gone, on "exit", or after --exit-after s without a request while no model is loaded."""
+    global SERVING
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid")})
+    # every installed model's package now, before there is a run file (serve_packages); one that can't be added
+    # (offline with nothing cached) leaves it to a restart when that model is asked for
+    missing = [p for p in serve_packages() if not _has_package(p)
+               and p not in os.environ.get("BLURT_ASR_REEXEC", "").split(",")]
+    if missing:
+        try:
+            _reexec_with(missing)
+        except Fail as e:
+            serve_said(f"serve: packages not added ({e})")
     throttle("note")
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
@@ -2332,6 +3860,8 @@ def cmd_serve(a):
                            "started": datetime.now().astimezone().isoformat(timespec="seconds")})
     eng = NoteEngine()
     why = None
+    restart: str | None = None      # a package this server must restart with (NeedsRestart)
+    SERVING = True
     # from here on the run file is ours to remove, whatever happens — a preload that fails included (a run file left
     # pointing at a dead or stuck process made the app wait for a server that never answered)
     try:
@@ -2347,13 +3877,26 @@ def cmd_serve(a):
                 if e.code != "model_missing":
                     raise
                 serve_said(f"serve: preload skipped ({e})")
+            except NeedsRestart as e:
+                restart, why = e.pkg, "restart"
+        if voiceprint_settings(None)[0] and Voiceprint.target() is not None and (MODELS_DIR / VP_FILE).is_file():
+            # only my voice: its models too (~0.3 s), so the first piece doesn't wait for them
+            def warm_voiceprint():
+                with contextlib.suppress(Exception):
+                    Voiceprint.extractor()
+                    Voiceprint.diarizer()
+            threading.Thread(target=warm_voiceprint, daemon=True).start()
         emit({"ok": True, "pid": os.getpid(), "port": port, "model": eng.model_id})
         last = time.time()
         uses: list[float] = []          # dictation requests: kept warm longer while dictation is used often
         tier = probe()["tier"]
+        # a CPU model left at the default idle: an hour where memory allows (_common.CPU_SERVE_IDLE)
+        idle = CPU_SERVE_IDLE if not IS_MAC and a.idle == SERVE_IDLE and tier in ("pro", "standard") else a.idle
         while not why:
             now = time.time()
-            why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, a.idle,
+            if streams_open():
+                last = now          # a take is streaming: never idle
+            why = serve_exit_reason(eng.backend is not None, now - eng.last, now - last, uses, tier, idle,
                                     a.exit_after, a.parent)
             if why:
                 break
@@ -2365,14 +3908,23 @@ def cmd_serve(a):
                 conn.settimeout(10)
                 try:
                     buf = b""
-                    while not buf.endswith(b"\n") and len(buf) < 1 << 20:      # a vocabulary can be long
+                    while b"\n" not in buf and len(buf) < 1 << 20:      # a vocabulary can be long
                         chunk = conn.recv(65536)
                         if not chunk:
                             break
                         buf += chunk
-                    req = json.loads(buf or b"{}")
+                    line, _, extra = buf.partition(b"\n")     # a stream's PCM may follow its line
+                    req = json.loads(line or b"{}")
                     if req.get("token") != token:
                         resp = {"ok": False, "error": "bad token", "code": "auth"}
+                    elif req.get("cmd") == "stream":
+                        # its own thread, its own copy of the connection (this one closes with the block)
+                        last = time.time()
+                        if req.get("purpose", "dictation") == "dictation":
+                            uses.append(last)
+                            del uses[:-50]
+                        threading.Thread(target=serve_stream, args=(conn.dup(), req, extra), daemon=True).start()
+                        continue
                     elif req.get("cmd") == "ping":
                         resp = {"ok": True, "pid": os.getpid(), "model": eng.model_id, "loaded": eng.backend is not None}
                     elif req.get("cmd") == "note":
@@ -2387,9 +3939,19 @@ def cmd_serve(a):
                         with no_download(bool(req.get("no_download")) or req.get("purpose") == "dictation"):
                             resp = eng.note(Path(req["wav"]), req.get("language"), req.get("model_id"), req.get("vocab"),
                                             req.get("purpose"), req.get("prior"), req.get("hint"), stop=stop,
-                                            app=req.get("app"))
+                                            app=req.get("app"), before=req.get("before"),
+                                            voiceprint=req.get("voiceprint"))
                         if interim:
                             resp["interim"] = True
+                    elif req.get("cmd") == "vp_gate":
+                        # only my voice for a piece macOS's recogniser hears (dictation on Apple Speech, or a cloud
+                        # recogniser's live text): the verdict alone, the app silences the dropped spans itself
+                        last = time.time()
+                        resp = voiceprint_verdict(Path(req["wav"]))
+                    elif req.get("cmd") == "vp_status":      # enrolling (it may download) is the CLI's: never here
+                        resp = Voiceprint.status()
+                    elif req.get("cmd") == "vp_clear":
+                        resp = Voiceprint.clear()
                     elif req.get("cmd") == "load":       # warm a model now (dictation's key went down)
                         last = time.time()
                         mid = req.get("model_id") or (dictation_models()["selected"] if req.get("purpose") == "dictation" else None)
@@ -2404,6 +3966,11 @@ def cmd_serve(a):
                         resp = {"ok": False, "error": "unknown cmd", "code": "usage"}
                 except Fail as e:
                     resp = {"ok": False, "error": str(e), "code": e.code}
+                except NeedsRestart as e:
+                    # answered, then gone: the app waits for the new server (it comes back with the model loaded when
+                    # it was started with --preload) instead of sending the take to a cold CLI run
+                    resp = {"ok": False, "error": str(e), "code": "restarting"}
+                    restart, why = e.pkg, "restart"
                 except Interrupted:
                     resp = {"ok": False, "error": "interrupted", "code": "interrupted", "interim": True}
                 except Exception as e:  # noqa: BLE001 — keep serving
@@ -2413,11 +3980,14 @@ def cmd_serve(a):
                 except OSError:
                     pass
     finally:
+        SERVING = False
         info = load_json(SERVE_FILE, None)
         if isinstance(info, dict) and info.get("pid") == os.getpid():
             SERVE_FILE.unlink(missing_ok=True)
         srv.close()
         serve_said(f"serve: exiting ({why or 'error'})")
+    if restart:
+        _reexec_with([restart])
 
 
 # --- probe / recommend / auto / models / setup
@@ -2438,13 +4008,13 @@ def auto_plan(apply: bool) -> dict:
     are installed — the rest are listed under needs_download for the host to ask about) and the hardware fingerprint."""
     cfg = asr_config()
     hw = probe()
-    picks, needs = {}, []
+    picks, needs, keep = {}, [], {}
     for p in PURPOSES:
         r = recommend(purpose=p, hw=hw, cfg=cfg)
         mid = r["pick"]["model"]
         m = entry(mid)
         if installed(m):
-            picks[p] = mid
+            picks[p] = keep[p] = mid
         else:
             fallback = select(p)  # what runs today
             picks[p] = fallback["id"]
@@ -2458,7 +4028,10 @@ def auto_plan(apply: bool) -> dict:
            "hardware_changed": cfg.get("hardware") != hw["fingerprint"]}
     if apply and is_auto(cfg):
         # a config.json that doesn't parse: nothing saved, said (not a traceback) — the picks still run as defaults
-        out["applied"] = save_config_if_readable({"asr": {"models": picks, "hardware": hw["fingerprint"]}})
+        # only the recommended picks are kept: a stand-in (what runs until the recommended one is in) stays unpinned,
+        # so select() takes the best one installed each time — a Whisper found in a shared cache on the first launch
+        # no longer outlasts the 1.7B downloaded after it (v1.0.8)
+        out["applied"] = save_config_if_readable({"asr": {"models": keep, "hardware": hw["fingerprint"]}})
         if not out["applied"]:
             out["saved"] = False
     return out
@@ -2471,7 +4044,12 @@ def cmd_auto(a):
 # --- dictation's recognition model (record.dictation.asr_model; docs/design/dictation.md §Recognition model)
 QWEN_MLX = "qwen3-asr-0.6b-mlx"
 QWEN_MLX_17 = "qwen3-asr-1.7b-mlx"
-DICTATION_MODELS = (QWEN_MLX_17, QWEN_MLX, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2)   # the local ones dictation offers, best first
+FUN_MLX = "fun-asr-nano-mlx"      # Chinese, English and Japanese only: offered and picked only for those (speaks_all)
+FUN_CPU = "fun-asr-nano-onnx"     # the same model on the CPU (sherpa-onnx int8): Windows and Linux
+DICTATION_MODELS = (QWEN_MLX, QWEN_MLX_17, FUN_MLX, FUN_CPU, SV, TURBO, TURBO_Q4, QWEN_CPU, CT2, APPLE)   # the local ones dictation offers, best
+#                                                                                   first; macOS's own last (nothing to download)
+# offered once their key is set (first-minute-speech.md §2.4; Volcengine: dictation-eval-2026-10-31.md §6.3 B′)
+DICTATION_CLOUD = ("qwen3-asr-flash", "volcengine-seedasr", "openai-compatible")
 
 
 def polish_ram_mb(hw: dict, cfg: dict | None = None) -> float:
@@ -2497,6 +4075,71 @@ def fits_with_polish(m: dict, hw: dict, polish_mb: float) -> bool:
     return _fits({**m, "ram_mb": (m.get("ram_mb") or 0) + polish_mb}, hw)
 
 
+# Defaults by Mac (docs/design/dictation-eval-2026-10-31.md §6, docs/design/dictation.md §Defaults by Mac): on the
+# founder's 95 takes the 1.7B (30 s windows, the field's text as context) makes 2.50 % errors, the 0.6B (20 s windows)
+# 3.34 %; Gemma 4 E2B as local polish is within ±0.2 points (fillers and punctuation, not words). The 1.7B needs ~3.1 GB
+# and its last 30 s window decoded at key-up: on a slow chip (a base M1 / M2, 7–10 GPU cores against the M5 Max's 40)
+# that is over a second, so it goes where its measured rtf (`transcribe.py bench`, asr-bench.json) is at most
+# TIER_RTF_LIMIT — or, not measured, where the chip isn't a base M1 / M2. Where the 1.7B doesn't go (8 GB, slow chips),
+# Fun-ASR-Nano for users who speak only Chinese, English and Japanese (2.92 % through the app's path, 0.07 / 0.17 s
+# after key-up, 2.6 GB at peak: it fits 8 GB as the 0.6B does), else the 0.6B (small_recognizer). BlurtCore
+# DictationTier.recommended is the same rule for the app (Settings shows it); tests/fixtures/dictation_tier.jsonl checks
+# both.
+TIER_RTF_LIMIT = 0.05
+SLOW_CHIPS = ("Apple M1", "Apple M2")
+TIER_POLISH = "gemma4-e2b"
+
+
+def speaks_all(m: dict | None, langs: list[str] | None) -> bool:
+    """Every one of `langs` is a language of model `m` (asr_models.json `languages`); False for no languages (nothing
+    known about the user is no reason for a model that speaks three)."""
+    return bool(m) and bool(langs) and all(speaks(m, x) for x in langs)
+
+
+def small_recognizer(langs: list[str] | None) -> str:
+    """The recogniser for Macs the 1.7B doesn't suit (8 GB, or too slow for it): Fun-ASR-Nano when it speaks every
+    language of the user's (Chinese, English, Japanese) — fewer errors than the 0.6B (2.92 vs 3.34 % on the founder's
+    takes through the app's path; Chinese with English inside it ASCEND 6.6 vs 8.9 %, English level, Japanese 16.0 vs
+    20.2 %) and as fast after key-up (dictation-eval-2026-10-31.md §2.1, §3, §5; docs/design/dictation.md §Defaults by
+    Mac) — else the 0.6B (30 languages)."""
+    return FUN_MLX if speaks_all(entry(FUN_MLX), langs) else QWEN_MLX
+
+
+def cpu_recognizer(hw: dict, langs: list[str] | None) -> str:
+    """Dictation's recogniser on a PC without Apple Silicon (docs/design/windows-models.md): Fun-ASR-Nano int8 for
+    Chinese / English / Japanese speakers (3.69 % on the founder's takes, ~1 s after key-up for a 10 s piece on 4 Zen 4
+    threads), else Qwen3-ASR 0.6B int8 (30 languages, 3.51 %); SenseVoice on a minimal PC (< 8 GB or ≤ 2 cores:
+    0.2 s, 5.2 %)."""
+    if hw.get("ram_gb", 16) < 7.5 or (hw.get("perf_cores") or 4) + (hw.get("eff_cores") or 0) <= 2:
+        return SV
+    return FUN_CPU if speaks_all(entry(FUN_CPU), langs) else QWEN_CPU
+
+
+def slow_chip(chip: str | None) -> bool:
+    """A base M1 / M2 (not Pro, Max or Ultra): the chips the 1.7B is too slow on when nothing was measured."""
+    return " ".join(str(chip or "").split()) in SLOW_CHIPS
+
+
+def dictation_tier(ram_gb: float, rtf: float | None = None, slow: bool = False, cloud_key: bool = False,
+                   languages: list[str] | None = None) -> dict:
+    """What dictation runs on for a Mac with `ram_gb` of memory (Apple Silicon): the recogniser (its window and field
+    context come with it from asr_models.json), the local polish model (None: off), and — with a cloud key —
+    cloud polish with macOS's transcript as the second opinion (§6.3 A: the recogniser stays local). `rtf`: the 1.7B's
+    measured real-time factor here (None: not measured — then `slow`, a base M1 / M2, decides). `languages`: the
+    user's (user_languages): where the 1.7B doesn't go, Fun-ASR-Nano for Chinese / English / Japanese speakers, else
+    the 0.6B (small_recognizer). Pure."""
+    tier = "minimal" if ram_gb < 7.5 else "light" if ram_gb < 15 else "standard" if ram_gb < 30 else "pro"
+    fast = (rtf <= TIER_RTF_LIMIT) if rtf is not None else not slow
+    big = tier in ("standard", "pro") and fast
+    rec = QWEN_MLX_17 if big else small_recognizer(languages) if tier != "minimal" else None
+    m = entry(rec) or {}
+    return {"tier": tier, "recognizer": rec, "window_s": m.get("rehear_window_s") or (30 if big else 20 if rec else None),
+            "field_context": bool(m.get("field_context_chars")) if m else False,
+            "local_polish": TIER_POLISH if tier in ("standard", "pro") else None,
+            "cloud_polish": bool(cloud_key), "second_transcript": bool(cloud_key), "first": APPLE,
+            "why": "ram" if tier in ("minimal", "light") else "fast" if big else "rtf" if rtf is not None else "chip"}
+
+
 def dictation_models(hw: dict | None = None) -> dict:
     """configured (record.dictation.asr_model or None = automatic), recommended (by the dictation eval: Qwen3-ASR MLX
     on Apple Silicon pro / standard, else the voice-note pick), selected (what runs: the configured one when it is
@@ -2513,43 +4156,69 @@ def dictation_models(hw: dict | None = None) -> dict:
     def fits(mid: str) -> bool:
         m = entry(mid)
         return bool(m) and fits_with_polish(m, hw, pmb)
-    # the v0.8 speed eval (docs/design/dictation.md §Recognition model): 1.7B on pro Macs (≥ 32 GB: 3 GB more is
-    # fine there), 0.6B on standard ones
-    rec = QWEN_MLX_17 if apple and hw["tier"] == "pro" and fits(QWEN_MLX_17) else \
-        QWEN_MLX if apple and hw["tier"] in ("pro", "standard") and fits(QWEN_MLX) else note_pick["id"]
-    # what runs: the configured one (the user's choice, as it is), else the recommended one, else any Qwen3-ASR MLX
-    # already here that runs next to polish, best first (it takes the Words list; the voice-note model doesn't) — a
-    # 1.7B brought from a bigger Mac, or a 0.6B on a pro Mac until the 1.7B is in — all only when installed; else the
-    # voice-note model
-    usable = [mid for mid in (QWEN_MLX_17, QWEN_MLX) if mid != rec and apple and fits(mid)]
-    selected = next((mid for mid in (configured, rec, *usable) if mid and entry(mid) and runs_here(entry(mid))
-                     and installed(entry(mid))), note_pick["id"])
+    # by Mac (dictation_tier: the 2026-10-31 eval): the 1.7B on 16 GB+ Macs fast enough for it, else Fun-ASR-Nano for
+    # Chinese / English / Japanese speakers, else the 0.6B — each only where it fits beside the polish model; else the
+    # voice-note pick (the voice-note pick is macOS's own recogniser while nothing is downloaded: the download to offer
+    # is then the one the voice-note rules would choose)
+    note_rec = note_pick["id"] if note_pick["id"] != APPLE else recommend(purpose="note", hw=hw)["pick"]["model"]
+    langs = user_languages()
+    small = small_recognizer(langs)
+    plan = dictation_tier(hw["ram_gb"], (_bench_results().get(QWEN_MLX_17) or {}).get("rtf"), slow_chip(hw.get("chip")),
+                          languages=langs)
+    rec = next((mid for mid in ((plan["recognizer"], small, QWEN_MLX) if plan["recognizer"] else ())
+                if apple and fits(mid)), note_rec)
+    if not apple:
+        rec = cpu_recognizer(hw, langs)
+    # what runs: the configured one (the user's choice, as it is), else the recommended one, else any of the 1.7B,
+    # Fun-ASR-Nano (for its languages) or the 0.6B already here that runs next to polish, best first for this Mac (the
+    # 1.7B last where it is too slow or too big) — they take the Words list; the voice-note model doesn't — a 1.7B
+    # brought from a bigger Mac, or a 0.6B until Fun-ASR-Nano is in — all only when installed; else the voice-note model
+    order = (QWEN_MLX_17, small, QWEN_MLX) if plan["recognizer"] == QWEN_MLX_17 else (small, QWEN_MLX, QWEN_MLX_17)
+    usable = [mid for mid in dict.fromkeys(order) if mid != rec and apple and fits(mid)]
+    if not apple:       # any CPU model already here, best first: Fun-ASR-Nano (its languages), the 0.6B, SenseVoice
+        usable = [mid for mid in ((FUN_CPU,) if speaks_all(entry(FUN_CPU), langs) else ()) + (QWEN_CPU, SV) if mid != rec]
     # every local model hears through the VAD (silero_vad.onnx, 0.6 MB, which `setup` fetches first): without it a
     # dictation can't run ("model_missing" under BLURT_NO_DOWNLOAD), so a model counts as installed only with it;
     # `files` = the model's own files are in (then `setup` of it only fetches the VAD)
+    bundled_vad()
     vad = (MODELS_DIR / "silero_vad.onnx").is_file()
+    # without the VAD, macOS's recogniser (the voice-note pick then) runs before a model whose files only are here —
+    # unless the user chose that model
+    pick = (configured,) if not vad and note_pick["id"] == APPLE else (configured, rec, *usable)
+    selected = next((mid for mid in pick if mid and entry(mid) and runs_here(entry(mid))
+                     and installed(entry(mid))), note_pick["id"])
     rows = []
-    for mid in DICTATION_MODELS:
+    for mid in DICTATION_MODELS + DICTATION_CLOUD:
         m = entry(mid)
         if not m or not runs_here(m):
             continue
+        if not m.get("local", True) and (local_only() or not installed(m)):
+            continue        # a cloud service: only with its key, never when recognition stays on this Mac
+        if mid in (FUN_MLX, FUN_CPU) and not speaks_all(m, langs) and mid not in (configured, selected):
+            continue        # three languages: not offered to someone who speaks another (unless already chosen)
         have = installed(m)
         rows.append({"id": mid, "name": m.get("name"), "backend": m["backend"], "size_mb": m["size_mb"],
-                     "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True)), "files": have,
+                     "ram_mb": m.get("ram_mb"), "installed": have and (vad or not m.get("local", True) or bool(m.get("builtin"))),
+                     "files": have,
+                     "builtin": bool(m.get("builtin")),
                      "vocab": m.get("vocab") or "none", "recommended": mid == rec, "fits": fits(mid)})
     # ready: a dictation can run right now with nothing downloaded (it never downloads: `no_download`) — the
     # selected model (local and on this Mac, or a cloud one with its key: judged by itself, not by being a row) and
     # the VAD every take goes through. missing: what a download would have to bring for that ("silero-vad" and/or
     # the selected model's id)
     sel = entry(selected)
-    missing = [] if vad else ["silero-vad"]
+    # macOS's recogniser hears without the VAD, and so does a cloud service for a dictation's pieces (transcribe_track)
+    missing = [] if vad or selected == APPLE or bool(sel and not sel.get("local", True)) else ["silero-vad"]
     selected_installed = bool(sel and installed(sel))
     if not selected_installed:
         missing.append(selected)
     return {"configured": configured, "configured_installed": bool(configured and entry(configured)
                                                                      and installed(entry(configured))),
             "recommended": rec, "selected": selected, "selected_installed": selected_installed,
-            "ready": not missing, "missing": missing, "vad": vad, "models": rows}
+            # the dictation goes to a cloud service: the app shows live text from macOS's recogniser and doesn't hear it
+            # again (each pass is billed)
+            "selected_cloud": bool(sel and not sel.get("local", True)),
+            "ready": not missing, "missing": missing, "vad": vad, "models": rows, "plan": plan}
 
 
 def cmd_dictation_models(_a):
@@ -2595,6 +4264,7 @@ def cmd_models(_a):
             if m.get(k) is not None:
                 r[k] = m[k]
         rows.append(r)
+    bundled_vad()
     vad = MODELS_DIR / "silero_vad.onnx"  # every local model needs it; listed so hosts can show the whole download
     rows.append({"id": "silero-vad", "name": "Silero VAD", "backend": "vad", "role": "vad", "local": True,
                  "languages": ["*"], "installed": vad.exists(), "size_mb": _du_mb(vad) if vad.exists() else 0.6,
@@ -2635,7 +4305,75 @@ def cmd_setup(a):
     emit({"ok": True, "model": m["id"], "path": str(path), "asr": asr_config(), **({} if saved else {"saved": False})})
 
 
+# --- check-cloud: Settings' Test for a cloud speech service (CloudSpeech.check in the app)
+CHECK_PHRASE = "Testing, one, two, three."
+# the variables each cloud backend reads, for a key / address / model typed in Settings but not saved yet
+CLOUD_ENV = {"dashscope": {"key": "DASHSCOPE_API_KEY", "base_url": "DASHSCOPE_BASE_URL", "model": "DASHSCOPE_ASR_MODEL"},
+             "volcengine": {"app_id": "VOLC_APP_ID", "token": "VOLC_ACCESS_TOKEN"},
+             "openai": {"key": "BLURT_ASR_API_KEY", "base_url": "BLURT_ASR_BASE_URL", "model": "BLURT_ASR_MODEL"}}
+
+
+def check_clip() -> tuple[np.ndarray, str]:
+    """A short spoken clip (macOS `say`, offline, ~1.5 s) and what it says. Where there is no `say`: 0.6 s of
+    silence and "" — still the whole request (key, address, model), only nothing to hear."""
+    if shutil.which("say"):
+        with tempfile.TemporaryDirectory(prefix="blurt-check-") as d:
+            out = Path(d) / "check.wav"
+            try:
+                r = subprocess.run(["say", "-o", str(out), f"--data-format=LEI16@{SR}", CHECK_PHRASE],
+                                   capture_output=True, timeout=20)
+                if r.returncode == 0 and out.exists():
+                    x = read_wav(out)
+                    if len(x) > SR // 4:
+                        return x, CHECK_PHRASE
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    return np.zeros(int(0.6 * SR), np.float32), ""
+
+
+def cloud_check(model_id: str, given: dict | None = None, timeout: float = 20) -> dict:
+    """One small request to a cloud speech service, as dictation sends it → {"ok", "ms", "text", "heard", "model"}
+    or {"ok": False, "code", "error"} (codes: auth, quota, network, bad_response, privacy, usage). `given`: a key /
+    base_url / model typed but not saved (the app passes them on stdin, never on the command line)."""
+    m = entry(model_id)
+    if not m or m.get("local", True) or m.get("backend") not in CLOUD_ENV:
+        return {"ok": False, "code": "usage", "error": f"{model_id} is not a cloud speech service"}
+    try:
+        if local_only():
+            raise Fail("local-only recognition is on (privacy.local_asr): cloud ASR is not allowed", "privacy")
+        names = CLOUD_ENV[m["backend"]]
+        for k, v in (given or {}).items():
+            if k in names and isinstance(v, str) and v.strip():
+                os.environ[names[k]] = v.strip()
+        a = argparse.Namespace(model=None, model_id=model_id, language=None, prompt=None)
+        backend = BACKENDS[m["backend"]](a)
+        backend.retries, backend.timeout = 1, timeout      # Settings waits for one try, not four
+        x, said = check_clip()
+        t0 = time.perf_counter()
+        r = backend.transcribe(x)
+        ms = int((time.perf_counter() - t0) * 1000)
+        text = " ".join(seg[2] for seg in r if seg[2]).strip()
+        return {"ok": True, "ms": ms, "text": text, "heard": bool(text) or not said, "spoken": said,
+                "model": getattr(backend, "model", None)}
+    except Fail as e:
+        return {"ok": False, "code": e.code, "error": str(e)}
+
+
+def cmd_check_cloud(a):
+    given = {}
+    if not sys.stdin.isatty():
+        try:
+            given = json.loads(sys.stdin.read() or "{}")
+        except ValueError:
+            given = {}
+    r = cloud_check(a.model_id, given if isinstance(given, dict) else {})
+    emit(r)
+    if not r.get("ok"):
+        sys.exit(1)
+
+
 def cmd_backends(_a):
+    bundled_vad()
     have = lambda rel: (MODELS_DIR / rel).exists()  # noqa: E731
     emit({
         "ok": True,
@@ -2884,8 +4622,13 @@ def main():
     s.add_argument("--use", help="also select it: all, or a comma list of batch,live,note")
     s.add_argument("--parent", type=int, help="end when this process (the app that started the download) is gone")
     sub.add_parser("backends")
+    cc = sub.add_parser("check-cloud", help="Settings' Test: one small request to a cloud speech service")
+    cc.add_argument("--model-id", dest="model_id", metavar="ID", default="qwen3-asr-flash")
     sub.add_parser("models")
     sub.add_parser("dictation-models")
+    vp = sub.add_parser("voiceprint", help="only my voice: prepare the model, enroll / check a voice, status, clear")
+    vp.add_argument("vp_cmd", choices=["prepare", "enroll", "check", "status", "clear"])
+    vp.add_argument("wav", nargs="?", help="enroll / check: the wav")
     b = sub.add_parser("bench")
     b.add_argument("input", nargs="?", help="audio / video file (default: spoken samples made with `say`)")
     model_opts(b)
@@ -2903,14 +4646,20 @@ def main():
     try:
         {"run": cmd_run, "note": cmd_note, "serve": cmd_serve, "probe": cmd_probe, "recommend": cmd_recommend,
          "auto": cmd_auto, "setup": cmd_setup, "backends": cmd_backends, "models": cmd_models, "bench": cmd_bench,
-         "dictation-models": cmd_dictation_models}[a.cmd](a)
+         "dictation-models": cmd_dictation_models, "check-cloud": cmd_check_cloud, "voiceprint": cmd_voiceprint}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})
         if a.cmd == "serve":
             server_exit(e.exit_code)
         sys.exit(e.exit_code)
-    except Exception:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+    except Exception as e:  # noqa: BLE001 — a server never goes through the interpreter's teardown (server_exit)
+        if a.cmd in ("note", "check-cloud"):
+            # the app reads the last JSON line: a crash still says what it was (it read a bare "error" before)
+            import traceback
+            traceback.print_exc()
+            emit({"ok": False, "error": f"{type(e).__name__}: {e}"[:300], "code": "error"})
+            sys.exit(1)
         if a.cmd != "serve":
             raise
         import traceback

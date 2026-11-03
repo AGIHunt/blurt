@@ -8,10 +8,12 @@
 //   • there is no app in front;
 //   • Blurt itself is in front (its own text views get a paste: action instead; panels get nothing);
 //   • secure event input is on (IsSecureEventInputEnabled: a password field anywhere), or the focus is a secure field;
-//   • Accessibility isn't granted (a posted ⌘V wouldn't arrive);
-//   • the app in front isn't the one the take started in (`appChanged`: a slow take — a cold model, the 5-minute
-//     limit — whose user moved on): the text goes to the clipboard ("Copied — paste with ⌘V"), never into whatever
-//     happens to be in front by then, and a queued Return is dropped.
+//   • Accessibility isn't granted (a posted ⌘V wouldn't arrive).
+// The app in front at paste time is the one that counts, also when it isn't the one the take started in (2026-10-31,
+// the founder: people speak while in A meaning to type into B — "I'm in A now, I'll put it in B"; Typeless does the
+// same). Until then a switched app got a copy and a ⚠ "Not typed: you switched apps". A double tap's queued Return
+// goes after the paste there too (DictationSendPolicy.queued; 2026-10-31, the founder: by the double tap the user is in
+// the new app and sees what was recognised), and ⌥C / ⌥T paste into the app in front by the same rule (ScreenTextPaste).
 // The user's clipboard is put back after the paste either way.
 import Foundation
 
@@ -77,24 +79,75 @@ public enum DictationPastePolicy {
         public var focusSecure: Bool
         /// the focused element is a text field as far as Accessibility can tell (nil: no element could be read)
         public var focusIsText: Bool?
-        /// the app in front now isn't the one the take started in
-        public var appChanged: Bool
 
         public init(hasFrontApp: Bool, frontIsBlurt: Bool, secureInput: Bool, accessibility: Bool, focusSecure: Bool = false,
-                    focusIsText: Bool? = nil, appChanged: Bool = false) {
+                    focusIsText: Bool? = nil) {
             self.hasFrontApp = hasFrontApp; self.frontIsBlurt = frontIsBlurt; self.secureInput = secureInput
             self.accessibility = accessibility; self.focusSecure = focusSecure; self.focusIsText = focusIsText
-            self.appChanged = appChanged
         }
     }
 
     public static func decide(_ s: Situation) -> Decision {
         guard s.hasFrontApp else { return .copy(reason: "no_front_app") }
-        if s.appChanged { return .copy(reason: "app_changed") }
         if s.frontIsBlurt { return .own }
         if s.secureInput || s.focusSecure { return .hold(reason: "secure_input") }
         guard s.accessibility else { return .copy(reason: "no_accessibility") }
         return .paste(confirmed: s.focusIsText == true)
+    }
+}
+
+/// ⌥C / ⌥T (docs/design/screen-text.md §Paste): whether the text read from the screen (or its translation) is also
+/// ⌘V'd into the app in front. DictationPastePolicy decides, as for a dictation (WeChat's input box, Electron and web
+/// editors that aren't an Accessibility text role get the paste), with one more refusal: a focus Accessibility reads
+/// as something other than a text field (the desktop, a page with nothing focused) — dictation pastes there and keeps
+/// the text on the island; the screen's text is on the clipboard already, so ⌘V into nothing would only beep. The app
+/// in front when the text is ready is the one that counts, also when the user switched apps while it was read or
+/// translated (2026-10-31, as a dictation's). The result stays on the clipboard whatever is decided (⌥C's design: a
+/// copy the user made).
+public enum ScreenTextPaste {
+    public enum Decision: Equatable {
+        /// ⌘V into the app in front
+        case paste
+        /// the clipboard only
+        case copy(reason: String)
+    }
+
+    public static func decide(_ s: DictationPastePolicy.Situation) -> Decision {
+        switch DictationPastePolicy.decide(s) {
+        case .paste: return s.focusIsText == false ? .copy(reason: "no_field") : .paste
+        case .own: return .copy(reason: "blurt_in_front")
+        case .copy(let why), .hold(let why): return .copy(reason: why)
+        }
+    }
+
+    /// What became of the result.
+    public enum Outcome: String, Equatable {
+        /// ⌘V went in and the field, read back, shows the text (DictationPasteLanding.landed)
+        case pasted
+        /// ⌘V went in but couldn't be confirmed: a field Accessibility can't read (WeChat), or one that didn't show
+        /// the text within DictationPasteLanding.confirmTimeout — "Copied · ⌘V to paste", never a "Pasted" that may
+        /// be untrue
+        case unconfirmed
+        /// no ⌘V (ScreenTextPaste.decide said copy)
+        case copied
+        /// ⌥T into a fixed language the text was in already: the original, copied as it is (never pasted)
+        case alreadyInTarget = "already"
+    }
+
+    /// `pasted`: ⌘V was posted; `seen`: the field showed the text afterwards.
+    public static func outcome(pasted: Bool, seen: Bool) -> Outcome {
+        guard pasted else { return .copied }
+        return seen ? .pasted : .unconfirmed
+    }
+
+    /// The island's line (a Capture.strings key) for what happened to ⌥C's text or ⌥T's translation.
+    public static func lineKey(_ o: Outcome, translate: Bool) -> String {
+        switch o {
+        case .pasted: return translate ? "capture.text.translation_pasted" : "capture.text.typed"
+        case .unconfirmed: return "capture.text.copied_paste"
+        case .copied: return translate ? "capture.text.translation_copied" : "capture.text.copied"
+        case .alreadyInTarget: return "capture.text.already"
+        }
     }
 }
 
@@ -109,6 +162,17 @@ public enum DictationSendPolicy {
         if frontIsBlurt { return .skip(reason: "blurt_in_front") }
         if secureInput { return .skip(reason: "secure_input") }
         guard accessibility else { return .skip(reason: "no_accessibility") }
+        return .press
+    }
+
+    /// A double tap that came while its take was on its way: Return once the text is in — not when nothing was pasted
+    /// (Return would send without it), not into a focus read as no text field (it would rename the selected file or
+    /// follow a link). Also after a switch: the text went into the app in front and Return follows it there — by the
+    /// double tap the user is in that app and sees what was recognised (2026-10-31, the founder). The checks of `decide`
+    /// (secure input, Blurt in front …) still come when Return is pressed.
+    public static func queued(pasted: Bool, noField: Bool) -> Decision {
+        guard pasted else { return .skip(reason: "not_pasted") }
+        if noField { return .skip(reason: "no_field") }
         return .press
     }
 }

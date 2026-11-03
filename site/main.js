@@ -1,4 +1,4 @@
-/* blurt.agihunt.info, round 7 (round 6's scroll machinery); round 9: Peep (peep.js) lives in the notch all the way
+/* blurt.work, round 7 (round 6's scroll machinery); round 9: Peep (peep.js) lives in the notch all the way
    down. This file tells it the active scene, step and notch mode every frame, and the beats (Blurt's bar stops, the
    52 items stream out).
    1. scenes: each [data-scene] is a tall section with a sticky stage. Scroll progress p (0–1 while pinned) picks the
@@ -7,7 +7,7 @@
    2. the notch (#isl): fixed at the top centre; the active scene sets its mode and the live text under it. In the
       snap the words go into the note bubble beside the selection instead, as in the app.
    3. scrubbed values: the words as you talk, the speed clock and bars, the recording timer and transcript, the count.
-   4. the film: loads on click, chapters seek. 5. copy the install command.
+   4. the film: loads on click, chapters seek. 5. copy the install command. 6. the GitHub star count in the nav.
    Without JS or under reduced motion nothing here runs: the HTML has every step on, so each scene rests on its end
    state and every caption is listed. */
 (() => {
@@ -57,6 +57,34 @@
     });
   });
 
+  /* ---------------------------------------------------------------- 6. GitHub stars next to the nav link
+     From the public API, kept in localStorage for an hour. Any failure (offline, rate limit, storage blocked) leaves
+     the plain "GitHub" link: show nothing rather than a wrong number. */
+  const stars = document.querySelectorAll(".gh .stars");
+  if (stars.length) {
+    const KEY = "blurt-stars", HOUR = 36e5;
+    const fmt = (n) => (n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n));
+    const show = (n) => stars.forEach((el) => {
+      el.textContent = fmt(n); el.hidden = false;
+      el.parentElement.setAttribute("aria-label", root.lang === "en" ? `GitHub, ${fmt(n)} stars` : `GitHub，${fmt(n)} 个星标`);
+    });
+    let cached = null;
+    try {
+      const c = JSON.parse(localStorage.getItem(KEY) || "null");
+      if (c && Number.isFinite(c.n) && Date.now() - c.t < HOUR) cached = c.n;
+    } catch {}
+    if (cached !== null) show(cached);
+    else {
+      try {
+        fetch("https://api.github.com/repos/AGIHunt/blurt").then((r) => (r.ok ? r.json() : null)).then((d) => {
+          if (!d || !Number.isFinite(d.stargazers_count) || d.stargazers_count < 0) return;
+          try { localStorage.setItem(KEY, JSON.stringify({ n: d.stargazers_count, t: Date.now() })); } catch {}
+          show(d.stargazers_count);
+        }).catch(() => {});
+      } catch {}
+    }
+  }
+
   if (reduce || !isl) return;
   root.classList.add("motion");
 
@@ -64,12 +92,14 @@
   const spaced = root.lang === "en";
   let liveOwner = null, liveSpans = [];
   const setLive = (owner, words, f) => {
-    if (!owner) { isl.classList.remove("live-on"); return; }
+    if (!owner) { isl.classList.remove("live-on", "note"); return; }
+    isl.classList.remove("note");
     if (liveOwner !== owner) {
       liveOwner = owner; lt.textContent = "";
+      const sp = spaced && !owner.cjk;       // a Chinese take on the English page: no spaces between the words
       liveSpans = words.map((w, i) => {
         const s = document.createElement("span");
-        s.className = "w h"; s.textContent = w + (spaced && i < words.length - 1 ? " " : "");
+        s.className = "w h"; s.textContent = w + (sp && i < words.length - 1 ? " " : "");
         lt.appendChild(s); return s;
       });
     }
@@ -81,6 +111,14 @@
     isl.classList.add("live-on");
   };
   const mode = (m) => { if (isl.dataset.mode !== m) isl.dataset.mode = m; };
+  // round 10: a whole text in the live panel at once (⌥T's translation), and the right ear's label
+  const cp = isl.querySelector(".cp");
+  const L10 = root.lang === "en" ? { copied: "Copied", translating: "Translating…" } : { copied: "已复制", translating: "正在翻译…" };
+  const label = (x) => { if (cp && cp.textContent !== x) cp.textContent = x; };
+  const note = (owner, text) => {
+    if (liveOwner !== owner) { liveOwner = owner; lt.textContent = text; liveSpans = []; }
+    isl.classList.add("live-on", "note");
+  };
 
   // the words leave the live panel and land in the field (transform and opacity only)
   const fly = (to) => {
@@ -169,6 +207,8 @@
       // the note bubble listens from the moment it opens (k 3) until the pause saves it (k 9); the words are its own
       setLive(null);
       mode(k >= 10 ? "hello" : "idle");
+      // ⌥A: the crosshair drags the selection out with the scroll, from the screen going dim (k 1) to the bubble (k 3)
+      s.el.style.setProperty("--sel", span(p, s.th[0] + .006, s.th[2] - .012).toFixed(3));
       const f = k >= 9 ? 1 : k < 3 ? 0 : span(p, s.th[2] + .01, s.th[7] + .03);
       bubble(s, f);
       let cur = null;
@@ -182,6 +222,43 @@
       else mode(k === 4 ? "done" : k >= 5 ? "hello" : "idle");
       if (s.tick) s.tick.style.setProperty("--n", [6, 72, 160, 276].filter((x) => sec >= x).length);
       if (s.count) { const n = Math.round(span(p, s.th[4] + .01, s.th[4] + .1) * 52); s.count.textContent = n; PP.count(k === 5 ? n : 0); }
+    },
+    text(s, p, k) {
+      // the drag grows with the scroll (k 1–2), again for ⌥T (k 6); let go: Copied; ⌥T: Translating…, then the text
+      const th = s.th;
+      const sel = k >= 6 ? span(p, th[5], th[5] + .05) : span(p, th[1], th[2] - .03);
+      s.el.style.setProperty("--sel", sel.toFixed(3));
+      s.el.classList.toggle("drag", k >= 6 ? sel < 1 : k >= 1 && k < 3);
+      if (k === 3) { setLive(null); label(L10.copied); mode("copied"); }
+      else if (k >= 6 && sel >= 1) {
+        if (p < th[5] + .1) { setLive(null); label(L10.translating); mode("think"); }
+        else { note(s, s.trans); mode("done"); }
+      } else { setLive(null); mode(k >= 4 && k < 6 ? "hello" : "idle"); }
+    },
+    tr(s, p, k, prev) {
+      // Chinese under the notch while you talk; ⌘ adds the translate mark; after you stop, about a second, then English
+      const th = s.th;
+      if (k >= 1 && k < 3) {
+        mode(k >= 2 ? "trl" : "listen");
+        const f = span(p, th[0] + .02, th[2] - .04);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 7);
+      } else if (k === 3) {
+        setLive(s, s.say, 1); label((span(p, th[2] + .01, th[3] - .01) * 1.0).toFixed(1) + " s"); mode("think");
+      } else {
+        if (k === 4 && prev === 3) fly(s.el.querySelector("[data-target]"));
+        setLive(null); mode(k === 4 ? "done" : k >= 5 ? "hello" : "idle");
+      }
+    },
+    first(s, p, k, prev) {
+      const th = s.th;
+      if (k === 3) {
+        mode("listen");
+        const f = span(p, th[2] + .01, th[3] - .03);
+        setLive(s, s.say, f); tm.textContent = mmss(f * 3);
+      } else {
+        if (k === 4 && prev === 3) fly(s.el.querySelector("[data-target]"));
+        setLive(null); mode(k === 4 ? "done" : k >= 1 ? "hello" : "idle");
+      }
     },
     hand(s, p, k) {
       setLive(null);
@@ -197,6 +274,7 @@
       clock: el.querySelector("[data-clock-out]"), lanes: [...el.querySelectorAll(".ln")],
       tick: el.querySelector(".tick"), count: el.querySelector("[data-count-out]"),
       bub: el.querySelector("[data-bub]"), bubN: -1, draw: [...el.querySelectorAll(".draw li")],
+      cjk: el.hasAttribute("data-cjk"), trans: el.dataset.trans || "",
     };
   });
   const depthEls = [...document.querySelectorAll("[data-depth]")];
@@ -209,10 +287,11 @@
     const phone = innerWidth <= 720;
     // where the window rests (its top in px): 9.5 desk ems on a desktop, 7.6 camera ems (3% of the width) on a phone
     const top = phone ? 7.6 * innerWidth * .03 : 9.5 * Math.min(innerWidth, innerHeight * 1.6) / 100;
-    const want = Math.max(phone ? 0 : innerHeight * .54, hb + 32 - top);
+    const want = Math.max(phone ? 0 : innerHeight * .54, hb + (phone ? 72 : 32) - top);   // phones: room for perched Peep over the window
     dictEl.style.setProperty("--rise0", Math.round(want) + "px");
   };
   fit();
+  if (document.fonts) document.fonts.ready.then(() => { fit(); queue(); });   // the serif can arrive after this runs
 
   let queued = false;
   const frame = () => {

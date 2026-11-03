@@ -227,3 +227,17 @@ class DanglingWork(TmpCase):
 if __name__ == "__main__":
     import unittest
     unittest.main()
+
+
+class NoProjects(TmpCase):
+    """The app's launch: `migrate --all --no-projects` leaves a project's own old sessions alone (v1.0.4: a project
+    opened later held a scripted demo's items.json and got 24 items at the next launch)."""
+
+    def test_a_projects_old_session_stays_as_it_was(self):
+        repo = make_repo(self.tmp / "later")
+        v2 = copy_session(V2, repo / ".blurt" / "sessions")
+        ok("projects.py", "add", str(repo), env=self.e.env())
+        out = ok("items.py", "migrate", "--all", "--no-projects", env=self.e.env())
+        self.assertEqual(out["sessions"], 0)
+        self.assertTrue((v2 / "items.json").is_file())
+        self.assertFalse((v2 / "batch.json").exists())

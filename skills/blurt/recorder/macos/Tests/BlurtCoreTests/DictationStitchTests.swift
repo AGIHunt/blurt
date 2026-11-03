@@ -195,4 +195,16 @@ final class DictationStitchTests: XCTestCase {
         XCTAssertEqual(S.terminator("？", after: "Can you check"), "?")
         XCTAssertEqual(S.terminator("", after: "Done"), ".")
     }
+
+    /// tests/test_dictation_stitch.py's REHEAR: the same windows in both
+    func testRehearGroupsCloseAtPausesOnly() {
+        let cases: [([(start: Double, end: Double, hard: Bool)], [Range<Int>])] = [
+            ([(0, 4, false), (4, 9, false), (9, 16, false), (16, 20, false)], [0..<3, 3..<4]),
+            // never closed at a hard cut: the next window would share 0.8 s of audio with this one
+            ([(0, 8, false), (8, 20, false), (19.2, 24, true), (24, 30, false)], [0..<3, 3..<4]),
+            ([(0, 3.2, false)], [0..<1]),
+            ([(0, 15, false), (15, 16, false)], [0..<1, 1..<2]),
+        ]
+        for (pieces, want) in cases { XCTAssertEqual(S.rehearGroups(pieces), want, "\(pieces)") }
+    }
 }

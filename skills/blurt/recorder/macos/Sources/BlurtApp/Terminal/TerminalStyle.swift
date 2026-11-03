@@ -24,6 +24,11 @@ func sessionsErrorText(_ e: Error) -> String {
     case "auth":
         let name = s.agent.map(AgentNames.name) ?? "Agent"
         return s.fix.map { TL("error.auth.fix", name, $0) } ?? TL("error.auth", name)
+    case "outdated" where s.version != nil && s.need != nil:
+        // "Codex 0.157.0 is too old for hand-offs (needs 0.164 or later)…" and the command that updates it
+        let name = s.agent.map(AgentNames.name) ?? "Agent"
+        let need = s.need!.hasSuffix(".0") ? String(s.need!.dropLast(2)) : s.need!
+        return TL("handoff.block.outdated", name, s.version!, need) + (s.fix.map { " " + $0 } ?? "")
     case "already_dispatched" where s.itemID != nil:
         return TL("error.already_dispatched.named", s.itemID!)
     default:
@@ -73,7 +78,7 @@ extension NSColor {
 }
 
 /// The status mark of a session, one shape per state (SessionMark; readable without colour): a turning arc while the
-/// agent works, an attention disc with "!" whenever it is the user's move (it breathes once when it becomes so), an ok
+/// agent works, an attention ring with a dot whenever it is the user's move (it breathes once when it becomes so), an ok
 /// disc with a check once merged or a pull request is open, an error disc with "×" when it failed (never a bare red
 /// dot), a hollow ring once it is over with nothing to do, an outward arrow when it goes on in the agent's desktop
 /// app. Reduced motion: no turning, no breathing.
@@ -98,9 +103,12 @@ struct SessionStatusMark: View {
                     .rotationEffect(.degrees(spin ? 360 : 0))
                     .animation(reduceMotion ? nil : .linear(duration: 1.1).repeatForever(autoreverses: false), value: spin)
             case .waiting:
+                // its own shape: an attention ring around a dot — never the filled "!" disc an item waiting to be
+                // verified wears a few rows away
                 Circle().fill(Color.brandAttn.opacity(0.28)).scaleEffect(pulse ? 1.9 : 1).opacity(pulse ? 0 : 1)
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.9).repeatCount(2, autoreverses: false), value: pulse)
-                StatusDot(tone: .warn, diameter: size)
+                Circle().strokeBorder(Color.brandAttn, lineWidth: max(1.5, size / 7))
+                Circle().fill(Color.brandAttn).frame(width: size * 0.4, height: size * 0.4)
             case .done:
                 StatusDot(tone: .good, diameter: size)
             case .failed:

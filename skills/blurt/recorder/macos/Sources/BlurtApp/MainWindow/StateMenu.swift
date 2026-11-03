@@ -47,7 +47,7 @@ enum StateMenu {
         return Lifecycle.transitions[action]?.to ?? "new"
     }
 
-    /// The entry's image: where it leads, in the one quiet ink of the menu (hand off: its paperplane).
+    /// The entry's image: where it leads, in the one quiet ink of the menu (hand off: the Handed off ring in brand ink).
     static func icon(_ action: String, _ items: [ItemRow], size: CGFloat = 16) -> NSImage {
         Look.target(target(action, items), size: size)
     }

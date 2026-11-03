@@ -3,16 +3,16 @@
 //
 //  • at the key-down the app in front gives the take its style (record.dictation.styles; light everywhere unless the
 //    user chose otherwise); verbatim skips polish for the whole take;
-//  • while talking: ⇧ alone, or a click on the island, toggles Structured for this take (the trigger's `.style`);
-//    Fn+⇧ as the start press starts in Structured. No spoken commands ("make a list" is content: people dictate
+//  • while talking: ⇧ double-tapped, or a click on the island, toggles Structured for this take (the trigger's `.style`);
+//    No spoken commands ("make a list" is content: people dictate
 //    instructions to AI agents). The island's right ear shows the list glyph while Structured; a toast names the switch;
 //  • at key-up, Structured (and Auto): one pass of the polish model over the stitched text (polish.py `structure`,
 //    DictationStream.finish): it resolves self-corrections and lays out what was enumerated, or leaves a paragraph.
 //    Light never resolves a correction and never lists. Then the category's variant (chat: no final 。 on one
 //    sentence; code: one line);
-//  • reformat-last (⌥⇧L, the island's suggestion chip): the last take in the next style — verbatim → light →
+//  • reformat-last (⌥L, the island's suggestion chip): the last take in the next style — verbatim → light →
 //    structured → verbatim — with the same model passes (made on demand, off the dictation's path), replacing it in the
-//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥⇧L while a take is on its way waits
+//    field only while it is exactly as it was typed (else the clipboard), with Undo. ⌥L while a take is on its way waits
 //    for it (it means the take said last; cancelled, failed or empty, the request goes with it); the chip and Undo act on the take they were shown for, never on a newer one, and
 //    go when the next take starts. History: the style, the router's inputs, every reformat / undo / revert /
 //    suggestion, and the text now in the field;
@@ -101,9 +101,27 @@ extension Dictation {
         island.refresh()
     }
 
-    /// ⇧ alone / a click on the island while listening: Structured for this take, or back.
+    /// Polish is on but nothing can run it — no local polish model downloaded, no cloud model: every style would read
+    /// the same (the words as said), so a style change says what it takes instead of pretending.
+    var stylesNeedModel: Bool { Dictation.polishOn && polishModel == nil && DictationCloud.payload() == nil }
+
+    /// "Changing styles needs a polish model" with Download…, each time a style is asked for (⇧, ⌥L) while there is none.
+    func sayStylesNeedModel(via: String) {
+        emit(["event": "dictation_style", "action": "needs_model", "via": via])
+        var t = Island.Toast(text: Loc.t("dictation.style.needs_polish", table: "Dictation"),
+                             actionTitle: Loc.t("dictation.toast.no_model.get", table: "Dictation"), action: {
+            Dictation.getPolishModel(from: "island")
+        })
+        t.key = Dictation.styleToastKey
+        t.seconds = 6
+        t.icon = .warning
+        island.toast(t)
+    }
+
+    /// ⇧ double-tapped / a click on the island while listening: Structured for this take, or back.
     func toggleStyle(via: DictationStyleSource) {
         guard phase == .listening, let d = styleDecision else { return }
+        if stylesNeedModel { return sayStylesNeedModel(via: via.rawValue) }
         let to = DictationStyleRouter.toggled(d.style, base: d.base)
         explicitStyle = (to, via)
         styleToggles += 1
@@ -114,10 +132,24 @@ extension Dictation {
         // (DictationStyleToggleHint — every toast stays ≥ 5 s, so a line on every ⇧ would be noise), "Back to …" too
         let shown = Dictation.settings["style_hint_shown"] as? Int ?? 0
         guard DictationStyleToggleHint.says(shown: shown) else { return }
-        if to == .structured { Dictation.set("style_hint_shown", shown + 1) }
         // its own key: a second ⇧ replaces the first's line, and it never takes the place of the last take's Undo
-        island.toast(Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
-                           table: "Dictation", Dictation.styleName(to)), key: Dictation.styleToastKey, seconds: 3)
+        var t = Island.Toast(text: Loc.t(to == .structured ? "dictation.style.toast.structured" : "dictation.style.toast.back",
+                                         table: "Dictation", Dictation.styleName(to)), actionTitle: nil, action: nil)
+        t.key = Dictation.styleToastKey
+        t.seconds = 3
+        if to == .structured { t.onShown = Dictation.countOnce("style_hint_shown") }      // counted when seen
+        island.toast(t)
+    }
+
+    /// A toast's `onShown` that adds one to record.dictation.<key> the first time the toast goes up (not again when it
+    /// comes back after a newer one).
+    static func countOnce(_ key: String) -> () -> Void {
+        var counted = false
+        return {
+            guard !counted else { return }
+            counted = true
+            Dictation.set(key, (Dictation.settings[key] as? Int ?? 0) + 1)
+        }
     }
 
     static func styleName(_ s: DictationStyle) -> String { Loc.t("dictation.style.\(s.rawValue)", table: "Dictation") }
@@ -130,7 +162,8 @@ extension Dictation {
         let t0 = CACurrentMediaTime()
         let d = take.style ?? DictationStyleRouter.decide(config: Dictation.styleConfig, bundle: take.bundle)
         let pick = d.style.pick(light: r.text, structured: r.structured)
-        let v = DictationStyleVariant.apply(pick.text, category: d.category, structured: pick.list)
+        // translated: the same text in the other language, its layout kept (DictationTranslating.swift)
+        let v = DictationStyleVariant.apply(r.translated ?? pick.text, category: d.category, structured: pick.list)
         let rec = DictationStyleRecord(style: d.style.rawValue, source: d.source.rawValue, category: d.category.rawValue,
                                        base: d.base.rawValue, explicit: take.explicit?.style.rawValue,
                                        toggles: take.toggles, rendered: pick.list, variant: v.changes)
@@ -153,6 +186,9 @@ extension Dictation {
     /// learning check.
     func rememberPaste(id: String, app: NSRunningApplication?, bundle: String?, r: DictationStream.Result, record: DictationStyleRecord,
                        typed: String, result: DictationInsert.Result, field: DictationField?, location: Int?) {
+        // a translated take has no versions in its own language to cycle through (they are the words as said): ⌥L
+        // and the ≡ chip leave it alone
+        if r.translated != nil { lastPaste = nil; return }
         let cat = DictationAppCategory(rawValue: record.category) ?? .other
         let style = DictationStyle(rawValue: record.style) ?? .light
         let original: DictationStyle = style == .auto ? (record.rendered ? .structured : .light) : style
@@ -193,9 +229,40 @@ extension Dictation {
         checkStyleSuggestion(bundle: lp.bundle)
     }
 
+    /// The cloud-polish reminder (DictationCloudReminder): once ever, after 10 dictations, a timed line into a quiet
+    /// island with Set Up…; afterwards the setting lives only in Settings. Called by afterPaste when the take has no
+    /// other line; `inBlurt`: the take went into Blurt's own window (the setup assistant's Try it).
+    func remindCloudPolish(takes: Int, inBlurt: Bool) {
+        // a second later, when the take's own lines (the list chip, its Undo) would be up
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self = self else { return }
+            let idle = island.currentToast == nil && island.waitingToasts.isEmpty && !self.listening && self.queue.isEmpty
+            let shown = Dictation.settings["cloud_hint_shown"] as? Bool == true || Dictation.settings["cloud_hint"] as? Bool == false
+            // a connected service counts, whatever Polish runs on (set to this Mac on purpose: no reminder)
+            let cloud = DictationCloud.ready || !CloudStore.connected.isEmpty
+            guard DictationCloudReminder.due(takes: takes, shown: shown, cloudReady: cloud, inBlurt: inBlurt,
+                                             otherLine: false, islandIdle: idle) else { return }
+            emit(["event": "dictation_cloud", "action": "hint", "takes": takes])
+            var t = Island.Toast(text: Loc.t("dictation.cloud.hint", table: "Dictation"),
+                                 actionTitle: Loc.t("dictation.cloud.hint.setup", table: "Dictation"), action: {
+                emit(["event": "dictation_cloud", "action": "hint_setup"])
+                // straight to the setting: Models with Cloud services in view, and Add Service open
+                SettingsController.shared.show(pane: "speech/speech.services")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    NotificationCenter.default.post(name: CloudServicesSection.addRequest, object: nil)
+                }
+            })
+            t.seconds = DictationCloudReminder.seconds
+            t.passive = true
+            // once ever, counted when it is seen
+            t.onShown = { Dictation.set("cloud_hint_shown", true) }
+            island.toast(t)
+        }
+    }
+
     // MARK: reformat-last
 
-    /// ⌥⇧L (and the test hook): the last take in the next style of the cycle that reads differently.
+    /// ⌥L (and the test hook): the last take in the next style of the cycle that reads differently.
     func reformatLast(via: String) {
         guard !listening else { return }                // talking: ⇧ is the style key now
         // a take is being pasted (or the last one is still on its way): this is about the take said last — once it
@@ -210,6 +277,8 @@ extension Dictation {
             emit(["event": "dictation_reformat", "result": "nothing", "via": via])
             return
         }
+        // no model to restyle with: "Results are the same in every style" would be true, and no help
+        if stylesNeedModel { return sayStylesNeedModel(via: via) }
         let order = [lp.current.next, lp.current.next.next]
         withLight(lp) { [weak self] in
             self?.withStructured(lp) { [weak self] in
@@ -241,11 +310,12 @@ extension Dictation {
 
     /// Light for a take that was typed verbatim: polish it now (the warm server; off the dictation's path).
     private func withLight(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
-        guard lp.light == nil, !lp.raw.isEmpty, Dictation.polishOn, polishModel != nil else { return then() }
+        let cloud = DictationCloud.payload()
+        guard lp.light == nil, !lp.raw.isEmpty, Dictation.polishOn, polishModel != nil || cloud != nil else { return then() }
         let vocab = DictationVocabulary.shared.payload(), variant = lp.category == .chat ? "chat" : DictationAppCategory.isTerminal(bundle: lp.bundle) ? "terminal" : nil
         DispatchQueue.global(qos: .userInitiated).async {
             let r = Dictation.polish(lp.raw, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
-                                     context: nil, variant: variant)
+                                     context: nil, variant: variant, cloud: cloud)
             let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             DispatchQueue.main.async {
                 if r?["fell_back"] as? Bool != true, let t = text { lp.light = t }
@@ -257,14 +327,15 @@ extension Dictation {
     /// The structuring pass for the last take, once (reformat-last, the chip): the same model pass Structured runs at
     /// key-up, on Light's text (the transcript when there is none). Off the dictation's path.
     func withStructured(_ lp: DictationLastPaste, _ then: @escaping () -> Void) {
-        guard lp.structured == nil, !lp.structuredTried, Dictation.polishOn, polishModel != nil else { return then() }
+        guard lp.structured == nil, !lp.structuredTried, Dictation.polishOn, polishModel != nil || DictationCloud.payload() != nil else { return then() }
         lp.structuredTried = true
         let src = lp.light ?? lp.raw
         guard !src.isEmpty else { return then() }
         let vocab = DictationVocabulary.shared.payload()
         DispatchQueue.global(qos: .userInitiated).async {
             let t0 = CACurrentMediaTime()
-            let r = Dictation.structure(src, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab)
+            let r = Dictation.structure(src, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                        cloud: DictationCloud.payload())
             let text = (r?["text"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             DispatchQueue.main.async {
                 if r?["fell_back"] as? Bool != true, let t = text { lp.structured = t }
@@ -285,11 +356,12 @@ extension Dictation {
             var out = edited
             switch style {
             case .structured, .auto:
-                if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab),
+                if let r = Dictation.structure(edited, timeout: Dictation.structureTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
+                                               cloud: DictationCloud.payload()),
                    r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
             case .light:
                 if let r = Dictation.polish(edited, timeout: Dictation.polishTimeout, loadBudget: Dictation.loadBudget, vocab: vocab,
-                                            context: nil, variant: variant),
+                                            context: nil, variant: variant, cloud: DictationCloud.payload()),
                    r["fell_back"] as? Bool != true, let t = r["text"] as? String, !t.isEmpty { out = t }
             case .verbatim:
                 break
@@ -340,7 +412,7 @@ extension Dictation {
             }
             if replaced { t.icon = .check }      // the ok check when the field really changed ("copied" is not done yet)
             t.seconds = replaced && action != "undo" ? 5 : 2.4
-            // one toast about the last take: a second ⌥⇧L replaces the first at once (its Undo is then for the new
+            // one toast about the last take: a second ⌥L replaces the first at once (its Undo is then for the new
             // version), and the next take's start drops it
             t.key = Dictation.toastKey
             island.toast(t)
@@ -387,7 +459,7 @@ extension Dictation {
 
     /// ≥ 3 consistent signals in this app → the island asks once.
     func checkStyleSuggestion(bundle: String?) {
-        guard Dictation.learnStyles, let b = bundle, !b.isEmpty else { return }
+        guard Dictation.learnStyles, !stylesNeedModel, let b = bundle, !b.isEmpty else { return }
         let cfg = Dictation.styleConfig
         let current = DictationStyleRouter.decide(config: cfg, bundle: b).base
         let asked = Set(Dictation.settings["style_asked"] as? [String] ?? [])
@@ -404,7 +476,7 @@ extension Dictation {
         asked.append(s.key)
         Dictation.set("style_asked", asked)           // asked once, whatever the answer
         emit(["event": "dictation_style", "action": "suggest_default", "bundle": s.bundle, "style": s.style.rawValue, "signals": s.signals])
-        let app = Dictation.appName(bundle: s.bundle, fallback: s.app)
+        let app = Dictation.appInline(bundle: s.bundle, fallback: s.app)
         // a question that goes away by itself (12 s; unanswered = no): it must never hold up the toasts behind it
         // (reformat's Undo, the list chip)
         var t = Island.Toast(text: Loc.t("dictation.style.learn.\(s.style.rawValue)", table: "Dictation", app),
@@ -426,5 +498,10 @@ extension Dictation {
     /// it is a name, else "Unknown app" — never the id.
     static func appName(bundle: String, fallback: String?) -> String {
         AppNames.display(name: nil, bundle: bundle) ?? AppNames.displayOrUnknown(name: fallback, bundle: nil)
+    }
+
+    /// `appName` for a question's "in %@" (the Chinese formats have no spaces of their own: DictationStyleLearn.inline).
+    static func appInline(bundle: String, fallback: String?) -> String {
+        DictationStyleLearn.inline(appName(bundle: bundle, fallback: fallback), cjk: Loc.language.hasPrefix("zh"))
     }
 }

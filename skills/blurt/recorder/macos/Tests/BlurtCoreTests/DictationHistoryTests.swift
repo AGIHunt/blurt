@@ -258,6 +258,63 @@ final class DictationHistoryTests: XCTestCase {
         XCTAssertEqual(h2.pruneOrphanAudio(), ["d-x.wav"])
     }
 
+    /// Dogfood: quitting during a take left its recording with no entry, and a launch an hour later deleted it.
+    func testATakeCutShortByAQuitComesBackAsInterruptedWithItsRecording() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        let fm = FileManager.default
+        try fm.createDirectory(at: h.audioDir, withIntermediateDirectories: true)
+        let old = Date().addingTimeInterval(-2 * 3600)
+        func wav(_ name: String, seconds: Double) throws {
+            let f = h.audioDir.appendingPathComponent(name)
+            try Data(count: 44 + Int(seconds * 32_000)).write(to: f)
+            try fm.setAttributes([.modificationDate: old], ofItemAtPath: f.path)
+        }
+        let id = DictationHistory.newID(old)
+        try wav("\(id).wav", seconds: 20.8)
+        try wav("\(id)-p1.wav", seconds: 5)                 // its piece: an orphan as before
+        try wav("\(DictationHistory.newID(old))-dead.wav", seconds: 3)
+        try wav(DictationHistory.newID(old) + ".wav", seconds: 0.2)      // under a second: nothing to retry
+        h.prune(days: 30)
+        let es = h.load()
+        XCTAssertEqual(es.map(\.id), [id])
+        XCTAssertEqual(es.first?.reason, DictationHistory.interruptedReason)
+        XCTAssertEqual(es.first?.audio, "audio/\(id).wav")
+        XCTAssertEqual(es.first?.duration ?? 0, 20.8, accuracy: 0.01)
+        XCTAssertEqual(Set(try fm.contentsOfDirectory(atPath: h.audioDir.path)), ["\(id).wav"])
+        // the next launch finds it kept: no second row
+        h.prune(days: 30)
+        XCTAssertEqual(h.load().count, 1)
+    }
+
+    /// Dogfood: a 213 s take with one window fallen back was labelled "typed as spoken" although most was polished.
+    func testSomeWindowsFallingBackIsPartsNotTheWholeTake() {
+        XCTAssertTrue(DictationWindowFallback.of([true, true]).all)
+        XCTAssertNil(DictationWindowFallback.of([true, true]).parts)
+        let some = DictationWindowFallback.of([false, true, false, false])
+        XCTAssertFalse(some.all)
+        XCTAssertEqual(some.parts, DictationParts(n: 1, of: 4))
+        XCTAssertFalse(DictationWindowFallback.of([false]).all)
+        XCTAssertNil(DictationWindowFallback.of([]).parts)
+        var e = entry("d-1", "x", 0)
+        e.fellBackParts = DictationParts(n: 1, of: 4)
+        XCTAssertEqual(DictationEntry(json: e.json)?.fellBackParts, DictationParts(n: 1, of: 4))
+    }
+
+    /// Dogfood: an append between prune's read and its rewrite was lost. Appends racing a prune all survive.
+    func testAppendsDuringAPruneAreKept() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("dh-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let h = DictationHistory(url: dir.appendingPathComponent("history.jsonl"))
+        for i in 0..<200 { h.append(entry("d-old-\(i)", "x", Date().timeIntervalSince1970)); h.correct("d-old-\(i)", text: "y") }
+        let g = DispatchGroup()
+        DispatchQueue.global().async(group: g) { for _ in 0..<5 { h.prune(days: 30) } }
+        DispatchQueue.global().async(group: g) { for i in 0..<100 { h.append(self.entry("d-new-\(i)", "x", Date().timeIntervalSince1970)) } }
+        g.wait()
+        XCTAssertEqual(h.load().count, 300)
+    }
+
     /// The page's rows say only the exception, one at a time: the item first, then copied-only, then not polished.
     func testARowShowsOneExceptionAtMost() {
         var e = entry("d-m", "hi", 1)

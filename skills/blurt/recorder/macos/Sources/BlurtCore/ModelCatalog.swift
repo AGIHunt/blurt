@@ -16,6 +16,9 @@ public enum ModelCatalog {
         public var polish: Bool
         /// the speech backend that runs it ("openai", "sensevoice"…)
         public var backend: String? = nil
+        /// how long a window dictation hears its pieces again in with this model (asr_models.json rehear_window_s;
+        /// nil: DictationStitch.rehearWindow) — docs/design/dictation.md §Hearing again
+        public var rehearWindow: Double? = nil
     }
 
     private static let lock = NSLock()
@@ -40,8 +43,9 @@ public enum ModelCatalog {
               let models = o["models"] as? [[String: Any]] else { return [] }
         return models.compactMap { m in
             guard let id = m["id"] as? String, let name = m["name"] as? String, !name.isEmpty else { return nil }
+            let w = (m["rehear_window_s"] as? Double).flatMap { $0 > 0 ? $0 : nil }
             return Entry(id: id, name: name, folders: folders(m), sizeMB: (m["size_mb"] as? Double) ?? 0,
-                         polish: polish, backend: m["backend"] as? String)
+                         polish: polish, backend: m["backend"] as? String, rehearWindow: w)
         }
     }
 
@@ -75,9 +79,56 @@ public enum ModelCatalog {
         return parts[1].isEmpty || parts[1] == "default" ? e.name : "\(e.name) · \(parts[1])"
     }
 
+    /// The window dictation hears the pieces again in with speech model `id` (seconds): the catalogue's
+    /// rehear_window_s for it (Qwen3-ASR 1.7B 30, 0.6B 20: measured on 43 of the founder's takes), else
+    /// DictationStitch.rehearWindow. The Dictation Lab's port is dictation_stitch.rehear_window.
+    public static func rehearWindow(_ id: String?, dir: URL = BlurtPaths.scripts) -> Double {
+        guard let id = id, let e = entries(dir: dir).first(where: { $0.id == id && !$0.polish }) else { return DictationStitch.rehearWindow }
+        return e.rehearWindow ?? DictationStitch.rehearWindow
+    }
+
     /// The model whose files are in this folder (Storage's rows: a folder name → the model's name).
     public static func entry(folder: String, dir: URL = BlurtPaths.scripts) -> Entry? {
         entries(dir: dir).first { $0.folders.contains(folder) || $0.id == folder }
+    }
+
+    /// What of a model not yet installed is already on disk (bytes) — the partial files a stopped or cut-short download
+    /// keeps and the next one continues (the scripts resume `<name>.part` and Hugging Face's `*.incomplete`): every file
+    /// under its folders in `models` (asr/, polish/, the top) and in the Hugging Face cache (`hfCache`), plus a
+    /// `<folder>….part` beside them (an archive on its way). Counted as the scripts count it (_common.landed_bytes):
+    /// the blocks written, not a size set up front. Links are not followed.
+    public static func keptBytes(_ id: String, models: URL, hfCache: URL? = nil, dir: URL = BlurtPaths.scripts) -> Int64 {
+        guard let e = entries(dir: dir).first(where: { $0.id == id }) else { return 0 }
+        let fm = FileManager.default
+        func landed(_ u: URL) -> Int64 {
+            guard let v = try? u.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey, .fileAllocatedSizeKey]),
+                  v.isRegularFile == true, v.isSymbolicLink != true else { return 0 }
+            return Int64(min(v.fileSize ?? 0, v.fileAllocatedSize ?? v.fileSize ?? 0))
+        }
+        func walk(_ d: URL) -> Int64 {
+            guard let en = fm.enumerator(at: d, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey,
+                                                                             .fileSizeKey, .fileAllocatedSizeKey]) else { return 0 }
+            var t: Int64 = 0
+            for case let u as URL in en { t += landed(u) }
+            return t
+        }
+        var roots = [models, models.appendingPathComponent("asr"), models.appendingPathComponent("polish")]
+        if let h = hfCache { roots.append(h) }
+        var total: Int64 = 0
+        var seen = Set<String>()
+        for r in roots {
+            let names = (try? fm.contentsOfDirectory(atPath: r.path)) ?? []
+            for f in e.folders {
+                for n in names where n == f || (n.hasPrefix(f) && n.hasSuffix(".part")) {
+                    let u = r.appendingPathComponent(n)
+                    guard seen.insert(u.standardizedFileURL.path).inserted else { continue }
+                    var isDir: ObjCBool = false
+                    fm.fileExists(atPath: u.path, isDirectory: &isDir)
+                    total += isDir.boolValue ? walk(u) : landed(u)
+                }
+            }
+        }
+        return total
     }
 
     /// Where a model's files land: its archive's folder, its file paths' first folder, its Hugging Face repo's

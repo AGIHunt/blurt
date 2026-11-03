@@ -91,14 +91,15 @@ extension PanelBox where Accessory == EmptyView {
     }
 }
 
-/// A disclosure heading in Settings' Advanced style ("› Options"): the box under it shows only while it is open. `inset`:
+/// A disclosure heading ("› Options"), quieter than the panel's title: 13 pt medium, secondary — a toggle for rare
+/// settings, not a second heading. The box under it shows only while it is open. `inset`:
 /// the box's text inset (Options) or none (the items line under the panel's title); `trailing`: what it holds, said
 /// small after the title (each kind's icon and count).
 struct PanelDisclosure<Trailing: View>: View {
     var title: String
     @Binding var open: Bool
     var inset: CGFloat = SettingsMetrics.boxInset
-    var size: CGFloat = SettingsMetrics.headerSize
+    var size: CGFloat = 13
     @ViewBuilder var trailing: Trailing
     var body: some View {
         Button {
@@ -107,7 +108,7 @@ struct PanelDisclosure<Trailing: View>: View {
             HStack(spacing: 5) {
                 Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold))
                     .rotationEffect(.degrees(open ? 90 : 0))
-                Text(title).font(.system(size: size, weight: .semibold))
+                Text(title).font(.system(size: size, weight: .medium))
                 trailing.padding(.leading, 4)
             }
             .foregroundStyle(.secondary)

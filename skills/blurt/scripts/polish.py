@@ -19,6 +19,8 @@ sentence start's (`Engine.sentence_case`).
   polish.py serve [--preload] [--idle 600] [--parent PID]   keep the model warm (127.0.0.1,
                                             $BLURT_HOME/run/polish-serve.json); ends after --idle s unused (the
                                             memory goes back), with the --parent app, or on "exit"
+  polish.py translate (--text T | --stdin) [--target auto|en|zh|…] [--no-server]   ⌥⇧T's translation (the user's cloud
+        model from {"cloud"} on stdin first, this model when that fails) → {"ok","text","ms","model","cloud"}
   polish.py run (--text T | --stdin) [--model ID] [--timeout S] [--no-server] [--context TEXT] [--before TEXT] [--no-vocab]
               [--variant chat] [--style structured]
         → {"ok","text","raw","polished","fell_back","reason","model","ms","terms"}   (uses a running `serve` when
@@ -96,10 +98,13 @@ GROW_SLACK = 8
 NOVEL_SLACK = 4           # words / characters not in the input: homophone fixes add one or two
 NOVEL_RATIO = 0.15
 ADDED_RUN = 3             # this many words in a row at the start or end that were never said: a preface or a sign-off
+# guard's `translated`: up to this many units the take is judged whole; a longer one by place (_swapped_script)
+TRANSLATED_SPAN = 40
 STRUCT_SPAN = 14          # Structured: one run of the input's units left out may be at most this long (a correction
 #                           taken back with the words that announced it, and the counting word it said again:
 #                           第四是酒店，不对，酒店不用，第四是保险); a longer one is content lost
 STRUCT_SHRINK = (12, 0.4)  # Structured may lose more in all (what was taken back), but not a summary's share …
+CLOUD_SCRIPT_SHIFT = 0.25  # cloud: the share of CJK units may move this much (a few misheard words in the other script)
 STRUCT_ITEM = 2           # … plus this many units for each list line: the counting word its number stands for (第一,
 #                           首先, first). A short list with a correction lost 50–60 % (issue #14: 31 → 17)
 
@@ -196,8 +201,54 @@ def _lost_runs(src_u: list[str], out_u: list[str]) -> list[list[str]]:
     return lost
 
 
+def _swapped_script(src_u: list[str], out_u: list[str], lost_latin: set[str], novel_cjk: set[str], lost_cjk: set[str],
+                    novel_latin: set[str]) -> bool:
+    """guard's `translated`, by place: a stretch where `src_u` and `out_u` differ (consecutive changes as one) that
+    lost a Latin word and gained ≥ 2 new CJK units there, or lost ≥ 2 CJK units and gained ≥ 2 new Latin ones."""
+    import difflib
+    ops = difflib.SequenceMatcher(None, src_u, out_u, autojunk=False).get_opcodes()
+    regions, cur = [], None
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal":
+            if cur:
+                regions.append(cur)
+            cur = None
+            continue
+        cur = (cur[0], i2, cur[2], j2) if cur else (i1, i2, j1, j2)
+    if cur:
+        regions.append(cur)
+    for i1, i2, j1, j2 in regions:
+        a, b = src_u[i1:i2], out_u[j1:j2]
+        if any(u in lost_latin for u in a) and sum(u in novel_cjk for u in b) >= 2:
+            return True
+        if sum(u in lost_cjk for u in a) >= 2 and sum(u in novel_latin for u in b) >= 2:
+            return True
+    return False
+
+
+def _cloud_verdict(core_u: list[str], out_u: list[str], n_raw: int, n_core: int, n_out: int, raw_u: list[str],
+                   raw: str, out: str, out_for_units: str, allowed: set[str], mode: str) -> str | None:
+    """guard(cloud=True): only what is plainly not the dictation any more."""
+    cjk = re.compile(rf"[{_CJK}]")
+    share = lambda us: sum(1 for u in us if cjk.match(u)) / max(1, len(us))  # noqa: E731
+    if core_u and out_u and abs(share(core_u) - share(out_u)) > CLOUD_SCRIPT_SHIFT:
+        return "translated"
+    flat, ratio = STRUCT_SHRINK
+    numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
+    if n_core - n_out > max(flat, ratio * n_core) + numbered:
+        return "shrunk"
+    if n_out > n_raw * GROW_RATIO + GROW_SLACK:
+        return "grew"
+    lined = [u for ln in out_for_units.split("\n") for u in [*units(ln), _LINE]][:-1] if mode == "structured" else out_u
+    if _added_run(lined, raw_u, allowed) >= ADDED_RUN:
+        return "chatty"
+    if mode != "structured" and list_lines(out) > list_lines(raw):
+        return "listed"
+    return None
+
+
 def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] | None = None,
-          context: str | None = None, mode: str = "light") -> dict:
+          context: str | None = None, mode: str = "light", cloud: bool = False) -> dict:
     """Is `out` a safe replacement for `raw`? → {"pass": bool, "reason": None | empty | term | chatty | translated |
     shrunk | grew | novel | copied | listed | dropped | number, "stats": {...}}. Pure and mechanical: the thresholds above.
     `context`: the text around the cursor (a streamed dictation's polished text so far is part of it) — a run of
@@ -207,7 +258,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     `terms`: custom words; one that was spoken must still be there (`term`).
     `mode`: "light" (no list may appear: `listed`) or "structured" (the input is the text to structure; its list
     numbers aren't words, one left-out run longer than STRUCT_SPAN is `dropped`, and a number it wrote that wasn't
-    said is `number`)."""
+    said is `number`).
+    `cloud`: a cloud model's output (§Cloud polish). The word-by-word rules above were made for a 2B model; a large
+    model fixes misheard words (in either script: 请问 → Qwen), leaves restarts and taken-back phrases out and may
+    reword a clause, and it is trusted to. Only what is plainly not the dictation any more is refused: nothing
+    (`empty`), another language (the share of CJK units moved by > CLOUD_SCRIPT_SHIFT: `translated`), a summary
+    (Structured's allowance exceeded: `shrunk`), an answer or a preface added (`grew`, `chatty`), and a list in Light
+    (`listed`: the style the user chose)."""
     if mode == "structured":
         out_for_units = without_list_marks(out)
     else:
@@ -227,6 +284,8 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
 
     if n_raw and not n_out:
         return verdict("empty")
+    if cloud:
+        return verdict(_cloud_verdict(core_u, out_u, n_raw, n_core, n_out, raw_u, raw, out, out_for_units, allowed, mode))
     key = lambda x: re.sub(r"[\s\-]+", "", unicodedata.normalize("NFKC", x or "").lower())  # noqa: E731
     if any(key(t) and key(t) in key(raw) and key(t) not in key(out_for_units) for t in terms or []):
         return verdict("term")
@@ -242,7 +301,13 @@ def guard(raw: str, out: str, allowed: set[str] | None = None, terms: list[str] 
     novel_cjk = [u for u in novel if cjk.match(u)]
     novel_latin = [u for u in novel if u.isascii()]
     if (lost_latin and len(novel_cjk) >= 2) or (len(lost_cjk) >= 2 and len(novel_latin) >= 2):
-        return verdict("translated")
+        # counted over the whole take, a long mixed one always has an English filler left out somewhere and a 的 or
+        # 了 added somewhere else: past TRANSLATED_SPAN units a translation is the two in the same place — what was
+        # said in one script, replaced there by the other. A short take keeps the whole-take count (a misheard word
+        # turned into the other script is refused there: the local model isn't trusted with it)
+        if n_core <= TRANSLATED_SPAN or _swapped_script(core_u, out_u, set(lost_latin), set(novel_cjk), set(lost_cjk),
+                                                         set(novel_latin)):
+            return verdict("translated")
     flat, ratio = STRUCT_SHRINK if mode == "structured" else (SHRINK_SLACK, SHRINK_RATIO)
     numbered = STRUCT_ITEM * list_lines(out) if mode == "structured" else 0
     if n_core - n_out > max(flat, ratio * n_core) + numbered:
@@ -863,8 +928,13 @@ def limits() -> dict:
         return {"threads": 3, "max_memory_fraction": 0.25}
 
 
-def recommended(tier: str | None = None) -> str:
-    return registry()["defaults"].get(tier or hardware()["tier"]) or registry()["defaults"]["standard"]
+def recommended(tier: str | None = None) -> str | None:
+    """The tier's local polish model (polish_models.json "defaults"); None where none runs by default — 8 GB Macs
+    (docs/design/dictation-eval-2026-10-31.md §6.2: Gemma 4 E2B doesn't fit beside the speech model there, and a local
+    polish model is neutral on words). A tier the file doesn't name gets the standard one."""
+    d = registry()["defaults"]
+    t = tier or hardware()["tier"]
+    return d[t] if t in d else d.get("standard")
 
 
 def mirror_on() -> bool:
@@ -916,9 +986,11 @@ def timeout_s() -> float:
 
 
 # ------------------------------------------------------------------ packages, caps
-def ensure_mlx() -> None:
+def ensure_mlx(stdin: str | None = None) -> None:
     """mlx-lm is only needed to run a model: re-run this command under `uv run --with mlx-lm` when it is missing
-    (through a PyPI mirror when the download mirror is on)."""
+    (through a PyPI mirror when the download mirror is on). `stdin`: what this run already read from its stdin — the
+    re-run gets it as its own (an exec left it an empty stdin: `translate --stdin` answered ok with "", so ⌥T's first
+    use after every launch said "Couldn't translate")."""
     import importlib.util
     if importlib.util.find_spec("mlx_lm") is not None:
         return
@@ -933,7 +1005,11 @@ def ensure_mlx() -> None:
         os.environ.setdefault("UV_DEFAULT_INDEX", "https://mirrors.aliyun.com/pypi/simple/")
     sys.stdout.flush()
     sys.stderr.flush()
-    os.execvp(uv, [uv, "run", "-q", "--with", MLX_PACKAGE, os.path.abspath(sys.argv[0]), *sys.argv[1:]])
+    argv = [uv, "run", "-q", "--with", MLX_PACKAGE, os.path.abspath(sys.argv[0]), *sys.argv[1:]]
+    if stdin is not None:
+        import subprocess
+        sys.exit(subprocess.run(argv, input=stdin.encode()).returncode)
+    os.execvp(uv, argv)
 
 
 def throttle(priority: str | None = None) -> dict:
@@ -1172,6 +1248,70 @@ class Engine:
                 break
         return "".join(out), cut
 
+    def translate(self, text: str, target: str = "auto", model_id: str | None = None, timeout: float | None = None,
+                  cloud: dict | None = None, terms: list | None = None, spoken: bool = False, check: bool = False) -> dict:
+        """`text` translated (translate_system) → {"ok", "text", "ms", "model", "cloud"}: the user's cloud model first
+        when given, this model when that fails (`cloud_error` says why) or none is set.
+        Dictation (`spoken`, `check`): the user's words that occur in the text go with it, and translate_guard checks
+        the answer — the cloud's refused is asked of this model; a refusal here, or no model to ask, is
+        {"fell_back": True, "reason", "text": `text` unchanged} (the app types it as said, and says so)."""
+        src = (text or "").strip()
+        if not src:
+            return {"ok": True, "text": "", "ms": 0}
+        t0 = time.perf_counter()
+        use = [t["term"] for t in vocab.relevant(vocab.normalize(terms), src, "")] if terms else []
+        cloud_error = None
+        if cloud:
+            import polish_cloud
+            try:
+                r = cloud_translate(src, target, cloud, timeout, use, spoken)
+                why = translate_guard(src, r["text"], target, use) if check else None
+                if not why:
+                    return {**r, "fell_back": False} if check else r
+                cloud_error = "refused_" + why
+            except polish_cloud.CloudError as e:
+                cloud_error = e.code
+        res = {"ok": True}
+        try:
+            self._ready(res, model_id)
+        except Fail as e:
+            if not check:
+                # the cloud's failure is the one to tell (a key refused, out of quota, offline: the user can act on
+                # it), not that no local model was there to fall back on — `cloud_auth`, `cloud_rate_limited`, …
+                if cloud_error:
+                    raise Fail(f"cloud: {cloud_error}; {e}", "cloud_" + cloud_error) from None
+                raise
+            return {"ok": True, "text": src, "fell_back": True, "reason": cloud_error or e.code, "cloud": bool(cloud),
+                    "ms": int((time.perf_counter() - t0) * 1000), **({"cloud_error": cloud_error} if cloud_error else {})}
+        out, cut = self.on_model_thread(self._translate_now, src, target, time.time() + (timeout or 20), use, spoken)
+        self.last = time.time()
+        out = clean_output(out)
+        res = {"ok": True, "text": out, "cut": cut, "cloud": False, "model": self.model_id,
+               "ms": int((time.perf_counter() - t0) * 1000), **({"cloud_error": cloud_error} if cloud_error else {})}
+        if check:
+            why = "timeout" if cut else translate_guard(src, out, target, use)
+            res.update(fell_back=bool(why), reason=why, **({"text": src, "translated": out} if why else {}))
+        return res
+
+    def _translate_now(self, text: str, target: str, deadline: float, terms: list[str] | None = None,
+                       spoken: bool = False) -> tuple[str, bool]:
+        from mlx_lm import stream_generate
+        from mlx_lm.sample_utils import make_sampler
+        msgs = translate_messages(text, target, terms, spoken)
+        try:
+            prompt = self.tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False, enable_thinking=False)
+        except TypeError:
+            prompt = self.tok.apply_chat_template(msgs, add_generation_prompt=True, tokenize=False)
+        toks = self.tok.encode(prompt, add_special_tokens=False)
+        limit = len(self.tok.encode(text, add_special_tokens=False)) * 3 + 64
+        out, cut = [], False
+        for r in stream_generate(self.model, self.tok, toks, max_tokens=limit, sampler=make_sampler(temp=0.0)):
+            out.append(r.text)
+            if time.time() > deadline:
+                cut = True
+                break
+        return "".join(out), cut
+
     def continuation_scores(self, before: str, words: list[str]) -> list[float]:
         """log P(" " + word | before) for each word, on the model's thread. Each is scored after the tokens every
         candidate shares, so the numbers compare."""
@@ -1238,8 +1378,21 @@ class Engine:
         res["model"] = self.model_id
 
     def polish(self, text: str, model_id: str | None = None, timeout: float | None = None,
-               terms: list | None = None, context: dict | str | None = None, variant: str | None = None) -> dict:
-        """Light (`_light`), its first word cased for the sentence it continues (`cased`)."""
+               terms: list | None = None, context: dict | str | None = None, variant: str | None = None,
+               cloud: dict | None = None, local_fallback: bool = True) -> dict:
+        """Light (`_light`), its first word cased for the sentence it continues (`cased`). `cloud`: the user's cloud
+        model (§Cloud polish) does it instead; any failure there → the local model, as before (`cloud_error`).
+        `local_fallback` False (Windows: there is no local polish model): the cloud's failure is the answer — its code
+        is the reason and `cloud_error` (offline, timeout, auth …), not "model_missing" for a model that never exists."""
+        if cloud:
+            res = cloud_polish(text, terms, context, variant, cloud, "light", timeout)
+            if not res.get("fell_back"):
+                return res
+            if not local_fallback:
+                return {**res, "cloud_error": res.get("cloud_error") or res.get("reason")}
+            local = self.polish(text, model_id, None, terms, context, variant)
+            return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
+                    "ms": local.get("ms", 0) + res.get("ms", 0)}
         res = self._light(text, model_id, timeout, terms, context, variant)
         if res.get("fell_back") and res.get("reason") in CONTEXT_FAULTS and context:
             # the model followed the context instead of the dictation: once more without it (only then: ~0.1–0.2 s)
@@ -1311,8 +1464,17 @@ class Engine:
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
 
     def structure(self, text: str, model_id: str | None = None, timeout: float | None = None,
-                  terms: list | None = None, context: dict | str | None = None) -> dict:
-        """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`)."""
+                  terms: list | None = None, context: dict | str | None = None, cloud: dict | None = None,
+                  local_fallback: bool = True) -> dict:
+        """Structured (`_structure`); a paragraph (no list) gets its first word cased like Light's (`cased`). `cloud`:
+        the user's cloud model first, the local one when it fails."""
+        if cloud:
+            res = cloud_polish(text, terms, context, None, cloud, "structure", timeout)
+            if not res.get("fell_back") or not local_fallback:
+                return res
+            local = self.structure(text, model_id, timeout, terms, context)
+            return {**local, "cloud_error": res.get("reason"), "cloud_ms": res.get("ms", 0),
+                    "ms": local.get("ms", 0) + res.get("ms", 0)}
         res = self._structure(text, model_id, timeout, terms, context)
         return res if res.get("list") else self.cased(res, context, vocab.load() if terms is None else vocab.normalize(terms))
 
@@ -1357,6 +1519,184 @@ class Engine:
         return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
 
 
+# ------------------------------------------------------------------ translate (⌥⇧T, docs/design/screen-text.md §Translate)
+# One prompt for every translation the app asks for (Copy Text from Screen's ⌥⇧T; dictation's translate mode builds on
+# it): the model decides the source language; `target` "auto" asks it for the other one of the user's pair.
+TRANSLATE_TARGETS = {"en": "English", "zh": "Simplified Chinese", "zh-Hant": "Traditional Chinese", "ja": "Japanese",
+                     "ko": "Korean", "fr": "French", "de": "German", "es": "Spanish", "pt": "Portuguese",
+                     "it": "Italian", "ru": "Russian"}
+# A target is "auto:H|O" (2026-10-30, global-first: H the user's own language, O the other one — text in H goes into O,
+# anything else into H; the model picks the direction), "auto" (the same with Chinese and English: the app before
+# that, still understood), a language ("ja"), "X|keep" (a fixed language, 2026-10-30: into X, and a text already in X
+# given back as it is — the app sees it came back unchanged and says "Already in X"), or "X|Y" (v1.0.6, still
+# understood: into Y — the user's own language — when the text is already in X).
+
+
+def auto_pair(target: str) -> tuple[str, str] | None:
+    """"auto:ja|en" → ("ja", "en"); "auto" → ("zh", "en"); anything else → None."""
+    if target == "auto":
+        return ("zh", "en")
+    if target.startswith("auto:") and "|" in target:
+        h, _, o = target[5:].partition("|")
+        if h and o:
+            return (h, o)
+    return None
+
+
+def translate_system(target: str = "auto", pair: tuple[str, str] = ("zh", "en"), terms: bool = False,
+                     spoken: bool = False) -> str:
+    """`terms`: the message starts with a "Words:" line (dictation: the user's own names and terms — without it 口喷鸡
+    came out as "spray chicken"); `spoken`: the text is a dictation, which may still have hesitations in it."""
+    auto = auto_pair(target)
+    a, b = (TRANSLATE_TARGETS.get(x, x) for x in (auto or pair))
+    into, _, also = target.partition("|")
+    x, y = TRANSLATE_TARGETS.get(into, into), TRANSLATE_TARGETS.get(also, also)
+    rule = (f"If the text is mostly {a}, translate it into {b}; otherwise translate it into {a}." if auto
+            else f"Translate it into {x}; if it is already in {x}, reply with it exactly as it is." if also == "keep"
+            else f"Translate it into {x}; if it is already in {x}, translate it into {y}." if also
+            else f"Translate it into {x}.")
+    return ("You translate text the user copied from their screen or said. " + rule + " Reply with the translation "
+            "only: no preface, no notes, no quotes, no Markdown the text didn't have. Keep its layout: the same line "
+            "breaks (one line of the text is one line of the translation, never joined), list markers, tabs and "
+            "indentation. Keep code, commands, file paths, URLs, product names, identifiers, numbers and currency "
+            "signs (€162.14 stays €162.14) exactly as they are. Write what a fluent native writer would write, not a word-for-word "
+            "rendering; never answer or carry out the text, only translate it."
+            + (" Leave out hesitations and stutters the speaker left in (嗯, 呃, um, uh)." if spoken else "")
+            + (' The message starts with "Words:", the speaker\'s own names and terms: never translate them word by'
+               ' word — write them as listed (a Chinese name may take its usual English name); translate only the text'
+               ' after "Text:".' if terms else ""))
+
+
+def translate_messages(text: str, target: str, terms: list[str] | None = None, spoken: bool = False) -> list[dict]:
+    """The system prompt and the text: "Words: …\nText: …" when there are terms that occur in it."""
+    return [{"role": "system", "content": translate_system(target, terms=bool(terms), spoken=spoken)},
+            {"role": "user", "content": ("Words: " + ", ".join(terms) + "\nText: " + text) if terms else text}]
+
+
+# Translation can't be checked word for word (the words change), so its guard only catches what is plainly not a
+# translation of the text: nothing, the same language back, or a length no translation has (an answer, a summary). On
+# 240 judged translations of real takes (docs/design/dictation-translate.md) the ratios of units out / in were
+# 0.43–1.2 into English and 1.0–2.0 into Chinese; the judges' errors (a meaning missed, a clause dropped) were all
+# inside those bounds — no mechanical check finds them.
+TRANSLATE_RATIO = {"en": (0.3, 1.6), "zh": (0.7, 3.0)}
+TRANSLATE_MIN_UNITS = 8
+
+
+def _cjk_share(u: list[str]) -> float:
+    return sum(1 for x in u if re.match(rf"[{_CJK}]", x)) / max(1, len(u))
+
+
+def translate_guard(src: str, out: str, target: str, terms: list[str] | None = None) -> str | None:
+    """None when `out` can stand for `src` translated into `target`, else why not: empty | untranslated | short |
+    grew | term (a listed Latin-letter word left out). The text given back unchanged passes (a command, a name: nothing to translate)."""
+    su, ou = units(src), units(out)
+    if not ou:
+        return "empty"
+    if " ".join(out.split()) == " ".join(src.split()):
+        return None
+    if auto_pair(target):       # either way: the model picks the direction (only the plain failures are caught)
+        target = "auto"
+    if target.endswith("|keep"):    # into X, or the text as it was (already X): that passes above
+        return translate_guard(src, out, target[:-len("|keep")], terms)
+    if "|" in target:           # into X, or into Y when the text was in X already
+        into, _, also = target.partition("|")
+        first = translate_guard(src, out, into, terms)
+        if first in (None, "term", "empty"):
+            return first
+        # Y is right only for a text that was X (as far as the script tells: Chinese or not; other languages pass)
+        was_x = {"en": _cjk_share(su) < 0.2, "zh": _cjk_share(su) >= 0.3, "zh-Hant": _cjk_share(su) >= 0.3}.get(into, True)
+        return translate_guard(src, out, also, terms) if was_x else first
+    if target in TRANSLATE_RATIO:
+        # the script, not words: into English nearly no CJK is left; into Chinese some has to come
+        if target == "en" and _cjk_share(ou) > 0.2 or target == "zh" and _cjk_share(ou) < 0.3 and _cjk_share(su) < 0.3:
+            return "untranslated"
+        lo, hi = TRANSLATE_RATIO[target]
+        r = len(ou) / max(1, len(su))
+        if len(su) >= TRANSLATE_MIN_UNITS and r < lo:
+            return "short"
+        if len(su) >= TRANSLATE_MIN_UNITS and r > hi:
+            return "grew"
+    # a listed word in Latin letters (Claude Code, tmux) stays as written in any language; a Chinese one may rightly
+    # become its English name (飞书 → Feishu)
+    low, said = out.lower(), src.lower()
+    if any(not re.search(rf"[{_CJK}]", t) and t.lower() in said and t.lower() not in low for t in terms or []):
+        return "term"
+    return None
+
+
+def cloud_translate(text: str, target: str, cloud: dict, timeout: float | None = None, terms: list[str] | None = None,
+                    spoken: bool = False) -> dict:
+    """The user's cloud model → {"ok", "text", "ms", "cloud": True, "model", "usage"}; raises polish_cloud.CloudError."""
+    import polish_cloud
+    cfg = polish_cloud.settings(cloud)
+    if cfg.get("translate_model"):
+        cfg = {**cfg, "model": cfg["translate_model"]}      # the user picked a model for translate
+    r = polish_cloud.complete(cfg, translate_messages(text, target, terms, spoken),
+                              timeout or (CLOUD_TIMEOUT + CLOUD_PER_CHAR * len(text) * 2), max_tokens=int(len(text) * 3) + 200)
+    return {"ok": True, "text": clean_output(r["text"]), "ms": r["ms"], "cloud": True,
+            "model": cfg["provider"] + ":" + cfg["model"], "usage": {k: v for k, v in r["usage"].items() if isinstance(v, (int, float))}}
+
+
+CLOUD_TIMEOUT = 4.0            # seconds for a Light window in the cloud (DeepSeek Flash: median 0.95 s, p90 2.1 s)
+CLOUD_PER_CHAR = 0.006         # … and this much more a character of input (an 800-character take: 3.5 s)
+
+
+def cloud_polish(text: str, terms: list | None, context: dict | str | None, variant: str | None, cloud: dict,
+                 mode: str = "light", timeout: float | None = None) -> dict:
+    """The user's cloud model (polish_cloud), checked by the guard (cloud=True) → polish's usual answer; a failure is
+    {"fell_back": True, "reason": "cloud_<code>"} — the caller then asks the local model. No repair: the cloud model
+    is asked to leave restarts and taken-back words out."""
+    import polish_cloud
+    t0 = time.perf_counter()
+    raw = (text or "").strip()
+    structured = mode == "structure"
+    res = {"ok": True, "raw": raw, "text": raw, "polished": None, "fell_back": False, "reason": None, "terms": [],
+           "cloud": True, "context": bool(context_text(context) or (isinstance(context, dict) and
+                                                                    (context.get("dictated") or context.get("recent"))))}
+    if structured:
+        res.update(structured=None, list=False)
+    if len(units(raw)) <= 2:
+        res["reason"] = "short"
+        return {**res, "ms": 0}
+    all_terms = vocab.load() if terms is None else vocab.normalize(terms)
+    ctx = context if isinstance(context, dict) else ({"title": context} if context else None)
+    use = vocab.ranked(vocab.relevant(all_terms, raw, context_all(ctx)), raw, context_all(ctx))
+    try:
+        cfg = polish_cloud.settings(cloud)
+        res["model"] = cfg["provider"] + ":" + cfg["model"]
+        limit = (structure_timeout_s() if structured else CLOUD_TIMEOUT) + CLOUD_PER_CHAR * len(raw)
+        if structured:      # the local structuring prompt: the cloud model followed it (lists in 5 of 5 takes)
+            msgs = messages(raw, mode="structure")
+        else:
+            msgs = polish_cloud.messages(raw, [t["term"] for t in use], ctx, variant)
+        r = polish_cloud.complete(cfg, msgs, min(timeout or limit, limit) if structured else limit,
+                                  max_tokens=int(len(raw) * 2) + 200)
+    except polish_cloud.CloudError as e:
+        res.update(fell_back=True, reason="cloud_" + e.code, error=str(e)[:200])
+        return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
+    res["usage"] = {k: v for k, v in r["usage"].items() if isinstance(v, (int, float))}
+    out = clean_structured(r["text"]) if structured else clean_output(r["text"])
+    res["polished"] = out
+    if structured:
+        res["structured"] = out
+    out, echo = strip_echo(out, context_before(ctx), raw) if not structured else (out, 0)
+    if echo:
+        res["echo"] = echo
+    allowed = vocab.allowed_units(use, context_all(ctx)) if (use or ctx) else None
+    g = guard(raw, out, allowed, [t["term"] for t in use], context_all(ctx) or None,
+              mode="structured" if structured else "light", cloud=True)
+    res["guard"] = g["stats"]
+    if g["pass"]:
+        res["text"] = out
+        if structured:
+            res["list"] = list_lines(out) >= 2
+        low, before = out.lower(), raw.lower()
+        res["terms"] = list(dict.fromkeys(t["term"] for t in use if t["term"].lower() in low and t["term"].lower() not in before))
+    else:
+        res.update(fell_back=True, reason="cloud_" + g["reason"])
+    return {**res, "ms": int((time.perf_counter() - t0) * 1000)}
+
+
 STRUCTURE_TIMEOUT = 10.0       # seconds of generation for a whole take (Structured is opt-in; Light's is 3 s a window)
 
 
@@ -1394,7 +1734,14 @@ def cmd_serve(a):
     (serve_exit_reason: the model unused for --idle s, the --parent app gone, "exit")."""
     if (r := _server_call({"cmd": "ping"}, timeout=2)) and r.get("ok"):
         return emit({"ok": True, "already": True, "pid": r.get("pid"), "model": r.get("model")})
-    ensure_mlx()
+    # no local model installed (or no MLX: Intel, Windows, Linux): the server still answers what needs none — the
+    # cloud's translate and polish, the guard — and a request for the model says model_missing (never a re-exec under
+    # `uv run --with mlx-lm`, which would drop the socket)
+    local = supported() and (a.model_id or selected()) is not None
+    if local:
+        ensure_mlx()
+    else:
+        os.environ["BLURT_POLISH_REEXEC"] = "1"
     throttle(a.priority)
     RUN_DIR.mkdir(parents=True, exist_ok=True)
     token = uuid.uuid4().hex
@@ -1409,7 +1756,7 @@ def cmd_serve(a):
     why = None
     # the run file is ours to remove from here on, whatever happens (the finally below)
     try:
-        if a.preload:
+        if a.preload and local:
             # the model loads beside the loop: what needs no model (ping, a reply too short to tidy, the guard) is
             # answered meanwhile — a one-word take after the idle exit used to wait the whole load (~2 s) for "short";
             # a request that needs the model queues behind it on the model's thread and reports that wait as load_ms
@@ -1457,13 +1804,25 @@ def cmd_serve(a):
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.polish(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                          req.get("vocab"), req.get("context"), req.get("variant"))
+                                          req.get("vocab"), req.get("context"), req.get("variant"), req.get("cloud"),
+                                          req.get("local_fallback") is not False)
                     elif req.get("cmd") == "structure":   # Structured: one pass over the whole take
                         last = time.time()
                         uses.append(last)
                         del uses[:-50]
                         resp = eng.structure(str(req.get("text") or ""), req.get("model"), req.get("timeout"),
-                                             req.get("vocab"), req.get("context"))
+                                             req.get("vocab"), req.get("context"), req.get("cloud"),
+                                             req.get("local_fallback") is not False)
+                    elif req.get("cmd") == "translate":   # ⌥⇧T: copied text in the other language
+                        last = time.time()
+                        uses.append(last)
+                        del uses[:-50]
+                        resp = eng.translate(str(req.get("text") or ""), str(req.get("target") or "auto"),
+                                             req.get("model"), req.get("timeout"), req.get("cloud"), req.get("vocab"),
+                                             bool(req.get("spoken")), bool(req.get("check")))
+                    elif req.get("cmd") == "cloud_check":  # Settings' Test: one tiny request to the user's cloud model
+                        import polish_cloud
+                        resp = polish_cloud.check(req.get("cloud") or {})
                     elif req.get("cmd") == "case":        # a reply too short to polish, cased for the sentence it
                         # continues — only by a model already loaded (never a wait for a load, or behind the preload)
                         text = str(req.get("text") or "")
@@ -1476,7 +1835,7 @@ def cmd_serve(a):
                         allowed = vocab.allowed_units(terms, context_all(ctx)) if (terms or ctx) else None
                         resp = {"ok": True, **stitch_guard(str(req.get("raw") or ""), clean_output(str(req.get("output") or "")),
                                                            allowed, [t["term"] for t in terms], context_all(ctx) or None,
-                                                           req.get("fallback"))}
+                                                           req.get("fallback"), bool(req.get("cloud")))}
                     elif req.get("cmd") == "exit":       # the app is quitting (or someone wants the memory back now)
                         resp = {"ok": True, "pid": os.getpid()}
                         why = "asked"
@@ -1499,8 +1858,38 @@ def cmd_serve(a):
 
 
 # ------------------------------------------------------------------ commands
+def cmd_translate(a):
+    text, target, cloud, extra, raw = a.text or "", a.target, None, {}, None
+    if a.stdin:
+        raw = sys.stdin.read()
+        try:
+            o = json.loads(raw)
+            text, target, cloud = o.get("text", ""), o.get("target", target), o.get("cloud")
+            extra = {k: o[k] for k in ("vocab", "spoken", "check") if k in o}
+        except ValueError:
+            text = raw
+    if not text.strip():
+        # nothing to translate is never a success: a payload lost on the way answered {"ok": true, "text": ""}
+        raise Fail("nothing to translate", "empty_input")
+    if not a.no_server:
+        r = _server_call({"cmd": "translate", "text": text, "target": target, "model": a.model_id, "cloud": cloud, **extra}, 60)
+        if r is not None:
+            if not r.get("ok"):
+                raise Fail(r.get("error") or "server error", r.get("code") or "error")
+            return emit({**r, "server": True})
+    if not cloud:
+        ensure_mlx(stdin=raw)
+    else:
+        # stdin is read: re-running under `uv run --with mlx-lm` would lose it, so the local model answers only when
+        # mlx-lm is already here (a cloud-only Mac, Windows, Linux: the cloud's answer or the text as it was)
+        os.environ["BLURT_POLISH_REEXEC"] = "1"
+    emit(Engine().translate(text, target, a.model_id, None, cloud, extra.get("vocab"), bool(extra.get("spoken")),
+                            bool(extra.get("check"))))
+
+
 def cmd_run(a):
-    text = sys.stdin.read() if a.stdin else (a.text or "")
+    raw = sys.stdin.read() if a.stdin else None
+    text = raw if raw is not None else (a.text or "")
     timeout = a.timeout or timeout_s()
     terms = [] if a.no_vocab else None
     # --before: the field's text before the cursor, as the app sends it (the first word's case follows it)
@@ -1514,7 +1903,7 @@ def cmd_run(a):
                 if not r.get("ok"):
                     raise Fail(r.get("error") or "server error", r.get("code") or "error")
                 return emit({**r, "server": True})
-        ensure_mlx()
+        ensure_mlx(stdin=raw)
         throttle(a.priority)
         return emit(Engine().structure(text, a.model_id or selected(), timeout, terms))
     if not a.no_server:
@@ -1530,16 +1919,17 @@ def cmd_run(a):
     want = a.model_id or selected()
     if not want or not entry(want) or not model_path(entry(want)):
         raise Fail(f"{want or 'no polish model'} is not installed (polish.py setup --model ID)", "model_missing")
-    ensure_mlx()
+    ensure_mlx(stdin=raw)
     throttle(a.priority)
     emit(Engine().polish(text, want, timeout, terms, context, a.variant))
 
 
 def stitch_guard(raw: str, out: str, allowed: set[str] | None, terms: list[str], context: str | None,
-                 fallback: str | None = None) -> dict:
+                 fallback: str | None = None, cloud: bool = False) -> dict:
     """The guard for a streamed dictation's joined pieces against the joined transcript (Light: every word kept, so
-    the plain guard). `fallback` (the transcript as a fall-back would type it) comes back as "fallback_text"."""
-    g = guard(raw, out, allowed, terms, context)
+    the plain guard; `cloud`: windows the cloud model polished, its allowance). `fallback` (the transcript as a
+    fall-back would type it) comes back as "fallback_text"."""
+    g = guard(raw, out, allowed, terms, context, cloud=cloud)
     if fallback is not None:
         g["fallback_text"] = fallback
     return g
@@ -1803,6 +2193,12 @@ def main():
     g.add_argument("output")
     g.add_argument("--terms", help="custom words, comma separated")
     g.add_argument("--context")
+    t = sub.add_parser("translate")
+    t.add_argument("--text")
+    t.add_argument("--stdin", action="store_true", help='plain text, or {"text", "target", "cloud"} JSON (the app)')
+    t.add_argument("--target", default="auto")
+    t.add_argument("--model", "--model-id", dest="model_id")
+    t.add_argument("--no-server", action="store_true")
     e = sub.add_parser("eval")
     e.add_argument("--model", "--model-id", dest="model_id", required=True)
     e.add_argument("--set", default=str(HERE.parent.parent.parent / "tests" / "fixtures" / "polish_eval.jsonl"))
@@ -1813,7 +2209,7 @@ def main():
     a = p.parse_args()
     try:
         {"models": cmd_models, "setup": cmd_setup, "serve": cmd_serve, "run": cmd_run, "guard": cmd_guard,
-         "eval": cmd_eval}[a.cmd](a)
+         "eval": cmd_eval, "translate": cmd_translate}[a.cmd](a)
     except Fail as e:
         print(f"ERROR: {e}", file=sys.stderr)
         emit({"ok": False, "error": str(e), "code": e.code})

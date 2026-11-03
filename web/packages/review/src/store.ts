@@ -92,6 +92,10 @@ export class ReviewStore {
   readonly host: BlurtHost;
   readonly mode: "review" | "item";
   readonly embedded: boolean;
+  /** MountOptions.sharedDocument: the host's own page is in this document too */
+  readonly sharedDocument: boolean;
+  /** the element the canvas fills (mountReview's `el`) */
+  root: HTMLElement | null = null;
   itemId: string | null;
 
   i18n: I18n;
@@ -166,6 +170,7 @@ export class ReviewStore {
     this.host = host;
     this.mode = opts.mode === "item" ? "item" : "review";
     this.embedded = !!opts.embedded;
+    this.sharedDocument = !!opts.sharedDocument;
     this.itemId = opts.itemId ?? null;
     const picked = this.embedded ? null : storage.get("blurt.lang");
     this.langPicked = !!picked || !!opts.lang;
@@ -1008,7 +1013,7 @@ export class ReviewStore {
     // ⇧Tab from the detail's first control: back to the host's list (the Mac app), the way Tab came in — not round
     // to the page's last control
     if (e.key === "Tab" && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey && !e.isComposing && this.host.focusList && !this.modal) {
-      const first = firstTabbable();
+      const first = firstTabbable(this.root ?? document);
       if (!ae || ae === document.body || ae === first) {
         e.preventDefault();
         ae?.blur(); // a field's edit ends (its undo step) before the focus leaves

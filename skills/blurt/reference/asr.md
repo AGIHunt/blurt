@@ -88,12 +88,13 @@ Approximate cost per hour of *speech* (check the vendor's pricing page before qu
 
 A 30-minute rant usually has 15–20 minutes of speech.
 
-Keys come from the environment:
+In the app: Settings → Models → Advanced → each cloud service → Set Up… (the key goes into the Keychain; the app hands
+it to the scripts it starts as the variables below, over the shell's). From a terminal, keys come from the environment:
 
 - `BLURT_ASR_API_KEY`
 - `BLURT_ASR_BASE_URL` (for example `https://api.groq.com/openai/v1`)
 - `BLURT_ASR_MODEL`
-- or simply `GROQ_API_KEY`, `OPENAI_API_KEY` or `DASHSCOPE_API_KEY`
+- or simply `GROQ_API_KEY`, `OPENAI_API_KEY` or `DASHSCOPE_API_KEY` (`DASHSCOPE_BASE_URL` for another region)
 
 `gpt-4o-*-transcribe` returns no segment timestamps; the script shortens chunks to compensate.
 

@@ -1,7 +1,8 @@
 // What dictation reads from the text field it types into (docs/design/dictation.md §Context, §Auto-learn), read-only:
 //   • at the start: ≈ 500 characters before and after the cursor, the selection, the window title and the app's name.
 //     They go to polish as spelling hints; the history keeps them only with record.dictation.keep_audio (on unless
-//     turned off), for the Lab and feedback reports;
+//     turned off), for the Lab and feedback reports — with the entry, so for record.dictation.retention_days (30),
+//     deleted with it (DictationHistory.prune, daily and at launch);
 //   • after the text is typed: the same field, every 1.5 s for 60 s, to see whether the user fixed a word. Only a few
 //     dozen characters around the typed text are held while it is watched, then dropped; what is learned is the
 //     word pair (DictationLearn → DictationVocabulary), never the text around it — once, when the watch ends (its
@@ -52,6 +53,30 @@ final class DictationField {
         let app = NSRunningApplication(processIdentifier: pid)?.localizedName
         return DictationField(element: el, textView: nil, app: app, pid: pid)
     }
+
+    /// Electron apps (Claude, Slack, VS Code, Notion, Obsidian…) build their Accessibility tree only once a client asks
+    /// for it (`AXManualAccessibility`); until then the focused element is the window and its text can't be read — so
+    /// the fit at the cursor couldn't see the 。 already after it and typed another (「结尾。。」, v1.0.4 report). Asked on
+    /// the key-down (`Dictation.arm`), once per process: the tree is there by the time the context is read. Read-only for
+    /// the app; Chromium only turns its tree on. Never our own process, never test builds.
+    private static var woken = Set<pid_t>()
+    static func wakeWebAccessibility(_ app: NSRunningApplication?) {
+        guard !DictationInsert.testMode, let a = app, a.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              !woken.contains(a.processIdentifier), isElectron(a), AXIsProcessTrusted() else { return }
+        woken.insert(a.processIdentifier)
+        let el = AXUIElementCreateApplication(a.processIdentifier)
+        AXUIElementSetMessagingTimeout(el, 0.25)
+        let r = AXUIElementSetAttributeValue(el, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        emit(["event": "dictation_web_ax", "app": a.localizedName ?? "", "ok": r == .success, "code": Int(r.rawValue)])
+    }
+
+    static func isElectron(_ a: NSRunningApplication) -> Bool {
+        guard let u = a.bundleURL else { return false }
+        return FileManager.default.fileExists(atPath: u.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
+    }
+
+    /// The focused element has a text value (a field), not just a window or a web area around one.
+    var readable: Bool { textView != nil || element.map { DictationField.string($0, kAXValueAttribute) != nil } ?? false }
 
     private static func string(_ el: AXUIElement, _ attr: String) -> String? {
         var v: CFTypeRef?
@@ -140,7 +165,7 @@ final class DictationField {
     }
 }
 
-/// The text around the cursor when the dictation started: polish's spelling hints.
+/// The text around the cursor when the dictation started: polish's spelling hints, and the speech model's context.
 struct DictationContext {
     static let chars = 500
     var before = "", after = "", selection = "", title = "", app = ""
@@ -152,11 +177,24 @@ struct DictationContext {
     var hint: String {
         [title, String(before.suffix(300)), selection, String(after.prefix(300))].filter { !$0.isEmpty }.joined(separator: "\n")
     }
+    /// For the speech model's context (docs/design/dictation.md §Field context): the last 300 characters before the
+    /// cursor. The server gives them to a model that takes them (asr_models.json field_context_chars: Qwen3-ASR 1.7B,
+    /// Qwen3-ASR Flash), ahead of the text so far; never logged, never in its answer. Never from a password field
+    /// (DictationField.focused skips them, so `before` is empty).
+    static let asrChars = 300
+    var asrBefore: String { String(before.suffix(DictationContext.asrChars)).trimmingCharacters(in: .whitespacesAndNewlines) }
     /// for the history, only with keep_audio (the Lab, feedback reports)
     var debugText: String { "\(title) — \(before)|\(selection.isEmpty ? "" : "[\(selection)]")\(after)" }
 
     static func capture() -> DictationContext? {
-        guard let f = DictationField.focused() else { return titleOnly() }
+        var field = DictationField.focused()
+        // an Electron app asked for its tree a moment ago (the key-down): the first time, it can take a few hundred ms
+        if field?.readable != true, let a = NSWorkspace.shared.frontmostApplication, DictationField.isElectron(a),
+           !DictationInsert.testMode {
+            usleep(300_000)
+            field = DictationField.focused() ?? field
+        }
+        guard let f = field else { return titleOnly() }
         var c = DictationContext()
         c.app = f.app ?? ""
         c.title = f.windowTitle ?? ""

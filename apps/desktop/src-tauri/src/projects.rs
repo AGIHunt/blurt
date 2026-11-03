@@ -124,12 +124,33 @@ pub fn add(runner: &Runner, path: &str) -> Result<Value, String> {
     runner.run("projects.py", &["add".into(), path.into()], None, Duration::from_secs(30)).map_err(String::from)
 }
 
+/// Locate…: is the folder the user picked for project `id` that project's folder, moved or renamed? Its store says
+/// whose it is (`.blurt/store.json` "project", the Mac's ProjectStore.locatePick): "same", "other" (another
+/// project's), "empty" (no Blurt store there).
+pub fn locate_pick(folder: &Path, id: &str) -> &'static str {
+    match settings::read_json(&folder.join(".blurt").join("store.json")) {
+        Some(v) if v["project"].as_str() == Some(id) => "same",
+        Some(v) if v["project"].is_string() => "other",
+        _ => "empty",
+    }
+}
+
 pub fn use_project(runner: &Runner, id: &str) -> Result<Value, String> {
     runner.run("projects.py", &["use".into(), id.into()], None, Duration::from_secs(20)).map_err(String::from)
 }
 
 pub fn set(runner: &Runner, id: &str, patch: &Value) -> Result<Value, String> {
     runner.run("projects.py", &["set".into(), id.into(), "--json".into(), patch.to_string()], None, Duration::from_secs(20)).map_err(String::from)
+}
+
+/// Remove from Blurt (the folder and its items stay): the answer carries the entry as it was, for `restore`.
+pub fn remove(runner: &Runner, id: &str) -> Result<Value, String> {
+    runner.run("projects.py", &["remove".into(), id.into()], None, Duration::from_secs(20)).map_err(String::from)
+}
+
+/// Undo of `remove`: exactly what it answered goes back (name, key, settings, place in the list, current or not).
+pub fn restore(runner: &Runner, removed: &Value) -> Result<Value, String> {
+    runner.run("projects.py", &["restore".into(), "--json".into(), removed.to_string()], None, Duration::from_secs(20)).map_err(String::from)
 }
 
 /// `YYYYMMDD-HHMMSS`, local time (the session dir names every host uses).

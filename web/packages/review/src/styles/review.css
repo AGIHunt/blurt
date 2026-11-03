@@ -129,6 +129,10 @@ body {
 .dot.drop {
   background: var(--drop);
 }
+/* a count of nothing says nothing in colour: red for "0 discarded" was an alarm with no cause */
+.dot.nil {
+  background: var(--line-2);
+}
 .sp {
   flex: 1;
 }
@@ -963,19 +967,39 @@ button.chip:hover {
   justify-content: flex-end;
   gap: 6px;
 }
-.work.verify > .work-a {
-  align-self: center;
+/* the Mac's card at every width: the claim, its time and evidence, the summary (three lines, More opens the rest),
+   then the buttons on their own row, left-aligned with the words — never beside a paragraph */
+.work.verify {
+  grid-template-columns: 16px minmax(0, 1fr);
 }
-/* narrow: the actions go under the words, left-aligned with them */
-@container insp (max-width: 520px) {
-  .work.verify {
-    grid-template-columns: 16px minmax(0, 1fr);
-  }
-  .work.verify > .work-a {
-    grid-column: 2;
-    justify-content: flex-start;
-    margin-top: 8px;
-  }
+.work.verify > .work-a {
+  grid-column: 2;
+  justify-content: flex-start;
+  margin-top: 10px;
+}
+.work.verify .work-note {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  word-break: normal;
+  max-width: 68ch;
+}
+.work.verify .work-note.open {
+  display: block;
+}
+.work-more-note {
+  margin-top: 2px;
+}
+/* evidence is quieter than the claim: the hash in the secondary ink at regular weight */
+.work code.sha {
+  font-weight: 400;
+  color: var(--mute);
+}
+/* the secondary on the card's grey: a visible edge */
+.work.verify .work-a .btn:not(.primary) {
+  box-shadow: inset 0 0 0 1px var(--line-2, var(--line));
 }
 /* Send Back…: the note for the agent, in place (Esc cancels, ⌘⏎ sends) */
 .work-back {
@@ -1025,6 +1049,16 @@ button.chip:hover {
 .more-btn:hover {
   background: var(--hover);
   color: var(--ink);
+}
+/* one ⋯ everywhere: the dots in a thin circle, as the native headers and panels draw it (SF ellipsis.circle) */
+.more-btn > svg,
+.vmore > svg {
+  box-sizing: content-box;
+  width: 13px;
+  height: 13px;
+  padding: 1.5px;
+  border: 1.25px solid currentColor;
+  border-radius: 50%;
 }
 .more-btn select {
   position: absolute;
@@ -1900,6 +1934,9 @@ button.chip:hover {
 .rv-root {
   height: 100%;
 }
+.rv-root:focus {
+  outline: none;
+}
 .rv-embedded {
   --vh: 100%;
   position: relative;
@@ -2306,10 +2343,12 @@ html.mode-item[data-theme="dark"] body {
   background: var(--bg);
 }
 /* the Mac app paints the pane with the list's own colour behind the page (wallpaper tinting included): no second
-   surface on top */
+   surface on top. Embedded in an app's main window (the Tauri app mounts it into its detail column) the same:
+   the column's surface is the list's, so list and detail read as one sheet there too. */
 html.mode-item[data-host="macos"],
 html.mode-item[data-host="macos"] body,
-[data-host="macos"] .focus.item-mode {
+[data-host="macos"] .focus.item-mode,
+.rv-embedded .focus.item-mode {
   background: transparent;
 }
 .item-mode .side {
@@ -2650,6 +2689,156 @@ html.mode-item[data-host="macos"] body,
   }
   .progress .bar {
     width: 90px;
+  }
+  .act kbd,
+  .act.ghost {
+    display: none;
+  }
+}
+
+/* the item's pictures by their own shape (Windows round 1): a landscape one fills the words' column up to 640 px, a
+   portrait (a phone) is up to 380 px tall so it can be read — never a 130 px stamp; the caption under it in the body
+   size, wrapping over the column's width (two lines) instead of being cut to the picture's */
+.attach .shot {
+  width: min(100cqw, 640px, calc(380px * var(--ar, 1.6)));
+}
+.att-cap {
+  margin: 8px 0 0;
+  max-width: min(100cqw, 640px);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* the breadcrumb takes every pixel up to the actions before its project name gives way (an ID never does); the line
+   is tall enough for Segoe UI's descenders ("billing-api" lost its g at 100 %) */
+.idrow {
+  line-height: 1.4;
+}
+.idrow .iid {
+  flex: none;
+}
+.idrow .pick.proj {
+  flex: 0 1 auto;
+  max-width: none;
+  min-width: 0;
+  line-height: 1.4;
+}
+.idrow .pick.proj .pick-l,
+.idrow .pick.proj > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.4;
+  padding-bottom: 1px;
+}
+/* the History section is a section: room and a hairline above it, never stuck to Add field */
+.f.worklog {
+  margin-top: 24px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+/* a narrow detail (an 880 px window): the header's buttons give up their words before the breadcrumb is cut — Copy to
+   its icon, Hand Off to Agent to "Hand Off" */
+.hl-short {
+  display: none;
+}
+@container insp (max-width: 520px) {
+  .idrow .hl-word {
+    display: none;
+  }
+  .idrow .hl-long {
+    display: none;
+  }
+  .idrow .hl-short {
+    display: inline;
+  }
+}
+/* a CJK title breaks into even lines (no two characters alone on the second) */
+.title {
+  text-wrap: balance;
+}
+
+/* a suspected-code path: an inline chip in regular-weight mono at the values' size, its open mark right after it (shown
+   on hover) — never pinned to the pane's far edge */
+.f .code {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.f .code > button {
+  width: auto !important;
+  flex: none;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px !important;
+  margin: 0 !important;
+  max-width: 100%;
+  border-radius: 4px;
+  background: var(--chip, var(--hover)) !important;
+  font: 400 12.5px var(--mono) !important;
+  color: var(--ink) !important;
+  justify-content: flex-start !important;
+}
+.f .code > button > span {
+  font-weight: 400 !important;
+}
+.f .code > button em {
+  position: static !important;
+  margin: 0 !important;
+  opacity: 0;
+  color: var(--mute);
+}
+.f .code > button:hover em,
+.f .code > button:focus-visible em {
+  opacity: 1;
+}
+/* Windows: the card's secondary is the app's neutral filled button (no white box on the card's grey, which read as a
+   second component next to the brand primary), and the card keeps to the text column instead of spanning a wide
+   detail pane (windows-parity main-window.md 14.x) */
+:root[data-platform="win"] .work.verify {
+  max-width: 640px;
+}
+:root[data-platform="win"] .work.verify .work-a .btn:not(.primary) {
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  box-shadow: none;
+  border-color: transparent;
+}
+:root[data-platform="win"] .work.verify .work-a .btn:not(.primary):hover {
+  background: color-mix(in srgb, var(--ink) 11%, transparent);
+}
+
+/* embedded in a pane (the app's main window), the page answers to the pane's width, not the window's: the viewport
+   media queries above never fired in a 780 px detail column of a 1440 px window, and the focus view squeezed its
+   stage to a 150 px strip with its buttons' words stacked one character a line. Windows only: the Mac's pane keeps
+   its own layout */
+:root[data-platform="win"] .rv-embedded {
+  container: rv / inline-size;
+}
+@container rv (max-width: 1180px) {
+  .focus:not(.item-mode) {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+  .focus:not(.item-mode) .queue {
+    display: none;
+  }
+  #helpBtn,
+  #langBtn,
+  .top .saved {
+    display: none;
+  }
+}
+@container rv (max-width: 900px) {
+  .focus:not(.item-mode) {
+    grid-template-columns: minmax(0, 1fr) 300px;
   }
   .act kbd,
   .act.ghost {

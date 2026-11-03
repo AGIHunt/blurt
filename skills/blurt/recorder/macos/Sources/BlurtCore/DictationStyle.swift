@@ -10,7 +10,7 @@
 //
 // The app's category (chat / code / mail / notes) shapes light a little (DictationStyleVariant): chat keeps
 // sentence-final particles and drops the full stop of a one-sentence message, code and terminals get one line.
-// Which style a take gets (DictationStyleRouter): explicit this take (⇧, the island, Fn+⇧) > the app's own setting >
+// Which style a take gets (DictationStyleRouter): explicit this take (⇧, the island) > the app's own setting >
 // its category's > the global default (light). No spoken commands: "make a list" / 「列个清单」 is content (people
 // dictate instructions to AI agents), never a switch. Config record.dictation.styles:
 //   {"chat": "light", "notes": "auto", "apps": {"com.apple.Notes": "structured"}, "learned": ["com.apple.Notes"]}
@@ -147,7 +147,7 @@ public struct DictationStyleConfig: Equatable {
 }
 
 public enum DictationStyleSource: String, Hashable {
-    /// ⇧ during the take, a click on the island, Fn+⇧ as the start press
+    /// ⇧ during the take, a click on the island; `chord`: Fn+⇧ as the start press (removed; older history records)
     case shift, island, chord
     case app, category
     case `default`

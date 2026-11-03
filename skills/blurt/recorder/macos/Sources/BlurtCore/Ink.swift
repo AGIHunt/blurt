@@ -6,9 +6,10 @@
 //  • InkTool / InkModifiers — the same modifiers for a snap and for the recording pen: a plain drag = freehand,
 //    ⇧ = box, ⌥ = ellipse. A snap needs no key (the frozen picture takes the drag); while recording the pen key (⌃ by
 //    default, record.draw_key) is held as well: ⌃-drag freehand, ⌃⇧ box, ⌃⌥ ellipse. With ⌥ as the pen key the
-//    ellipse is ⌃⌥ (the pen key and ⌃). ⌘ never draws (it is a shortcut). PenArm: the pen key goes down first (held
-//    alone a moment), then ⇧ / ⌥ may join; a chord pressed together (⌃⌥-drag moves windows in some window managers)
-//    never turns the pen on.
+//    ellipse is ⌃⌥ (the pen key and ⌃). ⌘ never draws (it is a shortcut). Only the keys held count, never the order
+//    they went down in (BA-59): ⌃ then ⇧, ⇧ then ⌃ and both at once are all a box (`recordingTool(pen:held:)`; while
+//    dragging `dragTool`). PenArm: the pen turns on once such a set has been held a moment (a quick ⌃-shortcut never
+//    shows it).
 //  • InkStroke — the stroke being drawn (both views): the freehand path keeps following the pointer while a modifier
 //    shows a box / ellipse, so letting go of it mid-drag carries on from where the pointer is.
 //  • InkFit — holding still ~0.5 s (InkHold) at the end of a freehand stroke snaps it to a clean straight line,
@@ -44,16 +45,48 @@ public enum InkModifiers {
     /// The modifier that makes an ellipse while recording: ⌥, or ⌃ when ⌥ is the pen key itself.
     public static func ellipseKey(pen: PenKey) -> PenKey { pen == .option ? .control : .option }
 
+    /// The modifier keys held at one moment — a set: what matters is which are down, never the order they went down in.
+    public struct Held: OptionSet, Hashable {
+        public let rawValue: Int
+        public init(rawValue: Int) { self.rawValue = rawValue }
+        public static let control = Held(rawValue: 1 << 0)
+        public static let option = Held(rawValue: 1 << 1)
+        public static let shift = Held(rawValue: 1 << 2)
+        public static let command = Held(rawValue: 1 << 3)
+        public static let fn = Held(rawValue: 1 << 4)
+
+        static func key(_ k: PenKey) -> Held { k == .control ? .control : k == .option ? .option : .fn }
+    }
+
     /// The recording pen: on while its key is held (with ⇧ for a box, the ellipse key for an ellipse) — nil: off. Any
     /// other modifier (⌘, or a second one that means nothing here) keeps it off: that is a shortcut being typed.
-    public static func recordingTool(pen: PenKey, control: Bool, option: Bool, shift: Bool, command: Bool, fn: Bool) -> InkTool? {
-        let down: [PenKey: Bool] = [.control: control, .option: option, .fn: fn]
-        guard !command, down[pen] == true else { return nil }
-        let ell = ellipseKey(pen: pen)
-        for k in [PenKey.control, .option, .fn] where k != pen && k != ell && down[k] == true { return nil }
-        if shift { return .box }
-        if down[ell] == true { return .ellipse }
+    /// A pure function of the keys held (BA-59): ⌃⇧ is a box however it was pressed — ⌃ first, ⇧ first or together.
+    public static func recordingTool(pen: PenKey, held: Held) -> InkTool? {
+        guard !held.contains(.command), held.contains(Held.key(pen)) else { return nil }
+        let ell = Held.key(ellipseKey(pen: pen))
+        for k in [PenKey.control, .option, .fn] where held.contains(Held.key(k)) && Held.key(k) != Held.key(pen) && Held.key(k) != ell {
+            return nil
+        }
+        if held.contains(.shift) { return .box }
+        if held.contains(ell) { return .ellipse }
         return .free
+    }
+
+    public static func recordingTool(pen: PenKey, control: Bool, option: Bool, shift: Bool, command: Bool, fn: Bool) -> InkTool? {
+        var h: Held = []
+        if control { h.insert(.control) }
+        if option { h.insert(.option) }
+        if shift { h.insert(.shift) }
+        if command { h.insert(.command) }
+        if fn { h.insert(.fn) }
+        return recordingTool(pen: pen, held: h)
+    }
+
+    /// What a recording drag draws at its start and on every move after (InkView): the pen's tool for the keys held
+    /// now; once the pen is on (or latched with ⌥D) and its key is let go mid-drag, ⇧ / ⌥ alone still say box / ellipse.
+    public static func dragTool(pen: PenKey?, held: Held) -> InkTool {
+        if let pen, let t = recordingTool(pen: pen, held: held) { return t }
+        return snapTool(shift: held.contains(.shift), option: held.contains(.option))
     }
 }
 
@@ -138,24 +171,25 @@ public final class InkStroke {
     }
 }
 
-/// The recording pen turns on only when its key goes down first: held alone for `settle`, after which ⇧ (box) or the
-/// ellipse key may join and keep it on. A chord pressed together — ⌃⌥ or ⌃⇧, which some window managers use for
-/// shortcuts or ⌃⌥-drag to move windows — keeps it off until every key is up again. Fed by the 30 Hz modifier poll.
+/// The recording pen turns on once a pen chord — its key alone, or with ⇧ (box) or the ellipse key, pressed in any order
+/// or together (BA-59) — has been held for `settle`; then the keys may change freely and the tool follows them. A quick
+/// ⌃-shortcut (⌃A in a terminal) is let go before that, so the pen never flashes on; ⌘ or a key that means nothing here
+/// (InkModifiers.recordingTool → nil) turns it off. Fed by the 30 Hz modifier poll. (Until v1.0.7 the pen key had to go
+/// down first, for window managers' ⌃⌥-drag; the founder chose the shape over that, BA-59.)
 public struct PenArm: Equatable {
     public static let settle = 0.15
     public private(set) var armed = false
-    private var aloneSince: Double?
+    private var heldSince: Double?
 
     public init() {}
 
     /// `tool`: InkModifiers.recordingTool for the keys down now (nil: the pen key is up, or a shortcut). Returns the
     /// tool while the pen is on, else nil.
     public mutating func update(_ tool: InkTool?, now: Double) -> InkTool? {
-        guard let tool else { armed = false; aloneSince = nil; return nil }
+        guard let tool else { armed = false; heldSince = nil; return nil }
         if armed { return tool }
-        guard tool == .free else { aloneSince = nil; return nil }      // a chord: never arms until it is let go
-        if aloneSince == nil { aloneSince = now }
-        if now - aloneSince! >= PenArm.settle { armed = true; return tool }
+        if heldSince == nil { heldSince = now }
+        if now - heldSince! >= PenArm.settle { armed = true; return tool }
         return nil
     }
 }

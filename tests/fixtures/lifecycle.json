@@ -10,7 +10,7 @@
   "actions": [
     {"action": "keep", "from": ["new"], "to": "todo", "key": "a"},
     {"action": "hand_off", "from": ["new", "todo"], "to": "handed_off", "key": "cmd+enter"},
-    {"action": "done", "from": ["todo", "handed_off", "in_progress", "to_verify"], "to": "done", "key": "d"},
+    {"action": "done", "from": ["new", "todo", "handed_off", "in_progress", "to_verify"], "to": "done", "key": "d"},
     {"action": "send_back", "from": ["to_verify"], "to": "todo", "key": "r"},
     {"action": "take_back", "from": ["handed_off", "in_progress"], "to": "todo", "key": "r"},
     {"action": "reopen", "from": ["done", "wontfix"], "to": "todo", "key": "r"},
@@ -19,7 +19,7 @@
     {"action": "discard", "from": ["new", "todo", "handed_off", "in_progress", "to_verify", "done", "wontfix"], "to": "discarded", "key": "x"}
   ],
   "menus": {
-    "new": ["keep", "hand_off", "wontfix", "discard"],
+    "new": ["keep", "hand_off", "done", "wontfix", "discard"],
     "todo": ["hand_off", "done", "wontfix", "discard"],
     "handed_off": ["done", "take_back", "wontfix", "discard"],
     "in_progress": ["done", "take_back", "wontfix", "discard"],

@@ -90,6 +90,15 @@ class Guard(unittest.TestCase):
         self.check("帮我把下面这段话翻译成英文", "Please translate the following paragraph into English.", "translated")
         self.check("我们的API现在response time大概是两百毫秒", "我们的 API 现在响应时间大概是两百毫秒。", "translated")
 
+    def test_a_long_mixed_take_is_not_translated_by_a_dropped_filler(self):
+        # dogfood: a 79 s zh/en take lost an English filler in one place and gained 的/了 in others — counted over the
+        # whole take that read as `translated`, and the take was typed as heard
+        raw = ("okay 那我们先看一下这个 feature 现在的状态 就是 deploy 之后 latency 有点高 然后我觉得可以先把 cache 加上 "
+               "再看 dashboard 上面的数字 如果还是不行就回滚 我们明天 standup 的时候再讨论一下 具体谁来跟进这个 issue")
+        out = ("那我们先看一下这个 feature 现在的状态，就是 deploy 之后 latency 有点高了。然后我觉得可以先把 cache 加上，"
+               "再看 dashboard 上面的数字的变化，如果还是不行就回滚。我们明天 standup 的时候再讨论一下具体谁来跟进这个 issue。")
+        self.assertNotEqual(polish.guard(raw, polish.clean_output(out))["reason"], "translated")
+
     def test_light_never_lists(self):
         raw = "明天要做三件事第一跑测试第二写文档第三提交代码"
         self.check(raw, "明天要做三件事：\n1. 跑测试\n2. 写文档\n3. 提交代码", "listed")
@@ -381,19 +390,25 @@ class Registry(unittest.TestCase):
             self.assertNotIn("llama", m["repo"].lower())
             self.assertTrue(m["repo"].startswith("mlx-community/"), m)
             self.assertLess(m["size_mb"], 5200, m)
-        for tier in ("pro", "standard", "light", "minimal"):
+        for tier in ("pro", "standard"):
             self.assertIn(reg["defaults"][tier], ids)
+        # 8 GB and under: no local polish by default (dictation-eval-2026-10-31 §6.2)
+        self.assertEqual((reg["defaults"]["light"], reg["defaults"]["minimal"]), (None, None))
+        self.assertIsNone(polish.recommended("light"))
+        self.assertEqual(polish.recommended("standard"), "gemma4-e2b")
         for m in reg["models"]:                                              # measured on the reference Mac
             self.assertTrue(m["ram_mb"] > 0 and m["warm_ms"] > 0 and 0 <= m["fallback"] <= 1, m["id"])
         # the default for each tier fits that tier's polish memory cap (25 % of 8 / 16 / 32 GB; minimal ≈ 8 GB too)
         cap = {"pro": 8192, "standard": 4096, "light": 2200, "minimal": 2048}
         for tier, mid in reg["defaults"].items():
-            self.assertLessEqual(polish.entry(mid)["ram_mb"], cap[tier], tier)
+            if mid:
+                self.assertLessEqual(polish.entry(mid)["ram_mb"], cap[tier], tier)
 
     def test_lighter_tiers_get_smaller_models(self):
         reg = polish.registry()
         size = {m["id"]: m["size_mb"] for m in reg["models"]}
         d = reg["defaults"]
+        size[None] = 0                                  # none at all
         self.assertLessEqual(size[d["light"]], size[d["standard"]])
         self.assertLessEqual(size[d["minimal"]], size[d["light"]])
 
@@ -477,6 +492,19 @@ class FakeEngine(polish.Engine):
 
 
 class EngineLight(unittest.TestCase):
+    def test_no_local_fallback_keeps_the_clouds_reason(self):
+        """Windows has no local polish model: a cloud failure is the answer (offline), not "model_missing"."""
+        from unittest import mock
+        e = FakeEngine("不该用到")
+        failed = {"ok": True, "text": "今天开会", "fell_back": True, "reason": "cloud_network", "ms": 5}
+        with mock.patch.object(polish, "cloud_polish", return_value=failed):
+            r = e.polish("今天开会", None, 3, [], None, None, {"provider": "deepseek"}, local_fallback=False)
+        self.assertEqual((r["fell_back"], r["reason"], r["cloud_error"], e.asked), (True, "cloud_network", "cloud_network", []))
+        with mock.patch.object(polish, "cloud_polish", return_value=failed):
+            r = e.polish("今天开会", None, 3, [], None, None, {"provider": "deepseek"})
+        self.assertEqual(r["cloud_error"], "cloud_network")     # the Mac: the local model then, the cloud's code kept
+        self.assertEqual(len(e.asked), 1)
+
     def test_the_model_gets_the_words_as_said(self):
         """No pass in front of the model rewrites what was said: a self-correction reaches it as heard."""
         e = FakeEngine(lambda t: t + "。")
@@ -753,8 +781,9 @@ class ServeWhileLoading(unittest.TestCase):
         return polish._server_call(req, timeout)
 
     def test_what_needs_no_model_is_answered_at_once_and_a_wait_is_load_time(self):
-        saved = (polish.Engine, polish.ensure_mlx)
-        polish.Engine, polish.ensure_mlx = self.Slow, (lambda: None)
+        # throttle() would lower the whole test runner's priority (and with it pytest's own output was lost)
+        saved = (polish.Engine, polish.ensure_mlx, polish.throttle)
+        polish.Engine, polish.ensure_mlx, polish.throttle = self.Slow, (lambda: None), (lambda _p=None: {})
         args = argparse.Namespace(preload=True, model_id="fake", priority=None, idle=600, exit_after=1800, parent=None)
         th = threading.Thread(target=lambda: polish.cmd_serve(args), daemon=True)
         try:
@@ -781,7 +810,7 @@ class ServeWhileLoading(unittest.TestCase):
                 self.call({"cmd": "exit"})
                 th.join(5)
         finally:
-            polish.Engine, polish.ensure_mlx = saved
+            polish.Engine, polish.ensure_mlx, polish.throttle = saved
         self.assertFalse(polish.SERVE_FILE.exists())
 
 
@@ -840,3 +869,50 @@ class FormattingAndContext(unittest.TestCase):
         self.assertEqual((r["text"], r["fell_back"], r.get("retried")), ("空中云汇。", False, "grew"))
         self.assertEqual(len(e.asked), 2)
         self.assertEqual(e.asked[1][1][-1]["content"], "空中云汇")
+
+
+class Translate(unittest.TestCase):
+    """The one translate prompt (⌥⇧T and dictation's translate mode): the new parameters are opt-in, and without them
+    the prompt and the message are what ⌥⇧T has always sent."""
+
+    def test_the_prompt_without_options_is_unchanged(self):
+        base = polish.translate_system("auto")
+        self.assertIn("If the text is mostly Simplified Chinese, translate it into English", base)
+        self.assertNotIn("hesitations", base)            # a 嗯嗯 in a screenshot of a chat is content
+        self.assertNotIn("Words:", base)
+        self.assertEqual(polish.translate_system("auto"), polish.translate_system("auto", terms=False, spoken=False))
+        self.assertEqual(polish.translate_messages("你好", "auto"),
+                         [{"role": "system", "content": base}, {"role": "user", "content": "你好"}])
+
+    def test_speech_drops_fillers_only_when_asked(self):
+        self.assertIn("hesitations", polish.translate_system("en", spoken=True))
+        self.assertIn("Translate it into English.", polish.translate_system("en", spoken=True))
+        self.assertIn("Translate it into Simplified Chinese.", polish.translate_system("zh"))
+
+    def test_words_go_in_a_line_of_their_own(self):
+        m = polish.translate_messages("用 tmux 跑一下", "en", ["tmux"])
+        self.assertIn('"Words:"', m[0]["content"])
+        self.assertEqual(m[1]["content"], "Words: tmux\nText: 用 tmux 跑一下")
+        self.assertEqual(polish.translate_messages("用 tmux 跑一下", "en", [])[1]["content"], "用 tmux 跑一下")
+
+    def test_the_engine_sends_only_the_words_in_the_text(self):
+        e = polish.Engine()
+        seen = []
+        e._ready = lambda res, m: res.update(model="fake")
+        e.on_model_thread = lambda fn, text, target, deadline, terms, spoken: (seen.append((target, terms, spoken)) or
+                                                                               ("Run it in tmux", False))
+        r = e.translate("用 tmux 跑一下", "en", terms=[{"term": "tmux"}, {"term": "Claude Code"}], spoken=True, check=True)
+        self.assertEqual(seen, [("en", ["tmux"], True)])
+        self.assertEqual((r["text"], r["fell_back"]), ("Run it in tmux", False))
+        # auto stays auto (⌥⇧T), unchecked: the model's answer as it is
+        r = e.translate("你好", "auto")
+        self.assertEqual(seen[-1], ("auto", [], False))
+        self.assertNotIn("fell_back", r)
+
+    def test_a_refused_local_answer_types_the_text_as_said(self):
+        e = polish.Engine()
+        e._ready = lambda res, m: res.update(model="fake")
+        e.on_model_thread = lambda *a: ("在本地安装这个版本", False)       # the same language back
+        r = e.translate("在本地安装一下这个版本，我来测试一下。", "en", check=True)
+        self.assertEqual((r["fell_back"], r["reason"], r["text"]), (True, "untranslated", "在本地安装一下这个版本，我来测试一下。"))
+        self.assertEqual(r["translated"], "在本地安装这个版本")

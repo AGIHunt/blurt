@@ -81,18 +81,27 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
   *waiting for you*; 8 s without output after running means *turn finished*. Claude Code's window is read the same
   way until its first hook: its workspace-trust dialog fires none (→ *waiting for you*), and
   `interactive.error_patterns` ("Not logged in · Please run /login") make the session an `error` with that line as
-  `job.error`, its window left open to read.
+  `job.error`, its window left open to read. A waiting pattern can carry a hint (`{pattern, hint}`: `trust` = the
+  folder-trust question, `hooks` = Codex's hook review): `agent.waiting_hint` names it while it shows (the app adds one
+  line on what to answer), it doesn't count as the agent being up (its items stay *handed off*), and an agent that
+  exits there before any hook gets `agent.stopped_at: "trust"` — it never started, so the app offers Restart.
 - The watchdog: an agent with hooks whose hooks never spoke and whose window has been still for a minute since it
   started (a screen nothing recognises — an update notice, a login page) becomes `waiting_input` with
   `status_source: "watchdog"` and its last lines in `agent.last_output`; the app says *No response* and offers
   Restart Session. Any new output or hook takes it back to running.
 - When an agent exits, its window's last lines are kept as `agent.last_output`; a non-zero exit becomes `job.error`
-  (`agent_exit`, or the class its words fit: `auth`, `quota`…, message = the last line). A worktree session's
+  (`agent_exit`, or the class its words fit: `auth`, `quota`…, message = the last line). A known class also gets
+  `reason` (one sentence in the UI language: `--lang`, `$BLURT_LANG` — the app sets it on every script —, config) and
+  `reason_i18n` (`{en, zh}`: the app shows its own); too old (`outdated`) adds `version`, `need` and `fix`. A worktree session's
   `agent.changes` = `{ahead, dirty}` once it ended ("ready to review" only when there is something).
 - tmux (`$BLURT_HOME/tmux.conf`): windows start at 80×24 and grow with the attached terminal (a big window shrunk
   on attach pushed the last lines out of view), `remain-on-exit` without tmux's "Pane is dead" line,
-  `focus-events off` and `escape-time 50` (nothing reaches an agent while it starts). Codex starts with
-  `-c check_for_update_on_startup=false`.
+  `focus-events off` and `escape-time 50` (nothing reaches an agent while it starts). Every new window and every
+  attach `source-file`s it into a server that is already running (tmux reads `-f` only when the server starts, and
+  Blurt's outlives updates); `doctor` reports the running server's `options`. Codex starts with
+  `-c check_for_update_on_startup=false`; one older than `interactive.session.min_version` (0.164) is refused before
+  anything is made, by `dispatch` (its dry run too) and `restart`: code `outdated` with `version`, `need` and `fix`
+  (the update command).
 - `sessions.py monitor` (the app keeps one running) also notices windows that exited and moves items along:
   the first sign of life → *in progress*. An exit moves nothing: only your own report (`items.py state … --state
   to_verify --claim fixed|wontfix`, MCP `mark_fixed`) takes an item to *to verify*. Exit without it and the item
@@ -101,10 +110,14 @@ Every session is a job of type `agent` in `$BLURT_HOME/jobs/` (see `jobs.py`). I
 ## Finishing
 
 ```
-sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch]
+sessions.py finish JOB --action diff|merge|pr|discard|keep [--keep-branch] [--expect TOKEN]
 ```
 
-`diff` writes `jobs/<id>.diff` and returns per-file counts, `uncommitted` and `ahead`; `merge` needs a stopped
+`diff` writes `jobs/<id>.diff` and returns per-file counts, `uncommitted`, `ahead`, `alive` (the agent is still in
+its window: `merge` / `pr` refuse with `running`, so end it first and diff again), `agent_status` while alive, and
+`reviewed`: a token of what the diff shows (the branch's HEAD and the tree its worktree would commit, from a copy of
+the index). Pass it to `merge` / `pr` as `--expect`: a worktree that changed since is refused with `changed` and
+nothing is committed — the app always does, so only what the user saw lands. `merge` needs a stopped
 agent and the project folder clean on the base branch, commits what the agent left uncommitted ("<IDs> <title>
 (Blurt hand-off)", the user's own hooks apply), then merges (`--no-ff`; a conflict is aborted and reported); `pr`
 needs a stopped agent too, commits the same way, pushes the branch and opens a PR with `gh` when it is installed

@@ -104,13 +104,12 @@ enum Look {
     }
     /// Where a state action leads (the state menu, the Item menu, ⌘K): the target state's shape in one quiet ink, the
     /// same 1.5 pt line for all — a coloured ring there would read as the state you're in (a centre dot as a picked
-    /// radio), a fainter one as an action that's off. Handing off is the hand-off paperplane in brand ink: the one
-    /// action that gives the item to blurt to act on (system.md §1, §2.7).
+    /// radio), a fainter one as an action that's off. Handing off is the Handed off ring itself, in brand ink: the one
+    /// action that gives the item to an agent, drawn as the state it leads to like every other (system.md §1, §2.7).
     static func target(_ state: String, size: CGFloat = 16) -> NSImage {
         let k = "t:\(state):\(size)"
         if let i = cache[k] { return i }
-        let i = state == "handed_off" ? BlurtIcon.send.image(size: size, color: BrandColor.ink).copy() as! NSImage
-                                      : StatusRing.image(state, size: size, tint: .secondaryLabelColor)
+        let i = StatusRing.image(state, size: size, tint: state == "handed_off" ? BrandColor.ink : .secondaryLabelColor)
         i.accessibilityDescription = stateName(state)
         cache[k] = i
         return i

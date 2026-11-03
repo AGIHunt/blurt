@@ -2,7 +2,7 @@
 // Pure: DictationStyleLearnTests.
 //
 //  • DictationStyleRecord: the history's `style`, `style_source`, `style_router` (the router's inputs and decision:
-//    category, the app's own style, ⇧ / the island / Fn+⇧, toggles, rendered, the category variant's changes) and
+//    category, the app's own style, ⇧ / the island, toggles, rendered, the category variant's changes) and
 //    `reformats` (reformat-last, its undo, a list the user took apart in the field, the island's list suggestion).
 //  • DictationReformat: the pasted text is replaced only while it is exactly as it was typed, between the same
 //    anchors (the user's own edits are never overwritten); otherwise the new version goes to the clipboard.
@@ -52,7 +52,7 @@ public struct DictationStyleRecord: Hashable {
     public var category: String
     /// what the app / category / default alone gave
     public var base: String
-    /// ⇧ / the island / Fn+⇧ during this take (its last choice)
+    /// ⇧ / the island during this take (its last choice)
     public var explicit: String?
     public var toggles: Int
     /// ordered list markers the old rule-based renderer found (entries before the model-first styles; 0 now)

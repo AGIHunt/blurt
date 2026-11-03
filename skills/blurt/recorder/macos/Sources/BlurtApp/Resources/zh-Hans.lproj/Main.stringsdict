@@ -55,7 +55,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>选中了 %ld 条</string>
+			<string>已选中 %ld 个事项</string>
 		</dict>
 	</dict>
 	<key>main.items.count</key>
@@ -83,7 +83,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>查看 %ld 条</string>
+			<string>查看 %ld 个</string>
 		</dict>
 	</dict>
 	<key>main.jobs.header</key>
@@ -153,7 +153,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 条交给 Agent</string>
+			<string>把这 %ld 个交给 Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>
@@ -167,7 +167,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 条</string>
+			<string>%ld 个</string>
 		</dict>
 	</dict>
 	<key>notify.more</key>
@@ -339,7 +339,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>%ld 条</string>
+			<string>%ld 个</string>
 		</dict>
 	</dict>
 	<key>main.selection.hand_off.tip</key>
@@ -353,7 +353,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>在口喷鸡里开一个 Agent 会话，处理这 %ld 条（⌘↩）</string>
+			<string>在口喷鸡里开一个 Agent 会话，处理这 %ld 个（⌘↩）</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>
@@ -367,7 +367,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>把这 %ld 条移到一个项目（M）</string>
+			<string>把这 %ld 个移到一个项目（M）</string>
 		</dict>
 	</dict>
 	<key>main.selection.more_rows</key>
@@ -465,7 +465,7 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>other</key>
-			<string>别的地方有 %ld 条匹配。</string>
+			<string>其他位置有 %ld 个匹配项。</string>
 		</dict>
 	</dict>
 </dict>

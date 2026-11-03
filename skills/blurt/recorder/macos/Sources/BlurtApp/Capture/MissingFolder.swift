@@ -62,6 +62,23 @@ enum MissingFolder {
         }
     }
 
+    /// Make `id` the current project (nil: Unassigned) — every way to choose one (the island's switcher, the menu bar,
+    /// the main window, ⌘K) comes here. A project whose folder is gone asks where it is first (Locate…) and becomes
+    /// current only once a folder is chosen; Cancel changes nothing (the dogfood made a missing one current without a
+    /// word, and every snap after said "Can't find its folder").
+    static func use(_ id: String?, via: String, failed: @escaping () -> Void = {
+        appDelegate?.toast(T("main.project.use_failed"))
+    }) {
+        if let id = id, let p = ProjectStore.shared.project(id: id), !p.exists {
+            emit(["event": "island_missing_project", "project": id, "via": via])
+            return locate(p) { found in use(found.id, via: via, failed: failed) }
+        }
+        Task {
+            do { try await ProjectStore.shared.use(id) } catch { await MainActor.run { failed() } }
+            await MainActor.run { island.projectChanged() }
+        }
+    }
+
     enum Outcome {
         /// the same project, at its new place
         case found(Project)

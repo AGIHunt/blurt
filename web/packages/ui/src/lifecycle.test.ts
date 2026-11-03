@@ -64,7 +64,7 @@ describe("lifecycle helpers", () => {
     expect(actionForKey("new", "A")).toBe("keep");
     expect(actionForKey("todo", "a")).toBeNull();
     expect(actionForKey("to_verify", "d")).toBe("done");
-    expect(actionForKey("new", "d")).toBeNull();
+    expect(actionForKey("new", "d")).toBe("done"); // BA-56: no Accept first
     expect(actionForKey("to_verify", "r")).toBe("send_back");
     expect(actionForKey("in_progress", "r")).toBe("take_back");
     expect(actionForKey("wontfix", "r")).toBe("reopen");

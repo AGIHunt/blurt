@@ -195,3 +195,22 @@ def test_a_refused_structure_types_light():
     r = S.stream(LIST, PAUSES, fn, structure=lambda t: {"text": t, "fell_back": True, "reason": "dropped"})
     assert r["text"] == S.stream(LIST, PAUSES, scripted({})[0])["text"]
     assert r["structured"]["fell_back"] and r["structured"]["reason"] == "dropped"
+
+
+# ------------------------------------------------------------------ hearing again (the same cases as DictationStitchTests)
+REHEAR = [
+    # (pieces as (start, end, hard), windows)
+    ([(0, 4, False), (4, 9, False), (9, 16, False), (16, 20, False)], [[0, 1, 2], [3]]),
+    # never closed at a hard cut: the next window would share 0.8 s of audio with this one
+    ([(0, 8, False), (8, 20, False), (19.2, 24, True), (24, 30, False)], [[0, 1, 2], [3]]),
+    # one short take: one window
+    ([(0, 3.2, False)], [[0]]),
+    # the open window at key-up holds what is left, however short
+    ([(0, 15, False), (15, 16, False)], [[0], [1]]),
+]
+
+
+def test_rehear_groups():
+    for pieces, want in REHEAR:
+        got = S.rehear_groups([{"start": s, "end": e, "hard": h} for s, e, h in pieces])
+        assert got == want, (pieces, got)

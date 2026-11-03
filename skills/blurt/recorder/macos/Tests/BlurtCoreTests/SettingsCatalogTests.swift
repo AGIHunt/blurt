@@ -98,7 +98,8 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertTrue(ids("hotkey").contains("shortcuts.snap"))       // the pane's keywords: its rows
         XCTAssertTrue(ids("voice").contains("general.voice_end_on_pause"))
         XCTAssertFalse(ids("voice").contains("dictation.key"))       // …but not when rows match themselves
-        XCTAssertFalse(ids("model").contains("speech.threads"))      // a pane keyword alone doesn't pull in its rows
+        XCTAssertFalse(ids("voice").contains("dictation.mode"))      // a pane keyword alone doesn't pull in its rows
+        XCTAssertTrue(ids("model").contains("speech.threads"))       // "model" names the Models pane (v1.0.4): its rows come
         XCTAssertTrue(ids("model").contains("storage.models"))
         XCTAssertEqual(ids("shortcuts").first, "shortcuts.record")   // a pane's name: its rows lead, in page order
         XCTAssertEqual(ids("shortcut").first, "shortcuts.record")    // …or the start of it, as it's typed
@@ -138,6 +139,9 @@ final class SettingsCatalogTests: XCTestCase {
         XCTAssertEqual(SettingsCatalog.redirect("general/general.login"), "general/general.login")
         XCTAssertEqual(SettingsCatalog.redirect("general"), "general")
         XCTAssertEqual(SettingsCatalog.redirect("export/target"), "agents/agents.ask")
+        // Copy Text from Screen left General for its own page (2026-10-30)
+        XCTAssertEqual(SettingsCatalog.redirect("general/general.screen_text_refine"), "screentext/screentext.refine")
+        XCTAssertEqual(SettingsCatalog.redirect("general/screen_text_translate"), "screentext/screentext.translate")
         for (old, new) in SettingsCatalog.movedRows {
             XCTAssertNil(SettingsCatalog.entry(old), "\(old) moved but is still in the catalogue")
             XCTAssertTrue(SettingsCatalog.entry(new) != nil || SettingsCatalog.section(new) != nil, "\(old) → \(new): no such row")
@@ -154,7 +158,7 @@ final class SettingsCatalogTests: XCTestCase {
             XCTAssertEqual(r.first?.paneHit, true, lang)
             XCTAssertEqual(r.first?.hits.first?.entry.id, "shortcuts.record", lang)
             XCTAssertFalse(r.first?.hits.contains { $0.entry.id == "shortcuts.restore" } ?? true, lang)
-            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.capture" }.count, 3, lang)
+            XCTAssertEqual(r.first?.hits.map { $0.entry.section }.filter { $0 == "shortcuts.capture" }.count, 5, lang)   // record, snap, text, translate, voice
             // the other panes' hits follow, each pane once; the page's order is the search's
             XCTAssertEqual(Set(r.map(\.pane)).count, r.count, lang)
             XCTAssertTrue(r.dropFirst().allSatisfy { !$0.paneHit }, lang)

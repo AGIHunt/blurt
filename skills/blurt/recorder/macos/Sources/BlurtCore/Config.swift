@@ -9,7 +9,9 @@
 // refused, and `onUnreadable` says so (the app: one line in the island, at launch already: checkReadable — "using the
 // defaults, can't save"); every refused write also calls `onWriteRefused`, which the launch's notice doesn't use up
 // (the app: "That change wasn't saved" once per session, after the launch line — that may be long gone). Reads
-// of such a file give {} (every setting at its default) until it is fixed; `readable` tells that apart from an empty
+// of such a file give the last version that parsed in this process (`keepsLast`: a hand edit that breaks the file
+// while the app runs never resets the shortcuts to their defaults), or {} — every setting at its default — when none
+// did (broken at launch), until it is fixed; `readable` tells that apart from an empty
 // file (the app then doesn't take a missing app.onboarded for a first run), and `lenientString` still finds one plain
 // top-level string in it (where the skill is: BlurtPaths.skillDir). What counts as readable is the scripts' rule too
 // (_common.parse_config_text): JSON — no NaN / Infinity, which Python's json would take and JSONSerialization doesn't —
@@ -113,6 +115,8 @@ public final class Config {
     private let lock = NSLock()          // writers in this process
     private let cacheLock = NSLock()
     private var cache: (sig: FileSig, value: [String: Any], ok: Bool)?
+    /// the last version of the file that parsed (what reads give while it doesn't)
+    private var lastGood: [String: Any]?
     private var backedUp: FileSig?
 
     /// The file exists but doesn't parse; a write was refused (called with the backup's URL, once per bad version).
@@ -142,8 +146,17 @@ public final class Config {
     /// The whole file ({} when missing or unreadable).
     public var all: [String: Any] { read().value }
 
-    /// The file parses (or isn't there). False: every setting reads as its default until it is fixed.
+    /// The file parses (or isn't there). False: every setting reads as the last version that parsed (`keepsLast`), or
+    /// as its default when none did, until it is fixed.
     public var readable: Bool { read().ok }
+
+    /// The file doesn't parse, and reads give the last version that did (it broke while this process ran).
+    public var keepsLast: Bool {
+        let r = read()
+        guard !r.ok else { return false }
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        return lastGood != nil
+    }
 
     /// A top-level string even when the file doesn't parse (ConfigText.topLevelString); the parsed value when it does.
     public func lenientString(_ key: String) -> String? {
@@ -169,8 +182,10 @@ public final class Config {
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.sig == sig { return (c.value, c.ok) }
         let parsed = (try? Data(contentsOf: u)).flatMap(ConfigText.parse)
-        cache = (sig, parsed ?? [:], parsed != nil)
-        return (parsed ?? [:], parsed != nil)
+        if let p = parsed { lastGood = p }
+        let value = parsed ?? lastGood ?? [:]
+        cache = (sig, value, parsed != nil)
+        return (value, parsed != nil)
     }
 
     public subscript(key: String) -> Any? {

@@ -6,7 +6,7 @@
 //     name, description, folder, the newest few titles; no extra model call, no stored profile, nothing learnt) and
 //     may leave a suggestion per item (suggested_project). The user accepts one with a click ("Looks like X · Move"),
 //     a group of them at once ("Move All (3)"), each undoable.
-//   • picking a project anywhere — the island's switcher (⌥⇧O) and pick form, the main window's Move popover (M), the
+//   • picking a project anywhere — the island's switcher (⌥O) and pick form, the main window's Move popover (M), the
 //     note bubble's "Goes to X" chip, the command palette — lists the same rows in the same order and filters the same
 //     way as you type (ProjectPick.choices: recent projects, then Unassigned last).
 import Foundation

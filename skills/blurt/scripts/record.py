@@ -58,6 +58,12 @@ STATUS: dict = {"on": False, "final": False, "err": None}  # `start --status-jso
 _PRINT = threading.Lock()
 
 
+def _plain(p) -> str:
+    """A path without Windows' extended-length prefix (\\\\?\\), which ffmpeg mishandles."""
+    s = str(p)
+    return s[4:] if s.startswith("\\\\?\\") else s
+
+
 def out(obj: dict | str) -> None:
     """Human / chat output. With --status-jsonl it goes to stderr: stdout carries only the status lines."""
     with _PRINT:
@@ -363,9 +369,18 @@ class LivePcm:
 LIVE: dict = {}  # {"proc": the live.py process of the current take}
 
 
+def uv_bin() -> str | None:
+    """uv for live.py: PATH, else the one running us ($UV, set by `uv run`), else the one the app installs
+    (~/.blurt/bin) — the Windows app's uv is not on PATH, so live.py never ran there before."""
+    for c in (shutil.which("uv"), os.environ.get("UV"), str(BLURT_HOME / "bin" / ("uv.exe" if IS_WIN else "uv"))):
+        if c and Path(c).is_file():
+            return c
+    return None
+
+
 def live_enabled(cfg: dict | None = None) -> bool:
     return (cfg if cfg is not None else global_config().get("record", {})).get("live") is not False \
-        and (Path(__file__).parent / "live.py").exists() and shutil.which("uv") is not None
+        and (Path(__file__).parent / "live.py").exists() and uv_bin() is not None
 
 
 def start_live(session: Path) -> subprocess.Popen | None:
@@ -377,7 +392,7 @@ def start_live(session: Path) -> subprocess.Popen | None:
         live.mkdir(parents=True, exist_ok=True)
         log = open(session / "live.log", "a", encoding="utf-8")  # outside live/: a restart deletes live/
         kw = {"creationflags": 0x00000200 | 0x08000000} if IS_WIN else {"start_new_session": True}  # own group, no window
-        return subprocess.Popen([shutil.which("uv"), "run", "-q", str(Path(__file__).parent / "live.py"), "run",
+        return subprocess.Popen([uv_bin(), "run", "-q", str(Path(__file__).parent / "live.py"), "run",
                                  str(session), "--watch-pid", str(os.getpid())],
                                 stdin=subprocess.DEVNULL, stdout=log, stderr=log, **kw)
     except Exception as e:
@@ -476,8 +491,11 @@ def headless_video_cmd(out_path: Path, screen, fps: int, max_width: int, region:
     inp, pre = grab_input(screen, fps, region)
     # even width/height: yuv420p + most H.264 encoders refuse odd sizes
     vf = ",".join(f for f in (pre, f"scale='trunc(min({max_width},iw)/2)*2':-2", "format=yuv420p") if f)
+    # Matroska clusters of at most 1 s, flushed as they close: a grabber that dies mid-take leaves a file that plays up
+    # to its last second (the Mac writes 4 s mp4 fragments for the same reason)
     return [ff, "-hide_banner", "-nostats", "-loglevel", "info", "-y", "-use_wallclock_as_timestamps", "1", *inp,
-            "-vf", vf, *pick_encoder(ff), "-g", str(fps * 2), str(out_path)]
+            "-vf", vf, *pick_encoder(ff), "-g", str(fps * 2), "-cluster_time_limit", "1000", "-flush_packets", "1",
+            str(out_path)]
 
 
 def snap_frame_cmd(out_path: Path, screen, region: list[int] | None) -> list[str]:
@@ -624,6 +642,9 @@ def native_binary(build: bool = True) -> Path | None:
         shutil.copytree(lproj, APP_BUNDLE / "Contents" / "Resources" / lproj.name, dirs_exist_ok=True)
     # Peep's frames (the mascot's sprite sheets, the menu-bar glyph frames, peep.json: assets/brand/import_peep.py)
     shutil.copytree(SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Peep", APP_BUNDLE / "Contents" / "Resources" / "Peep",
+                    dirs_exist_ok=True)
+    # the sounds of a take (DictationSound: assets/sounds/build.py)
+    shutil.copytree(SWIFT_DIR / "Sources" / "BlurtApp" / "Resources" / "Sounds", APP_BUNDLE / "Contents" / "Resources" / "Sounds",
                     dirs_exist_ok=True)
     if AGENTS_JSON.exists():
         shutil.copy(AGENTS_JSON, APP_BUNDLE / "Contents" / "Resources" / "agents.json")
@@ -866,7 +887,8 @@ def cmd_start(a) -> None:
     save_json(session / "meta.json", meta)
     shots = session / "shots.jsonl"
     n_shots = len({json.loads(l)["n"] for l in shots.open(encoding="utf-8") if l.strip()}) if shots.exists() else 0
-    status("stopped", video=final.name, duration=round(dur, 3), shots=n_shots)
+    extra = {k: result[k] for k in ("recovered", "lost_seconds", "ended_early") if k in result}
+    status("stopped", video=final.name, duration=round(dur, 3), shots=n_shots, **extra)
     out(f"DONE video={final} duration={fmt_ts(dur)} markers={n_markers} shots={n_shots} events={'events.jsonl' if events.exists() else '-'}")
 
 
@@ -960,7 +982,10 @@ def run_headless(session: Path, a, cfg, cmd_file: Path) -> dict:
         region = [region[0], region[1], max(2, region[2] // 2 * 2), max(2, region[3] // 2 * 2)]
     rec = FfmpegRecorder(session, region, a.screen, a.fps or cfg.get("fps", 30),
                          a.max_width or cfg.get("max_width", 1920), mic, live_enabled(cfg))
-    result = rec.run(cmd_file, a.max_minutes)
+    rec.system_audio = bool(a.system_audio)
+    # a host app (--status-jsonl) shows the 3-2-1 itself from the "countdown" lines; from the chat there is nothing
+    # to look at, so no countdown there
+    result = rec.run(cmd_file, a.max_minutes, countdown=(a.countdown or 0) if STATUS["on"] else 0)
     if result.get("event") == "stopped" and region:
         result["region"] = region
     return result
@@ -1009,6 +1034,40 @@ def png_size(path: Path) -> tuple[int, int]:
     return int.from_bytes(head[16:20], "big"), int.from_bytes(head[20:24], "big")
 
 
+def _free_bytes(p: Path) -> int:
+    try:
+        return shutil.disk_usage(p).free
+    except OSError:
+        return 1 << 62
+
+
+def screen_locked() -> bool:
+    """Windows: the lock screen (or another session) is in front — the grabber can't see the desktop then. Tests:
+    BLURT_TEST_SCREEN_LOCKED=1."""
+    if os.environ.get("BLURT_TEST_SCREEN_LOCKED") == "1":
+        return True
+    if not IS_WIN:
+        return False
+    import ctypes
+    u = ctypes.windll.user32
+    h = u.OpenInputDesktop(0, False, 0x0100)    # DESKTOP_SWITCHDESKTOP: fails on the secure (lock) desktop
+    if not h:
+        return True
+    u.CloseDesktop(h)
+    return False
+
+
+def region_on_screen(region: list[int]) -> bool:
+    """Windows: some display still shows part of the recorded area (MonitorFromRect, MONITOR_DEFAULTTONULL)."""
+    if not IS_WIN or os.environ.get("BLURT_FAKE_SCREEN"):
+        return True
+    import ctypes
+    from ctypes import wintypes
+    x, y, w, h = region
+    r = wintypes.RECT(x, y, x + w, y + h)
+    return bool(ctypes.windll.user32.MonitorFromRect(ctypes.byref(r), 0))
+
+
 class FfmpegRecorder:
     START_TIMEOUT = 15.0  # s for the grabber's first frame (macOS: ffmpeg hangs without Screen Recording permission)
 
@@ -1019,6 +1078,14 @@ class FfmpegRecorder:
         self.events: list[dict] = []
         self.elapsed_before, self.seg_started = 0.0, None
         self.shots, self.snaps, self.lock = 0, [], threading.Lock()
+        self.system_audio = False   # --system-audio: the host app writes system.pcm (see finalize)
+        self.seg_open = False
+        # the grabber stopping mid-take (recording.md §6.6; the Mac's Recorder.restartCapture): what was recovered from,
+        # the seconds the outages cost, and why the take ended early when it couldn't go on
+        self.restarts, self.recovered, self.lost = 0, [], 0.0
+        self.ended_early: dict | None = None
+        self.stopping = False
+        self.video_tpl: list[str] | None = None
         self.audio = None
         if mic:
             self.audio = LevelMic(mic, session / "audio.wav", gate=lambda: not self.paused,
@@ -1038,14 +1105,75 @@ class FfmpegRecorder:
         fh = open(log, "w", encoding="utf-8")
         seg = {"video": video, "log": log, "fh": fh, "audio_from": self.audio.frames if self.audio else 0,
                "wall_start": time.time()}
-        seg["proc"] = subprocess.Popen(headless_video_cmd(video, self.screen, self.fps, self.max_width, self.region),
-                                       stdin=subprocess.PIPE, stdout=fh, stderr=fh)
+        seg["proc"] = subprocess.Popen([*self.video_cmd()[:-1], str(video)], stdin=subprocess.PIPE, stdout=fh, stderr=fh)
         if self.audio and self.audio.live:
             seg["live"] = self.audio.live.segment(seg["audio_from"])
         self.segments.append(seg)
         self.seg_started = time.time()
+        self.seg_open = True
+
+    def video_cmd(self) -> list[str]:
+        """The grabber's command line, worked out once (the encoder and ddagrab probes each run ffmpeg): before the
+        countdown, so the take starts the moment it ends; a resume reuses it. The last element is the output file."""
+        if self.video_tpl is None:
+            self.video_tpl = headless_video_cmd(self.session / "seg.mkv", self.screen, self.fps, self.max_width,
+                                                self.region)
+        return self.video_tpl
+
+    def countdown(self, cmd_file: Path, n: int) -> str:
+        """The 3-2-1 before the take (the host draws it from these lines; the Mac's CountdownView): one
+        {"ev": "countdown", "n": k, "total": n} a second, then n = 0 when it is over. `go` in .cmd (Start now / a
+        click on it) ends it at once; stop / discard there cancel the take before anything was recorded."""
+        end, shown = time.time() + n, None
+        while (left := end - time.time()) > 0:
+            k = int(left) + (left % 1 > 0)
+            if k != shown:
+                status("countdown", n=k, total=n)
+                shown = k
+            cmds = take_commands(cmd_file)
+            if "stop" in cmds or "discard" in cmds:
+                status("countdown", n=0, total=n)
+                return "cancel"
+            if "go" in cmds:
+                break
+            time.sleep(0.05)
+        status("countdown", n=0, total=n)
+        return "go"
+
+    def watch_pointer(self):
+        """Windows: the pointer every 0.1 s and left / right clicks inside the area → events.jsonl "cursor" / "click"
+        (0–1 of the area, the Mac's Recorder.logCursor / logClick), which frames.py reads. Polled (GetCursorPos,
+        GetAsyncKeyState every 20 ms, a click = the button going down): no hook, nothing to install. Per-monitor DPI
+        aware first, so the pointer is in the same physical pixels as the area."""
+        import ctypes
+        from ctypes import wintypes
+        u = ctypes.windll.user32
+        try:
+            u.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))   # PER_MONITOR_AWARE_V2
+        except Exception:
+            pass
+        x0, y0, w, h = self.region or [0, 0, u.GetSystemMetrics(0), u.GetSystemMetrics(1)]
+        swapped = bool(u.GetSystemMetrics(23))                     # SM_SWAPBUTTON
+        pt, held, last, last_t = wintypes.POINT(), {1: False, 2: False}, None, 0.0
+        while not self.stopping:
+            time.sleep(0.02)
+            if self.paused or not self.seg_started or not u.GetCursorPos(ctypes.byref(pt)):
+                continue
+            inside = x0 <= pt.x < x0 + w and y0 <= pt.y < y0 + h
+            rel = (round((pt.x - x0) / w, 3), round((pt.y - y0) / h, 3))
+            for vk in (1, 2):
+                down = bool(u.GetAsyncKeyState(vk) & 0x8000)
+                if down and not held[vk] and inside:
+                    self.log("click", x=rel[0], y=rel[1], button="left" if (vk == 1) != swapped else "right")
+                held[vk] = down
+            if inside and rel != last and time.time() - last_t >= 0.1:
+                self.log("cursor", x=rel[0], y=rel[1])
+                last, last_t = rel, time.time()
 
     def end_segment(self):
+        if not self.seg_open:   # already ended (the grabber died and could not be started again)
+            return
+        self.seg_open = False
         seg, now = self.segments[-1], time.time()
         p = seg["proc"]
         if p.poll() is None:
@@ -1060,9 +1188,77 @@ class FfmpegRecorder:
                 except subprocess.TimeoutExpired:
                     p.kill()
         seg["fh"].close()
+        seg["wall_end"] = now
         seg["audio_to"] = self.audio.frames if self.audio else 0
         self.elapsed_before += max(0.0, now - self.seg_started)
         self.seg_started = None
+
+    MAX_RESTARTS = 3          # grabber stops a take recovers from (RecordingFailure.maxRestarts)
+    RESTART_TRIES = 4         # starts tried for each, after 1, 2, 4 s (CaptureRestart)
+    LOCK_WAIT_MAX = 30 * 60   # s waited for the screen to be unlocked (CaptureRestart.lockWaitMax)
+
+    def restart_capture(self, tail: str, cmd_file: Path) -> str | None:
+        """The grabber stopped by itself mid-take: start it again on the same area (a new segment; the moments in
+        between are missing from the video). Waits while the screen is locked (the grabber can't see the secure
+        desktop); a start that fails is tried again with backoff. None: the take goes on; "stop" / "discard": the user
+        ended it meanwhile; else why it ends with what was recorded (disk_full, display_gone, interrupted, stopped)."""
+        lost_from, t = time.time(), round(self.elapsed(), 3)
+        self.end_segment()
+        if "No space left" in tail or _free_bytes(self.session) < 100_000_000:
+            return "disk_full"
+        if self.restarts >= self.MAX_RESTARTS:
+            return "stopped"
+        self.restarts += 1
+        self.recovered.append({"kind": "capture", "t": t, "attempt": self.restarts, "error": tail[-200:]})
+        self.log("capture_restart", attempt=self.restarts)
+        status("capture_restarting", t=t, attempt=self.restarts)
+
+        def wait(seconds: float) -> str | None:
+            end = time.time() + seconds
+            while time.time() < end:
+                cmds = take_commands(cmd_file)
+                for c in ("discard", "stop"):
+                    if c in cmds:
+                        return c
+                time.sleep(0.1)
+            return None
+
+        waited = 0.0
+        while screen_locked():
+            if waited == 0:
+                status("capture_waiting_for_screen", t=t)
+            if waited >= self.LOCK_WAIT_MAX:
+                return "interrupted"
+            if (c := wait(1.0)) is not None:
+                return c
+            waited += 1.0
+        for attempt in range(1, self.RESTART_TRIES + 1):
+            if (c := wait(2 ** (attempt - 1))) is not None:
+                return c
+            if self.region and not region_on_screen(self.region):
+                continue                      # an external display coming back takes a few seconds
+            self.start_segment()
+            v0, _ = self.wait_first_frame()
+            if v0:
+                self.seg_started = v0
+                self.lost += max(0.0, v0 - lost_from)
+                self.log("capture_restarted", attempt=self.restarts, tries=attempt)
+                status("capture_restarted", attempt=self.restarts, tries=attempt)
+                return None
+            self.drop_segment()
+        return "display_gone" if self.region and not region_on_screen(self.region) else "stopped"
+
+    def drop_segment(self):
+        """A grabber start that never delivered a frame: gone, as if never started."""
+        seg = self.segments.pop()
+        if seg["proc"].poll() is None:
+            seg["proc"].kill()
+        seg["fh"].close()
+        for f in (seg["video"], seg["log"]):
+            Path(f).unlink(missing_ok=True)
+        if self.audio and self.audio.live and seg.get("live") is not None:
+            self.audio.live.set_lead(seg["live"], 0.0)
+        self.seg_open, self.seg_started = False, None
 
     def wait_first_frame(self) -> tuple[float | None, bool]:
         """(wall clock of the first video frame, timed out?) once ffmpeg has opened the grabber."""
@@ -1107,17 +1303,19 @@ class FfmpegRecorder:
         self.log("resume")
         status("resumed", t=round(self.elapsed(), 3))
 
-    def snap(self, via: str):
-        """A full-resolution still of the area now (ffmpeg grabs one frame), without pausing; works while paused."""
+    def snap(self, via: str, region: list[int] | None = None):
+        """A full-resolution still of the area now (ffmpeg grabs one frame), without pausing; works while paused.
+        `region`: another area of the screen than the recorded one (the host's snap flow)."""
         self.shots += 1
         n, t, wall = self.shots, round(self.elapsed(), 3), time.time()
+        area = region or self.region
         self.log("snap", n=n, file=f"shots/{n:03d}.png", via=via)
 
         def work():
             png = self.session / "shots" / f"{n:03d}.png"
             png.parent.mkdir(parents=True, exist_ok=True)
             try:
-                r = subprocess.run(snap_frame_cmd(png, self.screen, self.region), stdin=subprocess.DEVNULL,
+                r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
                                    capture_output=True, timeout=20)
                 ok = r.returncode == 0 and png.exists()
             except Exception:
@@ -1126,7 +1324,7 @@ class FfmpegRecorder:
                 status("error", msg=f"could not capture shot {n}", code="snap", fatal=False)
                 return
             from tk_recorder import shot_line  # one definition of the shots.jsonl line
-            line = shot_line(n, t, self.region or [0, 0, *png_size(png)], wall)
+            line = shot_line(n, t, area or [0, 0, *png_size(png)], wall)
             with self.lock, open(self.session / "shots.jsonl", "a", encoding="utf-8") as fh:
                 fh.write(json.dumps(line, ensure_ascii=False) + "\n")
             status("snap", n=n, file=line["file"], t=t)
@@ -1136,7 +1334,23 @@ class FfmpegRecorder:
         self.snaps.append(th)
 
     # --- run
-    def run(self, cmd_file: Path, max_minutes: float | None) -> dict:
+    def run(self, cmd_file: Path, max_minutes: float | None, countdown: int = 0) -> dict:
+        if STATUS["on"]:
+            # little room left: the host says so before the take (BlurtCore RecordingFailure.lowSpace: 2 GB)
+            try:
+                free = shutil.disk_usage(self.session).free
+                if free < 2_000_000_000:
+                    status("low_space", free=free)
+            except OSError:
+                pass
+        self.video_cmd()
+        if countdown > 0 and self.countdown(cmd_file, countdown) == "cancel":
+            if self.audio:
+                self.audio.stream.close()
+                if self.audio.live:
+                    self.audio.live.discard()
+            self.cleanup(discard=True)
+            return {"event": "cancelled", "reason": "countdown"}
         if self.audio:
             self.audio.start()
         self.start_segment()
@@ -1158,6 +1372,8 @@ class FfmpegRecorder:
         status("started", t0=round(v0, 3))
         if self.audio and self.audio.live:
             LIVE["proc"] = start_live(self.session)
+        if IS_WIN and not os.environ.get("BLURT_FAKE_SCREEN"):
+            threading.Thread(target=self.watch_pointer, daemon=True).start()
         signal.signal(signal.SIGINT, lambda *_: cmd_file.write_text("stop"))
         if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, lambda *_: cmd_file.write_text("stop"))
@@ -1176,13 +1392,40 @@ class FfmpegRecorder:
                     if c == "marker":
                         self.log("marker")
                     self.snap("marker" if c == "marker" else "command")
+                elif c.startswith("snap-region:"):
+                    # the host's snap flow during a take (an area the user picked, then its note): a still of that
+                    # area — desktop px, anywhere on screen — numbered and logged like ours (snap-and-note.md §11)
+                    try:
+                        x, y, w, h = (int(float(v)) for v in c[12:].split(","))
+                    except ValueError:
+                        status("error", msg=f"bad {c}", code="snap", fatal=False)
+                        continue
+                    self.snap("picker", region=[x, y, max(2, w), max(2, h)])
+                elif c.startswith("stroke:"):
+                    # the host's pen drew a stroke over the area (recording.md §4.6; the Mac's InkView.end): its
+                    # shape and points (0–1 of the area) at the video time it began; it stays 3 s after the last one
+                    try:
+                        o = json.loads(c[7:])
+                        self.log("stroke", t0=round(max(0.0, self.elapsed() - float(o.get("dur") or 0)), 3),
+                                 visible=3.0, shape=o.get("shape"), points=o.get("points"))
+                    except (ValueError, TypeError, AttributeError):
+                        pass
                 elif c == "restart":
                     print("(the ffmpeg engine has no restart: discard, then start again)", file=sys.stderr)
             if not self.paused and self.segments[-1]["proc"].poll() is not None:  # grabber died mid-take
-                crashed = self.segments[-1]["log"].read_text(encoding="utf-8", errors="replace")[-300:].strip()
-                break
+                tail = self.segments[-1]["log"].read_text(encoding="utf-8", errors="replace")[-300:].strip()
+                why = self.restart_capture(tail, cmd_file)
+                if why in ("stop", "discard"):
+                    discard = why == "discard"
+                    break
+                if why:
+                    crashed = tail
+                    self.ended_early = {"code": "stream_stopped", "reason": why, "t": round(self.elapsed(), 3)}
+                    status("capture_ended", reason=why)
+                    break
             self.resolve_live_leads()
             time.sleep(0.1)
+        self.stopping = True
         if not self.paused:
             self.log("stop")
             self.end_segment()
@@ -1209,12 +1452,19 @@ class FfmpegRecorder:
         parts, offsets = [], []
         sr = self.audio.sr if self.audio else AUDIO_SR
         a0 = self.audio.first_wall if self.audio else None
+        # --system-audio: what the PC played, recorded by the host app (Windows: WASAPI loopback) as
+        # system.pcm (s16le mono) from the wall-clock time in system.json, unpaused — each segment takes its own
+        # stretch of it, as a second audio track (the Mac's: transcribe.py tells "me" from "others" by the track)
+        sys_pcm = self.session / "system.pcm"
+        sys_meta = (load_json(self.session / "system.json", {}) or {}) if self.system_audio else {}
+        sys_rate = int(sys_meta.get("rate") or AUDIO_SR)
+        sys_on = bool(sys_meta.get("t0")) and sys_pcm.exists()
         for i, seg in enumerate(self.segments):
             if not seg["video"].exists() or seg["video"].stat().st_size == 0:
                 continue
             v0 = first_frame_wall(seg["log"]) or seg["wall_start"]
             part = self.session / f"part{i:02d}.mp4"
-            cmd = [ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-i", str(seg["video"])]
+            inputs, maps, filters, n_audio = ["-i", str(seg["video"])], ["-map", "0:v"], [], 0
             n = seg["audio_to"] - seg["audio_from"]
             if self.audio and a0 and n > 0:
                 aw = a0 if i == 0 else seg["wall_start"]
@@ -1222,9 +1472,32 @@ class FfmpegRecorder:
                 offsets.append(-lead)
                 ss = seg["audio_from"] / sr + max(0.0, lead)
                 af = "anull" if lead >= 0 else f"adelay={int(-lead * 1000)}:all=1"
-                cmd += ["-ss", f"{ss:.3f}", "-t", f"{max(0.05, n / sr - max(0.0, lead)):.3f}",
-                        "-i", str(self.session / "audio.wav"), "-map", "0:v", "-map", "1:a", "-c:v", "copy",
-                        "-af", af, "-c:a", "aac", "-b:a", "96k", "-ac", "1", "-ar", "48000"]
+                inputs += ["-ss", f"{ss:.3f}", "-t", f"{max(0.05, n / sr - max(0.0, lead)):.3f}",
+                           "-i", str(self.session / "audio.wav")]
+                maps += ["-map", "1:a"]
+                filters += ["-filter:a:0", af]
+                n_audio = 1
+            if sys_on:
+                try:
+                    d = probe_duration(seg["video"])
+                except Exception:
+                    d = 0.0
+                d = max(0.05, d or seg.get("wall_end", v0) - v0)
+                off = v0 - float(sys_meta["t0"])     # >0: the loopback began before this segment's first frame
+                have = sys_pcm.stat().st_size / 2 / sys_rate
+                if off >= 0 and off < have:
+                    inputs += ["-ss", f"{off:.3f}", "-t", f"{d:.3f}", "-f", "s16le", "-ar", str(sys_rate), "-ac", "1",
+                               "-i", str(sys_pcm)]
+                elif off < 0 and -off < d:
+                    inputs += ["-t", f"{d + off:.3f}", "-f", "s16le", "-ar", str(sys_rate), "-ac", "1", "-i", str(sys_pcm)]
+                    filters += [f"-filter:a:{n_audio}", f"adelay={int(-off * 1000)}:all=1"]
+                else:   # nothing of it for this stretch: silence, so every part has the same tracks (concat)
+                    inputs += ["-f", "lavfi", "-t", f"{d:.3f}", "-i", f"anullsrc=r={sys_rate}:cl=mono"]
+                maps += ["-map", f"{n_audio + 1}:a"]
+                n_audio += 1
+            cmd = [ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", *inputs, *maps]
+            if n_audio:
+                cmd += ["-c:v", "copy", *filters, "-c:a", "aac", "-b:a", "96k", "-ac", "1", "-ar", "48000"]
             else:
                 cmd += ["-c", "copy"]
             if run(cmd + [str(part)], check=False).returncode == 0:
@@ -1235,8 +1508,10 @@ class FfmpegRecorder:
             return {"event": "error", "code": "no_frames", "message": tail.strip() or "no video captured"}
         final, lst = self.session / "recording.mp4", self.session / "parts.txt"
         lst.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
-        r = run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                 "-c", "copy", "-movflags", "+faststart", str(final)], check=False)
+        # a session path with Windows' \\?\ prefix (the app canonicalizes it) sends ffmpeg's concat demuxer to
+        # "\\part00.mp4": it resolves the list's entries against a plain path only
+        r = run([ffmpeg_bin(), "-nostdin", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", _plain(lst),
+                 "-c", "copy", "-movflags", "+faststart", _plain(final)], check=False)
         for p in (*parts, lst):
             Path(p).unlink(missing_ok=True)
         self.cleanup()
@@ -1245,8 +1520,13 @@ class FfmpegRecorder:
         with open(self.session / "events.jsonl", "w", encoding="utf-8") as fh:
             for e in self.events:
                 fh.write(json.dumps(e, ensure_ascii=False) + "\n")
-        return {"event": "stopped", "segments": len(parts), "av_offset": round(offsets[0], 3) if offsets else 0.0,
-                "audio_overflows": self.audio.overflows if self.audio else None}
+        out = {"event": "stopped", "segments": len(parts), "av_offset": round(offsets[0], 3) if offsets else 0.0,
+               "audio_overflows": self.audio.overflows if self.audio else None, "system_audio": sys_on}
+        if self.recovered:
+            out.update(recovered=self.recovered, lost_seconds=round(self.lost, 1))
+        if self.ended_early:
+            out["ended_early"] = self.ended_early
+        return out
 
     def cleanup(self, discard: bool = False):
         for s in self.segments:
@@ -1254,6 +1534,11 @@ class FfmpegRecorder:
                 Path(f).unlink(missing_ok=True)
         if discard:
             (self.session / "audio.wav").unlink(missing_ok=True)
+        for f in ("system.pcm", "system.json"):     # in the video now (or discarded)
+            try:
+                (self.session / f).unlink(missing_ok=True)
+            except OSError:
+                pass   # Windows: the host still has it open; it goes with the take's folder
 
 
 # ---------------------------------------------------------------- control
@@ -1414,12 +1699,14 @@ def main() -> None:
     s.add_argument("--engine", choices=["native", "tk", "ffmpeg"])
     s.add_argument("--region", help="x,y,w,h in screen points — skip the picker")
     s.add_argument("--last-region", action="store_true", help="reuse the last area without asking")
-    s.add_argument("--countdown", type=int)
+    s.add_argument("--countdown", type=int, help="seconds of 3-2-1 first (ffmpeg engine: only with --status-jsonl, "
+                                                  "as countdown lines; `go` in .cmd skips it)")
     s.add_argument("--screen", type=int, help="ffmpeg engine: screen index")
     s.add_argument("--mic", help="mic name substring or index (see `devices`)")
     s.add_argument("--no-mic", action="store_true")
     s.add_argument("--system-audio", action="store_true",
-                   help="also record what the Mac plays (call voices, demo sound) as a second track; native engine, macOS 13+")
+                   help="also record what the computer plays (call voices, demo sound) as a second track; native engine "
+                        "(macOS 13+), or the ffmpeg engine under a host app that writes system.pcm + system.json")
     s.add_argument("--fps", type=int)
     s.add_argument("--max-width", type=int)
     s.add_argument("--max-minutes", type=float, default=120)

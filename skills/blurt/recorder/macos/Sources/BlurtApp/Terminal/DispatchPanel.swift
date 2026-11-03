@@ -2,9 +2,12 @@
 // session — which agent, together (one conversation) or in parallel (a window each), in a worktree or in the project
 // folder. Every change re-runs `sessions.py dispatch --dry-run`, which says what would happen (branch, folder) and
 // warns — never blocks — when another session is already editing the same folder without a worktree (K5 wording).
-// What does block — an agent that isn't signed in (Start waits up to 3 s for the sign-in check after a launch), items
-// already in a running session, no agent, a check that failed — is said once, under the items, and the way out takes
-// Start's place as the default (Use Codex / Sign In…, Open Its Session, Open Agents Settings…, Try Again).
+// What does block — an agent that isn't signed in, one too old for hand-offs (its version, the update command, Check
+// Again), items already in a running session, no agent, a check that failed — is said once, under the items, and the
+// way out takes Start's place as the default (Use Codex / Sign In…, Open Its Session, Open Agents Settings…, Try Again).
+// Sign-in: the panel opens on the agent the last check (Agents.loginCache) says works, probes that one agent at once
+// (a second or two) and every agent behind it; Start waits until the chosen agent's state is known, and the choice
+// never moves under the user once the panel is up — a signed-out agent is said in the notice, Use Codex beside it.
 // Where it runs, for an agent with a desktop app that is installed (Claude): Blurt's terminal (recommended) or the
 // desktop app, remembered per agent (HandoffTarget, config sessions.target) — a rare choice, under Options with the
 // model. The desktop app still gets Blurt's worktree; Start opens its claude:// link (DesktopApp) and the footer says
@@ -66,11 +69,17 @@ final class DispatchModel: ObservableObject {
     /// The dry run with the current choices failed: starting would fail the same way. A real start that failed (a
     /// timeout, tmux) leaves Start on, so the user can just try again.
     @Published private(set) var checkFailed = false
-    /// The sign-in check has answered (or 3 s passed): until then Start waits, so it never starts a logged-out agent.
-    @Published var loginChecked = false
-    /// The full login check came back (not just the 3 s wait): sessions.py needn't check again (--force); the Agent
-    /// row then says "signed in".
-    @Published private(set) var loginVerified = false
+    /// Agents whose sign-in a probe in this panel answered, and the ones only the last check (the cache) knows.
+    @Published private(set) var probed = Set<String>()
+    @Published private(set) var cachedKnown = Set<String>()
+    /// The chosen agent's sign-in state is known (a probe here, or the last check): until then Start waits, so it never
+    /// starts a signed-out agent.
+    var loginChecked: Bool { probed.contains(agent) || cachedKnown.contains(agent) }
+    /// A probe here said so: sessions.py needn't check again (--force); the Agent row then says "signed in".
+    var loginVerified: Bool { probed.contains(agent) }
+    /// The dry run said the chosen agent is too old for hand-offs (sessions.py outdated): its version, the minimum,
+    /// the update command.
+    @Published private(set) var outdated: SessionsError?
     /// The session the items are already with (sessions.py already_dispatched): the failure offers to open it.
     @Published var busyJob: String?
     private var checkGen = 0
@@ -135,10 +144,11 @@ final class DispatchModel: ObservableObject {
     /// Why Start can't go, said once under the items with its way out as the footer's default (one pattern for every
     /// reason): the items already with a running session, the agent not signed in, no agent at all, a dry run that
     /// failed. A real start that failed is not a block: Start stays, to try again.
-    enum Block: Equatable { case busy(String), loggedOut, noAgent, failed(String) }
+    enum Block: Equatable { case busy(String), loggedOut, outdated, noAgent, failed(String) }
     var block: Block? {
         if case .failed(let why) = phase {
             if let j = busyJob { return .busy(j) }
+            if outdated != nil { return .outdated }
             if checkFailed { return .failed(why) }
         }
         if agentsLoaded && agents.isEmpty { return .noAgent }
@@ -164,49 +174,63 @@ final class DispatchModel: ObservableObject {
         async let detect = try? Agents.shared.detect(login: false)
         async let doctor = try? AgentSessions.shared.doctor()
         let (d, doc) = await (detect, doctor)
+        // the last sign-in check: who was signed out, so the first frame already shows the agent that will stay
+        let cache = Agents.shared.loginCache
         var list: [AgentChoice] = []
         for a in d?.agents ?? [] {
             let session = doc?.agents[a.id] ?? (a.interactive == "terminal")
-            if a.installed && session { list.append(AgentChoice(id: a.id, name: a.name, installed: a.installed, session: session)) }
+            if a.installed && session {
+                list.append(AgentChoice(id: a.id, name: a.name, installed: a.installed, session: session,
+                                        loggedOut: cache?.loggedOut(a.id) ?? false, fix: cache?.fix[a.id] ?? ""))
+            }
         }
         agents = list
+        cachedKnown = Set(list.map(\.id).filter { cache?.knows($0) == true })
         agentsLoaded = true
         // K5: the project's default agent → the global one → the first that is set up; the last one used wins over all
+        // — among the agents the last check didn't find signed out, when there is one
         let saved = Config.shared["sessions.agent"] as? String
         let projectDefault = projectID.flatMap { ProjectStore.shared.project(id: $0)?.defaultAgent }
         let globalDefault = Config.shared["record.default_agent"] as? String
         let order = [saved, projectDefault, globalDefault, d?.pick, list.first?.id].compactMap { $0 }
-        agent = order.first { id in list.contains { $0.id == id } } ?? ""
+        agent = order.first { id in list.contains { $0.id == id && !$0.loggedOut } }
+            ?? order.first { id in list.contains { $0.id == id } } ?? ""
         target = DesktopApp.target(agent)
+        // the chosen agent alone first (a second or two: Start waits for it), every agent behind it (the Agent
+        // pop-up's "not signed in" marks). Neither moves the choice: a signed-out agent is the notice's, with Use Codex
+        let first = agent
+        if !first.isEmpty {
+            Task { @MainActor [weak self] in
+                guard let one = try? await Agents.shared.detect(login: true, ids: [first]) else { return }
+                self?.applyLogin(one)
+            }
+        }
+        Task { @MainActor [weak self] in
+            guard let full = try? await Agents.shared.detect(login: true) else { return }
+            self?.applyLogin(full)
+        }
         if pickItems { await loadCandidates() } else { await loadLabels() }
         await loadModels()
         await check()
-        // the quick detect can't tell who is logged in; the full one (a few seconds) can: never default to an agent
-        // that would stop at its login screen, and say so next to its name. Start waits for it, 3 s at most.
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-            self?.loginChecked = true
+    }
+
+    /// A sign-in probe answered for these agents: their marks follow it, and they count as checked.
+    func applyLogin(_ d: AgentDetect) {
+        let rows = Dictionary(d.agents.map { ($0.id, $0) }) { a, _ in a }
+        agents = agents.map { a in
+            guard let r = rows[a.id] else { return a }
+            var a = a
+            a.loggedOut = r.state == "logged_out"
+            a.fix = a.loggedOut ? r.fix : ""
+            return a
         }
-        defer { loginChecked = true }
-        if let full = try? await Agents.shared.detect(login: true) {
-            loginVerified = true
-            let out = Dictionary(full.agents.filter { $0.state == "logged_out" }.map { ($0.id, $0.fix) }) { a, _ in a }
-            agents = agents.map { var a = $0; a.loggedOut = out[a.id] != nil; a.fix = out[a.id] ?? ""; return a }
-            if !agentTouched, out[agent] != nil,
-               let better = ([projectDefault, globalDefault, full.pick] + agents.map(\.id)).compactMap({ $0 })
-                .first(where: { id in agents.contains { $0.id == id && !$0.loggedOut } }) {
-                agent = better
-            }
-        }
+        probed.formUnion(rows.keys)
     }
 
     /// Sign In… → Check Again: the full sign-in check once more (the Agent row and the block follow it).
     func recheckLogin() async {
         guard let full = try? await Agents.shared.detect(login: true) else { return }
-        loginVerified = true
-        loginChecked = true
-        let out = Dictionary(full.agents.filter { $0.state == "logged_out" }.map { ($0.id, $0.fix) }) { a, _ in a }
-        agents = agents.map { var a = $0; a.loggedOut = out[a.id] != nil; a.fix = out[a.id] ?? ""; return a }
+        applyLogin(full)
     }
 
     private var modelKey: String { projectID ?? "_" }
@@ -255,6 +279,7 @@ final class DispatchModel: ObservableObject {
         let gen = checkGen
         if phase != .starting { phase = .checking }
         busyJob = nil
+        outdated = nil
         checkFailed = false
         do {
             let r = try await AgentSessions.shared.dispatch(items: selected, agent: agent.isEmpty ? nil : agent, mode: mode,
@@ -270,6 +295,7 @@ final class DispatchModel: ObservableObject {
             warnings = []
             preview = []
             busyJob = (error as? SessionsError).flatMap { $0.code == "already_dispatched" ? $0.job : nil }
+            outdated = (error as? SessionsError).flatMap { $0.code == "outdated" ? $0 : nil }
             checkFailed = true
             phase = .failed(sessionsErrorText(error))
         }
@@ -294,6 +320,8 @@ final class DispatchModel: ObservableObject {
             return r
         } catch {
             busyJob = (error as? SessionsError).flatMap { $0.code == "already_dispatched" ? $0.job : nil }
+            outdated = (error as? SessionsError).flatMap { $0.code == "outdated" ? $0 : nil }
+            checkFailed = outdated != nil       // too old: Start would fail the same way until it is updated
             phase = .failed(sessionsErrorText(error))
             return nil
         }
@@ -647,9 +675,17 @@ struct DispatchView: View {
     /// default), a start that failed, the concurrent-edit choice, the desktop app without the blurt MCP, items taken
     /// back from an ended session, no tmux.
     @ViewBuilder var notices: some View {
-        if let b = m.block {
+        if m.block == .outdated, let o = m.outdated {
+            // what is installed, what it needs, and the command, copyable: Check Again is the footer's default
+            VStack(alignment: .leading, spacing: 8) {
+                PanelNotice(text: blockText(.outdated))
+                if let fix = o.fix { CommandText(text: fix).padding(.leading, SettingsMetrics.boxInset) }
+            }
+            .padding(.top, 14).transition(.opacity)
+        } else if let b = m.block, !(b == .loggedOut && signInInRow) {
+            // signed out with Sign In… in the Agent row: the row's "Not signed in" and its button say it once
             PanelNotice(text: blockText(b)).padding(.top, 14).transition(.opacity)
-        } else if case .failed(let why) = m.phase {
+        } else if m.block == nil, case .failed(let why) = m.phase {
             PanelNotice(text: why).padding(.top, 14).transition(.opacity)
         }
         if m.concurrent != nil && !m.worktreeOn {
@@ -683,6 +719,10 @@ struct DispatchView: View {
             if case .failed(let why) = m.phase { return why }
             return TL("error.already_dispatched")
         case .loggedOut: return TL("handoff.block.logged_out", m.chosenAgent?.name ?? "")
+        case .outdated:
+            let name = m.chosenAgent?.name ?? AgentNames.name(m.agent)
+            guard let o = m.outdated, let v = o.version, let need = o.need else { return TL("error.outdated") }
+            return TL("handoff.block.outdated", name, v, Self.shortVersion(need))
         case .noAgent: return TL("handoff.block.no_agent")
         }
     }
@@ -724,6 +764,9 @@ struct DispatchView: View {
         }
     }
 
+    /// "0.164.0" → "0.164": how people write a minimum version.
+    static func shortVersion(_ v: String) -> String { v.hasSuffix(".0") ? String(v.dropLast(2)) : v }
+
     /// While Start can't go, the default is the way out (Claude desktop's permission prompts): the session the items
     /// are with, the other agent, how to sign in, Settings → Agents, or the check once more.
     @ViewBuilder func wayOut(_ b: DispatchModel.Block) -> some View {
@@ -741,6 +784,9 @@ struct DispatchView: View {
                     .popover(isPresented: Binding(get: { signInFrom == "footer" }, set: { if !$0 { signInFrom = nil } }),
                              arrowEdge: .bottom) { signInPopover }
             }
+        case .outdated:
+            Button(TL("agents.check_again")) { Task { await m.check() } }
+                .panelDefault().keyboardShortcut(.defaultAction)
         case .noAgent:
             Button(TL("handoff.open_agents")) { close(); AppEnvironment.settings?.show(pane: "agents") }
                 .panelDefault().keyboardShortcut(.defaultAction)

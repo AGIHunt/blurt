@@ -217,6 +217,8 @@ class Tables(unittest.TestCase):
             # (`.named`, and an error code's own sentence, only after Loc.has says it is there)
             "JobViews.swift": {'"job.step.\\(s.id)"': common, 'key + ".named"': None, '"main.job.error.\\(e.code)"': None},
             "MainWindowController.swift": {'"main.bundle.error.\\(f.code)"': None},
+            # a model's line in the library, only after Loc.has says it is there (most models have none)
+            "SpeechPane.swift": {'"speech.tag.\\(id)"': None},
             # the developer-only Dictation Lab (General → Developer) falls back to the raw tag by design
             "DictationLabViews.swift": {'"dictation.lab.scenario.\\(key).\\(v)"': None, '"dictation.lab.scenario.\\(key).\\(value)"': None,
                                         '"dictation.lab.scenario.\\(key)"': None, '"dictation.lab.error_tag.\\(tag)"': None},

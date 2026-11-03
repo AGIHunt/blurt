@@ -34,24 +34,17 @@ final class IslandToastsTests: XCTestCase {
         XCTAssertEqual(left, [DictationToastKeys.notice])
     }
 
-    /// A double tap after the app changed: "Not sent" was replaced in the same frame by "Copied — paste with ⌘V".
+    /// A double tap whose take was only copied: "Not sent" was replaced in the same frame by "Copied — paste with ⌘V".
     func testCopiedAndNotSentIsOneLine() {
-        let notSent = DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true, appChanged: true)
+        let notSent = DictationDeliveredLine.line(result: "copied", sendAsked: true, confirmed: true)
         XCTAssertEqual(notSent.copyKey, "dictation.toast.copied.not_sent")
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: true).copyKey,
-                       "dictation.toast.copied_app")
-        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true, appChanged: false).copyKey,
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true).copyKey,
                        "dictation.toast.copied")
-        XCTAssertNil(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: true, appChanged: false).copyKey)
-        XCTAssertTrue(DictationDeliveredLine.copied(appChanged: false).checked, "a done line carries the ok check")
+        XCTAssertEqual(DictationDeliveredLine.line(result: "copied", sendAsked: false, confirmed: true).copyKey,
+                       "dictation.toast.copied")
+        XCTAssertNil(DictationDeliveredLine.line(result: "pasted", sendAsked: true, confirmed: true).copyKey)
+        XCTAssertTrue(DictationDeliveredLine.copied.checked, "a done line carries the ok check")
         XCTAssertFalse(notSent.checked)
-    }
-
-    /// "Discard this recording and its 3 snaps?" for one still and two markers.
-    func testADiscardedRecordingCountsSnapsAndMarkersApart() {
-        XCTAssertEqual(RecordingDiscard.lost(stills: 1, markers: 2), .both(snaps: 1, markers: 2))
-        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 2), .markers(2))
-        XCTAssertEqual(RecordingDiscard.lost(stills: 0, markers: 0), .nothing)
     }
 
     func testACardIsNamedByItsWordsNeverACounter() {

@@ -19,7 +19,7 @@ docs and changelogs. Vendor and competitor blogs are marked as such. User statem
   闪电说靠按法区分"直接说"和"帮我说"，风格分原话、轻度整理、深度整理三档。
 - **对 blurt 的建议：**
   1. 默认只做轻整理，永不重排。
-  2. 说话途中单按一下 ⇧ 就切到"结构化"（Fn+⇧ 起手也行），岛上显示当前风格，点一下可切换。
+  2. 说话途中双击 ⇧ 就切到"结构化"（2026-11-01 改为双击；Fn+⇧ 起手已删除），岛上显示当前风格，点一下可切换。
   3. 结构化不额外调一次模型：用确定性规则把明确的序数词（第一/第二、首先/其次/最后、一是/二是……）排成列表。
      "以及""其他""然后"这类词绝不触发。耗时约 0 ms。
   4. 按 App 设默认风格：聊天类保留语气词，句末不加句号；终端和代码类不换行；笔记类只在岛上建议，不自动排。
@@ -137,15 +137,16 @@ applies the renderer only when the detector is confident (≥ 3 ordinal markers 
 
 | Option | Friction at dictation time | Latency | False triggers | Verdict |
 |---|---|---|---|---|
-| **A. ⇧ tapped during the take** toggles Structured for *this take*; Fn+⇧ as the start press = start in Structured | Lowest: one key, any time, even halfway through when the user notices they are listing | 0 | None: it is explicit | **Build first.** Trigger change: a lone ⇧ press and release while dictating is a style toggle, not a cancel. Typeless uses Fn+Left ⇧ for translation, so Typeless users get a familiar chord (Settings already warns when Typeless runs). |
+| **A. ⇧ double-tapped during the take** toggles Structured for *this take* (Fn+⇧ as a Structured start: removed 2026-11-01) | Low: one key, any time, even halfway through when the user notices they are listing; a double tap rather than one (a lone ⇧ was too easy to hit by accident) | 0 | One lone ⇧ is now nothing; the Fn filter still keeps both taps from the app in front | **Build first.** Trigger change: a lone ⇧ double tap while dictating is a style toggle, not a cancel. Typeless uses Fn+Left ⇧ for translation, so Typeless users get a familiar chord (Settings already warns when Typeless runs). |
 | **B. The island shows the style chip** (`轻整理` / `结构化 ≡`); a click toggles it | Low; also teaches A | 0 | None | **Build with A.** Clicks on Blurt's own island must not count as "a click cancels push-to-talk". The chip label shows ⇧ as the hint. |
 | **C. Per-app default style** | None | 0: the bundle ID is already read for the context | Wrong-style takes in mixed-use apps (Notes for prose and for lists) | **Build first, but every default stays Light** (chat / code / mail variants above). Users opt categories into Structured or Auto. |
 | **D. Spoken trigger at the start** (「列个清单」「分点说」「清单：」, "make a list") | None, but must be learned | 0: a regex on piece 1's ASR text, which is ready while the user still talks | Real risk: 「帮我列个清单」 can be content addressed to a colleague | **Dropped** (§3.6, step 5): the user dictates instructions to AI agents, where these phrases are content. |
 | **E. "Reformat last"** hotkey (proposed ⌥⇧L, configurable), plus the island chip ≡ after a paste when the take looked like a list but wasn't formatted | One key after the fact; the safety net that lets the default stay conservative | Light ↔ Structured: < 50 ms (stored texts plus the renderer). The Email LLM pass: 0.5–1.5 s, off the dictation path | None | **Second wave, high value.** The history already keeps `raw` and `polished`, and `DictationWatch` already tracks the pasted span with anchors for 60 s. Pressing again cycles Verbatim → Light → Structured → back. Replace only while the anchors still match (user edits never get overwritten); otherwise copy to the clipboard with a toast. |
 | F. Separate mode hotkeys (Superwhisper or VoiceInk style) | Higher: more keys to remember | 0 | None | Not needed beyond A and E. |
 
-**Voice notes (⌥⇧V, v0.9-userfix).** The same switch, the same model: while a voice note listens, a lone ⇧ (BlurtCore
-`LoneShift`: down with no other modifier held, up within 1 s, nothing pressed between — ⌥⇧V's own ⇧ never counts) or a
+**Voice notes (⌥⇧V, v0.9-userfix).** The same switch, the same model — and now the same gesture: while a voice note
+listens, ⇧ double-tapped (BlurtCore `LoneShift`: two presses with no other modifier held, the second within 350 ms;
+⌥⇧V's own ⇧ never counts; the same 500 ms cooldown and ⇧⌘ rule as dictation) or a
 click on the open island's *Structured* chip / its right ear toggles Structured for that note. The ear shows the list
 mark before the time. When the note's words are in, they go through the same `structure` request (polish.py) as a
 dictation's; the card's note is that text and the transcript stays in shots.jsonl as `said_raw`
@@ -208,10 +209,28 @@ Signals blurt can already see:
   60 s.
 - **Edits** in the watch window that re-add particles or remove a final 。 in chat refine the chat variant.
 
-Policy: **suggest, never switch silently.** After ≥ 3 consistent signals in an app (≥ 70 % one way), the island
-offers 「在 备忘录 里自动排清单？」 Yes / No once, like the existing *Learned "pull request"* · Undo pattern. Silent
-drift is the root of the Typeless complaints about quality getting worse with updates. Learned app defaults show and
-can be reset in Settings → Dictation.
+Policy (v0.9–1.0.5): **suggest, never switch silently.** After ≥ 3 consistent signals in an app (≥ 70 % one way),
+the island offers 「在 备忘录 里自动排清单？」 Yes / No once, like the existing *Learned "pull request"* · Undo pattern.
+Silent drift is the root of the Typeless complaints about quality getting worse with updates. Learned app defaults
+show and can be reset in Settings → Dictation.
+
+**Since v1.0.6: a switch sticks to its app** (the founder: 「每个应用里 Fn 键后如果按过 shift 或 command 来触发结构化或者翻译，
+那后面再次在这个应用里用 fn 录音的时候就保持对应的结构化或者翻译」). ⇧ / Fn+⇧ / the island to Structured, or ⌘ / the
+island's left half to Translate, in a take that was typed, stays on in that app until switched back
+(`BlurtCore/DictationRemember`, `DictationRemembering.swift`); the same per-app lists as before hold it (style:
+`apps` + `learned`; translate: `apps`), so Settings shows it with Reset. How it squares with the old rules:
+- **The ask after 3 switches** no longer comes up for ⇧ / ⌘: the first switch already made it the app's style, so
+  the next takes start there and there is nothing left to suggest. It still asks from the other signals (a kept or
+  undone ⌥L reformat, a list taken apart in the field, the ≡ chip ignored) — those say something ⇧ doesn't.
+- **"Never switch silently"** is kept in a lighter form: nothing changes that the user didn't switch themselves; the
+  first three remembered switches say so (「以后在 微信 里也会结构化 · 按 ⇧ 换回」), the ear shows the style and
+  translate glyphs from the moment it listens, and a take that starts with something remembered says so when the
+  app was quiet for an hour or more (「沿用 微信 上次的设置：翻译 · 按 ⌘ 关掉」) — the risk is a translation left on
+  from a chat with a foreign contact going out to the next one.
+- A cancelled take, or one with nothing heard, leaves nothing; nor does a take whose text went into another app than
+  the one it started in (2026-10-31: such a take is pasted into the app in front — dictation.md §Insert 5 says why
+  neither app keeps the switch). Settings → Dictation → "Remember Structured and
+  Translate for each app" (`learn_styles`, on) turns it all off.
 
 ### 3.6 What to build first, and the latency it costs
 
@@ -242,9 +261,9 @@ The implementation is described in `dictation.md` §Styles; in short:
   the prompt and its cached prefix are unchanged) and drops the closing 。 of a one-sentence message; code and terminals
   get one line. Mail and notes as light.
 - **3, the list renderer, ⇧ and the island chip**: deterministic, < 1 ms (the history event's `style_ms` was 0 on
-  every take measured); ⇧ alone during a take (push-to-talk included), Fn+⇧ at the start, a click on the island; the
-  ear shows a list mark while Structured. The Fn filter keeps that lone ⇧ from the app in front (input methods
-  switch Chinese / English on it).
+  every take measured); ⇧ double-tapped during a take (push-to-talk included), Fn+⇧ at the start, a click on the
+  island; the ear shows a list mark while Structured. The Fn filter keeps those ⇧ taps from the app in front
+  (input methods switch Chinese / English on each). Voice notes (⌥V) ask with the same double tap (`LoneShift`).
 - **4, reformat-last** (`⌥⇧L`, configurable; none of Blurt's keys, ⌥⌘D or the lab's ⌥⌘L clash) with Undo, and the
   island's *Make a List* after a list-like take typed as prose. Replaces only untouched text, else the clipboard —
   and when the user edited the text since, it is their edited text that is restyled and copied (v0.9 dogfood: their
@@ -286,6 +305,15 @@ Resolve corrections in the Structured style; in Light, don't adjust them." So (d
   Lists right 18 / 24 both (different misses: the model leaves three spoken enumerations as prose); corrections
   resolved 68 → 82 %; words kept in the list takes 99.4 → 97.4 %. §3.0's estimate (+0.5–1.5 s for a whole-take pass)
   was pessimistic for takes this long: the pass writes as many tokens as the take has, ~0.1–0.4 s here.
+
+### 3.9 Translate (orthogonal to the style)
+
+Translate is not a style: any style can be translated (Structured's list in English). ⌘ double-tapped while talking
+(the default; one ⌘ only when the user chose Single tap), or a
+click on the island's left half, turns it on for the take; at key-up one `translate` pass of the polish server (the
+prompt ⌥⇧T uses) runs over the text in its style, after Structured's. Measured on 60 real takes with blind judges, the
+key-up cost, the triggers weighed (double ⇧, right ⌥, the island, reformat-last, per app) and the founder's choices:
+`docs/design/dictation-translate.md`.
 
 ## 4. Other improvements the feedback points to
 

@@ -15,7 +15,7 @@
   Still open: a real mic (WASAPI), high DPI, multi-monitor, hardware encoders (#7: h264_qsv passes the lavfi probe but starves)
 - [x] End-to-end Feishu export with lark-cli (multi-attachment cells, resumable)
 - [x] Logo (口喷鸡, 3 variants in assets/)
-- [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.agihunt.info (`site/README.md`)
+- [x] Project homepage: `site/` (static, zh + en), on Cloudflare Pages → blurt.work (`site/README.md`)
 - [ ] Windows sound/notification polish; macOS menu-bar "stop" button (today: say "done" in chat)
 
 ## v0.2
@@ -62,7 +62,41 @@
 
 - [x] macOS: right ⌥ / Fn tap or hold → SenseVoice → local polish (MLX, Qwen) with a content-loss guard → paste into
       the front app (pasteboard saved and restored) → history (search, raw text, turn into item)
-- [ ] **Windows** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
+- [x] **Windows dictation, first round** (2026-11-02, branch feat/windows-port; apps/desktop/src-tauri/src/dictation,
+      models: docs/design/windows-models.md). Verified on a Hangzhou ECS VM (Windows Server 2025 = Win11 24H2 kernel,
+      Zen 4 8C/16T, no GPU) with a wav as the mic (BLURT_TEST_MIC_WAV) and the installed NSIS build (4.2 MB):
+      right-Alt hook (AltGr's fake Ctrl ignored, the lone Alt's menu masked with VK 0xE8), the Mac's DictationTrigger /
+      Segmenter / Stitch / PastePolicy ported with their 102 tests, WASAPI mic (cpal) with pre-roll, pieces cut at
+      pauses and heard by Fun-ASR-Nano int8 (sherpa-onnx) as they finish, island listening / live text / typed text,
+      clipboard save → Ctrl+V → restore, only into the app the take started in (else copy), elevated windows (UIPI) →
+      copy, password fields (UIA IsPassword) → held, history.jsonl + wav, sounds, cloud polish / Structured /
+      Translate through polish.py serve with the key in Credential Manager, Settings → Dictation (key, mode, sounds,
+      polish, model download with progress) and → Cloud (connect DeepSeek / Model Studio with Test). Warm: key-up →
+      text ≈ 1 s (polish 0.6–0.9 s).
+- [ ] **Windows dictation, still open**: hearing again in longer windows (Fun-ASR-Nano's 512-token cap: ≤ 20 s) and
+      interim live words (CPU decode too slow to repeat each second — needs a cheaper path), the field's context
+      (UIA TextPattern before the cursor) for polish and learning, the paste's landing read back (UIA) instead of the
+      0.6 s / 1.5 s timers, Esc while a take is on its way, the runaway take's reminders, Typeless / Wispr Flow
+      notices, the first-takes tips, the Words
+      tab, learning from corrections, a real microphone + Bluetooth headset check on a physical PC, high-DPI.
+- [x] **Windows voice notes** (2026-11-02, src/dictation/voice.rs): Blurt's own microphone instead of
+      `tk_recorder.py voice`, cut at pauses and heard piece by piece by the warm speech server while the user talks
+      (the words under the island), the card's words ready about as soon as it stops. The Mac's v0.8.6 rules: a tap
+      listens until the key again or Done (record.voice.end_on_pause brings back the 1.5 s pause end), held = push-to-
+      talk, 10 min at most, nothing heard in 20 s = nothing filed ("Check the microphone"), Esc discards it in its first
+      10 s only (the hook keeps that Esc from the app in front), refused while a dictation listens. Not yet: Structured
+      (⇧⇧) for a note, hearing again in windows, the discarded note's Undo.
+- [x] **Stuck warm servers** (2026-11-02, src/dictation/server.rs): at key-down a server that answers no ping and
+      uses no CPU (GetProcessTimes; its image must be Python) is ended and started again; a request in flight is given
+      up on after 3 s with the server's CPU still for 2 s, and that server ended (the Mac's WarmServer.health /
+      DictationASRFailure.hung).
+- [x] **Windows fixes found on the way** (2026-11-02): the key hook hears nothing while one of Blurt's own windows
+      has the focus (the VM: silent with the main window in front, everything again once another app was) — the main
+      window passes the dictation key on (`dictation_key_forward`, deduplicated against the hook), so the Welcome's
+      key check and dictating into Blurt's own fields work; `_common.parent_alive` asked `os.kill(pid, 0)`, which on
+      Windows is Ctrl+C to a console group and an OSError for a gone pid, so warm servers outlived Blurt — now the
+      process's exit code; pieces after a hard cut go through `stitch::drop_overlap` (dictation and voice notes).
+- [ ] **Windows (original spec)** (Tauri app): a low-level keyboard hook (`WH_KEYBOARD_LL`) for right Alt (`VK_RMENU`, ignore the
       `LCtrl` that AltGr layouts inject, ignore it as a modifier exactly like the macOS state machine — port
       `DictationTrigger` with its v0.9 rules: `pending` while a take is typed (a tap past the double-tap window starts
       the next take, Esc cancels the one on its way, a third tap after a send is a bounce, `endedByItself`, `miss`), the double-tap window from the system's
@@ -113,14 +147,38 @@
       server; the hang told by idle CPU alone (3 s); a stuck server's launcher ended only when it is the stuck
       process's parent; Return at 0.6 s at the latest (`returnAfter`); the spelling-dictionary
       check for learned words (Hunspell / the Windows spell checker in place of NSSpellChecker).
-- [ ] **Windows / Linux first run**: the macOS setup assistant is dictation first (docs/design/desktop-app.md §2.2:
-      welcome → dictation's permissions → one "Download recommended models" for the machine's tier → try it, with
-      "open at login" on); the Tauri app has no first run yet — give it the same four steps once dictation lands there.
+- [x] **Windows first run, automatic part** (2026-11-02, src/setup.rs): uv from PyPI's wheel (Alibaba's mirror in
+      the mainland: no GitHub), Python from npmmirror, packages from mirrors.aliyun.com, the recommended speech model
+      downloaded once at the first launch (ModelScope for Fun-ASR-Nano). Verified on an empty BLURT_HOME with no uv or
+      Python: ready to dictate in ~2 min.
+- [x] **Windows / Linux first run** (2026-11-02, src/onboarding.rs + Welcome.tsx): the Mac's setup assistant in the
+      main window, shown once (`app.onboarded`, resumes at `app.onboarding_step`): Welcome (the keys) → dictation's key
+      (a live "press it" check) and the microphone (Windows' privacy switches, Open Settings…) → the speech model (the
+      first-launch download's progress, never a second one; cloud optional) → Try it (a box to dictate into, open at
+      login: HKCU Run / ~/.config/autostart). Verified on the VM, the dictation landing in the box. Settings → General
+      reopens it. Not like the Mac: the key can't be changed there (the engine reads it at launch), no Stop on the
+      download.
+- [x] **Windows / Linux Dictation page** (2026-11-02, dictation/history.rs + DictationView.tsx): the Mac's page —
+      search, days, raw / polished / changes, copy, correct, delete with Undo, Retry (heard and polished again), turn
+      into an item, the recording, retention, Clear History; `dictation.py` locks with msvcrt on Windows. Verified on
+      the VM. Not here: the Words and Lab tabs, learning from a correction, real app icons.
 - [ ] **Vocabulary / personal dictionary**: words the user teaches (names, product terms, code identifiers) as ASR
       hotwords (SenseVoice / Whisper prompt) and as a "spell these exactly" list in the polish prompt; learn candidates
       from edits made right after a paste (and from the history's raw → polished diffs), always opt-in.
 - [ ] Per-app style (code editor: no trailing full stop; chat: casual), voice commands ("new line", "删掉上一句")
 - [ ] Streaming: show the live transcript in the island while talking (live.py's streaming path)
+
+## Windows: Copy Text from Screen and Translate (2026-11-02, apps/desktop/src-tauri/src/screen_text)
+- [x] Alt+Shift+C / Alt+Shift+T (hotkeys `text` / `translate`): the picker in "Copy Text" / "Translate" mode, the
+      area grabbed through GDI, read by RapidOCR (PP-OCRv4, `screen_ocr.py serve`, 0.33 s warm; Windows' own OCR
+      misread ordinary 11 pt Chinese UI text and stays only as the fall-back while RapidOCR isn't installed), laid out
+      by the Mac's ScreenText rules ported to Rust (18 / 18 fixtures), copied; Translate through the cloud model.
+      Verified on the VM (Notepad, Chinese + English).
+- [ ] Cards dragged out of the island (OLE file drag through the `drag` crate, island.rs `card.dragout`): written, behind
+      BLURT_CARD_DRAGOUT=1 — on the VM a drag synthesized with mouse_event left the island hidden (DoDragDrop most likely
+      never saw the injected release); check with a real mouse before turning it on. Voice notes' words aren't dragged.
+- [ ] The Mac's second reading (a cloud vision model on the picture), the result card instead of a toast, RapidOCR
+      word boxes for Latin spacing ("ClaudeCode" loses its space), high-DPI / multi-monitor grabs.
 
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and
@@ -169,7 +227,8 @@
       only while pointed at or 4 s after a reveal, and a reveal never pointed at lapses after 10 s; the first-card hint
 
 - [x] Documents from recordings (requirements / design doc with the marked frames): `reference/docs.md`
-- [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl
+- [x] Marker hotkey ⌥⇧M exists (no button — too obscure); markers go to events.jsonl (macOS: removed in 1.0.7 — ⌥A snaps
+      without pausing and the narration marks the moment; Windows/Linux keep Alt+Shift+M)
 - [ ] **Browser telemetry** (extension or injected script): console errors, failed network requests, URL changes,
       clicked element selector/text — timestamp-aligned with the video → exact component lookup
 - [ ] Native recorder binaries (ScreenCaptureKit / Windows.Graphics.Capture) for lower CPU and better cursor capture
@@ -284,13 +343,14 @@
 - [ ] One message at launch (Mac: LaunchMessages) and the skill contract check (`_common.CONTRACT`, Mac: SkillContract)
 - [ ] Storage: per-model sizes, deleting videos of organized recordings (by hand, or after N days — off by default)
 - [ ] Linux: `$BLURT_HOME` and `~/Blurt` 0700, tokens / history 0600 (the scripts already write 0600 under `$BLURT_HOME`)
-- [ ] Peep on Windows / Linux too: the mac app, the review page and the README show Peep (docs/design/system.md §6;
-      assets/brand/import_peep.py). Still the old marks: the web overlays (`web/apps/overlays`: the 1A raster strips
-      from `@blurt/icons/mascot` / assets/mascot, the `chicken` toast glyph, the hatching egg), the Tauri app
-      (`web/apps/desktop`: the sidebar's egg, its window and app icons in `apps/desktop/src-tauri/icons`, the tray's
-      `blurt` glyph), the capture demo's icons (`crates/blurt-capture/demo/icons`). The release package has their pieces:
-      `web/sprites/{notch,light}-<state>.webp` + `sprites.json`, `app/marks/tray-{black,white}.png`, `web/favicon*`,
-      `app/icon/paper/*`. Port them with import_peep.py, then retire assets/mascot and the chick / egg line glyphs.
+- [x] **Peep on Windows / Linux** (2026-11-02, `import_peep.py --only windows`): `@blurt/icons/mascot` plays the
+      package's clay sheets (the notch set, cut per tier: xs/s for the island, l for the window); the island's ear talks
+      with the voice while you dictate, listens to a voice note, thinks while organizing (with the count), a sorted
+      toast peeps and hops, a failed job shakes; the open island has Peep before the project chip; the Welcome says
+      hello (done on its last step), the empty states idle; the app / window / taskbar icons are the paper tile, the
+      tray Peep's flat mark; the 1A strips moved to assets/brand/legacy/mascot. Still to do: retire the `chicken` /
+      `hatch` / `blurt` line glyphs from the icon family (nothing on Windows uses them for the mascot now); a
+      shadowless paper-lit web set in the package for light surfaces (assets/brand/README.md "Not done here").
 - [ ] Brand pass (Mac v0.9, docs/design/system.md §3.2): the overlays have no Recently Dragged Out list yet — when they
       get one, use the Mac's row (tile, one-line note, "dragged out … · kept N days", Copy as the one primary on the
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in

@@ -12,7 +12,7 @@
 //
 // `backdrop`: what Peep sits on — the island is always dark, the onboarding field reads as light; `.auto` follows the
 // view's appearance. The layer's square is Peep at rest (body and beak, a little air); the frames reach past it on
-// every side by the sheet's bleed (the hop, the shake, the contact shadow), on a sublayer that is not clipped.
+// every side by the sheet's bleed (the hop, the shake), on a sublayer that is not clipped.
 //
 // One shared 30 fps timer drives every playing layer and stops when none plays — or when none can be seen: a host
 // that is hidden, in a closed or covered window, or on a sleeping screen pauses its Peep (MascotView), and it goes on
@@ -476,7 +476,7 @@ final class BrandMarkView: NSView {
     var state: MascotClip = .idle { didSet { if state != oldValue, window != nil, !isHiddenOrHasHiddenAncestor { peep.play(state) } } }
     override func layout() {
         super.layout()
-        peep.frame = bounds                                  // its square: the frames' bleed holds the breath and shadow
+        peep.frame = bounds                                  // its square: the frames' bleed holds the breath
     }
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

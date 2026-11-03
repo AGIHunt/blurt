@@ -401,14 +401,54 @@ public final class Agents {
 
     var lang: String { Loc.language.hasPrefix("zh") ? "zh" : "en" }
 
-    /// Every agent in the configured order (+ the ones not in it), with installed / login / why / fix.
-    public func detect(login: Bool = true, repo: URL? = nil) async throws -> AgentDetect {
+    /// Every agent in the configured order (+ the ones not in it), with installed / login / why / fix. `ids`: only
+    /// these (a sign-in probe of one agent takes a second or two; all of them can take ten).
+    public func detect(login: Bool = true, repo: URL? = nil, ids: [String]? = nil) async throws -> AgentDetect {
         var args = ["detect", "--lang", lang]
         if !login { args.append("--no-login") }
         if let r = repo { args += ["--repo", r.path] }
+        if let ids = ids, !ids.isEmpty { args += ["--ids", ids.joined(separator: ",")] }
         let r = try await SkillCLI.shared.run("agents.py", args, timeout: 90)
         guard r.ok, let d = r.decode(AgentDetect.self) else { throw AgentError.script(r.errorText) }
+        if login { rememberLogin(d) }
         return d
+    }
+
+    /// What the last sign-in checks said, per agent (kept in run/agents-login.json across launches): a hand-off
+    /// panel opens on an agent that works instead of one that turns out signed out seconds later. A day old at most.
+    public struct LoginCache: Codable, Equatable {
+        public var at: Date
+        public var states: [String: String]     // id → ready | configured | logged_out | unknown | not_installed
+        public var fix: [String: String]
+        public init(at: Date, states: [String: String], fix: [String: String]) { self.at = at; self.states = states; self.fix = fix }
+        public func loggedOut(_ id: String) -> Bool { states[id] == "logged_out" }
+        public func knows(_ id: String) -> Bool { states[id] != nil }
+        /// Folds in a newer check of some agents.
+        public func merging(_ d: AgentDetect, at now: Date) -> LoginCache {
+            var c = self
+            c.at = now
+            for a in d.agents { c.states[a.id] = a.state; c.fix[a.id] = a.fix.isEmpty ? nil : a.fix }
+            return c
+        }
+    }
+    public static let loginCacheMaxAge: TimeInterval = 24 * 3600
+    var loginCacheURL: URL { BlurtPaths.home.appendingPathComponent("run/agents-login.json") }
+
+    public var loginCache: LoginCache? {
+        guard let d = try? Data(contentsOf: loginCacheURL) else { return nil }
+        let dec = JSONDecoder()
+        dec.dateDecodingStrategy = .secondsSince1970
+        guard let c = try? dec.decode(LoginCache.self, from: d), Date().timeIntervalSince(c.at) < Self.loginCacheMaxAge else { return nil }
+        return c
+    }
+
+    func rememberLogin(_ d: AgentDetect) {
+        let c = (loginCache ?? LoginCache(at: Date(), states: [:], fix: [:])).merging(d, at: Date())
+        let enc = JSONEncoder()
+        enc.dateEncodingStrategy = .secondsSince1970
+        guard let data = try? enc.encode(c) else { return }
+        try? FileManager.default.createDirectory(at: loginCacheURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: loginCacheURL, options: .atomic)
     }
 
     /// Every registry id (agents.py detect only lists the configured order; agents left out of record.agents are
@@ -419,6 +459,7 @@ public final class Agents {
         if !login { args.append("--no-login") }
         let r = try await SkillCLI.shared.run("agents.py", args, timeout: 90)
         guard r.ok, var d = r.decode(AgentDetect.self) else { throw AgentError.script(r.errorText) }
+        if login { rememberLogin(d) }
         // configured order first, then the rest in registry order
         let pos = Dictionary(uniqueKeysWithValues: d.order.enumerated().map { ($1, $0) })
         d.agents.sort { (pos[$0.id] ?? 1000 + (ids.firstIndex(of: $0.id) ?? 0)) < (pos[$1.id] ?? 1000 + (ids.firstIndex(of: $1.id) ?? 0)) }

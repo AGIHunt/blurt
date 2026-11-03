@@ -9,7 +9,7 @@ export type Host = "browser" | "macos" | "tauri";
 /** What the canvas shows: one capture session's batch, or a project (or the inbox) with filters (K1 doc scope). */
 export type Scope =
   | { session: string }
-  | { project: string; state?: string[]; kind?: string[] };
+  | { project: string; state?: string[]; kind?: string[]; /** the item on show, listed whatever its state (items.py --item) */ item?: string };
 
 export interface Frame {
   path: string;
@@ -120,6 +120,8 @@ export interface ReviewDoc {
   projects?: ProjectRef[];
   /** agent id → its display name (agents.json + the user's agent_defs) and its desktop app's name, if it has one */
   agents?: Record<string, { name: string; desktop?: string | null }>;
+  /** this Mac's user name (items.py): an item recorded "by" it was recorded by you */
+  me?: string;
   /** item mode: the item asked for, when its file can't be read (it is there; Blurt won't overwrite it) */
   _unreadable?: { uid: string | null; id: string; title?: string | null; path: string }[];
   [k: string]: unknown;
@@ -238,6 +240,10 @@ export interface MountOptions {
   lang?: string;
   /** inside the app's main window: no brand, theme or language controls, no document title, fills its container */
   embedded?: boolean;
+  /** the canvas shares its document with the host's own page (the Tauri app mounts it into its detail column; the
+      Mac app gives it a web view of its own): only keys typed inside the canvas are its, never the list's or the
+      sidebar's, and ⇧Tab's "first control" is the canvas's first */
+  sharedDocument?: boolean;
 }
 
 export interface ReviewHandle {

@@ -256,7 +256,10 @@ public enum JobFold {
         }
         let err = (o["error"] as? [String: Any]).map {
             JobError(code: $0["code"] as? String ?? "unknown", message: $0["message"] as? String ?? "", hintKey: $0["hint_key"] as? String,
-                     reason: ($0["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+                     // reason_i18n (sessions.py): the sentence in both languages, so it follows the app's, not
+                     // the language the script guessed when it failed
+                     reason: (($0["reason_i18n"] as? [String: String]).flatMap(Loc.pick) ?? $0["reason"] as? String)
+                        .flatMap { $0.isEmpty ? nil : $0 })
         }
         var agent: AgentInfo?
         if let a = o["agent"] as? [String: Any] {

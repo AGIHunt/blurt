@@ -92,12 +92,22 @@ final class AgentsModel: ObservableObject {
                 guard let id = a["id"] as? String else { return nil }
                 var r = CoreAgent(id: id, name: a["name"] as? String ?? id, installed: false, state: "checking")
                 r.headless = a["headless"] as? Bool != false
+                // the last check found it missing: folded into "not installed" from the first frame, so the rows
+                // don't re-flow under the pointer when this check comes in (it is checked again all the same)
+                if lastInstalled[id] == false { r.state = "not_installed" }
                 return r
             }
             let order = Agents.shared.order ?? []
             return rows.sorted { (order.firstIndex(of: $0.id) ?? 1000) < (order.firstIndex(of: $1.id) ?? 1000) }
         }
         return []
+    }
+
+    /// Which agents the last check found installed (UserDefaults): the first frame of the next open.
+    static let lastInstalledKey = "BlurtAgentsLastInstalled"
+    static var lastInstalled: [String: Bool] {
+        get { UserDefaults.standard.dictionary(forKey: lastInstalledKey) as? [String: Bool] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: lastInstalledKey) }
     }
 
     /// For each installed agent: would installing the skill + MCP change anything? (a dry run, one at a time)
@@ -131,6 +141,7 @@ final class AgentsModel: ObservableObject {
                 }
             }
             rows = fresh
+            Self.lastInstalled = Dictionary(fresh.map { ($0.id, $0.installed) }, uniquingKeysWith: { a, _ in a })
             // the first usable one in the shown order (the same rule as agents.py detect)
             let order = d.order
             pick = ["ready", "configured", "unknown"].lazy.compactMap { want in
@@ -376,11 +387,12 @@ struct AgentsPane: View {
         .task { await m.open() }
         // Connect's preview; from the details sheet it opens over that sheet instead (AgentDetailSheet)
         .sheet(isPresented: Binding(get: { m.plan != nil && m.details == nil }, set: { if !$0 { m.plan = nil } })) {
-            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied) }
+            if let p = m.plan { InstallSheet(m: m, agent: p.agent, plan: p.plan, applied: p.applied).buttonStyle(.automatic)
+                .closesOnOutsideClick { m.plan = nil } }
         }
         .background {
             Color.clear.sheet(isPresented: Binding(get: { m.details != nil }, set: { if !$0 { m.details = nil } })) {
-                if let id = m.details { AgentDetailSheet(m: m, id: id) }
+                if let id = m.details { AgentDetailSheet(m: m, id: id).buttonStyle(.automatic).closesOnOutsideClick { m.details = nil } }
             }
         }
     }
@@ -526,24 +538,24 @@ struct AgentsPane: View {
     func fixButton(_ a: CoreAgent, ordered: Bool) -> some View {
         if needsSignIn(a, ordered: ordered) {
             Button(TL("agents.sign_in")) { m.fixFor = a.id }
-                .controlSize(.small)
-                .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false) }
+                .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false).buttonStyle(.automatic) }
         } else if !a.installed && a.state != "checking" {
             if !a.headless, let url = AgentFix.site(AgentHub.shared.def(a.id)?.installText ?? "") {
                 Button(TL("agents.get_app", a.name)) {
                     NSWorkspace.shared.open(url)
                     emit(["event": "agents_get_app", "agent": a.id, "url": url.absoluteString])
                 }
-                .controlSize(.small)
+                .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                 .help(url.host ?? url.absoluteString)
             } else {
                 Button(TL("agents.install_cli")) { m.fixFor = a.id }
-                    .controlSize(.small)
-                    .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true) }
+                    .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
+                    .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true).buttonStyle(.automatic) }
             }
         } else if !a.headless && a.installed && m.connected[a.id] != true {
             // an app of its own: Connect is the one thing to do here (the blurt skill + MCP, by hand in its settings)
-            Button(TL("agents.install")) { Task { await m.preview(a) } }.controlSize(.small).help(TL("agents.install.help"))
+            Button(TL("agents.install")) { Task { await m.preview(a) } }.buttonStyle(SettingsOutlinedButtonStyle(compact: true)).help(TL("agents.install.help"))
         }
     }
 
@@ -581,7 +593,8 @@ struct AgentsPane: View {
     }
 
     func switchView(_ a: CoreAgent, isOn: Binding<Bool>) -> some View {
-        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden().toggleStyle(.switch).controlSize(.small)
+        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden()
+            .toggleStyle(BrandSwitchStyle(label: TL("agents.use", a.name)))
     }
 
     /// The row has a fix button (fixButton's cases).
@@ -682,7 +695,7 @@ struct AgentsPane: View {
                             .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
                     }
                     Toggle(TL("agents.keep_sessions"), isOn: .constant(version != nil))
-                        .labelsHidden().toggleStyle(.switch).controlSize(.small)
+                        .labelsHidden().toggleStyle(BrandSwitchStyle(label: TL("agents.keep_sessions")))
                         .disabled(true)
                         .help(version != nil ? TL("agents.keep_sessions.fixed") : TL("agents.keep_sessions.missing"))
                 }
@@ -747,7 +760,7 @@ struct AgentsPane: View {
     static func quoted(_ s: String) -> String { Loc.isChinese ? "「\(s)」" : "“\(s)”" }
 }
 
-/// The Organizing columns' names, on the section heading's line: each over its pop-up's text, the heading's size.
+/// The Organizing columns' names, on the section heading's line: each over its pop-up's text, as 11 pt captions.
 /// The widest fix button among the Agents rows (AgentsPane.fixSlot).
 struct AgentFixWidth: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -761,7 +774,8 @@ struct AgentsColumnNames: View {
             Text(TL("agents.details.model")).padding(.leading, 9).frame(width: AgentsLayout.modelWidth, alignment: .leading)
             Text(TL("agents.effort")).padding(.leading, 9).frame(width: AgentsLayout.effortWidth, alignment: .leading)
         }
-        .font(.system(size: SettingsMetrics.headerSize)).foregroundStyle(.secondary)
+        // captions over the pop-ups (11 pt), not a second heading beside the section's
+        .font(.system(size: 11)).foregroundStyle(.secondary)
         .accessibilityHidden(true)
     }
 }
@@ -1267,6 +1281,10 @@ struct InstallSheet: View {
                 Text(TL("install.working")).font(.system(size: 12)).foregroundStyle(.secondary)
             } else if !applied && !nothingToDo {
                 Text(TL("install.footnote")).font(.system(size: 12)).foregroundStyle(.secondary)
+                    .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+            } else if applied && !failed {
+                // agents read their skills and MCP servers when a session starts: a session already open doesn't see them
+                Text(TL("install.next", agent.name)).font(.system(size: 12)).foregroundStyle(.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)

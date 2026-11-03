@@ -143,7 +143,10 @@ def test_all_tools_over_stdio(env):
     r = run_client(env, calls)
     assert r["_server"] == "blurt"
     assert set(r["_tools"]) == {"list_projects", "list_sessions", "search_items", "get_item", "get_transcript",
-                                "update_item", "mark_fixed", "bundle_items"}
+                                "update_item", "mark_fixed", "bundle_items",
+                                # model setup (agent-setup.md §5; tests/test_setup.py)
+                                "setup_status", "setup_recommend", "setup_connect", "setup_test", "setup_use",
+                                "setup_download", "setup_verify"}
     assert r["_tools"]["bundle_items"]["params"] == ["kind", "lang", "out_dir", "project", "state", "title", "uids"]
     assert "once per group" in r["_tools"]["bundle_items"]["description"]
     b = text_json(r["bundle"])

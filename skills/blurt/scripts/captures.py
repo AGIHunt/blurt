@@ -8,11 +8,12 @@
       → {"ok", "items": [{"n","uid","id","title","kind","project","path"}], "skipped": [{"n","reason"}]}
 
 Note = the typed text, then the words said (both when there are both). Title = the note's first sentence; quote = the
-whole note; kind = a small keyword guess (issue / task / idea, else
-note); frames = the shot (the inked copy first). Without a note the title says what it is ("Screenshot 14:32").
-Every item gets `enrich: pending`: the app's "AI fill-in" later adds code refs, a better kind, steps — one agent run
-for a whole batch (the app's App.enrich). A capture filed before (batch.json local id C-NNN) is skipped, so a
-second call is harmless; so is a deleted one, and one dragged out into another app (`"taken": <wall>` — the app's
+whole note; kind = the type the user gave the snap in its note bubble (shots.jsonl "kind"; kept as theirs, `_user`),
+else a small keyword guess (issue / task / idea, else note); frames = the shot (the inked copy first). Without a
+note the title says what it is ("Screenshot 14:32").
+Every item gets `enrich: pending`: the app's "AI fill-in" later adds code refs, a better kind (never over the one the
+user chose), steps — one agent run for a whole batch (the app's App.enrich). A capture filed before (batch.json
+local id C-NNN) is skipped, so a second call is harmless; so is a deleted one, and one dragged out into another app (`"taken": <wall>` — the app's
 Recently Taken, kept 7 days; put back on its thread it is `"taken": null` and files as usual). Items are written with items.py (the one writer); the project is --project, else the
 capture's own (shots.jsonl), else the batch's store.
 """
@@ -110,7 +111,8 @@ def fields_for(n: int, line: dict, lang: str) -> dict:
     else:
         wall = line.get("wall") if isinstance(line.get("wall"), (int, float)) else time.time()
         title = f"{LABELS[lang]['voice' if voice else 'shot']} {time.strftime('%H:%M', time.localtime(wall))}"
-    f: dict = {"id": f"C-{n:03d}", "kind": guess_kind(note), "title": title,
+    # the type the user gave the snap in its note bubble wins; undecided, the keyword guess (AI fill-in can do better)
+    f: dict = {"id": f"C-{n:03d}", "kind": items.chosen_kind(line) or guess_kind(note), "title": title,
                "source": {"type": "voice" if voice else "snap", "shot": n}, "enrich": "pending"}
     if note:
         f["quote"] = note

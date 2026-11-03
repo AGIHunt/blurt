@@ -14,13 +14,16 @@ export const EV = {
   picked: 'blurt://picked',
   /** island → Rust: {label, rects: CssRect[]} — where the window takes the mouse (elsewhere it is click-through). */
   hitRects: 'blurt://hit-rects',
-  /** note → Rust: {label, n, text: string | null} (null = skipped). */
+  /** note → Rust: {label, n, text: string | null} (null = skipped); a fresh snap's note sends its whole outcome
+      (note.ts `SnapDone`). */
   noteDone: 'blurt://note-done',
+  /** Rust → a fresh snap's note: NoteOp (the picture, the mic's level, the words heard, commit). */
+  note: 'blurt://note',
   /** overlay → Rust: {label, kind} once the page listens (Rust then sends the current state). */
   ready: 'blurt://ready',
 } as const;
 
-export type Kind = 'picker' | 'island' | 'note';
+export type Kind = 'picker' | 'island' | 'note' | 'textcard' | 'rec';
 
 export interface CssRect {
   x: number;
@@ -43,6 +46,8 @@ export type StatusLine =
 /** A capture hanging from the island (K7): a screenshot with its note, or a voice note — not in a project yet. */
 export interface Card {
   n: number;
+  /** when it was captured (epoch seconds) */
+  wall?: number | null;
   /** loadable thumbnail URL (asset protocol in Tauri); "" for a voice note */
   src: string;
   text?: string | null;
@@ -57,6 +62,8 @@ export interface ProjectRef {
   id: string;
   name: string;
   key: string;
+  /** false: its folder is gone (moved, renamed, a drive not plugged in) — said so, and choosing it asks where */
+  exists?: boolean;
 }
 
 export interface JobRow {
@@ -84,29 +91,81 @@ export interface IslandState {
   project: ProjectRef | null;
   projects: ProjectRef[];
   toReview: number;
-  recording: { elapsed: number | null; paused: boolean; shots: number; at: number } | null;
-  voice: { elapsed: number; at: number } | null;
+  /** `spotted`: items live.py has drafted so far ("6 snaps · 4 items spotted") */
+  recording: { elapsed: number | null; paused: boolean; shots: number; spotted?: number; pen?: boolean; at: number } | null;
+  /** `structured`: the note's Structured chip (shown only when the app says); `limit`: its cap in seconds (the time
+   *  left in its last minute) */
+  voice: { elapsed: number; at: number; hold?: boolean; ends?: 'hold' | 'pause' | 'key'; structured?: boolean; limit?: number } | null;
+  /** dictation (apps/desktop/src-tauri/src/dictation): listening while the take listens, else the oldest take's stage */
+  dictation?: { phase: 'listening' | 'transcribing' | 'polishing'; elapsed: number; at: number; style?: 'light' | 'structured'; translate?: boolean; /** the translate target's ear label: EN, 中, ⇄ … */ target?: string } | null;
   /** process jobs under way: the hatching egg */
   hatching: number;
   jobs: JobRow[];
   sessions: SessionRow[];
-  hotkeys: Partial<Record<'record' | 'snap' | 'voice' | 'project', string>>;
+  hotkeys: Partial<Record<'record' | 'snap' | 'voice' | 'project' | 'pen', string>>;
   lang?: string;
+  /** Settings → General → Cards: the shutter on a snap; what a dragged card carries (paste | caption | picture) */
+  cardPrefs?: { snapSound?: boolean; drag?: 'paste' | 'caption' | 'picture' };
   /** tests / demo: start expanded */
   expanded?: boolean;
 }
 
 export type IslandOp =
   | { op: 'state'; state: IslandState }
+  /** dictation's live text under the island: the finished pieces, then the piece still being said (quieter);
+   *  `typed`: the text actually typed, shown ~1.5 s after the stop; empty text hides it */
+  | { op: 'live'; text: string; partial?: string; typed?: boolean }
   | { op: 'cards'; cards: Card[] }
   /** a new capture flies up and a thread catches it; pull = straight on into the island (a project is current) */
-  | { op: 'card'; card: Card; pull: boolean }
+  /** `from`: where the capture was taken (the island page's CSS px; island.rs screen_to_css) — it flies from there */
+  | { op: 'card'; card: Card; pull: boolean; from?: CssRect | null }
   | { op: 'toast'; kind: 'sorted' | 'failed' | 'error'; n?: number; job?: string; code?: string; type?: string }
+  /** a card dragged into another app (island.rs): taken, Undo puts it back; `note`: its note went on the clipboard */
+  | { op: 'toast'; kind: 'taken'; cards: { n: number; session?: string | null }[]; what?: 'picture' | 'note' | 'text' | 'files' | 'files_note' }
+  /** a dictation line: `msg` a catalog key, `vars` its values, `action` one button (sent back as `data-a`); `key` what
+   *  it is about (a newer line with the same key replaces it; dictation/flow.rs `toast_keys`), `passive` a tip or a
+   *  reminder that never covers another line, `mark` the ok check for a done line */
+  | { op: 'toast'; kind: 'dictation'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; vars?: Record<string, string>; extra?: Record<string, unknown> }; second?: { a: string; label: string; vars?: Record<string, string> }; ms?: number; key?: string; passive?: boolean; mark?: 'mic' | 'check' | 'warning' | 'spinner' | 'folder'; moment?: 'keyboard'; project?: string }
+  /** dictation: what the island says under these keys is over */
+  | { op: 'toast_drop'; keys: string[] }
   | { op: 'switcher'; open: boolean }
   | { op: 'peek' }
+  /** the pointer came over what the island draws, or left all of it (`out`) — the hit tester, ~30 Hz: a pointer that
+   *  arrives or leaves in one jump and rests sends the page no mouse event; CSS px */
+  | { op: 'hover'; x: number; y: number; out: boolean }
   | { op: 'attention'; job: string; status: string }
   | { op: 'status'; line: StatusLine }
-  | { op: 'level'; rms: number };
+  | { op: 'level'; rms: number }
+  /** the system's drag of a card ended: `dropped` in another app (taken), else `cancel` (it comes back) */
+  | { op: 'dragout'; n: number; session?: string | null; result: 'dropped' | 'cancel' }
+  /** the cards come down and stay a while (a hotkey, the tray, the main window) */
+  /** `open`: the island opens too (the main window's "Choose projects…"), until the pointer has come and gone */
+  | { op: 'reveal'; open?: boolean }
+  /** a snap was just taken and record.snap_sound is on: the shutter */
+  | { op: 'shutter' }
+  /** while recording: the newest line live.py heard, as the caption under the island (record.live_caption) */
+  | { op: 'caption'; text: string }
+  /** a take was just finished (kept): its length, for the ears' ✓ moment (the Mac's RecordingDone) */
+  | { op: 'rec_done'; length: string }
+  /** the project picker for something else: `title` a catalog key, `current` the place checked (null = Unassigned);
+   *  choosing sends the action `rec.move:<id | inbox>|<token>` (a recording's Change, recording.md §6.2) */
+  | { op: 'pick'; title: string; current: string | null; token: string }
+  /** the Cards panel's History: cards used in other apps in the last 7 days (`taken`, `wall`: epoch seconds) */
+  | { op: 'history'; cards: (Card & { taken?: number })[] }
+  /** Show Cards: the Cards panel opens (on Current, or History when nothing hangs), or closes when open */
+  | { op: 'panel'; toggle?: boolean }
+  /** a line from the app: `msg` a catalog key with `vars`, `mark` its leading glyph (island.rs: Locate…) */
+  | { op: 'toast'; kind: 'line'; msg: string; vars?: Record<string, string>; mark?: 'check' | 'warning' }
+  /** a capture's line (a snap, Copy Text / Translate, a recording, a filing): as `dictation`, but it never leads with
+   *  the mic — `mark` the ok check, the attention triangle, or nothing (a working line ending in "…" gets the spinner);
+   *  `action.extra` rides along with the button's action */
+  | { op: 'toast'; kind: 'capture'; msg: string; vars?: Record<string, string>; action?: { a: string; label: string; extra?: Record<string, unknown> }; ms?: number; key?: string; passive?: boolean; mark?: 'check' | 'warning' | 'peep'; /** where it went: the project's folder in its colour leads the line (`inbox`: Unassigned) */ project?: string }
+  /** a picker, a snap's note or a take starting is up: the island steps back; its waiting lines hold until after */
+  | { op: 'busy'; on: boolean }
+  /** Copy Text / Translate read what was dragged over: Peep thinks in the ear until its line comes */
+  | { op: 'working'; on: boolean }
+  /** Edit Note is open over a card (snap.rs edit_note): the row stays down so its tail points at a real card */
+  | { op: 'editing'; on: boolean };
 
 export interface OverlayHost {
   host: 'tauri' | 'browser';
@@ -124,7 +183,12 @@ export const params = new URLSearchParams({
 /** The overlays' strings (K10): this package's catalogs over @blurt/i18n's common words. */
 export let i18n: I18n = createI18n({ en: EN, 'zh-Hans': ZH }, resolveLang(params.get('lang')));
 export const t = (key: string, p?: Record<string, string | number>) => i18n.t(key, p);
-export const plural = (key: string, n: number, p?: Record<string, string | number>) => i18n.plural(key, n, p);
+/** n = 1 takes the `_one` string in every language: Chinese's plural rule is always "other", so "已删除 1 张卡片" said
+ *  more than "Deleted" for one card (the same fact, two different lines). */
+export const plural = (key: string, n: number, p?: Record<string, string | number>) => {
+  const cat = (i18n.lang === 'zh-Hans' ? ZH : EN) as Record<string, unknown>;
+  return n === 1 && typeof cat[`${key}_one`] === 'string' ? i18n.t(`${key}_one`, { n, ...p }) : i18n.plural(key, n, p);
+};
 /** The app may switch language at run time (settings): the island re-renders after this. */
 export function setLang(lang: string) {
   if (resolveLang(lang) !== i18n.lang) i18n = createI18n({ en: EN, 'zh-Hans': ZH }, resolveLang(lang));

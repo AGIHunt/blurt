@@ -208,6 +208,15 @@ impl JobWriter {
         self.save();
     }
 
+    /// Captures filed straight into a project (capture.rs file_now: captures.py, no agent, 0 tokens): the island says
+    /// "Filed to X" itself, so its end is no "Organized" news.
+    pub fn mark_filed(&self) {
+        let mut job = self.job.lock().unwrap();
+        job["filed"] = json!(true);
+        drop(job);
+        self.save();
+    }
+
     pub fn set_progress(&self, p: Option<f64>) {
         self.job.lock().unwrap()["progress"] = json!(p);
         self.save();
@@ -223,6 +232,7 @@ impl JobWriter {
                     s["state"] = json!(match (state, s["state"].as_str()) {
                         ("done", Some("running")) => "done",
                         ("done", _) => "skipped",
+                        ("cancelled", _) => "skipped", // stopped (Stop, quitting): nothing failed
                         _ => "failed",
                     });
                     s["ended"] = json!(now);
@@ -268,7 +278,7 @@ pub fn transitions(prev: &HashMap<String, Value>, now: &[Value]) -> Vec<Notice> 
         let long = secs_between(&j["started"], &j["ended"]) >= 20.0;
         if before["state"] != j["state"] {
             match (kind.as_str(), state) {
-                ("process", "done") => out.push(Notice::Sorted {
+                ("process", "done") if j["filed"] != json!(true) => out.push(Notice::Sorted {
                     job: id.clone(),
                     title: j["title"].as_str().map(str::to_owned),
                     items: j["items"].as_array().map_or(0, Vec::len),
@@ -284,9 +294,12 @@ pub fn transitions(prev: &HashMap<String, Value>, now: &[Value]) -> Vec<Notice> 
             }
         }
         if kind == "agent" {
-            let st = j.pointer("/agent/status").and_then(Value::as_str).unwrap_or("");
-            let was = before.pointer("/agent/status").and_then(Value::as_str).unwrap_or("");
-            if st != was && matches!(st, "waiting_input" | "turn_done" | "exited") {
+            // SessionNotifier: what the session is now — its live status, else how it ended (error / exited)
+            let st = session_status(j);
+            let was = session_status(before);
+            // the user ended it after a finished turn: nothing to tell
+            let user_ended = st == "exited" && was == "turn_done" && state == "cancelled";
+            if st != was && matches!(st, "waiting_input" | "turn_done" | "exited" | "error") && !user_ended {
                 out.push(Notice::Agent {
                     job: id.clone(),
                     agent: j.pointer("/agent/id").and_then(Value::as_str).unwrap_or("agent").to_string(),
@@ -297,6 +310,22 @@ pub fn transitions(prev: &HashMap<String, Value>, now: &[Value]) -> Vec<Notice> 
         }
     }
     out
+}
+
+/// An agent job's status as its notifications see it (the Mac's SessionNotifier): live → the agent's status; ended →
+/// error when it failed, else exited.
+pub fn session_status(j: &Value) -> &'static str {
+    let st = j.pointer("/agent/status").and_then(Value::as_str).unwrap_or("");
+    if is_active(j) {
+        return match st {
+            "waiting_input" => "waiting_input",
+            "turn_done" => "turn_done",
+            "exited" => "exited",
+            "error" => "error",
+            _ => "running",
+        };
+    }
+    if j["state"] == "failed" || st == "error" { "error" } else { "exited" }
 }
 
 /// The item ids an agent window works on (its tmux window name, `BA-12,BA-13`), for notices and the island.
@@ -353,6 +382,7 @@ mod tests {
             ("p".to_string(), json!({"id": "p", "type": "process", "state": "running"})),
             ("a".to_string(), json!({"id": "a", "type": "agent", "state": "running", "agent": {"status": "running"}})),
             ("r".to_string(), json!({"id": "r", "type": "record", "state": "running"})),
+            ("f".to_string(), json!({"id": "f", "type": "process", "state": "running", "filed": true})),
         ]
         .into();
         let now = vec![
@@ -360,12 +390,27 @@ mod tests {
             json!({"id": "a", "type": "agent", "state": "running", "agent": {"id": "claude", "status": "waiting_input", "tmux": {"name": "BA-12,BA-13"}}}),
             json!({"id": "r", "type": "record", "state": "failed", "error": {"code": "io"}}),
             json!({"id": "new", "type": "process", "state": "done"}),
+            // filed by captures.py: the island said "Filed to X" already
+            json!({"id": "f", "type": "process", "state": "done", "filed": true, "items": ["u3"]}),
         ];
         let n = transitions(&before, &now);
         assert_eq!(n.len(), 3, "{n:?}");
         assert_eq!(n[0], Notice::Sorted { job: "p".into(), title: None, items: 2, long: true });
         assert!(matches!(&n[1], Notice::Agent { status, items, .. } if status == "waiting_input" && items == &["BA-12", "BA-13"]));
         assert!(matches!(&n[2], Notice::Failed { code, long: false, .. } if code == "io"));
+        // an ended or failed session is news too; a session the user ended after its turn is not
+        let before: HashMap<String, Value> = [
+            ("x".to_string(), json!({"id": "x", "type": "agent", "state": "running", "agent": {"status": "running"}})),
+            ("y".to_string(), json!({"id": "y", "type": "agent", "state": "running", "agent": {"status": "turn_done"}})),
+        ]
+        .into();
+        let now = vec![
+            json!({"id": "x", "type": "agent", "state": "failed", "agent": {"status": "error"}}),
+            json!({"id": "y", "type": "agent", "state": "cancelled", "agent": {"status": "exited"}}),
+        ];
+        let n = transitions(&before, &now);
+        assert!(n.iter().any(|x| matches!(x, Notice::Agent { job, status, .. } if job == "x" && status == "error")), "{n:?}");
+        assert!(!n.iter().any(|x| matches!(x, Notice::Agent { job, .. } if job == "y")), "{n:?}");
     }
 
     #[test]

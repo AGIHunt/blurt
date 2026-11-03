@@ -1,5 +1,6 @@
 // Recording chrome that isn't the island: the border around the recorded area, the 3-2-1 countdown, the live caption
-// line, and the overlay windows they live in. All of it is excluded from the recording (and from screen captures).
+// line, and the overlay windows they live in. A recording leaves the countdown and the border out, and the caption
+// with the island when "Don't record the notch" is on (OwnWindows; BlurtCore CaptureExclusion).
 import AppKit
 import BlurtCore
 
@@ -95,7 +96,7 @@ final class CountdownView: NSView {
     private let number = NSTextField(labelWithString: "")
     private let chick = MascotView(size: 26, backdrop: .dark)
     private let title = NSTextField(labelWithString: Loc.t("capture.countdown.ready", table: "Capture"))
-    /// the keys that pause and finish the take, as keycaps ("[⌥⇧P] Pause  [⌥⇧S] Finish"); nil when both are off
+    /// the keys that pause and finish the take, as keycaps ("[⌥P] Pause  [⌥S] Finish"); nil when both are off
     private let hint: KeyLine? = {
         let pairs = [(hk(.pause), "capture.countdown.pause"), (hk(.finish), "capture.countdown.finish")]
             .filter { !$0.0.isEmpty }.map { (key: $0.0, word: Loc.t($0.1, table: "Capture")) }
@@ -235,7 +236,8 @@ final class CountdownView: NSView {
     func hold(at progress: CGFloat) { held = progress; drain() }
 }
 
-/// One line of what was just said, under the island while recording (record.live_caption, default on). Never captured.
+/// One line of what was just said, under the island while recording (record.live_caption, default on). Recorded with
+/// the island; "Don't record the notch" leaves both out.
 final class CaptionPanel {
     let win: NSWindow
     let fx = NSVisualEffectView()
@@ -244,6 +246,7 @@ final class CaptionPanel {
 
     init() {
         win = overlayWindow(NSRect(x: 0, y: 0, width: 300, height: 28), view: fx)
+        OwnWindows.mark(win, .islandCaption)
         fx.material = .hudWindow
         fx.state = .active
         fx.appearance = NSAppearance(named: .vibrantDark)

@@ -68,6 +68,22 @@ public enum VoiceCardDrop {
         return .paste(w)
     }
 
+    /// How the follow-up paste went: the app read it, the keys went (End, ⌘V) but the read wasn't seen (common in
+    /// Electron apps: Claude, Slack, Discord), or it never got that far.
+    public enum Pasted: String, Equatable { case confirmed, unconfirmed, notSent }
+
+    /// What the island says after the drop, and whether the words go on the clipboard. Keys sent but unconfirmed is
+    /// pasted, as smart paste reports it ("Pasted into Claude · Undo"); the words stay on the clipboard quietly as the
+    /// safety net — the dogfood's "Copied — ⌘V to paste" there invited a second copy. "⌘V to paste" is only for a
+    /// paste that never went.
+    public static func outcome(_ p: Pasted) -> (toast: String, copyWords: Bool) {
+        switch p {
+        case .confirmed: return ("capture.voice_drop.pasted", false)
+        case .unconfirmed: return ("capture.voice_drop.pasted", true)
+        case .notSent: return ("capture.voice_drop.copied", true)
+        }
+    }
+
     /// The drag's hint over a window (nil: none — Blurt's own windows, nothing, an app that isn't a paste target).
     public enum Hint: Equatable {
         /// "松手粘贴到 Claude"

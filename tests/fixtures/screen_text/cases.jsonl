@@ -1,0 +1,18 @@
+{"name": "title", "rect_css": [36, 131, 118, 30], "expected": "文件分四部分："}
+{"name": "title_halfcolon", "rect_css": [36, 131, 97.5, 30], "expected": "文件分四部分"}
+{"name": "half_chars", "rect_css": [76, 176, 60, 24], "expected": "产库现"}
+{"name": "item1", "rect_css": [36, 172, 630, 58], "expected": "1. 生产库现状：主库是一主一备，备库不能读；10-14 已经有人建了一个按量付费的只读实例，列了几件还没收口的事。"}
+{"name": "items34", "rect_css": [36, 285, 630, 88], "expected": "3. 两类数据采集方案：两路合并的思路可行，不需要 DTS；但前端埋点继续走现有的 /telemetry，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。\n4. 建议路线：先读表，确实需要变更历史时再批量解析 binlog。"}
+{"name": "top_halfcut", "rect_css": [36, 300, 630, 73], "expected": "/telemetry，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。\n4. 建议路线：先读表，确实需要变更历史时再批量解析 binlog。"}
+{"name": "bottom_halfcut", "rect_css": [36, 357, 630, 175], "expected": "这份文件放在临时目录，没进仓库，也还没发给埋点那个会话。你看完定下方向后告诉我，我再把结论同步过去。\n\n- 整理结论成 Markdown 文件\n- 发送文件给用户"}
+{"name": "both_halfcut", "rect_css": [36, 297, 630, 60], "expected": "/telemetry，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。"}
+{"name": "checks", "rect_css": [44, 456, 610, 70], "expected": "- 整理结论成 Markdown 文件\n- 发送文件给用户"}
+{"name": "path_para", "rect_css": [36, 37, 630, 85], "expected": "我把结论整理成一份 Markdown 发给你了，路径是 /private/tmp/claude-501/-Users-john-workspace-ordo-projects-ordo-platform/c57f5842-39f9-4ebd-a700-ecea06622bd3/scratchpad/只读库与行为数据采集-结论.md。"}
+{"name": "underscore", "rect_css": [36, 228, 630, 58], "expected": "2. ordo_ai 的做法：集群版的从节点可读，前面挂一个代理只读地址；文档里写的 DTS 同步到 AnalyticDB 已经过时，现在没在用。"}
+{"name": "whole_list", "rect_css": [36, 130, 630, 245], "expected": "文件分四部分：\n\n1. 生产库现状：主库是一主一备，备库不能读；10-14 已经有人建了一个按量付费的只读实例，列了几件还没收口的事。\n2. ordo_ai 的做法：集群版的从节点可读，前面挂一个代理只读地址；文档里写的 DTS 同步到 AnalyticDB 已经过时，现在没在用。\n3. 两类数据采集方案：两路合并的思路可行，不需要 DTS；但前端埋点继续走现有的 /telemetry，不要落 Nginx 日志；数据库一路先直接读只读实例的表，不解析 binlog。\n4. 建议路线：先读表，确实需要变更历史时再批量解析 binlog。"}
+{"name": "code", "rect_css": [40, 598, 820, 109], "expected": "def load_user_events(user_id: str, since_ts: int = 0) -> list[dict]:\n    \"\"\"Read from the read-only replica, never the primary.\"\"\"\n    rows = db.query(READ_ONLY_DSN, \"select * from user_events where user_id = %s\", user_id)\n    return [r for r in rows if r[\"created_at\"] >= since_ts]  # __init__ ok"}
+{"name": "terminal", "rect_css": [40, 738, 648, 122], "expected": "john@m5 ~/ordo-platform (main)$ uv run pytest tests/test_read_only.py -q\n....F.\nFAILED tests/test_read_only.py::test_replica_lag - AssertionError: lag 12.5s > 10s\n1 failed, 5 passed in 3.21s"}
+{"name": "english", "rect_css": [36, 887, 530, 110], "expected": "The read-only replica is billed by the hour and costs about ¥1.2/h. If we keep it, the nightly ETL job (etl_nightly_v2) can move off the primary; otherwise we need a co-located snapshot at https://docs.example.com/db/read-replica-setup before Nov 15."}
+{"name": "table", "rect_css": [40, 1024, 450, 111], "expected": "方案\t成本\t延迟\n只读实例\t¥1.2/小时\t< 1 s\nDTS → AnalyticDB\t¥860/月\t~5 min"}
+{"name": "nested_list", "rect_css": [40, 1165, 500, 118], "expected": "- Gemma 4 E2B：本地润色，常驻 2.2 GB\n- DeepSeek Flash：云端润色，约 1 秒一次\n  - 需要用户自己的 API key\n\n上次更新：2026-10-28 23:42 · v1.0.4 (build 741)"}
+{"name": "en_bottom_cut", "source": "promo/cases/screen-text/site-demo/doc-en.png crop 44,132,1196,655 (px)", "expected": "Checkout bugs before 2.4\n\n1. Coupon: the discount is dropped when the shipping country changes to Canada; repro on staging with SAVE10.\n2. Tax: the cart shows prices before tax, and checkout then adds it without telling anyone.\n3. Search: the results page ignores ?sort=price on phones.\n- Logs attached to the ticket\n- One owner for each item"}

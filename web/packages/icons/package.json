@@ -3,16 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor), generated from assets/icons/*.svg: <Icon name/> for React, iconSvg()/SPRITE for plain pages; the colour mascot (frame strips, CSS-played): @blurt/icons/mascot + mascot.css.",
+  "description": "The blurt icon family (24 grid, 1.75 stroke, currentColor), generated from assets/icons/*.svg: <Icon name/> for React, iconSvg()/SPRITE for plain pages; Peep, the brand character (the release package's clay sprite sheets, assets/brand/import_peep.py): @blurt/icons/mascot + mascot.css, and one sheet tier per app (@blurt/icons/peep-s, peep-l).",
   "exports": {
     ".": "./src/index.tsx",
     "./core": "./src/core.ts",
     "./mascot": "./src/mascot.ts",
-    "./mascot.css": "./mascot/mascot.css",
+    "./mascot.css": "./src/mascot.css",
+    "./peep-s": "./src/peep-s.ts",
+    "./peep-l": "./src/peep-l.ts",
     "./sprite.svg": "./sprite.svg"
   },
   "scripts": {
-    "generate": "python3 ../../../assets/icons/tools/build.py --no-png && python3 ../../../assets/mascot/tools/build.py",
+    "generate": "python3 ../../../assets/icons/tools/build.py --no-png && python3 ../../../assets/brand/import_peep.py --only windows",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p ."
   },

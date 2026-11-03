@@ -68,6 +68,8 @@ public enum ShellEnv {
         for (k, v) in inherited where k.hasPrefix("BLURT_") { env[k] = v }
         env["PATH"] = path
         env["BLURT_APP"] = "1"
+        // this executable answers `--speech` (macOS's recogniser for transcribe.py's `apple` backend)
+        if env["BLURT_APP_BIN"] == nil, let exe = Bundle.main.executablePath { env["BLURT_APP_BIN"] = exe }
         return env
     }
 
@@ -149,6 +151,9 @@ private final class RunState: @unchecked Sendable {
 
 public final class ScriptRunner {
     public static let shared = ScriptRunner()
+    /// Variables every script gets on top of the login shell's (the app's cloud speech keys from the Keychain:
+    /// CloudSpeech); they win over the shell's.
+    public static var extraEnvironment: () -> [String: String] = { [:] }
     public init() {}
 
     /// uv on the user's PATH (login shell), else ~/.blurt/bin/uv. Looked up each time: onboarding may install it.
@@ -172,7 +177,10 @@ public final class ScriptRunner {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: uv)
         p.arguments = ["run", "-q", try scriptURL(script).path] + args
-        p.environment = ShellEnv.agentEnvironment()
+        // BLURT_LANG: the app's own UI language (its --lang or per-app language), which a script can't read from
+        // config or the global AppleLanguages — handoff.ui_lang() reads it first
+        p.environment = ShellEnv.agentEnvironment().merging(ScriptRunner.extraEnvironment()) { _, mine in mine }
+            .merging(["BLURT_LANG": Loc.language.hasPrefix("zh") ? "zh" : "en"]) { _, mine in mine }
         return p
     }
 

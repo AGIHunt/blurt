@@ -73,7 +73,7 @@ class DictationReady(unittest.TestCase):
     that isn't one of the local rows (a cloud one) judged by itself — so the key never refuses a working setup and
     never listens for a take that is bound to fail."""
 
-    def _models(self, *, vad: bool, have: set[str], configured=None, note="sensevoice-small"):
+    def _models(self, *, vad: bool, have: set[str], configured=None, note="sensevoice-small", bundled: bool = False):
         import tempfile
         from pathlib import Path
         d = Path(tempfile.mkdtemp())
@@ -81,7 +81,12 @@ class DictationReady(unittest.TestCase):
             (d / "silero_vad.onnx").write_bytes(b"x")
         hw = {"kind": "apple", "tier": "standard", "ram_gb": 16, "chip": "Apple M2", "fingerprint": "t"}
         cfg = {"record": {"dictation": {"asr_model": configured}}} if configured else {}
-        with mock.patch.object(T, "MODELS_DIR", d), mock.patch.object(T, "global_config", lambda: cfg), \
+        # the VAD the skill ships (models/silero_vad.onnx): present only when the test says so
+        b = d / "bundled.onnx"
+        if bundled:
+            b.write_bytes(b"x")
+        with mock.patch.object(T, "MODELS_DIR", d), mock.patch.object(T, "BUNDLED_VAD", b), \
+                mock.patch.object(T, "global_config", lambda: cfg), \
                 mock.patch.object(T, "select", lambda _p: {"id": note}), \
                 mock.patch.object(T, "installed", lambda m: m["id"] in have), \
                 mock.patch.object(T, "runs_here", lambda m: True), mock.patch.object(T, "_fits", lambda m, h: True), \
@@ -94,6 +99,12 @@ class DictationReady(unittest.TestCase):
         self.assertTrue(r["selected_installed"])
         self.assertFalse(r["ready"])
         self.assertEqual(r["missing"], ["silero-vad"])
+
+    def test_the_shipped_vad_makes_it_ready(self):
+        # v1.0.6: the VAD comes with the skill, so a model on disk is all a fresh Mac needs
+        r = self._models(vad=False, have={T.QWEN_MLX}, bundled=True)
+        self.assertTrue(r["ready"])
+        self.assertEqual(r["missing"], [])
 
     def test_ready_with_model_and_vad(self):
         r = self._models(vad=True, have={T.QWEN_MLX})

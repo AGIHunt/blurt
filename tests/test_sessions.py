@@ -385,6 +385,23 @@ def test_doctor(p2):
     assert p2.tmux("show-options", "-gv", "remain-on-exit").strip() == "on"
 
 
+def test_a_server_started_with_an_old_conf_gets_todays_options(p2):
+    """Dogfood: tmux reads -f only when its server starts, and Blurt's server outlived the update that turned
+    focus-events off (the Codex 'timed out discarding buffered terminal input' start failure): every hand-off still
+    ran with the old options."""
+    old = p2.tmp / "old.conf"
+    old.write_text("set -g focus-events on\nset -s escape-time 10\n")
+    subprocess.run([TMUX, "-L", p2.socket, "-f", str(old), "new-session", "-d", "-s", "old"], check=True, env=p2.env)
+    assert p2.tmux("show-options", "-gv", "focus-events").strip() == "on"
+    proj = p2.project(p2.repo(), worktree=False)
+    dispatch(p2, p2.item(proj["id"])["uid"], agent="claude")
+    assert p2.tmux("show-options", "-gv", "focus-events").strip() == "off"
+    assert p2.tmux("show-options", "-sv", "escape-time").strip() == "50"
+    # and doctor says what the running server uses
+    p2.tmux("set-option", "-g", "focus-events", "on")
+    assert p2.run("sessions.py", "doctor")["options"] == {"escape-time": "50", "focus-events": "off"}
+
+
 def test_monitor_leaves_a_job_alone_until_its_window_exists(p2):
     """e2e v0.7: dispatch writes the job (running) before the worktree and the tmux window exist; the resident monitor
     saw a running job with no window, called it exited and finished it at once ("Session ended" as it started)."""
@@ -427,3 +444,43 @@ def test_resident_monitor_ends_with_its_app(p2):
     app.kill(); app.wait()
     out, _ = mon.communicate(timeout=10)
     assert json.loads(out.strip().splitlines()[-1])["parent_gone"] == app.pid
+
+
+# ------------------------------------------------------------------ setup-session (docs/design/agent-setup.md §4)
+
+
+def test_setup_session_runs_the_agent_on_the_setup_prompt_with_its_token(p2):
+    """Settings → Models → Set Up with Agent…: no items, no worktree, the token on stdin reaches the agent's env only."""
+    out = p2.run("sessions.py", "setup-session", "--agent", "claude", "--runner", "app", "--lang", "zh",
+                 input=json.dumps({"token": "tok-123"}))
+    (launch,) = out["launch"]
+    jid = out["job"]
+    assert launch["job"] == jid and launch["argv"][0].endswith("/claude") and "--settings" in launch["argv"]
+    assert launch["env"]["BLURT_SETUP_TOKEN"] == "tok-123" and launch["env"]["BLURT_PROJECT"] == "blurt-setup"
+    assert launch["cwd"] == str(p2.home / "setup")
+    assert "reference/setup-models.md" in launch["argv"][-1] and "设置模型" in launch["argv"][-1]
+    j = p2.job(jid)
+    assert j["project"] == "blurt-setup" and j["items"] == [] and j["agent"]["runner"] == "app"
+    assert j["title"] == "设置模型（口喷鸡）"
+    # the token is in no file the job keeps
+    for f in (p2.home / "jobs").glob(jid + "*"):
+        assert "tok-123" not in f.read_text(encoding="utf-8", errors="replace")
+    # Stop ends it like any session
+    p2.run("sessions.py", "stop", jid)
+    assert p2.job(jid)["state"] == "cancelled"
+    # Codex: on request, so it can ask to run setup.py outside its sandbox (which blocks Blurt's socket)
+    out = p2.run("sessions.py", "setup-session", "--agent", "codex", "--runner", "app", input=json.dumps({"token": "t"}))
+    argv = out["launch"][0]["argv"]
+    assert argv[1:3] == ["-c", 'approval_policy="on-request"']
+    p2.run("sessions.py", "stop", out["job"])
+    # an agent that can't run a session, or isn't there
+    assert p2.run("sessions.py", "setup-session", "--agent", "zcode", ok=False)["code"] == "bad_agent"
+    # dogfood 2026-10-31: a logged-out Claude Code sat at "Not logged in · Please run /login" — refused first, as a
+    # hand-off is, with the fix the sheet shows
+    p2.env["FAKE_AUTH_OUT"] = "1"
+    out = p2.run("sessions.py", "setup-session", "--agent", "claude", "--runner", "app", ok=False,
+                 input=json.dumps({"token": "tok-456"}))
+    assert out["code"] == "auth" and out["agent"] == "claude" and out.get("fix")
+    assert jid in [j["job"] for j in p2.run("sessions.py", "list", "--all")["sessions"]
+                   if j.get("project") == "blurt-setup"]
+    assert len([j for j in p2.run("sessions.py", "list", "--all")["sessions"] if j.get("project") == "blurt-setup"]) == 2

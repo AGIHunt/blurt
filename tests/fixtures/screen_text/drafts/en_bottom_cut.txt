@@ -1,0 +1,7 @@
+Checkout bugs before 2.4
+
+1. Coupon: the discount is dropped when the shipping country changes to Canada; repro on staging with SAVE10.
+2. Tax: the cart shows prices before tax, and checkout then adds it without telling anyone.
+3. Search: the results page ignores ?sort=price on phones.
+- Logs attached to the ticket
+- One owner for each item

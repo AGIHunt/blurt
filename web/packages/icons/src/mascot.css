@@ -1,0 +1,22 @@
+/* Peep (@blurt/icons/mascot): <span class="mascot" data-clip="idle" style="--mascot-size: 48px"></span>.
+   The box is Peep's square at rest (body and beak); the frames sit on ::before, the sheet's bleed larger on every side
+   and not clipped, so the hop and the shake are not cut off. mascot.ts's ticker sets the sheet (--peep-sheet,
+   --peep-size, --peep-bleed) and the frame (--peep-pos) — no keyframes: the sheets are 2-D grids. */
+.mascot {
+  display: inline-block;
+  flex: none;
+  position: relative;
+  width: var(--mascot-size, 80px);
+  height: var(--mascot-size, 80px);
+  vertical-align: middle;
+  pointer-events: none;
+}
+.mascot::before {
+  content: "";
+  position: absolute;
+  inset: calc(var(--peep-bleed, 0) * -100%);
+  background-image: var(--peep-sheet, none);
+  background-repeat: no-repeat;
+  background-size: var(--peep-size, 0 0);
+  background-position: var(--peep-pos, 0 0);
+}

@@ -588,7 +588,7 @@ v2 的 items.json（还没迁移的会话）、agent 写的 items.json、`add --
 |---|---|---|---|---|---|
 | `keep` | new | todo | A（审核模式还有 ↩） | Accept — leaves the inbox as To do | 放进要做 — 移出待处理，记为要做 |
 | `hand_off` | new, todo | handed_off | ⌘↩ | Hand off to agent… — run it in Blurt, or copy the instruction | 交给 Agent… — 在口喷鸡里运行，或复制指令 |
-| `done` | todo, handed_off, in_progress, to_verify | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
+| `done` | new, todo, handed_off, in_progress, to_verify（new：不用先接受，BA-56，2026-10-30） | done | D | Mark as done — it's handled（to_verify 时：— you checked, it's fixed） | 标为完成 — 已经处理好了（to_verify 时：— 确认已修好） |
 | `send_back` | to_verify | todo | R | Send back — not fixed yet, back to To do | 退回 — 还没好，回到要做 |
 | `take_back` | handed_off, in_progress | todo | R | Take back — stop waiting on the agent, back to To do | 收回 — 不等 agent 了，回到要做 |
 | `wontfix` | new, todo, handed_off, in_progress, to_verify | wontfix | W | Won't do — closes it; it stays in All Items | 不做 — 关闭，仍可在全部条目里找到 |
@@ -1039,7 +1039,7 @@ uid 01JB… · issue · high · module auth
 （同 n 后写的为准）；然后调 `AppEnvironment.process(session, captures: [3], project: "<id>")`（Tauri：`process_captures`）。
 「整理」（没选项目）= `process(session, captures: 这些卡片, project: nil)`：提示词里带候选项目，条目进未归类、带建议。删卡片 = 追加 `{"n", "deleted": true}`。
 （v0.8.1）拖进别的应用、被接住的卡片 = 追加 `{"n", "taken": <wall>}`：不再是卡片，也没删（文件留着），在「最近拖走的」里保留 7 天
-（`BlurtCore.TakenCaptures`），挂回刘海 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
+（`BlurtCore.TakenCaptures`；v1.0.7 起是卡片面板的「历史」栏，`⌥H`，见 system.md §3.2「Cards panel」），挂回刘海 = `{"n", "taken": null}`；7 天后启动整理 / 每小时的 `Snapper.expireTaken` 按删卡片处理（进废纸篓）。
 `captures.py file` 跳过 taken 的（`reason: "taken"`）。这是捕获的标记，不是条目状态，K3 的 `lifecycle.json` 不变。
 （v0.8.7，捕获审计）卡片不会自己消失：启动时读所有 `-shots` 批次里还有卡片（或拖走的）的那些，不管多久以前（之前只看最近 30 天，更早的卡片
 重启后就不见了）；先只解析 `shots.jsonl`（`BlurtCore.CardBatches`），有卡片才读图片。编辑备注 = 完整备注（打的字 + 说的话）可直接改，
@@ -1139,11 +1139,11 @@ Tauri `web/apps/overlays/src/island.ts` 同步）。线从岛下沿内 3 pt 出�
 - **原地标注（v0.9-next，优先于上文的「放大预览」）**：框选松手后画面以 1:1 冻结在原处（外面变暗，沿用选区遮罩），直接在上面画（`InkStage` + `InkCanvas`）；
   气泡停靠在选区旁边，绝不盖住它（BlurtCore `BubbleDock`：右 → 左 → 下 → 上，靠屏幕边缘时翻面；多屏用选区所在的屏；选区占满全屏才放进角落），箭头指向选区。
   笔：拖动自由画，⇧ 方框，⌥ 椭圆，自由画结束时停住约 0.5 s 把粗略的线 / 框 / 椭圆规整成干净的形状（`InkFit`，纯几何），⌘Z 撤销上一笔；一种标注色（`markup`）加淡阴影，线宽随显示器变（`InkStyle`）；
-  提示「拖动画笔 · ⇧ 方框 · ⌥ 椭圆」只在前 3 次出现（`record.ink_hint_shown`）。结束：说了话 = 停顿后结束，但画的时候和落笔 1.5 s 内不结束；只画 / 只打字 / 什么都没做 = ⏎、「完成」或点选区外面；
+  提示「拖动画笔 · ⇧ 方框 · ⌥ 椭圆」只在前 3 次出现（`record.ink_hint_shown`）。结束（2026-10-31 起停顿不再结束，只有 ⏎ / 「完成」 / 点外面，见 snap-and-live.md §1a）：说了话 = 停顿后结束，但画的时候和落笔 1.5 s 内不结束；只画 / 只打字 / 什么都没做 = ⏎、「完成」或点选区外面；
   Esc 丢弃（5 s 撤销）。画好的图从选区飞到刘海变成卡片（减弱动态效果时在卡片处淡入）；原图 NNN.png 不动，笔画仍是 0–1 点列（方框角点重复一次，保证各处渲染都是直角），「编辑备注」可以继续改。
   「归入 X」芯片：点它（或 Tab）在气泡里列出最近项目，打字筛选，最后一行是「未归类」（不归项目时芯片也写「未归类」，截图先挂成卡片）；和岛上的切换器、主窗口的 M 弹窗是同一份列表（`ProjectPick.choices`）。↩ 选定——只改这一张（`Snapper.retarget`），岛上的当前项目不变。
-  录屏画笔用同一套修饰键：⌃ 拖动自由画，⌃⇧ 方框，⌃⌥ 椭圆（画笔键是 ⌥ 时椭圆是 ⌃⌥），停住规整；先按画笔键、再加 ⇧ / ⌥ 才算画笔（`PenArm`：同时按下的 ⌃⌥ 是窗口管理工具的拖动窗口）；events.jsonl 的 stroke 多一个 `shape`。
-- **气泡何时自己关**（`NoteHold`）：笔在图上时不关（`NoteEndpointer.activity` 让停顿 / 无语音结束等笔），抬笔后 1.5 s（v0.9-next，原 2.5 s）；有已提交的文字不关（输入法组字不算），
+  录屏画笔用同一套修饰键：⌃ 拖动自由画，⌃⇧ 方框，⌃⌥ 椭圆（画笔键是 ⌥ 时椭圆是 ⌃⌥），停住规整；只看按住了哪些键，不看先后（BA-59，2026-10-31：先 ⌃ 再 ⇧、先 ⇧ 再 ⌃、两个一起按都是方框；`InkModifiers.recordingTool(pen:held:)` / 拖动中 `dragTool`），按住约 0.15 s 画笔才亮（`PenArm`：一闪而过的 ⌃ 快捷键不亮；原先「画笔键必须先按」是给窗口管理工具的 ⌃⌥ 拖窗口让路，创始人选了形状）；画笔窗口在 `.statusBar` 层、亮起时提到最前（BA-65：`isFloatingPanel` 写在 level 之后把它重置成了 `.floating`，「最近拖走的」等 Blurt 自己的浮动面板和别的 App 的浮动窗口盖在上面，拖动被它们接走，画不出来）；events.jsonl 的 stroke 多一个 `shape`。
+- **气泡何时自己关**（`NoteHold`；2026-10-31 起不再自己关、`NoteHold` 已删，按键见 `NoteKeys` 和 snap-and-live.md §1a。下面是当时的规则）：笔在图上时不关（`NoteEndpointer.activity` 让停顿 / 无语音结束等笔），抬笔后 1.5 s（v0.9-next，原 2.5 s）；有已提交的文字不关（输入法组字不算），
   清空后 1.5 s；用户切到别的应用、且不在听时 3 s 后保存（还在听 / 在等文字时每 0.5 s 再看一次，不会一直浮在别的应用上）。关闭时正在画的笔画也保存（`InkCanvas.flush`）。
 - **Esc 两步**（`NoteEsc`）：先清掉打的字（或把改过的话恢复原样），再按才丢弃截图；丢弃撤销 5 s（与语音备注一致）。
 - **同一时刻只有一个麦克风**：语音备注在听时截图，气泡只能打字，Esc 归气泡（`VoiceInput.yieldEsc`）。

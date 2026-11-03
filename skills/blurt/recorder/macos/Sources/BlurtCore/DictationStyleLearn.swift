@@ -4,6 +4,15 @@
 import Foundation
 
 public enum DictationStyleLearn {
+    /// An app's name set into a Chinese question whose format has no spaces around it ("以后在%@里…"): a space only on
+    /// a side where the name begins or ends in Latin letters or digits — "以后在 Notes 里", "以后在Safari浏览器里".
+    /// `cjk` false (English formats carry their own spaces): the name as it is.
+    public static func inline(_ name: String, cjk: Bool) -> String {
+        guard cjk, let first = name.first, let last = name.last else { return name }
+        let latin = { (c: Character) in c.isASCII && (c.isLetter || c.isNumber) }
+        return (latin(first) ? " " : "") + name + (latin(last) ? " " : "")
+    }
+
     public static let minSignals = 3
     public static let share = 0.7
     /// the last this-many signals of an app count
@@ -11,7 +20,7 @@ public enum DictationStyleLearn {
 
     /// What one take says the user wants in its app (nil: nothing). Lists (structured / auto) count as one wish.
     ///  • a reformat that was kept → its style; undone → the style it had;
-    ///  • ⇧ / the island / Fn+⇧ → that style;
+    ///  • ⇧ / the island (or, in older records, Fn+⇧) → that style;
     ///  • a list the user took apart in the field → light;
     ///  • a take that sounded like a list, left as prose (the ≡ suggestion ignored) → light.
     public static func signal(_ r: DictationStyleRecord) -> DictationStyle? {
