@@ -131,6 +131,7 @@ final class DictationSettings: ObservableObject {
     func setRetention(_ d: Int) {
         retention = d
         save("retention_days", d == 30 ? nil : d)
+        DictationHistory.shared.keepNothing = d == 0
         DispatchQueue.global(qos: .utility).async { DictationHistory.shared.prune(days: d) }
     }
     func setKeepAudio(_ v: Bool) { keepAudio = v; save("keep_audio", v ? nil : false) }
@@ -493,8 +494,11 @@ struct DictationPane: View {
             SettingsGroup("dictation.translation") { translateRows }
             SettingsGroup("dictation.data") {
                 historyRow
-                SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio }, set: { m.setKeepAudio($0) }),
-                              detail: T("dictation.history.keep_audio.detail.days", T("dictation.history.days", m.retention)))
+                // "Don't keep": nothing to keep the audio with — the switch shows off and can't be turned on
+                SettingToggle("dictation.keep_audio", isOn: Binding(get: { m.keepAudio && m.retention > 0 }, set: { m.setKeepAudio($0) }),
+                              detail: m.retention > 0 ? T("dictation.history.keep_audio.detail.days", T("dictation.history.days", m.retention))
+                                  : T("dictation.history.keep_audio.detail.off"))
+                    .disabled(m.retention == 0)
                 modelsRow
             }
 
@@ -800,14 +804,17 @@ struct DictationPane: View {
         }
     }
 
-    /// "9 saved · deleted after 30 days", Open History… — how long and the destructive Clear History… are in its
-    /// menu, never a button at rest; keeping the audio is the row under it.
+    /// "9 saved · deleted after 30 days", Open History… — how long (or Don't keep, issue #36) and the destructive
+    /// Clear History… are in its menu, never a button at rest; keeping the audio is the row under it.
     var historyRow: some View {
-        SettingRow("dictation.history_saved", detail: T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention)),
+        SettingRow("dictation.history_saved", detail: m.retention == 0 ? T("dictation.history.summary.off")
+                       : T("dictation.history.summary", m.historyCount, T("dictation.history.days", m.retention)),
                    hosts: ["dictation.history_keep"]) {
             Menu {
                 SettingMenuPicker("dictation.history_keep", selection: Binding(get: { m.retention }, set: { m.setRetention($0) })) {
                     ForEach([7, 30, 90, 365], id: \.self) { d in Text(T("dictation.history.days", d)).tag(d) }
+                    Divider()
+                    Text(T("dictation.history.dont_keep")).tag(0)
                 }
                 Divider()
                 Button(T("dictation.history.clear"), role: .destructive) { m.askClear() }

@@ -258,7 +258,6 @@ final class VoiceInput {
         startedAt = Date()
         active = true
         watchKeys()
-        Dictation.shared.updateShiftFilter()
         Self.warmSpeechModel()
         if !NoteBubble.shared.isOpen { registerHotkey(.voiceEsc, key: kVK_Escape, mods: 0) }
         escCancels = true
@@ -513,7 +512,6 @@ final class VoiceInput {
         holding = false
         releaseEsc()
         unwatchKeys()
-        Dictation.shared.updateShiftFilter()
         let structure = structured
         emit(["event": "voice_end", "kept": kept, "duration": (dur * 100).rounded() / 100, "via": via,
               "pieces": st?.count ?? 0, "heard_speech": heardSpeech, "peak_db": Double((v.peakDB * 10).rounded() / 10),

@@ -209,6 +209,8 @@ public enum SettingsCatalog {
         var e: [SettingsEntry] = [
             // General
             row("general.login", "general.app", "settings.general.login", detail: S("settings.general.login.detail")),
+            row("general.menu_bar_icon", "general.app", "settings.general.menu_bar_icon", detail: S("settings.general.menu_bar_icon.detail")),
+            row("general.island_idle", "general.app", "settings.general.island_idle", detail: S("settings.general.island_idle.detail")),
             row("general.language", "general.app", "settings.general.language"),
             row("general.after_recording", "general.recording", "settings.general.after_recording"),
             row("general.countdown", "general.recording", SettingsText("app.menu.countdown", "Main")),

@@ -328,6 +328,8 @@
  "st.dictation.history.style": "Style: {1}",
  "st.dictation.history.style.reformatted": "reformatted {1}×",
  "st.dictation.history.summary": "{1} saved · deleted after {2}",
+ "st.dictation.history.summary.off": "Not kept · each dictation is forgotten once it’s typed",
+ "st.dictation.history.dont_keep": "Don’t keep",
  "st.dictation.history.title": "Dictation History",
  "st.dictation.history.today": "Today",
  "st.dictation.history.yesterday": "Yesterday",

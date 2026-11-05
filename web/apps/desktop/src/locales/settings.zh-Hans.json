@@ -328,6 +328,8 @@
  "st.dictation.history.style": "风格：{1}",
  "st.dictation.history.style.reformatted": "重排过 {1} 次",
  "st.dictation.history.summary": "已存 {1} 条 · {2}后删除",
+ "st.dictation.history.summary.off": "不保存 · 文字输入后即不留记录",
+ "st.dictation.history.dont_keep": "不保存",
  "st.dictation.history.title": "听写历史",
  "st.dictation.history.today": "今天",
  "st.dictation.history.yesterday": "昨天",

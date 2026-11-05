@@ -493,7 +493,8 @@ extension Dictation {
             // audio, never the text around the cursor
             let labKeep = Dictation.labKeepNext > 0
             if labKeep { Dictation.set("lab_keep_next", Dictation.labKeepNext - 1) }
-            let keep = Dictation.keepAudio || labKeep
+            // "Don't keep" (retention 0): no entry, so no recording either
+            let keep = (Dictation.keepAudio && Dictation.retentionDays > 0) || labKeep
             if !keep { try? FileManager.default.removeItem(at: take.wav) }
             var entry = DictationEntry(id: id, time: take.started, app: AppNames.name(for: bundle, running: app),
                                        bundle: bundle, duration: take.duration, raw: r.asrText, polished: r.polished, text: text,
@@ -513,7 +514,7 @@ extension Dictation {
                 entry.windows = r.windows.compactMap(DictationWindowRecord.init(json:))
             }
             if !r.voiceDropped.isEmpty { entry.voiceDropped = r.voiceDropped }
-            DictationHistory.shared.append(entry)
+            DictationHistory.shared.append(entry, always: labKeep)
             if !terms.isEmpty { DispatchQueue.global(qos: .utility).async { DictationVocabulary.shared.recordHits(terms) } }
             if result == .pasted, let f = field, let loc = at { DictationWatch.shared.start(field: f, inserted: text, location: loc) }
             // reformat-last's material: the versions, and where the text went (only while it stays untouched) — the

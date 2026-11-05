@@ -1243,7 +1243,10 @@ struct DictationEmptyView: View {
     @ObservedObject var downloads = ModelDownloads.shared
 
     var body: some View {
-        EmptyStateContent(title: T("dictation.history.empty.title"), message: T("dictation.history.empty.body", Dictation.keyInline)) {
+        // history set to "Don't keep" (issue #36): the page stays empty on purpose, and says so
+        let off = Dictation.retentionDays == 0
+        EmptyStateContent(title: T(off ? "dictation.history.empty.off_title" : "dictation.history.empty.title"),
+                          message: off ? T("dictation.history.empty.off_body") : T("dictation.history.empty.body", Dictation.keyInline)) {
             status
         }
         .onAppear { models.loadIfNeeded() }

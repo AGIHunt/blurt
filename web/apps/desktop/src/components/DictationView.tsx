@@ -558,7 +558,9 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
       {!data ? (
         <div className="blank" />
       ) : !entries.length ? (
-        <EmptyState testId="dictation-empty" title={t('dictation_page.empty.title')} body={t('dictation_page.empty.body', { key: keyName })}>
+        // history set to "Don't keep" (issue #36): empty on purpose, and it says so
+        <EmptyState testId="dictation-empty" title={t(data.retention_days === 0 ? 'dictation_page.empty.off_title' : 'dictation_page.empty.title')}
+          body={data.retention_days === 0 ? t('dictation_page.empty.off_body') : t('dictation_page.empty.body', { key: keyName })}>
           {/* the state, one shape per meaning (a filled dot: on; a ring: off; "!": needs a model), then its one way on */}
           {blocked ? (
             <div className="dict-empty-acts">
@@ -624,9 +626,10 @@ export function DictationView({ project, onShowItem, onSettings, onToast }: {
       {keepMenu && (
         <Menu at={keepMenu} onClose={() => setKeepMenu(null)}>
           <div className="dict-mhead">{t('dictation_page.keep')}</div>
-          {[...new Set([...KEEP, data?.retention_days ?? 30])].sort((a, b) => a - b).map((d) => (
+          {[...new Set([...KEEP, data?.retention_days || 30])].sort((a, b) => a - b).map((d) => (
             <MenuItem key={d} label={plural('dictation_page.days', d)} checked={(data?.retention_days ?? 30) === d} onClick={() => setKeep(d)} />
           ))}
+          <MenuItem label={t('dictation_page.dont_keep')} checked={data?.retention_days === 0} onClick={() => setKeep(0)} />
           <div className="dict-sep" />
           <MenuItem label={t('dictation_page.clear')} danger testId="dictation-clear" onClick={() => setConfirmClear(true)} />
         </Menu>

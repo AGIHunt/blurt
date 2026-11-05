@@ -151,6 +151,8 @@ extension App {
             case "close": island.setOpen(false); island.closeSwitcher()
             case "switcher": island.showSwitcher()
             case "hello": island.hello()                    // the launch hello again (Peep in the ear)
+            case "idle on", "idle off": Island.showsAtRest = arg == "idle on"   // Settings' "Show the notch when idle"
+            case "reveal": island.testReveal()              // = the pointer resting on the top edge's centre (the hot zone)
             case "transcribing", "polishing":               // dictation's working ears, held 3 s for a look
                 island.testWorkingEars(polishing: arg == "polishing", seconds: 3)
             case let a where a.hasPrefix("peep "):          // peep STATE [SECONDS] | peep off: Peep's ear state held for a look
@@ -161,7 +163,8 @@ extension App {
             default: break
             }
             let f = toCG(island.frameOnScreen)
-            emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": hanging.count])
+            emit(["event": "island", "rect": [f.minX, f.minY, f.width, f.height], "open": island.open, "cards": hanging.count,
+                  "shown": island.shownNow, "ears": island.earsNow, "toast": island.toastNow != nil])
         case "voice" where arg.hasPrefix("set "):         // voice set KEY true|false|NUMBER|-: record.voice.KEY
             let a = arg.split(separator: " ").map(String.init)
             guard a.count == 3 else { return }

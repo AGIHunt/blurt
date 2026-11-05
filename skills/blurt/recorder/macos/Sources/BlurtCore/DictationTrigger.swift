@@ -70,6 +70,15 @@ public struct DictationTrigger {
         /// The flag bit that says the key `code` is down: NX_DEVICERALTKEYMASK (right ⌥), NX_DEVICELALTKEYMASK
         /// (left ⌥), NX_SECONDARYFNMASK (Fn).
         static func downMask(_ code: Int) -> UInt64 { code == 61 ? 0x40 : code == 58 ? 0x20 : 0x80_0000 }
+        /// Whether `flags` say the key `code` went down. A real keyboard sets the device bit of the side pressed; an
+        /// event another program posts (remote-control apps — UU Remote, ToDesk, Jump Desktop — that map a remote
+        /// keyboard onto this Mac, issue #39) often carries only the device-independent ⌥ bit
+        /// (kCGEventFlagMaskAlternate): with neither side's bit set, that bit is the press.
+        static func isDown(_ code: Int, _ flags: UInt64) -> Bool {
+            if flags & downMask(code) != 0 { return true }
+            guard code == 61 || code == 58 else { return false }
+            return flags & (0x20 | 0x40) == 0 && flags & 0x8_0000 != 0
+        }
         /// Other modifiers that make a press of `code` "not alone": ⌘ ⌃ ⇧, the other ⌥ and Fn (for an ⌥) / any ⌥
         /// (for Fn).
         static func otherMods(_ code: Int) -> UInt64 {
@@ -300,7 +309,7 @@ public struct DictationTrigger {
                 // either-⌥: the other side going down or up while one is held is another key, not this one
                 if case let .down(_, _, held) = state, held != code { return otherInput(t) }
                 if state == .holding, holdingCode != code { return otherInput(t) }
-                return flags & Key.downMask(code) != 0 ? keyDown(code, flags, t) : keyUp(t)
+                return Key.isDown(code, flags) ? keyDown(code, flags, t) : keyUp(t)
             }
             return otherInput(t)
         case let .keyDown(code, t):
@@ -547,11 +556,14 @@ extension DictationTrigger {
     /// A compact script of events for tests and the app's test hook (`dictation keys …`), one token per event,
     /// times in ms: "ropt-down@0 ropt-up@120", "fn-down@0 tick@300 fn-up@900", "ropt-down@0 key:9@50 ropt-up@90",
     /// "click@40", "island@40" (a click on Blurt's island), "island-translate@40" (on its left half), "esc@500",
-    /// "shift-down@0 shift-up@10". Modifier tokens: ropt, lopt, fn, shift, rshift, cmd, rcmd, ctrl.
+    /// "shift-down@0 shift-up@10". Modifier tokens: ropt, lopt, fn, shift, rshift, cmd, rcmd, ctrl; propt / plopt are
+    /// ⌥ as a remote-control app posts it (no left / right device bit).
     public static func parse(_ script: String, holding: Set<String> = []) -> [Event] {
         var held = holding
         let bits: [String: (code: Int, mask: UInt64)] = [
             "ropt": (61, 0x80000 | 0x40), "lopt": (58, 0x80000 | 0x20), "fn": (63, 0x80_0000),
+            // ⌥ as a remote-control app posts it: the device-independent bit only, no side
+            "propt": (61, 0x80000), "plopt": (58, 0x80000),
             "shift": (56, 0x2_0000), "rshift": (60, 0x2_0000), "cmd": (55, 0x10_0000), "rcmd": (54, 0x10_0000),
             "ctrl": (59, 0x4_0000),
         ]

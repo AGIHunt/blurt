@@ -29,6 +29,11 @@
 //                         your voice) + the level;      amber), dots while working or sending, then "Sent" with the
 //                         Peep thinking while it works  ok check for 1.6 s after a double tap (dictationSent)
 //   a done moment         Peep's peep and hop           the ok check and the words ("Sent", "Saved 0:42")
+// Settings → General → "Show the notch when idle" (app.island_idle, on by default; issue #35). Off: what stands — the
+// cards' count, Peep thinking over a long organize, an agent waiting — stays out of the ears at rest, and on a screen
+// without a notch the drawn notch is gone from the menu bar. What is live still shows (recording, dictation, a voice
+// note, a done moment, a toast). The top edge's centre brings it out (the hot zone, 0.25 s), with its cards' count;
+// resting on it opens it and drops the cards, as always. On a screen with a notch, hovering the notch opens it.
 // Every ear glyph is the BlurtIcon line family at one weight; Peep is the clay character (Ears.swift).
 // Each ear's content sits against the island's outer edge (BlurtCore IslandLayout.earOrigin), never centred in its ear.
 // Open: IslandContent.swift (home, recording, voice, the project drawer / switcher, one-line toasts).
@@ -97,7 +102,24 @@ final class Island: NSObject, IslandHosting {
         var top: CGFloat = 0           // the island's top edge (0 with a notch, under the menu bar without)
         var row: CGFloat = 30          // height of the ears row
         var cx: CGFloat = 320          // centre x in the panel
+        var drawn = false              // no notch on this screen: the island draws one in the menu bar's row
     }
+
+    /// "Show the notch when idle" (app.island_idle): off hides what stands at rest (see the header).
+    static var showsAtRest: Bool = Config.shared["app.island_idle"] as? Bool ?? true {
+        didSet {
+            guard showsAtRest != oldValue else { return }
+            Config.shared.set("app.island_idle", showsAtRest ? nil : false)
+            emit(["event": "island_idle_setting", "show": showsAtRest])
+            island.refresh()
+        }
+    }
+    /// Tests: whether the island is drawn now, what each ear says, and the hot zone's reveal.
+    var shownNow: Bool { capsuleVisible }
+    var earsNow: [String] { [left.content, right.content].map { "\($0)" } }
+    func testReveal() { revealed = true; refresh() }
+    /// At rest with "Show the notch when idle" off, and not brought out: nothing that stands is shown.
+    private var quietAtRest: Bool { !Island.showsAtRest && !revealed && !open && drawer == nil }
 
     private(set) var screen: NSScreen?
     private var geo = Geo()
@@ -160,7 +182,7 @@ final class Island: NSObject, IslandHosting {
         }
         return q
     }()
-    private var toastNow: Toast? { toastQ.current?.payload }
+    var toastNow: Toast? { toastQ.current?.payload }
     /// A short done moment in the ears ("✓ Sent" after a double tap, "✓ Saved 0:42"): the source's glyph on the left
     /// (when it has one), the ok check and the words on the right — until then. No toast for a word or two.
     private var momentUntil: CFTimeInterval = 0
@@ -435,6 +457,7 @@ final class Island: NSObject, IslandHosting {
             // a screen without one (an external display): the same island, drawn as a notch in its menu bar's row — as
             // wide as the built-in screen's notch, as tall as this menu bar
             g.notch = true
+            g.drawn = true
             g.notchW = Island.builtInNotchWidth
             g.notchH = menuH
             g.top = 0
@@ -591,7 +614,9 @@ final class Island: NSObject, IslandHosting {
     var onNotch: Bool { geo.notch }
 
     private var capsuleVisible: Bool {
-        geo.notch || open || drawer != nil || toastNow != nil || revealed || earsWanted.left || earsWanted.right
+        // a drawn notch (no notch on this screen) is left out at rest when the user said so (app.island_idle)
+        (geo.notch && !(geo.drawn && !Island.showsAtRest)) || open || drawer != nil || toastNow != nil || revealed
+            || earsWanted.left || earsWanted.right
     }
 
     func refresh() {
@@ -912,6 +937,16 @@ final class Island: NSObject, IslandHosting {
                 // open island's Inbox row
                 r = .news(newsCount)
             }
+            // "Show the notch when idle" off: what stands (Peep thinking over a long organize, an agent waiting, the
+            // cards' count) waits for the pointer; what ends by itself (the hello, the hop, "+n") still shows
+            let quiet = quietAtRest
+            if quiet {
+                switch r {
+                case .thinking, .alert: r = .none
+                default: break
+                }
+            }
+            let cardCount = quiet ? 0 : self.cardCount
             // the cards' count is one thing — their stack and the number together, never the stack on one side of
             // the notch and a bare "5" on the other. Peep and its news keep the left ear (where Peep talks and
             // listens): the count sits left when nothing else is there, else on the right
@@ -1014,9 +1049,12 @@ final class Island: NSObject, IslandHosting {
         }
         let local = NSPoint(x: m.x - p.frame.minX, y: p.frame.maxY - m.y)
         let inside = islandRect(margin: geo.notch && !open ? 4 : 2).contains(local) && vis.value > 0.5
-        // capsule screens: the hot zone brings the capsule out
-        if !geo.notch, !capsuleVisible || (revealed && !inside && !open) {
-            let hot = abs(local.x - geo.cx) < 160 && m.y >= (screen?.frame.maxY ?? 0) - 8
+        // capsule screens, and a notch hidden at rest (app.island_idle): the hot zone brings it out
+        if !geo.notch || !Island.showsAtRest, !capsuleVisible || quietAtRest || (revealed && !inside && !open) {
+            // a notch hidden at rest: only over where it comes out (wider, the pointer would sit beside the bare notch
+            // it brought out, which then went again after 0.4 s and came back: a flicker)
+            let half: CGFloat = geo.notch ? geo.notchW / 2 : 160
+            let hot = abs(local.x - geo.cx) < half && m.y >= (screen?.frame.maxY ?? 0) - 8
             if hot && !busyElsewhere { hotSince = hotSince ?? now } else { hotSince = nil }
             if let h = hotSince, now - h >= 0.25, !revealed { revealed = true; hotSince = nil; refresh() }
         }

@@ -232,6 +232,10 @@
 "settings.general.section.cards" = "卡片";
 "settings.general.section.developer" = "高级";
 "settings.general.login.detail" = "听写和快捷键需在口喷鸡运行时使用。";
+"settings.general.island_idle.detail" = "关闭后，只在录屏、听写或录语音便签时出现。鼠标移到屏幕顶部中间，即可展开它和卡片。";
+"settings.general.island_idle" = "空闲时显示刘海";
+"settings.general.menu_bar_icon.detail" = "隐藏后，从「聚焦搜索」或「访达」再次打开口喷鸡，即可打开主窗口和设置。";
+"settings.general.menu_bar_icon" = "在菜单栏显示";
 "settings.general.voice_end_on_pause.detail" = "关闭时，语音备注录到再次按下快捷键或点按「完成」为止；打开后，静音 1.5 秒自动结束。";
 "settings.general.live_text.detail" = "已识别的文字显示在刘海下方，不会录入录屏。";
 "settings.general.smart_paste.detail" = "卡片拖入聊天 App 时先放入图片，再粘贴备注。需要「辅助功能」权限。";
@@ -254,6 +258,8 @@
 "settings.kw.general.capture_into" = "项目, 文件夹, 待处理, 归到哪里, 未归类, 当前项目";
 "settings.kw.general.projects" = "文件夹, 仓库, 添加项目, 移除项目, 未归类";
 "settings.kw.general.login" = "开机启动, 自动启动, 登录项, 开机";
+"settings.kw.general.island_idle" = "刘海, 灵动岛, 隐藏, 空闲, 菜单栏, 外接显示器";
+"settings.kw.general.menu_bar_icon" = "菜单栏, 状态栏, 图标, 隐藏";
 "settings.kw.general.language" = "英文, 中文, 界面语言, 翻译";
 "settings.kw.general.after_recording" = "整理, 处理, 事项, 录完";
 "settings.kw.general.countdown" = "倒计时, 延迟, 3 秒";
@@ -282,7 +288,7 @@
 "settings.kw.dictation.word_list" = "词库, 词典, 自定义词, 名字, 术语, 热词";
 "settings.kw.dictation.context" = "上下文, 光标, 周围的文字";
 "settings.kw.dictation.learn" = "学习, 纠正, 改错";
-"settings.kw.dictation.history_keep" = "历史, 保留, 天数";
+"settings.kw.dictation.history_keep" = "历史, 保留, 天数, 不保存, 关闭, 隐私, 不留记录";
 "settings.kw.dictation.keep_audio" = "音频, 录音, 保留音频";
 "settings.kw.dictation.history_saved" = "历史, 清除历史, 删除历史";
 "settings.kw.dictation.sounds" = "声音, 提示音, 音效";

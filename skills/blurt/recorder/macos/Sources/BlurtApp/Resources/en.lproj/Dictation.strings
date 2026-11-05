@@ -120,6 +120,8 @@
 "dictation.history.clear_search" = "Clear Search";
 "dictation.history.empty.title" = "No dictations yet";
 "dictation.history.empty.body" = "Press %@ in any app to start and again to stop. The text is typed at the cursor and saved here.";
+"dictation.history.empty.off_title" = "History is off";
+"dictation.history.empty.off_body" = "Dictations are typed and not saved. To keep them, choose how long in Settings → Dictation.";
 "dictation.history.no_match" = "No dictations match “%@”";
 "dictation.history.today" = "Today";
 "dictation.history.yesterday" = "Yesterday";
@@ -596,6 +598,9 @@
 "dictation.text.section" = "Style and words";
 "dictation.vocab.summary.detail" = "Spelled the way you write them.";
 "dictation.history.summary" = "%1$ld saved · deleted after %2$@";
+"dictation.history.dont_keep" = "Don’t keep";
+"dictation.history.summary.off" = "Not kept · each dictation is forgotten once it’s typed";
+"dictation.history.keep_audio.detail.off" = "History is off, so nothing is kept. A take that couldn’t be recognized keeps its recording for a day, for Retry.";
 "dictation.models.detail" = "The speech and polish models dictation runs on.";
 "dictation.models.missing" = "Not downloaded · %@";
 "dictation.models.download" = "Download";
