@@ -139,6 +139,7 @@ final class Dictation {
         let first = queue.ids.first { $0 != queue.delivering }.flatMap { takes[$0]?.stage }
         phase = listening ? .listening : first ?? .idle
         trigger.pending = !queue.isEmpty || inserting
+        syncEsc()
     }
     /// pieces transcribed and polished while the user talks (DictationStream)
     private var stream: DictationStream?
@@ -165,6 +166,8 @@ final class Dictation {
     private var frontKey = ""
     private var holdTimer: Timer?
     private var escRegistered = false
+    /// the take is over: Esc goes back to the other apps once this says the press is over (DictationEscHold)
+    private var escRelease: Timer?
     var polishServer: Process?
     /// `polish.py models` said a model is installed and selected (refreshed at launch and by Settings)
     private(set) var polishModel: String?
@@ -254,13 +257,15 @@ final class Dictation {
     /// the Mac's own mic for dictation: unset = automatic (when the default input is Bluetooth), true / false
     static var builtInMicSetting: Bool? { settings["builtin_mic"] as? Bool }
 
-    /// The key that cancels a take (record.dictation.cancel_key): Esc, or ⌃Esc / ⇧Esc for people whose Esc means
-    /// something in the app they dictate into (Claude Code: Esc stops the running turn) — a mistimed Esc, after the
-    /// take ended, then can't reach it as a cancel the user meant for Blurt. Plain Esc is any other key then.
+    /// The key that cancels a take (record.dictation.cancel_key): Esc, which the app in front then never sees while a
+    /// take is under way (syncEsc), or ⌃Esc / ⇧Esc for people who want plain Esc to reach the app they dictate into at
+    /// all times. Plain Esc is any other key then.
     enum CancelKey: String, CaseIterable {
         case esc, controlEsc = "ctrl_esc", shiftEsc = "shift_esc"
         /// Carbon modifiers for the system hotkey
         var carbonMods: Int { switch self { case .esc: return 0; case .controlEsc: return controlKey; case .shiftEsc: return shiftKey } }
+        /// the same as CGEvent flag bits (the Fn filter, DictationEscFilter.needs)
+        var flagBits: UInt64 { switch self { case .esc: return 0; case .controlEsc: return 0x4_0000; case .shiftEsc: return 0x2_0000 } }
         func matches(_ f: NSEvent.ModifierFlags) -> Bool {
             switch self { case .esc: return true; case .controlEsc: return f.contains(.control); case .shiftEsc: return f.contains(.shift) }
         }
@@ -323,6 +328,7 @@ final class Dictation {
     func install() {
         keys.onEvent = { [weak self] e in self?.handle(e) }
         keys.onChange = { [weak self] in self?.listenerChanged() }
+        escHoldersChanged = { [weak self] in self?.syncEsc() }
         DictationSound.preload()
         pruneHistory("launch")
         watchRetention()
@@ -1216,13 +1222,6 @@ final class Dictation {
         updatePhase()
         captureContext()
         readCaret()
-        // Esc also as a system hotkey, whatever the listener (escFromHotkey) — never in a test build (a scripted take
-        // would take the real user's Esc in every app; scripts reach Esc through `dictation keys`), unless
-        // BLURT_TEST_REAL_HOTKEYS=1
-        if !escRegistered, !DictationInsert.testMode || ProcessInfo.processInfo.environment["BLURT_TEST_REAL_HOTKEYS"] == "1" {
-            escRegistered = registerHotkey(.dictationEsc, key: kVK_Escape, mods: Dictation.cancelKey.carbonMods) == noErr
-            if !escRegistered { emit(["event": "dictation_esc_hotkey_failed"]) }
-        }
         if IsSecureEventInputEnabled() { emit(["event": "dictation_secure_input", "id": entryID, "listener": keys.installed]) }
         // what the island said about the last take (its Undo, the list chip, "nothing heard", its tip, the 5-minute
         // limit, "still recognizing") is over — not a failed take's Retry or "Cancelled · Undo" (their own keys: BlurtCore
@@ -1336,10 +1335,11 @@ final class Dictation {
         }
     }
 
-    /// Esc as a system hotkey (Carbon), held while a dictation listens or is on its way — beside the key listener, not
-    /// only without it: with secure input on somewhere (Terminal's Secure Keyboard Entry, a password manager, a password
-    /// field) the listener still hears Fn (a modifier) but no other key, so Esc did nothing on some Macs (v1.0.2
-    /// report) — a hotkey still fires then. The same press reaching both counts once (`escTwin`).
+    /// Esc as a system hotkey (Carbon), held while a dictation is under way — beside the key listener, not only without
+    /// it: with secure input on somewhere (Terminal's Secure Keyboard Entry, a password manager, a password field) the
+    /// listener still hears Fn (a modifier) but no other key, so Esc did nothing on some Macs (v1.0.2 report) — a hotkey
+    /// still fires then. It also keeps Esc from the app in front (Claude Code: Esc stops the running turn). The same
+    /// press reaching both counts once (`escTwin`).
     static let escTwin: CFTimeInterval = 0.4
     private var escAt: CFTimeInterval = 0
 
@@ -1351,8 +1351,49 @@ final class Dictation {
         cancel()
     }
 
+    /// Esc is the take's while it listens and while takes are on their way (DictationEscHold.isBlurts): it cancels them
+    /// and the app in front never sees it. Called whenever that may have changed (`updatePhase`, `escHoldersChanged`).
+    func syncEsc() {
+        let ours = DictationEscHold.isBlurts(listening: listening, onItsWay: trigger.pending, otherHolder: !escHolders.isEmpty)
+        keys.keepEsc(ours, needs: Dictation.cancelKey.flagBits)
+        if ours { holdEsc() } else if !escHolders.isEmpty { dropEsc() } else { releaseEsc() }
+    }
+
+    /// The hotkey — never in a test build (a scripted take would take the real user's Esc in every app; scripts reach
+    /// Esc through `dictation keys`), unless BLURT_TEST_REAL_HOTKEYS=1. A hotkey matches its exact modifiers, so with an
+    /// ⌥ as the dictation key, held in push-to-talk, ⌥Esc needs its own. Another of Blurt's Esc keys holds it (a take
+    /// that listens wins the filter, not the hotkey): tried again when that one lets go.
+    private func holdEsc() {
+        escRelease?.invalidate()
+        escRelease = nil
+        guard !escRegistered, escHolders.isEmpty,
+              !DictationInsert.testMode || ProcessInfo.processInfo.environment["BLURT_TEST_REAL_HOTKEYS"] == "1" else { return }
+        let cancelKey = Dictation.cancelKey
+        escRegistered = registerHotkey(.dictationEsc, key: kVK_Escape, mods: cancelKey.carbonMods) == noErr
+        if !escRegistered { emit(["event": "dictation_esc_hotkey_failed"]) }
+        if cancelKey == .esc, trigger.key != .fn { registerHotkey(.dictationEscOption, key: kVK_Escape, mods: optionKey) }
+    }
+
+    /// Nothing is under way: Esc goes back to the other apps, not before the press that ended it is over. Dropped at once
+    /// the press or its release would reach the app in front after all (BlurtCore DictationEscHold has the numbers).
     private func releaseEsc() {
-        if escRegistered { unregisterHotkey(.dictationEsc); escRegistered = false }
+        guard escRegistered, escRelease == nil else { return }
+        var hold = DictationEscHold(since: CACurrentMediaTime())
+        let t = Timer(timeInterval: 0.02, repeats: true) { [weak self] _ in
+            guard hold.canRelease(now: CACurrentMediaTime(), keyDown: CGEventSource.keyState(.hidSystemState, key: CGKeyCode(kVK_Escape))) else { return }
+            self?.dropEsc()
+        }
+        RunLoop.main.add(t, forMode: .common)       // a menu open at that moment must not keep Esc from every app
+        escRelease = t
+    }
+
+    private func dropEsc() {
+        escRelease?.invalidate()
+        escRelease = nil
+        guard escRegistered else { return }
+        unregisterHotkey(.dictationEsc)
+        unregisterHotkey(.dictationEscOption)
+        escRegistered = false
     }
 
     private func discard(quietly: Bool) {
@@ -1362,7 +1403,6 @@ final class Dictation {
         stream = nil
         micLive = false
         precaptured = false
-        releaseEsc()
         listening = false
         LiveTranscript.shared.end(session: liveSession)
         updatePhase()
@@ -1441,7 +1481,6 @@ final class Dictation {
         stream = nil
         micLive = false
         listening = false
-        releaseEsc()
         guard heardSpeech else {
             s.cancel()
             try? FileManager.default.removeItem(at: url)

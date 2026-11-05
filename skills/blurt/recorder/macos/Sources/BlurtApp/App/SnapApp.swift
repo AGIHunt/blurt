@@ -582,7 +582,7 @@ extension App {
             VoiceInput.shared.pressed()
             Dictation.shared.nudge("voice_key")     // reaching for the voice: if dictation can't hear its key, say so (≈ daily)
         case .voiceEsc: if VoiceInput.shared.escCancels { VoiceInput.shared.cancel() }     // (held only while it cancels)
-        case .dictationEsc: Dictation.shared.escFromHotkey()
+        case .dictationEsc, .dictationEscOption: Dictation.shared.escFromHotkey()
         case .project: if resident { island.toggleSwitcher() }
         // ⌥H: the Cards panel with the keyboard — Hanging, or Used when nothing hangs; open already, it closes
         case .cards: if resident { CardsOverview.shared.toggle(via: "hotkey") }
