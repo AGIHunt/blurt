@@ -755,4 +755,4 @@
 "dictation.translate.toast.on.into" = "Translating into %@ · ⌘ to turn off";
 "dictation.settings.cancel_key" = "Cancel dictation";
 "dictation.settings.cancel_key.default" = "%@ (default)";
-"dictation.settings.cancel_key.detail" = "In terminals like Claude Code, Esc stops the running task. With ⌃Esc or ⇧Esc, Esc alone never cancels dictation.";
+"dictation.settings.cancel_key.detail" = "While a dictation is under way, Esc only cancels it and doesn't reach the app in front. With ⌃Esc or ⇧Esc, Esc alone always goes to the app and never cancels.";
