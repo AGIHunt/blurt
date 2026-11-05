@@ -13,7 +13,7 @@ import ServiceManagement
 enum HK: UInt32 {
     case pause = 1, stop = 3, toggleRec = 4, menu = 5, pen = 6, penEsc = 7, snap = 8, pickEnter = 10, pickEsc = 11,
          pickFull = 12, voice = 13, project = 14, voiceEsc = 15, cards = 16, cardsEsc = 17, dictationEsc = 18, reformat = 19, pickLast = 20, text = 21, translateText = 22,
-         translateEsc = 23, overviewEsc = 24
+         translateEsc = 23, overviewEsc = 24, dictationEscOption = 25
 }
 var hotkeyHandler: ((HK) -> Void)?
 
@@ -27,10 +27,22 @@ func installHotkeyHandler() {
     c.onRelease = { a in if a == .voice { VoiceInput.shared.released() } }
 }
 
-@discardableResult
-func registerHotkey(_ k: HK, key: Int, mods: Int) -> OSStatus { HotkeyCenter.shared.registerRaw(k.rawValue, code: key, mods: mods) }
+/// Blurt's other keys that hold Esc right now (the picker, the pen, a voice note, a card, the overview). A dictation on
+/// its way gives Esc up to them at once: they would be refused otherwise, and their Esc would stop the take instead.
+private(set) var escHolders = Set<HK>()
+/// Dictation.syncEsc: called before the new holder registers, after one has let go.
+var escHoldersChanged: (() -> Void)?
 
-func unregisterHotkey(_ k: HK) { HotkeyCenter.shared.unregisterRaw(k.rawValue) }
+@discardableResult
+func registerHotkey(_ k: HK, key: Int, mods: Int) -> OSStatus {
+    if key == kVK_Escape, k != .dictationEsc, k != .dictationEscOption, escHolders.insert(k).inserted { escHoldersChanged?() }
+    return HotkeyCenter.shared.registerRaw(k.rawValue, code: key, mods: mods)
+}
+
+func unregisterHotkey(_ k: HK) {
+    HotkeyCenter.shared.unregisterRaw(k.rawValue)
+    if escHolders.remove(k) != nil { escHoldersChanged?() }
+}
 
 var signalSources: [DispatchSourceSignal] = []
 
