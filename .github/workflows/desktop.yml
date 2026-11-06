@@ -127,6 +127,8 @@ jobs:
         run: pnpm tauri build --bundles ${{ matrix.bundles }}
 
       - name: Size report
+        env:
+          PYTHONIOENCODING: utf-8      # the report prints ≤ / ✓; Windows' console code page can't
         run: |
           python apps/desktop/scripts/size_report.py \
             --json size-report-${{ matrix.name }}.json --md size-report-${{ matrix.name }}.md --enforce \
