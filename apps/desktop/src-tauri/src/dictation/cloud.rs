@@ -26,8 +26,40 @@ fn preset(id: &str) -> Option<(&'static str, &'static str)> {
         )),
         "openai" => Some(("https://api.openai.com/v1", "openai")),
         "anthropic" => Some(("https://api.anthropic.com", "anthropic")),
+        // the user's own (a Custom Model's new service): its base_url is the address; "custom-openai" is the default
+        "custom-anthropic" => Some(("", "anthropic")),
         _ => None,
     }
+}
+
+/// A model id as services write them: letters, digits and . _ - : / @ + (OpenRouter's "vendor/model"), up to 100
+/// (the Mac's CloudCustom.validModelID).
+pub fn valid_model_id(s: &str) -> bool {
+    let mut c = s.chars();
+    c.next().is_some_and(|f| f.is_ascii_alphanumeric())
+        && s.len() <= 100
+        && c.all(|x| x.is_ascii_alphanumeric() || "._:/@+-".contains(x))
+}
+
+/// An address a key may go to: https, or http only to this computer (a local server) — CloudCustom.validAddress.
+pub fn valid_address(s: &str) -> bool {
+    let s = s.trim();
+    let (https, rest) = match (s.strip_prefix("https://"), s.strip_prefix("http://")) {
+        (Some(r), _) => (true, r),
+        (_, Some(r)) => (false, r),
+        _ => return false,
+    };
+    let auth = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match auth.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => auth.split(':').next().unwrap_or(""),
+    };
+    !host.is_empty() && (https || ["localhost", "127.0.0.1", "::1"].contains(&host))
+}
+
+/// A free id for the user's own service: "custom-1", "custom-2"… (the Mac's CloudService.newID).
+pub fn new_custom_id(taken: &[&str]) -> String {
+    (1..).map(|n| format!("custom-{n}")).find(|id| !taken.contains(&id.as_str())).unwrap()
 }
 
 pub fn measured_default(preset: &str, job: &str) -> Option<&'static str> {
@@ -87,17 +119,20 @@ pub fn route(job: &str) -> Option<(Value, String)> {
 /// The request's `cloud` object for polish.py (polish_cloud.settings), with the key; None: the job stays local.
 pub fn payload(job: &str) -> Option<Value> {
     let (svc, model) = route(job)?;
-    let id = svc["id"].as_str()?;
+    let k = key(svc["id"].as_str()?)?;
+    Some(request(&svc, &model, &k))
+}
+
+/// polish_cloud.settings' `cloud` for a service (record.cloud's entry) and a model, with the key.
+pub fn request(svc: &Value, model: &str, key: &str) -> Value {
     let p = svc["preset"].as_str().unwrap_or("custom");
     let (base, proto) = preset(p).unwrap_or(("", "openai"));
     let base_url = svc["base_url"]
         .as_str()
         .filter(|b| !b.trim().is_empty())
         .unwrap_or(base);
-    Some(
-        json!({"provider": p, "service": id, "base_url": base_url, "model": model, "protocol": proto,
-                "key": key(id)?, "translate_model": model, "vision_model": model}),
-    )
+    json!({"provider": p, "service": svc["id"], "base_url": base_url, "model": model, "protocol": proto,
+            "key": key, "translate_model": model, "vision_model": model})
 }
 
 /// The cloud speech keys for the speech server (transcribe.py reads them from its environment, as the Mac's app sets
@@ -152,11 +187,22 @@ pub fn connect(
     base_url: Option<&str>,
     name: Option<&str>,
 ) -> Result<String, String> {
+    connect_as(preset_id, preset_id, key_value, base_url, name)
+}
+
+/// connect() under an id of its own: a curated preset's id is the preset, the user's own are "custom-N".
+pub fn connect_as(
+    id: &str,
+    preset_id: &str,
+    key_value: &str,
+    base_url: Option<&str>,
+    name: Option<&str>,
+) -> Result<String, String> {
     if key_value.trim().is_empty() {
         return Err("empty key".into());
     }
     let mut s = setup();
-    let id = preset_id.to_string();
+    let id = id.to_string();
     let mut services: Vec<Value> = s["services"].as_array().cloned().unwrap_or_default();
     services.retain(|x| x["id"] != json!(id));
     let mut svc = json!({"id": id, "preset": preset_id});
@@ -326,5 +372,36 @@ mod tests {
         assert_eq!(super::volc_split(" 123:abc:def "), Some(("123".into(), "abc:def".into())));
         assert_eq!(super::volc_split("nopair"), None);
         assert_eq!(super::volc_split(":x"), None);
+    }
+
+    #[test]
+    fn a_custom_models_address_and_id() {
+        use super::{new_custom_id, valid_address, valid_model_id};
+        assert!(valid_address("https://ollama.com/v1"));
+        assert!(valid_address(" http://127.0.0.1:3425/v1 "));
+        assert!(valid_address("http://localhost:11434/v1"));
+        assert!(valid_address("http://[::1]:8080/v1"));
+        // a key never goes to another computer in the clear
+        assert!(!valid_address("http://192.168.1.5:8080/v1"));
+        assert!(!valid_address("http://localhost.example.com/v1"));
+        assert!(!valid_address("ftp://example.com"));
+        assert!(!valid_address("https://"));
+        assert!(valid_model_id("deepseek-v4.1-flash:1017"));
+        assert!(valid_model_id("ollama-cloud/deepseek-v4.1-flash:1017"));
+        assert!(!valid_model_id(""));
+        assert!(!valid_model_id("-x"));
+        assert!(!valid_model_id("a b"));
+        assert!(!valid_model_id(&"m".repeat(101)));
+        assert_eq!(new_custom_id(&[]), "custom-1");
+        assert_eq!(new_custom_id(&["custom-1", "deepseek", "custom-3"]), "custom-2");
+    }
+
+    #[test]
+    fn a_custom_services_request() {
+        let svc = serde_json::json!({"id": "custom-1", "preset": "custom-anthropic", "base_url": "https://example.com"});
+        let r = super::request(&svc, "m-1", "k");
+        assert_eq!((r["protocol"].as_str(), r["base_url"].as_str(), r["service"].as_str()), (Some("anthropic"), Some("https://example.com"), Some("custom-1")));
+        let svc = serde_json::json!({"id": "custom-2", "preset": "custom-openai", "base_url": "http://127.0.0.1:3425/v1"});
+        assert_eq!(super::request(&svc, "m", "k")["protocol"], "openai");
     }
 }

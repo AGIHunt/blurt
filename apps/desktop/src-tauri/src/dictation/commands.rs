@@ -298,6 +298,11 @@ pub(crate) fn cloud_check(app: &AppHandle, preset: &str, key: &str, base_url: Op
     if let Some(b) = base_url.filter(|b| !b.trim().is_empty()) {
         c["base_url"] = json!(b);
     }
+    polish_check(app, c, None)
+}
+
+/// polish_cloud.check on the polish server: one tiny request, or with a job the job itself (a Custom Model's test).
+fn polish_check(app: &AppHandle, c: Value, job: Option<&str>) -> R<Value> {
     let runner = app.state::<AppState>().runner();
     server::ensure(&runner, server::POLISH, "polish.py", &[])?;
     if !server::wait_ready(server::POLISH, Duration::from_secs(30)) {
@@ -305,11 +310,73 @@ pub(crate) fn cloud_check(app: &AppHandle, preset: &str, key: &str, base_url: Op
     }
     server::call(
         server::POLISH,
-        &json!({"cmd": "cloud_check", "cloud": c}),
-        Duration::from_secs(20),
+        &json!({"cmd": "cloud_check", "cloud": c, "job": job}),
+        Duration::from_secs(if job.is_some() { 45 } else { 20 }),
         None,
     )
     .ok_or_else(|| "no answer".into())
+}
+
+/// Advanced → Custom Model… (the Mac's CustomModelModel.save): a model Blurt didn't measure, by its id, for one job — on
+/// a connected service (`service`) or the user's own OpenAI- / Anthropic-compatible one (`preset`, `base_url`, `key`,
+/// `name`). The job itself is tried first; nothing is saved when it fails ({"ok": false, "code"}).
+#[tauri::command(async)]
+#[allow(clippy::too_many_arguments)]
+pub fn cloud_custom(
+    app: AppHandle,
+    job: String,
+    model: String,
+    service: Option<String>,
+    preset: Option<String>,
+    base_url: Option<String>,
+    key: Option<String>,
+    name: Option<String>,
+) -> R<Value> {
+    if !cloud::JOBS.contains(&job.as_str()) {
+        return Err(format!("unknown job {job}"));
+    }
+    let model = model.trim();
+    if !cloud::valid_model_id(model) {
+        return Ok(json!({"ok": false, "code": "model_id"}));
+    }
+    let services = cloud::setup()["services"].as_array().cloned().unwrap_or_default();
+    let (svc, typed) = match service.filter(|s| !s.is_empty()) {
+        Some(id) => (services.into_iter().find(|s| s["id"] == json!(id)).ok_or("no such service")?, None),
+        None => {
+            let p = preset.unwrap_or_else(|| "custom-openai".into());
+            if p != "custom-openai" && p != "custom-anthropic" {
+                return Err(format!("unknown preset {p}"));
+            }
+            let b = base_url.unwrap_or_default();
+            if !cloud::valid_address(&b) {
+                return Ok(json!({"ok": false, "code": "address"}));
+            }
+            let k = key.unwrap_or_default().trim().to_string();
+            if k.is_empty() {
+                return Ok(json!({"ok": false, "code": "no_key"}));
+            }
+            if k.chars().any(|c| c.is_whitespace() || c.is_control()) {
+                return Ok(json!({"ok": false, "code": "key"}));
+            }
+            let taken: Vec<&str> = services.iter().filter_map(|s| s["id"].as_str()).collect();
+            let svc = json!({"id": cloud::new_custom_id(&taken), "preset": p, "base_url": b.trim(),
+                             "name": name.unwrap_or_default().trim()});
+            (svc, Some(k))
+        }
+    };
+    let id = svc["id"].as_str().unwrap_or("").to_string();
+    let Some(k) = typed.clone().or_else(|| cloud::key(&id)) else {
+        return Ok(json!({"ok": false, "code": "no_key"}));
+    };
+    let test = polish_check(&app, cloud::request(&svc, model, &k), Some(&job))?;
+    if test["ok"] != json!(true) {
+        return Ok(test);
+    }
+    if typed.is_some() {
+        cloud::connect_as(&id, svc["preset"].as_str().unwrap_or(""), &k, svc["base_url"].as_str(), svc["name"].as_str())?;
+    }
+    let summary = crate::housekeeping::cloud_job_set(job, Some(id), Some(model.to_string()))?;
+    Ok(json!({"ok": true, "ms": test["ms"], "summary": summary}))
 }
 
 /// The dictation key seen by Blurt's own window (App.tsx): "AltRight" / "AltLeft" (engine.rs `forward_key`).

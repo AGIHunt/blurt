@@ -480,6 +480,16 @@ const volcOffered = () => {
 };
 /** a preset's string key: "volcengine-speech" → models.preset.volcengine_speech */
 const presetKey = (p: string) => p.replace(/-/g, '_');
+const hostOf = (u?: string) => {
+  try {
+    return u ? new URL(u).host : '';
+  } catch {
+    return '';
+  }
+};
+/** what a service is called: a curated one by its preset, the user's own (a Custom Model's) by its name, else its host */
+const serviceName = (s: CloudSummary['services'][number]) =>
+  (s.preset.startsWith('custom-') && (s.name || hostOf(s.base_url))) || S(`models.preset.${presetKey(s.preset)}`);
 
 /** The Add Cloud Model sheet as the setup assistant opens it (the Mac's welcome row opens the same sheet as
  *  Settings → Models): the curated services not connected yet, or all of them. */
@@ -499,6 +509,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
   const win = status.platform === 'win';
   const [sum, setSum] = useCloud();
   const [adding, setAdding] = useState(false);
+  const [custom, setCustom] = useState<TextJob | null>(null);
   const [agentSheet, setAgentSheet] = useState(false);
   // the agents that can run a setup session here: installed, with an interactive session (AgentSetupAgents)
   const [setupAgents, setSetupAgents] = useState<{ id: string; name: string }[]>([]);
@@ -561,11 +572,13 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
     // a model picked elsewhere that the measured list doesn't have (an agent's setup, an older Blurt): kept, by name
     const v = jobValue(job), r = sum?.routes?.[job];
     if (v !== 'auto' && r && !opts.some(([x]) => x === v)) opts.push([v, modelName(sum, curated, job, r)]);
-    // the closed pop-up says only Automatic or the model's name: what runs now is the row's detail (nothing cut off)
-    return [['auto', S('win.models.auto')], ...opts];
+    // the closed pop-up says only Automatic or the model's name: what runs now is the row's detail (nothing cut off);
+    // any other model — another service, the user's own server — is Custom Model…, last
+    return [['auto', S('win.models.auto')], ...opts, ['custom', S('models.job.custom')]];
   };
   const setJob = async (job: TextJob, v: string) => {
     if (v.startsWith('add:')) return setAdding(true);
+    if (v === 'custom') return setCustom(job);
     const [service, model] = v === 'auto' ? [null, null] : v.split(':');
     setSum(await api.cloudJobSet(job, service, model));
     loadJobs();
@@ -576,9 +589,10 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
     const none = job === 'vision' ? S('models.job.vision.detail') : S('models.job.none');
     // every row reads the same: what the feature does, then what it uses now (the Mac's "Models in use")
     const does = S(job === 'polish' ? 'models.job.polish.does' : job === 'translate' ? 'models.job.translate.detail' : 'models.job.vision.detail');
+    const choices = jobChoices(job);
     return (
       <Row key={job} id={`speech.${job}`} icon={icon} detail={r ? S('speech.auto.using', does, modelName(sum, curated, job, r)) : none}>
-        <Popup label={S(job === 'polish' ? 'speech.purpose.polish' : `models.job.${job}`)} value={jobValue(job)} dividers={[1]} choices={jobChoices(job)} onChange={(v) => setJob(job, v)} />
+        <Popup label={S(job === 'polish' ? 'speech.purpose.polish' : `models.job.${job}`)} value={jobValue(job)} dividers={[1, choices.length - 1]} choices={choices} onChange={(v) => setJob(job, v)} />
       </Row>
     );
   };
@@ -599,7 +613,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
 
       <Group id="speech.services" footer={S('models.sheet.note')}>
         {sum?.services.map((s) => (
-          <Line key={s.id} icon="cloud" title={S(`models.preset.${presetKey(s.preset)}`)} badge={PRESETS.find((p) => p.id === s.preset)?.recommended ? S('models.recommended') : undefined}
+          <Line key={s.id} icon="cloud" title={serviceName(s)} badge={PRESETS.find((p) => p.id === s.preset)?.recommended ? S('models.recommended') : undefined}
             detail={s.has_key ? S('models.service.connected') : S('models.service.no_key')} warn={!s.has_key} flash={`speech_service_${s.id}`}>
             <button onClick={async () => setSum(await api.cloudDisconnect(s.id))}>{S('win.cloud.remove')}</button>
           </Line>
@@ -660,6 +674,7 @@ export function ModelsPane({ status, onToast }: { status: AppStatus; onToast: (m
         </Group>
       )}
       {adding && <AddCloudSheet onClose={() => setAdding(false)} onDone={(s) => (setSum(s), setAdding(false))} presets={left.length ? left : PRESETS.filter((p) => !p.pair || volcOffered())} />}
+      {custom && <CustomModelSheet job={custom} sum={sum} onClose={() => setCustom(null)} onDone={(s) => (setSum(s), setCustom(null), loadJobs())} />}
       {agentSheet && <AgentSetupSheet agents={setupAgents} onClose={() => setAgentSheet(false)} onToast={onToast} />}
     </Page>
   );
@@ -736,6 +751,87 @@ function AddCloudSheet({ presets, onClose, onDone }: { presets: readonly (typeof
           <div className="st-ctl" style={{ marginTop: 16 }}>
             <button onClick={onClose}>{S('capture.keys.swap.cancel')}</button>
             <button className="primary" disabled={!ready || busy} onClick={connect}>{busy ? S('win.cloud.testing') : S('models.sheet.connect')}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** a Custom Model's failure (dictation/commands.rs cloud_custom, polish_cloud.check's codes) → what the sheet says */
+const CUSTOM_FAIL: Record<string, string> = {
+  address: 'models.check.address', model_id: 'models.check.model_id', no_key: 'models.check.no_key', key: 'models.key.characters',
+  auth: 'models.check.auth', network: 'models.check.network', timeout: 'models.check.network', rate_limited: 'models.check.rate',
+  quota: 'models.check.rate', model: 'models.check.model', vision: 'models.check.vision', empty: 'models.check.empty',
+};
+
+/** Custom Model… in a job's pop-up (the Mac's CustomModelSheet): any model for the job by its id — on a connected
+ *  service (its key), or the user's own OpenAI- / Anthropic-compatible one (its name, base URL and key). Save tries the
+ *  job itself first (a sentence, or a small picture for Copy Text from Screen) and keeps nothing that fails. */
+function CustomModelSheet({ job, sum, onClose, onDone }: { job: TextJob; sum: CloudSummary | null; onClose: () => void; onDone: (s: CloudSummary) => void }) {
+  const connected = (sum?.services ?? []).filter((s) => s.has_key && s.preset !== 'volcengine-speech');
+  const on = sum?.routes?.[job]?.service;
+  const [choice, setChoice] = useState(on && connected.some((s) => s.id === on) ? `svc:${on}` : connected[0] ? `svc:${connected[0].id}` : 'new:custom-openai');
+  const [name, setName] = useState('');
+  const [baseUrl, setBaseUrl] = useState('');
+  const [key, setKey] = useState('');
+  const [model, setModel] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const isNew = choice.startsWith('new:');
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => (set(e.target.value), setMsg(null));
+  const ready = !!model.trim() && (!isNew || (!!baseUrl.trim() && !!key.trim()));
+  const save = async () => {
+    if (isNew && /\s/.test(key.trim())) return setMsg(S('models.key.spaces'));
+    setBusy(true);
+    setMsg(null);
+    try {
+      const m = model.trim();
+      const r = await api.cloudCustom(isNew
+        ? { job, model: m, preset: choice.slice(4), baseUrl: baseUrl.trim(), key: key.trim(), name: name.trim() }
+        : { job, model: m, service: choice.slice(4) });
+      if (r.ok) return onDone(r.summary ?? (await api.cloudSummary()));
+      setMsg(S(CUSTOM_FAIL[r.code ?? ''] ?? 'models.check.other'));
+    } catch (e) {
+      setMsg(String(e));
+    }
+    setBusy(false);
+  };
+  return (
+    <div className="overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="sheet st-sheet cloud-sheet" role="dialog" aria-label={S('models.custom.title')} data-testid="custom-model-sheet">
+        <div className="st-col" style={{ padding: '20px 24px' }}>
+          <h1 className="st-title">{S('models.custom.title')}</h1>
+          <p className="st-foot cs-lead">{S('models.custom.note')}</p>
+          <div className="cs-form">
+            <label className="cs-l">{S('models.sheet.service')}</label>
+            <Popup label={S('models.sheet.service')} value={choice} dividers={connected.length ? [connected.length] : []}
+              choices={[...connected.map((s) => [`svc:${s.id}`, serviceName(s)] as [string, string]),
+                ...['custom-openai', 'custom-anthropic'].map((p) => [`new:${p}`, S(`models.preset.${presetKey(p)}`)] as [string, string])]}
+              onChange={(v) => (setChoice(v), setMsg(null))} />
+            {isNew && (
+              <>
+                <label className="cs-l" htmlFor="cm-name">{S('models.sheet.name')}</label>
+                <input id="cm-name" className="st-field" autoComplete="off" spellCheck={false} placeholder={S('models.sheet.name.placeholder')} value={name} onChange={edit(setName)} />
+                <label className="cs-l" htmlFor="cm-url">{S('models.sheet.base_url')}</label>
+                <input id="cm-url" className="st-field" autoComplete="off" spellCheck={false} placeholder="https://…/v1" value={baseUrl} onChange={edit(setBaseUrl)} />
+                <label className="cs-l" htmlFor="cm-key">{S('models.sheet.key')}</label>
+                <input id="cm-key" className="st-field" type="password" autoComplete="off" spellCheck={false} placeholder={S('models.sheet.key.placeholder')} value={key} onChange={edit(setKey)} />
+              </>
+            )}
+            <label className="cs-l" htmlFor="cm-model">{S('models.other.placeholder')}</label>
+            <input id="cm-model" className="st-field" autoComplete="off" spellCheck={false} placeholder={S('models.other.placeholder')} value={model} autoFocus={!isNew}
+              onChange={edit(setModel)} onKeyDown={(e) => e.key === 'Enter' && ready && !busy && save()} />
+          </div>
+          {msg && <p className="st-foot st-warn">{msg}</p>}
+          <div className="st-ctl" style={{ marginTop: 16 }}>
+            <button onClick={onClose}>{S('capture.keys.swap.cancel')}</button>
+            <button className="primary" disabled={!ready || busy} onClick={save}>{busy ? S('win.cloud.testing') : S('models.custom.save')}</button>
           </div>
         </div>
       </div>

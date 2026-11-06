@@ -377,7 +377,8 @@ export interface ModelDownload {
   total_mb: number;
 }
 export interface CloudSummary {
-  services: { id: string; preset: string; has_key: boolean }[];
+  /** base_url, name: the user's own service (a Custom Model's, preset custom-openai / custom-anthropic) */
+  services: { id: string; preset: string; has_key: boolean; base_url?: string; name?: string }[];
   routes: Record<string, { service: string; model: string } | null>;
 }
 
@@ -553,6 +554,10 @@ export const api = {
   cloudSummary: () => invoke<CloudSummary>('cloud_summary'),
   cloudConnect: (preset: string, key: string) =>
     invoke<{ ok: boolean; ms?: number; code?: string; error?: string; summary?: CloudSummary }>('cloud_connect', { preset, key, baseUrl: null }),
+  /** Custom Model…: a model by its id for one job, on a connected `service` or a new one (preset, baseUrl, key, name);
+   *  tried on the job first, saved only when it passes */
+  cloudCustom: (a: { job: string; model: string; service?: string; preset?: string; baseUrl?: string; key?: string; name?: string }) =>
+    invoke<{ ok: boolean; ms?: number; code?: string; error?: string; summary?: CloudSummary }>('cloud_custom', a),
   cloudDisconnect: (id: string) => invoke<CloudSummary>('cloud_disconnect', { id }),
   onboarding: () => invoke<Onboarding>('onboarding_get'),
   onboardingStep: (step: number) => invoke<void>('onboarding_step', { step }),
