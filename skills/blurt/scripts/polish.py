@@ -1821,8 +1821,8 @@ def cmd_serve(a):
                                              req.get("model"), req.get("timeout"), req.get("cloud"), req.get("vocab"),
                                              bool(req.get("spoken")), bool(req.get("check")))
                     elif req.get("cmd") == "cloud_check":  # Settings' Test: one tiny request to the user's cloud model
-                        import polish_cloud
-                        resp = polish_cloud.check(req.get("cloud") or {})
+                        import polish_cloud                # with a job: a Custom Model's test, the job itself
+                        resp = polish_cloud.check(req.get("cloud") or {}, job=req.get("job"))
                     elif req.get("cmd") == "case":        # a reply too short to polish, cased for the sentence it
                         # continues — only by a model already loaded (never a wait for a load, or behind the preload)
                         text = str(req.get("text") or "")
