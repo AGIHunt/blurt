@@ -99,7 +99,7 @@ fn dispatch_attach_type() {
     let ptys = Ptys::default();
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     let id = ptys
-        .spawn(Spawn { argv, env, cwd: None, job: Some(job.clone()), owned: false, cols: 100, rows: 30 }, Arc::new(move |_, d| { let _ = tx.send(d.to_vec()); }), Arc::new(|_, _, _| {}))
+        .spawn(Spawn { argv, env, cwd: None, job: Some(job.clone()), owned: false, cols: 100, rows: 30 }, Arc::new(move |_, d| { let _ = tx.send(d.to_vec()); }), Arc::new(|_, _, _, _| {}))
         .unwrap();
     let mut screen = String::new();
     let mut read_until = |needle: &str| {

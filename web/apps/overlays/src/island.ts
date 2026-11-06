@@ -1118,6 +1118,32 @@ addEventListener('keydown', (e) => {
   }
 });
 
+// WebKitGTK (Linux) sends no click when the pressed element was drawn again before the release (WebView2 sends it to
+// what both have in common): a press and a release on the same action, with no click right after, is that click
+let pressA: string | null = null;
+island.addEventListener('pointerdown', (e) => (pressA = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a ?? null), true);
+island.addEventListener(
+  'pointerup',
+  (e) => {
+    const a = pressA;
+    pressA = null;
+    const target = a ? (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('[data-a]') : null;
+    if (!target || target.dataset.a !== a) return;
+    let clicked = false;
+    const mark = (ev: Event) => {
+      // the click went to the action: done; to what the two had in common (the island): not the press it was
+      if ((ev.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a === a) clicked = true;
+      else ev.stopImmediatePropagation();
+    };
+    island.addEventListener('click', mark, { once: true, capture: true });
+    setTimeout(() => {
+      island.removeEventListener('click', mark, true);
+      if (!clicked && target.isConnected) target.click();
+    }, 80);
+  },
+  true,
+);
+
 island.addEventListener('click', (e) => {
   const el = e.target as HTMLElement;
   const c = el.closest<HTMLElement>('[data-c]');

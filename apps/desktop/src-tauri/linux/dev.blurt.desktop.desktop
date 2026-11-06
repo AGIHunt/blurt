@@ -1,0 +1,12 @@
+[Desktop Entry]
+# The portals know a host app by its id (tauri.conf.json `identifier`) and look for this file to name it in their
+# dialogs ("Blurt wants to share your screen") and to file its shortcuts under Settings → Apps. Blurt.desktop is the
+# one in the menu; this one stays hidden.
+Type=Application
+Name=Blurt
+Comment=Speak, snap, record — Blurt turns it into work for your coding agents
+Exec=blurt
+Icon=blurt
+StartupWMClass=blurt
+Terminal=false
+NoDisplay=true

@@ -41,11 +41,14 @@ const TERMINALS: &[&str] = &[
     "windowsterminal", "wt", "openconsole", "conhost", "cmd", "powershell", "pwsh", "powershell_ise", "wezterm-gui",
     "wezterm", "alacritty", "hyper", "mintty", "tabby", "warp", "conemu", "conemu64", "kitty", "ghostty", "putty",
     "mobaxterm", "termius", "fluent terminal",
+    // Linux (the executable's name: /proc/<pid>/exe)
+    "ptyxis", "gnome-terminal-server", "kgx", "konsole", "xterm", "uxterm", "foot", "footclient", "tilix", "terminator",
+    "xfce4-terminal", "lxterminal", "mate-terminal", "qterminal", "urxvt", "st", "blackbox", "terminology", "rio",
 ];
 const CODE: &[&str] = &[
     "code", "code - insiders", "cursor", "windsurf", "zed", "devenv", "idea64", "pycharm64", "webstorm64", "clion64",
     "goland64", "rider64", "rustrover64", "phpstorm64", "datagrip64", "studio64", "sublime_text", "notepad++", "trae",
-    "kiro",
+    "kiro", "codium", "idea", "pycharm", "webstorm", "clion", "goland", "rider", "rustrover", "sublime_text_4",
 ];
 const MAIL: &[&str] = &["outlook", "olk", "thunderbird", "mailmaster", "foxmail", "hxoutlook"];
 const NOTES: &[&str] = &[
@@ -130,6 +133,10 @@ mod tests {
         assert_eq!(polish_variant(Some("WeChat.exe")), Some("chat"));
         assert_eq!(polish_variant(Some("notepad.exe")), None);
         assert_eq!(polish_variant(None), None);
+        for t in ["ptyxis", "gnome-terminal-server", "/usr/bin/kitty", "konsole"] {
+            assert!(is_terminal(Some(t)), "{t}"); // Linux names
+        }
+        assert!(!is_terminal(Some("gnome-text-editor")));
     }
 
     #[test]

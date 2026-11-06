@@ -47,8 +47,8 @@ use super::flow::{
     self, nothing_heard, toast_keys as keys, AsrFailure, Clash, ClashMoment, CopiedGuard, DeliveredLine, KeptText,
     Runaway, RunawayNotice, SendRule, SendVerdict, TakeDeadline, Tip,
 };
-use super::insert_win::{self as ins, Front};
-use super::keys_win::{self, KeyEvent};
+use super::insert::{self as ins, Front};
+use super::keys::{self as keys_win, KeyEvent};
 use super::mic::{self, Mic};
 use super::paste_policy::{self, landing, send as send_policy, Decision, Situation};
 use super::prefs::{Prefs, Style};
@@ -554,6 +554,21 @@ fn sound(app: &AppHandle, name: &str, on: bool) {
             .join("sounds")
             .join(format!("{name}.wav"));
     }
+    #[cfg(target_os = "linux")]
+    {
+        // PipeWire's player (pipewire-bin, on every Ubuntu desktop), else PulseAudio's; never waited for
+        let p2 = p.clone();
+        std::thread::spawn(move || {
+            for player in ["pw-play", "paplay"] {
+                if let Ok(mut c) = std::process::Command::new(player).arg(&p2).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() {
+                    let _ = c.wait();
+                    return;
+                }
+            }
+        });
+    }
+    #[cfg(windows)]
+    {
     use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
     let w: Vec<u16> = p
         .to_string_lossy()
@@ -566,6 +581,7 @@ fn sound(app: &AppHandle, name: &str, on: bool) {
             None,
             SND_ASYNC | SND_FILENAME | SND_NODEFAULT,
         );
+    }
     }
 }
 
@@ -1175,6 +1191,8 @@ impl Engine {
         let mut seg = DictationSegmenter::new(SR as f64);
         let audio: Vec<f32> = self.pre.drain(..).collect();
         seg.feed(&audio);
+        #[cfg(target_os = "linux")]
+        ins::prepare();
         let front = ins::front();
         let exe = front.as_ref().map(|f| f.exe.clone());
         let stem = exe.as_deref().map(apps::stem).unwrap_or_default();
@@ -1812,6 +1830,24 @@ impl Engine {
                         self.hear_again(m);
                     }
                 }
+            }
+            // Linux: Remote Desktop access. GNOME opens the dialog over the window given as its parent: the island,
+            // always on top — Blurt can't bring its main window forward right after the user typed elsewhere (GNOME's
+            // focus-stealing prevention only says "Blurt is ready"), and an unparented dialog lands behind the app
+            #[cfg(target_os = "linux")]
+            "dictation.allow_typing" => {
+                drop_toasts(&self.app, &[keys::TAKE]);
+                let app = self.app.clone();
+                std::thread::spawn(move || {
+                    let parent = crate::mainwin::x11_id_off_main(&app, "blurt-overlay-island")
+                        .or_else(|| crate::mainwin::x11_id_off_main(&app, "main"));
+                    let (msg, ms) = match ins::request_access(parent) {
+                        Ok(()) => ("dictation.toast.typing_allowed", 3000),
+                        Err(e) if e == "no_keyboard" => ("dictation.toast.typing_interaction_off", 8000),
+                        Err(_) => ("dictation.toast.typing_not_allowed", 5000),
+                    };
+                    say(&app, msg, json!({}), keys::TAKE, ms, None, false);
+                });
             }
             "dictation.retry" => {
                 let k = keys::failed(arg);
@@ -2645,6 +2681,19 @@ fn deliver(app: &AppHandle, d: Done) -> Delivered {
     let copy = || Some((format!("dictation.copy:{id}"), "dictation.toast.copy"));
     let line_ = DeliveredLine::line(result, asked.get() && !sent.get(), confirmed, no_field);
     match line_ {
+        #[cfg(target_os = "linux")]
+        DeliveredLine::Copied if copy_reason == Some("no_accessibility") => {
+            // no Remote Desktop access yet: copied, and the way to let Blurt type (insert_linux.rs)
+            say(app, "dictation.toast.copied.no_typing", json!({}), keys::TAKE, 8000,
+                Some(("dictation.allow_typing".to_string(), "dictation.toast.allow_typing")), false);
+            // the first such take of a run asks at once: the user just tried to dictate, the dialog is expected
+            static ASKED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+            if !ASKED.swap(true, SeqCst) {
+                if let Some(tx) = INBOX.get() {
+                    let _ = tx.send(Msg::Action("dictation.allow_typing".into()));
+                }
+            }
+        }
         DeliveredLine::Copied if copy_reason == Some("no_accessibility") => {
             // UIPI: the window in front runs as administrator and Blurt doesn't
             say(app, "dictation.toast.copied.elevated", json!({}), keys::TAKE, 4000, None, false);

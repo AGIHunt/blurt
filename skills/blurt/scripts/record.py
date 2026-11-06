@@ -444,6 +444,100 @@ def first_frame_wall(log: Path) -> float | None:
         return None
 
 
+class PipeWireFeed:
+    """Wayland (GNOME 25.10+ has no Xorg session; docs/design/linux-port.md §Recording): the host app opened a
+    ScreenCast portal session and passes its PipeWire remote and node (BLURT_PW_FD, BLURT_PW_NODE, BLURT_PW_SIZE=WxH,
+    BLURT_PW_POS=X,Y of that monitor on the desktop). ffmpeg 8 has no PipeWire input, so one gst-launch for the whole
+    take turns the stream into raw I420 frames at the take's rate; this relay hands them to the current segment's
+    ffmpeg (its stdin) and keeps the latest for snaps. Paused (no segment), frames are dropped. One feed for the take:
+    a PipeWire remote serves one client, so a resume can't open a second gst on it."""
+
+    def __init__(self, fps: int):
+        self.fd = int(os.environ["BLURT_PW_FD"])
+        self.node = os.environ["BLURT_PW_NODE"]
+        self.w, self.h = (int(v) for v in os.environ.get("BLURT_PW_SIZE", "1920x1080").split("x"))
+        self.x, self.y = (int(v) for v in os.environ.get("BLURT_PW_POS", "0,0").split(","))
+        self.fps, self.size = fps, self.w * self.h * 3 // 2
+        self.sink, self.last, self.frames = None, None, 0
+        self.lock = threading.Lock()
+        self.proc = subprocess.Popen(
+            ["gst-launch-1.0", "-q", "pipewiresrc", f"fd={self.fd}", f"path={self.node}", "do-timestamp=true",
+             "keepalive-time=1000", "!", "videoconvert", "!", "videorate", "!",
+             f"video/x-raw,format=I420,width={self.w},height={self.h},framerate={fps}/1", "!", "fdsink", "fd=1"],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, pass_fds=(self.fd,))
+        threading.Thread(target=self._relay, daemon=True).start()
+
+    def _relay(self):
+        out = self.proc.stdout
+        while True:
+            buf = out.read(self.size)
+            if not buf or len(buf) < self.size:
+                break
+            self.last = buf
+            self.frames += 1
+            with self.lock:
+                sink = self.sink
+            if sink is not None:
+                try:
+                    sink.write(buf)
+                except (BrokenPipeError, OSError, ValueError):
+                    with self.lock:
+                        self.sink = None
+        with self.lock:
+            if self.sink is not None:
+                try:
+                    self.sink.close()
+                except OSError:
+                    pass
+                self.sink = None
+
+    def attach(self, stdin):
+        with self.lock:
+            self.sink = stdin
+
+    def detach(self, stdin):
+        with self.lock:
+            if self.sink is stdin:
+                self.sink = None
+        try:
+            stdin.close()   # EOF: ffmpeg writes its last cluster and ends
+        except OSError:
+            pass
+
+    def input_args(self) -> list[str]:
+        return ["-thread_queue_size", "1024", "-f", "rawvideo", "-pix_fmt", "yuv420p", "-video_size",
+                f"{self.w}x{self.h}", "-framerate", str(self.fps), "-i", "pipe:0"]
+
+    def crop(self, region: list[int] | None) -> str:
+        if not region:
+            return ""
+        x, y, w, h = region
+        x, y = max(0, x - self.x), max(0, y - self.y)
+        w, h = min(w, self.w - x), min(h, self.h - y)
+        return f"crop={w - w % 2}:{h - h % 2}:{x}:{y}"
+
+    def still(self, png: Path, region: list[int] | None) -> bool:
+        """The latest frame (of the area) as a PNG: snaps while recording."""
+        if self.last is None:
+            return False
+        vf = ["-vf", c] if (c := self.crop(region)) else []
+        r = subprocess.run([ffmpeg_bin(), "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt",
+                            "yuv420p", "-video_size", f"{self.w}x{self.h}", "-i", "pipe:0", *vf, "-frames:v", "1",
+                            str(png)], input=self.last, capture_output=True, timeout=20)
+        return r.returncode == 0 and png.exists()
+
+    def stop(self):
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+
+
+FEED: "PipeWireFeed | None" = None   # set by the ffmpeg engine when the host passes a ScreenCast stream
+
+
 def grab_input(screen, fps: int, region: list[int] | None = None) -> tuple[list[str], str]:
     """ffmpeg input args + leading crop filter ("" = none) for the screen grabber of this OS (ffmpeg engine).
     region = x,y,w,h on the desktop: Windows/Linux physical pixels of the virtual desktop / X screen, macOS points
@@ -464,6 +558,8 @@ def grab_input(screen, fps: int, region: list[int] | None = None) -> tuple[list[
         sf = mac_backing_scale()
         x, y, w, h = (int(v * sf) for v in region)
         return args, f"crop={w}:{h}:{x}:{y}"
+    if IS_LINUX and FEED is not None:  # Wayland: the ScreenCast stream, relayed through stdin
+        return FEED.input_args(), FEED.crop(region)
     if IS_LINUX:  # X11 only; under Wayland x11grab sees just XWayland windows
         disp = os.environ.get("DISPLAY", ":0")
         if region:
@@ -1086,6 +1182,9 @@ class FfmpegRecorder:
         self.ended_early: dict | None = None
         self.stopping = False
         self.video_tpl: list[str] | None = None
+        global FEED
+        if IS_LINUX and os.environ.get("BLURT_PW_FD") and FEED is None:
+            FEED = PipeWireFeed(fps)
         self.audio = None
         if mic:
             self.audio = LevelMic(mic, session / "audio.wav", gate=lambda: not self.paused,
@@ -1106,6 +1205,8 @@ class FfmpegRecorder:
         seg = {"video": video, "log": log, "fh": fh, "audio_from": self.audio.frames if self.audio else 0,
                "wall_start": time.time()}
         seg["proc"] = subprocess.Popen([*self.video_cmd()[:-1], str(video)], stdin=subprocess.PIPE, stdout=fh, stderr=fh)
+        if FEED is not None:
+            FEED.attach(seg["proc"].stdin)
         if self.audio and self.audio.live:
             seg["live"] = self.audio.live.segment(seg["audio_from"])
         self.segments.append(seg)
@@ -1178,8 +1279,11 @@ class FfmpegRecorder:
         p = seg["proc"]
         if p.poll() is None:
             try:
-                p.stdin.write(b"q")
-                p.stdin.flush()
+                if FEED is not None:
+                    FEED.detach(p.stdin)   # its stdin carries frames: EOF ends it, not "q"
+                else:
+                    p.stdin.write(b"q")
+                    p.stdin.flush()
                 p.wait(timeout=20)
             except Exception:
                 p.terminate()
@@ -1315,9 +1419,12 @@ class FfmpegRecorder:
             png = self.session / "shots" / f"{n:03d}.png"
             png.parent.mkdir(parents=True, exist_ok=True)
             try:
-                r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
-                                   capture_output=True, timeout=20)
-                ok = r.returncode == 0 and png.exists()
+                if FEED is not None:
+                    ok = FEED.still(png, area)
+                else:
+                    r = subprocess.run(snap_frame_cmd(png, self.screen, area), stdin=subprocess.DEVNULL,
+                                       capture_output=True, timeout=20)
+                    ok = r.returncode == 0 and png.exists()
             except Exception:
                 ok = False
             if not ok:
@@ -1431,6 +1538,8 @@ class FfmpegRecorder:
             self.end_segment()
         for th in self.snaps:
             th.join(timeout=25)
+        if FEED is not None:   # the take's stream: its gst-launch goes with it
+            FEED.stop()
         if self.audio:
             self.audio.stop()
             if self.audio.live:

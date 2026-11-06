@@ -1043,7 +1043,7 @@ pub fn voiceprint_start(app: AppHandle) -> R<()> {
 }
 
 /// The take itself: Ok(true) = learn it (the WAV is written), Ok(false) = cancelled, Err(code) = say why.
-#[cfg(windows)]
+#[cfg(dict)]
 fn vp_record(emit: &dyn Fn(Value), stop: &std::sync::mpsc::Receiver<bool>) -> Result<bool, String> {
     use crate::dictation::mic;
     let (tx, rx) = std::sync::mpsc::channel::<Vec<f32>>();
@@ -1106,7 +1106,7 @@ fn vp_record(emit: &dyn Fn(Value), stop: &std::sync::mpsc::Receiver<bool>) -> Re
 }
 
 /// Linux: no microphone module yet (dictation is Windows-only).
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn vp_record(_emit: &dyn Fn(Value), _stop: &std::sync::mpsc::Receiver<bool>) -> Result<bool, String> {
     Err("mic_failed".into())
 }

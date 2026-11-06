@@ -212,14 +212,14 @@ pub fn model_download(app: AppHandle, id: String) -> R<()> {
         if !ok {
             eprintln!("blurt: speech model download failed: {last_err}");
             // the island says so, with Retry (a take's "Download…" must not just go quiet)
-            #[cfg(windows)]
+            #[cfg(dict)]
             super::engine::model_failed();
         }
         emit(if ok { "done" } else { "failed" }, 0.0, 0.0, (!ok && !last_err.is_empty()).then(|| last_err.clone()));
         if ok {
             refresh_ready(&app.state::<AppState>().runner());
             // a take that failed for want of it gets Retry on the island
-            #[cfg(windows)]
+            #[cfg(dict)]
             super::engine::model_arrived();
             // the warm server holds the old pick: the next key-down starts one with this model
             let _ = server::call(
@@ -315,7 +315,7 @@ pub(crate) fn cloud_check(app: &AppHandle, preset: &str, key: &str, base_url: Op
 /// The dictation key seen by Blurt's own window (App.tsx): "AltRight" / "AltLeft" (engine.rs `forward_key`).
 #[tauri::command]
 pub fn dictation_key_forward(code: String, down: bool) {
-    #[cfg(windows)]
+    #[cfg(dict)]
     {
         let vk = match code.as_str() {
             "AltRight" => 0xA5,
@@ -324,7 +324,7 @@ pub fn dictation_key_forward(code: String, down: bool) {
         };
         super::engine::forward_key(vk, down);
     }
-    #[cfg(not(windows))]
+    #[cfg(not(dict))]
     let _ = (code, down);
 }
 

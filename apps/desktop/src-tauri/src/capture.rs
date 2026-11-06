@@ -12,11 +12,11 @@
 //! thread deadlocks on Windows).
 
 use std::io::Write;
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::ChildStdin;
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -39,6 +39,8 @@ mod sysaudio;
 /// Windows: the overlays that take the keys really get them (the foreground lock)
 #[cfg(windows)]
 mod focus;
+#[cfg(target_os = "linux")]
+pub mod portal_linux;
 /// a recording on its way to being organized: the usual length, Change (the Mac's OrganizeProgress / Refile)
 mod organize;
 
@@ -63,6 +65,10 @@ struct Take {
     pen: bool,
     #[cfg(windows)]
     system: Option<sysaudio::Loopback>,
+    /// Wayland: the ScreenCast stream record.py reads — held, never read: dropping it with the take closes the session
+    #[cfg(target_os = "linux")]
+    #[allow(dead_code)]
+    cast: Option<portal_linux::Cast>,
 }
 
 /// a `snap-region` still waiting for its status line: (n, file), or None if it failed
@@ -172,9 +178,9 @@ impl Capture {
         // how it ends, for the island's hint: on release (held), at a pause, or by the key / Done
         let voice = self.voice.lock().unwrap().as_ref().map(|v| {
             let ends = if v.hold { "hold" } else if end_on_pause || !cfg!(windows) { "pause" } else { "key" };
-            #[cfg(windows)]
+            #[cfg(dict)]
             let structured = crate::dictation::voice::structured();
-            #[cfg(not(windows))]
+            #[cfg(not(dict))]
             let structured = false;
             // the note's cap (record.voice.max_seconds; Windows' voice.rs ends it there) and what is left of it
             let max = settings::read_config().pointer("/record/voice/max_seconds").and_then(Value::as_f64).unwrap_or(600.0);
@@ -336,6 +342,23 @@ impl Capture {
         }
         #[cfg(not(windows))]
         let _ = system_audio; // Linux: no loopback here yet (recording.md §8)
+        // Wayland: the screen comes from the ScreenCast portal (its dialog the first time, over the island)
+        #[cfg(target_os = "linux")]
+        let cast = if crate::hotkeys::is_wayland() {
+            let parent = crate::mainwin::x11_id_off_main(app, "blurt-overlay-island").or_else(|| crate::mainwin::x11_id_off_main(app, "main"));
+            match portal_linux::screencast(parent) {
+                Ok(c) => {
+                    opts.env.extend(c.env().into_iter().map(|(k, v)| (k.into(), v.into())));
+                    Some(c)
+                }
+                Err(e) => {
+                    job.finish("failed", Some(("screencast", &e)));
+                    return Err(if e == "denied" { "cancelled".into() } else { format!("screen sharing: {e}") });
+                }
+            }
+        } else {
+            None
+        };
         chrome::listen_once(app);
         // the 3-2-1 is up the moment the area is chosen (the Mac's is): record.py's own countdown lines, once it has
         // started (~1 s through uv), only move the number on
@@ -360,6 +383,8 @@ impl Capture {
             pen: false,
             #[cfg(windows)]
             system,
+            #[cfg(target_os = "linux")]
+            cast,
         });
         let handle = blurt_capture::record(&opts, move |e| on_status(&app_ev, e), move |res| finished(&app_done, &sdir2, res)).map_err(|e| {
             chrome::close_all(app);
@@ -946,7 +971,7 @@ fn refile_items(app: &AppHandle, from: &str, uids: &str, to: &str) {
 
 /// The voice hotkey pressed: start (or stop a running one). `hold` = push-to-talk, ends on release. Windows: Blurt's own
 /// microphone and the warm speech server, with the words while you talk (dictation/voice.rs).
-#[cfg(windows)]
+#[cfg(dict)]
 pub fn voice_start(app: &AppHandle, hold: bool) {
     use crate::dictation::voice::{self, End};
     use crate::dictation::voice_rules;
@@ -1015,14 +1040,14 @@ pub fn voice_start(app: &AppHandle, hold: bool) {
 
 /// Discarded voice notes waiting for their Undo / Keep: (token, session, project, n, "shots/NNN.wav", the parked wav,
 /// Structured).
-#[cfg(windows)]
+#[cfg(dict)]
 type ParkedNote = (String, PathBuf, Option<String>, u32, String, PathBuf, bool);
-#[cfg(windows)]
+#[cfg(dict)]
 static PARKED: Mutex<Vec<ParkedNote>> = Mutex::new(Vec::new());
 
 /// A voice note's words are in: its line(s) in shots.jsonl (the words; with Structured, the transcript as heard beside
 /// them, `said_raw`), the card.
-#[cfg(windows)]
+#[cfg(dict)]
 fn voice_filed(app: &AppHandle, session: &Path, project: Option<String>, n: u32, said: Option<String>, raw: Option<String>, job: Option<&JobWriter>) {
     if let Some(t) = &said {
         let mut line = json!({"n": n, "said": t});
@@ -1040,7 +1065,7 @@ fn voice_filed(app: &AppHandle, session: &Path, project: Option<String>, n: u32,
 
 /// "Voice note discarded · Undo" / "No sound detected · Keep" clicked (island action `voice.undo:<token>`): the note
 /// is filed after all, heard whole.
-#[cfg(windows)]
+#[cfg(dict)]
 pub fn voice_undo(app: &AppHandle, action: &str) {
     let token = action.strip_prefix("voice.undo:").unwrap_or("");
     let found = {
@@ -1058,7 +1083,7 @@ pub fn voice_undo(app: &AppHandle, action: &str) {
 }
 
 /// The voice hotkey pressed: start (or stop a running one). `hold` = push-to-talk, ends on release.
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 pub fn voice_start(app: &AppHandle, hold: bool) {
     let cap = &app.state::<AppState>().capture;
     if cap.recording() {
@@ -1150,7 +1175,7 @@ pub fn voice_start(app: &AppHandle, hold: bool) {
 pub fn voice_stop(app: &AppHandle, cancel: bool) {
     let st = app.state::<AppState>();
     let mut v = st.capture.voice.lock().unwrap();
-    #[cfg(windows)]
+    #[cfg(dict)]
     if v.as_ref().is_some_and(|v| v.stdin.is_none()) {
         drop(v);
         crate::dictation::voice::stop(cancel);

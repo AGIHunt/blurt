@@ -107,10 +107,16 @@ fn open_as(app: &AppHandle, label: &str, at: Region, params: BTreeMap<&str, Stri
         .build()?;
     w.set_position(PhysicalPosition::new(at.x, at.y))?;
     w.set_size(PhysicalSize::new(at.w, at.h))?;
+    // Linux: tao makes it click-through on the GDK window, which exists only once shown (before, it panics)
+    #[cfg(not(target_os = "linux"))]
     if !mouse {
         let _ = w.set_ignore_cursor_events(true);
     }
     w.show()?;
+    #[cfg(target_os = "linux")]
+    if !mouse {
+        let _ = w.set_ignore_cursor_events(true);
+    }
     Ok(())
 }
 

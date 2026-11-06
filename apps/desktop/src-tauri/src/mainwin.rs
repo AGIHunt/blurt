@@ -357,3 +357,29 @@ mod tests {
         assert_eq!(place(&f, &s150, (14.0, 37.0)), Some(((0, 0, 1899, 976), true)));
     }
 }
+
+/// A window's X11 id by its label (None: not open, or not an X11 window). The app runs under XWayland on GNOME: a
+/// portal dialog given it as parent opens over that window instead of behind the app in front. Main thread only.
+#[cfg(target_os = "linux")]
+pub fn x11_id_of(app: &AppHandle, label: &str) -> Option<u64> {
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    let w = app.get_webview_window(label)?;
+    let h = w.window_handle().ok()?;
+    match h.as_raw() {
+        RawWindowHandle::Xlib(x) => Some(x.window as u64),
+        RawWindowHandle::Xcb(x) => Some(x.window.get() as u64),
+        _ => None,
+    }
+}
+
+/// `x11_id_of` from any thread but the main one (it asks the main thread, where GTK lives, and waits up to 2 s).
+#[cfg(target_os = "linux")]
+pub fn x11_id_off_main(app: &AppHandle, label: &'static str) -> Option<u64> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let a = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(x11_id_of(&a, label));
+    })
+    .ok()?;
+    rx.recv_timeout(std::time::Duration::from_secs(2)).ok().flatten()
+}

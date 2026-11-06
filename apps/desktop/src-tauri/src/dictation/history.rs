@@ -190,7 +190,7 @@ fn retried(old: &Value, heard: &Value) -> Value {
 /// Retry: the whole recording heard again with today's settings, polished, written back and copied.
 #[tauri::command(async)]
 pub fn dictation_retry(app: AppHandle, id: String) -> R<Value> {
-    #[cfg(windows)]
+    #[cfg(dict)]
     {
         use std::time::Instant;
         use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -230,7 +230,7 @@ pub fn dictation_retry(app: AppHandle, id: String) -> R<Value> {
         let _ = app.clipboard().write_text(e["text"].as_str().unwrap_or("").to_string());
         Ok(json!({"ok": true, "entry": with_audio_path(e)}))
     }
-    #[cfg(not(windows))]
+    #[cfg(not(dict))]
     {
         let _ = (app, id);
         Err("Retry isn't available on this system yet [unsupported]".into())
