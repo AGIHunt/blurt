@@ -38,7 +38,7 @@ use super::rehear::{self, Planner, Window};
 use super::segmenter::{self, DictationSegmenter};
 use super::trigger::ModifierTap;
 use super::voice_rules::{self, Ended, KeepToast, LoneShift, VoiceKeep};
-use super::{keys_win, server, stitch};
+use super::{keys as keys_win, server, stitch};
 use crate::{island, settings, AppState};
 
 const SR: usize = mic::SR as usize;

@@ -79,8 +79,22 @@ drag = "2.1.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # Wayland: global shortcuts through the xdg-desktop-portal GlobalShortcuts interface (GNOME 48+, KDE 5.27+).
-ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
+# Dictation and capture (docs/design/linux-port.md): RemoteDesktop presses paste, ScreenCast records,
+# Screenshot snaps; the host app registers its id first so the dialogs say "Blurt".
+ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts", "remote_desktop", "screencast", "screenshot"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+# AT-SPI (which app and field a take goes into) over its own bus; already in the tree through ashpd
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+# the microphone (ALSA's default → PipeWire through pipewire-alsa)
+cpal = "0.16"
+# the clipboard before Remote Desktop access is given: XWayland's, which GNOME syncs (already in the tree)
+arboard = { version = "3", default-features = false }
+# the main window's X11 id, a portal dialog's parent (mainwin.rs x11_id; already in the tree through tauri)
+raw-window-handle = "0.6"
+# the ScreenCast fd made inheritable for record.py (capture/portal_linux.rs)
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

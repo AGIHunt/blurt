@@ -66,7 +66,7 @@ pub fn init(app: &AppHandle) {
 /// No speech model at launch: the island says so once, after its hello (Mac Dictation.nudge("launch"): about once a
 /// day, never while the setup assistant shows; round-2 gate island.idle-no-model) — the same ⚠ line the dictation key
 /// gives ("Speech model not installed · Download (950 MB)"), passive, 8 s. At rest the island stays quiet after it.
-#[cfg(windows)]
+#[cfg(dict)]
 fn launch_nudge(app: &AppHandle) {
     use crate::dictation::commands::READY;
     const EVERY: f64 = 20.0 * 3600.0;
@@ -92,7 +92,7 @@ fn launch_nudge(app: &AppHandle) {
     });
 }
 
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn launch_nudge(_: &AppHandle) {}
 
 /// A `record.*` switch of Settings → General → Cards (the Mac's keys, same defaults).
@@ -275,12 +275,12 @@ pub fn state(app: &AppHandle) -> Value {
     }})
 }
 
-#[cfg(windows)]
+#[cfg(dict)]
 fn dictation_state() -> Value {
     crate::dictation::engine::island_state()
 }
 
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn dictation_state() -> Value {
     Value::Null
 }
@@ -688,12 +688,12 @@ pub fn on_action(app: &AppHandle, v: &Value) {
             });
         }
         // dictation's buttons ("Cancelled · Undo", Retry, Copy) and a discarded voice note's Undo / Keep
-        #[cfg(windows)]
+        #[cfg(dict)]
         a if a.starts_with("dictation.") => crate::dictation::engine::island_action(a),
-        #[cfg(windows)]
+        #[cfg(dict)]
         a if a.starts_with("voice.undo:") => capture::voice_undo(app, a),
         // the voice note's Structured chip (as Shift double-tapped)
-        #[cfg(windows)]
+        #[cfg(dict)]
         "voice.structured" => crate::dictation::voice::toggle_structured(),
         _ => {}
     }

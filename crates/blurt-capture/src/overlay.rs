@@ -453,7 +453,11 @@ pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Res
         }
     }));
     let window = open(app, Kind::Island, cfg, at, BTreeMap::new())?;
+    // Linux: tao's click-through is an input shape too, applied later on its own loop — it would undo ours
+    #[cfg(not(target_os = "linux"))]
     let _ = window.set_ignore_cursor_events(true);
+    #[cfg(target_os = "linux")]
+    input_shape(&window, &[]);
     let alive = Arc::new(AtomicBool::new(true));
     let a2 = alive.clone();
     window.on_window_event(move |e| {
@@ -465,6 +469,23 @@ pub fn island<R: Runtime>(app: &AppHandle<R>, cfg: &OverlayConfig) -> tauri::Res
     let pinned = Arc::new(AtomicBool::new(false));
     spawn_hit_tester(app.clone(), window.clone(), rects, alive.clone(), at.clone(), Follow { idle, pinned: pinned.clone() });
     Ok(Arc::new(Island { app: app.clone(), window, sticky, listeners: Mutex::new(listeners), alive, at, pinned }))
+}
+
+/// The island's input region: its drawn rects (CSS px = GDK's logical px), the rest of the window passes clicks on.
+/// An X input shape on the toplevel, which mutter honours for XWayland windows.
+#[cfg(target_os = "linux")]
+fn input_shape<R: Runtime>(w: &WebviewWindow<R>, rects: &[CssRect]) {
+    let (w2, rects) = (w.clone(), rects.to_vec());
+    let _ = w.run_on_main_thread(move || {
+        use gtk::prelude::*;
+        let Ok(gw) = w2.gtk_window() else { return };
+        let region = gtk::cairo::Region::create();
+        for r in &rects {
+            let rect = gtk::cairo::RectangleInt::new(r.x.floor() as i32, r.y.floor() as i32, r.w.ceil() as i32 + 1, r.h.ceil() as i32 + 1);
+            let _ = region.union_rectangle(&rect);
+        }
+        gw.input_shape_combine_region(Some(&region));
+    });
 }
 
 struct Follow {
@@ -497,9 +518,21 @@ fn spawn_hit_tester<R: Runtime>(
         let mut ignoring = true;
         let mut peek_since: Option<Instant> = None;
         let mut tick: u32 = 0;
+        #[cfg(target_os = "linux")]
+        let mut shaped: Vec<CssRect> = vec![];
         while alive.load(Ordering::SeqCst) {
             thread::sleep(Duration::from_millis(33));
             tick = tick.wrapping_add(1);
+            // Linux (XWayland): the pointer's position reaches an X client only while it is over one of its windows, so
+            // a click-through island never sees it coming; the window takes clicks where its rects are instead
+            #[cfg(target_os = "linux")]
+            {
+                let now = rects.lock().unwrap().clone();
+                if now != shaped {
+                    input_shape(&w, &now);
+                    shaped = now;
+                }
+            }
             if tick % 30 == 0 && !follow.pinned.load(Ordering::SeqCst) {
                 let cur = *at.lock().unwrap();
                 let want = island_target(&app, &cur, follow.idle.load(Ordering::SeqCst));
@@ -509,6 +542,9 @@ fn spawn_hit_tester<R: Runtime>(
                     let _ = w.set_position(PhysicalPosition::new(want.0.x, want.0.y));
                     let _ = w.set_size(PhysicalSize::new(want.0.w, want.0.h));
                 }
+            }
+            if cfg!(target_os = "linux") {
+                continue;
             }
             let Ok(p) = app.cursor_position() else { continue };
             let (region, scale) = *at.lock().unwrap();
@@ -565,6 +601,7 @@ impl<R: Runtime> Island<R> {
     pub fn set_keyboard(&self, on: bool) {
         let _ = self.window.set_focusable(on);
         if on {
+            #[cfg(not(target_os = "linux"))] // Linux: the input shape already takes the switcher's clicks
             let _ = self.window.set_ignore_cursor_events(false);
             take_keys(&self.window);
         }

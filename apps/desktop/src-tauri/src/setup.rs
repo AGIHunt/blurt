@@ -184,10 +184,14 @@ pub fn install_uv(progress: impl Fn(f64, f64)) -> Result<PathBuf, String> {
             last = format!("download failed: {url}");
             continue;
         }
-        // Windows 10+ has bsdtar, which reads zip
-        let ok = no_window(Command::new("tar").arg("-xf").arg(&whl).arg("-C").arg(&tmp))
-            .status()
-            .is_ok_and(|s| s.success());
+        // a wheel is a zip: Windows 10+ has bsdtar, which reads zip; GNU tar (Linux) doesn't — the system's Python
+        // (every Ubuntu desktop has one) or unzip does
+        let ok = if cfg!(windows) {
+            no_window(Command::new("tar").arg("-xf").arg(&whl).arg("-C").arg(&tmp)).status().is_ok_and(|s| s.success())
+        } else {
+            Command::new("python3").args(["-m", "zipfile", "-e"]).arg(&whl).arg(&tmp).status().is_ok_and(|s| s.success())
+                || Command::new("unzip").arg("-q").arg("-o").arg(&whl).arg("-d").arg(&tmp).status().is_ok_and(|s| s.success())
+        };
         if !ok {
             last = "couldn't unpack the uv wheel".into();
             continue;

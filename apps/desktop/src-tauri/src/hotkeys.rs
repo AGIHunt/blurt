@@ -573,11 +573,17 @@ pub fn fire(app: &AppHandle, action: &str) {
 }
 
 #[cfg(target_os = "linux")]
-mod portal {
+pub mod portal {
     use super::*;
     use ashpd::desktop::global_shortcuts::{BindShortcutsOptions, GlobalShortcuts, NewShortcut};
     use ashpd::desktop::CreateSessionOptions;
     use futures_util::StreamExt;
+
+    /// shortcuts down now (the portal's auto-repeat sends Activated again and again while one is held)
+    static HELD: std::sync::Mutex<std::collections::BTreeSet<String>> = std::sync::Mutex::new(std::collections::BTreeSet::new());
+    /// each shortcut's last release, on the portal's clock
+    static RELEASED: std::sync::Mutex<std::collections::BTreeMap<String, std::time::Duration>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
 
     fn describe(a: &str) -> &'static str {
         match a {
@@ -589,20 +595,41 @@ mod portal {
             "stop" => "Finish recording",
             "voice" => "Voice note",
             "project" => "Switch project",
+            "dictate" => "Dictate (hold to talk, or tap to start and stop)",
             _ => "Pen",
         }
+    }
+
+    /// Tells the portals which app this is (a host app has no Flatpak id): before any other portal call on the
+    /// connection, or the dialogs can't name Blurt and GNOME's shortcuts have no app to file under. Once per process.
+    pub async fn register_host_app() {
+        static DONE: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
+        DONE.get_or_init(|| async {
+            if let Ok(id) = ashpd::AppID::try_from("dev.blurt.desktop") {
+                if let Err(e) = ashpd::register_host_app(id).await {
+                    eprintln!("blurt: portal registry: {e}");
+                }
+            }
+        })
+        .await;
     }
 
     pub fn start(app: AppHandle, combos: Vec<(&'static str, Option<Combo>)>) {
         tauri::async_runtime::spawn(async move {
             let res: Result<(), ashpd::Error> = async {
+                register_host_app().await;
                 let gs = GlobalShortcuts::new().await?;
                 let session = gs.create_session(CreateSessionOptions::default()).await?;
-                let triggers: Vec<(String, Option<String>)> = combos
+                let mut triggers: Vec<(String, Option<String>)> = combos
                     .iter()
                     .filter(|(a, _)| *a != "pen")
                     .map(|(a, c)| (a.to_string(), c.as_ref().map(Combo::xdg_trigger)))
                     .collect();
+                // the dictation key, when no keyboard can be read directly (dictation/keys_linux.rs)
+                #[cfg(dict)]
+                if !crate::dictation::keys::evdev_available() {
+                    triggers.push(("dictate".into(), Some(crate::dictation::keys::portal_trigger().into())));
+                }
                 let new: Vec<NewShortcut> = triggers
                     .iter()
                     .map(|(a, t)| NewShortcut::new(a.as_str(), describe(a)).preferred_trigger(t.as_deref()))
@@ -623,16 +650,46 @@ mod portal {
                 }
                 let _ = app.emit("hotkeys://changed", json!(rows(&app)));
                 let mut stream = gs.receive_activated().await?;
+                let mut ups = gs.receive_deactivated().await?;
                 let _keep = (&gs, &session);
-                while let Some(ev) = stream.next().await {
-                    let a = ev.shortcut_id().to_string();
-                    let app2 = app.clone();
-                    let _ = app.run_on_main_thread(move || fire(&app2, &a));
+                loop {
+                    tokio::select! {
+                        Some(ev) = stream.next() => {
+                            let a = ev.shortcut_id().to_string();
+                            // the two signals come on separate streams: a repeat sent just before the release can
+                            // arrive after it — anything not newer than the last release of that key is stale
+                            if RELEASED.lock().unwrap().get(&a).is_some_and(|t| ev.timestamp() <= *t) {
+                                continue;
+                            }
+                            if a == "dictate" {
+                                #[cfg(dict)]
+                                crate::dictation::keys::portal_key(true);
+                                continue;
+                            }
+                            // held: the portal repeats Activated every 30 ms; one press is one action
+                            if !HELD.lock().unwrap().insert(a.clone()) {
+                                continue;
+                            }
+                            let app2 = app.clone();
+                            let _ = app.run_on_main_thread(move || fire(&app2, &a));
+                        }
+                        Some(ev) = ups.next() => {
+                            let a = ev.shortcut_id().to_string();
+                            HELD.lock().unwrap().remove(&a);
+                            RELEASED.lock().unwrap().insert(a.clone(), ev.timestamp());
+                            if a == "dictate" {
+                                #[cfg(dict)]
+                                crate::dictation::keys::portal_key(false);
+                            }
+                        }
+                        else => break,
+                    }
                 }
                 Ok(())
             }
             .await;
-            if res.is_err() {
+            if let Err(e) = &res {
+                eprintln!("blurt: global shortcuts portal: {e}");
                 *app.state::<Hotkeys>().mode.lock().unwrap() = "manual".into();
                 let h = app.state::<Hotkeys>();
                 let mut st = h.status.lock().unwrap();

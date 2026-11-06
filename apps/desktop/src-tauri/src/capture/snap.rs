@@ -761,22 +761,22 @@ pub fn hint_budget(key: &str) -> bool {
 
 // ------------------------------------------------------------------ the note's microphone
 
-#[cfg(windows)]
+#[cfg(dict)]
 type MicHandle = Arc<crate::dictation::snap_voice::NoteMic>;
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 type MicHandle = ();
 
 /// listen | busy (a voice note has the mic: typed only) | nomic (dictation is listening; no mic here)
-#[cfg(windows)]
+#[cfg(dict)]
 fn voice_state() -> &'static str {
     crate::dictation::snap_voice::state()
 }
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn voice_state() -> &'static str {
     "nomic"
 }
 
-#[cfg(windows)]
+#[cfg(dict)]
 fn mic_start(app: &AppHandle, g: u64) -> Option<MicHandle> {
     let a = app.clone();
     let m = crate::dictation::snap_voice::start(app, move |mut op: Value| {
@@ -785,33 +785,33 @@ fn mic_start(app: &AppHandle, g: u64) -> Option<MicHandle> {
     });
     Some(Arc::new(m))
 }
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn mic_start(_app: &AppHandle, _g: u64) -> Option<MicHandle> {
     None
 }
 
-#[cfg(windows)]
+#[cfg(dict)]
 fn mic_stop(m: &MicHandle, keep: bool) {
     m.stop(keep);
 }
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn mic_stop(_m: &MicHandle, _keep: bool) {}
 
-#[cfg(windows)]
+#[cfg(dict)]
 fn mic_activity(m: &MicHandle) {
     m.activity();
 }
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn mic_activity(_m: &MicHandle) {}
 
 /// The take kept and written to `wav`: Some(its words); None when there is no recording.
-#[cfg(windows)]
+#[cfg(dict)]
 fn mic_finish(m: &MicHandle, keep: bool, wav: &Path) -> Option<Option<String>> {
     let take = m.finish(keep)?;
     crate::dictation::snap_voice::write(&take, wav).ok()?;
     Some(take.said)
 }
-#[cfg(not(windows))]
+#[cfg(not(dict))]
 fn mic_finish(_m: &MicHandle, _keep: bool, _wav: &Path) -> Option<Option<String>> {
     None
 }

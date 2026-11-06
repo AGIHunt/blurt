@@ -94,11 +94,18 @@
         "depends": [
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
-          "libayatana-appindicator3-1"
+          "libayatana-appindicator3-1",
+          "ffmpeg",
+          "libportaudio2",
+          "python3",
+          "gstreamer1.0-tools",
+          "gstreamer1.0-pipewire",
+          "gstreamer1.0-plugins-base",
+          "pipewire-bin"
         ],
-        "recommends": [
-          "ffmpeg"
-        ]
+        "files": {
+          "/usr/share/applications/dev.blurt.desktop.desktop": "linux/dev.blurt.desktop.desktop"
+        }
       },
       "rpm": {
         "depends": [

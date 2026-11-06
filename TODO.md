@@ -105,10 +105,7 @@
       `--parent <app pid>` so they end with the app), insert with `SendInput` Ctrl+V after saving / restoring the clipboard (all formats);
       UIPI blocks input into elevated windows: detect and fall back to copy. Polish: no MLX — llama.cpp / ONNX Runtime
       GenAI with the same Qwen models (GGUF / ONNX), same guard, same eval set.
-- [ ] **Linux** (Tauri app): X11 — XRecord / XInput2 for the key, `xdotool key ctrl+v`; Wayland — no global key
-      listening for normal apps: evdev (`/dev/input`, needs the `input` group) or a compositor shortcut that runs
-      `blurt dictate toggle`; insert with `wtype` / `ydotool` (needs uinput) or the clipboard + a toast; terminals
-      want Ctrl+Shift+V. Detect the session type and say what works in Settings.
+- [ ] **Linux** (Tauri app, issue #34): see §Linux: Ubuntu 26.04 below.
 - [ ] **Windows / Linux: the v0.9 dictation dogfood fixes** (macOS done; docs/design/dictation.md §Takes in flight,
       BlurtCore `DictationTakeFlow` + `DictationTakeFlowTests` are the spec): takes in flight pasted in order
       (`DictationPasteQueue`), paste only into the app the take started in (foreground window's process at key-down vs
@@ -167,6 +164,23 @@
       from edits made right after a paste (and from the history's raw → polished diffs), always opt-in.
 - [ ] Per-app style (code editor: no trailing full stop; chat: casual), voice commands ("new line", "删掉上一句")
 - [ ] Streaming: show the live transcript in the island while talking (live.py's streaming path)
+
+## Linux: Ubuntu 26.04 GNOME, Wayland only (issue #34) — design: docs/design/linux-port.md
+- [x] Design measured on a GCP 26.04.1 GNOME 50.1 Wayland VM (2026-11-05): portal GlobalShortcuts (press/release for
+      combos, not for a lone modifier), evdev for right Alt alone (input group), RemoteDesktop portal clipboard +
+      Ctrl+V / Ctrl+Shift+V (restore token, CJK ok), AT-SPI for the take's app, cpal → PipeWire, ScreenCast →
+      gst-launch → ffmpeg (30 fps 1080p), Screenshot portal (permission only while focused), XWayland for overlays
+- [x] Founder approved the design (2026-11-05); no resting island off the Mac (founder)
+- [x] Built and tested on the 26.04 VM (linux-port.md §Built): dictation into gedit and Ptyxis (portal key, Remote
+      Desktop keys, X11 clipboard, AT-SPI terminal detection), "Allow typing" flow, voice note, recording through
+      ScreenCast → gst-launch → record.py, Secret Service key store, island input shape under XWayland
+- [ ] .deb + AppImage: install on a fresh 26.04, attach to the next release next to the DMG and the Windows installer
+- [ ] Snaps / Copy Text through the Screenshot portal; evdev mode + right-Alt opt-in in Settings; Esc in portal mode
+- [ ] Onboarding steps for Remote Desktop and Screenshot; portal shortcut labels; tips that need keys the portal lacks
+- [ ] No resting island on Linux (and Windows, separately)
+- [ ] Not measured: VS Code / Chromium with accessibility on, fractional scaling under XWayland, real mic / AltGr
+      layouts, KDE Plasma
+- [ ] tests/session.rs doesn't compile (on main too): fix or drop
 
 ## Windows: Copy Text from Screen and Translate (2026-11-02, apps/desktop/src-tauri/src/screen_text)
 - [x] Alt+Shift+C / Alt+Shift+T (hotkeys `text` / `translate`): the picker in "Copy Text" / "Translate" mode, the
@@ -235,7 +249,7 @@
 - [ ] Mobile: `xcrun simctl io booted recordVideo`, `adb screenrecord` / scrcpy
 - [ ] Qwen3-ASR (sherpa-onnx int8) as optional local multilingual backend; auto-benchmark on install
 - [x] Linux/X11 support (x11grab, Tk recorder; verified on Ubuntu 24.04 + Xvfb)
-- [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux
+- [ ] Linux Wayland (PipeWire portal); global hotkeys on Linux — §Linux: Ubuntu 26.04
 - [ ] More exporters as scripts where CLIs are awkward (Linear, Jira, Notion)
 - [ ] Hosted ASR API (paid, with free trial minutes) — later
 - [ ] Windows / Linux (Tauri) counterparts of the Mac's session fixes (2026-10): an item whose session ended without

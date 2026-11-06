@@ -290,18 +290,33 @@ fn delete_key(id: &str) {
     }
 }
 
-// Linux: the Secret Service comes with the Linux round; until then only the test key.
-#[cfg(not(windows))]
+// Linux: the Secret Service (dictation/secret_linux.rs)
+#[cfg(target_os = "linux")]
+pub fn key(id: &str) -> Option<String> {
+    test_key().or_else(|| super::secret_linux::key(id))
+}
+
+#[cfg(target_os = "linux")]
+fn store_key(id: &str, k: &str) -> Result<(), String> {
+    super::secret_linux::store_key(id, k)
+}
+
+#[cfg(target_os = "linux")]
+fn delete_key(id: &str) {
+    super::secret_linux::delete_key(id)
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn key(_id: &str) -> Option<String> {
     test_key()
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn store_key(_id: &str, _k: &str) -> Result<(), String> {
     Err("no key store on this system yet".into())
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 fn delete_key(_id: &str) {}
 
 #[cfg(test)]

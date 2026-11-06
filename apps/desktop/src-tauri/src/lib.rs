@@ -116,7 +116,7 @@ pub fn dispatch(app: &AppHandle, action: &str) {
             Ok(())
         }
         // reformat the last dictation (Alt+Shift+L)
-        #[cfg(windows)]
+        #[cfg(dict)]
         "reformat" => {
             dictation::engine::reformat_last();
             Ok(())
@@ -744,6 +744,25 @@ fn capture_state(state: tauri::State<'_, AppState>) -> Value {
 
 // the tray icon and its menu: tray.rs
 
+/// GNOME on Wayland: the whole app runs under XWayland (docs/design/linux-port.md §Overlays). Native Wayland gives a
+/// window no position and no keep-above — the island and the cards would sit in the middle of the screen under other
+/// windows. Portals, AT-SPI and PipeWire don't care which backend a window uses. An explicit GDK_BACKEND wins.
+fn linux_xwayland() {
+    if cfg!(target_os = "linux") && std::env::var_os("GDK_BACKEND").is_none() && crate::hotkeys::is_wayland() {
+        std::env::set_var("GDK_BACKEND", "x11");
+    }
+}
+
+/// Linux: the scripts run where Blurt runs, and uv reads the working directory (a project's .venv, a pyproject):
+/// started from a terminal inside some project, or a folder it can't read, every script failed. Blurt's own folder.
+fn linux_working_dir() {
+    if cfg!(target_os = "linux") {
+        let home = crate::paths::blurt_home();
+        let _ = std::fs::create_dir_all(&home);
+        let _ = std::env::set_current_dir(&home);
+    }
+}
+
 /// WebKitGTK on NVIDIA renders black with the DMA-BUF renderer (§6 WP7 risk): off when NVIDIA's driver is loaded or
 /// the user asks (config app.disable_dmabuf / env BLURT_DISABLE_DMABUF=1); an explicit WEBKIT_* setting wins.
 fn linux_graphics_workarounds() {
@@ -814,6 +833,8 @@ fn browser_ui_off(wv: &tauri::Webview) {
 
 pub fn run() {
     linux_graphics_workarounds();
+    linux_xwayland();
+    linux_working_dir();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // the deep-link feature forwards blurt:// URLs in argv to on_open_url, and handle_url shows the window for
@@ -904,7 +925,7 @@ pub fn run() {
             if std::env::var_os("BLURT_NO_SETUP").is_none() {
                 setup::start(&handle);
             }
-            #[cfg(windows)]
+            #[cfg(dict)]
             if std::env::var_os("BLURT_NO_DICTATION").is_none() {
                 if let Err(e) = dictation::engine::start(&handle) {
                     eprintln!("blurt: dictation key not available: {e}");

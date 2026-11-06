@@ -23,7 +23,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use super::ocr_win;
 use crate::dictation::paste_policy::{self, screen_text::Outcome, Situation};
-use crate::dictation::{cloud, insert_win as ins, server};
+use crate::dictation::{cloud, insert as ins, server};
 use crate::{capture, island, AppState};
 use blurt_capture::overlay::{self, Kind};
 
