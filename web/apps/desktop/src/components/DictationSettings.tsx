@@ -261,12 +261,14 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf }: {
       </Group>
 
       <Group id="dictation.data">
-        <Row id="dictation.history_saved" detail={hist ? S('dictation.history.summary', hist.entries.length, S('dictation.history.days', days)) : undefined}>
+        <Row id="dictation.history_saved" detail={days === 0 ? S('dictation.history.summary.off') : hist ? S('dictation.history.summary', hist.entries.length, S('dictation.history.days', days)) : undefined}>
           {/* one control: how long, and — under a line, last — Clear History… (the Mac's historyRow menu: never a
               destructive button at rest); it opens the Dictation page's own confirm (window.confirm shows nothing in
               WebView2 and answers yes) */}
-          <Popup label={S('dictation.history.keep')} value={days} dividers={hist?.entries.length ? [4] : []}
-            choices={[...[7, 30, 90, 365].map((n) => [n, S('dictation.history.days', n)] as [number, string]), ...(hist?.entries.length ? [[-1, S('dictation.history.clear')] as [number, string]] : [])]}
+          {/* "Don't keep" (issue #36) under its own line: the text is typed and not saved */}
+          <Popup label={S('dictation.history.keep')} value={days} dividers={hist?.entries.length ? [4, 5] : [4]}
+            choices={[...[7, 30, 90, 365].map((n) => [n, S('dictation.history.days', n)] as [number, string]), [0, S('dictation.history.dont_keep')] as [number, string],
+              ...(hist?.entries.length ? [[-1, S('dictation.history.clear')] as [number, string]] : [])]}
             onChange={(v) => (v === -1 ? setConfirmClear(true) : set({ retention_days: v === 30 ? undefined : v }))} />
         </Row>
         {confirmClear && (
@@ -287,8 +289,11 @@ export function DictationPane({ cfg, save, goModels, goTranslate, keyOf }: {
             </div>
           </div>
         )}
-        <Toggle id="dictation.keep_audio" on={d.keep_audio !== false} detail={S('dictation.history.keep_audio.detail.days', S('dictation.history.days', days))}
-          set={(v) => set({ keep_audio: v ? undefined : false })} />
+        {/* nothing is kept under "Don't keep": no recording to keep with it */}
+        {days > 0 && (
+          <Toggle id="dictation.keep_audio" on={d.keep_audio !== false} detail={S('dictation.history.keep_audio.detail.days', S('dictation.history.days', days))}
+            set={(v) => set({ keep_audio: v ? undefined : false })} />
+        )}
         <Row id="dictation.models" detail={modelLine} warn={!!models && !sel?.installed && !dl}>
           <button onClick={goModels}>{S(sel?.installed ? 'dictation.models.change' : 'dictation.models.get_in_speech')}</button>
         </Row>

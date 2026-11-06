@@ -16,8 +16,10 @@
 // flagsChanged / keyDown / mouse-down go to DictationTrigger (BlurtCore) as events, each with the time it happened
 // (the event's own timestamp, DictationTrigger.eventTime — not when the main thread got to it: the double-tap window
 // is a few hundred ms and the main thread can be late). The key heard while another app is in front is remembered
-// (`lastOtherApp`): Settings shows it, and only the user can make it happen. What the filter's thread reads (drop Fn,
-// keep a lone ⇧) is behind a lock (`filterState`); the main thread sets it.
+// (`lastOtherApp`): Settings shows it, and only the user can make it happen. What the filter's thread reads (drop Fn)
+// is behind a lock (`filterState`); the main thread sets it. ⇧ always passes: Structured is a double ⇧ by default and
+// the input method's own ⇧ (Chinese / English, full / half width) must keep working while a take listens. With a
+// single-⇧ Structured the input method switches as well, which beats a dead ⇧.
 // The filter keeps keyDown and mouse-down in its mask on purpose: they must reach the trigger in the order they
 // happened relative to the Fn change (Fn-← is a shortcut, not a tap), which a second listener can't promise. The
 // callback only reads the key code and flags and lets them through at once.
@@ -66,22 +68,12 @@ final class DictationKeys {
     /// What the filter's thread decides by, set from the main thread: behind one lock.
     struct FilterState {
         var swallowFn = false
-        var swallowShift = false
-        var shiftKept = false
     }
     fileprivate let filterState = OSAllocatedUnfairLock(initialState: FilterState())
     /// Read on the filter's thread: drop Fn presses (true while the filter runs for dictation).
     fileprivate var swallowFn: Bool {
         get { filterState.withLock { $0.swallowFn } }
         set { filterState.withLock { $0.swallowFn = newValue } }
-    }
-    /// Read on the filter's thread: while a dictation listens (or its key is down), a lone ⇧ is Blurt's style toggle
-    /// (docs/design/dictation-styles.md §3.2) and is kept from the app in front too — an input method would otherwise
-    /// switch between Chinese and English on it. Only ⇧ changes with no other modifier held, and a release only when
-    /// its press was kept (the app never sees half of a ⇧).
-    var swallowShift: Bool {
-        get { filterState.withLock { $0.swallowShift } }
-        set { filterState.withLock { $0.swallowShift = newValue } }
     }
     /// How many Fn presses / releases the filter kept from macOS (tests and Settings).
     fileprivate(set) var swallowed = 0
@@ -271,8 +263,6 @@ final class DictationKeys {
 
     /// Test builds: what the filter does with a key change (`dictation filter-event CODE`): dropped or passed.
     func testFilterDecision(keyCode: Int) -> Bool {
-        // a ⇧ press then its release, as the filter sees them: kept while a dictation listens (`swallowShift`)
-        if keyCode == 56 || keyCode == 60 { return swallowFn && swallowShift }
         let drop = swallowFn && keyCode == 63
         if drop { swallowed += 1 }
         return drop
@@ -370,17 +360,8 @@ private func dictationFilterCallback(proxy: CGEventTapProxy, type: CGEventType, 
     let now = DictationKeys.time(event)
     let code = type == .flagsChanged || type == .keyDown ? Int(event.getIntegerValueField(.keyboardEventKeycode)) : 0
     let raw = event.flags.rawValue
-    // one short critical section: the main thread only ever sets these flags
-    let drop = keys.filterState.withLock { s -> Bool in
-        var drop = type == .flagsChanged && code == 63 && s.swallowFn
-        if type == .flagsChanged, code == 56 || code == 60, s.swallowFn {
-            let down = raw & 0x2_0000 != 0
-            let others: UInt64 = 0x10_0000 | 0x4_0000 | 0x8_0000       // ⌘ ⌃ ⌥ (Fn is the dictation key itself)
-            if down, !s.shiftKept, s.swallowShift, raw & others == 0 { s.shiftKept = true; drop = true }
-            else if !down, s.shiftKept { s.shiftKept = false; drop = true }
-        }
-        return drop
-    }
+    // one short critical section: the main thread only ever sets the flag
+    let drop = type == .flagsChanged && code == 63 && keys.filterState.withLock { $0.swallowFn }
     DispatchQueue.main.async {
         if drop { keys.swallowed += 1 }
         keys.received(type, code: code, flags: raw, at: now)

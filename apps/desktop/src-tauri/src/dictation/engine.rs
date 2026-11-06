@@ -326,6 +326,8 @@ struct Done {
     asr_ms: u64,
     /// keep the recording (record.dictation.keep_audio)
     keep_audio: bool,
+    /// write the history line (record.dictation.retention_days not 0, "Don't keep")
+    keep_history: bool,
     /// the cancel key's name ("Esc", "Ctrl+Esc")
     cancel_label: &'static str,
     stopped_at: Instant,
@@ -1689,6 +1691,7 @@ impl Engine {
                         translate: t.translate,
                         duration: t.duration,
                         keep_audio: self.prefs.keep_audio,
+                        keep_history: self.prefs.keep_history,
                         cancel_label: self.prefs.cancel_key.label(),
                         asr_ms: t.asr_ms,
                         stopped_at: t.stopped_at.unwrap_or_else(Instant::now),
@@ -3351,6 +3354,9 @@ fn polish_full(
 
 #[allow(clippy::too_many_arguments)]
 fn history(d: &Done, p: &Polished, text: &str, app: Option<&Front>, insert: &str, total_ms: u64, polish_ms: u64, fitted: &[&str]) {
+    if !d.keep_history {
+        return; // "Don't keep" (retention_days 0): the text went where it was typed, and nowhere else
+    }
     let dir = paths::blurt_home().join("dictation");
     let _ = std::fs::create_dir_all(&dir);
     let model = server::call(

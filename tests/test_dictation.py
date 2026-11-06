@@ -65,6 +65,20 @@ class History(TmpCase):
         (self.e.home / "config.json").write_text(json.dumps(cfg))
         self.assertEqual(ok("dictation.py", "prune", env=self.e.env())["removed"], 1)
 
+    def test_dont_keep_leaves_only_takes_waiting_for_retry(self):
+        # retention_days 0, "Don't keep" (issue #36): a typed take goes at once; a failed one (no text, its recording)
+        # keeps a day for Retry, then goes too
+        audio = self.e.home / "dictation" / "audio"
+        audio.mkdir(parents=True)
+        for n in ("d-typed.wav", "d-failed.wav", "d-failed-old.wav"):
+            (audio / n).write_bytes(b"RIFF")
+        p = self.write([entry("d-typed", 0.01, audio="audio/d-typed.wav"),
+                        entry("d-failed", 0.2, text="", raw="", polished=None, reason="asr_failed:timeout", audio="audio/d-failed.wav"),
+                        entry("d-failed-old", 2, text="", raw="", polished=None, reason="asr_failed:timeout", audio="audio/d-failed-old.wav")])
+        self.assertEqual(ok("dictation.py", "prune", "--days", "0", env=self.e.env())["removed"], 2)
+        self.assertEqual([json.loads(x)["id"] for x in p.read_text().splitlines()], ["d-failed"])
+        self.assertEqual(sorted(f.name for f in audio.iterdir()), ["d-failed.wav"])
+
     def test_prune_removes_orphaned_audio(self):
         # dict025: a dropped take's wav (and its pieces) with no entry goes once it is an hour old; a kept one and a
         # take still running stay

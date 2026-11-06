@@ -191,6 +191,9 @@ pub struct Prefs {
     /// the input device by name (`mic`; None: the system's default input)
     pub mic: Option<String>,
     pub keep_audio: bool,
+    /// record.dictation.retention_days 0 is "Don't keep" (issue #36): a take that was typed leaves no history line and
+    /// no recording; a failed one is still written (no text, its recording for Retry) — BlurtCore DictationHistory
+    pub keep_history: bool,
     pub context: bool,
     pub rehear: bool,
     pub rehear_window: f64,
@@ -214,7 +217,8 @@ impl Prefs {
             start_sound: b("sounds", true),
             stop_sound: b("stop_sound", false),
             mic: s("mic").map(str::trim).filter(|m| !m.is_empty()).map(String::from),
-            keep_audio: b("keep_audio", true),
+            keep_audio: b("keep_audio", true) && d.get("retention_days").and_then(Value::as_u64) != Some(0),
+            keep_history: d.get("retention_days").and_then(Value::as_u64) != Some(0),
             context: b("context", true),
             rehear: b("rehear", true),
             rehear_window: d.get("rehear_window_s").and_then(Value::as_f64).unwrap_or(super::rehear::CAP),
@@ -319,6 +323,10 @@ mod tests {
     fn the_macs_defaults() {
         let p = Prefs::from_json(&json!({}));
         assert!(p.enabled && p.double_tap_send && p.start_sound && !p.stop_sound && p.keep_audio && p.context && p.rehear);
+        assert!(p.keep_history);
+        // "Don't keep": no history, and so no recording kept with it
+        let off = Prefs::from_json(&json!({"retention_days": 0, "keep_audio": true}));
+        assert!(!off.keep_history && !off.keep_audio);
         assert_eq!((p.key, p.mode, p.cancel_key), (Key::RightAlt, Mode::Auto, CancelKey::Esc));
         assert_eq!(p.mic, None);
         assert_eq!(p.styles.base(Some("WeChat.exe")), Style::Light);

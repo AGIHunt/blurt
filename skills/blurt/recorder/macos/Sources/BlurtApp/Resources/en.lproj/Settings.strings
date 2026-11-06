@@ -233,6 +233,10 @@
 "settings.general.section.cards" = "Cards";
 "settings.general.section.developer" = "Advanced";
 "settings.general.login.detail" = "Dictation and shortcuts work only while Blurt is open.";
+"settings.general.island_idle.detail" = "When off, it shows only while you record, dictate or leave a voice note. Move the pointer to the top center of the screen to open it and its cards.";
+"settings.general.island_idle" = "Show the notch when idle";
+"settings.general.menu_bar_icon.detail" = "When hidden, open Blurt again from Spotlight or Finder to get its window and Settings.";
+"settings.general.menu_bar_icon" = "Show in menu bar";
 "settings.general.voice_end_on_pause.detail" = "Off: a voice note runs until you press its key again or click Done. On: 1.5 seconds of silence ends it.";
 "settings.general.live_text.detail" = "Recognized text appears under the notch. It isn’t recorded.";
 "settings.general.smart_paste.detail" = "A card dragged into a chat app drops its picture, then its note is pasted. Needs Accessibility.";
@@ -255,6 +259,8 @@
 "settings.kw.general.capture_into" = "project, folder, inbox, unassigned, where, destination, current project";
 "settings.kw.general.projects" = "folder, repo, repository, add project, remove project, unassigned";
 "settings.kw.general.login" = "startup, launch, boot, login items, start automatically";
+"settings.kw.general.island_idle" = "notch, island, hide, idle, menu bar, external display";
+"settings.kw.general.menu_bar_icon" = "menu bar, status bar, icon, hide, tray";
 "settings.kw.general.language" = "English, Chinese, locale, translation, interface";
 "settings.kw.general.after_recording" = "organize, process, items, after recording";
 "settings.kw.general.countdown" = "timer, delay, 3 seconds";
@@ -283,7 +289,7 @@
 "settings.kw.dictation.word_list" = "vocabulary, dictionary, custom words, names, terms, hotwords";
 "settings.kw.dictation.context" = "context, cursor, surrounding text";
 "settings.kw.dictation.learn" = "learn, corrections, fixes";
-"settings.kw.dictation.history_keep" = "history, retention, days, keep";
+"settings.kw.dictation.history_keep" = "history, retention, days, keep, don’t keep, off, privacy, no history";
 "settings.kw.dictation.keep_audio" = "audio, recording, keep audio";
 "settings.kw.dictation.history_saved" = "history, clear history, delete history";
 "settings.kw.dictation.sounds" = "sound, beep, chime, chirp";

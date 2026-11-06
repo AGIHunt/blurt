@@ -55,6 +55,8 @@ final class GeneralModel: ObservableObject {
     @Published var dragNoteFile = false
     @Published var voiceEndOnPause = false
     @Published var liveText = true
+    @Published var menuBarIcon = true
+    @Published var islandIdle = true
 
     init() { reload() }
 
@@ -72,7 +74,12 @@ final class GeneralModel: ObservableObject {
         dragNoteFile = CardExport.attachNoteFile
         voiceEndOnPause = VoiceInput.endOnPause
         liveText = LiveTranscript.enabled
+        menuBarIcon = App.showsMenuBarIcon
+        islandIdle = Island.showsAtRest
     }
+
+    func setMenuBarIcon(_ v: Bool) { (NSApp.delegate as? App)?.setMenuBarIcon(v); menuBarIcon = v }
+    func setIslandIdle(_ v: Bool) { Island.showsAtRest = v; islandIdle = v }
 
     /// The same switch as the assistant's (LoginItem): a test build never registers itself in the user's Login Items.
     func setLogin(_ on: Bool) {
@@ -119,6 +126,8 @@ struct GeneralPane: View {
             SettingsGroup("general.app") {
                 SettingToggle("general.login", isOn: Binding(get: { m.openAtLogin }, set: { m.setLogin($0) }),
                               detail: m.loginError)
+                SettingToggle("general.menu_bar_icon", isOn: Binding(get: { m.menuBarIcon }, set: { m.setMenuBarIcon($0) }))
+                SettingToggle("general.island_idle", isOn: Binding(get: { m.islandIdle }, set: { m.setIslandIdle($0) }))
                 // the running app keeps the language it opened with: say so, and offer to reopen it now
                 let pendingLanguage = Loc.normalize(m.language) != Loc.language
                 SettingRow("general.language", detail: pendingLanguage ? T("settings.general.language.restart") : nil) {

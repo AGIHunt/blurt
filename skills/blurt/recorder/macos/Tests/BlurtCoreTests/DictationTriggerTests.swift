@@ -181,6 +181,17 @@ final class DictationTriggerTests: XCTestCase {
                        [.arm, .start, .cancel])
     }
 
+    /// Issue #39: a remote-control app (UU Remote and the like) posts ⌥ with only the device-independent bit.
+    func testOptionPostedByARemoteControlApp() {
+        XCTAssertEqual(run("propt-down@0 propt-up@100", key: .rightOption), [.arm, .start])
+        XCTAssertEqual(run("propt-down@0 propt-up@100 propt-down@2000 propt-up@2100", key: .rightOption), [.arm, .start, .stop])
+        XCTAssertEqual(run("plopt-down@0 plopt-up@100", key: .eitherOption), [.arm, .start])
+        XCTAssertEqual(run("propt-down@0 key:0@60 propt-up@120", key: .rightOption), [.arm])             // ⌥A stays a shortcut
+        XCTAssertEqual(run("propt-down@0 tick@260 propt-up@1000", key: .rightOption, mode: .hold), [.arm, .start, .stop])
+        // a real keyboard's left ⌥ (its side bit set) still isn't the right one
+        XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .rightOption), [])
+    }
+
     func testRightOptionStillIgnoresLeft() {
         XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .rightOption), [])
         XCTAssertEqual(run("lopt-down@0 lopt-up@100", key: .fn), [])

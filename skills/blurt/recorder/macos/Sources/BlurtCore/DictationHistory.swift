@@ -22,6 +22,9 @@
 // removes their audio (dictation/audio/<id>.wav, kept only with record.dictation.keep_audio), and any recording there
 // no entry points at that is over an hour old (a take dropped, cancelled, or cut short by a quit or a crash). It runs
 // at launch. dictation.py reads the same file (list, turn into an item).
+// retention_days 0 is "Don't keep" (issue #36): `keepNothing` — a take that was typed leaves no line and no audio
+// (⌥L and the field-fix learning work from memory); only a take that failed to be recognised or was cut short by a
+// quit is written (no text, its recording for Retry), and kept a day.
 import Foundation
 
 public struct DictationEntry: Identifiable, Hashable {
@@ -355,7 +358,17 @@ public final class DictationHistory {
 
     // MARK: writing (one line each, O_APPEND)
 
-    public func append(_ e: DictationEntry) { appendLine(e.json) }
+    /// record.dictation.retention_days 0 ("Don't keep"): set by the app from the setting.
+    public var keepNothing = false
+
+    /// A take that wasn't recognised or was cut short: no text, only its recording, waiting for Retry.
+    public static func awaitsRetry(_ e: DictationEntry) -> Bool { e.text.isEmpty && e.reason != nil && e.audio != nil }
+
+    /// `always`: written even under "Don't keep" (the Lab's "keep the next N dictations", which the user asked for).
+    public func append(_ e: DictationEntry, always: Bool = false) {
+        if keepNothing && !always && !DictationHistory.awaitsRetry(e) { return }
+        appendLine(e.json)
+    }
 
     /// Deletes entries. Their kept recordings move aside (audio/.deleted/) for Undo — `restoreAudio` puts them back,
     /// `purgeDeleted` removes them for good (the page does after a couple of minutes; `prune` at launch, `clear`).
@@ -409,17 +422,20 @@ public final class DictationHistory {
     public static var liveIDs: () -> [String] = { [] }
 
     public func markItem(_ id: String, item: String, uid: String) {
+        if keepNothing { return }
         appendLine(["op": "item", "id": id, "item": item, "uid": uid, "t": DictationEntry.iso.string(from: Date())])
     }
 
     /// The user corrected what was typed (the Dictation page): the entry keeps both, `text` and `corrected`. nil: the
     /// correction taken back (⌘Z) — the entry is as typed again.
     public func correct(_ id: String, text: String?) {
+        if keepNothing { return }
         appendLine(["op": "correct", "id": id, "text": text ?? NSNull(), "t": DictationEntry.iso.string(from: Date())])
     }
 
     /// Reformat-last (or its undo, or a list taken apart in the field): folded into the entry's `reformats`.
     public func restyle(_ id: String, _ r: DictationReformatRecord) {
+        if keepNothing { return }
         var o = r.json
         o["op"] = "style"
         o["id"] = id
@@ -519,8 +535,11 @@ public final class DictationHistory {
             let all = load()
             pruneOrphanAudio(keeping: all, now: now)
             let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
-            let keep = all.filter { $0.time >= cutoff }
-            let drop = all.filter { $0.time < cutoff }
+            // "Don't keep" (0): a take waiting for Retry (no text, only its recording) still gets a day
+            let retryCutoff = days > 0 ? cutoff : now.addingTimeInterval(-86400)
+            let kept: (DictationEntry) -> Bool = { $0.time >= (DictationHistory.awaitsRetry($0) ? retryCutoff : cutoff) }
+            let keep = all.filter(kept)
+            let drop = all.filter { !kept($0) }
             guard FileManager.default.fileExists(atPath: url.path) else { return 0 }
             // nothing to forget and no edit lines to fold: leave the file alone
             let lines = (try? Data(contentsOf: url))?.split(separator: 0x0A).count ?? 0
@@ -554,7 +573,8 @@ public final class DictationHistory {
         let have = Set(entries.map(\.id))
         let kept = Set(entries.compactMap { $0.audio.map { resolve($0).standardizedFileURL.lastPathComponent } })
         let live = DictationHistory.liveIDs()
-        let cutoff = now.addingTimeInterval(-Double(max(0, days)) * 86400)
+        // "Don't keep" (0) still recovers a day of them: they hold no text, only a recording to retry
+        let cutoff = now.addingTimeInterval(-Double(max(1, days)) * 86400)
         var out: [String] = []
         for n in names.sorted() {
             guard let id = DictationHistory.takeID(wav: n), !have.contains(id), !kept.contains(n), !live.contains(id) else { continue }

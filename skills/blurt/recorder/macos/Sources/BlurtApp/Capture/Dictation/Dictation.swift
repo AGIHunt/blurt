@@ -82,7 +82,6 @@ final class Dictation {
     private(set) var phase: Phase = .idle {
         didSet {
             if phase != oldValue { island.dictationChanged() }
-            updateShiftFilter()
         }
     }
     private(set) var levels: [Float] = []
@@ -140,7 +139,6 @@ final class Dictation {
         let first = queue.ids.first { $0 != queue.delivering }.flatMap { takes[$0]?.stage }
         phase = listening ? .listening : first ?? .idle
         trigger.pending = !queue.isEmpty || inserting
-        updateShiftFilter()
     }
     /// pieces transcribed and polished while the user talks (DictationStream)
     private var stream: DictationStream?
@@ -301,9 +299,9 @@ final class Dictation {
 
     /// How ⇧ alone while dictating asks for Structured, ⌘ alone for Translate: a double tap (the default) or a single
     /// tap (record.dictation.modifier_tap; per-key modifier_tap_shift / modifier_tap_command override it).
-    /// A lone modifier was too easy to hit by accident. While dictating the Fn filter keeps a lone ⇧ from the app in
-    /// front, so the input method's Chinese/English switch never sees it (DictationKeys.swallowShift). Set either key
-    /// back to "single" to keep the old feel.
+    /// A lone modifier was too easy to hit by accident. ⇧ still reaches the app in front while dictating, so the
+    /// input method's own ⇧ (Chinese / English, full / half width) keeps working; a double ⇧ switches it twice, back
+    /// where it was. Set either key back to "single" to keep the old feel.
     static var modifierTap: DictationTrigger.ModifierTap {
         (settings["modifier_tap"] as? String).flatMap(DictationTrigger.ModifierTap.init) ?? DictationTrigger.shippedModifierTap
     }
@@ -545,7 +543,7 @@ final class Dictation {
     private var applied: NSDictionary?
     private static var applySettings: NSDictionary {
         let s = settings
-        return ["enabled", "key", "mode", "double_tap_send", "fn_capture", "modifier_tap", "modifier_tap_shift", "modifier_tap_command",
+        return ["enabled", "key", "mode", "double_tap_send", "retention_days", "fn_capture", "modifier_tap", "modifier_tap_shift", "modifier_tap_command",
                 "modifier_double_tap_window_s", "modifier_cooldown_s"].reduce(into: [String: Any]()) { $0[$1] = s[$1] } as NSDictionary
     }
 
@@ -563,6 +561,7 @@ final class Dictation {
     /// Re-reads the settings: the tap on or off, the key and the mode.
     func apply() {
         applied = Dictation.applySettings
+        DictationHistory.shared.keepNothing = Dictation.retentionDays == 0
         let keyBefore = trigger.key
         trigger.key = Dictation.key
         trigger.mode = Dictation.mode
@@ -875,7 +874,6 @@ final class Dictation {
         if precaptured, !listening, !trigger.armedDown { dropPrecapture() }
         // a press this mode doesn't use (a tap in hold mode, a long press in tap mode): say how it starts
         if let m = trigger.takeMiss() { missedPress(m) }
-        updateShiftFilter()
         scheduleHoldTick()
     }
 
@@ -907,14 +905,6 @@ final class Dictation {
         if let l = lastTraced { o["dt_ms"] = Int((t - l) * 1000) }
         lastTraced = t
         emit(o)
-    }
-
-    /// While a take listens (or its key is down), a lone ⇧ is the style toggle: the Fn filter keeps it from the app
-    /// in front too (an input method would switch between Chinese and English on it). A voice note's ⇧ taps are the
-    /// same style toggle (a double tap, `LoneShift`).
-    func updateShiftFilter() {
-        // a voice note too: its ⇧ is Structured, never the input method's Chinese / English switch
-        keys.swallowShift = trigger.active || trigger.armedDown || listening || VoiceInput.shared.active
     }
 
     private func scheduleHoldTick() {

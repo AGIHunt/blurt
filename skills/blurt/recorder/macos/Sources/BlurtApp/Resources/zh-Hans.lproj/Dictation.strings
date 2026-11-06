@@ -120,6 +120,8 @@
 "dictation.history.clear_search" = "清除搜索";
 "dictation.history.empty.title" = "还没有听写";
 "dictation.history.empty.body" = "在任意 App 中按一下%@开始听写，再按一下结束。文字输入到光标处，并保存在这里。";
+"dictation.history.empty.off_title" = "历史记录已关闭";
+"dictation.history.empty.off_body" = "听写的文字输入后不会保存。想保留，在「设置 → 听写」里选择保留时长。";
 "dictation.history.no_match" = "没有包含“%@”的听写";
 "dictation.history.today" = "今天";
 "dictation.history.yesterday" = "昨天";
@@ -596,6 +598,9 @@
 "dictation.text.section" = "风格和词库";
 "dictation.vocab.summary.detail" = "按你的写法拼写。";
 "dictation.history.summary" = "已存 %1$ld 条 · %2$@后删除";
+"dictation.history.dont_keep" = "不保存";
+"dictation.history.summary.off" = "不保存 · 文字输入后即不留记录";
+"dictation.history.keep_audio.detail.off" = "历史记录已关闭，什么都不保留。识别失败的那条会把录音留一天，方便重试。";
 "dictation.models.detail" = "听写用的语音模型和润色模型。";
 "dictation.models.missing" = "未下载 · %@";
 "dictation.models.download" = "下载";

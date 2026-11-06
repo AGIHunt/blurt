@@ -235,7 +235,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         item.menu = menu
         item.autosaveName = "blurt"
-        item.isVisible = true
+        item.isVisible = App.showsMenuBarIcon
         statusItem = item
         MenuGlyph.migrateSetting()
         MenuGlyph.shared.onFrame = { [weak self] img in
@@ -862,6 +862,16 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
     private var shownTitle: NSAttributedString?
     private var shownAX: String?
+
+    /// Settings → General → "Show in menu bar" (app.menu_bar_icon, on by default; issue #32). Hidden, Blurt is still
+    /// reached by opening it again (Spotlight, Finder, the Dock: applicationShouldHandleReopen → the main window), the
+    /// menu's shortcut (popMenu, at the pointer) and the island. Takes effect at once and survives a relaunch.
+    static var showsMenuBarIcon: Bool { Config.shared["app.menu_bar_icon"] as? Bool ?? true }
+    func setMenuBarIcon(_ on: Bool) {
+        Config.shared.set("app.menu_bar_icon", on ? nil : false)
+        statusItem?.isVisible = on
+        emit(["event": "menu_bar_icon", "show": on])
+    }
 
     static let recordingImage = BlurtIcon.recordFill.image(size: 11, color: BrandColor.rec)
     static let pausedImage = BlurtIcon.pauseFill.image(size: 11, color: BrandColor.attn)

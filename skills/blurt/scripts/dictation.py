@@ -234,12 +234,19 @@ def clear(path: Path = HISTORY, now: float | None = None) -> None:
 
 def _prune(days: int, path: Path, now: datetime | None) -> int:
     entries = load(path)
-    prune_orphan_audio(entries, path, days=days)
+    # "Don't keep" (0) still leaves a day for a take cut short by a quit (DictationHistory.recoverInterrupted)
+    prune_orphan_audio(entries, path, days=max(1, days))
     if not path.exists():
         return 0
     cutoff = (now or datetime.now(timezone.utc)) - timedelta(days=days)
-    keep = [e for e in entries if _time(e) >= cutoff]
-    drop = [e for e in entries if _time(e) < cutoff]
+    # "Don't keep" (0): a take waiting for Retry (no text, only its recording) still gets a day (DictationHistory.prune)
+    retry_cutoff = cutoff if days > 0 else (now or datetime.now(timezone.utc)) - timedelta(days=1)
+
+    def kept(e: dict) -> bool:
+        waits = not e.get("text") and e.get("reason") and isinstance(e.get("audio"), str)
+        return _time(e) >= (retry_cutoff if waits else cutoff)
+    keep = [e for e in entries if kept(e)]
+    drop = [e for e in entries if not kept(e)]
     for e in drop:
         if isinstance(e.get("audio"), str):
             (path.parent / e["audio"]).unlink(missing_ok=True)
