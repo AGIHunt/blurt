@@ -138,6 +138,12 @@ class BuildAndSelftest(unittest.TestCase):
         out = json.loads(r.stdout.strip().splitlines()[-1])
         self.assertTrue(out["ok"], json.dumps(out["checks"], indent=1))
         self.assertEqual(r.returncode, 0)
+        # Reuse this build for the permission guide's real relaunch regressions. The copied app has its own bundle
+        # id and simulated permissions; these checks must run in the native CI job, not stay opt-in forever.
+        gui_env = dict(env, BLURT_GUI_TESTS="1", BLURT_GUI_APP=str(app))
+        g = subprocess.run([sys.executable, "-m", "pytest", str(ROOT / "tests/test_screen_permission_resume.py"), "-q"],
+                           env=gui_env, capture_output=True, text=True, timeout=120)
+        self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
 
 
 class SessionRecoveryWiring(unittest.TestCase):

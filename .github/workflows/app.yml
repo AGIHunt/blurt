@@ -4,10 +4,10 @@ on:
   push:
     tags: ["v*"]
     branches: [main]
-    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py",
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py", "tests/test_screen_permission_resume.py",
             ".github/workflows/app.yml"]
   pull_request:
-    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py",
+    paths: ["skills/blurt/recorder/**", "skills/blurt/scripts/record.py", "scripts/release-mac.sh", "tests/test_mac_shell.py", "tests/test_screen_permission_resume.py",
             ".github/workflows/app.yml"]
   workflow_dispatch:
 
