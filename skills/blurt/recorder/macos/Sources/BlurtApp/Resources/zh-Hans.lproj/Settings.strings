@@ -89,7 +89,9 @@
 "settings.perm.input_monitoring" = "输入监控";
 "settings.perm.fn_key" = "macOS 的 Fn 键设置";
 "settings.perm.screen.readd" = "使用列表下方的减号按钮移除口喷鸡";
-"settings.perm.screen.readd_why" = "列表中是旧版本口喷鸡的授权，对新版本无效。";
+"settings.perm.screen.readd_why" = "列表中的授权可能属于旧版本。移除口喷鸡后，把当前版本重新加入列表。";
+"settings.perm.screen.readd_action" = "已开启但仍无效？重新添加…";
+"settings.privacy.perm.screen_unavailable" = "这个口喷鸡版本的屏幕录制权限尚未生效。";
 "settings.perm.screen.why" = "用于录屏、截图、截图取字和截图翻译。";
 "settings.perm.microphone.why" = "用于录屏讲解、语音备注和听写。";
 "settings.perm.accessibility.why" = "用于在光标处输入听写文字、在任何 App 中检测听写键，以及按住 ⌃ 画图。";
