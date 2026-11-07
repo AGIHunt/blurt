@@ -570,7 +570,7 @@ func chromeWindow(_ frame: NSRect) -> NSWindow {
 /// the in-place markup stage (the frozen picture) too.
 func shutterFlash(_ r: NSRect, above: Bool = false) {
     let w = chromeWindow(r)
-    if above { w.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 3) }
+    if above { w.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2) }   // over the stage (InkStage)
     let l = w.contentView!.layer!
     l.backgroundColor = NSColor.white.cgColor
     l.opacity = 0

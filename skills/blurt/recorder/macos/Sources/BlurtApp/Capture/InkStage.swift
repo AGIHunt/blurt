@@ -137,7 +137,9 @@ final class InkStage {
         p.alphaValue = 1
         lifting?.invalidate()
         view.dimAlpha = StageView.dim
-        p.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 1)
+        // .screenSaver, as the picker: a statusBar-level panel is under a fullscreen app's window, which drew
+        // the picture but took every stroke (the pen worked only outside fullscreen)
+        p.level = .screenSaver
         p.setFrame(scr.frame, display: false)
         view.frame = NSRect(origin: .zero, size: scr.frame.size)
         let local = sel.offsetBy(dx: -scr.frame.minX, dy: -scr.frame.minY)
