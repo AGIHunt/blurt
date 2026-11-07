@@ -96,6 +96,10 @@ func runSelfTest(_ args: [String]) -> Never {
           && URLRouter.route(URL(string: "blurt://record")!) == .shell("record")
           && URLRouter.route(URL(string: "blurt://nope")!) == .unknown)
 
+    // the items window's way into Settings: a gear there; the dictation page has 听写设置… of its own
+    check("toolbar_settings", MainWindowController.toolbarItems(dictation: false).contains(MainWindowController.settingsID)
+          && !MainWindowController.toolbarItems(dictation: true).contains(MainWindowController.settingsID))
+
     // Spotlight results: only our item uids (an extra hit whose id is a window number was returned once)
     check("spotlight_ids", Spotlight.isItemUID("01KAQ6N2W8C3D4E5F6G7H8J9KM") && Spotlight.isItemUID("L" + String(repeating: "a1", count: 12) + "f")
           && !Spotlight.isItemUID("12345") && !Spotlight.isItemUID("01KAQ6N2W8C3D4E5F6G7H8J9KU") && !Spotlight.isItemUID("")
