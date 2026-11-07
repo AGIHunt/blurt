@@ -1129,6 +1129,7 @@ final class Dictation {
         v.start { [weak self] ok in
             guard let self = self, self.voice === v, g == self.generation else { return }
             if !ok {
+                NSLog("blurt dictation: mic start failed: %@", v.failReason ?? "?")
                 self.trigger.reset(active: false, keepTap: true)     // a second tap still sends: Return needs no mic
                 self.discard(quietly: true)
                 NoteVoice.toastUnavailable()
@@ -1408,6 +1409,8 @@ final class Dictation {
         let name = micName
         emit(["event": "dictation_nothing", "why": why.rawValue, "mic": name ?? NSNull(),
               "peak": Double(levels.max() ?? 0)])
+        NSLog("blurt dictation: nothing heard (%@, mic %@, peak %.2f, %d frames)", why.rawValue, name ?? "?",
+              levels.max() ?? 0, levels.count)
         // about the last take (Dictation.toastKey): the next take's start drops it
         island.toast(Loc.t(NothingHeard.key(why, hasName: name != nil), table: "Dictation", name ?? ""), key: Dictation.toastKey,
                      actionTitle: Loc.t("dictation.toast.nothing.change", table: "Dictation")) {
@@ -1435,14 +1438,17 @@ final class Dictation {
         guard let v = voice, let url = wav, let s = stream else { return }
         let keyUp = CACurrentMediaTime()
         let duration = v.elapsed
-        if !ended { v.stop(keep: heardSpeech) }
+        // The endpointer can miss speech buried in a loud room (NoteEndpointer's floor + 10 dB); the stream's looser
+        // test has it. A drop here throws away words that were already on screen, so either one is enough to keep it.
+        let heard = heardSpeech || s.heardSpeech
+        if !ended { v.stop(keep: heard) }
         DictationSound.stop.play()      // after the mic closed: the peck isn't in the take
         voice = nil
         stream = nil
         micLive = false
         listening = false
         releaseEsc()
-        guard heardSpeech else {
+        guard heard else {
             s.cancel()
             try? FileManager.default.removeItem(at: url)
             LiveTranscript.shared.end(session: liveSession)

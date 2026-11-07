@@ -274,6 +274,7 @@ final class VoiceInput {
         v.start { [weak self] ok in
             guard let self = self, self.voice === v else { return }
             if !ok {
+                NSLog("blurt voice: mic start failed: %@", v.failReason ?? "?")
                 self.finish(keep: false, via: "no_mic")
                 NoteVoice.toastUnavailable()
             }
