@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10,<3.15"
+# requires-python = ">=3.10"
 # dependencies = ["mcp==1.26.0", "pillow==12.1.0"]
 # ///
 """The blurt MCP server (contract C4, v0.7 behaviour in K1): lets any coding agent browse the user's Blurt items —

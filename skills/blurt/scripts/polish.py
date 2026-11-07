@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10,<3.15"
+# requires-python = ">=3.10"
 # dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "truststore==0.10.5"]
 # ///
 """Dictation polish (docs/design/dictation.md): a small local LLM (MLX, Apple Silicon) tidies what the speech model
