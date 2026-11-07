@@ -1,0 +1,5 @@
+# The Python uv runs these scripts on (uv reads this file next to the script, from any working directory). Without
+# it, when no installed Python fits requires-python, uv downloads the newest release — which can be one the pinned
+# packages ship no wheels for yet (Python 3.15 vs sherpa-onnx 1.13.8: built from source, needs cmake; BLU-1, #47).
+# requires-python stays open: someone who sets UV_PYTHON or passes --python still runs on theirs.
+3.14
