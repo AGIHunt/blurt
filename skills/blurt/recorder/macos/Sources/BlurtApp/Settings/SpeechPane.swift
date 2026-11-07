@@ -848,11 +848,13 @@ struct SpeechPane: View {
             }
             if s.hardware.gpu.kind == "apple" {
                 // the share of memory as what it means: "Up to 32 GB" (10–50 %, in 5 % steps)
+                // typed apart: inline, the compiler gives up type-checking the call
+                let memory: [(Int, String)] = stride(from: 10, through: 50, by: 5).map { (pct: Int) -> (Int, String) in
+                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
+                }
                 SettingRow("speech.memory") {
                     ChoicePopup(label: S("speech.limits.memory"),
-                                choices: Array(stride(from: 10, through: 50, by: 5)).map { pct in
-                                    (pct, S("speech.limits.memory.value", mb(s.hardware.ramGB * 1024 * Double(pct) / 100)))
-                                },
+                                choices: memory,
                                 selection: Binding(get: { Int((s.limits.maxMemoryFraction * 20).rounded()) * 5 },
                                                    set: { m.setLimit("max_memory_fraction", Double($0) / 100) }))
                 }
