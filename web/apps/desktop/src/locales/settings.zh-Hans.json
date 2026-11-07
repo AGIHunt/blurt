@@ -1113,7 +1113,7 @@
  "st.speech.download.queued": "排队中",
  "st.speech.download.stop": "停止",
  "st.speech.download.unpacking": "正在解压…",
- "st.speech.error.read": "读取语音模型失败。请确认已安装 uv（在「设置」的「通用」里）。",
+ "st.speech.error.read": "读取语音模型失败。",
  "st.speech.language.system": "Windows 语音识别一次只识别一种语言，当前为{1}，也能识别句中的英文单词。只说英文时请选择 English。",
  "st.speech.language.system.one": "Windows 语音识别一次只识别一种语言，当前为{1}。使用其他语言时，请在此选择。",
  "st.speech.languages.add": "添加",

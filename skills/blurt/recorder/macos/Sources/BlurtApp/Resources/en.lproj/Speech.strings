@@ -7,7 +7,9 @@
 "speech.section.models" = "All models";
 "speech.section.advanced" = "Advanced";
 "speech.loading" = "Checking your Mac…";
-"speech.error.read" = "Couldn’t read the speech models. Check that uv is installed (in Settings, under General).";
+"speech.error.read" = "Couldn’t read the speech models.";
+"speech.error.no_uv" = "Local models need uv (the tool that runs them), and it isn’t installed.";
+"speech.install_uv" = "Install uv";
 "speech.cancel" = "Cancel";
 
 /* The machine (the page's subtitle) and its tier (asr_models.json tiers; the tests check every tier has a name) */

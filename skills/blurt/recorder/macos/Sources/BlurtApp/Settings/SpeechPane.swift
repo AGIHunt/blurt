@@ -182,6 +182,9 @@ final class SpeechModel: ObservableObject {
     @Published var models: [ASRModel] = []
     @Published var loading = false
     @Published var error: String?
+    /// the models couldn't be read because there is no uv: the error line offers Install uv, not Try Again
+    @Published var noUV = false
+    @Published var installingUV = false
     @Published var benching: Set<String> = []
     @Published var bench: [String: BenchResult] = [:]                                      // model id → last run
     @Published var language = "auto"
@@ -197,6 +200,27 @@ final class SpeechModel: ObservableObject {
         mirror = ModelBundle.mirror
         // downloads are the app's one manager's (App/ModelDownloads.swift): its progress shows in these rows
         sub = ModelDownloads.shared.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        // uv arrived (here, the setup assistant or the launch's quiet install): the models can be read now
+        uvObserver = NotificationCenter.default.addObserver(forName: UVSetup.finished, object: nil, queue: .main) { [weak self] n in
+            MainActor.assumeIsolated {
+                guard let self = self else { return }
+                self.installingUV = false
+                if n.object != nil || self.noUV { Task { await self.load() } }
+            }
+        }
+    }
+    private var uvObserver: NSObjectProtocol?
+
+    /// Install uv from the error line: UVSetup's quiet install (nothing when a usable one is there); its
+    /// notification reloads. A uv already there answers without one, so look again shortly.
+    func installUV() {
+        installingUV = true
+        UVSetup.ensure(via: "settings")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in
+            guard let self = self, self.installingUV, !UVSetup.installing else { return }
+            self.installingUV = false
+            Task { await self.load() }
+        }
     }
 
     /// A model's download as its bar shows it: the running one's "N of M", "Queued" while it waits; nil otherwise.
@@ -221,7 +245,7 @@ final class SpeechModel: ObservableObject {
         defer { loading = false }
         do {
             let r = try await SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
-            guard r.ok, let s = r.decode(ASRState.self) else { error = S("speech.error.read"); return }
+            guard r.ok, let s = r.decode(ASRState.self) else { failed(); return }
             // a finished download: the suggestion folds away and the jobs show their new model
             let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || state == nil
             withAnimation(calm ? nil : .easeInOut(duration: 0.25)) {
@@ -229,7 +253,14 @@ final class SpeechModel: ObservableObject {
                 models = s.models.filter { $0.role == "asr" }  // not the VAD every local model uses
             }
             error = nil
-        } catch { self.error = S("speech.error.read") }
+            noUV = false
+        } catch { failed() }
+    }
+
+    /// The models couldn't be read: without uv the line says so (Install uv beside it), else Try Again.
+    private func failed() {
+        noUV = ScriptRunner.shared.uvPath == nil
+        error = S(noUV ? "speech.error.no_uv" : "speech.error.read")
     }
 
     /// Re-pick for this Mac (auto) and reload.
@@ -482,8 +513,18 @@ struct SpeechPane: View {
         SettingsGroup("speech.use", title: S("speech.section.mac"), content: {
             if let e = m.error {
                 SettingsLine {
-                    Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 12) {
+                        Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        if m.installingUV || m.loading {
+                            BrandSpinnerView(size: 10)
+                        } else if m.noUV {
+                            Button(S("speech.install_uv")) { m.installUV() }.help(UVSetup.installCommand)
+                        } else {
+                            Button(S("speech.rec.retry")) { Task { await m.load() } }
+                        }
+                    }
                 }
             }
             recommendation
