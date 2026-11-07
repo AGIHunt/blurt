@@ -1,0 +1,18 @@
+# Blurt Remote's relay on your own Cloudflare account (README.md). Free plan: one SQLite-backed Durable Object per paired phone, with
+# hibernation. Over the free limit it stops answering; nothing can be billed. Replace the pattern with a subdomain of a domain you have
+# on Cloudflare.
+name = "blurt-relay"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+workers_dev = false          # only the custom domain: no *.workers.dev URL
+preview_urls = false
+
+routes = [{ pattern = "relay.example.com", custom_domain = true }]
+
+[[durable_objects.bindings]]
+name = "ROOM"
+class_name = "Room"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Room"]

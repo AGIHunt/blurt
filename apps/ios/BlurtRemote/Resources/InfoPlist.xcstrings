@@ -1,0 +1,57 @@
+{
+ "sourceLanguage": "en",
+ "version": "1.0",
+ "strings": {
+  "NSCameraUsageDescription": {
+   "extractionState": "manual",
+   "localizations": {
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Scan the code Blurt shows on your Mac to pair."
+     }
+    },
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "扫描 Mac 上 Blurt 显示的二维码以配对。"
+     }
+    }
+   }
+  },
+  "NSLocalNetworkUsageDescription": {
+   "extractionState": "manual",
+   "localizations": {
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Connect to Blurt on your Mac."
+     }
+    },
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "连接 Mac 上的 Blurt。"
+     }
+    }
+   }
+  },
+  "NSMicrophoneUsageDescription": {
+   "extractionState": "manual",
+   "localizations": {
+    "en": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "Dictate into your Mac through this iPhone’s microphone."
+     }
+    },
+    "zh-Hans": {
+     "stringUnit": {
+      "state": "translated",
+      "value": "通过 iPhone 麦克风向 Mac 听写。"
+     }
+    }
+   }
+  }
+ }
+}

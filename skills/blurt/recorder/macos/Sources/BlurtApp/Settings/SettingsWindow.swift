@@ -20,7 +20,7 @@ import BlurtCore
 
 enum SettingsPane: String, CaseIterable {
     // the sidebar's order (SettingsCatalog.panes)
-    case general, dictation, screenText = "screentext", speech, shortcuts, projects, agents, privacy, storage
+    case general, dictation, screenText = "screentext", speech, shortcuts, remote, projects, agents, privacy, storage
 
     var info: SettingsPaneInfo? { SettingsCatalog.pane(rawValue) }
     var title: String { info.flatMap { SettingsCatalog.text($0.title) } ?? rawValue }
@@ -33,6 +33,7 @@ enum SettingsPane: String, CaseIterable {
         switch self {
         case .general: view = AnyView(GeneralPane())
         case .shortcuts: view = AnyView(ShortcutsPane())
+        case .remote: view = AnyView(RemotePane())
         case .speech: view = AnyView(SpeechPane())
         case .dictation: view = AnyView(DictationPane())
         case .screenText: view = AnyView(ScreenTextPane())

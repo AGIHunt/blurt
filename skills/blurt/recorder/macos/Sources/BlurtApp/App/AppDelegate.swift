@@ -254,6 +254,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         startSnapMode()                 // the perch, a batch left from last time, test commands (SnapApp.swift)
         Dictation.shared.install()      // the dictation key (right ⌥ / Fn), history retention
+        RemoteServer.shared.install()   // the iPhone remote: listens once a phone is paired
         // the setup assistant greets a first run itself: no second hello next to it
         let assisted = Onboarding.needed && ProcessInfo.processInfo.environment["BLURT_NO_ONBOARDING"] == nil
         MainActor.assumeIsolated { ModelDownloads.shared.resumeAtLaunch() }    // a download a quit or a crash cut short carries on

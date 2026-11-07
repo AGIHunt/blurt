@@ -725,3 +725,20 @@ final class DictationTriggerTests: XCTestCase {
         XCTAssertEqual(t.run("shift-down@2200 shift-up@2280"), [.style])
     }
 }
+
+/// The iPhone's talk bar is the same key: a press from elsewhere goes through the same rules.
+final class DictationRemoteKeyTests: XCTestCase {
+    func testAPressFromThePhoneActsAsTheKey() {
+        for key in DictationTrigger.Key.allCases {
+            var t = DictationTrigger()
+            t.key = key
+            var out = t.handle(key.event(down: true, time: 1))
+            XCTAssertTrue(out.contains(.arm), "\(key)")
+            out = t.handle(key.event(down: false, time: 1.1))
+            XCTAssertTrue(out.contains(.start), "\(key): a tap starts hands-free")
+            _ = t.handle(key.event(down: true, time: 3))
+            out = t.handle(key.event(down: false, time: 3.1))
+            XCTAssertTrue(out.contains(.stop), "\(key): and the next one stops it")
+        }
+    }
+}

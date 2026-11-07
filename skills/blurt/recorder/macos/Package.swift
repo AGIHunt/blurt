@@ -19,6 +19,9 @@ var targets: [Target] = [
     // Config, paths, ScriptRunner (uv + login-shell env), HotkeyCenter, IndexReader (read-only SQLite), Agents.
     // No AppKit UI here — everything public is what BlurtApp (and tests) may use.
     .target(name: "BlurtCore", path: "Sources/BlurtCore"),
+    // The iPhone remote's wire format, crypto and key names (docs/design/remote.md), shared with apps/ios: Foundation and
+    // CryptoKit only, so it builds for both platforms.
+    .target(name: "BlurtRemoteKit", path: "Sources/BlurtRemoteKit"),
     // BlurtTry: catches the Objective-C exceptions AVFoundation raises (Swift can't), so a mic format change never
     // aborts the app.
     .target(name: "BlurtObjC", path: "Sources/BlurtObjC"),
@@ -27,7 +30,7 @@ var targets: [Target] = [
     // window and its embedded review), Terminal/ (agent sessions), Settings/, Onboarding/, System/. main.swift = launch.
     .executableTarget(
         name: "BlurtApp",
-        dependencies: ["BlurtCore", "BlurtObjC", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),
+        dependencies: ["BlurtCore", "BlurtObjC", "BlurtRemoteKit", "SwiftTerm"] + (sparkle ? ["Sparkle"] : []),
         path: "Sources/BlurtApp",
         // K10 string tables: record.py build copies Resources/*.lproj into Contents/Resources (Loc finds them there,
         // or next to the sources for a plain `swift build` run) — not SwiftPM resources.
@@ -36,6 +39,7 @@ var targets: [Target] = [
 ]
 // WP5: IndexReader tests + the 20k-row perf budget (`swift test`; needs Xcode's XCTest, `swift build` ignores it)
 targets.append(.testTarget(name: "BlurtCoreTests", dependencies: ["BlurtCore", "BlurtObjC"], path: "Tests/BlurtCoreTests"))
+targets.append(.testTarget(name: "BlurtRemoteKitTests", dependencies: ["BlurtRemoteKit"], path: "Tests/BlurtRemoteKitTests"))
 if sparkle {
     targets.append(.binaryTarget(
         name: "Sparkle",
@@ -45,10 +49,11 @@ if sparkle {
 
 let package = Package(
     name: "Blurt",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v13), .iOS(.v17)],
     products: [
         .executable(name: "blurt-recorder", targets: ["BlurtApp"]),
         .library(name: "BlurtCore", targets: ["BlurtCore"]),
+        .library(name: "BlurtRemoteKit", targets: ["BlurtRemoteKit"]),
     ],
     targets: targets,
     swiftLanguageVersions: [.v5]
