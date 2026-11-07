@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.10,<3.15"
 # dependencies = ["numpy==2.3.4; python_version >= '3.11'", "numpy==2.2.6; python_version < '3.11'", "sherpa-onnx==1.13.8", "truststore==0.10.5", "opencc-python-reimplemented==0.1.7"]
 # ///
 """Speech-to-text with timestamps, adapted to the machine it runs on (docs/design/next-round.md K9).

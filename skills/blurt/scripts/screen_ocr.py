@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.10,<3.15"
 # dependencies = ["rapidocr-onnxruntime==1.4.4", "truststore==0.10.5"]
 # ///
 """Copy Text from Screen's reading on Windows and Linux (docs/design/screen-text.md, docs/design/windows-models.md):
