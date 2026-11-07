@@ -10,6 +10,13 @@
 "speech.error.read" = "读取语音模型失败。";
 "speech.error.no_uv" = "本机模型需要 uv（运行本机模型的工具），但还没有安装。";
 "speech.install_uv" = "安装 uv";
+"speech.error.offline" = "读取语音模型失败：这台 Mac 没有联网，联网后再试。";
+"speech.error.network" = "读取语音模型失败：下载组件时网络出错。";
+"speech.error.timeout" = "读取语音模型超时。";
+"speech.error.build" = "语音组件安装失败：%@ 编译失败。";
+"speech.error.build_missing" = "语音组件安装失败：%@ 编译失败（缺少 %@）。";
+"speech.error.copy" = "复制错误信息";
+"speech.error.copied" = "已复制";
 "speech.cancel" = "取消";
 
 /* The machine (the page's subtitle) and its tier */

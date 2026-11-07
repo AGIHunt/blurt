@@ -182,8 +182,11 @@ final class SpeechModel: ObservableObject {
     @Published var models: [ASRModel] = []
     @Published var loading = false
     @Published var error: String?
-    /// the models couldn't be read because there is no uv: the error line offers Install uv, not Try Again
-    @Published var noUV = false
+    /// why the models couldn't be read (nil: they could): the error line's action follows it
+    @Published var failure: SpeechSetup.ReadFailure?
+    /// the end of what the failed read printed, for Copy Error
+    var errorDetail = ""
+    @Published var copied = false
     @Published var installingUV = false
     @Published var benching: Set<String> = []
     @Published var bench: [String: BenchResult] = [:]                                      // model id → last run
@@ -205,7 +208,7 @@ final class SpeechModel: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self = self else { return }
                 self.installingUV = false
-                if n.object != nil || self.noUV { Task { await self.load() } }
+                if n.object != nil || self.failure == .noUV { Task { await self.load() } }
             }
         }
     }
@@ -245,7 +248,7 @@ final class SpeechModel: ObservableObject {
         defer { loading = false }
         do {
             let r = try await SkillCLI.shared.run("transcribe.py", ["models"], timeout: 180)
-            guard r.ok, let s = r.decode(ASRState.self) else { failed(); return }
+            guard r.ok, let s = r.decode(ASRState.self) else { failed(stderr: r.stderr.isEmpty ? r.errorText : r.stderr); return }
             // a finished download: the suggestion folds away and the jobs show their new model
             let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion || state == nil
             withAnimation(calm ? nil : .easeInOut(duration: 0.25)) {
@@ -253,14 +256,38 @@ final class SpeechModel: ObservableObject {
                 models = s.models.filter { $0.role == "asr" }  // not the VAD every local model uses
             }
             error = nil
-            noUV = false
-        } catch { failed() }
+            failure = nil
+        } catch ScriptError.timeout {
+            failed(stderr: "", timedOut: true)
+        } catch { failed(stderr: "\(error)") }
     }
 
-    /// The models couldn't be read: without uv the line says so (Install uv beside it), else Try Again.
-    private func failed() {
-        noUV = ScriptRunner.shared.uvPath == nil
-        error = S(noUV ? "speech.error.no_uv" : "speech.error.read")
+    /// The models couldn't be read: the line says why, and offers what can help — Install uv, Try Again (offline, a
+    /// network error, a timeout), or for a package that can't be built its name and Copy Error (trying again would
+    /// fail the same way).
+    private func failed(stderr: String, timedOut: Bool = false) {
+        let f = SpeechSetup.readFailure(uv: ScriptRunner.shared.uvPath != nil, timedOut: timedOut,
+                                        online: NetworkWatch.shared.isOnline, stderr: stderr)
+        failure = f
+        errorDetail = SpeechSetup.errorTail(stderr)
+        copied = false
+        switch f {
+        case .noUV: error = S("speech.error.no_uv")
+        case .offline: error = S("speech.error.offline")
+        case .network: error = S("speech.error.network")
+        case .timeout: error = S("speech.error.timeout")
+        case .broken(let p?, let tool?): error = S("speech.error.build_missing", p, tool)
+        case .broken(let p?, nil): error = S("speech.error.build", p)
+        case .broken(nil, _): error = S("speech.error.read")
+        }
+        emit(["event": "speech_read_failed", "failure": "\(f)", "detail": String(errorDetail.suffix(2000))])
+    }
+
+    /// Copy Error: the end of what the failed read printed, for an issue report.
+    func copyError() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(error.map { "\($0)\n\n\(errorDetail)" } ?? errorDetail, forType: .string)
+        copied = true
     }
 
     /// Re-pick for this Mac (auto) and reload.
@@ -519,10 +546,13 @@ struct SpeechPane: View {
                         Spacer(minLength: 0)
                         if m.installingUV || m.loading {
                             BrandSpinnerView(size: 10)
-                        } else if m.noUV {
+                        } else if m.failure == .noUV {
                             Button(S("speech.install_uv")) { m.installUV() }.help(UVSetup.installCommand)
-                        } else {
+                        } else if m.failure?.retries == true {
                             Button(S("speech.rec.retry")) { Task { await m.load() } }
+                        } else if !m.errorDetail.isEmpty {
+                            // the same failure every time: no Try Again, the error for a report
+                            Button(S(m.copied ? "speech.error.copied" : "speech.error.copy")) { m.copyError() }
                         }
                     }
                 }

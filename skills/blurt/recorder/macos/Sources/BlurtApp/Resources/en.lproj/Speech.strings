@@ -10,6 +10,13 @@
 "speech.error.read" = "Couldn’t read the speech models.";
 "speech.error.no_uv" = "Local models need uv (the tool that runs them), and it isn’t installed.";
 "speech.install_uv" = "Install uv";
+"speech.error.offline" = "Couldn’t read the speech models: this Mac is offline. Connect, then try again.";
+"speech.error.network" = "Couldn’t read the speech models: a network error while fetching their components.";
+"speech.error.timeout" = "Reading the speech models took too long.";
+"speech.error.build" = "Couldn’t install the speech components: %@ failed to build.";
+"speech.error.build_missing" = "Couldn’t install the speech components: %@ failed to build (%@ is missing).";
+"speech.error.copy" = "Copy Error";
+"speech.error.copied" = "Copied";
 "speech.cancel" = "Cancel";
 
 /* The machine (the page's subtitle) and its tier (asr_models.json tiers; the tests check every tier has a name) */
