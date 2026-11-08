@@ -3,14 +3,12 @@
 // come down and go back up, the keyboard's stops, what the hover note adds, the deferred click, the first-card hint and
 // the Undo window of a delete.
 //
-//  • the row (CardRow.layout): newest first, left to right — at most `maxShown` cards, and no wider than `maxWidth` (a
-//    voice card is wider, so fewer of those hang); the rest wait behind a quiet "+N" tile at the row's end, which opens
-//    the overview of every card. A "+1" tile never stands in for a card that would fit: when only one would wait
-//    behind it, there is room for one more under `maxShown`, and every card fits in the room the tile row may take
-//    (`maxWidth` plus the tile), all of them hang — five snaps of
-//    150 pt are 798 pt, and the dogfood saw four and a "+1" the size of the card it hid. Centred under the island,
-//    never off the screen's edge. Nothing rotates the cards any
-//    more: the order is always the time they were taken, newest first (Copy All and a ⌘-click selection too).
+//  • the row (CardRow.layout): newest first, left to right — every card (the newest `maxHung`), nothing folded away
+//    behind a count. A row that fits is centred under the island; a longer one fills a window `maxWidth` wide (less on
+//    a narrow screen), centred under the island, and scrolls sideways in it — the newest at the window's left edge,
+//    older ones further right. The window's edges fade where more cards wait beyond them. Never off the screen's
+//    edge. Nothing rotates the cards: the order is always the time they were taken, newest first (Copy All and a
+//    ⌘-click selection too).
 //  • the threads (CardRow.threadX): straight above their card while the row fits under the island; a wider row is
 //    mapped onto the island's bottom edge in proportion, so the threads keep their order, never cross and hang close to
 //    vertical — not a fan from the island's two corners.
@@ -33,54 +31,70 @@ import CoreGraphics
 import Foundation
 
 public enum CardRow {
-    /// At most this many cards hang side by side; the others wait behind the "+N" tile.
-    public static let maxShown = 5
-    /// …and the row (with the tile) is never wider than this.
-    public static let maxWidth: CGFloat = 780
+    /// At most this many cards hang (the newest); older ones wait in the overview and the main window.
+    public static let maxHung = 100
+    /// The row's window is never wider than this; a longer row scrolls sideways inside it.
+    public static let maxWidth: CGFloat = 1040
+    /// How far the window's edge fades where more cards wait beyond it.
+    public static let fade: CGFloat = 28
 
     public struct Layout: Equatable {
         /// Indices into the cards (kept oldest first) in the order they hang, left to right: newest first.
         public var shown: [Int]
-        /// Each shown card's centre x, in the same order.
+        /// Each shown card's centre x, in the same order (scrolled: some may be outside `viewport`).
         public var centres: [CGFloat]
-        /// The cards that don't hang: the "+N" tile's count (0: no tile).
-        public var more: Int
-        /// The tile's centre x (at the row's end, after the oldest card that hangs); nil without one.
-        public var tileX: CGFloat?
-
-        /// From the left edge of the first item to the right edge of the last (the tile included).
+        /// What shows of the row, from the left edge of its first visible card to the right edge of its last: the
+        /// whole row, or `viewport` when it scrolls.
         public var span: ClosedRange<CGFloat>
+        /// The window a row too long for it scrolls in; nil while the whole row fits.
+        public var viewport: ClosedRange<CGFloat>?
+        /// How far the row is scrolled (0: the newest card at the window's left edge) and how far it can go.
+        public var scroll: CGFloat
+        public var maxScroll: CGFloat
 
-        public static let empty = Layout(shown: [], centres: [], more: 0, tileX: nil, span: 0...0)
+        public static let empty = Layout(shown: [], centres: [], span: 0...0, viewport: nil, scroll: 0, maxScroll: 0)
     }
 
-    /// `widths`: every card's width, oldest first. `tile`: the "+N" tile's width. `bounds`: where the row may go (the
-    /// screen less its margins).
-    public static func layout(widths: [CGFloat], tile: CGFloat, gap: CGFloat, centre: CGFloat, bounds: ClosedRange<CGFloat>,
-                              maxShown: Int = maxShown, maxWidth: CGFloat = maxWidth) -> Layout {
+    /// `widths`: every card's width, oldest first. `bounds`: where the row may go (the screen less its margins).
+    /// `scroll`: how far a row longer than its window is scrolled (clamped).
+    public static func layout(widths: [CGFloat], gap: CGFloat, centre: CGFloat, bounds: ClosedRange<CGFloat>, scroll: CGFloat = 0,
+                              maxHung: Int = maxHung, maxWidth: CGFloat = maxWidth) -> Layout {
         guard !widths.isEmpty else { return .empty }
-        let room = min(maxWidth, bounds.upperBound - bounds.lowerBound)
-        func width(_ n: Int) -> CGFloat {
-            let cards = widths.suffix(n).reduce(0, +) + gap * CGFloat(max(0, n - 1))
-            return cards + (widths.count > n ? gap + tile : 0)
-        }
-        var n = min(widths.count, max(1, maxShown))
-        while n > 1, width(n) > room { n -= 1 }
-        // no "+1" for a card that fits: the one card it would hide hangs instead, in the room the tile row may take
-        let screen = bounds.upperBound - bounds.lowerBound
-        if widths.count == n + 1, n + 1 <= max(1, maxShown), width(n + 1) <= min(screen, room + gap + tile) { n += 1 }
+        let n = min(widths.count, max(1, maxHung))
         let shown = Array((widths.count - n ..< widths.count).reversed())          // newest first
-        let total = width(n)
+        let total = shown.reduce(0) { $0 + widths[$1] } + gap * CGFloat(max(0, n - 1))
+        let screen = max(0, bounds.upperBound - bounds.lowerBound)
+        let room = min(maxWidth, screen)
+        let fits = total <= room
+        let w = fits ? total : room
         // centred on the island, but never off the screen's edge
-        var x = min(max(centre - total / 2, bounds.lowerBound), max(bounds.lowerBound, bounds.upperBound - total))
-        let left = x
+        let left = min(max(centre - w / 2, bounds.lowerBound), max(bounds.lowerBound, bounds.upperBound - w))
+        let maxScroll = fits ? 0 : total - room
+        let off = min(max(0, scroll), maxScroll)
+        var x = left - off
         var centres: [CGFloat] = []
         for i in shown {
             centres.append(x + widths[i] / 2)
             x += widths[i] + gap
         }
-        let more = widths.count - n
-        return Layout(shown: shown, centres: centres, more: more, tileX: more > 0 ? x + tile / 2 : nil, span: left...(left + total))
+        return Layout(shown: shown, centres: centres, span: left...(left + w), viewport: fits ? nil : left...(left + w),
+                      scroll: off, maxScroll: maxScroll)
+    }
+
+    /// The scroll that brings the card from `left` to `right` (as laid out now) into the window, `pad` inside its edge
+    /// (the keyboard moving along the row); unchanged when it shows already.
+    public static func reveal(left: CGFloat, right: CGFloat, in l: Layout, pad: CGFloat = fade) -> CGFloat {
+        guard let v = l.viewport else { return 0 }
+        var s = l.scroll
+        if left < v.lowerBound + pad { s -= v.lowerBound + pad - left } else if right > v.upperBound - pad { s += right - (v.upperBound - pad) }
+        return min(max(0, s), l.maxScroll)
+    }
+
+    /// How much of a card from `left` to `right` shows in the window (0…1): a card scrolled out of it can't be pointed
+    /// at, and its thread doesn't hang.
+    public static func visible(left: CGFloat, right: CGFloat, in l: Layout) -> CGFloat {
+        guard let v = l.viewport, right > left else { return 1 }
+        return max(0, min(right, v.upperBound) - max(left, v.lowerBound)) / (right - left)
     }
 
     /// How far under the island's bottom edge the cards reach: the shortest thread (`below`), the longest slack, a
@@ -97,7 +111,7 @@ public enum CardRow {
         islandBottom - (cardsHang ? band : 0) - gap
     }
 
-    /// Whether the row hangs from a rod (v0.9.1): some card's (or the tile's) clasp, at `centres`, is not under the
+    /// Whether the row hangs from a rod (v0.9.1): some card's clasp, at `centres`, is not under the
     /// island's `edge` — a thread to it would run nearly flat from the island (the fan the judges read as tent ropes).
     /// Then a short rod under the island spans the row, held by two stems, and every card hangs straight down from it.
     public static func rodded(centres: [CGFloat], edge: ClosedRange<CGFloat>, tolerance: CGFloat = 1) -> Bool {
@@ -127,7 +141,7 @@ public extension CardRow {
     }
 
     /// Making room for a lifted card (hovered, or holding the keyboard): every item left of it moves `by` to the left,
-    /// every item right of it — the "+N" tile included (it is the last item) — `by` to the right, so the lifted card's
+    /// every item right of it `by` to the right, so the lifted card's
     /// growth comes out of a reserved budget and no gap anywhere drops below the row's own.
     static func stepAside(items: Int, lifted: Int?, by: CGFloat) -> [CGFloat] {
         (0..<max(0, items)).map { i in
@@ -213,21 +227,19 @@ public enum CardReveal {
     public static func firstHint(alreadyShown: Bool, isCard: Bool, recording: Bool) -> Bool { !alreadyShown && isCard && !recording }
 }
 
-/// The keyboard's stops along the row: the cards (0 = the newest) and then the "+N" tile.
+/// The keyboard's stops along the row: the cards, 0 = the newest.
 public enum CardFocus {
     /// ←/→ (Tab, ⇧Tab): the next stop, staying at the ends. nil (nothing focused yet) starts at the newest card.
-    public static func move(_ i: Int?, by d: Int, cards: Int, tile: Bool) -> Int? {
-        let stops = cards + (tile ? 1 : 0)
-        guard stops > 0 else { return nil }
+    public static func move(_ i: Int?, by d: Int, cards: Int) -> Int? {
+        guard cards > 0 else { return nil }
         guard let i = i else { return 0 }
-        return min(max(i + d, 0), stops - 1)
+        return min(max(i + d, 0), cards - 1)
     }
 
     /// After the focused card left the row (deleted, taken): the same place, or the last stop.
-    public static func clamp(_ i: Int?, cards: Int, tile: Bool) -> Int? {
-        let stops = cards + (tile ? 1 : 0)
-        guard let i = i, stops > 0 else { return nil }
-        return min(i, stops - 1)
+    public static func clamp(_ i: Int?, cards: Int) -> Int? {
+        guard let i = i, cards > 0 else { return nil }
+        return min(i, cards - 1)
     }
 }
 

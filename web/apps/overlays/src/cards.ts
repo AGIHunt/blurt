@@ -1,28 +1,32 @@
 // The hanging cards' rules that need no DOM — a port of the Mac's BlurtCore CardRow.swift / IslandLayout.swift
 // (CardShape) so the row on Windows / Linux hangs, sizes and reveals by the same numbers (island.ts draws it).
 //
-//  • the row (cardRow): newest first, left to right — at most 5 cards and never wider than 780 px; the rest wait
-//    behind a quiet "+N" tile at the row's end. A "+1" tile never stands in for a card that would fit. Centred under
-//    the island, never off the screen's edge (`bounds`: the window less its 12 px margins).
+//  • the row (cardRow): newest first, left to right — every card (the newest 100), nothing folded behind a count. A
+//    row that fits is centred under the island; a longer one fills a window at most 1040 px wide, centred under the
+//    island, and scrolls sideways in it (the newest at its left edge), its edges fading where more cards wait. Never
+//    off the screen's edge (`bounds`: the window less its 12 px margins).
 //  • a snap's card (cardShape): 84 px high, as wide as its picture wants within 84…150 px; a picture too wide or too
 //    tall for that is shown whole (letterboxed), never as a blown-up slice of its middle.
 //  • the threads (threadX): straight above their card while the row fits under the island; a wider row is mapped onto
 //    the island's bottom edge in proportion, so they keep their order and never fan from its corners.
-//  • making room for a lifted card (stepAside): the items on each side step 8 px aside, the tile too.
+//  • making room for a lifted card (stepAside): the items on each side step 8 px aside.
 //  • coming down (CardReveal): after the pointer has rested on the island 180 ms; up again 250 ms after it left.
 //  • a click (DeferredClick): copies once the double-click interval has passed; a double-click edits the note instead.
 
 export const CARD_H = 84;
 export const SHOT_DEFAULT = { w: 112, h: CARD_H };
 export const VOICE = { w: 168, h: 50 };
-export const TILE = { w: 72, h: CARD_H };
 export const GAP = 12;
 /** the cards keep this far from the window's (the screen's) edges */
 export const EDGE = 12;
 /** the cards' top edge under the island (every card's: no uneven threads at rest) */
 export const BELOW = 18;
-export const MAX_SHOWN = 5;
-export const MAX_WIDTH = 780;
+/** at most this many cards hang (the newest); older ones wait in the Cards panel */
+export const MAX_HUNG = 100;
+/** the row's window is never wider than this; a longer row scrolls sideways inside it */
+export const MAX_WIDTH = 1040;
+/** how far the window's edge fades where more cards wait beyond it */
+export const FADE = 28;
 /** the lifted card: this much higher, 1.05× from its clasp; its neighbours step this far aside */
 export const LIFT = 5;
 export const LIFT_SCALE = 0.05;
@@ -31,46 +35,51 @@ export const ASIDE = 8;
 export interface RowLayout {
   /** indices into the cards (kept oldest first) in the order they hang, left to right: newest first */
   shown: number[];
-  /** each shown card's centre x, in the same order */
+  /** each shown card's centre x, in the same order (scrolled: some may be outside `viewport`) */
   centres: number[];
-  /** the cards that don't hang: the "+N" tile's count (0: no tile) */
-  more: number;
-  /** the tile's centre x, nil without one */
-  tileX: number | null;
-  /** from the left edge of the first item to the right edge of the last (the tile included) */
+  /** what shows of the row: the whole row, or `viewport` when it scrolls */
   span: [number, number];
+  /** the window a row too long for it scrolls in; null while the whole row fits */
+  viewport: [number, number] | null;
+  /** how far the row is scrolled (0: the newest at the window's left edge), and how far it can go */
+  scroll: number;
+  maxScroll: number;
 }
 
-/** `widths`: every card's width, oldest first. `centre`: the island's centre x. `bounds`: where the row may go. */
+/** `widths`: every card's width, oldest first. `centre`: the island's centre x. `bounds`: where the row may go.
+ *  `scroll`: how far a row longer than its window is scrolled (clamped). */
 export function cardRow(
   widths: number[],
   centre: number,
   bounds: [number, number],
-  { tile = TILE.w, gap = GAP, maxShown = MAX_SHOWN, maxWidth = MAX_WIDTH } = {},
+  { gap = GAP, scroll = 0, maxHung = MAX_HUNG, maxWidth = MAX_WIDTH } = {},
 ): RowLayout {
-  if (!widths.length) return { shown: [], centres: [], more: 0, tileX: null, span: [0, 0] };
+  if (!widths.length) return { shown: [], centres: [], span: [0, 0], viewport: null, scroll: 0, maxScroll: 0 };
   const [lo, hi] = bounds;
-  const screen = Math.max(0, hi - lo);
-  const room = Math.min(maxWidth, screen);
-  const width = (n: number) =>
-    widths.slice(widths.length - n).reduce((a, b) => a + b, 0) + gap * Math.max(0, n - 1) + (widths.length > n ? gap + tile : 0);
-  let n = Math.min(widths.length, Math.max(1, maxShown));
-  while (n > 1 && width(n) > room) n--;
-  // no "+1" for a card that fits: the one card it would hide hangs instead, in the room the tile row may take
-  if (widths.length === n + 1 && n + 1 <= Math.max(1, maxShown) && width(n + 1) <= Math.min(screen, room + gap + tile)) n++;
+  const n = Math.min(widths.length, Math.max(1, maxHung));
   const shown: number[] = [];
   for (let i = widths.length - 1; i >= widths.length - n; i--) shown.push(i);
-  const total = width(n);
+  const total = shown.reduce((a, i) => a + widths[i], 0) + gap * Math.max(0, n - 1);
+  const room = Math.min(maxWidth, Math.max(0, hi - lo));
+  const fits = total <= room;
+  const w = fits ? total : room;
   // centred on the island, but never off the screen's edge
-  let x = Math.min(Math.max(centre - total / 2, lo), Math.max(lo, hi - total));
-  const left = x;
+  const left = Math.min(Math.max(centre - w / 2, lo), Math.max(lo, hi - w));
+  const maxScroll = fits ? 0 : total - room;
+  const off = Math.min(Math.max(0, scroll), maxScroll);
+  let x = left - off;
   const centres: number[] = [];
   for (const i of shown) {
     centres.push(x + widths[i] / 2);
     x += widths[i] + gap;
   }
-  const more = widths.length - n;
-  return { shown, centres, more, tileX: more > 0 ? x + tile / 2 : null, span: [left, left + total] };
+  return { shown, centres, span: [left, left + w], viewport: fits ? null : [left, left + w], scroll: off, maxScroll };
+}
+
+/** How much of a card from `left` to `right` shows in the row's window (0…1). */
+export function visibleIn(left: number, right: number, l: RowLayout): number {
+  if (!l.viewport || right <= left) return 1;
+  return Math.max(0, Math.min(right, l.viewport[1]) - Math.max(left, l.viewport[0])) / (right - left);
 }
 
 /** The island's centre in the window: the stage's middle (the island is CSS-centred on it). A window not laid out
@@ -108,7 +117,7 @@ export function threadX(x: number, row: [number, number], edge: [number, number]
   return Math.min(Math.max(edge[0] + k * ew, edge[0]), edge[1]);
 }
 
-/** Making room for a lifted card: everything left of it moves `by` left, everything right of it (the tile too) right. */
+/** Making room for a lifted card: everything left of it moves `by` left, everything right of it right. */
 export function stepAside(items: number, lifted: number | null, by = ASIDE): number[] {
   return Array.from({ length: Math.max(0, items) }, (_, i) => (lifted === null || lifted >= items || i === lifted ? 0 : i < lifted ? -by : by));
 }

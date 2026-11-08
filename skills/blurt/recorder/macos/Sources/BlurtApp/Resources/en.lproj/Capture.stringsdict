@@ -98,12 +98,6 @@
     <key>n</key>
     <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Deleted</string><key>other</key><string>Deleted %d cards</string></dict>
   </dict>
-  <key>capture.cards.more_ax</key>
-  <dict>
-    <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>
-    <key>n</key>
-    <dict><key>NSStringFormatSpecTypeKey</key><string>NSStringPluralRuleType</string><key>NSStringFormatValueTypeKey</key><string>d</string><key>one</key><string>Show the card</string><key>other</key><string>Show all %d cards</string></dict>
-  </dict>
   <key>capture.cards.selected</key>
   <dict>
     <key>NSStringLocalizedFormatKey</key><string>%#@n@</string>

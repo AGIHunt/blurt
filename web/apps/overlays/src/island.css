@@ -1317,36 +1317,6 @@ button.row:hover::before,
 .lip[hidden] {
   display: none;
 }
-/* the "+N" tile: as tall as a card, narrower; "+3" and "Show all" in secondary ink, a second sheet under it */
-.tile {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  width: 72px;
-  height: 84px;
-  border-radius: 10px;
-  background: #fbfaf7;
-  box-shadow:
-    0 0 0 0.5px rgba(0, 0, 0, 0.18),
-    3px 3px 0 -1px #e9e7e1,
-    3px 3px 0 -0.5px rgba(0, 0, 0, 0.14);
-  color: #6b665d;
-}
-.tile[hidden],
-.tile.up {
-  display: none;
-}
-.tile .tn {
-  font: 600 15px var(--font);
-}
-.tile .tc {
-  font: 500 11px var(--font);
-}
 .first-hint {
   position: absolute;
   left: 0;

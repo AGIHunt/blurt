@@ -26,7 +26,8 @@ import {
   DeferredClick,
   LIFT,
   LIFT_SCALE,
-  TILE,
+  FADE,
+  MAX_HUNG,
   UNDO_MS,
   VOICE,
   cardRow,
@@ -34,6 +35,7 @@ import {
   rowBounds,
   rowCentre,
   stepAside,
+  visibleIn,
   type RowLayout,
   CardsPanelRules,
   PANEL_MIN_W,
@@ -133,7 +135,7 @@ const NEWS_MS = 4500; // Island.newsSeconds
 const MOMENT_MS = 2200;
 const VOICE_HINT_S = 3; // Island.voiceHintSeconds
 const DOUBLE_CLICK_MS = 500; // Windows' default double-click time
-const MAX_CARDS_KEPT = 64;
+const MAX_CARDS_KEPT = MAX_HUNG;
 
 const ic = (name: IconName, size = 16, cls = '') => iconSvg(name, { size, className: cls ? `ic ${cls}` : 'ic' });
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -1538,6 +1540,8 @@ const live: Live[] = [];
 let hovered: Live | null = null;
 let dragging: Live | null = null;
 let row: RowLayout = cardRow([], 0, [0, 0]);
+/** how far a row longer than its window is scrolled (RowLayout.scroll; 0: the newest at the left) */
+let scrollX = 0;
 const keyOf = (c: Card) => `${c.session ?? ''}#${c.n}`;
 const isVoice = (c: Card) => c.kind === 'voice' || !c.src;
 const clicks = new DeferredClick<string>();
@@ -1777,6 +1781,7 @@ function addCard(card: Card, pull: boolean, from?: CssRect | null) {
   restartLoop();
   const l = makeCard(card, 'fly');
   live.push(l);
+  scrollX = 0; // the newest, where it is caught: at the window's left
   if (from && !reduceMotion()) {
     // it flies from where it was taken (the snapped area) to its place on the row
     l.fromX = from.x + from.w / 2;
@@ -1824,17 +1829,28 @@ function remove(l: Live) {
   render();
 }
 
-// the "+N" tile at the row's end: as tall as a card, narrower — a quiet way to every card (a second sheet under it)
-const tile = document.createElement('button');
-tile.className = 'tile';
-tile.hidden = true;
-tile.addEventListener('pointerenter', onCardsEnter);
-tile.addEventListener('pointerleave', onCardsLeave);
-tile.addEventListener('click', () => openPanel('hanging', false));
-tile.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  showIslandMenu(e.clientX, e.clientY);
-});
+// a row longer than its window scrolls sideways in it: the wheel or the touchpad's swipe over the row, rigidly (the
+// cards move with the fingers)
+deck.addEventListener(
+  'wheel',
+  (e) => {
+    const v = row.viewport;
+    const top = islandBottom();
+    if (!v || downK.value < 0.5 || dragging || e.clientX < v[0] || e.clientX > v[1] || e.clientY < top || e.clientY > top + BELOW + 100) return;
+    e.preventDefault();
+    const d = Math.abs(e.deltaX) >= Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
+    scrollRow(scrollX + d * (e.deltaMode === 1 ? 16 : 1));
+  },
+  { passive: false },
+);
+function scrollRow(to: number) {
+  const before = scrollX;
+  scrollX = Math.min(Math.max(0, to), row.maxScroll);
+  const d = before - scrollX;
+  if (Math.abs(d) < 0.01) return;
+  for (const l of hanging()) l.x.value += d;
+  layoutCards();
+}
 // a row wider than the island hangs from the island's lip: a 3 px band of its black flush under it, centred on it,
 // as wide as the outermost clasps plus 8 (CardRow.lip) — never threads fanning from nowhere
 const lip = document.createElement('div');
@@ -1845,7 +1861,7 @@ stage.append(lip);
 const hint = document.createElement('div');
 hint.className = 'first-hint';
 hint.hidden = true;
-deck.append(tile, hint);
+deck.append(hint);
 
 let hintShown = (() => {
   try {
@@ -1867,8 +1883,9 @@ function showFirstHint() {
   setTimeout(() => (layoutCards(), render()), 6050);
 }
 
-/** The row (BlurtCore CardRow): newest first, centred under the island, never off the window's edge. `snapX`: put the
- *  cards at their slots at once (the window changed size, or they are new). */
+/** The row (BlurtCore CardRow): newest first, centred under the island, never off the window's edge; a row longer than
+ *  its window scrolls in it, its edges fading where more cards wait. `snapX`: put the cards at their slots at once
+ *  (the window changed size, or they are new). */
 function layoutCards(snapX = false) {
   // oldest first, by when each was taken (the row puts the newest leftmost): the order the cards came in is not that
   // order when a refresh lists one before its fly-in lands; one still flying with no time yet is the newest
@@ -1881,12 +1898,14 @@ function layoutCards(snapX = false) {
     cards.map((l) => l.w),
     rowCentre(stage.clientWidth || innerWidth, screen.width),
     rowBounds(W),
+    { scroll: scrollX },
   );
+  scrollX = row.scroll;
   const shownSet = new Set(row.shown.map((i) => cards[i]));
   cards.forEach((l) => (l.el.style.display = shownSet.has(l) ? '' : 'none'));
   const order = row.shown.map((i) => cards[i]); // left to right
   const lifted = hovered && order.includes(hovered) ? order.indexOf(hovered) : null;
-  const aside = stepAside(order.length + (row.more ? 1 : 0), lifted);
+  const aside = stepAside(order.length, lifted);
   order.forEach((l, j) => {
     l.x.target = row.centres[j] + aside[j];
     if (l.fresh || snapX || reduceMotion()) {
@@ -1896,17 +1915,29 @@ function layoutCards(snapX = false) {
     }
     l.lift.target = j === lifted ? -LIFT : 0;
   });
-  tile.hidden = !row.more;
-  if (row.more) {
-    tile.innerHTML = `<span class="tn">+${num(row.more)}</span><span class="tc">${esc(t('island.cards.more_caption'))}</span>`;
-    tile.setAttribute('aria-label', plural('island.cards.more_ax', cards.length));
-    tile.dataset.x = String(row.tileX! + aside[aside.length - 1] - TILE.w / 2);
-  }
+  rowMask();
   downK.target = cards.length && cardsDown() ? 1 : 0;
   if (reduceMotion()) downK.snap();
   kick();
   paintNow();
 }
+
+/** The fade at the row's window edges where more cards wait beyond them (none while it fits, or a card is dragged). */
+let maskNow = '';
+function rowMask() {
+  const v = row.viewport;
+  let m = '';
+  if (v && !dragging) {
+    const l = scrollX > 0.5 ? FADE : 0;
+    const r = scrollX < row.maxScroll - 0.5 ? FADE : 0;
+    m = `linear-gradient(to right, transparent ${v[0]}px, #000 ${v[0] + l}px, #000 ${v[1] - r}px, transparent ${v[1]}px)`;
+  }
+  if (m === maskNow) return;
+  maskNow = m;
+  deck.style.maskImage = m;
+}
+/** Some of the card shows in the row's window (it can be pointed at, and the lip reaches it). */
+const inView = (l: Live) => visibleIn(l.x.value - l.w / 2, l.x.value + l.w / 2, row) > 0.15;
 
 // --- drag a card: onto a project in the island, or out into any app (CardDrag; Island.dragMoved)
 function islandZone(margin: number) {
@@ -2245,7 +2276,8 @@ function step(now: number) {
   // the lip, while some clasp is not under the island's bottom edge (its rounded corners kept clear)
   const ir = island.getBoundingClientRect();
   const cx = ir.left + ir.width / 2;
-  const clasps = down > 0.5 ? [...row.centres, ...(row.tileX !== null ? [row.tileX] : [])] : [];
+  const v = row.viewport;
+  const clasps = down > 0.5 ? (v ? [v[0] + 8, v[1] - 8] : row.centres) : [];
   const edge = [ir.left + 15, ir.right - 15];
   const lipped = clasps.some((x) => x < edge[0] - 1 || x > edge[1] + 1);
   lip.hidden = !lipped;
@@ -2254,11 +2286,11 @@ function step(now: number) {
     lip.style.transform = `translate(${(cx - half).toFixed(1)}px, ${(ir.bottom - 1).toFixed(1)}px)`;
     lip.style.width = `${(2 * half).toFixed(1)}px`;
   }
-  // the tile and the first-card hint ride with the row
-  const rowY = base - (1 - down) * (BELOW + 94);
-  tile.style.transform = `translate(${tile.dataset.x ?? 0}px, ${rowY.toFixed(1)}px)`;
-  tile.style.opacity = String(Math.max(0, Math.min(1, down * 1.6)));
-  tile.classList.toggle('up', down < 0.02);
+  rowMask();
+  if (down < 0.02 && scrollX && !dragging) {
+    scrollX = 0; // next time they come down: the newest first
+    layoutCards(true);
+  }
   // the selection: a ring on each card, "✓ 2 selected · Copied" under the row; it ends as the cards go up
   if (selection.size && down < 0.02) clearSelection();
   // a plain click's copy: "✓ Copied" under that card, 1.2 s (the same chip)
@@ -2348,6 +2380,14 @@ function reportHits(force = false) {
     const b = el.getBoundingClientRect();
     if (b.width && b.height) rects.push({ x: Math.floor(b.left), y: Math.floor(b.top), w: Math.ceil(b.width), h: Math.ceil(b.height) });
   };
+  // a card face, only the part of it in the row's window
+  const clipAdd = (el: Element) => {
+    const b = el.getBoundingClientRect();
+    const v = row.viewport;
+    const l = v ? Math.max(b.left, v[0]) : b.left;
+    const r = v ? Math.min(b.right, v[1]) : b.right;
+    if (r - l > 0 && b.height) rects.push({ x: Math.floor(l), y: Math.floor(b.top), w: Math.ceil(r - l), h: Math.ceil(b.height) });
+  };
   if (dragging) rects.push({ x: 0, y: 0, w: innerWidth, h: innerHeight });
   else {
     if (island.classList.contains('shown')) add(island);
@@ -2355,8 +2395,13 @@ function reportHits(force = false) {
     // with nothing to show (else an empty island could never be found)
     add(hot);
     if (downK.value > 0.5) {
-      for (const l of live) if ((l.phase === 'hang' || l.phase === 'fly') && l.el.style.display !== 'none') add(l.face);
-      if (!tile.hidden) add(tile);
+      for (const l of live) if ((l.phase === 'hang' || l.phase === 'fly') && l.el.style.display !== 'none' && inView(l)) clipAdd(l.face);
+      // a row that scrolls takes the pointer across its band, gaps included, so a swipe over it reaches it
+      const v = row.viewport;
+      if (v) {
+        const top = islandBottom() + BELOW;
+        rects.push({ x: Math.floor(v[0]), y: Math.floor(top), w: Math.ceil(v[1] - v[0]), h: Math.max(84, ...hanging().map((l) => l.h)) });
+      }
     }
     if (!menuEl.hidden) for (const m of [menuEl, ...menuEl.querySelectorAll('.mi.has-sub:hover > .sub')]) add(m);
     if (!panelEl.hidden) add(panelEl);
@@ -2376,8 +2421,8 @@ menuEl.addEventListener('pointerover', () => reportHits());
 
 // ------------------------------------------------------------------ the Cards panel (CardsOverview) and its preview
 // "Cards" with two segments — Current N (the cards at the top of the screen) and History N (the ones dragged out or
-// pasted into another app in the last 7 days). Show Cards (the hotkey, the tray), the open island's cards row and the
-// "+N" tile open it; it sits under the strip the cards hang in, takes the keyboard (given back on close) and closes
+// pasted into another app in the last 7 days). Show Cards (the hotkey, the tray), and the open island's cards row
+// open it; it sits under the strip the cards hang in, takes the keyboard (given back on close) and closes
 // when another app is clicked (the window loses the keyboard: the Mac's light panel). Keys: CardsPanelRules.
 type HCard = Card & { wall?: number | null; taken?: number };
 let history: HCard[] = [];
@@ -3053,7 +3098,7 @@ setTimeout(() => {
   toReview: S.toReview,
   project: S.project?.name ?? null,
   cards: live.filter((l) => l.phase === 'hang' || l.phase === 'fly').map((l) => ({ n: l.card.n, kind: l.card.kind, text: l.card.text })),
-  row: { centres: row.centres, span: row.span, more: row.more, down: downK.value },
+  row: { centres: row.centres, span: row.span, scroll: row.scroll, maxScroll: row.maxScroll, down: downK.value },
   pill: pill.innerText,
   toast: toastNow ? { text: toastNow.text, action: toastNow.action?.label ?? null } : null,
 });
@@ -3138,7 +3183,8 @@ await ready(host, 'island', (push) => {
   }
   if (['auto', 'drop', 'cards', 'menu', 'ears', 'many', '1'].includes(demo)) {
     const voice: Card = { n: 2, src: '', kind: 'voice', text: zh ? '搜索框放到顶部' : 'Move search to the top', session: '/demo/inbox/sessions/20261022-101500-shots' };
-    const cards = demo === 'many' ? [1, 3, 4, 5, 6, 7, 8, 9].map((n) => shot(n, n * 40, n === 9 ? (zh ? '保存按钮太浅' : 'Save button too faint') : null)) : [shot(1, 210, zh ? '保存按钮太浅' : 'Save button too faint', 320, 120), voice];
+    const manyN = Number(params.get('n')) || 8; // ?n=40: a row long enough to scroll
+    const cards = demo === 'many' ? Array.from({ length: manyN }, (_, i) => i + 2).map((n) => shot(n, (n * 40) % 360, n === manyN + 1 ? (zh ? '保存按钮太浅' : 'Save button too faint') : null)) : [shot(1, 210, zh ? '保存按钮太浅' : 'Save button too faint', 320, 120), voice];
     push(EV.island, { op: 'cards', cards });
     if (demo !== 'many') setTimeout(() => push(EV.island, { op: 'card', card: shot(3, 140, null), pull: false }), params.has('still') ? 0 : 500);
     if (demo !== 'ears' && demo !== '1') setTimeout(() => revealCards(true), 10);
