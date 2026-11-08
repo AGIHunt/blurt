@@ -39,6 +39,26 @@ public enum RemoteCrypto {
         return Data(h.finalize())
     }
 
+    /// Six digits both ends show while a new phone waits for a yes on the Mac: the same only if it's the same session, so a yes can't be
+    /// given to someone else who used the code. The phone's hello commits to a nonce it reveals only after the Mac has answered, so
+    /// nobody in the middle can pick an answer that makes the digits come out as they like (as Bluetooth's numeric comparison does).
+    static func check(_ transcript: Data, nonce: Data) -> String {
+        var h = SHA256()
+        h.update(data: Data("check".utf8))
+        h.update(data: transcript)
+        h.update(data: nonce)
+        let n = Data(h.finalize()).prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) }
+        return String(format: "%06u", n % 1_000_000)
+    }
+
+    static func commitment(_ nonce: Data) -> Data { Data(SHA256.hash(data: Data("commit".utf8) + nonce)) }
+
+    /// Equal keys, compared in constant time.
+    public static func same(_ a: Data, _ b: Data) -> Bool {
+        guard a.count == b.count else { return false }
+        return zip(a, b).reduce(UInt8(0)) { $0 | ($1.0 ^ $1.1) } == 0
+    }
+
     static func proof(paired: Data, transcript: Data) -> Data {
         var m = Data("mac".utf8)
         m.append(transcript)
@@ -59,7 +79,7 @@ public struct RemoteHandshakeError: Error, Equatable {
     public init(_ k: Kind) { kind = k }
 }
 
-struct PhoneHello: Codable { var v: Int; var id: String; var eph: Data }
+struct PhoneHello: Codable { var v: Int; var id: String; var eph: Data; var c: Data? }
 struct MacHello: Codable { var v: Int; var eph: Data?; var proof: Data?; var error: String? }
 
 /// The phone's end of the handshake.
@@ -67,11 +87,13 @@ public struct PhoneHandshake {
     public let id: String
     let paired: Data
     let eph = Curve25519.KeyAgreement.PrivateKey()
+    /// committed to in the hello, revealed in the first sealed message (ToMac.hello): it goes into the six digits
+    public let nonce = RemoteCrypto.newKey()
 
     public init(id: String, paired: Data) { self.id = id; self.paired = paired }
 
     public func hello() -> Data {
-        (try? JSONEncoder().encode(PhoneHello(v: RemoteCrypto.version, id: id, eph: eph.publicKey.rawRepresentation))) ?? Data()
+        (try? JSONEncoder().encode(PhoneHello(v: RemoteCrypto.version, id: id, eph: eph.publicKey.rawRepresentation, c: RemoteCrypto.commitment(nonce)))) ?? Data()
     }
 
     public func finish(_ reply: Data) throws -> RemoteSealer {
@@ -85,7 +107,7 @@ public struct PhoneHandshake {
             throw RemoteHandshakeError(.badProof)
         }
         let k = RemoteCrypto.sessionKeys(secret: secret, paired: paired, transcript: t)
-        return RemoteSealer(send: k.toMac, receive: k.toPhone)
+        return RemoteSealer(send: k.toMac, receive: k.toPhone, transcript: t)
     }
 }
 
@@ -95,6 +117,10 @@ public enum MacHandshake {
         public let reply: Data
         public let sealer: RemoteSealer?
         public let id: String?
+        /// the paired key the handshake used: the Mac checks it's still that id's key when the session opens
+        public var key: Data? = nil
+        /// what the phone committed to
+        public var commitment: Data? = nil
     }
 
     public static func answer(_ hello: Data, lookup: (String) -> Data?) -> Answer {
@@ -111,7 +137,8 @@ public enum MacHandshake {
         let t = RemoteCrypto.transcript(id: h.id, phoneEph: h.eph, macEph: macEph)
         let k = RemoteCrypto.sessionKeys(secret: secret, paired: paired, transcript: t)
         let m = MacHello(v: RemoteCrypto.version, eph: macEph, proof: RemoteCrypto.proof(paired: paired, transcript: t), error: nil)
-        return Answer(reply: (try? JSONEncoder().encode(m)) ?? Data(), sealer: RemoteSealer(send: k.toPhone, receive: k.toMac), id: h.id)
+        return Answer(reply: (try? JSONEncoder().encode(m)) ?? Data(), sealer: RemoteSealer(send: k.toPhone, receive: k.toMac, transcript: t),
+                      id: h.id, key: paired, commitment: h.c)
     }
 }
 
@@ -125,7 +152,12 @@ public final class RemoteSealer {
     private var receivedUDP: UInt64 = 0
     private var seenUDP: UInt64 = 0
 
-    init(send: SymmetricKey, receive: SymmetricKey) { sendKey = send; receiveKey = receive }
+    let transcript: Data
+
+    init(send: SymmetricKey, receive: SymmetricKey, transcript: Data = Data()) { sendKey = send; receiveKey = receive; self.transcript = transcript }
+
+    /// the six digits for this session, with the phone's nonce (RemoteCrypto.check)
+    public func check(_ nonce: Data) -> String { RemoteCrypto.check(transcript, nonce: nonce) }
 
     private static func nonce(_ channel: UInt32, _ n: UInt64) -> ChaChaPoly.Nonce {
         var d = Data(capacity: 12)

@@ -6,8 +6,10 @@
 //   back; at the edge of the screen it keeps stepping, so twenty apps are as reachable as three. Lifting lets go. A quick tap
 //   is the quick ⌘Tab: back to the last app. The other keys are out of play meanwhile: the thumb passes over them.
 //   the arrow key is four keys in one, each edge marked with its arrow: tap towards an edge for that arrow, hold to repeat. Or drag, one
-//   step per 24 pt; past 72 pt it repeats, faster with distance. Tap and then drag does the same with ⇧.
+//   step per 24 pt; past 72 pt, or at the screen's edge, it repeats, faster with distance. Tap and then drag does the same with ⇧.
 //   a repeating key (⌫, an arrow) fires at once and repeats while held. Nothing destructive repeats: never Esc, ⌃C or Return.
+//   a modifier (⇧ ⌘ ⌥ ⌃) tapped holds for the next key; held a moment, it's pressed on its own instead, the way a lone ⇧ switches
+//   a Chinese or Japanese input method between its own letters and English.
 //
 //   In the list a thumb may land on any of these meaning to scroll. So there, the keys that act at once wait to be sure: a moment held,
 //   or a slide sideways, or a lift. Until then a scroll may take the touch and nothing has happened. In the dock they act at once.
@@ -29,13 +31,17 @@ final class KeyCell: UIView {
     private let icon = UIImageView()
     private let caption = UILabel()
     private let arrowMarks = ["chevron.up", "chevron.down", "chevron.left", "chevron.right"].map { n in
-        UIImageView(image: UIImage(systemName: n, withConfiguration: UIImage.SymbolConfiguration(pointSize: 11, weight: .semibold)))
+        UIImageView(image: UIImage(systemName: n, withConfiguration: UIImage.SymbolConfiguration(pointSize: 12, weight: .semibold)))
     }
     private var cycle: Cycle?
     private var start = CGPoint.zero
     private var moved = false
     private var cancelled = false
     private var armed = false
+    /// a modifier held long enough to be pressed on its own
+    private var loneTimer: Timer?
+    private var wentAlone = false
+    private static let loneAfter = 0.45
 
     private struct Cycle {
         var hold: RemoteModifiers
@@ -80,7 +86,7 @@ final class KeyCell: UIView {
         glyph.minimumScaleFactor = 0.6
         caption.textAlignment = .center
         caption.textColor = Theme.caption
-        caption.font = .systemFont(ofSize: 9, weight: .regular)
+        caption.font = .systemFont(ofSize: 10, weight: .regular)
         caption.adjustsFontSizeToFitWidth = true
         caption.minimumScaleFactor = 0.7
         icon.contentMode = .center
@@ -94,11 +100,12 @@ final class KeyCell: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let w = bounds.width, h = bounds.height
+        // the face and its small line sit together in the middle, however tall the key
         let hasCaption = !(caption.text ?? "").isEmpty
-        let center = hasCaption ? h * 0.37 : h * 0.5
-        glyph.frame = CGRect(x: 1, y: center - 11, width: w - 2, height: 22)
+        let top = hasCaption ? (h - 36) / 2 : (h - 22) / 2
+        glyph.frame = CGRect(x: 1, y: top, width: w - 2, height: 22)
         icon.frame = glyph.frame
-        caption.frame = CGRect(x: 1, y: h - 14, width: w - 2, height: 12)
+        caption.frame = CGRect(x: 1, y: top + 23, width: w - 2, height: 13)
         let mid = CGPoint(x: w / 2, y: h / 2), inX = min(13, w * 0.2), inY = min(11, h * 0.22)
         arrowMarks[0].center = CGPoint(x: mid.x, y: inY)
         arrowMarks[1].center = CGPoint(x: mid.x, y: h - inY)
@@ -127,6 +134,7 @@ final class KeyCell: UIView {
         layer.borderWidth = once ? 1.5 : 0.5
         layer.borderColor = once ? Theme.slabLatched.cgColor : Theme.edge.cgColor
         glyph.textColor = latched ? .black : Theme.mark
+        icon.tintColor = latched ? .black : Theme.mark
         caption.textColor = latched ? UIColor(white: 0, alpha: 0.6) : Theme.caption
         var isArrows = false
         if case .arrows = s.action { isArrows = true }
@@ -141,7 +149,10 @@ final class KeyCell: UIView {
             return
         }
         if f.hasPrefix("sf:") {
-            icon.image = UIImage(systemName: String(f.dropFirst(3)), withConfiguration: UIImage.SymbolConfiguration(pointSize: 15, weight: .regular))
+            icon.image = UIImage(systemName: String(f.dropFirst(3)), withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular))
+            glyph.text = nil
+        } else if f.hasPrefix("mark:"), let m = KeyMarks.image(String(f.dropFirst(5))) {
+            icon.image = m
             glyph.text = nil
         } else {
             icon.image = nil
@@ -154,8 +165,9 @@ final class KeyCell: UIView {
 
     /// The shorter the text, the larger: a key has little room, so a long name reads small and a short one is worth choosing.
     private static func faceSize(_ f: String) -> CGFloat {
-        switch f.count {
-        case ...2: 18
+        if f.contains(where: { "⌘⌃⌥⇧".contains($0) }) { return 16 }     // a shortcut written out, not a letter on a keyboard
+        return switch f.count {
+        case ...2: 20
         case 3: 15
         case 4: 13
         case 5...6: 11
@@ -179,6 +191,10 @@ final class KeyCell: UIView {
         guard let s = slot else { return }
         press(true)
         committed = true
+        wentAlone = false
+        if case let .sticky(m) = s.action {
+            loneTimer = Timer.scheduledTimer(withTimeInterval: Self.loneAfter, repeats: false) { [weak self] _ in self?.alone(m) }
+        }
         guard inList, actsAtOnce(s) else { return act(s, at: p) }
         committed = false
         commitTimer = Timer.scheduledTimer(withTimeInterval: Self.commitDelay, repeats: false) { [weak self] _ in self?.commit() }
@@ -285,15 +301,17 @@ final class KeyCell: UIView {
         // slid off the key: nothing happens, and what was repeating stops
         let inside = bounds.insetBy(dx: -14, dy: -14).contains(p)
         cancelled = !inside
-        if !inside { stopRepeat() }
+        if !inside { stopRepeat(); stopLone() }
         press(inside)
     }
 
     override func touchesEnded(_ t: Set<UITouch>, with e: UIEvent?) {
         commit()
         stopRepeat()
+        stopLone()
         press(false)
         guard let s = slot else { return }
+        if wentAlone { wentAlone = false; return }
         if cycle != nil {
             endCycle()
             Sticky.shared.used()
@@ -323,6 +341,8 @@ final class KeyCell: UIView {
     }
 
     private func letGo() {
+        stopLone()
+        wentAlone = false
         commitTimer?.invalidate()
         commitTimer = nil
         committed = true
@@ -393,6 +413,30 @@ final class KeyCell: UIView {
         }
     }
 
+    /// Held: the modifier by itself, down and up, and not held for the next key.
+    private func alone(_ m: RemoteModifiers) {
+        loneTimer = nil
+        guard armed, !cancelled else { return }
+        wentAlone = true
+        Haptics.grab()
+        // already held on the Mac: letting it go is the press on its own. Another down and up would switch the input method back
+        if Sticky.shared.held.isSuperset(of: m) {
+            Sticky.shared.release(m)
+        } else {
+            Sticky.shared.release(m)
+            Link.shared.send(.key(RemoteChord(m, ""), down: nil))
+        }
+        UIView.animate(withDuration: 0.12, animations: { self.backgroundColor = Theme.slabLatched }) { _ in
+            guard self.wentAlone else { return self.refresh() }     // lifted meanwhile
+            UIView.animate(withDuration: 0.2) { self.backgroundColor = Theme.slabPressed }
+        }
+    }
+
+    private func stopLone() {
+        loneTimer?.invalidate()
+        loneTimer = nil
+    }
+
     private func fire(_ c: RemoteChord) {
         // the two keys that matter most can be told apart in the thumb
         if c.mods.isEmpty, c.key == "Return" || c.key == "Escape" { Haptics.grab() } else { Haptics.tick() }
@@ -416,7 +460,13 @@ final class KeyCell: UIView {
         let horizontal = abs(dx) > abs(dy)
         let d = horizontal ? dx : dy
         let key = horizontal ? (dx > 0 ? "Right" : "Left") : (dy > 0 ? "Down" : "Up")
-        let far = hypot(p.x - start.x, p.y - start.y)
+        var far = hypot(p.x - start.x, p.y - start.y)
+        // the thumb has run out of screen, sliding towards that edge: it repeats as if it had gone on
+        let slid = p.x - start.x
+        if horizontal, abs(slid) >= 24, let win = window {
+            let x = convert(p, to: win).x, band = Self.edge * 0.6
+            if slid < 0 && x < band || slid > 0 && x > win.bounds.width - band { far = max(far, 90) }
+        }
         if far > 72 {
             let rate = max(0.03, 0.11 - Double(far - 72) * 0.001)
             if repeatKey?.key != key || abs(repeatRate - rate) > 0.01 {

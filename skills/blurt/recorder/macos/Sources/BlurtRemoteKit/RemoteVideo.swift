@@ -35,6 +35,92 @@ public struct RemoteScreenRequest: Codable, Hashable, Sendable {
     }
 }
 
+/// What the phone got since its last report.
+public struct RemoteScreenReport: Codable, Hashable, Sendable {
+    public var frames: Int
+    /// frames that never arrived whole
+    public var lost: Int
+    /// seconds, the last ping's round trip
+    public var rtt: Double?
+    /// bytes of picture since this stream began
+    public var received: Int
+    public init(frames: Int, lost: Int, rtt: Double?, received: Int) { self.frames = frames; self.lost = lost; self.rtt = rtt; self.received = received }
+}
+
+/// How much to send, from what the network lets through. The phone's request is the ceiling, set by what it's on and what the user chose.
+/// Away from home it starts at half and climbs. Down fast when frames pile up on the way or are lost in numbers; then to a little under what's
+/// really getting through, and no further while the queue drains. One lost frame on Wi-Fi says nothing: it's counted over a few seconds. Back up
+/// slowly, and only while the picture actually uses what it has: a still screen proves nothing about the network. Each frame must be worth
+/// sending: with little to spend there are fewer of them, because on a screen text that can be read matters more than motion.
+public struct RemoteRate: Equatable, Sendable {
+    public let cap: Int
+    public let fpsCap: Int
+    public private(set) var bitrate: Int
+    public private(set) var fps: Int
+    private var calm = 0
+    private var bestRTT = Double.infinity
+    /// reports to let a cut take effect before judging it
+    private var wait = 0
+    /// where trouble last began, and how long ago: no use climbing straight back into it
+    private var troubleAt = Int.max, sinceTrouble = 0
+    /// the last few reports: frames, lost
+    private var recent: [(Int, Int)] = []
+
+    private static let window = 5
+    /// reports before trying past where trouble began
+    private static let patience = 30
+    private static let bitsPerFrame = 30_000
+
+    public init(bitrate: Int, fps: Int, away: Bool = false) {
+        cap = bitrate; fpsCap = fps
+        self.bitrate = away ? bitrate / 2 : bitrate
+        self.fps = Self.frames(self.bitrate, cap: fps)
+    }
+
+    public static func == (a: RemoteRate, b: RemoteRate) -> Bool { a.cap == b.cap && a.bitrate == b.bitrate && a.fps == b.fps }
+
+    public var floor: Int { min(cap, 200_000) }
+
+    private static func frames(_ bitrate: Int, cap: Int) -> Int { min(cap, max(10, bitrate / bitsPerFrame)) }
+
+    /// One report's worth. `busy`: frames skipped because the way out was full. `backedUp`: more on its way than should be. `sent`, `delivered`:
+    /// bits a second out of here and into the phone. True if anything changed.
+    public mutating func update(frames: Int, lost: Int, busy: Int, backedUp: Bool = false, rtt: Double?, sent: Int, delivered: Int = 0) -> Bool {
+        let before = (bitrate, fps)
+        if let rtt, rtt > 0 { bestRTT = min(bestRTT, rtt) }
+        recent.append((frames, lost))
+        if recent.count > Self.window { recent.removeFirst() }
+        let seen = recent.reduce(0) { $0 + $1.0 }, missing = recent.reduce(0) { $0 + $1.1 }
+        let queued = rtt.map { $0 > bestRTT * 3 + 0.1 } ?? false
+        let lossy = missing >= 2 && missing * 20 >= seen + missing
+        sinceTrouble += 1
+        if sinceTrouble > Self.patience { troubleAt = Int.max }
+        if wait > 0 { wait -= 1 }
+        if busy >= 3 || backedUp || lossy || queued {
+            calm = 0
+            if lossy { recent = [] }        // each loss is answered once
+            // already under what's arriving: what's queued is draining
+            if wait == 0, delivered == 0 || bitrate * 100 > delivered * 85 {
+                troubleAt = bitrate
+                sinceTrouble = 0
+                var next = bitrate * 7 / 10
+                if delivered > 0 { next = min(next, Swift.max(delivered * 85 / 100, bitrate / 2)) }
+                bitrate = Swift.max(floor, next)
+                wait = 2
+            }
+        } else {
+            calm += 1
+            let ceiling = min(cap, troubleAt == Int.max ? cap : troubleAt * 9 / 10)
+            if calm >= 3, bitrate < ceiling, sent * 10 >= bitrate * 6 {
+                calm = 0
+                bitrate = min(ceiling, bitrate * 5 / 4)
+            }
+        }
+        fps = Self.frames(bitrate, cap: fpsCap)
+        return before != (bitrate, fps)
+    }
+}
+
 public struct RemoteVideoPacket: Equatable, Sendable {
     public static let headerSize = 17
     public static let payloadSize = 1180
@@ -111,7 +197,7 @@ public struct RemoteVideoAssembler {
         if let l = lastDone, p.frame <= l { return nil }        // late
         if current != p.frame {
             if let c = current, p.frame < c { return nil }      // late, and a newer one has begun
-            if current != nil { dropped += 1; waitingForKey = true }   // the frame before never finished
+            if current != nil { dropped += 1; waitingForKey = true; noted = true }   // the frame before never finished
             current = p.frame
             pieces = [:]
             total = p.count
@@ -125,12 +211,18 @@ public struct RemoteVideoAssembler {
         lastDone = p.frame
         current = nil
         pieces = [:]
-        if let previous = lastComplete, p.frame != previous &+ 1 { waitingForKey = true; dropped += 1 }
+        if let previous = lastComplete, p.frame != previous &+ 1 {
+            waitingForKey = true
+            if !noted { dropped += 1 }
+        }
+        noted = false
         lastComplete = p.frame
         if key { waitingForKey = false }
         return waitingForKey ? nil : Frame(data: data, keyframe: key, captured: captured, id: p.frame)
     }
     private var lastComplete: UInt32?
+    /// the gap ahead of this frame has been counted
+    private var noted = false
 }
 
 /// The part of the source this frame shows, then the keyframe's parameter sets (count, then each with a 2-byte length), then its picture.

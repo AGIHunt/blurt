@@ -70,16 +70,16 @@ public struct DictationTrigger {
         /// The flag bit that says the key `code` is down: NX_DEVICERALTKEYMASK (right ⌥), NX_DEVICELALTKEYMASK
         /// (left ⌥), NX_SECONDARYFNMASK (Fn).
         static func downMask(_ code: Int) -> UInt64 { code == 61 ? 0x40 : code == 58 ? 0x20 : 0x80_0000 }
-        /// Whether `flags` say the key `code` went down. A real keyboard sets the device bit of the side pressed; an
-        /// event another program posts (remote-control apps — UU Remote, ToDesk, Jump Desktop — that map a remote
-        /// keyboard onto this Mac, issue #39) often carries only the device-independent ⌥ bit
-        /// (kCGEventFlagMaskAlternate): with neither side's bit set, that bit is the press.
         /// The key going down or up as a keyboard would say it, for a press that came from somewhere else (the iPhone
         /// remote): the same event, so the same tap, hold and double-tap rules apply.
         public func event(down: Bool, time: Double) -> Event {
             let code = keyCodes.sorted().first ?? 63
             return .flags(keyCode: code, flags: down ? Key.downMask(code) | (code == 63 ? 0 : 0x8_0000) : 0, time: time)
         }
+        /// Whether `flags` say the key `code` went down. A real keyboard sets the device bit of the side pressed; an
+        /// event another program posts (remote-control apps — UU Remote, ToDesk, Jump Desktop — that map a remote
+        /// keyboard onto this Mac, issue #39) often carries only the device-independent ⌥ bit
+        /// (kCGEventFlagMaskAlternate): with neither side's bit set, that bit is the press.
         static func isDown(_ code: Int, _ flags: UInt64) -> Bool {
             if flags & downMask(code) != 0 { return true }
             guard code == 61 || code == 58 else { return false }

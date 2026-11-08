@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Blurt Remote's relay for your own server: the same protocol as the Cloudflare Worker (src/index.js), in one Node process. A phone and
+// Blurt's iPhone relay for your own server: the same protocol as the Cloudflare Worker (src/index.js), in one Node process. A phone and
 // its Mac each open a WebSocket to the same room and bytes pass between them. It can't read them and it stores nothing.
 //
 //   HOST=127.0.0.1 PORT=8787 node server.js

@@ -22,6 +22,7 @@ struct KeyEditor: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Hold and drag a key to move it. Tap one to change it.").font(.footnote).foregroundStyle(.secondary)
                 heading("Always Here")
+                Text("With the keys put away in landscape, esc, return and space stay, or the keys in their places.").font(.footnote).foregroundStyle(.secondary)
                 LazyVGrid(columns: columns, spacing: 5) {
                     ForEach(deck.dock) { tile($0, removable: false) }
                     Image(systemName: "mic.fill").foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 44)
@@ -116,8 +117,7 @@ struct KeyEditor: View {
     private func face(_ s: KeySlot, removable: Bool) -> some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 2) {
-                let f = s.face
-                if f.hasPrefix("sf:") { Image(systemName: String(f.dropFirst(3))).font(.subheadline) } else { Text(f).font(.subheadline).lineLimit(1).minimumScaleFactor(0.5) }
+                KeyFaceView(face: s.face)
                 if let c = s.detail { Text(c).font(.system(size: 8)).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7) }
             }
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -229,7 +229,7 @@ struct KeyFaceEditor: View {
 
     init(slot: KeySlot, removable: Bool, onChange: @escaping (KeySlot) -> Void, onRemove: @escaping () -> Void) {
         _slot = State(initialValue: slot)
-        _text = State(initialValue: slot.glyph.flatMap { $0.hasPrefix("sf:") ? nil : $0 } ?? "")
+        _text = State(initialValue: slot.glyph.flatMap { $0.hasPrefix("sf:") || $0.hasPrefix("mark:") ? nil : $0 } ?? "")
         _small = State(initialValue: slot.caption ?? "")
         self.removable = removable
         self.onChange = onChange
@@ -246,7 +246,7 @@ struct KeyFaceEditor: View {
             Section {
                 TextField("Text or emoji", text: $text)
                     .onChange(of: text) { _, t in
-                        slot.glyph = t.isEmpty ? (slot.glyph?.hasPrefix("sf:") == true ? slot.glyph : nil) : t
+                        slot.glyph = t.isEmpty ? (slot.face.hasPrefix("sf:") || slot.face.hasPrefix("mark:") ? slot.glyph : nil) : t
                         save()
                     }
                 TextField("Small line", text: $small, prompt: Text(slot.caption == nil ? (slot.detail ?? "") : ""))
@@ -289,8 +289,7 @@ struct KeyFaceEditor: View {
 
     private var preview: some View {
         VStack(spacing: 2) {
-            let f = slot.face
-            if f.hasPrefix("sf:") { Image(systemName: String(f.dropFirst(3))).font(.title3) } else { Text(f).font(.title3).lineLimit(1).minimumScaleFactor(0.4) }
+            KeyFaceView(face: slot.face, font: .title3)
             if let c = slot.detail { Text(c).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1) }
         }
         .frame(width: 64, height: 56)
@@ -326,8 +325,7 @@ struct KeyPicker: View {
                                 Text(s.title).foregroundStyle(.primary)
                                 Spacer()
                                 if let d = s.detail { Text(d).font(.caption).foregroundStyle(.secondary) }
-                                let f = s.face
-                                if f.hasPrefix("sf:") { Image(systemName: String(f.dropFirst(3))).foregroundStyle(.secondary) } else { Text(f).foregroundStyle(.secondary) }
+                                KeyFaceView(face: s.face, font: .body).foregroundStyle(.secondary)
                             }
                         }
                     }

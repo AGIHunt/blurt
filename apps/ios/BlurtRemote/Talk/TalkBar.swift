@@ -47,9 +47,11 @@ final class TalkBar: UIView {
         super.layoutSubviews()
         fillLayer.frame = bounds
         let h = bounds.height
-        icon.frame = CGRect(x: 0, y: h * 0.4 - 12, width: bounds.width, height: 24)
+        // the mic and its word together in the middle, as on the keys beside it
+        let top = (h - 37) / 2
+        icon.frame = CGRect(x: 0, y: top, width: bounds.width, height: 24)
         spinner.center = icon.center
-        label.frame = CGRect(x: 3, y: h - 17, width: bounds.width - 6, height: 13)
+        label.frame = CGRect(x: 2, y: top + 24, width: bounds.width - 4, height: 13)
     }
 
     func show(_ p: RemoteDictationPhase) {

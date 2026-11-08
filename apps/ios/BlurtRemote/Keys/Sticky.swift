@@ -1,5 +1,5 @@
 // ⌘ ⇧ ⌥ ⌃ as keys you tap, since one thumb can't hold a chord: one tap holds it for the next key or click, two tap it
-// locked until it's tapped off. The Mac really holds them down, so ⌘-click and ⇧-arrows work everywhere.
+// locked until it's tapped off. Held a moment, the key is pressed on its own (KeyCell), for a lone ⇧ that switches an input method. The Mac really holds them down, so ⌘-click and ⇧-arrows work everywhere.
 import BlurtRemoteKit
 import Foundation
 
@@ -24,6 +24,14 @@ final class Sticky {
             once.formUnion(m)
         }
         lastTap = (m, now)
+        changed()
+    }
+
+    /// Pressed on its own instead: not held any more, once or locked.
+    func release(_ m: RemoteModifiers) {
+        guard !held.intersection(m).isEmpty else { return }
+        once.subtract(m)
+        locked.subtract(m)
         changed()
     }
 

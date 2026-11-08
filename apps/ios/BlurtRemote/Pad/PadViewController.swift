@@ -19,15 +19,19 @@ final class PadViewController: UIViewController {
     private let list = KeyList()
     private var dockCells = (0..<Deck.dockCount).map { _ in KeyCell() }
     private let arrowCell = KeyCell()
-    private var allCells: [KeyCell] { dockCells + [arrowCell] + list.cells }
+    /// landscape: with the keys away there's still a picture to leave
+    private let appsCell = KeyCell()
+    private var allCells: [KeyCell] { dockCells + [arrowCell, appsCell] + list.cells }
     private let strip = PageStrip()
     private let chips = UIStackView()
     private let keyboardButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
     private let header = UILabel()
     private let screenButton = UIButton(type: .system)
+    private let findButton = UIButton(type: .system)
     private let drawerButton = UIButton(type: .system)
-    private var drawerOpen = false
+    /// landscape: the keys are out. Out for the trackpad, put away when there's a picture to see
+    private var drawerOpen = true
     /// the pad has the Mac's shape and shows its screen
     private var showing = false
     private let edgeMark = UIView()
@@ -53,11 +57,13 @@ final class PadViewController: UIViewController {
     /// the key a cycle is running on, while it runs
     private weak var cycleKey: KeyCell?
     private var idle: Timer?
+    private var pace: Timer?
     private var bag = Set<AnyCancellable>()
     private var layout: PadLayout?
 
     /// long enough that it never happens in use: this only protects a phone left on the desk
     private static let idleDim = 300.0
+    private static let idlePace = 45.0
 
     override var prefersStatusBarHidden: Bool { true }
     /// iOS's own three-finger undo and copy gestures would take the touches from the pad
@@ -120,6 +126,9 @@ final class PadViewController: UIViewController {
         }
         arrowCell.slot = KeySlot(.arrows, hint: String(localized: "Arrows"))
         view.addSubview(arrowCell)
+        appsCell.slot = KeySlot(.chord(RemoteChord(.command, "Tab"), cycle: true), glyph: "mark:apps", caption: "", hint: String(localized: "Apps"))
+        appsCell.onCycle = { [weak self] on in self?.cycling(on, by: self?.appsCell) }
+        view.addSubview(appsCell)
         view.addSubview(talk)
         view.addSubview(drawerButton)
         view.addSubview(screenButton)
@@ -134,19 +143,22 @@ final class PadViewController: UIViewController {
         chip(String(localized: "Structured")) { Link.shared.send(.blurt(.dictationStructured)) }
         chip(String(localized: "Translate")) { Link.shared.send(.blurt(.dictationTranslate)) }
 
-        for (b, s) in [(keyboardButton, "keyboard"), (settingsButton, "slider.horizontal.3")] {
+        for (b, s) in [(keyboardButton, "keyboard"), (settingsButton, "slider.horizontal.3"), (findButton, "scope")] {
             b.setImage(UIImage(systemName: s, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)), for: .normal)
             b.tintColor = Theme.caption
             view.addSubview(b)
         }
         keyboardButton.accessibilityLabel = String(localized: "Keyboard")
         settingsButton.accessibilityLabel = String(localized: "Settings")
+        findButton.accessibilityLabel = String(localized: "Find Pointer")
+        findButton.addAction(UIAction { _ in Haptics.tick(); Link.shared.send(.system(.findCursor)) }, for: .touchUpInside)
         keyboardButton.addAction(UIAction { [weak self] _ in self?.toggleKeyboard() }, for: .touchUpInside)
         settingsButton.addAction(UIAction { [weak self] _ in self?.showSettings() }, for: .touchUpInside)
 
         view.addSubview(field)
         field.frame = CGRect(x: -10, y: -10, width: 1, height: 1)
         field.inputAccessoryView = modRow
+        field.onSent = { [weak self] _ in self?.touched() }      // the keyboard's touches don't come through the window
         modRow.onClose = { [weak self] in self?.field.resignFirstResponder() }
 
         dim.backgroundColor = .black
@@ -221,6 +233,14 @@ final class PadViewController: UIViewController {
         let l = Link.shared
         Publishers.CombineLatest3(l.$state, l.$current, l.$canControl).receive(on: RunLoop.main)
             .sink { [weak self] _, _, _ in DispatchQueue.main.async { self?.status() } }.store(in: &bag)
+        Publishers.CombineLatest(l.$macs, l.$current).receive(on: RunLoop.main).sink { [weak self] macs, current in
+            self?.macMenu(macs, current)
+        }.store(in: &bag)
+        // the picture was of the Mac just left
+        l.$current.map { $0?.deviceID }.removeDuplicates().dropFirst().receive(on: RunLoop.main).sink { [weak self] _ in self?.setShowing(false) }.store(in: &bag)
+        Publishers.CombineLatest(l.$waitingForMac, l.$pairFailed).receive(on: RunLoop.main).sink { [weak self] _, _ in
+            DispatchQueue.main.async { self?.status() }
+        }.store(in: &bag)
         Publishers.CombineLatest(l.$route, l.$displayAspect).receive(on: RunLoop.main).sink { [weak self] _, _ in
             DispatchQueue.main.async { self?.status() }
         }.store(in: &bag)
@@ -265,12 +285,13 @@ final class PadViewController: UIViewController {
             text = String(localized: "On your Mac, open Blurt’s Settings and choose iPhone.")
             button = String(localized: "Scan Code")
         case .forgotten:
-            text = String(localized: "This Mac no longer knows this iPhone.")
+            text = String(localized: "\(l.current?.title ?? "This Mac") no longer knows this iPhone.")
             button = String(localized: "Scan Code")
         case .unreachable:
-            let n = l.current?.name ?? "Mac"
-            text = String(localized: "Can’t reach \(n). Check that Blurt is running and both are on the same network.")
-            button = String(localized: "Try Another Mac")
+            let n = l.current?.title ?? "Mac"
+            text = l.current?.relayAddress == nil ? String(localized: "Can’t reach \(n). Check that Blurt is running and both are on the same network.")
+                : String(localized: "Can’t reach \(n). Check that it’s awake and Blurt is running.")
+            if l.macs.count > 1 { button = String(localized: "Try Another Mac") }
         case .connecting: break
         case .replaced:
             text = String(localized: "Another iPhone is connected. Touch to take over.")
@@ -279,11 +300,16 @@ final class PadViewController: UIViewController {
             if l.screenError == "permission" { text = String(localized: "On your Mac, allow Screen Recording for Blurt.") }
             if l.screenError == "off" { text = String(localized: "Showing the screen is off in Blurt’s Settings on your Mac.") }
         }
+        if l.waitingForMac {
+            text = String(format: String(localized: "Allow this iPhone in Blurt’s Settings on your Mac. Check that it shows %@."), l.pairCheck ?? "")
+            button = nil
+        }
+        if let f = l.pairFailed { text = f }
         message.text = text
         message.isHidden = text == nil
         action.setTitle(button, for: .normal)
         action.isHidden = button == nil
-        let name = l.current?.name ?? ""
+        let name = l.current?.title ?? ""
         let via = l.route == .relay ? String(localized: "\(name) · Internet") : l.route == .direct ? String(localized: "\(name) · Direct") : name
         header.text = showing && l.state == .connected ? nil : l.state == .connected ? via : l.state == .connecting ? String(localized: "Connecting to \(name)…") : nil
         let ready = l.state == .connected
@@ -301,13 +327,17 @@ final class PadViewController: UIViewController {
 
     private func confirmPairing(_ p: RemotePairing) {
         let a = UIAlertController(title: String(localized: "Pair with \(p.macName)?"),
-                                  message: String(localized: "This Mac will receive what you type and say here. Only pair with your own Mac."), preferredStyle: .alert)
+                                  message: Link.shared.macs.contains { $0.id == p.macID } ? String(localized: "This iPhone is already paired with this Mac. This replaces that pairing.")
+                                      : String(localized: "This Mac will receive what you type and say here. Only pair with your own Mac."), preferredStyle: .alert)
         a.addAction(UIAlertAction(title: String(localized: "Cancel"), style: .cancel) { _ in Link.shared.offered = nil })
         a.addAction(UIAlertAction(title: String(localized: "Pair"), style: .default) { _ in
             Link.shared.offered = nil
             Link.shared.pair(p)
         })
-        (presentedViewController ?? self).present(a, animated: true)
+        // from whatever is on top (Settings, perhaps), past a sheet on its way out
+        var top: UIViewController = self
+        while let p = top.presentedViewController, !p.isBeingDismissed { top = p }
+        top.present(a, animated: true)
     }
 
     // MARK: the Mac's screen
@@ -323,9 +353,9 @@ final class PadViewController: UIViewController {
     private func setShowing(_ on: Bool) {
         guard on != showing else { return }
         showing = on
-        drawerOpen = false
+        drawerOpen = !on
+        keysPutAway()
         pad.engine.pinchZoomsView = on
-        pad.engine.viewZoomed = false
         pad.backgroundColor = on ? .black : Theme.glass
         // a rounded corner on the picture is a piece of the screen not seen
         pad.layer.cornerRadius = on ? 6 : 22
@@ -341,13 +371,19 @@ final class PadViewController: UIViewController {
     private func toggleDrawer() {
         Haptics.tick()
         drawerOpen.toggle()
+        keysPutAway()
         view.setNeedsLayout()
         UIView.animate(withDuration: 0.22) { self.view.layoutIfNeeded() }
     }
 
-    /// The fingers lifted: pointer speed and what two fingers do follow how close the view now is.
+    /// Landscape, the keys put away: the modifiers went with them, so none stays held on the Mac out of sight.
+    private func keysPutAway() {
+        guard !drawerOpen, view.bounds.width > view.bounds.height, !Sticky.shared.held.isEmpty else { return }
+        Sticky.shared.release(Sticky.shared.held)
+    }
+
+    /// The fingers lifted: pointer speed follows how close the view now is.
     private func viewSettled() {
-        pad.engine.viewZoomed = !ScreenStream.shared.port.isWhole
         applyPrefs()
     }
 
@@ -371,8 +407,7 @@ final class PadViewController: UIViewController {
         super.viewDidLayoutSubviews()
         // UIKit's landscapeRight has the home side on the right, so the island on the left
         let islandLeft = view.window?.windowScene?.interfaceOrientation == .landscapeRight
-        let l = PadLayout(size: view.bounds.size, safe: view.safeAreaInsets, lefty: Prefs.shared.lefty, islandLeft: islandLeft,
-                          screenAspect: showing ? Link.shared.displayAspect : nil, drawerOpen: drawerOpen)
+        let l = PadLayout(size: view.bounds.size, safe: view.safeAreaInsets, lefty: Prefs.shared.lefty, islandLeft: islandLeft, drawerOpen: drawerOpen)
         layout = l
         let typing = keyboardHeight > 0
         var padFrame = l.pad
@@ -386,29 +421,32 @@ final class PadViewController: UIViewController {
         talk.frame = l.talk
         talk.isHidden = typing
         let railed = l.rail != nil
-        let keysOut = !typing && (!railed || drawerOpen || !showing)
+        let keysOut = !typing && (!railed || drawerOpen)
         list.isHidden = !keysOut
         list.frame = l.list
-        list.arrange(key: l.keySize, gap: PadLayout.gap)
+        list.arrange(key: l.keySize, gap: PadLayout.gap, tallest: l.landscape ? KeyList.tallest : nil)
         for (i, c) in dockCells.enumerated() {
-            c.isHidden = typing
+            c.isHidden = typing || !(keysOut || PadLayout.staysOut(i))
             c.frame = l.dock[i]
         }
         arrowCell.isHidden = typing
         arrowCell.frame = l.arrowKey
+        appsCell.isHidden = typing || !railed
+        appsCell.frame = l.appsKey
         pad.engine.scrollEdge = PadLayout.scrollEdge(width: padFrame.width, lefty: Prefs.shared.lefty)   // the keyboard may have changed it
         drawerButton.frame = l.drawerButton
-        drawerButton.isHidden = !railed || typing || !showing
+        drawerButton.isHidden = !railed || typing
         drawerButton.tintColor = drawerOpen ? .black : Theme.mark
         drawerButton.backgroundColor = drawerOpen ? Theme.slabLatched : Theme.slab
         screenButton.frame = l.screenButton
         screenButton.isHidden = typing
         screenButton.backgroundColor = railed ? Theme.slab : .clear
-        let symbol = showing ? "eye.slash" : "display"
-        screenButton.setImage(UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)), for: .normal)
-        screenButton.tintColor = showing ? Theme.mark : Theme.caption
+        // lit while it's on, as a modifier is: a crossed-out eye over a live picture reads as off
+        screenButton.setImage(UIImage(systemName: "display", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)), for: .normal)
+        screenButton.tintColor = showing ? .black : railed ? Theme.mark : Theme.caption
+        if showing { screenButton.backgroundColor = Theme.slabLatched }
         screenButton.accessibilityLabel = showing ? String(localized: "Hide Screen") : String(localized: "Show Screen")
-        for b in [keyboardButton, settingsButton] {
+        for b in [keyboardButton, settingsButton, findButton] {
             b.layer.cornerRadius = Theme.keyRadius
             b.backgroundColor = railed ? Theme.slab : .clear
         }
@@ -420,8 +458,10 @@ final class PadViewController: UIViewController {
         chips.frame = CGRect(x: padFrame.midX - chipsW / 2, y: padFrame.maxY - 8 - 32, width: chipsW, height: 32)
         keyboardButton.frame = l.keyboardButton
         settingsButton.frame = l.settingsButton
+        findButton.frame = l.findButton
         keyboardButton.isHidden = typing
         settingsButton.isHidden = typing
+        findButton.isHidden = typing
         dim.frame = view.bounds
 
         ScreenStream.shared.layout(pad.bounds, alignY: l.landscape ? 0.5 : 1)
@@ -449,7 +489,7 @@ final class PadViewController: UIViewController {
 
     override func viewWillTransition(to size: CGSize, with c: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: c)
-        drawerOpen = false
+        drawerOpen = !showing
         pad.letGo()
     }
 
@@ -483,6 +523,8 @@ final class PadViewController: UIViewController {
     /// The screen dims when nothing happens and comes back with any touch, which still does its job.
     func touched() {
         Link.shared.touched()
+        ScreenStream.shared.setIdle(false)
+        watchIdle()
         if dim.alpha > 0 { UIView.animate(withDuration: 0.15) { self.dim.alpha = 0 } }
         idle?.invalidate()
         idle = Timer.scheduledTimer(withTimeInterval: Self.idleDim, repeats: false) { [weak self] _ in
@@ -490,6 +532,16 @@ final class PadViewController: UIViewController {
             // never while typing or talking
             guard self.keyboardHeight == 0, Link.shared.dictation == .idle else { return self.touched() }
             UIView.animate(withDuration: 0.6) { self.dim.alpha = 0.6 }
+        }
+    }
+
+    /// Nobody's touching it: over the mobile network, the picture slows down until someone does.
+    private func watchIdle() {
+        pace?.invalidate()
+        pace = Timer.scheduledTimer(withTimeInterval: Self.idlePace, repeats: false) { [weak self] _ in
+            guard let self else { return }
+            guard !self.touching, self.keyboardHeight == 0, Link.shared.dictation == .idle else { return self.watchIdle() }
+            ScreenStream.shared.setIdle(true)
         }
     }
 
@@ -518,6 +570,17 @@ final class PadViewController: UIViewController {
     }
 
     private func showPairing() { present(PairSheet()) }
+
+    /// Hold the settings button: with more than one Mac, the fastest way to the other.
+    private func macMenu(_ macs: [PairedMac], _ current: PairedMac?) {
+        guard macs.count > 1 else { settingsButton.menu = nil; return }
+        settingsButton.menu = UIMenu(title: String(localized: "Switch Mac"), children: macs.map { m in
+            UIAction(title: m.title, state: m.id == current?.id ? .on : .off) { _ in
+                guard m.id != Link.shared.current?.id else { return }
+                Link.shared.choose(m)
+            }
+        })
+    }
 
     private func showSettings() {
         present(SettingsSheet(onDeck: { [weak self] d in self?.setDeck(d) }))

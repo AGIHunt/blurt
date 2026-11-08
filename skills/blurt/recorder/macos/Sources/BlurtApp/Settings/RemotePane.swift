@@ -16,7 +16,7 @@ final class RemoteModel: ObservableObject {
     @Published var relayText = Config.shared["record.remote.relay_url"] as? String ?? ""
     @Published var relayState = RelayState.idle
     private var committed = Config.shared["record.remote.relay_url"] as? String ?? ""
-    enum RelayState { case idle, checking, ok, failed, invalid }
+    enum RelayState { case idle, checking, ok, failed, invalid, fromPhone }
     @Published var screen = RemoteServer.screenAllowed
 
     private var pollAccess: Timer?
@@ -25,10 +25,11 @@ final class RemoteModel: ObservableObject {
     func start() {
         let s = RemoteServer.shared
         s.onStatus = { [weak self] st in MainActor.assumeIsolated { self?.statusChanged(st) } }
-        s.onDevices = { [weak self] d in MainActor.assumeIsolated { self?.devices = d } }
+        s.onDevices = { [weak self] d in MainActor.assumeIsolated { self?.devicesChanged(d) } }
+        s.onRelayAdopted = { [weak self] a in MainActor.assumeIsolated { self?.adopted(a) } }
         status = s.status
         devices = s.devices()
-        if devices.isEmpty { setAdding(true) }
+        // the QR code waits for Add iPhone…: showing it listens on the network and advertises this Mac
         pollAccess = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.canControl = RemoteServer.shared.canControl }
         }
@@ -40,10 +41,25 @@ final class RemoteModel: ObservableObject {
         pollAccess = nil
     }
 
-    private func statusChanged(_ st: RemoteServer.Status) {
+    private func statusChanged(_ st: RemoteServer.Status) { status = st }
+
+    private func devicesChanged(_ d: [RemoteServer.Device]) {
         // a phone just paired from the code on screen: the code's job is done
-        if adding, status.connected == nil, st.connected != nil { setAdding(false) }
-        status = st
+        if adding, d.count > devices.count { setAdding(false) }
+        devices = d
+    }
+
+    /// A phone filled it in. Say so, and try it as if it had been typed.
+    private func adopted(_ a: String) {
+        relayText = a
+        committed = a
+        relayState = .checking
+        RemoteRelay.check(address: a, queue: .main) { [weak self] ok in
+            MainActor.assumeIsolated {
+                guard let self, self.relayText == a else { return }
+                self.relayState = ok ? .fromPhone : .failed
+            }
+        }
     }
 
     func setAdding(_ on: Bool) {
@@ -65,7 +81,7 @@ final class RemoteModel: ObservableObject {
         if typed.isEmpty {
             relayText = ""
             relayState = .idle
-            Config.shared.set("record.remote.relay_url", nil)
+            Config.shared.set("record.remote.relay_url", "")    // cleared, not unset: a phone mustn't put one back
             return RemoteServer.shared.relayChanged()
         }
         guard let a = RemoteRelay.address(typed) else { relayState = .invalid; return }
@@ -95,11 +111,14 @@ final class RemoteModel: ObservableObject {
     }
     @Published var copied = false
 
+    /// Where to get the iPhone app: its build steps until it is on the App Store.
+    static let appPage = URL(string: "https://github.com/AGIHunt/blurt/tree/main/apps/ios#build-it-yourself")!
+
     /// For the user's own coding agent: Blurt doesn't run a relay, and setting one up is a job for someone at a terminal.
     static let relayPrompt = """
-    Set up a relay I own for Blurt Remote, then give me its address to paste into Blurt.
+    Set up a relay I own for Blurt on my iPhone, then give me its address to paste into Blurt.
 
-    Blurt Remote turns an iPhone into a trackpad and keyboard for a Mac. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+    Blurt for iPhone turns an iPhone into a trackpad and keyboard for a Mac. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
 
     The code and the full steps are here; read README.md first:
     https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
@@ -124,12 +143,14 @@ final class RemoteModel: ObservableObject {
 struct RemotePane: View {
     @StateObject private var m = RemoteModel()
     @FocusState private var relayFocused: Bool
+    @State private var removing: RemoteServer.Device?
 
     private var relayLine: String {
         switch m.relayState {
         case .idle: T("settings.remote.relay.address.detail")
         case .checking: T("settings.remote.relay.checking")
         case .ok: T("settings.remote.relay.ok")
+        case .fromPhone: T("settings.remote.relay.from_phone")
         case .failed: T("settings.remote.relay.failed")
         case .invalid: T("settings.remote.relay.invalid")
         }
@@ -165,13 +186,34 @@ struct RemotePane: View {
         }
         .onAppear { m.start() }
         .onDisappear { m.stop() }
+        .alert(String(format: T("settings.remote.remove.title"), removing?.name ?? ""), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button(T("settings.remote.cancel"), role: .cancel) {}
+            Button(T("settings.remote.remove"), role: .destructive) { if let d = removing { RemoteServer.shared.remove(d.id) } }
+        } message: { Text(T("settings.remote.remove.detail")) }
+    }
+
+    private func lastUsed(_ d: RemoteServer.Device) -> String {
+        guard let t = d.lastSeen else { return T("settings.remote.not_connected") }
+        return String(format: T("settings.remote.last_used"), RelativeDateTimeFormatter().localizedString(for: t, relativeTo: Date()))
     }
 
     @ViewBuilder var phones: some View {
         ForEach(m.devices) { d in
-            let on = m.status.connected == d.name
-            SettingRow("remote.device.\(d.id)", title: d.name, detail: on ? T("settings.remote.connected") : T("settings.remote.not_connected")) {
-                Button(T("settings.remote.remove")) { RemoteServer.shared.remove(d.id) }
+            let on = m.status.connectedID == d.id
+            SettingRow("remote.device.\(d.id)", title: d.name, detail: on ? T("settings.remote.connected") : lastUsed(d)) {
+                Button(T("settings.remote.remove")) { removing = d }
+            }
+        }
+        if let who = m.status.asking {
+            let n = m.status.askingNumber
+            // the four digits, large: the yes is for the phone showing the same ones. No default button: Return mustn't say yes
+            SettingRow("remote.device.\(who)", title: String(format: T("settings.remote.ask.title"), who),
+                       detail: String(format: T("settings.remote.ask.detail"), m.status.askingCheck ?? "")) {
+                HStack {
+                    Text(m.status.askingCheck ?? "").font(.system(size: 20, weight: .semibold, design: .monospaced)).padding(.trailing, 8)
+                    Button(T("settings.remote.ask.no")) { RemoteServer.shared.answerPairing(false, number: n) }
+                    Button(T("settings.remote.ask.yes")) { RemoteServer.shared.answerPairing(true, number: n) }
+                }
             }
         }
         if m.adding {
@@ -183,14 +225,18 @@ struct RemotePane: View {
                         Text(T("settings.remote.scan.detail")).font(.system(size: 11)).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                         if let f = m.status.failure { Text(f).font(.system(size: 11)).foregroundStyle(Color.brandAttnInk) }
-                        if !m.devices.isEmpty { Button(T("settings.kit.cancel")) { m.setAdding(false) } }
+                        Button(T("settings.remote.cancel")) { m.setAdding(false) }
                     }
                     Spacer(minLength: 0)
                 }
             }
         } else {
             SettingRow("remote.add") {
-                Button(T("settings.remote.add")) { m.setAdding(true) }
+                HStack(spacing: 12) {
+                    // not on the App Store yet: the page says how to build it with Xcode
+                    Link(T("settings.remote.get_app"), destination: RemoteModel.appPage).font(.system(size: 12))
+                    Button(T("settings.remote.add")) { m.setAdding(true) }
+                }
             }
         }
     }
@@ -206,7 +252,7 @@ private struct QRImage: View {
             if let i = link.flatMap(Self.image) {
                 Image(nsImage: i).interpolation(.none).resizable().padding(10)
             } else {
-                ProgressView().controlSize(.small)
+                BrandSpinnerView()
             }
         }
     }

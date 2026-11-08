@@ -17,6 +17,10 @@ final class TrackpadView: UIView {
     /// the touch landed off the picture, where there's nothing to click
     private var offPicture = false
     private var dragOff = false
+    /// this scroll began where the pointer was just put
+    private var scrollPlaced = false
+    /// and that was off the picture: it goes nowhere
+    private var scrollOff = false
     /// a soft light under the finger: says the glass feels it
     private let glow = CAGradientLayer()
 
@@ -121,6 +125,7 @@ final class TrackpadView: UIView {
 
     private func apply(_ out: [PadOutput]) {
         let link = Link.shared
+        var placed = false
         for o in out {
             switch o {
             case let .move(x, y):
@@ -134,6 +139,7 @@ final class TrackpadView: UIView {
                 onViewEnd?()
             case let .pointAt(p):
                 offPicture = !ScreenStream.shared.placePointer(at: p)
+                placed = true
             case let .dragTo(p):
                 if !dragOff { ScreenStream.shared.dragPointer(to: p) }
             case let .click(b):
@@ -154,11 +160,18 @@ final class TrackpadView: UIView {
                 link.send(down ? .dragBegin : .button(b, down: false))
                 if !down { onClick?() }
             case let .scroll(x, y, p):
+                if p == .began {
+                    // a scroll that starts where the pointer was just put: in order behind it, and not at all off the picture
+                    scrollPlaced = placed
+                    scrollOff = placed && offPicture && engine.touchMode
+                }
+                if scrollOff { continue }
                 let f: Float = Prefs.shared.reverseScroll ? -1 : 1
-                link.pointer(.scroll(dx: x * f, dy: y * f, phase: p))
+                link.pointer(.scroll(dx: x * f, dy: y * f, phase: p), inOrder: scrollPlaced)
             case let .fling(x, y):
+                if scrollOff { continue }
                 let f: Float = Prefs.shared.reverseScroll ? -1 : 1
-                link.pointer(.scrollFling(vx: x * f, vy: y * f))
+                link.pointer(.scrollFling(vx: x * f, vy: y * f), inOrder: scrollPlaced)
             case .scrollStop: link.pointer(.scrollStop)
             case let .system(m): link.send(.system(m))
             case let .haptic(h): onHaptic?(h)

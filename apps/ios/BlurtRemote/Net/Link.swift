@@ -12,7 +12,7 @@ import Foundation
 import Network
 import UIKit
 
-struct PairedMac: Codable, Identifiable, Equatable {
+struct PairedMac: Codable, Identifiable, Hashable {
     var id: String          // the Mac's own id, which outlives its name and address
     var deviceID: String
     var name: String
@@ -20,6 +20,10 @@ struct PairedMac: Codable, Identifiable, Equatable {
     var addresses: [String]
     /// the relay the Mac's owner set up, as last heard
     var relayAddress: String?
+    /// what the user calls it here, when two Macs have much the same name
+    var nickname: String?
+
+    var title: String { nickname?.isEmpty == false ? nickname! : name }
 }
 
 final class Link: ObservableObject {
@@ -50,6 +54,13 @@ final class Link: ObservableObject {
     enum Route { case local, relay, direct }
     @Published private(set) var route = Route.local
     @Published private(set) var displayAspect: CGFloat = 1.6
+    /// paired Macs on this network right now, while Settings looks
+    @Published private(set) var nearby: Set<String> = []
+    /// on mobile data; Low Data Mode is on
+    @Published private(set) var cellular = false
+    @Published private(set) var lowData = false
+    private let path = NWPathMonitor()
+    private var nearbyBrowser: NWBrowser?
     @Published var screenError: String?
 
     private var channel: RemoteChannel?
@@ -79,6 +90,17 @@ final class Link: ObservableObject {
         if let d = UserDefaults.standard.data(forKey: Self.macsKey), let m = try? JSONDecoder().decode([PairedMac].self, from: d) { macs = m }
         current = macs.first { $0.id == UserDefaults.standard.string(forKey: "currentMac") } ?? macs.first
         state = current == nil ? .unpaired : .connecting
+        path.pathUpdateHandler = { [weak self] p in
+            // a phone's hotspot is Wi-Fi the user is paying for
+            let mobile = p.isExpensive, low = p.isConstrained
+            DispatchQueue.main.async {
+                guard let self, mobile != self.cellular || low != self.lowData else { return }
+                self.cellular = mobile
+                self.lowData = low
+                ScreenStream.shared.planChanged()
+            }
+        }
+        path.start(queue: queue)
     }
 
     private func saveMacs() {
@@ -91,43 +113,131 @@ final class Link: ObservableObject {
     /// A link from outside (the system Camera, or anything that can open a URL): a web page could send one too, and this
     /// phone's keys and microphone would go to whoever made it. So it asks; only the app's own scanner goes straight through.
     @Published var offered: RemotePairing?
+    /// the Mac is asking its owner about the code this phone used
+    @Published private(set) var waitingForMac = false
+    /// the four digits the Mac shows with its question: a yes there is for this iPhone only if they match
+    private(set) var pairCheck: String?
+    /// a pairing that didn't take, for the pad to say
+    @Published private(set) var pairFailed: String?
+    /// A code isn't a pairing until the Mac has answered it: the Macs already paired stay as they are until then.
+    private var joining: (mac: PairedMac, back: PairedMac?, since: Date)?
+    /// paired again: the entry this one took over from, for the Mac to drop
+    private var replacing: String?
+    private var joinOpens = 0
 
     func openExternal(_ url: URL) { offered = RemotePairing(url: url) }
 
     /// The in-app scanner, or the user said yes.
-    @discardableResult func open(_ url: URL) -> Bool {
+    @discardableResult func open(_ url: URL, confirmed: Bool = false) -> Bool {
         guard let p = RemotePairing(url: url) else { return false }
+        // a code for a Mac already here replaces it: asked first, as a link from outside is, since a code can claim any Mac's id
+        if !confirmed, macs.contains(where: { $0.id == p.macID }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.offered = p }     // once the scanner has gone
+            return true
+        }
         pair(p)
         return true
     }
 
     func pair(_ p: RemotePairing) {
+        guard joining?.mac.deviceID != p.deviceID, !macs.contains(where: { $0.deviceID == p.deviceID }) else { return }     // the same code, read twice
         Keychain.store(p.key, account: p.deviceID)
-        let m = PairedMac(id: p.macID, deviceID: p.deviceID, name: p.macName, port: p.port, addresses: p.addresses)
-        macs.removeAll { $0.id == p.macID }
-        macs.insert(m, at: 0)
-        current = m
-        saveMacs()
-        refused = false
+        let m = PairedMac(id: p.macID, deviceID: p.deviceID, name: p.macName, port: p.port, addresses: p.addresses, relayAddress: p.relay,
+                          nickname: macs.first { $0.id == p.macID }?.nickname)
+        if let j = joining { Keychain.remove(account: j.mac.deviceID) }
+        joining = (m, joining != nil ? joining!.back : current, Date())
+        joinOpens = 0
+        pairFailed = nil
+        switchTo(m)
+    }
+
+    /// The code never got an answer, or a refusal: back where things were, and say why.
+    private func joinFailed() {
+        guard let j = joining else { return }
+        let asked = waitingForMac
+        joining = nil
+        waitingForMac = false
+        Keychain.remove(account: j.mac.deviceID)
+        pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
+            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone on the same network, or set a relay on that Mac first.")
+            : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that Mac.")
+        let t = pairFailed
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }
+        leave()
+        current = macs.first { $0.id == j.back?.id } ?? macs.first
+        state = current == nil ? .unpaired : .connecting
         disconnect()
         connect()
     }
 
     func choose(_ m: PairedMac) {
+        guard m.id != current?.id else { return }
+        abandonJoin()
+        switchTo(m)
+    }
+
+    private func abandonJoin() {
+        if let j = joining { Keychain.remove(account: j.mac.deviceID) }
+        joining = nil
+        waitingForMac = false
+    }
+
+    private func switchTo(_ m: PairedMac?) {
+        leave()
         current = m
-        saveMacs()
+        if joining == nil { saveMacs() }
+        state = m == nil ? .unpaired : .connecting
         disconnect()
         connect()
     }
 
+    /// Nothing of this Mac goes with the phone to the next: not a held key, a take, its picture or what went wrong with it.
+    private func leave() {
+        if dictation != .idle { send(.blurt(.dictationCancel)) }
+        Sticky.shared.clear()
+        send(.mods([]))
+        send(.releaseAll)
+        ScreenStream.shared.stop()
+        dictation = .idle
+        live = ""
+        liveFinal = ""
+        front = nil
+        screenError = nil
+        refused = false
+        firstAttempt = nil
+        lastRelayTry = .distantPast
+    }
+
+    func rename(_ m: PairedMac, to name: String) {
+        guard let n = macs.firstIndex(where: { $0.id == m.id }) else { return }
+        macs[n].nickname = name.trimmingCharacters(in: .whitespaces)
+        if current?.id == m.id { current = macs[n] }
+        saveMacs()
+    }
+
+    /// While Settings is open: which of the paired Macs are here. Asks nothing of them.
+    func watchNearby(_ on: Bool) {
+        nearbyBrowser?.cancel()
+        nearbyBrowser = nil
+        guard on else { nearby = []; return }
+        let params = NWParameters()
+        params.includePeerToPeer = RemoteChannel.peerToPeer
+        let b = NWBrowser(for: .bonjourWithTXTRecord(type: RemotePairing.serviceType, domain: nil), using: params)
+        b.browseResultsChangedHandler = { [weak self] results, _ in
+            let ids = Set(results.compactMap { r -> String? in if case let .bonjour(t) = r.metadata { t["id"] } else { nil } })
+            DispatchQueue.main.async { self?.nearby = ids }
+        }
+        b.start(queue: queue)
+        nearbyBrowser = b
+    }
+
     func forget(_ m: PairedMac) {
+        if current?.id == m.id, state == .connected { send(.unpair) }
         Keychain.remove(account: m.deviceID)
         macs.removeAll { $0.id == m.id }
         if current?.id == m.id {
-            current = macs.first
-            disconnect()
-            state = current == nil ? .unpaired : .connecting
-            connect()
+            abandonJoin()
+            switchTo(macs.first)
         }
         saveMacs()
     }
@@ -136,6 +246,7 @@ final class Link: ObservableObject {
 
     func foreground() {
         active = true
+        joining?.since = Date()      // scanning with the Camera app, say
         UIApplication.shared.isIdleTimerDisabled = true
         if state != .connected, state != .replaced { connect() }
     }
@@ -151,11 +262,13 @@ final class Link: ObservableObject {
 
     func background() {
         active = false
+        if waitingForMac { joinFailed() }      // nobody's there to see it, and the code is spent
         Sticky.shared.clear()
         UIApplication.shared.isIdleTimerDisabled = false
         send(.releaseAll)
         disconnect()
-        if current != nil { state = .connecting }
+        // another phone has the Mac: coming back doesn't take it from them, a touch does
+        if current != nil, state != .replaced { state = .connecting }
     }
 
     // MARK: connecting
@@ -181,6 +294,7 @@ final class Link: ObservableObject {
         let g = generation
         let r = DispatchWorkItem { [weak self] in
             guard let self, self.channel == nil, self.active, g == self.generation else { return }
+            if let j = self.joining, !self.waitingForMac, self.refused || Date().timeIntervalSince(j.since) > 15 { return self.joinFailed() }
             // a refusal alone proves nothing, anyone on the network can send one: only if no other way in worked
             if self.refused { self.state = .forgotten } else if let f = self.firstAttempt, Date().timeIntervalSince(f) > 8 { self.state = .unreachable }
             // a relay attempt gets longer than a local one: it has further to go
@@ -237,9 +351,13 @@ final class Link: ObservableObject {
             guard let ch else { return }
             DispatchQueue.main.async { self?.opened(ch, mac: mac) }
         }
-        ch.onControl = { [weak self] d in
+        ch.onControl = { [weak self, weak ch] d in
             guard let m = try? JSONDecoder().decode(ToPhone.self, from: d) else { return }
-            DispatchQueue.main.async { self?.heard(m) }
+            DispatchQueue.main.async {
+                // a word from a Mac no longer in hand says nothing about the one that is
+                guard let self, let ch, self.channel === ch else { return }
+                self.heard(m)
+            }
         }
         ch.onVideo = { ScreenStream.shared.packet($0) }
         ch.onProbe = { ScreenStream.shared.probeBack($0) }
@@ -284,7 +402,12 @@ final class Link: ObservableObject {
         firstAttempt = nil
         refused = false
         lastPong = Date()
-        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: Prefs.shared.micOnPhone))
+        // a code that keeps getting sessions which never come to a question is being tried for digits: give up on it
+        if joining != nil {
+            joinOpens += 1
+            if joinOpens > 3 { ch.close(); return joinFailed() }
+        }
+        ch.send(ToMac.hello(device: UIDevice.current.name, micOnPhone: MicStream.shared.usable, nonce: ch.nonce))
         pinger = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.ping() }
     }
 
@@ -317,6 +440,7 @@ final class Link: ObservableObject {
         MicStream.shared.stop()
         ScreenStream.shared.connectionLost()
         dictation = .idle
+        if waitingForMac { return joinFailed() }       // the Mac said no, or the way to it went
         guard current != nil, state != .forgotten, state != .replaced else { return }
         state = .connecting
         connect()
@@ -345,6 +469,12 @@ final class Link: ObservableObject {
             displayAspect = CGFloat(i.displayAspect)
             lastInfo = i
             noteRelay(i.relay)
+            if let r = replacing {
+                replacing = nil
+                send(.replaces(deviceID: r))
+            }
+            // one relay serves all of them: a Mac with none takes the one the others use
+            if i.relay == nil, let a = macs.compactMap(\.relayAddress).first { send(.offerRelay(a)) }
             ScreenStream.shared.resume()
             if channel?.isRelay == true {
                 if ProcessInfo.processInfo.environment["BLURT_NO_DIRECT"] != "1" { lookForDirect(i) }
@@ -361,6 +491,19 @@ final class Link: ObservableObject {
             if p == .idle { live = ""; liveFinal = "" }
             MicStream.shared.macPhase(p)
         case let .live(c, p): liveFinal = c; live = p
+        case let .listen(on):
+            // a voice note started from here is heard through this phone, as the talk key is
+            if on {
+                // couldn't have the microphone (a call has it): the Mac hears this note with its own. The setting stays as
+                // it was, so the next note tries the phone again
+                if !MicStream.shared.usable || !MicStream.shared.start(for: .note) {
+                    send(.setMicOnPhone(false))
+                    send(.setMicOnPhone(MicStream.shared.usable))
+                    send(.hud(String(localized: "iPhone microphone unavailable")))
+                }
+            } else {
+                MicStream.shared.stop(for: .note)
+            }
         case let .level(l): level = l
         case .typed, .notice: break
         case let .pong(t):
@@ -381,9 +524,27 @@ final class Link: ObservableObject {
         case let .cursorShape(png, hx, hy, w, h):
             ScreenStream.shared.shape(png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
         case let .relay(a): noteRelay(a)
+        case .pairingWaits:
+            pairCheck = channel?.check
+            waitingForMac = true
+            let d = joining?.mac.deviceID
+            DispatchQueue.main.asyncAfter(deadline: .now() + 120) { [weak self] in
+                if let self, self.waitingForMac, self.joining?.mac.deviceID == d { self.joinFailed() }
+            }
         case let .newKey(k):
             guard let c = current else { return }
             Keychain.store(k, account: c.deviceID)
+            if joining != nil {
+                joining = nil
+                waitingForMac = false
+                if let old = macs.first(where: { $0.id == c.id }), old.deviceID != c.deviceID {
+                    Keychain.remove(account: old.deviceID)
+                    replacing = old.deviceID
+                }
+                macs.removeAll { $0.id == c.id }
+                macs.insert(c, at: 0)
+                saveMacs()
+            }
             send(.keyStored)
         case .removed:
             if let c = current { forget(c) }
@@ -421,9 +582,10 @@ final class Link: ObservableObject {
     // MARK: sending
 
     func send(_ m: ToMac) { channel?.send(m) }
-    func pointer(_ p: RemotePointerPacket) {
+    /// `inOrder`: behind what was sent before it, as a scroll right after the pointer was placed must be
+    func pointer(_ p: RemotePointerPacket, inOrder: Bool = false) {
         // over the relay every message counts: 30 a second is plenty, and it's already no place for a fine stroke
-        guard route == .relay else { return channel?.sendPointer(p) ?? () }
+        guard route == .relay else { return channel?.sendPointer(p, inOrder: inOrder) ?? () }
         switch p {
         case let .move(x, y):
             pendingMove = ((pendingMove?.0 ?? 0) + x, (pendingMove?.1 ?? 0) + y)

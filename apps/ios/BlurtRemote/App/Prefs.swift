@@ -12,12 +12,13 @@ final class Prefs: ObservableObject {
     @Published var scrollSpeed: Double { didSet { d.set(scrollSpeed, forKey: "scrollSpeed") } }
     @Published var reverseScroll: Bool { didSet { d.set(reverseScroll, forKey: "reverseScroll") } }
     @Published var haptics: Bool { didSet { d.set(haptics, forKey: "haptics") } }
-    /// the talk key in the other corner; landscape: keys under the right thumb
+    /// portrait: the talk key and the arrow key at the other end. Landscape turns with the phone
     @Published var lefty: Bool { didSet { d.set(lefty, forKey: "lefty") } }
     /// false: dictation listens through the Mac's microphone
     @Published var micOnPhone: Bool { didSet { d.set(micOnPhone, forKey: "micOnPhone") } }
     /// with the Mac's screen showing: a tap clicks what's under the finger. Off: a trackpad, clicking where the pointer is
     @Published var tapWhereTouched: Bool { didSet { d.set(tapWhereTouched, forKey: "tapWhereTouched") } }
+    @Published var quality: ScreenQuality { didSet { d.set(quality.rawValue, forKey: "quality"); ScreenStream.shared.planChanged() } }
 
     private init() {
         pointerSpeed = d.object(forKey: "pointerSpeed") as? Double ?? 1
@@ -27,5 +28,6 @@ final class Prefs: ObservableObject {
         lefty = d.object(forKey: "lefty") as? Bool ?? false
         micOnPhone = d.object(forKey: "micOnPhone") as? Bool ?? true
         tapWhereTouched = d.object(forKey: "tapWhereTouched") as? Bool ?? true
+        quality = d.string(forKey: "quality").flatMap(ScreenQuality.init) ?? .auto
     }
 }

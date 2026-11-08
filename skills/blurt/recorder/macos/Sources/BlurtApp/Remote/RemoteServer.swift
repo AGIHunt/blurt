@@ -3,7 +3,7 @@
 //
 //  • listens only once a phone is paired (or a QR code is showing). No paired phone, no open port.
 //  • pairing (Settings → iPhone): a QR code with a fresh key, good for one connection within two minutes, renewed while the
-//    page shows it. The connection that uses it spends it, is sent a new key over the sealed session, and becomes a paired
+//    page shows it. Used over the relay, where a photo of it would otherwise do from anywhere, someone at the Mac has to allow it. The connection that uses it spends it, is sent a new key over the sealed session, and becomes a paired
 //    device once the phone says it has kept that key. So a photo of the code, or a screen recording, is worth nothing later.
 //  • found through Bonjour (`_blurt-remote._tcp`, including peer-to-peer Wi-Fi, so two devices with no shared network still
 //    find each other); the TXT record has this Mac's id, which outlives its name and address. The port stays the same
@@ -32,6 +32,12 @@ final class RemoteServer {
     struct Status: Equatable {
         var listening = false
         var connected: String?
+        var connectedID: String?
+        /// a phone used the code over the relay, and waits for a yes
+        var asking: String?
+        /// the four digits the phone that's asking shows too, and which session it is
+        var askingCheck: String?
+        var askingNumber: UInt32?
         var udp = false
         var pairingLink: URL?
         var failure: String?
@@ -40,13 +46,20 @@ final class RemoteServer {
     private static let serviceKeychain = "Blurt iPhone Remote"
     private static let silence = 2.0
     private static let pairingLife = 120.0
+    private static let pairingGrace = 20.0
     private static let maxHandshakes = 16
     private static let maxSteps = 32
     private static let maxWaitMs = 3000
     private static let maxText = 64 * 1024
     /// a session this quiet is over, relay or not: the phone is gone, and the screen must not go on being captured for nobody
     private static let gone = 12.0
+    /// test hooks (a code at once, keys in a file, an automatic yes): debug builds only, so no other program can borrow a release
+    /// build's Screen Recording and microphone through them
+    #if DEBUG || BLURT_TEST_HOOKS
     private static let testing = ProcessInfo.processInfo.environment["BLURT_TEST_COMMANDS"] == "1"
+    #else
+    private static let testing = false
+    #endif
 
     let queue = DispatchQueue(label: "blurt.remote", qos: .userInteractive)
     var onStatus: ((Status) -> Void)?
@@ -57,10 +70,24 @@ final class RemoteServer {
     private var tcp: NWListener?
     private var udp: NWListener?
     private var udpPort: UInt16 = 0
-    private var session: Session?
+    private var session: Session? {
+        didSet {
+            sessionLock.lock(); mirrored = session; sessionLock.unlock()
+            watching = session != nil
+        }
+    }
+    /// `session` for the main thread (dictation's levels and words, the front app, Blurt's commands): it changes on `queue`
+    private var current: Session? { sessionLock.lock(); defer { sessionLock.unlock() }; return mirrored }
+    private let sessionLock = NSLock()
+    private var mirrored: Session?
     /// connections still in their handshake (a channel must outlive `tcpConnection`)
     private var handshaking: [ObjectIdentifier: Session] = [:]
     private var pairing: (id: String, key: Data, until: Date)?
+    /// the code before this one: someone may have scanned it just as it was replaced
+    private var oldCode: (id: String, key: Data, until: Date)?
+    private var asking: Session?
+    private var codeTries: [String: Int] = [:]
+    private static let codeTries = 8
     private var pairingTimer: DispatchSourceTimer?
     private var showingPairing = false
     private var observers: [NSObjectProtocol] = []
@@ -86,6 +113,14 @@ final class RemoteServer {
         var greeted = false
         /// the code this session spent; the new key waits here for `.keyStored`
         var pairingKey: Data?
+        /// `newKey` has gone: `keyStored` means nothing before that
+        var keySent = false
+        /// a new phone the owner said yes to on this Mac, this session: it may also set the relay, and drop the entry it replaces
+        var approved = false
+        /// revealed in the hello: with the handshake it makes the six digits
+        var nonce: Data?
+        /// when the question was asked: unanswered for two minutes, it's a no
+        var askedAt = 0.0
         var screen: RemoteScreen?
         var heldReleased = false
         var punches = 0
@@ -183,8 +218,12 @@ final class RemoteServer {
         }
     }
 
+    private func code(_ id: String) -> (id: String, key: Data, until: Date)? {
+        [pairing, oldCode].compactMap { $0 }.first { $0.id == id && $0.until > Date() }
+    }
+
     private func key(for id: String) -> Data? {
-        if let p = pairing, p.id == id, p.until > Date() { return p.key }
+        if let c = code(id) { return c.key }
         return devices().contains { $0.id == id } ? storedKey(id) : nil
     }
 
@@ -202,17 +241,41 @@ final class RemoteServer {
         observers.append(w.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { [weak self] _ in
             self?.sendFront()
         })
+        // whatever was open has died in the sleep, and a timer may be well into a long wait: back on the relay now
+        observers.append(w.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.queue.async {
+                guard let self else { return }
+                let open = self.relays.filter { $0.value !== self.session }
+                open.keys.forEach { self.relays[$0] = nil }
+                open.values.forEach { $0.channel.close() }
+                self.relayWait = [:]
+                self.updateRelays()
+            }
+        })
         observers.append(c.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.queue.sync { self?.end(); self?.stopListening() }
         })
-        // the session's watch: silence, and whether macOS lets us post events
+        // the session's watch: silence, and whether macOS lets us post events. It runs only while a phone is connected
         let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(deadline: .now() + 1, repeating: 0.5)
+        t.schedule(deadline: .now() + 1, repeating: 0.5, leeway: .milliseconds(100))
         t.setEventHandler { [weak self] in self?.watch() }
-        t.resume()
-        watcher = t
+        queue.async {
+            self.watcher = t
+            if self.session != nil { t.resume(); self.watcherRunning = true }
+        }
     }
     private var watcher: DispatchSourceTimer?
+    private var watcherRunning = false
+    /// on `queue`: the watch runs while there's a session, and nobody else's Mac wakes twice a second for it
+    private var watching: Bool {
+        get { watcherRunning }
+        set {
+            guard let w = watcher, newValue != watcherRunning else { return }
+            watcherRunning = newValue
+            // a phone starts out assuming it may control the Mac: the first tick tells it otherwise
+            if newValue { lastControl = true; w.resume() } else { w.suspend() }
+        }
+    }
     private var lastControl = true
 
     private func updateListening() {
@@ -295,7 +358,9 @@ final class RemoteServer {
             if !on {
                 self.pairingTimer?.cancel(); self.pairingTimer = nil
                 self.pairing = nil
+                self.oldCode = nil
                 self.status.pairingLink = nil
+                self.updateRelays()
             }
         }
     }
@@ -303,16 +368,24 @@ final class RemoteServer {
     private func renewPairing() {
         guard showingPairing, let port = tcp?.port?.rawValue else { return }
         let id = RemoteCrypto.newID(), key = RemoteCrypto.newKey()
+        oldCode = pairing
         pairing = (id, key, Date().addingTimeInterval(Self.pairingLife))
         status.pairingLink = RemotePairing(macID: macID, deviceID: id, key: key, macName: Host.current().localizedName ?? "Mac", port: port,
-                                           addresses: Self.addresses()).url
+                                           addresses: Self.addresses(), relay: Self.relayAddress).url
+        updateRelays()
         if Self.testing { emit(["event": "remote_pairing", "link": status.pairingLink?.absoluteString ?? ""]) }
         pairingTimer?.cancel()
         let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(deadline: .now() + Self.pairingLife - 5)
+        t.schedule(deadline: .now() + Self.pairingLife - Self.pairingGrace)
         t.setEventHandler { [weak self] in self?.renewPairing() }
         t.resume()
         pairingTimer = t
+        // the code before this one has run out by then
+        queue.asyncAfter(deadline: .now() + Self.pairingGrace + 1) { [weak self] in
+            guard let self, let o = self.oldCode, o.until <= Date() else { return }
+            self.oldCode = nil
+            self.updateRelays()
+        }
     }
 
     /// This Mac's LAN addresses (IPv4), Wi-Fi and Ethernet first.
@@ -341,7 +414,14 @@ final class RemoteServer {
     private func wire(_ c: NWConnection, relay deviceID: String?) {
         let ch = RemoteChannel(connection: c, role: .mac(lookup: { [weak self] id in
             guard let self else { return nil }
-            return self.queue.sync { self.key(for: id) }
+            return self.queue.sync {
+                // a code answers a few handshakes, no more: enough for a phone trying several ways at once, too few to try for digits
+                if self.code(id) != nil {
+                    self.codeTries[id, default: 0] += 1
+                    if self.codeTries[id, default: 0] > Self.codeTries { return nil }
+                }
+                return self.key(for: id)
+            }
         }), relay: deviceID != nil, standby: deviceID != nil, queue: DispatchQueue(label: "blurt.remote.session", qos: .userInteractive))
         let s = Session(ch)
         ch.onOpen = { [weak self, weak s] id in
@@ -382,7 +462,11 @@ final class RemoteServer {
     private var relays: [String: Session] = [:]
     private var relayWait: [String: Double] = [:]
     private var relayAt: String?
+    /// the code that let a phone in over the relay: its connection carries that session until it ends
+    private var spentCode: String?
     /// Set up by the owner (Settings → iPhone, tools/remote-relay). No address, no relay: Blurt doesn't run one.
+    /// Never set here, as against cleared by the owner: only then may a phone offer the one it knows.
+    static var relayUnset: Bool { Config.shared["record.remote.relay_url"] == nil }
     static var relayAddress: String? { (Config.shared["record.remote.relay_url"] as? String).flatMap(RemoteRelay.address) }
     static var relayOn: Bool { relayAddress != nil }
     /// Settings → iPhone: a paired phone may ask for the screen
@@ -392,6 +476,7 @@ final class RemoteServer {
         queue.async {
             self.session?.channel.send(ToPhone.relay(Self.relayAddress))     // first: it may be riding on the connection this closes
             self.updateRelays()
+            if self.showingPairing, self.tcp?.state == .ready { self.renewPairing() }   // the code carries the address
         }
     }
 
@@ -405,11 +490,24 @@ final class RemoteServer {
         }
     }
 
+    /// Blurt's settings page follows, if it's open.
+    var onRelayAdopted: ((String) -> Void)?
+
+    /// A paired phone may already do everything on this Mac; its relay is the owner's own.
+    private func adoptRelay(_ typed: String) {
+        guard Self.relayUnset, let a = RemoteRelay.address(typed) else { return }
+        Config.shared.set("record.remote.relay_url", a)
+        emit(["event": "remote_relay", "state": "adopted"])
+        relayChanged()
+        DispatchQueue.main.async { self.onRelayAdopted?(a) }
+    }
+
     private func updateRelays() {
         let on = Self.relayOn
-        let ids = Set(devices().map(\.id))
+        // a code showing counts: a phone on another network can pair through the relay too
+        let ids = Set(devices().map(\.id)).union([pairing, oldCode].compactMap { $0?.id })
         // a changed address counts as gone: the phone has been told the new one
-        for (id, s) in relays where !on || !ids.contains(id) || relayAt != Self.relayAddress {
+        for (id, s) in relays where !on || !(ids.contains(id) || (id == spentCode && (s === session || s === asking))) || relayAt != Self.relayAddress {
             relays[id] = nil
             s.channel.close()
         }
@@ -419,7 +517,7 @@ final class RemoteServer {
     }
 
     private func connectRelay(_ id: String) {
-        guard let a = Self.relayAddress, relays[id] == nil, devices().contains(where: { $0.id == id }), let k = storedKey(id),
+        guard let a = Self.relayAddress, relays[id] == nil, let k = code(id)?.key ?? (devices().contains { $0.id == id } ? storedKey(id) : nil),
               let c = RemoteRelay.connection(address: a, room: RemoteRelay.room(key: k), role: "mac") else { return }
         emit(["event": "remote_relay", "state": "waiting"])
         wire(c, relay: id)
@@ -429,39 +527,67 @@ final class RemoteServer {
         guard relays[id] === s else { return }
         relays[id] = nil
         let clean = s.channel.relayClose == RemoteRelay.phoneLeft || s.greeted
-        let wait = clean ? 0.5 : min((relayWait[id] ?? 1) * 2, 60)
+        // a failure waits longer each time, but not so long that a bad hello now and then keeps the phone off the relay
+        let wait = clean ? 0.5 : min((relayWait[id] ?? 1) * 2, 8)
         relayWait[id] = clean ? 1 : wait
         queue.asyncAfter(deadline: .now() + wait) { [weak self] in self?.connectRelay(id) }
     }
 
     private func opened(_ s: Session, id: String?) {
         handshaking[ObjectIdentifier(s)] = nil
-        // removed, or its code renewed, while the handshake ran
-        guard let id, key(for: id) != nil else { return s.channel.close() }
+        // the key the handshake used must still be this id's key: removed, its code spent or renewed, or the phone paired again since,
+        // and a handshake begun with it, perhaps hours ago on a waiting relay connection, opens nothing
+        guard let id, let now = key(for: id), let used = s.channel.pairedKey, RemoteCrypto.same(now, used) else {
+            emit(["event": "remote_session", "state": "refused", "why": "stale_key"])
+            return s.channel.close()
+        }
+        s.id = id
+        // the code is spent the moment it opens a session
+        if code(id) != nil {
+            // one new phone at a time: a second one using a code while the first waits is turned away, so a yes can't go to it
+            if let a = asking, a !== s {
+                emit(["event": "remote_pairing_refused", "why": "busy"])
+                return s.channel.close()
+            }
+            s.pairingKey = RemoteCrypto.newKey()
+            let current = pairing?.id == id
+            if current { pairing = nil } else { oldCode = nil }
+            spentCode = id
+            // whoever holds a picture of the code, on any network: nothing until someone here says yes, comparing the four digits
+            asking = s
+            // nothing else may come in on this code: the relay connection waiting in its room goes
+            if let r = relays[id], r !== s { relays[id] = nil; r.channel.close() }
+            if current, showingPairing { renewPairing() }
+            return
+        }
+        takeOver(s)
+    }
+
+    private func takeOver(_ s: Session) {
         // the phone that had the session gives way
         if let old = session, old !== s {
-            if old.id != id { old.channel.send(ToPhone.replaced) }
+            if old.id != s.id { old.channel.send(ToPhone.replaced) }
             closed(old)
             old.channel.queue.asyncAfter(deadline: .now() + 0.2) { old.channel.close() }
         }
-        s.id = id
         session = s
-        // the code is spent the moment it opens a session
-        if let p = pairing, p.id == id {
-            s.pairingKey = RemoteCrypto.newKey()
-            pairing = nil
-            if showingPairing { renewPairing() }
-        }
         emit(["event": "remote_session", "state": "open", "relay": s.channel.isRelay])
     }
 
     private func closed(_ s: Session) {
+        if asking === s {
+            asking = nil
+            status.asking = nil
+            status.askingCheck = nil
+            status.askingNumber = nil
+        }
         guard session === s else { return }
         session = nil
         s.screen?.stop()
         s.screen = nil
         keepAwake(false)
         status.connected = nil
+        status.connectedID = nil
         status.udp = false
         dropFlows()
         letGo(s)
@@ -508,9 +634,10 @@ final class RemoteServer {
     private func handle(_ m: ToMac, _ s: Session) {
         let input = RemoteInput.shared
         switch m {
-        case let .hello(device, mic):
+        case let .hello(device, mic, nonce):
             s.name = String(device.prefix(64))
             s.micOnPhone = mic
+            s.nonce = nonce
             queue.async { self.greet(s) }
             return
         case .keyStored:
@@ -526,19 +653,37 @@ final class RemoteServer {
         switch m {
         case .hello, .keyStored, .ping: break
         case let .screen(r):
-            s.screen?.stop()
-            s.screen = nil
-            keepAwake(displayToo: false)
-            guard let r else { return }
-            guard Self.screenAllowed else { return s.channel.send(ToPhone.screenFailed("off")) }
-            let screen = RemoteScreen(channel: s.channel)
-            screen.onInfo = { [weak s] m in s?.channel.send(m) }
-            screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
-            s.screen = screen
-            keepAwake(displayToo: true)
-            screen.start(r) { why in s.channel.send(ToPhone.screenFailed(why)) }
+            // on the server's queue, where `closed` runs: a capture can't start for a session that has just ended
+            queue.async {
+                guard self.session === s else { return }
+                s.screen?.stop()
+                s.screen = nil
+                self.keepAwake(displayToo: false)
+                guard let r else { return }
+                guard Self.screenAllowed else { return s.channel.send(ToPhone.screenFailed("off")) }
+                let screen = RemoteScreen(channel: s.channel)
+                screen.onInfo = { [weak s] m in s?.channel.send(m) }
+                screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
+                s.screen = screen
+                self.keepAwake(displayToo: true)
+                screen.start(r) { why in s.channel.send(ToPhone.screenFailed(why)) }
+            }
         case let .screenCrop(c):
             s.screen?.setCrop(c)
+        case let .screenReport(r):
+            s.screen?.report(r)
+        case let .screenPace(idle):
+            s.screen?.pace(idle: idle)
+        case .unpair:
+            if let id = s.id { remove(id) }
+        case let .replaces(id):
+            // only a phone the owner just said yes to may drop its own older entry
+            guard s.approved, id != s.id, devices().contains(where: { $0.id == id }) else { return }
+            remove(id)
+        case let .offerRelay(a):
+            // and only it may set the relay: another paired phone, or a Mac's, can't point this one somewhere else
+            guard s.approved else { return }
+            queue.async { self.adoptRelay(a) }
         case let .pointerTo(x, y):
             if let p = s.screen?.pointerTo(x: x, y: y) { input.queue.async { input.place(p) } }
         case let .candidates(list):
@@ -550,19 +695,23 @@ final class RemoteServer {
         case let .screenStats(json):
             s.channel.queue.async { emit(["event": "remote_screen_phone", "stats": json, "uplink": s.takeGaps()]) }
         case let .screenSnapshot(name, jpeg):
-            guard let dir = ProcessInfo.processInfo.environment["BLURT_SCREEN_SNAP_DIR"], !name.contains("/") else { return }
+            guard Self.testing, let dir = ProcessInfo.processInfo.environment["BLURT_SCREEN_SNAP_DIR"], !name.contains("/"), !name.hasPrefix(".") else { return }
             try? jpeg.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name + ".jpg"))
         case let .setMicOnPhone(on):
             s.micOnPhone = on
+            // a note waiting on the phone's microphone that the phone can't have: heard through this Mac's instead
+            if !on { DispatchQueue.main.async { VoiceInput.shared.phoneMicUnavailable() } }
         case let .key(c, down):
             input.queue.async { if let down { input.hold(c, down: down) } else { input.press(c) } }
-            if down != false, !c.key.isEmpty { RemoteHUD.show(c.label) }
+            // a modifier pressed on its own shows too: it may have switched the input method
+            if down != false, !c.key.isEmpty || (down == nil && !c.mods.isEmpty) { RemoteHUD.show(c.label) }
         case let .mods(mods):
             input.queue.async { input.setSticky(mods) }
             RemoteHUD.sticky(mods)
         case let .run(steps):
-            let waits = steps.reduce(0) { if case let .wait(ms) = $1 { $0 + max(ms, 0) } else { $0 } }
-            guard steps.count <= Self.maxSteps, waits <= Self.maxWaitMs else { return }
+            guard steps.count <= Self.maxSteps else { return }
+            let waits = steps.reduce(0) { if case let .wait(ms) = $1 { $0 + min(max(ms, 0), Self.maxWaitMs + 1) } else { $0 } }   // no overflow
+            guard waits <= Self.maxWaitMs else { return }
             input.queue.async { input.run(steps) }
             let keys = steps.compactMap { if case let .key(c) = $0 { c.label } else { nil } }
             if !keys.isEmpty { RemoteHUD.show(keys.joined(separator: " ")) }
@@ -628,8 +777,31 @@ final class RemoteServer {
     }
 
     private func greet(_ s: Session) {
+        if asking === s {
+            // no digits that match what the handshake committed to, no question
+            guard let n = s.nonce, let check = s.channel.check(revealing: n) else {
+                asking = nil
+                s.channel.close()
+                return closed(s)
+            }
+            status.asking = s.name
+            status.askingCheck = check
+            status.askingNumber = s.number
+            // nobody answers: after two minutes it's a no, so a question left open can't keep everyone else waiting
+            queue.asyncAfter(deadline: .now() + Self.pairingLife) { [weak self, weak s] in
+                guard let self, let s, self.asking === s else { return }
+                self.answerPairing(false, number: s.number)
+            }
+            emit(["event": "remote_pairing_asks"])
+            s.channel.send(ToPhone.pairingWaits)
+            if Self.testing, let a = ProcessInfo.processInfo.environment["BLURT_TEST_PAIR_ANSWER"] {
+                queue.asyncAfter(deadline: .now() + 3) { self.answerPairing(a == "yes") }
+            }
+            return
+        }
         guard session === s, let id = s.id else { return }
         if let k = s.pairingKey {
+            s.keySent = true
             s.channel.send(ToPhone.newKey(k))   // `keyStored` finishes it
             return
         }
@@ -642,17 +814,41 @@ final class RemoteServer {
         begin(s)
     }
 
+    /// Settings: yes or no to the phone that used the code over the relay.
+    /// `number`: the session the question was about, so a yes given to one can't go to another
+    func answerPairing(_ yes: Bool, number: UInt32? = nil) {
+        queue.async {
+            guard let s = self.asking, number == nil || number == s.number else { return }
+            self.asking = nil
+            self.status.asking = nil
+            self.status.askingCheck = nil
+            self.status.askingNumber = nil
+            if yes {
+                s.approved = true
+                self.takeOver(s)
+                self.greet(s)
+            } else {
+                s.channel.close()
+                self.closed(s)
+            }
+        }
+    }
+
     private func keyStored(_ s: Session) {
-        guard session === s, let id = s.id, let k = s.pairingKey else { return }
+        guard session === s, s.keySent, let id = s.id, let k = s.pairingKey else { return }
         s.pairingKey = nil
         store(k, for: id)
         save(devices() + [Device(id: id, name: s.name, added: Date(), lastSeen: Date())])
         begin(s)
+        // a relay connection still in the code's room goes; the next waits in the new key's
+        if let r = relays[id], r !== s { relays[id] = nil; r.channel.close() }
+        updateRelays()
     }
 
     private func begin(_ s: Session) {
         s.greeted = true
         status.connected = s.name
+        status.connectedID = s.id
         keepAwake()
         let info = { (list: [RemoteCandidate]) in
             let main = CGDisplayBounds(CGMainDisplayID())
@@ -694,7 +890,26 @@ final class RemoteServer {
         switch c {
         case .snap: center.onFire?(.snap)
         case .record: center.onFire?(.toggleRecord)
-        case .voiceNote: center.onFire?(.voice)
+        case .voiceNote:
+            // a note to start, from a phone that uses its own microphone: heard through it, as dictation is
+            let input = VoiceInput.shared
+            // only when nothing else is listening: dictation may be using the phone's microphone right now
+            var asked = false
+            let session = current
+            if !input.active, Dictation.shared.phase != .listening, session?.micOnPhone == true, let s = session {
+                RemoteMicFeed.shared.clear()
+                RemoteMicFeed.shared.onListen = { [weak s] on in s?.channel.send(ToPhone.listen(on)) }
+                s.channel.send(ToPhone.listen(true))
+                input.phoneFeed = RemoteMicFeed.shared
+                asked = true
+            }
+            // a tap on the phone: start, or stop the one going, whatever the voice key's mode (no key-up comes to end a held one)
+            if input.active { input.toggle() } else { center.onFire?(.voice) }
+            // asked for the phone's microphone and the note didn't start after all: it can let it go
+            if asked, input.phoneFeed != nil || !input.active {
+                input.phoneFeed = nil
+                session?.channel.send(ToPhone.listen(false))
+            }
         case .copyText: center.onFire?(.text)
         case .translate: center.onFire?(.translateText)
         case .cards: center.onFire?(.cards)
@@ -728,13 +943,13 @@ final class RemoteServer {
 
     private func sendFront() {
         guard let a = NSWorkspace.shared.frontmostApplication, let b = a.bundleIdentifier else { return }
-        session?.channel.send(ToPhone.front(RemoteFront(bundle: b, name: a.localizedName ?? b)))
+        current?.channel.send(ToPhone.front(RemoteFront(bundle: b, name: a.localizedName ?? b)))
     }
 
-    func dictationChanged(_ p: RemoteDictationPhase) { session?.channel.send(ToPhone.dictation(p)) }
-    func live(committed: String, pending: String) { session?.channel.send(ToPhone.live(committed: committed, pending: pending)) }
-    func level(_ l: Float) { session?.channel.send(ToPhone.level(l)) }
-    func typed(_ t: String) { session?.channel.send(ToPhone.typed(t)) }
+    func dictationChanged(_ p: RemoteDictationPhase) { current?.channel.send(ToPhone.dictation(p)) }
+    func live(committed: String, pending: String) { current?.channel.send(ToPhone.live(committed: committed, pending: pending)) }
+    func level(_ l: Float) { current?.channel.send(ToPhone.level(l)) }
+    func typed(_ t: String) { current?.channel.send(ToPhone.typed(t)) }
 
     // MARK: UDP
 
@@ -786,6 +1001,8 @@ final class RemoteMicFeed {
     static let shared = RemoteMicFeed()
     /// the press came from a phone that wants its own mic used
     var pressed = false
+    /// tells the phone to send its microphone, or to stop (a voice note started from it)
+    var onListen: ((Bool) -> Void)?
     private var waiting: [[Float]] = []
     private var sink: (([Float]) -> Void)?
     private let lock = NSLock()

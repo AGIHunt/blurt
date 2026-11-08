@@ -256,6 +256,7 @@ final class RemoteInput {
         e.setDoubleValueField(.scrollWheelEventFixedPtDeltaAxis2, value: Double(dx))
         e.setIntegerValueField(.scrollWheelEventScrollPhase, value: phase)
         e.setIntegerValueField(.scrollWheelEventMomentumPhase, value: momentum)
+        e.location = here()     // where the pointer was just put, though the system may not say so yet: the view there takes the scroll
         e.flags = flags(downMods)
         post(e)
     }

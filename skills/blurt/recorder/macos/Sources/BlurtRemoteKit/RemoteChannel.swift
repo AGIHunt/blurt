@@ -41,6 +41,18 @@ public final class RemoteChannel {
     private var flow: NWConnection?
     private var macID: String?
     private var pendingHandshake: MacHandshake.Answer?
+    /// Mac: the paired key the handshake used, and what the phone committed to
+    public private(set) var pairedKey: Data?
+    private var commitment: Data?
+    /// phone: the nonce to reveal in the first message
+    public var nonce: Data? { if case let .phone(h) = role { h.nonce } else { nil } }
+    /// phone: the session's six digits (RemoteCrypto.check), once the handshake is done
+    public var check: String? { nonce.flatMap { n in sealer?.check(n) } }
+    /// Mac: the six digits, if `nonce` is the one the phone committed to (nil otherwise)
+    public func check(revealing nonce: Data) -> String? {
+        guard let c = commitment, RemoteCrypto.same(RemoteCrypto.commitment(nonce), c) else { return nil }
+        return sealer?.check(nonce)
+    }
 
     public init(connection: NWConnection, role: Role, relay: Bool = false, standby: Bool = false,
                 queue: DispatchQueue = DispatchQueue(label: "blurt.remote.channel", qos: .userInteractive)) {
@@ -60,6 +72,12 @@ public final class RemoteChannel {
         connection.stateUpdateHandler = { [weak self] s in self?.stateChanged(s) }
         connection.start(queue: queue)
         if standby { return }
+        armHandshakeTimeout()
+    }
+
+    /// Six seconds to finish the handshake. A waiting relay connection has no limit until a phone says hello on it; from then the same.
+    private func armHandshakeTimeout() {
+        handshakeTimeout?.cancel()
         let t = DispatchWorkItem { [weak self] in
             guard let self, self.sealer == nil || self.macID != nil && !self.opened else { return }
             self.shut(nil)
@@ -144,6 +162,7 @@ public final class RemoteChannel {
         if !opened {
             opened = true
             handshakeTimeout?.cancel()
+            reader.limit = RemoteFrameReader.maxFrame     // only now: an id alone doesn't buy anyone a megabyte
             onOpen?(macID)
         }
         deliver(plain)
@@ -170,7 +189,9 @@ public final class RemoteChannel {
             sendRaw(RemoteFrameReader.framed(a.reply))
             sealer = s
             macID = a.id
-            reader.limit = RemoteFrameReader.maxFrame
+            pairedKey = a.key
+            commitment = a.commitment
+            if standby { armHandshakeTimeout() }
         }
     }
 
@@ -215,11 +236,12 @@ public final class RemoteChannel {
         queue.async { self.sendSealed(.audio, pcm) }
     }
 
-    /// Over UDP once it works, else in the TCP stream.
-    public func sendPointer(_ p: RemotePointerPacket) {
+    /// Over UDP once it works, else in the TCP stream. `inOrder`: in the stream regardless, behind the messages sent before it, as a
+    /// scroll must be when the pointer was just placed where it's to happen.
+    public func sendPointer(_ p: RemotePointerPacket, inOrder: Bool = false) {
         queue.async {
             guard let sealer = self.sealer, !self.closed else { return }
-            if self.udpOK, let udp = self.udp, let d = try? sealer.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + p.encoded(), session: self.udpSession) {
+            if !inOrder, self.udpOK, let udp = self.udp, let d = try? sealer.sealPacket(Data([RemoteFrameKind.pointer.rawValue]) + p.encoded(), session: self.udpSession) {
                 udp.send(content: d, completion: .idempotent)
             } else {
                 self.sendSealed(.pointer, p.encoded())

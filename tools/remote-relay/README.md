@@ -1,4 +1,4 @@
-# Blurt Remote relay
+# Blurt relay for iPhone
 
 Passes sealed bytes between a paired iPhone and Mac when they aren't on one network. It can't read them and stores nothing: everything is
 sealed end to end with keys only the two devices have (docs/design/remote.md §Security). Blurt doesn't run a relay for anyone: you run your
@@ -10,7 +10,7 @@ own, on one of these two, and give Blurt its address.
 | Your own server | A server with a public IP; a domain if you want `wss://` | No quota, and the shortest path if the server is near you |
 
 From mainland China, a server there is far faster than Cloudflare's free network. A domain served from a mainland server needs an ICP filing.
-The picture over a relay is about 1.5 Mbps, so a server needs 2 Mbps out for each person using it at once.
+The picture over a relay follows what the link carries, up to 4 Mbps by default; 2 Mbps out for each person using it at once is plenty.
 
 Whichever you pick, finish with:
 
@@ -46,7 +46,7 @@ sudo useradd --system --no-create-home blurt-relay
 
 ```ini
 [Unit]
-Description=Blurt Remote relay
+Description=Blurt relay
 After=network.target
 
 [Service]

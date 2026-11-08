@@ -1,4 +1,4 @@
-// Blurt Remote's relay. A phone and its Mac each open a WebSocket to the same room and bytes pass between them. It can't read
+// Blurt's iPhone relay. A phone and its Mac each open a WebSocket to the same room and bytes pass between them. It can't read
 // them: they're the same sealed frames as on the local network, with keys the relay never sees. It stores nothing, and a room
 // holds one Mac and one phone at most. The room's name is an HMAC of the pair's key, so it can't be guessed and says
 // nothing about who is in it.

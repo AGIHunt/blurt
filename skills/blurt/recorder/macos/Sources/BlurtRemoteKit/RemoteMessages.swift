@@ -37,7 +37,8 @@ public enum ToMac: Codable, Sendable {
     case activate(bundle: String)
     /// a word on the Mac's screen, where the user is looking (the page the thumb just turned to)
     case hud(String)
-    case hello(device: String, micOnPhone: Bool)
+    /// `nonce`: what the handshake's hello committed to (RemoteCrypto.check)
+    case hello(device: String, micOnPhone: Bool, nonce: Data? = nil)
     case setMicOnPhone(Bool)
     /// nothing held any more: the phone left the app or the screen locked
     case releaseAll
@@ -52,6 +53,16 @@ public enum ToMac: Codable, Sendable {
     /// the addresses this phone can be tried at, for a direct path
     case candidates([RemoteCandidate])
     case requestKeyframe
+    /// what arrived lately: the Mac sends what the network can carry
+    case screenReport(RemoteScreenReport)
+    /// nobody is touching the phone: a few frames a second will do
+    case screenPace(idle: Bool)
+    /// this phone has dropped the Mac: the Mac drops it too
+    case unpair
+    /// paired again: the old entry for this phone goes
+    case replaces(deviceID: String)
+    /// this Mac has no relay and the phone knows one, from another of its Macs: one address serves them all
+    case offerRelay(String)
     /// measurements for the log (no screen content)
     case screenStats(String)
     /// a test build's decoded frame, for judging sharpness
@@ -109,6 +120,10 @@ public enum ToPhone: Codable, Sendable {
     case relay(String?)
     /// another phone took over: don't reconnect until the user touches this one
     case replaced
+    /// a code used over the relay: someone at the Mac has to say yes
+    case pairingWaits
+    /// a voice note started from the phone wants the phone's microphone (true), or is over (false)
+    case listen(Bool)
     /// first session after a scan: the QR code's key is spent, this one takes its place
     case newKey(Data)
     /// the two clocks at one moment, so a frame's age can be read on the phone

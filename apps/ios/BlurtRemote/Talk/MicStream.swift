@@ -12,12 +12,28 @@ final class MicStream {
     private var converter: AVAudioConverter?
     private let target = AVAudioFormat(commonFormat: .pcmFormatInt16, sampleRate: 16000, channels: 1, interleaved: true)!
     private var running = false
+    /// who has the microphone: the talk key, and a voice note the Mac started from here. It stops when neither does
+    enum Holder { case talk, note }
+    private var holders: Set<Holder> = []
     private var pieces = Data()
     private var sawListening = false
     private var giveUp: DispatchWorkItem?
 
     var access: AVAudioApplication.recordPermission { AVAudioApplication.shared.recordPermission }
-    func ask() { AVAudioApplication.requestRecordPermission { _ in } }
+    func ask() {
+        AVAudioApplication.requestRecordPermission { _ in
+            DispatchQueue.main.async { Link.shared.send(.setMicOnPhone(MicStream.shared.usable)) }     // the Mac now knows which to use
+        }
+    }
+
+    /// The phone's microphone is the one to use: chosen in Settings, and allowed. Otherwise the Mac listens with its own.
+    var usable: Bool {
+        guard Prefs.shared.micOnPhone else { return false }
+        #if DEBUG
+        if testWav != nil { return true }
+        #endif
+        return access == .granted
+    }
 
     #if DEBUG
     /// Tests: this wav (16 kHz mono PCM16) instead of the microphone, in real time. SIMCTL_CHILD_BLURT_REMOTE_TEST_WAV.
@@ -37,8 +53,9 @@ final class MicStream {
     #endif
 
     /// false: the microphone can't be had right now (a phone call has it)
-    @discardableResult func start() -> Bool {
-        giveUp?.cancel()
+    @discardableResult func start(for h: Holder = .talk) -> Bool {
+        if h == .talk { giveUp?.cancel() }
+        holders.insert(h)
         guard !running else { return true }
         #if DEBUG
         if let w = testWav { startTestWav(w); return true }
@@ -50,7 +67,7 @@ final class MicStream {
             try s.setActive(true, options: [])
             let input = engine.inputNode
             let f = input.outputFormat(forBus: 0)
-            guard f.sampleRate > 0, let c = AVAudioConverter(from: f, to: target) else { return false }
+            guard f.sampleRate > 0, let c = AVAudioConverter(from: f, to: target) else { throw CocoaError(.featureUnsupported) }
             converter = c
             input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 2048, format: f) { [weak self] b, _ in self?.convert(b) }
@@ -60,6 +77,7 @@ final class MicStream {
             sawListening = false
             return true
         } catch {
+            holders.remove(h)
             try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
             return false
         }
@@ -87,19 +105,21 @@ final class MicStream {
     func released() {
         let w = DispatchWorkItem { [weak self] in
             guard let self, !self.sawListening else { return }
-            self.stop()
+            self.stop(for: .talk)
         }
         giveUp = w
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8, execute: w)
     }
 
     func macPhase(_ p: RemoteDictationPhase) {
-        if p == .listening { sawListening = true } else if running, sawListening { stop() }
+        if p == .listening { sawListening = true } else if running, sawListening { sawListening = false; stop(for: .talk) }
     }
 
-    func stop() {
-        giveUp?.cancel()
-        guard running else { return }
+    /// `h` is done with it; nil: everyone is (the session ended)
+    func stop(for h: Holder? = nil) {
+        if let h { holders.remove(h) } else { holders = [] }
+        if h == nil || h == .talk { giveUp?.cancel() }
+        guard running, holders.isEmpty else { return }
         running = false
         #if DEBUG
         if testWav != nil { testTimer?.invalidate(); return }

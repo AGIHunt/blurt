@@ -29,6 +29,15 @@ final class ScreenStream {
     private var debugPackets = 0, debugAt = 0.0
     private(set) var on = false
     private var request: RemoteScreenRequest?
+    private var planned: ScreenPlan?
+    private var planWait: DispatchWorkItem?
+    private var quietReports = 0
+    private var idle = false
+    /// what Settings shows
+    let use = ScreenUse()
+    private var reportTimer: DispatchSourceTimer?
+    private var reportFrames = 0, reportBytes = 0, reportDropped = 0, pictureBytes = 0
+    private var reportAt = CACurrentMediaTime()
     private var keyTimer: DispatchSourceTimer?
 
     // what's in view, and the pointer, which is drawn here: it's never a frame late
@@ -105,23 +114,40 @@ final class ScreenStream {
         place()
     }
 
-    /// The picture for this route: full size where there's room, small and slow over the relay.
-    func start() {
-        let n = UIScreen.main.nativeBounds
-        let w = Int(max(n.width, n.height)), h = Int(min(n.width, n.height))
-        let c = port.crop
-        sentCrop = c
-        switch Link.shared.route {
-        case .relay: start(RemoteScreenRequest(target: Self.target, crop: c, width: 1280, height: 800, bitrate: 1_500_000, fps: 15))
-        // a direct path may be someone's mobile data
-        case .direct: start(RemoteScreenRequest(target: Self.target, crop: c, width: min(w, 1800), height: min(h, 1100), bitrate: 4_000_000, fps: 30))
-        case .local: start(RemoteScreenRequest(target: Self.target, crop: c, width: w, height: h, bitrate: 12_000_000, fps: 60))
-        }
+    private var plan: ScreenPlan {
+        let l = Link.shared
+        return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: UIScreen.main.nativeBounds.size)
     }
 
-    func routeChanged() {
-        guard on else { return }
-        start()
+    /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).
+    func start() {
+        let p = plan
+        planned = p
+        let c = port.crop
+        sentCrop = c
+        idle = false
+        start(RemoteScreenRequest(target: Self.target, crop: c, width: p.width, height: p.height, bitrate: p.bitrate, fps: p.fps))
+    }
+
+    func routeChanged() { planChanged() }
+
+    /// The route, the phone's network, or the user's choice changed. A network that flickers restarts nothing.
+    func planChanged() {
+        planWait?.cancel()
+        let w = DispatchWorkItem { [weak self] in
+            guard let self, self.on, self.plan != self.planned else { return }
+            self.start()
+        }
+        planWait = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: w)
+    }
+
+    /// Nobody touching the phone, away from home: the Mac slows down. Home has nothing to save.
+    func setIdle(_ on: Bool) {
+        let want = on && Link.shared.route != .local
+        guard self.on, want != idle else { return }
+        idle = want
+        Link.shared.send(.screenPace(idle: want))
     }
 
     /// A new session: the Mac stopped the stream with the old one.
@@ -360,8 +386,10 @@ final class ScreenStream {
             self.reset()
             self.on = true
             self.request = r
+            self.pictureBytes = 0
             self.tell(.screen(r))
             self.watchKeyframes()
+            self.watchRate()
         }
     }
 
@@ -371,6 +399,9 @@ final class ScreenStream {
             self.on = false
             self.keyTimer?.cancel()
             self.keyTimer = nil
+            self.reportTimer?.cancel()
+            self.reportTimer = nil
+            self.use.stopped()
             self.tell(.screen(nil))
             self.reset()
             DispatchQueue.main.async {
@@ -387,6 +418,7 @@ final class ScreenStream {
 
     private func reset() {
         assembler = RemoteVideoAssembler()
+        reportDropped = 0
         if let s = session { VTDecompressionSessionInvalidate(s) }
         session = nil
         format = nil
@@ -396,6 +428,8 @@ final class ScreenStream {
         q.async {
             guard self.on, let p = RemoteVideoPacket(d) else { return }
             self.bytes += d.count
+            self.reportBytes += d.count
+            self.pictureBytes += p.payload.count
             #if DEBUG
             self.debugPackets += 1
             let t = CACurrentMediaTime()
@@ -428,6 +462,33 @@ final class ScreenStream {
         keyTimer = t
     }
 
+    /// Every second the Mac hears what arrived, and Settings what it's costing.
+    private func watchRate() {
+        reportTimer?.cancel()
+        reportDropped = assembler.dropped
+        reportAt = CACurrentMediaTime()
+        let t = DispatchSource.makeTimerSource(queue: q)
+        t.schedule(deadline: .now() + 1, repeating: 1)
+        t.setEventHandler { [weak self] in self?.reportRate() }
+        t.resume()
+        reportTimer = t
+    }
+
+    private func reportRate() {
+        let now = CACurrentMediaTime(), s = max(now - reportAt, 0.1)
+        // a new assembler starts from nothing
+        let lost = max(0, assembler.dropped - reportDropped), frames = reportFrames, sent = reportBytes, received = pictureBytes
+        reportDropped = assembler.dropped
+        reportFrames = 0
+        reportBytes = 0
+        reportAt = now
+        use.add(bytes: sent, seconds: s, frames: frames)
+        // nothing arriving, nothing to say; now and then regardless, so the Mac knows the phone's still looking
+        quietReports = sent == 0 ? quietReports + 1 : 0
+        guard quietReports == 0 || quietReports % 5 == 0 else { return }
+        DispatchQueue.main.async { Link.shared.send(.screenReport(RemoteScreenReport(frames: frames, lost: lost, rtt: Link.shared.rtt, received: received))) }
+    }
+
     private func decode(_ f: RemoteVideoAssembler.Frame) {
         guard let u = RemoteVideoPayload.unpack(f.data) else { return }
         if !u.parameterSets.isEmpty { prepare(u.parameterSets) }
@@ -455,6 +516,7 @@ final class ScreenStream {
                 if let o = self.offset { self.ages.append((now + o - f.captured) * 1000) }
             }
             self.frames += 1
+            self.q.async { self.reportFrames += 1 }
             self.lastPixels = image
             self.show(image, crop: u.crop)
         }

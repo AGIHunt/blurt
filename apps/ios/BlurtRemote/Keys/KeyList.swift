@@ -1,21 +1,22 @@
-// The keys as one list, like the emoji keyboard: it scrolls, and comes to rest on a row, so a key has the same place each time. The tabs
-// jump to its sections and follow it. Keys here are ordinary KeyCells; what's special is who gets a touch (KeyCell, on `committed`).
+// The keys as pages of one list, like the emoji keyboard: one section after another, each coming to rest at its top, so a key has the same
+// place each time. The tabs jump to the sections and follow the list. A section that outgrows the view scrolls a row at a time. A section
+// shorter than the view is followed straight away by the next, never by a blank (in landscape the letters' rows are lower than the view). Keys here are ordinary KeyCells; what's
+// special is who gets a touch (KeyCell, on `committed`).
 import UIKit
 
 final class KeyList: UIScrollView, UIScrollViewDelegate {
     private(set) var cells: [KeyCell] = []
-    private var headers: [UILabel] = []
     private var sections: [KeySection] = []
     private var sectionTops: [CGFloat] = []
     private var rowTops: [CGFloat] = []
     private let editButton = UIButton(type: .system)
     private var size: CGSize = .zero
+    private var laidOutWidth: CGFloat = 0
+    private var laidOutTallest: CGFloat?
     var onSection: ((Int) -> Void)?
     var onEdit: (() -> Void)?
     var onCycle: ((Bool, KeyCell?) -> Void)?
     private(set) var section = 0
-
-    private static let headerHeight: CGFloat = 24
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -47,17 +48,8 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
         sections = list
         section = min(section, max(0, list.count - 1))
         cells.forEach { $0.removeFromSuperview() }
-        headers.forEach { $0.removeFromSuperview() }
         cells = []
-        headers = []
-        for (i, s) in list.enumerated() {
-            let h = UILabel()
-            h.text = s.name
-            h.font = .systemFont(ofSize: 11, weight: .medium)
-            h.textColor = Theme.faint
-            h.isHidden = i == 0     // the first screen is keys and nothing else
-            addSubview(h)
-            headers.append(h)
+        for s in list {
             for slot in s.slots {
                 let c = KeyCell()
                 c.inList = true
@@ -76,37 +68,47 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
         onCycle?(on, c)
     }
 
-    /// Key sizes come from PadLayout, so the list and the dock line up. A section of plain keys is the size of the iPhone's own: as many across
-    /// as it asks for, or seven where the list is narrow.
-    func arrange(key: CGSize, gap: CGFloat) {
-        guard key.width > 0, key != size else { return }
+    /// Key sizes come from PadLayout, so every page has the same rows. A section can ask for more across: the letters, the size of the iPhone's own.
+    /// In landscape narrower keys are never much taller than a phone's own (`tallest`): the letters would be strips twice as tall as wide.
+    static let tallest: CGFloat = 1.4
+
+    /// `tallest`: in landscape, no key taller than this times its width (nil: as tall as `key`)
+    func arrange(key: CGSize, gap: CGFloat, tallest: CGFloat? = nil) {
+        guard key.width > 0, key != size || bounds.width != laidOutWidth || tallest != laidOutTallest else { return }
         size = key
+        laidOutWidth = bounds.width
+        laidOutTallest = tallest
         let width = bounds.width
+        let h = key.height
+        // the view: rows of a section longer than it are stops of their own
+        let page = max(h, bounds.height)
         var y: CGFloat = 0, n = 0
         sectionTops = []
         rowTops = []
-        for (i, s) in sections.enumerated() {
-            if i > 0 {
-                headers[i].frame = CGRect(x: 2, y: y + 4, width: width - 4, height: Self.headerHeight - 6)
-                sectionTops.append(y)
-                rowTops.append(y)
-                y += Self.headerHeight
-            } else {
-                sectionTops.append(0)
-            }
-            let plain = s.columns > Deck.columns
-            let across = plain && (width - gap * CGFloat(s.columns - 1)) / CGFloat(s.columns) < 26 ? 7 : s.columns
-            let w = plain ? (width - gap * CGFloat(across - 1)) / CGFloat(across) : key.width
-            let h = plain ? min(44, key.height) : key.height
-            for j in s.slots.indices {
-                if j % across == 0 {
-                    if j > 0 { y += h + gap }
-                    if j > 0 || i == 0 { rowTops.append(y) }
+        for s in sections {
+            let top = y
+            sectionTops.append(top)
+            rowTops.append(top)
+            let across = max(1, s.columns)
+            let w = (width - gap * CGFloat(across - 1)) / CGFloat(across)
+            let h = tallest.map { min(h, floor(w * $0)) } ?? h
+            var column = 0
+            var rows: [CGFloat] = []
+            for slot in s.slots {
+                let span = min(across, max(1, slot.span ?? 1))
+                if column + span > across {
+                    column = 0
+                    y += h + gap
                 }
-                cells[n].frame = CGRect(x: CGFloat(j % across) * (w + gap), y: y, width: w, height: h)
+                if column == 0, y > top { rows.append(y) }
+                cells[n].frame = CGRect(x: CGFloat(column) * (w + gap), y: y, width: w * CGFloat(span) + gap * CGFloat(span - 1), height: h)
                 n += 1
+                column += span
             }
             if !s.slots.isEmpty { y += h + gap }
+            // a section longer than the view: every row of it is a stop, so it scrolls a row at a time
+            if y - gap - top > page { rowTops += rows }
+            y = max(y, top + gap)
         }
         editButton.frame = CGRect(x: 0, y: y, width: width, height: 44)
         y += 44

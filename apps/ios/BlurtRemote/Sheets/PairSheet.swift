@@ -49,6 +49,7 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     private let session = AVCaptureSession()
     private let onCode: (String) -> Void
     private var preview: AVCaptureVideoPreviewLayer?
+    private var last: String?
 
     init(_ onCode: @escaping (String) -> Void) {
         self.onCode = onCode
@@ -93,7 +94,9 @@ final class ScannerController: UIViewController, AVCaptureMetadataOutputObjectsD
     }
 
     func metadataOutput(_ o: AVCaptureMetadataOutput, didOutput m: [AVMetadataObject], from c: AVCaptureConnection) {
-        guard let s = (m.first as? AVMetadataMachineReadableCodeObject)?.stringValue else { return }
+        // the same code is read over and over until the sheet has gone
+        guard let s = (m.first as? AVMetadataMachineReadableCodeObject)?.stringValue, s != last else { return }
+        last = s
         onCode(s)
     }
 }

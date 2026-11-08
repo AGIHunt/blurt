@@ -7,9 +7,10 @@
 //                Moving a finger is still the pointer, for what's too small to hit
 //   hold still   `holdTime` (the phone taps back), then move = drag, the same press-and-drag as any mouse; or lift = right click
 //   the edge     one finger along the side by the thumb = scroll, for when there's only the one thumb
-//   two fingers  move = scroll, tap = right click, pinch = zoom the app on the Mac. With the screen showing, a pinch zooms the view on
-//                the phone instead, and while it's zoomed two fingers move the view, as in Photos. Two fingers moving together never
-//                stay exactly the same distance apart: a move stays a move until they clearly pinch
+//   two fingers  move = scroll what's under the pointer, as on the Mac's trackpad, both ways; tap = right click; pinch = zoom the app
+//                on the Mac. With the screen showing, a pinch zooms the view on the phone instead, and the scroll is under the fingers.
+//                Two fingers moving together never stay exactly the same distance apart: a scroll stays a scroll until they clearly pinch.
+//                The zoomed view follows the pointer, so it never needs moving by hand
 //   three        swipe left/right = change desktop, up = all windows, down = this app's windows
 //
 // A touch that stops a coasting scroll is only that: no click. A thumb resting still never clicks (`tapTime`).
@@ -82,12 +83,12 @@ final class PadEngine {
     private var dragLetGo: Double?
     private var lastMoveAt: Double = 0
     private var samples: [(t: Double, dx: CGFloat, dy: CGFloat)] = []
+    /// how far apart two scrolling fingers started
+    private var scrollSpread: CGFloat = 0
 
     var curve = RemotePointerCurve()
     var pinchZoomsView = false
     var touchMode = false
-    /// the view is zoomed: two fingers move it, and only hold-and-drag or the edge scrolls
-    var viewZoomed = false
     /// where one finger scrolls, across the pad; nil = nowhere
     var scrollEdge: ClosedRange<CGFloat>?
     var scrollGain: CGFloat = 2.4
@@ -197,6 +198,13 @@ final class PadEngine {
                 state = .dragging(last: p)
             }
         case let .scrolling(last, two):
+            // a scroll that turns into a clear pinch: the picture zooms from here, and the scroll ends without coasting
+            // (by a third and 36 pt both, so fingers drifting over a long scroll don't count)
+            if two, pinchZoomsView, touches.count >= 2, scrollSpread > 0, abs(spread - scrollSpread) > max(Self.pinchStep, scrollSpread / 3) {
+                out.append(.scroll(0, 0, .ended))
+                state = .view(spread: spread, center: p, from: spread, zooming: true)
+                break
+            }
             let dx = p.x - last.x, dy = p.y - last.y
             samples.append((now, dx, dy))
             samples.removeAll { now - $0.t > 0.09 }
@@ -204,13 +212,16 @@ final class PadEngine {
             state = .scrolling(last: p, two: two)
         case let .two(start, s, _):
             guard touches.count >= 2 else { break }
-            if pinchZoomsView, viewZoomed || abs(spread - s) > Self.pinchStep * 0.35 {
-                if viewZoomed, dist(p, start) <= Self.slop, abs(spread - s) <= Self.slop { break }
-                state = .view(spread: spread, center: p, from: spread, zooming: !viewZoomed)
+            if pinchZoomsView, abs(spread - s) > Self.pinchStep * 0.35 {
+                state = .view(spread: spread, center: p, from: spread, zooming: true)
             } else if !pinchZoomsView, abs(spread - s) > Self.pinchStep * 0.7 {
                 state = .pinch(spread: spread)
             } else if dist(p, start) > Self.slop {
+                // zoomed or not, two fingers scroll the Mac, as on its own trackpad: what's under the pointer scrolls. With the picture
+                // showing, that's what's under the fingers, the same as a tap
                 samples = []
+                scrollSpread = spread
+                if touchMode { out.append(.pointAt(start)) }
                 out.append(.scroll(0, 0, .began))
                 state = .scrolling(last: p, two: true)
             }
@@ -253,7 +264,9 @@ final class PadEngine {
         guard touches.isEmpty else {
             // a finger of two lifted: what's left of the gesture stays with the fingers still down
             switch state {
-            case let .scrolling(_, two): state = .scrolling(last: centroid, two: two)
+            case let .scrolling(_, two):
+                scrollSpread = 0
+                state = .scrolling(last: centroid, two: two)
             case .dragging: state = .dragging(last: centroid)
             case let .view(_, _, _, zooming): state = .view(spread: 0, center: centroid, from: 1, zooming: zooming)
             default: break

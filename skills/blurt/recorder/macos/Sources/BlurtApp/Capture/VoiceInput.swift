@@ -205,8 +205,24 @@ final class VoiceInput {
 
     // MARK: listening
 
+    /// The iPhone app: the next note is heard through the phone (RemoteMicFeed), when the phone uses its own microphone. Taken by the
+    /// next start; told when that note is over.
+    var phoneFeed: RemoteMicFeed?
+    private var heardThroughPhone = false
+
+    /// The phone couldn't have its microphone for the note it just asked for (a call has it), or was set not to use it:
+    /// a note that has heard nothing from it yet starts again with this Mac's microphone, without a sound or a word.
+    func phoneMicUnavailable() {
+        guard active, heardThroughPhone, let v = voice, v.firstAudioAfter == nil else { return }
+        heardThroughPhone = false               // the phone has let it go already
+        finish(keep: false, via: "no_mic")      // dropped quietly: nothing was heard
+        start()
+    }
+
     private func start() {
         island.foldForActivity()
+        let feed = phoneFeed
+        phoneFeed = nil
         guard !active else { return }
         // one listener at a time: dictation has the microphone (and Esc) until it is done
         if Dictation.shared.phase == .listening {
@@ -220,6 +236,8 @@ final class VoiceInput {
         let url = b.dir.appendingPathComponent("shots/\(ShotBatch.name(k)).wav")
         let v = NoteVoice(url: url)
         v.inject = ProcessInfo.processInfo.environment["BLURT_TEST_MIC_WAV"] ?? ProcessInfo.processInfo.environment["BLURT_NOTE_WAV"]
+        v.phoneFeed = feed
+        heardThroughPhone = feed != nil
         let pauseEnds = VoiceInput.endOnPause
         v.silenceToEnd = pauseEnds ? silence : .infinity
         v.noSpeechTimeout = pauseEnds ? 8 : 20
@@ -486,6 +504,10 @@ final class VoiceInput {
 
     private func finish(keep: Bool, ended: Bool = false, via: String) {
         guard active, let v = voice, let b = batch else { return }
+        if heardThroughPhone {
+            heardThroughPhone = false
+            RemoteMicFeed.shared.onListen?(false)
+        }
         let dur = v.elapsed
         // BlurtCore VoiceKeep: a note the user ended is kept when it lasted and wasn't digital silence, even if the room
         // hid the speech from the endpointer — the speech model decides (no words → kept as audio, "Retry")

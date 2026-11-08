@@ -18,6 +18,31 @@ final class RemoteKitTests: XCTestCase {
         XCTAssertEqual(try p.open(g), Data("back".utf8))
     }
 
+    func testBothEndsShowTheSameDigitsAndOnlyThisSessionDoes() throws {
+        let key = RemoteCrypto.newKey()
+        let phone = PhoneHandshake(id: "dev", paired: key)
+        let a = MacHandshake.answer(phone.hello()) { $0 == "dev" ? key : nil }
+        let p = try phone.finish(a.reply), m = try XCTUnwrap(a.sealer)
+        XCTAssertEqual(p.check(phone.nonce), m.check(phone.nonce))
+        XCTAssertEqual(p.check(phone.nonce).count, 6)
+        XCTAssertEqual(a.key, key, "the Mac knows which key it used")
+        // someone else holding the same code: their own session, other digits (almost always)
+        var differ = 0
+        for _ in 0..<20 {
+            let other = PhoneHandshake(id: "dev", paired: key)
+            let b = MacHandshake.answer(other.hello()) { $0 == "dev" ? key : nil }
+            if try other.finish(b.reply).check(other.nonce) != p.check(phone.nonce) { differ += 1 }
+        }
+        XCTAssertGreaterThanOrEqual(differ, 19)
+    }
+
+    func testSameKeyComparison() {
+        let k = RemoteCrypto.newKey()
+        XCTAssertTrue(RemoteCrypto.same(k, k))
+        XCTAssertFalse(RemoteCrypto.same(k, RemoteCrypto.newKey()))
+        XCTAssertFalse(RemoteCrypto.same(k, k.prefix(16)))
+    }
+
     func testRefusesUnknownDevice() {
         let phone = PhoneHandshake(id: "dev", paired: RemoteCrypto.newKey())
         let a = MacHandshake.answer(phone.hello()) { _ in nil }
@@ -142,7 +167,7 @@ final class RemoteKitTests: XCTestCase {
         _ = a.add(RemoteVideoPacket.split(two, frame: 3, keyframe: false, captured: 0)[0])      // its second piece never comes
         XCTAssertNil(a.add(RemoteVideoPacket.split(three, frame: 4, keyframe: false, captured: 0)[0]))
         XCTAssertTrue(a.waitingForKey)
-        XCTAssertEqual(a.dropped, 2)
+        XCTAssertEqual(a.dropped, 1, "one frame, however many ways it shows")
         XCTAssertNil(a.add(RemoteVideoPacket.split(three, frame: 5, keyframe: false, captured: 0)[0]))
         XCTAssertEqual(a.add(RemoteVideoPacket.split(three, frame: 6, keyframe: true, captured: 0)[0])?.id, 6)
         XCTAssertNil(a.add(RemoteVideoPacket.split(three, frame: 4, keyframe: false, captured: 0)[0]), "late")
