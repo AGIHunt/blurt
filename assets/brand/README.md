@@ -62,7 +62,10 @@ whenever the package changes, then rebuild the review page (`cd web && pnpm --fi
 
 ## Legacy
 
-`legacy/` keeps what Peep replaced, for reference only; nothing builds from it and its scripts no longer run from there:
-`mascot/` (the 1A round chick's strips, the web's mascot until the Windows port moved to Peep),
-`chick.swift` and `build.py` (the 4A line chick's generator and renderer, v0.9), its SVGs, and the earlier logos
-(`logo-1/2/3.png`, `logo-v0.7.png`, `logo-v0.8a.png`, `logo-v0.9-4a.png`, `app-icon-v0.9-4a.png`, `LOGO_PROMPT.md`).
+The chicks Peep replaced (the 1A round chick's strips, the 4A line chick's `chick.swift` and `build.py`, its SVGs and
+the earlier logos) were removed on 2026-11-09, together with the old chick's line glyphs in `assets/icons/`
+(`chicken`, `blurt`, `egg`, `egg-fill`, `hatch`, `hatched`, `peck`). Git history keeps them: they were in
+`assets/brand/legacy/` up to `b86575ac`.
+
+Peep's own sources (`blurt-media/logo`, `blurt-media/brand-book`) are backed up in the private Hugging Face dataset
+`Xunjun/blurt-peep-brand`.
