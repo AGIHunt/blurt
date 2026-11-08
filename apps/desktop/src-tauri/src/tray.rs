@@ -606,38 +606,22 @@ fn size(mb: f64) -> String {
 }
 
 fn job_line(j: &Value) -> String {
-    let agent = j.pointer("/agent/id").and_then(Value::as_str);
-    let what = match agent {
-        Some(a) => island_agent_name(a),
-        None => l10n::t(&format!("job.type.{}", j["type"].as_str().unwrap_or("process"))),
-    };
+    let what = l10n::t(&format!("job.type.{}", j["type"].as_str().unwrap_or("process")));
     let title = match j["title"].as_str().filter(|t| !t.is_empty()) {
         Some(t) => format!("{what} · {t}"),
         None => what,
     };
-    let status = if let Some(s) = j.pointer("/agent/status").and_then(Value::as_str) {
-        l10n::t(&format!("tray.session.{s}"))
-    } else if j["state"] == "failed" {
+    let status = if j["state"] == "failed" {
         l10n::t("tray.job.failed")
     } else {
         let steps = j["steps"].as_array().cloned().unwrap_or_default();
         let step = steps.iter().find(|s| s["state"] == "running").or_else(|| steps.iter().find(|s| s["state"] == "pending"));
         match step.and_then(|s| s["id"].as_str()) {
             Some(id) => l10n::t(&format!("job.step.{id}")),
-            None => l10n::t("tray.session.running"),
+            None => l10n::t("tray.job.running"),
         }
     };
     format!("{title} · {status}")
-}
-
-fn island_agent_name(id: &str) -> String {
-    match id {
-        "claude" => "Claude Code".into(),
-        "codex" => "Codex".into(),
-        "kimi" => "Kimi Code".into(),
-        "opencode" => "OpenCode".into(),
-        other => other.to_string(),
-    }
 }
 
 /// The menu as it should be now (worked out off the main thread).

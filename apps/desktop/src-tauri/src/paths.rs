@@ -79,7 +79,7 @@ fn first_existing(cands: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
     cands.into_iter().find(|p| p.exists())
 }
 
-/// The skill's scripts (items.py, projects.py, sessions.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
+/// The skill's scripts (items.py, projects.py, handoff.py, …): `$BLURT_SCRIPTS` → the copy bundled with the app →
 /// the repo checkout (dev builds) → the installed skill.
 pub fn scripts_dir(app: &AppHandle) -> Option<PathBuf> {
     let mut c: Vec<PathBuf> = Vec::new();

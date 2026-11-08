@@ -46,7 +46,7 @@ describe('editor links and errors', () => {
   });
   it('finds the CLI code in an error', () => {
     setLang('en');
-    expect(errText('sessions.py dispatch: items must be in a project [needs_project]')).toBe('Move these items to a project folder first.');
+    expect(errText('captures.py file: items must be in a project [needs_project]')).toBe('Move these items to a project folder first.');
     expect(errText(new Error('boom'))).toBe('Something went wrong.');
     expect(errText('x [no_such_code]')).toBe('Something went wrong.');
   });
@@ -66,16 +66,6 @@ describe('selection', () => {
 describe('catalogs (K10)', () => {
   it('en and zh-Hans have the same keys and placeholders', () => {
     expect(checkCatalogs(CATALOGS.en, CATALOGS['zh-Hans'])).toEqual([]);
-  });
-  it('the K5 reminder is word for word', () => {
-    const en = createI18n(CATALOGS, 'en');
-    const zh = createI18n(CATALOGS, 'zh-Hans');
-    expect(en.t('dispatch.warn.concurrent_edit', { project: 'bug-agent' })).toBe(
-      'Another session is already changing files in bug-agent. Editing the same files at the same time can cause conflicts — a worktree keeps them apart.',
-    );
-    expect(zh.t('dispatch.warn.concurrent_edit', { project: 'bug-agent' })).toBe('bug-agent 里已经有一个会话在直接改文件。同时改同一批文件可能冲突，建议用 worktree 分开。');
-    expect([en.t('dispatch.warn.use_worktree'), en.t('dispatch.warn.continue')]).toEqual(['Use a worktree', 'Continue']);
-    expect([zh.t('dispatch.warn.use_worktree'), zh.t('dispatch.warn.continue')]).toEqual(['用 worktree', '继续']);
   });
   it('plurals and common words', () => {
     const en = createI18n(CATALOGS, 'en');

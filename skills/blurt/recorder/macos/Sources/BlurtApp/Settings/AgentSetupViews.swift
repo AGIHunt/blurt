@@ -1,18 +1,15 @@
 // "Set Up with Agent…" (docs/design/agent-setup.md §4): beside Add Service… in Settings → Models → Cloud services and
 // beside Add… on onboarding's cloud row, on every Mac. The sheet's main way is an instruction to copy into any agent
-// the user has (v1.0.10: Cursor, WorkBuddy, a session already open — no agent to detect or launch); its first change
-// makes Blurt ask Allow. The second way, where an agent runs as a session here (agents.py detect + sessions.py
-// doctor): Open in Terminal runs `sessions.py setup-session` — the agent in Blurt's terminal (tmux, or the app's own
-// pty) on the same prompt, with a token for the control socket in its environment — and shows that terminal. While it works, the page lists what it did as it
-// happens (AgentSetupProgress, fed by App/AgentSetupServer.swift): a service connected, a job's model, a download, the
-// test dictation; Stop ends the session and closes the grant. An agent the user started on their own gets the same
-// list once the user clicks Allow.
+// the user has (Claude Code, Codex, Cursor, WorkBuddy… — no agent to detect or launch); its first change makes Blurt
+// ask Allow. Once the user clicks Allow, the page lists what the agent did as it happens (AgentSetupProgress, fed by
+// App/AgentSetupServer.swift): a service connected, a job's model, a download, the test dictation; Stop closes the
+// grant.
 import AppKit
 import Combine
 import SwiftUI
 import BlurtCore
 
-/// The live list, and the session or Allow window it belongs to.
+/// The live list, and the Allow window it belongs to.
 @MainActor
 final class AgentSetupProgress: ObservableObject {
     static let shared = AgentSetupProgress()
@@ -20,84 +17,47 @@ final class AgentSetupProgress: ObservableObject {
     @Published private(set) var steps = AgentSetupSteps()
     /// the agent's name ("Claude Code"); nil: not known (Allow from a process that isn't a known agent)
     @Published private(set) var agentName: String?
-    /// the session "Set Up with Agent…" started (nil: the user's own agent, through Allow)
-    @Published private(set) var job: String?
-    /// changes may happen now (a session runs, or the Allow window is open)
+    /// changes may happen now (the Allow window is open)
     @Published private(set) var active = false
-    /// Stop couldn't end the session: why
-    @Published private(set) var stopError: String?
-    private var token: String?
-    private var jobObserver: UUID?
     private var allowTimer: Timer?
     private var downloads: AnyCancellable?
 
     var visible: Bool { active || !steps.steps.isEmpty }
 
-    /// A session the app started.
-    func started(agentName name: String, job: String, token: String) {
-        if let t = self.token { AgentSetupServer.revoke(t) }
-        steps.clear()
-        agentName = name; self.job = job; self.token = token; active = true
-        watchJob()
-        watchDownloads()
-    }
-
     /// The user clicked Allow for an agent of their own.
     func allowed(agent name: String?) {
-        if !active || job == nil {
-            // a new Allow window after an ended session: that session's rows and job go (Show Terminal pointed at it)
-            if !active { steps.clear(); job = nil; stopError = nil }
+        if !active {
+            // a new Allow window after an ended one: its rows go
+            steps.clear()
             agentName = name
             active = true
         }
         allowTimer?.invalidate()
         allowTimer = Timer.scheduledTimer(withTimeInterval: AgentSetupGrant.approvalTTL, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { if self?.job == nil { self?.ended() } }
+            MainActor.assumeIsolated { self?.ended() }
         }
         watchDownloads()
     }
 
     func record(_ s: AgentSetupStep) { steps.record(s) }
 
-    /// Stop: the session ends (as the Sessions pane's Stop), and nothing may change things until asked again.
+    /// Stop: nothing may change things until asked again.
     func stop() {
-        stopError = nil
-        if let j = job {
-            Task { @MainActor [weak self] in
-                // a session that wouldn't stop says why under the heading (its terminal is still there to close)
-                do { try await AgentSessions.shared.stop(job: j, kill: false) } catch { self?.stopError = sessionsErrorText(error) }
-            }
-        }
         AgentSetupServer.revokeAll()
-        emit(["event": "agent_setup_stop", "job": job ?? NSNull()])
+        emit(["event": "agent_setup_stop"])
         ended()
     }
 
     /// The list goes once the user has read it.
     func dismiss() {
-        stopError = nil
         steps.clear()
         agentName = nil
-        job = nil
     }
 
     private func ended() {
         active = false
-        if let t = token { AgentSetupServer.revoke(t) }
-        token = nil
         allowTimer?.invalidate()
         allowTimer = nil
-        if let o = jobObserver { JobStore.shared.removeObserver(o); jobObserver = nil }
-    }
-
-    private func watchJob() {
-        if let o = jobObserver { JobStore.shared.removeObserver(o) }
-        jobObserver = JobStore.shared.addObserver { [weak self] changed in
-            MainActor.assumeIsolated {
-                guard let self, let j = self.job, let job = changed.first(where: { $0.id == j }), !job.isActive else { return }
-                self.ended()
-            }
-        }
     }
 
     /// A download the agent started: done once the download manager has it in, failed when it says so.
@@ -146,45 +106,13 @@ final class AgentSetupProgress: ObservableObject {
     }
 }
 
-/// The agents that can run a setup session: installed, with an interactive session (read once, then on each sheet).
-@MainActor
-final class AgentSetupAgents: ObservableObject {
-    static let shared = AgentSetupAgents()
-    struct Agent: Identifiable, Hashable { let id: String; let name: String }
-    @Published private(set) var list: [Agent] = []
-    private var loading = false
-    private var loadedAt: Date?
-
-    /// Read again when a page with the button appears, at most once a minute (an agent installed meanwhile shows up).
-    func loadIfNeeded() {
-        guard !loading, loadedAt.map({ Date().timeIntervalSince($0) > 60 }) ?? true else { return }
-        Task { await load() }
-    }
-
-    func load() async {
-        loading = true
-        async let detect = try? Agents.shared.detect(login: false)
-        async let doctor = try? AgentSessions.shared.doctor()
-        let (d, doc) = await (detect, doctor)
-        list = (d?.agents ?? []).filter { a in a.installed && (doc?.agents[a.id] ?? (a.interactive == "terminal")) }
-            .map { Agent(id: $0.id, name: $0.name) }
-        loading = false
-        loadedAt = Date()
-    }
-}
-
-/// "Set Up with Agent…" and its sheet. Hidden while no agent can run a session.
+/// "Set Up with Agent…" and its sheet, on every Mac: the instruction goes to any agent the user has.
 struct AgentSetupButton: View {
     enum Look { case settings, onboarding }
     var look: Look = .settings
-    @ObservedObject private var agents = AgentSetupAgents.shared
-    @ObservedObject private var progress = AgentSetupProgress.shared
     @State private var sheet = false
 
     var body: some View {
-        // on every Mac: the instruction goes to any agent the user has (the sheet); a session Blurt starts is the
-        // sheet's second way, only where one can run
-        let running = progress.active && progress.job != nil
         Group {
             switch look {
             case .settings:
@@ -193,16 +121,13 @@ struct AgentSetupButton: View {
                 Button(M("models.agent.button")) { sheet = true }.controlSize(.small)
             }
         }
-        // one session at a time: a second one while one runs would leave the first agent working unseen
-        .disabled(running)
-        .onAppear { agents.loadIfNeeded() }
         .sheet(isPresented: $sheet) { AgentSetupSheet { sheet = false }.buttonStyle(.automatic) }
     }
 }
 
 /// The instruction to paste into the user's own agent (Claude Code, Codex, Cursor, WorkBuddy…): the setup guide and
-/// setup.py by absolute path (sessions.py SETUP_PROMPT, the same words). That agent has no session token, so its first
-/// change makes Blurt ask Allow (AgentSetupServer), and the page lists what it does as for a session.
+/// setup.py by absolute path. Its first change makes Blurt ask Allow (AgentSetupServer), and the page lists what it
+/// does.
 enum AgentSetupInstruction {
     static var text: String {
         let skill = BlurtPaths.skillDir
@@ -213,10 +138,7 @@ enum AgentSetupInstruction {
 
 struct AgentSetupSheet: View {
     var close: () -> Void
-    @ObservedObject private var agents = AgentSetupAgents.shared
     @State private var copied = false
-    @State private var starting = false
-    @State private var error: String?
     private let instruction = AgentSetupInstruction.text
 
     var body: some View {
@@ -232,17 +154,7 @@ struct AgentSetupSheet: View {
             .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .quaternaryLabelColor).opacity(0.5)))
             Text(M("models.agent.note")).font(.system(size: 12)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let e = error {
-                Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr).fixedSize(horizontal: false, vertical: true)
-            }
             HStack(spacing: 8) {
-                // the second way: Blurt starts the agent in its terminal (only agents that run as a session here)
-                if !agents.list.isEmpty {
-                    Menu(M("models.agent.sheet.open")) {
-                        ForEach(agents.list) { a in Button(a.name) { start(a.id) } }
-                    }
-                    .menuStyle(.borderlessButton).fixedSize().disabled(starting)
-                }
                 Spacer()
                 Button(M(copied ? "models.sheet.done" : "models.cancel")) { close() }.keyboardShortcut(.cancelAction)
                 Button {
@@ -259,32 +171,10 @@ struct AgentSetupSheet: View {
         }
         .padding(20)
         .frame(width: 480)
-        .onAppear { Task { await agents.load() } }
-    }
-
-    private func start(_ id: String) {
-        starting = true
-        error = nil
-        Config.shared.set("sessions.agent", id)
-        let token = AgentSetupServer.issueToken()
-        Task { @MainActor in
-            do {
-                let r = try await AgentSessions.shared.setupSession(agent: id, token: token)
-                for l in r.launch { AppRunner.shared.launch(l) }
-                AgentSetupProgress.shared.started(agentName: AgentNames.name(id), job: r.job, token: token)
-                emit(["event": "agent_setup_session", "agent": id, "job": r.job, "app_runner": r.launch.count])
-                close()
-                TerminalModule.reveal(job: r.job)
-            } catch {
-                AgentSetupServer.revoke(token)
-                self.error = sessionsErrorText(error)
-                starting = false
-            }
-        }
     }
 }
 
-/// The live list: a heading line (who, Stop / Show Terminal, Done once it is over), then one line per thing done.
+/// The live list: a heading line (who, Stop, Done once it is over), then one line per thing done.
 struct AgentSetupProgressView: View {
     enum Look { case settings, onboarding }
     var look: Look = .settings
@@ -304,13 +194,7 @@ struct AgentSetupProgressView: View {
             HStack(alignment: .center, spacing: 14) {
                 HStack(alignment: .center, spacing: SettingsMetrics.iconGap) {
                     SettingsIcon("terminal")
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(p.title).font(.system(size: SettingsMetrics.titleSize))
-                        if let e = p.stopError {
-                            Text(e).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(Color.brandErr)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    Text(p.title).font(.system(size: SettingsMetrics.titleSize))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 buttons.buttonStyle(SettingsOutlinedButtonStyle())
@@ -335,7 +219,6 @@ struct AgentSetupProgressView: View {
                 Spacer(minLength: 8)
                 buttons.controlSize(.small)
             }
-            if let e = p.stopError { Text(e).font(.system(size: 12)).foregroundStyle(Color.brandErr) }
             // the page doesn't scroll: a long list pushed Back / Next out of the window (dogfood 2026-10-31); Settings
             // keeps every row
             ForEach(p.steps.latest(3)) { s in
@@ -351,9 +234,6 @@ struct AgentSetupProgressView: View {
 
     @ViewBuilder var buttons: some View {
         HStack(spacing: 8) {
-            if let j = p.job, p.active {
-                Button(M("models.agent.show")) { TerminalModule.reveal(job: j) }
-            }
             if p.active {
                 Button(M("models.agent.stop")) { p.stop() }
             } else {

@@ -37,7 +37,7 @@ export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number)
 
 export function inField(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
-  return !!el?.closest?.('input, textarea, select, [contenteditable="true"], .xterm');
+  return !!el?.closest?.('input, textarea, select, [contenteditable="true"]');
 }
 
 /** Selection with Shift-ranges over the list order. */

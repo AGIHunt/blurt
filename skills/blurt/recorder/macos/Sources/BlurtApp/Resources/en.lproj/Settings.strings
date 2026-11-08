@@ -15,9 +15,7 @@
 
 "onboarding.skip_setup" = "Skip Setup";
 
-
 "onboarding.welcome_blurt" = "Welcome to Blurt";
-
 
 "settings.general.after_recording" = "After a recording";
 "settings.general.app" = "App";
@@ -318,7 +316,6 @@
 "settings.kw.speech.mirror" = "mirror, Hugging Face, China, download speed, hf-mirror";
 "settings.kw.shortcuts.restore" = "reset, defaults, restore";
 "settings.kw.agents.list" = "order, organize, model, effort, AI fill-in, connect, MCP, skill, sign in, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
-"settings.kw.agents.sessions" = "tmux, terminal, session, default agent";
 "settings.kw.agents.ask" = "export, send, share, bundle, hand-off, zip, Slack, Feishu, Lark, Linear, GitHub, Notion, Jira, email";
 "settings.kw.privacy.permissions" = "Screen Recording, microphone, accessibility, input monitoring, allow";
 "settings.kw.privacy.local_asr" = "local, offline, on device, cloud, automatic, speech recognition";

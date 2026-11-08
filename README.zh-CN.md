@@ -74,8 +74,7 @@ AGIHunt/blurt</code>，再运行 <code>/plugin install blurt@blurt</code>。然�
 | **听写和卡片** | 文字和图片进入任何聊天框或终端，所以适用于所有 Agent。 |
 | **Skill** | `blurt` skill 让你的 Agent 能录屏、转写、写事项、打开审核页和导出。 |
 | **MCP** | `blurt` MCP 提供 `search_items`、`get_item`（带截图）、`get_transcript`、`update_item`、`mark_fixed`、`bundle_items` 等工具。在「设置 → Agent」里点「连接…」，会先列出要改的地方，再把 skill 和 MCP 装进这个 Agent。 |
-| **交给 Agent**（`⌘↩`） | 在口喷鸡的终端里、在项目文件夹中运行 Claude Code 或 Codex，可以每个事项用一个单独的 git worktree。Claude Code 也可以在 Claude 桌面端运行。 |
-| **复制指令** | 给其他任何 Agent 的一行指令，指向一份交接说明，里面有全部详情和截图。 |
+| **复制指令** | 粘贴给你在用的 Agent 的一行指令，指向一份交接说明，里面有全部详情和截图。口喷鸡不在自己的窗口里运行 Agent。 |
 | **交接包** | 一个 `.zip`，包含概要、每个事项和它的截图，给人看，而不是给 Agent。 |
 
 Agent 通过 MCP 回报进度：事项先变成「进行中」，再变成「待验证」。Agent 说「修好了」，在你标为完成之前一律只算「待验证」。

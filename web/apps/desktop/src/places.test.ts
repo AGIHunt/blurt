@@ -47,13 +47,11 @@ describe('keys and hand-off (Lifecycle, HandOffCheck)', () => {
     expect(actionForListKey('a', 'todo')).toBeNull();
   });
   it('says why a hand-off can’t go', () => {
-    const none = () => null;
-    expect(handOffBlock([row('a', 'new', 'inbox')], none)).toEqual({ why: 'needs_project' });
-    expect(handOffBlock([row('a', 'new', 'p1'), row('b', 'todo', 'p2')], none)).toEqual({ why: 'mixed_projects' });
-    expect(handOffBlock([row('a', 'done')], none)).toEqual({ why: 'finished', state: 'done' });
-    expect(handOffBlock([row('a', 'discarded')], none)).toEqual({ why: 'discarded' });
-    expect(handOffBlock([row('a', 'in_progress')], () => 'j1')).toEqual({ why: 'with_session', item: 'A', job: 'j1' });
-    expect(handOffBlock([row('a', 'new')], none)).toBeNull();
+    expect(handOffBlock([row('a', 'done')])).toEqual({ why: 'finished', state: 'done' });
+    expect(handOffBlock([row('a', 'discarded')])).toEqual({ why: 'discarded' });
+    expect(handOffBlock([row('a', 'new', 'inbox')])).toBeNull();
+    expect(handOffBlock([row('a', 'new', 'p1'), row('b', 'todo', 'p2')])).toBeNull();
+    expect(handOffBlock([row('a', 'in_progress')])).toBeNull();
   });
   it('dates the rows like Loc.listDate', () => {
     const now = new Date(2026, 10, 2, 15, 0);
@@ -84,36 +82,22 @@ describe('New Item and Project Settings', () => {
   });
 });
 
-describe('the item banner (WebHostController.ItemBanner + SessionBannerPlan)', () => {
-  const w = { agent: (id: string) => (id === 'claude' ? 'Claude Code' : id), why: (j: Job) => j.error?.message ?? 'error', t: (k: string) => k };
-  const job = (more: Partial<Job> & { status?: string; worktree?: boolean }): Job =>
-    ({ id: 'j1', type: 'agent', state: 'running', project: 'p1', session: null, title: null, items: ['a'], steps: [], progress: null, created: '2026-11-02T10:00:00Z', started: '2026-11-02T10:00:01Z', ended: null, error: null,
-      agent: { id: 'claude', mode: 'auto', runner: 'tmux', status: (more.status ?? 'running') as never, cwd: '/p', worktree: more.worktree ? { path: '/w', branch: 'b', base: 'main' } : null }, ...more }) as Job;
-  const item = (state: ItemRow['state'], more: Partial<ItemRow> = {}) => row('a', state, 'p1', { work_to: 'session', work_agent: 'claude', ...more });
-  it('says who has it and offers Open Session while the session lives', () => {
-    const p = bannerPlan(item('in_progress'), [job({})], w)!;
-    expect(p).toMatchObject({ kind: 'session', tone: 'brand', actions: ['session'], primary: 'session', job: 'j1' });
-    expect(p.text).toEqual({ key: 'main.banner.with_agent', args: ['Claude Code', 'session.running'] });
-    expect(bannerPlan(item('in_progress'), [job({ status: 'waiting_input' })], w)!.tone).toBe('attn');
-  });
-  it('after the session: review a worktree, restart a plain end, restart or take back a failure', () => {
-    expect(bannerPlan(item('in_progress'), [job({ state: 'done', status: 'exited', worktree: true })], w)).toMatchObject({ actions: ['review', 'take_back'], more: ['done'] });
-    expect(bannerPlan(item('in_progress'), [job({ state: 'done', status: 'exited' })], w)).toMatchObject({ actions: ['session', 'restart'], more: ['done', 'take_back'] });
-    const f = bannerPlan(item('handed_off'), [job({ state: 'failed', status: 'error', ended: '2026-11-02T10:00:05Z', error: { code: 'x', message: 'not logged in' } })], w)!;
-    expect(f).toMatchObject({ icon: 'error', actions: ['restart', 'take_back'], more: ['session'] });
-    expect(f.text).toEqual({ key: 'main.banner.failed_start', args: ['Claude Code', 'not logged in'] });
-    // no record of the session any more
-    expect(bannerPlan(item('in_progress'), [], w)).toMatchObject({ actions: ['take_back', 'done'], job: null });
-  });
+describe('the item banner (WebHostController.ItemBanner)', () => {
+  const job = (more: Partial<Job>): Job =>
+    ({ id: 'j1', type: 'process', state: 'running', project: 'p1', session: null, title: null, items: ['a'], steps: [], progress: null, created: '2026-11-02T10:00:00Z', started: '2026-11-02T10:00:01Z', ended: null, error: null, ...more }) as Job;
+  const item = (state: ItemRow['state'], more: Partial<ItemRow> = {}) => row('a', state, 'p1', { work_to: 'external', ...more });
   it("the user's own agent: Won't Do, then Mark as Done as the primary", () => {
-    expect(bannerPlan(item('handed_off', { work_to: 'external' }), [], w)).toMatchObject({ kind: 'external', actions: ['wontfix', 'done'], primary: 'done' });
+    expect(bannerPlan(item('handed_off'), [])).toMatchObject({ kind: 'external', tone: 'brand', actions: ['wontfix', 'done'], primary: 'done' });
+  });
+  it('with an agent some other way (set by hand, an older session): the same, quieter', () => {
+    expect(bannerPlan(item('in_progress', { work_to: 'session', work_agent: 'claude' }), [])).toMatchObject({ kind: 'external', tone: 'neutral', text: { key: 'main.banner.manual' }, primary: 'done' });
+    expect(bannerPlan(item('in_progress', { work_to: null, work_agent: null }), [])).toMatchObject({ kind: 'external', primary: 'done' });
   });
   it('organising its batch; nothing for to verify, new without a job, or discarded', () => {
-    const p = { ...job({}), id: 'p9', type: 'process', session: '/s1', agent: undefined } as Job;
-    expect(bannerPlan(item('new', { work_to: null, session_dir: '/s1' }), [p], w)).toMatchObject({ kind: 'organizing', actions: ['progress'], job: 'p9' });
-    expect(bannerPlan(item('new', { work_to: null, session_dir: '/s2' }), [p], w)).toBeNull();
-    expect(bannerPlan(item('to_verify'), [job({})], w)).toBeNull();
-    expect(bannerPlan(item('in_progress', { work_to: null, work_agent: null }), [], w)).toMatchObject({ kind: 'external', primary: 'done' });
-    expect(bannerPlan(item('discarded'), [job({})], w)).toBeNull();
+    const p = job({ id: 'p9', session: '/s1' });
+    expect(bannerPlan(item('new', { work_to: null, session_dir: '/s1' }), [p])).toMatchObject({ kind: 'organizing', actions: ['progress'], job: 'p9' });
+    expect(bannerPlan(item('new', { work_to: null, session_dir: '/s2' }), [p])).toBeNull();
+    expect(bannerPlan(item('to_verify'), [p])).toBeNull();
+    expect(bannerPlan(item('discarded'), [p])).toBeNull();
   });
 });

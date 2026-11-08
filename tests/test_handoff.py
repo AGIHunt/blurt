@@ -106,25 +106,25 @@ def test_errors(p2):
     assert p2.run("handoff.py", "create", "--items", "nope", ok=False)["_exit"] == 1
     assert p2.run("handoff.py", "get", "H-9999", ok=False)["code"] == "no_handoff"
     assert p2.run("handoff.py", "get", "../x", ok=False)["code"] == "bad_args"
-    assert p2.run("handoff.py", "create", "--items", "x", "--to", "session", "--mark", ok=False)["code"] == "bad_args"
+    assert p2.run("handoff.py", "create", "--items", "x", "--to", "session", ok=False)["code"] == "bad_args"
 
 
 def test_prompt_work_points_at_the_note(p2):
     proj = p2.project(p2.repo())
     it = p2.item(proj["id"])
-    out = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--worktree", "on", "--branch", "blurt/x-1",
-                 "--lang", "en")
+    out = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--lang", "en")
     # the first line is a human title (what Codex / Claude list the conversation as), then the instructions
     title, blank, rest = out["prompt"].split("\n", 2)
     assert title == f"{it['id']} · The login button does nothing (Blurt hand-off)" == out["title"] and blank == ""
-    assert rest.startswith(f"Read {out['path']} and handle the items in it.") and "blurt/x-1" in rest
-    assert "commit your work there" in out["prompt"] and "mark_fixed" in out["prompt"]
+    assert rest.startswith(f"Read {out['path']} and handle the items in it.")
+    assert "don't commit unless the user asks" in out["prompt"] and "mark_fixed" in out["prompt"]
     note = Path(out["path"]).read_text()
-    assert "to: session" in note and 'branch: "blurt/x-1"' in note and "uv run" not in note  # no sandbox prompt for uv
+    assert "to: external" in note and "branch:" not in note and "uv run" not in note  # no sandbox prompt for uv
+    assert p2.get(it["uid"])["state"] == "new"  # a prompt marks nothing
     zh = p2.run("agents.py", "prompt", "work", "--items", it["uid"], "--handoff", out["handoff"], "--lang", "zh")
     zt, _, zrest = zh["prompt"].split("\n", 2)
     assert zt == f"{it['id']} · The login button does nothing（口喷鸡交接）"
-    assert zh["handoff"] == out["handoff"] and zrest.startswith(f"读 {out['path']}，") and "不要提交" in zh["prompt"]
+    assert zh["handoff"] == out["handoff"] and zrest.startswith(f"读 {out['path']}，") and "不要推送" in zh["prompt"]
     two = p2.item(proj["id"], title="Second\nline")
     many = p2.run("agents.py", "prompt", "work", "--items", it["uid"], two["uid"], "--lang", "en")
     assert many["prompt"].split("\n", 1)[0] == f"2 items · {proj['name']} (Blurt hand-off)"

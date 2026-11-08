@@ -199,18 +199,6 @@
   "Takes effect after Blurt restarts.",
   "重新打开口喷鸡后生效。"
  ],
- "win.storage.tmux": [
-  "tmux",
-  "tmux"
- ],
- "win.storage.tmux.ok": [
-  "Sessions keep running after you close Blurt",
-  "关闭口喷鸡后会话继续运行"
- ],
- "win.storage.tmux.missing": [
-  "Not installed — sessions run inside Blurt instead",
-  "未安装：会话在口喷鸡里运行"
- ],
  "win.keys.system": [
   "Clashes with a Windows shortcut: {1}",
   "与 Windows 快捷键冲突：{1}"
@@ -270,10 +258,6 @@
  "models.job.none": [
   "Not set. Add a cloud model.",
   "未设置。请添加云端模型。"
- ],
- "win.agents.keep_sessions.windows": [
-  "Sessions run inside Blurt on Windows (there is no tmux), so they end when you quit Blurt.",
-  "Windows 上会话在口喷鸡里运行（没有 tmux），退出口喷鸡时会话结束。"
  ],
  "dictation.settings.cancel_key.detail": [
   "In terminals like Claude Code, Esc stops the running task. With Ctrl+Esc or Shift+Esc, Esc alone never cancels dictation.",

@@ -19,15 +19,14 @@ public struct ProjectModule: Equatable {
 public struct Project: Equatable, Hashable, Identifiable {
     public let id, name, key, slug, description: String
     public let path, store: URL
-    public let isInbox, isGitRepo, worktree: Bool
-    public let defaultAgent: String?
+    public let isInbox, isGitRepo: Bool
     public let modules: [ProjectModule]
     public let lastUsed: Date?
     public let pinned: Bool
 
     public static func == (a: Project, b: Project) -> Bool {
         a.id == b.id && a.name == b.name && a.key == b.key && a.slug == b.slug && a.description == b.description && a.path == b.path
-            && a.worktree == b.worktree && a.defaultAgent == b.defaultAgent && a.modules == b.modules && a.lastUsed == b.lastUsed
+            && a.modules == b.modules && a.lastUsed == b.lastUsed
             && a.pinned == b.pinned
     }
     public func hash(into h: inout Hasher) { h.combine(id) }
@@ -103,7 +102,7 @@ public final class ProjectStore {
 
     public var inbox: Project {
         Project(id: "inbox", name: Loc.t("project.inbox"), key: "IN", slug: "inbox", description: "", path: inboxStore,
-                store: inboxStore, isInbox: true, isGitRepo: false, worktree: false, defaultAgent: nil, modules: [],
+                store: inboxStore, isInbox: true, isGitRepo: false, modules: [],
                 lastUsed: nil, pinned: false)
     }
 
@@ -154,8 +153,7 @@ public final class ProjectStore {
         }
         return Project(id: id, name: name, key: o["key"] as? String ?? "P", slug: o["slug"] as? String ?? id,
                        description: o["description"] as? String ?? "", path: url, store: url.appendingPathComponent(".blurt"),
-                       isInbox: false, isGitRepo: gitRoot(of: url) != nil, worktree: o["worktree"] as? Bool ?? true,
-                       defaultAgent: o["default_agent"] as? String, modules: modules,
+                       isInbox: false, isGitRepo: gitRoot(of: url) != nil, modules: modules,
                        lastUsed: date(o["last_used"]) ?? date(o["opened"]), pinned: o["pinned"] as? Bool ?? false)
     }
 

@@ -260,13 +260,13 @@ prototype / spec of the top one?".
 
 ## 7. Work on items (and say so)
 
-When the user asks you to handle items — "fix these", a Blurt session that started you, a hand-off note
-(`~/.blurt/handoff/H-….md`, see `reference/sessions.md`) — for each item:
+When the user asks you to handle items — "fix these", or a hand-off note they pasted (`~/.blurt/handoff/H-….md`,
+written by `handoff.py create`) — for each item:
 1. Read it in full: MCP `get_item(uid)` (shows the screenshots), or `items.py get <uid|id>` and open the frame files
    (absolute paths). Look at the frames; they are the evidence.
 2. `items.py state <uid> --state in_progress` (MCP: `mark_fixed(uid, state="fixing")`) before you start — the app
    shows it in progress.
-3. Do it, smallest change that does it. Commit only when the hand-off note says so (a worktree session); never push.
+3. Do it, smallest change that does it. Don't commit unless the user asks; never push.
 4. `items.py state <uid> --state to_verify --claim fixed --note "<one line: what changed, which files>"`
    (`--commit SHA` / `--pr URL` if there is one; MCP: `mark_fixed(uid, state="fixed", note=…)`); can't or shouldn't →
    `--claim wontfix --note "<why>"`. That is your claim: the item waits in the user's inbox as *to verify* — only
@@ -276,10 +276,8 @@ wontfix and discarded. You only ever move items to `in_progress` / `to_verify` (
 claim back). `--agent` / `--job` default to `$BLURT_AGENT` / `$BLURT_JOB` (set by the app). The older forms
 `items.py work …` and `items.py fix <session> <id> --state fixing|fixed|wontfix` still work. Never set `state` or
 `work` with `patch`, and never edit item files yourself.
-A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Started
-from Claude desktop with the items in the prompt itself, your reports (steps 2 and 4) are the only progress the user
-sees — make both. Don't run `sessions.py continue-desktop` unless the user asked; without the blurt MCP installed for
-Claude it refuses (`desktop_no_mcp`), and `--without-mcp` is only for when the user agreed to mark the items by hand.
+A hand-off prompt's first line is just its title ("AW-12 · … (Blurt hand-off)"); the instructions follow it. Your
+reports (steps 2 and 4) are the only progress the user sees in Blurt — make both.
 
 ## 8. Across recordings: index and MCP
 
@@ -296,9 +294,6 @@ The same data as MCP tools — server `blurt` (`uv run --script scripts/mcp_serv
 `bundle_items` (= `export_local.py bundle`: the hand-off .zip and a paragraph to post with it, §6). The
 plugin registers it for Claude Code; for Codex / Kimi / OpenCode: `agents.py install <id> --mcp` (`--dry-run` first
 shows what changes). Prefer the tools when they are there; they write through items.py like everything else.
-
-Agent sessions inside Blurt (tmux) or in Claude desktop, worktrees, hand-off notes and the jobs the app shows:
-`reference/sessions.md`.
 
 ## 9. Set up models
 

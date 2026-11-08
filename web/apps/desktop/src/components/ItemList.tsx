@@ -7,10 +7,9 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Action, State } from '@blurt/ui';
 import { KindIcon, StatusRing } from '@blurt/ui/react';
-import type { ItemRow, Job } from '../api';
+import type { ItemRow } from '../api';
 import { i18n, plural, t } from '../i18n';
-import { CLOSED, listDate, sessionEnded, type Grouping, type Section } from '../places';
-import { agentName } from './SessionsView';
+import { CLOSED, listDate, type Grouping, type Section } from '../places';
 
 function Highlight({ text }: { text: string }) {
   // snippet(): matches are wrapped in [ ]
@@ -23,7 +22,6 @@ export const DRAG_TYPE = 'application/x-blurt-items';
 /** The state's name; "handed off" says to whom (Look.stateLabel). */
 export function stateText(r: ItemRow): string {
   if (r.state === 'handed_off' && r.work_to === 'external') return t('state.handed_off.external');
-  if (r.state === 'handed_off' && r.work_agent) return t('state.handed_off.session', { agent: agentName(r.work_agent) });
   return t(`state.${r.state}`);
 }
 
@@ -41,7 +39,6 @@ export interface ListRowsProps {
   selected: Set<string>;
   focus: string | null;
   searching: boolean;
-  jobs: Job[];
   /** a project id → its name (section headers, suggestions) */
   projectName: (id: string) => string;
   /** registered projects a suggestion can file into */
@@ -139,7 +136,6 @@ export const ItemList = memo(function ItemList(p: ListRowsProps) {
         const sec = sections.get(i);
         const sel = selected.has(r.uid);
         const quiet = r.state === 'discarded' || CLOSED.includes(r.state);
-        const ended = sessionEnded(r, p.jobs);
         // in a list grouped by state the group says it; a new item's dashed ring says nothing (§4.2) — pointed at or
         // selected, the ring shows
         const ringAtRest = !(grouping === 'state' || r.state === 'new');
@@ -239,11 +235,7 @@ export const ItemList = memo(function ItemList(p: ListRowsProps) {
                   <StatusRing state={r.state} size={14} />
                 </button>
               </span>
-              {/* a session that ended without saying it was done: a short neutral word where the date goes (it never
-                  truncates, it isn't the attention colour — nothing asks the user yet), the whole story in its tip */}
-              <span className={`mw-c-time ${ended ? 'ended' : ''}`} data-tip={ended ? `${t('main.row.session_ended')} — ${t('main.row.session_ended.help')}` : full}>
-                {ended ? t('main.row.session_ended_short') : listDate(r.updated, lang.locale, yesterday)}
-              </span>
+              <span className="mw-c-time" data-tip={full}>{listDate(r.updated, lang.locale, yesterday)}</span>
             </div>
           </div>
         );

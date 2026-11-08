@@ -188,16 +188,10 @@ export interface BlurtHost {
   reveal?(path: string): void;
   quickLook?(path: string): void;
   openCode?(ref: string): void;
-  /** open the host's dispatch panel (agent, together / parallel, worktree, the concurrent-edit reminder) for these uids */
-  dispatch?(uids: string[]): void;
   /** K6: create a handoff, copy the instruction or the full text, mark the items handed off (external) */
   handoff?(uids: string[], what: "instruction" | "full"): Promise<HandoffResult>;
-  /** show the agent session (job id) in the host's terminal */
-  openSession?(job: string): void;
-  /** the session's changes, in the host's review sheet (diff, merge / keep / discard) */
-  reviewChanges?(job: string): void;
-  /** the host puts the item's Open Session above the page while it is with an agent (the Mac app's banner): the
-      work panel leaves its own out then, so there is one button */
+  /** the host shows a banner above the page while the item is handed off or in progress (who has it, since when): the
+      work panel leaves out a line that would only repeat it */
   sessionBanner?: boolean;
   registerDragRects?(rects: DragRect[]): void;
   /** save a file to the user's Downloads (browser: a plain download link instead) */

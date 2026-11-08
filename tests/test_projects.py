@@ -66,9 +66,8 @@ class Registry(TmpCase):
         reg = json.loads((self.e.home / "projects.json").read_text())
         self.assertEqual((reg["schema"], reg["current"]), (1, None))
         self.assertNotIn("route_threshold", reg)
-        self.assertEqual(set(reg["projects"][0]), {"id", "path", "name", "key", "slug", "description", "default_agent",
-                                                   "worktree", "worktree_root", "modules", "opened",
-                                                   "last_used", "pinned"})
+        self.assertEqual(set(reg["projects"][0]), {"id", "path", "name", "key", "slug", "description", "modules",
+                                                   "opened", "last_used", "pinned"})
         self.assertNotIn("projects", json.loads((self.e.home / "config.json").read_text()))
         # list: most recently used first; the inbox apart
         lst = ok("projects.py", "list", env=self.e.env())
@@ -95,8 +94,9 @@ class Registry(TmpCase):
         # set: settings; the key only while the project has no items
         out = ok("projects.py", "set", pa["id"], "--json", json.dumps({
             "name": "Blurt", "modules": [{"name": "review page", "paths": ["web/packages/review"], "description": ""}],
-            "worktree": False, "key": "BL"}), env=self.e.env())
-        self.assertEqual((out["project"]["name"], out["project"]["key"], out["project"]["worktree"]), ("Blurt", "BL", False))
+            "worktree": False, "key": "BL"}), env=self.e.env())  # worktree: the removed sessions' setting, ignored
+        self.assertEqual((out["project"]["name"], out["project"]["key"]), ("Blurt", "BL"))
+        self.assertNotIn("worktree", out["project"])
         self.assertEqual(json.loads((a / ".blurt" / "store.json").read_text())["key"], "BL")
         ok("items.py", "add", "--project", "BL", "--json", '{"kind":"note","title":"first"}', env=self.e.env())
         self.assertTrue((a / ".blurt" / "items" / "BL-1-first.md").is_file())
@@ -117,7 +117,7 @@ class Registry(TmpCase):
         a, b, c = (make_repo(self.tmp / n) for n in ("alpha", "beta", "gamma"))
         ids = [ok("projects.py", "add", p, env=self.e.env())["project"]["id"] for p in (a, b, c)]
         ok("projects.py", "set", ids[1], "--json", json.dumps({"description": "the API", "default_agent": "codex",
-                                                               "worktree": False}), env=self.e.env())
+                                                               "worktree": False}), env=self.e.env())  # the last two ignored
         ok("projects.py", "use", ids[1], env=self.e.env())
         reg = lambda: json.loads((self.e.home / "projects.json").read_text())  # noqa: E731
         before = reg()

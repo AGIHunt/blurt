@@ -333,7 +333,7 @@ final class CommandPalette: NSObject, NSTableViewDataSource, NSTableViewDelegate
                 c.model.kinds = [k]; c.model.reload()
             })
         }
-        // what's running (organising, agent sessions): its progress or its terminal
+        // what's running (organising): its progress
         for j in JobStore.shared.active {
             out.append(e(JobLook.title(j), JobLook.symbol(j), hint: JobLook.status(j), kind: .place) { c.reveal(job: j.id) })
         }

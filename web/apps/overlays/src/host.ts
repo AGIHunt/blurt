@@ -75,16 +75,6 @@ export interface JobRow {
   progress?: number | null;
 }
 
-export interface SessionRow {
-  job: string;
-  /** agents.json id */
-  agent: string;
-  /** K5: waiting_input | turn_done | error */
-  status: string;
-  /** item ids the window works on */
-  items: string[];
-}
-
 /** What the app shows in the island (apps/desktop/src-tauri/src/island.rs `state`). Elapsed times are seconds at `at`
     (epoch seconds) and keep running while not paused. */
 export interface IslandState {
@@ -101,7 +91,6 @@ export interface IslandState {
   /** process jobs under way: the hatching egg */
   hatching: number;
   jobs: JobRow[];
-  sessions: SessionRow[];
   hotkeys: Partial<Record<'record' | 'snap' | 'voice' | 'project' | 'pen', string>>;
   lang?: string;
   /** Settings → General → Cards: the shutter on a snap; what a dragged card carries (paste | caption | picture) */
@@ -133,7 +122,6 @@ export type IslandOp =
   /** the pointer came over what the island draws, or left all of it (`out`) — the hit tester, ~30 Hz: a pointer that
    *  arrives or leaves in one jump and rests sends the page no mouse event; CSS px */
   | { op: 'hover'; x: number; y: number; out: boolean }
-  | { op: 'attention'; job: string; status: string }
   | { op: 'status'; line: StatusLine }
   | { op: 'level'; rms: number }
   /** the system's drag of a card ended: `dropped` in another app (taken), else `cancel` (it comes back) */

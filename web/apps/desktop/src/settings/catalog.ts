@@ -80,7 +80,6 @@ export const SECTIONS: Record<string, Key> = {
   'shortcuts.open': 'capture.keys.section.open',
   'agents.list': 'agents.header',
   'agents.organize': 'agents.organize.header',
-  'agents.sessions': 'agents.sessions.header',
   'agents.manual': 'agents.manual.header',
   'agents.ask': 'agents.ask.header',
   'privacy.permissions': 'settings.privacy.permissions_live',
@@ -112,7 +111,6 @@ export const ENTRIES: Entry[] = (() => {
     row('general.language', 'general.app', 'settings.general.language'),
     // Windows' own notifications (Blurt posts them while it isn't in front; the Mac says it in the island instead)
     row('general.notify_done', 'general.app', 'settings.notify.done', { more: 'win.general.notify.hint' }),
-    row('general.notify_agent', 'general.app', 'settings.notify.agent', { more: 'win.general.notify.hint' }),
     row('general.after_recording', 'general.recording', 'settings.general.after_recording'),
     row('general.countdown', 'general.recording', 'app.menu.countdown'),
     row('general.system_audio', 'general.recording', 'settings.general.system_audio'),
@@ -180,10 +178,6 @@ export const ENTRIES: Entry[] = (() => {
     // Agents
     whole('agents.list', 'agents.lead'),
     whole('agents.organize', 'agents.organize.footer'),
-    whole('agents.sessions', 'agents.sessions.about'),
-    row('agents.keep_sessions', 'agents.sessions', 'agents.keep_sessions', { more: 'agents.keep_sessions.ok' }),
-    row('agents.project_agent', 'agents.sessions', 'agents.project_agent', { detail: 'agents.project_agent.hint' }),
-    row('agents.handoff', 'agents.sessions', 'agents.handoff_target', { more: 'agents.handoff_target.hint' }),
     whole('agents.manual', 'agents.manual.footer'),
     whole('agents.ask', 'agents.ask.footer'),
     // Privacy

@@ -177,11 +177,10 @@ public enum SettingsCatalog {
         sec("shortcuts.dictation", "dictation.settings.tab", "Dictation"),
         sec("shortcuts.open", "capture.keys.section.open", "Capture"),
 
-        sec("agents.list", "agents.header", "Terminal"),
-        sec("agents.organize", "agents.organize.header", "Terminal"),
-        sec("agents.sessions", "agents.sessions.header", "Terminal"),
-        sec("agents.manual", "agents.manual.header", "Terminal"),
-        sec("agents.ask", "agents.ask.header", "Terminal"),
+        sec("agents.list", "agents.header", "Agents"),
+        sec("agents.organize", "agents.organize.header", "Agents"),
+        sec("agents.manual", "agents.manual.header", "Agents"),
+        sec("agents.ask", "agents.ask.header", "Agents"),
 
         sec("privacy.permissions", "settings.privacy.permissions_live"),
         sec("privacy.data", "settings.privacy.data"),
@@ -335,17 +334,9 @@ public enum SettingsCatalog {
             row("shortcuts.restore", nil, SettingsText("capture.keys.restore", "Capture")),
 
             // Agents
-            whole("agents.list", detail: SettingsText("agents.lead", "Terminal")),
-            whole("agents.organize", detail: SettingsText("agents.organize.footer", "Terminal")),
-            whole("agents.sessions", detail: SettingsText("agents.sessions.about", "Terminal")),
-            // the sessions rows say how they work behind their ⓘ (the pane: one line each), still found by search
-            row("agents.keep_sessions", "agents.sessions", SettingsText("agents.keep_sessions", "Terminal"),
-                more: SettingsText("agents.keep_sessions.ok", "Terminal")),
-            row("agents.project_agent", "agents.sessions", SettingsText("agents.project_agent", "Terminal"),
-                detail: SettingsText("agents.project_agent.hint", "Terminal")),
-            row("agents.handoff", "agents.sessions", SettingsText("agents.handoff_target", "Terminal"),
-                more: SettingsText("agents.handoff_target.hint", "Terminal")),
-            whole("agents.ask", detail: SettingsText("agents.ask.footer", "Terminal")),
+            whole("agents.list", detail: SettingsText("agents.lead", "Agents")),
+            whole("agents.organize", detail: SettingsText("agents.organize.footer", "Agents")),
+            whole("agents.ask", detail: SettingsText("agents.ask.footer", "Agents")),
 
             // Privacy
             whole("privacy.permissions", detail: S("settings.privacy.macos_applies_screen_recording")),

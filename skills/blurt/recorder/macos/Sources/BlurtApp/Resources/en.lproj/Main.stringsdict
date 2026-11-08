@@ -2,22 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>app.badge.waiting</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@n@</string>
-		<key>n</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>ld</string>
-			<key>one</key>
-			<string>%ld session needs you</string>
-			<key>other</key>
-			<string>%ld sessions need you</string>
-		</dict>
-	</dict>
 	<key>app.menu.new</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
@@ -173,9 +157,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Hand Off %ld Item to Agent</string>
+			<string>Hand Off %ld Item to Your Agent</string>
 			<key>other</key>
-			<string>Hand Off %ld Items to Agent</string>
+			<string>Hand Off %ld Items to Your Agent</string>
 		</dict>
 	</dict>
 	<key>main.move.done</key>
@@ -397,9 +381,9 @@
 			<key>NSStringFormatValueTypeKey</key>
 			<string>ld</string>
 			<key>one</key>
-			<string>Start an agent session in Blurt with this item (⌘↩)</string>
+			<string>Copy an instruction for this item to paste into your own agent (⌘↩)</string>
 			<key>other</key>
-			<string>Start an agent session in Blurt with these %ld items (⌘↩)</string>
+			<string>Copy an instruction for these %ld items to paste into your own agent (⌘↩)</string>
 		</dict>
 	</dict>
 	<key>main.selection.move.tip</key>

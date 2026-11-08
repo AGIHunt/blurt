@@ -269,10 +269,10 @@ fn check_contract(app: &AppHandle) {
 }
 
 /// Jobs the app owned that were still "running" when it quit (or crashed): failed, the running step failed and the
-/// rest skipped, so the job page explains it (Housekeeping.finishInterruptedJobs). Agent sessions are sessions.py's.
+/// rest skipped, so the job page explains it (Housekeeping.finishInterruptedJobs).
 fn finish_interrupted_jobs(launched: chrono::DateTime<chrono::Local>) {
     for j in jobs::list(true, 200) {
-        if j["type"] == "agent" || j["owner"] != "app" {
+        if j["owner"] != "app" {
             continue;
         }
         let created = j["created"].as_str().and_then(|c| chrono::DateTime::parse_from_rfc3339(c).ok());

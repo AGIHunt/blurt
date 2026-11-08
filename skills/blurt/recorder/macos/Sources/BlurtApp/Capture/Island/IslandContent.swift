@@ -8,7 +8,7 @@
 //               the tray is only ever the Inbox) · record / snap / voice — quiet glyph buttons, a fill only under the
 //               pointer, one stroke (record is a ring and a dot drawn at the family's stroke) · up to 3 jobs in
 //               progress (a row on the grid: the spinner in the icon column, the title and its step, a 2 pt progress
-//               line under the text column) · agent sessions that need you (click = their terminal) · the cards
+//               line under the text column) · the cards
 //               waiting ("2 cards"), with "Organize" (the sparkle: the view's one filled button) · the Inbox row (its
 //               count as a quiet accessory, a chevron: the backlog lives here, not beside the notch)
 //   recording   on one grid with the ears (they ride out to the open shape's corners, 14 pt in): pause (paused: the
@@ -720,22 +720,6 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         }
-        for j in i.sessionsNeedingYou {
-            guard let a = j.agent else { continue }
-            let st = a.status
-            // what it is about first ("Sign-in button does nothing"), then which item, its state and the agent
-            let ids = a.windowName?.replacingOccurrences(of: ",", with: ", ")
-            let r = IslandRow(icon: nil, title: j.title ?? ids ?? Loc.t("job.type.agent"),
-                              subtitle: [j.title == nil ? nil : ids, Loc.t("session.\(st.rawValue)"), AgentNames.name(a.agent)]
-                                  .compactMap { $0 }.joined(separator: " · "), height: 44) { [weak i] in
-                i?.setOpen(false)
-                AppEnvironment.mainWindow?.reveal(job: j.id)
-            }
-            r.dot = st == .waitingInput ? BrandColor.Island.attn : st == .error ? BrandColor.Island.err
-                : st == .running ? BrandColor.Island.fill : BrandColor.Island.ok
-            place(r, x: 0, y: y, w: w, h: 44)
-            y += 44
-        }
         let review = i.toReview, cards = i.cardCount
         if cards > 0 {
             // the cards waiting ("2 cards" — one noun; the Inbox is the row under it), and the view's one filled button,
@@ -772,7 +756,7 @@ final class IslandContent: NSView {
             place(r, x: 0, y: y, w: w, h: 36)
             y += 36
         }
-        if jobs.isEmpty && i.sessionsNeedingYou.isEmpty && review == 0 && cards == 0 {
+        if jobs.isEmpty && review == 0 && cards == 0 {
             // nothing going on: what the keys do, on the text column
             let hint = [hkHint(.snap, "capture.island.snap"), hkHint(.voice, "capture.island.voice"), hkHint(.project, "capture.island.switch_project")]
                 .compactMap { $0 }.joined(separator: "   ·   ")

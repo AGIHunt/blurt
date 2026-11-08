@@ -76,7 +76,6 @@ final class EarSlot {
         case thinking(n: Int)
         /// the organising ended: a peep and a hop, then "+n" (ok), or a head shake and a droop (it failed)
         case sorted(since: CFTimeInterval, ok: Bool, n: Int)
-        case alert
         /// one of our icons, breathing while `pulse` (dictation: transcribing = keyboard, polishing = wand); `lit`: in
         /// mint, still (a recording's pen while it is on: "on", not a passive count)
         case glyph(BlurtIcon, pulse: Bool, lit: Bool = false)
@@ -98,7 +97,7 @@ final class EarSlot {
         func sameKind(_ o: Content) -> Bool {
             switch (self, o) {
             case (.none, .none), (.recording, .recording), (.count, .count), (.cards, .cards), (.level, .level), (.wave, .wave), (.text, .text),
-                 (.thinking, .thinking), (.sorted, .sorted), (.alert, .alert), (.dots, .dots),
+                 (.thinking, .thinking), (.sorted, .sorted), (.dots, .dots),
                  (.done, .done), (.news, .news), (.hello, .hello), (.finished, .finished): return true
             case (.mark(let a), .mark(let b)): return a == b
             case (.peep(let a), .peep(let b)): return a == b
@@ -133,7 +132,6 @@ final class EarSlot {
     static let chickSize: CGFloat = 24
     private(set) var content: Content = .none
     private var since = CACurrentMediaTime()
-    private var pulseAt: CFTimeInterval = 0
     private(set) var width: CGFloat = 0
     /// 12 medium, tabular digits: semibold at 60–92 % white went muddy on the black (a weight that says "important"
     /// in a colour that says "quiet").
@@ -184,14 +182,12 @@ final class EarSlot {
         case .thinking, .peep: return false          // Peep runs its own timer
         case .hello: return CACurrentMediaTime() - since < EarSlot.helloSeconds + 0.1
         case .sorted(let s, _, _): return CACurrentMediaTime() - s < EarSlot.sortedSeconds + 0.3
-        case .alert: return CACurrentMediaTime() - pulseAt < 1
         case .peepLevel, .dots: return true
         case .glyph(_, let p, _): return p && !reduceMotion
         default: return false
         }
     }
 
-    func pulse() { pulseAt = CACurrentMediaTime() }
 
     func set(_ c: Content) {
         guard c != content else { return }
@@ -310,11 +306,6 @@ final class EarSlot {
             } else {
                 x = EarSlot.chickSize - 2
             }
-        case .alert:
-            dot.backgroundColor = BrandColor.Island.attn.cgColor
-            dot.frame = CGRect(x: 0, y: -4, width: 8, height: 8)
-            dot.isHidden = false
-            x = 8
         case .glyph(let ic, let pulse, let lit):
             glyph(ic, 15, color: pulse || lit ? BrandColor.Island.fill : NSColor(white: 1, alpha: 0.6))
             x -= 3
@@ -471,10 +462,6 @@ final class EarSlot {
             let open = Ease.outCubic(CGFloat(max(0, ((now - s) - d * 0.6) / (d * 0.4))))
             label.opacity = Float(open)
             label.setAffineTransform(CGAffineTransform(scaleX: 0.7 + 0.3 * Ease.outBack(open), y: 0.7 + 0.3 * Ease.outBack(open)))
-        case .alert:
-            let p = now - pulseAt
-            let s: CGFloat = p < 1 && !reduce ? 1 + 0.5 * CGFloat(sin(.pi * p)) : 1
-            dot.setAffineTransform(CGAffineTransform(scaleX: s, y: s))
         case .glyph(_, let pulse, _):
             icon.opacity = pulse && !reduce ? Float(0.5 + 0.5 * (0.5 + 0.5 * cos(t * 2 * .pi * 0.9))) : 1
         case .hello:

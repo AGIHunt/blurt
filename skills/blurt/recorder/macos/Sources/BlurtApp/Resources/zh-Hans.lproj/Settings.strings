@@ -15,9 +15,7 @@
 
 "onboarding.skip_setup" = "跳过设置";
 
-
 "onboarding.welcome_blurt" = "欢迎使用口喷鸡";
-
 
 "settings.general.after_recording" = "录完之后";
 "settings.general.app" = "应用";
@@ -317,7 +315,6 @@
 "settings.kw.speech.mirror" = "镜像, Hugging Face, 国内, 下载速度, hf-mirror";
 "settings.kw.shortcuts.restore" = "重置, 默认, 恢复";
 "settings.kw.agents.list" = "顺序, 整理, 模型, 思考强度, AI 填写, 接入, MCP, skill, 登录, Claude, Claude Code, Codex, Kimi, Gemini, OpenCode, Cursor, ZCode";
-"settings.kw.agents.sessions" = "tmux, 终端, 会话, 默认 Agent";
 "settings.kw.agents.ask" = "导出, 发送, 分享, 打包, 交接包, zip, Slack, 飞书, Lark, Linear, GitHub, Notion, Jira, 邮件";
 "settings.kw.privacy.permissions" = "录屏, 麦克风, 辅助功能, 输入监控, 允许, 屏幕录制";
 "settings.kw.privacy.local_asr" = "本地, 离线, 端侧, 云端, 自动, 语音识别";

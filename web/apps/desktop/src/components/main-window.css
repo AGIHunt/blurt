@@ -583,20 +583,6 @@ body.mw-resizing * {
 .mw-job.failed .mw-c-ring {
   color: var(--attn-ink);
 }
-/* a session's agent and state, where the times start (the Mac's JobRow: "Claude Code · 等待输入"); it keeps its
-   natural width and the title takes the ellipsis */
-.mw-job .mw-c-status {
-  width: auto;
-  min-width: 64px;
-  max-width: none;
-  flex: none;
-  white-space: nowrap;
-}
-.mw-job .mw-c-status.t-working,
-.mw-job .mw-c-status.t-idle,
-.mw-job .mw-c-status.t-neutral {
-  color: var(--mute);
-}
 
 /* ------------------------------------------------------------ rows */
 /* the gutter is always kept (stable), so the rows' right edge, the times and the search field line up in every place
@@ -742,9 +728,6 @@ body.mw-resizing * {
 }
 .mw-c-time.attn {
   color: var(--attn-ink);
-}
-.mw-c-time.ended {
-  color: var(--ink-2);
 }
 
 /* ------------------------------------------------------------ detail */
@@ -1621,8 +1604,8 @@ body.mw-resizing * {
   background: none;
 }
 
-/* the line above an item (ItemBanner.tsx, the Mac's ItemBanner): 44 px, a quiet wash of its tone — the brand ink or
-   the attention colour at 10 %, the ink at 5 % when neutral — no rim; the icon at 16, the sentence at 12 px (two
+/* the line above an item (ItemBanner.tsx, the Mac's ItemBanner): 44 px, a quiet wash of its tone — the brand ink at
+   10 %, the ink at 5 % when neutral — no rim; the icon at 16, the sentence at 12 px (two
    lines at most), small buttons at the right, the first the brand primary */
 .mw-banner {
   flex: none;
@@ -1639,18 +1622,12 @@ body.mw-resizing * {
 .mw-banner.tone-brand {
   background: color-mix(in srgb, var(--brand-ink) 10%, transparent);
 }
-.mw-banner.tone-attn {
-  background: color-mix(in srgb, var(--attn) 10%, transparent);
-}
 .mw-banner-ic {
   width: 16px;
   height: 16px;
   flex: none;
   display: grid;
   place-items: center;
-}
-.mw-banner-ic .icon {
-  color: var(--err, var(--drop));
 }
 .mw-banner-text {
   flex: 1;
@@ -2299,134 +2276,29 @@ body.mw-resizing * {
   background: Highlight;
   color: HighlightText;
 }
-/* the same thin, arrowless, hover-shown bar on the detail pane itself, the sessions list and the terminal (the
-   terminal's arrow cap and the detail's always-on track were base.css's `scrollbar-width: thin`) */
-.mw-detail,
-.ses-rows,
-.app.mw .xterm-viewport {
+/* the same thin, arrowless, hover-shown bar on the detail pane itself (its always-on track was base.css's
+   `scrollbar-width: thin`) */
+.mw-detail {
   scrollbar-width: auto;
   scrollbar-color: auto;
   scrollbar-gutter: auto;
 }
-.mw-detail::-webkit-scrollbar,
-.ses-rows::-webkit-scrollbar,
-.app.mw .xterm-viewport::-webkit-scrollbar {
+.mw-detail::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
-.mw-detail::-webkit-scrollbar-button,
-.ses-rows::-webkit-scrollbar-button,
-.app.mw .xterm-viewport::-webkit-scrollbar-button {
+.mw-detail::-webkit-scrollbar-button {
   display: none;
 }
-.mw-detail::-webkit-scrollbar-track,
-.ses-rows::-webkit-scrollbar-track,
-.app.mw .xterm-viewport::-webkit-scrollbar-track {
+.mw-detail::-webkit-scrollbar-track {
   background: transparent;
 }
-.mw-detail::-webkit-scrollbar-thumb,
-.ses-rows::-webkit-scrollbar-thumb,
-.app.mw .xterm-viewport::-webkit-scrollbar-thumb {
+.mw-detail::-webkit-scrollbar-thumb {
   background: transparent;
   border: 3px solid transparent;
   border-radius: 6px;
   background-clip: content-box;
 }
-.mw-detail:hover::-webkit-scrollbar-thumb,
-.ses-rows:hover::-webkit-scrollbar-thumb,
-.app.mw .xterm-viewport:hover::-webkit-scrollbar-thumb {
+.mw-detail:hover::-webkit-scrollbar-thumb {
   background-color: var(--line-2);
-}
-/* a session's ended / failed card stands at the pane's optical centre (about 40 % down, as the Mac's FinishPanel),
-   not floating at the middle of a tall empty pane */
-.ses-overlay {
-  flex-direction: column;
-}
-.ses-overlay::before,
-.ses-overlay::after {
-  content: '';
-  flex: 2 1 0;
-}
-.ses-overlay::after {
-  flex-grow: 3;
-}
-.ses-overlay > .ses-card {
-  margin: 0 auto;
-  flex: none;
-}
-/* the sessions list: a title on its strip (no empty band with two icons), subtitles that never strand one word */
-.ses-strip-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink);
-  padding-left: 4px;
-}
-.ses-row-sub {
-  text-wrap: pretty;
-}
-/* the sheets' and session cards' secondary buttons: the same neutral fill as the empty states and the selection
-   summary (Cancel, Take Back, Show Output…), so a footer is one family — the brand fill marks only the default */
-.app.mw .hk-foot button:not(.hk-default),
-.app.mw .ses-card-acts button:not(.hk-default),
-.app.mw .mw-finish-foot button:not(.hk-default) {
-  background: var(--chip);
-  border-color: transparent;
-  box-shadow: none;
-}
-.app.mw .hk-foot button:not(.hk-default):hover:not(:disabled),
-.app.mw .ses-card-acts button:not(.hk-default):hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ink) 10%, transparent);
-}
-/* Review Changes stands at the middle of the pane it covers: dropped from 12 vh it left the ended card's ring
-   showing, cut, under its bottom edge */
-.hk-scrim:has(> [data-testid='finish-sheet']) {
-  align-items: center;
-  padding-top: 0;
-}
-/* Review Changes: the summary is the box's heading (13 semibold, the counts in their colours) over 13 px file rows;
-   the branch line is one quiet mono run, "→ main" included; the ⋯ glyph centred in its button */
-[data-testid='finish-sheet'] .hk-box-head {
-  font-size: 13px;
-  color: var(--ink);
-}
-.fs-branch,
-.fs-branch code {
-  font: 400 12px var(--mono);
-  color: var(--mute);
-}
-.app .hk-more {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-/* the sheets' grouped boxes (the Mac's PanelBox): a quiet fill and hairline in both themes, so the 12 px inset of
-   their rows reads as a container, not as a misalignment */
-.hk-box {
-  background: color-mix(in srgb, var(--ink) 3%, transparent);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-/* New Session: "Select All" reads as the link it is (the Mac's accent text button) */
-.app .hk-box-head .hk-small-link {
-  color: var(--brand-ink);
-  font-weight: 500;
-}
-/* the sheets' default button is the window's one primary (the brand button token the empty states, the selection
-   summary and New Item use), not a second, darker green; disabled it keeps its fill at 40 % instead of turning into a
-   grey ghost that reads as a secondary */
-.app.mw button:where(:not(.rv-root *)).hk-default {
-  background: var(--brand-button);
-  border-color: transparent;
-  color: var(--on-brand-button);
-}
-.app.mw button:where(:not(.rv-root *)).hk-default:hover:not(:disabled) {
-  background: var(--brand-button);
-  filter: brightness(0.94);
-}
-.app.mw button:where(:not(.rv-root *)).hk-default:disabled {
-  background: var(--brand-button);
-  border-color: transparent;
-  color: var(--on-brand-button);
-  opacity: 0.4;
 }

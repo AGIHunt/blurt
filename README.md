@@ -87,8 +87,7 @@ Blurt gets your words, pictures and recordings into an agent. The agent does the
 | **Dictation and cards** | Text and pictures go into any chat box or terminal, so they work with every agent. |
 | **Skill** | The `blurt` skill lets your agent record, transcribe, write items, open the review page and export. |
 | **MCP server** | `blurt` gives agents `search_items`, `get_item` (with screenshots), `get_transcript`, `update_item`, `mark_fixed` and `bundle_items`. *Settings → Agents → Connect…* installs the skill and the MCP server into an agent, after showing what it changes. |
-| **Hand off to agent** (`⌘↩`) | Runs Claude Code or Codex in Blurt's terminal, in the project folder, optionally with one git worktree per item. Claude Code can also run in the Claude desktop app. |
-| **Copy instruction** | One line for any other agent, pointing to a hand-off note with every detail and screenshot. |
+| **Copy instruction** | One line to paste into the agent you use, pointing to a hand-off note with every detail and screenshot. Blurt doesn't run agents in a window of its own. |
 | **Hand-off bundle** | One `.zip` with a summary, every item and its screenshots, for a person rather than an agent. |
 
 Agents report back through the MCP server: an item moves to *In progress*, then *To verify*. "Fixed" from an agent

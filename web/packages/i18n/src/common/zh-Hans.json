@@ -17,7 +17,7 @@
   "action.keep": "标为要做",
   "action.keep.hint": "移出待处理并标为要做",
   "action.hand_off": "交给 Agent…",
-  "action.hand_off.hint": "在口喷鸡里运行，或复制指令",
+  "action.hand_off.hint": "复制指令，粘贴到 Claude Code、Codex 或任何 Agent",
   "action.done": "标为完成",
   "action.done.hint": "已处理",
   "action.done.hint_verify": "确认已修复",

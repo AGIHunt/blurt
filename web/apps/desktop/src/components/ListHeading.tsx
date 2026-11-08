@@ -9,8 +9,6 @@ import type { Job, ProjectRow } from '../api';
 import { i18n, plural, t } from '../i18n';
 import { isImeKey } from '../ime';
 import { FilterGlyph, MissingFolderGlyph, ProjectGlyph } from './glyphs';
-import { StatusMark } from './StatusMark';
-import { tone, type Mark } from '../sessions';
 
 export function ListHeading({ title, counts, sortLabel, sortTip, filters, filterTip, showControls, canSort = true, canAdd, onSort, onFilter, onAdd }: {
   title: string;
@@ -204,20 +202,19 @@ export function CapturesBanner({ count, onChoose }: { count: number; onChoose: (
 }
 
 const MAX_JOB_ROWS = 4;
-const JOB_KIND: Record<string, string> = { process: 'spark', route: 'git-branch', snap: 'screenshot', voice: 'voice', record: 'record', agent: 'terminal' };
+const JOB_KIND: Record<string, string> = { process: 'spark', route: 'git-branch', snap: 'screenshot', voice: 'voice', record: 'record' };
 
 /** The running jobs above the list (K4): one row each on the rows' grid — its glyph in the kind column, a spinner in
     the ring's, the title, how far in the time column. A click shows it in the detail. */
-export function JobsSection({ jobs, selected, agentName, projectName, showProject, onSelect }: {
+export function JobsSection({ jobs, selected, projectName, showProject, onSelect }: {
   jobs: Job[];
   selected: string | null;
-  agentName: (id: string) => string;
   projectName: (id: string) => string;
   showProject: boolean;
   onSelect: (j: Job) => void;
 }) {
   // the Mac's JobsView: a header "Running · 2 · 1 failed"; more than one folds under it (closed until opened, or until
-  // one of them is chosen); what needs the user first — an agent waiting on you, then failures — and at most 4 rows
+  // one of them is chosen); failures first — and at most 4 rows
   const [open, setOpen] = useState(false);
   if (!jobs.length) return null;
   const failed = jobs.filter((j) => j.state === 'failed').length;
@@ -228,7 +225,7 @@ export function JobsSection({ jobs, selected, agentName, projectName, showProjec
   const extra = active && failed ? plural('main.jobs.failed', failed) : '';
   const folds = jobs.length > 1;
   const shown = !folds || open || jobs.some((j) => j.id === selected);
-  const rank = (j: Job) => (j.agent?.status === 'waiting_input' ? 0 : j.state === 'failed' ? 1 : 2);
+  const rank = (j: Job) => (j.state === 'failed' ? 0 : 1);
   const ordered = [...jobs].sort((a, b) => rank(a) - rank(b) || b.created.localeCompare(a.created));
   const rows = shown ? ordered.slice(0, MAX_JOB_ROWS) : [];
   return (
@@ -241,36 +238,16 @@ export function JobsSection({ jobs, selected, agentName, projectName, showProjec
       </button>
       {rows.map((j) => {
         const step = j.steps.find((s) => s.state === 'running') ?? j.steps.find((s) => s.state === 'pending');
-        const what = j.type === 'agent' && j.agent ? agentName(j.agent.id) : t(`job.type.${j.type}`);
+        const what = t(`job.type.${j.type}`);
         const detail = j.title ?? (j.items.length ? plural('main.items.count', j.items.length) : null);
         // an organizing job that has a name of its own is that name, not "Organizing · AI fill-in"
         const title = j.type === 'process' && j.title ? j.title : detail ? `${what} · ${detail}` : what;
-        const status = j.state === 'failed' ? t('job.state.failed') : j.type === 'agent' && j.agent ? t(`session.${j.agent.status}`) : step ? t(`job.step.${step.id}`) : t(`job.state.${j.state}`);
-        const pct = j.progress != null && j.state === 'running' && j.type !== 'agent' ? `${Math.round(j.progress * 100)}%` : '';
-        if (j.type === 'agent' && j.agent) {
-          // what it works on, as the hand-off note names it: the first item's id and title (+N)
-          const first = j.labels?.[0];
-          const on = first ? (j.labels!.length > 1 ? t('ses.session.items.more', { a: first.title, b: j.labels!.length - 1 }) : first.title) : detail ?? what;
-          // a session (the Mac's JobRow): its status mark in the kind column, what it works on, and the agent and its
-          // state in the status column, in the attention colour when it waits on you — no spinner
-          const a = j.agent as NonNullable<Job['agent']> & { status_source?: string };
-          const stalled = a.status_source === 'watchdog';
-          const m: Mark = j.state === 'failed' || a.status === 'error' ? 'failed' : a.status === 'exited' ? 'idle' : a.status === 'running' && !stalled ? 'working' : 'waiting';
-          const state = stalled ? t('ses.row.no_response') : t(`ses.status.${a.status}`);
-          const words = `${what} · ${state}`;
-          return (
-            <div key={j.id} role="listitem" className={`mw-job ${selected === j.id ? 'sel' : ''} ${j.state === 'failed' ? 'failed' : ''}`} onClick={() => onSelect(j)} data-testid="job-row" aria-label={`${first ? `${first.id} ` : ''}${on}, ${words}`}>
-              <span className="mw-c-kind"><StatusMark mark={m} size={12} /></span>
-              <span className="mw-c-id">{first?.id ?? (showProject && j.project ? projectName(j.project) : '')}</span>
-              <span className="mw-c-title"><span className="mw-tt" data-tip={first ? `${first.id}  ${on}` : on} data-tip-trunc="">{on}</span>{showProject && first && j.project && <span className="mw-hit">{projectName(j.project)}</span>}</span>
-              <span className={`mw-c-time mw-c-status t-${tone(m)}`}>{words}</span>
-            </div>
-          );
-        }
+        const status = j.state === 'failed' ? t('job.state.failed') : step ? t(`job.step.${step.id}`) : t(`job.state.${j.state}`);
+        const pct = j.progress != null && j.state === 'running' ? `${Math.round(j.progress * 100)}%` : '';
         return (
           <div key={j.id} role="listitem" className={`mw-job ${selected === j.id ? 'sel' : ''} ${j.state === 'failed' ? 'failed' : ''}`} onClick={() => onSelect(j)} data-testid="job-row" data-tip={status}>
             <span className="mw-c-kind"><Icon name={(JOB_KIND[j.type] ?? 'spark') as never} size={15} /></span>
-            <span className="mw-c-id">{j.labels?.[0]?.id ?? (showProject && j.project ? projectName(j.project) : '')}</span>
+            <span className="mw-c-id">{showProject && j.project ? projectName(j.project) : ''}</span>
             <span className="mw-c-title"><span className="mw-tt">{title}</span><span className="mw-hit">{status}</span></span>
             <span className="mw-c-ring">{j.state === 'failed' ? <Icon name="warning" size={13} /> : <span className="mw-spinner sm" />}</span>
             {/* the percentage when it has one, else how long it has run — a row that visibly moves isn't a stuck one */}

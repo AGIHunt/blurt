@@ -194,7 +194,6 @@ final class Island: NSObject, IslandHosting {
     private var hatches: [Hatch] = []
     /// Captures are being organised (Peep thinks in the ear and in the menu bar).
     var organizing: Bool { hatches.contains { $0.ended == nil } }
-    private var lastAgentAlert: [String: String] = [:]
     private(set) var started = false
     var watch: RecordingWatch?
 
@@ -836,10 +835,6 @@ final class Island: NSObject, IslandHosting {
         }
     }
 
-    private var agentAlert: Job? {
-        JobStore.shared.active.first { $0.type == .agent && $0.agent?.status == .waitingInput }
-    }
-
     func updateEars() {
         defer {
             // the menu-bar Peep reads the same state (talking, listening, thinking); it holds still while Peep is here
@@ -930,8 +925,6 @@ final class Island: NSObject, IslandHosting {
                 r = .sorted(since: end.at, ok: end.ok, n: end.items)
             } else if processing > 0 {
                 r = .thinking(n: processing)
-            } else if agentAlert != nil {
-                r = .alert
             } else if inboxNews {
                 // news, not a backlog: what just landed, for a few seconds — the count lives in the menu bar and the
                 // open island's Inbox row
@@ -942,7 +935,7 @@ final class Island: NSObject, IslandHosting {
             let quiet = quietAtRest
             if quiet {
                 switch r {
-                case .thinking, .alert: r = .none
+                case .thinking: r = .none
                 default: break
                 }
             }
@@ -1455,18 +1448,10 @@ final class Island: NSObject, IslandHosting {
                 }
             }
         }
-        // a session that started waiting on you: its marker pulses once
-        for j in changed where j.type == .agent {
-            let st = j.agent?.status.rawValue ?? ""
-            if lastAgentAlert[j.id] != st { lastAgentAlert[j.id] = st; if j.agent?.status == .waitingInput { right.pulse() } }
-        }
         refresh()
     }
 
-    var activeJobs: [Job] { Array(JobStore.shared.active.filter { $0.type != .agent }.prefix(3)) }
-    var sessionsNeedingYou: [Job] {
-        JobStore.shared.active.filter { $0.type == .agent && [.waitingInput, .turnDone, .error].contains($0.agent?.status ?? .running) }
-    }
+    var activeJobs: [Job] { Array(JobStore.shared.active.prefix(3)) }
     var toReview: Int { reviewCount }
 
     private func refreshReviewCount() {

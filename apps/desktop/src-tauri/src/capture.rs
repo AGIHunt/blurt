@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::jobs::JobWriter;
 use crate::projects::{self, Registry};
-use crate::{island, l10n, scripts, sessions, settings, AppState};
+use crate::{agents, island, l10n, scripts, settings, AppState};
 
 /// the snap flow: picker, frozen picture + pen + note bubble, card (the Mac's Snapper / InkStage / NoteBubble)
 pub mod snap;
@@ -716,7 +716,7 @@ fn finished(app: &AppHandle, session: &str, res: Result<StatusEvent, blurt_captu
                 let project = take.as_ref().and_then(|t| t.project.clone());
                 let name = organize::name(project.as_deref());
                 let place = project.clone().unwrap_or_else(|| "inbox".into());
-                match sessions::process(app, Path::new(session), None, project, None, parent) {
+                match agents::process(app, Path::new(session), None, project, None, parent) {
                     // where its items go, how long that usually takes here, and Change (Refile.offerRecording, §6.2)
                     Ok(_) => {
                         let (msg, vars) = match organize::usual(duration) {

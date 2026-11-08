@@ -74,10 +74,11 @@ class Glossary(unittest.TestCase):
             for k, v in t.items():
                 self.assertNotIn("Start in Blurt", v, f"{name} {k}")
                 self.assertFalse(v.startswith("With "), f"{name} {k}: {v!r}")
-        self.assertEqual(en["Main.strings"]["main.menu.start_session"], "Hand Off to Agent")
-        self.assertEqual(zh["Main.strings"]["main.menu.start_session"], "交给 Agent")
-        self.assertEqual(en["review"]["handoff.dispatch"], "Hand Off to Agent")
-        self.assertEqual(zh["review"]["handoff.dispatch"], "交给 Agent")
+        # the Mac's menu item and the review page's button say the same thing, where both are still there (the
+        # in-app sessions they used to open are gone; the wording is the apps' to choose, once)
+        for main, review in ((en["Main.strings"], en["review"]), (zh["Main.strings"], zh["review"])):
+            if "main.menu.start_session" in main and "handoff.dispatch" in review:
+                self.assertEqual(main["main.menu.start_session"], review["handoff.dispatch"])
         for c in (zh["Common.strings"], zh["common"]):
             self.assertEqual(c["state.handed_off"], "已交给 Agent")
             self.assertEqual(c["action.hand_off"], "交给 Agent…")

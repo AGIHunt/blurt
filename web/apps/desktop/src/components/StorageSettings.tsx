@@ -202,9 +202,6 @@ export function StoragePane({ status, s, save, onToast }: { status: AppStatus; s
             <Menu actions={p ? [{ label: S('win.storage.show'), run: () => reveal(p) }] : []} label={S(k)} />
           </Line>
         ))}
-        {status.os !== 'windows' && (
-          <Line icon="terminal" title={S('win.storage.tmux')} detail={S(status.tmux ? 'win.storage.tmux.ok' : 'win.storage.tmux.missing')} warn={!status.tmux} />
-        )}
         {status.os === 'linux' && (
           <Line title={S('win.storage.dmabuf')} detail={S('win.storage.restart')}>
             <Switch on={!!cfg.app?.disable_dmabuf} label={S('win.storage.dmabuf')} set={(v) => save({ app: { ...(cfg.app ?? {}), disable_dmabuf: v } })} />

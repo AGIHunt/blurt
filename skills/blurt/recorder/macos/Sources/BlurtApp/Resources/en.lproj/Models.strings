@@ -114,7 +114,6 @@
 "models.agent.note" = "Blurt asks for your OK the first time the agent changes a setting. The API key passes through the agent and is stored in Keychain.";
 "models.agent.sheet.title" = "Set Up Models with an Agent";
 "models.agent.prompt" = "Set Up Models (Blurt)\n\nSet up Blurt’s speech and AI models for me, following %1$@; run its commands as `uv run %2$@ …`. Ask me its questions before you change anything, help me find or create each service’s API key, and never write a key back into this chat. Blurt asks me to allow the first change.";
-"models.agent.sheet.open" = "Open in Terminal";
 "models.agent.sheet.copied" = "Copied";
 "models.agent.sheet.copy" = "Copy Instruction";
 "models.agent.sheet.detail" = "Copy this instruction and paste it into an agent on your Mac, such as Claude Code or Codex. It asks a few questions, helps you find each service’s API key, and sets things up.";
@@ -126,9 +125,7 @@
 "models.agent.active" = "Setting up with %@";
 "models.agent.active.unknown" = "Setting up with an agent";
 "models.agent.ended" = "Agent setup ended";
-"models.agent.show" = "Show Terminal";
 "models.agent.stop" = "Stop";
-"models.agent.session" = "Model Setup";
 "models.agent.step.connecting" = "Connecting %@…";
 "models.agent.step.connected" = "%@ connected";
 "models.agent.step.connect_failed" = "%@: connection failed";

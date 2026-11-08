@@ -1,5 +1,7 @@
 # Windows 设置 / 托盘菜单 / 快捷键 / 应用级时刻对齐 Mac（审计 + 实施记录）
 
+> 2026-11：Agent 会话（终端窗格、交给 Agent 面板、查看改动 / 合并、Claude 桌面端、tmux）已整体删除，`agent-sessions.md` 也删了。下面表里和会话有关的行只是历史记录。
+
 范围：设置（窗口骨架、搜索、九个面板里除 Agents 细节外的每一行）、菜单栏菜单 → 托盘菜单、全局快捷键、开机启动、
 应用级时刻（LaunchMessages、BrandMoments、Housekeeping、Updater、Support）。
 

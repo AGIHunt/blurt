@@ -15,11 +15,8 @@
 // agent set differently keeps its own, named in the footnote, and is changed in its details sheet (AgentDetailSheet,
 // from Details… or a double-click), whose pop-ups say the inherited value one way: "Default (Haiku)". The sheet also
 // has the agent's sign-in (Sign In… next to "Not signed in"), the blurt skill + MCP (Connect: agents.py install, a
-// --dry-run preview first, applied only after the user confirms), a test run, and in its header the version and whether
-// it works in sessions.
-// Sessions: whether they outlive Blurt (tmux; a switch that is on and fixed while tmux is there, said why), the current
-// project's default agent, where Claude hand-offs start (the recommended value marked inside the menu), and once, which
-// agents can run in sessions. "Ask your agent" (agents.ask) is the page's closing footnote with Examples… (a popover of
+// --dry-run preview first, applied only after the user confirms), a test run, and in its header the version.
+// "Ask your agent" (agents.ask) is the page's closing footnote with Examples… (a popover of
 // three requests, copy on hover): sending items anywhere is the agent's job with its own tools; this is where the old
 // Export pane's links land (SettingsCatalog.moved).
 import AppKit
@@ -46,8 +43,6 @@ final class AgentsModel: ObservableObject {
     @Published var testKeyLook = false
     @Published var testing: String?
     @Published var tests: [String: (ok: Bool, text: String)] = [:]
-    @Published var doctor: SessionsDoctor?
-    @Published var projectAgent: String = ""
     /// Each installed agent's models (agents.py models), for its details sheet.
     @Published var models: [String: AgentModels] = [:]
     /// The row under the pointer (its drag handle and ⋯ menu show), the agent whose details sheet is open, the one
@@ -62,8 +57,6 @@ final class AgentsModel: ObservableObject {
 
     var headless: [CoreAgent] { rows.filter(\.headless) }
     var manual: [CoreAgent] { rows.filter { !$0.headless } }
-    var project: Project? { ProjectStore.shared.current }
-    func sessions(_ a: CoreAgent) -> Bool { doctor?.agents[a.id] ?? false }
 
     /// Their skill + MCP are in place (agents.py install --dry-run would change nothing): no Connect button. nil = not
     /// checked yet.
@@ -122,7 +115,6 @@ final class AgentsModel: ObservableObject {
     func load(login: Bool = true) async {
         loading = true
         defer { loading = false }
-        async let doc = try? AgentSessions.shared.doctor()
         do {
             let d = try await Agents.shared.detectAll(login: login)
             var fresh = d.agents
@@ -155,8 +147,6 @@ final class AgentsModel: ObservableObject {
             self.error = peopleText(error, context: "agents detect")
             rows = rows.map { var r = $0; if r.state == "checking" { r.state = "unknown" }; return r }    // no spinner for good
         }
-        doctor = await doc
-        projectAgent = project?.defaultAgent ?? ""
         for a in rows where a.headless && a.installed {
             if let m = try? await Agents.shared.models(a.id), !m.models.isEmpty { models[a.id] = m }
         }
@@ -252,14 +242,6 @@ final class AgentsModel: ObservableObject {
         save()
     }
 
-    func setProjectAgent(_ id: String) {
-        guard let p = project else { return }
-        projectAgent = id
-        Task {
-            do { try await ProjectStore.shared.update(p.id, ["default_agent": id.isEmpty ? NSNull() : id]) }
-            catch { self.error = peopleText(error, context: "project default agent") }
-        }
-    }
 
     /// Step 1: the preview. Nothing is written.
     func preview(_ a: CoreAgent) async {
@@ -295,7 +277,7 @@ final class AgentsModel: ObservableObject {
         try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         do {
             let c = try await Agents.shared.command(a.id, mode: "headless", prompt: "Reply with exactly the word: ok", repo: tmp, events: false)
-            guard let argv = c.argv, let exe = argv.first else { tests[a.id] = (false, TL("agents.test.no_command")); return }
+            guard let argv = c.argv, let exe = argv.first else { tests[a.id] = (false, AL("agents.test.no_command")); return }
             let env = SkillCLI.shared.environment().merging(c.env) { _, n in n }
             let t0 = Date()
             let r = await Task.detached { ShellEnv.runCapture(exe, Array(argv.dropFirst()), env: env, timeout: 120) }.value
@@ -306,13 +288,13 @@ final class AgentsModel: ObservableObject {
                 f.locale = Loc.locale
                 f.maximumFractionDigits = 1
                 f.minimumFractionDigits = 1
-                tests[a.id] = (true, TL("agents.test.ok", f.string(from: secs as NSNumber) ?? "\(secs)"))
+                tests[a.id] = (true, AL("agents.test.ok", f.string(from: secs as NSNumber) ?? "\(secs)"))
             } else {
                 // its reason in words (login, quota, network… with the fix), never an exit code or raw output (logged)
                 NSLog("blurt agent test %@: status %@: %@", a.id, r.status.map { "\($0)" } ?? "timeout", String(out.suffix(600)))
                 let def = AgentHub.shared.def(a.id)
-                let why = r.status == nil ? TL("agents.test.timeout")
-                    : def.flatMap { d in AgentHub.shared.classify(out).map { $0.reasonText(d) } } ?? TL("agents.test.failed", a.name)
+                let why = r.status == nil ? AL("agents.test.timeout")
+                    : def.flatMap { d in AgentHub.shared.classify(out).map { $0.reasonText(d) } } ?? AL("agents.test.failed", a.name)
                 tests[a.id] = (false, why)
             }
         } catch { tests[a.id] = (false, peopleText(error, context: "agent test")) }
@@ -352,7 +334,7 @@ struct AgentsPane: View {
     var body: some View {
         // the list's section is named like the page (Agents): no heading of its own; the lead says how it works, with
         // Check Again at its end (the list's own action)
-        SettingsPage(.agents, lead: SettingsLead(text: Text(TL("agents.lead")), accessory: AnyView(checkAgain))) {
+        SettingsPage(.agents, lead: SettingsLead(text: Text(AL("agents.lead")), accessory: AnyView(checkAgain))) {
             SettingsGroup("agents.list", footer: m.error, content: {
                 // one stack: the untitled group hides only the first row's hairline (not every row's)
                 VStack(alignment: .leading, spacing: 0) {
@@ -373,10 +355,8 @@ struct AgentsPane: View {
 
             organizeSection
 
-            sessionsSection
-
             if !apps.isEmpty {
-                SettingsGroup("agents.manual", footer: TL("agents.manual.footer")) {
+                SettingsGroup("agents.manual", footer: AL("agents.manual.footer")) {
                     ForEach(apps) { a in agentRow(a, ordered: false) }
                 }
             }
@@ -400,8 +380,8 @@ struct AgentsPane: View {
     /// Check Again, at the right end of the page's lead (a spinner beside it while a check runs).
     var checkAgain: some View {
         HStack(spacing: 6) {
-            if m.loading { BrandSpinnerView(size: 10, label: TL("agents.state.checking")) }
-            Button(TL("agents.check_again")) { m.recheck() }
+            if m.loading { BrandSpinnerView(size: 10, label: AL("agents.state.checking")) }
+            Button(AL("agents.check_again")) { m.recheck() }
                 .buttonStyle(.plain)
                 .foregroundStyle(m.loading ? Color.secondary : Color.brandInk)
                 .disabled(m.loading)
@@ -418,7 +398,7 @@ struct AgentsPane: View {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                         .rotationEffect(.degrees(m.showMissing ? 90 : 0))
                         .frame(width: SettingsMetrics.iconSlot)
-                    Text(TL("agents.missing")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
+                    Text(AL("agents.missing")).font(.system(size: SettingsMetrics.titleSize)).foregroundStyle(.secondary)
                         .gridProbe(.iconText, "not installed")
                     // the names while folded; open, the rows under it name them
                     if !m.showMissing {
@@ -430,7 +410,7 @@ struct AgentsPane: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(TL("agents.missing"))
+            .accessibilityLabel(AL("agents.missing"))
             .accessibilityValue(m.showMissing ? "1" : "0")
         }
         if m.showMissing {
@@ -481,7 +461,7 @@ struct AgentsPane: View {
                                 .foregroundStyle(on(a, ordered: ordered) && (a.installed || a.state == "checking") ? .primary : .secondary)
                                 .lineLimit(1)
                                 .gridProbe(.iconText, a.name)
-                            if ordered && a.id == m.pick && checked { Badge(TL("agents.in_use")) }
+                            if ordered && a.id == m.pick && checked { Badge(AL("agents.in_use")) }
                         }
                         if let t = m.tests[a.id] {
                             Label(t.text, systemImage: t.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
@@ -501,7 +481,7 @@ struct AgentsPane: View {
         .overlay(alignment: .leading) {
             if ordered && hover && a.installed {
                 Image(systemName: "line.3.horizontal").font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
-                    .offset(x: -SettingsMetrics.boxInset - 18).help(TL("agents.drag")).accessibilityHidden(true)
+                    .offset(x: -SettingsMetrics.boxInset - 18).help(AL("agents.drag")).accessibilityHidden(true)
             }
         }
         .contentShape(Rectangle())
@@ -525,7 +505,7 @@ struct AgentsPane: View {
                 Text(v).font(.system(size: SettingsMetrics.detailSize).monospacedDigit()).foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .padding(.leading, 2)
-                    .help(TL("agents.details.version", v))
+                    .help(AL("agents.details.version", v))
             }
             if let h = AgentFix.stateHelp(a) { InfoButton(title: a.name, text: h) }
         }
@@ -537,25 +517,25 @@ struct AgentsPane: View {
     @ViewBuilder
     func fixButton(_ a: CoreAgent, ordered: Bool) -> some View {
         if needsSignIn(a, ordered: ordered) {
-            Button(TL("agents.sign_in")) { m.fixFor = a.id }
+            Button(AL("agents.sign_in")) { m.fixFor = a.id }
                 .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                 .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: false).buttonStyle(.automatic) }
         } else if !a.installed && a.state != "checking" {
             if !a.headless, let url = AgentFix.site(AgentHub.shared.def(a.id)?.installText ?? "") {
-                Button(TL("agents.get_app", a.name)) {
+                Button(AL("agents.get_app", a.name)) {
                     NSWorkspace.shared.open(url)
                     emit(["event": "agents_get_app", "agent": a.id, "url": url.absoluteString])
                 }
                 .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                 .help(url.host ?? url.absoluteString)
             } else {
-                Button(TL("agents.install_cli")) { m.fixFor = a.id }
+                Button(AL("agents.install_cli")) { m.fixFor = a.id }
                     .buttonStyle(SettingsOutlinedButtonStyle(compact: true))
                     .popover(isPresented: fixBinding(a.id), arrowEdge: .bottom) { AgentFixPopover(m: m, agent: a, install: true).buttonStyle(.automatic) }
             }
         } else if !a.headless && a.installed && m.connected[a.id] != true {
             // an app of its own: Connect is the one thing to do here (the blurt skill + MCP, by hand in its settings)
-            Button(TL("agents.install")) { Task { await m.preview(a) } }.buttonStyle(SettingsOutlinedButtonStyle(compact: true)).help(TL("agents.install.help"))
+            Button(AL("agents.install")) { Task { await m.preview(a) } }.buttonStyle(SettingsOutlinedButtonStyle(compact: true)).help(AL("agents.install.help"))
         }
     }
 
@@ -565,9 +545,9 @@ struct AgentsPane: View {
     func trailing(_ a: CoreAgent, ordered: Bool, hover: Bool) -> some View {
         HStack(spacing: 10) {
             if m.installing == a.id || m.testing == a.id {
-                BrandSpinnerView(size: 10, label: TL(m.testing == a.id ? "agents.test" : "agents.install"))
+                BrandSpinnerView(size: 10, label: AL(m.testing == a.id ? "agents.test" : "agents.install"))
             } else {
-                RowMenu(label: TL("agents.more.named", a.name), visible: hover) { menuItems(a, ordered: ordered) }
+                RowMenu(label: AL("agents.more.named", a.name), visible: hover) { menuItems(a, ordered: ordered) }
             }
             stateLabel(a)
             if fixSlot > 0 || hasFix(a, ordered: ordered) {
@@ -585,7 +565,7 @@ struct AgentsPane: View {
                     switchView(a, isOn: .constant(false)).hidden().accessibilityHidden(true)     // the room, the same in every row
                     if switched {
                         switchView(a, isOn: Binding(get: { m.enabled.contains(a.id) }, set: { m.toggle(a.id, $0) }))
-                            .help(TL(m.enabled.contains(a.id) ? "agents.use.on.help" : "agents.use.off.help"))
+                            .help(AL(m.enabled.contains(a.id) ? "agents.use.on.help" : "agents.use.off.help"))
                     }
                 }
             }
@@ -593,8 +573,8 @@ struct AgentsPane: View {
     }
 
     func switchView(_ a: CoreAgent, isOn: Binding<Bool>) -> some View {
-        Toggle(TL("agents.use", a.name), isOn: isOn).labelsHidden()
-            .toggleStyle(BrandSwitchStyle(label: TL("agents.use", a.name)))
+        Toggle(AL("agents.use", a.name), isOn: isOn).labelsHidden()
+            .toggleStyle(BrandSwitchStyle(label: AL("agents.use", a.name)))
     }
 
     /// The row has a fix button (fixButton's cases).
@@ -613,26 +593,26 @@ struct AgentsPane: View {
     @ViewBuilder
     func menuItems(_ a: CoreAgent, ordered: Bool) -> some View {
         if hasDetails(a) {
-            Button(TL("agents.details")) { m.details = a.id }
-            Button(TL("agents.test")) { Task { await m.test(a) } }.disabled(m.testing != nil)
+            Button(AL("agents.details")) { m.details = a.id }
+            Button(AL("agents.test")) { Task { await m.test(a) } }.disabled(m.testing != nil)
         }
         if a.installed {
             if m.connected[a.id] == true {
-                Button(TL("agents.connected.menu")) {}.disabled(true)
+                Button(AL("agents.connected.menu")) {}.disabled(true)
             } else {
-                Button(TL("agents.connect.menu")) { Task { await m.preview(a) } }.disabled(m.installing != nil)
+                Button(AL("agents.connect.menu")) { Task { await m.preview(a) } }.disabled(m.installing != nil)
             }
         }
-        if needsSignIn(a, ordered: ordered) { Button(TL("agents.sign_in")) { m.fixFor = a.id } }
-        if !a.installed && a.headless { Button(TL("agents.install_cli")) { m.fixFor = a.id } }
+        if needsSignIn(a, ordered: ordered) { Button(AL("agents.sign_in")) { m.fixFor = a.id } }
+        if !a.installed && a.headless { Button(AL("agents.install_cli")) { m.fixFor = a.id } }
         if ordered && a.installed {
             Divider()
             let i = m.headless.firstIndex { $0.id == a.id } ?? 0
-            Button(TL("agents.move_up")) { m.moveUp(a.id) }.disabled(i == 0)
-            Button(TL("agents.move_down")) { m.moveDown(a.id) }.disabled(i >= m.headless.count - 1)
+            Button(AL("agents.move_up")) { m.moveUp(a.id) }.disabled(i == 0)
+            Button(AL("agents.move_down")) { m.moveDown(a.id) }.disabled(i >= m.headless.count - 1)
         }
         Divider()
-        Button(TL("agents.check_again")) { m.recheck() }.disabled(m.loading)
+        Button(AL("agents.check_again")) { m.recheck() }.disabled(m.loading)
     }
 
     func stateText(_ a: CoreAgent) -> String { AgentFix.stateText(a) }
@@ -647,17 +627,17 @@ struct AgentsPane: View {
             ForEach(ProcessingKind.allCases, id: \.self) { k in
                 SettingsLine(flashID: k == .recording ? "agents.organize" : nil) {
                     HStack(spacing: AgentsLayout.columnGap) {
-                        Text(TL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
+                        Text(AL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .help(TL("agents.processing.\(k.rawValue).help"))
+                            .help(AL("agents.processing.\(k.rawValue).help"))
                             .gridProbe(.text, k.rawValue)
                         let cur = m.sharedSetting(k)
-                        ChoicePopup(label: TL("agents.processing.\(k.rawValue)"),
-                                    choices: [("default", TL("agents.processing.default")), ("cheapest", TL("agents.processing.cheapest"))],
+                        ChoicePopup(label: AL("agents.processing.\(k.rawValue)"),
+                                    choices: [("default", AL("agents.processing.default")), ("cheapest", AL("agents.processing.cheapest"))],
                                     selection: Binding(get: { cur.model }, set: { m.setShared(k, model: $0) }),
                                     width: AgentsLayout.modelWidth)
-                        ChoicePopup(label: TL("agents.effort"),
-                                    choices: [("default", TL("agents.effort.default"))] + m.sharedEfforts.map { ($0, TL("agents.effort.\($0)")) },
+                        ChoicePopup(label: AL("agents.effort"),
+                                    choices: [("default", AL("agents.effort.default"))] + m.sharedEfforts.map { ($0, AL("agents.effort.\($0)")) },
                                     selection: Binding(get: { cur.effort }, set: { m.setShared(k, effort: $0) }),
                                     width: AgentsLayout.effortWidth, dividers: [1])
                             .gridProbe(.trailing, "effort")
@@ -670,68 +650,8 @@ struct AgentsPane: View {
     /// "Every agent uses these…", and the ones set differently (in their details).
     var organizeFooter: String {
         let own = m.ownSettings.map(\.name)
-        let base = TL("agents.organize.footer")
-        return own.isEmpty ? base : base + " " + TL("agents.organize.own", Loc.list(own))
-    }
-
-    // MARK: sessions
-
-    @ViewBuilder
-    var sessionsSection: some View {
-        let s = AgentSessions.shared
-        SettingsGroup("agents.sessions", footer: sessionsFooter) {
-            // whether sessions outlive Blurt (tmux): a switch like every other on/off, on and fixed while tmux is
-            // there (the line says why it can't be turned off); off, with how to get tmux, while it isn't
-            let version = s.tmuxAvailable ? s.tmuxVersion : nil
-            // working: one line, how behind its ⓘ; tmux missing or too old: the line under it says what to do
-            SettingRow("agents.keep_sessions",
-                       detail: version == nil ? TL(s.tmuxPath == nil ? "agents.keep_sessions.missing" : "agents.keep_sessions.old") : nil,
-                       help: version.map { TL("agents.keep_sessions.ok", $0) },
-                       detailColor: version == nil ? .brandAttnInk : nil) {
-                HStack(spacing: 8) {
-                    if version == nil {
-                        CommandText(text: "brew install tmux")
-                        Button { s.refreshTmux(); Task { await m.load(login: false) } } label: { Image(systemName: "arrow.clockwise") }
-                            .buttonStyle(.borderless).help(TL("agents.check_again")).accessibilityLabel(TL("agents.check_again"))
-                    }
-                    Toggle(TL("agents.keep_sessions"), isOn: .constant(version != nil))
-                        .labelsHidden().toggleStyle(BrandSwitchStyle(label: TL("agents.keep_sessions")))
-                        .disabled(true)
-                        .help(version != nil ? TL("agents.keep_sessions.fixed") : TL("agents.keep_sessions.missing"))
-                }
-            }
-            if let p = m.project {
-                SettingRow("agents.project_agent", title: TL("agents.project_agent", p.name)) {
-                    ChoicePopup(label: TL("agents.project_agent", p.name),
-                                choices: [("", TL("agents.project_agent.default"))] + m.rows.filter { m.sessions($0) && $0.installed }.map { ($0.id, $0.name) },
-                                selection: Binding(get: { m.projectAgent }, set: { m.setProjectAgent($0) }), dividers: [1])
-                }
-            }
-            ForEach(m.rows.filter { $0.installed && m.sessions($0) && DesktopApp.supports($0.id) }) { a in
-                let installed = DesktopApp.available(a.id)
-                // Where an agent's hand-offs start (Claude): Blurt's terminal (recommended, said inside the menu so the
-                // closed button stays short) or its desktop app — config sessions.target, the key the sheet remembers.
-                SettingRow("agents.handoff", title: TL("agents.handoff_target", a.name),
-                           help: installed ? TL("agents.handoff_target.hint") : TL("agents.handoff_target.no_app", DesktopApp.name(a.id))) {
-                    // the recommended one first, said in its own words inside the menu so the closed button stays short
-                    ChoicePopup(label: TL("agents.handoff_target", a.name),
-                                choices: [(HandoffTarget.terminal, TL("agents.handoff.terminal")),
-                                          (HandoffTarget.desktop, TL("agents.handoff.desktop", DesktopApp.name(a.id)))],
-                                selection: Binding(get: { DesktopApp.target(a.id) },
-                                                   set: { DesktopApp.remember(a.id, $0); m.objectWillChange.send() }))
-                    .disabled(!installed)
-                }
-            }
-        }
-    }
-
-    /// Once, for the section: which agents can work on items in a session (no badge repeated on every row).
-    var sessionsFooter: String? {
-        let names = m.rows.filter { $0.installed && m.sessions($0) }.map(\.name)
-        guard !names.isEmpty else { return nil }
-        let f = ListFormatter()
-        f.locale = Loc.locale
-        return TL("agents.sessions.footer", f.string(from: names) ?? names.joined(separator: ", "))
+        let base = AL("agents.organize.footer")
+        return own.isEmpty ? base : base + " " + AL("agents.organize.own", Loc.list(own))
     }
 
     // MARK: ask your agent
@@ -741,10 +661,10 @@ struct AgentsPane: View {
     var askNote: some View {
         SettingsGroup("agents.ask", boxed: false) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(TL("agents.ask.line")).foregroundStyle(.secondary)
+                Text(AL("agents.ask.line")).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .gridProbe(.head, "ask")
-                InkLink(TL("agents.ask.examples")) { m.examplesShown = true }
+                InkLink(AL("agents.ask.examples")) { m.examplesShown = true }
                     .popover(isPresented: $m.examplesShown, arrowEdge: .top) { AskExamples() }
                 Spacer(minLength: 0)
             }
@@ -771,8 +691,8 @@ struct AgentsColumnNames: View {
     var body: some View {
         // each over its pop-up's own text, not its edge
         HStack(spacing: AgentsLayout.columnGap) {
-            Text(TL("agents.details.model")).padding(.leading, 9).frame(width: AgentsLayout.modelWidth, alignment: .leading)
-            Text(TL("agents.effort")).padding(.leading, 9).frame(width: AgentsLayout.effortWidth, alignment: .leading)
+            Text(AL("agents.details.model")).padding(.leading, 9).frame(width: AgentsLayout.modelWidth, alignment: .leading)
+            Text(AL("agents.effort")).padding(.leading, 9).frame(width: AgentsLayout.effortWidth, alignment: .leading)
         }
         // captions over the pop-ups (11 pt), not a second heading beside the section's
         .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -795,20 +715,20 @@ struct AskExamples: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(TL("agents.ask.header")).font(.headline)
+            Text(AL("agents.ask.header")).font(.headline)
             VStack(alignment: .leading, spacing: 2) {
                 ForEach(AgentsPane.askExamples, id: \.self) { key in
                     HStack(spacing: 10) {
-                        Text(AgentsPane.quoted(TL(key))).font(.system(size: SettingsMetrics.titleSize)).textSelection(.enabled)
+                        Text(AgentsPane.quoted(AL(key))).font(.system(size: SettingsMetrics.titleSize)).textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         Button {
                             NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(TL(key), forType: .string)
+                            NSPasteboard.general.setString(AL(key), forType: .string)
                             copied = key
                             emit(["event": "agents_ask_copied", "example": key])
                         } label: { Image(systemName: copied == key ? "checkmark" : "doc.on.doc") }
-                            .buttonStyle(.borderless).help(TL("agents.ask.copy")).accessibilityLabel(TL("agents.ask.copy"))
+                            .buttonStyle(.borderless).help(AL("agents.ask.copy")).accessibilityLabel(AL("agents.ask.copy"))
                             .opacity(hover == key || copied == key ? 1 : 0)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 6)
@@ -818,7 +738,7 @@ struct AskExamples: View {
                 }
             }
             .padding(.horizontal, -8)
-            Text(TL("agents.ask.footer")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            Text(AL("agents.ask.footer")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(16)
@@ -836,14 +756,14 @@ struct AgentFixPopover: View {
     var body: some View {
         let def = AgentHub.shared.def(agent.id)
         VStack(alignment: .leading, spacing: 10) {
-            Text(TL(install ? "agents.fix.install_title" : "agents.fix.sign_in_title", agent.name)).font(.headline)
+            Text(AL(install ? "agents.fix.install_title" : "agents.fix.sign_in_title", agent.name)).font(.headline)
             if install {
                 let text = def?.installText ?? ""
                 if AgentFix.isCommand(text) {
-                    Text(TL("agents.fix.run")).font(.system(size: SettingsMetrics.titleSize))
+                    Text(AL("agents.fix.run")).font(.system(size: SettingsMetrics.titleSize))
                     CommandText(text: AgentFix.command(text))
                 } else if let url = AgentFix.site(text) {
-                    Text(TL("agents.fix.site")).font(.system(size: SettingsMetrics.titleSize))
+                    Text(AL("agents.fix.site")).font(.system(size: SettingsMetrics.titleSize))
                     Link(url.host.map { $0 + url.path } ?? url.absoluteString, destination: url).foregroundStyle(Color.brandInk)
                 } else if !text.isEmpty {
                     Text(text).font(.system(size: SettingsMetrics.titleSize)).textSelection(.enabled)
@@ -853,11 +773,11 @@ struct AgentFixPopover: View {
                     .fixedSize(horizontal: false, vertical: true)
                 if let c = AgentFix.signInCommand(agent.id, fallback: agent.fix) { CommandText(text: c) }
             }
-            Text(TL("agents.fix.then")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+            Text(AL("agents.fix.then")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Spacer()
-                Button(TL("agents.check_again")) { m.fixFor = nil; m.recheck() }.keyboardShortcut(.defaultAction)
+                Button(AL("agents.check_again")) { m.fixFor = nil; m.recheck() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(16)
@@ -866,7 +786,7 @@ struct AgentFixPopover: View {
 }
 
 /// One agent's settings, from Details… or a double-click on its row — built from the page's own parts: its header (name,
-/// version, whether it works in sessions; on the right its status mark, its state and, when it needs one, Sign In…),
+/// version; on the right its status mark, its state and, when it needs one, Sign In…),
 /// Organizing as on the page (the same heading, the column names on its line, the same box, the footnote under it),
 /// whose pop-ups say the inherited value one way — "Default (Haiku)" — then the blurt skill + MCP and a test run. Done
 /// is the sheet's default, filled.
@@ -882,17 +802,17 @@ struct AgentDetailSheet: View {
             if let a = agent {
                 header(a)
                 if let ms = m.models[a.id] {
-                    SettingsGroup(Self.organizeID, title: TL("agents.organize.header"), footer: footnote(a), content: {
+                    SettingsGroup(Self.organizeID, title: AL("agents.organize.header"), footer: footnote(a), content: {
                         ForEach(ProcessingKind.allCases, id: \.self) { k in
                             SettingsLine {
                                 HStack(spacing: AgentsLayout.columnGap) {
-                                    Text(TL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
+                                    Text(AL("agents.organize.\(k.rawValue)")).font(.system(size: SettingsMetrics.titleSize))
                                         .frame(maxWidth: .infinity, alignment: .leading)
-                                        .help(TL("agents.processing.\(k.rawValue).help"))
-                                    ChoicePopup(label: TL("agents.processing.\(k.rawValue)"), choices: modelChoices(k, ms),
+                                        .help(AL("agents.processing.\(k.rawValue).help"))
+                                    ChoicePopup(label: AL("agents.processing.\(k.rawValue)"), choices: modelChoices(k, ms),
                                                 selection: modelBinding(a.id, k), width: AgentsLayout.modelWidth, dividers: [1, 3])
                                     if !ms.efforts.isEmpty {
-                                        ChoicePopup(label: TL("agents.effort"), choices: effortChoices(k, ms),
+                                        ChoicePopup(label: AL("agents.effort"), choices: effortChoices(k, ms),
                                                     selection: effortBinding(a.id, k), width: AgentsLayout.effortWidth, dividers: [1, 2])
                                     }
                                 }
@@ -900,26 +820,26 @@ struct AgentDetailSheet: View {
                         }
                     }, accessory: { AgentsColumnNames() })
                 } else {
-                    SettingsGroup(Self.organizeID, title: TL("agents.organize.header")) {
-                        SettingsLine { Hint(TL("agents.details.no_models")) }
+                    SettingsGroup(Self.organizeID, title: AL("agents.organize.header")) {
+                        SettingsLine { Hint(AL("agents.details.no_models")) }
                     }
                 }
-                SettingsGroup(Self.connectID, title: TL("agents.details.more")) {
-                    line(TL("agents.details.skill"),
-                         detail: TL(m.connected[a.id] == true ? "agents.connected.help" : "agents.not_connected.help")) {
+                SettingsGroup(Self.connectID, title: AL("agents.details.more")) {
+                    line(AL("agents.details.skill"),
+                         detail: AL(m.connected[a.id] == true ? "agents.connected.help" : "agents.not_connected.help")) {
                         if m.installing == a.id { BrandSpinnerView(size: 14) }
-                        else if m.connected[a.id] == true { Text(TL("agents.details.connected")).foregroundStyle(.secondary) }
-                        else { Button(TL("agents.install")) { Task { await m.preview(a) } } }
+                        else if m.connected[a.id] == true { Text(AL("agents.details.connected")).foregroundStyle(.secondary) }
+                        else { Button(AL("agents.install")) { Task { await m.preview(a) } } }
                     }
-                    line(TL("agents.details.test"), detail: TL("agents.test.help"), result: m.tests[a.id]) {
+                    line(AL("agents.details.test"), detail: AL("agents.test.help"), result: m.tests[a.id]) {
                         if m.testing == a.id { BrandSpinnerView(size: 14) }
-                        else { Button(TL("agents.test")) { Task { await m.test(a) } }.disabled(m.testing != nil) }
+                        else { Button(AL("agents.test")) { Task { await m.test(a) } }.disabled(m.testing != nil) }
                     }
                 }
             }
             HStack {
                 Spacer()
-                Button(TL("common.done")) { m.details = nil }
+                Button(AL("common.done")) { m.details = nil }
                     .buttonStyle(.borderedProminent).tint(Color.settingsDefault)
                     .keyboardShortcut(.defaultAction)
             }
@@ -933,17 +853,15 @@ struct AgentDetailSheet: View {
         }
     }
 
-    /// Name and version (and whether it works in sessions) on the left; on the right the row's status, and the one
+    /// Name and version on the left; on the right the row's status, and the one
     /// fix it needs right next to it.
     func header(_ a: CoreAgent) -> some View {
         let tone = AgentsPane().tone(a, ordered: a.headless)
         return HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(a.name).font(.system(size: 17, weight: .semibold))
-                let facts = [a.version.map { TL("agents.details.version", shortVersion($0)) },
-                             m.sessions(a) ? TL("agents.details.sessions_ok") : nil].compactMap { $0 }
-                if !facts.isEmpty {
-                    Text(facts.joined(separator: " · ")).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
+                if let v = a.version {
+                    Text(AL("agents.details.version", shortVersion(v))).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: 12)
@@ -952,7 +870,7 @@ struct AgentDetailSheet: View {
                 Text(AgentFix.stateText(a)).font(.system(size: SettingsMetrics.detailSize)).foregroundStyle(.secondary)
             }
             if a.headless && a.installed && a.state == "logged_out" {
-                Button(TL("agents.sign_in")) { m.fixFor = a.id }
+                Button(AL("agents.sign_in")) { m.fixFor = a.id }
                     .controlSize(.small)
                     .popover(isPresented: Binding(get: { m.fixFor == a.id }, set: { if !$0 { m.fixFor = nil } }), arrowEdge: .bottom) {
                         AgentFixPopover(m: m, agent: a, install: false)
@@ -964,7 +882,7 @@ struct AgentDetailSheet: View {
 
     /// Under Organizing: what effort costs, and Codex's trust note.
     func footnote(_ a: CoreAgent) -> String {
-        [TL("agents.details.models.note"), a.id == "codex" ? TL("agents.codex_trust") : nil].compactMap { $0 }.joined(separator: " ")
+        [AL("agents.details.models.note"), a.id == "codex" ? AL("agents.codex_trust") : nil].compactMap { $0 }.joined(separator: " ")
     }
 
     /// "Default (Haiku)" — the page's shared choice, by this agent's model name — then the page's two choices by name,
@@ -972,17 +890,17 @@ struct AgentDetailSheet: View {
     func modelChoices(_ k: ProcessingKind, _ ms: AgentModels) -> [(value: String, title: String)] {
         let shared = m.sharedSetting(k).model
         let named: String? = shared == "cheapest" ? ms.name(ms.cheapest) : ms.name(ms.cliDefault)
-        let follow = TL("agents.organize.inherit", named ?? TL(shared == "cheapest" ? "agents.processing.cheapest" : "agents.processing.default"))
-        let cli = ms.name(ms.cliDefault).map { TL("agents.processing.default_named", $0) } ?? TL("agents.processing.default")
-        let cheap = ms.name(ms.cheapest).map { TL("agents.processing.cheapest_named", $0) } ?? TL("agents.processing.cheapest")
+        let follow = AL("agents.organize.inherit", named ?? AL(shared == "cheapest" ? "agents.processing.cheapest" : "agents.processing.default"))
+        let cli = ms.name(ms.cliDefault).map { AL("agents.processing.default_named", $0) } ?? AL("agents.processing.default")
+        let cheap = ms.name(ms.cheapest).map { AL("agents.processing.cheapest_named", $0) } ?? AL("agents.processing.cheapest")
         var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", cli), ("cheapest", cheap)]
         for x in ms.models { out.append((x.id, x.name)) }
         return out
     }
     func effortChoices(_ k: ProcessingKind, _ ms: AgentModels) -> [(value: String, title: String)] {
-        let follow = TL("agents.organize.inherit", TL("agents.effort.\(m.sharedSetting(k).effort)"))
-        var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", TL("agents.effort.default"))]
-        for e in ms.efforts { out.append((e, TL("agents.effort.\(e)"))) }
+        let follow = AL("agents.organize.inherit", AL("agents.effort.\(m.sharedSetting(k).effort)"))
+        var out: [(value: String, title: String)] = [(AgentsModel.sharedID, follow), ("default", AL("agents.effort.default"))]
+        for e in ms.efforts { out.append((e, AL("agents.effort.\(e)"))) }
         return out
     }
     func modelBinding(_ id: String, _ k: ProcessingKind) -> Binding<String> {
@@ -1016,25 +934,25 @@ struct AgentDetailSheet: View {
 /// An agent's state and fixes in words, the same on the row, the details sheet and the fix popover.
 enum AgentFix {
     static func stateText(_ a: CoreAgent) -> String {
-        if !a.headless { return TL(a.installed ? "agents.state.manual" : "agents.state.not_installed") }
+        if !a.headless { return AL(a.installed ? "agents.state.manual" : "agents.state.not_installed") }
         // a state the app has words for is said in the app's words (one wording on every surface: 未安装 / 未登录),
         // whatever the script's `why` says; its `why` only for a state the app doesn't know
         switch a.state {
-        case "not_installed": return TL("agents.state.not_installed")
-        case "ready": return TL("agents.state.ready")
-        case "checking": return TL("agents.state.checking")
-        case "unknown": return TL("agents.state.unknown")
-        case "configured": return TL("agents.state.configured")
-        case "logged_out": return TL("agents.state.logged_out")
-        default: return a.why.isEmpty ? TL("agents.state.unknown") : a.why
+        case "not_installed": return AL("agents.state.not_installed")
+        case "ready": return AL("agents.state.ready")
+        case "checking": return AL("agents.state.checking")
+        case "unknown": return AL("agents.state.unknown")
+        case "configured": return AL("agents.state.configured")
+        case "logged_out": return AL("agents.state.logged_out")
+        default: return a.why.isEmpty ? AL("agents.state.unknown") : a.why
         }
     }
 
     /// The state in a word or two, for the row's right end (Signed in, Not signed in, Can't check sign-in, Installed).
     static func shortState(_ a: CoreAgent) -> String {
-        if !a.headless { return TL(a.installed ? "agents.state.installed" : "agents.state.not_installed") }
+        if !a.headless { return AL(a.installed ? "agents.state.installed" : "agents.state.not_installed") }
         switch a.state {
-        case "unknown", "configured": return TL("agents.state.unchecked")
+        case "unknown", "configured": return AL("agents.state.unchecked")
         default: return stateText(a)
         }
     }
@@ -1042,9 +960,9 @@ enum AgentFix {
     /// What the short state leaves out, for its ⓘ: why a sign-in can't be checked, or how an app of its own gets blurt.
     static func stateHelp(_ a: CoreAgent) -> String? {
         guard a.installed else { return nil }
-        if !a.headless { return TL("agents.state.manual.help") }
+        if !a.headless { return AL("agents.state.manual.help") }
         switch a.state {
-        case "unknown", "configured": return TL("agents.state.unchecked.help")
+        case "unknown", "configured": return AL("agents.state.unchecked.help")
         default: return nil
         }
     }
@@ -1113,38 +1031,38 @@ struct InstallSheet: View {
         let name = AgentNames.name(agent)
         let skill = c.subject == .skill
         let group = c.group(otherIsBlurt: otherIsBlurt ?? c.conflictIsBlurt)
-        let about = TL(skill ? "install.row.about.skill" : "install.row.about.mcp", name)
-        let inPlaceTitle = TL(skill ? "install.row.in_place.skill" : "install.row.in_place.mcp")
+        let about = AL(skill ? "install.row.about.skill" : "install.row.about.mcp", name)
+        let inPlaceTitle = AL(skill ? "install.row.in_place.skill" : "install.row.in_place.mcp")
         if c.action == "manual" {
             let fix = AgentHub.shared.def(agent).map(\.fixText).flatMap { $0.isEmpty ? nil : $0 } ?? c.how.flatMap { $0.isEmpty ? nil : $0 }
-            return Row(change: c, group: group, tone: .attn, title: TL(skill ? "install.row.manual.skill" : "install.row.manual.mcp"),
-                       detail: fix ?? TL("install.row.manual.none", name))
+            return Row(change: c, group: group, tone: .attn, title: AL(skill ? "install.row.manual.skill" : "install.row.manual.mcp"),
+                       detail: fix ?? AL("install.row.manual.none", name))
         }
         if c.action == "error" {
             NSLog("blurt install: %@ %@: %@", c.action, c.path ?? "", c.error ?? "")
-            return Row(change: c, group: group, tone: .err, title: TL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
-                       detail: c.path.map { TL("install.error.path", InstallChange.tilde($0)) } ?? TL("install.error"))
+            return Row(change: c, group: group, tone: .err, title: AL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
+                       detail: c.path.map { AL("install.error.path", InstallChange.tilde($0)) } ?? AL("install.error"))
         }
         if c.ok == false {
             NSLog("blurt install: %@ %@: %@ %@", c.action, c.path ?? "", c.error ?? "", c.output ?? "")
-            return Row(change: c, group: group, tone: .err, title: TL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
-                       detail: TL("install.row.failed.detail", name))
+            return Row(change: c, group: group, tone: .err, title: AL(skill ? "install.row.failed.skill" : "install.row.failed.mcp"),
+                       detail: AL("install.row.failed.detail", name))
         }
         switch c.action {
         case "symlink", "run", "json_merge":
             let done = applied && c.ok == true
             return Row(change: c, group: group, tone: done ? .added : .add,
-                       title: TL(done ? (skill ? "install.row.added.skill" : "install.row.added.mcp")
+                       title: AL(done ? (skill ? "install.row.added.skill" : "install.row.added.mcp")
                                       : (skill ? "install.row.add.skill" : "install.row.add.mcp")),
                        detail: about)
         case "conflict" where group == .inPlace:
             return Row(change: c, group: group, tone: .inPlace, title: inPlaceTitle,
-                       detail: TL("install.row.other_copy", InstallChange.tilde(c.otherCopy ?? "?")))
+                       detail: AL("install.row.other_copy", InstallChange.tilde(c.otherCopy ?? "?")))
         case "conflict":
-            return Row(change: c, group: group, tone: .attn, title: TL("install.row.conflict.title"),
-                       detail: TL("install.row.conflict", InstallChange.tilde(c.path ?? "?")), reveal: c.path)
+            return Row(change: c, group: group, tone: .attn, title: AL("install.row.conflict.title"),
+                       detail: AL("install.row.conflict", InstallChange.tilde(c.path ?? "?")), reveal: c.path)
         default:
-            return Row(change: c, group: group, tone: .inPlace, title: inPlaceTitle, detail: TL("install.row.exists"))
+            return Row(change: c, group: group, tone: .inPlace, title: inPlaceTitle, detail: AL("install.row.exists"))
         }
     }
 
@@ -1163,12 +1081,12 @@ struct InstallSheet: View {
     var failed: Bool { applied && !plan.applied }
 
     var title: String {
-        if applied { return TL(failed ? "install.title.failed" : "install.title.applied", agent.name) }
-        return TL(nothingToDo ? "install.title.nothing" : "install.title", agent.name)
+        if applied { return AL(failed ? "install.title.failed" : "install.title.applied", agent.name) }
+        return AL(nothingToDo ? "install.title.nothing" : "install.title", agent.name)
     }
     var subtitle: String {
-        if applied { return failed ? TL("install.benefit.failed") : TL("install.benefit.applied", agent.name) }
-        return TL(nothingToDo ? "install.benefit.nothing" : "install.benefit", agent.name)
+        if applied { return failed ? AL("install.benefit.failed") : AL("install.benefit.applied", agent.name) }
+        return AL(nothingToDo ? "install.benefit.nothing" : "install.benefit", agent.name)
     }
 
     /// The exact lines under Details: one per change that has a command or a path.
@@ -1211,7 +1129,7 @@ struct InstallSheet: View {
         return VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(rows.enumerated()), id: \.offset) { i, r in
                 if showInPlaceLabel, r.group == .inPlace, i == 0 || rows[i - 1].group != .inPlace {
-                    Text(TL("install.group.in_place")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
+                    Text(AL("install.group.in_place")).font(.system(size: 11, weight: .medium)).foregroundStyle(.secondary)
                         .padding(.top, 4).accessibilityAddTraits(.isHeader)
                 }
                 rowView(r)
@@ -1266,7 +1184,7 @@ struct InstallSheet: View {
         DisclosureGroup(isExpanded: $m.installDetails) {
             InstallDetailsWell(lines: technical).padding(.top, 8)
         } label: {
-            Text(TL("install.details")).font(.system(size: 12)).foregroundStyle(.secondary)
+            Text(AL("install.details")).font(.system(size: 12)).foregroundStyle(.secondary)
                 .contentShape(Rectangle())
                 .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { m.installDetails.toggle() } }
         }
@@ -1277,25 +1195,25 @@ struct InstallSheet: View {
     var footer: some View {
         HStack(alignment: .center, spacing: 8) {
             if m.installing != nil {
-                BrandSpinnerView(size: 14, label: TL("install.working"))
-                Text(TL("install.working")).font(.system(size: 12)).foregroundStyle(.secondary)
+                BrandSpinnerView(size: 14, label: AL("install.working"))
+                Text(AL("install.working")).font(.system(size: 12)).foregroundStyle(.secondary)
             } else if !applied && !nothingToDo {
-                Text(TL("install.footnote")).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(AL("install.footnote")).font(.system(size: 12)).foregroundStyle(.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             } else if applied && !failed {
                 // agents read their skills and MCP servers when a session starts: a session already open doesn't see them
-                Text(TL("install.next", agent.name)).font(.system(size: 12)).foregroundStyle(.secondary)
+                Text(AL("install.next", agent.name)).font(.system(size: 12)).foregroundStyle(.secondary)
                     .lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 12)
             if applied || nothingToDo {
-                Button(TL("common.done")) { m.plan = nil; Task { await m.load() } }
+                Button(AL("common.done")) { m.plan = nil; Task { await m.load() } }
                     .buttonStyle(.borderedProminent).tint(Color.settingsDefault).keyboardShortcut(.defaultAction)
             } else {
-                Button(TL("common.cancel")) { m.plan = nil }.keyboardShortcut(.cancelAction)
+                Button(AL("common.cancel")) { m.plan = nil }.keyboardShortcut(.cancelAction)
                     .disabled(m.installing != nil)
                 // white on the light accent in both appearances (≥ 4.5 : 1; the dark accent is 3.19 : 1, §9)
-                Button(TL("install.confirm")) { Task { await m.apply() } }
+                Button(AL("install.confirm")) { Task { await m.apply() } }
                     .buttonStyle(.borderedProminent).tint(Color.settingsDefault).keyboardShortcut(.defaultAction)
                     .disabled(m.installing != nil)
             }
@@ -1320,13 +1238,19 @@ struct InstallMark: View {
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
             Image(nsImage: NSApp.applicationIconImage ?? NSImage()).resizable().interpolation(.high).frame(width: 44, height: 44)
-            if let url = DesktopApp.appURL(agent) {
+            if let url = Self.appURL(agent) {
                 Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().interpolation(.high)
                     .frame(width: 22, height: 22).offset(x: 4, y: 3)
             }
         }
         .frame(width: 48, height: 48, alignment: .topLeading)
         .accessibilityHidden(true)
+    }
+
+    /// The agent's desktop app, when it has one and it is installed (Claude).
+    static let desktopApps = ["claude": "com.anthropic.claudefordesktop"]
+    static func appURL(_ agent: String) -> URL? {
+        desktopApps[agent].flatMap { NSWorkspace.shared.urlForApplication(withBundleIdentifier: $0) }
     }
 }
 
@@ -1369,7 +1293,7 @@ struct InstallDetailsWell: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.borderless)
-            .help(copied ? TL("install.copied") : T("settings.kit.copy"))
+            .help(copied ? AL("install.copied") : T("settings.kit.copy"))
             .accessibilityLabel(T("settings.kit.copy"))
             .padding(5)
         }

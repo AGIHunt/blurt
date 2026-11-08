@@ -34,8 +34,7 @@ ID is the agent's draft id (I-001) or a uid; "." means the session itself (title
   doc        SESSION | --project P|inbox [--state S]… [--kind K]… [--item REF]   what the review page shows; --item:
              that item is always in it, whatever the filters (the one a detail pane shows, a discarded one too);
              when its file can't be read it is listed in `_unreadable` [{uid, id, title, path}] instead (the page says
-             so, never "gone"). The doc also carries `agents` {id: {name, desktop}} (names people know, never ids)
-             and, on items with a session in the agent's desktop app, `_work_runner: "desktop"`
+             so, never "gone"). The doc also carries `agents` {id: {name}} (names people know, never ids)
   poll       (as doc) --etag E                         → {"etag"} when nothing changed, else {"doc","etag"}
   user-ops   SESSION | --project P (--json OPS | --stdin) [--confirm] [--item REF]   the user's edits (apps)
   migrate    [--all [--no-projects] | SESSION … | --root DIR] [--dry-run]     v1/v2 sessions → items; --all also
@@ -1190,10 +1189,6 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
         doc = {"schema": st.SCHEMA, "scope": sc, "title": meta.get("name"), "digest": None,
                "language": None, "processing": False, "reviewed": False, "agent_at": None, "source_video": None,
                "_video": False, "project": pid}
-    for it in items:  # handed to the agent's desktop app: the page names that app, not the CLI
-        jid = (it.get("work") or {}).get("job") if state_of(it) in ("handed_off", "in_progress") else None
-        if jid and _job_runner(jid) == "desktop":
-            it["_work_runner"] = "desktop"
     doc["items"] = items
     doc["_removed"] = removed
     doc["agents"] = _agent_names()
@@ -1205,21 +1200,13 @@ def make_doc(scope: dict, kinds=(), states=None, include: str | None = None) -> 
 
 
 def _agent_names() -> dict:
-    """agent id → {name, desktop}: the names people know (agents.json plus their own agent_defs), never the ids."""
+    """agent id → {name}: the names people know (agents.json plus their own agent_defs), never the ids."""
     try:
         import agents  # noqa: PLC0415
-        return {k: {"name": d.get("name") or k, "desktop": (agents.desktop_spec(d) or {}).get("name")}
+        return {k: {"name": d.get("name") or k}
                 for k, d in agents.definitions(agents.config(None)).items()}
     except Exception:  # noqa: BLE001 — names are a nicety: the page falls back to "Agent"
         return {}
-
-
-def _job_runner(jid: str) -> str | None:
-    try:
-        o = json.loads((blurt_home() / "jobs" / f"{jid}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    return ((o.get("agent") or {}) if isinstance(o, dict) else {}).get("runner")
 
 
 def doc_etag(doc: dict) -> str:
@@ -1519,9 +1506,9 @@ def dangling_work(con=None) -> list[tuple[Path, str]]:
 
 
 def repair_work(dry_run: bool = False) -> list[str]:
-    """Once per dangling reference (items.py migrate --all, at every app launch; idempotent): forget the session id
-    so nothing offers to open it. The item keeps its state — the app says the session ended without reporting back,
-    and the user takes it back or marks it done. A v0.6 run was a session Blurt started, so `to` says so."""
+    """Once per dangling reference (items.py migrate --all, at every app launch; idempotent): forget a job id whose
+    job file is gone (jobs.py gc; the removed agent sessions' jobs) so nothing offers to open it. The item keeps its
+    state, and the user takes it back or marks it done. A v0.6 run was a session Blurt started, so `to` says so."""
     fixed = []
     for path, job in dangling_work():
         if not path.is_file():

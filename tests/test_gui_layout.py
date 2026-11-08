@@ -103,7 +103,7 @@ class App:
                 w.setsampwidth(2)
                 w.setframerate(48000)
                 w.writeframes(b"\0\0" * 48000 * 6)
-        envs = {"BLURT_HOME": self.home, "BLURT_WORKSPACE": self.ws, "BLURT_TMUX_SOCKET": f"blurt-test-{self.channel}",
+        envs = {"BLURT_HOME": self.home, "BLURT_WORKSPACE": self.ws,
                 "BLURT_TEST_MIC_WAV": quiet,
                 "BLURT_NO_NOTIFICATIONS": 1, "BLURT_NO_ONBOARDING": 1, "BLURT_TEST_COMMANDS": 1,
                 "BLURT_TEST_CHANNEL": self.channel, "BLURT_SPOTLIGHT_DOMAIN": f"dev.blurt.test.{self.channel}",
@@ -212,8 +212,6 @@ def screens(app: App) -> list[tuple[str, str, list[tuple[str, str]]]]:
     s.append(("panels", "command palette closed", [("wp6", "mainpalette close")]))
     s.append(("panels", "move popover", [("wp6", "main all"), ("wp6", "mainsel 0"), ("wp6", "mainmovepop open")]))
     s.append(("panels", "move popover closed", [("wp6", "mainmovepop close")]))
-    s.append(("panels", "dispatch panel", [("wp6", "main all"), ("wp6", "mainsel 0"), ("terminal", "dispatch @selected")]))
-    s.append(("panels", "sessions window", [("terminal", "window")]))
     s.append(("panels", "toast", [("wp6", "toastdone")]))
     s.append(("panels", "island", [("shell", "island open")]))
     s.append(("panels", "island switcher", [("shell", "island switcher")]))

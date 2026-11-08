@@ -101,10 +101,10 @@ mod tests {
             assert!(!v.trim().is_empty() && !zh[k].trim().is_empty(), "{k} is empty");
         }
         // K4: every job type and step has a name
-        for t in ["record", "snap", "voice", "process", "route", "agent"] {
+        for t in ["record", "snap", "voice", "process", "route"] {
             assert!(en.contains_key(&format!("job.type.{t}")), "job.type.{t}");
         }
-        for s in ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route", "launch", "work", "finish"] {
+        for s in ["capture", "finalize", "listen", "transcribe", "file", "prepare", "write", "frames", "route"] {
             assert!(en.contains_key(&format!("job.step.{s}")), "job.step.{s}");
         }
     }

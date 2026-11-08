@@ -5,10 +5,10 @@
 //  • collapsed: only what is live (Island.updateEars) — recording (dot + time | snaps or the level), a voice note
 //    (Peep listening + wave | how it ends, then the clock), dictation (Peep talking + level | style marks + clock; Peep
 //    thinking + dots while it works), the cards waiting (their glyph + count), Peep thinking while captures are
-//    organised, an agent that waits on you (a dot), "+n" as captures land in the inbox, a done moment ("✓ Copied").
+//    organised, "+n" as captures land in the inbox, a done moment ("✓ Copied").
 //    Nothing at all at rest: the inbox's backlog is the tray's and the open island's Inbox row.
-//  • open (hover 180 ms, or a hotkey): IslandContent — home (Peep, the project, record / snap / voice; jobs, sessions
-//    that need you, the cards waiting with Organize, the Inbox row, or the keys), the recording controls, the voice
+//  • open (hover 180 ms, or a hotkey): IslandContent — home (Peep, the project, record / snap / voice; jobs, the
+//    cards waiting with Organize, the Inbox row, or the keys), the recording controls, the voice
 //    note, the project switcher and the drop drawer. Toasts: one layout (mark, headline · detail, a quiet button).
 //  • the cards hang only while you look (HangingCards): newest first, at most five, centred under the island
 //    (cards.ts = BlurtCore CardRow); they come down when the pointer rests on the island, after a capture, or from the
@@ -152,7 +152,6 @@ function dictClock(): string {
 /** in its last half minute the clock counts down: its minus is drawn by .time.neg::before, kerned onto the digits
  *  (Segoe UI's U+2212 carries wide side bearings — "− 0:28" read as two things; the Mac sets it tight) */
 const dictCountdown = () => dictElapsed() >= DICT_COUNTDOWN;
-const AGENTS: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', kimi: 'Kimi Code', opencode: 'OpenCode' };
 const tipKey = (label: string, key?: string) => (key ? t('island.tip_key', { label, key }) : label);
 
 // glyphs the line family doesn't have as such, at its stroke (IslandGlyph): record (a ring and a dot), Unassigned
@@ -171,7 +170,7 @@ const missingGlyph = (size = 15) =>
 const placeGlyph = (p: ProjectRef) => (p.exists === false ? `<span class="dim">${missingGlyph()}</span>` : folderGlyph(p));
 
 // ------------------------------------------------------------------ state
-let S: IslandState = { project: null, projects: [], toReview: 0, recording: null, voice: null, hatching: 0, jobs: [], sessions: [], hotkeys: {} };
+let S: IslandState = { project: null, projects: [], toReview: 0, recording: null, voice: null, hatching: 0, jobs: [], hotkeys: {} };
 let stateAt = performance.now();
 let level = 0;
 // Peep's beak follows the voice while you dictate (the level as the wave bars read it: ~0.1 rms is a loud word)
@@ -194,7 +193,6 @@ document.addEventListener('mousemove', (e) => {
 let filter = '';
 let selIx = 0;
 let showAll = false;
-let attention = 0; // performance.now() of the last "needs you"
 let bump = 0;
 let moment: null | { text: string; until: number; lead?: 'keyboard' } = null; // "✓ Copied" in the ears; ⌨ ✓ Sent
 let news: null | { n: number; until: number } = null; // "+n" as captures land in the inbox
@@ -213,7 +211,6 @@ const hanging = () => live.filter((l) => l.phase === 'hang' || l.phase === 'fly'
 // the count says what has landed: a card still flying in adds its 1 when it reaches its place (Mac C43: the number
 // ticks as the card arrives, never ahead of it)
 const cardCount = () => live.filter((l) => l.phase === 'hang').length;
-const needsYou = () => S.sessions.filter((s) => s.status === 'waiting_input');
 
 // ------------------------------------------------------------------ toasts (BlurtCore ToastQueue, the island's rules)
 interface Toast {
@@ -352,7 +349,6 @@ function visible(): boolean {
     drawer ||
     hovering ||
     hanging().length || // a first card still flying in: the island it lands in is there
-    needsYou().length ||
     moment ||
     performance.now() < helloUntil ||
     news ||
@@ -363,9 +359,6 @@ function visible(): boolean {
 }
 
 // ------------------------------------------------------------------ the ears (collapsed: Island.updateEars)
-function attnDot() {
-  return `<i class="attn${performance.now() - attention < 1200 ? ' pulse' : ''}" aria-hidden="true"></i>`;
-}
 const waveHtml = (n: number, cls = '') => `<span class="wave${cls ? ' ' + cls : ''}" data-wave>${'<i></i>'.repeat(n)}</span>`;
 const cardsEar = () =>
   `<button class="earbtn" data-a="cards.reveal" title="${esc(plural('island.cards_waiting', cardCount()))}">${ic('cards', 15, 'cards-ic')}<span class="num">${num(cardCount())}</span></button>`;
@@ -459,12 +452,11 @@ function ears(): { l: string; r: string } {
     // transcribing, polishing: Peep thinks (its eye looks round), three dots
     return { l: mascotHtml('thinking', { size: 24 }), r: `<span class="dots" aria-label="${esc(t(`island.dictation.${d.phase}`))}"><i></i><i></i><i></i></span>` };
   }
-  // the right ear's one thing: a run that just ended, Peep thinking with the count, an agent waiting, the inbox's news
+  // the right ear's one thing: a run that just ended, Peep thinking with the count, the inbox's news
   let lr: { l: string; r: string } | null = null;
   if (performance.now() < helloUntil) lr = { l: '', r: `<span class="hello">${mascotHtml('hello', { size: 24 })}<span>${esc(t('island.hello'))}</span></span>` };
   else if (sorted) lr = { l: mascotHtml(sorted.ok ? 'done' : 'error', { size: 24 }), r: sorted.n ? `<span class="num">+${num(sorted.n)}</span>` : '' };
   else if (S.hatching) lr = { l: mascotHtml('thinking', { size: 24 }), r: `<span class="num">${num(S.hatching)}</span>` };
-  else if (needsYou().length) lr = { l: '', r: attnDot() };
   else if (news) lr = { l: ic('inbox', 15), r: `<span class="num">+${num(news.n)}</span>` };
   if (cardCount()) {
     // the cards' count is one thing (their stack and the number together); the left ear when nothing else is there
@@ -553,14 +545,6 @@ function jobRow(j: JobRow) {
     <span class="prog"><i style="width:${(p * 100).toFixed(0)}%"></i></span></span></button>`;
 }
 
-function sessionRow(s: IslandState['sessions'][number]) {
-  const ids = s.items.join(', ');
-  const sub = [t(`session.${s.status}`), AGENTS[s.agent] ?? s.agent].join(' · ');
-  return `<button class="row sess" data-a="open.session" data-job="${esc(s.job)}">
-    <span class="lead"><i class="sdot s-${esc(s.status)}"></i></span>
-    <span class="txt"><span class="title">${esc(ids || t('job.type.agent'))}</span><span class="sub">${esc(sub)}</span></span></button>`;
-}
-
 function hkHint(key: string | undefined, label: string) {
   return key ? t('island.hint', { key, label }) : null;
 }
@@ -573,7 +557,6 @@ function homeBody() {
     ${toolBtn('voice', ic('mic', 15), t('island.voice'), S.hotkeys.voice)}</div>`;
   const rows: string[] = [];
   for (const j of S.jobs.slice(0, 3)) rows.push(jobRow(j));
-  for (const s of S.sessions) rows.push(sessionRow(s));
   const n = cardCount();
   if (n) {
     // the cards waiting, and the view's one filled button: with a current project they are organized into it; with
@@ -1203,9 +1186,8 @@ island.addEventListener('click', (e) => {
       if (tt?.action?.a === 'card.restore' || tt?.action?.a === 'card.putback') revealCards(true);
       return dismissToast();
     }
-    case 'open.session':
     case 'open.job':
-      void host.emit(EV.action, { action: 'open.session', job: a.dataset.job });
+      void host.emit(EV.action, { action: 'open.job', job: a.dataset.job });
       break;
     case 'voice.structured':
       void host.emit(EV.action, { action: 'voice.structured' });
@@ -1213,7 +1195,7 @@ island.addEventListener('click', (e) => {
     default:
       void host.emit(EV.action, { action });
   }
-  if (['open.inbox', 'open.session', 'open.job', 'record', 'snap', 'voice', 'project.open'].includes(action)) {
+  if (['open.inbox', 'open.job', 'record', 'snap', 'voice', 'project.open'].includes(action)) {
     toastNow = null;
     open = false;
     closeSwitcher();
@@ -1260,7 +1242,7 @@ function showToastOp(op: Extract<IslandOp, { op: 'toast' }>) {
     case 'failed': {
       sorted = { ok: false, n: 0, until: performance.now() + 2400 };
       const what = op.type ? t(`job.type.${op.type}`) : t('job.type.process');
-      return postToast({ text: t('island.toast.didnt_finish', { what }), peep: 'error', passive: true, action: op.job ? { a: 'open.session', label: 'island.toast.show', extra: { job: op.job } } : undefined });
+      return postToast({ text: t('island.toast.didnt_finish', { what }), peep: 'error', passive: true, action: op.job ? { a: 'open.job', label: 'island.toast.show', extra: { job: op.job } } : undefined });
     }
     case 'taken': {
       // what went in (the Mac's DragReceipt): the picture, the picture and its note, the .md too, the note copied
@@ -3011,10 +2993,6 @@ function apply(op: IslandOp) {
       peekUntil = performance.now() + 3000;
       setTimeout(render, 3050);
       break;
-    case 'attention':
-      if (op.status === 'waiting_input') attention = performance.now();
-      setTimeout(render, 1300);
-      break;
     case 'status':
       if (op.line.ev === 'level') level = op.line.rms;
       if (op.line.ev === 'snap' && S.cardPrefs?.snapSound) shutter();
@@ -3133,7 +3111,6 @@ await ready(host, 'island', (push) => {
     voice: null,
     hatching: demo === '1' ? 1 : 0,
     jobs: demo === '1' ? [{ id: 'j1', type: 'process', title: zh ? '价格页走查' : 'Pricing page walkthrough', step: 'write', progress: 0.62 }] : [],
-    sessions: demo === '1' ? [{ job: 'j2', agent: 'claude', status: 'waiting_input', items: ['BA-12', 'BA-13'] }] : [],
     hotkeys: { record: 'Alt+Shift+R', snap: 'Alt+Shift+A', voice: 'Alt+Shift+V', project: 'Alt+Shift+O', pen: 'Alt+Shift+D' },
     expanded: ['1', 'rec', 'voice', 'auto', 'discard', 'quiet', 'pen'].includes(demo),
   };

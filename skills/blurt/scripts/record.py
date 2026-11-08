@@ -638,7 +638,8 @@ INFO_PLIST = SWIFT_DIR / "Info.plist"
 
 
 def swift_sources() -> list[Path]:
-    """Everything the build depends on: Package.swift, Info.plist, Sources/**, Vendor/** (SwiftTerm; not .build/)."""
+    """Everything the build depends on: Package.swift, Info.plist, Sources/** and Vendor/** when there is one (not
+    .build/)."""
     files = [SWIFT_DIR / "Package.swift", INFO_PLIST]
     for d in ("Sources", "Vendor"):
         files += sorted(p for p in (SWIFT_DIR / d).rglob("*") if p.is_file() and not p.name.startswith("."))

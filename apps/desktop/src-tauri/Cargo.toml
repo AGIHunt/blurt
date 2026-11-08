@@ -37,10 +37,6 @@ dirs = "6"
 sys-locale = "0.3"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 base64 = "0.22"
-# K5: the embedded terminal — tmux attach-cmd (macOS / Linux) or the app runner in ConPTY (Windows)
-portable-pty = "0.9"
-# the app runner reads its agent's screen (pty.rs ScreenWatch): what tmux capture-pane gives sessions.py on the Mac
-vt100 = "0.16"
 # record.py ffmpeg engine + overlay windows (picker, island, cards, note)
 blurt-capture = { path = "../../../crates/blurt-capture" }
 # a snap's strokes burnt into shots/NNN.marked.png (capture/snap.rs)
@@ -71,9 +67,6 @@ windows-core = "0.62"
 # lib.rs browser_ui_off: WebView2's own reload / find / print keys and (overlays) its Back / Refresh menu off;
 # folder_drop.rs: the paths of folders dropped from Explorer (ICoreWebView2File); already in the tree through wry
 webview2-com = "0.39"
-# agent-session notifications whose click opens that session (the plugin's toasts have no click callback on Windows);
-# already in the tree through tauri-plugin-notification → notify-rust
-tauri-winrt-notification = "0.8"
 # a card dragged out of the island: an OLE file drag other apps take (chat, editors, Explorer)
 drag = "2.1.1"
 
