@@ -24,9 +24,10 @@ def test_icons_follow_the_grid():
     assert len(icons) >= 60
     assert [e for ic in icons for e in iconlib.lint(ic)] == []
     names = {i.name for i in icons}
-    for brand in ("chicken", "blurt", "egg", "hatch", "hatched", "peck", "bug", "spark", "document",
-                  "checkbox", "mic", "waveform", "snap", "agent", "agent-run", "mcp"):
+    for brand in ("bug", "spark", "document", "checkbox", "mic", "waveform", "snap", "agent", "agent-run", "mcp"):
         assert brand in names
+    for gone in ("chicken", "blurt", "egg", "egg-fill", "hatch", "hatched", "peck"):   # the old chick's line glyphs
+        assert gone not in names, gone
 
 
 KIND_ICONS = {"issue": "bug", "idea": "lightbulb", "note": "document", "task": "checkbox"}   # a custom lens: "tag"
@@ -96,18 +97,6 @@ def test_menu_bar_is_peeps_template_glyph():
     assert "tray-white.png" in (ROOT / "assets/brand/import_peep.py").read_text()
 
 
-def test_blurt_line_glyph_is_a_bold_silhouette():
-    """The `blurt` line glyph (the Tauri tray's mark; the mac menu bar is Peep now): one filled silhouette, the face
-    knocked out, at least 16 pt of its 18 pt box, foot on a whole point."""
-    icon = next(i for i in iconlib.load_all() if i.name == "blurt")
-    assert [L.mode for L in icon.layers] == ["fill"]
-    x0, y0, x1, y1 = iconlib.extent(icon)
-    assert 0.5 <= x0 and 0.5 <= y0 and x1 <= 23.5 and y1 <= 23.5
-    assert (y1 - y0) * 0.75 >= 16 and (x1 - x0) * 0.75 >= 15, (x0, y0, x1, y1)
-    assert abs(y1 * 0.75 - round(y1 * 0.75)) < 0.01                 # the foot on a whole point
-    assert icon.layers[0].d.count("M") >= 4                        # outline + two eye holes + the beak hole
-
-
 PEEP = ROOT / "skills/blurt/recorder/macos/Sources/BlurtApp/Resources/Peep"
 STATES = ("idle", "hello", "listening", "talking", "thinking", "done", "error")
 
@@ -115,15 +104,13 @@ STATES = ("idle", "hello", "listening", "talking", "thinking", "done", "error")
 def test_peep_is_imported_from_its_release_package():
     """Peep has one source, the Blender model, and reaches the repo only through assets/brand/import_peep.py from the
     release package: the app's sprite sheets and glyph frames with peep.json, the app icon (.icns, the macOS 26 .icon,
-    the 1024 tiles), the brand SVGs, the README pictures and the review page's drawing. The 4A chick's generator and
-    the older logos are kept in assets/brand/legacy/ and drive nothing."""
+    the 1024 tiles), the brand SVGs, the README pictures and the review page's drawing. The old chicks (the 4A line
+    chick, the 1A round chick, the earlier logos) are gone from the repo; git history keeps them."""
     import json
     brand = ROOT / "assets/brand"
     assert (brand / "import_peep.py").exists()
-    for gone in ("chick.swift", "build.py", "glyph.svg", "logo.svg", "app-icon.svg"):
-        assert not (brand / gone).exists() and (brand / "legacy" / gone).exists(), gone
-    for old in ("logo-1.png", "logo-v0.8a.png", "logo-v0.9-4a.png"):
-        assert (brand / "legacy" / old).stat().st_size > 0, old
+    for gone in ("chick.swift", "build.py", "glyph.svg", "logo.svg", "app-icon.svg", "legacy"):
+        assert not (brand / gone).exists(), gone
     m = json.loads((PEEP / "peep.json").read_text())
     assert set(m["sets"]["dark"]["clips"]) == set(STATES), "the notch plays every state"
     assert {"idle", "hello", "done"} <= set(m["sets"]["paper"]["clips"])
@@ -295,7 +282,7 @@ def test_web_mascot_is_peep():
     set without the contact shadow, cut per tier by import_peep.py — `s` for the island, `l` for the app window), each
     app importing only its tier; the island's ear talks with the voice while you dictate, listens to a voice note and
     thinks while captures are organised; the welcome says hello, the empty states idle. The Tauri app's icons and tray
-    are Peep's tiles and flat mark. The 1A chick's strips are retired to assets/brand/legacy/mascot."""
+    are Peep's tiles and flat mark. The 1A chick's strips are gone."""
     import json
     web = ROOT / "web/packages/icons"
     m = json.loads((web / "peep/peep.json").read_text())
@@ -305,7 +292,7 @@ def test_web_mascot_is_peep():
     sheets = list((web / "peep").glob("*.webp"))
     assert sheets and sum(p.stat().st_size for p in sheets) < 800 * 1024
     assert not (web / "mascot").exists() and not (ROOT / "assets/mascot").exists()
-    assert (ROOT / "assets/brand/legacy/mascot/mascot.json").exists()
+    assert not (ROOT / "assets/brand/legacy").exists()
     island = (ROOT / "web/apps/overlays/src/island.ts").read_text()
     assert "import '@blurt/icons/peep-s'" in island and "setMascotLevel(" in island
     assert "mascotHtml('talking', { size: 24, level: true })" in island and "mascotHtml('listening'" in island

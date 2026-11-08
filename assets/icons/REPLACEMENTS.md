@@ -6,6 +6,9 @@ Key legends (⌘ ⌥ ⇧ ⌃ ⏎ ↩ ⌫ ⇥ ⎋, arrows) and typography (· …
 `python3 assets/icons/tools/check_glyphs.py` enforces this for Swift, TS/TSX/CSS/HTML, Rust and the Tk recorder, and
 `tests/test_icons.py` runs it. A line that really needs a glyph as text can end with a `glyph-ok` comment that gives the reason.
 
+The old chick's line glyphs (`chicken`, `blurt`, `egg`, `egg-fill`, `hatch`, `hatched`, `peck`) were retired on
+2026-11-09: Peep replaced them everywhere, and the tables below still name them only as history.
+
 ## Status
 
 Every occurrence is replaced. WP4, WP6 and WP7 had finished, so I edited their files directly.
@@ -36,9 +39,8 @@ routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For 
 
 - Kinds: `KindStyle.icon(kind)` / `KindStyle.color(kind)` / `KindStyle.image(kind, size:)` and the work state's
   `StatusRing.image(state, size:)` (K8). The kind icons (`bug`, `lightbulb`, `document`, `checkbox`, `tag`) are one family of
-  our own, never SF Symbols (docs/design/system.md §2.6). Eggs are
-  brand and motion only (organising is Peep thinking now, on the Mac and the web alike).
-- Session states: to process = `.egg`, hatching = `.hatch`, reviewed = `.hatched`. Fixed = `.peck`, fixing = `.wand` (SF `wand.and.stars`).
+  our own, never SF Symbols (docs/design/system.md §2.6). Organising
+  is Peep thinking, on the Mac and the web alike.
 - Never put an emoji or a ✓ / ✗ / ● glyph into a title. Use `icon.label(text, font:, color:)` for NSTextField or
   NSMenuItem.attributedTitle, and `icon.makeLayer(…)` next to a CATextLayer, which can't draw attachments.
 
@@ -47,20 +49,20 @@ routes brand concepts through `BlurtIcon`, and generic ones use SF Symbols. For 
 **Swift** (`Sources/BlurtApp/Icons/`, `enum BlurtIcon`; the cases are the file names in camelCase):
 
 ```swift
-BlurtIcon.chicken.image(size: 16)                     // template NSImage: tints like text, menu items, NSImageView.contentTintColor
-BlurtIcon.chicken.image(size: 16, color: .labelColor) // a fixed or dynamic colour, resolved at draw time
+BlurtIcon.spark.image(size: 16)                       // template NSImage: tints like text, menu items, NSImageView.contentTintColor
+BlurtIcon.spark.image(size: 16, color: .labelColor)   // a fixed or dynamic colour, resolved at draw time
 BlurtIcon.check.symbolImage(pointSize: 13)            // SF Symbol for generic icons (falls back to our vector)
 BlurtIcon.snap.menuImage                              // NSMenuItem.image
-BlurtIcon.chicken.label("整理 3 张", font: f, color: .white)          // NSAttributedString: icon + text
+BlurtIcon.spark.label("整理 3 张", font: f, color: .white)            // NSAttributedString: icon + text
 BlurtIcon.x.attributed(font: f, color: .systemRed, preferSymbol: true) // icon only, baseline-aligned
 BlurtIcon.mic.makeLayer(size: 12, color: cg)          // CALayer for layer-built UIs; .cgImage(size:scale:color:)
-BlurtIcon.chicken.swiftUIImage(size: 22)              // SwiftUI template Image
-BlurtIcon.chicken.svg(size: 34)                       // inline SVG for HTML the app writes itself
+BlurtIcon.spark.swiftUIImage(size: 22)                // SwiftUI template Image
+BlurtIcon.spark.svg(size: 34)                         // inline SVG for HTML the app writes itself
 BlurtIcon(named: "close")                             // names and aliases, the same table as on the web
 ```
 
 **Web** (`@blurt/icons`, `workspace:*`): `import { Icon, type IconName } from "@blurt/icons"`, then
-`<Icon name="chicken" size={16} className="…" title="…"/>`. It always carries the class `ico`. Pages without React use
+`<Icon name="spark" size={16} className="…" title="…"/>`. It always carries the class `ico`. Pages without React use
 `import { iconSvg, useIconSvg, SPRITE } from "@blurt/icons/core"`. Single-file pages can inline
 `web/packages/icons/sprite.svg`, which holds `<symbol id="bi-NAME">`.
 
@@ -82,8 +84,7 @@ MascotImage(clip: .hello, then: .idle, size: 108, backdrop: .light)             
 Reduce Motion: the clip's still frame.
 
 Web (Windows / Linux overlays, Tauri) plays Peep too (`<Mascot>`, `mascotHtml` in `@blurt/icons/mascot`: the
-release package's `web/sprites/` sheets, cut per tier by `assets/brand/import_peep.py --only windows`); the 1A round
-chick's strips are in `assets/brand/legacy/mascot/`.
+release package's `web/sprites/` sheets, cut per tier by `assets/brand/import_peep.py --only windows`).
 
 ## SF Symbols on macOS (generic icons)
 

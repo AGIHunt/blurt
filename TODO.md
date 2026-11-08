@@ -362,9 +362,9 @@
       with the voice while you dictate, listens to a voice note, thinks while organizing (with the count), a sorted
       toast peeps and hops, a failed job shakes; the open island has Peep before the project chip; the Welcome says
       hello (done on its last step), the empty states idle; the app / window / taskbar icons are the paper tile, the
-      tray Peep's flat mark; the 1A strips moved to assets/brand/legacy/mascot. Still to do: retire the `chicken` /
-      `hatch` / `blurt` line glyphs from the icon family (nothing on Windows uses them for the mascot now); a
-      shadowless paper-lit web set in the package for light surfaces (assets/brand/README.md "Not done here").
+      tray Peep's flat mark. 2026-11-09: the old chicks (assets/brand/legacy) and their line glyphs (`chicken`,
+      `blurt`, `egg`, `hatch`, `hatched`, `peck`) are retired. Still to do: a shadowless paper-lit web set in the
+      package for light surfaces (assets/brand/README.md "Not done here").
 - [ ] Brand pass (Mac v0.9, docs/design/system.md §3.2): the overlays have no Recently Dragged Out list yet — when they
       get one, use the Mac's row (tile, one-line note, "dragged out … · kept N days", Copy as the one primary on the
       row under the pointer + "···") and its capture tile (a voice note = a `--brand-tint` tile with the waveform in

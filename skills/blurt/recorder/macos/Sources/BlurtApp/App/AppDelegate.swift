@@ -902,7 +902,7 @@ final class App: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// out and the beak shut, 18 pt, a monochrome template image like every other menu-bar icon: macOS tints it for light,
     /// dark and highlighted bars, with pixels drawn for @1x and @2x. MenuGlyph moves it.
     static func makeMenuIcon() -> NSImage {
-        let img = MenuGlyph.shared.frame(.idle, 0) ?? BlurtIcon.blurt.image(size: 18)
+        let img = MenuGlyph.shared.frame(.idle, 0) ?? MenuGlyph.fallback(18)
         img.isTemplate = true
         img.accessibilityDescription = T("app.name")
         return img
