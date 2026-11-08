@@ -1,0 +1,35 @@
+{
+  "scope": "Single public clip, batch 1, repeated supervised timing only; no adaptation accuracy measured; no weights saved",
+  "method": "Lipflow frontend+encoder1, 0.1 CTC on CPU + 0.9 attention, AdamW; no data augmentation",
+  "device": "mps",
+  "torch": "2.14.1",
+  "dtype": "float32",
+  "trainable_parameters": 25780928,
+  "clip_seconds": 7.72,
+  "steps": [
+    {
+      "seconds": 5.030030999972951,
+      "loss": 0.4836159944534302
+    },
+    {
+      "seconds": 0.2752363749896176,
+      "loss": 0.42699098587036133
+    },
+    {
+      "seconds": 0.269510124984663,
+      "loss": 0.3999283015727997
+    },
+    {
+      "seconds": 0.2716956670046784,
+      "loss": 0.3463476896286011
+    }
+  ],
+  "warm_step_median_seconds": 0.2716956670046784,
+  "training_audio_seconds_per_wall_second": 28.414144712389053,
+  "projected_20min_10epochs_seconds_excluding_preprocessing_validation": 422.32487099172806,
+  "peak_process_rss_bytes": 2315386880,
+  "projection_limit": "Extrapolation from one clip, excludes thermal throttling, varying lengths, augmentation, validation and IO",
+  "reference": "BORN IN NEW YORK CITY AND RAISED MOSTLY IN CHICAGO NANCY DAVIS GRADUATED FROM SMITH COLLEGE IN NINETEEN FORTY THREE",
+  "rois_sha256": "6ddafc8b2911c8e2666bff2fbe434776db871eb9e7fde32e40c992d26f960ff2",
+  "target_tokens": 30
+}

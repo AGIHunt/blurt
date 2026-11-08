@@ -1,0 +1,429 @@
+{
+  "scope": "Audit downloaded public metadata, without media downloads or model training.\n\nInput: pinned HF API snapshots plus Chinese-LiPS split CSVs. Optional MultiVSR\nCSVs are summarized independently; partial downloads are never a full-corpus claim.\nNo source transcripts, demographic attributes, or participant media are exported.\n",
+  "sources": {
+    "CAiRE/ASCEND": {
+      "revision": "737e9800ae31be9932ba8464c80366559bd28424",
+      "card_license": [
+        "cc-by-sa-4.0"
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ]
+    },
+    "BAAI/Chinese-LiPS": {
+      "revision": "db96948538811029011eee44602438a26710ecd9",
+      "card_license": "cc-by-nc-sa-4.0",
+      "languages": [
+        "zh"
+      ]
+    },
+    "sindhuhegde/multivsr": {
+      "revision": "0f4d7035f3b4f6792e87a69f75fd8fc13e772a85",
+      "card_license": "mit",
+      "languages": [
+        "en",
+        "fr",
+        "de",
+        "es",
+        "it",
+        "ca",
+        "ru",
+        "ja",
+        "zh",
+        "pl",
+        "pt",
+        "tr",
+        "nl"
+      ]
+    },
+    "tiiuae/visper": {
+      "revision": "06efc17b43fa2bf0c26f044fc0d9ab1c41d3250c",
+      "card_license": "cc-by-nc-2.0",
+      "languages": [
+        "ar",
+        "fr",
+        "es",
+        "zh"
+      ]
+    }
+  },
+  "chinese_lips": {
+    "train": {
+      "file_sha256": "bc0150e082657698019a976b3a280c23f0640df38603f658870f548fe4268bac",
+      "rows": 30341,
+      "speaker_id_prefixes": 175,
+      "duplicate_clip_ids": 0,
+      "empty_texts": 0,
+      "duplicate_normalized_text_rows": 15,
+      "latin_letter_rows": 1652,
+      "han_and_latin_rows": 1652,
+      "topic_counts": {
+        "JKYS": 3755,
+        "YS": 3776,
+        "KJ": 3543,
+        "LY": 3113,
+        "RWLS": 2866,
+        "TY": 3149,
+        "DZJJ": 2189,
+        "ZX": 4989,
+        "QC": 2961
+      },
+      "top_latin_token_occurrences": [
+        [
+          "ai",
+          570
+        ],
+        [
+          "chatgpt",
+          101
+        ],
+        [
+          "d",
+          58
+        ],
+        [
+          "lol",
+          56
+        ],
+        [
+          "a",
+          51
+        ],
+        [
+          "gpt",
+          51
+        ],
+        [
+          "nlp",
+          50
+        ],
+        [
+          "g",
+          33
+        ],
+        [
+          "dna",
+          27
+        ],
+        [
+          "openai",
+          27
+        ],
+        [
+          "x",
+          26
+        ],
+        [
+          "ca",
+          25
+        ],
+        [
+          "c",
+          24
+        ],
+        [
+          "b",
+          24
+        ],
+        [
+          "vr",
+          24
+        ],
+        [
+          "hpv",
+          22
+        ],
+        [
+          "v",
+          22
+        ],
+        [
+          "l",
+          22
+        ],
+        [
+          "app",
+          21
+        ],
+        [
+          "emmi",
+          21
+        ]
+      ]
+    },
+    "valid": {
+      "file_sha256": "29b5ed52e4ec3a44de3284a81362165c4088e18973fe301d286282a471edcec9",
+      "rows": 1959,
+      "speaker_id_prefixes": 11,
+      "duplicate_clip_ids": 0,
+      "empty_texts": 0,
+      "duplicate_normalized_text_rows": 0,
+      "latin_letter_rows": 83,
+      "han_and_latin_rows": 83,
+      "topic_counts": {
+        "JKYS": 169,
+        "YS": 160,
+        "KJ": 162,
+        "DZJJ": 186,
+        "ZX": 883,
+        "QC": 399
+      },
+      "top_latin_token_occurrences": [
+        [
+          "s",
+          9
+        ],
+        [
+          "d",
+          7
+        ],
+        [
+          "b",
+          6
+        ],
+        [
+          "m",
+          5
+        ],
+        [
+          "c",
+          5
+        ],
+        [
+          "ixus",
+          4
+        ],
+        [
+          "agent",
+          4
+        ],
+        [
+          "k",
+          4
+        ],
+        [
+          "f",
+          4
+        ],
+        [
+          "e",
+          4
+        ],
+        [
+          "a",
+          4
+        ],
+        [
+          "abs",
+          4
+        ],
+        [
+          "jeep",
+          3
+        ],
+        [
+          "p",
+          3
+        ],
+        [
+          "uzi",
+          3
+        ],
+        [
+          "logo",
+          2
+        ],
+        [
+          "target",
+          2
+        ],
+        [
+          "gps",
+          2
+        ],
+        [
+          "ibm",
+          2
+        ],
+        [
+          "ip",
+          2
+        ]
+      ]
+    },
+    "test": {
+      "file_sha256": "f2ad37b496446043d5182dddaa3d4114a403292c154416f12be06b9f94cdf095",
+      "rows": 3908,
+      "speaker_id_prefixes": 21,
+      "duplicate_clip_ids": 0,
+      "empty_texts": 0,
+      "duplicate_normalized_text_rows": 5,
+      "latin_letter_rows": 71,
+      "han_and_latin_rows": 71,
+      "topic_counts": {
+        "JKYS": 516,
+        "YS": 168,
+        "KJ": 206,
+        "LY": 508,
+        "RWLS": 896,
+        "TY": 721,
+        "DZJJ": 200,
+        "ZX": 549,
+        "QC": 144
+      },
+      "top_latin_token_occurrences": [
+        [
+          "faker",
+          11
+        ],
+        [
+          "uzi",
+          8
+        ],
+        [
+          "s",
+          6
+        ],
+        [
+          "ai",
+          5
+        ],
+        [
+          "d",
+          4
+        ],
+        [
+          "msi",
+          4
+        ],
+        [
+          "t",
+          3
+        ],
+        [
+          "cpr",
+          3
+        ],
+        [
+          "vr",
+          3
+        ],
+        [
+          "adc",
+          3
+        ],
+        [
+          "g",
+          3
+        ],
+        [
+          "skt",
+          3
+        ],
+        [
+          "b",
+          2
+        ],
+        [
+          "a",
+          2
+        ],
+        [
+          "deepmind",
+          2
+        ],
+        [
+          "vip",
+          2
+        ],
+        [
+          "k",
+          2
+        ],
+        [
+          "abc",
+          1
+        ],
+        [
+          "airway",
+          1
+        ],
+        [
+          "breathing",
+          1
+        ]
+      ]
+    },
+    "split_intersections": {
+      "train__valid": {
+        "clip_ids": 0,
+        "speaker_ids": 0,
+        "normalized_texts": 1
+      },
+      "train__test": {
+        "clip_ids": 0,
+        "speaker_ids": 0,
+        "normalized_texts": 2
+      },
+      "valid__test": {
+        "clip_ids": 0,
+        "speaker_ids": 0,
+        "normalized_texts": 1
+      }
+    }
+  },
+  "multivsr": {
+    "multivsr-train_minor.csv": {
+      "file_sha256": "37d60caf0b4e33b3450ea0e9393d74de90b199f46e68565875d1d5df5ca545dc",
+      "rows": 192251,
+      "language_counts": {
+        "tr": 67728,
+        "ca": 56753,
+        "nl": 67770
+      },
+      "zh_rows": 0,
+      "zh_latin_letter_rows": 0,
+      "zh_source_video_ids": 0
+    },
+    "multivsr-val_major.csv": {
+      "file_sha256": "d93e9afe4e8a5202bcedf572e14ee1f146e474459ecb3c2a20bbe346af1f2f78",
+      "rows": 134239,
+      "language_counts": {
+        "es": 13152,
+        "en": 75378,
+        "fr": 5370,
+        "ja": 6542,
+        "ru": 5611,
+        "pt": 16303,
+        "it": 2851,
+        "de": 5167,
+        "pl": 1792,
+        "zh": 2073
+      },
+      "zh_rows": 2073,
+      "zh_latin_letter_rows": 309,
+      "zh_source_video_ids": 44
+    },
+    "multivsr-val_minor.csv": {
+      "file_sha256": "e818a9e2d080c8581ee41f73f43c2b0e738dfb54632f34ac44aa55f02630c7bb",
+      "rows": 1377,
+      "language_counts": {
+        "tr": 460,
+        "nl": 713,
+        "ca": 204
+      },
+      "zh_rows": 0,
+      "zh_latin_letter_rows": 0,
+      "zh_source_video_ids": 0
+    }
+  },
+  "limitations": [
+    "Metadata inspection only: no audiovisual alignment, speaker identity, or transcript accuracy verified.",
+    "Latin letters include acronyms, named entities and single-letter symbols; not a count of verified code-switching.",
+    "Chinese-LiPS speaker IDs follow documented ID prefixes; no biometric identity inference.",
+    "Exact normalized text overlap is not semantic near-duplicate detection.",
+    "Repository license tags do not establish rights to referenced source videos or model weights.",
+    "No personal dataset was read; its final test remains untouched."
+  ]
+}

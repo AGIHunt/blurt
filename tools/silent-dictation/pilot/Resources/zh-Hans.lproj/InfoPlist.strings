@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "无声听写实验";
+"NSCameraUsageDescription" = "录制口型视频，用于本地无声听写实验。每段录像均由你确认后保存。";
+"NSMicrophoneUsageDescription" = "仅在你选择同时录音时，为正常说话或耳语对比录制音频。";

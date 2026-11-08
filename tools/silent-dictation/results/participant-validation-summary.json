@@ -1,0 +1,1350 @@
+{
+  "scope": "Separate-session validation; first three candidates frozen before decoding. Full-train epoch uses validation for selection. No final test.",
+  "recorded": {
+    "train": 40,
+    "validation": 40,
+    "test": 0
+  },
+  "validation_media_seconds": 152.807033,
+  "cloud_spend_usd": 0,
+  "runs": [
+    {
+      "run": "visper-validation-stock-v1",
+      "sha256": "5999e5887534fe3e7cd84b338824151935a1fc0634821ea2f562003128a90e5c",
+      "strict": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.111111111111111,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.6666666666666667,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7674418604651163,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9186046511627907,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7209302325581395,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7674418604651163,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.111111111111111,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.6666666666666667,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7558139534883721,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8953488372093024,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.6976744186046512,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7441860465116279,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.054054054054054,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "literal_target_terms": {
+        "total": 12,
+        "retained": 0
+      },
+      "fit_count": 0,
+      "selected_epoch": null,
+      "training_seconds": null
+    },
+    {
+      "run": "visper-validation-all-modes-v1",
+      "sha256": "18cafc33945a8a8e0612214c173f8c7cc750c9f78b69e951df139846834bfe6b",
+      "strict": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.3333333333333333,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.6627906976744186,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8488372093023255,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7441860465116279,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.872093023255814,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.054054054054054,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.3333333333333333,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.6627906976744186,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8488372093023255,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7441860465116279,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.872093023255814,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.054054054054054,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "literal_target_terms": {
+        "total": 12,
+        "retained": 0
+      },
+      "fit_count": 0,
+      "selected_epoch": null,
+      "training_seconds": null
+    },
+    {
+      "run": "visper-validation-silent-only-v1",
+      "sha256": "bdc2e8a5f6b155903029fe9a8f8a262128d184511405ad0898d8cd36a7e6d449",
+      "strict": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.7777777777777778,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8023255813953488,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9767441860465116,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7906976744186046,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8255813953488372,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.027027027027027,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.9459459459459459,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.7777777777777778,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8023255813953488,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9651162790697675,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7906976744186046,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8255813953488372,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.027027027027027,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.9459459459459459,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "literal_target_terms": {
+        "total": 12,
+        "retained": 0
+      },
+      "fit_count": 0,
+      "selected_epoch": null,
+      "training_seconds": null
+    },
+    {
+      "run": "visper-full-train-validation-selected-v1",
+      "sha256": "74e5ee8b3adbfae1c70c7a9ee199c45165ac3bc4024e1eee215564e294cddbbe",
+      "strict": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.7777777777777777,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.1111111111111112,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.5555555555555556,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7325581395348837,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8837209302325582,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.6744186046511628,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7906976744186046,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7297297297297297,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7567567567567568,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7837837837837838,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.7777777777777777,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.1111111111111112,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.5555555555555556,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7325581395348837,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8837209302325582,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.6744186046511628,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7906976744186046,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7297297297297297,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7567567567567568,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.7837837837837838,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "literal_target_terms": {
+        "total": 12,
+        "retained": 0
+      },
+      "fit_count": 40,
+      "selected_epoch": 7,
+      "training_seconds": 92.13705787505023
+    },
+    {
+      "run": "visper-validation-fivepoint-v1",
+      "sha256": "e162a2199c9b352554d0a5f74c0705ef677f74d9682e0787c7742cd7b0651561",
+      "strict": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.111111111111111,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.7777777777777777,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.2222222222222223,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7674418604651163,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9069767441860465,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8488372093023255,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8372093023255814,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "en",
+          "mode": "exaggerated_silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 2.111111111111111,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "silent",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.7777777777777777,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "voiced",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 1.2222222222222223,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "en",
+          "mode": "whisper",
+          "clips": 1,
+          "metric": "WER",
+          "error_rate": 0.8888888888888888,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7325581395348837,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8837209302325582,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8372093023255814,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8372093023255814,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.918918918918919,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "literal_target_terms": {
+        "total": 12,
+        "retained": 0
+      },
+      "fit_count": 0,
+      "selected_epoch": null,
+      "training_seconds": null
+    },
+    {
+      "run": "cnvsrc-validation-zh-v1",
+      "sha256": "90ae6187e7fc13440daa1f80cc779a72e0fbb0bebd1c82c5ae010402f625ae1a",
+      "strict": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7790697674418605,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9186046511627907,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7558139534883721,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8837209302325582,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "zh",
+          "mode": "exaggerated_silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7790697674418605,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "silent",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.9186046511627907,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "voiced",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.7558139534883721,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh",
+          "mode": "whisper",
+          "clips": 6,
+          "metric": "CER",
+          "error_rate": 0.8837209302325582,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "scope": "Visual-only diagnostic; no audio, prompt hints or LLM cleanup; independence requires protocol review",
+      "beam": 40,
+      "ctc_weight": 0.3,
+      "checkpoint_sha256": "577cd9558eea111683a406bc25d69c7161cdb79534c2273fc0d0f044c356231c"
+    },
+    {
+      "run": "visper-validation-mixed-english-tag-v1",
+      "sha256": "106eb29355da698854e58672e3643577309fd37cc6a5e6239a8f25022708f79b",
+      "strict": [
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "script_normalized": [
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "exaggerated_silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.0810810810810811,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "silent",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 1.054054054054054,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "voiced",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.8648648648648649,
+          "exact_matches": 0,
+          "failures": 0
+        },
+        {
+          "language_profile": "zh_en_mixed",
+          "mode": "whisper",
+          "clips": 3,
+          "metric": "MER",
+          "error_rate": 0.972972972972973,
+          "exact_matches": 0,
+          "failures": 0
+        }
+      ],
+      "scope": "Visual-only diagnostic; no audio, prompt hints or LLM cleanup; independence requires protocol review",
+      "beam": 10,
+      "ctc_weight": 0.1,
+      "checkpoint_sha256": "d6b45e0a9988ae3e747496dd0f24c7b3f5e019358e743df8e66579a38e755608"
+    }
+  ],
+  "protocol_sha256": "b292065d87042e7309595a4d5283bdb0d1102d249d46a7d11bb520e09c84c699",
+  "enrollment_expansion": {
+    "session": "train-03",
+    "unique_new_phrases": 40,
+    "pending_takes_at_activation": 50,
+    "camera_started": false,
+    "protocol_sha256": "f3e81f48e7522163af1b8e1177fbd17e4929cec8b57ee29876cc0bc51296c338"
+  },
+  "checks": [
+    "17 dataset, metric and enrollment checks passed",
+    "80 original verified manifests unchanged by enrollment extension",
+    "Validation and test plan entries identical before and after extension",
+    "All evaluated pipelines counted every selected clip, with zero execution failures",
+    "CNVSRC checkpoint checksum matched publisher"
+  ]
+}

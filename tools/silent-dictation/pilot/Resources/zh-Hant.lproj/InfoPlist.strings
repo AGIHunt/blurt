@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "無聲聽寫實驗";
+"NSCameraUsageDescription" = "錄製嘴形影片，用於本機無聲聽寫實驗。每段錄影均由你確認後儲存。";
+"NSMicrophoneUsageDescription" = "僅在你選擇同時錄音時，為正常說話或耳語比較錄製音訊。";
