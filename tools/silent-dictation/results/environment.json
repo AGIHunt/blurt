@@ -1,0 +1,40 @@
+{
+  "date": "2026-11-06",
+  "machine": {
+    "model": "MacBook Pro",
+    "chip": "Apple M5 Max",
+    "cpu_cores": 18,
+    "gpu_cores": 40,
+    "memory_gb": 128,
+    "macos": "26.5"
+  },
+  "camera": {
+    "type": "builtInWideAngleCamera",
+    "tested_by_enumeration_only": true,
+    "formats_include": "1920x1080 at 30 fps"
+  },
+  "source_video": "https://upload.wikimedia.org/wikipedia/commons/transcoded/c/ce/2016-03-12_President_Obama%27s_Weekly_Address.webm/2016-03-12_President_Obama%27s_Weekly_Address.webm.360p.mpeg4.mov",
+  "source_interval_seconds": [
+    20.4,
+    28.1
+  ],
+  "transform": "ffmpeg trim, remove audio, fps=25,setpts=PTS-STARTPTS, libx264 CRF18",
+  "reference_provenance": "Upstream fixture is incomplete relative to full published sentence; no validated WER claimed",
+  "limitations": [
+    "One selected broadcast clip, not a user silent-mouthing evaluation",
+    "No personal recordings or training data collected"
+  ],
+  "normalized_clip_sha256": "a19ea02d85ef37485db9977820bb5b82ed091bc51cc97a10d5fc798f8cd31490",
+  "source_checkouts": {
+    "lipflow": "e37453b1e1e125ca7130e4abf2635117635f6e0b",
+    "avsr": "84c148a33c14189eda9dcabcc39fed96f8da30d9",
+    "hushkey": "f6437d8ca701bd0ea3d804d76566c3c64d97127d"
+  },
+  "published_transcript": "https://obamawhitehouse.archives.gov/the-press-office/2016/03/12/weekly-address-legacy-nancy-reagan",
+  "native_preprocessing_runtime": {
+    "python": "3.14.3",
+    "opencv": "4.11.0",
+    "numpy": "2.4.4"
+  },
+  "reference_frontend_status": "MediaPipe dependencies did not finish downloading; installation stopped after native Vision path succeeded. Reference frontend not executed."
+}

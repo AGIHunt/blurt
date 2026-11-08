@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Silent dictation pilot";
+"NSCameraUsageDescription" = "Record locally reviewed mouth movements for your silent dictation experiment.";
+"NSMicrophoneUsageDescription" = "Optionally record audio for voiced or whispered comparison takes, only when you select audio.";
