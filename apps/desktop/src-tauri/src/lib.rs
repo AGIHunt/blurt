@@ -969,6 +969,7 @@ pub fn run() {
             dictation::commands::app_icon,
             dictation::commands::cloud_summary,
             dictation::commands::cloud_connect,
+            dictation::commands::cloud_custom,
             dictation::commands::cloud_disconnect,
             dictation::history::dictation_history,
             dictation::history::dictation_history_edit,

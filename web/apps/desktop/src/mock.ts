@@ -548,6 +548,8 @@ export async function mockInvoke<T>(cmd: string, args: Record<string, any> = {})
         vision: [{ service: 'dashscope', model: 'qwen3.6-flash', name: 'Qwen3.6 Flash' }, { service: 'deepseek', model: 'deepseek-flash', name: 'DeepSeek V4.1 Flash' }] } });
     case 'cloud_job_set':
       return r(cloudSum());
+    case 'cloud_custom':
+      return r({ ok: true, ms: 640, summary: cloudSum() });
     case 'asr_auto_apply':
       return r({ ok: true });
     case 'agents_registry':
