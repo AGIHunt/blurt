@@ -136,6 +136,8 @@ final class NoteVoice {
     private var configObserver: NSObjectProtocol?
     /// the engine stopped under us (config change): it is never given back as the spare
     private var engineLost = false
+    /// The iPhone remote's microphone instead of this Mac's (Remote/RemoteServer.swift): samples are pushed in.
+    var phoneFeed: RemoteMicFeed?
     /// A wav to play through instead of the microphone (tests); nil = $BLURT_NOTE_WAV, else the mic.
     var inject: String?
     /// Tests: the injected wav stands for the world's sound since this moment (the key-down): audio that played
@@ -185,6 +187,17 @@ final class NoteVoice {
         started = Date()
         startedAt = CACurrentMediaTime()
         if NoteVoice.testDenied { failReason = "test_denied"; ready(false); return }
+        if let feed = phoneFeed {
+            running = true
+            feed.onGone = { [weak self] in self?.finish(.micLost) }
+            feed.attach { [weak self] x in self?.feedSamples(x) }
+            ready(true)
+            // a phone that never sends anything: nothing else would end this take
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                if let self, self.running, self.firstAudioAfter == nil { self.finish(.micLost) }
+            }
+            return
+        }
         // tests: BLURT_TEST_MIC_WAV (the documented hook, as voice notes and dictation read it) or BLURT_NOTE_WAV; a test
         // run with neither never opens the real microphone (a dogfood run recorded the room into a card) — it says the
         // no-mic state instead
@@ -365,6 +378,13 @@ final class NoteVoice {
         return true
     }
 
+    private func feedSamples(_ x: [Float]) {
+        guard running, let b = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(x.count)) else { return }
+        b.frameLength = AVAudioFrameCount(x.count)
+        x.withUnsafeBufferPointer { b.floatChannelData![0].update(from: $0.baseAddress!, count: x.count) }
+        feed(b)
+    }
+
     private func feed(_ b: AVAudioPCMBuffer) {
         guard running || injectTimer != nil, b.frameLength > 0 else { return }
         let now = CACurrentMediaTime()
@@ -421,6 +441,8 @@ final class NoteVoice {
     /// keep: false deletes the wav (no speech / skipped).
     func stop(keep: Bool) {
         running = false
+        phoneFeed?.detach()
+        phoneFeed = nil
         injectTimer?.invalidate()
         injectTimer = nil
         watchdog?.invalidate()

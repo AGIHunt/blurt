@@ -72,6 +72,7 @@
 // DictationTestHooks.swift (`dictation …` on the test channel).
 import AppKit
 import BlurtCore
+import BlurtRemoteKit
 import Carbon.HIToolbox
 
 final class Dictation {
@@ -81,7 +82,10 @@ final class Dictation {
     /// What the island shows: listening while a take listens, else the stage of the oldest take still on its way.
     private(set) var phase: Phase = .idle {
         didSet {
-            if phase != oldValue { island.dictationChanged() }
+            if phase != oldValue {
+                island.dictationChanged()
+                RemoteServer.shared.dictationChanged(remotePhase)
+            }
         }
     }
     private(set) var levels: [Float] = []
@@ -991,6 +995,26 @@ final class Dictation {
         }
     }
 
+    // MARK: the iPhone remote
+
+    /// The phone's talk key: this Mac's dictation key, with the same rules (tap, hold, double tap), by the same trigger.
+    /// The take listens with the phone's mic if the phone asked for that.
+    func remoteKey(down: Bool) {
+        if down { remotePress = true }
+        handle(Dictation.key.event(down: down, time: CACurrentMediaTime()))
+        if !down { remotePress = false }
+    }
+    /// the press in hand came from the phone: a take it starts listens through the phone
+    private var remotePress = false
+    var remotePhase: RemoteDictationPhase {
+        // the permissions `needsSetup` is about are for hearing the Mac's own key: a press from the phone needs none of them
+        if !Dictation.enabled { return .unavailable }
+        return RemoteDictationPhase(rawValue: phase.rawValue) ?? .idle
+    }
+    func remoteToggleStyle() { if listening { toggleStyle(via: .island) } }
+    func remoteToggleTranslate() { if listening { toggleTranslate(via: "remote") } }
+    func remoteSend() { if listening { cancel(quietly: true) }; send(after: "remote") }
+
     // MARK: start / stop / cancel
 
     /// Also the menu's "Start Dictation" (and the test hook): the same as a tap.
@@ -1026,6 +1050,7 @@ final class Dictation {
         let v = NoteVoice(url: url)
         let env = ProcessInfo.processInfo.environment
         v.inject = testWav ?? env["BLURT_TEST_MIC_WAV"] ?? env["BLURT_NOTE_WAV"]
+        if remotePress, RemoteMicFeed.shared.pressed { v.phoneFeed = RemoteMicFeed.shared }
         // tests: the wav is the world's sound since the key went down — what the "mic" missed while starting is lost
         if DictationInsert.testMode, env["BLURT_TEST_MIC_CLOCK"] == "keydown" { v.injectClock = armedAt }
         v.builtInMic = Dictation.useBuiltInMic
@@ -1036,6 +1061,7 @@ final class Dictation {
             guard let self = self else { return }
             self.levels.append(l)
             if self.levels.count > 120 { self.levels.removeFirst(self.levels.count - 120) }
+            RemoteServer.shared.level(l)
         }
         v.onSpeech = { [weak self] in self?.heardSpeech = true }
         v.onFirstAudio = { [weak self] in self?.micStarted(v) }
@@ -1116,6 +1142,7 @@ final class Dictation {
         // mode): its words would flash and vanish (v0.9 dogfood); they show as soon as it starts
         s.onLive = { [weak self] committed, pending in
             guard let self = self, self.liveSession == live else { return }
+            RemoteServer.shared.live(committed: committed, pending: pending)
             if self.listening { LiveTranscript.shared.update(committed, pending: pending, session: live) } else { self.heldLive = (committed, pending) }
         }
         voice = v

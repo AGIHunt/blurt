@@ -925,6 +925,8 @@ Sources/BlurtApp/       (executable "blurt-recorder"; bundle id dev.blurt.record
 - Info.plist 是文件 `recorder/macos/Info.plist`，由 WP4 维护，`record.py build` 拷进包里；已带 `CFBundleURLTypes`（`blurt`、`blurt-app`）、
   `NSServices`（"Add to Blurt"，`NSMessage` = `addToBlurt`）、`SUFeedURL`、`SUPublicEDKey`（仓库里为空，由 `release-mac.sh` 写入；
   为空时应用不启动 Sparkle）。WP6 只写这些声明背后的实现代码。
+- 测试钩子（`BLURT_TEST_*` 环境变量）只在测试构建（`BLURT_TEST_HOOKS=1 record.py build`，加 `-DBLURT_TEST_HOOKS`）和 debug 构建里有效；其他构建在启动时把它们清掉（`main.swift`），
+  免得别的程序带着它们启动 Blurt，跳过需要用户确认的步骤，或借用 Blurt 的录屏、麦克风、辅助功能权限（2026-11-08 安全审查）。
 - 构建：`record.py build` = `swift build -c release --product blurt-recorder`（scratch 在 `$BLURT_HOME/build/swiftpm`），
   `BLURT_UNIVERSAL=1` 时 arm64 和 x86_64 各 `--triple` 构建一次再 `lipo`；然后组装 bundle、ad-hoc 签名。
 - Sparkle（2.10.0，校验和固定）只进发布构建：`BLURT_SPARKLE=1` 时链接，`record.py build` 把 `Sparkle.framework` 放进

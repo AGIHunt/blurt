@@ -33,6 +33,8 @@ ${A.note ? 'Context for this run: ' + A.note : ''}`
 const SAFETY = `
 Testing tools: ${SP}/agents/audit-base/fix.sh. Read it first. It builds and runs an isolated scratch copy of the app:
 - \`ROLE=<role> REPO=${REPO} fix.sh build|run|stop|log|ev|shell|wins|shot|ax|x|py\`
+- Build with BLURT_TEST_HOOKS=1 in the environment (\`BLURT_TEST_HOOKS=1 record.py build\`): only such a build honours BLURT_TEST_*. A normal
+  build drops them at launch (main.swift), so the hooks below do nothing there.
 - Env for variants: BLURT_APPEARANCE=dark, QA_LANG=en|zh-Hans, QA_HOME/QA_WS (a fresh first-run world).
 - Seed a world by adapting ${SP}/agents/audit-final/seed.py to your own scratch dir.
 - Test hooks are in BlurtApp SelfTest.swift, System/SelfTests.swift, Terminal/TerminalSelfTests.swift and *TestHooks.swift.

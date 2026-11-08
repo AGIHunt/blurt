@@ -88,6 +88,7 @@ public enum SettingsCatalog {
         pane("screentext", "settings.kit.screen_text", "Settings", "text.viewfinder", "preferences"),
         pane("speech", "settings.kit.speech", "Settings", "cpu", "preferences"),
         pane("shortcuts", "settings.kit.shortcuts", "Settings", "keyboard", "preferences"),
+        pane("remote", "settings.kit.remote", "Settings", "iphone", "preferences"),
         pane("projects", "main.sidebar.projects", "Main", "folder", "work"),
         pane("agents", "settings.kit.agents", "Settings", "paperplane", "work"),   // 交给 Agent's glyph: the wand is dictation polish
         pane("privacy", "settings.kit.privacy", "Settings", "hand.raised", "mac"),
@@ -156,6 +157,11 @@ public enum SettingsCatalog {
         // Copy Text from Screen: ⌥C's reading, then ⌥T's translation
         sec("screentext.copy", "settings.screen_text.section.copy"),
         sec("screentext.translation", "settings.screen_text.section.translate"),
+
+        // iPhone: the phones, and what the Mac shows while one drives it
+        sec("remote.phones", "settings.remote.section.phones"),
+        sec("remote.options", "settings.remote.section.options"),
+        sec("remote.relay", "settings.remote.section.relay"),
 
         sec("speech.use", "speech.section.mac", "Speech"),
         sec("speech.services", "models.section.services", "Models"),
@@ -277,6 +283,13 @@ public enum SettingsCatalog {
             row("screentext.translate", "screentext.translation", "settings.screen_text.translate",
                 more: S("settings.screen_text.translate.hint")),
             row("screentext.translate_model", "screentext.translation", SettingsText("models.uses.translate", "Models")),
+
+            // iPhone
+            row("remote.add", "remote.phones", "settings.remote.app", detail: S("settings.remote.add.detail")),
+            row("remote.hud", "remote.options", "settings.remote.hud", detail: S("settings.remote.hud.detail")),
+            row("remote.screen", "remote.options", "settings.remote.screen", detail: S("settings.remote.screen.detail")),
+            row("remote.relay.address", "remote.relay", "settings.remote.relay", detail: S("settings.remote.relay.address.detail")),
+            row("remote.relay.help", "remote.relay", "settings.remote.relay.help", detail: S("settings.remote.relay.help.detail")),
 
             // Speech
         ]

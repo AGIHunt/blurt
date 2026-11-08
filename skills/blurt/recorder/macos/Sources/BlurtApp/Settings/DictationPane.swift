@@ -428,7 +428,7 @@ struct VoiceprintSheet: View {
                     Button(T("dictation.voiceprint.done")) { vp.finish() }.keyboardShortcut(.defaultAction)
                         .disabled(!vp.canFinish)
                 case .saving:
-                    ProgressView().controlSize(.small).frame(width: 60)
+                    BrandSpinnerView().frame(width: 60)
                 }
             }
             .padding(.top, 4)

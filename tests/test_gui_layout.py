@@ -14,7 +14,7 @@ out of the title bar's safe area, the window was sized without it). Screenshots 
   BLURT_GUI_TESTS=1 uv run pytest tests/test_gui_layout.py -q -s          the whole run (builds the app, ~3-5 min)
   python3 tests/test_gui_layout.py [--app PATH] [--lang en,zh-Hans] [--only onboarding,settings] [--json OUT]
                                                                            the same as a script: a report, exit 1 on problems
-  BLURT_GUI_APP=/path/Blurt.app   use an app you already built (`record.py build` with a scratch BLURT_HOME) instead
+  BLURT_GUI_APP=/path/Blurt.app   use an app you already built (`BLURT_TEST_HOOKS=1 record.py build` with a scratch BLURT_HOME) instead
 
 Isolation: its own BLURT_HOME / BLURT_WORKSPACE under a temp dir (a small fixture world from make_fixture.py), a copy of
 the app re-signed as dev.blurt.recorder.layouttest, launched in the background through LaunchServices with test
@@ -53,7 +53,7 @@ def build_app(tmp: Path) -> Path:
     home = tmp / "build-home"
     home.mkdir(parents=True, exist_ok=True)
     (home / "config.json").write_text(json.dumps({"record": {"install_app": False}}))
-    env = dict(os.environ, BLURT_HOME=str(home), BLURT_WORKSPACE=str(tmp / "build-ws"))
+    env = dict(os.environ, BLURT_HOME=str(home), BLURT_WORKSPACE=str(tmp / "build-ws"), BLURT_TEST_HOOKS="1")   # the test hooks
     r = subprocess.run(["uv", "run", "-q", str(SCRIPTS / "record.py"), "build"], cwd=ROOT, env=env,
                        capture_output=True, text=True, timeout=1800)
     built = home / "Blurt.app"

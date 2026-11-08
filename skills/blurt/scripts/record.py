@@ -645,10 +645,17 @@ def swift_sources() -> list[Path]:
     return [f for f in files if f.exists()]
 
 
+def test_hooks() -> bool:
+    """BLURT_TEST_HOOKS=1: build the app for scripted tests. Never for a release or a user's install."""
+    return os.environ.get("BLURT_TEST_HOOKS") == "1"
+
+
 def swift_build(scratch: Path, triple: str | None = None) -> Path | None:
     """`swift build -c release` (Command Line Tools are enough) → the blurt-recorder executable, or None."""
     cmd = ["swift", "build", "-c", "release", "--package-path", str(SWIFT_DIR), "--scratch-path", str(scratch),
            "--product", "blurt-recorder"]
+    if test_hooks():  # a build for tests: the app honours BLURT_TEST_* (main.swift); every other build ignores them
+        cmd += ["-Xswiftc", "-DBLURT_TEST_HOOKS"]
     if triple:
         cmd += ["--triple", triple]
     r = run(cmd, check=False)
@@ -684,6 +691,8 @@ def native_binary(build: bool = True) -> Path | None:
     sparkle = os.environ.get("BLURT_SPARKLE") == "1"
     if sparkle:
         h.update(b"sparkle")
+    if test_hooks():
+        h.update(b"test-hooks")
     digest = h.hexdigest()[:12]
     exe = APP_BUNDLE / "Contents" / "MacOS" / "blurt-recorder"
     stamp = APP_BUNDLE / "Contents" / "Resources" / "source.sha"

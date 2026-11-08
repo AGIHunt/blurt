@@ -67,6 +67,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_blurt-remote._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Blurt listens on your local network for your paired iPhone.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Blurt records your voice while you narrate feedback.</string>
 	<key>NSScreenCaptureUsageDescription</key>
