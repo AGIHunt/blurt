@@ -92,6 +92,7 @@
     "linux": {
       "deb": {
         "depends": [
+          "libc6 (>= 2.39)",
           "libwebkit2gtk-4.1-0",
           "libgtk-3-0",
           "libayatana-appindicator3-1",
@@ -116,6 +117,7 @@
       },
       "rpm": {
         "depends": [
+          "libc.so.6(GLIBC_2.39)(64bit)",
           "webkit2gtk4.1",
           "gtk3",
           "gstreamer1-plugins-base",

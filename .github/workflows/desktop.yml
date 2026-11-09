@@ -2,7 +2,7 @@ name: desktop
 
 # The Windows/Linux Tauri app (apps/desktop + web/apps/desktop + web/apps/overlays), v0.7 (docs/design/next-round.md).
 #   windows-latest: unit tests, NSIS + MSI installers, size report (NSIS ≤ 25 MB)
-#   ubuntu-22.04:   unit tests; tests/flow.rs (projects.py add → migrate → index v2 → review doc → user-ops → .md);
+#   ubuntu-24.04:   unit tests; tests/flow.rs (projects.py add → migrate → index v2 → review doc → user-ops → .md);
 #                   deb + rpm + AppImage, size report (deb ≤ 20 MB), and the e2e under
 #                   xvfb through tauri-driver (WebKitWebDriver): open a fixture project, search, open an item, edit it →
 #                   its Markdown file updated
@@ -63,8 +63,10 @@ jobs:
           - name: windows
             os: windows-latest
             bundles: nsis,msi
+          # 24.04, not 22.04: blurt-remote's libspa / pipewire crates need PipeWire ≥ 1.0 headers (22.04 has 0.3.48),
+          # so the packages built here need Ubuntu 24.04 or later, Debian 13 or later (glibc 2.39)
           - name: linux
-            os: ubuntu-22.04
+            os: ubuntu-24.04
             bundles: deb,rpm,appimage
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
