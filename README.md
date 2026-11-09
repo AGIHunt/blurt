@@ -41,6 +41,14 @@ that is probably involved. It's transcribed while you record, so it's done about
 5-minute walkthrough became 52 items, each with what was said and when. You go through them with the keyboard, then
 hand them to an agent, or pack them into one `.zip` for a teammate.
 
+**Blurt on your phone.** When you sit back from a big screen, your phone becomes the computer's trackpad, keys and
+microphone, and can show its screen. It works with a Mac, Windows or Linux computer, from an iPhone, iPad (including the
+iPhone Duo) or Android phone or tablet. The talk key is Blurt's dictation key, and the keys follow the computer you're
+driving (⌘ on a Mac, Ctrl and Win elsewhere). With several displays the picture follows the pointer, or stays on the one
+you pick. Away from home it goes through a relay you run yourself; everything on the way is end-to-end encrypted. Pair
+in Settings → iPhone on a Mac, Settings → Phone on Windows and Linux. The phone apps aren't in the stores yet: build them
+yourself ([iPhone and iPad](apps/ios/README.md#build-it-yourself), [Android](apps/android/README.md#build-it-yourself)).
+
 Snaps, voice notes and recordings go into the current project (a folder you open in Blurt). Without one, recordings
 go to Unassigned and snaps stay as cards until you pick a project. Every shortcut can be changed in Settings.
 

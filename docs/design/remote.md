@@ -1,4 +1,10 @@
-# Design: Blurt for iPhone (the iPhone as trackpad, keys and microphone)
+# Design: Blurt on the phone (trackpad, keys, microphone and the computer's screen)
+
+2026-11-09: no longer iPhone + Mac only. Any phone (iPhone, iPad, iPhone Duo, Android phone, tablet, foldable) drives any computer
+(Mac, Windows, Linux) over one protocol: [remote-protocol.md](remote-protocol.md). Per platform: [remote-hosts.md](remote-hosts.md)
+(the Rust host), [remote-windows.md](remote-windows.md), [remote-linux.md](remote-linux.md), [remote-android.md](remote-android.md);
+latency and data: [remote-realtime.md](remote-realtime.md). What follows was decided on iPhone + Mac and holds everywhere unless a
+section says otherwise.
 
 The app is called Blurt on the iPhone too (it was Blurt Remote while in development; the code keeps `BlurtRemote`). Until it
 is on the App Store, people build it themselves: [apps/ios/README.md](../../apps/ios/README.md). Settings → iPhone links there.
