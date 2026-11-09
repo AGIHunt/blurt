@@ -21,10 +21,6 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window = w
         w.makeKeyAndVisible()
         if let u = options.urlContexts.first?.url { Link.shared.openExternal(u) }
-        #if DEBUG
-        // scripted runs against a test Mac: pair with this code at launch, no questions (debug builds only)
-        if let t = ProcessInfo.processInfo.environment["BLURT_REMOTE_TEST_PAIR"], let u = URL(string: t) { Link.shared.open(u, confirmed: true) }
-        #endif
     }
 
     func scene(_ scene: UIScene, openURLContexts c: Set<UIOpenURLContext>) {
