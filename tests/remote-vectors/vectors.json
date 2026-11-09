@@ -343,6 +343,46 @@
     },
     {
       "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 4000000,
+            "codecs" : [
+              "h264"
+            ],
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "display" : "69733382",
+            "fps" : 30,
+            "height" : 900,
+            "target" : "display",
+            "width" : 1600
+          }
+        }
+      },
+      "name" : "screen_pinned_display"
+    },
+    {
+      "json" : {
+        "showDisplay" : {
+          "_0" : "69733382"
+        }
+      },
+      "name" : "show_display"
+    },
+    {
+      "json" : {
+        "showDisplay" : {
+
+        }
+      },
+      "name" : "show_display_follow"
+    },
+    {
+      "json" : {
         "screenCrop" : {
           "_0" : {
             "h" : 0.5,
@@ -680,6 +720,44 @@
         }
       },
       "name" : "screen_view_old_mac"
+    },
+    {
+      "json" : {
+        "screenView" : {
+          "codec" : "hevc",
+          "display" : "69733382",
+          "height" : 1440,
+          "width" : 2560
+        }
+      },
+      "name" : "screen_view_display"
+    },
+    {
+      "json" : {
+        "displays" : {
+          "_0" : [
+            {
+              "height" : 982,
+              "id" : "1",
+              "main" : true,
+              "name" : "Built-in Retina Display",
+              "width" : 1512,
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "height" : 1440,
+              "id" : "69733382",
+              "main" : false,
+              "name" : "DELL U2723QE",
+              "width" : 2560,
+              "x" : 1512,
+              "y" : -458
+            }
+          ]
+        }
+      },
+      "name" : "displays"
     },
     {
       "json" : {
