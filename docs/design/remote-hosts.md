@@ -82,7 +82,9 @@ follow the pointer), `ToMac.showDisplay` (pin, the pointer to that display's mid
 ## Open
 
 - Nothing has run on Windows or Linux yet: the crate and the desktop app type-check for `x86_64-pc-windows-msvc` from the Mac (with a
-  stand-in C compiler and resource compiler), the crate for `x86_64-unknown-linux-gnu`; the desktop app for Linux needs the Ubuntu VM.
+  stand-in C compiler and resource compiler), the crate for `x86_64-unknown-linux-gnu`. The desktop app with the Linux wiring (remote.rs
+  `linux_setup`) type-checks and lints in Docker on Ubuntu 24.04, CI's runner (remote-linux.md §For the app). It hasn't been
+  used on a desktop.
 - `Screen::start` runs under the backend's mutex: a portal dialog that waits on the user holds the phone's keys until it's answered.
 - STUN: from this network (mainland China) stun.cloudflare.com and Google's never answered, so the host asks stun.miwifi.com too and
   takes the first answer (the public IPv4 then came back). The Mac asks only Cloudflare's. A direct path across real NATs is untried.

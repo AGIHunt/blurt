@@ -30,7 +30,7 @@ impl MicFeed {
     pub fn receive(&self, pcm: &[u8]) {
         let mut g = self.inner.lock().unwrap();
         let i = &mut *g;
-        for s in pcm.chunks_exact(2) {
+        for s in pcm.as_chunks::<2>().0 {
             i.partial.push(i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0);
             if i.partial.len() == FRAME {
                 let f = std::mem::replace(&mut i.partial, Vec::with_capacity(FRAME));
