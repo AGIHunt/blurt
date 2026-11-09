@@ -212,7 +212,7 @@ mod tests {
         assert_eq!(r, Rect { x: 640, y: 400, w: 1280, h: 800 });
         // odd numbers come out even, and the label is what was cut
         let r = crop_rect(Crop { x: 0.1234, y: 0.3333, w: 0.3333, h: 0.3333 }, 1919, 1081);
-        assert!(r.x % 2 == 0 && r.y % 2 == 0 && r.w % 2 == 0 && r.h % 2 == 0);
+        assert!(r.x.is_multiple_of(2) && r.y.is_multiple_of(2) && r.w.is_multiple_of(2) && r.h.is_multiple_of(2));
         assert!(r.x + r.w <= 1919 && r.y + r.h <= 1081);
         let c = rect_crop(r, 1919, 1081);
         assert!((c.x * 1919.0 - r.x as f32).abs() < 0.01 && (c.w * 1919.0 - r.w as f32).abs() < 0.01);

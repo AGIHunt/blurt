@@ -1,5 +1,5 @@
 // End-to-end test of the desktop app through tauri-driver (Linux: WebKitWebDriver; Windows: msedgedriver).
-// Not available on macOS (no WKWebView driver) — CI runs it on ubuntu-22.04 under xvfb.
+// Not available on macOS (no WKWebView driver) — CI runs it on ubuntu-24.04 under xvfb.
 //
 //   BLURT_APP=apps/desktop/src-tauri/target/release/blurt node apps/desktop/e2e/run.mjs
 //

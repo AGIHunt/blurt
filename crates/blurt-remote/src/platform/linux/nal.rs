@@ -44,7 +44,7 @@ fn kind(codec: Codec, nal: &[u8]) -> Kind {
         },
         Codec::Hevc => match (b >> 1) & 0x3f {
             32..=34 => Kind::ParameterSet, // VPS, SPS, PPS
-            35..=39 | 40 => Kind::Drop,    // AUD, EOS, EOB, filler, SEI prefix / suffix
+            35..=40 => Kind::Drop,         // AUD, EOS, EOB, filler, SEI prefix / suffix
             16..=23 => Kind::Key,          // IRAP: BLA, IDR, CRA
             _ => Kind::Slice,
         },

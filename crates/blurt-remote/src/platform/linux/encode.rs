@@ -46,6 +46,9 @@ impl AsRef<[u8]> for Bytes {
 
 pub type UnitSink = Arc<dyn Fn(Unit, Crop, f64, f64) + Send + Sync>;
 
+/// A frame in the encoder: its pts, the crop it shows, when it was captured, when it was pushed.
+type InFlight = (u64, Crop, f64, std::time::Instant);
+
 pub struct Encoder {
     pipeline: gst::Pipeline,
     src: gst_app::AppSrc,
@@ -56,7 +59,7 @@ pub struct Encoder {
     pub height: u32,
     caps: Mutex<Option<(u32, u32, &'static str)>>,
     /// (pts, crop, captured, pushed at) for frames in flight, oldest first
-    pending: Arc<Mutex<VecDeque<(u64, Crop, f64, std::time::Instant)>>>,
+    pending: Arc<Mutex<VecDeque<InFlight>>>,
     last_pts: Mutex<u64>,
     start: std::time::Instant,
 }
@@ -198,7 +201,7 @@ impl Encoder {
         let enc = pipeline.by_name("enc").ok_or("no encoder")?;
         configure(&enc, element, bitrate, fps);
         let appsink = pipeline.by_name("sink").and_then(|e| e.downcast::<gst_app::AppSink>().ok()).ok_or("no appsink")?;
-        let pending: Arc<Mutex<VecDeque<(u64, Crop, f64, std::time::Instant)>>> = Arc::default();
+        let pending: Arc<Mutex<VecDeque<InFlight>>> = Arc::default();
         let p2 = pending.clone();
         let sets = Mutex::new(Vec::<Vec<u8>>::new());
         appsink.set_callbacks(

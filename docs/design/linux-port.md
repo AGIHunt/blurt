@@ -233,6 +233,11 @@ Tested on the VM (GNOME 50.1 Wayland, a virtual mic playing a recorded take, uin
 | Rust tests | 244 pass (`cargo test --lib`; `tests/session.rs` doesn't compile on main either) |
 | .deb on a fresh 26.04 desktop VM | `apt install ./Blurt_1.0.12_amd64.deb` 22 s (pulled ffmpeg, libportaudio2; the rest is on the desktop); Welcome; uv + Python fetched on first run; SenseVoice for the first minutes; first take copied + dialog over the island; allowed; next take typed into gedit |
 
+**Which Linux (2026-11-09): Ubuntu 24.04 or later, Debian 13 or later** (Fedora 40 or later for the rpm). The packages are
+built on ubuntu-24.04 (desktop.yml), because Blurt Remote's PipeWire crates don't build against 22.04's PipeWire 0.3.48. So
+they need glibc 2.39: the deb depends on `libc6 (>= 2.39)` and the rpm on `libc.so.6(GLIBC_2.39)(64bit)`. The AppImage needs
+the same, unchecked. Details in [remote-linux.md](remote-linux.md) §Which Linux.
+
 Packages: `Blurt_1.0.12_amd64.deb` 8.1 MB, `Blurt_1.0.12_amd64.AppImage` 94 MB (built on the VM with the Tauri CLI;
 the AppImage wasn't run — it has no system desktop file, so the portal dialogs won't name Blurt).
 

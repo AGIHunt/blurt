@@ -49,6 +49,8 @@ pub fn start(app: &AppHandle) {
     } else {
         Box::new(OsKeys)
     };
+    #[cfg(target_os = "linux")]
+    linux_setup(app);
     let backend: Box<dyn Backend> = blurt_remote::platform::backend();
     let test_answer = if testing() {
         match std::env::var("BLURT_TEST_PAIR_ANSWER").as_deref() {
@@ -72,6 +74,57 @@ pub fn start(app: &AppHandle) {
         Box::new(Desktop { app: app.clone() }),
     );
     let _ = HOST.set(h);
+}
+
+/// Linux, before the backend exists (remote-linux.md §For the app): the portal's restore token next to the app's own
+/// (`$BLURT_HOME/portal`), GNOME's dialog over Blurt's window, and long or non-ASCII text from the phone put in the way
+/// dictation does (Ctrl+Shift+V into a terminal). Called from `setup`, on the main thread.
+#[cfg(target_os = "linux")]
+fn linux_setup(app: &AppHandle) {
+    use blurt_remote::platform::linux;
+    linux::set_state_dir(crate::paths::blurt_home().join("portal"));
+    // the main window exists now; the island (always on top, which GNOME's dialog should open over, as for dictation's
+    // access) is made on a thread of its own a moment later, so it replaces the main window once it's there
+    linux::set_dialog_parent(crate::mainwin::x11_id_of(app, "main"));
+    let a = app.clone();
+    std::thread::spawn(move || {
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if let Some(x) = crate::mainwin::x11_id_off_main(&a, "blurt-overlay-island") {
+                linux::set_dialog_parent(Some(x));
+                return;
+            }
+        }
+    });
+    linux::set_paste(linux_paste);
+}
+
+/// The phone's text through dictation's paste: the clipboard, Ctrl+V (Ctrl+Shift+V into a terminal) on dictation's own
+/// Remote Desktop session, and the user's clipboard back unless they copied something since. false (nothing done): no
+/// access to that session yet, and the crate pastes its own way, through the phone's session.
+#[cfg(target_os = "linux")]
+fn linux_paste(text: &str) -> bool {
+    use crate::dictation::insert_linux as ins;
+    if !ins::has_access() {
+        return false;
+    }
+    let saved = ins::save();
+    if !ins::set_text(text) {
+        return false;
+    }
+    let seq = ins::sequence();
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    if !ins::paste_keys() {
+        ins::restore(&saved);
+        return false;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(800));
+        if ins::sequence() == seq {
+            ins::restore(&saved);
+        }
+    });
+    true
 }
 
 /// Quitting: let go of everything held, close the session, stop listening.
