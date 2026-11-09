@@ -76,6 +76,24 @@ keeps one key layout per platform (defaults differ: Ctrl+C / Ctrl+V…, Alt+Tab 
 labels modifiers as that platform does (Ctrl, Alt, Win or Super). `system` moves and `blurt` commands are meanings, mapped by the host.
 `activate(bundle:)` is Mac only. `front.bundle` is an app id on a Mac, the exe name on Windows, the desktop file id (or WM class) on Linux.
 
+### Default keys per host
+
+The phone's 常用 page and dock for each platform (iOS `Model/Deck.swift`, Android `core/…/Deck.kt`; same four rows, a row each). What each
+key does stays in its hint; the key shows the key's own name. `W` = command bit (Win / Super), `C` = control, `A` = option (Alt), `S` = shift.
+
+| Row | Mac | Windows | Linux |
+|---|---|---|---|
+| Editing | ⌘C ⌘V ⌘X ⌘Z ⇧⌘Z ⌘A | C+C C+V C+X C+Z C+Y C+A | C+C C+V C+X C+Z C+S+Z C+A |
+| Between things | ⌘Tab⟳ ⌘\`⟳ ⌘[ ⌘] ⌃⇧Tab⟳ ⌃Tab⟳ | A+Tab⟳ W+Tab A+Left A+Right C+S+Tab⟳ C+Tab⟳ | A+Tab⟳ A+\`⟳ A+Left A+Right C+S+Tab⟳ C+Tab⟳ |
+| Acting | ⌘F ⌘K ⌘Space ⌃C ⌘T ⌘W | C+F C+K W (alone: Start) C+S+C C+T C+W | C+F C+K W (alone: Activities) C+S+C C+T C+W |
+| Blurt | Snap Record VoiceNote CopyText Translate Cards | same | same |
+| Dock | ⌃ ⌥ ⌘ ⇧ ⇥ esc ⌫ ↩ ␣ 🎤 | Ctrl Win Alt Shift ⇥ esc ⌫ ↩ ␣ 🎤 | Ctrl Super Alt Shift ⇥ esc ⌫ ↩ ␣ 🎤 |
+
+⟳ = a cycle key (hold and slide). On Windows and Linux, copy and Interrupt are both Ctrl+C in most apps, so the third row's slot that is
+⌃C on a Mac is Ctrl+Shift+C there (copy in terminals: GNOME Terminal, Windows Terminal), with Ctrl+C already on the first row; the key
+reads "Ctrl C" in full as on the Mac. 更多 on Windows / Linux: F1–F12, Home End PgUp PgDn ⌦, Win+D / Super+D (desktop), Win+E (files),
+Win+L / Super+L (lock), Alt+F4, Ctrl+Shift+Esc (Task Manager, Windows), Win+Shift+S (snip, Windows). 字母 and 符号 are the same everywhere.
+
 ## Video codecs (new 2026-11-09)
 
 `screen.codecs`: what the phone decodes, best first, `["hevc","h264"]` from Apple phones, what `MediaCodec` reports from Android. Missing means
