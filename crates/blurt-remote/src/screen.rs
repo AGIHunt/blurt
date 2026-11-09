@@ -465,7 +465,7 @@ fn tick(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, backend: &Shared, hz: u64, last_s
             }
         }
         let every = if in_one { hz * 5 } else { (hz / 2).max(1) };
-        (every, s.tick % (hz / 4).max(1) == 0)
+        (every, s.tick.is_multiple_of((hz / 4).max(1)))
     };
     asks.shape = shape_now;
     let (pointer, shape) = {
@@ -482,7 +482,7 @@ fn tick(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, backend: &Shared, hz: u64, last_s
     };
     let mut s = st.lock().unwrap();
     if let Some(p) = pointer {
-        if s.last_cursor != Some(p) || s.tick % cursor_every == 0 {
+        if s.last_cursor != Some(p) || s.tick.is_multiple_of(cursor_every) {
             s.last_cursor = Some(p);
             chan.send_datagram(Kind::Cursor, &cursor(p.0 as f32, p.1 as f32));
         }

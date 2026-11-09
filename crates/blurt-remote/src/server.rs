@@ -156,6 +156,8 @@ struct Code {
     id: String,
     key: [u8; 32],
     until: Instant,
+    /// unix ms, for Settings
+    expires: i64,
 }
 
 struct Sess {
@@ -489,8 +491,7 @@ impl Core {
             port: s.listeners.as_ref().map_or(0, |l| l.port),
             pairing: s.pairing.as_ref().and_then(|c| {
                 let l = s.listeners.as_ref()?;
-                let left = c.until.saturating_duration_since(Instant::now()).as_millis() as i64;
-                Some(PairingStatus { url: self.pairing_url(s, c, l.port), expires_at: now_ms() + left })
+                Some(PairingStatus { url: self.pairing_url(s, c, l.port), expires_at: c.expires })
             }),
             asking: s.asking.and_then(|id| s.sessions.get(&id)).and_then(|a| {
                 let digits = a.nonce.as_ref().and_then(|n| check_digits(a, n))?;
@@ -656,7 +657,7 @@ impl Core {
                 tokio::select! {
                     _ = st3.notified() => return,
                     r = udp.recv_from(&mut buf) => match r {
-                        Ok((n, from)) => me.datagram(&buf[..n], relay::plain(from)),
+                        Ok((n, from)) => me.datagram(&buf[..n], from),
                         Err(_) => tokio::time::sleep(Duration::from_millis(5)).await,
                     },
                 }
@@ -684,7 +685,12 @@ impl Core {
         if !s.showing_pairing || s.listeners.is_none() {
             return;
         }
-        let code = Code { id: crypto::new_id(), key: crypto::new_key(), until: Instant::now() + Duration::from_secs_f64(PAIRING_LIFE) };
+        let code = Code {
+            id: crypto::new_id(),
+            key: crypto::new_key(),
+            until: Instant::now() + Duration::from_secs_f64(PAIRING_LIFE),
+            expires: now_ms() + (PAIRING_LIFE * 1000.0) as i64,
+        };
         s.old_code = s.pairing.take();
         s.pairing = Some(code);
         s.pairing_gen += 1;
@@ -1134,7 +1140,6 @@ impl Core {
                     }
                     me.publish(&mut s);
                 });
-                return;
             }
             ToMac::ScreenCrop(c) => {
                 if let Some(sc) = self.screen(s, sid) {
@@ -1145,7 +1150,6 @@ impl Core {
                 if let Some(sc) = self.screen(s, sid) {
                     drop(guard);
                     sc.report(&r);
-                    return;
                 }
             }
             ToMac::ScreenPace { idle } => {
@@ -1167,7 +1171,6 @@ impl Core {
                 if let Some(id) = s.sessions.get(&sid).and_then(|x| x.id.clone()) {
                     drop(guard);
                     self.remove(&id);
-                    return;
                 }
             }
             ToMac::Replaces { device_id } => {
@@ -1176,7 +1179,6 @@ impl Core {
                 if x.approved && x.id.as_deref() != Some(device_id.as_str()) && s.devices.iter().any(|d| d.id == device_id) {
                     drop(guard);
                     self.remove(&device_id);
-                    return;
                 }
             }
             ToMac::OfferRelay(a) => {
@@ -1683,12 +1685,15 @@ fn relay_address(s: &crate::store::Settings) -> Option<String> {
     s.relay.clone().flatten().and_then(|a| relay::address(&a))
 }
 
+type Opening = (String, Vec<u8>, [u8; 32], Option<Vec<u8>>);
+
 /// A connection's reader state.
 struct Conn {
     chan: Arc<Chan>,
     reader: FrameReader,
     inn: Option<crypto::SealIn>,
-    opened_with: Option<(String, Vec<u8>, [u8; 32], Option<Vec<u8>>)>,
+    /// (id, the paired key used, transcript, commitment): checked when the first sealed frame comes
+    opened_with: Option<Opening>,
     answered: bool,
     opened: bool,
     refused: bool,
@@ -1778,6 +1783,9 @@ fn bind_tcp(port: u16) -> std::io::Result<TcpListener> {
 fn bind_udp() -> std::io::Result<UdpSocket> {
     let s = socket2::Socket::new(socket2::Domain::IPV6, socket2::Type::DGRAM, Some(socket2::Protocol::UDP))?;
     let _ = s.set_only_v6(false);
+    // a keyframe is a hundred datagrams at once: room for them (macOS starts at 9 KB)
+    let _ = s.set_send_buffer_size(4 << 20);
+    let _ = s.set_recv_buffer_size(1 << 20);
     s.bind(&SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 0).into())?;
     s.set_nonblocking(true)?;
     UdpSocket::from_std(s.into())
