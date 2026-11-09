@@ -177,8 +177,8 @@ impl Input for LinuxInput {
 
     fn move_to(&mut self, x: f64, y: f64) {
         let space = self.absolute_space();
-        if space.0 > 0.0 {
-            self.portal.send(Cmd::Absolute(x, y, space));
+        if let (true, Some(s)) = (space.0 > 0.0, self.portal.stream()) {
+            self.portal.send(Cmd::Absolute(x, y, space, s.node));
         }
     }
 
@@ -232,6 +232,16 @@ impl Input for LinuxInput {
         let at = self.shared.cursor.lock().unwrap().at?;
         let m = self.shared.mirror.lock().unwrap();
         math::pointer_norm(at.0, at.1, m.width, m.height)
+    }
+
+    /// The pointer on the desktop (the monitors' logical layout), while it's on the monitor being shown.
+    fn pointer_desktop(&self) -> Option<(f64, f64)> {
+        let (x, y) = self.pointer()?;
+        if !(0.0..1.0).contains(&x) || !(0.0..1.0).contains(&y) {
+            return None;
+        }
+        let s = self.portal.stream()?;
+        Some((s.position.0 as f64 + x * s.size.0 as f64, s.position.1 as f64 + y * s.size.1 as f64))
     }
 
     fn cursor_shape(&mut self) -> Option<CursorShape> {

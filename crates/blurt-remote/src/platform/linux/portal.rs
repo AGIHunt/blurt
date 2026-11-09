@@ -75,20 +75,23 @@ fn token_path() -> PathBuf {
     state_dir().join("portal-remote.token")
 }
 
-/// What the session shows: the monitor's stream.
+/// One monitor the session can show: its stream.
 #[derive(Clone, Debug)]
 pub struct StreamInfo {
     pub node: u32,
-    /// logical size (points)
+    /// the portal's id for the stream (stable while it's shared), else the node number
+    pub id: String,
+    /// logical size and place on the desktop (points)
     pub size: (i32, i32),
+    pub position: (i32, i32),
 }
 
 pub enum Cmd {
     Keys(Vec<(i32, bool)>),
     Keysym(i32),
     Motion(f64, f64),
-    /// 0…1 of the monitor, turned into the stream's space by the worker (it knows the node)
-    Absolute(f64, f64, (f64, f64)),
+    /// 0…1 of the monitor shown: x, y, the stream's space, its node
+    Absolute(f64, f64, (f64, f64), u32),
     Button(i32, bool),
     /// axis values (Wayland's sense); `end`: the gesture is over (a finish follows unless more comes)
     Axis(f64, f64),
@@ -100,7 +103,7 @@ pub enum Cmd {
 enum State {
     Idle,
     Opening,
-    Open { tx: mpsc::UnboundedSender<Cmd>, stream: Option<StreamInfo>, session: Arc<Session<RemoteDesktop>> },
+    Open { tx: mpsc::UnboundedSender<Cmd>, streams: Vec<StreamInfo>, session: Arc<Session<RemoteDesktop>> },
     Failed(String, Instant),
 }
 
@@ -109,6 +112,8 @@ pub struct Portal {
     changed: Condvar,
     controls: AtomicBool,
     inhibit: Mutex<Option<ashpd::desktop::Request<()>>>,
+    /// the stream being shown (a StreamInfo id); None: the first
+    current: Mutex<Option<String>>,
 }
 
 /// A refusal is remembered this long, so a phone tapping keys doesn't bring the dialog back at once.
@@ -124,7 +129,7 @@ fn words(e: &ashpd::Error) -> String {
 
 impl Portal {
     pub fn new() -> Arc<Portal> {
-        Arc::new(Portal { state: Mutex::new(State::Idle), changed: Condvar::new(), controls: AtomicBool::new(false), inhibit: Mutex::new(None) })
+        Arc::new(Portal { state: Mutex::new(State::Idle), changed: Condvar::new(), controls: AtomicBool::new(false), inhibit: Mutex::new(None), current: Mutex::new(None) })
     }
 
     pub fn can_control(&self) -> bool {
@@ -146,9 +151,9 @@ impl Portal {
             let r = me.open().await;
             let mut st = me.state.lock().unwrap();
             *st = match r {
-                Ok((tx, stream, session, controls)) => {
+                Ok((tx, streams, session, controls)) => {
                     me.controls.store(controls, SeqCst);
-                    State::Open { tx, stream, session }
+                    State::Open { tx, streams, session }
                 }
                 Err(e) => {
                     eprintln!("blurt-remote: portal: {e}");
@@ -167,7 +172,10 @@ impl Portal {
         let mut st = self.state.lock().unwrap();
         loop {
             match &*st {
-                State::Open { stream, .. } => return Ok(stream.clone()),
+                State::Open { .. } => {
+                    drop(st);
+                    return Ok(self.stream());
+                }
                 State::Failed(e, _) => return Err(e.clone()),
                 State::Idle => {
                     drop(st);
@@ -185,11 +193,25 @@ impl Portal {
         }
     }
 
-    pub fn stream(&self) -> Option<StreamInfo> {
+    /// Every monitor the user shared (GNOME's dialog lets them pick several), the first being the one shown by default.
+    pub fn streams(&self) -> Vec<StreamInfo> {
         match &*self.state.lock().unwrap() {
-            State::Open { stream, .. } => stream.clone(),
-            _ => None,
+            State::Open { streams, .. } => streams.clone(),
+            _ => vec![],
         }
+    }
+
+    /// The monitor being shown.
+    pub fn stream(&self) -> Option<StreamInfo> {
+        let all = self.streams();
+        let cur = self.current.lock().unwrap().clone();
+        all.iter().find(|s| Some(&s.id) == cur.as_ref()).or(all.first()).cloned()
+    }
+
+    /// Show this one from now on (None: the first). The stream chosen, if there's any.
+    pub fn select(&self, id: Option<&str>) -> Option<StreamInfo> {
+        *self.current.lock().unwrap() = id.map(|s| s.to_string());
+        self.stream()
     }
 
     /// Queues one input command. Before the session is open it's dropped (a late key is worse than a lost one) and the
@@ -243,7 +265,7 @@ impl Portal {
         }
     }
 
-    async fn open(self: &Arc<Self>) -> Result<(mpsc::UnboundedSender<Cmd>, Option<StreamInfo>, Arc<Session<RemoteDesktop>>, bool), String> {
+    async fn open(self: &Arc<Self>) -> Result<(mpsc::UnboundedSender<Cmd>, Vec<StreamInfo>, Arc<Session<RemoteDesktop>>, bool), String> {
         let rd = RemoteDesktop::new().await.map_err(|e| words(&e))?;
         let session = rd.create_session(CreateSessionOptions::default()).await.map_err(|e| words(&e))?;
         let token = std::fs::read_to_string(token_path()).ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
@@ -256,14 +278,14 @@ impl Portal {
         )
         .await
         .map_err(|e| words(&e))?;
-        // the screen: one monitor, the pointer as metadata (its position and look ride along; the phone draws it)
+        // the screen: the monitors the user picks (one is fine), the pointer as metadata (its position and look ride along; the phone draws it)
         let sc = Screencast::new().await.map_err(|e| words(&e))?;
         let modes = sc.available_cursor_modes().await.unwrap_or_default();
         let cursor = if modes.contains(CursorMode::Metadata) { CursorMode::Metadata } else { CursorMode::Embedded };
         let with_screen = sc
             .select_sources(
                 &session,
-                SelectSourcesOptions::default().set_cursor_mode(cursor).set_sources(ashpd::enumflags2::BitFlags::from(SourceType::Monitor)).set_multiple(false),
+                SelectSourcesOptions::default().set_cursor_mode(cursor).set_sources(ashpd::enumflags2::BitFlags::from(SourceType::Monitor)).set_multiple(true),
             )
             .await
             .is_ok();
@@ -287,19 +309,28 @@ impl Portal {
             let _ = session.close().await;
             return Err("Remote control is off in the computer's Remote Desktop dialog: turn on \"Allow Remote Interaction\".".into());
         }
-        let stream = with_screen
-            .then(|| started.streams().first())
-            .flatten()
-            .map(|s| StreamInfo { node: s.pipe_wire_node_id(), size: s.size().unwrap_or((0, 0)) });
-        if let Some(s) = &stream {
+        let streams: Vec<StreamInfo> = if with_screen {
+            started
+                .streams()
+                .iter()
+                .map(|s| StreamInfo {
+                    node: s.pipe_wire_node_id(),
+                    id: s.id().map(|i| i.to_string()).unwrap_or_else(|| s.pipe_wire_node_id().to_string()),
+                    size: s.size().unwrap_or((0, 0)),
+                    position: s.position().unwrap_or((0, 0)),
+                })
+                .collect()
+        } else {
+            vec![]
+        };
+        if let Some(s) = streams.first() {
             if s.size.0 > 0 && s.size.1 > 0 {
                 let _ = std::fs::write(state_dir().join("display-aspect"), format!("{}", s.size.0 as f64 / s.size.1 as f64));
             }
         }
         let session = Arc::new(session);
         let (tx, rx) = mpsc::unbounded_channel();
-        let node = stream.as_ref().map(|s| s.node);
-        tokio::spawn(worker(rd, session.clone(), node, rx));
+        tokio::spawn(worker(rd, session.clone(), rx));
         // the session ends from the desktop too (the user stops it from GNOME's top bar): next time, open another
         let me = Arc::downgrade(self);
         let s2 = session.clone();
@@ -316,7 +347,7 @@ impl Portal {
                 }
             }
         });
-        Ok((tx, stream, session, controls))
+        Ok((tx, streams, session, controls))
     }
 
     /// Keep the computer awake (and with `display`, the screen on) while a phone is connected.
@@ -342,7 +373,7 @@ impl Portal {
 }
 
 /// The one task that talks to the portal for input, in order.
-async fn worker(rd: RemoteDesktop, s: Arc<Session<RemoteDesktop>>, node: Option<u32>, mut rx: mpsc::UnboundedReceiver<Cmd>) {
+async fn worker(rd: RemoteDesktop, s: Arc<Session<RemoteDesktop>>, mut rx: mpsc::UnboundedReceiver<Cmd>) {
     let mut next: Option<Cmd> = None;
     let mut finish_at: Option<tokio::time::Instant> = None;
     // NotifyPointerAxis is version 1, but a backend may still refuse it: then wheel clicks
@@ -391,12 +422,11 @@ async fn worker(rd: RemoteDesktop, s: Arc<Session<RemoteDesktop>>, node: Option<
                 }
                 rd.notify_pointer_motion(&s, dx, dy, NotifyPointerMotionOptions::default()).await
             }
-            Cmd::Absolute(mut x, mut y, space) => {
+            Cmd::Absolute(mut x, mut y, mut space, mut node) => {
                 while let Ok(n) = rx.try_recv() {
                     match n {
-                        Cmd::Absolute(a, b, _) => {
-                            x = a;
-                            y = b;
+                        Cmd::Absolute(a, b, sp, nd) => {
+                            (x, y, space, node) = (a, b, sp, nd);
                         }
                         other => {
                             next = Some(other);
@@ -404,7 +434,6 @@ async fn worker(rd: RemoteDesktop, s: Arc<Session<RemoteDesktop>>, node: Option<
                         }
                     }
                 }
-                let Some(node) = node else { continue };
                 let (px, py) = super::math::absolute_target(x, y, space);
                 rd.notify_pointer_motion_absolute(&s, node, px, py, NotifyPointerMotionAbsoluteOptions::default()).await
             }

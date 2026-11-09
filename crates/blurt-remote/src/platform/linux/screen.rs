@@ -76,7 +76,9 @@ impl Screen for LinuxScreen {
     fn start(&mut self, config: &ScreenConfig, sink: FrameSink) -> Result<ScreenInfo, String> {
         self.stop();
         super::encode::init()?;
-        let stream = self.portal.wait(DIALOG_WAIT)?.ok_or("The computer didn't share a screen in its Remote Desktop dialog.")?;
+        self.portal.wait(DIALOG_WAIT)?;
+        // the display asked for (several shared in the dialog), else the first
+        let stream = self.portal.select(config.display.as_deref()).ok_or("The computer didn't share a screen in its Remote Desktop dialog.")?;
         let (codec, element) = pick_encoder(&config.codecs).ok_or("No video encoder is installed (gstreamer1.0-plugins-ugly has x264).")?;
         let fd = self.portal.pipewire_fd()?;
         // the frames' size comes with the first one: wait for it, so the output keeps the monitor's shape

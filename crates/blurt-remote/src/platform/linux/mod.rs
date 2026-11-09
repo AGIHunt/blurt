@@ -40,7 +40,7 @@ mod imp {
     use super::input::LinuxInput;
     use super::portal::{self, Portal};
     use super::screen::LinuxScreen;
-    use crate::host::{Backend, Input, Screen};
+    use crate::host::{Backend, DisplayInfo, Input, Screen};
 
     pub use super::portal::{set_dialog_parent, set_state_dir};
     pub use super::screen::pick_encoder;
@@ -108,6 +108,25 @@ mod imp {
 
         fn screen(&mut self) -> Option<&mut dyn Screen> {
             Some(&mut self.screen)
+        }
+
+        /// The monitors shared in GNOME's dialog, as the portal places them (logical points). Switching is a restart of the
+        /// stream on the other monitor (`set_display` says no): about 60 ms, measured.
+        fn displays(&self) -> Vec<DisplayInfo> {
+            self.portal
+                .streams()
+                .iter()
+                .enumerate()
+                .map(|(i, s)| DisplayInfo {
+                    id: s.id.clone(),
+                    name: format!("Display {}", i + 1),
+                    x: s.position.0 as f64,
+                    y: s.position.1 as f64,
+                    width: s.size.0 as f64,
+                    height: s.size.1 as f64,
+                    main: i == 0,
+                })
+                .collect()
         }
 
         fn platform(&self) -> &'static str {

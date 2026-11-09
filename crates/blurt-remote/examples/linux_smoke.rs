@@ -29,6 +29,7 @@ fn main() {
         fps: num("--fps", 60),
         codecs: codecs.clone(),
         crop: Crop::WHOLE,
+        display: None,
     };
     println!("encoder for {codecs:?}: {:?}", linux::pick_encoder(&codecs));
 
@@ -41,7 +42,7 @@ fn main() {
             std::process::exit(1);
         }
     }
-    println!("display aspect {:.3}", b.display_aspect());
+    println!("display aspect {:.3}, displays {:?}", b.display_aspect(), b.displays());
     b.keep_awake(true, true);
 
     #[derive(Default)]
