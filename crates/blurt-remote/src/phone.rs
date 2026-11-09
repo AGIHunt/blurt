@@ -416,6 +416,8 @@ impl Phone {
         let mut weather = w.weather;
         let features = w.request.features.is_some();
         self.send(&ToMac::Screen(Some(w.request))).await;
+        // the round trip from the start: until it's known the receiver's patience is a home network's
+        self.send(&ToMac::Ping(now())).await;
         let mut rx = Receiver::new(false, false, now());
         let mut m = Measure::default();
         let mut held: Vec<(f64, VideoPacket)> = vec![];
@@ -445,47 +447,64 @@ impl Phone {
                 let _ = bytes_since;
                 bytes_since = 0;
             }
-            // pieces a stall held, now let through
+            while let Some(i) = outbox.iter().position(|(at, _)| *at <= t) {
+                let (_, fb) = outbox.remove(i);
+                self.feedback(&fb).await;
+            }
+            let until = (next_tick - t).max(0.0);
+            let mut events = vec![];
+            match tokio::time::timeout(Duration::from_secs_f64(until), self.rx.recv()).await {
+                Ok(Some(e)) => events.push(e),
+                Ok(None) => break,
+                Err(_) => {}
+            }
+            // everything already here is read before the timers run: after a hitch it's what they would otherwise judge missing
+            while let Ok(e) = self.rx.try_recv() {
+                events.push(e);
+            }
+            let t = now();
+            // pieces a stall or the path's delay held, now let through: ahead of what came after them, as a network keeps order
             let mut arrived: Vec<VideoPacket> = vec![];
             if !held.is_empty() {
                 let (due, wait): (Vec<_>, Vec<_>) = held.drain(..).partition(|(at, _)| *at <= t);
                 held = wait;
                 arrived.extend(due.into_iter().map(|(_, p)| p));
             }
-            while let Some(i) = outbox.iter().position(|(at, _)| *at <= t) {
-                let (_, fb) = outbox.remove(i);
-                self.feedback(&fb).await;
-            }
-            let until = (next_tick - t).max(0.0);
-            match tokio::time::timeout(Duration::from_secs_f64(until), self.rx.recv()).await {
-                Ok(Some(Event::Video(v))) => {
-                    if let Some(p) = VideoPacket::decode(&v) {
-                        if counting(t) {
-                            m.pieces += 1;
-                        }
-                        match weather.passes(t) {
-                            Some(at) if at + delay <= t => arrived.push(p),
-                            Some(at) => held.push((at + delay, p)),
-                            None => {}
+            let mut stop = false;
+            for e in events {
+                match e {
+                    Event::Video(v) => {
+                        if let Some(p) = VideoPacket::decode(&v) {
+                            if counting(t) {
+                                m.pieces += 1;
+                            }
+                            match weather.passes(t) {
+                                Some(at) if at + delay <= t => arrived.push(p),
+                                Some(at) => held.push((at + delay, p)),
+                                None => {}
+                            }
                         }
                     }
-                }
-                Ok(Some(Event::Control(c))) => match c {
-                    ToPhone::ScreenView { features: f, .. } => {
-                        let f = if features { f } else { None };
-                        let has = |n: &str| f.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
-                        rx.nack = has(crate::repair::NACK);
-                        rx.ltr = has(crate::repair::LTR);
-                        m.features = f;
-                    }
-                    ToPhone::Pong(sent) => rx.rtt = (now() - sent + 2.0 * delay).clamp(0.0005, 2.0),
-                    // the path's own round trip, without the made-up delay (the clock message isn't delayed)
-                    ToPhone::Clock { phone, mac } => clock = Some(mac - phone - (rx.rtt - 2.0 * delay).max(0.0) / 2.0),
-                    ToPhone::ScreenFailed(_) => break,
+                    Event::Control(c) => match c {
+                        ToPhone::ScreenView { features: f, .. } => {
+                            let f = if features { f } else { None };
+                            let has = |n: &str| f.as_ref().is_some_and(|f| f.iter().any(|x| x == n));
+                            rx.nack = has(crate::repair::NACK);
+                            rx.ltr = has(crate::repair::LTR);
+                            m.features = f;
+                        }
+                        ToPhone::Pong(sent) => rx.rtt = (now() - sent + 2.0 * delay).clamp(0.0005, 2.0),
+                        // the path's own round trip, without the made-up delay (the clock message isn't delayed)
+                        ToPhone::Clock { phone, mac } => clock = Some(mac - phone - (rx.rtt - 2.0 * delay).max(0.0) / 2.0),
+                        ToPhone::ScreenFailed(_) => stop = true,
+                        _ => {}
+                    },
+                    Event::Closed => stop = true,
                     _ => {}
-                },
-                Ok(Some(Event::Closed)) | Ok(None) => break,
-                _ => {}
+                }
+            }
+            if stop {
+                break;
             }
             let t = now();
             let mut out: Vec<Output> = vec![];

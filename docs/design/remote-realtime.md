@@ -323,7 +323,10 @@ Encoders, what each can do for `ltr`:
 2. Timers (seconds; rtt = the last ping's round trip): piece asked after a later piece / later frame / max(0.03, 2 rtt) quiet; again after
    max(0.012, 1.5 rtt), at most 4 times, not while nothing at all has arrived for 0.02; patience min(0.15, max(0.04, 3 rtt + 0.02)) while
    pieces arrive, at most 0.35 regardless; lost / keyframe asked every 0.25 while broken, the first 0.3 after the stream starts only if no
-   keyframe came; acks batched every ≥ 0.02.
+   keyframe came; acks batched every ≥ 0.02. The patience counts only time with pieces arriving (nothing for 0.02 is a stall) and the
+   phone running: a tick more than 0.015 after the last one (the phone itself was busy) gives no frame up, since the pieces that came
+   meanwhile haven't been read yet, and when a stall ends the piece asked for gets its retry before the frame is given up (§Rust host,
+   a stopped process).
 3. Offer `features` by decoder: `nack` and `fec` always. `ltr` only on decoders known to survive a skipped frame followed by a refresh
    (Moonlight's experience: RFI hangs Amlogic HEVC before Fire OS 7 and misbehaves on some low-end Snapdragons above 720p): start with an
    allow-list of Qualcomm `c2.qti.*` / `OMX.qcom.*` on Snapdragon 8 Gen 1+, Google `c2.exynos`/Tensor, MediaTek `c2.mtk.*` Dimensity 9000+,
@@ -433,6 +436,57 @@ The last row is the one that doesn't hold up: a 60 ms round trip with bursts of 
 retry wait (60 + 90 + 60 ms), past the 150 ms patience, so frames are given up (4 recovery frames, no keyframe) and the rate controller
 reads the 60 lost frames as congestion. Parity (G = 8 at that loss) mends about a third. The same spec on the Mac would do the same; away
 from home with that much loss, G = 4 sooner or a longer patience would be the knobs (not tried).
+
+**A stopped process (CI, 2026-11-09).** The test failed twice on shared GitHub runners with code that passes on reruns: on macOS the
+rate backed off to 10.5 Mbps at 3 % (the floor is 9 Mbps since), and on Linux (`desktop.yml`, run 42632247105) the stage "1 %, bursts of 2"
+gave up 33 frames with a 420 ms gap, 2 refreshes and 1 lost asked. Host, encoder and phone run in one process there, and a shared runner
+stops a process now and then (another VM's turn, a cgroup's quota spent). Reproduced in Docker (Ubuntu 24.04, debug build) with the test
+pinned to a few cores beside `stress-ng --cpu` hogs, and under a CFS quota (`--cpus 1`), which stops the whole process for 70–80 ms at a
+time as a busy runner does. Traced, the stop itself wasn't the trouble; what the phone did after it was:
+
+- **A real slow path in the phone's receiver.** After a stop, the first piece read sets `heard_at` to now (so it doesn't look like a
+  stall), then the timers run before the pieces that came during the stop are read, the resend asked for among them. The frame has been
+  "late" for the whole stop, past the 40 ms patience at home, so it's given up and everything behind it dropped while its piece sits in the
+  queue (traced: `GIVE UP 743 … asked {2,3,4} twice, heard 2.472` at the very tick the backlog began). A stop of 70 ms became a recovery
+  frame and 4–69 frames dropped. Now a `tick` more than 15 ms after the last one gives nothing up and the time away doesn't count against
+  the patience (`a_hitch_on_the_phone_gives_nothing_up`).
+- **The same after a stall.** Rarer (2 runs in 30 under the quota and hogs): the last 4 pieces of a frame lost in a burst, asked for once, then
+  85 ms with nothing from the host (its thread starved; to the phone, a Wi-Fi stall). Retries rightly wait out a stall, but the first piece
+  after it ended the stall and the frame, "late" for 50 ms, was given up in that tick before its retry could go. The spec always said the
+  patience counts "while pieces arrive"; the receiver counted the stall too. Now it counts only time with pieces arriving and the phone
+  running (`after_a_stall_the_piece_asked_for_gets_its_retry`); 0.35 s late in all still gives up regardless. The spec above has both
+  rules. The Swift and Kotlin receivers have the same timers and have neither yet.
+- **The test phone fell behind.** `phone::watch` read one piece per turn of its loop, so a backlog drained no faster than the ticks; at a
+  60 ms round trip under contention it never caught up (age p50 270 ms, 4 fps, 17 recoveries). It now reads everything queued before the
+  timers run, lets out what the made-up network held before what came after it, as a network keeps order, and pings when a stage starts
+  (until the first pong at 1 s the patience assumed a home network, so at a 60 ms round trip the warm-up gave frames up and, nothing yet
+  acknowledged, asked for keyframes).
+- **The test's encoder made up missed frames.** After a stop the synthetic screen sent every frame it had missed at once (36 frames,
+  900 KB after a 600 ms stop), which overflows a Linux socket's default 212 KB on loopback and the resend budget. A capture shows what's
+  on screen now, so it now skips to the current frame.
+- **The rest is noise, measured.** A thread in the test sleeps 1 ms at a time and notes when it wakes much later: the process was stopped.
+  The longest gap may be longer by the longest stop in that stage and a quarter more (the backlog is read after it), and frames shown as
+  many as the time running allows (nothing is captured while stopped); the table prints the stops. On a quiet runner both limits are what
+  they were. Frames given up (≤ 2), keyframes asked, corrupt frames and the rate stay strict, so a repair that's slow again shows whatever
+  the runner does.
+
+10 runs of the whole test in a row per row (debug build, Docker on an M-series Mac, Ubuntu 24.04; `main` at a4ad6c3c with its own test
+against this change with this test, side by side on separate cores):
+
+| Contention | | Passed | Home stages: frames given up (all runs) | Recoveries asked | Longest gap, ms | Process stopped (longest, in all per 4 s) |
+|---|---|---|---|---|---|---|
+| 2 cores, 4 `stress-ng --cpu` hogs | main | 8 / 10 | 0 | 0 | 100 | — |
+| | this change | 10 / 10 | 0 | 0 | 96 | 8 ms, 0–23 ms |
+| 4 cores, `--cpus 1` quota, 2 hogs | main | 1 / 10 | 140 | 23 | 215 | — |
+| | this change | 10 / 10 | 0 | 0 | 178 | 76 ms, 1.7–1.9 s |
+| 4 cores, `--cpus 1` quota alone | main | 10 / 10 | ≤ 2 a stage (logs not kept) | — | < 150 | — |
+| | this change | 10 / 10 | 0 | 0 | 100 | 8 ms, 0 |
+
+`main` failed in the 60 ms round-trip stage under hogs (4 fps: its test phone fell behind) and in the home stages under the quota with hogs
+(frames given up after stops). Neither hogs alone (they take turns too briefly) nor a quota alone (it leaves the test enough CPU) stops the
+process the way the CI runs were stopped; the two together do. The whole test needs about 0.4 of a core (17.7 s user over 45 s). With
+this change the 60 ms stage keeps the occasional recovery the table above describes (a piece lost twice), 1–2 in 10 runs, and under the
+quota with hogs shows 39 fps because the process ran 55 % of the time, nothing given up.
 
 The real iPhone app (iPhone 17 Pro simulator, iOS 27.2, its own stage report) against `examples/host --screen-test` (ffmpeg's testsrc2
 through libx264 at 60 fps, 12 Mbps, 1866×1048; no recovery frames, so `fec,nack`), 12 s after 3 s to settle, `BLURT_SCREEN_REPAIR=0` for
