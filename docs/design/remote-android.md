@@ -100,11 +100,12 @@ sealed class ToMac {
 sealed class ToPhone {
     Session(info) · CanControl(on) · Front(front) · Dictation(phase) · Live(committed, pending) · Level(level: Float) · Typed(text)
     Notice(text) · Pong(t: Double) · UdpOK · Removed · Relay(address: String?) · Replaced · PairingWaits · Listen(on) · NewKey(key: ByteArray)
-    Clock(phone: Double, mac: Double) · ScreenFailed(text) · ScreenView(width: Double, height: Double, codec: String? = null, display: String? = null)
+    Clock(phone: Double, mac: Double) · ScreenFailed(text) · ScreenView(width: Double, height: Double, codec: String? = null, display: String? = null,
+        features: List<String>? = null /* repairs the host uses, 1.0.15+ */)
     Displays(displays: List<RemoteDisplay>)
     CursorShape(png: ByteArray, hotX: Double, hotY: Double, width: Double, height: Double)
 }
-enum class RemoteFrameKind(raw: Int) { CONTROL, AUDIO, POINTER, VIDEO, PROBE, CURSOR; companion { fun from(raw: Int): RemoteFrameKind? } }
+enum class RemoteFrameKind(raw: Int) { CONTROL, AUDIO, POINTER, VIDEO, PROBE, CURSOR, VIDEO_FEEDBACK; companion { fun from(raw: Int): RemoteFrameKind? } }
 enum class RemoteScrollPhase(raw: Int) { BEGAN, CHANGED, ENDED }
 sealed class RemotePointerPacket { Move(dx, dy) · Scroll(dx, dy, phase) · ScrollFling(vx, vy) · ScrollStop
     fun encoded(): ByteArray; companion { fun decode(d: ByteArray): RemotePointerPacket? } }
@@ -115,16 +116,35 @@ data class RemoteCrop(val x: Float, val y: Float, val w: Float, val h: Float) { 
     companion { val WHOLE: RemoteCrop; fun centered(zoom: Float): RemoteCrop } }
 object RemoteVideoCodec { const val HEVC = "hevc"; const val H264 = "h264"; val DECODABLE: List<String> }
 data class RemoteScreenRequest(val target: String, val crop: RemoteCrop = WHOLE, val width: Int, val height: Int, val bitrate: Int,
-    val fps: Int = 60, val codecs: List<String>? = RemoteVideoCodec.DECODABLE, val display: String? = null /* null = follow the pointer */)
+    val fps: Int = 60, val codecs: List<String>? = RemoteVideoCodec.DECODABLE, val display: String? = null /* null = follow the pointer */,
+    val features: List<String>? = null /* repairs offered: RemoteVideoFeature */)
 data class RemoteScreenReport(val frames: Int, val lost: Int, val rtt: Double?, val received: Int)
-class RemoteVideoPacket(val frame: Long, val index: Int, val count: Int, val keyframe: Boolean, val captured: Double, val payload: ByteArray) {
-    fun encoded(): ByteArray
+class RemoteVideoPacket(val frame: Long, val index: Int, val count: Int, val keyframe: Boolean, val captured: Double, val payload: ByteArray,
+    val refresh: Boolean = false, val ackRequested: Boolean = false) {     // byte 8: flags; index ≥ count: a parity piece
+    val isParity: Boolean; val flags: Int; fun with(index: Int, payload: ByteArray): RemoteVideoPacket; fun encoded(): ByteArray
     companion { const val HEADER_SIZE = 17; const val PAYLOAD_SIZE = 1180; fun decode(d: ByteArray): RemoteVideoPacket?
-        fun split(data: ByteArray, frame: Long, keyframe: Boolean, captured: Double, size: Int = PAYLOAD_SIZE): List<RemoteVideoPacket> } }
-class RemoteVideoAssembler { class Frame(val data: ByteArray, val keyframe: Boolean, val captured: Double, val id: Long)
+        fun split(data: ByteArray, frame: Long, keyframe: Boolean, captured: Double, size: Int = PAYLOAD_SIZE, refresh: Boolean = false,
+            ackRequested: Boolean = false): List<RemoteVideoPacket> } }
+class RemoteVideoAssembler { class Frame(val data: ByteArray, val keyframe: Boolean, val captured: Double, val id: Long, val refresh: Boolean = false,
+        val ackRequested: Boolean = false) { var firstAt: Double; var lastAt: Double }
     fun add(p: RemoteVideoPacket): Frame?; val waitingForKey: Boolean; val dropped: Int }
 object RemoteVideoPayload { class Unpacked(val crop: RemoteCrop, val parameterSets: List<ByteArray>, val picture: ByteArray)
     fun pack(crop: RemoteCrop, parameterSets: List<ByteArray>, picture: ByteArray): ByteArray; fun unpack(d: ByteArray): Unpacked? }
+
+// Repairs (RemoteVideoRepair.swift; remote-realtime.md)
+object RemoteVideoFeature { const val NACK = "nack"; const val LTR = "ltr"; const val FEC = "fec"; val ALL: List<String> }
+sealed class RemoteVideoFeedback { data class Missing(val frame: Long, val pieces: List<Int> /* empty = the whole frame */)
+    Nack(missing: List<Missing>) · Ack(newest: Long, earlier: Long) · Lost(after: Long)
+    fun encoded(): ByteArray; companion { const val MAX_SIZE = 1100; fun decode(b: ByteArray): RemoteVideoFeedback?; fun nacks(m: List<Missing>): List<RemoteVideoFeedback> } }
+object RemoteVideoFEC { const val MAX_PARITY = 64; fun parity(pieces: List<RemoteVideoPacket>, group: Int): List<RemoteVideoPacket>
+    fun recover(parity: ByteArray, slot: Int, count: Int, have: Map<Int, ByteArray>): Pair<Int, ByteArray>? }
+class RemoteVideoHistory(val maxAge: Double = 1.0, val maxBytes: Int = 6_000_000) {     // the host's side
+    fun add(id: Long, packets: List<ByteArray>, now: Double); fun pieces(id: Long, indices: List<Int>): List<ByteArray>; fun clear() }
+class RemoteVideoReceiver(var nack: Boolean, var ltr: Boolean, now: Double = 0.0) {     // not thread-safe; times in seconds
+    sealed class Output { Frame(frame) · Feedback(feedback) · Keyframe }
+    var rtt: Double; val broken: Boolean; val patience: Double; val dropped: Int; val repaired: Int; val nacked: Int; val refreshes: Int
+    fun add(p: RemoteVideoPacket, now: Double): List<Output>; fun tick(now: Double): List<Output>
+    fun decoded(f: RemoteVideoAssembler.Frame, now: Double): List<Output>; fun decoderFailed(now: Double) }
 
 // Crypto and framing
 object RemoteCrypto {
@@ -190,7 +210,8 @@ class ViewPort { val zoom: Double; val rect: PadRect; val isWhole: Boolean; val 
 enum class ScreenQuality(raw: String) { AUTO, SHARP, BALANCED, SAVER; val title: String; val detail: String; companion { fun from(raw: String?): ScreenQuality } }
 enum class LinkRoute { LOCAL, DIRECT, RELAY }
 data class ScreenPlan(val width: Int, val height: Int, val bitrate: Int, val fps: Int) {
-    companion { operator fun invoke(q: ScreenQuality, route: LinkRoute, cellular: Boolean, lowData: Boolean /* Data Saver */, native: PadSize): ScreenPlan } }
+    companion { operator fun invoke(q: ScreenQuality, route: LinkRoute, cellular: Boolean, lowData: Boolean /* Data Saver */, native: PadSize,
+        panel: Int = 60 /* top refresh rate: at home fps = min(120, max(60, panel)) */): ScreenPlan } }
 
 // Deck (immutable; editing returns a new Deck)
 sealed class KeyAction { Chord(chord, cycle = false) · Sequence(steps) · Text(text, enter) · Arrows · Sticky(mods: Int) · NextTab · Blurt(command) · System(move) }
@@ -225,14 +246,15 @@ Services, Firebase or ML Kit: QR codes are ZXing on CameraX frames, so it runs o
 | Big screens | `PadLayout` modes `SPLIT`, `STACK` | Width ≥ 600 and height ≥ 480 dp: a large stage plus a 402 dp panel of the phone's keys, never stretched, with a trackpad of its own above them (beside the stage when wide, under it when tall). Foldables through Jetpack WindowManager: tabletop (fold across, half open) = picture above the fold, pad and keys below; book (fold down the middle) = picture on one half, pad and keys on the thumb's half; nothing is laid across the fold. |
 | Pad | `pad/TrackpadView.kt` | Raw `MotionEvent`s into core's PadEngine in dp, `requestUnbufferedDispatch`, palms by touch major (88 dp) or `TOOL_TYPE_PALM`/`FLAG_CANCELED`. A mouse on a tablet: first click takes pointer capture; relative moves, buttons and wheel go across; a touch gives it back. |
 | Keys | `keys/*` | KeyCell, KeyList, PageStrip, Sticky, TypeField as on the iPhone (fire on lift, cycle keys with 22 dp detents and edge stepping, the arrow key, repeats, 120 ms list-or-key). Faces: Material Symbols Rounded at weight 300 (`tools/symbols.py` cuts the font to the 107 the app uses, 22 KB), the six marks drawn on a Canvas. Deck strings are English in core and translated by `DeckText`. Hardware keyboards: every key down/up goes across under its own name (`HardwareKeys.kt`). |
-| Screen | `pad/ScreenStream.kt`, `StageView.kt`, `CursorView.kt` | MediaCodec, asynchronous, hardware decoder first; `codecs` best first from MediaCodecList (hardware HEVC, hardware H.264, then software H.264 before software HEVC); `KEY_LOW_LATENCY` where the decoder has the feature, plus the vendors' own low-latency keys. Frames render into a SurfaceTexture drawn by a GLSurfaceView: each latched frame's timestamp says which crop it carries, and it is drawn there in the same pass, which is the iPhone's "crop and pixels in one commit". The last whole frame is kept in a texture as the backdrop. Corners are rounded 6 dp in the shader. |
+| Screen | `pad/ScreenStream.kt`, `StageView.kt`, `CursorView.kt` | MediaCodec, asynchronous, hardware decoder first; `codecs` best first from MediaCodecList (hardware HEVC, hardware H.264, then software H.264 before software HEVC); `KEY_LOW_LATENCY` where the decoder has the feature, plus the vendors' own low-latency keys. Loss is repaired (core's `RemoteVideoReceiver`, ticked every 4 ms on the decode thread): nack and fec offered always, ltr on decoders that take a refresh (`takesRefresh`, `RefreshDecodeTest`); each decoded picture released at once, the newest of several; the panel's top rate asked for while frames come (`Surface.setFrameRate`, `preferredDisplayModeId`). Debug builds: a made-up network from launch extras (`TestWeather.kt`). Numbers: [remote-realtime.md](remote-realtime.md) §Android. Frames render into a SurfaceTexture drawn by a GLSurfaceView: each latched frame's timestamp says which crop it carries, and it is drawn there in the same pass, which is the iPhone's "crop and pixels in one commit". The last whole frame is kept in a texture as the backdrop. Corners are rounded 6 dp in the shader. |
 | Talk | `talk/*` | AudioRecord, VOICE_RECOGNITION source, 16 kHz mono PCM16 in 100 ms pieces from key-down. The microphone permission is asked the first time the talk key is pressed. |
 | Sheets | `sheets/*` | Compose over the main screen in the same window: Settings, pairing (CameraX + ZXing, or paste the link), the key editor (long-press drag; into the dock swaps), confirmation for links from outside. On a big screen a sheet is a 560 dp card. |
 
 `apps/android/fakehost` is a fake computer for trying all of this without Blurt: core's MacHandshake, pairing with an automatic yes (or
 `--ask`), every message logged, and with `--picture` a still image streamed through ffmpeg (H.264 or HEVC, whichever the phone asks for
 first) so the screen view has something to show.
-`--two-displays` adds a second display; `PinchTest` (androidTest) does the two-finger pinch adb's input can't.
+`--scroll` scrolls the picture 2 px a frame; it uses the nack and fec repairs a phone offers (`--no-repairs` for an older host, `--fec G`
+to force parity) and answers a keyframe request by starting its encoder over; `--port` moves it off 47811/47812. `--two-displays` adds a second display; `PinchTest` (androidTest) does the two-finger pinch adb's input can't.
 
 Decisions made here, beyond the iPhone's:
 

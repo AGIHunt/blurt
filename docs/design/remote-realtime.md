@@ -1,7 +1,8 @@
 # Design: a live picture (the computer's screen on the phone, as close to real time as the network allows)
 
 2026-11-09. Status: built on the reference path (Mac host ↔ iPhone app), measured on this Mac (M5 Max, macOS 26.5) with the iPhone 17 Pro
-simulator (iOS 27.2) over loopback, with a made-up network laid over it. Specified below for the Rust host (Windows, Linux) and the Android app.
+simulator (iOS 27.2) over loopback, with a made-up network laid over it. Specified below for the Rust host (Windows, Linux) and the Android app;
+the Android app's receiver is built and measured on the emulator (§Android).
 Not yet tried on a real iPhone over Wi-Fi. How the picture works and what it costs: [remote.md](remote.md) §Screen; the wire:
 [remote-protocol.md](remote-protocol.md) §Repairs.
 
@@ -265,6 +266,56 @@ Encoders, what each can do for `ltr`:
    while frames come) and put it in `screen.fps`, as ScreenPlan does.
 6. Test with a made-up network like iOS's `TestWeather` (debug builds): drop pieces at 1 % in bursts of 2, hold everything 80 ms every 2 s.
    Pass: no keyframes asked at 1 % loss, frames shown within 5 % of frames sent, no frame given up during a stall.
+
+## Android (status 2026-11-09)
+
+Built to the spec above. Core (`apps/android/core`): the wire (`screen.features`, `screenView.features`, kind 6, the flags byte, parity
+pieces) passes `videoRepair`, `screen_repairs` and `screen_view_repairs` byte for byte; `RemoteVideoRepair.kt` ports `RemoteVideoReceiver`,
+`RemoteVideoHistory`, `RemoteVideoFEC` and `RemoteVideoFeedback` with every Swift test, plus a 10 s simulated run at 1 % loss (no keyframe,
+no frame given up). App (`pad/ScreenStream.kt`): the receiver ticked every 4 ms on the decode thread, feedback straight to the channel's
+datagram path; nack and fec always offered, ltr only where `takesRefresh` says; each decoded picture released at once, the newest of several;
+`KEY_LOW_LATENCY` and the vendors' keys; the panel's top rate in `screen.fps` (`ScreenPlan(panel:)`) and asked for while frames come
+(`Surface.setFrameRate` + `preferredDisplayModeId`, let go after a second without one). Debug builds take a made-up network from launch extras
+(`pad/TestWeather.kt`: `blurt_test_loss`, `blurt_test_stall`, `blurt_screen_repair=0`, `blurt_screen_test` for a measured run).
+
+**Refresh frames on Android decoders.** `RefreshDecodeTest` (androidTest) decodes what a Mac sends after a loss (VideoToolbox, low-latency,
+LTR; frames 30–33 lost, 34 a refresh; `tools/refresh_stream.swift`) with every decoder on the device and compares each picture with what it
+should show. On the Android 16 emulator all six take it: `c2.goldfish.hevc/h264`, `c2.android.hevc/avc`, `OMX.google.hevc/h264`: 54 dB
+after the loss with the refresh, 6–8 dB without one (the same stream with the refresh left out), 0 errors. So those are allowed from Android
+16; hardware decoders on phones (Snapdragon 8 Gen 1+, Tensor, Dimensity 9000+) are allowed on the spec's say-so, untested.
+
+**Measured** on the Pixel 9 emulator (Android 16, 60 Hz panel, `c2.goldfish.hevc.decoder`) against the fake computer
+(`apps/android/fakehost --scroll`: terminal text scrolling 2 px a frame, x265 at 60 fps, nack + fec, a keyframe answered by restarting the
+encoder at most every 0.7 s) over the emulator's loopback, round trip 1–4 ms. 12 s a run after 3 s to settle, two runs each; "shown" counts
+pictures that reached the GL surface, "longest gap" the longest time between two of them (17 ms is one frame).
+
+| Network | Repairs | Shown / s (sent 61.7) | Longest gap, ms | Gap p99, ms | Frames dropped | Keyframes asked | Repaired |
+|---|---|---|---|---|---|---|---|
+| clean | on | 60.0, 60.0 | 22, 31 | 20 | 0 | 0 | |
+| | off | 60.0, 60.0 | 24, 46 | 20–21 | 0 | 0 | |
+| 1 % lost, bursts of 2 | on | 59.7, 59.9 | 53, 55 | 23–27 | 0 | 0 | 61, 39 pieces sent again |
+| | off | 31.2, 20.8 | 1,273, 1,367 | 562–698 | 100, 178 | 28, 38 | |
+| 3 % lost, bursts of 3 | on | 59.1, 58.8 | 100, 104 | 40–44 | 0 | 0 | 156, 137 sent again |
+| | off | 7.2, 6.1 | 2,105, 2,084 | 2,084–2,105 | 274, 294 | 47, 49 | |
+| 80 ms stall every 2 s | on | 58.2, 57.8 | 96, 113 | 39–51 | 0 | 0 | 3, 5 asked needlessly |
+| | off | 56.8, 57.7 | 374, 114 | 71–79 | 4, 0 | 2, 0 | |
+| 1 % lost, parity forced (G = 8) | on | 60.0 | 32 | 21 | 0 | 0 | 21 by parity, 18 sent again; 3.4 against 2.8 Mbps |
+| 3 % lost, parity forced (G = 8) | on | 59.2 | 81 | 41 | 0 | 0 | 44 by parity, 126 sent again |
+
+Age at decode (the host's capture to the phone's decoder output, clocks matched by the fastest ping): 5.0–5.5 ms p50, 7–16 ms p95 with
+repairs on in every weather. The spec's pass marks hold: no keyframes asked at 1 % loss, frames shown within 5 % of the panel's 60 (the
+fake host sends 61.7 a second, a little over its nominal 60; two in one vsync show as one), no frame given up during a stall. Without
+repairs the same losses cost what they cost on iOS before (21–31 frames a second and 1.3 s freezes at 1 %, 6–7 and 2.1 s at 3 %).
+
+Two faults the runs found and fixed on the way: the decoder's "fallen behind" cut (6 frames queued → drop and ask for a keyframe) fired when a
+resend let a dozen held frames go together, so it is now a second's worth (60); and the fake host sent its killed encoder's last, cut-off
+frame and restarted the encoder again for requests that came before the new one's first keyframe (a loop of keyframe requests), now retired
+first and ignored while fresh.
+
+Not verified on Android: a real phone and Wi-Fi; a hardware decoder taking a refresh (the allow-list beyond the emulator is judgement); the
+ltr path end to end (the fake host's ffmpeg can't make refresh frames, and the Rust host's repairs weren't on the integration branch when
+this was measured), so acknowledgements and `lost` were tested only in core; 120 Hz (the emulator's panel has one 60 Hz mode, so the frame
+rate request and `setFrameRate` ran but changed nothing); whether `KEY_LOW_LATENCY` and the vendor keys shorten anything on a real decoder.
 
 ## Not built
 

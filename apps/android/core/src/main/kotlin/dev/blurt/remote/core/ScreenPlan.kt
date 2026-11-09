@@ -2,7 +2,7 @@
 // the user, not a frame rate, a resolution and a bitrate. Auto knows what the phone is on. Whatever this says is a ceiling: under it the host
 // follows the network by itself (RemoteRate).
 //
-//   Auto, same network          the phone's width   12 Mbps  60 fps
+//   Auto, same network          the phone's width   12 Mbps  the panel's rate (60, 90, 120)
 //   Auto, Wi-Fi elsewhere       1800                 4 Mbps  30 fps
 //   Auto, mobile data           1440                 2 Mbps  24 fps
 //   Auto, Data Saver            1280                 1 Mbps  15 fps   (Android's Data Saver is iOS's Low Data Mode)
@@ -40,9 +40,13 @@ data class ScreenPlan(val width: Int, val height: Int, val bitrate: Int, val fps
     companion object {
         /**
          * `cellular`: the phone is on mobile data (a public address on mobile data isn't home). `lowData`: Data Saver is on.
-         * `native`: the phone's screen in pixels, either way round.
+         * `native`: the phone's screen in pixels, either way round. `panel`: the display's top refresh rate. At home the picture comes at up
+         * to that (120 on a 120 Hz panel): a frame waits half as long for its turn, and scrolling moves as the phone's own does. The bitrate
+         * ceiling stays, so it costs no more data, only motion's share of it.
          */
-        operator fun invoke(q: ScreenQuality, route: LinkRoute, cellular: Boolean, lowData: Boolean, native: PadSize): ScreenPlan {
+        operator fun invoke(
+            q: ScreenQuality, route: LinkRoute, cellular: Boolean, lowData: Boolean, native: PadSize, panel: Int = 60,
+        ): ScreenPlan {
             val long = max(native.width, native.height).toInt()
             val short = min(native.width, native.height).toInt()
             fun size(w: Int, h: Int) = min(long, w) to min(short, h)
@@ -51,7 +55,7 @@ data class ScreenPlan(val width: Int, val height: Int, val bitrate: Int, val fps
             } else q
             return when {
                 tier == ScreenQuality.SAVER -> size(1280, 800).let { ScreenPlan(it.first, it.second, 1_000_000, 15) }
-                tier == ScreenQuality.SHARP && route == LinkRoute.LOCAL -> ScreenPlan(long, short, 12_000_000, 60)
+                tier == ScreenQuality.SHARP && route == LinkRoute.LOCAL -> ScreenPlan(long, short, 12_000_000, min(120, max(60, panel)))
                 tier == ScreenQuality.SHARP -> ScreenPlan(long, short, 8_000_000, 30)
                 // data the user pays for, and nobody asked for less: most of the picture for less than half
                 q == ScreenQuality.AUTO && cellular -> size(1440, 900).let { ScreenPlan(it.first, it.second, 2_000_000, 24) }

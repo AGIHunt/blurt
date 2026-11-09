@@ -114,7 +114,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
     private val discovery = Discovery(c)
     private var browse: Discovery.Browse? = null
     private var nearbyBrowse: Discovery.Browse? = null
-    private var channel: Channel? = null
+    @Volatile private var channel: Channel? = null
     private val attempts = mutableListOf<Channel>()
     private var retry: Runnable? = null
     private var pinger: Runnable? = null
@@ -539,7 +539,7 @@ class Link(private val c: Context, private val vault: KeyVault) {
             }
             is ToPhone.ScreenView -> {
                 shownDisplay.value = m.display
-                Remote.screen.source(m.width, m.height, m.codec)
+                Remote.screen.source(m.width, m.height, m.codec, m.features)
             }
             is ToPhone.Displays -> displays.value = m.displays
             is ToPhone.CursorShape -> Remote.screen.shape(m.png, m.hotX, m.hotY, m.width, m.height)

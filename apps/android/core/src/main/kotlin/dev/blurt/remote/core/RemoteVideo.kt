@@ -1,5 +1,6 @@
 // The screen as a stream of small datagrams (Swift: RemoteVideo.swift; docs/design/remote.md §Screen). A frame is cut into pieces that each
-// fit a Wi-Fi packet; a frame missing a piece is dropped, and since the frames after it can't be decoded either, the phone asks for a keyframe.
+// fit a Wi-Fi packet. Without repairs a frame missing a piece is dropped, and since the frames after it can't be decoded either, the phone asks
+// for a keyframe; with them (RemoteVideoRepair.kt, docs/design/remote-realtime.md) the missing piece is asked for again or rebuilt.
 package dev.blurt.remote.core
 
 import kotlinx.serialization.json.JsonElement
@@ -55,20 +56,25 @@ data class RemoteScreenRequest(
     val codecs: List<String>? = RemoteVideoCodec.DECODABLE,
     /** a RemoteDisplay id to show; null = the display the pointer is on, following it from display to display (the default) */
     val display: String? = null,
+    /** the repairs this phone does (RemoteVideoFeature); null = none, as from phones before 1.0.15 */
+    val features: List<String>? = null,
 ) {
     fun toJson(): JsonObject = J.obj(
         "target" to J.str(target), "crop" to crop.toJson(), "width" to J.int(width), "height" to J.int(height), "bitrate" to J.int(bitrate),
         "fps" to J.int(fps), "codecs" to J.list(codecs) { JsonPrimitive(it) }, "display" to J.str(display),
+        "features" to J.list(features) { JsonPrimitive(it) },
     )
 
     companion object {
         fun fromJson(e: JsonElement?): RemoteScreenRequest? {
             val o = e as? JsonObject ?: return null
-            val codecs = if (J.has(o, "codecs")) J.list(o, "codecs") { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content } ?: return null else null
+            fun strings(k: String): List<String>? = J.list(o, k) { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+            val codecs = if (J.has(o, "codecs")) strings("codecs") ?: return null else null
+            val features = if (J.has(o, "features")) strings("features") ?: return null else null
             return RemoteScreenRequest(
                 J.str(o, "target") ?: return null, RemoteCrop.fromJson(o["crop"]) ?: return null, J.int(o, "width") ?: return null,
                 J.int(o, "height") ?: return null, J.int(o, "bitrate") ?: return null, J.int(o, "fps") ?: return null, codecs,
-                J.str(o, "display"),
+                J.str(o, "display"), features,
             )
         }
     }
@@ -94,11 +100,15 @@ data class RemoteScreenReport(
     }
 }
 
-/** One piece of a frame: 17-byte header (frame u32 BE, index u16 BE, count u16 BE, keyframe u8, captured f64 BE) ∥ payload. */
+/**
+ * One piece of a frame: 17-byte header (frame u32 BE, index u16 BE, count u16 BE, flags u8, captured f64 BE) ∥ payload.
+ * Flags: bit 0 keyframe, bit 1 refresh, bit 2 acknowledge (the last two only to a phone that offered "ltr"). An index from `count` up is a
+ * parity piece (RemoteVideoFEC), only to a phone that offered "fec".
+ */
 class RemoteVideoPacket(
     /** u32 */
     val frame: Long,
-    /** u16 */
+    /** u16: below count, a piece of the frame; count and up, a parity piece */
     val index: Int,
     /** u16 */
     val count: Int,
@@ -106,18 +116,31 @@ class RemoteVideoPacket(
     /** when the host composed it, on the host's clock */
     val captured: Double,
     val payload: ByteArray,
+    /** decodable from references the phone has acknowledged, after a loss */
+    val refresh: Boolean = false,
+    /** the phone acknowledges this frame once it's decoded: the host may refer back to it after a loss */
+    val ackRequested: Boolean = false,
 ) {
+    val isParity: Boolean get() = index >= count
+
+    /** The ninth byte. A phone before 1.0.15 reads keyframe as "== 1" and is never sent the others. */
+    val flags: Int get() = (if (keyframe) 1 else 0) or (if (refresh) 2 else 0) or (if (ackRequested) 4 else 0)
+
     fun encoded(): ByteArray {
         val b = ByteBuffer.allocate(HEADER_SIZE + payload.size).order(ByteOrder.BIG_ENDIAN)
-        b.putInt(frame.toInt()).putShort(index.toShort()).putShort(count.toShort()).put(if (keyframe) 1 else 0).putLong(captured.toRawBits()).put(payload)
+        b.putInt(frame.toInt()).putShort(index.toShort()).putShort(count.toShort()).put(flags.toByte()).putLong(captured.toRawBits()).put(payload)
         return b.array()
     }
 
+    /** The same header with another index and payload: a parity piece carries its frame's. */
+    fun with(index: Int, payload: ByteArray) = RemoteVideoPacket(frame, index, count, keyframe, captured, payload, refresh, ackRequested)
+
     override fun equals(other: Any?): Boolean = other is RemoteVideoPacket && other.frame == frame && other.index == index && other.count == count &&
-        other.keyframe == keyframe && other.captured.toRawBits() == captured.toRawBits() && other.payload.contentEquals(payload)
+        other.flags == flags && other.captured.toRawBits() == captured.toRawBits() && other.payload.contentEquals(payload)
 
     override fun hashCode(): Int = (frame * 31 + index).toInt() * 31 + payload.contentHashCode()
-    override fun toString(): String = "RemoteVideoPacket(frame=$frame, index=$index, count=$count, keyframe=$keyframe, captured=$captured, ${payload.size} bytes)"
+    override fun toString(): String =
+        "RemoteVideoPacket(frame=$frame, index=$index, count=$count, flags=$flags, captured=$captured, ${payload.size} bytes)"
 
     companion object {
         const val HEADER_SIZE = 17
@@ -129,19 +152,22 @@ class RemoteVideoPacket(
             val frame = b.getInt().toLong() and 0xFFFF_FFFFL
             val index = b.getShort().toInt() and 0xFFFF
             val count = b.getShort().toInt() and 0xFFFF
-            val key = b.get().toInt() == 1
+            val flags = b.get().toInt()
             val captured = Double.fromBits(b.getLong())
-            if (count <= 0 || index >= count) return null
-            return RemoteVideoPacket(frame, index, count, key, captured, d.copyOfRange(HEADER_SIZE, d.size))
+            if (count <= 0 || index >= count + RemoteVideoFEC.MAX_PARITY) return null
+            return RemoteVideoPacket(frame, index, count, flags and 1 != 0, captured, d.copyOfRange(HEADER_SIZE, d.size), flags and 2 != 0, flags and 4 != 0)
         }
 
         /** One encoded frame, in pieces. */
-        fun split(data: ByteArray, frame: Long, keyframe: Boolean, captured: Double, size: Int = PAYLOAD_SIZE): List<RemoteVideoPacket> {
+        fun split(
+            data: ByteArray, frame: Long, keyframe: Boolean, captured: Double, size: Int = PAYLOAD_SIZE,
+            refresh: Boolean = false, ackRequested: Boolean = false,
+        ): List<RemoteVideoPacket> {
             val count = maxOf(1, (data.size + size - 1) / size)
             return (0 until count).map { i ->
                 val start = i * size
                 val end = minOf(start + size, data.size)
-                RemoteVideoPacket(frame, i, count, keyframe, captured, data.copyOfRange(start, end))
+                RemoteVideoPacket(frame, i, count, keyframe, captured, data.copyOfRange(start, end), refresh, ackRequested)
             }
         }
     }
@@ -149,12 +175,19 @@ class RemoteVideoPacket(
 
 /** Pieces in, whole frames out, in order, and never a frame the decoder couldn't use. Not thread-safe. */
 class RemoteVideoAssembler {
-    class Frame(val data: ByteArray, val keyframe: Boolean, val captured: Double, val id: Long) {
-        override fun equals(other: Any?): Boolean =
-            other is Frame && other.data.contentEquals(data) && other.keyframe == keyframe && other.captured == captured && other.id == id
+    class Frame(
+        val data: ByteArray, val keyframe: Boolean, val captured: Double, val id: Long,
+        val refresh: Boolean = false, val ackRequested: Boolean = false,
+    ) {
+        /** when its first and last pieces arrived, on the phone's clock (0 when not measured) */
+        var firstAt = 0.0
+        var lastAt = 0.0
+
+        override fun equals(other: Any?): Boolean = other is Frame && other.data.contentEquals(data) && other.keyframe == keyframe &&
+            other.captured == captured && other.id == id && other.refresh == refresh && other.ackRequested == ackRequested
 
         override fun hashCode(): Int = data.contentHashCode() * 31 + id.hashCode()
-        override fun toString(): String = "Frame(id=$id, keyframe=$keyframe, ${data.size} bytes)"
+        override fun toString(): String = "Frame(id=$id, keyframe=$keyframe, refresh=$refresh, ${data.size} bytes)"
     }
 
     private var current: Long? = null
@@ -175,6 +208,7 @@ class RemoteVideoAssembler {
 
     /** A frame, if this piece finished one. */
     fun add(p: RemoteVideoPacket): Frame? {
+        if (p.isParity) return null                              // only RemoteVideoReceiver uses them
         lastDone?.let { if (p.frame <= it) return null }        // late
         if (current != p.frame) {
             current?.let { if (p.frame < it) return null }      // late, and a newer one has begun
