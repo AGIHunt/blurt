@@ -219,4 +219,9 @@ What the app should do (proposed; what's done since is under **Implemented** bel
   (`netsh … show rule name="Blurt (phone)"`, no rights needed) and only if it's there deletes it through one UAC prompt
   (`ExecShellWait runas`). Never in a silent run (updates): the rule still fits the same exe path. Declined: the rule stays, pointing
   at an exe that's gone. The hook compiles with makensis 3; the uninstaller hasn't been run on Windows.
+- **On blurt-win** (Public profile, firewall on; the check built alone as a probe exe, run over SSH): no rule
+  → `blocked` (21 ms); the fix's own command line run in the (already elevated) SSH session → one rule, In, Private,Public,
+  protocol Any, program = the exe, Allow → `ok` (19 ms); a UDP block rule beside it → `blocked`; both deleted → `blocked`. The UAC
+  prompt itself wasn't clicked (it shows in the console session, out of reach over SSH). Found there: a COM object released after
+  `CoUninitialize` crashed the process (0xC0000005); the release order is explicit now.
 - Not done: (1) the word before listening, "This is my home network", and (4) on the phone.

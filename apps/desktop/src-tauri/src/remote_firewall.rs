@@ -165,8 +165,13 @@ mod win {
     }
 
     pub fn current_profiles() -> Option<i32> {
-        let _com = Com::init()?;
-        unsafe { policy()?.CurrentProfileTypes() }.ok()
+        let com = Com::init()?;
+        // the policy released before COM goes: a tail-expression temporary would outlive `com` (and crash in Release)
+        let p = policy()?;
+        let types = unsafe { p.CurrentProfileTypes() }.ok();
+        drop(p);
+        drop(com);
+        types
     }
 
     pub fn read() -> Option<(Vec<Profile>, Vec<Rule>)> {
