@@ -275,6 +275,57 @@ Measured on the made-up terminal window scrolling at 30 Hz, the worst case for a
 
 The microphone is 256 kbps of plain PCM while talking, about 2 MB a minute; a take is seconds long, and what the recogniser hears matters more here.
 
+### Several displays (2026-11-09)
+
+A Mac with a monitor or two besides its own screen. Before this, the phone saw only the display the pointer was on when the picture
+started. The 左侧桌面/右侧桌面 keys and three fingers sideways are Spaces, not displays.
+
+- **One display at a time, the one the pointer is on.** The phone's screen is small, and the pointer is where the work is. Push the pointer
+  past the edge onto the next display, from the phone or the Mac's own mouse, and the picture goes with it. It goes once the pointer has
+  really crossed: 150 ms on the other display or 20 pt into it, so a pointer resting on the edge doesn't flip it back and forth.
+- **The screen button chooses, and nothing new takes room** (the founder's bar: space is the point). With two or more displays it draws
+  them as they stand, each on a foot, the one shown filled. A tap still turns the picture on and off. Press and slide sideways steps to
+  the next display or the one before, one per 36 pt, in the order they stand, as the cycle keys step; lift to show it. Hold, and a map
+  stays up: the displays to scale, named, and Follow Pointer (跟随指针) under them. The settings button's hold switches computers the same way.
+  A separate control was tried on paper first: the top row has no 36 pt to spare (the tabs would drop to 30 pt each, and 字母 / Letters
+  already shrink to fit).
+- **The map takes the keys' place, never the picture's.** In portrait and on a big screen it covers the rows of keys under the top row,
+  exactly their size, so the picture stays in full view while choosing. With the keys put away (a phone on its side, an iPad with the
+  keys away) there's nothing under the button, so it comes up beside it, only while choosing.
+- **A display chosen stays chosen** (a small pin on the button) until Follow Pointer, or until it's unplugged: then it's back to following.
+  Choosing moves the pointer to the middle of that display, where the eyes go next, and the Mac shows the display's name for a moment at
+  the bottom of it. A switch by following shows nothing on the Mac: the person moved the pointer there and saw it go. With the chosen
+  display pinned, the pointer may leave it: the picture stays, the pointer isn't drawn, and a tap on the picture brings it back there.
+  Choosing with the picture off turns it on: choosing what to see is asking to see it.
+- **Another display is another screen**: the view starts whole. The last picture of the display left stays up and fades (0.22 s) as the
+  first frame of the new one arrives, so the change is seen and never black; frames still on their way from the old one are told apart by
+  their shape and dropped.
+- **No gesture on the picture for it.** Three fingers sideways are Spaces, and the founder's; giving them a second meaning by context is
+  a guess the hand can't see. An edge push already works without anything new: in following, the pointer pushed past the edge is the
+  switch. In Touch Mode a dragged pointer stops at the picture's edge, so a drag can't change display by accident, and pinned means stay.
+- **The pointer drawn on the phone crosses as the Mac's does**: the phone knows the arrangement, so its own guess runs off the picture
+  onto a neighbour and stops only at the edge of them all, instead of sticking to the edge until the Mac says otherwise.
+- **Mac**: the same ScreenCaptureKit stream changes its filter and configuration to the new display (`updateContentFilter`, macOS 14;
+  on 13 the stream starts again), with an encoder of the new shape and a keyframe. The phone asks for an output box that fits every
+  display's shape (`PadViewController`), so a switch needs no new request. Before that, each switch restarted the whole stream 1.5 s later.
+  Displays come from `CGGetActiveDisplayList` (mirrors left out), names from `NSScreen`, changes from `CGDisplayRegisterReconfigurationCallback`.
+
+Measured 2026-11-09, simulator ↔ this Mac (MacBook Pro 1728×1117 pt + DELL P2725QE at 1920×1080 pt, side by side), loopback network, three
+runs of six switches (both ways, chosen and followed):
+
+| From | To | ms |
+|---|---|---|
+| The Mac starts the switch | the filter and configuration changed | 52–98 |
+| The Mac starts the switch | the new display's first frame (a keyframe, 30–82 KB) sent | 91–146 |
+| The phone hears `screenView` | that frame is up | 38–63 |
+| A display chosen on the phone | its first frame up on the phone | 105–167 |
+
+The follow switch takes the same, after the 150 ms the pointer has to stay. Not measured on a real phone or over Wi-Fi: add a round trip.
+
+Test hooks (debug builds): with `BLURT_TEST_COMMANDS=1` and nothing posted, the Mac moves a pretend pointer, so following it from display to
+display is tried without moving anyone's real one. On the phone, `BLURT_DISPLAY_TEST=1` walks the switcher by itself (picture on, map held,
+each display chosen, a slide, back to following, strokes across and back) and logs each step on the Mac (`display_test`, `display_switch`).
+
 ## Away from home
 
 Three routes, tried together, best one kept:
@@ -361,7 +412,8 @@ Peer-to-peer means anyone in radio range can reach the handshake (no further), a
 - All pt and ms values above are starting points to tune by hand.
 - Not tried away from home on a real phone: relay latency from China, whether a direct path opens over mobile data.
 - Not tried on a real phone: tap-where-you-touch against real windows, hold-and-drag on Blurt's area selection.
-- Only the display the pointer is on is shown when the stream starts; a second display isn't followed yet.
+- Several displays (§Several displays): not tried on a real phone or with a real finger on the button (the switcher was walked by its test
+  hook and drawn by `DisplaySwitchTests`), nor with three displays, one above another, or a display unplugged mid-picture.
 - macOS Local Network and firewall behaviour for the signed release app.
 - Bare letters typed as keys while the Mac's input method is on (digits are fine) go into its composition.
 - Tap then drag clicks once first (the click can't wait for what comes next without delaying every tap).

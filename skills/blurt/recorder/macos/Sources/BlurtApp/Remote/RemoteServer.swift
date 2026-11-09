@@ -122,6 +122,8 @@ final class RemoteServer {
         /// when the question was asked: unanswered for two minutes, it's a no
         var askedAt = 0.0
         var screen: RemoteScreen?
+        /// the display the phone chose to see; nil follows the pointer (docs/design/remote.md §Several displays)
+        var pinned: CGDirectDisplayID?
         var heldReleased = false
         var punches = 0
         // gaps between the phone's 10 ms probes as they arrive: the pointer's own path, one way
@@ -252,6 +254,8 @@ final class RemoteServer {
                 self.updateRelays()
             }
         })
+        // the phone draws the arrangement and switches between them: it hears of every change
+        RemoteDisplayList.watch { [weak self] in self?.queue.async { self?.displaysChanged() } }
         observers.append(c.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.queue.sync { self?.end(); self?.stopListening() }
         })
@@ -661,12 +665,16 @@ final class RemoteServer {
                 self.keepAwake(displayToo: false)
                 guard let r else { return }
                 guard Self.screenAllowed else { return s.channel.send(ToPhone.screenFailed("off")) }
+                // the phone says what it last chose, so a picture turned on again shows what it showed
+                var asked = r
+                s.pinned = RemoteDisplayList.id(asked.display)
+                asked.display = s.pinned.map { String($0) }
                 let screen = RemoteScreen(channel: s.channel)
                 screen.onInfo = { [weak s] m in s?.channel.send(m) }
                 screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
                 s.screen = screen
                 self.keepAwake(displayToo: true)
-                screen.start(r) { why in s.channel.send(ToPhone.screenFailed(why)) }
+                screen.start(asked) { why in s.channel.send(ToPhone.screenFailed(why)) }
             }
         case let .screenCrop(c):
             s.screen?.setCrop(c)
@@ -684,8 +692,8 @@ final class RemoteServer {
             // and only it may set the relay: another paired phone, or a Mac's, can't point this one somewhere else
             guard s.approved else { return }
             queue.async { self.adoptRelay(a) }
-        case .showDisplay:
-            break   // multi-display: being built (docs/design/remote-protocol.md §Displays)
+        case let .showDisplay(id):
+            queue.async { self.showDisplay(id, s) }
         case let .pointerTo(x, y):
             if let p = s.screen?.pointerTo(x: x, y: y) { input.queue.async { input.place(p) } }
         case let .candidates(list):
@@ -865,14 +873,41 @@ final class RemoteServer {
             RemoteSTUN.ask(from: udpPort, queue: queue) { found in
                 if let found { list.append(found) }
                 info(list)
+                s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
                 self.sendFront()
                 DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
             }
             return
         }
         info([])
+        s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
         sendFront()
         DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
+    }
+
+    /// The phone chose a display: shown from now on, with the pointer in its middle, where the eyes go next; nil follows the pointer again.
+    private func showDisplay(_ asked: String?, _ s: Session) {
+        guard session === s else { return }
+        if asked != nil, RemoteDisplayList.id(asked) == nil { return }      // gone since the phone heard of it
+        let id = RemoteDisplayList.id(asked)
+        s.pinned = id
+        s.screen?.show(id)
+        emit(["event": "remote_display", "state": id == nil ? "follow" : "pinned", "display": Int(id ?? 0)])
+        guard let id else { return }
+        let b = CGDisplayBounds(id)
+        let input = RemoteInput.shared
+        input.queue.async { input.place(CGPoint(x: b.midX, y: b.midY)) }
+        RemoteHUD.show(RemoteDisplayList.name(id), on: id)
+    }
+
+    /// Plugged in, unplugged, rearranged: the phone redraws its map, and a display that went is no longer chosen.
+    private func displaysChanged() {
+        guard let s = session, s.greeted else { return }
+        let list = RemoteDisplayList.all()
+        emit(["event": "remote_displays", "count": list.count])
+        s.channel.send(ToPhone.displays(list))
+        if let p = s.pinned, !list.contains(where: { $0.id == String(p) }) { s.pinned = nil }
+        s.screen?.displaysChanged()
     }
 
     private func pointer(_ p: RemotePointerPacket) {

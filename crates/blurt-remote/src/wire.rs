@@ -156,6 +156,8 @@ pub struct ScreenRequest {
     pub fps: i64,
     /// best first; None = HEVC only (phones before 1.0.15)
     pub codecs: Option<Vec<String>>,
+    /// a `Display` id to show; None = the display the pointer is on, following it from display to display (the default)
+    pub display: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -192,6 +194,8 @@ pub enum ToMac {
     Screen(Option<ScreenRequest>),
     ScreenCrop(Crop),
     PointerTo { x: f32, y: f32 },
+    /// show this display from now on, and put the pointer in its middle (None: follow the pointer, the default)
+    ShowDisplay(Option<String>),
     Candidates(Vec<Candidate>),
     RequestKeyframe,
     ScreenReport(ScreenReport),
@@ -250,6 +254,21 @@ pub struct SessionInfo {
     pub platform: Option<String>,
 }
 
+/// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as in the
+/// computer's display settings), so the phone can draw the arrangement (RemoteDisplay).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Display {
+    /// stable while the display stays connected (monitor device name on Windows, the portal stream's id on Linux)
+    pub id: String,
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// the primary display
+    pub main: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Front {
     pub bundle: String,
@@ -276,7 +295,9 @@ pub enum ToPhone {
     NewKey(Vec<u8>),
     Clock { phone: f64, mac: f64 },
     ScreenFailed(String),
-    ScreenView { width: f64, height: f64, codec: Option<String> },
+    ScreenView { width: f64, height: f64, codec: Option<String>, display: Option<String> },
+    /// every display the computer has, whenever that changes (and once a session is up)
+    Displays(Vec<Display>),
     CursorShape { png: Vec<u8>, hot_x: f64, hot_y: f64, width: f64, height: f64 },
 }
 
@@ -431,7 +452,27 @@ fn request_json(r: &ScreenRequest) -> Value {
     if let Some(c) = &r.codecs {
         o["codecs"] = json!(c);
     }
+    if let Some(d) = &r.display {
+        o["display"] = json!(d);
+    }
     o
+}
+
+fn display_json(d: &Display) -> Value {
+    json!({"id": d.id, "name": d.name, "x": f64v(d.x), "y": f64v(d.y), "width": f64v(d.width), "height": f64v(d.height), "main": d.main})
+}
+
+fn display_from(v: &Value) -> Option<Display> {
+    let o = v.as_object()?;
+    Some(Display {
+        id: string(req(o, "id")?)?,
+        name: string(req(o, "name")?)?,
+        x: num(req(o, "x")?)?,
+        y: num(req(o, "y")?)?,
+        width: num(req(o, "width")?)?,
+        height: num(req(o, "height")?)?,
+        main: boolean(req(o, "main")?)?,
+    })
 }
 
 fn request_from(v: &Value) -> Option<ScreenRequest> {
@@ -444,6 +485,7 @@ fn request_from(v: &Value) -> Option<ScreenRequest> {
         bitrate: int(req(o, "bitrate")?)?,
         fps: int(req(o, "fps")?)?,
         codecs: opt(o, "codecs", |v| list(v, string))?,
+        display: opt(o, "display", string)?,
     })
 }
 
@@ -530,6 +572,7 @@ impl ToMac {
             ToMac::Screen(r) => case("screen", r.iter().map(|r| ("_0", request_json(r))).collect()),
             ToMac::ScreenCrop(c) => one("screenCrop", crop_json(c)),
             ToMac::PointerTo { x, y } => case("pointerTo", vec![("x", f32v(*x)), ("y", f32v(*y))]),
+            ToMac::ShowDisplay(d) => case("showDisplay", d.iter().map(|d| ("_0", json!(d))).collect()),
             ToMac::Candidates(l) => one("candidates", Value::Array(l.iter().map(candidate_json).collect())),
             ToMac::RequestKeyframe => case("requestKeyframe", vec![]),
             ToMac::ScreenReport(r) => one("screenReport", report_json(r)),
@@ -578,6 +621,7 @@ impl ToMac {
             "screen" => ToMac::Screen(opt(f, "_0", request_from)?),
             "screenCrop" => ToMac::ScreenCrop(crop_from(x0()?)?),
             "pointerTo" => ToMac::PointerTo { x: f32of(req(f, "x")?)?, y: f32of(req(f, "y")?)? },
+            "showDisplay" => ToMac::ShowDisplay(opt(f, "_0", string)?),
             "candidates" => ToMac::Candidates(list(x0()?, candidate_from)?),
             "requestKeyframe" => ToMac::RequestKeyframe,
             "screenReport" => ToMac::ScreenReport(report_from(x0()?)?),
@@ -624,13 +668,17 @@ impl ToPhone {
             ToPhone::NewKey(k) => one("newKey", json!(b64(k))),
             ToPhone::Clock { phone, mac } => case("clock", vec![("phone", f64v(*phone)), ("mac", f64v(*mac))]),
             ToPhone::ScreenFailed(w) => one("screenFailed", json!(w)),
-            ToPhone::ScreenView { width, height, codec } => {
+            ToPhone::ScreenView { width, height, codec, display } => {
                 let mut f = vec![("width", f64v(*width)), ("height", f64v(*height))];
                 if let Some(c) = codec {
                     f.push(("codec", json!(c)));
                 }
+                if let Some(d) = display {
+                    f.push(("display", json!(d)));
+                }
                 case("screenView", f)
             }
+            ToPhone::Displays(l) => one("displays", Value::Array(l.iter().map(display_json).collect())),
             ToPhone::CursorShape { png, hot_x, hot_y, width, height } => case(
                 "cursorShape",
                 vec![("png", json!(b64(png))), ("hotX", f64v(*hot_x)), ("hotY", f64v(*hot_y)), ("width", f64v(*width)), ("height", f64v(*height))],
@@ -667,7 +715,9 @@ impl ToPhone {
                 width: num(req(f, "width")?)?,
                 height: num(req(f, "height")?)?,
                 codec: opt(f, "codec", string)?,
+                display: opt(f, "display", string)?,
             },
+            "displays" => ToPhone::Displays(list(x0()?, display_from)?),
             "cursorShape" => ToPhone::CursorShape {
                 png: data(req(f, "png")?)?,
                 hot_x: num(req(f, "hotX")?)?,

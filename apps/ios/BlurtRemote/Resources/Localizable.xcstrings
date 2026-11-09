@@ -2710,6 +2710,46 @@
           }
         }
       }
+    },
+    "Follow Pointer" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "跟随指针"
+          }
+        }
+      }
+    },
+    "Hold to choose a display." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "按住可选择显示器。"
+          }
+        }
+      }
+    },
+    "Show %@" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "显示 %@"
+          }
+        }
+      }
+    },
+    "Built-in" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "内建显示器"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

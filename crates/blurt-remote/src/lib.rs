@@ -24,6 +24,7 @@ pub mod platform;
 
 pub mod channel;
 pub mod crypto;
+pub mod displays;
 pub mod input;
 pub mod mic;
 pub mod packets;
