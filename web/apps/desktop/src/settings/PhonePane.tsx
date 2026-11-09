@@ -44,6 +44,7 @@ export function PhonePane({ status }: { status: AppStatus }) {
   const win = status.platform === 'win';
   return (
     <Page id="phone">
+      {r.firewall === 'blocked' && <FirewallNotice />}
       {!r.canControl && r.devices.length > 0 && (
         <Notice title={S(win ? 'phone.control.win' : 'phone.control.linux')} detail={S(win ? 'phone.control.win.detail' : 'phone.control.linux.detail')} />
       )}
@@ -82,16 +83,32 @@ export function PhonePane({ status }: { status: AppStatus }) {
   );
 }
 
-/** The one thing that stops the phone working, on the pane's first screen (Dictation's no-model notice). */
-function Notice({ title, detail }: { title: string; detail?: string }) {
+/** The one thing that stops the phone working, on the pane's first screen (Dictation's no-model notice), with its one way
+ *  out when there is one. */
+function Notice({ title, detail, action, testid = 'phone-notice' }: { title: string; detail?: string; action?: ReactNode; testid?: string }) {
   return (
-    <div className="st-notice warn st-phone-notice" role="status" data-testid="phone-notice">
+    <div className="st-notice warn st-phone-notice" role="status" data-testid={testid}>
       <Icon name="warning" size={16} />
       <span className="grow">
         <span className="st-phone-notice-title">{title}</span>
         {detail && <span className="st-phone-notice-detail">{detail}</span>}
       </span>
+      {action}
     </div>
+  );
+}
+
+/** Windows Firewall keeps phones out on this network (a Public network, or a prompt cancelled once): Allow… adds Blurt's rule
+ *  through Windows' own administrator prompt. Nothing happens without the click. */
+function FirewallNotice() {
+  const [busy, setBusy] = useState(false);
+  const allow = () => {
+    setBusy(true);
+    void apply(api.remoteAllowFirewall()).catch(() => {}).finally(() => setBusy(false));
+  };
+  return (
+    <Notice testid="phone-firewall" title={S('phone.firewall')} detail={S('phone.firewall.detail')}
+      action={<button className="primary" onClick={allow} disabled={busy} data-testid="phone-firewall-allow">{S('phone.firewall.allow')}</button>} />
   );
 }
 

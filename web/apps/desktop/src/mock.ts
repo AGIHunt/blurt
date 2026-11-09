@@ -197,7 +197,8 @@ let dictations: any[] = param('dictations') === '0' ? [] : [
 // Settings → Phone (remote.rs): Add Phone… shows a code good for two minutes (?phone_code=<seconds> to watch it run
 // out sooner); a few seconds later a phone uses it over the relay and asks with six digits (?phone_scan=0: nobody
 // scans); Allow pairs it and it connects over the relay, then finds a direct path. ?phone= paired | asking | nocontrol |
-// problem | fromphone | relayfail starts there instead of with no phone.
+// problem | fromphone | relayfail | firewall starts there instead of with no phone (firewall: Windows Firewall keeps phones
+// out; Allow… says yes for the administrator a moment later).
 type MockRemote = {
   listening: boolean;
   pairing: null | { url: string; qrSvg: string; expiresAt: number };
@@ -208,6 +209,7 @@ type MockRemote = {
   screenAllowed: boolean;
   canControl: boolean;
   problem: string | null;
+  firewall: 'ok' | 'blocked' | 'unknown';
 };
 const phoneStart = param('phone') ?? '';
 const paired = phoneStart !== '';
@@ -228,6 +230,7 @@ const remote: MockRemote = {
   screenAllowed: true,
   canControl: phoneStart !== 'nocontrol',
   problem: phoneStart === 'problem' ? L('Blurt can’t listen on this network: port 41833 is taken by another app.', '口喷鸡无法在这个网络上监听：端口 41833 已被其他应用占用。') : null,
+  firewall: phoneStart === 'firewall' ? 'blocked' : 'ok',
 };
 const remoteNow = () => JSON.parse(JSON.stringify(remote)) as MockRemote;
 const remoteChanged = () => emit('remote://status', remoteNow());
@@ -326,6 +329,15 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       break;
     case 'remote_relay_instructions':
       return MOCK_RELAY_PROMPT;
+    case 'remote_allow_firewall':
+      // Windows' administrator prompt, answered yes
+      return new Promise((ok) =>
+        setTimeout(() => {
+          remote.firewall = 'ok';
+          remoteChanged();
+          ok(remoteNow());
+        }, 1200),
+      );
   }
   remoteChanged();
   return remoteNow();
