@@ -6,9 +6,15 @@
 //
 // Under the video, the last sight of the whole screen (the backdrop): a move past what's been sent shows that until the sharp part comes.
 // Corners are rounded by 6 dp in the shader; a rounded corner on a picture is a piece of the screen not seen, so no more than that.
+//
+// While frames come it asks for the panel's top rate (120 Hz where there is one): Surface.setFrameRate on its own surface, and the window's
+// preferred display mode, as the iPhone's display link asks ProMotion. A second without a frame lets it go (ScreenStream decides).
 package dev.blurt.remote.app.pad
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.os.Build
 import android.graphics.SurfaceTexture
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
@@ -44,6 +50,9 @@ class StageView(c: Context) : GLSurfaceView(c) {
     })
     @Volatile var wantBackdrop = false
     @Volatile private var clearFrame = false
+    /** a new frame went up: called on the GL thread, with System.nanoTime() after the draw */
+    @Volatile var onPresented: ((Long) -> Unit)? = null
+    private var rate = 0f
 
     private val renderer = R()
 
@@ -53,6 +62,37 @@ class StageView(c: Context) : GLSurfaceView(c) {
         preserveEGLContextOnPause = true
         setRenderer(renderer)
         renderMode = RENDERMODE_WHEN_DIRTY
+    }
+
+    /** The panel's rate while frames come (0: whatever the system likes). Main thread. */
+    fun wantRate(hz: Float) {
+        if (hz == rate) return
+        rate = hz
+        if (Build.VERSION.SDK_INT >= 30) runCatching {
+            val s = holder.surface
+            if (s.isValid) s.setFrameRate(hz, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+        }
+        val w = activity()?.window ?: return
+        val d = w.decorView.display ?: return
+        val now = d.mode
+        // the fastest mode at the current size: switching size would blank the panel
+        val best = if (hz > 0) d.supportedModes.filter { it.physicalWidth == now.physicalWidth && it.physicalHeight == now.physicalHeight }
+            .maxByOrNull { it.refreshRate } else null
+        val id = best?.modeId ?: 0
+        val a = w.attributes
+        if (a.preferredDisplayModeId != id) {
+            a.preferredDisplayModeId = id
+            w.attributes = a
+        }
+    }
+
+    private fun activity(): Activity? {
+        var c: Context? = context
+        while (c is ContextWrapper) {
+            if (c is Activity) return c
+            c = c.baseContext
+        }
+        return null
     }
 
     /** Nothing showing any more: the next draw is black. */
@@ -126,6 +166,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
                 shown = null
             }
             var n = pending.getAndSet(0)
+            val fresh = n > 0
             while (n-- > 0) {
                 runCatching { s.updateTexImage() }
                 hasFrame = true
@@ -155,6 +196,7 @@ class StageView(c: Context) : GLSurfaceView(c) {
             val v = scene.view
             if (scene.showBackdrop && hasBack) draw(backProgram, GLES20.GL_TEXTURE_2D, backTex, IDENTITY, 0.0, 0.0, 1.0, 1.0, v, flipY = false)
             draw(program, GLES11Ext.GL_TEXTURE_EXTERNAL_OES, oes, texMatrix, crop.x.toDouble(), crop.y.toDouble(), crop.w.toDouble(), crop.h.toDouble(), v, flipY = false)
+            if (fresh) onPresented?.invoke(System.nanoTime())
         }
 
         /** A part of the screen (fx, fy, fw, fh) drawn where it belongs for the view (v), as a fraction of the stage. */
