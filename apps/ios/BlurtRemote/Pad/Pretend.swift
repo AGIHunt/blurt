@@ -10,6 +10,8 @@ enum Pretend {
     static var screen = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND"] == "screen"
     /// stands in for UIKit's reserved regions
     static var surround: PadSurround?
+    /// and for the safe area: a render of another device's room on whatever simulator runs the tests
+    static var safe: UIEdgeInsets?
     /// `BLURT_REMOTE_PRETEND_DISPLAYS=1`: a laptop with a monitor beside it, for the display switcher
     static let displays: [RemoteDisplay] = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_DISPLAYS"] == nil ? [] : [
         RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1728, height: 1117, main: true),
