@@ -556,6 +556,7 @@
 "dictation.history.failed" = "没能识别";
 "dictation.history.failed.no_model" = "无法识别：没有语音模型";
 "dictation.history.failed.interrupted" = "未输入：处理完成前 App 已退出";
+"dictation.history.failed.cancelled" = "已取消 — 录音已保留，可重试转写";
 "dictation.history.retry" = "重试";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */

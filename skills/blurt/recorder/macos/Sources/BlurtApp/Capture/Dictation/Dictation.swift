@@ -1301,9 +1301,11 @@ final class Dictation {
         finish(ended: false)
     }
 
-    /// Esc, a double tap's second tap, the menu: ends a take that is listening (nothing kept) — or, when none
-    /// listens, throws away the takes still on their way (never pasted, a queued Return dropped). A paste already
-    /// under way (the 0.6 s of ⌘V) can't be taken back.
+    /// Esc, a double tap's second tap, the menu: ends a take that is listening — or, when none listens, throws away
+    /// the takes still on their way (never pasted, a queued Return dropped). A paste already under way (the 0.6 s of
+    /// ⌘V) can't be taken back.
+    /// While listening: Cancel/Esc with meaningful audio keeps the WAV in Dictation History (asr_failed:cancelled)
+    /// so 听写 can Retry — same pipeline as a failed/interrupted take. Near-empty cancel still discards.
     /// `quietly`: the double tap's own cancel (it sends right after); otherwise the island says "Cancelled".
     func cancel(quietly: Bool = false) {
         guard listening else {
@@ -1313,10 +1315,68 @@ final class Dictation {
             return
         }
         trigger.reset(active: false)
-        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue])
+        // User Cancel/Esc with speech already captured: keep audio + history row for Retry (not the quiet
+        // double-tap path, which intentionally leaves nothing in history before send).
+        if !quietly, heardSpeech, keepCancelledListening() {
+            DictationSound.cancel.play()
+            toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2)
+            return
+        }
+        emit(["event": "dictation_cancel", "id": entryID, "phase": phase.rawValue, "kept": false])
         discard(quietly: true)
         if !quietly { DictationSound.cancel.play() }
         if !quietly { toast("dictation.toast.cancelled", key: Dictation.cancelToastKey, seconds: 1.2) }
+    }
+
+    /// Stop listening, keep the WAV, append a history entry awaiting Retry (like recognitionFailed / interrupted).
+    /// Returns false if there was nothing to keep (falls through to discard).
+    @discardableResult
+    private func keepCancelledListening() -> Bool {
+        guard let url = wav, let v = voice else { return false }
+        let duration = v.elapsed
+        let id = entryID
+        v.stop(keep: true)
+        voice = nil
+        stream?.cancel()
+        stream = nil
+        micLive = false
+        precaptured = false
+        releaseEsc()
+        listening = false
+        LiveTranscript.shared.end(session: liveSession)
+        updatePhase()
+
+        // Fresh stream for Retry (same shape as historyTake): the live stream was cancelled above.
+        var opt = DictationStream.Options()
+        opt.language = Config.shared["asr.language"] as? String ?? "auto"
+        opt.streaming = false
+        opt.polishTimeout = Dictation.polishTimeout
+        opt.structureTimeout = Dictation.structureTimeout
+        opt.loadBudget = Dictation.loadBudget
+        opt.vocab = DictationVocabulary.shared.payload()
+        opt.polish = Dictation.polishOn && polishModel != nil
+        let s = DictationStream(id: id, dir: DictationHistory.shared.audioDir, wholeWav: url, options: opt)
+        let take = DictationTake(id: id, front: front, frontKey: frontKey, started: startedAt, duration: duration,
+                                 wav: url, context: context, polishTried: opt.polish, keyUp: CACurrentMediaTime(),
+                                 style: styleDecision, explicit: explicitStyle, toggles: styleToggles,
+                                 bundle: styleBundle, liveSession: liveSession, stream: s, structure: false)
+        take.levels = levels
+        take.failure = "cancelled"
+
+        let e = DictationEntry(id: id, time: startedAt,
+                               app: AppNames.name(for: styleBundle ?? front?.bundleIdentifier, running: front),
+                               bundle: styleBundle ?? front?.bundleIdentifier, duration: duration, raw: "",
+                               polished: nil, text: "", model: nil, fellBack: false,
+                               reason: "asr_failed:cancelled", insert: "none",
+                               audio: "audio/\(url.lastPathComponent)")
+        DictationHistory.shared.append(e)
+        DictationHistoryWindow.shared.reloadIfOpen()
+        failedTakes[id] = take
+        if failedTakes.count > 5, let old = failedTakes.values.min(by: { $0.started < $1.started }) {
+            failedTakes[old.id] = nil
+        }
+        emit(["event": "dictation_cancel", "id": id, "phase": "listening", "kept": true, "duration": (duration * 100).rounded() / 100])
+        return true
     }
 
     /// A double tap: Return in the app in front ("send"). After the takes still on their way, once the last one has

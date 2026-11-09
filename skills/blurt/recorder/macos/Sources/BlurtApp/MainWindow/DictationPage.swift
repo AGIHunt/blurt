@@ -413,6 +413,7 @@ final class DictationHistoryModel: ObservableObject {
         switch e.reason {
         case "asr_failed:model_missing": return T("dictation.history.failed.no_model")
         case DictationHistory.interruptedReason: return T("dictation.history.failed.interrupted")
+        case "asr_failed:cancelled": return T("dictation.history.failed.cancelled")
         default: return T("dictation.history.failed")
         }
     }

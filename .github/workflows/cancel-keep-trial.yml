@@ -1,0 +1,38 @@
+name: Blurt-CancelKeepTrial
+
+on:
+  push:
+    branches: [feature/cancel-keep-dictation-history]
+    paths:
+      - "skills/blurt/recorder/**"
+      - "skills/blurt/scripts/record.py"
+      - ".github/workflows/cancel-keep-trial.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial-build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Build trial Blurt.app (CLT + record.py, ad-hoc)
+        run: |
+          export DEVELOPER_DIR=/Library/Developer/CommandLineTools
+          swift --version
+          uv run -q skills/blurt/scripts/record.py build
+          SRC="$HOME/.blurt/Blurt.app"
+          test -d "$SRC"
+          DEST="$RUNNER_TEMP/Blurt-CancelKeepTrial.app"
+          ditto "$SRC" "$DEST"
+          codesign --force --sign - --identifier "dev.blurt.recorder.cancelkeep" \
+            -r='designated => identifier "dev.blurt.recorder.cancelkeep"' "$DEST" || true
+          ditto -c -k --keepParent "$DEST" "$RUNNER_TEMP/Blurt-CancelKeepTrial.zip"
+          ls -lh "$RUNNER_TEMP/Blurt-CancelKeepTrial.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blurt-CancelKeepTrial
+          path: ${{ runner.temp }}/Blurt-CancelKeepTrial.zip
+          if-no-files-found: error

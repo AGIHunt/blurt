@@ -556,6 +556,7 @@
 "dictation.history.failed" = "Not recognized";
 "dictation.history.failed.no_model" = "Not recognized: no speech model";
 "dictation.history.failed.interrupted" = "Not typed: the app quit before finishing";
+"dictation.history.failed.cancelled" = "Cancelled — recording kept; Retry to transcribe";
 "dictation.history.retry" = "Retry";
 
 /* the Words tab's keyboard, edits and Undo (MainWindow/DictationWords.swift) */
