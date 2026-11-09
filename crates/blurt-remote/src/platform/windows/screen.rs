@@ -346,7 +346,10 @@ impl Worker {
                 };
                 match Encoder::hardware(device, codec, size.0, size.1, fps, bitrate) {
                     Ok(e) => return Ok((Enc::Gpu(e), size)),
-                    Err(e) => errors.push(e),
+                    Err(e) => {
+                        log(&format!("hardware {w} at {}×{}: {e}", size.0, size.1));
+                        errors.push(e)
+                    }
                 }
             }
         }
