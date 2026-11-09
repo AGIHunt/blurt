@@ -562,3 +562,18 @@ fn log(s: &str) {
         eprintln!("remote screen (windows): {s}");
     }
 }
+
+/// The hardware encoders Media Foundation lists for NV12 → H.264 and → HEVC, by name (examples/win_smoke.rs, diagnostics).
+pub fn hardware_encoders() -> Vec<(&'static str, String)> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    }
+    let mut out = Vec::new();
+    for codec in [Codec::H264, Codec::Hevc] {
+        for (name, _) in super::encoder::hardware_encoders(codec) {
+            out.push((codec.wire_name(), name));
+        }
+    }
+    out
+}
