@@ -279,8 +279,12 @@ class Link(private val c: Context, private val vault: KeyVault) {
 
     // MARK: app life
 
+    /** when the app last came to the front: how long the way back took goes in the log (debug builds) */
+    private var cameBack = 0L
+
     fun foreground() {
         active = true
+        cameBack = android.os.SystemClock.uptimeMillis()
         joining?.since = now()      // scanning with the camera app, say
         if (_state.value != State.CONNECTED && _state.value != State.REPLACED) connect()
     }
@@ -473,6 +477,10 @@ class Link(private val c: Context, private val vault: KeyVault) {
             is ToPhone.Session -> {
                 val i = m.info
                 canControl.value = i.canControl
+                if (dev.blurt.remote.app.BuildConfig.DEBUG && cameBack > 0) {
+                    android.util.Log.i("Link", "connected ${android.os.SystemClock.uptimeMillis() - cameBack} ms after coming to the front, ${route.value}")
+                    cameBack = 0
+                }
                 _state.value = State.CONNECTED
                 val cur = _current.value
                 val n = _macs.value.indexOfFirst { it.id == cur?.id }

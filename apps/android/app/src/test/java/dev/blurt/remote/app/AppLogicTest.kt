@@ -48,5 +48,8 @@ class AppLogicTest {
     @Test fun shortTextReadsLarger() {
         assertTrue(Face.textSize("F1") > Face.textSize("PgUp"))
         assertTrue(Face.textSize("PgUp") > Face.textSize("Inline"))
+        // a PC's modifiers read as one row
+        assertEquals(Face.textSize("Ctrl"), Face.textSize("Shift"))
+        assertEquals(Face.textSize("Win"), Face.textSize("Alt"))
     }
 }

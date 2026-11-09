@@ -10,7 +10,11 @@ import dev.blurt.remote.app.dp
 
 object Face {
     /** The shorter the text, the larger: a key has little room, so a long name reads small and a short one is worth choosing. */
+    /** a PC's modifiers written out: one size for all of them, so the dock reads as a row */
+    private val modifierWords = setOf("Ctrl", "Win", "Super", "Alt", "Shift", "Cmd", "Option", "Control", "Command")
+
     fun textSize(f: String): Float {
+        if (f in modifierWords) return 15f
         if (f.any { it in "⌘⌃⌥⇧" } || f.startsWith("Ctrl") || f.startsWith("Alt")) return if (f.length > 6) 13f else 16f   // a shortcut written out
         return when (f.codePointCount(0, f.length)) {
             in 0..2 -> 20f

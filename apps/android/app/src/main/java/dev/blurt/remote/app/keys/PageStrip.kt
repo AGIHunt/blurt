@@ -34,15 +34,16 @@ class PageStrip(c: Context) : View(c) {
         invalidate()
     }
 
-    /** One size for every tab: the largest at which the longest name still fits; 0 when even the smallest readable size doesn't. */
+    /** One size for every tab: the largest at which the longest name still fits; 0 when even 9 dp doesn't. */
     private fun fit(): Float {
         if (names.isEmpty() || width <= 0) return 0f
         val w = width.toFloat() / names.size
         p.typeface = Fonts.medium
         var size = 13.dp
-        while (size >= 10.dp) {
+        // down to 70 % of 13, as the iPhone's tabs go
+        while (size >= 9.dp) {
             p.textSize = size
-            if (names.all { p.measureText(it) <= w - 4.dp }) return size
+            if (names.all { p.measureText(it) <= w - 2.dp }) return size
             size *= 0.95f
         }
         return 0f
