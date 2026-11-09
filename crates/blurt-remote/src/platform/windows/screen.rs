@@ -621,6 +621,7 @@ impl Worker {
             parameter_sets: if keyframe { sets.clone() } else { Vec::new() },
             crop: o.tag.crop,
             captured: o.tag.captured,
+            ..Default::default()
         });
     }
 }

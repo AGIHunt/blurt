@@ -130,7 +130,7 @@ impl Screen for LinuxScreen {
                 t.1 += ms;
                 t.2 = t.2.max(ms);
             }
-            sink(EncodedFrame { picture: u.picture, keyframe: u.keyframe, parameter_sets: u.parameter_sets, crop, captured });
+            sink(EncodedFrame { picture: u.picture, keyframe: u.keyframe, parameter_sets: u.parameter_sets, crop, captured, ..Default::default() });
         });
         let enc = Encoder::new(&element, Codec::from_name(codec), ow, oh, config.bitrate, config.fps, enc_sink)?;
         if std::env::var_os("BLURT_REMOTE_DEBUG").is_some() {

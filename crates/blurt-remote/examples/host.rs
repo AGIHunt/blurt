@@ -223,7 +223,7 @@ fn read_annexb(mut r: impl Read, mut each: impl FnMut(EncodedFrame) -> bool) {
         if picture.is_empty() {
             return true;
         }
-        each(EncodedFrame { picture, keyframe: key, parameter_sets: if key { sets } else { vec![] }, crop: Crop::WHOLE, captured: 0.0 })
+        each(EncodedFrame { picture, keyframe: key, parameter_sets: if key { sets } else { vec![] }, crop: Crop::WHOLE, captured: 0.0, ..Default::default() })
     };
     loop {
         let n = match r.read(&mut chunk) {

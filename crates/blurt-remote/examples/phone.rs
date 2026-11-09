@@ -2,6 +2,14 @@
 //! zooms half-way through, and writes what arrives, reassembled, as an Annex B file ffmpeg can decode.
 //!
 //!   cargo run --example phone -- --link '<blurtremote://pair?…>' [--at 127.0.0.1:PORT] [--relay ws://…] [--seconds 6] [--out f.h264]
+//!
+//! --measure: watch the picture as the iOS app does, with its repairs (docs/design/remote-realtime.md), through a made-up network,
+//! and print what the doc measures: frames shown a second, the longest gap, age, frames given up, keyframes asked, what was mended.
+//!   --loss 0.01:2      pieces lost at 1 %, in bursts of 2 on average (as BLURT_TEST_LOSS on the phone)
+//!   --stall 80:2       everything held 80 ms every 2 s (BLURT_TEST_STALL)
+//!   --delay 30         ms one way: a long path, so the round trip is 60 ms more (parity's territory)
+//!   --repair on|off|both   offer nack/ltr/fec (on, the default), offer nothing (off: as before 1.0.15), or off then on
+//!   --fps 60 --bitrate 12000000 --size 1866x1206 --warmup 1 --seconds 12
 
 use std::io::Write;
 use std::net::SocketAddr;
@@ -9,7 +17,7 @@ use std::time::{Duration, Instant};
 
 use blurt_remote::packets::{unpack_payload, PointerPacket, VideoAssembler, VideoPacket};
 use blurt_remote::pairing::Pairing;
-use blurt_remote::phone::{Event, Phone};
+use blurt_remote::phone::{Event, Phone, Watch, Weather};
 use blurt_remote::wire::{Chord, Crop, ScreenReport, ScreenRequest, ToMac, ToPhone};
 
 #[tokio::main]
@@ -36,6 +44,10 @@ async fn main() {
     if !phone.host.ip().is_unspecified() {
         phone.open_udp(info.udp_port, info.udp_session).await.unwrap();
     }
+    if args.iter().any(|a| a == "--measure") {
+        measure(&mut phone, &arg).await;
+        return;
+    }
     phone.send(&ToMac::Key { chord: Chord::new(8, "C"), down: None }).await;
     phone.pointer(PointerPacket::Move { dx: 10.0, dy: 5.0 }).await;
     phone
@@ -48,6 +60,7 @@ async fn main() {
             fps: 30,
             codecs: Some(vec!["hevc".into(), "h264".into()]),
             display: None,
+            features: None,
         })))
         .await;
     let mut a = VideoAssembler::new();
@@ -119,7 +132,7 @@ async fn main() {
                 }
             }
             Some(Event::Cursor(..)) => cursors += 1,
-            Some(Event::Control(ToPhone::ScreenView { width, height, codec, display })) => {
+            Some(Event::Control(ToPhone::ScreenView { width, height, codec, display, .. })) => {
                 println!("{:.2}s screen {width}×{height} {codec:?} {display:?}", t0.elapsed().as_secs_f64());
                 // each new picture (another display) in a file of its own: <out>.1, .2 …
                 segment += 1;
@@ -142,4 +155,35 @@ async fn main() {
     phone.send(&ToMac::Screen(None)).await;
     tokio::time::sleep(Duration::from_millis(200)).await;
     println!("frames {frames} keyframes {keys} pieces {pieces} bytes {bytes} dropped {} keyframes asked {key_asks} cursor {cursors} → {out}", a.dropped);
+}
+
+/// --measure: one run per --repair setting, each printed as one line.
+async fn measure(phone: &mut Phone, arg: &dyn Fn(&str) -> Option<String>) {
+    let num = |k: &str, d: f64| arg(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(d);
+    let (w, h) = arg("--size")
+        .and_then(|s| s.split_once('x').and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?))))
+        .unwrap_or((1866i64, 1206i64));
+    let runs: &[bool] = match arg("--repair").as_deref() {
+        Some("off") => &[false],
+        Some("both") => &[false, true],
+        _ => &[true],
+    };
+    for (i, repair) in runs.iter().enumerate() {
+        let mut weather = Weather::parse(arg("--loss").as_deref(), arg("--stall").as_deref(), 7 + i as u64);
+        weather.delay = num("--delay", 0.0) / 1000.0;
+        let request = ScreenRequest {
+            target: "display".into(),
+            crop: Crop::WHOLE,
+            width: w,
+            height: h,
+            bitrate: num("--bitrate", 12_000_000.0) as i64,
+            fps: num("--fps", 60.0) as i64,
+            codecs: Some(vec!["hevc".into(), "h264".into()]),
+            display: None,
+            features: repair.then(|| blurt_remote::repair::ALL.iter().map(|s| s.to_string()).collect()),
+        };
+        let m = phone.watch(Watch { request, warmup: num("--warmup", 1.0), seconds: num("--seconds", 12.0), weather, verify: None }).await;
+        println!("repair {}: {m}", if *repair { "on" } else { "off" });
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
 }

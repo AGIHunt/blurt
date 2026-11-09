@@ -1097,6 +1097,18 @@ impl Core {
                 }
             }
             Kind::Probe => chan.send_datagram(Kind::Probe, body),
+            // pieces missing, frames decoded, a frame lost: the picture repairs itself (repair.rs)
+            Kind::VideoFeedback => {
+                if chan.greeted.load(SeqCst) {
+                    let sc = {
+                        let s = self.st.lock().unwrap();
+                        self.screen(&s, chan.sid)
+                    };
+                    if let Some(sc) = sc {
+                        sc.feedback(body);
+                    }
+                }
+            }
             Kind::Video | Kind::Cursor => {}
         }
     }

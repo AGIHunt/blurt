@@ -158,6 +158,8 @@ pub struct ScreenRequest {
     pub codecs: Option<Vec<String>>,
     /// a `Display` id to show; None = the display the pointer is on, following it from display to display (the default)
     pub display: Option<String>,
+    /// the picture's repairs the phone implements: "nack", "ltr", "fec" (docs/design/remote-realtime.md). None: none (before 1.0.15)
+    pub features: Option<Vec<String>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -295,7 +297,8 @@ pub enum ToPhone {
     NewKey(Vec<u8>),
     Clock { phone: f64, mac: f64 },
     ScreenFailed(String),
-    ScreenView { width: f64, height: f64, codec: Option<String>, display: Option<String> },
+    /// `features`: the repairs this stream uses, of those the phone offered (None: none, as from hosts before 1.0.15)
+    ScreenView { width: f64, height: f64, codec: Option<String>, display: Option<String>, features: Option<Vec<String>> },
     /// every display the computer has, whenever that changes (and once a session is up)
     Displays(Vec<Display>),
     CursorShape { png: Vec<u8>, hot_x: f64, hot_y: f64, width: f64, height: f64 },
@@ -455,6 +458,9 @@ fn request_json(r: &ScreenRequest) -> Value {
     if let Some(d) = &r.display {
         o["display"] = json!(d);
     }
+    if let Some(f) = &r.features {
+        o["features"] = json!(f);
+    }
     o
 }
 
@@ -486,6 +492,7 @@ fn request_from(v: &Value) -> Option<ScreenRequest> {
         fps: int(req(o, "fps")?)?,
         codecs: opt(o, "codecs", |v| list(v, string))?,
         display: opt(o, "display", string)?,
+        features: opt(o, "features", |v| list(v, string))?,
     })
 }
 
@@ -668,13 +675,16 @@ impl ToPhone {
             ToPhone::NewKey(k) => one("newKey", json!(b64(k))),
             ToPhone::Clock { phone, mac } => case("clock", vec![("phone", f64v(*phone)), ("mac", f64v(*mac))]),
             ToPhone::ScreenFailed(w) => one("screenFailed", json!(w)),
-            ToPhone::ScreenView { width, height, codec, display } => {
+            ToPhone::ScreenView { width, height, codec, display, features } => {
                 let mut f = vec![("width", f64v(*width)), ("height", f64v(*height))];
                 if let Some(c) = codec {
                     f.push(("codec", json!(c)));
                 }
                 if let Some(d) = display {
                     f.push(("display", json!(d)));
+                }
+                if let Some(x) = features {
+                    f.push(("features", json!(x)));
                 }
                 case("screenView", f)
             }
@@ -716,6 +726,7 @@ impl ToPhone {
                 height: num(req(f, "height")?)?,
                 codec: opt(f, "codec", string)?,
                 display: opt(f, "display", string)?,
+                features: opt(f, "features", |v| list(v, string))?,
             },
             "displays" => ToPhone::Displays(list(x0()?, display_from)?),
             "cursorShape" => ToPhone::CursorShape {

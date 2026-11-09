@@ -140,6 +140,24 @@ pub struct ScreenConfig {
     /// one when `Backend::displays` lists any, and starts the stream again when the pointer moves to another (follow mode) or the
     /// phone pins one, unless `Screen::set_display` switched in place.
     pub display: Option<String>,
+    /// How often to look at the screen, frames a second (added 2026-11-09, docs/design/remote-realtime.md §4): 120 when `fps` is 60 or
+    /// more, else `fps`. Captured faster than sent, a change is picked up within 8 ms of being drawn instead of 17; what's encoded
+    /// stays at `fps` on average (`FrameCredit`). DXGI duplication and PipeWire deliver at the display's own rate whatever this says.
+    pub capture_fps: u32,
+    /// The phone repairs the picture (nack or ltr): no keyframe every few seconds, only when asked. False: as before, a keyframe
+    /// every 600 frames or so as a safety net for a phone that can only start over.
+    pub repairs: bool,
+}
+
+impl ScreenConfig {
+    /// The capture rate for a sending rate: 120 at 60 or more, else the same.
+    pub fn capture_for(fps: u32) -> u32 {
+        if fps >= 60 {
+            120
+        } else {
+            fps.max(1)
+        }
+    }
 }
 
 /// 0…1 of the display being shown (RemoteCrop).
@@ -179,6 +197,26 @@ pub struct EncodedFrame {
     pub crop: Crop,
     /// when it was composed, seconds on the host's monotonic clock (the same clock the server reads in `now()`)
     pub captured: f64,
+    /// A recovery frame (`Screen::recovery_frame`), not a keyframe: a P-frame from a reference the phone acknowledged (LTR), or the
+    /// first of an intra refresh. The phone shows it after giving up a frame instead of waiting for a keyframe. (Added 2026-11-09.)
+    pub refresh: bool,
+    /// The encoder may refer back to this frame once the phone has decoded it (an LTR slot): the phone acknowledges it and the
+    /// server hands this number back through `Screen::acknowledged`. None: not a reference (the default).
+    pub reference: Option<u64>,
+}
+
+impl Default for EncodedFrame {
+    fn default() -> Self {
+        EncodedFrame {
+            picture: vec![],
+            keyframe: false,
+            parameter_sets: vec![],
+            crop: Crop::WHOLE,
+            captured: 0.0,
+            refresh: false,
+            reference: None,
+        }
+    }
 }
 
 pub type FrameSink = Arc<dyn Fn(EncodedFrame) + Send + Sync>;
@@ -203,6 +241,20 @@ pub trait Screen: Send {
     /// Encode the last captured picture again (the screen stopped changing): the encoder sharpens it.
     fn refresh(&mut self);
     fn stop(&mut self);
+    /// Whether this stream's encoder makes recovery frames (`recovery_frame` other than a keyframe). Asked after `start`; true lets
+    /// the server offer the phone "ltr" (docs/design/remote-realtime.md §2). False (the default): a frame lost for good costs a
+    /// keyframe, as before.
+    fn supports_recovery(&self) -> bool {
+        false
+    }
+    /// The phone gave up a frame: the next frame encoded is a recovery frame, flagged `EncodedFrame::refresh`: a P-frame from a
+    /// reference the phone acknowledged (LTR), or the start of an intra refresh. If there's nothing acknowledged to refer to, or the
+    /// encoder can't, a keyframe. As `keyframe`, the last captured picture is encoded now if nothing new is coming. Default: `keyframe`.
+    fn recovery_frame(&mut self) {
+        self.keyframe();
+    }
+    /// The phone has decoded the frames that carried these `EncodedFrame::reference`s: the encoder may refer back to them.
+    fn acknowledged(&mut self, _references: &[u64]) {}
     /// Show another display without stopping the stream (same output size: the server only asks when the two have the same shape).
     /// True: done, the next frame (a keyframe) is that display's, and `pointer` / `move_to` are relative to it from now on. False (the
     /// default): not supported, and the server stops the stream and starts it again on that display.
