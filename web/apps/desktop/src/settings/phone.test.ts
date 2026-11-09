@@ -90,7 +90,7 @@ describe('browser stand-in', () => {
     expect(s.pairing).toBeNull();
     expect(s.asking?.digits).toMatch(/^\d{6}$/);
 
-    s = await mockInvoke<RemoteStatus>('remote_answer_pairing', { yes: true });
+    s = await mockInvoke<RemoteStatus>('remote_answer_pairing', { yes: true, digits: s.asking!.digits });
     expect(s.asking).toBeNull();
     expect(s.devices).toHaveLength(1);
     expect(s.connected?.id).toBe(s.devices[0].id);

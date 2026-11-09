@@ -287,7 +287,7 @@ function mockRemote(cmd: string, a: Record<string, any>): unknown {
       break;
     case 'remote_answer_pairing': {
       const ask = remote.asking;
-      if (!ask) break;
+      if (!ask || (a.digits !== undefined && a.digits !== ask.digits)) break; // another phone's question by now
       remoteTimers.forEach(clearTimeout);
       remoteTimers = [];
       remote.asking = null;

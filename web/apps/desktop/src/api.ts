@@ -488,7 +488,7 @@ export const api = {
   /** on: listen, advertise, and make a code good for one phone for two minutes; off: take the code down */
   remoteShowPairing: (on: boolean) => invoke<RemoteStatus>('remote_show_pairing', { on }),
   /** the yes or no for the phone in `asking` */
-  remoteAnswerPairing: (yes: boolean) => invoke<RemoteStatus>('remote_answer_pairing', { yes }),
+  remoteAnswerPairing: (yes: boolean, digits: string) => invoke<RemoteStatus>('remote_answer_pairing', { yes, digits }),
   remoteRemoveDevice: (id: string) => invoke<RemoteStatus>('remote_remove_device', { id }),
   /** "" clears it; rejects with the reason when it doesn't parse */
   remoteSetRelay: (address: string) => invoke<RemoteStatus>('remote_set_relay', { address }),

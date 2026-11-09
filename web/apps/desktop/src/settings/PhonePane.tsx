@@ -172,7 +172,8 @@ export function useAllow(key: string) {
   return (e: React.MouseEvent) => e.detail > 0 && Date.now() - since.current > 600;
 }
 
-const answer = (yes: boolean) => void apply(api.remoteAnswerPairing(yes)).catch(() => {});
+/** `digits` ties the answer to the phone that asked: a late click can't answer another one that started asking since. */
+const answer = (yes: boolean, digits: string) => void apply(api.remoteAnswerPairing(yes, digits)).catch(() => {});
 
 /** A phone asking, in the pane: its name, the digits large, where it came from; Don't Allow and Allow, neither default. */
 function AskBlock({ ask }: { ask: NonNullable<RemoteStatus['asking']> }) {
@@ -182,7 +183,7 @@ function AskBlock({ ask }: { ask: NonNullable<RemoteStatus['asking']> }) {
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === 'Escape') {
           e.preventDefault();
-          answer(false);
+          answer(false, ask.digits);
         }
       }}>
       <span className="st-phone-ask-icon"><Icon name="phone" size={20} /></span>
@@ -192,8 +193,8 @@ function AskBlock({ ask }: { ask: NonNullable<RemoteStatus['asking']> }) {
         <div className="st-phone-ask-foot">
           <span className="st-phone-digits" data-testid="phone-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</span>
           <span className="grow" />
-          <button onClick={() => answer(false)}>{S('phone.ask.no')}</button>
-          <button onClick={(e) => ok(e) && answer(true)} data-testid="phone-allow">{S('phone.ask.yes')}</button>
+          <button onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
+          <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-allow">{S('phone.ask.yes')}</button>
         </div>
       </div>
     </div>
@@ -318,13 +319,13 @@ export function PhoneAsk() {
   const ok = useAllow(ask?.digits ?? '');
   if (!ask || paneOpen) return null;
   return (
-    <div className="overlay" onClick={() => answer(false)}>
+    <div className="overlay" onClick={() => answer(false, ask.digits)}>
       <div className="sheet dict-confirm phone-ask-sheet" role="alertdialog" aria-modal="true" aria-labelledby="phone-ask-sheet-title" data-testid="phone-ask-dialog"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === 'Escape') {
             e.preventDefault();
-            answer(false);
+            answer(false, ask.digits);
           }
         }}>
         <div className="agent-ask-head">
@@ -334,8 +335,8 @@ export function PhoneAsk() {
         <div className="phone-ask-digits" aria-label={ask.digits.split('').join(' ')}>{groupDigits(ask.digits)}</div>
         <p>{S('phone.ask.detail')} {S(ask.viaRelay ? 'phone.ask.relay' : 'phone.ask.local')}</p>
         <div className="dict-confirm-foot">
-          <button autoFocus className="dict-confirm-cancel" onClick={() => answer(false)}>{S('phone.ask.no')}</button>
-          <button onClick={(e) => ok(e) && answer(true)} data-testid="phone-ask-allow">{S('phone.ask.yes')}</button>
+          <button autoFocus className="dict-confirm-cancel" onClick={() => answer(false, ask.digits)}>{S('phone.ask.no')}</button>
+          <button onClick={(e) => ok(e) && answer(true, ask.digits)} data-testid="phone-ask-allow">{S('phone.ask.yes')}</button>
         </div>
       </div>
     </div>
