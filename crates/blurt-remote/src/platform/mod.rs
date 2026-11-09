@@ -1,6 +1,7 @@
 //! Each OS's half of host.rs. `backend()` is what the server uses.
 
-#[cfg(windows)]
+// Windows: its pure parts (key tables, bitstream, geometry, bookkeeping) are also built for tests on any OS
+#[cfg(any(windows, test))]
 pub mod windows;
 #[cfg(windows)]
 pub use self::windows::backend;
