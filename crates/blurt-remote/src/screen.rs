@@ -575,6 +575,14 @@ impl Parts {
         config.height = h;
         config.bitrate = bitrate;
         config.fps = fps;
+        {
+            // before the new stream's first frame can come: nothing more of the old display, and the new one from its keyframe
+            let mut s = self.st.lock().unwrap();
+            s.broken = true;
+            s.refines = 0;
+            s.last_cursor = None;
+            s.sent_total = s.received_total;
+        }
         let info = {
             let mut b = self.backend.lock().unwrap();
             let Some(sc) = b.screen() else { return Err(NO_SCREEN.into()) };
@@ -588,13 +596,6 @@ impl Parts {
         };
         *self.view.config.lock().unwrap() = config;
         *self.view.codec.lock().unwrap() = info.codec.clone();
-        {
-            let mut s = self.st.lock().unwrap();
-            s.broken = true; // nothing from before the switch until its keyframe
-            s.refines = 0;
-            s.last_cursor = None;
-            s.sent_total = s.received_total;
-        }
         self.view.follow.lock().unwrap().shown = Some(d.id.clone());
         self.chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec), display: Some(d.id.clone()) });
         if center {
