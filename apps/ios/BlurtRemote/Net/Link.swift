@@ -559,6 +559,7 @@ final class Link: ObservableObject {
         case let .screenFailed(why):
             ScreenStream.shared.stop()
             screenError = why
+        case .displays: break   // the switcher: being built (displays-apple)
         case let .screenView(w, h, codec, _):
             ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec)
         case let .cursorShape(png, hx, hy, w, h):
