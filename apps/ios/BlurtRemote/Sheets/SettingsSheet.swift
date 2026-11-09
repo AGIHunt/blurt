@@ -1,3 +1,4 @@
+import GameController
 import SwiftUI
 
 struct SettingsSheet: View {
@@ -42,6 +43,14 @@ struct SettingsSheet: View {
                 } footer: { Text("On the Mac’s screen, taps, scrolls and drags act where your fingers are. Off: at the pointer, as on a trackpad.") }
                 Section("Keys") {
                     NavigationLink("Edit Keys") { KeyEditor(deck: Deck.load(), onChange: onDeck) }
+                }
+                if l.host != .mac, GCKeyboard.coalesced != nil {
+                    Section {
+                        Picker("⌘ on This Keyboard", selection: $p.hardwareCommand) {
+                            Text("Ctrl").tag(CommandKeyRole.control)
+                            Text(l.host == .linux ? "Super" : "Windows Key").tag(CommandKeyRole.system)
+                        }
+                    } footer: { Text("Ctrl: ⌘C copies and ⌘V pastes, as on a Mac. Control is Ctrl too, Option is Alt.") }
                 }
                 Section("Trackpad") {
                     VStack(alignment: .leading) {

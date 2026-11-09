@@ -54,6 +54,7 @@ final class Link: ObservableObject {
     enum Route { case local, relay, direct }
     @Published private(set) var route = Route.local
     @Published private(set) var displayAspect: CGFloat = 1.6
+    @Published private(set) var host: RemoteHost = .mac
     /// paired Macs on this network right now, while Settings looks
     @Published private(set) var nearby: Set<String> = []
     /// on mobile data; Low Data Mode is on
@@ -467,6 +468,7 @@ final class Link: ObservableObject {
                 saveMacs()
             }
             displayAspect = CGFloat(i.displayAspect)
+            host = i.host
             lastInfo = i
             noteRelay(i.relay)
             if let r = replacing {

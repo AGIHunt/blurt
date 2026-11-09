@@ -114,9 +114,15 @@ final class ScreenStream {
         place()
     }
 
+    /// The stage in pixels, as much as a zoomed picture can fill (PadLayout.outputPixels): the output follows the stage, so an iPad window
+    /// or the Duo opening asks for what it now shows. nil: the screen's own size.
+    var stagePixels: CGSize? {
+        didSet { if stagePixels != oldValue { planChanged() } }
+    }
+
     private var plan: ScreenPlan {
         let l = Link.shared
-        return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: UIScreen.main.nativeBounds.size)
+        return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: stagePixels ?? UIScreen.main.nativeBounds.size)
     }
 
     /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).

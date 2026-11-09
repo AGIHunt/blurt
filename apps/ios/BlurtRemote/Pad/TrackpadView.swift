@@ -1,14 +1,30 @@
-// The glass: raw touches to PadEngine, what it says to the Mac. No gesture recognisers: they add delay, and they can't
+// The glass: raw touches to PadEngine, what it says to the Mac. No gesture recognisers for fingers: they add delay, and they can't
 // share touches the way a trackpad needs.
+//
+// An iPad also has a pointer (a mouse or a trackpad) and a Pencil, and those aren't fingers. With the picture showing, the pointer over
+// it is the computer's pointer, where it is, and its buttons and scrolling are the computer's; the iPad's own pointer hides over the
+// pad, since the computer's is drawn. The Pencil is the finger of Touch Mode with the precision of a pen: down is the button down where
+// it lands, a stroke drags, and hovering (iPad Pro) moves the pointer to the tip. With no picture the pointer moves the computer's
+// relatively, a mouse's own speed, not a thumb's curve: it already has the iPad's acceleration.
 import BlurtRemoteKit
 import UIKit
 
-final class TrackpadView: UIView {
+final class TrackpadView: UIView, UIPointerInteractionDelegate {
     let engine = PadEngine()
     var onHaptic: ((PadHaptic) -> Void)?
     var onViewEnd: (() -> Void)?
     /// the phone's sticky modifiers were used by a click: one-shot ones clear
     var onClick: (() -> Void)?
+    /// false: the trackpad between the thumbs (big screens). It never puts the pointer under a touch, and a pinch zooms the stage's view
+    var isStage = true
+    /// for the thumb pad: the stage's middle, in the stage's coordinates, for a pinch to zoom about
+    var stageMiddle: (() -> CGPoint)?
+    /// the picture is showing on the stage
+    var showing = false
+    /// the pointer, the Pencil: what they hold down, and where they were
+    private var pointerTouches: [ObjectIdentifier: (button: RemoteMouseButton, last: CGPoint, placed: Bool)] = [:]
+    private var lastHover: CGPoint?
+    private var lastHoverSent = 0.0
 
     private var ids: [ObjectIdentifier: Int] = [:]
     private var nextID = 0
@@ -54,6 +70,107 @@ final class TrackpadView: UIView {
         layer.borderColor = Theme.hairline.cgColor
         isAccessibilityElement = true
         accessibilityLabel = String(localized: "Trackpad")
+
+        let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:)))
+        addGestureRecognizer(hover)
+        // two fingers on a trackpad, a mouse's wheel: scroll events only, never a touch
+        let scroll = UIPanGestureRecognizer(target: self, action: #selector(scrolled(_:)))
+        scroll.allowedScrollTypesMask = .all
+        scroll.allowedTouchTypes = []
+        addGestureRecognizer(scroll)
+        addInteraction(UIPointerInteraction(delegate: self))
+    }
+
+    /// The computer's pointer is the one that counts here.
+    func pointerInteraction(_ i: UIPointerInteraction, styleFor region: UIPointerRegion) -> UIPointerStyle? { .hidden() }
+
+    private var mouseGain: Float { 1.5 * Float(Prefs.shared.pointerSpeed) }
+
+    @objc private func hovered(_ g: UIHoverGestureRecognizer) {
+        let p = g.location(in: self)
+        switch g.state {
+        case .began, .changed:
+            let pencil = g.zOffset > 0
+            if showing && isStage {
+                // where the pointer or the Pencil's tip is, the computer's pointer is: no more than 60 times a second
+                let now = CACurrentMediaTime()
+                guard now - lastHoverSent >= 1.0 / 60 else { return }
+                lastHoverSent = now
+                _ = ScreenStream.shared.placePointer(at: p)
+            } else if !pencil, let l = lastHover {
+                let dx = Float(p.x - l.x) * mouseGain, dy = Float(p.y - l.y) * mouseGain
+                if dx != 0 || dy != 0 { Link.shared.pointer(.move(dx: dx, dy: dy)); ScreenStream.shared.predict(dx: dx, dy: dy) }
+            }
+            lastHover = p
+        default:
+            lastHover = nil
+        }
+    }
+
+    private var scrollLast = CGPoint.zero
+
+    @objc private func scrolled(_ g: UIPanGestureRecognizer) {
+        let f: CGFloat = Prefs.shared.reverseScroll ? -1 : 1
+        let gain = CGFloat(Prefs.shared.scrollSpeed) * f
+        let t = g.translation(in: self)
+        switch g.state {
+        case .began:
+            scrollLast = t
+            Link.shared.pointer(.scroll(dx: 0, dy: 0, phase: .began))
+        case .changed:
+            let dx = Float((t.x - scrollLast.x) * gain), dy = Float((t.y - scrollLast.y) * gain)
+            scrollLast = t
+            Link.shared.pointer(.scroll(dx: dx, dy: dy, phase: .changed))
+        case .ended:
+            Link.shared.pointer(.scroll(dx: 0, dy: 0, phase: .ended))
+            let v = g.velocity(in: self)
+            if hypot(v.x, v.y) > 120 { Link.shared.pointer(.scrollFling(vx: Float(v.x * gain), vy: Float(v.y * gain))) }
+        case .cancelled, .failed:
+            Link.shared.pointer(.scroll(dx: 0, dy: 0, phase: .ended))
+        default: break
+        }
+    }
+
+    /// A pointer's click, or the Pencil on the picture: a button, not a finger.
+    private func isButton(_ t: UITouch) -> Bool {
+        t.type == .indirectPointer || (t.type == .pencil && isStage && showing && engine.touchMode)
+    }
+
+    private func buttonsBegan(_ ts: [UITouch], _ e: UIEvent?) {
+        for t in ts {
+            let p = t.preciseLocation(in: self)
+            let b: RemoteMouseButton = e?.buttonMask.contains(.secondary) == true ? .right : .left
+            var placed = true
+            if showing && isStage { placed = ScreenStream.shared.placePointer(at: p) }
+            pointerTouches[ObjectIdentifier(t)] = (b, p, placed)
+            guard placed else { continue }      // off the picture: nothing to press
+            Link.shared.send(.button(b, down: true))
+        }
+    }
+
+    private func buttonsMoved(_ ts: [UITouch]) {
+        for t in ts {
+            guard var s = pointerTouches[ObjectIdentifier(t)], s.placed else { continue }
+            let p = t.preciseLocation(in: self)
+            if showing && isStage {
+                ScreenStream.shared.dragPointer(to: p)
+            } else {
+                let dx = Float(p.x - s.last.x) * mouseGain, dy = Float(p.y - s.last.y) * mouseGain
+                Link.shared.pointer(.move(dx: dx, dy: dy))
+                ScreenStream.shared.predict(dx: dx, dy: dy)
+            }
+            s.last = p
+            pointerTouches[ObjectIdentifier(t)] = s
+        }
+    }
+
+    private func buttonsEnded(_ ts: [UITouch]) {
+        for t in ts {
+            guard let s = pointerTouches.removeValue(forKey: ObjectIdentifier(t)), s.placed else { continue }
+            ScreenStream.shared.finishDrag()
+            Link.shared.send(.button(s.button, down: false))
+            onClick?()
+        }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -73,13 +190,20 @@ final class TrackpadView: UIView {
         }
     }
 
-    override func touchesBegan(_ t: Set<UITouch>, with e: UIEvent?) {
+    override func touchesBegan(_ all: Set<UITouch>, with e: UIEvent?) {
+        let buttons = all.filter(isButton)
+        if !buttons.isEmpty { buttonsBegan(Array(buttons), e) }
+        let t = all.subtracting(buttons)
+        guard !t.isEmpty else { return }
         light(t.first, on: true)
         apply(engine.began(pads(t, new: true), at: CACurrentMediaTime()))
         startTicks()
     }
 
-    override func touchesMoved(_ t: Set<UITouch>, with e: UIEvent?) {
+    override func touchesMoved(_ all: Set<UITouch>, with e: UIEvent?) {
+        let t = all.filter { pointerTouches[ObjectIdentifier($0)] == nil }
+        buttonsMoved(Array(all.subtracting(t)))
+        guard !t.isEmpty else { return }
         light(t.first, on: true)
         apply(engine.moved(pads(t, new: false), at: CACurrentMediaTime()))
     }
@@ -92,14 +216,20 @@ final class TrackpadView: UIView {
         }
     }
 
-    override func touchesEnded(_ t: Set<UITouch>, with e: UIEvent?) {
+    override func touchesEnded(_ all: Set<UITouch>, with e: UIEvent?) {
+        let t = all.filter { pointerTouches[ObjectIdentifier($0)] == nil }
+        buttonsEnded(Array(all.subtracting(t)))
+        guard !t.isEmpty else { return }
         let g = gone(t)
         if ids.isEmpty { light(nil, on: false) }
         if !g.isEmpty { apply(engine.ended(g, at: CACurrentMediaTime())) }
         startTicks()
     }
 
-    override func touchesCancelled(_ t: Set<UITouch>, with e: UIEvent?) {
+    override func touchesCancelled(_ all: Set<UITouch>, with e: UIEvent?) {
+        let t = all.filter { pointerTouches[ObjectIdentifier($0)] == nil }
+        buttonsEnded(Array(all.subtracting(t)))
+        guard !t.isEmpty else { return }
         let g = gone(t)
         if ids.isEmpty {
             light(nil, on: false)
@@ -109,8 +239,13 @@ final class TrackpadView: UIView {
         }
     }
 
+    /// Everything held ends cleanly: the window is changing size (a turn, the Duo opening), or the app is leaving.
     func letGo() {
         ids = [:]
+        palms = []
+        light(nil, on: false)
+        for (_, s) in pointerTouches where s.placed { Link.shared.send(.button(s.button, down: false)) }
+        pointerTouches = [:]
         apply(engine.cancel())
     }
 
@@ -133,7 +268,12 @@ final class TrackpadView: UIView {
                 link.pointer(.move(dx: x, dy: y))
                 ScreenStream.shared.predict(dx: x, dy: y)
             case let .view(scale, dx, dy, at):
-                ScreenStream.shared.change(scale: scale, dx: dx, dy: dy, at: at)
+                if isStage {
+                    ScreenStream.shared.change(scale: scale, dx: dx, dy: dy, at: at)
+                } else if let m = stageMiddle?() {
+                    // between the thumbs: closer or further, about the middle of what's in view; moving is the pointer's job
+                    ScreenStream.shared.change(scale: scale, dx: 0, dy: 0, at: m)
+                }
             case .viewEnd:
                 ScreenStream.shared.gestureEnded()
                 onViewEnd?()
