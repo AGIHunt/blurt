@@ -33,8 +33,12 @@ public struct RemoteScreenRequest: Codable, Hashable, Sendable {
     /// what the phone can decode, best first: "hevc", "h264". nil = HEVC only (phones before 1.0.15). The host picks the first it can
     /// encode in hardware and says which in ToPhone.screenView. A keyframe's parameter sets are VPS, SPS, PPS for HEVC and SPS, PPS for H.264.
     public var codecs: [String]?
-    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60, codecs: [String]? = RemoteVideoCodec.decodable) {
+    /// a RemoteDisplay id to show; nil = the display the pointer is on, following it from display to display (the default)
+    public var display: String?
+    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60, codecs: [String]? = RemoteVideoCodec.decodable,
+                display: String? = nil) {
         self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps; self.codecs = codecs
+        self.display = display
     }
 }
 

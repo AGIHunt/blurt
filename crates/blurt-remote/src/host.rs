@@ -94,6 +94,35 @@ pub trait Input: Send {
     fn pointer(&self) -> Option<(f64, f64)>;
     /// The pointer's shape if it changed since the last call.
     fn cursor_shape(&mut self) -> Option<CursorShape>;
+    /// Where the pointer is on the desktop, in the coordinates `Backend::displays` uses (points, top-left origin). The server follows
+    /// the pointer from display to display with it. None (the default): unknown, and the server works it out from `pointer` and the
+    /// display being shown. (Added 2026-11-09 for several displays.)
+    fn pointer_desktop(&self) -> Option<(f64, f64)> {
+        None
+    }
+}
+
+/// One of the computer's displays (ToPhone.displays): its frame in points on the desktop (top-left origin, y down, as the OS's display
+/// settings arrange them). On Windows a monitor's frame is its physical rectangle ÷ its own scale; mixed DPI can leave small gaps or
+/// overlaps between them, which is fine: the server only asks which one a point is in.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DisplayInfo {
+    /// stable while it stays connected: the monitor's device name on Windows (\\.\DISPLAY2), the portal stream's id on Linux
+    pub id: String,
+    /// what the user calls it ("DELL U2723QE"); the id if nothing better is known
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// the primary display
+    pub main: bool,
+}
+
+impl DisplayInfo {
+    pub fn contains(&self, x: f64, y: f64) -> bool {
+        x >= self.x && x < self.x + self.width && y >= self.y && y < self.y + self.height
+    }
 }
 
 /// What the phone asked for, already clamped by the server (RemoteScreenRequest + the rate controller's current numbers).
@@ -107,6 +136,10 @@ pub struct ScreenConfig {
     /// best first, from the phone: "hevc", "h264". The backend picks the first it can encode, hardware preferred.
     pub codecs: Vec<String>,
     pub crop: Crop,
+    /// which display (a `DisplayInfo::id`); None: the one under the pointer, as before displays were listed. The server always names
+    /// one when `Backend::displays` lists any, and starts the stream again when the pointer moves to another (follow mode) or the
+    /// phone pins one, unless `Screen::set_display` switched in place.
+    pub display: Option<String>,
 }
 
 /// 0…1 of the display being shown (RemoteCrop).
@@ -170,6 +203,12 @@ pub trait Screen: Send {
     /// Encode the last captured picture again (the screen stopped changing): the encoder sharpens it.
     fn refresh(&mut self);
     fn stop(&mut self);
+    /// Show another display without stopping the stream (same output size: the server only asks when the two have the same shape).
+    /// True: done, the next frame (a keyframe) is that display's, and `pointer` / `move_to` are relative to it from now on. False (the
+    /// default): not supported, and the server stops the stream and starts it again on that display.
+    fn set_display(&mut self, _id: Option<&str>) -> bool {
+        false
+    }
 }
 
 /// What the backend gives the server.
@@ -185,6 +224,11 @@ pub trait Backend: Send {
     fn now(&self) -> f64;
     /// Keep the machine (and with `display`, the screen) awake while a phone is connected; false lets it sleep again.
     fn keep_awake(&mut self, on: bool, display: bool);
+    /// Every display, in desktop points (ToPhone.displays). The server asks every 2 s while a phone is connected and tells the phone
+    /// when it changed. Empty (the default): one display, whichever the backend shows; nothing is sent.
+    fn displays(&self) -> Vec<DisplayInfo> {
+        Vec::new()
+    }
 }
 
 /// No screen, no keys: for the Mac build of this crate and for tests.

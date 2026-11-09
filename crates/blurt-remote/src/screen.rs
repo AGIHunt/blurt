@@ -10,6 +10,9 @@
 //!  • a frame the way out can't take is dropped, and the picture can't go on without the frames before it: the next one sent is a
 //!    keyframe (`Screen::keyframe`), asked for once the way clears.
 //!  • a still picture: `Screen::refresh` until a resend comes out under 1.5 KB (at most 8), then nothing.
+//!  • several displays (displays.rs): the one the pointer is on, followed with some hysteresis, or the one the phone pinned. A move
+//!    to another is `Screen::set_display` when the backend can and the shapes match, else the stream starts again there; either way
+//!    a new screenView (with the display's id) and a keyframe.
 //!
 //! The sink runs on the backend's thread and never touches the backend (its `stop` may be waiting for that thread); the ticker does.
 
@@ -18,7 +21,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use crate::channel::Chan;
-use crate::host::{EncodedFrame, FrameSink, ScreenConfig};
+use crate::displays::{self, Follow};
+use crate::host::{DisplayInfo, EncodedFrame, FrameSink, ScreenConfig};
 use crate::input::{Cmd, Shared};
 use crate::packets::{cursor, pack_payload, Kind, VideoPacket};
 use crate::rate::Rate;
@@ -106,6 +110,26 @@ pub struct ScreenSession {
     input: std::sync::mpsc::Sender<Cmd>,
     stopped: Arc<AtomicBool>,
     log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
+    view: Arc<View>,
+}
+
+/// Which display, and what's needed to move to another.
+struct View {
+    follow: Mutex<Follow>,
+    /// the backend's displays, kept fresh by the server (empty: one display, the backend's own)
+    displays: Arc<Mutex<Vec<DisplayInfo>>>,
+    config: Mutex<ScreenConfig>,
+    /// the phone's box for the picture
+    asked: (i64, i64),
+    sink: FrameSink,
+    codec: Mutex<String>,
+    switching: AtomicBool,
+    rt: tokio::runtime::Handle,
+}
+
+/// Where the pointer is on the desktop: the backend's word for it, else worked out from the display shown.
+fn pointer_desktop(i: &dyn crate::host::Input, shown: Option<&DisplayInfo>) -> Option<(f64, f64)> {
+    i.pointer_desktop().or_else(|| Some(displays::desktop(shown?, i.pointer()?)))
 }
 
 impl ScreenSession {
@@ -118,6 +142,7 @@ impl ScreenSession {
         input: std::sync::mpsc::Sender<Cmd>,
         rt: tokio::runtime::Handle,
         log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
+        all: Arc<Mutex<Vec<DisplayInfo>>>,
     ) -> Result<ScreenSession, String> {
         let r = clamp(r);
         // a dialog the user answers (Wayland's portal) is waited on without the backend's lock: input goes on meanwhile
@@ -127,7 +152,18 @@ impl ScreenSession {
         }
         let relayed = chan.relay;
         let rate = Rate::new(r.bitrate, r.fps, relayed);
-        let aspect = backend.lock().unwrap().display_aspect();
+        // the display: the one pinned, else the one under the pointer; its shape is the picture's
+        let (aspect, display, pinned) = {
+            let mut b = backend.lock().unwrap();
+            let list = b.displays();
+            *all.lock().unwrap() = list.clone();
+            let p = b.input().pointer_desktop();
+            let first = displays::first(&list, r.display.as_deref(), p);
+            let shape = first.as_deref().and_then(|id| displays::find(&list, id)).map(|d| d.width / d.height.max(1.0));
+            // pinned only to a display that's there (one gone since the phone chose it: follow)
+            let pinned = r.display.clone().filter(|id| displays::find(&list, id).is_some());
+            (shape.unwrap_or_else(|| b.display_aspect()), first, pinned)
+        };
         let (width, height) = fit(r.width, r.height, aspect);
         let st = Arc::new(Mutex::new(St {
             running: true,
@@ -173,6 +209,7 @@ impl ScreenSession {
             fps,
             codecs: r.codecs.clone().unwrap_or_else(|| vec!["hevc".into()]),
             crop: r.crop.to_host(),
+            display: display.clone(),
         };
         let sink: FrameSink = {
             let (st, chan, rt, log) = (st.clone(), chan.clone(), rt.clone(), log.clone());
@@ -183,28 +220,96 @@ impl ScreenSession {
             let Some(screen) = b.screen() else {
                 return Err(NO_SCREEN.into());
             };
-            screen.start(&config, sink)?
+            screen.start(&config, sink.clone())?
         };
-        chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec.clone()) });
+        chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec.clone()), display: display.clone() });
         log(serde_json::json!({"event": "remote_screen", "state": "on", "width": width, "height": height, "bitrate": bitrate,
-                               "fps": fps, "codec": info.codec, "relay": relayed}));
-        let s = ScreenSession { st, chan, backend, input, stopped: Arc::new(AtomicBool::new(false)), log };
+                               "fps": fps, "codec": info.codec, "relay": relayed, "display": display}));
+        let view = Arc::new(View {
+            follow: Mutex::new(Follow::new(pinned, display)),
+            displays: all,
+            config: Mutex::new(config),
+            asked: (r.width, r.height),
+            sink,
+            codec: Mutex::new(info.codec),
+            switching: AtomicBool::new(false),
+            rt: rt.clone(),
+        });
+        let s = ScreenSession { st, chan, backend, input, stopped: Arc::new(AtomicBool::new(false)), log, view };
         s.ticker(&rt, if relayed { 15 } else { 60 });
         Ok(s)
     }
 
+    /// The handle the ticker and a display switch work with.
+    fn parts(&self) -> Parts {
+        Parts {
+            st: self.st.clone(),
+            chan: self.chan.clone(),
+            backend: self.backend.clone(),
+            input: self.input.clone(),
+            stopped: self.stopped.clone(),
+            log: self.log.clone(),
+            view: self.view.clone(),
+        }
+    }
+
+    /// The phone pinned a display (Some), or wants the one the pointer is on again (None). A pinned display comes with the pointer in
+    /// its middle.
+    pub fn pin(&self, id: Option<String>) {
+        let p = self.parts();
+        let known = id.as_deref().is_some_and(|i| displays::find(&p.view.displays.lock().unwrap(), i).is_some());
+        let mut f = p.view.follow.lock().unwrap();
+        match id {
+            Some(id) if known => {
+                f.pinned = Some(id.clone());
+                if f.shown.as_deref() == Some(id.as_str()) {
+                    drop(f);
+                    let _ = p.input.send(Cmd::MoveTo(0.5, 0.5));
+                } else {
+                    drop(f);
+                    p.switch(id, true);
+                }
+            }
+            Some(_) => {} // not one of ours (gone already): nothing changes
+            None => f.pinned = None,
+        }
+    }
+
+    /// The server's fresh list of displays: if the one shown went, back to following on the one under the pointer.
+    pub fn displays_changed(&self) {
+        let p = self.parts();
+        let list = p.view.displays.lock().unwrap().clone();
+        let to = {
+            let pointer = {
+                let mut b = p.backend.lock().unwrap();
+                b.input().pointer_desktop()
+            };
+            p.view.follow.lock().unwrap().displays_changed(&list, pointer)
+        };
+        if let Some(id) = to {
+            p.switch(id, false);
+        }
+    }
+
+    /// The display being shown now (its id), for the server's log and tests.
+    pub fn shown(&self) -> Option<String> {
+        self.view.follow.lock().unwrap().shown.clone()
+    }
+
     fn ticker(&self, rt: &tokio::runtime::Handle, hz: u64) {
-        let (st, chan, backend, stopped) = (self.st.clone(), self.chan.clone(), self.backend.clone(), self.stopped.clone());
+        let p = self.parts();
         rt.spawn(async move {
             let mut t = tokio::time::interval(Duration::from_micros(1_000_000 / hz));
             t.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             let mut last_shape: Option<Vec<u8>> = None;
             loop {
                 t.tick().await;
-                if stopped.load(SeqCst) || chan.is_closed() {
+                if p.stopped.load(SeqCst) || p.chan.is_closed() {
                     return;
                 }
-                tick(&st, &chan, &backend, hz, &mut last_shape);
+                if let Some(id) = tick(&p, hz, &mut last_shape) {
+                    p.switch(id, false);
+                }
             }
         });
     }
@@ -426,6 +531,86 @@ fn frame(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, rt: &tokio::runtime::Handle, log
     }
 }
 
+/// A screen session's shared parts.
+#[derive(Clone)]
+struct Parts {
+    st: Arc<Mutex<St>>,
+    chan: Arc<Chan>,
+    backend: Shared,
+    input: std::sync::mpsc::Sender<Cmd>,
+    stopped: Arc<AtomicBool>,
+    log: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
+    view: Arc<View>,
+}
+
+impl Parts {
+    /// Show display `id`: in place if the backend can and the shape is the same, else the stream again on it. Then screenView with
+    /// the display, and a keyframe. `center`: the pointer to its middle (a display the phone pinned).
+    fn switch(&self, id: String, center: bool) {
+        if self.view.switching.swap(true, SeqCst) {
+            return;
+        }
+        let p = self.clone();
+        self.view.rt.spawn_blocking(move || {
+            let r = p.switch_now(&id, center);
+            p.view.switching.store(false, SeqCst);
+            if let Err(why) = r {
+                (p.log)(serde_json::json!({"event": "remote_screen", "state": "switch_failed", "why": why}));
+                p.chan.send(&ToPhone::ScreenFailed(why));
+                p.stopped.store(true, SeqCst);
+                p.st.lock().unwrap().running = false;
+            }
+        });
+    }
+
+    fn switch_now(&self, id: &str, center: bool) -> Result<(), String> {
+        if self.stopped.load(SeqCst) {
+            return Ok(());
+        }
+        let Some(d) = displays::find(&self.view.displays.lock().unwrap(), id).cloned() else { return Ok(()) };
+        let mut config = self.view.config.lock().unwrap().clone();
+        let (bitrate, fps) = {
+            let s = self.st.lock().unwrap();
+            (s.rate.bitrate as u32, s.fps())
+        };
+        let (w, h) = fit(self.view.asked.0, self.view.asked.1, d.width / d.height.max(1.0));
+        let same_shape = (w, h) == (config.width, config.height);
+        config.display = Some(d.id.clone());
+        config.width = w;
+        config.height = h;
+        config.bitrate = bitrate;
+        config.fps = fps;
+        {
+            // before the new stream's first frame can come: nothing more of the old display, and the new one from its keyframe
+            let mut s = self.st.lock().unwrap();
+            s.broken = true;
+            s.refines = 0;
+            s.last_cursor = None;
+            s.sent_total = s.received_total;
+        }
+        let info = {
+            let mut b = self.backend.lock().unwrap();
+            let Some(sc) = b.screen() else { return Err(NO_SCREEN.into()) };
+            if same_shape && sc.set_display(Some(&d.id)) {
+                sc.keyframe();
+                crate::host::ScreenInfo { width: d.width, height: d.height, codec: self.view.codec.lock().unwrap().clone() }
+            } else {
+                sc.stop();
+                sc.start(&config, self.view.sink.clone())?
+            }
+        };
+        *self.view.config.lock().unwrap() = config;
+        *self.view.codec.lock().unwrap() = info.codec.clone();
+        self.view.follow.lock().unwrap().shown = Some(d.id.clone());
+        self.chan.send(&ToPhone::ScreenView { width: info.width, height: info.height, codec: Some(info.codec), display: Some(d.id.clone()) });
+        if center {
+            let _ = self.input.send(Cmd::MoveTo(0.5, 0.5));
+        }
+        (self.log)(serde_json::json!({"event": "remote_screen", "state": "display", "display": d.id, "width": w, "height": h}));
+        Ok(())
+    }
+}
+
 /// What the ticker asks of the backend this tick.
 #[derive(Default)]
 struct Asks {
@@ -434,12 +619,14 @@ struct Asks {
     shape: bool,
 }
 
-fn tick(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, backend: &Shared, hz: u64, last_shape: &mut Option<Vec<u8>>) {
+/// One tick: the keyframe or resend the stream needs, the pointer's place and shape. Some(id): the pointer has moved to that display.
+fn tick(p: &Parts, hz: u64, last_shape: &mut Option<Vec<u8>>) -> Option<String> {
+    let (st, chan, backend) = (&p.st, &p.chan, &p.backend);
     let mut asks = Asks::default();
     let (cursor_every, shape_now) = {
         let mut s = st.lock().unwrap();
         if !s.running {
-            return;
+            return None;
         }
         s.tick += 1;
         let now = s.now();
@@ -483,10 +670,25 @@ fn tick(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, backend: &Shared, hz: u64, last_s
             }
         }
         let i = b.input();
-        (i.pointer(), if asks.shape { i.cursor_shape() } else { None })
+        // several displays: the pointer on the desktop, 0…1 of the one shown from that, and where it is going
+        let all = p.view.displays.lock().unwrap();
+        let shown_id = p.view.follow.lock().unwrap().shown.clone();
+        let shown = shown_id.as_deref().and_then(|id| displays::find(&all, id));
+        let desk = if all.is_empty() { None } else { pointer_desktop(i, shown) };
+        let to = match desk {
+            Some(d) if !p.view.switching.load(SeqCst) => p.view.follow.lock().unwrap().pointer(&all, d, st.lock().unwrap().now()),
+            _ => None,
+        };
+        let n = match (desk, shown) {
+            (Some(d), Some(s)) if i.pointer_desktop().is_some() => Some(displays::normalised(s, d)),
+            _ => i.pointer(),
+        };
+        drop(all);
+        (n.map(|n| (n, to)), if asks.shape { i.cursor_shape() } else { None })
     };
+    let to = pointer.as_ref().and_then(|(_, to)| to.clone());
     let mut s = st.lock().unwrap();
-    if let Some(p) = pointer {
+    if let Some((p, _)) = pointer {
         if s.last_cursor != Some(p) || s.tick.is_multiple_of(cursor_every) {
             s.last_cursor = Some(p);
             chan.send_datagram(Kind::Cursor, &cursor(p.0 as f32, p.1 as f32));
@@ -499,6 +701,7 @@ fn tick(st: &Arc<Mutex<St>>, chan: &Arc<Chan>, backend: &Shared, hz: u64, last_s
             chan.send(&ToPhone::CursorShape { png: c.png, hot_x: c.hot_x, hot_y: c.hot_y, width: c.width, height: c.height });
         }
     }
+    to
 }
 
 impl St {
@@ -529,6 +732,7 @@ mod tests {
             bitrate: 0,
             fps: 1000,
             codecs: None,
+            display: None,
         });
         assert_eq!((r.width, r.height, r.bitrate, r.fps), (8192, 64, 100_000, 120));
         assert_eq!(r.crop.x, 0.5);

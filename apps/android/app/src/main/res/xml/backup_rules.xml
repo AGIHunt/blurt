@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older. The paired keys (vault) and the list of computers they belong to never leave the phone: the Keystore key that
+     opens them doesn't travel, so on another phone they'd be worthless, and pairing again is a scan. Settings and keys do travel. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="vault.xml" />
+    <exclude domain="sharedpref" path="link.xml" />
+</full-backup-content>

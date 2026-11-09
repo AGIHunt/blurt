@@ -59,6 +59,12 @@ final class Link: ObservableObject {
     enum Route { case local, relay, direct }
     @Published private(set) var route = Route.local
     @Published private(set) var displayAspect: CGFloat = 1.6
+    /// the computer's displays, as it arranges them; a switcher shows only with two or more (docs/design/remote.md §Several displays)
+    @Published private(set) var displays: [RemoteDisplay] = []
+    /// the one the picture shows now
+    @Published private(set) var shownDisplay: String?
+    /// the one chosen to be shown; nil follows the pointer from display to display
+    @Published private(set) var pinnedDisplay: String?
     /// paired Macs on this network right now, while Settings looks
     @Published private(set) var nearby: Set<String> = []
     /// on mobile data; Low Data Mode is on
@@ -97,6 +103,11 @@ final class Link: ObservableObject {
         state = current == nil ? .unpaired : .connecting
         #if DEBUG
         if let h = Self.testHost { pretend(h) }
+        // a test run: the code as the in-app scanner reads it, with no one there to answer the question a link from outside asks
+        if let u = ProcessInfo.processInfo.environment["BLURT_REMOTE_PAIR"].flatMap(URL.init(string:)) {
+            DispatchQueue.main.async { self.open(u, confirmed: true) }
+        }
+        if !Pretend.displays.isEmpty { pretend(displays: Pretend.displays, shown: Pretend.displays.first?.id) }
         #endif
         hostChanged()
         path.pathUpdateHandler = { [weak self] p in
@@ -136,6 +147,15 @@ final class Link: ObservableObject {
         current = macs.first
         state = .connected
     }
+
+    #if DEBUG
+    /// Layout work and render tests: displays with no computer
+    func pretend(displays d: [RemoteDisplay], shown: String?, pinned: String? = nil) {
+        displays = d
+        shownDisplay = shown
+        pinnedDisplay = pinned
+    }
+    #endif
 
     private func saveMacs() {
         guard Self.testHost == nil else { return }
@@ -238,6 +258,9 @@ final class Link: ObservableObject {
         liveFinal = ""
         front = nil
         screenError = nil
+        displays = []
+        shownDisplay = nil
+        pinnedDisplay = nil
         refused = false
         firstAttempt = nil
         lastRelayTry = .distantPast
@@ -551,6 +574,9 @@ final class Link: ObservableObject {
             rtt = CACurrentMediaTime() - t
         case .udpOK:
             channel?.udpConfirmed()
+            #if DEBUG
+            DisplayTest.run()
+            #endif
             if let t = ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"], !testRan {
                 testRan = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { ScreenTest.run(target: t) }
@@ -559,8 +585,12 @@ final class Link: ObservableObject {
         case let .screenFailed(why):
             ScreenStream.shared.stop()
             screenError = why
-        case let .screenView(w, h, codec):
-            ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec)
+        case let .screenView(w, h, codec, display):
+            shownDisplay = display
+            ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec, display: display)
+        case let .displays(list):
+            displays = list
+            if let p = pinnedDisplay, !list.contains(where: { $0.id == p }) { pinnedDisplay = nil }     // unplugged: the computer follows again
         case let .cursorShape(png, hx, hy, w, h):
             ScreenStream.shared.shape(png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
         case let .relay(a): noteRelay(a)
@@ -603,6 +633,13 @@ final class Link: ObservableObject {
         macs[n] = c
         current = c
         saveMacs()
+    }
+
+    /// Show this display from now on, with the pointer in its middle; nil follows the pointer again.
+    func showDisplay(_ id: String?) {
+        pinnedDisplay = id
+        if id != nil { ScreenStream.shared.displayAsked() }
+        send(.showDisplay(id))
     }
 
     func setAspect(_ a: CGFloat) { if abs(a - displayAspect) > 0.001 { displayAspect = a } }

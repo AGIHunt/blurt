@@ -56,6 +56,9 @@ final class ScreenStream {
     private var backdropStale = true
     private let ci = CIContext()
     private var pointer = CGPoint(x: -1, y: -1)
+    /// the Mac has said where the pointer is, since the picture started: it may be off the display shown (on another one), so no
+    /// position means "unknown"
+    private var pointerKnown = false
     /// where the Mac last said it was
     private var macPointer: CGPoint?
     private var settling = false
@@ -65,6 +68,16 @@ final class ScreenStream {
     private var shapeSize = CGSize(width: 12, height: 18)
     private var hot = CGPoint.zero
     private static let target = ProcessInfo.processInfo.environment["BLURT_SCREEN_TARGET"] ?? "display"
+
+    // several displays (docs/design/remote.md §Several displays)
+    /// the display the picture shows
+    private(set) var display: String?
+    /// the last picture of the display just left, over the video until the new display's first frame is up: a cross-fade, not black
+    private let leaving = CALayer()
+    /// switched: frames of the old display may still be on their way; the new one's have its shape
+    private var awaiting: (aspect: CGFloat, since: Double)?
+    /// when the phone asked for another display, for measuring what a switch takes
+    private var askedAt = 0.0
 
     // the Mac's clock: taken from the fastest ping seen
     private var offset: Double?
@@ -82,6 +95,9 @@ final class ScreenStream {
         backdrop.isHidden = true
         stage.addSublayer(backdrop)
         stage.addSublayer(video)
+        leaving.contentsGravity = .resize
+        leaving.isHidden = true
+        stage.addSublayer(leaving)
         cursorLayer.contents = UIImage(systemName: "cursorarrow", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18))?
             .withTintColor(.white, renderingMode: .alwaysOriginal).cgImage
         cursorLayer.contentsGravity = .resizeAspect
@@ -132,7 +148,8 @@ final class ScreenStream {
         let c = port.crop
         sentCrop = c
         idle = false
-        start(RemoteScreenRequest(target: Self.target, crop: c, width: p.width, height: p.height, bitrate: p.bitrate, fps: p.fps))
+        start(RemoteScreenRequest(target: Self.target, crop: c, width: p.width, height: p.height, bitrate: p.bitrate, fps: p.fps,
+                                  display: Link.shared.pinnedDisplay))
     }
 
     func routeChanged() { planChanged() }
@@ -170,18 +187,68 @@ final class ScreenStream {
     // MARK: the view and the pointer
 
     /// What the computer is showing, and in which codec. Another codec than the frames so far: nothing decoded so far helps, start from a keyframe.
-    func source(_ s: CGSize, codec: String?) {
+    func source(_ s: CGSize, codec: String?, display d: String? = nil) {
         q.async { if self.decoder.told(codec) { self.reset() } }
         DispatchQueue.main.async {
-            if s != self.source {       // another display: the last sight of this one says nothing about it
+            let switched = d != nil && self.display != nil && d != self.display
+            if s != self.source || switched {       // another display: the last sight of this one says nothing about it
                 self.lastWhole = nil
                 self.backdropStale = true
                 self.backdrop.contents = nil
             }
+            if switched { self.switchDisplay(to: s) }
+            self.display = d
             self.source = s
             if s.height > 0 { Link.shared.setAspect(s.width / s.height) }     // the display in view, which may not be the main one
             self.reshape()
         }
+    }
+
+    /// The phone asked for another display: what a switch takes is measured from here.
+    func displayAsked() { askedAt = CACurrentMediaTime() }
+
+    /// Another display: another screen, so the view starts whole. The last picture stays over the video until the new one's first frame
+    /// is up, then fades: the eye sees the change, never black.
+    private func switchDisplay(to s: CGSize) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        leaving.removeAllAnimations()
+        leaving.contents = video.contents
+        leaving.frame = video.frame
+        leaving.opacity = 1
+        leaving.isHidden = video.contents == nil
+        // under it, nothing of the old display stretched to the new one's shape
+        video.contents = nil
+        CATransaction.commit()
+        let started = CACurrentMediaTime()
+        awaiting = (s.height > 0 ? s.width / s.height : 0, started)
+        pointerKnown = false
+        cursorLayer.isHidden = true
+        resetView()
+        tell(.screenCrop(.whole))       // a crop still on its way was for the display left
+        // the new display's first frame should be here long before this
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            guard let self, let a = self.awaiting, a.since == started else { return }
+            self.arrived(in: nil)
+        }
+    }
+
+    /// The first frame of the display switched to is up, or it's taking too long: the old picture fades.
+    private func arrived(in ms: Double?) {
+        awaiting = nil
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.22)
+        CATransaction.setCompletionBlock { [weak self] in
+            guard let self, self.awaiting == nil else { return }
+            self.leaving.isHidden = true
+            self.leaving.contents = nil
+        }
+        leaving.opacity = 0
+        CATransaction.commit()
+        guard let ms else { return }
+        let asked = askedAt > 0 ? (CACurrentMediaTime() - askedAt) * 1000 : -1
+        askedAt = 0
+        tell(.screenStats("{\"stage\":\"display_switch\",\"view_to_frame_ms\":\((ms * 10).rounded() / 10),\"asked_to_frame_ms\":\((asked * 10).rounded() / 10)}"))
     }
 
     /// Fingers on the view. The picture moves now; the Mac catches up.
@@ -266,7 +333,7 @@ final class ScreenStream {
     func bringPointerIntoView() {
         let v = port.visible
         // its edges count as inside: the pointer stops on the very edge of the screen
-        guard on, !port.isWhole, pointer.x >= 0, pointer.x < v.minX || pointer.x > v.maxX || pointer.y < v.minY || pointer.y > v.maxY else { return }
+        guard on, !port.isWhole, pointerKnown, pointer.x < v.minX || pointer.x > v.maxX || pointer.y < v.minY || pointer.y > v.maxY else { return }
         move(to: CGPoint(x: v.midX, y: v.midY))
     }
 
@@ -274,6 +341,7 @@ final class ScreenStream {
         guard d.count == 8 else { return }
         let x = d.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }, y = d.withUnsafeBytes { $0.loadUnaligned(fromByteOffset: 4, as: Float.self) }
         DispatchQueue.main.async {
+            guard x.isFinite, y.isFinite else { return }
             self.macPointer = CGPoint(x: CGFloat(x), y: CGFloat(y))
             self.settle()
         }
@@ -286,6 +354,7 @@ final class ScreenStream {
         if wait <= 0 {
             guard let m = macPointer else { return }
             pointer = m
+            pointerKnown = true
             placeCursor()
         } else if !settling {
             settling = true
@@ -335,16 +404,16 @@ final class ScreenStream {
 
     private func move(to at: CGPoint) {
         pointer = at
+        pointerKnown = true
         lastPredicted = CACurrentMediaTime()
         Link.shared.send(.pointerTo(x: Float(at.x), y: Float(at.y)))     // on this thread: a click sent next must land after it
         placeCursor()
     }
 
     func predict(dx: Float, dy: Float) {
-        guard on, source.width > 0, pointer.x >= 0 else { return }
+        guard on, source.width > 0, pointerKnown else { return }
         lastPredicted = CACurrentMediaTime()
-        pointer.x = min(1, max(0, pointer.x + CGFloat(dx) / source.width))
-        pointer.y = min(1, max(0, pointer.y + CGFloat(dy) / source.height))
+        pointer = Self.moved(pointer, by: CGPoint(x: CGFloat(dx), y: CGFloat(dy)), on: source, display: display, displays: Link.shared.displays)
         if port.follow(pointer) {
             place()
             askForView()
@@ -363,8 +432,28 @@ final class ScreenStream {
         }
     }
 
+    /// Where a stroke takes the pointer, 0…1 of the display shown. With one display it stops at the edge. With several it goes where the
+    /// computer would take it: across onto a neighbour (off this picture, until the computer follows), and stops only at the edge of them all.
+    static func moved(_ p: CGPoint, by d: CGPoint, on size: CGSize, display: String?, displays: [RemoteDisplay]) -> CGPoint {
+        guard displays.count > 1, let shown = displays.first(where: { $0.id == display }) else {
+            return CGPoint(x: min(1, max(0, p.x + d.x / size.width)), y: min(1, max(0, p.y + d.y / size.height)))
+        }
+        let f = shown.frame
+        let to = CGPoint(x: f.minX + p.x * f.width + d.x, y: f.minY + p.y * f.height + d.y)
+        var best = to
+        if displays.at(to) == nil {
+            var far = CGFloat.infinity
+            for o in displays.map(\.frame) {
+                let q = CGPoint(x: min(max(to.x, o.minX), o.maxX - 1), y: min(max(to.y, o.minY), o.maxY - 1))
+                let dist = hypot(q.x - to.x, q.y - to.y)
+                if dist < far { far = dist; best = q }
+            }
+        }
+        return CGPoint(x: (best.x - f.minX) / f.width, y: (best.y - f.minY) / f.height)
+    }
+
     private func placeCursor() {
-        guard on, source.width > 0, pointer.x >= 0, bounds.width > 0 else { cursorLayer.isHidden = true; return }
+        guard on, source.width > 0, pointerKnown, bounds.width > 0 else { cursorLayer.isHidden = true; return }
         let v = port.rect
         let x = (pointer.x - v.minX) / v.width, y = (pointer.y - v.minY) / v.height
         CATransaction.begin()
@@ -420,6 +509,11 @@ final class ScreenStream {
                 self.lastWhole = nil
                 self.resetView()
                 self.cursorLayer.isHidden = true
+                self.pointerKnown = false
+                self.display = nil
+                self.awaiting = nil
+                self.leaving.isHidden = true
+                self.leaving.contents = nil
             }
         }
     }
@@ -532,6 +626,12 @@ final class ScreenStream {
         nextFrame = nil
         frameLock.unlock()
         guard let (image, crop) = f, on else { return }
+        if let a = awaiting {
+            // still the display left, by its shape: not shown. The first of the new one ends the cross-fade
+            let w = CGFloat(CVPixelBufferGetWidth(image)), h = CGFloat(CVPixelBufferGetHeight(image))
+            guard crop == .whole, h > 0, a.aspect <= 0 || abs(w / h - a.aspect) / a.aspect < 0.03 else { return }
+            arrived(in: (CACurrentMediaTime() - a.since) * 1000)
+        }
         if crop == .whole {
             lastWhole = image
             if port.isWhole { backdropStale = true }

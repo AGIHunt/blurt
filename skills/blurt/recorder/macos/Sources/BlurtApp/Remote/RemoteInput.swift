@@ -8,7 +8,8 @@
 //  • a scroll has phases, so apps treat it as a trackpad scroll: smooth, rubber-banding. After the fingers leave, the coast
 //    runs here at 120 Hz, not on the phone, where Wi-Fi gaps would show as hitches.
 //  • BLURT_TEST_COMMANDS=1: nothing is posted; each event goes to `testLog` so a test can check the sequence without
-//    moving the user's real pointer.
+//    moving the user's real pointer. A pretend pointer moves instead (`pretendPointer`), so the screen can follow it from display
+//    to display.
 import AppKit
 import BlurtRemoteKit
 import Carbon.HIToolbox
@@ -151,7 +152,24 @@ final class RemoteInput {
 
     // MARK: pointer
 
-    private func current() -> CGPoint { CGEvent(source: nil)?.location ?? .zero }
+    private let pretendLock = NSLock()
+    private var pretendAt: CGPoint?
+    /// Tests that post nothing: where the pointer would be now. nil otherwise.
+    var pretendPointer: CGPoint? {
+        guard testing else { return nil }
+        pretendLock.lock()
+        defer { pretendLock.unlock() }
+        return pretendAt ?? CGEvent(source: nil)?.location
+    }
+
+    private func pretend(_ p: CGPoint) {
+        guard testing else { return }
+        pretendLock.lock()
+        pretendAt = p
+        pretendLock.unlock()
+    }
+
+    private func current() -> CGPoint { pretendPointer ?? CGEvent(source: nil)?.location ?? .zero }
 
     /// A point on some display: a move off the edge of one lands on the edge, unless another display is there.
     private func clamp(_ p: CGPoint) -> CGPoint {
@@ -174,6 +192,7 @@ final class RemoteInput {
         let from = here()
         let to = clamp(CGPoint(x: from.x + dx, y: from.y + dy))
         pointer = to
+        pretend(to)
         let (type, button): (CGEventType, CGMouseButton) = heldButtons.contains(0) ? (.leftMouseDragged, .left)
             : heldButtons.contains(1) ? (.rightMouseDragged, .right) : (.mouseMoved, .left)
         testLog?("move \(Int(dx)),\(Int(dy))")
@@ -189,6 +208,7 @@ final class RemoteInput {
     func place(_ p: CGPoint) {
         let to = clamp(p)
         pointer = to
+        pretend(to)
         placedAt = CACurrentMediaTime()
         testLog?("place \(Int(to.x)),\(Int(to.y))")
         guard let e = CGEvent(mouseEventSource: source, mouseType: heldButtons.contains(0) ? .leftMouseDragged : .mouseMoved, mouseCursorPosition: to, mouseButton: .left) else { return }

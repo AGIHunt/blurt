@@ -2,6 +2,7 @@
 // §Develop). `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys; `=screen` also shows a made-up desktop where the picture goes.
 // Tests set the fold here, since a simulator without one can't report it.
 #if DEBUG
+import BlurtRemoteKit
 import UIKit
 
 enum Pretend {
@@ -9,6 +10,11 @@ enum Pretend {
     static var screen = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND"] == "screen"
     /// stands in for UIKit's reserved regions
     static var surround: PadSurround?
+    /// `BLURT_REMOTE_PRETEND_DISPLAYS=1`: a laptop with a monitor beside it, for the display switcher
+    static let displays: [RemoteDisplay] = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_DISPLAYS"] == nil ? [] : [
+        RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1728, height: 1117, main: true),
+        RemoteDisplay(id: "2", name: "DELL P2725QE", x: 1728, y: -523, width: 2560, height: 1440, main: false),
+    ]
     /// `BLURT_REMOTE_PRETEND_TURN=left|right|down`: the window turns that way once it's up, for screenshots of a simulator nobody turns
     static func turn(_ s: UIWindowScene?) {
         guard let t = ProcessInfo.processInfo.environment["BLURT_REMOTE_PRETEND_TURN"], let s else { return }

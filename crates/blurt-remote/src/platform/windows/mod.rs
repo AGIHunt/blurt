@@ -44,7 +44,7 @@ mod imp {
     use super::geometry::Monitor;
     use super::input::WinInput;
     use super::screen::WinScreen;
-    use crate::host::{Backend, Input, Screen};
+    use crate::host::{Backend, DisplayInfo, Input, Screen};
 
     /// The monitor being shown, shared by the screen (which picks it) and the input (which places the pointer on it).
     pub type Shown = Arc<Mutex<Option<Monitor>>>;
@@ -97,6 +97,17 @@ mod imp {
         }
         fn keep_awake(&mut self, on: bool, display: bool) {
             self.power.set(on, display);
+        }
+        /// Several displays: every monitor by its device name, in points (monitors.rs `frame_points`).
+        fn displays(&self) -> Vec<DisplayInfo> {
+            super::monitors::named()
+                .into_iter()
+                .map(|(m, name)| {
+                    let (x, y, width, height) = super::monitors::frame_points(&m);
+                    let n = name.trim_start_matches(r"\\.\").trim_start_matches("DISPLAY");
+                    DisplayInfo { name: format!("Display {n}"), id: name, x, y, width, height, main: m.primary }
+                })
+                .collect()
         }
     }
 

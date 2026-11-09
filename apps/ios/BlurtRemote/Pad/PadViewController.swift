@@ -39,7 +39,8 @@ final class PadViewController: UIViewController {
     private let keyboardButton = UIButton(type: .system)
     private let settingsButton = UIButton(type: .system)
     private let header = UILabel()
-    private let screenButton = UIButton(type: .system)
+    /// the picture on and off, and with several displays, which one (DisplaySwitch.swift)
+    private let screenButton = ScreenButton()
     private let findButton = UIButton(type: .system)
     private let drawerButton = UIButton(type: .system)
     /// landscape: the keys are out. Out for the trackpad, put away when there's a picture to see
@@ -156,8 +157,9 @@ final class PadViewController: UIViewController {
         edgeMark.layer.cornerRadius = 1.5
         edgeMark.isUserInteractionEnabled = false
         screenButton.layer.cornerRadius = Theme.keyRadius
-        screenButton.layer.cornerCurve = .continuous
-        screenButton.addAction(UIAction { [weak self] _ in self?.toggleScreen() }, for: .touchUpInside)
+        screenButton.onToggle = { [weak self] in self?.toggleScreen() }
+        screenButton.onPick = { [weak self] c in self?.pickDisplay(c) }
+        screenButton.mapPlace = { [weak self] size in self?.placeMap(size) }
         drawerButton.setImage(UIImage(systemName: "square.grid.3x3", withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)), for: .normal)
         drawerButton.tintColor = Theme.mark
         drawerButton.backgroundColor = Theme.slab
@@ -275,8 +277,16 @@ final class PadViewController: UIViewController {
         touched()
         #if DEBUG
         if Pretend.screen { setShowing(true) }
+        DisplayTest.pad = self
         #endif
     }
+
+    #if DEBUG
+    /// DisplayTest: what a finger would do
+    func testShowing(_ on: Bool) { setShowing(on) }
+    func testMap(steps: Int?) { screenButton.pretendMap(steps: steps) }
+    func testCloseMap(commit: Bool = false) { screenButton.pretendLift(commit: commit) }
+    #endif
 
     private func chip(_ title: String, _ act: @escaping () -> Void) {
         var c = UIButton.Configuration.filled()
@@ -358,6 +368,9 @@ final class PadViewController: UIViewController {
             self.touched()
         }.store(in: &bag)
         l.$level.receive(on: RunLoop.main).sink { [weak self] v in self?.talk.level(v) }.store(in: &bag)
+        Publishers.CombineLatest3(l.$displays, l.$shownDisplay, l.$pinnedDisplay).receive(on: RunLoop.main).sink { [weak self] d, s, p in
+            self?.screenButton.update(displays: d, shown: s, pinned: p)
+        }.store(in: &bag)
         Prefs.shared.objectWillChange.receive(on: RunLoop.main).sink { [weak self] in
             DispatchQueue.main.async { self?.applyPrefs() }
         }.store(in: &bag)
@@ -441,8 +454,40 @@ final class PadViewController: UIViewController {
         setShowing(!showing)
     }
 
+    /// From the screen button: another display, or following the pointer again. The picture comes on if it was off: choosing what to see is
+    /// asking to see it.
+    private func pickDisplay(_ c: DisplayChoice) {
+        Link.shared.screenError = nil
+        Link.shared.showDisplay(c.id)
+        if !showing { setShowing(true) }
+    }
+
+    /// The map of the displays: in the keys' place, the rows under the top row, never over the picture; on a big screen, the half the button
+    /// is in. Landscape has no keys under the button: beside it, towards the middle.
+    private func placeMap(_ size: CGSize) -> (UIView, CGRect)? {
+        let b = screenButton.frame, v = view.bounds, m: CGFloat = 8
+        guard let l = layout else { return nil }
+        if l.mode != .landscape, !list.isHidden, l.list.height >= 150 {
+            var r = l.list
+            if l.mode == .big, let half = l.halves.first(where: { $0.minX <= b.midX && b.midX <= $0.maxX }) {
+                r = CGRect(x: half.minX, y: l.list.minY, width: half.width, height: l.list.height)
+            }
+            return (view, r)
+        }
+        var r = CGRect(origin: .zero, size: size)
+        if l.mode == .landscape {
+            r.origin.x = b.midX < v.midX ? b.maxX + m : b.minX - m - size.width
+            r.origin.y = min(max(b.midY - size.height / 2, m), v.height - m - size.height)
+        } else {
+            r.origin.x = min(max(b.midX - size.width / 2, m), v.width - m - size.width)
+            r.origin.y = b.maxY + 6 + size.height <= v.height - m ? b.maxY + 6 : b.minY - 6 - size.height
+        }
+        return (view, r)
+    }
+
     private func setShowing(_ on: Bool) {
         guard on != showing else { return }
+        if !on { screenButton.closeMap() }
         showing = on
         drawerOpen = !on
         keysPutAway()
@@ -561,12 +606,7 @@ final class PadViewController: UIViewController {
         drawerButton.backgroundColor = drawerOpen ? Theme.slabLatched : Theme.slab
         screenButton.frame = l.screenButton
         screenButton.isHidden = typing
-        screenButton.backgroundColor = railed ? Theme.slab : .clear
-        // lit while it's on, as a modifier is: a crossed-out eye over a live picture reads as off
-        screenButton.setImage(UIImage(systemName: "display", withConfiguration: UIImage.SymbolConfiguration(pointSize: 16, weight: .regular)), for: .normal)
-        screenButton.tintColor = showing ? .black : railed ? Theme.mark : Theme.caption
-        if showing { screenButton.backgroundColor = Theme.slabLatched }
-        screenButton.accessibilityLabel = showing ? String(localized: "Hide Screen") : String(localized: "Show Screen")
+        screenButton.paint(showing: showing, railed: railed)
         for b in [keyboardButton, settingsButton, findButton] {
             b.layer.cornerRadius = Theme.keyRadius
             b.backgroundColor = railed ? Theme.slab : .clear
@@ -599,7 +639,11 @@ final class PadViewController: UIViewController {
         }
         #endif
         // the output follows the stage (not the keyboard's moment), asked again only when it changes by more than a little
-        let want = PadLayout.outputPixels(stage: l.pad.size, aspect: Link.shared.displayAspect, scale: traitCollection.displayScale)
+        // with several displays, enough for any of them: a switch then needs no new stream, only another display in the same one
+        let aspects = Link.shared.displays.map { $0.width / max($0.height, 1) }.filter { $0 > 0 }
+        let want = (aspects.isEmpty ? [Link.shared.displayAspect] : aspects)
+            .map { PadLayout.outputPixels(stage: l.pad.size, aspect: $0, scale: traitCollection.displayScale) }
+            .reduce(CGSize.zero) { CGSize(width: max($0.width, $1.width), height: max($0.height, $1.height)) }
         if want.width > 0, askedPixels.map({ abs($0.width - want.width) > $0.width * 0.08 || abs($0.height - want.height) > $0.height * 0.08 }) ?? true {
             askedPixels = want
             ScreenStream.shared.stagePixels = want

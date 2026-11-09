@@ -101,6 +101,41 @@ HEVC only (phones before 1.0.15). The host picks the first it can encode in hard
 `screenView.codec` (missing = `"hevc"`). The picture is NAL units with 4-byte big-endian lengths; a keyframe's parameter sets ride in the payload
 (HEVC: VPS, SPS, PPS; H.264: SPS, PPS), bare NAL units. No B-frames, no reordering.
 
+## Displays (new 2026-11-09)
+
+A computer with several displays shows one at a time: the one the pointer is on by default, following it across, or one the phone chose.
+Why and how it feels: [remote.md §Several displays](remote.md#several-displays). Vectors: `displays`, `screen_pinned_display`, `show_display`,
+`show_display_follow`, `screen_view_display`.
+
+- **`ToPhone.displays([RemoteDisplay])`**: every display, `{id, name, x, y, width, height, main}`. The frame is in points in the desktop's own
+  coordinates: top-left origin, y down, as the computer's display settings arrange them (on a Mac, `CGDisplayBounds`; the main display is
+  at 0,0 and others can be negative). `id` is stable while that display stays connected (Mac: the `CGDirectDisplayID` as a decimal string;
+  Windows: the monitor's device name; Linux: the portal stream's id). A display mirroring another isn't listed. Sent once the session is up,
+  right after `session`, and again whenever the arrangement changes (plugged in, unplugged, moved, another resolution), whenever there is at
+  least one display. The phone shows its switcher only with two or more.
+- **`RemoteScreenRequest.display: String?`**: the display the phone last chose, so a picture turned on again (or restarted for another
+  size or route) shows what it showed. nil, or an id that's no longer there, follows the pointer.
+- **`ToMac.showDisplay(String?)`**: an id pins the picture to that display and puts the pointer in its middle (a warp, as `pointerTo`
+  does); the host shows the display's name in its own on-screen feedback. nil goes back to following the pointer. An id the host doesn't
+  have is ignored. Valid with the picture off too: the choice holds for the next `screen`.
+- **`ToPhone.screenView(…, display:)`**: the display the stream shows from now on. The host sends it before the first frame of a new
+  display, and that frame is a keyframe with its parameter sets. `width`/`height` are the new display's size in points.
+- **Following**: the host changes display once the pointer has really crossed: it has stayed on the other display for 150 ms or gone
+  20 pt into it (`RemoteDisplayFollow`), so a pointer on the edge doesn't flip the picture back and forth. Moves from the phone and the
+  computer's own mouse count alike. Relative pointer moves (`pointer` packets) cross between displays as the computer's own mouse does.
+- **Pinned and the pointer leaves**: the picture stays; the cursor position (kind 5) goes outside 0…1 of the display shown, and the phone
+  treats that as "the pointer is elsewhere". `pointerTo` and touch-to-click map onto the display shown.
+- **Unplugged**: a pinned display that disappears is forgotten by both ends, and the host follows the pointer again; the new `displays`
+  says which are left.
+- **The output size**: `screen.width`/`height` are a box, not a shape. The host fits each display's own shape inside it, as large as the
+  box and the display's pixels allow. A phone that knows the displays asks for a box that fits any of them, so a switch never needs a new
+  `screen` request (iOS: `PadViewController`, the box from every display's aspect).
+- **After a switch the phone** resets its view to the whole screen (another display is another screen), sends `screenCrop(whole)` (a crop
+  in flight was for the display left), and drops decoded frames that don't have the new display's shape until the first that does.
+
+Hosts that can show only one display (a Wayland portal session that granted one monitor) send `displays` with that one and ignore
+`showDisplay`.
+
 ## The desktop app (Windows, Linux): what Settings → Phone calls
 
 Tauri commands, in `apps/desktop/src-tauri/src/remote.rs`; the React pane in `web/apps/desktop/src/settings` calls them through `api.ts`:

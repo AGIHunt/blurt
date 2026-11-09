@@ -28,7 +28,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 use crate::channel::{Chan, Out};
 use crate::crypto::{self, same};
-use crate::host::Backend;
+use crate::host::{Backend, DisplayInfo};
 use crate::input::{self, Cmd, Shared};
 use crate::mic::MicFeed;
 use crate::packets::{FrameReader, Kind, PointerPacket, MAX_FRAME};
@@ -180,6 +180,8 @@ struct Sess {
     screen: Option<Arc<ScreenSession>>,
     /// a screen request under way (its start may take a while): only the latest counts
     screen_gen: u64,
+    /// the display the phone pinned (showDisplay), for the next stream too; None: follow the pointer
+    pinned: Option<String>,
 }
 
 struct RelayConn {
@@ -215,6 +217,8 @@ struct State {
     last_control: bool,
     watch_gen: u64,
     awake: bool,
+    /// the displays the phone was last told of
+    displays_sent: Option<Vec<DisplayInfo>>,
     problem: Option<Problem>,
 }
 
@@ -234,6 +238,8 @@ struct Core {
     /// STUN asks waiting for their answer: txn → reply
     stun: Mutex<Vec<([u8; 12], tokio::sync::oneshot::Sender<Candidate>)>>,
     platform: &'static str,
+    /// the backend's displays, polled every 2 s while a phone is connected; the screen session reads them
+    displays: Arc<Mutex<Vec<DisplayInfo>>>,
     me: Mutex<Weak<Core>>,
 }
 
@@ -282,6 +288,7 @@ impl Host {
             last_control: true,
             watch_gen: 0,
             awake: false,
+            displays_sent: None,
             problem: None,
         };
         let core = Arc::new(Core {
@@ -299,6 +306,7 @@ impl Host {
             next_sid: AtomicU64::new(1),
             stun: Mutex::new(vec![]),
             platform,
+            displays: Arc::new(Mutex::new(Vec::new())),
             me: Mutex::new(Weak::new()),
         });
         *core.me.lock().unwrap() = Arc::downgrade(&core);
@@ -896,6 +904,7 @@ impl Core {
                 punches: 0,
                 screen: None,
                 screen_gen: 0,
+                pinned: None,
             },
         );
         // the code is spent the moment it opens a session
@@ -952,12 +961,19 @@ impl Core {
         s.watch_gen += 1;
         let g = s.watch_gen;
         s.last_control = true; // a phone starts out assuming it may control: the first tick says otherwise
+        s.displays_sent = None;
         let me = self.arc();
         self.rt.spawn(async move {
             let mut t = tokio::time::interval(Duration::from_millis(500));
+            let mut n = 0u64;
             loop {
                 t.tick().await;
+                n += 1;
                 let ok = me.backend.lock().unwrap().input().can_control();
+                // the displays, every 2 s (and on the first tick): told to the phone when they change
+                if n % 4 == 1 {
+                    me.poll_displays(g);
+                }
                 let mut s = me.st.lock().unwrap();
                 if s.watch_gen != g || s.current.is_none() {
                     return;
@@ -986,6 +1002,34 @@ impl Core {
                 me.publish(&mut s);
             }
         });
+    }
+
+    /// Several displays: what the backend has now. A change goes to the phone (once a session has greeted), and to the screen
+    /// session (the display shown may have gone).
+    fn poll_displays(&self, g: u64) {
+        let list = self.backend.lock().unwrap().displays();
+        let mut s = self.st.lock().unwrap();
+        if s.watch_gen != g {
+            return;
+        }
+        let Some(x) = s.current.and_then(|sid| s.sessions.get(&sid)) else { return };
+        if !x.chan.greeted.load(SeqCst) || s.displays_sent.as_ref() == Some(&list) {
+            return;
+        }
+        let changed = s.displays_sent.is_some();
+        *self.displays.lock().unwrap() = list.clone();
+        if !list.is_empty() {
+            x.chan.send(&ToPhone::Displays(list.iter().map(crate::displays::to_wire).collect()));
+        }
+        let screen = x.screen.clone();
+        s.displays_sent = Some(list);
+        drop(s);
+        if changed {
+            self.log(json!({"event": "remote_displays", "count": self.displays.lock().unwrap().len()}));
+            if let Some(sc) = screen {
+                sc.displays_changed();
+            }
+        }
     }
 
     fn let_go(&self, s: &mut State, sid: u64) {
@@ -1100,11 +1144,16 @@ impl Core {
                 }
                 x.screen_gen += 1;
                 let g = x.screen_gen;
+                let pinned = x.pinned.clone();
                 self.keep_awake(s, true, false);
-                let Some(r) = r else {
+                let Some(mut r) = r else {
                     self.publish(s);
                     return;
                 };
+                // a display pinned before the picture was asked for stays pinned
+                if r.display.is_none() {
+                    r.display = pinned;
+                }
                 if !s.settings.screen {
                     chan.send(&ToPhone::ScreenFailed("off".into()));
                     return;
@@ -1122,7 +1171,7 @@ impl Core {
                         let me = me.clone();
                         Arc::new(move |v| me.log(v))
                     };
-                    let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log);
+                    let started = ScreenSession::start(&r, chan.clone(), me.backend.clone(), me.input.clone(), me.rt.handle().clone(), log, me.displays.clone());
                     let mut s = me.st.lock().unwrap();
                     let still = s.current == Some(chan.sid) && s.sessions.get(&chan.sid).is_some_and(|x| x.screen_gen == g);
                     match started {
@@ -1165,6 +1214,12 @@ impl Core {
             ToMac::PointerTo { x, y } => {
                 if let Some(sc) = self.screen(s, sid) {
                     sc.pointer_to(x, y);
+                }
+            }
+            ToMac::ShowDisplay(d) => {
+                s.sessions.get_mut(&sid).unwrap().pinned = d.clone();
+                if let Some(sc) = self.screen(s, sid) {
+                    sc.pin(d);
                 }
             }
             ToMac::Unpair => {
@@ -1404,6 +1459,8 @@ impl Core {
                 info.candidates = list;
             }
             chan.send(&ToPhone::Session(info));
+            let g = me.st.lock().unwrap().watch_gen;
+            me.poll_displays(g); // several displays: the list right after the session, not 2 s later
             let me2 = me.clone();
             me.post(move |a| {
                 if let Some(f) = a.front() {
