@@ -2,7 +2,8 @@
 
 2026-11-09. Status: built on the reference path (Mac host ↔ iPhone app), measured on this Mac (M5 Max, macOS 26.5) with the iPhone 17 Pro
 simulator (iOS 27.2) over loopback, with a made-up network laid over it. Specified below for the Rust host (Windows, Linux) and the Android app;
-the Android app's receiver is built and measured on the emulator (§Android).
+the Android app's receiver is built and measured on the emulator (§Android), and the Rust host's repairs are built and measured against both
+phone apps (§Rust host).
 Not yet tried on a real iPhone over Wi-Fi. How the picture works and what it costs: [remote.md](remote.md) §Screen; the wire:
 [remote-protocol.md](remote-protocol.md) §Repairs.
 
@@ -308,7 +309,7 @@ Encoders, what each can do for `ltr`:
 | Encoder | LTR mark / use / refresh | Intra refresh | Notes |
 |---|---|---|---|
 | VideoToolbox (Mac) | yes: EnableLTR, tokens, ForceLTRRefresh; HEVC and H.264, low-latency mode included (measured) | no public key | built |
-| Media Foundation H.264/HEVC MFT (Windows; NVENC, Quick Sync, AMF, Qualcomm behind it) | `CODECAPI_AVEncVideoLTRBufferControl` (count, trust mode 1), `CODECAPI_AVEncVideoMarkLTRFrame` (index), `CODECAPI_AVEncVideoUseLTRFrame` (bitmap of acknowledged indices); optional per MFT: query `IsSupported`, read back `MFSampleExtension_LongTermReferenceFrameInfo` on output | not in CODECAPI (D3D12 video encode has it) | mark every 4th frame into 2 slots alternately; on lost, `UseLTRFrame` with the acknowledged slot. No LTR support → answer lost with a keyframe |
+| Media Foundation H.264/HEVC MFT (Windows; NVENC, Quick Sync, AMF, Qualcomm behind it) | `CODECAPI_AVEncVideoLTRBufferControl` (count, trust mode 1), `CODECAPI_AVEncVideoMarkLTRFrame` (index), `CODECAPI_AVEncVideoUseLTRFrame` (bitmap of acknowledged indices); optional per MFT: query `IsSupported`, read back `MFSampleExtension_LongTermReferenceFrameInfo` on output | not in CODECAPI (D3D12 video encode has it) | mark every 4th frame into 2 slots alternately; on lost, `UseLTRFrame` with the acknowledged slot. No LTR support → answer lost with a keyframe. **Built; H.264 only** (NVIDIA HEVC ignores UseLTRFrame): §Rust host |
 | NVENC SDK directly (if the Rust host ever drops MF) | `enableLTR`, `ltrNumFrames`, `ltrMarkFrame`/`ltrUseFrameBitmap`, or `NvEncInvalidateRefFrames(timestamp)` (Sunshine's RFI) | `enableIntraRefresh` | |
 | Microsoft software H.264 MFT | LTR per Microsoft's H.264 encoder docs (Windows 8+) | no | |
 | VA-API (Linux) | no LTR switch; the app manages references, which the GStreamer/ffmpeg VA encoders don't expose | `VAConfigAttribEncIntraRefresh` | Linux: nack + fec now, lost → keyframe |
@@ -387,6 +388,84 @@ Not verified on Android: a real phone and Wi-Fi; a hardware decoder taking a ref
 ltr path end to end (the fake host's ffmpeg can't make refresh frames, and the Rust host's repairs weren't on the integration branch when
 this was measured), so acknowledgements and `lost` were tested only in core; 120 Hz (the emulator's panel has one 60 Hz mode, so the frame
 rate request and `setFrameRate` ran but changed nothing); whether `KEY_LOW_LATENCY` and the vendor keys shorten anything on a real decoder.
+
+## Rust host (Windows, Linux; status 2026-11-09)
+
+Built to the spec above, in `crates/blurt-remote`. The wire (`screen.features`, `screenView.features`, kind 6, the flags byte, parity
+pieces) passes `videoRepair`, `screen_repairs` and `screen_view_repairs` byte for byte. `repair.rs` is the host's half (`HostRepair`:
+negotiation, the 1 s / 6 MB history, the resend budget, acknowledged references, parity and its adaptive group) and a port of
+`RemoteVideoReceiver` with every Swift test, which the Rust test phone uses (`phone::watch`, with a made-up network as iOS's TestWeather;
+`examples/phone.rs --measure`). `screen.rs` keeps pieces before sealing, sends parity right behind a frame's pieces (in the relay's paced
+batches too), answers `nack` / `ack` / `lost`, and names `ltr` only when the backend's encoder says it makes recovery frames. host.rs gained,
+with defaults: `Screen::supports_recovery`, `recovery_frame` (a keyframe unless overridden), `acknowledged`; `EncodedFrame.refresh` and
+`.reference`; `ScreenConfig.capture_fps` and `.repairs` (no periodic keyframes). `credit.rs` is the Mac's average-rate frame credit; the
+Windows pacer and the Linux feeder use it instead of a fixed 1/fps − 3 ms gap. The session's UDP socket carries DSCP AF41 (`IP_TOS` and
+`IPV6_TCLASS` 0x88) and, on Linux, `SO_PRIORITY` 5 (§Host 9); Windows needs qWAVE for that, not built. The rate needed no change: with
+repairs the phone reports no lost frames, so nothing cuts it.
+
+**Recovery frames, per encoder** (`win_smoke --recovery` on blurt-win: frames dropped for 70 ms three times, a recovery asked for, the
+stream a phone would decode compared frame by frame with the lossless one):
+
+| Encoder | Recovery frame | Measured |
+|---|---|---|
+| Media Foundation H.264, NVIDIA (L4) | LTR: 2 slots, trust-until; a frame marked every 4th into a slot not yet acknowledged; `UseLTRFrame` with the acknowledged slots | bit-exact after each loss (336 / 336 frames); recovery frames 25, 27, 65 KB against a 647 KB keyframe (1080p) |
+| Media Foundation H.264, Microsoft software | the same (it takes the LTR controls, though its docs don't list them) | bit-exact (337 / 337); 13–302 KB at 720p |
+| Media Foundation HEVC, NVIDIA | **keyframe**: it takes the controls, but its "recovery" frame still predicts from the short-term picture before it (`used_by_curr_pic_s0_flag` on the lost POC), so nothing decodes after it | `BLURT_REMOTE_LTR=hevc` turns it on to retest |
+| Other MFTs (Quick Sync, AMF, Qualcomm) | LTR if they take `LTRBufferControl`, else keyframe; the output's `LongTermReferenceFrameInfo` is checked and LTR turned off if a recovery used none | untested: no such GPU here |
+| GStreamer x264enc, VA, NVENC, QSV (Linux) | **keyframe**; the keyframe interval is the longest each element takes when the phone repairs (x264 2³¹−1, NVENC −1, VA 1024) | built in Docker only |
+| libx264 intra refresh (`examples/host --intra-refresh 60`, an experiment) | the next frame flagged a refresh while a refresh wave runs | the iPhone's decoder took it without an error (1 refresh, 0 keyframes asked at 3 % loss), but the picture is only whole again once the wave has passed (up to a second) and the wave costs bits on every frame; so not used |
+
+**Measured.** Loopback, `tests/realtime.rs` (the real server and the Rust test phone, a synthetic 60 fps scroll sized by the bitrate: 25 KB
+a frame at 12 Mbps, a make-believe LTR encoder; every frame's bytes checked; 12 s a stage here with `BLURT_REALTIME_SECONDS=12`, 4 s by default):
+
+| Network | | Frames shown / s | Longest gap, ms | Age p50 / p95 / max, ms | Dropped | Keyframes asked | Mbps | Rate after | Repaired |
+|---|---|---|---|---|---|---|---|---|---|
+| clean | after | 60 | 21 | 0.5 / 1.7 / 3 | 0 | 0 | 12.0 | 12 | |
+| 1 %, bursts of 2 | before | 23 | 1,570 | 0.1 / 0.9 / 8 | 455 | 37 | 6.5 | 2.0 | |
+| | after | 60 | 40 | 0.6 / 5.3 / 26 | 0 | 0 | 12.0 | 12 | 165 sent again |
+| 3 %, bursts of 3 | before | 1.1 | 8,388 | 0.4 / 2.7 / 3 | 502 | 49 | 12.4 | 8.4 | |
+| | after | 60 | 53 | 0.6 / 6.5 / 38 | 0 | 0 | 12.0 | 12 | 502 sent again |
+| 1 %, independent | after | 60 | 43 | 0.5 / 6.1 / 25 | 0 | 0 | 12.0 | 12 | 162 sent again |
+| 80 ms stall every 2 s | after | 60 | 101 | 0.7 / 2.4 / 85 | 0 | 0 | 12.1 | 12 | 40 asked needlessly |
+| 3 %, bursts of 3, 60 ms round trip | after | 55 | 321 | 34 / 110 / 147 | 60 | 0 | 8.3 | 5.1 | 869 sent again, 124 by parity (1,314 parity pieces, G = 8), 4 recovery frames |
+
+The last row is the one that doesn't hold up: a 60 ms round trip with bursts of three. A piece lost twice needs two round trips and a
+retry wait (60 + 90 + 60 ms), past the 150 ms patience, so frames are given up (4 recovery frames, no keyframe) and the rate controller
+reads the 60 lost frames as congestion. Parity (G = 8 at that loss) mends about a third. The same spec on the Mac would do the same; away
+from home with that much loss, G = 4 sooner or a longer patience would be the knobs (not tried).
+
+The real iPhone app (iPhone 17 Pro simulator, iOS 27.2, its own stage report) against `examples/host --screen-test` (ffmpeg's testsrc2
+through libx264 at 60 fps, 12 Mbps, 1866×1048; no recovery frames, so `fec,nack`), 12 s after 3 s to settle, `BLURT_SCREEN_REPAIR=0` for
+before:
+
+| Network | | Frames shown / s | Longest gap, ms (p99) | Frozen ms / s | Frames dropped | Keyframes asked | Mbps | Rate after | Repaired |
+|---|---|---|---|---|---|---|---|---|---|
+| clean | after | 61 | 39 (24) | 0 | 0 | 0 | 12.6 | 12 | |
+| 1 %, bursts of 2 | before | 24 | 1,936 (1,125) | 604 | 387 | 35 | 4.4 | 1.0 Mbps | |
+| | after | 61 | 110 (51) | 50 | 0 | 0 | 12.6 | 12 | 195 asked, 333 sent again |
+| 3 %, bursts of 3 | before | 10 | 2,476 (1,911) | 898 | 504 | 45 | 3.8 | 1.0 Mbps | |
+| | after | 61 | 81 (48) | 44 | 0 | 0 | 12.6 | 12 | 486 asked, 851 sent again |
+| 80 ms stall every 2 s | after | 61 | 91 (35) | 36 | 0 | 0 | 12.6 | 12 | |
+
+The Android app (Pixel emulator `blurt_phone`, `c2.goldfish.h264.decoder`, launch extras `blurt_test_loss`, `blurt_screen_repair=0`)
+against the same host, 12 s:
+
+| Network | | Shown / s | Longest gap, ms (p99) | Frozen ms / s | Dropped | Keyframes asked | Mbps | Repaired |
+|---|---|---|---|---|---|---|---|---|
+| clean | after | 59.7 | 38 (24) | 0 | 0 | 0 | 12.7 | |
+| 1 %, bursts of 2 | before | 21.0 | 1,612 (846) | 378 | 389 | 36 | 4.7 | |
+| | after | 59.5 | 60 (33) | 6 | 0 | 0 | 12.7 | 116 sent again |
+| 3 %, bursts of 3 | before | 16.9 | 904 (846) | 483 | 531 | 41 | 4.9 | |
+| | after | 58.7 | 53 (38) | 12 | 0 | 0 | 12.7 | 506 sent again |
+
+"Rate after": without repairs the rate controller read the losses as congestion and cut it step by step to 1 Mbps (ffmpeg restarted at each);
+with them it never moved. The resends cost what was lost and a little more (pieces asked for twice when the first resend is late): 2–6 %
+of the pieces at 1–3 % loss.
+
+Not verified for the Rust host: a real Windows or Linux desktop with a phone on Wi-Fi; LTR recovery frames end to end with a phone (the
+Windows MFT path was checked by decoding on the Mac, the iPhone and Android apps only against the ffmpeg test host, which has none); Quick
+Sync, AMF and Qualcomm MFTs; the Linux backend on a real session since these changes (it builds and its tests pass in Docker); the DSCP mark
+on the wire (set on the socket, not captured); 120 Hz (the simulator and emulator panels are 60 Hz).
 
 ## Not built
 
