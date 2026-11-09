@@ -101,6 +101,8 @@ final class KeyCell: UIView {
         super.layoutSubviews()
         let w = bounds.width, h = bounds.height
         // the face and its small line sit together in the middle, however tall the key
+        captionFits()
+        modifierWordsFit()
         let hasCaption = !(caption.text ?? "").isEmpty
         let top = hasCaption ? (h - 36) / 2 : (h - 22) / 2
         glyph.frame = CGRect(x: 1, y: top, width: w - 2, height: 22)
@@ -157,15 +159,40 @@ final class KeyCell: UIView {
         } else {
             icon.image = nil
             glyph.text = f
-            glyph.font = .systemFont(ofSize: Self.faceSize(f), weight: .regular)
+            glyph.font = .systemFont(ofSize: Self.faceSize(f, on: .shown), weight: .regular)
         }
         caption.text = s.detail
+        captionFits()
         setNeedsLayout()
     }
 
+    /// Ctrl+Shift+Tab is three words where a Mac has three glyphs: a long small line goes narrower before it goes smaller.
+    private func captionFits() {
+        let regular = UIFont.systemFont(ofSize: 10, weight: .regular)
+        guard RemoteHost.shown != .mac, let t = caption.text, bounds.width > 0,
+              (t as NSString).size(withAttributes: [.font: regular]).width > bounds.width - 4 else { return caption.font = regular }
+        caption.font = .systemFont(ofSize: 10, weight: .regular, width: .condensed)
+    }
+
+    /// Ctrl, Super, Alt, Shift side by side: one size for all four, the size the longest fits, so none reads smaller than the others.
+    private func modifierWordsFit() {
+        let h = RemoteHost.shown
+        guard h != .mac, bounds.width > 0, slot?.glyph == nil, case .sticky? = slot?.action, glyph.text != nil else { return }
+        // narrower letters before smaller ones: at arm's length the height is what reads
+        func fit(_ width: UIFont.Width) -> UIFont {
+            let widest = h.modifierOrder.map { (h.name($0) as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: 16, weight: .regular, width: width)]).width }.max() ?? 1
+            return .systemFont(ofSize: min(16, floor(16 * (bounds.width - max(7, bounds.width * 0.12)) / widest)), weight: .regular, width: width)
+        }
+        let plain = fit(.standard)
+        glyph.font = plain.pointSize >= 14 ? plain : fit(.condensed)
+    }
+
+
     /// The shorter the text, the larger: a key has little room, so a long name reads small and a short one is worth choosing.
-    private static func faceSize(_ f: String) -> CGFloat {
+    private static func faceSize(_ f: String, on h: RemoteHost) -> CGFloat {
         if f.contains(where: { "⌘⌃⌥⇧".contains($0) }) { return 16 }     // a shortcut written out, not a letter on a keyboard
+        // a PC's keys are words (Ctrl, Shift, Esc, PgUp): as large as fits, the way a Mac's glyphs are
+        if h != .mac, f.count <= 6 { return f.count <= 2 ? 20 : 16 }
         return switch f.count {
         case ...2: 20
         case 3: 15
@@ -227,10 +254,10 @@ final class KeyCell: UIView {
         case let .chord(c, cycle: true):
             Haptics.tick()
             beginCycle(c)
-        case .nextTerminalTab:
+        case let .nextTerminalTab(forward, back):
             Haptics.tick()
-            cycle = Cycle(hold: [], key: "]", forward: RemoteChord([.command, .shift], "]"), back: RemoteChord([.command, .shift], "["))
-            Link.shared.send(.key(RemoteChord([.command, .shift], "]"), down: nil))
+            cycle = Cycle(hold: [], key: forward.key, forward: forward, back: back)
+            Link.shared.send(.key(forward, down: nil))
             onCycle?(true)
         case let .chord(c, cycle: false) where Self.repeats(c):
             fire(c)
@@ -254,20 +281,34 @@ final class KeyCell: UIView {
 
     private enum Resolved {
         case chord(RemoteChord, cycle: Bool)
-        case nextTerminalTab
+        /// a terminal's own next and previous tab, stepped through like a cycle with nothing held
+        case nextTerminalTab(RemoteChord, back: RemoteChord)
         case other(KeyAction)
         case arrows
     }
 
     private static let terminals: Set<String> = ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp-Stable",
                                                  "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper"]
+    /// Linux terminals whose tabs aren't Ctrl+Tab, by desktop file id or WM class. Windows Terminal takes Ctrl+Tab, as everything else there does
+    private static let linuxTerminals: Set<String> = ["org.gnome.terminal", "gnome-terminal-server", "gnome-terminal", "org.gnome.ptyxis", "org.gnome.console",
+                                                      "kgx", "com.gexperts.tilix", "tilix", "xfce4-terminal", "mate-terminal", "terminator"]
+
+    /// Where the app in front keeps its tabs: ⌘⇧] in a Mac's terminals, Ctrl+PgDn in GNOME's and the like, Ctrl+Tab anywhere else.
+    static func nextTab(on h: RemoteHost, front: String?) -> (forward: RemoteChord, back: RemoteChord)? {
+        let app = (front ?? "").lowercased().replacingOccurrences(of: ".desktop", with: "")
+        switch h {
+        case .mac where terminals.contains(front ?? ""): return (RemoteChord([.command, .shift], "]"), RemoteChord([.command, .shift], "["))
+        case .linux where linuxTerminals.contains(app): return (RemoteChord(.control, "PageDown"), RemoteChord(.control, "PageUp"))
+        default: return nil
+        }
+    }
 
     private func resolved(_ a: KeyAction) -> Resolved {
         switch a {
         case let .chord(c, cycle): return .chord(c, cycle: cycle)
         case .arrows: return .arrows
         case .nextTab:
-            if let b = Link.shared.front?.bundle, Self.terminals.contains(b) { return .nextTerminalTab }
+            if let t = Self.nextTab(on: .shown, front: Link.shared.front?.bundle) { return .nextTerminalTab(t.forward, back: t.back) }
             return .chord(RemoteChord(.control, "Tab"), cycle: true)
         default: return .other(a)
         }

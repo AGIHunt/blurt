@@ -23,6 +23,7 @@ pub mod l10n;
 pub mod onboarding;
 pub mod paths;
 pub mod projects;
+pub mod remote; // Blurt on the phone: this computer as its host (crates/blurt-remote)
 pub mod screen_text;
 pub mod scripts;
 pub mod settings;
@@ -831,6 +832,7 @@ pub fn run() {
                     eprintln!("blurt: dictation key not available: {e}");
                 }
             }
+            remote::start(&handle); // Blurt on the phone: idle until a code shows or a phone is paired
             housekeeping::start(&handle); // launch messages, housekeeping, the update check
             control::start(&handle); // Set Up with Agent…'s endpoint (agent-setup.md; run/control.json)
             test_channel(&handle);
@@ -959,6 +961,15 @@ pub fn run() {
             control::agent_setup_stop,
             control::agent_setup_dismiss,
             control::agent_setup_answer,
+            // Blurt on the phone: Settings → Phone (docs/design/remote-protocol.md §The desktop app)
+            remote::remote_status,
+            remote::remote_show_pairing,
+            remote::remote_answer_pairing,
+            remote::remote_remove_device,
+            remote::remote_set_relay,
+            remote::remote_check_relay,
+            remote::remote_set_screen_allowed,
+            remote::remote_relay_instructions,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Blurt");
@@ -967,6 +978,7 @@ pub fn run() {
             if app.state::<AppState>().capture.recording() {
                 capture::stop_and_wait(app, Duration::from_secs(10)); // never lose a take on quit
             }
+            remote::stop(); // Blurt on the phone: nothing held down, the session closed
             agents::end_organising(); // an organising agent ends with the app, its job marked stopped
             control::stop();
         }

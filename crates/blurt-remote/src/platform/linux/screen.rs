@@ -68,6 +68,11 @@ pub fn pick_encoder(codecs: &[String]) -> Option<(&'static str, String)> {
 }
 
 impl Screen for LinuxScreen {
+    fn prepare(&mut self) -> Option<Box<dyn FnOnce() -> Result<(), String> + Send>> {
+        let p = self.portal.clone();
+        Some(Box::new(move || p.wait(DIALOG_WAIT).map(|_| ())))
+    }
+
     fn start(&mut self, config: &ScreenConfig, sink: FrameSink) -> Result<ScreenInfo, String> {
         self.stop();
         super::encode::init()?;

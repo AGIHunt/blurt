@@ -41,6 +41,9 @@ base64 = "0.22"
 blurt-capture = { path = "../../../crates/blurt-capture" }
 # a snap's strokes burnt into shots/NNN.marked.png (capture/snap.rs)
 png = "0.17"
+# Blurt on the phone (remote.rs): the host — protocol, pairing, sessions, each OS's screen and input — and the pairing QR code
+blurt-remote = { path = "../../../crates/blurt-remote" }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [target.'cfg(windows)'.dependencies]
 # Dictation (src/dictation): the low-level keyboard hook, SendInput, the clipboard, PlaySound; the mic through WASAPI

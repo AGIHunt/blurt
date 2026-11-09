@@ -1,0 +1,298 @@
+⌃	-	Control
+⌥	-	Option
+⌘	-	Command
+⇧	-	Shift
+sf:arrow.right.to.line	-	Complete
+esc	-	Stop
+sf:delete.left	-	Delete
+sf:return	-	Send
+sf:space	-	Space
+sf:doc.on.doc	⌘C	Copy
+sf:clipboard	⌘V	Paste
+sf:scissors	⌘X	Cut
+sf:arrow.uturn.backward	⌘Z	Undo
+sf:arrow.uturn.forward	⇧⌘Z	Redo
+mark:selectAll	⌘A	Select All
+mark:apps	⌘⇥	Apps
+sf:macwindow.on.rectangle	⌘`	Windows
+sf:chevron.left	⌘[	Back
+sf:chevron.right	⌘]	Forward
+mark:tabPrevious	⌃⇧⇥	Previous Tab
+mark:tabNext	⌃⇥	Next Tab
+sf:doc.text.magnifyingglass	⌘F	Find
+⌘K	-	Inline Edit
+sf:magnifyingglass	⌘␣	Spotlight
+⌃C	-	Interrupt
+mark:tabNew	⌘T	New Tab
+mark:tabClose	⌘W	Close Tab
+sf:camera.viewfinder	Snap	Snap
+sf:record.circle	Record	Record
+sf:waveform	Voice Note	Voice Note
+sf:text.viewfinder	Copy Text	Copy Text
+sf:character.bubble	Translate	Translate
+sf:rectangle.stack	Cards	Cards
+1	-	1
+2	-	2
+3	-	3
+4	-	4
+5	-	5
+6	-	6
+7	-	7
+8	-	8
+9	-	9
+0	-	0
+Q	-	Q
+W	-	W
+E	-	E
+R	-	R
+T	-	T
+Y	-	Y
+U	-	U
+I	-	I
+O	-	O
+P	-	P
+A	-	A
+S	-	S
+D	-	D
+F	-	F
+G	-	G
+H	-	H
+J	-	J
+K	-	K
+L	-	L
+;	-	;
+Z	-	Z
+X	-	X
+C	-	C
+V	-	V
+B	-	B
+N	-	N
+M	-	M
+,	-	,
+.	-	.
+/	-	/
+!	-	
+@	-	
+#	-	
+$	-	
+%	-	
+^	-	
+&	-	
+*	-	
+(	-	
+)	-	
+-	-	
+_	-	
+=	-	
++	-	
+[	-	
+]	-	
+{	-	
+}	-	
+\	-	
+|	-	
+:	-	
+'	-	
+"	-	
+<	-	
+>	-	
+?	-	
+`	-	
+~	-	
+F1	-	F1
+F2	-	F2
+F3	-	F3
+F4	-	F4
+F5	-	F5
+F6	-	F6
+F7	-	F7
+F8	-	F8
+F9	-	F9
+F10	-	F10
+F11	-	F11
+F12	-	F12
+Home	↖	↖
+End	↘	↘
+PgUp	⇞	⇞
+PgDn	⇟	⇟
+sf:delete.right	⌦	Forward Delete
+sf:rectangle.3.group	All Windows	All Windows
+sf:rectangle.grid.2x2	App Windows	App Windows
+sf:arrow.left.square	Desktop Left	Desktop Left
+sf:arrow.right.square	Desktop Right	Desktop Right
+Main	-	Main
+sf:doc.on.doc	⌘C	Copy
+sf:clipboard	⌘V	Paste
+sf:scissors	⌘X	Cut
+sf:arrow.uturn.backward	⌘Z	Undo
+sf:arrow.uturn.forward	⇧⌘Z	Redo
+mark:selectAll	⌘A	Select All
+mark:apps	⌘⇥	Apps
+sf:macwindow.on.rectangle	⌘`	Windows
+sf:chevron.left	⌘[	Back
+sf:chevron.right	⌘]	Forward
+mark:tabPrevious	⌃⇧⇥	Previous Tab
+mark:tabNext	⌃⇥	Next Tab
+sf:doc.text.magnifyingglass	⌘F	Find
+⌘K	-	Inline Edit
+sf:magnifyingglass	⌘␣	Spotlight
+⌃C	-	Interrupt
+mark:tabNew	⌘T	New Tab
+mark:tabClose	⌘W	Close Tab
+More	-	More
+sf:arrow.clockwise	⌘R	Reload
+sf:arrow.uturn.backward.square	⇧⌘T	Reopen Tab
+sf:square.and.arrow.down	⌘S	Save
+sf:link	⌘L	Address
+sf:chevron.left.square	⇧⌘[	Previous Tab
+sf:chevron.right.square	⇧⌘]	Next Tab
+sf:delete.left	⌥⌫	Delete Word
+sf:delete.left.fill	⌘⌫	Delete Line
+sf:checkmark.circle	⌘↩︎	Accept
+sf:arrow.left.to.line	⇧⇥	Back a Field
+sf:doc.badge.gearshape	⌘P	Open File
+sf:command.square	⇧⌘P	Command Palette
+sf:sidebar.left	⌘B	Sidebar
+sf:rectangle.bottomthird.inset.filled	⌘J	Terminal Panel
+sf:text.justify.left	⌃O	Transcript
+sf:clock.arrow.circlepath	⌃R	History
+sf:eraser	⌃L	Clear Screen
+sf:text.badge.checkmark	⌥L	Reformat
+sf:globe	⌃␣	Input Source
+sf:scope	Find Pointer	Find Pointer
+Vibe Cod	-	Vibe Cod
+sf:square.2.layers.3d	⌃B	Background
+sf:return.left	⌃J	New Line
+esc esc	esc esc	Rewind
+1	-	Option 1
+2	-	Option 2
+3	-	Option 3
+sf:xmark.circle	⇧⌘⌫	Reject
+sf:text.bubble	⌘I	Composer
+sf:terminal	⌃`	Terminal
+Switch	-	Switch
+sf:rectangle.stack	⌃⇥	Next tab, ⌘⇧] in a terminal
+⌘1	-	1
+⌘2	-	2
+⌘3	-	3
+⌘4	-	4
+sf:rectangle.3.group	All Windows	All Windows
+sf:rectangle.grid.2x2	App Windows	App Windows
+sf:arrow.left.square	Desktop Left	Desktop Left
+sf:arrow.right.square	Desktop Right	Desktop Right
+Edit	-	Edit
+sf:return	-	Send
+sf:return.left	⇧↩︎	New Line
+␣	-	Space
+sf:arrow.up.and.down.and.arrow.left.and.right	-	Arrows
+↑	-	↑
+↓	-	↓
+←	-	←
+→	-	→
+sf:arrow.left.to.line	⌘←	Line Start
+sf:arrow.right.to.line	⌘→	Line End
+sf:arrow.left	⌥←	Word Left
+sf:arrow.right	⌥→	Word Right
+Modifier	-	Modifier
+⌘	-	Command
+⇧	-	Shift
+⌥	-	Option
+⌃	-	Control
+⇧⌘	-	Command Shift
+Browser	-	Browser
+sf:plus.magnifyingglass	⌘=	Zoom In
+sf:minus.magnifyingglass	⌘-	Zoom Out
+Blurt	-	Blurt
+sf:camera.viewfinder	Snap	Snap
+sf:record.circle	Record	Record
+sf:waveform	Voice Note	Voice Note
+sf:text.viewfinder	Copy Text	Copy Text
+sf:character.bubble	Translate	Translate
+sf:rectangle.stack	Cards	Cards
+Letters	-	Letters
+1	-	1
+2	-	2
+3	-	3
+4	-	4
+5	-	5
+6	-	6
+7	-	7
+8	-	8
+9	-	9
+0	-	0
+Q	-	Q
+W	-	W
+E	-	E
+R	-	R
+T	-	T
+Y	-	Y
+U	-	U
+I	-	I
+O	-	O
+P	-	P
+A	-	A
+S	-	S
+D	-	D
+F	-	F
+G	-	G
+H	-	H
+J	-	J
+K	-	K
+L	-	L
+;	-	;
+Z	-	Z
+X	-	X
+C	-	C
+V	-	V
+B	-	B
+N	-	N
+M	-	M
+,	-	,
+.	-	.
+/	-	/
+Symbols	-	Symbols
+!	-	
+@	-	
+#	-	
+$	-	
+%	-	
+^	-	
+&	-	
+*	-	
+(	-	
+)	-	
+-	-	
+_	-	
+=	-	
++	-	
+[	-	
+]	-	
+{	-	
+}	-	
+\	-	
+|	-	
+:	-	
+'	-	
+"	-	
+<	-	
+>	-	
+?	-	
+`	-	
+~	-	
+F1	-	F1
+F2	-	F2
+F3	-	F3
+F4	-	F4
+F5	-	F5
+F6	-	F6
+F7	-	F7
+F8	-	F8
+F9	-	F9
+F10	-	F10
+F11	-	F11
+F12	-	F12
+Home	↖	↖
+End	↘	↘
+PgUp	⇞	⇞
+PgDn	⇟	⇟
+sf:delete.right	⌦	Forward Delete

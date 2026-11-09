@@ -15,7 +15,7 @@ struct PairSheet: View {
                         .aspectRatio(1, contentMode: .fit)
                         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 }
-                Text("On your Mac, open Blurt’s Settings and choose iPhone.")
+                Text(Words.whereTheCodeIs)
                     .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 if !hasCamera {
                     TextField("Pairing link", text: $link)
@@ -26,7 +26,7 @@ struct PairSheet: View {
                 Spacer()
             }
             .padding(20)
-            .navigationTitle("Pair with Mac")
+            .navigationTitle("Pair with a Computer")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }

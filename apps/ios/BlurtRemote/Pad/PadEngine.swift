@@ -91,6 +91,8 @@ final class PadEngine {
     var touchMode = false
     /// where one finger scrolls, across the pad; nil = nowhere
     var scrollEdge: ClosedRange<CGFloat>?
+    /// and down it: a strip along the side stops short of a fold that runs across (nil = the whole height)
+    var scrollEdgeY: ClosedRange<CGFloat>?
     var scrollGain: CGFloat = 2.4
 
     private var centroid: CGPoint {
@@ -163,7 +165,7 @@ final class PadEngine {
         switch state {
         case let .one(start, _, _):
             if dist(p, start) > Self.slop {
-                if let e = scrollEdge, e.contains(start.x), abs(p.y - start.y) > abs(p.x - start.x) {
+                if let e = scrollEdge, e.contains(start.x), scrollEdgeY?.contains(start.y) ?? true, abs(p.y - start.y) > abs(p.x - start.x) {
                     samples = []
                     out.append(.scroll(0, 0, .began))
                     state = .scrolling(last: p, two: false)

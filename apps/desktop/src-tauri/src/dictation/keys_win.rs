@@ -28,6 +28,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 /// dwExtraInfo of every key Blurt sends itself
 pub const INJECT_TAG: usize = 0x424C_5254; // "BLRT"
+/// dwExtraInfo of every key Blurt on the phone presses (crates/blurt-remote, Windows backend): never the dictation trigger's,
+/// as the Mac's own key listener leaves RemoteInput's events alone — a key from the phone isn't one "joined" into push-to-talk
+const PHONE_TAG: usize = 0x4252_4D54; // "BRMT"
 const VK_MASK: u16 = 0xE8;
 const ALTGR_FAKE_CTRL_SCAN: u32 = 0x21D;
 
@@ -106,7 +109,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     if code >= 0 {
         let k = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
         let injected = (k.flags.0 & LLKHF_INJECTED.0) != 0;
-        if !(injected && k.dwExtraInfo == INJECT_TAG)
+        if !(injected && (k.dwExtraInfo == INJECT_TAG || k.dwExtraInfo == PHONE_TAG))
             && !(k.vkCode == VK_LCONTROL.0 as u32 && k.scanCode == ALTGR_FAKE_CTRL_SCAN)
         {
             let msg = wparam.0 as u32;
