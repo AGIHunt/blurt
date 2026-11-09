@@ -7,6 +7,8 @@
 //! --screen-test: a synthetic screen, ffmpeg's testsrc2 → libx264 (ultrafast, zerolatency, no B-frames) → H.264 frames as
 //! length-prefixed NAL units with SPS/PPS on keyframes; the crop, size and rate are honoured by restarting ffmpeg (roughly).
 //! --answer: the pairing question's answer, 3 s after it's asked (the test flag; default yes). `ask`: type yes / no on stdin.
+//! --displays N: N made-up displays side by side (1920×1080 main, 2560×1440 to its right and 180 pt higher, 1280×800 left of
+//! main), each its own test pattern; the pointer crosses between them and the picture follows it (or what the phone pins).
 
 use std::io::{BufRead, Read, Write};
 use std::process::{Child, Command, Stdio};
@@ -14,7 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering::SeqCst};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-use blurt_remote::host::{Backend, Button, CursorShape, Crop, EncodedFrame, FrameSink, Input, Screen, ScreenConfig, ScreenInfo, ScrollPhase, SystemMove};
+use blurt_remote::host::{Backend, Button, CursorShape, Crop, DisplayInfo, EncodedFrame, FrameSink, Input, Screen, ScreenConfig, ScreenInfo, ScrollPhase, SystemMove};
 use blurt_remote::store::FileKeyStore;
 use blurt_remote::wire::{BlurtCommand, DictationPhase, Front};
 use blurt_remote::{App, Host, HostConfig};
@@ -31,13 +33,48 @@ fn now() -> f64 {
     T.get_or_init(Instant::now).elapsed().as_secs_f64()
 }
 
-/// A 1920×1080 display that only exists in this log.
-const W: f64 = 1920.0;
-const H: f64 = 1080.0;
+/// The made-up desktop: its displays, and the one being shown (the screen sets it, input places the pointer on it).
+struct Desk {
+    displays: Vec<DisplayInfo>,
+    shown: Mutex<String>,
+}
+
+impl Desk {
+    fn new(n: usize) -> Arc<Desk> {
+        let all = [
+            DisplayInfo { id: "TEST-1".into(), name: "Test Display 1".into(), x: 0.0, y: 0.0, width: 1920.0, height: 1080.0, main: true },
+            DisplayInfo { id: "TEST-2".into(), name: "Test Display 2".into(), x: 1920.0, y: -180.0, width: 2560.0, height: 1440.0, main: false },
+            DisplayInfo { id: "TEST-3".into(), name: "Test Display 3".into(), x: -1280.0, y: 140.0, width: 1280.0, height: 800.0, main: false },
+        ];
+        Arc::new(Desk { displays: all[..n.clamp(1, 3)].to_vec(), shown: Mutex::new("TEST-1".into()) })
+    }
+    fn shown(&self) -> DisplayInfo {
+        let id = self.shown.lock().unwrap().clone();
+        self.displays.iter().find(|d| d.id == id).cloned().unwrap_or_else(|| self.displays[0].clone())
+    }
+    /// A point on some display: off every display, the nearest edge of the nearest one.
+    fn clamp(&self, x: f64, y: f64) -> (f64, f64) {
+        if self.displays.iter().any(|d| d.contains(x, y)) {
+            return (x, y);
+        }
+        let mut best = (x, y);
+        let mut dist = f64::INFINITY;
+        for d in &self.displays {
+            let q = (x.clamp(d.x, d.x + d.width - 1.0), y.clamp(d.y, d.y + d.height - 1.0));
+            let e = (q.0 - x).hypot(q.1 - y);
+            if e < dist {
+                dist = e;
+                best = q;
+            }
+        }
+        best
+    }
+}
 
 struct LogInput {
     x: f64,
     y: f64,
+    desk: Arc<Desk>,
 }
 
 fn line(s: String) {
@@ -61,14 +98,14 @@ impl Input for LogInput {
         line(format!("button {b:?} {} count={clicks}", if down { "down" } else { "up" }));
     }
     fn move_by(&mut self, dx: f64, dy: f64) {
-        self.x = (self.x + dx).clamp(0.0, W - 1.0);
-        self.y = (self.y + dy).clamp(0.0, H - 1.0);
+        (self.x, self.y) = self.desk.clamp(self.x + dx, self.y + dy);
         line(format!("move {dx:.1},{dy:.1} → {:.0},{:.0}", self.x, self.y));
     }
     fn move_to(&mut self, x: f64, y: f64) {
-        self.x = x * W;
-        self.y = y * H;
-        line(format!("place {:.0},{:.0}", self.x, self.y));
+        let d = self.desk.shown();
+        self.x = d.x + x * d.width;
+        self.y = d.y + y * d.height;
+        line(format!("place {:.0},{:.0} on {}", self.x, self.y, d.id));
     }
     fn scroll(&mut self, dx: f64, dy: f64, p: ScrollPhase) {
         line(format!("scroll {dx:.1},{dy:.1} {p:?}"));
@@ -80,7 +117,11 @@ impl Input for LogInput {
         line("release all".into());
     }
     fn pointer(&self) -> Option<(f64, f64)> {
-        Some((self.x / W, self.y / H))
+        let d = self.desk.shown();
+        Some(((self.x - d.x) / d.width, (self.y - d.y) / d.height))
+    }
+    fn pointer_desktop(&self) -> Option<(f64, f64)> {
+        Some((self.x, self.y))
     }
     fn cursor_shape(&mut self) -> Option<CursorShape> {
         None
@@ -90,6 +131,7 @@ impl Input for LogInput {
 // ------------------------------------------------------------------ the synthetic screen
 
 struct Ffmpeg {
+    desk: Arc<Desk>,
     config: Option<ScreenConfig>,
     sink: Option<FrameSink>,
     child: Option<Child>,
@@ -107,19 +149,23 @@ impl Ffmpeg {
         let g = self.gen.fetch_add(1, SeqCst) + 1;
         self.last_restart = Some(Instant::now());
         let c = cfg.crop;
+        let shown = self.desk.shown();
+        let (sw, sh) = (shown.width, shown.height);
+        let n = self.desk.displays.iter().position(|d| d.id == shown.id).unwrap_or(0);
+        let pattern = ["testsrc2", "smptehdbars", "rgbtestsrc"][n % 3];
         let crop = format!(
             "crop={}:{}:{}:{},scale={}:{}",
-            ((c.w as f64 * W) as u32) / 2 * 2,
-            ((c.h as f64 * H) as u32) / 2 * 2,
-            (c.x as f64 * W) as u32,
-            (c.y as f64 * H) as u32,
+            ((c.w as f64 * sw) as u32) / 2 * 2,
+            ((c.h as f64 * sh) as u32) / 2 * 2,
+            (c.x as f64 * sw) as u32,
+            (c.y as f64 * sh) as u32,
             cfg.width,
             cfg.height
         );
         let kbps = (cfg.bitrate / 1000).max(100);
         let child = Command::new("ffmpeg")
             .args(["-hide_banner", "-loglevel", "error", "-re", "-f", "lavfi", "-i"])
-            .arg(format!("testsrc2=size={}x{}:rate={}", W as u32, H as u32, cfg.fps.max(1)))
+            .arg(format!("{pattern}=size={}x{}:rate={}", sw as u32, sh as u32, cfg.fps.max(1)))
             .args(["-vf", &crop, "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-bf", "0"])
             .args(["-x264-params", "keyint=600:scenecut=0:aud=1:repeat-headers=1:slices=1"])
             .args(["-b:v", &format!("{kbps}k"), "-maxrate", &format!("{kbps}k"), "-bufsize", &format!("{}k", kbps / 2)])
@@ -146,7 +192,8 @@ impl Ffmpeg {
             true
         }));
         self.child = Some(child);
-        emit(json!({"event": "screen_test", "ffmpeg": {"width": cfg.width, "height": cfg.height, "kbps": kbps, "fps": cfg.fps, "crop": [c.x, c.y, c.w, c.h]}}));
+        emit(json!({"event": "screen_test", "ffmpeg": {"display": shown.id, "pattern": pattern, "width": cfg.width, "height": cfg.height, "kbps": kbps,
+            "fps": cfg.fps, "crop": [c.x, c.y, c.w, c.h]}}));
     }
 }
 
@@ -217,10 +264,17 @@ impl Screen for Ffmpeg {
         if !config.codecs.iter().any(|c| c == "h264") {
             return Err("This test screen only sends H.264, and the phone didn't ask for it.".into());
         }
+        // the display asked for, else the one under the pointer's (the desk's shown one)
+        if let Some(id) = &config.display {
+            if self.desk.displays.iter().any(|d| &d.id == id) {
+                *self.desk.shown.lock().unwrap() = id.clone();
+            }
+        }
         self.config = Some(config.clone());
         self.sink = Some(sink);
         self.restart();
-        Ok(ScreenInfo { width: W, height: H, codec: "h264".into() })
+        let d = self.desk.shown();
+        Ok(ScreenInfo { width: d.width, height: d.height, codec: "h264".into() })
     }
     fn set_crop(&mut self, crop: Crop) {
         if let Some(c) = &mut self.config {
@@ -257,6 +311,7 @@ impl Screen for Ffmpeg {
 }
 
 struct LogBackend {
+    desk: Arc<Desk>,
     input: LogInput,
     screen: Option<Ffmpeg>,
 }
@@ -272,7 +327,11 @@ impl Backend for LogBackend {
         std::env::var("BLURT_TEST_PLATFORM").ok().filter(|p| p == "linux").map_or("windows", |_| "linux")
     }
     fn display_aspect(&self) -> f64 {
-        W / H
+        let d = &self.desk.displays[0];
+        d.width / d.height
+    }
+    fn displays(&self) -> Vec<DisplayInfo> {
+        self.desk.displays.clone()
     }
     fn now(&self) -> f64 {
         now()
@@ -353,9 +412,11 @@ fn main() {
     let dir = arg("--dir").map(std::path::PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("blurt-remote-host"));
     let port = arg("--port").and_then(|p| p.parse().ok()).unwrap_or(0);
     let shared = Arc::new(Mutex::new(None));
+    let desk = Desk::new(arg("--displays").and_then(|n| n.parse().ok()).unwrap_or(1));
     let backend = LogBackend {
-        input: LogInput { x: W / 2.0, y: H / 2.0 },
-        screen: screen.then(|| Ffmpeg { config: None, sink: None, child: None, gen: Arc::new(AtomicU64::new(0)), last_restart: None }),
+        desk: desk.clone(),
+        input: LogInput { x: 960.0, y: 540.0, desk: desk.clone() },
+        screen: screen.then(|| Ffmpeg { desk: desk.clone(), config: None, sink: None, child: None, gen: Arc::new(AtomicU64::new(0)), last_restart: None }),
     };
     let h = Host::start(
         HostConfig {

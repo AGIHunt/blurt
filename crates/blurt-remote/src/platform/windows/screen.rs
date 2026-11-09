@@ -369,7 +369,8 @@ impl Worker {
         // the monitor, its GPU, the capture
         let (monitor, adapter, output) = match self.options.source {
             Source::Monitor => {
-                let m = monitors::under_pointer().ok_or("There is no screen to show.")?;
+                // the display the server named (several displays), else the one under the pointer
+                let m = self.config.display.as_deref().and_then(monitors::by_device).or_else(monitors::under_pointer).ok_or("There is no screen to show.")?;
                 let (a, o) = adapter_for(HMONITOR(m.handle as *mut _)).map_or((None, None), |(a, o)| (Some(a), o));
                 (m, a, o)
             }

@@ -45,6 +45,9 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen", .screen(RemoteScreenRequest(target: "display", crop: crop, width: 1600, height: 1000, bitrate: 4_000_000, fps: 30, codecs: ["h264"]))),
             ("screen_old_phone", .screen(RemoteScreenRequest(target: "display", width: 1280, height: 800, bitrate: 1_000_000, fps: 15, codecs: nil))),
             ("screen_off", .screen(nil)),
+            ("screen_pinned_display", .screen(RemoteScreenRequest(target: "display", width: 1600, height: 900, bitrate: 4_000_000, fps: 30, codecs: ["h264"], display: "69733382"))),
+            ("show_display", .showDisplay("69733382")),
+            ("show_display_follow", .showDisplay(nil)),
             ("screen_crop", .screenCrop(crop)),
             ("pointer_to", .pointerTo(x: 0.5, y: 0.75)),
             ("candidates", .candidates([RemoteCandidate(host: "203.0.113.5", port: 50123), RemoteCandidate(host: "2001:db8::1", port: 50123)])),
@@ -87,6 +90,9 @@ final class RemoteVectorsTests: XCTestCase {
             ("screen_failed", .screenFailed("Screen Recording is off")),
             ("screen_view", .screenView(width: 1920, height: 1080, codec: "h264")),
             ("screen_view_old_mac", .screenView(width: 1512, height: 982)),
+            ("screen_view_display", .screenView(width: 2560, height: 1440, codec: "hevc", display: "69733382")),
+            ("displays", .displays([RemoteDisplay(id: "1", name: "Built-in Retina Display", x: 0, y: 0, width: 1512, height: 982, main: true),
+                                    RemoteDisplay(id: "69733382", name: "DELL U2723QE", x: 1512, y: -458, width: 2560, height: 1440, main: false)])),
             ("cursor_shape", .cursorShape(png: Data([0x89, 0x50]), hotX: 1, hotY: 2, width: 16, height: 24)),
         ]
     }
@@ -186,7 +192,8 @@ final class RemoteVectorsTests: XCTestCase {
         guard case let .session(i) = try JSONDecoder().decode(ToPhone.self, from: s) else { return XCTFail() }
         XCTAssertEqual(i.host, .mac)
         let v = Data(#"{"screenView":{"width":1,"height":2}}"#.utf8)
-        guard case let .screenView(_, _, codec) = try JSONDecoder().decode(ToPhone.self, from: v) else { return XCTFail() }
+        guard case let .screenView(_, _, codec, display) = try JSONDecoder().decode(ToPhone.self, from: v) else { return XCTFail() }
         XCTAssertNil(codec)
+        XCTAssertNil(display)
     }
 }

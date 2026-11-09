@@ -684,6 +684,8 @@ final class RemoteServer {
             // and only it may set the relay: another paired phone, or a Mac's, can't point this one somewhere else
             guard s.approved else { return }
             queue.async { self.adoptRelay(a) }
+        case .showDisplay:
+            break   // multi-display: being built (docs/design/remote-protocol.md §Displays)
         case let .pointerTo(x, y):
             if let p = s.screen?.pointerTo(x: x, y: y) { input.queue.async { input.place(p) } }
         case let .candidates(list):
