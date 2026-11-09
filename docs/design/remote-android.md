@@ -232,3 +232,35 @@ Services, Firebase or ML Kit: QR codes are ZXing on CameraX frames, so it runs o
 `apps/android/fakehost` is a fake computer for trying all of this without Blurt: core's MacHandshake, pairing with an automatic yes (or
 `--ask`), every message logged, and with `--picture` a still image streamed through ffmpeg (H.264 or HEVC, whichever the phone asks for
 first) so the screen view has something to show.
+`--two-displays` adds a second display; `PinchTest` (androidTest) does the two-finger pinch adb's input can't.
+
+Decisions made here, beyond the iPhone's:
+
+- **The cutout's end plays the Dynamic Island's part** in landscape; with no cutout the rarely-needed end is away from the thumb (Left-Handed
+  flips it). Phone landscape needs 560 dp of width; a narrower window that is wider than tall (split screen) keeps the portrait block, its keys
+  shrinking to 34 dp before the pad goes under 120 dp.
+- **Big screens** (≥ 600 × 480 dp) never stretch keys: the panel is the iPhone's 402 dp. Wide = side by side, tall = stacked.
+- **A fold decides at any hinge angle**: across the screen it stacks, down the middle it splits, whatever the posture reads; nothing is laid
+  over the fold. Turning, folding and resizing are handled in the activity, so the session, held keys and zoom carry through, and the stream
+  is asked for its new size.
+- **Modifier faces** (⌃ ⌥ ⇧ ⌘) are Material Symbols, not text: Android's fallback glyphs for ⌃ and ⇧ are thin and small beside ⌘. A PC's
+  modifier words share one size. Tabs shrink to 9 dp (the iPhone's 70 %), then show the current page with dots.
+- **Mint stays "listening"**: the sheets use Blurt's teal (#1AA487), as the iPhone's do.
+- **A display switcher** (core's `Displays`) sits beside Find Pointer only while the picture shows and there are two or more.
+- **The screen's surface exists only while the picture shows**: a SurfaceView clears the glass under it.
+- **Hardware keyboards** send every key down and up under its own name; Ctrl stays Ctrl on every host.
+
+Measured 2026-11-09 on the Android 16 emulator (Pixel 9, Pixel Tablet, 7.6" foldable) against the fake host over the emulator's loopback:
+
+| | |
+|---|---|
+| Back from the home screen to connected | 119–146 ms (549 ms the first time), five runs |
+| Fake host restarted, to connected | by itself, no prompt |
+| Talk key down to the first audio at the host | 114 ms (one 100 ms piece) |
+| Pointer moves | over UDP once the probe got through, about 100 a second while the finger moved |
+| Picture | HEVC (the emulator's codecs: hevc, h264), decoded and placed; occasional keyframe loss on loopback bursts, so the UDP receive buffer is 4 MB |
+| Pinch on the picture | crop requests about every 150 ms (≈ 7/s) while it moves |
+| Cold start, debug build | about 2.0 s to first frame; 0.35 s of it onCreate to onResume |
+
+Not tried yet: a real phone (Wi-Fi, mobile data, a real relay, direct paths through NAT, hardware decoders and their low-latency keys),
+a real camera reading a code, hardware keyboards and mice on a tablet, a cover screen (the AVD has one panel), TalkBack.

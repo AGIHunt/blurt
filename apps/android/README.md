@@ -22,6 +22,10 @@ cd apps/android
 
 If Gradle can't find the SDK, put its path in `apps/android/local.properties`: `sdk.dir=/Users/you/Library/Android/sdk`.
 
+If the first `./gradlew` stalls downloading Gradle itself (services.gradle.org is often slow from mainland China), point
+`distributionUrl` in `gradle/wrapper/gradle-wrapper.properties` at a mirror, for example
+`https\://mirrors.cloud.tencent.com/gradle/gradle-9.8.2-bin.zip`, or run an installed `gradle` (9.x) in its place.
+
 **Sideloading an APK:** copy `app-debug.apk` to the phone and open it; Android asks once to allow installs from the app you opened it with
 (Files, a browser). Or with the phone plugged in: `adb install -r app-debug.apk`.
 
