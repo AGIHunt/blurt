@@ -148,6 +148,57 @@ class RemoteVideoRepairTest {
         assertFalse(r.broken)
     }
 
+    @Test fun aHitchOnThePhoneGivesNothingUp() {
+        // the phone stops for 60 ms (a busy CPU, the app descheduled) while the piece asked for is on its way: the tick that comes after
+        // reads nothing yet, so it mustn't give the frame up; the piece, read next, completes it
+        val r = RemoteVideoReceiver(nack = true, ltr = true)
+        r.rtt = 0.002
+        r.feed(frame(1, key = true), 0.0)
+        val f2 = frame(2)
+        r.feed(f2.filter { it.index != 1 }, 0.016)
+        r.feed(frame(3), 0.032)
+        assertEquals(listOf<RemoteVideoFeedback>(nack(miss(2, 1))), feedback(r.tick(0.033)))
+        // back after 60 ms: the first piece read (heard just now, so it doesn't look like a stall), then the timers, then the rest
+        r.feed(frame(4), 0.094)
+        val out = r.tick(0.094)
+        assertFalse(feedback(out).any { it is RemoteVideoFeedback.Lost }, "gave up after a hitch: $out")
+        assertFalse(r.broken)
+        assertEquals(listOf(2L, 3L, 4L), frames(r.add(f2[1], 0.095)))
+        assertEquals(0, r.dropped)
+        // a piece that really is gone is still given up on, the hitch not counted
+        r.feed(frame(5).filter { it.index != 0 }, 0.096)
+        var t = 0.098
+        var n = 6L
+        var lost: Double? = null
+        while (t < 0.4 && lost == null) {
+            if (t >= 0.096 + 0.016 * (n - 5)) { r.feed(frame(n), t); n++ }
+            if (feedback(r.tick(t)).contains(RemoteVideoFeedback.Lost(4))) lost = t
+            t += 0.002
+        }
+        val at = lost ?: fail("a lost piece is still given up")
+        assertTrue(at < 0.097 + r.patience + 0.05, "$at")
+    }
+
+    @Test fun afterAStallThePieceAskedForGetsItsRetry() {
+        // the end of frame 2 is lost, asked for, and then nothing comes for 80 ms (Wi-Fi's stall, or the sender stopped): when the next
+        // frame's first piece arrives the frame has been late longer than the patience, but only in the stall
+        val r = RemoteVideoReceiver(nack = true, ltr = true)
+        r.rtt = 0.002
+        r.feed(frame(1, key = true), 0.0)
+        val f2 = frame(2)
+        r.feed(f2.take(1), 0.016)
+        var t = 0.02
+        val asked = ArrayList<RemoteVideoFeedback>()
+        while (t < 0.13) { asked += feedback(r.tick(t)); t += 0.004 }
+        assertEquals(listOf<RemoteVideoFeedback>(nack(miss(2, 1, 2))), asked, "asked once, then the stall")
+        r.feed(frame(3).take(1), 0.13)
+        val out = r.tick(0.13)
+        assertFalse(feedback(out).any { it is RemoteVideoFeedback.Lost }, "gave up as the stall ended: $out")
+        assertEquals(listOf<RemoteVideoFeedback>(nack(miss(2, 1, 2))), feedback(out), "asked again at once")
+        assertEquals(listOf(2L), frames(r.feed(f2.drop(1), 0.134)))
+        assertEquals(0, r.dropped)
+    }
+
     @Test fun withoutLTRALossAsksForAKeyframe() {
         val r = RemoteVideoReceiver(nack = true, ltr = false)
         r.feed(frame(1, key = true), 0.0)

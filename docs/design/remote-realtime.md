@@ -455,7 +455,7 @@ time as a busy runner does. Traced, the stop itself wasn't the trouble; what the
   after it ended the stall and the frame, "late" for 50 ms, was given up in that tick before its retry could go. The spec always said the
   patience counts "while pieces arrive"; the receiver counted the stall too. Now it counts only time with pieces arriving and the phone
   running (`after_a_stall_the_piece_asked_for_gets_its_retry`); 0.35 s late in all still gives up regardless. The spec above has both
-  rules. The Swift and Kotlin receivers have the same timers and have neither yet.
+  rules. The Swift and Kotlin receivers have both too, with the same two tests.
 - **The test phone fell behind.** `phone::watch` read one piece per turn of its loop, so a backlog drained no faster than the ticks; at a
   60 ms round trip under contention it never caught up (age p50 270 ms, 4 fps, 17 recoveries). It now reads everything queued before the
   timers run, lets out what the made-up network held before what came after it, as a network keeps order, and pings when a stage starts
