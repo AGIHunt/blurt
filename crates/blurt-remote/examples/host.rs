@@ -2,6 +2,7 @@
 //! BLURT_TEST_REMOTE does. Pair a phone with the printed link (`xcrun simctl openurl <device> '<link>'` for the simulator).
 //!
 //!   cargo run --example host -- [--screen-test] [--answer yes|no|ask] [--relay ws://127.0.0.1:8787] [--dir <folder>] [--port N]
+//!   cargo run --example host -- --real    this OS's own backend (platform::backend(): Windows' capture, encoder, SendInput)
 //!
 //! --screen-test: a synthetic screen, ffmpeg's testsrc2 → libx264 (ultrafast, zerolatency, no B-frames) → H.264 frames as
 //! length-prefixed NAL units with SPS/PPS on keyframes; the crop, size and rate are honoured by restarting ffmpeg (roughly).
@@ -368,7 +369,7 @@ fn main() {
             },
             port,
         },
-        Box::new(backend),
+        if args.iter().any(|a| a == "--real") { blurt_remote::platform::backend() } else { Box::new(backend) },
         Box::new(FileKeyStore::new(dir.join("test-keys.json"))),
         Box::new(LogApp { host: shared.clone() }),
     );

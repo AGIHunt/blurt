@@ -254,6 +254,30 @@ fn adapter_for(monitor: HMONITOR) -> Option<(IDXGIAdapter, Option<IDXGIOutput1>)
     None
 }
 
+/// Microsoft's Basic Display / Basic Render adapter (PCI vendor 0x1414): no video encoder, no video processor worth the name.
+const MICROSOFT_VENDOR: u32 = 0x1414;
+
+fn vendor(a: &IDXGIAdapter) -> u32 {
+    unsafe { a.GetDesc() }.map_or(0, |d| d.VendorId)
+}
+
+/// The first GPU that isn't Microsoft's basic adapter: where a monitor's own adapter has no encoder (a VM's virtual display beside
+/// its real GPU, a remote session's indirect display), capture on that GPU instead; WGC copies across adapters.
+fn hardware_adapter() -> Option<IDXGIAdapter> {
+    unsafe {
+        let f: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+        let mut i = 0;
+        while let Ok(a) = f.EnumAdapters1(i) {
+            let a: IDXGIAdapter = a.cast().ok()?;
+            if vendor(&a) != MICROSOFT_VENDOR {
+                return Some(a);
+            }
+            i += 1;
+        }
+    }
+    None
+}
+
 fn create_device(adapter: Option<&IDXGIAdapter>) -> Result<ID3D11Device, String> {
     let mut device = None;
     let flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT;
@@ -351,7 +375,19 @@ impl Worker {
                 (Monitor { rect: r, scale: 1.0, primary: true, handle: 0 }, None, None)
             }
         };
+        // the monitor's own GPU (Desktop Duplication needs it, and a laptop's iGPU has its own encoder), unless it is Microsoft's
+        // basic adapter: then a real GPU's
+        let adapter = match adapter {
+            Some(a) if vendor(&a) != MICROSOFT_VENDOR => Some(a),
+            other => hardware_adapter().or(other),
+        };
         let device = create_device(adapter.as_ref()).or_else(|_| create_device(None))?;
+        if let Some(a) = &adapter {
+            if let Ok(d) = unsafe { a.GetDesc() } {
+                let n = d.Description.iter().take_while(|c| **c != 0).count();
+                log(&format!("adapter: {} (vendor {:#06x})", String::from_utf16_lossy(&d.Description[..n]), d.VendorId));
+            }
+        }
         let mut capture = match self.options.source {
             Source::Monitor => Capture::monitor(&device, HMONITOR(monitor.handle as *mut _), output.as_ref(), self.signal.clone()).map_err(|e| {
                 log(&format!("capture: {e}"));
