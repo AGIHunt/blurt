@@ -105,6 +105,8 @@ final class PadViewController: UIViewController {
     }
 
     override func pressesBegan(_ presses: Set<UIPress>, with e: UIPressesEvent?) {
+        // what the system keyboard's field didn't take (a lone ⌘, say) mustn't be held on the computer while it types
+        guard !field.isFirstResponder else { return super.pressesBegan(presses, with: e) }
         let rest = presses.filter { !HardwareKeys.shared.began($0) }
         if rest.count < presses.count { touched() }
         if !rest.isEmpty { super.pressesBegan(rest, with: e) }

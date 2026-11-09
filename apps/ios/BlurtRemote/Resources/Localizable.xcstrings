@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "⌘ on This Keyboard" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这个键盘上的 ⌘"
+          }
+        }
+      }
+    },
+    "Ctrl: ⌘C copies and ⌘V pastes, as on a Mac. Control is Ctrl too, Option is Alt." : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ctrl：⌘C 拷贝、⌘V 粘贴，和在 Mac 上一样。Control 也是 Ctrl，Option 是 Alt。"
+          }
+        }
+      }
+    },
     "%@ didn’t allow this iPhone." : {
       "localizations" : {
         "zh-Hans" : {
