@@ -1,0 +1,1581 @@
+{
+  "dock" : [
+    {
+      "action" : {
+        "sticky" : {
+          "_0" : 8
+        }
+      },
+      "hint" : "Control",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "sticky" : {
+          "_0" : 4
+        }
+      },
+      "hint" : "Option",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "sticky" : {
+          "_0" : 1
+        }
+      },
+      "hint" : "Command",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "sticky" : {
+          "_0" : 2
+        }
+      },
+      "hint" : "Shift",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
+            "key" : "Tab",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "caption" : "",
+      "glyph" : "sf:arrow.right.to.line",
+      "hint" : "Complete",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
+            "key" : "Escape",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "hint" : "Stop",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
+            "key" : "Delete",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "hint" : "Delete",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
+            "key" : "Return",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "hint" : "Send",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "action" : {
+        "chord" : {
+          "_0" : {
+            "key" : "Space",
+            "mods" : 0
+          },
+          "cycle" : false
+        }
+      },
+      "caption" : "",
+      "glyph" : "sf:space",
+      "hint" : "Space",
+      "id" : "00000000-0000-0000-0000-000000000000"
+    }
+  ],
+  "sections" : [
+    {
+      "columns" : 6,
+      "id" : "00000000-0000-0000-0000-000000000000",
+      "name" : "Main",
+      "slots" : [
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "C",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:doc.on.doc",
+          "hint" : "Copy",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "V",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:clipboard",
+          "hint" : "Paste",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "X",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:scissors",
+          "hint" : "Cut",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Z",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:arrow.uturn.backward",
+          "hint" : "Undo",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Z",
+                "mods" : 3
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:arrow.uturn.forward",
+          "hint" : "Redo",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "A",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "mark:selectAll",
+          "hint" : "Select All",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Tab",
+                "mods" : 1
+              },
+              "cycle" : true
+            }
+          },
+          "glyph" : "mark:apps",
+          "hint" : "Apps",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "`",
+                "mods" : 1
+              },
+              "cycle" : true
+            }
+          },
+          "glyph" : "sf:macwindow.on.rectangle",
+          "hint" : "Windows",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "[",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:chevron.left",
+          "hint" : "Back",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "]",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:chevron.right",
+          "hint" : "Forward",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Tab",
+                "mods" : 10
+              },
+              "cycle" : true
+            }
+          },
+          "glyph" : "mark:tabPrevious",
+          "hint" : "Previous Tab",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Tab",
+                "mods" : 8
+              },
+              "cycle" : true
+            }
+          },
+          "glyph" : "mark:tabNext",
+          "hint" : "Next Tab",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:doc.text.magnifyingglass",
+          "hint" : "Find",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "K",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "⌘K",
+          "hint" : "Inline Edit",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Space",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:magnifyingglass",
+          "hint" : "Spotlight",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "C",
+                "mods" : 8
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "⌃C",
+          "hint" : "Interrupt",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "T",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "mark:tabNew",
+          "hint" : "New Tab",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "W",
+                "mods" : 1
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "mark:tabClose",
+          "hint" : "Close Tab",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "snap"
+            }
+          },
+          "caption" : "Snap",
+          "glyph" : "sf:camera.viewfinder",
+          "hint" : "Snap",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "record"
+            }
+          },
+          "caption" : "Record",
+          "glyph" : "sf:record.circle",
+          "hint" : "Record",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "voiceNote"
+            }
+          },
+          "caption" : "Voice Note",
+          "glyph" : "sf:waveform",
+          "hint" : "Voice Note",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "copyText"
+            }
+          },
+          "caption" : "Copy Text",
+          "glyph" : "sf:text.viewfinder",
+          "hint" : "Copy Text",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "translate"
+            }
+          },
+          "caption" : "Translate",
+          "glyph" : "sf:character.bubble",
+          "hint" : "Translate",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "blurt" : {
+              "_0" : "cards"
+            }
+          },
+          "caption" : "Cards",
+          "glyph" : "sf:rectangle.stack",
+          "hint" : "Cards",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        }
+      ]
+    },
+    {
+      "columns" : 10,
+      "id" : "00000000-0000-0000-0000-000000000000",
+      "name" : "Letters",
+      "slots" : [
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "1",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "2",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "3",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "4",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "5",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "6",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "7",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "8",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "9",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "0",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Q",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "W",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "E",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "R",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "T",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Y",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "U",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "I",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "O",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "P",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "A",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "S",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "D",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "G",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "H",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "J",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "K",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "L",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ";",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Z",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "X",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "C",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "V",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "B",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "N",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "M",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ",",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ".",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "\/",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        }
+      ]
+    },
+    {
+      "columns" : 10,
+      "id" : "00000000-0000-0000-0000-000000000000",
+      "name" : "Symbols",
+      "slots" : [
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "1",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "!",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "2",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "@",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "3",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "#",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "4",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "$",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "5",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "%",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "6",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "^",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "7",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "&",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "8",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "*",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "9",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "(",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "0",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : ")",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "-",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "-",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "-",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "_",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "=",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "=",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "=",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "+",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "[",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "[",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "]",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "]",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "[",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "{",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "]",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "}",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "\\",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "\\",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "\\",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "|",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ";",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : ":",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "'",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "'",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "'",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "\"",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ",",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "<",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : ".",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : ">",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "\/",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "?",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "`",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "`",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "`",
+                "mods" : 2
+              },
+              "cycle" : false
+            }
+          },
+          "caption" : "",
+          "glyph" : "~",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        }
+      ]
+    },
+    {
+      "columns" : 6,
+      "id" : "00000000-0000-0000-0000-000000000000",
+      "name" : "More",
+      "slots" : [
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F1",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F2",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F3",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F4",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F5",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F6",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F7",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F8",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F9",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F10",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F11",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "F12",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "Home",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "Home",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "End",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "End",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "PageUp",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "PgUp",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "PageDown",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "PgDn",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "chord" : {
+              "_0" : {
+                "key" : "ForwardDelete",
+                "mods" : 0
+              },
+              "cycle" : false
+            }
+          },
+          "glyph" : "sf:delete.right",
+          "hint" : "Forward Delete",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "system" : {
+              "_0" : "missionControl"
+            }
+          },
+          "caption" : "All Windows",
+          "glyph" : "sf:rectangle.3.group",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "system" : {
+              "_0" : "appExpose"
+            }
+          },
+          "caption" : "App Windows",
+          "glyph" : "sf:rectangle.grid.2x2",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "system" : {
+              "_0" : "spaceLeft"
+            }
+          },
+          "caption" : "Desktop Left",
+          "glyph" : "sf:arrow.left.square",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        },
+        {
+          "action" : {
+            "system" : {
+              "_0" : "spaceRight"
+            }
+          },
+          "caption" : "Desktop Right",
+          "glyph" : "sf:arrow.right.square",
+          "id" : "00000000-0000-0000-0000-000000000000"
+        }
+      ]
+    }
+  ]
+}
