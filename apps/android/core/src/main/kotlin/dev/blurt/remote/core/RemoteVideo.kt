@@ -53,10 +53,12 @@ data class RemoteScreenRequest(
     val fps: Int = 60,
     /** what the phone decodes, best first; null = HEVC only (phones before 1.0.15) */
     val codecs: List<String>? = RemoteVideoCodec.DECODABLE,
+    /** a RemoteDisplay id to show; null = the display the pointer is on, following it from display to display (the default) */
+    val display: String? = null,
 ) {
     fun toJson(): JsonObject = J.obj(
         "target" to J.str(target), "crop" to crop.toJson(), "width" to J.int(width), "height" to J.int(height), "bitrate" to J.int(bitrate),
-        "fps" to J.int(fps), "codecs" to J.list(codecs) { JsonPrimitive(it) },
+        "fps" to J.int(fps), "codecs" to J.list(codecs) { JsonPrimitive(it) }, "display" to J.str(display),
     )
 
     companion object {
@@ -66,6 +68,7 @@ data class RemoteScreenRequest(
             return RemoteScreenRequest(
                 J.str(o, "target") ?: return null, RemoteCrop.fromJson(o["crop"]) ?: return null, J.int(o, "width") ?: return null,
                 J.int(o, "height") ?: return null, J.int(o, "bitrate") ?: return null, J.int(o, "fps") ?: return null, codecs,
+                J.str(o, "display"),
             )
         }
     }
