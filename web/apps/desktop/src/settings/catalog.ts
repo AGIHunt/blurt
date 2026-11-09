@@ -22,7 +22,7 @@ export interface PaneInfo {
   icon: IconName;
   group: 'preferences' | 'work' | 'mac';
 }
-export type PaneId = 'general' | 'dictation' | 'screentext' | 'speech' | 'shortcuts' | 'projects' | 'agents' | 'privacy' | 'storage';
+export type PaneId = 'general' | 'dictation' | 'screentext' | 'speech' | 'shortcuts' | 'phone' | 'projects' | 'agents' | 'privacy' | 'storage';
 
 export interface Entry {
   id: string;
@@ -45,6 +45,8 @@ export const PANES: PaneInfo[] = [
   { id: 'screentext', title: 'settings.kit.screen_text', icon: 'text-viewfinder', group: 'preferences' },
   { id: 'speech', title: 'settings.kit.speech', icon: 'cpu', group: 'preferences' },
   { id: 'shortcuts', title: 'settings.kit.shortcuts', icon: 'keyboard', group: 'preferences' },
+  // the Mac's iPhone pane ("remote"), for any phone: Settings → Phone (PhonePane.tsx)
+  { id: 'phone', title: 'phone.pane', icon: 'phone', group: 'preferences' },
   { id: 'projects', title: 'main.sidebar.projects', icon: 'folder', group: 'work' },
   { id: 'agents', title: 'settings.kit.agents', icon: 'terminal', group: 'work' },
   { id: 'privacy', title: 'settings.kit.privacy', icon: 'hand', group: 'mac' },
@@ -53,7 +55,7 @@ export const PANES: PaneInfo[] = [
 export const pane = (id: string) => PANES.find((p) => p.id === id);
 
 /** Old links (blurt://settings/<pane>, a remembered last pane) and where they land now. */
-export const MOVED: Record<string, string> = { export: 'agents', cloud: 'speech', 'speech.cloud': 'speech' };
+export const MOVED: Record<string, string> = { export: 'agents', cloud: 'speech', 'speech.cloud': 'speech', remote: 'phone' };
 /** a link to Export's old place lands at Ask your agent (SettingsCatalog.moved: export → agents/agents.ask) */
 export const MOVED_ROW: Record<string, string> = { export: 'agents.ask' };
 
@@ -78,6 +80,9 @@ export const SECTIONS: Record<string, Key> = {
   'shortcuts.recording': 'capture.keys.while_recording',
   'shortcuts.dictation': 'dictation.settings.tab',
   'shortcuts.open': 'capture.keys.section.open',
+  'phone.phones': 'phone.section.phones',
+  'phone.options': 'phone.section.options',
+  'phone.relay': 'phone.section.relay',
   'agents.list': 'agents.header',
   'agents.organize': 'agents.organize.header',
   'agents.manual': 'agents.manual.header',
@@ -175,6 +180,11 @@ export const ENTRIES: Entry[] = (() => {
   }
   e.push(
     row('shortcuts.restore', null, 'capture.keys.restore'),
+    // Phone
+    row('phone.add', 'phone.phones', 'phone.app', { detail: 'phone.add.detail' }),
+    row('phone.screen', 'phone.options', 'phone.screen', { detail: 'phone.screen.detail' }),
+    row('phone.relay.address', 'phone.relay', 'phone.relay', { detail: 'phone.relay.detail' }),
+    row('phone.relay.help', 'phone.relay', 'phone.relay.help', { detail: 'phone.relay.help.detail' }),
     // Agents
     whole('agents.list', 'agents.lead'),
     whole('agents.organize', 'agents.organize.footer'),
