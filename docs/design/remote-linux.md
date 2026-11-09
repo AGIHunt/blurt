@@ -56,6 +56,9 @@ Decisions, and why:
   so GTK doesn't start a coast of its own on top. Discrete steps (30 px each, fractions carried) only if the portal
   refuses smooth scrolling.
 - **Absolute moves.** In the stream's frame pixels on GNOME (mutter divides by the scale), logical pixels elsewhere (KDE).
+- **Several monitors.** The portal is asked for several monitor sources. Each shared stream (its id, position and logical
+  size) is a `Backend::displays` entry. Switching restarts the stream on the other monitor (`set_display` says no), which
+  takes about 60 ms. A restore token from a one-monitor grant still opened with no dialog.
 - **Keep awake.** org.freedesktop.portal.Inhibit, suspend (+ idle when the screen shows), released when the phone goes.
 - **System moves (GNOME).** Super = overview; Super+\` = the app's next window; Super+PageUp/PageDown = workspaces;
   Ctrl+= / Ctrl+- = zoom; a lone Ctrl = Locate Pointer (when it's on).
@@ -84,6 +87,8 @@ with the test phone (`examples/phone.rs`) on a Mac, over the internet.
 | Cursor shape | 24×24 pt PNG (452–725 bytes) with its hot spot, sent only when it changed (arrow → I-beam) |
 | Real host + test phone on a Mac, over a relay on the VM | 116/116 H.264 frames at 1280×720 in 12 s, decoded by ffmpeg |
 | Real host + test phone on a Mac, direct UDP (Singapore VM ↔ the Mac's NAT) | 98 frames at 1280×720 in 12 s, 2 keyframes (11 asked), none dropped, decoded by ffmpeg. Before `phone.rs` asked for keyframes as the iOS app does, one lost piece of the first keyframe left it with nothing. Plain UDP from the VM to the Mac passed at every size from 200 to 1472 bytes, and in bursts of 100 |
+| The iPhone app (simulator on a Mac, H.264) ↔ the real host, direct UDP, its own screen test (`BLURT_SCREEN_TEST=display`, 12 s a stage) | Ubuntu's screen shown with the Linux keys (Ctrl / Super / Alt) and the pointer drawn from the cursor meta (I-beam). Round trip Mac ↔ Singapore 570 ms p50 (this Mac's network). Whole screen: 10 fps, 2.5 Mbit/s, frame age at decode p50 311 ms / p95 336 ms (≈ half the round trip + 20 ms), decode 4.2 ms, 2 frames dropped, 5 keyframes asked. 2× zoom: 10 fps, 2.2 Mbit/s, p50 312 ms, decode 3.5 ms. 3× zoom: 9 fps, 0.2 Mbit/s, p50 308 ms, decode 2.6 ms, nothing dropped |
+| Scrolling | a 310-pt two-finger gesture at a steady speed (the test's, not a hand's) moved gnome-text-editor from line 1 to line 48 at the top, the right way. That includes GTK's own coast after the finish: the gesture ended at full speed |
 | The desktop app (apps/desktop/src-tauri) on 26.04 | `cargo check` and `cargo build` pass with the backend in (one old warning, `mic.rs`) |
 
 Screenshots: `promo/cases/remote-linux/` (the dialog, the streamed terminal, typed and pasted text, the overview, frames
@@ -111,7 +116,9 @@ GNOME's dialog opens in front, as for paste), and `set_paste(|t| insert…)` (th
 ## Open
 
 - Not tried: a GPU (VA / NVENC paths, their property names), HiDPI / fractional scaling (logical vs pixel sizes are handled
-  but unmeasured), KDE, an X11 session, multiple monitors (the portal picks one; the user chooses it in the dialog).
-- Scrolling wasn't verified on screen: the test pointer wasn't over a scrollable view.
+  but unmeasured), KDE, an X11 session.
+- Taps on the iPhone simulator weren't available, so input from the iPhone app itself (rather than from the test phone and
+  `linux_smoke`) is untested.
+- Several monitors: listed from the portal and switched by restarting the stream. Tested with one monitor only.
 - IBus detection reads GNOME's settings; other desktops' input methods aren't detected.
 - The libei path (`ConnectToEIS`) would avoid one D-Bus round trip per event; the portal calls are queued and coalesced instead.
