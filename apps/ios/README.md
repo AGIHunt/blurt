@@ -43,6 +43,10 @@ the test variables) and run it with `BLURT_TEST_COMMANDS=1 BLURT_TEST_REMOTE=1`.
 `SIMCTL_CHILD_BLURT_REMOTE_TEST_HOST=windows` (or `linux`, `mac`) shows that kind of computer as connected, with no connection, among three of
 mixed kinds: for looking at its keys and words (debug builds only; nothing is saved).
 
+`SIMCTL_CHILD_BLURT_REMOTE_PAIR=<link>` pairs with that code at launch, as the in-app scanner would (no tap needed), and
+`SIMCTL_CHILD_BLURT_DISPLAY_TEST=1` then walks the display switcher on its own, logging each step on the computer (docs/design/remote.md
+§Several displays). With nothing posted, the computer moves a pretend pointer, so following it across displays never moves yours.
+
 Layout without a computer (debug builds): `SIMCTL_CHILD_BLURT_REMOTE_PRETEND=1` lights the keys as if connected, `=screen` also shows a
-made-up desktop where the picture goes. `TEST_RUNNER_BLURT_RENDER_DIR=<folder>` makes `RenderTests` draw the main screen at every iPad
+made-up desktop where the picture goes, and `SIMCTL_CHILD_BLURT_REMOTE_PRETEND_DISPLAYS=1` adds a second display for the switcher. `TEST_RUNNER_BLURT_RENDER_DIR=<folder>` makes `RenderTests` draw the main screen at every iPad
 and iPhone Duo size and fold into that folder (docs/design/remote.md §iPad and iPhone Duo).
