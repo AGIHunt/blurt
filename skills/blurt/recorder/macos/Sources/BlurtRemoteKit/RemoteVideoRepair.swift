@@ -222,12 +222,23 @@ public struct RemoteVideoReceiver {
     private var brokenAt = 0.0, askedAt = -1.0
     /// when frame `next` was first seen to be late
     private var lateSince: Double?
+    /// how long it has been late while pieces were arriving and the phone was running: what the patience is measured against
+    private var lateFor = 0.0
+    /// when frame `next` was first seen to be late, never moved by the phone's own hitches: a phone that stays busy still gives up
+    private var lateAt = 0.0
     /// when any piece last arrived. Nothing at all for a while is a stall (a radio dozing, a busy channel), not a loss: everything held up
     /// arrives together afterwards, so nothing is given up and nothing asked for twice meanwhile
     private var heardAt = -1.0
+    /// when `tick` last ran: one much later than the last means the phone itself wasn't running (a hitch), not that the network lost
+    /// anything; what arrived meanwhile hasn't been read yet
+    private var tickedAt: Double?
     private static let quiet = 0.02
     /// a stall this long is given up on regardless
     private static let longest = 0.35
+    /// ticks further apart than this: the phone was busy (a frame at 60 Hz without one)
+    private static let away = 0.015
+    /// late this long in real time is given up on regardless, the phone busy or not
+    private static let stuck = 1.0
     private var acks: [UInt32] = [], ackedAt = -1.0
     public private(set) var dropped = 0, repaired = 0, nacked = 0, refreshes = 0
 
@@ -325,16 +336,34 @@ public struct RemoteVideoReceiver {
     }
 
     /// Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on.
+    /// The patience counts only while pieces arrive and the phone is running. In a stall nothing can be asked again, and when it ends
+    /// the piece asked for gets its retry before the frame is given up. A tick long after the last one gives nothing up: the phone was
+    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read. A frame late for a second of real
+    /// time is given up regardless, so a phone that stays busy doesn't freeze the picture with nothing asked.
     public mutating func tick(now: Double) -> [Output] {
         var out: [Output] = []
+        let sinceTick = tickedAt.map { now - $0 } ?? 0
+        let away = sinceTick > Self.away
+        if away, let s = lateSince { lateSince = s + sinceTick }
+        tickedAt = now
         // a frame that can't come: give up on it, and everything behind it waits for a refresh
         if !broken, let n = next {
             let f = partials[n]
             let late = f.map { !$0.complete && (newest.map { $0 > n } ?? false || now - $0.lastAt > tailWait) } ?? (newest.map { $0 >= n } ?? false)
             if late {
-                if lateSince == nil { lateSince = now }
                 let stalled = now - heardAt > Self.quiet
-                if now - lateSince! >= patience, !stalled || now - lateSince! >= Self.longest {
+                let since: Double
+                if let s = lateSince {
+                    if !away, !stalled { lateFor += sinceTick }
+                    since = s
+                } else {
+                    lateFor = 0
+                    lateAt = now
+                    lateSince = now
+                    since = now
+                }
+                let stuck = now - lateAt >= Self.stuck
+                if stuck || (!away && ((lateFor >= patience && !stalled) || now - since >= Self.longest)) {
                     broken = true
                     brokenAt = now
                     askedAt = -1

@@ -236,9 +236,16 @@ class RemoteVideoReceiver(
     private var askedAt = -1.0
     /** when frame `next` was first seen to be late */
     private var lateSince: Double? = null
+    /** how long it has been late while pieces were arriving and the phone was running: what the patience is measured against */
+    private var lateFor = 0.0
+    /** when frame `next` was first seen to be late, never moved by the phone's own hitches: a phone that stays busy still gives up */
+    private var lateAt = 0.0
     /** when any piece last arrived. Nothing at all for a while is a stall (a radio dozing, a busy channel), not a loss: everything held up
      *  arrives together afterwards, so nothing is given up and nothing asked for twice meanwhile */
     private var heardAt = -1.0
+    /** when `tick` last ran: one much later than the last means the phone itself wasn't running (a hitch), not that the network lost
+     *  anything; what arrived meanwhile hasn't been read yet */
+    private var tickedAt: Double? = null
     private val acks = ArrayList<Long>()
     private var ackedAt = -1.0
     var dropped = 0
@@ -347,9 +354,17 @@ class RemoteVideoReceiver(
         }
     }
 
-    /** Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on. */
+    /** Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on.
+     *  The patience counts only while pieces arrive and the phone is running. In a stall nothing can be asked again, and when it ends
+     *  the piece asked for gets its retry before the frame is given up. A tick long after the last one gives nothing up: the phone was
+     *  busy, and the pieces that came meanwhile (the one asked for among them) are still to be read. A frame late for a second of real
+     *  time is given up regardless, so a phone that stays busy doesn't freeze the picture with nothing asked. */
     fun tick(now: Double): List<Output> {
         val out = ArrayList<Output>()
+        val sinceTick = tickedAt?.let { now - it } ?: 0.0
+        val away = sinceTick > AWAY
+        if (away) lateSince = lateSince?.plus(sinceTick)
+        tickedAt = now
         // a frame that can't come: give up on it, and everything behind it waits for a refresh
         val n = next
         if (!broken && n != null) {
@@ -357,9 +372,14 @@ class RemoteVideoReceiver(
             val nw = newest
             val late = if (f != null) !f.complete && ((nw != null && nw > n) || now - f.lastAt > tailWait) else (nw != null && nw >= n)
             if (late) {
-                val since = lateSince ?: now.also { lateSince = it }
                 val stalled = now - heardAt > QUIET
-                if (now - since >= patience && (!stalled || now - since >= LONGEST)) {
+                val since = lateSince?.also { if (!away && !stalled) lateFor += sinceTick } ?: now.also {
+                    lateFor = 0.0
+                    lateAt = it
+                    lateSince = it
+                }
+                val stuck = now - lateAt >= STUCK
+                if (stuck || (!away && ((lateFor >= patience && !stalled) || now - since >= LONGEST))) {
                     broken = true
                     brokenAt = now
                     askedAt = -1.0
@@ -453,5 +473,9 @@ class RemoteVideoReceiver(
         const val QUIET = 0.02
         /** a stall this long is given up on regardless */
         const val LONGEST = 0.35
+        /** ticks further apart than this: the phone was busy (a frame at 60 Hz without one) */
+        const val AWAY = 0.015
+        /** late this long in real time is given up on regardless, the phone busy or not */
+        const val STUCK = 1.0
     }
 }

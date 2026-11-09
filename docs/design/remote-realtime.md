@@ -326,7 +326,8 @@ Encoders, what each can do for `ltr`:
    keyframe came; acks batched every ≥ 0.02. The patience counts only time with pieces arriving (nothing for 0.02 is a stall) and the
    phone running: a tick more than 0.015 after the last one (the phone itself was busy) gives no frame up, since the pieces that came
    meanwhile haven't been read yet, and when a stall ends the piece asked for gets its retry before the frame is given up (§Rust host,
-   a stopped process).
+   a stopped process). A frame late for 1 s of real time (hitches included) is given up regardless, so a phone whose ticks all come more
+   than 0.015 apart (a busy decoder thread or main queue) still asks to start over instead of freezing.
 3. Offer `features` by decoder: `nack` and `fec` always. `ltr` only on decoders known to survive a skipped frame followed by a refresh
    (Moonlight's experience: RFI hangs Amlogic HEVC before Fire OS 7 and misbehaves on some low-end Snapdragons above 720p): start with an
    allow-list of Qualcomm `c2.qti.*` / `OMX.qcom.*` on Snapdragon 8 Gen 1+, Google `c2.exynos`/Tensor, MediaTek `c2.mtk.*` Dimensity 9000+,
@@ -455,7 +456,8 @@ time as a busy runner does. Traced, the stop itself wasn't the trouble; what the
   after it ended the stall and the frame, "late" for 50 ms, was given up in that tick before its retry could go. The spec always said the
   patience counts "while pieces arrive"; the receiver counted the stall too. Now it counts only time with pieces arriving and the phone
   running (`after_a_stall_the_piece_asked_for_gets_its_retry`); 0.35 s late in all still gives up regardless. The spec above has both
-  rules. The Swift and Kotlin receivers have the same timers and have neither yet.
+  rules, and a frame late 1 s of real time is given up even if every tick in between came late (`a_phone_that_stays_busy_still_gives_up`).
+  The Swift and Kotlin receivers have all three, with the same tests.
 - **The test phone fell behind.** `phone::watch` read one piece per turn of its loop, so a backlog drained no faster than the ticks; at a
   60 ms round trip under contention it never caught up (age p50 270 ms, 4 fps, 17 recoveries). It now reads everything queued before the
   timers run, lets out what the made-up network held before what came after it, as a network keeps order, and pings when a stage starts

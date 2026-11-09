@@ -138,6 +138,74 @@ final class RemoteVideoRepairTests: XCTestCase {
         XCTAssertFalse(r.broken)
     }
 
+    func testAHitchOnThePhoneGivesNothingUp() {
+        // the phone stops for 60 ms (a busy CPU, the app descheduled) while the piece asked for is on its way: the tick that comes after
+        // reads nothing yet, so it mustn't give the frame up; the piece, read next, completes it
+        var r = RemoteVideoReceiver(nack: true, ltr: true)
+        r.rtt = 0.002
+        _ = frame(1, key: true).flatMap { r.add($0, now: 0) }
+        let f2 = frame(2)
+        _ = f2.filter { $0.index != 1 }.flatMap { r.add($0, now: 0.016) }
+        _ = frame(3).flatMap { r.add($0, now: 0.032) }
+        XCTAssertEqual(feedback(r.tick(now: 0.033)), [.nack([.init(frame: 2, pieces: [1])])])
+        // back after 60 ms: the first piece read (heard just now, so it doesn't look like a stall), then the timers, then the rest
+        _ = frame(4).flatMap { r.add($0, now: 0.094) }
+        let out = r.tick(now: 0.094)
+        XCTAssertFalse(feedback(out).contains { if case .lost = $0 { true } else { false } }, "gave up after a hitch: \(out)")
+        XCTAssertFalse(r.broken)
+        XCTAssertEqual(frames(r.add(f2[1], now: 0.095)), [2, 3, 4])
+        XCTAssertEqual(r.dropped, 0)
+        // a piece that really is gone is still given up on, the hitch not counted
+        _ = frame(5).filter { $0.index != 0 }.flatMap { r.add($0, now: 0.096) }
+        var t = 0.098, n: UInt32 = 6
+        var lost: Double?
+        while t < 0.4, lost == nil {
+            if t >= 0.096 + 0.016 * Double(n - 5) { _ = frame(n).flatMap { r.add($0, now: t) }; n += 1 }
+            if feedback(r.tick(now: t)).contains(.lost(after: 4)) { lost = t }
+            t += 0.002
+        }
+        guard let lost else { return XCTFail("a lost piece is still given up") }
+        XCTAssertLessThan(lost, 0.097 + r.patience + 0.05)
+    }
+
+    func testAPhoneThatStaysBusyStillGivesUp() {
+        // every tick 20 ms after the last (a slow phone's busy main queue): each one looks like a hitch, but a piece that never comes is
+        // still given up within a second of real time, so the picture doesn't freeze with nothing asked
+        var r = RemoteVideoReceiver(nack: true, ltr: true)
+        r.rtt = 0.002
+        _ = frame(1, key: true).flatMap { r.add($0, now: 0) }
+        _ = frame(2).filter { $0.index != 1 }.flatMap { r.add($0, now: 0.016) }
+        var t = 0.02, n: UInt32 = 3
+        var lost: Double?
+        while t < 2, lost == nil {
+            _ = frame(n).flatMap { r.add($0, now: t) }; n += 1
+            if feedback(r.tick(now: t)).contains(.lost(after: 1)) { lost = t }
+            t += 0.02
+        }
+        guard let lost else { return XCTFail("given up though every tick was late") }
+        XCTAssertLessThanOrEqual(lost, 0.02 + 1.0 + 0.02 + 1e-9)
+    }
+
+    func testAfterAStallThePieceAskedForGetsItsRetry() {
+        // the end of frame 2 is lost, asked for, and then nothing comes for 80 ms (Wi-Fi's stall, or the sender stopped): when the next
+        // frame's first piece arrives the frame has been late longer than the patience, but only in the stall
+        var r = RemoteVideoReceiver(nack: true, ltr: true)
+        r.rtt = 0.002
+        _ = frame(1, key: true).flatMap { r.add($0, now: 0) }
+        let f2 = frame(2)
+        _ = f2.prefix(1).flatMap { r.add($0, now: 0.016) }
+        var t = 0.02
+        var asked: [RemoteVideoFeedback] = []
+        while t < 0.13 { asked += feedback(r.tick(now: t)); t += 0.004 }
+        XCTAssertEqual(asked, [.nack([.init(frame: 2, pieces: [1, 2])])], "asked once, then the stall")
+        _ = frame(3).prefix(1).flatMap { r.add($0, now: 0.13) }
+        let out = r.tick(now: 0.13)
+        XCTAssertFalse(feedback(out).contains { if case .lost = $0 { true } else { false } }, "gave up as the stall ended: \(out)")
+        XCTAssertEqual(feedback(out), [.nack([.init(frame: 2, pieces: [1, 2])])], "asked again at once")
+        XCTAssertEqual(frames(f2.dropFirst().flatMap { r.add($0, now: 0.134) }), [2])
+        XCTAssertEqual(r.dropped, 0)
+    }
+
     func testWithoutLTRALossAsksForAKeyframe() {
         var r = RemoteVideoReceiver(nack: true, ltr: false)
         _ = frame(1, key: true).flatMap { r.add($0, now: 0) }
