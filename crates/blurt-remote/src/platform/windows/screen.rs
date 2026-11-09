@@ -24,8 +24,8 @@ use ::windows::Win32::Graphics::Direct3D11::{
 };
 use ::windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIAdapter, IDXGIFactory1, IDXGIOutput1};
 use ::windows::Win32::Graphics::Gdi::HMONITOR;
-use ::windows::Win32::Media::MediaFoundation::{MFShutdown, MFStartup, MFSTARTUP_FULL, MF_VERSION};
-use ::windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};
+use ::windows::Win32::Media::MediaFoundation::{MFStartup, MFSTARTUP_FULL, MF_VERSION};
+use ::windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
 
 use super::annexb::{self, Codec};
 use super::capture::{Capture, Signal, Synthetic};
@@ -312,8 +312,8 @@ impl Enc {
 impl Worker {
     fn run(self, ready: Sender<Result<ScreenInfo, String>>) {
         let _dpi = monitors::Dpi::physical();
-        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }.is_ok();
-        let mf = unsafe { MFStartup(MF_VERSION, MFSTARTUP_FULL) }.is_ok();
+        keep_com_and_mf();
+        let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
         let mut ready = Some(ready);
         if let Err(e) = self.stream(&mut ready) {
             if let Some(r) = ready.take() {
@@ -321,12 +321,6 @@ impl Worker {
             } else {
                 log(&format!("stopped: {e}"));
             }
-        }
-        if mf {
-            let _ = unsafe { MFShutdown() };
-        }
-        if com {
-            unsafe { CoUninitialize() };
         }
     }
 
@@ -446,7 +440,39 @@ impl Worker {
         let t0 = Instant::now();
         let mut last_time = -1i64;
         let mut fails = 0;
+        let started_at = Instant::now();
+        let mut have_picture = false;
+        let mut last_log = Instant::now();
         loop {
+            if last_log.elapsed() > Duration::from_secs(5) {
+                last_log = Instant::now();
+                let g = self.stats.lock().unwrap_or_else(|e| e.into_inner());
+                let s = &g.0;
+                log(&format!(
+                    "{} frames ({} keyframes, {} KB), {} captured, {} skipped, encode {:.1} ms, convert {:.1} ms, in {:.1} s",
+                    s.frames,
+                    s.keyframes,
+                    s.bytes / 1024,
+                    s.captured,
+                    s.skipped,
+                    s.encode_ms_avg(),
+                    s.convert_ms_avg(),
+                    g.1.elapsed().as_secs_f64()
+                ));
+            }
+            // nothing from the capture yet (a still screen gives no frame): the picture as it is now, once
+            if !have_picture && matches!(self.options.source, Source::Monitor) && started_at.elapsed() > Duration::from_millis(150) {
+                have_picture = true;
+                let m = (*self.shown.lock().unwrap_or_else(|e| e.into_inner())).unwrap_or(monitor);
+                if m.rect.width() as u32 == conv.in_w && m.rect.height() as u32 == conv.in_h {
+                    if let Some(px) = super::capture::gdi_snapshot(&m.rect) {
+                        conv.hold_pixels(&px);
+                        captured_at = monitors::now();
+                        pacer.picture(true);
+                        log("first picture from GDI (the screen is still)");
+                    }
+                }
+            }
             // commands first
             while let Ok(c) = self.rx.try_recv() {
                 match c {
@@ -553,6 +579,7 @@ impl Worker {
                     }
                 }
                 conv.hold(&f.texture);
+                have_picture = true;
                 captured_at = f.time;
                 dirty_known = f.dirty.is_some();
                 let (rect, _) = geometry::crop_rect(crop, conv.in_w, conv.in_h);
@@ -604,11 +631,23 @@ fn log(s: &str) {
     }
 }
 
+/// COM's multithreaded apartment and Media Foundation, for the life of the process. When the last MTA thread ended (this worker,
+/// with the server's threads never in COM), COM unloaded GraphicsCapture.dll while WGC still had a callback on its way: an access
+/// violation in `GraphicsCapture.dll_unloaded` after every stop (Server 2025). CoIncrementMTAUsage keeps the apartment up.
+fn keep_com_and_mf() {
+    use std::sync::Once;
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| unsafe {
+        let _ = ::windows::Win32::System::Com::CoIncrementMTAUsage();
+        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
+    });
+}
+
 /// The hardware encoders Media Foundation lists for NV12 → H.264 and → HEVC, by name (examples/win_smoke.rs, diagnostics).
 pub fn hardware_encoders() -> Vec<(&'static str, String)> {
+    keep_com_and_mf();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
-        let _ = MFStartup(MF_VERSION, MFSTARTUP_FULL);
     }
     let mut out = Vec::new();
     for codec in [Codec::H264, Codec::Hevc] {

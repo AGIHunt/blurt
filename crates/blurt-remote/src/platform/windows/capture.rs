@@ -122,6 +122,7 @@ pub struct Wgc {
     device: IDirect3DDevice,
     size: SizeInt32,
     dirty_regions: bool,
+    arrived: i64,
 }
 
 impl Wgc {
@@ -139,7 +140,7 @@ impl Wgc {
         let pool = Direct3D11CaptureFramePool::CreateFreeThreaded(&d3d, DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, size)
             .map_err(|x| e("frame pool", x))?;
         let s = signal.clone();
-        pool.FrameArrived(&TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(move |_, _| {
+        let arrived = pool.FrameArrived(&TypedEventHandler::<Direct3D11CaptureFramePool, IInspectable>::new(move |_, _| {
             s.notify();
             Ok(())
         }))
@@ -155,7 +156,7 @@ impl Wgc {
         // which parts changed (Windows 11 24H2+)
         let dirty_regions = session.SetDirtyRegionMode(GraphicsCaptureDirtyRegionMode::ReportOnly).is_ok();
         session.StartCapture().map_err(|x| e("StartCapture", x))?;
-        Ok(Wgc { pool, session, device: d3d, size, dirty_regions })
+        Ok(Wgc { pool, session, device: d3d, size, dirty_regions, arrived })
     }
 
     fn next(&mut self, timeout: Duration, signal: &Signal) -> Option<Frame> {
@@ -203,6 +204,8 @@ impl Wgc {
 
 impl Drop for Wgc {
     fn drop(&mut self) {
+        // no callback may come after this: one landing once GraphicsCapture.dll is gone is an access violation (seen on Server 2025)
+        let _ = self.pool.RemoveFrameArrived(self.arrived);
         let _ = self.session.Close();
         let _ = self.pool.Close();
     }
@@ -399,5 +402,51 @@ impl Synthetic {
             time: super::monitors::now(),
             _wgc: None,
         })
+    }
+}
+
+/// The monitor's picture right now through GDI (BitBlt from the screen), BGRA top-down, `rect` in physical pixels. For the first
+/// picture: Windows.Graphics.Capture hands over a frame only when something on the monitor changes, so a still screen at start
+/// would give nothing to show (seen on Server 2025).
+pub fn gdi_snapshot(rect: &Rect) -> Option<Vec<u8>> {
+    use ::windows::Win32::Graphics::Gdi::{
+        BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits, ReleaseDC, SelectObject,
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, SRCCOPY,
+    };
+    let (w, h) = (rect.width(), rect.height());
+    if w <= 0 || h <= 0 {
+        return None;
+    }
+    unsafe {
+        let screen = GetDC(None);
+        let dc = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(dc, bmp.into());
+        let ok = BitBlt(dc, 0, 0, w, h, Some(screen), rect.left, rect.top, SRCCOPY).is_ok();
+        let mut bi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut px = vec![0u8; (w * h * 4) as usize];
+        SelectObject(dc, old);
+        let n = if ok { GetDIBits(dc, bmp, 0, h as u32, Some(px.as_mut_ptr() as *mut _), &mut bi, DIB_RGB_COLORS) } else { 0 };
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, screen);
+        if n == 0 {
+            return None;
+        }
+        for a in px.iter_mut().skip(3).step_by(4) {
+            *a = 255;
+        }
+        Some(px)
     }
 }
