@@ -82,7 +82,9 @@ pub fn stun_parse(d: &[u8], txn: &[u8; 12]) -> Option<Candidate> {
     None
 }
 
-pub const STUN_SERVER: &str = "stun.cloudflare.com:3478";
+/// Asked together, the first answer taken: Cloudflare's (the Mac's), and one that answers from mainland China, where
+/// Cloudflare's and Google's didn't (2026-11-09).
+pub const STUN_SERVERS: [&str; 2] = ["stun.cloudflare.com:3478", "stun.miwifi.com:3478"];
 
 // ------------------------------------------------------------------ this machine's addresses
 

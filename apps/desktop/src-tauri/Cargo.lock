@@ -446,6 +446,7 @@ dependencies = [
  "hmac",
  "if-addrs",
  "mdns-sd",
+ "png 0.17.16",
  "rustls",
  "serde",
  "serde_json",
@@ -455,6 +456,7 @@ dependencies = [
  "tokio-tungstenite",
  "url",
  "webpki-roots 0.26.11",
+ "windows 0.62.2",
  "x25519-dalek",
 ]
 

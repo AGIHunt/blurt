@@ -1422,13 +1422,19 @@ impl Core {
         let txn: [u8; 12] = crypto::random();
         let (tx, rx) = tokio::sync::oneshot::channel();
         self.stun.lock().unwrap().push((txn, tx));
-        let to = tokio::net::lookup_host(relay::STUN_SERVER).await.ok()?.find(|a| a.is_ipv4())?;
-        let to = SocketAddr::new(IpAddr::V6(match to.ip() {
-            IpAddr::V4(v4) => v4.to_ipv6_mapped(),
-            IpAddr::V6(v6) => v6,
-        }), to.port());
-        udp.send_to(&relay::stun_request(&txn), to).await.ok()?;
-        let r = tokio::time::timeout(Duration::from_secs(2), rx).await.ok()?.ok();
+        for server in relay::STUN_SERVERS {
+            let Ok(Ok(mut found)) = tokio::time::timeout(Duration::from_millis(500), tokio::net::lookup_host(server)).await else { continue };
+            let Some(to) = found.find(|a| a.is_ipv4()) else { continue };
+            let to = SocketAddr::new(
+                IpAddr::V6(match to.ip() {
+                    IpAddr::V4(v4) => v4.to_ipv6_mapped(),
+                    IpAddr::V6(v6) => v6,
+                }),
+                to.port(),
+            );
+            let _ = udp.send_to(&relay::stun_request(&txn), to).await;
+        }
+        let r = tokio::time::timeout(Duration::from_secs(2), rx).await.ok().and_then(Result::ok);
         self.stun.lock().unwrap().retain(|(t, _)| *t != txn);
         r
     }
