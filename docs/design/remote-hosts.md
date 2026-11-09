@@ -42,6 +42,29 @@ started by the desktop app (`apps/desktop/src-tauri/src/remote.rs`). Behaviour, 
   the Mac's listener ignores RemoteInput's. Linux: the RemoteDesktop portal injects into the compositor, not through a `/dev/input`
   device, so the evdev listener never sees them (a uinput backend would have to be filtered by device name).
 
+## Several displays (2026-11-09)
+
+The wire: `ToPhone.displays` (every display, its frame in desktop points, which is main), `screen.display` (an id = pinned; none =
+follow the pointer), `ToMac.showDisplay` (pin, the pointer to that display's middle; none = follow), `screenView.display`.
+
+- **The backend says what's there** (`Backend::displays`, `Input::pointer_desktop`, both with defaults: no list = one display, as
+  before). The server asks every 2 s while a phone is connected, and right after the session opens; a change goes to the phone.
+- **Follow** (displays.rs, the default): the display under the pointer, but a pointer that only grazes the next one doesn't flip the
+  picture: it moves once the pointer has been on another display for 150 ms, or 20 pt into it at once. **Pinned**: the phone's choice
+  stays wherever the pointer goes; the pointer goes to its middle. A display that disappears (unplugged, a lid closed) unpins and
+  follows on the display under the pointer.
+- **A move** is `Screen::set_display` when the backend can and the two displays have the same shape (same output size); otherwise
+  the stream stops and starts again on the new display, in its own shape (`ScreenConfig.display`). Either way a screenView with the
+  display's id and size, and a keyframe; nothing from before the move is sent once it's asked for. The pointer's place goes as 0…1 of
+  the display shown, so `pointerTo` and a tap on the picture land on that display (backends map `move_to` to the display they show).
+- **Windows**: `EnumDisplayMonitors` + `GetMonitorInfoW` (`MONITORINFOEXW`): the device name (`\\.\DISPLAY2`) is the id, a monitor's
+  frame is its physical rectangle ÷ its own scale, the pointer the same way by the monitor it's on; the stream captures the monitor
+  `ScreenConfig.display` names. No in-place switch yet (the stream starts again: a WGC start, a keyframe).
+- **Linux** (left to the Linux backend): the ScreenCast portal can hand over several sources (`types: MONITOR`, `multiple: true`), one
+  PipeWire stream each, with `position` and `size` in each stream's properties: those are the displays (ids from the stream ids, or
+  the connector names Mutter gives); the pointer on the desktop from the RemoteDesktop session's absolute motion (`NotifyPointerMotionAbsolute`
+  takes a stream and a position in it). Until then the default — one display, no list — works as before.
+
 ## Measured (this Mac, loopback, 2026-11-09)
 
 | Test | Result |
@@ -52,6 +75,8 @@ started by the desktop app (`apps/desktop/src-tauri/src/remote.rs`). Behaviour, 
 | Same, over a local relay (`tools/remote-relay/server.js`, `BLURT_RELAY_ONLY`) | pairs over the relay (the question says so), the direct path opens from the session's candidates (route `direct`), keys and moves arrive |
 | `--screen-test` → `cargo run --example phone` → ffmpeg | 1280×720 H.264 at 30 fps, 2 Mbps: 239 frames in 8 s, 0 dropped, decodes cleanly, the zoomed crop half-way through is the right part |
 | Same over the relay's stream | one message a frame, 247 frames, rate starts at half (1 Mbps) and climbs (1.25, 1.56 Mbps) |
+| `tests/displays.rs` (two displays, the real server, a Rust phone) | the list right after the session; following: 5 pt into the other display is nothing for 100 ms and a switch after 150 ms, in the new display's shape (a new stream 1600×900 for 2560×1440); 25 pt in is a switch at once (< 140 ms); pinned: the picture moves, the pointer goes to the middle, the pointer elsewhere moves nothing; unpinned: back to where the pointer is; the pinned display unplugged: the new list, following on the one left; plugged back in and the pointer on it: followed; the phone leaving stops the stream |
+| `--screen-test --displays 2` → `--example phone --cross` | displays listed, the stream starts on TEST-1, the pointer pushed across → TEST-2 at 3.6 s, pinned TEST-1 → back with the pointer in its middle, each part decodes and shows its own pattern (testsrc2 / SMPTE bars) |
 | The desktop app (debug build on this Mac, real Settings → Phone over Tauri IPC, `BLURT_TEST_EVAL` to drive the page) ↔ the Rust phone | the code shows as a QR image with a 2:00 countdown; a bad relay address is refused in a sentence; the phone's question raises the window and the app-wide dialog shows the phone's own digits; Allow pairs it, the pane lists it ("last used: now"); a screen request on a host with no screen gets the plain sentence |
 
 ## Open

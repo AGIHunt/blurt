@@ -582,6 +582,11 @@ impl Input for WinInput {
         self.wheel.reset();
     }
 
+    /// Several displays: the pointer in the points `Backend::displays` uses.
+    fn pointer_desktop(&self) -> Option<(f64, f64)> {
+        monitors::cursor_points()
+    }
+
     fn pointer(&self) -> Option<(f64, f64)> {
         let (x, y) = monitors::cursor()?;
         let shown = *self.shown.lock().unwrap_or_else(|e| e.into_inner());
