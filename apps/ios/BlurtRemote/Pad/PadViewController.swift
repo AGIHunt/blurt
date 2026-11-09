@@ -24,6 +24,7 @@ final class PadViewController: UIViewController {
     /// the stage and the thumb pad's outline, when they're one glass
     private let glassOutline = CAShapeLayer()
     #if DEBUG
+    private var lastRoom = ""
     /// Pretend: a made-up desktop where the picture would be
     private let standIn = CALayer()
     #endif
@@ -545,6 +546,8 @@ final class PadViewController: UIViewController {
         surround = Surroundings.read(view)
         #if DEBUG
         if let s = Pretend.surround { surround = s }
+        let room = Surroundings.describe(view)
+        if room != lastRoom { lastRoom = room; NSLog("BLURT_ROOM %@", room) }
         #endif
         let size = view.bounds.size
         // which end has the camera, on its side: where UIKit says the camera is; before iOS 27.1, from the way the phone is turned
@@ -679,6 +682,9 @@ final class PadViewController: UIViewController {
             let w = v.edgeInsets(for: .safeArea(cornerAdaptation: .vertical))
             s.top = max(s.top, w.top)
         }
+        #if DEBUG
+        if let p = Pretend.safe { s = p }
+        #endif
         return s
     }
 

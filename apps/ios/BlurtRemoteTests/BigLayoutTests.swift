@@ -32,9 +32,9 @@ enum Rooms {
         return [
             Room(name: "iphone17pro-portrait", size: CGSize(width: 402, height: 874), safe: UIEdgeInsets(top: 62, left: 0, bottom: 34, right: 0)),
             Room(name: "iphone17pro-landscape", size: CGSize(width: 874, height: 402), safe: UIEdgeInsets(top: 0, left: 62, bottom: 21, right: 62)),
-            Room(name: "duo-outer-portrait", size: o, safe: Duo.outerPortraitSafe, surround: PadSurround(occlusions: [Duo.outerCamera(portrait: true, o)])),
+            Room(name: "duo-outer-portrait", size: o, safe: Duo.outerPortraitSafe, surround: PadSurround(occlusions: Duo.outerCamera(portrait: true, o))),
             Room(name: "duo-outer-landscape", size: CGSize(width: o.height, height: o.width), safe: Duo.outerLandscapeSafe,
-                 surround: PadSurround(occlusions: [Duo.outerCamera(portrait: false, CGSize(width: o.height, height: o.width))]), islandLeft: false),
+                 surround: PadSurround(occlusions: Duo.outerCamera(portrait: false, CGSize(width: o.height, height: o.width))), islandLeft: false),
             Room(name: "duo-inner-open", size: i, safe: Duo.innerSafe, surround: fold(i, active: false)),
             Room(name: "duo-inner-book", size: i, safe: Duo.innerSafe, surround: fold(i, active: true)),
             Room(name: "duo-inner-tall", size: it, safe: Duo.innerSafe, surround: fold(it, active: false)),

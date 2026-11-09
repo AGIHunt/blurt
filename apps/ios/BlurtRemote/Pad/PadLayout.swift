@@ -133,7 +133,8 @@ struct PadLayout {
         case .landscape:
             // a camera in the island's end that isn't in its middle (the Duo's outer one, in a corner): the controls go clear of it
             let end = CGRect(x: islandLeft ? 0 : size.width - 80, y: 0, width: 80, height: size.height)
-            let camera = surround.occlusions.first { $0.intersects(end) }
+            // (UIKit reports the lens and, around it, the region kept clear: all of it)
+            let camera = surround.occlusions.filter { $0.intersects(end) }.reduce(nil as CGRect?) { $0?.union($1) ?? $1 }
             // a window's controls along the top (iPadOS): everything starts below them
             let top = safe.top
             var p = Parts.landscape(size: CGSize(width: size.width, height: size.height - top), safe: safe, islandLeft: islandLeft,
@@ -141,9 +142,12 @@ struct PadLayout {
             if top > 0 { p.shift(dy: top) }
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
         case .portrait:
-            // the camera may take a corner (the Duo's outer display): the pad starts below it
-            var frame = CGRect(x: max(8, safe.left), y: max(safe.top - 6, 16), width: 0, height: 0)
-            frame.size = CGSize(width: size.width - frame.minX - max(8, safe.right), height: size.height - frame.minY - max(safe.bottom - 6, 12))
+            // The camera may take a corner (the Duo's outer display): the pad starts below it. There the safe area also keeps a band
+            // down one side, for the bars iOS puts there (84 pt); with the status bar hidden nothing's in it, and where UIKit says what
+            // covers the glass that's all that's avoided: the keys get the whole width
+            let known = !surround.occlusions.isEmpty
+            var frame = CGRect(x: max(8, known ? 0 : safe.left), y: max(safe.top - 6, 16), width: 0, height: 0)
+            frame.size = CGSize(width: size.width - frame.minX - max(8, known ? 0 : safe.right), height: size.height - frame.minY - max(safe.bottom - 6, 12))
             for o in surround.occlusions where o.intersects(frame) && o.minY <= frame.minY + 1 { frame = frame.divided(atDistance: o.maxY + 4 - frame.minY, from: .minYEdge).remainder }
             let p = Parts.portrait(in: frame, lefty: lefty)
             self.init(p, mode: mode, lefty: lefty, fold: surround.fold)
@@ -350,8 +354,8 @@ private struct Parts {
         // partly folded like a book: the picture on one page, a phone's remote on the other (by the hand that holds it)
         if s.book, let f = fold, f.minX > inner.minX + 200, f.maxX < inner.maxX - 200 {
             var p = Parts()
-            let leftPage = CGRect(x: inner.minX, y: inner.minY, width: f.minX - inner.minX, height: inner.height)
-            let rightPage = CGRect(x: f.maxX, y: inner.minY, width: inner.maxX - f.maxX, height: inner.height)
+            let leftPage = CGRect(x: inner.minX, y: inner.minY, width: f.minX - 8 - inner.minX, height: inner.height)       // a little off the fold
+            let rightPage = CGRect(x: f.maxX + 8, y: inner.minY, width: inner.maxX - f.maxX - 8, height: inner.height)
             let remote = lefty ? leftPage : rightPage
             p = portrait(in: remote, lefty: lefty)
             p.thumbPad = p.pad
