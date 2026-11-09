@@ -1,0 +1,26 @@
+[package]
+name = "blurt-remote"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+license = "MIT"
+publish = false
+description = "Blurt on Windows/Linux as the host for Blurt on the phone: the remote protocol (docs/design/remote-protocol.md), the session server, and each OS's screen, encoder and input"
+
+# Standalone crate (no [workspace] here on purpose: the Tauri app adds it as a path dependency).
+#   cargo test                                       protocol + crypto against tests/remote-vectors/vectors.json, server state machine
+#   cargo check --target x86_64-pc-windows-msvc      the Windows backend from a Mac
+#   cargo check (in Docker, ubuntu)                  the Linux backend
+
+[dependencies]
+# core (src/*.rs, owned by the core port)
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Windows backend (src/platform/windows): capture, encode, input
+[target.'cfg(windows)'.dependencies]
+
+# Linux backend (src/platform/linux): portal ScreenCast + RemoteDesktop, PipeWire, GStreamer
+[target.'cfg(target_os = "linux")'.dependencies]
+
+[dev-dependencies]

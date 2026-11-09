@@ -1,0 +1,12 @@
+/Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/deps/serde-94773cd95e8e00e0.d: /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/build/serde-e983c046dd9bc09b/out/private.rs
+
+/Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/deps/libserde-94773cd95e8e00e0.rmeta: /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs /Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs /Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/build/serde-e983c046dd9bc09b/out/private.rs
+
+/Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/lib.rs:
+/Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/integer128.rs:
+/Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/mod.rs:
+/Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/de.rs:
+/Users/john/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/serde-1.0.229/src/private/ser.rs:
+/Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/build/serde-e983c046dd9bc09b/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/john/workspace/bug-agent/.claude/worktrees/multi-platform-screen-mirroring-5f78a5/crates/blurt-remote/target/x86_64-pc-windows-msvc/debug/build/serde-e983c046dd9bc09b/out

@@ -519,7 +519,7 @@ final class Link: ObservableObject {
         case let .screenFailed(why):
             ScreenStream.shared.stop()
             screenError = why
-        case let .screenView(w, h):
+        case let .screenView(w, h, _):
             ScreenStream.shared.source(CGSize(width: w, height: h))
         case let .cursorShape(png, hx, hy, w, h):
             ScreenStream.shared.shape(png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))

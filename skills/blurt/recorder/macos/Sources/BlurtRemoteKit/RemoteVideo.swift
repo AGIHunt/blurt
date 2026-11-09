@@ -30,9 +30,19 @@ public struct RemoteScreenRequest: Codable, Hashable, Sendable {
     public var height: Int
     public var bitrate: Int
     public var fps: Int
-    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60) {
-        self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps
+    /// what the phone can decode, best first: "hevc", "h264". nil = HEVC only (phones before 1.0.15). The host picks the first it can
+    /// encode in hardware and says which in ToPhone.screenView. A keyframe's parameter sets are VPS, SPS, PPS for HEVC and SPS, PPS for H.264.
+    public var codecs: [String]?
+    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60, codecs: [String]? = RemoteVideoCodec.decodable) {
+        self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps; self.codecs = codecs
     }
+}
+
+public enum RemoteVideoCodec {
+    public static let hevc = "hevc"
+    public static let h264 = "h264"
+    /// what an Apple phone asks for: both decode in hardware
+    public static let decodable = [hevc, h264]
 }
 
 /// What the phone got since its last report.

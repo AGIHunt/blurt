@@ -95,10 +95,14 @@ public struct RemoteSessionInfo: Codable, Hashable, Sendable {
     public var displayAspect: Double
     /// the relay the Mac's owner set up (Settings → iPhone): the phone only tries one if there's an address here
     public var relay: String?
-    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil) {
+    /// what the computer is: "mac", "windows" or "linux" (nil from a Mac before 1.0.15). The phone's keys follow it: ⌘ on a Mac, Ctrl and
+    /// the Windows key elsewhere (docs/design/remote-protocol.md §Hosts). `macName` stays the field's name on the wire, whatever the computer.
+    public var platform: String?
+    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil, platform: String? = RemoteHost.mac.rawValue) {
         self.macName = macName; self.udpPort = udpPort; self.udpSession = udpSession; self.canControl = canControl; self.version = version
-        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay
+        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay; self.platform = platform
     }
+    public var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
 }
 
 public enum ToPhone: Codable, Sendable {
@@ -129,12 +133,18 @@ public enum ToPhone: Codable, Sendable {
     /// the two clocks at one moment, so a frame's age can be read on the phone
     case clock(phone: Double, mac: Double)
     case screenFailed(String)
-    /// what's being shown: the source's size in points
-    case screenView(width: Double, height: Double)
+    /// what's being shown: the source's size in points, and the codec its frames are in ("hevc" when nil, as from Macs before 1.0.15)
+    case screenView(width: Double, height: Double, codec: String? = nil)
     case cursorShape(png: Data, hotX: Double, hotY: Double, width: Double, height: Double)
 }
 
 /// A frame's first byte says what follows.
+/// The computer on the other end. Key names and RemoteModifiers mean the same on every host; each host maps them to its own keys:
+/// command is ⌘ on a Mac and the Windows / Super key elsewhere, control is Ctrl, option is Alt (docs/design/remote-protocol.md §Hosts).
+public enum RemoteHost: String, Codable, CaseIterable, Sendable {
+    case mac, windows, linux
+}
+
 public enum RemoteFrameKind: UInt8, Sendable {
     case control = 0    // JSON
     case audio = 1      // 16 kHz mono PCM16 little-endian

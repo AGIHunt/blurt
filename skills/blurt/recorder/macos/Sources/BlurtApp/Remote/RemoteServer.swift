@@ -854,7 +854,7 @@ final class RemoteServer {
             let main = CGDisplayBounds(CGMainDisplayID())
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: Self.relayAddress)))
+                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: Self.relayAddress, platform: RemoteHost.mac.rawValue)))
         }
         if s.channel.isRelay {
             // where the phone might reach this Mac without the relay

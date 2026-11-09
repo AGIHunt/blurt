@@ -198,7 +198,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func tellView() {
-        onInfo?(.screenView(width: source.width, height: source.height))
+        onInfo?(.screenView(width: source.width, height: source.height, codec: RemoteVideoCodec.hevc))
     }
 
     private func startTicker(fps: Int) {
