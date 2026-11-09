@@ -10,6 +10,7 @@
 //!   (where the OS has them) skip changes outside the crop, and otherwise the new NV12 output is compared byte for byte with
 //!   the last one sent, as the Mac compares its frames.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -104,6 +105,9 @@ enum Cmd {
     Rate(u32, u32),
     Keyframe,
     Refresh,
+    /// a recovery frame (a keyframe where the encoder has no long-term references)
+    Recover,
+    Acked(Vec<u64>),
     Stop,
 }
 
@@ -111,6 +115,8 @@ struct Running {
     tx: Sender<Cmd>,
     signal: Signal,
     thread: Option<JoinHandle<()>>,
+    /// the stream's encoder makes recovery frames
+    ltr: Arc<AtomicBool>,
 }
 
 pub struct WinScreen {
@@ -154,7 +160,9 @@ impl Screen for WinScreen {
         let (tx, rx) = channel();
         let (ready_tx, ready_rx) = channel();
         let signal = Signal::default();
+        let ltr = Arc::new(AtomicBool::new(false));
         let worker = Worker {
+            ltr: ltr.clone(),
             config: config.clone(),
             options: self.options,
             sink,
@@ -167,7 +175,7 @@ impl Screen for WinScreen {
             .name("blurt-remote-screen".into())
             .spawn(move || worker.run(ready_tx))
             .map_err(|e| e.to_string())?;
-        self.running = Some(Running { tx, signal, thread: Some(thread) });
+        self.running = Some(Running { tx, signal, thread: Some(thread), ltr });
         match ready_rx.recv_timeout(Duration::from_secs(10)) {
             Ok(Ok(info)) => Ok(info),
             Ok(Err(e)) => {
@@ -197,6 +205,18 @@ impl Screen for WinScreen {
         self.send(Cmd::Refresh);
     }
 
+    fn supports_recovery(&self) -> bool {
+        self.running.as_ref().is_some_and(|r| r.ltr.load(Ordering::SeqCst))
+    }
+
+    fn recovery_frame(&mut self) {
+        self.send(Cmd::Recover);
+    }
+
+    fn acknowledged(&mut self, references: &[u64]) {
+        self.send(Cmd::Acked(references.to_vec()));
+    }
+
     fn stop(&mut self) {
         if let Some(mut r) = self.running.take() {
             let _ = r.tx.send(Cmd::Stop);
@@ -216,6 +236,7 @@ impl Drop for WinScreen {
 }
 
 struct Worker {
+    ltr: Arc<AtomicBool>,
     config: ScreenConfig,
     options: Options,
     sink: FrameSink,
@@ -397,6 +418,7 @@ impl Worker {
         let (mut enc, out) = self.open_encoder(&device, src)?;
         let mut conv = Converter::new(&device, src.0, src.1, out.0, out.1, self.config.fps)?;
         let codec = enc.get().codec;
+        self.ltr.store(enc.get().has_ltr(), Ordering::SeqCst);
         {
             let mut g = self.stats.lock().unwrap_or_else(|e| e.into_inner());
             g.0 = Stats {
@@ -413,7 +435,7 @@ impl Worker {
         let (pw, ph) = monitor.points();
         let (enc_name, hardware) = (enc.get().name.clone(), enc.get().hardware);
         log(&format!(
-            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}), {} kbps {} fps",
+            "on: {} {}×{} px ({pw}×{ph} pt) → {}×{} {} via {} ({}{}), {} kbps {} fps",
             capture.kind(),
             src.0,
             src.1,
@@ -422,6 +444,7 @@ impl Worker {
             codec.wire_name(),
             enc_name,
             if hardware { "hardware" } else { "software" },
+            if enc.get().has_ltr() { ", LTR recovery frames" } else { "" },
             self.config.bitrate / 1000,
             self.config.fps
         ));
@@ -432,6 +455,7 @@ impl Worker {
         let mut crop = geometry::valid_crop(self.config.crop);
         let mut pacer = Pacer::new(self.config.fps);
         let mut want_key = true;
+        let mut want_recover = false;
         let mut sets: Vec<Vec<u8>> = annexb::parameter_sets(codec, &enc.get().header);
         let mut last_out: Vec<u8> = Vec::new();
         let mut this_out: Vec<u8> = Vec::new();
@@ -493,6 +517,12 @@ impl Worker {
                         pacer.keyframe();
                     }
                     Cmd::Refresh => pacer.refresh(),
+                    // the next frame, from the picture held if nothing new is coming
+                    Cmd::Recover => {
+                        want_recover = true;
+                        pacer.refresh();
+                    }
+                    Cmd::Acked(r) => enc.get().acknowledged(&r),
                 }
             }
             let now = monitors::now();
@@ -528,13 +558,14 @@ impl Worker {
                         last_out.clear();
                     }
                     let key = want_key || due.keyframe;
+                    let recover = want_recover && !key;
                     // 100-ns real time, increasing: a resend must not look like part of the burst before it
                     let time = ((t0.elapsed().as_secs_f64() * 1e7) as i64).max(last_time + 1);
                     last_time = time;
                     let tag = Tag { crop: shown_crop, captured: if due.forced && !due.changed { now } else { captured_at }, started };
                     let r = match &mut enc {
-                        Enc::Gpu(e) => e.encode_texture(&nv12, time, key, tag),
-                        Enc::Cpu(e) => e.encode_memory(&last_out, time, key, tag),
+                        Enc::Gpu(e) => e.encode_texture(&nv12, time, key, recover, tag),
+                        Enc::Cpu(e) => e.encode_memory(&last_out, time, key, recover, tag),
                     };
                     match r {
                         Ok(outs) => {
@@ -542,6 +573,7 @@ impl Worker {
                             if key {
                                 want_key = false;
                             }
+                            want_recover = false;
                             pacer.done(now, true);
                             for o in outs {
                                 self.emit(codec, o, &mut sets, convert_ms);
@@ -621,7 +653,8 @@ impl Worker {
             parameter_sets: if keyframe { sets.clone() } else { Vec::new() },
             crop: o.tag.crop,
             captured: o.tag.captured,
-            ..Default::default()
+            refresh: o.refresh && !keyframe,
+            reference: o.reference,
         });
     }
 }

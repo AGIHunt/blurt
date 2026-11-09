@@ -7,8 +7,15 @@
 //! * No hardware encoder: Microsoft's software H.264 encoder (synchronous, NV12 in memory), at a lower size (screen.rs).
 //! * Output is Annex B; annexb.rs turns it into the wire's form. Encoders that hand over a frame later than they took it are
 //!   handled: each output is matched to its input's tag in order.
+//! * Recovery frames (docs/design/remote-realtime.md §2): where an H.264 encoder takes CODECAPI_AVEncVideoLTRBufferControl, two
+//!   long-term reference slots (ltr.rs); a frame the phone gave up is answered with one that refers only to a slot the phone has
+//!   acknowledged (CODECAPI_AVEncVideoUseLTRFrame) instead of a keyframe. Elsewhere a recovery is a keyframe. Measured on blurt-win
+//!   (frames dropped, the rest decoded and compared with the stream without the drop): NVIDIA's H.264 MFT and Microsoft's software
+//!   H.264 MFT recover bit-exact; NVIDIA's HEVC MFT takes the controls but its "recovery" frame still predicts from the short-term
+//!   picture before it (the lost one), so HEVC gets no LTR. BLURT_REMOTE_LTR=0 turns it off, =hevc tries it on HEVC too.
 
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
@@ -19,13 +26,21 @@ use ::windows::Win32::System::Com::{CoCreateInstance, CoTaskMemFree, CLSCTX_INPR
 use ::windows::Win32::System::Variant::VARIANT;
 
 use super::annexb::Codec;
+use super::ltr::{self, Ltr, Plan};
 
 /// One encoded access unit (Annex B) and the tag its input carried.
 pub struct Output<T> {
     pub annexb: Vec<u8>,
     pub keyframe: bool,
     pub tag: T,
+    /// a recovery frame: it refers only to references the phone acknowledged
+    pub refresh: bool,
+    /// in an LTR slot: the number the phone's acknowledgement brings back
+    pub reference: Option<u64>,
 }
+
+/// Each encoder's reference numbers are its own.
+static GENERATION: AtomicU64 = AtomicU64::new(1);
 
 struct SendCom<T>(T);
 // Media Foundation's objects are free-threaded (MTA): the event generator is read on the pump thread only
@@ -47,9 +62,12 @@ pub struct Encoder<T> {
     type_fps: u32,
     fps: u32,
     bitrate: u32,
-    tags: VecDeque<T>,
+    tags: VecDeque<(T, Plan)>,
     /// parameter sets from the output type, for an encoder that doesn't repeat them before each keyframe
     pub header: Vec<u8>,
+    /// long-term references, where the encoder took LTRBufferControl
+    ltr: Option<Ltr>,
+    ltr_taken: bool,
     _manager: Option<IMFDXGIDeviceManager>,
 }
 
@@ -190,12 +208,17 @@ impl<T> Encoder<T> {
                 bitrate,
                 tags: VecDeque::new(),
                 header: Vec::new(),
+                ltr: None,
+                ltr_taken: false,
                 _manager: manager,
             };
             // some encoders take these only before the media types, some only after: both
             enc.configure();
             enc.set_types().map_err(|x| e("media types", x))?;
             enc.configure();
+            if enc.ltr_taken {
+                enc.ltr = Some(Ltr::new(GENERATION.fetch_add(1, Ordering::SeqCst)));
+            }
             let info = enc.mft.GetOutputStreamInfo(0).map_err(|x| e("stream info", x))?;
             enc.provides_samples = info.dwFlags & MFT_OUTPUT_STREAM_PROVIDES_SAMPLES.0 as u32 != 0;
             enc.out_size = info.cbSize.max(w * h * 3 / 2).max(1 << 16);
@@ -277,6 +300,22 @@ impl<T> Encoder<T> {
         self.api.as_ref().is_some_and(|a| unsafe { a.SetValue(what, &v) }.is_ok())
     }
 
+    fn supports(&self, what: &GUID) -> bool {
+        self.api.as_ref().is_some_and(|a| unsafe { a.IsSupported(what) }.is_ok())
+    }
+
+    /// Recovery frames from long-term references (else a recovery is a keyframe).
+    pub fn has_ltr(&self) -> bool {
+        self.ltr.is_some()
+    }
+
+    /// The phone decoded the frames that carried these references.
+    pub fn acknowledged(&mut self, refs: &[u64]) {
+        if let Some(l) = &mut self.ltr {
+            l.acknowledged(refs);
+        }
+    }
+
     /// Low latency, no B-frames, CBR, a long GOP, one slice, speed over the last bit of quality.
     fn configure(&mut self) {
         self.set(&CODECAPI_AVLowLatencyMode, VARIANT::from(true));
@@ -288,6 +327,12 @@ impl<T> Encoder<T> {
         }
         // 0 fastest … 100 best; real-time screen text: a little better than the fastest
         self.set(&CODECAPI_AVEncCommonQualityVsSpeed, VARIANT::from(33u32));
+        // two long-term reference slots, for recovery frames (static: before streaming)
+        let ltr = std::env::var("BLURT_REMOTE_LTR").unwrap_or_default();
+        let codec_ok = self.codec == Codec::H264 || ltr == "hevc";
+        if ltr != "0" && codec_ok && self.supports(&CODECAPI_AVEncVideoLTRBufferControl) {
+            self.ltr_taken |= self.set(&CODECAPI_AVEncVideoLTRBufferControl, VARIANT::from(ltr::BUFFER_CONTROL));
+        }
         // one slice a frame (mode 2: slices per frame)
         if self.set(&CODECAPI_AVEncSliceControlMode, VARIANT::from(2u32)) {
             self.set(&CODECAPI_AVEncSliceControlSize, VARIANT::from(1u32));
@@ -327,15 +372,15 @@ impl<T> Encoder<T> {
         }
     }
 
-    /// Encode an NV12 texture (hardware). `time`: 100-ns units, increasing.
-    pub fn encode_texture(&mut self, nv12: &ID3D11Texture2D, time: i64, keyframe: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    /// Encode an NV12 texture (hardware). `time`: 100-ns units, increasing. `recover`: a recovery frame (or a keyframe).
+    pub fn encode_texture(&mut self, nv12: &ID3D11Texture2D, time: i64, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
         let buffer = unsafe { MFCreateDXGISurfaceBuffer(&ID3D11Texture2D::IID, nv12, 0, false) }.map_err(|e| format!("surface buffer: {e}"))?;
         let s = self.sample(&buffer, time).map_err(|e| e.to_string())?;
-        self.encode(s, keyframe, tag)
+        self.encode(s, keyframe, recover, tag)
     }
 
     /// Encode NV12 in memory, rows packed (software).
-    pub fn encode_memory(&mut self, nv12: &[u8], time: i64, keyframe: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    pub fn encode_memory(&mut self, nv12: &[u8], time: i64, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
         let s = unsafe {
             let b = MFCreateMemoryBuffer(nv12.len() as u32).map_err(|e| e.to_string())?;
             let mut p = std::ptr::null_mut();
@@ -345,14 +390,24 @@ impl<T> Encoder<T> {
             b.SetCurrentLength(nv12.len() as u32).map_err(|e| e.to_string())?;
             self.sample(&b, time).map_err(|e| e.to_string())?
         };
-        self.encode(s, keyframe, tag)
+        self.encode(s, keyframe, recover, tag)
     }
 
-    fn encode(&mut self, sample: IMFSample, keyframe: bool, tag: T) -> Result<Vec<Output<T>>, String> {
+    fn encode(&mut self, sample: IMFSample, keyframe: bool, recover: bool, tag: T) -> Result<Vec<Output<T>>, String> {
         let mut outs = Vec::new();
-        if keyframe {
+        let plan = match &mut self.ltr {
+            Some(l) => l.plan(keyframe, recover),
+            None => Plan { keyframe: keyframe || recover, use_slots: 0, mark: None },
+        };
+        if plan.keyframe {
             self.force_key();
             let _ = unsafe { sample.SetUINT32(&MFSampleExtension_VideoEncodePictureType, 1) };
+        }
+        if plan.use_slots != 0 {
+            self.set(&CODECAPI_AVEncVideoUseLTRFrame, VARIANT::from(ltr::use_value(plan.use_slots)));
+        }
+        if let Some((slot, _)) = plan.mark {
+            self.set(&CODECAPI_AVEncVideoMarkLTRFrame, VARIANT::from(slot as u32));
         }
         if self.events.is_some() {
             // asynchronous: wait to be asked for input, then for the output
@@ -364,7 +419,7 @@ impl<T> Encoder<T> {
             }
             unsafe { self.mft.ProcessInput(0, &sample, 0) }.map_err(|e| format!("ProcessInput: {e}"))?;
             self.need_input -= 1;
-            self.tags.push_back(tag);
+            self.tags.push_back((tag, plan));
             // low latency: the output follows at once; one that comes later is matched up then
             let deadline = Instant::now() + Duration::from_millis(100);
             let before = outs.len();
@@ -375,7 +430,7 @@ impl<T> Encoder<T> {
             }
         } else {
             unsafe { self.mft.ProcessInput(0, &sample, 0) }.map_err(|e| format!("ProcessInput: {e}"))?;
-            self.tags.push_back(tag);
+            self.tags.push_back((tag, plan));
             while let Some(o) = self.pull()? {
                 outs.push(o);
             }
@@ -440,18 +495,57 @@ impl<T> Encoder<T> {
                 Err(e) => return Err(format!("ProcessOutput: {e}")),
             }
             let Some(sample) = sample else { return Ok(None) };
-            let (annexb, keyframe) = unsafe {
+            let (annexb, keyframe, info) = unsafe {
                 let b = sample.ConvertToContiguousBuffer().map_err(|e| e.to_string())?;
                 let mut p = std::ptr::null_mut();
                 let mut len = 0u32;
                 b.Lock(&mut p, None, Some(&mut len)).map_err(|e| e.to_string())?;
                 let v = std::slice::from_raw_parts(p, len as usize).to_vec();
                 let _ = b.Unlock();
-                (v, sample.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0)
+                (
+                    v,
+                    sample.GetUINT32(&MFSampleExtension_CleanPoint).unwrap_or(0) != 0,
+                    sample.GetUINT32(&MFSampleExtension_LongTermReferenceFrameInfo).ok(),
+                )
             };
-            let Some(tag) = self.tags.pop_front() else { continue };
-            return Ok(Some(Output { annexb, keyframe, tag }));
+            let Some((tag, plan)) = self.tags.pop_front() else { continue };
+            let (refresh, reference) = self.checked(&plan, keyframe, info);
+            return Ok(Some(Output { annexb, keyframe, tag, refresh, reference }));
         }
+    }
+}
+
+impl<T> Encoder<T> {
+    /// What the encoder really did with a frame's plan, where it says (MFSampleExtension_LongTermReferenceFrameInfo): a mark it
+    /// didn't make is forgotten; a recovery that used no long-term reference isn't one, and LTR is given up (recoveries are
+    /// keyframes from then on). → (refresh, reference)
+    fn checked(&mut self, plan: &Plan, keyframe: bool, info: Option<u32>) -> (bool, Option<u64>) {
+        let mut reference = plan.mark.map(|m| m.1);
+        let mut refresh = plan.use_slots != 0 && !keyframe;
+        if let Some((slot, used)) = info.map(ltr::info) {
+            if let (Some((want, n)), true) = (plan.mark, slot != plan.mark.map(|m| m.0)) {
+                log(&format!("LTR: frame {n} meant for slot {want} went into {slot:?}"));
+                if let Some(l) = &mut self.ltr {
+                    l.unmarked(n);
+                }
+                reference = None;
+            }
+            if refresh && used == 0 {
+                log("LTR: the recovery frame used no long-term reference; recoveries are keyframes from now on");
+                self.ltr = None;
+                refresh = false;
+            }
+        }
+        if self.ltr.is_none() {
+            reference = None;
+        }
+        (refresh, reference)
+    }
+}
+
+fn log(s: &str) {
+    if std::env::var_os("BLURT_REMOTE_LOG").is_some() {
+        eprintln!("remote encoder (windows): {s}");
     }
 }
 
