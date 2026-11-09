@@ -93,7 +93,24 @@ fn set(e: &gst::Element, name: &str, value: &str) {
     }
 }
 
-fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32) {
+/// The longest keyframe interval each element takes, for a phone that repairs (docs/design/remote-realtime.md §Host 6): it asks for
+/// one when it needs it, and a keyframe every 10 s of scrolling was 100–170 KB at once with the frames around it starved.
+fn gop(element: &str, repairs: bool) -> &'static str {
+    if !repairs {
+        return "600";
+    }
+    match element {
+        "x264enc" => "2147483647",
+        "x265enc" | "openh264enc" => "600",
+        _ if element.starts_with("nv") => "-1",
+        // VA's key-int-max stops at 1024
+        _ if element.starts_with("va") && !element.starts_with("vaapi") => "1024",
+        _ => "600",
+    }
+}
+
+fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32, repairs: bool) {
+    let key_int = gop(element, repairs);
     let bitrate = nominal_bitrate(bitrate, fps);
     // the VBV in nominal time: about `vbv_ms(fps)` of real time
     let vbv = (super::math::vbv_ms(fps) * fps.clamp(1, NOMINAL_FPS) / NOMINAL_FPS).max(20);
@@ -106,7 +123,7 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32) {
             set(e, "speed-preset", "superfast");
             set(e, "bitrate", &kbps);
             set(e, "vbv-buf-capacity", &vbv.to_string());
-            set(e, "key-int-max", "600");
+            set(e, "key-int-max", key_int);
             set(e, "bframes", "0");
             // said again: x264enc applies its own properties over the tune, and its defaults (frame threads, sync
             // lookahead) hold a frame back
@@ -137,7 +154,7 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32) {
             set(e, "bitrate", &kbps);
             set(e, "b-frames", "0");
             set(e, "ref-frames", "1");
-            set(e, "key-int-max", "600");
+            set(e, "key-int-max", key_int);
             set(e, "target-usage", "6");
             set(e, "cpb-size", &(bitrate_value(element, bitrate) * vbv / 1000).max(100).to_string());
         }
@@ -154,7 +171,7 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32) {
             set(e, "preset", "low-latency-hp");
             set(e, "rc-mode", "cbr");
             set(e, "bitrate", &kbps);
-            set(e, "gop-size", "600");
+            set(e, "gop-size", key_int);
             set(e, "bframes", "0");
             set(e, "b-frames", "0");
             set(e, "zerolatency", "true");
@@ -174,7 +191,9 @@ fn configure(e: &gst::Element, element: &str, bitrate: u32, fps: u32) {
 
 impl Encoder {
     /// A pipeline for `element` (math::choose_encoder) at the output size, frames to `sink`: (unit, crop, captured, encode ms).
-    pub fn new(element: &str, codec: Codec, width: u32, height: u32, bitrate: u32, fps: u32, sink: UnitSink) -> Result<Encoder, String> {
+    /// `repairs`: the phone repairs the picture (no periodic keyframes).
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(element: &str, codec: Codec, width: u32, height: u32, bitrate: u32, fps: u32, repairs: bool, sink: UnitSink) -> Result<Encoder, String> {
         init()?;
         let format = super::math::encoder_format(element);
         let (parse, caps) = match codec {
@@ -199,7 +218,7 @@ impl Encoder {
             .map_err(|_| "not a pipeline".to_string())?;
         let src = pipeline.by_name("src").and_then(|e| e.downcast::<gst_app::AppSrc>().ok()).ok_or("no appsrc")?;
         let enc = pipeline.by_name("enc").ok_or("no encoder")?;
-        configure(&enc, element, bitrate, fps);
+        configure(&enc, element, bitrate, fps, repairs);
         let appsink = pipeline.by_name("sink").and_then(|e| e.downcast::<gst_app::AppSink>().ok()).ok_or("no appsink")?;
         let pending: Arc<Mutex<VecDeque<InFlight>>> = Arc::default();
         let p2 = pending.clone();
@@ -381,7 +400,7 @@ mod tests {
         }
         let got: Got = Arc::default();
         let g = got.clone();
-        let e = Encoder::new("x264enc", Codec::H264, out.0, out.1, bitrate, 60, Arc::new(move |u, c, cap, ms| g.lock().unwrap().push((u, c, cap, ms))))
+        let e = Encoder::new("x264enc", Codec::H264, out.0, out.1, bitrate, 60, false, Arc::new(move |u, c, cap, ms| g.lock().unwrap().push((u, c, cap, ms))))
             .expect("x264 pipeline");
         Some((e, got))
     }

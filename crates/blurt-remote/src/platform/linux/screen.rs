@@ -1,7 +1,8 @@
 //! host.rs Screen: the portal's monitor stream (capture.rs) → the mirror → the crop, cut at the rate asked → the encoder.
 //!
 //! One feeder thread decides what's encoded and when:
-//!  • a changed frame whose damage touches the crop, no sooner than 1/fps after the last (the latest waits, never a queue);
+//!  • a changed frame whose damage touches the crop, at `fps` on average (credit.rs: a frame time earns a frame, up to 1.5 saved,
+//!    and one may go with 0.45 of one; the latest waits for its turn, never a queue);
 //!  • a new crop: cut again from the mirror at once, so the phone's view sharpens even on a still screen;
 //!  • a cut identical to the last one (a change elsewhere, a pointer-only update): nothing;
 //!  • `refresh` / `keyframe`: the last cut again (as a keyframe if asked), for the encoder to sharpen or to start over.
@@ -132,7 +133,7 @@ impl Screen for LinuxScreen {
             }
             sink(EncodedFrame { picture: u.picture, keyframe: u.keyframe, parameter_sets: u.parameter_sets, crop, captured, ..Default::default() });
         });
-        let enc = Encoder::new(&element, Codec::from_name(codec), ow, oh, config.bitrate, config.fps, enc_sink)?;
+        let enc = Encoder::new(&element, Codec::from_name(codec), ow, oh, config.bitrate, config.fps, config.repairs, enc_sink)?;
         if std::env::var_os("BLURT_REMOTE_DEBUG").is_some() {
             eprintln!("blurt-remote: screen {src_w}×{src_h} px ({}×{} pt) → {ow}×{oh} {codec} by {element}", stream.size.0, stream.size.1);
         }
@@ -210,7 +211,7 @@ type Timing = Arc<Mutex<(u32, f64, f64)>>;
 fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, now: fn() -> f64, timing: Timing) {
     let (m, cv) = &*feed;
     let mut last: Option<(Rect, Arc<Vec<u8>>, &'static str)> = None;
-    let mut next_due = Instant::now();
+    let mut credit = crate::credit::FrameCredit::new(m.lock().unwrap().fps);
     let mut stats = (Instant::now(), 0u32);
     loop {
         let mut f = m.lock().unwrap();
@@ -218,12 +219,14 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
             if f.stop {
                 return;
             }
-            let due = Instant::now() >= next_due && !enc.busy();
+            credit.set_fps(f.fps);
+            let turn = credit.wait(now());
+            let due = turn <= 0.0 && !enc.busy();
             if (f.dirty && due) || f.refresh || (f.want_key && due) || f.bitrate.is_some() {
                 break;
             }
             // the encoder finishing doesn't wake this: a busy one is looked at again each millisecond
-            let wait = if f.dirty || f.want_key { next_due.saturating_duration_since(Instant::now()) } else { Duration::from_millis(500) };
+            let wait = if f.dirty || f.want_key { Duration::from_secs_f64(turn.max(0.0)) } else { Duration::from_millis(500) };
             f = cv.wait_timeout(f, wait.max(Duration::from_millis(1))).unwrap().0;
         }
         if let Some(b) = f.bitrate.take() {
@@ -232,7 +235,6 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
         let crop = f.crop.unwrap_or(Crop::WHOLE);
         let (dirty, refresh, key) = (f.dirty, f.refresh, f.want_key);
         let captured = if dirty { f.captured.max(0.0) } else { now() };
-        let fps = f.fps;
         if !(dirty || refresh || key) {
             continue;
         }
@@ -272,7 +274,7 @@ fn feeder(feed: Arc<(Mutex<Feed>, Condvar)>, shared: Arc<Shared>, enc: Encoder, 
             eprintln!("blurt-remote: encoder: {e}");
         }
         last = Some((r, px, fmt));
-        next_due = Instant::now() + Duration::from_secs_f64((1.0 / fps as f64 - 0.003).max(0.0));
+        credit.spend(now());
         stats.1 += 1;
         if std::env::var_os("BLURT_REMOTE_DEBUG").is_some() && stats.0.elapsed() > Duration::from_secs(2) {
             let mut t = timing.lock().unwrap();
