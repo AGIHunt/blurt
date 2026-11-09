@@ -318,8 +318,13 @@ pub struct Receiver {
     asked_at: f64,
     /// when frame `next` was first seen to be late
     late_since: Option<f64>,
+    /// how long it has been late while pieces were arriving and the phone was running: what the patience is measured against
+    late_for: f64,
     /// when any piece last arrived: nothing at all for a while is a stall, not a loss
     heard_at: f64,
+    /// when `tick` last ran: one much later than the last means the phone itself wasn't running (a hitch), not that the network lost
+    /// anything; what arrived meanwhile hasn't been read yet
+    ticked_at: Option<f64>,
     acks: Vec<u32>,
     acked_at: f64,
     pub dropped: usize,
@@ -331,6 +336,8 @@ pub struct Receiver {
 const QUIET: f64 = 0.02;
 /// a stall this long is given up on regardless
 const LONGEST: f64 = 0.35;
+/// ticks further apart than this: the phone was busy (a frame at 60 Hz without one)
+const AWAY: f64 = 0.015;
 
 impl Receiver {
     pub fn new(nack: bool, ltr: bool, now: f64) -> Receiver {
@@ -347,7 +354,9 @@ impl Receiver {
             broken_at: now,
             asked_at: -1.0,
             late_since: None,
+            late_for: 0.0,
             heard_at: -1.0,
+            ticked_at: None,
             acks: vec![],
             acked_at: -1.0,
             dropped: 0,
@@ -518,8 +527,17 @@ impl Receiver {
     }
 
     /// Timers: missing pieces asked for, frames given up, the host asked to start over. Call every few ms while the picture is on.
+    /// The patience counts only while pieces arrive and the phone is running. In a stall nothing can be asked again, and when it ends
+    /// the piece asked for gets its retry before the frame is given up. A tick long after the last one gives nothing up: the phone was
+    /// busy, and the pieces that came meanwhile (the one asked for among them) are still to be read.
     pub fn tick(&mut self, now: f64) -> Vec<Output> {
         let mut out = vec![];
+        let since_tick = self.ticked_at.map_or(0.0, |t| now - t);
+        let away = since_tick > AWAY;
+        if let (true, Some(since)) = (away, self.late_since.as_mut()) {
+            *since += since_tick;
+        }
+        self.ticked_at = Some(now);
         // a frame that can't come: give up on it, and everything behind it waits for a refresh
         if let (false, Some(n)) = (self.broken, self.next) {
             let late = match self.partials.get(&n) {
@@ -527,9 +545,20 @@ impl Receiver {
                 None => self.newest.is_some_and(|x| x >= n),
             };
             if late {
-                let since = *self.late_since.get_or_insert(now);
                 let stalled = now - self.heard_at > QUIET;
-                if now - since >= self.patience() && (!stalled || now - since >= LONGEST) {
+                let since = match self.late_since {
+                    Some(s) => {
+                        if !away && !stalled {
+                            self.late_for += since_tick;
+                        }
+                        s
+                    }
+                    None => {
+                        self.late_for = 0.0;
+                        *self.late_since.insert(now)
+                    }
+                };
+                if !away && ((self.late_for >= self.patience() && !stalled) || now - since >= LONGEST) {
                     self.broken = true;
                     self.broken_at = now;
                     self.asked_at = -1.0;
@@ -1004,6 +1033,65 @@ mod tests {
         assert!(asked <= 1, "the end of the frame asked for once, not again into the stall");
         assert_eq!(frames(&feed(&mut r, f2[1..].to_vec(), 0.137)), [2]);
         assert!(!r.broken);
+    }
+
+    #[test]
+    fn a_hitch_on_the_phone_gives_nothing_up() {
+        // the phone stops for 60 ms (a busy CPU, the process descheduled) while the piece asked for is on its way: the tick that
+        // comes after reads nothing yet, so it mustn't give the frame up; the piece, read next, completes it
+        let mut r = Receiver::new(true, true, 0.0);
+        r.rtt = 0.002;
+        feed(&mut r, key(1), 0.0);
+        let f2 = plain(2);
+        feed(&mut r, f2.iter().filter(|p| p.index != 1).cloned(), 0.016);
+        feed(&mut r, plain(3), 0.032);
+        assert_eq!(feedback(&r.tick(0.033)), [Feedback::Nack(vec![Missing { frame: 2, pieces: vec![1] }])]);
+        // back after 60 ms: the first piece read (heard just now, so it doesn't look like a stall), then the timers, then the rest
+        feed(&mut r, plain(4), 0.094);
+        let out = r.tick(0.094);
+        assert!(!feedback(&out).iter().any(|f| matches!(f, Feedback::Lost { .. })), "gave up after a hitch: {out:?}");
+        assert!(!r.broken);
+        assert_eq!(frames(&feed(&mut r, [f2[1].clone()], 0.095)), [2, 3, 4]);
+        assert_eq!(r.dropped, 0);
+        // a piece that really is gone is still given up on, the hitch not counted
+        feed(&mut r, plain(5).into_iter().filter(|p| p.index != 0), 0.096);
+        let (mut t, mut n, mut lost) = (0.098f64, 6u32, None);
+        while t < 0.4 && lost.is_none() {
+            if t >= 0.096 + 0.016 * (n - 5) as f64 {
+                feed(&mut r, plain(n), t);
+                n += 1;
+            }
+            if feedback(&r.tick(t)).contains(&Feedback::Lost { after: 4 }) {
+                lost = Some(t);
+            }
+            t += 0.002;
+        }
+        let lost = lost.expect("a lost piece is still given up");
+        assert!(lost < 0.097 + r.patience() + 0.05, "{lost}");
+    }
+
+    #[test]
+    fn after_a_stall_the_piece_asked_for_gets_its_retry() {
+        // the end of frame 2 is lost, asked for, and then nothing comes for 80 ms (Wi-Fi's stall, or the sender stopped): when the
+        // next frame's first piece arrives the frame has been late longer than the patience, but only in the stall
+        let mut r = Receiver::new(true, true, 0.0);
+        r.rtt = 0.002;
+        feed(&mut r, key(1), 0.0);
+        let f2 = plain(2);
+        feed(&mut r, f2[..1].to_vec(), 0.016);
+        let mut t = 0.02;
+        let mut asked = vec![];
+        while t < 0.13 {
+            asked.extend(feedback(&r.tick(t)));
+            t += 0.004;
+        }
+        assert_eq!(asked, [Feedback::Nack(vec![Missing { frame: 2, pieces: vec![1, 2] }])], "asked once, then the stall");
+        feed(&mut r, plain(3)[..1].to_vec(), 0.13);
+        let out = r.tick(0.13);
+        assert!(!feedback(&out).iter().any(|f| matches!(f, Feedback::Lost { .. })), "gave up as the stall ended: {out:?}");
+        assert_eq!(feedback(&out), [Feedback::Nack(vec![Missing { frame: 2, pieces: vec![1, 2] }])], "asked again at once");
+        assert_eq!(frames(&feed(&mut r, f2[1..].to_vec(), 0.134)), [2]);
+        assert_eq!(r.dropped, 0);
     }
 
     #[test]

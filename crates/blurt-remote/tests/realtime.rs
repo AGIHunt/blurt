@@ -6,8 +6,13 @@
 //! Each stage runs 1 s of warm-up and BLURT_REALTIME_SECONDS (default 4) measured; `cargo test --test realtime -- --nocapture` prints
 //! the table. The synthetic encoder makes recovery frames the way an LTR encoder does: every 4th frame a reference, and after a loss a
 //! small frame from an acknowledged one (a keyframe if none is).
+//!
+//! Host, encoder and phone share one process, so a shared CI runner that stops it (another VM's turn, a cgroup's quota spent) shows
+//! up as a gap no repair could close. A watchdog thread measures those stops; the limits on the longest gap and frames shown allow
+//! for them (the longest, and all of them), while frames given up, keyframes asked and what's rebuilt stay strict.
 
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -81,7 +86,9 @@ impl Screen for Synth {
             let t0 = Instant::now();
             loop {
                 seq += 1;
-                // the app draws at 60 Hz whatever is asked
+                // the app draws at 60 Hz whatever is asked; a capture shows what's on screen now, so the frames missed while the
+                // process was stopped aren't made up afterwards in one burst
+                seq = seq.max((t0.elapsed().as_secs_f64() * 60.0) as u32);
                 let due = t0 + Duration::from_secs_f64(seq as f64 / 60.0);
                 if let Some(d) = due.checked_duration_since(Instant::now()) {
                     std::thread::sleep(d);
@@ -225,6 +232,43 @@ fn request(repairs: bool) -> ScreenRequest {
     }
 }
 
+/// When the whole process stopped, and for how long (s): a thread that sleeps 1 ms at a time and notes when it woke much later.
+#[derive(Clone, Default)]
+struct Stops(Arc<Mutex<Vec<(f64, f64)>>>);
+
+impl Stops {
+    fn watch(&self, done: Arc<AtomicBool>) {
+        let stops = self.0.clone();
+        std::thread::spawn(move || {
+            while !done.load(Ordering::Relaxed) {
+                let t = Instant::now();
+                std::thread::sleep(Duration::from_millis(1));
+                let late = t.elapsed().as_secs_f64() - 0.001;
+                if late > 0.005 {
+                    stops.lock().unwrap().push((now() - late, late));
+                }
+            }
+        });
+    }
+
+    /// The longest stop and all of them added up, within `from..to`.
+    fn within(&self, from: f64, to: f64) -> (f64, f64) {
+        let s = self.0.lock().unwrap();
+        let cut = s.iter().map(|(at, d)| (at + d).min(to) - at.max(from)).filter(|d| *d > 0.0);
+        cut.fold((0.0, 0.0), |(longest, total), d| (f64::max(longest, d), total + d))
+    }
+}
+
+/// One stage, measured: what the phone saw, the host's side, and how long the process was stopped (the longest stop, all of them; s).
+struct Run {
+    name: &'static str,
+    m: Measure,
+    resent: i64,
+    parity: i64,
+    rate: u32,
+    stopped: (f64, f64),
+}
+
 struct Stage {
     name: &'static str,
     repairs: bool,
@@ -236,6 +280,8 @@ async fn loss_is_repaired_not_restarted() {
     let seconds: f64 = std::env::var("BLURT_REALTIME_SECONDS").ok().and_then(|s| s.parse().ok()).unwrap_or(4.0);
     let dir = std::env::temp_dir().join(format!("blurt-remote-realtime-{}", blurt_remote::crypto::new_id()));
     let synth = Synth { st: Arc::new(Mutex::new(SynthSt::default())), recovery: true };
+    let (stops, done) = (Stops::default(), Arc::new(AtomicBool::new(false)));
+    stops.watch(done.clone());
     let logs = Logs::default();
     let h = Host::start(
         HostConfig { dir: dir.clone(), name: "Loopback".into(), version: "1.0.15".into(), test_answer: Some(true), port: 0 },
@@ -272,54 +318,65 @@ async fn loss_is_repaired_not_restarted() {
         Stage { name: "80 ms stall every 2 s, repairs", repairs: true, weather: Weather::parse(None, Some("80:2"), 3) },
         Stage { name: "3 %, bursts of 3, 60 ms round trip, repairs", repairs: true, weather: far(0.03, 3.0, 5) },
     ];
-    let mut results: Vec<(&str, Measure, i64, i64, i64, u32, usize)> = vec![];
+    let mut results: Vec<Run> = vec![];
     for st in stages {
         logs.take();
         let before = synth.st.lock().unwrap().recoveries;
+        let from = now() + 1.0;
         let m = phone
             .watch(Watch { request: request(st.repairs), warmup: 1.0, seconds, weather: st.weather, verify: Some(verify) })
             .await;
+        let stopped = stops.within(from, now());
         tokio::time::sleep(Duration::from_millis(300)).await;
         let lines = logs.take();
         let (resent, parity, ignored) =
             (sum(&lines, "remote_screen_host", "resent"), sum(&lines, "remote_screen_host", "parity"), sum(&lines, "remote_screen_host", "resend_ignored"));
         let rate = synth.st.lock().unwrap().bitrate;
         let recoveries = synth.st.lock().unwrap().recoveries - before;
-        println!("{:<44} {m}\n{:<44} host: resent {resent}, parity {parity}, resend ignored {ignored}, recoveries {recoveries}, bitrate after {:.1} Mbps",
-            st.name, "", rate as f64 / 1e6);
-        results.push((st.name, m, resent, parity, ignored, rate, recoveries));
+        println!("{:<44} {m}\n{:<44} host: resent {resent}, parity {parity}, resend ignored {ignored}, recoveries {recoveries}, bitrate after {:.1} Mbps; \
+                  process stopped: longest {:.0} ms, {:.0} ms in all",
+            st.name, "", rate as f64 / 1e6, stopped.0 * 1000.0, stopped.1 * 1000.0);
+        results.push(Run { name: st.name, m, resent, parity, rate, stopped });
     }
+    done.store(true, Ordering::Relaxed);
     h.stop();
     let _ = std::fs::remove_dir_all(dir);
 
-    let get = |n: &str| results.iter().find(|r| r.0 == n).unwrap();
+    let get = |n: &str| results.iter().find(|r| r.name == n).unwrap();
+    // stops of the whole process: the longest gap may be longer by the longest and a quarter more (the backlog read after it), and
+    // frames shown as many as the time running allows (nothing is captured while stopped)
+    let gap = |r: &Run| 150.0 + 1.25 * r.stopped.0 * 1000.0;
+    let fps = |least: f64, r: &Run| least * (1.0 - r.stopped.1 / seconds);
     // clean: every frame, nothing asked
-    let clean = &get("clean, repairs").1;
-    assert!(clean.fps > 57.0, "{clean}");
+    let run = get("clean, repairs");
+    let clean = &run.m;
+    assert!(clean.fps > fps(57.0, run), "{clean}");
     assert_eq!((clean.keyframes_asked, clean.dropped, clean.corrupt), (0, 0, 0), "{clean}");
     assert_eq!(clean.features.as_deref(), Some(&["fec".to_string(), "ltr".into(), "nack".into()][..]));
     for name in ["1 %, bursts of 2, repairs", "3 %, bursts of 3, repairs", "1 %, independent, repairs", "80 ms stall every 2 s, repairs"] {
-        let (_, m, resent, _, _, rate, _) = get(name);
-        assert!(m.fps > 56.0, "{name}: {m}");
+        let run = get(name);
+        let (m, resent, rate) = (&run.m, run.resent, run.rate);
+        assert!(m.fps > fps(56.0, run), "{name}: {m}; the process stopped for {:.0} ms in all", run.stopped.1 * 1000.0);
         assert_eq!(m.keyframes_asked, 0, "{name}: {m}");
         assert!(m.dropped <= 2, "{name}: {m}");
         assert_eq!(m.corrupt, 0, "{name}: what was sent again or rebuilt is what was sent: {m}");
-        assert!(m.longest_gap_ms < 150.0, "{name}: {m}");
+        assert!(m.longest_gap_ms < gap(run), "{name}: {m}; the process stopped for {:.0} ms at most", run.stopped.0 * 1000.0);
         // one backoff step (12 -> 10.5) is fine on a busy runner; collapsing to a third is not
-        assert!(*rate >= 9_000_000, "{name}: the rate stays near the top, not a third of it ({rate})");
+        assert!(rate >= 9_000_000, "{name}: the rate stays near the top, not a third of it ({rate})");
         if m.weather_dropped > 0 && !name.contains("stall") {
-            assert!(*resent > 0, "{name}");
+            assert!(resent > 0, "{name}");
         }
     }
     // before: the old way, for comparison
     for (with, without) in [("1 %, bursts of 2, repairs", "1 %, bursts of 2, before"), ("3 %, bursts of 3, repairs", "3 %, bursts of 3, before")] {
-        let (a, b) = (&get(with).1, &get(without).1);
+        let (a, b) = (&get(with).m, &get(without).m);
         assert!(b.keyframes_asked > 0, "{without}: {b}");
         assert!(a.fps > b.fps + 5.0, "{with} {a} against {without} {b}");
     }
     // away from home: parity takes over part of the mending
-    let (_, m, _, parity, _, _, _) = get("3 %, bursts of 3, 60 ms round trip, repairs");
-    assert!(*parity > 0, "parity at a 60 ms round trip and 3 % loss: {m}");
+    let run = get("3 %, bursts of 3, 60 ms round trip, repairs");
+    let m = &run.m;
+    assert!(run.parity > 0, "parity at a 60 ms round trip and 3 % loss: {m}");
     assert!(m.repaired > 0, "{m}");
-    assert!(m.fps > 50.0, "{m}");
+    assert!(m.fps > fps(50.0, run), "{m}");
 }
