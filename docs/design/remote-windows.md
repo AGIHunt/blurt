@@ -185,7 +185,7 @@ netsh advfirewall firewall add rule name="Blurt (phone)" dir=in action=allow pro
 
 (the first line clears a block rule a cancelled prompt left). Both need an administrator once, through one UAC prompt.
 
-What the app should do (proposed, not done; the installer isn't changed here):
+What the app should do (proposed; what's done since is under **Implemented** below):
 
 1. **Before listening for the first time** (Add Phone), say what's coming: "Windows will ask whether Blurt may accept connections from
    your phone. Choose Allow (Private networks)." The prompt then reads as expected, not as an alarm.
@@ -200,3 +200,28 @@ What the app should do (proposed, not done; the installer isn't changed here):
    `NSIS_HOOK_POSTINSTALL` with the same netsh line, and remove it in `NSIS_HOOK_POSTUNINSTALL`.
 4. **When the phone can't connect on the local network but the relay works,** the phone should say so ("Connected through your relay:
    Windows' firewall may be blocking the local network") rather than nothing.
+
+**Implemented (2026-11-09; apps/desktop/src-tauri/src/remote_firewall.rs, PhonePane.tsx):**
+
+- **The check** (2): `INetFwPolicy2` through COM, no administrator: the active profiles (`CurrentProfileTypes`), whether the firewall is
+  on in each, "block all inbound", the default inbound action, and every inbound rule whose program is this exe (`%VAR%`s expanded,
+  case ignored). `RemoteStatus.firewall` is `"blocked"` when any active profile with the firewall on blocks the exe's TCP or UDP, or
+  has no rule allowing both (inbound defaults to block); `"ok"` otherwise; `"unknown"` when COM couldn't read it. It runs when the
+  host starts listening, when Settings shows the code, and when the network's profile changes (the profile types polled every
+  10 s while listening). Not through `problem`: a field of its own, so the pane can put the button with it.
+- **The fix**: `remote_allow_firewall`, only from the button. One `cmd.exe /d /s /c "<the two netsh lines above>"`, started with
+  `ShellExecuteExW` and the `runas` verb (Windows' own UAC prompt), hidden, waited for (up to 2 min), then the check again. Declined:
+  still `"blocked"`, no error. An exe path with `" & | ^ < > %` in it isn't put on a command line (nothing runs; logged).
+- **Settings → Phone**: "Windows Firewall is blocking phones on this network." / "Windows 防火墙挡住了这个网络上的手机。", the line
+  that Windows will ask for an administrator's permission, and **Allow…**, above the pairing area (`?phone=firewall` in the browser
+  stand-in).
+- **Uninstall** (3): the per-user uninstaller isn't elevated, so `NSIS_HOOK_POSTUNINSTALL` (installer/hooks.nsh) looks for the rule
+  (`netsh … show rule name="Blurt (phone)"`, no rights needed) and only if it's there deletes it through one UAC prompt
+  (`ExecShellWait runas`). Never in a silent run (updates): the rule still fits the same exe path. Declined: the rule stays, pointing
+  at an exe that's gone. The hook compiles with makensis 3; the uninstaller hasn't been run on Windows.
+- **On blurt-win** (Public profile, firewall on; the check built alone as a probe exe, run over SSH): no rule
+  → `blocked` (21 ms); the fix's own command line run in the (already elevated) SSH session → one rule, In, Private,Public,
+  protocol Any, program = the exe, Allow → `ok` (19 ms); a UDP block rule beside it → `blocked`; both deleted → `blocked`. The UAC
+  prompt itself wasn't clicked (it shows in the console session, out of reach over SSH). Found there: a COM object released after
+  `CoUninitialize` crashed the process (0xC0000005); the release order is explicit now.
+- Not done: (1) the word before listening, "This is my home network", and (4) on the phone.

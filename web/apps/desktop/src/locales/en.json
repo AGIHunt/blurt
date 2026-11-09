@@ -862,5 +862,8 @@
   "phone.control.linux": "Remote control isn’t allowed yet",
   "phone.control.linux.detail": "Your phone can’t move the pointer or press keys until you allow it. When the desktop asks about Remote Desktop for Blurt, allow it. It asks only once.",
   "phone.control.win": "Can’t control the window in front",
-  "phone.control.win.detail": "It runs as administrator. Windows lets your phone control it only when Blurt also runs as administrator."
+  "phone.control.win.detail": "It runs as administrator. Windows lets your phone control it only when Blurt also runs as administrator.",
+  "phone.firewall": "Windows Firewall is blocking phones on this network.",
+  "phone.firewall.detail": "Windows will ask for an administrator’s permission.",
+  "phone.firewall.allow": "Allow…"
 }

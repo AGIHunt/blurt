@@ -100,6 +100,29 @@ describe('browser stand-in', () => {
     expect(s.connected).toBeNull();
     off();
   });
+  it('Windows Firewall: ?phone=firewall starts blocked, Allow… makes it ok', async () => {
+    vi.resetModules();
+    vi.stubGlobal('location', { search: '?phone=firewall' });
+    try {
+      const m = await import('../mock');
+      let s = await m.mockInvoke<RemoteStatus>('remote_status');
+      expect(s.firewall).toBe('blocked');
+      s = await m.mockInvoke<RemoteStatus>('remote_allow_firewall');
+      expect(s.firewall).toBe('ok');
+    } finally {
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    }
+  });
+  it('off Windows, or allowed: the firewall is ok', async () => {
+    expect((await mockInvoke<RemoteStatus>('remote_status')).firewall).toBe('ok');
+  });
+  it('the firewall notice in plain words', () => {
+    expect(EN['phone.firewall']).toBe('Windows Firewall is blocking phones on this network.');
+    expect(ZH['phone.firewall']).toBe('Windows 防火墙挡住了这个网络上的手机。');
+    expect(EN['phone.firewall.allow']).toBe('Allow…');
+    expect(ZH['phone.firewall.allow']).toBe('允许…');
+  });
   it('a relay address: refused when it isn’t one, cleared with ""', async () => {
     await expect(mockInvoke('remote_set_relay', { address: 'http://x' })).rejects.toBeTruthy();
     let s = await mockInvoke<RemoteStatus>('remote_set_relay', { address: 'wss://relay.example.com' });

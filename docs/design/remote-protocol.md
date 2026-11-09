@@ -168,6 +168,7 @@ Tauri commands, in `apps/desktop/src-tauri/src/remote.rs`; the React pane in `we
 | `remote_check_relay` | `{ address: string }` → `bool` |
 | `remote_set_screen_allowed` | `{ on: bool }` → `RemoteStatus` |
 | `remote_relay_instructions` | → `string` (the prompt for Claude Code / Codex, as RemotePane.swift's Copy Instructions) |
+| `remote_allow_firewall` | → `RemoteStatus` (Windows, on the owner's click only: Blurt's inbound rule through Windows' UAC prompt, waited for, then `firewall` checked again; a declined prompt leaves it `"blocked"`, no error; elsewhere it only answers) |
 
 Event `remote://status` carries a fresh `RemoteStatus` whenever it changes:
 
@@ -182,5 +183,7 @@ type RemoteStatus = {
   screenAllowed: boolean
   canControl: boolean          // false: Wayland's Remote Desktop not granted yet, or an elevated window in front on Windows
   problem: string | null       // a sentence for the user, localised
+  firewall: "ok" | "blocked" | "unknown" // Windows Defender Firewall keeps phones out on this network (remote_allow_firewall);
+                               // "unknown": it couldn't be read; always "ok" off Windows (added 2026-11-09)
 }
 ```
