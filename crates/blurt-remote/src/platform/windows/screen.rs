@@ -391,7 +391,7 @@ impl Worker {
                 log(&format!("capture: {e}"));
                 "Windows wouldn't let Blurt capture the screen.".to_string()
             })?,
-            Source::Synthetic { width, height } => Capture::Synthetic(Synthetic::new(&device, width, height, self.config.fps)?),
+            Source::Synthetic { width, height } => Capture::Synthetic(Synthetic::new(&device, width, height, self.config.capture_fps.max(self.config.fps))?),
         };
         let src = (monitor.rect.width().max(2) as u32, monitor.rect.height().max(2) as u32);
         let (mut enc, out) = self.open_encoder(&device, src)?;

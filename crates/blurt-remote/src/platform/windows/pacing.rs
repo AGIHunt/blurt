@@ -1,7 +1,8 @@
 //! When the screen's worker encodes, as a pure state machine (tested on any OS). The worker keeps the last captured picture of
 //! the whole monitor on the GPU, so everything here works from it:
 //!
-//! * a new picture that changed what's in the crop → encode, no faster than `fps` (the latest waits out the gap: never lost);
+//! * a new picture that changed what's in the crop → encode, at `fps` on average (credit.rs: a frame time earns a frame, up to 1.5
+//!   saved, and one may go with 0.45 of one; the latest waits for its turn, never lost);
 //! * a new crop → encode the picture already held, at once: on Windows a crop change lands on the very next frame, and on a
 //!   still screen it lands without waiting for the screen to change (the Mac waits on ScreenCaptureKit);
 //! * `refresh` (the server: the screen stopped, sharpen it) and `keyframe` → encode the held picture again, even unchanged.
@@ -19,7 +20,7 @@ pub struct Due {
 #[derive(Debug)]
 pub struct Pacer {
     fps: u32,
-    last_encode: Option<f64>,
+    credit: crate::credit::FrameCredit,
     due: Due,
     /// a picture has been captured at all
     have_picture: bool,
@@ -36,20 +37,16 @@ pub enum Next {
 
 impl Pacer {
     pub fn new(fps: u32) -> Self {
-        Pacer { fps: fps.clamp(1, 120), last_encode: None, due: Due::default(), have_picture: false }
+        Pacer { fps: fps.clamp(1, 120), credit: crate::credit::FrameCredit::new(fps), due: Due::default(), have_picture: false }
     }
 
     pub fn set_fps(&mut self, fps: u32) {
         self.fps = fps.clamp(1, 120);
+        self.credit.set_fps(self.fps);
     }
 
     pub fn fps(&self) -> u32 {
         self.fps
-    }
-
-    /// 3 ms of slack, as the Mac: a capture clock a hair early mustn't halve the frame rate
-    fn gap(&self) -> f64 {
-        1.0 / self.fps as f64 - 0.003
     }
 
     /// A captured picture; `in_crop`: it changed something inside the crop being shown (false: only outside it).
@@ -75,8 +72,8 @@ impl Pacer {
         if !self.have_picture || !(self.due.changed || self.due.forced) {
             return Next::Idle;
         }
-        match self.last_encode {
-            Some(t) if now - t < self.gap() - 1e-9 => Next::Wait(self.gap() - (now - t)),
+        match self.credit.wait(now) {
+            w if w > 1e-9 => Next::Wait(w),
             _ => Next::Encode(self.due),
         }
     }
@@ -84,7 +81,7 @@ impl Pacer {
     /// The worker encoded (or found nothing new to send): everything due until now is done.
     pub fn done(&mut self, now: f64, sent: bool) {
         if sent {
-            self.last_encode = Some(now);
+            self.credit.spend(now);
         }
         self.due = Due::default();
     }
@@ -110,19 +107,23 @@ mod tests {
     }
 
     #[test]
-    fn frames_no_faster_than_fps_and_the_latest_waits() {
+    fn frames_at_fps_on_average_and_the_latest_waits() {
         let mut p = Pacer::new(50);
         p.picture(true);
         assert!(matches!(p.next(1.0), Next::Encode(_)));
         p.done(1.0, true);
         assert_eq!(p.next(1.001), Next::Idle);
-        // one comes 5 ms later: it waits out the gap (20 ms less the slack)
+        // one 5 ms later goes on the credit saved (a still screen saved 1.5)
         p.picture(true);
-        match p.next(1.005) {
-            Next::Wait(w) => assert!((w - 0.012).abs() < 1e-9, "{w}"),
+        assert!(matches!(p.next(1.005), Next::Encode(_)));
+        p.done(1.005, true);
+        // the next 5 ms after that waits for its turn: 0.45 of a frame's credit, 20 ms a frame
+        p.picture(true);
+        match p.next(1.010) {
+            Next::Wait(w) => assert!((w - 0.009).abs() < 1e-6, "{w}"),
             n => panic!("{n:?}"),
         }
-        assert!(matches!(p.next(1.017), Next::Encode(_)));
+        assert!(matches!(p.next(1.019), Next::Encode(_)));
     }
 
     #[test]

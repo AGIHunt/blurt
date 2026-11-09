@@ -25,27 +25,29 @@ impl FrameCredit {
         self.gap = 1.0 / fps.clamp(1, 120) as f64;
     }
 
-    fn earn(&mut self, now: f64) {
+    /// The credit at `now`.
+    fn turns(&self, now: f64) -> f64 {
         if now > self.at {
-            self.turns = SAVED.min(self.turns + (now - self.at) / self.gap);
+            SAVED.min(self.turns + (now - self.at) / self.gap)
+        } else {
+            self.turns
         }
-        self.at = self.at.max(now);
     }
 
     /// Seconds until a frame may go: 0 now.
-    pub fn wait(&mut self, now: f64) -> f64 {
-        self.earn(now);
-        if self.turns >= EARLY {
+    pub fn wait(&self, now: f64) -> f64 {
+        let t = self.turns(now);
+        if t >= EARLY {
             0.0
         } else {
-            (EARLY - self.turns) * self.gap
+            (EARLY - t) * self.gap
         }
     }
 
     /// A frame went (encoded) at `now`.
     pub fn spend(&mut self, now: f64) {
-        self.earn(now);
-        self.turns = (self.turns - 1.0).max(-1.0);
+        self.turns = (self.turns(now) - 1.0).max(-1.0);
+        self.at = self.at.max(now);
     }
 }
 
