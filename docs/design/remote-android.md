@@ -203,3 +203,24 @@ data class Deck(val dock: List<KeySlot>, val sections: List<KeySection>) {
         val spaceBar: KeySlot; fun standard(host: RemoteHost = MAC): Deck; fun catalogue(host: RemoteHost = MAC): List<KeyGroup>; val icons: List<String> }
 }
 ```
+
+## App (`apps/android/app`)
+
+The phone, tablet and foldable app: a port of `apps/ios/BlurtRemote`'s behaviour, not its UIKit. Build and pair: [apps/android/README.md](../../apps/android/README.md).
+AGP 9.5, Kotlin 2.2.20 (AGP's built-in Kotlin), minSdk 26, compile/target 36, Compose (Material 3) for the sheets only. No Google Play
+Services, Firebase or ML Kit: QR codes are ZXing on CameraX frames, so it runs on phones sold in mainland China.
+
+| Part | Files | What it does, and where it differs from the iPhone |
+|---|---|---|
+| Connection | `net/Link.kt`, `Channel.kt`, `Transport.kt`, `Discovery.kt`, `NetWatch.kt`, `KeyVault.kt` | Link.swift one for one: last addresses and DNS-SD (`NsdManager`, Android 14's `registerServiceInfoCallback`, one-at-a-time `resolveService` before) at once, the relay 1.2 s later (OkHttp WebSocket, wss:// or ws://), reconnect on resume with no prompt, keys dropped while disconnected, `releaseAll` on leaving. The channel (RemoteChannel.swift's phone side) runs on one `HandlerThread`, the only thread that touches the sealer. UDP is a `DatagramSocket` (DSCP EF) probed six times; over the relay one socket does STUN and the knocking, so what STUN saw is what the computer's packets meet. Paired keys: an AES-256-GCM key in the Android Keystore wraps each one in app-private prefs that backups leave out. |
+| Main screen | `pad/PadScreen.kt`, `PadLayout.kt`, `Controls.kt` | Plain Views laid out by hand from PadLayout (dp = the iPhone's pt): phone portrait and landscape as on the iPhone; the cutout's end plays the Dynamic Island's part, with no cutout the end away from the thumb. One activity handles rotation, folding and resizing itself (`configChanges`), so none of them ends the session. Immersive with transient bars; the keys at the screen's sides get their edge strips back (`systemGestureExclusionRects`, lower 200 dp a side); orientation is locked while a finger is down; screen on while open, dimmed after 5 min. |
+| Big screens | `PadLayout` modes `SPLIT`, `STACK` | Width ≥ 600 and height ≥ 480 dp: a large stage plus a 402 dp panel of the phone's keys, never stretched, with a trackpad of its own above them (beside the stage when wide, under it when tall). Foldables through Jetpack WindowManager: tabletop (fold across, half open) = picture above the fold, pad and keys below; book (fold down the middle) = picture on one half, pad and keys on the thumb's half; nothing is laid across the fold. |
+| Pad | `pad/TrackpadView.kt` | Raw `MotionEvent`s into core's PadEngine in dp, `requestUnbufferedDispatch`, palms by touch major (88 dp) or `TOOL_TYPE_PALM`/`FLAG_CANCELED`. A mouse on a tablet: first click takes pointer capture; relative moves, buttons and wheel go across; a touch gives it back. |
+| Keys | `keys/*` | KeyCell, KeyList, PageStrip, Sticky, TypeField as on the iPhone (fire on lift, cycle keys with 22 dp detents and edge stepping, the arrow key, repeats, 120 ms list-or-key). Faces: Material Symbols Rounded at weight 300 (`tools/symbols.py` cuts the font to the 107 the app uses, 22 KB), the six marks drawn on a Canvas. Deck strings are English in core and translated by `DeckText`. Hardware keyboards: every key down/up goes across under its own name (`HardwareKeys.kt`). |
+| Screen | `pad/ScreenStream.kt`, `StageView.kt`, `CursorView.kt` | MediaCodec, asynchronous, hardware decoder first; `codecs` best first from MediaCodecList (hardware HEVC, hardware H.264, then software H.264 before software HEVC); `KEY_LOW_LATENCY` where the decoder has the feature, plus the vendors' own low-latency keys. Frames render into a SurfaceTexture drawn by a GLSurfaceView: each latched frame's timestamp says which crop it carries, and it is drawn there in the same pass, which is the iPhone's "crop and pixels in one commit". The last whole frame is kept in a texture as the backdrop. Corners are rounded 6 dp in the shader. |
+| Talk | `talk/*` | AudioRecord, VOICE_RECOGNITION source, 16 kHz mono PCM16 in 100 ms pieces from key-down. The microphone permission is asked the first time the talk key is pressed. |
+| Sheets | `sheets/*` | Compose over the main screen in the same window: Settings, pairing (CameraX + ZXing, or paste the link), the key editor (long-press drag; into the dock swaps), confirmation for links from outside. On a big screen a sheet is a 560 dp card. |
+
+`apps/android/fakehost` is a fake computer for trying all of this without Blurt: core's MacHandshake, pairing with an automatic yes (or
+`--ask`), every message logged, and with `--picture` a still image streamed through ffmpeg (H.264 or HEVC, whichever the phone asks for
+first) so the screen view has something to show.
