@@ -18,6 +18,8 @@ final class Prefs: ObservableObject {
     @Published var micOnPhone: Bool { didSet { d.set(micOnPhone, forKey: "micOnPhone") } }
     /// with the Mac's screen showing: a tap clicks what's under the finger. Off: a trackpad, clicking where the pointer is
     @Published var tapWhereTouched: Bool { didSet { d.set(tapWhereTouched, forKey: "tapWhereTouched") } }
+    /// a keyboard on the iPad, with Windows or Linux: what its ⌘ key presses there
+    @Published var hardwareCommand: CommandKeyRole { didSet { d.set(hardwareCommand.rawValue, forKey: "hardwareCommand") } }
     @Published var quality: ScreenQuality { didSet { d.set(quality.rawValue, forKey: "quality"); ScreenStream.shared.planChanged() } }
 
     private init() {
@@ -28,6 +30,7 @@ final class Prefs: ObservableObject {
         lefty = d.object(forKey: "lefty") as? Bool ?? false
         micOnPhone = d.object(forKey: "micOnPhone") as? Bool ?? true
         tapWhereTouched = d.object(forKey: "tapWhereTouched") as? Bool ?? true
+        hardwareCommand = d.string(forKey: "hardwareCommand").flatMap(CommandKeyRole.init) ?? .control
         quality = d.string(forKey: "quality").flatMap(ScreenQuality.init) ?? .auto
     }
 }

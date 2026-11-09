@@ -5,6 +5,10 @@ final class PageStrip: UIView {
     var onSelect: ((Int) -> Void)?
     private var labels: [UILabel] = []
     private var current = 0
+    /// false: the keys are put away (a big screen), and every tab is a way back to them, none of them the one in view
+    var showsSelection = true {
+        didSet { if showsSelection != oldValue { paint() } }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -29,11 +33,17 @@ final class PageStrip: UIView {
                 return l
             }
         }
-        for (i, l) in labels.enumerated() {
-            l.font = .systemFont(ofSize: 13, weight: i == page ? .semibold : .regular)
-            l.textColor = i == page ? Theme.mark : Theme.faint
-        }
+        paint()
         setNeedsLayout()
+    }
+
+    private func paint() {
+        for (i, l) in labels.enumerated() {
+            let on = showsSelection && i == current
+            l.font = .systemFont(ofSize: 13, weight: on ? .semibold : .regular)
+            l.textColor = on ? Theme.mark : showsSelection ? Theme.faint : Theme.caption
+            l.accessibilityTraits = on ? [.button, .selected] : .button
+        }
     }
 
     override func layoutSubviews() {

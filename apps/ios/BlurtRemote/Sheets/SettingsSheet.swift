@@ -1,4 +1,5 @@
 import BlurtRemoteKit
+import GameController
 import SwiftUI
 
 struct SettingsSheet: View {
@@ -46,6 +47,14 @@ struct SettingsSheet: View {
                 }
                 Section("Keys") {
                     NavigationLink("Edit Keys") { KeyEditor(deck: Deck.load(for: l.host), onChange: onDeck) }
+                }
+                if l.host != .mac, GCKeyboard.coalesced != nil {
+                    Section {
+                        Picker("⌘ on This Keyboard", selection: $p.hardwareCommand) {
+                            Text(l.host.name(.control)).tag(CommandKeyRole.control)
+                            Text(l.host.name(.command)).tag(CommandKeyRole.system)
+                        }
+                    } footer: { Text("Ctrl: ⌘C copies and ⌘V pastes, as on a Mac. Control is Ctrl too, Option is Alt.") }
                 }
                 Section("Trackpad") {
                     VStack(alignment: .leading) {

@@ -13,6 +13,8 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
     private var size: CGSize = .zero
     private var laidOutWidth: CGFloat = 0
     private var laidOutTallest: CGFloat?
+    /// big screens: the gap in the middle of every row, where the trackpad between the thumbs is (PadLayout.listSplit)
+    private var split: (at: CGFloat, width: CGFloat)?
     var onSection: ((Int) -> Void)?
     var onEdit: (() -> Void)?
     var onCycle: ((Bool, KeyCell?) -> Void)?
@@ -36,6 +38,12 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    /// The gap between the halves isn't the list's: a touch there is the trackpad's, under it.
+    override func point(inside p: CGPoint, with e: UIEvent?) -> Bool {
+        if let s = split, p.x > s.at, p.x < s.at + s.width { return false }
+        return super.point(inside: p, with: e)
+    }
 
     /// A key that has acted keeps its touch; any other gives way to the scroll.
     override func touchesShouldCancel(in view: UIView) -> Bool {
@@ -72,12 +80,15 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
     /// In landscape narrower keys are never much taller than a phone's own (`tallest`): the letters would be strips twice as tall as wide.
     static let tallest: CGFloat = 1.4
 
-    /// `tallest`: in landscape, no key taller than this times its width (nil: as tall as `key`)
-    func arrange(key: CGSize, gap: CGFloat, tallest: CGFloat? = nil) {
-        guard key.width > 0, key != size || bounds.width != laidOutWidth || tallest != laidOutTallest else { return }
+    /// `tallest`: in landscape, no key taller than this times its width (nil: as tall as `key`). `split`: a gap down the middle, each
+    /// row's columns half on each side of it (the left gets the odd one)
+    func arrange(key: CGSize, gap: CGFloat, tallest: CGFloat? = nil, split: (at: CGFloat, width: CGFloat)? = nil) {
+        guard key.width > 0, key != size || bounds.width != laidOutWidth || tallest != laidOutTallest
+                || split?.at != self.split?.at || split?.width != self.split?.width else { return }
         size = key
         laidOutWidth = bounds.width
         laidOutTallest = tallest
+        self.split = split
         let width = bounds.width
         let h = key.height
         // the view: rows of a section longer than it are stops of their own
@@ -92,6 +103,7 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
             let across = max(1, s.columns)
             let w = (width - gap * CGFloat(across - 1)) / CGFloat(across)
             let h = tallest.map { min(h, floor(w * $0)) } ?? h
+            let place = Self.columns(across, width: width, gap: gap, split: split)
             var column = 0
             var rows: [CGFloat] = []
             for slot in s.slots {
@@ -101,7 +113,14 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
                     y += h + gap
                 }
                 if column == 0, y > top { rows.append(y) }
-                cells[n].frame = CGRect(x: CGFloat(column) * (w + gap), y: y, width: w * CGFloat(span) + gap * CGFloat(span - 1), height: h)
+                if split != nil {
+                    // a wide key never reaches across the gap: it ends at its side's edge
+                    let first = place[column], side = column < (across + 1) / 2
+                    let lastColumn = min(column + span - 1, side ? (across + 1) / 2 - 1 : across - 1)
+                    cells[n].frame = CGRect(x: first.lowerBound, y: y, width: place[lastColumn].upperBound - first.lowerBound, height: h)
+                } else {
+                    cells[n].frame = CGRect(x: CGFloat(column) * (w + gap), y: y, width: w * CGFloat(span) + gap * CGFloat(span - 1), height: h)
+                }
                 n += 1
                 column += span
             }
@@ -110,13 +129,31 @@ final class KeyList: UIScrollView, UIScrollViewDelegate {
             if y - gap - top > page { rowTops += rows }
             y = max(y, top + gap)
         }
-        editButton.frame = CGRect(x: 0, y: y, width: width, height: 44)
+        // by the dominant thumb's half, never across the middle
+        editButton.frame = split.map { CGRect(x: $0.at + $0.width, y: y, width: width - $0.at - $0.width, height: 44) } ?? CGRect(x: 0, y: y, width: width, height: 44)
         y += 44
         // every section can come to the top
         let last = sectionTops.last ?? 0
         contentSize = CGSize(width: width, height: max(y, last + bounds.height))
         // turned the phone, or opened the keys: keys changed size, and the same section stays in view
         if sectionTops.indices.contains(section) { contentOffset.y = min(sectionTops[section], max(0, contentSize.height - bounds.height)) }
+    }
+
+    /// Where each column of a row goes, x and width: evenly across, or half each side of the split.
+    static func columns(_ across: Int, width: CGFloat, gap: CGFloat, split: (at: CGFloat, width: CGFloat)?) -> [ClosedRange<CGFloat>] {
+        guard let s = split else {
+            let w = (width - gap * CGFloat(across - 1)) / CGFloat(across)
+            return (0..<across).map { let x = CGFloat($0) * (w + gap); return x...(x + w) }
+        }
+        let left = (across + 1) / 2, right = across - left
+        let wl = (s.at - gap * CGFloat(left - 1)) / CGFloat(left)
+        let rightStart = s.at + s.width, rightW = width - rightStart
+        let wr = right > 0 ? (rightW - gap * CGFloat(right - 1)) / CGFloat(right) : 0
+        return (0..<across).map { c in
+            if c < left { let x = CGFloat(c) * (wl + gap); return x...(x + wl) }
+            let x = rightStart + CGFloat(c - left) * (wr + gap)
+            return x...(x + wr)
+        }
     }
 
     func scroll(toSection i: Int) {
