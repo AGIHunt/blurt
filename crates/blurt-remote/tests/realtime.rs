@@ -92,7 +92,7 @@ impl Screen for Synth {
                         return;
                     }
                     let per = (s.bitrate as usize / 8 / s.fps.clamp(1, 60) as usize).max(1000);
-                    let periodic = !s.repairs && seq % 600 == 0;
+                    let periodic = !s.repairs && seq.is_multiple_of(600);
                     let (mut key, mut refresh) = (s.want_key || periodic, false);
                     if !key && s.want_recovery {
                         s.recoveries += 1;
@@ -117,7 +117,7 @@ impl Screen for Synth {
                         crop: Crop::WHOLE,
                         captured: now(),
                         refresh,
-                        reference: (seq % 4 == 0).then_some(seq as u64),
+                        reference: seq.is_multiple_of(4).then_some(seq as u64),
                     }
                 };
                 sink(f);
