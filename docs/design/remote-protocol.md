@@ -23,7 +23,7 @@ Any phone app talks to any host: the host says what it is (`platform`), the phon
  │ frame = hello JSON (before keys) or  │             │ ChaCha20-Poly1305(kind ∥ body) ∥ tag │
  │ ChaCha20-Poly1305(kind ∥ body) ∥ tag │             └──────────────────────────────────────┘
  └──────────────────────────────────────┘
- kind: 0 control JSON · 1 audio PCM16 16 kHz mono LE · 2 pointer · 3 video piece (datagrams, or the relay stream) · 4 probe · 5 cursor
+ kind: 0 control JSON · 1 audio PCM16 16 kHz mono LE · 2 pointer · 3 video piece (datagrams, or the relay stream) · 4 probe · 5 cursor · 6 video feedback
 ```
 
 - **Framing** (`RemoteFrameReader`): 4-byte big-endian length, then the frame. Before the handshake a frame is at most 1,024 bytes; after the
@@ -135,6 +135,24 @@ Why and how it feels: [remote.md §Several displays](remote.md#several-displays)
 
 Hosts that can show only one display (a Wayland portal session that granted one monitor) send `displays` with that one and ignore
 `showDisplay`.
+
+## Repairs: NACK, LTR refresh, parity (new 2026-11-09)
+
+Why, the measurements and every timer: [remote-realtime.md](remote-realtime.md). The wire, all of it additive:
+
+- `screen.features`: what the phone does, `["nack","ltr","fec"]` from Apple phones. Missing = none. The host answers with what it uses in
+  `screenView.features` (missing = none, as from hosts before 1.0.15). Nothing below is sent to a peer that didn't name it.
+- Video packet byte 8 is a flags byte: bit 0 keyframe (the old meaning: read it as `& 1`, not `== 1`), bit 1 **refresh** (decodable from
+  frames the phone acknowledged), bit 2 **acknowledge** (the phone says when it has decoded this one). Bits 1–2 only with `ltr`.
+- **Parity pieces** (`fec`): n = min(64, ⌈count / G⌉) groups, interleaved: group g holds the pieces i with i mod n = g. Parity piece g has
+  `index = count + g`; its payload is one byte n, then the XOR over the group of (u16 BE payload length ∥ payload, zero-padded to the group's
+  longest). Any one missing piece of a group is rebuilt from the rest. Receivers before 1.0.15 drop them (`index ≥ count`).
+- **Frame kind 6, `videoFeedback`** (phone → host, datagrams; over the relay's stream it rides the stream). First byte the type, numbers
+  big-endian. `1` nack: repeated (u32 frame, u16 n, n × u16 piece), n = 0xFFFF for a whole frame. `2` ack: u32 newest decoded frame that
+  asked, u32 bitmap of the 32 before it (bit 0 = newest − 1). `3` lost: u32 the last frame decoded; the next one is gone, send a refresh.
+  The host answers a nack by sending the stored pieces again, byte for byte as first sent (same frame id, index, flags, captured).
+
+Vectors: `videoRepair` (a refresh frame's packets, its parity pieces, each feedback type), `screen_repairs`, `screen_view_repairs`.
 
 ## The desktop app (Windows, Linux): what Settings → Phone calls
 

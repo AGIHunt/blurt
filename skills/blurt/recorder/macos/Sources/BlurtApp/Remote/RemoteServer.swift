@@ -442,6 +442,8 @@ final class RemoteServer {
             ch?.sendDatagram(.probe, d)
             s?.probeArrived()
         }
+        // pieces missing, frames decoded, a frame lost: the picture repairs itself (docs/design/remote-realtime.md)
+        ch.onVideoFeedback = { [weak s] d in if s?.greeted == true { s?.screen?.feedback(d) } }
         ch.onPointer = { [weak self, weak s] p in
             guard let s, s.greeted else { return }
             s.lastHeard = CACurrentMediaTime()

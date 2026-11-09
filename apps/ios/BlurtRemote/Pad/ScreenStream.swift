@@ -16,15 +16,20 @@ final class ScreenStream {
     private let video = CALayer()
     /// a layer keeps what it shows until the next commit: these stay ours until then
     private var onScreen: [CVPixelBuffer] = []
-    private var nextFrame: (CVPixelBuffer, RemoteCrop)?
+    private var nextFrame: (CVPixelBuffer, RemoteCrop, Double)?
     private let frameLock = NSLock()
     /// the whole screen as last seen, under the video: a move past what the video covers shows this until the sharp part arrives
     private let backdrop = CALayer()
     private let q = DispatchQueue(label: "blurt.remote.screen", qos: .userInteractive)
-    private var assembler = RemoteVideoAssembler()
+    /// pieces to frames, in order, asking for what's missing (RemoteVideoRepair.swift). Until the computer names the repairs it uses in
+    /// screenView it waits for nothing, as with a computer that has none.
+    private var receiver = RemoteVideoReceiver(nack: false, ltr: false)
+    private var repairs: Set<String> = []
+    private var repairTimer: DispatchSourceTimer?
+    /// what this phone offers; BLURT_SCREEN_REPAIR=0 offers none, for measuring before and after
+    static let features: [String]? = ProcessInfo.processInfo.environment["BLURT_SCREEN_REPAIR"] == "0" ? nil : RemoteVideoFeature.all
     /// HEVC from a Mac, H.264 from most Windows and Linux computers
     private let decoder = ScreenDecoder()
-    private var lastKeyRequest = 0.0
     private var lastPixels: CVPixelBuffer?
     private var debugPackets = 0, debugAt = 0.0
     private(set) var on = false
@@ -38,7 +43,9 @@ final class ScreenStream {
     private var reportTimer: DispatchSourceTimer?
     private var reportFrames = 0, reportBytes = 0, reportDropped = 0, pictureBytes = 0
     private var reportAt = CACurrentMediaTime()
-    private var keyTimer: DispatchSourceTimer?
+    /// presentation: the display link asks for the panel's rate while frames come (120 Hz on ProMotion), and measures when a frame reaches the glass
+    private var link: CADisplayLink?
+    private var committed: (at: Double, captured: Double)?
 
     // what's in view, and the pointer, which is drawn here: it's never a frame late
     private let cursorLayer = CALayer()
@@ -85,6 +92,12 @@ final class ScreenStream {
 
     // measurements for the stage in hand
     private var ages: [Double] = [], decodeMs: [Double] = [], probes: [Double] = []
+    private var agesFirst: [Double] = [], agesWhole: [Double] = [], agesShown: [Double] = [], agesGlass: [Double] = [], vsyncWait: [Double] = []
+    private var firstNacked = 0, firstRepaired = 0, firstRefreshes = 0
+    /// between one new picture and the next, ms: a stall or a frozen picture shows here, not in the ages of the frames that made it
+    private var gaps: [Double] = []
+    /// the panel's frame, ms: 8.3 at 120 Hz
+    private var panel: [Double] = []
     private var frames = 0, bytes = 0, keyRequests = 0, stageStart = CACurrentMediaTime(), firstDropped = 0
     private var probeTimer: DispatchSourceTimer?
 
@@ -138,7 +151,8 @@ final class ScreenStream {
 
     private var plan: ScreenPlan {
         let l = Link.shared
-        return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: stagePixels ?? UIScreen.main.nativeBounds.size)
+        return ScreenPlan(Prefs.shared.quality, route: l.route, cellular: l.cellular, lowData: l.lowData, native: stagePixels ?? UIScreen.main.nativeBounds.size,
+                          panel: UIScreen.main.maximumFramesPerSecond)
     }
 
     /// The most the Mac may send, for this path and what the user chose. Under that it follows what the network carries (RemoteRate).
@@ -149,7 +163,7 @@ final class ScreenStream {
         sentCrop = c
         idle = false
         start(RemoteScreenRequest(target: Self.target, crop: c, width: p.width, height: p.height, bitrate: p.bitrate, fps: p.fps,
-                                  display: Link.shared.pinnedDisplay))
+                                  display: Link.shared.pinnedDisplay, features: Self.features))
     }
 
     func routeChanged() { planChanged() }
@@ -187,8 +201,13 @@ final class ScreenStream {
     // MARK: the view and the pointer
 
     /// What the computer is showing, and in which codec. Another codec than the frames so far: nothing decoded so far helps, start from a keyframe.
-    func source(_ s: CGSize, codec: String?, display d: String? = nil) {
-        q.async { if self.decoder.told(codec) { self.reset() } }
+    func source(_ s: CGSize, codec: String?, display d: String? = nil, features: [String]? = nil) {
+        q.async {
+            if self.decoder.told(codec) { self.reset() }
+            self.repairs = Set(features ?? [])
+            self.receiver.nack = self.repairs.contains(RemoteVideoFeature.nack)
+            self.receiver.ltr = self.repairs.contains(RemoteVideoFeature.ltr)
+        }
         DispatchQueue.main.async {
             let switched = d != nil && self.display != nil && d != self.display
             if s != self.source || switched {       // another display: the last sight of this one says nothing about it
@@ -485,7 +504,7 @@ final class ScreenStream {
             self.request = r
             self.pictureBytes = 0
             self.tell(.screen(r))
-            self.watchKeyframes()
+            self.watchRepairs()
             self.watchRate()
         }
     }
@@ -494,8 +513,8 @@ final class ScreenStream {
         q.async {
             guard self.on else { return }
             self.on = false
-            self.keyTimer?.cancel()
-            self.keyTimer = nil
+            self.repairTimer?.cancel()
+            self.repairTimer = nil
             self.reportTimer?.cancel()
             self.reportTimer = nil
             self.use.stopped()
@@ -514,12 +533,15 @@ final class ScreenStream {
                 self.awaiting = nil
                 self.leaving.isHidden = true
                 self.leaving.contents = nil
+                self.link?.invalidate()
+                self.link = nil
             }
         }
     }
 
     private func reset() {
-        assembler = RemoteVideoAssembler()
+        receiver = RemoteVideoReceiver(nack: receiver.nack, ltr: receiver.ltr, now: CACurrentMediaTime())
+        receiver.rtt = Link.rttNow
         reportDropped = 0
         decoder.reset()
     }
@@ -527,45 +549,71 @@ final class ScreenStream {
     func packet(_ d: Data) {
         q.async {
             guard self.on, let p = RemoteVideoPacket(d) else { return }
-            self.bytes += d.count
-            self.reportBytes += d.count
-            self.pictureBytes += p.payload.count
             #if DEBUG
-            self.debugPackets += 1
-            let t = CACurrentMediaTime()
-            if t - self.debugAt > 2 {
-                self.debugAt = t
-                self.tell(.screenStats("{\"stage\":\"debug\",\"packets\":\(self.debugPackets),\"frames\":\(self.frames),\"waiting\":\(self.assembler.waitingForKey),\"dropped\":\(self.assembler.dropped),\"keyreq\":\(self.keyRequests),\"session\":\(self.decoder.ready),\"pcount\":\(p.count),\"pframe\":\(p.frame),\"pointer\":[\(self.pointer.x),\(self.pointer.y)]}"))
-            }
+            guard Self.weather.passes(d, now: CACurrentMediaTime(), later: { held in self.q.async { self.arrived(held) } }) else { return }
             #endif
-            if let f = self.assembler.add(p) { self.decode(f) }
-            self.askForKey()
+            self.arrived(p, d.count)
         }
     }
 
-    private func askForKey() {
-        guard assembler.waitingForKey else { return }
-        let now = CACurrentMediaTime()
-        guard now - lastKeyRequest > 0.25 else { return }
-        lastKeyRequest = now
-        keyRequests += 1
-        tell(.requestKeyframe)
+    #if DEBUG
+    /// A made-up bad network for measured runs (debug builds): BLURT_TEST_LOSS=rate[:mean burst] drops pieces, BLURT_TEST_STALL=ms:seconds holds
+    /// everything for that long that often, as a Wi-Fi radio does when it dozes or the channel is busy.
+    static var weather = TestWeather(ProcessInfo.processInfo.environment)
+
+    private func arrived(_ d: Data) {
+        guard on, let p = RemoteVideoPacket(d) else { return }
+        arrived(p, d.count)
+    }
+    #endif
+
+    private func arrived(_ p: RemoteVideoPacket, _ size: Int) {
+        bytes += size
+        reportBytes += size
+        pictureBytes += p.payload.count
+        #if DEBUG
+        debugPackets += 1
+        let t = CACurrentMediaTime()
+        if t - debugAt > 2 {
+            debugAt = t
+            tell(.screenStats("{\"stage\":\"debug\",\"packets\":\(debugPackets),\"frames\":\(frames),\"waiting\":\(receiver.broken),\"dropped\":\(receiver.dropped),\"keyreq\":\(keyRequests),\"session\":\(decoder.ready),\"pcount\":\(p.count),\"pframe\":\(p.frame)}"))
+        }
+        #endif
+        handle(receiver.add(p, now: CACurrentMediaTime()))
     }
 
-    /// With no packets arriving (a still screen, the first keyframe lost) nothing else would ask.
-    private func watchKeyframes() {
-        keyTimer?.cancel()
-        let t = DispatchSource.makeTimerSource(queue: q)
-        t.schedule(deadline: .now() + 1.5, repeating: 1)
-        t.setEventHandler { [weak self] in self?.askForKey() }
+    /// What the receiver wants done: frames decoded, the computer told what's missing or what arrived, a keyframe asked for.
+    private func handle(_ out: [RemoteVideoReceiver.Output]) {
+        for o in out {
+            switch o {
+            case let .frame(f): decode(f)
+            case let .feedback(f):
+                let d = f.encoded()
+                DispatchQueue.main.async { Link.shared.datagram(.videoFeedback, d) }
+            case .keyframe:
+                keyRequests += 1
+                tell(.requestKeyframe)
+            }
+        }
+    }
+
+    /// Every few ms: pieces asked for again, frames given up, a keyframe asked for when nothing arrives (a still screen, the first keyframe lost).
+    private func watchRepairs() {
+        repairTimer?.cancel()
+        let t = DispatchSource.makeTimerSource(flags: .strict, queue: q)
+        t.schedule(deadline: .now() + 0.004, repeating: 0.004, leeway: .milliseconds(1))
+        t.setEventHandler { [weak self] in
+            guard let self, self.on else { return }
+            self.handle(self.receiver.tick(now: CACurrentMediaTime()))
+        }
         t.resume()
-        keyTimer = t
+        repairTimer = t
     }
 
     /// Every second the Mac hears what arrived, and Settings what it's costing.
     private func watchRate() {
         reportTimer?.cancel()
-        reportDropped = assembler.dropped
+        reportDropped = receiver.dropped
         reportAt = CACurrentMediaTime()
         let t = DispatchSource.makeTimerSource(queue: q)
         t.schedule(deadline: .now() + 1, repeating: 1)
@@ -576,9 +624,9 @@ final class ScreenStream {
 
     private func reportRate() {
         let now = CACurrentMediaTime(), s = max(now - reportAt, 0.1)
-        // a new assembler starts from nothing
-        let lost = max(0, assembler.dropped - reportDropped), frames = reportFrames, sent = reportBytes, received = pictureBytes
-        reportDropped = assembler.dropped
+        // a new receiver starts from nothing
+        let lost = max(0, receiver.dropped - reportDropped), frames = reportFrames, sent = reportBytes, received = pictureBytes
+        reportDropped = receiver.dropped
         reportFrames = 0
         reportBytes = 0
         reportAt = now
@@ -586,7 +634,11 @@ final class ScreenStream {
         // nothing arriving, nothing to say; now and then regardless, so the Mac knows the phone's still looking
         quietReports = sent == 0 ? quietReports + 1 : 0
         guard quietReports == 0 || quietReports % 5 == 0 else { return }
-        DispatchQueue.main.async { Link.shared.send(.screenReport(RemoteScreenReport(frames: frames, lost: lost, rtt: Link.shared.rtt, received: received))) }
+        DispatchQueue.main.async {
+            let rtt = Link.shared.rtt
+            if let rtt { self.q.async { self.receiver.rtt = rtt } }
+            Link.shared.send(.screenReport(RemoteScreenReport(frames: frames, lost: lost, rtt: rtt, received: received)))
+        }
     }
 
     private func decode(_ f: RemoteVideoAssembler.Frame) {
@@ -595,26 +647,40 @@ final class ScreenStream {
             guard let self else { return }
             guard st == noErr, let image else {
                 // nothing after this can be decoded: start again from a keyframe
-                if st != noErr { self.q.async { self.reset() } }
+                if st != noErr {
+                    self.q.async {
+                        self.decoder.reset()
+                        self.receiver.decoderFailed(now: CACurrentMediaTime())
+                    }
+                }
                 return
             }
             let now = CACurrentMediaTime()
-            if self.decodeMs.count < 20000 {       // for the measured runs: a long session keeps none of it
-                self.decodeMs.append((now - t0) * 1000)
-                if let o = self.offset { self.ages.append((now + o - f.captured) * 1000) }
+            self.q.async {
+                self.reportFrames += 1
+                self.handle(self.receiver.decoded(f, now: now))
+                if self.decodeMs.count < 20000 {       // for the measured runs: a long session keeps none of it
+                    self.decodeMs.append((now - t0) * 1000)
+                    if let o = self.offset {
+                        self.ages.append((now + o - f.captured) * 1000)
+                        if f.firstAt > 0 {
+                            self.agesFirst.append((f.firstAt + o - f.captured) * 1000)
+                            self.agesWhole.append((f.lastAt + o - f.captured) * 1000)
+                        }
+                    }
+                }
             }
             self.frames += 1
-            self.q.async { self.reportFrames += 1 }
             self.lastPixels = image
-            self.show(image, crop: crop)
+            self.show(image, crop: crop, captured: f.captured)
         }
     }
 
-    private func show(_ image: CVImageBuffer, crop: RemoteCrop) {
+    private func show(_ image: CVImageBuffer, crop: RemoteCrop, captured: Double) {
         // only the latest: after a stall the frames that piled up are worth nothing
         frameLock.lock()
         let waiting = nextFrame != nil
-        nextFrame = (image, crop)
+        nextFrame = (image, crop, captured)
         frameLock.unlock()
         guard !waiting else { return }
         DispatchQueue.main.async { self.putUp() }
@@ -625,7 +691,7 @@ final class ScreenStream {
         let f = nextFrame
         nextFrame = nil
         frameLock.unlock()
-        guard let (image, crop) = f, on else { return }
+        guard let (image, crop, captured) = f, on else { return }
         if let a = awaiting {
             // still the display left, by its shape: not shown. The first of the new one ends the cross-fade
             let w = CGFloat(CVPixelBufferGetWidth(image)), h = CGFloat(CVPixelBufferGetHeight(image))
@@ -646,6 +712,48 @@ final class ScreenStream {
             place()
         }
         CATransaction.commit()
+        let now = CACurrentMediaTime()
+        committed = (now, captured)
+        if link == nil { startLink() }
+        let gap = lastCommit > 0 ? (now - lastCommit) * 1000 : nil
+        lastCommit = now
+        q.async {
+            if let o = self.offset, self.agesShown.count < 20000 { self.agesShown.append((now + o - captured) * 1000) }
+            if let gap, self.gaps.count < 20000 { self.gaps.append(gap) }
+        }
+    }
+
+    private var lastCommit = 0.0
+    private var linkFresh = false
+
+    /// While frames come: the panel at its own rate (ProMotion runs at 120 Hz only when asked to), and the time each frame reaches the glass.
+    /// Content set on a layer shows at the next vsync after its commit; the display link's target is that vsync. A second of no frames lets it go.
+    private func startLink() {
+        let l = CADisplayLink(target: LinkTarget { [weak self] l in self?.vsync(l) }, selector: #selector(LinkTarget.fire(_:)))
+        let top = Float(UIScreen.main.maximumFramesPerSecond)
+        l.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, top), maximum: top, preferred: top)
+        l.add(to: .main, forMode: .common)
+        link = l
+        linkFresh = true
+    }
+
+    private func vsync(_ l: CADisplayLink) {
+        // a link just made fires late the first time: its first call says nothing about when the frame showed
+        if linkFresh { linkFresh = false; committed = nil }
+        if let c = committed {
+            committed = nil
+            let glass = l.targetTimestamp, frame = (l.targetTimestamp - l.timestamp) * 1000
+            q.async {
+                if self.panel.count < 20000 { self.panel.append(frame) }
+                guard let o = self.offset, self.agesGlass.count < 20000 else { return }
+                self.agesGlass.append((glass + o - c.captured) * 1000)
+                self.vsyncWait.append((glass - c.at) * 1000)
+            }
+        }
+        if CACurrentMediaTime() - lastCommit > 1 {
+            l.invalidate()
+            link = nil
+        }
     }
 
     // MARK: measuring
@@ -676,9 +784,11 @@ final class ScreenStream {
     func beginStage() {
         q.async {
             self.ages = []; self.decodeMs = []; self.probes = []
+            self.agesFirst = []; self.agesWhole = []; self.agesShown = []; self.agesGlass = []; self.vsyncWait = []; self.gaps = []; self.panel = []
+            self.firstNacked = self.receiver.nacked; self.firstRepaired = self.receiver.repaired; self.firstRefreshes = self.receiver.refreshes
             self.frames = 0; self.bytes = 0; self.keyRequests = 0
             self.stageStart = CACurrentMediaTime()
-            self.firstDropped = self.assembler.dropped
+            self.firstDropped = self.receiver.dropped
             self.tell(.screenStats("{\"stage\":\"mark\"}"))     // the Mac's arrival gaps start here too
         }
     }
@@ -692,11 +802,27 @@ final class ScreenStream {
     func report(_ stage: String) {
         q.async {
             let t = CACurrentMediaTime() - self.stageStart
-            let d: [String: Any] = ["stage": stage, "seconds": Int(t), "fps": Int(Double(self.frames) / t), "mbps": (Double(self.bytes) * 8 / t / 1e5).rounded() / 10,
+            var d: [String: Any] = ["stage": stage, "seconds": Int(t), "fps": Int(Double(self.frames) / t), "mbps": (Double(self.bytes) * 8 / t / 1e5).rounded() / 10,
                                     "age_p50": Self.pct(self.ages, 0.5), "age_p95": Self.pct(self.ages, 0.95), "age_max": Self.pct(self.ages, 1),
                                     "decode_p50": Self.pct(self.decodeMs, 0.5), "rtt_p50": Self.pct(self.probes, 0.5), "rtt_p95": Self.pct(self.probes, 0.95),
                                     "rtt_p99": Self.pct(self.probes, 0.99), "rtt_max": Self.pct(self.probes, 1), "probes": self.probes.count,
-                                    "dropped": self.assembler.dropped - self.firstDropped, "key_requests": self.keyRequests, "clock_rtt": (self.bestRTT * 1e4).rounded() / 10]
+                                    "dropped": self.receiver.dropped - self.firstDropped, "key_requests": self.keyRequests, "clock_rtt": (self.bestRTT * 1e4).rounded() / 10]
+            // where the time goes: first piece in, last piece in, decoded (age_*), on the layer, at the vsync it shows
+            for (k, a) in [("first", self.agesFirst), ("whole", self.agesWhole), ("shown", self.agesShown), ("glass", self.agesGlass), ("vsync_wait", self.vsyncWait)] {
+                d[k + "_p50"] = Self.pct(a, 0.5); d[k + "_p95"] = Self.pct(a, 0.95); d[k + "_max"] = Self.pct(a, 1)
+            }
+            d["panel_ms"] = Self.pct(self.panel, 0.5)
+            d["gap_p50"] = Self.pct(self.gaps, 0.5); d["gap_p95"] = Self.pct(self.gaps, 0.95); d["gap_p99"] = Self.pct(self.gaps, 0.99); d["gap_max"] = Self.pct(self.gaps, 1)
+            // time spent waiting more than two frames for the next picture, per second
+            let frozen: Double = self.gaps.filter { $0 > 40 }.reduce(0.0) { $0 + $1 - 17 }
+            d["frozen_ms_per_s"] = (frozen / max(t, 1) * 10).rounded() / 10
+            d["nacked"] = self.receiver.nacked - self.firstNacked
+            d["fec_repaired"] = self.receiver.repaired - self.firstRepaired
+            d["refreshes"] = self.receiver.refreshes - self.firstRefreshes
+            d["repairs"] = self.repairs.sorted().joined(separator: ",")
+            #if DEBUG
+            d["weather_dropped"] = Self.weather.dropped
+            #endif
             if let j = try? JSONSerialization.data(withJSONObject: d), let s = String(data: j, encoding: .utf8) { self.tell(.screenStats(s)) }
         }
     }
@@ -721,11 +847,21 @@ final class ScreenStream {
 /// The measured run: a launch with BLURT_SCREEN_TEST=window|display goes through the stages by itself and reports each.
 enum ScreenTest {
     static func run(target: String) {
-        let w = Int(max(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
-        let h = Int(min(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
-        let bitrate = Int(ProcessInfo.processInfo.environment["BLURT_SCREEN_BITRATE"] ?? "") ?? 12_000_000
+        let env = ProcessInfo.processInfo.environment
+        // BLURT_SCREEN_SIZE=1800x1100: a tier's size (ScreenPlan); the phone's own pixels otherwise
+        let size = (env["BLURT_SCREEN_SIZE"] ?? "").split(separator: "x").compactMap { Int($0) }
+        let w = size.count == 2 ? size[0] : Int(max(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
+        let h = size.count == 2 ? size[1] : Int(min(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height))
+        let bitrate = Int(env["BLURT_SCREEN_BITRATE"] ?? "") ?? 12_000_000
+        let fps = Int(env["BLURT_SCREEN_FPS"] ?? "") ?? 60
+        let seconds = Double(env["BLURT_SCREEN_SECONDS"] ?? "") ?? 12
         let s = ScreenStream.shared
-        let stages: [(String, Float?)] = [("off", nil), ("zoom1", 1), ("zoom2", 2), ("zoom3", 3), ("off-again", nil)]
+        // BLURT_SCREEN_STAGES=zoom1,zoom2 for a shorter run; "off" stages measure the pointer's path alone
+        var stages: [(String, Float?)] = [("off", nil), ("zoom1", 1), ("zoom2", 2), ("zoom3", 3), ("off-again", nil)]
+        if let list = env["BLURT_SCREEN_STAGES"] {
+            // zoomN: that zoom, still; panN: that zoom with the view moving 7 times a second, as a finger pans it
+            stages = list.split(separator: ",").map { n in (String(n), n.hasPrefix("zoom") || n.hasPrefix("pan") ? Float(n.drop { !$0.isNumber }) ?? 1 : nil) }
+        }
         if ProcessInfo.processInfo.environment["BLURT_RELAY_ONLY"] == "1" { return s.start() }
         s.probing(true)
         func step(_ i: Int) {
@@ -735,10 +871,23 @@ enum ScreenTest {
                 return
             }
             let (name, zoom) = stages[i]
-            if let zoom { s.start(RemoteScreenRequest(target: target, crop: .centered(zoom: zoom), width: w, height: h, bitrate: bitrate)) } else { s.stop() }
+            if let zoom {
+                s.start(RemoteScreenRequest(target: target, crop: .centered(zoom: zoom), width: w, height: h, bitrate: bitrate, fps: fps, features: ScreenStream.features))
+            } else { s.stop() }
+            var panning: Timer?
+            if let zoom, name.hasPrefix("pan") {
+                var k = 0
+                panning = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { _ in
+                    k += 1
+                    var c = RemoteCrop.centered(zoom: zoom)
+                    c.x = c.x * Float(1 + sin(Double(k) / 4)) ; c.y = c.y * Float(1 + cos(Double(k) / 5))
+                    Link.shared.send(.screenCrop(c.valid))
+                }
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) {       // past the start-up
                 s.beginStage()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 12) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                    panning?.invalidate()
                     s.report(name)
                     if zoom != nil { s.snapshot(name) }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { step(i + 1) }
@@ -831,4 +980,11 @@ private extension Array where Element == [UInt8] {
         defer { copies.forEach { $0.deallocate() } }
         return body(copies.map { UnsafePointer($0) }, map(\.count))
     }
+}
+
+/// A display link holds its target strongly: this breaks the cycle.
+private final class LinkTarget: NSObject {
+    let f: (CADisplayLink) -> Void
+    init(_ f: @escaping (CADisplayLink) -> Void) { self.f = f }
+    @objc func fire(_ l: CADisplayLink) { f(l) }
 }

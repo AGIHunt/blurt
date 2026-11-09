@@ -568,6 +568,14 @@ final class ScreenPlanTests: XCTestCase {
         XCTAssertLessThan(plan(.auto, .relay, cellular: true, lowData: true).bitrate, plan(.auto, .relay, cellular: true).bitrate, "and the user said so")
     }
 
+    func testAtHomeFramesComeAtThePanelsRate() {
+        let pro = ScreenPlan(.auto, route: .local, cellular: false, lowData: false, native: native, panel: 120)
+        XCTAssertEqual(pro.fps, 120, "ProMotion")
+        XCTAssertEqual(pro.bitrate, 12_000_000, "no more data for it")
+        XCTAssertEqual(ScreenPlan(.auto, route: .relay, cellular: false, lowData: false, native: native, panel: 120).fps, 30, "away, motion is what gives")
+        XCTAssertEqual(ScreenPlan(.auto, route: .local, cellular: false, lowData: false, native: native, panel: 240).fps, 120)
+    }
+
     func testAChoiceIsKept() {
         XCTAssertEqual(plan(.saver, .local).bitrate, 1_000_000, "even at home")
         XCTAssertEqual(plan(.sharp, .relay, cellular: true).width, 2868)
