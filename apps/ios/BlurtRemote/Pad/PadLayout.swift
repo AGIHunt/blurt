@@ -110,10 +110,10 @@ struct PadLayout {
     /// big: one thumb's half, about what a thumb sweeps from the edge it holds
     static let halfWidth: CGFloat = 236
     /// big: the trackpad between the halves is at least this wide, or the halves get narrower
-    static let thumbPadWidth: CGFloat = 120
+    static let thumbPadWidth: CGFloat = 140
     /// big: needs this much across (two halves whose dock keys stay key-shaped, and a trackpad between them) and this much down;
     /// less, and it's a phone's layout
-    static let bigWidth: CGFloat = 580
+    static let bigWidth: CGFloat = 616
     static let bigHeight: CGFloat = 520
     /// the dock's esc, return and space, as it ships: in landscape these stay out by the thumb with the keys put away. The rest are for keys
     static let thumbSlots = (esc: Deck.dockCount - 4, enter: Deck.dockCount - 2, space: Deck.dockCount - 1)

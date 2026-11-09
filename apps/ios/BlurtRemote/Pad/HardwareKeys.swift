@@ -125,6 +125,29 @@ final class HardwareKeys {
         return Self.name(hid: u) != nil
     }
 
+    /// Keys iPadOS would otherwise take for moving focus or dismissing (Tab, the arrows, Esc): claimed first, with every combination of
+    /// modifiers, since a key command matches its modifiers exactly. The modifiers are already held on the computer (`sync`), so the key
+    /// goes alone. iPadOS repeats them while held.
+    static let claimed: [(input: String, name: String)] = [("\t", "Tab"), (UIKeyCommand.inputUpArrow, "Up"), (UIKeyCommand.inputDownArrow, "Down"),
+                                                           (UIKeyCommand.inputLeftArrow, "Left"), (UIKeyCommand.inputRightArrow, "Right"),
+                                                           (UIKeyCommand.inputEscape, "Escape")]
+
+    static func commands(action: Selector) -> [UIKeyCommand] {
+        let mods: [UIKeyModifierFlags] = [.command, .shift, .alternate, .control]
+        let combos = (0..<16).map { n in mods.enumerated().reduce(into: UIKeyModifierFlags()) { f, m in if n & (1 << m.offset) != 0 { f.insert(m.element) } } }
+        return claimed.flatMap { k in combos.map { f in
+            let c = UIKeyCommand(input: k.input, modifierFlags: f, action: action)
+            c.wantsPriorityOverSystemBehavior = true
+            return c
+        } }
+    }
+
+    func command(_ c: UIKeyCommand) {
+        guard let name = Self.claimed.first(where: { $0.input == c.input })?.name else { return }
+        Link.shared.send(.key(RemoteChord([], name), down: nil))
+        Sticky.shared.used()
+    }
+
     /// The app left the screen, or the keyboard went: nothing stays held.
     func letGo() {
         stopRepeat()

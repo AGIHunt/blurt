@@ -21,6 +21,8 @@ final class PadViewController: UIViewController {
     private var surround = PadSurround.none
     /// the stage's size in pixels the stream was last told about
     private var askedPixels: CGSize?
+    /// the stage and the thumb pad's outline, when they're one glass
+    private let glassOutline = CAShapeLayer()
     #if DEBUG
     /// Pretend: a made-up desktop where the picture would be
     private let standIn = CALayer()
@@ -94,6 +96,14 @@ final class PadViewController: UIViewController {
 
     override var canBecomeFirstResponder: Bool { true }
 
+    private lazy var claimedKeys = HardwareKeys.commands(action: #selector(claimedKey(_:)))
+    /// not while the system keyboard's field is typing: its arrows and Tab are its own
+    override var keyCommands: [UIKeyCommand]? { field.isFirstResponder || presentedViewController != nil ? nil : claimedKeys }
+    @objc private func claimedKey(_ c: UIKeyCommand) {
+        touched()
+        HardwareKeys.shared.command(c)
+    }
+
     override func pressesBegan(_ presses: Set<UIPress>, with e: UIPressesEvent?) {
         let rest = presses.filter { !HardwareKeys.shared.began($0) }
         if rest.count < presses.count { touched() }
@@ -115,8 +125,13 @@ final class PadViewController: UIViewController {
         view.backgroundColor = .black
         view.isMultipleTouchEnabled = true
 
+        glassOutline.fillColor = nil
+        glassOutline.strokeColor = Theme.hairline.cgColor
+        glassOutline.lineWidth = 1
+        glassOutline.isHidden = true
         view.addSubview(pad)
         view.addSubview(thumbPad)
+        view.layer.addSublayer(glassOutline)
         thumbPad.isStage = false
         thumbPad.isHidden = true
         thumbPad.accessibilityLabel = String(localized: "Trackpad")
@@ -504,7 +519,21 @@ final class PadViewController: UIViewController {
         }
         pad.frame = padFrame
         thumbPad.isHidden = typing || l.thumbPad == nil
-        thumbPad.frame = l.thumbPad ?? .zero
+        // with no picture the stage and the pad between the thumbs are one glass: joined, one outline, so it reads as one trackpad
+        // reaching down to the thumbs. With the picture they're two things, a screen and a trackpad
+        let joined = !typing && !showing && l.mode == .big && l.halves.count == 2 && !(surround.laptop) && l.thumbPad != nil
+        if joined, let t = l.thumbPad {
+            thumbPad.frame = CGRect(x: t.minX, y: padFrame.maxY, width: t.width, height: t.maxY - padFrame.maxY)
+            // the thumb pad's rounded top tucked inside the stage, so the two meet in square inner corners
+            let reach = CGRect(x: t.minX, y: padFrame.maxY - 30, width: t.width, height: t.maxY - padFrame.maxY + 30)
+            glassOutline.path = UIBezierPath(roundedRect: padFrame, cornerRadius: 22).cgPath.union(UIBezierPath(roundedRect: reach, cornerRadius: 22).cgPath)
+        } else {
+            thumbPad.frame = l.thumbPad ?? .zero
+        }
+        glassOutline.isHidden = !joined
+        thumbPad.layer.borderWidth = joined ? 0 : 1
+        thumbPad.layer.maskedCorners = joined ? [.layerMinXMaxYCorner, .layerMaxXMaxYCorner] : [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+        if !showing { pad.layer.borderWidth = joined ? 0 : 1 }
         thumbPad.engine.scrollEdge = l.thumbScrollEdge
         talk.frame = l.talk
         talk.isHidden = typing
@@ -666,6 +695,8 @@ final class PadViewController: UIViewController {
 
     /// The screen dims when nothing happens and comes back with any touch, which still does its job.
     func touched() {
+        // back from a sheet: a keyboard on the iPad is the computer's again
+        if !isFirstResponder, !field.isFirstResponder, presentedViewController == nil { becomeFirstResponder() }
         Link.shared.touched()
         ScreenStream.shared.setIdle(false)
         watchIdle()
