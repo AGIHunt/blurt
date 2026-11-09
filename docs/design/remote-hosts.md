@@ -52,6 +52,7 @@ started by the desktop app (`apps/desktop/src-tauri/src/remote.rs`). Behaviour, 
 | Same, over a local relay (`tools/remote-relay/server.js`, `BLURT_RELAY_ONLY`) | pairs over the relay (the question says so), the direct path opens from the session's candidates (route `direct`), keys and moves arrive |
 | `--screen-test` → `cargo run --example phone` → ffmpeg | 1280×720 H.264 at 30 fps, 2 Mbps: 239 frames in 8 s, 0 dropped, decodes cleanly, the zoomed crop half-way through is the right part |
 | Same over the relay's stream | one message a frame, 247 frames, rate starts at half (1 Mbps) and climbs (1.25, 1.56 Mbps) |
+| The desktop app (debug build on this Mac, real Settings → Phone over Tauri IPC, `BLURT_TEST_EVAL` to drive the page) ↔ the Rust phone | the code shows as a QR image with a 2:00 countdown; a bad relay address is refused in a sentence; the phone's question raises the window and the app-wide dialog shows the phone's own digits; Allow pairs it, the pane lists it ("last used: now"); a screen request on a host with no screen gets the plain sentence |
 
 ## Open
 
