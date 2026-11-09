@@ -183,8 +183,10 @@ If a session goes quiet for 2 s, the Mac lets go of everything held, including t
 
 A test build of showing the Mac's screen on the phone, off unless asked for; while off nothing is captured or sent. ScreenCaptureKit →
 VideoToolbox HEVC (low-latency rate control, no reordering, 12 Mbps cap) → sealed UDP datagrams of up to 1,180 bytes → hardware
-decode. A frame missing a piece is dropped and the phone asks for a keyframe. Mac only: Windows would need its own capture, encoder
-and input.
+decode. A missing piece is asked for again and the frames behind it wait a few ms for it; a frame lost for good is answered with a
+small refresh from a frame the phone acknowledged, not a keyframe ([remote-realtime.md](remote-realtime.md), 2026-11-09: with 1 % of
+pieces lost, 59 frames a second and no keyframes, where 1.0.14 showed 24–34 with freezes of up to 1.6 s). Windows and Linux hosts: see
+remote-hosts.md.
 
 Measured 2026-11-07, iPhone 16 ↔ MacBook over home Wi-Fi, three runs of 12 s a stage, a 1512×945 window of made-up terminal text
 scrolling at 30 Hz, stream 2042 px wide at most:
@@ -246,7 +248,7 @@ One choice in Settings → Mac Screen, not a frame rate, a resolution and a bitr
 
 | | Width | Most Mbps | fps | Most MB a minute |
 |---|---|---|---|---|
-| Auto, same network | the phone's | 12 | 60 | 90 |
+| Auto, same network | the phone's | 12 | the panel's: 60, 120 on ProMotion | 90 |
 | Auto, Wi-Fi elsewhere | 1800 | 4 | 30 | 30 |
 | Auto, mobile data | 1440 | 2 | 24 | 15 |
 | Auto, Low Data Mode, or Data Saver | 1280 | 1 | 15 | 8 |
@@ -259,7 +261,13 @@ of where trouble began for 30 s. Each frame gets at least 30 kbit: with less to 
 Over the relay's stream the Mac stops sending once more than 1.5 s of picture is on its way, because keys go the same way and mustn't wait behind it,
 and doesn't answer a keyframe request while one is in that stream. If the phone gets nothing for 6 s, those bytes went down a dead path: it starts
 over from a keyframe. On a direct path keyframes go in paced batches at twice the rate, since one lost piece costs the whole frame. After 45 s
-untouched, away from home, it goes to 5 fps until a finger lands. Not done: NACK or FEC for lost pieces, long-term references instead of keyframes.
+untouched, away from home, it goes to 5 fps until a finger lands. A lost piece is sent again, a frame lost for good costs a small refresh, and
+away from home parity pieces mend single losses without asking (2026-11-09, [remote-realtime.md](remote-realtime.md)); so losses no longer pull
+the rate down, and no keyframe goes every 600 frames.
+
+What an hour costs, from the measured rates of each kind of screen (remote-realtime.md §Data per hour), for an hour that is mostly still
+(70 %), with an agent's output streaming by (25 %) and some scrolling (5 %): about 600 MB at home, 270 MB on Wi-Fi elsewhere, 160 MB on
+mobile data, 90 MB on Data Saver. An hour of nothing but scrolling is the ceiling above.
 
 A window that isn't changing still arrives from ScreenCaptureKit as complete frames at full rate, and used to cost 0.1–0.5 Mbps. Frames are now
 compared byte for byte and skipped. When the picture stops the last frame goes again at real-time timestamps, until a resend comes out under 1.5 KB
