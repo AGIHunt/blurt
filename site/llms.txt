@@ -11,8 +11,18 @@ Film (1:42, English voice-over, Chinese and English subtitles): https://blurt.wo
 
 ## Facts
 - Name: Blurt; Chinese name 口喷鸡. License: MIT. Made by AGI Hunt. Price: free, no word limit, no account.
-- Platform: Mac only today (macOS 13 or later). Dictation and the recommended speech models need Apple silicon. Windows and Linux are coming soon. No phone app.
+- Platform: macOS 13 or later; dictation and the recommended speech models need Apple silicon. Windows 10 (1903 or later) and 11, and Linux (Ubuntu 24.04 or later, Debian 13 or later): test builds on GitHub Releases (https://github.com/AGIHunt/blurt/releases), not the "latest" download link.
+- Phone: Blurt on the phone (iPhone and iPad with iOS 17 or later, iPhone Duo, Android 8 or later) drives any of those computers. The phone apps are not in the App Store or Google Play; people build them themselves (see "Blurt on the phone" below).
 - There is no Blurt server.
+
+## Blurt on the phone
+- For sitting back from a big screen: the phone is the computer's trackpad, keys and microphone, and can show the computer's screen (tap where you look). Any phone app works with any computer: iPhone, iPad and iPhone Duo; Android phones, tablets and foldables; with a Mac, Windows or Linux computer.
+- The talk key is Blurt's dictation key (tap, hold and double-tap to send work the same), with the phone's microphone.
+- Keys follow the computer: ⌘ on a Mac, Ctrl and Win on Windows, Ctrl and Super on Linux. Every key can be moved or changed on the phone.
+- Several displays: the picture follows the pointer to the next display, or stays on the one picked with the screen button.
+- Pairing: Settings → Phone on the computer shows a QR code; scan it with the phone. Both show the same six digits; the owner allows it on the computer only if they match. Nothing listens on the network until a phone is added.
+- On the same network it connects directly. Away from home it goes through a relay the owner runs (a Cloudflare Worker or a small server; tools/remote-relay in the repo, and Blurt's settings give an agent the setup steps). Everything is end-to-end encrypted; the relay can't read it, and nothing goes through a server run by Blurt. The computer has to stay awake.
+- Build the apps: iPhone and iPad https://github.com/AGIHunt/blurt/blob/main/apps/ios/README.md#build-it-yourself, Android https://github.com/AGIHunt/blurt/blob/main/apps/android/README.md#build-it-yourself. Design and protocol: docs/design/remote.md, docs/design/remote-protocol.md.
 
 ## Dictation (Fn)
 - Tap Fn to start and tap again to stop. The words are typed where your cursor is. Works in every app (never in password fields).

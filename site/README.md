@@ -24,7 +24,7 @@ If a stale global API key overrides Wrangler OAuth, run the deployment command w
 **When `style.css`, a font or an asset changes, bump `?v=`** (`V` in the generator: both pages' `<link>`, font and
 image preloads, `<video>`/`poster`, og images; by hand: the `url()`s in `style.css`). `_headers` lets browsers keep
 `style.css`, `fonts/` and `assets/` for a year without asking (immutable), so a file changed under the same `?v=`
-never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-2`.
+never reaches a returning visitor. The pages themselves always revalidate. Current: `?v=1.0.6-3`.
 
 **The first paint.** `peep.js` and `main.js` are inlined at the end of each page (the generator reads them from this
 folder), and the `<head>` script sets `motion` before anything renders. The scripts then run before the first paint
@@ -66,7 +66,12 @@ on hover; no other gradient on the page. Text set straight on the wallpaper uses
   The HTML ships with every step on, so no-JS, reduced motion and the font subsetter all see each scene's end state
   with every caption listed. Order: hero over the dictation desktop (the hero scrolls away while the desktop holds),
   speed (a time axis with a moving now-line), the five-app matrix, lists (Shift / ⌥L), snap → card under the notch →
-  dragged into Claude, record → 52 items → OR-21, hand-off (night) → the team bundle, privacy, the film, install.
+  dragged into Claude, record → 52 items → OR-21, hand-off (night) → the team bundle, Blurt on the phone, privacy, the
+  film, install.
+- **Blurt on the phone** (`#phone`, `.rp`): not a scene. A wallpaper band (not sticky) with the headline and lede, then
+  an iPad (on a Mac, with the picture) and an iPhone (on a Windows PC, its keys) in CSS bezels; under it, six facts on
+  paper (phones and computers, keys, displays, away from home, pairing, the apps). Hand-written into both pages, not
+  yet in `build_pages9.py`.
 - **Desk units**: inside `.lay`, 1em = 1% of the desk width (container query units), so a scene scales as one picture.
   On phones `.view` is a camera over the same coordinates (`--cx`, `--cy` per scene and step) and the copy sits on a
   paper sheet at the bottom; desktop coordinates in `style.css` are shared by both.
@@ -81,8 +86,9 @@ on hover; no other gradient on the page. Text set straight on the wallpaper uses
   vendor, linked); Blurt's CER 2.7% and WER 1.9% sit under the matrix, the other figures and the method in a disclosure.
 - **Install**: the download button, the agent path (`curl -fsSL https://blurt.work/install.sh | sh`, copy
   button; `install.sh` is served from this folder), six keys as keycaps,
-  and a link to the user guide for every other key; then the specs (system, models, languages, words, history,
-  permissions, other dictation apps, source).
+  and a link to the user guide for every other key; then the specs (system, phone, models, languages, words, history,
+  permissions, other dictation apps, source). Windows and Linux link to the GitHub releases page: their builds are
+  test builds, not behind the `latest` download link.
 - Headlines: phrases are no-break spans (`|` in the generator) on desktop; on phones they wrap normally.
 
 ## Assets
@@ -92,6 +98,10 @@ on hover; no other gradient on the page. Text set straight on the wallpaper uses
   poster `assets/poster-6.jpg` is no longer on the page.
 - `assets/wall/light.webp`, `dark.webp` (+ `-m` crops for phones; WebP q80 of the `.jpg` masters, about 45 KB): the desktop wallpaper, morning fog and dusk, made with
   an image model for this page (`blurt-media/site/gen6/`).
+- `assets/phone/`: the phone section's screens, WebP from the iOS app itself, made-up content only (`apps/ios`, debug
+  build): `ipad-mac-{en,zh}.webp` is `RenderTests`' `ipad13-landscape-screen` (the pretend desktop) at 1376 px,
+  rendered with `-testLanguage en` / `zh-Hans`; `iphone-windows-{en,zh}.webp` is the app on an iPhone 17 Pro simulator with
+  `SIMCTL_CHILD_BLURT_REMOTE_TEST_HOST=windows` and `-AppleLanguages`, at 603 px. Regenerate them there, don't retouch.
 - `assets/rec-frame.jpg`: the frame on the OR-21 item, also used for the recording's film strip and the attachment
   thumbnail.
 - `assets/og.png`, `assets/og-en.png`: social cards, 1200×630, from `build_pages9.py import` (`og_cards()`): the
