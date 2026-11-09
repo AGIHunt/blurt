@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+: as backup_rules.xml, for the cloud and for moving to a new phone alike. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="vault.xml" />
+        <exclude domain="sharedpref" path="link.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="vault.xml" />
+        <exclude domain="sharedpref" path="link.xml" />
+    </device-transfer>
+</data-extraction-rules>
