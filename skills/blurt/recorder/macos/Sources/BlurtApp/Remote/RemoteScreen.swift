@@ -9,6 +9,9 @@
 //  • the phone owns the view. It moves the picture it already has at once, and asks for that part of the screen when it can; the output
 //    stays the same size, so the closer the view, the sharper. Each frame says which part it shows, so the phone can place it exactly
 //    and the picture never jumps. Nothing on the Mac changes.
+//  • one display at a time (docs/design/remote.md §Several displays): the one the pointer is on, following it across once it has
+//    really crossed (RemoteDisplayFollow), or the one the phone pinned. A switch changes the running stream's filter rather than
+//    starting another, with an encoder of the new display's shape and a keyframe.
 import AppKit
 import BlurtCore
 import BlurtRemoteKit
@@ -77,6 +80,43 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     /// capture ended by itself
     var onStopped: (() -> Void)?
 
+    // several displays
+    /// what the phone asked for, within reason: a switch makes the new display's stream from it
+    private var asked: RemoteScreenRequest?
+    /// the display being shown (0: a window, in the measured run)
+    private var shownDisplay: CGDirectDisplayID = 0
+    /// the phone chose this one; nil follows the pointer
+    private var pinned: CGDirectDisplayID?
+    private var follow = RemoteDisplayFollow()
+    private var displays = RemoteDisplayList.all()
+    private var scDisplays: [SCDisplay] = []
+    /// a switch under way, and one asked for meanwhile
+    private var switching = false
+    private var nextSwitch: CGDirectDisplayID?
+    /// when the last switch began, until its first frame has gone: what it took is measured
+    private var switchBegan = 0.0
+    private var switchWhy = ""
+    private var encoderSize = (w: 0, h: 0)
+
+    /// Where the pointer is on the desktop. Tests that post nothing move a pretend one (RemoteInput.pretendPointer), so following it
+    /// from display to display is tried without touching the real one.
+    private static func pointerNow() -> CGPoint { RemoteInput.shared.pretendPointer ?? CGEvent(source: nil)?.location ?? .zero }
+
+    /// The stream for a display: its shape, as large as the phone asked for and no larger than the display has pixels.
+    private static func configure(_ src: CGRect, scale: CGFloat, _ r: RemoteScreenRequest) -> SCStreamConfiguration {
+        let c = SCStreamConfiguration()
+        let k = min(CGFloat(r.width) / src.width, CGFloat(r.height) / src.height, scale)
+        c.width = Int(src.width * k) / 2 * 2
+        c.height = Int(src.height * k) / 2 * 2
+        c.scalesToFit = true
+        c.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(1, r.fps)))
+        c.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        c.queueDepth = 5    // one is kept as the last image
+        c.showsCursor = false
+        c.capturesAudio = false
+        return c
+    }
+
     func start(_ asked: RemoteScreenRequest, failed: @escaping (String) -> Void) {
         // what the phone asks for, within reason: a number out of range mustn't trap
         var r = asked
@@ -84,38 +124,39 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         r.width = min(max(r.width, 64), 8192)
         r.height = min(max(r.height, 64), 8192)
         r.bitrate = min(max(r.bitrate, 100_000), 50_000_000)
+        q.sync {
+            self.asked = r
+            self.pinned = RemoteDisplayList.id(r.display)
+            self.failedHandler = failed
+        }
         Task {
             do {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
                 let filter: SCContentFilter, src: CGRect, scale: CGFloat
+                var shown: CGDirectDisplayID = 0
                 if r.target == "window" {
                     guard let w = content.windows.first(where: { $0.title == "Blurt Screen Test" }) else { return failed("no_test_window") }
                     filter = SCContentFilter(desktopIndependentWindow: w)
                     src = w.frame
                     scale = 2
                 } else {
-                    let m = CGEvent(source: nil)?.location ?? .zero
-                    guard let d = content.displays.first(where: { $0.frame.contains(m) }) ?? content.displays.first else { return failed("no_display") }
+                    // the one the phone chose, or the one the pointer is on
+                    let want = q.sync { self.pinned } ?? RemoteDisplayList.at(Self.pointerNow())
+                    guard let d = content.displays.first(where: { $0.displayID == want }) ?? content.displays.first else { return failed("no_display") }
                     filter = SCContentFilter(display: d, excludingWindows: [])
-                    src = d.frame
-                    scale = NSScreen.screens.first { $0.frame.width == d.frame.width }?.backingScaleFactor ?? 2
+                    src = CGDisplayBounds(d.displayID)
+                    scale = RemoteDisplayList.scale(d.displayID)
+                    shown = d.displayID
                 }
-                let c = SCStreamConfiguration()
-                // the source's shape, as large as the phone asked for and no larger than the source has pixels
-                let k = min(CGFloat(r.width) / src.width, CGFloat(r.height) / src.height, scale)
-                let w = Int(src.width * k) / 2 * 2, h = Int(src.height * k) / 2 * 2
-                c.width = w
-                c.height = h
-                c.scalesToFit = true
-                c.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(1, r.fps)))
-                c.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
-                c.queueDepth = 5    // one is kept as the last image
-                c.showsCursor = false
-                c.capturesAudio = false
+                let c = Self.configure(src, scale: scale, r)
+                let w = c.width, h = c.height
                 relayed = channel.isRelay
                 if q.sync(execute: { stopped }) { return }      // turned off while this was starting
                 q.sync {
                     self.source = src
+                    self.shownDisplay = shown
+                    self.scDisplays = content.displays
+                    self.displays = RemoteDisplayList.all()
                     self.crop = (self.requestedCrop ?? r.crop).valid
                     self.frameCrop = self.crop
                     self.config = c
@@ -138,6 +179,8 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
                 q.async {
                     self.tellView()
                     self.startTicker(fps: self.channel.isRelay ? 15 : 60)
+                    // chosen while this was starting
+                    if shown != 0, let p = self.pinned, p != self.shownDisplay { self.retarget(p, why: "pinned") }
                 }
                 emit(["event": "remote_screen", "state": "on", "target": r.target, "crop": Double(r.crop.w), "width": w, "height": h, "bitrate": r.bitrate])
             } catch {
@@ -148,9 +191,149 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         }
     }
 
+    /// Relative to the display shown: outside it, the phone knows the pointer is elsewhere.
     private func pointer() -> CGPoint {
-        let p = CGEvent(source: nil)?.location ?? .zero
+        let p = Self.pointerNow()
         return CGPoint(x: p.x - source.minX, y: p.y - source.minY)
+    }
+
+    // MARK: several displays
+
+    /// The phone chose a display (nil: follow the pointer again).
+    func show(_ id: CGDirectDisplayID?) {
+        q.async {
+            self.pinned = id
+            self.follow.reset()
+            guard self.running, self.shownDisplay != 0 else { return }
+            if let id { return self.retarget(id, why: "pinned") }
+            if let d = RemoteDisplayList.at(Self.pointerNow()), d != self.shownDisplay { self.retarget(d, why: "follow") }
+        }
+    }
+
+    /// The arrangement changed: plugged in, unplugged, moved, another resolution.
+    func displaysChanged() {
+        q.async {
+            self.displays = RemoteDisplayList.all()
+            guard self.running, self.shownDisplay != 0 else { return }
+            let ids = RemoteDisplayList.ids()
+            if let p = self.pinned, !ids.contains(p) { self.pinned = nil }
+            if !ids.contains(self.shownDisplay) {
+                // the one in view went: back to following
+                if let d = RemoteDisplayList.at(Self.pointerNow()) { self.retarget(d, why: "gone", force: true) }
+            } else if CGDisplayBounds(self.shownDisplay) != self.source {
+                self.retarget(self.shownDisplay, why: "changed", force: true)
+            }
+        }
+    }
+
+    /// Each tick while following: the pointer has really crossed onto another display.
+    private func followPointer() {
+        guard pinned == nil, !switching, shownDisplay != 0 else { return }
+        if let id = follow.update(shown: String(shownDisplay), pointer: Self.pointerNow(), displays: displays, now: CACurrentMediaTime()),
+           let d = UInt32(id) { retarget(d, why: "follow") }
+    }
+
+    /// On `q`. The same stream, another display: its filter and configuration change while it runs, which costs much less than a new
+    /// stream; frames wait meanwhile, as they do for a crop. An encoder of the new shape, the phone told before the first frame, a keyframe.
+    private func retarget(_ id: CGDirectDisplayID, why: String, force: Bool = false) {
+        guard running, let s = stream, let r = asked, force || id != shownDisplay else { return }
+        guard !switching else { nextSwitch = id; return }
+        switching = true
+        cropsUnderWay += 1
+        let began = CACurrentMediaTime()
+        let known = scDisplays
+        Task {
+            var list = known
+            if !list.contains(where: { $0.displayID == id }) {
+                list = (try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false))?.displays ?? []
+            }
+            guard let d = list.first(where: { $0.displayID == id }) else {
+                return self.q.async { self.switchDone(nil, began: began, why: why, restart: nil) }
+            }
+            let src = CGDisplayBounds(id)
+            let c = Self.configure(src, scale: RemoteDisplayList.scale(id), r)
+            c.sourceRect = CGRect(origin: .zero, size: src.size)
+            var ok = true
+            if #available(macOS 14.0, *) {
+                do {
+                    try await s.updateContentFilter(SCContentFilter(display: d, excludingWindows: []))
+                    try await s.updateConfiguration(c)
+                } catch {
+                    ok = false
+                    emit(["event": "remote_display_switch", "state": "failed", "why": "\(error)"])
+                }
+            } else {
+                ok = false
+            }
+            let filterMs = (CACurrentMediaTime() - began) * 1000
+            self.q.async {
+                self.scDisplays = list
+                self.switchDone(ok ? (id, src, c) : nil, began: began, why: why, filterMs: filterMs, restart: ok ? nil : id)
+            }
+        }
+    }
+
+    private func switchDone(_ to: (id: CGDirectDisplayID, src: CGRect, config: SCStreamConfiguration)?, began: Double, why: String, filterMs: Double = 0,
+                            restart: CGDirectDisplayID? = nil) {
+        cropsUnderWay -= 1
+        switching = false
+        guard running else { return }
+        guard let to else {
+            // macOS 13 can't change a running stream's display, or this one wouldn't: a new stream, on that display
+            if let restart { return self.restart(on: restart) }
+            flushHeld()
+            if let n = nextSwitch { nextSwitch = nil; retarget(n, why: why) }
+            return
+        }
+        let old = encoderSize
+        config = to.config
+        source = to.src
+        shownDisplay = to.id
+        crop = .whole
+        frameCrop = .whole
+        requestedCrop = nil
+        lastImage = nil
+        refines = 0
+        follow.reset()
+        makeEncoder(to.config.width, to.config.height, rate.bitrate, fps: rate.fps)
+        // a frame held while the change was under way may still be the old display's; when both are the same shape, nothing tells them apart
+        if let held = heldImage, CVPixelBufferGetWidth(held.image) != to.config.width || CVPixelBufferGetHeight(held.image) != to.config.height
+            || (old.w == to.config.width && old.h == to.config.height) { heldImage = nil }
+        switchBegan = began
+        switchWhy = why
+        tellView()
+        lastCursor = CGPoint(x: -1, y: -1)     // where the pointer is on this one, at once
+        emit(["event": "remote_display_switch", "state": "switched", "why": why, "display": Int(to.id), "filter_ms": (filterMs * 10).rounded() / 10,
+              "width": to.config.width, "height": to.config.height])
+        flushHeld()
+        if let n = nextSwitch {
+            nextSwitch = nil
+            if n != to.id { retarget(n, why: why) }
+        }
+    }
+
+    private var failedHandler: ((String) -> Void)?
+
+    /// On `q`: the stream stopped and started again on another display, keeping who chose it.
+    private func restart(on id: CGDirectDisplayID) {
+        guard var r = asked, let f = failedHandler else { return }
+        let keep = pinned, s = stream
+        stream = nil
+        running = false
+        ticker?.cancel()
+        ticker = nil
+        if let e = session { VTCompressionSessionInvalidate(e) }
+        session = nil
+        heldImage = nil
+        lastImage = nil
+        r.display = String(id)
+        switchBegan = CACurrentMediaTime()
+        switchWhy = "restart"
+        Task {
+            try? await s?.stopCapture()
+            self.start(r, failed: f)
+            self.q.async { self.pinned = keep }
+        }
     }
 
     private func rect(_ c: RemoteCrop) -> CGRect {
@@ -161,7 +344,8 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
         q.async {
             let c = c.valid
             guard self.running, let config = self.config, let s = self.stream else { self.requestedCrop = c; return }
-            guard c != self.crop else { return }
+            // a crop of the display being left: the phone starts the next one whole
+            guard !self.switching, c != self.crop else { return }
             self.crop = c
             config.sourceRect = self.rect(c)
             self.cropsUnderWay += 1
@@ -198,7 +382,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func tellView() {
-        onInfo?(.screenView(width: source.width, height: source.height, codec: RemoteVideoCodec.hevc))
+        onInfo?(.screenView(width: source.width, height: source.height, codec: RemoteVideoCodec.hevc, display: shownDisplay == 0 ? nil : String(shownDisplay)))
     }
 
     private func startTicker(fps: Int) {
@@ -221,6 +405,7 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             channel.sendDatagram(.cursor, Data(bytes: &v, count: 8))
         }
         if tick % max(1, fps / 4) == 0 { checkShape() }
+        followPointer()
         refine()
     }
 
@@ -317,6 +502,9 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
     }
 
     private func makeEncoder(_ w: Int, _ h: Int, _ bitrate: Int, fps: Int) {
+        if let old = session { VTCompressionSessionInvalidate(old) }
+        session = nil
+        encoderSize = (w, h)
         var s: VTCompressionSession?
         let spec = [kVTVideoEncoderSpecification_EnableLowLatencyRateControl: true] as CFDictionary
         var st = VTCompressionSessionCreate(allocator: nil, width: Int32(w), height: Int32(h), codecType: kCMVideoCodecType_HEVC, encoderSpecification: spec,
@@ -341,6 +529,8 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
 
     func stream(_ stream: SCStream, didOutputSampleBuffer b: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .screen, running, let session, b.isValid, let image = CMSampleBufferGetImageBuffer(b) else { return }
+        // the display before a switch, at its own size: nothing the encoder can take
+        guard cropsUnderWay > 0 || (CVPixelBufferGetWidth(image) == encoderSize.w && CVPixelBufferGetHeight(image) == encoderSize.h) else { skipped += 1; return }
         // a frame with nothing new: skipped by SCK, which is why a still screen costs nothing
         if let a = CMSampleBufferGetSampleAttachmentsArray(b, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
            let raw = a.first?[.status] as? Int, let status = SCFrameStatus(rawValue: raw), status != .complete { skipped += 1; return }
@@ -430,6 +620,11 @@ final class RemoteScreen: NSObject, SCStreamOutput, SCStreamDelegate {
             for p in pieces { channel.sendDatagram(.video, p.encoded()) }
         }
         lastFrameBytes = body.count
+        if switchBegan > 0 {
+            emit(["event": "remote_display_switch", "state": "first_frame", "why": switchWhy, "ms": ((CACurrentMediaTime() - switchBegan) * 10000).rounded() / 10,
+                  "keyframe": key, "bytes": body.count])
+            switchBegan = 0
+        }
         encoded += 1
         bytes += body.count
         reportBytes += body.count

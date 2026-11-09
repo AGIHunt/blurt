@@ -44,12 +44,13 @@ enum RemoteHUD {
         return (p, t)
     }
 
-    private static func place(_ text: String, keep: Bool) {
+    private static func place(_ text: String, keep: Bool, on display: CGDirectDisplayID? = nil) {
         let (p, t) = make()
         t.stringValue = text
         let w = max(72, ceil(t.intrinsicContentSize.width) + 40)
         let m = NSEvent.mouseLocation
-        let s = NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.main ?? NSScreen.screens[0]
+        let chosen = display.flatMap { id in NSScreen.screens.first { ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id } }
+        let s = chosen ?? NSScreen.screens.first { $0.frame.contains(m) } ?? NSScreen.main ?? NSScreen.screens[0]
         let f = s.visibleFrame
         p.setFrame(NSRect(x: f.midX - w / 2, y: f.minY + 72, width: w, height: 56), display: true)
         p.alphaValue = 1
@@ -68,9 +69,10 @@ enum RemoteHUD {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: h)
     }
 
-    static func show(_ text: String) {
-        guard enabled else { return }
-        DispatchQueue.main.async { place(text, keep: false) }
+    /// `on`: that display's bottom, wherever the pointer is (the pointer may not have arrived yet)
+    static func show(_ text: String, on display: CGDirectDisplayID? = nil) {
+        guard enabled, !text.isEmpty else { return }
+        DispatchQueue.main.async { place(text, keep: false, on: display) }
     }
 
     static func sticky(_ m: RemoteModifiers) {
