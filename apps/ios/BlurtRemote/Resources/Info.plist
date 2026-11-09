@@ -25,11 +25,17 @@
 	<key>NSLocalNetworkUsageDescription</key><string>Connect to Blurt on your Mac.</string>
 	<key>NSMicrophoneUsageDescription</key><string>Dictate into your Mac through this iPhone’s microphone.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key><true/>
-	<key>UIRequiresFullScreen</key><true/>
 	<key>UIStatusBarHidden</key><true/>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>

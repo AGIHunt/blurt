@@ -50,6 +50,8 @@ public enum ToMac: Codable, Sendable {
     case screenCrop(RemoteCrop)
     /// the pointer to this place on the screen being shown, 0…1: the view moved away from it
     case pointerTo(x: Float, y: Float)
+    /// show this display from now on, and put the pointer in its middle (nil: follow the pointer, the default). 1.0.15+
+    case showDisplay(String?)
     /// the addresses this phone can be tried at, for a direct path
     case candidates([RemoteCandidate])
     case requestKeyframe
@@ -93,12 +95,16 @@ public struct RemoteSessionInfo: Codable, Hashable, Sendable {
     public var candidates: [RemoteCandidate]
     /// the main display, width ÷ height: the pad takes this shape while the screen shows
     public var displayAspect: Double
-    /// the relay the Mac's owner set up (Settings → iPhone): the phone only tries one if there's an address here
+    /// the relay the Mac's owner set up (Settings → Phone): the phone only tries one if there's an address here
     public var relay: String?
-    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil) {
+    /// what the computer is: "mac", "windows" or "linux" (nil from a Mac before 1.0.15). The phone's keys follow it: ⌘ on a Mac, Ctrl and
+    /// the Windows key elsewhere (docs/design/remote-protocol.md §Hosts). `macName` stays the field's name on the wire, whatever the computer.
+    public var platform: String?
+    public init(macName: String, udpPort: UInt16, udpSession: UInt32, canControl: Bool, version: String, candidates: [RemoteCandidate] = [], displayAspect: Double = 1.6, relay: String? = nil, platform: String? = RemoteHost.mac.rawValue) {
         self.macName = macName; self.udpPort = udpPort; self.udpSession = udpSession; self.canControl = canControl; self.version = version
-        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay
+        self.candidates = candidates; self.displayAspect = displayAspect; self.relay = relay; self.platform = platform
     }
+    public var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
 }
 
 public enum ToPhone: Codable, Sendable {
@@ -129,12 +135,35 @@ public enum ToPhone: Codable, Sendable {
     /// the two clocks at one moment, so a frame's age can be read on the phone
     case clock(phone: Double, mac: Double)
     case screenFailed(String)
-    /// what's being shown: the source's size in points
-    case screenView(width: Double, height: Double)
+    /// what's being shown: the source's size in points, and the codec its frames are in ("hevc" when nil, as from Macs before 1.0.15)
+    /// `features`: the repairs this host uses for this stream, of those the phone offered in its request (RemoteVideoFeature); nil = none. 1.0.15+
+    case screenView(width: Double, height: Double, codec: String? = nil, display: String? = nil, features: [String]? = nil)
+    /// every display the computer has, whenever that changes (and once a session is up). Only sent by hosts that can show more than one. 1.0.15+
+    case displays([RemoteDisplay])
     case cursorShape(png: Data, hotX: Double, hotY: Double, width: Double, height: Double)
 }
 
 /// A frame's first byte says what follows.
+/// One of the computer's displays: its frame in points in the desktop's own coordinates (top-left origin, y down, as the
+/// arrangement in the computer's display settings), so the phone can draw the arrangement and know which way is which.
+public struct RemoteDisplay: Codable, Hashable, Sendable {
+    /// stable while the display stays connected (CGDirectDisplayID / monitor device name / portal stream id)
+    public var id: String
+    public var name: String
+    public var x: Double, y: Double, width: Double, height: Double
+    /// the menu bar's / primary display
+    public var main: Bool
+    public init(id: String, name: String, x: Double, y: Double, width: Double, height: Double, main: Bool) {
+        self.id = id; self.name = name; self.x = x; self.y = y; self.width = width; self.height = height; self.main = main
+    }
+}
+
+/// The computer on the other end. Key names and RemoteModifiers mean the same on every host; each host maps them to its own keys:
+/// command is ⌘ on a Mac and the Windows / Super key elsewhere, control is Ctrl, option is Alt (docs/design/remote-protocol.md §Hosts).
+public enum RemoteHost: String, Codable, CaseIterable, Sendable {
+    case mac, windows, linux
+}
+
 public enum RemoteFrameKind: UInt8, Sendable {
     case control = 0    // JSON
     case audio = 1      // 16 kHz mono PCM16 little-endian
@@ -142,6 +171,7 @@ public enum RemoteFrameKind: UInt8, Sendable {
     case video = 3      // RemoteVideoPacket, datagrams only
     case probe = 4      // 8 bytes the other side sends straight back, datagrams only
     case cursor = 5     // x, y as Float32 little-endian, 0…1 of the source; outside it, the pointer is elsewhere
+    case videoFeedback = 6  // RemoteVideoFeedback, phone → host, datagrams only; only to a host that named a feature in screenView. 1.0.15+
 }
 
 /// The pointer and scroll, one packet per display frame at most.

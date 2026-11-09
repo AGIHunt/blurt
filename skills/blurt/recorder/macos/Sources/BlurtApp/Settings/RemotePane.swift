@@ -1,4 +1,4 @@
-// Settings → iPhone: pair a phone with the QR code, see what's connected, remove a phone. The code shows while "Add iPhone"
+// Settings → Phone: pair a phone with the QR code, see what's connected, remove a phone. The code shows while "Add Phone"
 // is open and there's nothing to switch on: with no paired phone Blurt doesn't listen at all (Remote/RemoteServer.swift).
 import AppKit
 import ApplicationServices
@@ -29,7 +29,7 @@ final class RemoteModel: ObservableObject {
         s.onRelayAdopted = { [weak self] a in MainActor.assumeIsolated { self?.adopted(a) } }
         status = s.status
         devices = s.devices()
-        // the QR code waits for Add iPhone…: showing it listens on the network and advertises this Mac
+        // the QR code waits for Add Phone…: showing it listens on the network and advertises this Mac
         pollAccess = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.canControl = RemoteServer.shared.canControl }
         }
@@ -111,14 +111,14 @@ final class RemoteModel: ObservableObject {
     }
     @Published var copied = false
 
-    /// Where to get the iPhone app: its build steps until it is on the App Store.
-    static let appPage = URL(string: "https://github.com/AGIHunt/blurt/tree/main/apps/ios#build-it-yourself")!
+    /// Where to get the phone apps (iPhone and iPad, Android): their build steps until they are in the stores.
+    static let appPage = URL(string: "https://github.com/AGIHunt/blurt#what-it-does")!
 
     /// For the user's own coding agent: Blurt doesn't run a relay, and setting one up is a job for someone at a terminal.
     static let relayPrompt = """
-    Set up a relay I own for Blurt on my iPhone, then give me its address to paste into Blurt.
+    Set up a relay I own for Blurt on my phone, then give me its address to paste into Blurt.
 
-    Blurt for iPhone turns an iPhone into a trackpad and keyboard for a Mac. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
+    Blurt on the phone turns a phone (iPhone, iPad or Android) into a trackpad and keyboard for a computer. When the two aren't on the same network they connect through a small WebSocket relay. It passes sealed bytes it can't read and stores nothing.
 
     The code and the full steps are here; read README.md first:
     https://github.com/AGIHunt/blurt/tree/main/tools/remote-relay
@@ -131,7 +131,7 @@ final class RemoteModel: ObservableObject {
 
     Don't change anything else on the server or the domain, and ask before opening a port or spending money. Keep credentials out of anything you print.
 
-    When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address, like wss://relay.example.com, and that it goes in Blurt → Settings → iPhone → Relay Address. Reply in the language I'm writing in.
+    When it's up, run `node test.mjs <address>` from that folder and check it passes. Then tell me the one address, like wss://relay.example.com, and that it goes in Blurt → Settings → Phone → Relay Address. Reply in the language I'm writing in.
     """
 
     func setHUD(_ on: Bool) {

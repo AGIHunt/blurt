@@ -30,9 +30,26 @@ public struct RemoteScreenRequest: Codable, Hashable, Sendable {
     public var height: Int
     public var bitrate: Int
     public var fps: Int
-    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60) {
-        self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps
+    /// what the phone can decode, best first: "hevc", "h264". nil = HEVC only (phones before 1.0.15). The host picks the first it can
+    /// encode in hardware and says which in ToPhone.screenView. A keyframe's parameter sets are VPS, SPS, PPS for HEVC and SPS, PPS for H.264.
+    public var codecs: [String]?
+    /// a RemoteDisplay id to show; nil = the display the pointer is on, following it from display to display (the default)
+    public var display: String?
+    /// what this phone can do to repair the stream (RemoteVideoFeature: "nack", "ltr", "fec"); nil = none (phones before 1.0.15). The host
+    /// says which it uses in ToPhone.screenView (docs/design/remote-realtime.md)
+    public var features: [String]?
+    public init(target: String, crop: RemoteCrop = .whole, width: Int, height: Int, bitrate: Int, fps: Int = 60, codecs: [String]? = RemoteVideoCodec.decodable,
+                display: String? = nil, features: [String]? = nil) {
+        self.target = target; self.crop = crop; self.width = width; self.height = height; self.bitrate = bitrate; self.fps = fps; self.codecs = codecs
+        self.display = display; self.features = features
     }
+}
+
+public enum RemoteVideoCodec {
+    public static let hevc = "hevc"
+    public static let h264 = "h264"
+    /// what an Apple phone asks for: both decode in hardware
+    public static let decodable = [hevc, h264]
 }
 
 /// What the phone got since its last report.
@@ -126,23 +143,34 @@ public struct RemoteVideoPacket: Equatable, Sendable {
     public static let payloadSize = 1180
 
     public var frame: UInt32
+    /// 0..<count: a piece of the frame. count...: a parity piece (RemoteVideoFEC), only to a phone that asked for "fec"
     public var index: UInt16
     public var count: UInt16
     public var keyframe: Bool
+    /// decodable from references the phone has acknowledged, after a loss (bit 1 of the flags byte; only to a phone that asked for "ltr")
+    public var refresh = false
+    /// the phone acknowledges this frame once it's decoded: the host may refer back to it after a loss (bit 2; "ltr" only)
+    public var ackRequested = false
     /// when the Mac composed it, on the Mac's clock
     public var captured: Double
     public var payload: Data
 
-    public init(frame: UInt32, index: UInt16, count: UInt16, keyframe: Bool, captured: Double, payload: Data) {
-        self.frame = frame; self.index = index; self.count = count; self.keyframe = keyframe; self.captured = captured; self.payload = payload
+    public init(frame: UInt32, index: UInt16, count: UInt16, keyframe: Bool, refresh: Bool = false, ackRequested: Bool = false, captured: Double, payload: Data) {
+        self.frame = frame; self.index = index; self.count = count; self.keyframe = keyframe; self.refresh = refresh; self.ackRequested = ackRequested
+        self.captured = captured; self.payload = payload
     }
+
+    public var isParity: Bool { index >= count }
+
+    /// The ninth byte: bit 0 keyframe, bit 1 refresh, bit 2 acknowledge. A phone before 1.0.15 reads keyframe as "== 1" and is never sent the others.
+    public var flags: UInt8 { (keyframe ? 1 : 0) | (refresh ? 2 : 0) | (ackRequested ? 4 : 0) }
 
     public func encoded() -> Data {
         var d = Data(capacity: Self.headerSize + payload.count)
         withUnsafeBytes(of: frame.bigEndian) { d.append(contentsOf: $0) }
         withUnsafeBytes(of: index.bigEndian) { d.append(contentsOf: $0) }
         withUnsafeBytes(of: count.bigEndian) { d.append(contentsOf: $0) }
-        d.append(keyframe ? 1 : 0)
+        d.append(flags)
         withUnsafeBytes(of: captured.bitPattern.bigEndian) { d.append(contentsOf: $0) }
         d.append(payload)
         return d
@@ -154,20 +182,23 @@ public struct RemoteVideoPacket: Equatable, Sendable {
         frame = b[0..<4].reduce(0) { $0 << 8 | UInt32($1) }
         index = b[4..<6].reduce(0) { $0 << 8 | UInt16($1) }
         count = b[6..<8].reduce(0) { $0 << 8 | UInt16($1) }
-        keyframe = b[8] == 1
+        keyframe = b[8] & 1 != 0
+        refresh = b[8] & 2 != 0
+        ackRequested = b[8] & 4 != 0
         captured = Double(bitPattern: b[9..<17].reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
         payload = Data(d.dropFirst(Self.headerSize))
-        guard count > 0, index < count else { return nil }
+        guard count > 0, Int(index) < Int(count) + RemoteVideoFEC.maxParity else { return nil }
     }
 
     /// One encoded frame, in pieces.
-    public static func split(_ data: Data, frame: UInt32, keyframe: Bool, captured: Double, payload size: Int = payloadSize) -> [RemoteVideoPacket] {
+    public static func split(_ data: Data, frame: UInt32, keyframe: Bool, refresh: Bool = false, ackRequested: Bool = false, captured: Double,
+                             payload size: Int = payloadSize) -> [RemoteVideoPacket] {
         let count = max(1, (data.count + size - 1) / size)
         return (0..<count).map { i in
             let start = data.startIndex + i * size
             let end = min(start + size, data.endIndex)
-            return RemoteVideoPacket(frame: frame, index: UInt16(i), count: UInt16(count), keyframe: keyframe, captured: captured,
-                                     payload: Data(data[start..<end]))
+            return RemoteVideoPacket(frame: frame, index: UInt16(i), count: UInt16(count), keyframe: keyframe, refresh: refresh, ackRequested: ackRequested,
+                                     captured: captured, payload: Data(data[start..<end]))
         }
     }
 }
@@ -179,6 +210,13 @@ public struct RemoteVideoAssembler {
         public let keyframe: Bool
         public let captured: Double
         public let id: UInt32
+        public var refresh = false
+        public var ackRequested = false
+        /// when its first and last pieces arrived, on the phone's clock (0 when not measured)
+        public var firstAt = 0.0, lastAt = 0.0
+        public init(data: Data, keyframe: Bool, captured: Double, id: UInt32, refresh: Bool = false, ackRequested: Bool = false) {
+            self.data = data; self.keyframe = keyframe; self.captured = captured; self.id = id; self.refresh = refresh; self.ackRequested = ackRequested
+        }
     }
 
     private var current: UInt32?
@@ -194,6 +232,7 @@ public struct RemoteVideoAssembler {
 
     /// A frame, if this piece finished one.
     public mutating func add(_ p: RemoteVideoPacket) -> Frame? {
+        if p.isParity { return nil }                            // only RemoteVideoReceiver uses them
         if let l = lastDone, p.frame <= l { return nil }        // late
         if current != p.frame {
             if let c = current, p.frame < c { return nil }      // late, and a newer one has begun

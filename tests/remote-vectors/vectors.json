@@ -1,0 +1,882 @@
+{
+  "about" : "Written by RemoteVectorsTests.swift (skills/blurt/recorder/macos). Spec: docs/design/remote-protocol.md. Byte fields are lowercase hex; JSON is compared as parsed values, not text.",
+  "cursor" : {
+    "hex" : "0000003f0000803e",
+    "x" : 0.5,
+    "y" : 0.25
+  },
+  "handshake" : {
+    "check" : "684117",
+    "commitment" : "8312c4cf7c9d25d077839a4c6a184bb2b57b000dae13fc0f5251563b434a8770",
+    "id" : "device-id-1",
+    "keyToMac" : "25db7d8585d6d8387447486dcd5c6246fc17716ac97e7a3d61bd68b1ba3cf47f",
+    "keyToPhone" : "4b4c284c7b8da659f2a90ea2b43eb0739a2210c1986d9cb9caf03b20346b22b3",
+    "macEph" : "0ff8125a05ca7357c68e0b3f7ee6d330ae57a9f398c359af9c4c74aa54184b77",
+    "macEphPrivate" : "050c131a21282f363d444b525960676e757c838a91989fa6adb4bbc2c9d0d7de",
+    "macHello" : {
+      "eph" : "D/gSWgXKc1fGjgs/fubTMK5XqfOYw1mvnEx0qlQYS3c=",
+      "proof" : "t3V3kp1zJIxY2aBvBBHt71HHh3Ya/dzT7KOexgiRJbw=",
+      "v" : 1
+    },
+    "macHelloRefused" : {
+      "error" : "not_paired",
+      "v" : 1
+    },
+    "nonce" : "0910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4dbe2",
+    "paired" : "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
+    "phoneEph" : "73e79971c9110029723632a80b707bf4f62c125763346e1e8718d6c0dcc3aa3a",
+    "phoneEphPrivate" : "020910171e252c333a41484f565d646b727980878e959ca3aab1b8bfc6cdd4db",
+    "phoneHello" : {
+      "c" : "gxLEz3ydJdB3g5pMahhLsrV7AA2uE/wPUlFWO0NKh3A=",
+      "eph" : "c+eZcckRAClyNjKoC3B79PYsEldjNG4ehxjWwNzDqjo=",
+      "id" : "device-id-1",
+      "v" : 1
+    },
+    "proof" : "b77577929d73248c58d9a06f0411edef51c787761afddcd3eca39ec6089125bc",
+    "sharedSecret" : "c50b65b98f562c7dd4fb323171ed70f68c5c058e9e1281cebc86cebe73d47f17",
+    "tcpMacToPhone" : [
+      {
+        "plain" : "007b227564704f4b223a7b7d7d",
+        "sealed" : "1a32d703b5eec9ee90c7e1585740d35fe1a18c62500e6a868ad5186f7a"
+      }
+    ],
+    "tcpPhoneToMac" : [
+      {
+        "framed" : "000000775c82c77969619bf1353b25efa76d92c63daa85703417ac6af4e1d00ba83e76171c1cf42f86aba33a1064d491403787f0ee6335bf6f425a29fb643be78adeff1a28dc57ded155eeba8924c3cf87776f4f26a3a5810a3c1aede9ca3394bdebc294045e626dbdce484862bd0fefb34f2670d7a18b40adc03e",
+        "plain" : "007b2268656c6c6f223a7b22646576696365223a22506978656c222c226d69634f6e50686f6e65223a747275652c226e6f6e6365223a2243524158486955734d7a70425345395758575272636e6d41683436566e4b4f717362695c2f78733355322b493d227d7d",
+        "sealed" : "5c82c77969619bf1353b25efa76d92c63daa85703417ac6af4e1d00ba83e76171c1cf42f86aba33a1064d491403787f0ee6335bf6f425a29fb643be78adeff1a28dc57ded155eeba8924c3cf87776f4f26a3a5810a3c1aede9ca3394bdebc294045e626dbdce484862bd0fefb34f2670d7a18b40adc03e"
+      },
+      {
+        "plain" : "0101000200",
+        "sealed" : "9bbcbc7ac06aea55fd8b957cc0cf9e5414a3de7260"
+      }
+    ],
+    "transcript" : "33ae0923d5c1a185ff852bc02c117b3d1bf57bab9600e707a9ae1c9798284e8f",
+    "udpPhoneToMac" : [
+      {
+        "counter" : 1,
+        "plain" : "0203",
+        "sealed" : "0000000700000000000000013ff36c6b8b1a032ab7c46a4775d29036942a",
+        "session" : 7
+      },
+      {
+        "counter" : 2,
+        "plain" : "02000000803f0000803f",
+        "sealed" : "000000070000000000000002086b264eff0d327a498208c91e30ebab9f7dd29c232b490aec22",
+        "session" : 7
+      }
+    ]
+  },
+  "pairingURL" : "blurtremote://pair?v=1&mac=host-id-1&id=device-id-1&k=AQgPFh0kKzI5QEdOVVxjanF4f4aNlJuiqbC3vsXM09o&n=Studio%20PC&p=50123&a=192.168.1.20,fe80::1&r=wss://relay.example.com",
+  "pointer" : [
+    {
+      "hex" : "000000c03f000010c0",
+      "name" : "move"
+    },
+    {
+      "hex" : "01020000000000002041",
+      "name" : "scroll"
+    },
+    {
+      "hex" : "0101000040c00000003f",
+      "name" : "scroll_began"
+    },
+    {
+      "hex" : "020000c842000048c2",
+      "name" : "fling"
+    },
+    {
+      "hex" : "03",
+      "name" : "stop"
+    }
+  ],
+  "relayRoom" : {
+    "paired" : "01080f161d242b323940474e555c636a71787f868d949ba2a9b0b7bec5ccd3da",
+    "room" : "XnpvguvK9APB5tb6ROrun0yHSmx3kwlj2BPrLhVCZJw"
+  },
+  "toMac" : [
+    {
+      "json" : {
+        "key" : {
+          "_0" : {
+            "key" : "C",
+            "mods" : 1
+          }
+        }
+      },
+      "name" : "key_tap"
+    },
+    {
+      "json" : {
+        "key" : {
+          "_0" : {
+            "key" : "Tab",
+            "mods" : 3
+          },
+          "down" : true
+        }
+      },
+      "name" : "key_down"
+    },
+    {
+      "json" : {
+        "key" : {
+          "_0" : {
+            "key" : "",
+            "mods" : 2
+          },
+          "down" : false
+        }
+      },
+      "name" : "key_up_modifier_alone"
+    },
+    {
+      "json" : {
+        "mods" : {
+          "_0" : 5
+        }
+      },
+      "name" : "mods"
+    },
+    {
+      "json" : {
+        "run" : {
+          "_0" : [
+            {
+              "key" : {
+                "_0" : {
+                  "key" : "Escape",
+                  "mods" : 0
+                }
+              }
+            },
+            {
+              "wait" : {
+                "_0" : 80
+              }
+            },
+            {
+              "key" : {
+                "_0" : {
+                  "key" : "Escape",
+                  "mods" : 0
+                }
+              }
+            },
+            {
+              "text" : {
+                "_0" : "/compact"
+              }
+            }
+          ]
+        }
+      },
+      "name" : "run"
+    },
+    {
+      "json" : {
+        "text" : {
+          "_0" : "你好 hello\n"
+        }
+      },
+      "name" : "text"
+    },
+    {
+      "json" : {
+        "button" : {
+          "_0" : 0,
+          "down" : true
+        }
+      },
+      "name" : "button_down"
+    },
+    {
+      "json" : {
+        "button" : {
+          "_0" : 1,
+          "down" : false
+        }
+      },
+      "name" : "button_up_right"
+    },
+    {
+      "json" : {
+        "dragBegin" : {
+
+        }
+      },
+      "name" : "drag_begin"
+    },
+    {
+      "json" : {
+        "dictationKey" : {
+          "down" : true
+        }
+      },
+      "name" : "dictation_key"
+    },
+    {
+      "json" : {
+        "blurt" : {
+          "_0" : "voiceNote"
+        }
+      },
+      "name" : "blurt"
+    },
+    {
+      "json" : {
+        "system" : {
+          "_0" : "missionControl"
+        }
+      },
+      "name" : "system"
+    },
+    {
+      "json" : {
+        "activate" : {
+          "bundle" : "com.apple.Terminal"
+        }
+      },
+      "name" : "activate"
+    },
+    {
+      "json" : {
+        "hud" : {
+          "_0" : "常用"
+        }
+      },
+      "name" : "hud"
+    },
+    {
+      "json" : {
+        "hello" : {
+          "device" : "Pixel 9",
+          "micOnPhone" : true,
+          "nonce" : "CRAXHiUsMzpBSE9WXWRrcnmAh46VnKOqsbi/xs3U2+I="
+        }
+      },
+      "name" : "hello"
+    },
+    {
+      "json" : {
+        "hello" : {
+          "device" : "iPhone",
+          "micOnPhone" : false
+        }
+      },
+      "name" : "hello_no_nonce"
+    },
+    {
+      "json" : {
+        "setMicOnPhone" : {
+          "_0" : false
+        }
+      },
+      "name" : "set_mic_on_phone"
+    },
+    {
+      "json" : {
+        "releaseAll" : {
+
+        }
+      },
+      "name" : "release_all"
+    },
+    {
+      "json" : {
+        "keyStored" : {
+
+        }
+      },
+      "name" : "key_stored"
+    },
+    {
+      "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 4000000,
+            "codecs" : [
+              "h264"
+            ],
+            "crop" : {
+              "h" : 0.5,
+              "w" : 0.5,
+              "x" : 0.25,
+              "y" : 0.125
+            },
+            "fps" : 30,
+            "height" : 1000,
+            "target" : "display",
+            "width" : 1600
+          }
+        }
+      },
+      "name" : "screen"
+    },
+    {
+      "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 1000000,
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "fps" : 15,
+            "height" : 800,
+            "target" : "display",
+            "width" : 1280
+          }
+        }
+      },
+      "name" : "screen_old_phone"
+    },
+    {
+      "json" : {
+        "screen" : {
+
+        }
+      },
+      "name" : "screen_off"
+    },
+    {
+      "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 4000000,
+            "codecs" : [
+              "h264"
+            ],
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "display" : "69733382",
+            "fps" : 30,
+            "height" : 900,
+            "target" : "display",
+            "width" : 1600
+          }
+        }
+      },
+      "name" : "screen_pinned_display"
+    },
+    {
+      "json" : {
+        "screen" : {
+          "_0" : {
+            "bitrate" : 12000000,
+            "codecs" : [
+              "hevc",
+              "h264"
+            ],
+            "crop" : {
+              "h" : 1,
+              "w" : 1,
+              "x" : 0,
+              "y" : 0
+            },
+            "features" : [
+              "nack",
+              "ltr",
+              "fec"
+            ],
+            "fps" : 120,
+            "height" : 1206,
+            "target" : "display",
+            "width" : 2622
+          }
+        }
+      },
+      "name" : "screen_repairs"
+    },
+    {
+      "json" : {
+        "showDisplay" : {
+          "_0" : "69733382"
+        }
+      },
+      "name" : "show_display"
+    },
+    {
+      "json" : {
+        "showDisplay" : {
+
+        }
+      },
+      "name" : "show_display_follow"
+    },
+    {
+      "json" : {
+        "screenCrop" : {
+          "_0" : {
+            "h" : 0.5,
+            "w" : 0.5,
+            "x" : 0.25,
+            "y" : 0.125
+          }
+        }
+      },
+      "name" : "screen_crop"
+    },
+    {
+      "json" : {
+        "pointerTo" : {
+          "x" : 0.5,
+          "y" : 0.75
+        }
+      },
+      "name" : "pointer_to"
+    },
+    {
+      "json" : {
+        "candidates" : {
+          "_0" : [
+            {
+              "host" : "203.0.113.5",
+              "port" : 50123
+            },
+            {
+              "host" : "2001:db8::1",
+              "port" : 50123
+            }
+          ]
+        }
+      },
+      "name" : "candidates"
+    },
+    {
+      "json" : {
+        "requestKeyframe" : {
+
+        }
+      },
+      "name" : "request_keyframe"
+    },
+    {
+      "json" : {
+        "screenReport" : {
+          "_0" : {
+            "frames" : 30,
+            "lost" : 1,
+            "received" : 123456,
+            "rtt" : 0.25
+          }
+        }
+      },
+      "name" : "screen_report"
+    },
+    {
+      "json" : {
+        "screenReport" : {
+          "_0" : {
+            "frames" : 0,
+            "lost" : 0,
+            "received" : 0
+          }
+        }
+      },
+      "name" : "screen_report_no_rtt"
+    },
+    {
+      "json" : {
+        "screenPace" : {
+          "idle" : true
+        }
+      },
+      "name" : "screen_pace"
+    },
+    {
+      "json" : {
+        "unpair" : {
+
+        }
+      },
+      "name" : "unpair"
+    },
+    {
+      "json" : {
+        "replaces" : {
+          "deviceID" : "old-device-id"
+        }
+      },
+      "name" : "replaces"
+    },
+    {
+      "json" : {
+        "offerRelay" : {
+          "_0" : "wss://relay.example.com"
+        }
+      },
+      "name" : "offer_relay"
+    },
+    {
+      "json" : {
+        "screenStats" : {
+          "_0" : "fps=30"
+        }
+      },
+      "name" : "screen_stats"
+    },
+    {
+      "json" : {
+        "screenSnapshot" : {
+          "jpeg" : "/9j/",
+          "name" : "a"
+        }
+      },
+      "name" : "screen_snapshot"
+    },
+    {
+      "json" : {
+        "ping" : {
+          "_0" : 12.5
+        }
+      },
+      "name" : "ping"
+    }
+  ],
+  "toPhone" : [
+    {
+      "json" : {
+        "session" : {
+          "_0" : {
+            "canControl" : true,
+            "candidates" : [
+              {
+                "host" : "192.168.1.20",
+                "port" : 50123
+              }
+            ],
+            "displayAspect" : 1.5,
+            "macName" : "Studio PC",
+            "platform" : "windows",
+            "relay" : "wss://relay.example.com",
+            "udpPort" : 50123,
+            "udpSession" : 7,
+            "version" : "1.0.15"
+          }
+        }
+      },
+      "name" : "session"
+    },
+    {
+      "json" : {
+        "session" : {
+          "_0" : {
+            "canControl" : false,
+            "candidates" : [
+
+            ],
+            "displayAspect" : 1.6000000000000001,
+            "macName" : "Mac",
+            "udpPort" : 1,
+            "udpSession" : 2,
+            "version" : "1.0.13"
+          }
+        }
+      },
+      "name" : "session_old_mac"
+    },
+    {
+      "json" : {
+        "canControl" : {
+          "_0" : true
+        }
+      },
+      "name" : "can_control"
+    },
+    {
+      "json" : {
+        "front" : {
+          "_0" : {
+            "bundle" : "WindowsTerminal.exe",
+            "name" : "Terminal"
+          }
+        }
+      },
+      "name" : "front"
+    },
+    {
+      "json" : {
+        "dictation" : {
+          "_0" : "listening"
+        }
+      },
+      "name" : "dictation"
+    },
+    {
+      "json" : {
+        "live" : {
+          "committed" : "你好",
+          "pending" : " wor"
+        }
+      },
+      "name" : "live"
+    },
+    {
+      "json" : {
+        "level" : {
+          "_0" : 0.5
+        }
+      },
+      "name" : "level"
+    },
+    {
+      "json" : {
+        "typed" : {
+          "_0" : "hello"
+        }
+      },
+      "name" : "typed"
+    },
+    {
+      "json" : {
+        "notice" : {
+          "_0" : "Copied"
+        }
+      },
+      "name" : "notice"
+    },
+    {
+      "json" : {
+        "pong" : {
+          "_0" : 12.5
+        }
+      },
+      "name" : "pong"
+    },
+    {
+      "json" : {
+        "udpOK" : {
+
+        }
+      },
+      "name" : "udp_ok"
+    },
+    {
+      "json" : {
+        "removed" : {
+
+        }
+      },
+      "name" : "removed"
+    },
+    {
+      "json" : {
+        "relay" : {
+          "_0" : "wss://relay.example.com"
+        }
+      },
+      "name" : "relay"
+    },
+    {
+      "json" : {
+        "relay" : {
+
+        }
+      },
+      "name" : "relay_none"
+    },
+    {
+      "json" : {
+        "replaced" : {
+
+        }
+      },
+      "name" : "replaced"
+    },
+    {
+      "json" : {
+        "pairingWaits" : {
+
+        }
+      },
+      "name" : "pairing_waits"
+    },
+    {
+      "json" : {
+        "listen" : {
+          "_0" : true
+        }
+      },
+      "name" : "listen"
+    },
+    {
+      "json" : {
+        "newKey" : {
+          "_0" : "AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw="
+        }
+      },
+      "name" : "new_key"
+    },
+    {
+      "json" : {
+        "clock" : {
+          "mac" : 2000.25,
+          "phone" : 100.5
+        }
+      },
+      "name" : "clock"
+    },
+    {
+      "json" : {
+        "screenFailed" : {
+          "_0" : "Screen Recording is off"
+        }
+      },
+      "name" : "screen_failed"
+    },
+    {
+      "json" : {
+        "screenView" : {
+          "codec" : "h264",
+          "height" : 1080,
+          "width" : 1920
+        }
+      },
+      "name" : "screen_view"
+    },
+    {
+      "json" : {
+        "screenView" : {
+          "height" : 982,
+          "width" : 1512
+        }
+      },
+      "name" : "screen_view_old_mac"
+    },
+    {
+      "json" : {
+        "screenView" : {
+          "codec" : "hevc",
+          "display" : "69733382",
+          "height" : 1440,
+          "width" : 2560
+        }
+      },
+      "name" : "screen_view_display"
+    },
+    {
+      "json" : {
+        "screenView" : {
+          "codec" : "hevc",
+          "display" : "1",
+          "features" : [
+            "nack",
+            "ltr"
+          ],
+          "height" : 982,
+          "width" : 1512
+        }
+      },
+      "name" : "screen_view_repairs"
+    },
+    {
+      "json" : {
+        "displays" : {
+          "_0" : [
+            {
+              "height" : 982,
+              "id" : "1",
+              "main" : true,
+              "name" : "Built-in Retina Display",
+              "width" : 1512,
+              "x" : 0,
+              "y" : 0
+            },
+            {
+              "height" : 1440,
+              "id" : "69733382",
+              "main" : false,
+              "name" : "DELL U2723QE",
+              "width" : 2560,
+              "x" : 1512,
+              "y" : -458
+            }
+          ]
+        }
+      },
+      "name" : "displays"
+    },
+    {
+      "json" : {
+        "cursorShape" : {
+          "height" : 24,
+          "hotX" : 1,
+          "hotY" : 2,
+          "png" : "iVA=",
+          "width" : 16
+        }
+      },
+      "name" : "cursor_shape"
+    }
+  ],
+  "version" : 1,
+  "video" : {
+    "packets" : {
+      "captured" : 1234.5,
+      "frame" : 42,
+      "hex" : [
+        "0000002a000000020140934a00000000000000803e0000003e0000003f0000003f",
+        "0000002a000100020140934a000000000002000240010003420102000000012601"
+      ],
+      "keyframe" : true,
+      "pieceSize" : 16
+    },
+    "payload" : {
+      "crop" : {
+        "h" : 0.5,
+        "w" : 0.5,
+        "x" : 0.25,
+        "y" : 0.125
+      },
+      "hex" : "0000803e0000003e0000003f0000003f02000240010003420102000000012601",
+      "parameterSets" : [
+        "4001",
+        "420102"
+      ],
+      "picture" : "000000012601"
+    }
+  },
+  "videoRepair" : {
+    "feedback" : [
+      {
+        "hex" : "010000002b0002000100020000002cffff",
+        "name" : "nack"
+      },
+      {
+        "hex" : "020000002b00000005",
+        "name" : "ack"
+      },
+      {
+        "hex" : "030000002a",
+        "name" : "lost"
+      }
+    ],
+    "parity" : {
+      "group" : 2,
+      "hex" : [
+        "0000002b000300030640934b0000000000020018202020202020202008090a0b0c0d0e0f"
+      ]
+    },
+    "refresh" : {
+      "ackRequested" : true,
+      "captured" : 1234.75,
+      "data" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f2021222324252627",
+      "frame" : 43,
+      "hex" : [
+        "0000002b000000030640934b0000000000000102030405060708090a0b0c0d0e0f",
+        "0000002b000100030640934b0000000000101112131415161718191a1b1c1d1e1f",
+        "0000002b000200030640934b00000000002021222324252627"
+      ],
+      "keyframe" : false,
+      "pieceSize" : 16,
+      "refresh" : true
+    }
+  }
+}

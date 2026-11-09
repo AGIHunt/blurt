@@ -8,9 +8,9 @@
    Display: Noto Serif SC (self-hosted subsets). Body: the system font. Mono: IBM Plex Mono 500, for measured numbers,
    commands and code only. Mint marks Blurt in the act. */
 
-@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.6-2") format("woff2"); }
-@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.6-2") format("woff2"); }
-@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.6-2") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 700; font-display: block; src: url("fonts/serif-700.woff2?v=1.0.6-3") format("woff2"); }
+@font-face { font-family: "Blurt Serif"; font-weight: 900; font-display: block; src: url("fonts/serif-900.woff2?v=1.0.6-3") format("woff2"); }
+@font-face { font-family: "Blurt Mono"; font-weight: 500; font-display: swap; src: url("fonts/mono-500.woff2?v=1.0.6-3") format("woff2"); }
 
 :root{
   --paper: #FFFFFF;
@@ -400,7 +400,7 @@ html:not(.motion) .nowl{ display: none; }
 .k-l, .k-sh{ transition: opacity .35s; }
 .sc-struct:not(.on3) .k-l, .sc-struct.on4 .k-l, .sc-struct:not(.on4) .k-sh{ opacity: 0; }
 .sc-struct.on3:not(.on4) .k-l .cap{ animation: press .55s var(--ease) .1s; }
-.sc-struct.on4 .k-sh .cap{ animation: press .55s var(--ease) .1s; }
+.sc-struct.on4 .k-sh .cap{ animation: press2 .75s ease .1s; }
 .fix{ margin-top: 1em; display: grid; gap: .25em; font-size: 1.1em; line-height: 1.45; transition: opacity .45s; }
 .fix s{ color: var(--over-2); text-decoration-thickness: 1px; }
 .fix span{ color: var(--over); font-weight: 600; }
@@ -622,13 +622,14 @@ html.motion .sc-snap.on12 .draw{ opacity: 0; }
 html:not(.motion) .hswap{ display: block; }
 html:not(.motion) .hs-a, html:not(.motion) .hs-b{ opacity: 1; visibility: visible; transform: none; }
 html:not(.motion) .hs-b{ margin-top: 2.2em; }
-.w-app{ left: 34em; top: 8.5em; width: 60em; height: 44em; }
-.app{ position: absolute; inset: 2.6em 0 0; display: grid; grid-template-columns: 10.5em 20em minmax(0, 1fr); }
+/* Blurt's window (the list) on the left, your own agent's terminal on the right: Blurt runs no agent itself */
+.w-app{ left: 39em; top: 8.5em; width: 33em; height: 42em; }
+.app{ position: absolute; inset: 2.6em 0 0; display: grid; grid-template-columns: 10.5em minmax(0, 1fr); }
 .ap-side{ background: var(--win-2); padding: 1em .7em; font-size: .92em; color: var(--win-ink-2); border-right: 1px solid var(--win-line); }
 .ap-side p{ display: flex; justify-content: space-between; padding: .4em .6em; border-radius: .4em; transition: background .4s, color .4s; }
 .ap-side .ap-proj{ margin-top: 1em; font-weight: 600; color: var(--win-ink); }
 .sc-hand.on4 .c-ver{ background: var(--mint-tint); color: var(--win-ink); font-weight: 600; }
-.ap-list{ padding: .7em; border-right: 1px solid var(--win-line); }
+.ap-list{ padding: .7em; }
 .al{ display: grid; grid-template-columns: .8em minmax(0, 1fr); gap: .15em .7em; align-items: center; padding: .7em .6em; border-radius: .5em; transition: background .35s; }
 .al b{ grid-column: 2; font-size: .9em; font-weight: 600; line-height: 1.3; }
 .al .num{ grid-column: 2; font-size: .76em; color: var(--win-ink-2); }
@@ -638,20 +639,27 @@ html:not(.motion) .hs-b{ margin-top: 2.2em; }
 .sc-hand.on1 :is(.sel1, .sel2){ background: var(--mint-tint); }
 .sc-hand:not(.on2) :is(.sel1, .sel2) .st{ background: transparent; box-shadow: inset 0 0 0 1.5px var(--win-ink-2); }
 .sc-hand.on4 .sel1 .st{ background: #E2A93A; border-radius: .12em; }
-.ap-sess{ display: grid; grid-template-rows: 1fr 1fr; gap: .6em; padding: .6em; background: #101211; }
-.ss{ padding: .7em .9em; border-radius: .5em; background: #171A19; color: #E4E6E5; font: 500 .8em/1.7 var(--mono); overflow: hidden; transition: opacity .45s, transform .6s var(--ease); }
-.ss + .ss{ transition-delay: .15s; }
-.ss-h{ display: flex; justify-content: space-between; color: #8F9693; margin-bottom: .3em; }
-.ss-h b{ color: #fff; }
+/* the selection's button: Hand Off (⌘↩) while the two are picked, Mark as Done once OR-21 is to verify */
+.ap-btn{ position: absolute; right: 1.4em; bottom: 1.2em; display: flex; align-items: center; gap: .6em; padding: .5em 1.3em; border-radius: .5em; background: var(--mint-ink); color: #fff; font-weight: 600; font-size: .92em; transition: opacity .4s, transform .5s var(--ease); }
+.ap-btn kbd{ font: 500 .82em var(--mono); opacity: .75; }
+@media (prefers-color-scheme: dark) { .ap-btn{ color: var(--on-mint); } }
+.sc-hand:not(.on1) .ab-hand, .sc-hand.on2 .ab-hand, .sc-hand:not(.on5) .ab-done{ opacity: 0; transform: translateY(.6em); }
+/* your agent, in your own terminal: the instruction pasted, then its work */
+.w-term{ left: 68em; top: 14em; width: 28em; height: 27em; background: #171A19; color: #E4E6E5; transition: opacity .5s, transform .75s var(--ease); }
+.w-term .wbar{ background: #222625; border-bottom-color: rgba(255, 255, 255, .08); }
+.w-term .wbar span{ color: #A9B0AD; }
+.tm{ position: absolute; inset: 2.6em 0 0; padding: 1.1em 1.2em; font: 500 .8em/1.7 var(--mono); overflow: hidden; }
+.tm .t-h{ display: flex; justify-content: space-between; gap: 1em; color: #8F9693; margin-bottom: .6em; white-space: nowrap; }
+.tm .t-h b{ color: #fff; }
+.tm .pr{ color: #8F9693; }
+.tm-in{ margin-bottom: .7em; padding: .4em .6em; border-radius: .3em; background: rgba(255, 255, 255, .06); color: #fff; }
 .sl{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 .3em; border-radius: .2em; transition: opacity .3s; transition-delay: calc(var(--i) * 140ms); }
 .sl.del{ color: #FF9A8F; background: rgba(255, 90, 80, .12); }
 .sl.add{ color: #8BE3B5; background: rgba(80, 220, 150, .12); }
 .sl.ok{ color: var(--mint); }
-.sc-hand:not(.on2) .ss{ opacity: 0; transform: translateY(1em); }
+.sc-hand:not(.on2) .w-term{ opacity: 0; transform: translateY(6em); }
+html.motion .sc-hand.on6 .w-term{ opacity: 0; transform: translateY(-2em); }
 .sc-hand:not(.on3) .sl{ opacity: 0; }
-.merge{ position: absolute; right: 1.4em; bottom: 1.2em; padding: .5em 1.3em; border-radius: .5em; background: var(--mint-ink); color: #fff; font-weight: 600; font-size: .92em; transition: opacity .4s, transform .5s var(--ease); }
-@media (prefers-color-scheme: dark) { .merge{ color: var(--on-mint); } }
-.sc-hand:not(.on5) .merge{ opacity: 0; transform: translateY(.6em); }
 .w-dm{ left: 52em; top: 27em; width: 38em; height: 18em; transition: opacity .5s, transform .75s var(--ease); }
 .sc-hand:not(.on6) .w-dm{ opacity: 0; transform: translateY(8em); }
 .dm{ position: absolute; inset: 2.6em 0 0; padding: 1.4em 1.6em; }
@@ -661,6 +669,8 @@ html:not(.motion) .hs-b{ margin-top: 2.2em; }
 .zip small{ display: block; color: var(--win-ink-2); font-size: .86em; }
 .dm .ch-me{ transition: opacity .45s, transform .7s var(--ease); }
 .sc-hand:not(.on7) .dm .ch-me{ opacity: 0; transform: translateX(-4em); }
+/* "Hand it to a teammate." is one unbroken phrase: a size down so it stays clear of Blurt's window */
+@media (min-width: 721px) { html[lang="en"] .sc-hand .hs-b h2{ font-size: 2.6em; } }
 
 .mcp{ font-size: 15px; }
 .mcp b{ margin-right: 10px; }
@@ -848,7 +858,6 @@ html.motion .steps li.now{ opacity: 1; }
   .vs{ margin-top: 16px; }
 }
 
-.sc-hand .w-app{ left: 37em; width: 57em; }
 .sc-hand .w-dm{ left: 54em; }
 
 
@@ -887,7 +896,6 @@ html:not(.motion) .swap{ display: block; }
   .pv > div + div{ border-left: 0; border-top: 1px solid var(--line); margin-top: 26px; padding-top: 26px; }
 }
 
-.sc-hand .w-app{ left: 39em; width: 55em; }
 .specs dd{ color: var(--ink-2); }
 @media (max-width: 720px) { .sc-hand .copy h2{ font-size: 24px; } }
 html[lang="en"] :is(h1, h2, .pv-none, .big) { font-feature-settings: "pwid" 1; }
@@ -997,10 +1005,11 @@ html.motion .draw li.now .gest{ color: var(--mint-ink); }
   html.motion .sc-rec.on5 .view{ --cx: -23.85; --cy: -5; }
   .sc-rec .item{ width: 31em; }
   html.motion .sc-rec.on7 .view{ --cx: -10.85; --cy: 0; }
-  .sc-hand .w-app{ width: 31em; }
-  .sc-hand .app{ grid-template-columns: 0 13em minmax(0, 1fr); }
-  .sc-hand .ap-side{ visibility: hidden; padding: 0; }
+  .sc-hand .w-app{ width: 31em; height: 30em; }
+  .sc-hand .w-term{ left: 72em; top: 12em; width: 31em; height: 26em; }
   html.motion .sc-hand .view{ --cx: -37.85; --cy: -2; }
+  html.motion .sc-hand.on2 .view{ --cx: -70.85; --cy: -1; }
+  html.motion .sc-hand.on4 .view{ --cx: -37.85; --cy: -2; }
   .sc-hand .w-dm{ width: 31em; }
   html.motion .sc-hand.on6 .view{ --cx: -52.85; --cy: -19; }
 }
@@ -1117,7 +1126,7 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
   .lands{ display: grid; margin-top: 10px; gap: 0; }
   .lands > div{ grid-template-columns: 5.2em minmax(0, 1fr); gap: 8px; padding: 5px 0; font-size: 12.5px; line-height: 1.4; }
   .lands kbd{ font-size: 11px; }
-  .sc-hand .app{ grid-template-columns: 13em minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sc-hand .app{ grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .sc-hand .ap-side{ visibility: visible; grid-column: 1 / -1; display: flex; align-items: center; gap: .2em; padding: .45em .6em; border-right: 0; border-bottom: 1px solid var(--win-line); font-size: .8em; white-space: nowrap; overflow: hidden; }
   .sc-hand .ap-side p{ gap: .45em; padding: .3em .55em; }
   .sc-hand .ap-side .ap-proj{ margin: 0 0 0 auto; }
@@ -1152,7 +1161,7 @@ html:not(.motion) .sc-snap :is(.w-claude, .lands){ display: none; }
 /* a beat (done, hello): Peep grows out of the notch for the moment, so the hop reads at a glance */
 .isl .el > .pp.beat{ transform: translateY(5px) scale(1.55); clip-path: inset(-30px -30px 1px -30px); }
 /* the still until peep.js has the idle sheet (it paints over it inline), so the notch never shows an empty ear */
-.isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.6-2"); background-size: 500% 100%; background-position: 0 0; }
+.isl .pp, .snotch .ps{ background-image: url("assets/peep/n-still.webp?v=1.0.6-3"); background-size: 500% 100%; background-position: 0 0; }
 .snotch .ps{ position: absolute; left: 8px; top: -3px; }
 .ps[data-still="done"]{ background-position: 25% 0; }
 .ps[data-still="talking"]{ background-position: 50% 0; }
@@ -1302,7 +1311,7 @@ html.motion .sc-tr:not(.on4) .t-said{ opacity: 0; transform: translateY(.6em); }
 html.motion .sc-tr:not(.on2) .k-cmd{ opacity: 0; }
 .sc-tr .k-cmd{ left: 7.2em; }
 .sc-tr.on1:not(.on2) .k-fn .cap, .sc-tr.on3:not(.on4) .k-fn .cap{ animation: press .5s var(--ease) .05s; }
-.sc-tr.on2:not(.on3) .k-cmd .cap{ animation: press .55s var(--ease) .05s; }
+.sc-tr.on2:not(.on3) .k-cmd .cap{ animation: press2 .75s ease .05s; }
 
 /* the first minute: the setup window, its models page, then Try it */
 .sc-first{ --len: 330vh; }
@@ -1484,4 +1493,47 @@ html.motion .sc-snap:not(.on1) .pen{ opacity: 0; }
   html.motion .sc-rec:not(.on5) .view{ font-size: 1.4cqw; --cx: .7; --cy: 14; }
   .sc-rec .recf{ border-width: 3px; }
   .sc-rec .ring{ border-width: 2.5px; }
+}
+
+/* ------------------------------------------------------------------ Blurt on the phone (#phone): a still desk, not a
+   scrolled scene. The wallpaper band holds the headline and two devices (made-up content, from the iOS app's own
+   renders: an iPad on a Mac, an iPhone on a Windows PC); the facts sit on paper under it, set like the specs. */
+.rp-stage{ position: relative; overflow: hidden; isolation: isolate; background: #E4EFEC; padding: clamp(88px, 12vh, 140px) 0 clamp(64px, 9vh, 104px); }
+@media (prefers-color-scheme: dark) { .rp-stage{ background: #0E1A1F; } }
+.rp-wall{ position: absolute; inset: 0; z-index: -1; }
+.rp-wall img{ width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.rp-grid{ display: grid; grid-template-columns: minmax(0, 1fr); gap: clamp(40px, 6vh, 64px); }
+.rp-copy{ display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 20px clamp(32px, 5vw, 80px); align-items: end; color: var(--over); }
+.rp-copy h2{ font-size: clamp(34px, 3.4vw, 50px); color: var(--over); }
+html[lang="zh-CN"] .rp-copy h2{ line-height: 1.2; }
+.rp-lede{ font-size: 18px; line-height: 1.6; color: var(--over-2); max-width: 26em; text-wrap: pretty; }
+.rp-devs{ display: grid; container-type: inline-size; width: min(100%, 940px, max(560px, (100vh - 330px) * 1.33)); justify-self: center; padding-bottom: 30px; }
+.rp-dev{ grid-area: 1 / 1; position: relative; background: #0A0A0B; box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), inset 0 0 0 1px rgba(255, 255, 255, .1), 0 1.2cqw 3cqw -1cqw rgba(0, 0, 0, .28); }
+@media (prefers-color-scheme: dark) { .rp-dev{ background: #141516; box-shadow: 0 0 0 1px rgba(255, 255, 255, .16), 0 1.2cqw 3cqw -1cqw rgba(0, 0, 0, .5); } }
+.rp-dev img{ width: 100%; }
+.rp-pad{ width: 86%; justify-self: end; align-self: start; margin-bottom: 9cqw; padding: 1.3cqw; border-radius: 2.6cqw; }
+.rp-pad img{ border-radius: 1.3cqw; }
+.rp-ph{ width: 25%; justify-self: start; align-self: end; padding: .8cqw; border-radius: 4.4cqw; }
+.rp-ph img{ border-radius: 3.6cqw; }
+.rp-cap{ position: absolute; top: calc(100% + 10px); font-size: 13.5px; font-weight: 600; line-height: 1.3; color: var(--over-2); white-space: nowrap; }
+.rp-pad .rp-cap{ right: 2px; }
+.rp-ph .rp-cap{ left: 2px; }
+.rp-facts{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 30px clamp(28px, 3.4vw, 48px); padding-top: 44px; }
+.rp-facts > div{ padding-top: 14px; border-top: 1px solid var(--line); }
+.rp-facts dt{ font-weight: 650; font-size: 15px; }
+.rp-facts dd{ margin-top: 6px; font-size: 15px; line-height: 1.55; color: var(--ink-2); text-wrap: pretty; }
+@media (max-width: 1100px) {
+  .rp-copy{ grid-template-columns: minmax(0, 1fr); max-width: 34em; }
+  .rp-facts{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .rp-stage{ padding: 56px 0 44px; }
+  .rp-grid{ gap: 32px; }
+  .rp-copy{ gap: 14px; }
+  .rp-copy h2{ font-size: clamp(30px, 8.4vw, 36px); line-height: 1.22; }
+  .rp .ph{ white-space: normal; }
+  .rp-lede{ font-size: 16px; }
+  .rp-cap{ font-size: 12.5px; top: calc(100% + 8px); }
+  .rp-facts{ grid-template-columns: minmax(0, 1fr); gap: 18px; padding-top: 32px; }
+  .rp-facts dd{ font-size: 14.5px; }
 }

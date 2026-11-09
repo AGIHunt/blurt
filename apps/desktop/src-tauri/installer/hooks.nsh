@@ -65,3 +65,17 @@ FunctionEnd
 !macro NSIS_HOOK_POSTINSTALL
   SetAutoClose true
 !macroend
+
+; Blurt on the phone: the inbound firewall rule Settings → Phone → Allow… added (src/remote_firewall.rs, "Blurt (phone)").
+; Removing it needs an administrator, so: one UAC prompt, only when that rule is there (showing it needs no rights), and never
+; in a silent run (an update reinstalls over the same exe path, and the rule still fits it). A declined prompt leaves the rule,
+; which then points at an exe that's gone.
+!macro NSIS_HOOK_POSTUNINSTALL
+  IfSilent blurt_firewall_done
+  nsExec::ExecToStack '"$SYSDIR\netsh.exe" advfirewall firewall show rule name="Blurt (phone)" dir=in'
+  Pop $0
+  Pop $1
+  StrCmp $0 "0" 0 blurt_firewall_done
+  ExecShellWait "runas" "$SYSDIR\netsh.exe" 'advfirewall firewall delete rule name="Blurt (phone)" dir=in' SW_HIDE
+  blurt_firewall_done:
+!macroend

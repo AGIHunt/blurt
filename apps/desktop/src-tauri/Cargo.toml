@@ -41,6 +41,9 @@ base64 = "0.22"
 blurt-capture = { path = "../../../crates/blurt-capture" }
 # a snap's strokes burnt into shots/NNN.marked.png (capture/snap.rs)
 png = "0.17"
+# Blurt on the phone (remote.rs): the host — protocol, pairing, sessions, each OS's screen and input — and the pairing QR code
+blurt-remote = { path = "../../../crates/blurt-remote" }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 
 [target.'cfg(windows)'.dependencies]
 # Dictation (src/dictation): the low-level keyboard hook, SendInput, the clipboard, PlaySound; the mic through WASAPI
@@ -60,6 +63,8 @@ windows = { version = "0.62", features = [
   # island.rs card_drag_win.rs: a card dragged into another app (OLE: the shell's data object, the drag image)
   "Win32_UI_Shell_Common", "Win32_System_SystemServices", "Win32_Graphics_Imaging", "Win32_System_Com_StructuredStorage",
   "Media_Ocr", "Graphics_Imaging", "Storage_Streams", "Foundation", "Foundation_Collections", "Globalization",
+  # remote.rs (remote_firewall.rs): whether Windows Defender Firewall lets phones in (INetFwPolicy2, no admin needed)
+  "Win32_NetworkManagement_WindowsFirewall",
 ] }
 cpal = "0.16"
 # #[implement(IDropSource)] (card_drag_win.rs) expands to windows_core paths

@@ -467,7 +467,7 @@ It is separate from the voice note: `⌥V` keeps what you say in Blurt, and dict
 - **Sounds.** Peep peeps when the mic is really listening (talk now) and pecks when the take stops; a softer peck when
   Esc cancels it. Silence after a press means nothing started. Voice notes do the same; nothing plays while a screen
   recording runs. *Settings → Dictation* has a switch for each (*Sound when listening starts / stops*).
-- **Translate while you talk.** Tap ⌘ (either side) while dictating, or click Peep in the notch: the take is typed
+- **Translate while you talk.** Double-tap ⌘ (either side) while dictating, or click Peep in the notch: the take is typed
   translated. *Settings → Dictation → ⌘ translates into*: *Auto* (default) — your own language ↔ the other one, named
   in the list (for example *Auto: 简体中文 ↔ English*, or *Auto: English ↔ 日本語* when your Mac is in English with
   Japanese as its next language): what you say in your language goes into the other one, anything else into yours —

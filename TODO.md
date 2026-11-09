@@ -193,6 +193,20 @@
 - [ ] The Mac's second reading (a cloud vision model on the picture), the result card instead of a toast, RapidOCR
       word boxes for Latin spacing ("ClaudeCode" loses its space), high-DPI / multi-monitor grabs.
 
+## Blurt on the phone: every phone ↔ every computer (2026-11-09) — design: docs/design/remote.md, remote-protocol.md
+- [x] One wire, golden vectors checked by Swift, Rust and Kotlin in CI; Windows/Linux host (crates/blurt-remote); Android app;
+      iPad; iPhone Duo layouts; several displays; loss repair (remote-realtime.md); Settings → Phone on every computer
+- [ ] iPhone Duo, opened: run on the Duo simulator once this Mac is on macOS ≥ 26.6 (Device Hub drives the hinge; it won't
+      launch on 26.5). Check: the open display's safe area and fold width (tests assume 24 pt), opening and folding
+      mid-session (no reconnect, held modifiers kept or released cleanly if the scene resigns active, zoomed view kept),
+      laptop and book postures from UIKit's hinge API, the open layout's look (judged 8/10 from renders only).
+      How: docs/design/remote.md §iPad and iPhone Duo; Xcode 27.2 at /Applications/Xcode-27.2.0.app, runtime 24B91016s.
+- [ ] Real phones on Wi-Fi: the feel of the loss repair, 120 Hz on ProMotion, several displays (founder's iPhone 16 Pro Max first)
+- [ ] Windows on a PC with its own GPU (NVIDIA / Intel / AMD encoders on a real desktop session), the UAC "Allow…" click,
+      the uninstaller's firewall cleanup; Quick Sync and AMF untested
+- [ ] Linux on a desktop with a GPU (VA encode), KDE, X11, several monitors; the AppImage (exclude bundled GStreamer/PipeWire)
+- [ ] Phone apps in the App Store / Play (or signed APK releases); Android launcher icon rendered from the Peep source
+
 ## Next
 - [ ] **Cursor track as data** (macOS part done: clicks + cursor in events.jsonl): Windows hook → precise crops and
       auto red circles, no pixel guessing

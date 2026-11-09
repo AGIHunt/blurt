@@ -2,7 +2,7 @@
 // they send into pointer moves, keys and dictation.
 //
 //  • listens only once a phone is paired (or a QR code is showing). No paired phone, no open port.
-//  • pairing (Settings → iPhone): a QR code with a fresh key, good for one connection within two minutes, renewed while the
+//  • pairing (Settings → Phone): a QR code with a fresh key, good for one connection within two minutes, renewed while the
 //    page shows it. Used over the relay, where a photo of it would otherwise do from anywhere, someone at the Mac has to allow it. The connection that uses it spends it, is sent a new key over the sealed session, and becomes a paired
 //    device once the phone says it has kept that key. So a photo of the code, or a screen recording, is worth nothing later.
 //  • found through Bonjour (`_blurt-remote._tcp`, including peer-to-peer Wi-Fi, so two devices with no shared network still
@@ -122,6 +122,8 @@ final class RemoteServer {
         /// when the question was asked: unanswered for two minutes, it's a no
         var askedAt = 0.0
         var screen: RemoteScreen?
+        /// the display the phone chose to see; nil follows the pointer (docs/design/remote.md §Several displays)
+        var pinned: CGDirectDisplayID?
         var heldReleased = false
         var punches = 0
         // gaps between the phone's 10 ms probes as they arrive: the pointer's own path, one way
@@ -252,6 +254,8 @@ final class RemoteServer {
                 self.updateRelays()
             }
         })
+        // the phone draws the arrangement and switches between them: it hears of every change
+        RemoteDisplayList.watch { [weak self] in self?.queue.async { self?.displaysChanged() } }
         observers.append(c.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             self?.queue.sync { self?.end(); self?.stopListening() }
         })
@@ -289,6 +293,10 @@ final class RemoteServer {
             let udpParams = NWParameters.udp
             udpParams.includePeerToPeer = RemoteChannel.peerToPeer
             udpParams.allowLocalEndpointReuse = true
+            // the picture and the pointer's place: the Mac's own Wi-Fi sends them in the video access category, ahead of a download
+            // (docs/design/remote-realtime.md §Marking). Voice is for small packets; a frame's burst in it would lose aggregation. macOS
+            // writes no DSCP for it unless the network is QoS-capable (measured: TOS 0), so the access point's side is unchanged
+            udpParams.serviceClass = .interactiveVideo
             let u = try NWListener(using: udpParams, on: .any)
             u.newConnectionHandler = { [weak self] c in self?.udpConnection(c) }
             u.stateUpdateHandler = { [weak self] s in
@@ -438,6 +446,8 @@ final class RemoteServer {
             ch?.sendDatagram(.probe, d)
             s?.probeArrived()
         }
+        // pieces missing, frames decoded, a frame lost: the picture repairs itself (docs/design/remote-realtime.md)
+        ch.onVideoFeedback = { [weak s] d in if s?.greeted == true { s?.screen?.feedback(d) } }
         ch.onPointer = { [weak self, weak s] p in
             guard let s, s.greeted else { return }
             s.lastHeard = CACurrentMediaTime()
@@ -464,12 +474,12 @@ final class RemoteServer {
     private var relayAt: String?
     /// the code that let a phone in over the relay: its connection carries that session until it ends
     private var spentCode: String?
-    /// Set up by the owner (Settings → iPhone, tools/remote-relay). No address, no relay: Blurt doesn't run one.
+    /// Set up by the owner (Settings → Phone, tools/remote-relay). No address, no relay: Blurt doesn't run one.
     /// Never set here, as against cleared by the owner: only then may a phone offer the one it knows.
     static var relayUnset: Bool { Config.shared["record.remote.relay_url"] == nil }
     static var relayAddress: String? { (Config.shared["record.remote.relay_url"] as? String).flatMap(RemoteRelay.address) }
     static var relayOn: Bool { relayAddress != nil }
-    /// Settings → iPhone: a paired phone may ask for the screen
+    /// Settings → Phone: a paired phone may ask for the screen
     static var screenAllowed: Bool { Config.shared["record.remote.screen"] as? Bool ?? true }
 
     func relayChanged() {
@@ -661,12 +671,16 @@ final class RemoteServer {
                 self.keepAwake(displayToo: false)
                 guard let r else { return }
                 guard Self.screenAllowed else { return s.channel.send(ToPhone.screenFailed("off")) }
+                // the phone says what it last chose, so a picture turned on again shows what it showed
+                var asked = r
+                s.pinned = RemoteDisplayList.id(asked.display)
+                asked.display = s.pinned.map { String($0) }
                 let screen = RemoteScreen(channel: s.channel)
                 screen.onInfo = { [weak s] m in s?.channel.send(m) }
                 screen.onStopped = { [weak self] in self?.queue.async { self?.keepAwake(displayToo: false) } }
                 s.screen = screen
                 self.keepAwake(displayToo: true)
-                screen.start(r) { why in s.channel.send(ToPhone.screenFailed(why)) }
+                screen.start(asked) { why in s.channel.send(ToPhone.screenFailed(why)) }
             }
         case let .screenCrop(c):
             s.screen?.setCrop(c)
@@ -684,6 +698,8 @@ final class RemoteServer {
             // and only it may set the relay: another paired phone, or a Mac's, can't point this one somewhere else
             guard s.approved else { return }
             queue.async { self.adoptRelay(a) }
+        case let .showDisplay(id):
+            queue.async { self.showDisplay(id, s) }
         case let .pointerTo(x, y):
             if let p = s.screen?.pointerTo(x: x, y: y) { input.queue.async { input.place(p) } }
         case let .candidates(list):
@@ -854,7 +870,7 @@ final class RemoteServer {
             let main = CGDisplayBounds(CGMainDisplayID())
             s.channel.send(ToPhone.session(RemoteSessionInfo(macName: Host.current().localizedName ?? "Mac", udpPort: self.udpPort, udpSession: s.number, canControl: self.canControl,
                                                              version: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: Self.relayAddress)))
+                                                             candidates: list, displayAspect: main.height > 0 ? Double(main.width / main.height) : 1.6, relay: Self.relayAddress, platform: RemoteHost.mac.rawValue)))
         }
         if s.channel.isRelay {
             // where the phone might reach this Mac without the relay
@@ -863,14 +879,41 @@ final class RemoteServer {
             RemoteSTUN.ask(from: udpPort, queue: queue) { found in
                 if let found { list.append(found) }
                 info(list)
+                s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
                 self.sendFront()
                 DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
             }
             return
         }
         info([])
+        s.channel.send(ToPhone.displays(RemoteDisplayList.all()))
         sendFront()
         DispatchQueue.main.async { self.dictationChanged(Dictation.shared.remotePhase) }
+    }
+
+    /// The phone chose a display: shown from now on, with the pointer in its middle, where the eyes go next; nil follows the pointer again.
+    private func showDisplay(_ asked: String?, _ s: Session) {
+        guard session === s else { return }
+        if asked != nil, RemoteDisplayList.id(asked) == nil { return }      // gone since the phone heard of it
+        let id = RemoteDisplayList.id(asked)
+        s.pinned = id
+        s.screen?.show(id)
+        emit(["event": "remote_display", "state": id == nil ? "follow" : "pinned", "display": Int(id ?? 0)])
+        guard let id else { return }
+        let b = CGDisplayBounds(id)
+        let input = RemoteInput.shared
+        input.queue.async { input.place(CGPoint(x: b.midX, y: b.midY)) }
+        RemoteHUD.show(RemoteDisplayList.name(id), on: id)
+    }
+
+    /// Plugged in, unplugged, rearranged: the phone redraws its map, and a display that went is no longer chosen.
+    private func displaysChanged() {
+        guard let s = session, s.greeted else { return }
+        let list = RemoteDisplayList.all()
+        emit(["event": "remote_displays", "count": list.count])
+        s.channel.send(ToPhone.displays(list))
+        if let p = s.pinned, !list.contains(where: { $0.id == String(p) }) { s.pinned = nil }
+        s.screen?.displaysChanged()
     }
 
     private func pointer(_ p: RemotePointerPacket) {

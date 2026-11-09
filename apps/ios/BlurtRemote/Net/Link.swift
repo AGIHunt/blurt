@@ -22,8 +22,11 @@ struct PairedMac: Codable, Identifiable, Hashable {
     var relayAddress: String?
     /// what the user calls it here, when two Macs have much the same name
     var nickname: String?
+    /// what the computer said it is ("mac", "windows", "linux"), as last heard; nil before it said, as a Mac paired before 1.0.15
+    var platform: String?
 
     var title: String { nickname?.isEmpty == false ? nickname! : name }
+    var host: RemoteHost { platform.flatMap(RemoteHost.init(rawValue:)) ?? .mac }
 }
 
 final class Link: ObservableObject {
@@ -43,7 +46,9 @@ final class Link: ObservableObject {
 
     @Published private(set) var state = State.unpaired
     @Published private(set) var macs: [PairedMac] = []
-    @Published private(set) var current: PairedMac?
+    @Published private(set) var current: PairedMac? { didSet { hostChanged() } }
+    /// what the computer in hand is: its keys, their names and what the app says follow it. A Mac until it says otherwise
+    @Published private(set) var host = RemoteHost.mac
     @Published private(set) var canControl = true
     @Published private(set) var front: RemoteFront?
     @Published private(set) var dictation = RemoteDictationPhase.idle
@@ -54,6 +59,12 @@ final class Link: ObservableObject {
     enum Route { case local, relay, direct }
     @Published private(set) var route = Route.local
     @Published private(set) var displayAspect: CGFloat = 1.6
+    /// the computer's displays, as it arranges them; a switcher shows only with two or more (docs/design/remote.md §Several displays)
+    @Published private(set) var displays: [RemoteDisplay] = []
+    /// the one the picture shows now
+    @Published private(set) var shownDisplay: String?
+    /// the one chosen to be shown; nil follows the pointer from display to display
+    @Published private(set) var pinnedDisplay: String?
     /// paired Macs on this network right now, while Settings looks
     @Published private(set) var nearby: Set<String> = []
     /// on mobile data; Low Data Mode is on
@@ -90,6 +101,15 @@ final class Link: ObservableObject {
         if let d = UserDefaults.standard.data(forKey: Self.macsKey), let m = try? JSONDecoder().decode([PairedMac].self, from: d) { macs = m }
         current = macs.first { $0.id == UserDefaults.standard.string(forKey: "currentMac") } ?? macs.first
         state = current == nil ? .unpaired : .connecting
+        #if DEBUG
+        if let h = Self.testHost { pretend(h) }
+        // a test run: the code as the in-app scanner reads it, with no one there to answer the question a link from outside asks
+        if let u = ProcessInfo.processInfo.environment["BLURT_REMOTE_PAIR"].flatMap(URL.init(string:)) {
+            DispatchQueue.main.async { self.open(u, confirmed: true) }
+        }
+        if !Pretend.displays.isEmpty { pretend(displays: Pretend.displays, shown: Pretend.displays.first?.id) }
+        #endif
+        hostChanged()
         path.pathUpdateHandler = { [weak self] p in
             // a phone's hotspot is Wi-Fi the user is paying for
             let mobile = p.isExpensive, low = p.isConstrained
@@ -103,7 +123,42 @@ final class Link: ObservableObject {
         path.start(queue: queue)
     }
 
+    private func hostChanged() {
+        let h = current?.host ?? .mac
+        RemoteHost.shown = h
+        if host != h { host = h }
+    }
+
+    /// Debug builds: BLURT_REMOTE_TEST_HOST=windows|linux|mac shows that computer as connected, with no connection and nothing saved, among
+    /// three of mixed kinds; for looking at each one's keys in the simulator.
+    private static let testHost: RemoteHost? = {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["BLURT_REMOTE_TEST_HOST"].flatMap(RemoteHost.init(rawValue:))
+        #else
+        nil
+        #endif
+    }()
+
+    private func pretend(_ h: RemoteHost) {
+        let all = [PairedMac(id: "test-windows", deviceID: "test-1", name: "Studio PC", port: 0, addresses: [], platform: "windows"),
+                   PairedMac(id: "test-mac", deviceID: "test-2", name: "MacBook Pro", port: 0, addresses: [], relayAddress: "wss://relay.example.com"),
+                   PairedMac(id: "test-linux", deviceID: "test-3", name: "ubuntu-desk", port: 0, addresses: [], platform: "linux")]
+        macs = all.filter { $0.host == h } + all.filter { $0.host != h }
+        current = macs.first
+        state = .connected
+    }
+
+    #if DEBUG
+    /// Layout work and render tests: displays with no computer
+    func pretend(displays d: [RemoteDisplay], shown: String?, pinned: String? = nil) {
+        displays = d
+        shownDisplay = shown
+        pinnedDisplay = pinned
+    }
+    #endif
+
     private func saveMacs() {
+        guard Self.testHost == nil else { return }
         if let d = try? JSONEncoder().encode(macs) { UserDefaults.standard.set(d, forKey: Self.macsKey) }
         UserDefaults.standard.set(current?.id, forKey: "currentMac")
     }
@@ -143,7 +198,7 @@ final class Link: ObservableObject {
         guard joining?.mac.deviceID != p.deviceID, !macs.contains(where: { $0.deviceID == p.deviceID }) else { return }     // the same code, read twice
         Keychain.store(p.key, account: p.deviceID)
         let m = PairedMac(id: p.macID, deviceID: p.deviceID, name: p.macName, port: p.port, addresses: p.addresses, relayAddress: p.relay,
-                          nickname: macs.first { $0.id == p.macID }?.nickname)
+                          nickname: macs.first { $0.id == p.macID }?.nickname, platform: macs.first { $0.id == p.macID }?.platform)
         if let j = joining { Keychain.remove(account: j.mac.deviceID) }
         joining = (m, joining != nil ? joining!.back : current, Date())
         joinOpens = 0
@@ -159,8 +214,8 @@ final class Link: ObservableObject {
         waitingForMac = false
         Keychain.remove(account: j.mac.deviceID)
         pairFailed = asked ? String(localized: "\(j.mac.name) didn’t allow this iPhone.")
-            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone on the same network, or set a relay on that Mac first.")
-            : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that Mac.")
+            : j.mac.relayAddress == nil ? String(localized: "Couldn’t reach \(j.mac.name). Put this iPhone on the same network, or set a relay on that computer first.")
+            : String(localized: "Couldn’t reach \(j.mac.name). Scan a fresh code on that computer.")
         let t = pairFailed
         DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in if self?.pairFailed == t { self?.pairFailed = nil } }
         leave()
@@ -186,7 +241,7 @@ final class Link: ObservableObject {
         leave()
         current = m
         if joining == nil { saveMacs() }
-        state = m == nil ? .unpaired : .connecting
+        state = m == nil ? .unpaired : Self.testHost != nil ? .connected : .connecting
         disconnect()
         connect()
     }
@@ -203,6 +258,9 @@ final class Link: ObservableObject {
         liveFinal = ""
         front = nil
         screenError = nil
+        displays = []
+        shownDisplay = nil
+        pinnedDisplay = nil
         refused = false
         firstAttempt = nil
         lastRelayTry = .distantPast
@@ -274,7 +332,7 @@ final class Link: ObservableObject {
     // MARK: connecting
 
     private func connect() {
-        guard active, let mac = current, channel == nil, attempts.allSatisfy(\.isRelay) else { return }
+        guard active, Self.testHost == nil, let mac = current, channel == nil, attempts.allSatisfy(\.isRelay) else { return }
         guard let key = Keychain.read(account: mac.deviceID) else { state = .forgotten; return }
         generation += 1
         if firstAttempt == nil { firstAttempt = Date() }
@@ -461,10 +519,15 @@ final class Link: ObservableObject {
         case let .session(i):
             canControl = i.canControl
             state = .connected
-            if let c = current, c.name != i.macName, let n = macs.firstIndex(of: c) {
-                macs[n].name = i.macName
-                current = macs[n]
-                saveMacs()
+            // its name, and what it is: a computer being paired isn't in the list yet, but its keys show already
+            if var c = current, c.name != i.macName || c.platform != i.platform {
+                c.name = i.macName
+                c.platform = i.platform
+                current = c
+                if let n = macs.firstIndex(where: { $0.id == c.id && $0.deviceID == c.deviceID }) {
+                    macs[n] = c
+                    saveMacs()
+                }
             }
             displayAspect = CGFloat(i.displayAspect)
             lastInfo = i
@@ -509,8 +572,12 @@ final class Link: ObservableObject {
         case let .pong(t):
             lastPong = Date()
             rtt = CACurrentMediaTime() - t
+            Self.rttLock.lock(); Self.rttShared = rtt ?? 0.01; Self.rttLock.unlock()
         case .udpOK:
             channel?.udpConfirmed()
+            #if DEBUG
+            DisplayTest.run()
+            #endif
             if let t = ProcessInfo.processInfo.environment["BLURT_SCREEN_TEST"], !testRan {
                 testRan = true
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { ScreenTest.run(target: t) }
@@ -519,8 +586,12 @@ final class Link: ObservableObject {
         case let .screenFailed(why):
             ScreenStream.shared.stop()
             screenError = why
-        case let .screenView(w, h):
-            ScreenStream.shared.source(CGSize(width: w, height: h))
+        case let .screenView(w, h, codec, display, features):
+            shownDisplay = display
+            ScreenStream.shared.source(CGSize(width: w, height: h), codec: codec, display: display, features: features)
+        case let .displays(list):
+            displays = list
+            if let p = pinnedDisplay, !list.contains(where: { $0.id == p }) { pinnedDisplay = nil }     // unplugged: the computer follows again
         case let .cursorShape(png, hx, hy, w, h):
             ScreenStream.shared.shape(png, hot: CGPoint(x: hx, y: hy), size: CGSize(width: w, height: h))
         case let .relay(a): noteRelay(a)
@@ -563,6 +634,13 @@ final class Link: ObservableObject {
         macs[n] = c
         current = c
         saveMacs()
+    }
+
+    /// Show this display from now on, with the pointer in its middle; nil follows the pointer again.
+    func showDisplay(_ id: String?) {
+        pinnedDisplay = id
+        if id != nil { ScreenStream.shared.displayAsked() }
+        send(.showDisplay(id))
     }
 
     func setAspect(_ a: CGFloat) { if abs(a - displayAspect) > 0.001 { displayAspect = a } }
@@ -611,6 +689,10 @@ final class Link: ObservableObject {
 
     func audio(_ d: Data) { channel?.sendAudio(d) }
     func datagram(_ k: RemoteFrameKind, _ d: Data) { channel?.sendDatagram(k, d) }
+    /// the last round trip, from any thread (the picture's receiver waits a few of these for a piece sent again)
+    static var rttNow: Double { rttLock.lock(); defer { rttLock.unlock() }; return rttShared }
+    static let rttLock = NSLock()
+    nonisolated(unsafe) static var rttShared = 0.01
     var ready: Bool { channel != nil && state == .connected }
 }
 
